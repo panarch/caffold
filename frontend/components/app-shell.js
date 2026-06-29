@@ -1,4 +1,5 @@
 import { getGitDiff, getGitStatus, getHealth, listDirectory, readFile } from "../api.js";
+import { fileNameFromPath, imageTypeLabel, isPreviewableImagePath } from "./dom.js";
 import "./pathbar.js";
 import "./file-list.js";
 import "./file-viewer.js";
@@ -154,6 +155,16 @@ class CodgerAppShell extends HTMLElement {
     const requestId = ++this.fileRequestId;
     this.fileList.setSelectedPath(path);
     this.changesTree.setSelectedPath("");
+
+    if (isPreviewableImagePath(path)) {
+      this.fileViewer.setImage({
+        path,
+        name: fileNameFromPath(path),
+        imageType: imageTypeLabel(path),
+      });
+      return;
+    }
+
     const loadingTimer = this.showFileLoadingAfterDelay(path, requestId);
 
     try {

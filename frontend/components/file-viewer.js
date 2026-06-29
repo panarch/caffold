@@ -1,4 +1,5 @@
 import { escapeHtml, formatBytes, formatModified, languageLabel } from "./dom.js";
+import { imageUrl } from "../api.js";
 import "./code-viewer.js";
 
 class CodgerFileViewer extends HTMLElement {
@@ -20,6 +21,11 @@ class CodgerFileViewer extends HTMLElement {
 
   setFile(file) {
     this.state = { status: "file", file };
+    this.render();
+  }
+
+  setImage(image) {
+    this.state = { status: "image", image };
     this.render();
   }
 
@@ -72,6 +78,11 @@ class CodgerFileViewer extends HTMLElement {
       return;
     }
 
+    if (this.state.status === "image") {
+      this.renderImage();
+      return;
+    }
+
     const { file } = this.state;
     const language = languageLabel(file.languageHint);
     this.innerHTML = `
@@ -102,6 +113,38 @@ class CodgerFileViewer extends HTMLElement {
     `;
 
     this.querySelector("codger-code-viewer").setFile(file);
+  }
+
+  renderImage() {
+    const { image } = this.state;
+    this.innerHTML = `
+      <section class="viewer-panel image-panel">
+        <header>
+          <h2>${escapeHtml(image.name)}</h2>
+          <dl>
+            <div data-field="path">
+              <dt>Path</dt>
+              <dd>${escapeHtml(image.path)}</dd>
+            </div>
+            <div data-field="type">
+              <dt>Type</dt>
+              <dd>${escapeHtml(image.imageType)}</dd>
+            </div>
+          </dl>
+        </header>
+        <div class="image-stage">
+          <img
+            class="image-preview"
+            src="${escapeHtml(imageUrl(image.path))}"
+            alt="${escapeHtml(image.name)}"
+          >
+        </div>
+      </section>
+    `;
+
+    this.querySelector(".image-preview").addEventListener("error", () => {
+      this.setError(image.path, new Error("Image preview failed to load."));
+    });
   }
 
   renderDiff() {

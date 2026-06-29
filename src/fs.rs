@@ -11,6 +11,7 @@ use thiserror::Error;
 use crate::git;
 
 pub const MAX_FILE_BYTES: u64 = 1024 * 1024;
+pub const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct RootedFs {
@@ -71,6 +72,16 @@ pub struct FileResponse {
     pub modified_ms: Option<u64>,
     pub language_hint: Option<String>,
     pub content: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImageResponse {
+    pub path: String,
+    pub name: String,
+    pub size: u64,
+    pub modified_ms: Option<u64>,
+    pub content_type: &'static str,
+    pub bytes: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -136,6 +147,8 @@ pub enum FsError {
     BinaryFile { path: String },
     #[error("invalid UTF-8 files are not supported: {path}")]
     InvalidUtf8 { path: String },
+    #[error("image preview is not supported for this file type: {path}")]
+    UnsupportedImage { path: String },
     #[error("path is not inside a Git repository: {path}")]
     GitRepositoryNotFound { path: String },
     #[error("git command failed while trying to {action}: {path}")]
@@ -321,6 +334,66 @@ impl RootedFs {
             modified_ms: modified_ms(&metadata),
             language_hint: language_hint(&resolved.logical),
             content,
+        })
+    }
+
+    pub fn read_image(&self, requested_path: &str) -> Result<ImageResponse, FsError> {
+        let resolved = self.resolve_existing(requested_path)?;
+        let content_type =
+            image_content_type(&resolved.logical).ok_or_else(|| FsError::UnsupportedImage {
+                path: requested_path.to_string(),
+            })?;
+        let metadata = fs::metadata(&resolved.absolute).map_err(|source| FsError::Io {
+            action: "read metadata",
+            path: requested_path.to_string(),
+            source,
+        })?;
+
+        if metadata.is_dir() {
+            return Err(FsError::IsDirectory {
+                path: requested_path.to_string(),
+            });
+        }
+
+        if !metadata.is_file() {
+            return Err(FsError::NotFile {
+                path: requested_path.to_string(),
+            });
+        }
+
+        if metadata.len() > MAX_IMAGE_BYTES {
+            return Err(FsError::FileTooLarge {
+                path: requested_path.to_string(),
+                size: metadata.len(),
+                limit: MAX_IMAGE_BYTES,
+            });
+        }
+
+        let bytes = fs::read(&resolved.absolute).map_err(|source| FsError::Io {
+            action: "read image",
+            path: requested_path.to_string(),
+            source,
+        })?;
+
+        if bytes.len() as u64 > MAX_IMAGE_BYTES {
+            return Err(FsError::FileTooLarge {
+                path: requested_path.to_string(),
+                size: bytes.len() as u64,
+                limit: MAX_IMAGE_BYTES,
+            });
+        }
+
+        Ok(ImageResponse {
+            path: relative_path_string(&resolved.logical),
+            name: resolved
+                .logical
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| relative_path_string(&resolved.logical)),
+            size: metadata.len(),
+            modified_ms: modified_ms(&metadata),
+            content_type,
+            bytes,
         })
     }
 
@@ -652,6 +725,19 @@ fn language_hint(path: &Path) -> Option<String> {
     Some(language.to_string())
 }
 
+fn image_content_type(path: &Path) -> Option<&'static str> {
+    let extension = path.extension()?.to_string_lossy().to_lowercase();
+    match extension.as_str() {
+        "avif" => Some("image/avif"),
+        "gif" => Some("image/gif"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "png" => Some("image/png"),
+        "svg" => Some("image/svg+xml; charset=utf-8"),
+        "webp" => Some("image/webp"),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -790,6 +876,37 @@ mod tests {
         assert!(matches!(
             rooted.read_file("invalid.txt"),
             Err(FsError::InvalidUtf8 { .. })
+        ));
+    }
+
+    #[test]
+    fn reads_supported_image_preview() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::write(
+            temp.path().join("preview.svg"),
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>"#,
+        )
+        .unwrap();
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+        let image = rooted.read_image("preview.svg").unwrap();
+
+        assert_eq!(image.path, "preview.svg");
+        assert_eq!(image.name, "preview.svg");
+        assert_eq!(image.content_type, "image/svg+xml; charset=utf-8");
+        assert!(image.bytes.starts_with(b"<svg"));
+    }
+
+    #[test]
+    fn rejects_unsupported_image_preview_type() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::write(temp.path().join("notes.txt"), "hello").unwrap();
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+
+        assert!(matches!(
+            rooted.read_image("notes.txt"),
+            Err(FsError::UnsupportedImage { .. })
         ));
     }
 

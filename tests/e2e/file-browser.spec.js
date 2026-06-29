@@ -132,6 +132,21 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
   await captureReviewScreenshot(page, testInfo, "file-browser");
 });
 
+test("previews image files in the viewer", async ({ page }) => {
+  await page.goto("/");
+
+  await page.locator('button[data-entry-path="preview-image.svg"]').click();
+  await expect(page.locator("codger-file-viewer")).toContainText("preview-image.svg");
+  await expect(page.locator("codger-file-viewer")).toContainText("SVG image");
+
+  const preview = page.locator("codger-file-viewer img.image-preview");
+  await expect(preview).toBeVisible();
+  await expect(preview).toHaveAttribute("src", /\/api\/image\?path=preview-image\.svg$/);
+  await expect(
+    preview.evaluate((image) => image.complete && image.naturalWidth > 0),
+  ).resolves.toBe(true);
+});
+
 test("keeps the toggled tree row anchored while expanding", async ({ page }) => {
   await page.goto("/");
   await page.addStyleTag({

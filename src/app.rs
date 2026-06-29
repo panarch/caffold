@@ -3,7 +3,7 @@ use std::{net::IpAddr, path::PathBuf, sync::Arc};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    http::{StatusCode, header},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{Html, IntoResponse, Response},
     routing::get,
 };
@@ -123,6 +123,7 @@ fn router_with_state(state: AppState) -> Router {
         .route("/api/health", get(health))
         .route("/api/list", get(list))
         .route("/api/file", get(file))
+        .route("/api/image", get(image))
         .route("/api/git/status", get(git_status))
         .route("/api/git/diff", get(git_diff))
         .route("/assets/{*path}", get(asset))
@@ -198,6 +199,21 @@ async fn file(
         .read_file(&query.path)
         .map(Json)
         .map_err(ApiError::from)
+}
+
+async fn image(
+    State(state): State<AppState>,
+    Query(query): Query<PathQuery>,
+) -> Result<Response, ApiError> {
+    let image = state.fs.read_image(&query.path)?;
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(image.content_type),
+    );
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+
+    Ok((headers, image.bytes).into_response())
 }
 
 async fn git_status(
@@ -282,6 +298,11 @@ impl IntoResponse for ApiError {
                 StatusCode::UNSUPPORTED_MEDIA_TYPE,
                 "invalid_utf8",
                 format!("invalid UTF-8 files are not supported: {path}"),
+            ),
+            FsError::UnsupportedImage { path } => (
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "unsupported_image",
+                format!("image preview is not supported for this file type: {path}"),
             ),
             FsError::GitRepositoryNotFound { path } => (
                 StatusCode::BAD_REQUEST,

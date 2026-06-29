@@ -65,6 +65,22 @@ codger-file-viewer .error-panel {
   color: var(--danger);
 }
 
+codger-file-viewer .image-stage {
+  display: grid;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  place-items: center;
+  padding: 16px;
+}
+
+codger-file-viewer .image-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
 @media (max-width: 860px) {
   codger-file-viewer .viewer-panel > header dl {
     grid-template-columns: repeat(2, minmax(0, 1fr));

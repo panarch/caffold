@@ -28,6 +28,16 @@ const LANGUAGE_LABELS = {
   yaml: "YAML",
 };
 
+const IMAGE_TYPES = {
+  avif: "AVIF image",
+  gif: "GIF image",
+  jpeg: "JPEG image",
+  jpg: "JPEG image",
+  png: "PNG image",
+  svg: "SVG image",
+  webp: "WebP image",
+};
+
 export function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => HTML_ESCAPE[character]);
 }
@@ -68,6 +78,20 @@ export function languageLabel(language) {
   return LANGUAGE_LABELS[language] ?? "Text";
 }
 
+export function isPreviewableImagePath(path) {
+  return Boolean(imageExtension(path));
+}
+
+export function imageTypeLabel(path) {
+  const extension = imageExtension(path);
+  return extension ? IMAGE_TYPES[extension] : "Image";
+}
+
+export function fileNameFromPath(path) {
+  const parts = String(path).split("/").filter(Boolean);
+  return parts.at(-1) ?? path;
+}
+
 export function entryKindLabel(entry) {
   if (!entry.supported) {
     return "blocked";
@@ -86,4 +110,14 @@ export function entryKindLabel(entry) {
   }
 
   return "other";
+}
+
+function imageExtension(path) {
+  const fileName = fileNameFromPath(path).toLowerCase();
+  if (!fileName.includes(".")) {
+    return null;
+  }
+
+  const extension = fileName.split(".").pop();
+  return IMAGE_TYPES[extension] ? extension : null;
 }

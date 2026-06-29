@@ -10,6 +10,12 @@ export async function readFile(path) {
   return requestJson("/api/file", { path });
 }
 
+export function imageUrl(path) {
+  const url = new URL("/api/image", window.location.origin);
+  url.searchParams.set("path", path);
+  return url.toString();
+}
+
 export async function getGitStatus(path = "") {
   return requestJson("/api/git/status", { path });
 }
