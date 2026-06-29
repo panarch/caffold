@@ -30,6 +30,7 @@ test.beforeEach(async ({ page }) => {
         export const FolderGit2 = Folder;
         export const FolderOpen = Folder;
         export const FolderSymlink = Folder;
+        export const Info = [["circle", { cx: "12", cy: "12", r: "10" }], ["path", { d: "M12 16v-4" }], ["path", { d: "M12 8h.01" }]];
         export const Database = [["ellipse", { cx: "12", cy: "5", rx: "8", ry: "3" }], ["path", { d: "M4 5v10c0 1.7 3.6 3 8 3s8-1.3 8-3V5" }]];
         export const Link = [["path", { d: "M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1" }]];
         export const Lock = [["rect", { x: "5", y: "10", width: "14", height: "10", rx: "2" }], ["path", { d: "M8 10V7a4 4 0 0 1 8 0v3" }]];
@@ -117,10 +118,18 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
   await expect(page.getByText("Loading file...")).toHaveCount(0);
   await expect(page.locator("codger-file-viewer")).toContainText("example.rs");
   await expect(page.locator("codger-code-viewer")).toContainText("pub fn sample");
+  await expect(page.locator("codger-code-viewer")).not.toContainText("Highlighted");
   await expect(page.locator(".line-number").first()).toHaveText("1");
   await expect(page.locator(".entry-icon-svg").first()).toBeVisible();
   await expectGlobalScrollLocked(page);
   await expectPanelScrollContainers(page);
+  await page.getByRole("button", { name: "Show details for example.rs" }).click();
+  const details = page.locator("codger-file-viewer .viewer-meta-popover");
+  await expect(details).toBeVisible();
+  await expect(details.locator('[data-field="path"] dd')).toHaveText("src/example.rs");
+  await expect(details.locator('[data-field="language"] dd')).toHaveText("Rust");
+  await page.keyboard.press("Escape");
+  await expect(details).toBeHidden();
   await page.locator('button[data-entry-path="src/planner"]').click();
   await expect(page.locator('button[data-entry-path="src/planner/mod.rs"]')).toBeVisible();
   await page.locator('button[data-entry-path="src/planner/mod.rs"]').click();
@@ -138,6 +147,10 @@ test("previews image files in the viewer", async ({ page }) => {
   await page.locator('button[data-entry-path="preview-image.svg"]').click();
   await expect(page.locator("codger-file-viewer")).toContainText("preview-image.svg");
   await expect(page.locator("codger-file-viewer")).toContainText("SVG image");
+  await page.getByRole("button", { name: "Show details for preview-image.svg" }).click();
+  const details = page.locator("codger-file-viewer .viewer-meta-popover");
+  await expect(details.locator('[data-field="size"] dd')).toHaveText("325 B");
+  await expect(details.locator('[data-field="type"] dd')).toHaveText("SVG image");
 
   const preview = page.locator("codger-file-viewer img.image-preview");
   await expect(preview).toBeVisible();

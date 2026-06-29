@@ -43,7 +43,7 @@ class CodgerAppShell extends HTMLElement {
       this.loadDirectory(event.detail.path);
     });
     this.addEventListener("codger:open-file", (event) => {
-      this.openFile(event.detail.path);
+      this.openFile(event.detail.path, event.detail.entry);
     });
     this.addEventListener("codger:toggle-git-mode", () => {
       this.toggleGitMode();
@@ -151,7 +151,7 @@ class CodgerAppShell extends HTMLElement {
     }
   }
 
-  async openFile(path) {
+  async openFile(path, entry = null) {
     const requestId = ++this.fileRequestId;
     this.fileList.setSelectedPath(path);
     this.changesTree.setSelectedPath("");
@@ -161,6 +161,8 @@ class CodgerAppShell extends HTMLElement {
         path,
         name: fileNameFromPath(path),
         imageType: imageTypeLabel(path),
+        size: entry?.size,
+        modifiedMs: entry?.modifiedMs,
       });
       return;
     }

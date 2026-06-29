@@ -1,13 +1,25 @@
 import { escapeHtml, formatBytes, formatModified, languageLabel } from "./dom.js";
+import { renderInlineIcon, warmIcons } from "./icons.js";
 import { imageUrl } from "../api.js";
 import "./code-viewer.js";
 import "./diff-viewer.js";
 
 class CodgerFileViewer extends HTMLElement {
   connectedCallback() {
+    if (!this.initialized) {
+      this.initialized = true;
+      this.boundIconsReady = () => this.render();
+      window.addEventListener("codger:icons-ready", this.boundIconsReady);
+      warmIcons();
+    }
+
     if (!this.state) {
       this.setEmpty();
     }
+  }
+
+  disconnectedCallback() {
+    window.removeEventListener("codger:icons-ready", this.boundIconsReady);
   }
 
   setEmpty() {
@@ -88,27 +100,16 @@ class CodgerFileViewer extends HTMLElement {
     const language = languageLabel(file.languageHint);
     this.innerHTML = `
       <section class="viewer-panel file-panel">
-        <header>
-          <h2>${escapeHtml(file.name)}</h2>
-          <dl>
-            <div data-field="path">
-              <dt>Path</dt>
-              <dd>${escapeHtml(file.path)}</dd>
-            </div>
-            <div data-field="size">
-              <dt>Size</dt>
-              <dd>${escapeHtml(formatBytes(file.size))}</dd>
-            </div>
-            <div data-field="modified">
-              <dt>Modified</dt>
-              <dd>${escapeHtml(formatModified(file.modifiedMs) || "Unknown")}</dd>
-            </div>
-            <div data-field="language">
-              <dt>Language</dt>
-              <dd>${escapeHtml(language)}</dd>
-            </div>
-          </dl>
-        </header>
+        ${this.renderHeader(file.name, [
+          { field: "path", label: "Path", value: file.path },
+          { field: "size", label: "Size", value: formatBytes(file.size) },
+          {
+            field: "modified",
+            label: "Modified",
+            value: formatModified(file.modifiedMs) || "Unknown",
+          },
+          { field: "language", label: "Language", value: language },
+        ])}
         <codger-code-viewer></codger-code-viewer>
       </section>
     `;
@@ -118,21 +119,24 @@ class CodgerFileViewer extends HTMLElement {
 
   renderImage() {
     const { image } = this.state;
+    const metadata = [
+      { field: "path", label: "Path", value: image.path },
+      image.size === null || image.size === undefined
+        ? null
+        : { field: "size", label: "Size", value: formatBytes(image.size) },
+      image.modifiedMs === null || image.modifiedMs === undefined
+        ? null
+        : {
+            field: "modified",
+            label: "Modified",
+            value: formatModified(image.modifiedMs) || "Unknown",
+          },
+      { field: "type", label: "Type", value: image.imageType },
+    ].filter(Boolean);
+
     this.innerHTML = `
       <section class="viewer-panel image-panel">
-        <header>
-          <h2>${escapeHtml(image.name)}</h2>
-          <dl>
-            <div data-field="path">
-              <dt>Path</dt>
-              <dd>${escapeHtml(image.path)}</dd>
-            </div>
-            <div data-field="type">
-              <dt>Type</dt>
-              <dd>${escapeHtml(image.imageType)}</dd>
-            </div>
-          </dl>
-        </header>
+        ${this.renderHeader(image.name, metadata)}
         <div class="image-stage">
           <img
             class="image-preview"
@@ -153,28 +157,56 @@ class CodgerFileViewer extends HTMLElement {
 
     this.innerHTML = `
       <section class="viewer-panel file-panel diff-panel">
-        <header>
-          <h2>${escapeHtml(diff.repoRelativePath)}</h2>
-          <dl>
-            <div data-field="path">
-              <dt>Path</dt>
-              <dd>${escapeHtml(diff.path)}</dd>
-            </div>
-            <div data-field="kind">
-              <dt>Diff</dt>
-              <dd>${escapeHtml(diff.kind)}</dd>
-            </div>
-            <div data-field="repository">
-              <dt>Repository</dt>
-              <dd>${escapeHtml(diff.repository.rootPath || "/")}</dd>
-            </div>
-          </dl>
-        </header>
+        ${this.renderHeader(diff.repoRelativePath, [
+          { field: "path", label: "Path", value: diff.path },
+          { field: "kind", label: "Diff", value: diff.kind },
+          { field: "repository", label: "Repository", value: diff.repository.rootPath || "/" },
+        ])}
         <codger-diff-viewer></codger-diff-viewer>
       </section>
     `;
 
     this.querySelector("codger-diff-viewer").setDiff(diff);
+  }
+
+  renderHeader(title, metadata) {
+    const popoverId = "codger-viewer-details";
+
+    return `
+      <header class="viewer-header">
+        <div class="viewer-title-row">
+          <h2 title="${escapeHtml(title)}">${escapeHtml(title)}</h2>
+          <button
+            type="button"
+            class="viewer-info-button"
+            popovertarget="${popoverId}"
+            aria-label="${escapeHtml(`Show details for ${title}`)}"
+            title="Show details"
+          >
+            ${renderInlineIcon("Info", "Details", "viewer-info-icon")}
+          </button>
+        </div>
+        <div
+          id="${popoverId}"
+          class="viewer-meta-popover"
+          popover="auto"
+          aria-label="File details"
+        >
+          <dl>
+            ${metadata
+              .map(
+                (item) => `
+                  <div data-field="${escapeHtml(item.field)}">
+                    <dt>${escapeHtml(item.label)}</dt>
+                    <dd>${escapeHtml(item.value)}</dd>
+                  </div>
+                `,
+              )
+              .join("")}
+          </dl>
+        </div>
+      </header>
+    `;
   }
 }
 

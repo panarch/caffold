@@ -17,7 +17,6 @@ class CodgerCodeViewer extends HTMLElement {
       <section class="code-viewer" data-highlighted="false">
         <header>
           <span>${escapeHtml(language)}</span>
-          <span>Plain text</span>
         </header>
         <div class="code-lines" role="region" aria-label="File content">
           ${renderLines(escapeHtml(this.file.content))}
@@ -41,7 +40,6 @@ class CodgerCodeViewer extends HTMLElement {
         <section class="code-viewer" data-highlighted="true">
           <header>
             <span>${escapeHtml(language)}</span>
-            <span>Highlighted</span>
           </header>
           <div class="code-lines" role="region" aria-label="File content">
             ${renderLines(highlighted)}
@@ -92,4 +90,3 @@ function renderLines(html) {
 }
 
 customElements.define("codger-code-viewer", CodgerCodeViewer);
-

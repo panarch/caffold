@@ -17,6 +17,7 @@ class CodgerFileList extends HTMLElement {
         return;
       }
 
+      const path = button.dataset.entryPath;
       const eventName =
         button.dataset.kind === "directory"
           ? "codger:open-directory"
@@ -25,7 +26,7 @@ class CodgerFileList extends HTMLElement {
       this.dispatchEvent(
         new CustomEvent(eventName, {
           bubbles: true,
-          detail: { path: button.dataset.entryPath },
+          detail: { path, entry: this.entryForPath(path) },
         }),
       );
     });
@@ -488,6 +489,30 @@ class CodgerFileList extends HTMLElement {
     return Array.from(this.querySelectorAll("button[data-entry-path]")).find(
       (button) => button.dataset.entryPath === path,
     );
+  }
+
+  entryForPath(path) {
+    if (!path) {
+      return null;
+    }
+
+    const currentEntry = this.state?.directory?.entries.find((entry) => entry.path === path);
+    if (currentEntry) {
+      return currentEntry;
+    }
+
+    if (!this.treeState) {
+      return null;
+    }
+
+    for (const directory of this.treeState.cache.values()) {
+      const entry = directory.entries.find((candidate) => candidate.path === path);
+      if (entry) {
+        return entry;
+      }
+    }
+
+    return null;
   }
 
   resetTreeState() {

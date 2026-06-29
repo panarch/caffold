@@ -15,30 +15,104 @@ codger-file-viewer .viewer-panel {
 
 codger-file-viewer .viewer-panel > header {
   display: grid;
-  gap: 4px;
-  padding: 12px 14px;
+  padding: 6px 8px 6px 14px;
   border-bottom: 1px solid var(--border);
+}
+
+codger-file-viewer .viewer-title-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
 }
 
 codger-file-viewer h2 {
   margin: 0;
-  overflow-wrap: anywhere;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.95rem;
   font-weight: 600;
   line-height: 1.3;
 }
 
-codger-file-viewer .viewer-panel > header dl {
+codger-file-viewer .viewer-info-button {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  margin: 2px 0 0;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--accent);
+  cursor: pointer;
 }
 
-codger-file-viewer .viewer-panel > header dl div {
+codger-file-viewer .viewer-info-button:hover {
+  border-color: var(--accent-soft);
+  background: var(--accent-soft);
+}
+
+codger-file-viewer .viewer-info-button:not(:has(svg))::before {
+  content: "i";
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+codger-file-viewer .viewer-info-icon {
+  width: 18px;
+  height: 18px;
+}
+
+codger-file-viewer .viewer-meta-popover {
+  position: fixed;
+  inset: 72px 12px auto auto;
+  width: fit-content;
+  max-width: min(34rem, calc(100vw - 24px));
+  max-height: min(60vh, 420px);
+  margin: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 14px 34px rgb(20 36 29 / 18%);
+}
+
+codger-file-viewer .viewer-meta-popover::backdrop {
+  background: transparent;
+}
+
+codger-file-viewer .viewer-meta-popover dl {
+  display: grid;
+  grid-template-columns: minmax(12rem, max-content) max-content;
+  gap: 10px 14px;
+  margin: 0;
+}
+
+codger-file-viewer .viewer-meta-popover dl div {
   display: grid;
   gap: 2px;
   min-width: 0;
+}
+
+codger-file-viewer .viewer-meta-popover [data-field="path"],
+codger-file-viewer .viewer-meta-popover [data-field="modified"],
+codger-file-viewer .viewer-meta-popover [data-field="repository"] {
+  grid-column: 1;
+  max-width: min(26rem, calc(100vw - 12rem));
+}
+
+codger-file-viewer .viewer-meta-popover [data-field="size"],
+codger-file-viewer .viewer-meta-popover [data-field="type"],
+codger-file-viewer .viewer-meta-popover [data-field="kind"],
+codger-file-viewer .viewer-meta-popover [data-field="language"] {
+  grid-column: 2;
+  min-width: 7ch;
 }
 
 codger-file-viewer dt {
@@ -49,9 +123,7 @@ codger-file-viewer dt {
 codger-file-viewer dd {
   min-width: 0;
   margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   font-size: 0.8rem;
 }
 
@@ -81,14 +153,22 @@ codger-file-viewer .image-preview {
   object-fit: contain;
 }
 
-@media (max-width: 860px) {
-  codger-file-viewer .viewer-panel > header dl {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 520px) {
-  codger-file-viewer .viewer-panel > header dl {
+  codger-file-viewer .viewer-panel > header {
+    padding-left: 10px;
+  }
+
+  codger-file-viewer .viewer-meta-popover {
+    inset: 64px 8px auto 8px;
+    width: auto;
+  }
+
+  codger-file-viewer .viewer-meta-popover dl {
     grid-template-columns: 1fr;
+  }
+
+  codger-file-viewer .viewer-meta-popover dl div {
+    grid-column: auto;
+    max-width: none;
   }
 }

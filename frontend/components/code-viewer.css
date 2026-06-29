@@ -14,7 +14,7 @@ codger-code-viewer .code-viewer {
 
 codger-code-viewer .code-viewer > header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   align-items: center;
   min-height: 34px;
