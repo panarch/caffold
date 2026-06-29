@@ -88,6 +88,10 @@ function iconForEntry(entry) {
   }
 
   if (entry.kind === "directory") {
+    if (entry.expanded) {
+      return icon("FolderOpen", "Open directory");
+    }
+
     if (entry.git?.isRepoRoot) {
       return icon("FolderGit2", "Git repository");
     }

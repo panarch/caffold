@@ -20,6 +20,7 @@ test.beforeEach(async ({ page }) => {
         export const FileText = [["path", { d: "M6 3h12v18H6z" }], ["path", { d: "M9 8h6" }], ["path", { d: "M9 12h6" }]];
         export const Folder = [["path", { d: "M3 6h7l2 2h9v10H3z" }]];
         export const FolderGit2 = Folder;
+        export const FolderOpen = Folder;
         export const FolderSymlink = Folder;
         export const Database = [["ellipse", { cx: "12", cy: "5", rx: "8", ry: "3" }], ["path", { d: "M4 5v10c0 1.7 3.6 3 8 3s8-1.3 8-3V5" }]];
         export const Link = [["path", { d: "M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1" }]];
@@ -103,6 +104,7 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
   await expect(page.locator(".parent-entry")).toBeVisible();
   await expect(page.locator("codger-file-list .git-summary")).toBeVisible();
   await expect(page.locator("codger-file-list .git-summary")).toHaveClass(/is-dirty/);
+  await expect(page.locator('button[data-entry-path="src/planner/mod.rs"]')).toHaveCount(0);
 
   await page.locator('button[data-entry-path="src/example.rs"]').click();
   await expect(page.getByText("Loading file...")).toHaveCount(0);
@@ -112,9 +114,43 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
   await expect(page.locator(".entry-icon-svg").first()).toBeVisible();
   await expectGlobalScrollLocked(page);
   await expectPanelScrollContainers(page);
+  await page.locator('button[data-entry-path="src/planner"]').click();
+  await expect(page.locator('button[data-entry-path="src/planner/mod.rs"]')).toBeVisible();
+  await page.locator('button[data-entry-path="src/planner/mod.rs"]').click();
+  await expect(page.locator("codger-file-viewer")).toContainText("mod.rs");
+  await expect(page.locator("codger-code-viewer")).toContainText("plan_review");
+  await expect(page.locator(".line-number").first()).toHaveText("1");
 
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "file-browser");
+});
+
+test("keeps the toggled tree row anchored while expanding", async ({ page }) => {
+  await page.goto("/");
+  await page.addStyleTag({
+    content: `
+      codger-file-list .file-list {
+        max-height: 150px;
+      }
+    `,
+  });
+
+  await page.locator('button[data-entry-path="src"]').click();
+  const planner = page.locator('button[data-entry-path="src/planner"]');
+  await expect(planner).toBeVisible();
+
+  const beforeTop = await planner.evaluate((element) => {
+    const scroller = element.closest(".file-list");
+    scroller.scrollTop = 0;
+    return element.getBoundingClientRect().top;
+  });
+
+  await planner.click();
+  await expect(page.locator('button[data-entry-path="src/planner/mod.rs"]')).toBeVisible();
+  await page.waitForTimeout(50);
+
+  const afterTop = await planner.evaluate((element) => element.getBoundingClientRect().top);
+  expect(Math.abs(afterTop - beforeTop)).toBeLessThanOrEqual(1);
 });
 
 test("extends the line-number gutter for short files", async ({ page }, testInfo) => {
