@@ -87,8 +87,11 @@ class CodgerFileList extends HTMLElement {
     this.innerHTML = `
       <section class="file-list-panel">
         <header>
-          <h2>Files</h2>
-          <span>${directory.entries.length} entries</span>
+          <div class="file-list-title-row">
+            <h2>Files</h2>
+            <span class="entry-count">${directory.entries.length} entries</span>
+          </div>
+          ${this.renderGitSummary(directory.git)}
         </header>
         <ol class="file-list">
           ${this.renderParentEntry(directory.path)}
@@ -151,6 +154,25 @@ class CodgerFileList extends HTMLElement {
           <span class="entry-name">${escapeHtml(entry.name)}</span>
         </button>
       </li>
+    `;
+  }
+
+  renderGitSummary(git) {
+    if (!git) {
+      return "";
+    }
+
+    const branch = git.branch ?? "detached";
+    const state = git.dirty ? "changes" : "clean";
+    const dirtyClass = git.dirty ? " is-dirty" : "";
+
+    return `
+      <span
+        class="git-summary${dirtyClass}"
+        title="${escapeHtml(`Git ${branch}, ${state}`)}"
+      >
+        ${escapeHtml(branch)}${git.dirty ? " *" : ""}
+      </span>
     `;
   }
 

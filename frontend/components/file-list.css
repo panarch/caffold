@@ -15,24 +15,54 @@ codger-file-list .file-list-panel {
 
 codger-file-list .file-list-panel > header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 4px;
-  align-items: center;
-  padding: 12px 14px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  align-content: center;
+  padding: 7px 14px;
   border-bottom: 1px solid var(--border);
 }
 
 codger-file-list h2 {
   margin: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
   font-size: 0.95rem;
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 codger-file-list .file-list-panel > header span {
   color: var(--muted);
   font-size: 0.82rem;
+}
+
+codger-file-list .file-list-title-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
+codger-file-list .entry-count {
+  justify-self: end;
+  white-space: nowrap;
+}
+
+codger-file-list .git-summary {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--accent);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+codger-file-list .git-summary.is-dirty {
+  color: #8a5200;
 }
 
 codger-file-list .file-list {

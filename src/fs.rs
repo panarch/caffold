@@ -8,6 +8,8 @@ use std::{
 use serde::Serialize;
 use thiserror::Error;
 
+use crate::git;
+
 pub const MAX_FILE_BYTES: u64 = 1024 * 1024;
 
 #[derive(Debug, Clone)]
@@ -21,6 +23,7 @@ pub struct ListResponse {
     pub root: String,
     pub path: String,
     pub entries: Vec<DirectoryEntry>,
+    pub git: Option<DirectoryGitInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -33,6 +36,21 @@ pub struct DirectoryEntry {
     pub supported: bool,
     pub size: Option<u64>,
     pub modified_ms: Option<u64>,
+    pub git: Option<EntryGitInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectoryGitInfo {
+    pub root_path: String,
+    pub branch: Option<String>,
+    pub dirty: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct EntryGitInfo {
+    pub is_repo_root: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -186,6 +204,7 @@ impl RootedFs {
             root: self.root.display().to_string(),
             path: relative_path_string(&resolved.logical),
             entries,
+            git: self.git_info_for(&resolved.absolute),
         })
     }
 
@@ -320,6 +339,7 @@ impl RootedFs {
                 supported: false,
                 size: None,
                 modified_ms: modified_ms(&symlink_metadata),
+                git: None,
             });
         }
 
@@ -330,6 +350,8 @@ impl RootedFs {
         };
         let kind = entry_kind(&metadata);
         let supported = matches!(kind, EntryKind::Directory | EntryKind::File);
+        let git = (kind == EntryKind::Directory && git::has_git_marker(&physical_path))
+            .then_some(EntryGitInfo { is_repo_root: true });
 
         Ok(DirectoryEntry {
             name,
@@ -339,6 +361,22 @@ impl RootedFs {
             supported,
             size: metadata.is_file().then_some(metadata.len()),
             modified_ms: modified_ms(&metadata),
+            git,
+        })
+    }
+
+    fn git_info_for(&self, absolute_path: &Path) -> Option<DirectoryGitInfo> {
+        let repository = git::repository_for(absolute_path)?;
+        if !repository.root.starts_with(&self.root) {
+            return None;
+        }
+
+        let root_path = repository.root.strip_prefix(&self.root).ok()?;
+
+        Some(DirectoryGitInfo {
+            root_path: relative_path_string(root_path),
+            branch: repository.branch,
+            dirty: repository.dirty,
         })
     }
 }
@@ -452,6 +490,35 @@ mod tests {
     }
 
     #[test]
+    fn list_marks_git_repository_entries_and_current_repo() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let repo_path = temp.path().join("repo");
+        fs::create_dir(&repo_path).unwrap();
+        git(&repo_path, &["init"]);
+        fs::write(repo_path.join("new.txt"), "hello").unwrap();
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+        let parent_list = rooted.list("").unwrap();
+        let repo_entry = parent_list
+            .entries
+            .iter()
+            .find(|entry| entry.name == "repo")
+            .unwrap();
+
+        assert_eq!(repo_entry.git, Some(EntryGitInfo { is_repo_root: true }));
+
+        let repo_list = rooted.list("repo").unwrap();
+        let git = repo_list.git.unwrap();
+        assert_eq!(git.root_path, "repo");
+        assert!(git.branch.is_some());
+        assert!(git.dirty);
+    }
+
+    #[test]
     fn rejects_parent_path_traversal() {
         let temp = tempfile::tempdir().unwrap();
         let rooted = RootedFs::new(temp.path()).unwrap();
@@ -556,5 +623,27 @@ mod tests {
             rooted.read_file("large.txt"),
             Err(FsError::FileTooLarge { .. })
         ));
+    }
+
+    fn git_is_available() -> bool {
+        std::process::Command::new("git")
+            .arg("--version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+
+    fn git(path: &Path, args: &[&str]) {
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "git failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 }

@@ -19,6 +19,7 @@ test.beforeEach(async ({ page }) => {
         export const FileTerminal = FileCode;
         export const FileText = [["path", { d: "M6 3h12v18H6z" }], ["path", { d: "M9 8h6" }], ["path", { d: "M9 12h6" }]];
         export const Folder = [["path", { d: "M3 6h7l2 2h9v10H3z" }]];
+        export const FolderGit2 = Folder;
         export const FolderSymlink = Folder;
         export const Database = [["ellipse", { cx: "12", cy: "5", rx: "8", ry: "3" }], ["path", { d: "M4 5v10c0 1.7 3.6 3 8 3s8-1.3 8-3V5" }]];
         export const Link = [["path", { d: "M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1" }]];
@@ -88,6 +89,10 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
   await expect(page.getByText("Loading files...")).toHaveCount(0);
   await expect(page.locator("codger-file-list")).toContainText(".codger-hidden");
   await expect(page.locator("codger-file-list")).toContainText("src");
+  await expect(page.locator('button[data-entry-path="src"] .entry-icon')).toHaveAttribute(
+    "title",
+    "Git repository",
+  );
   await expect(page.locator('button[data-entry-path=".codger-hidden"]')).toHaveClass(
     /is-hidden/,
   );
@@ -96,6 +101,8 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
   await page.locator('button[data-entry-path="src"]').click();
   await expect(page.locator("codger-pathbar")).toContainText("src");
   await expect(page.locator(".parent-entry")).toBeVisible();
+  await expect(page.locator("codger-file-list .git-summary")).toBeVisible();
+  await expect(page.locator("codger-file-list .git-summary")).toHaveClass(/is-dirty/);
 
   await page.locator('button[data-entry-path="src/example.rs"]').click();
   await expect(page.getByText("Loading file...")).toHaveCount(0);

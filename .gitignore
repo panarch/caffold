@@ -3,4 +3,5 @@
 /playwright-report
 /test-results
 /tests/e2e/*-snapshots
+/tests/fixtures/**/.git
 .DS_Store

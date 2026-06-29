@@ -88,6 +88,10 @@ function iconForEntry(entry) {
   }
 
   if (entry.kind === "directory") {
+    if (entry.git?.isRepoRoot) {
+      return icon("FolderGit2", "Git repository");
+    }
+
     return entry.isSymlink
       ? icon("FolderSymlink", "Directory link")
       : icon("Folder", "Directory");
