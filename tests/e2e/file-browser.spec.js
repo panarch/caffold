@@ -209,6 +209,43 @@ test("scrolls long names horizontally in Files and Changes", async ({ page }) =>
   await expectHorizontalScroller(page, ".changes-tree-list");
 });
 
+test("keeps list scroll positions when selecting files and changes", async ({ page }) => {
+  await page.goto("/");
+  await page.addStyleTag({
+    content: `
+      codger-file-list .file-list,
+      codger-changes-tree .changes-tree-list {
+        max-height: 72px;
+      }
+    `,
+  });
+
+  const fileList = page.locator("codger-file-list .file-list");
+  const fileTarget = page.locator('button[data-entry-path="README.md"]');
+  await fileTarget.scrollIntoViewIfNeeded();
+  const beforeFileScroll = await scrollTop(fileList);
+  expect(beforeFileScroll).toBeGreaterThan(0);
+
+  await fileTarget.click();
+  await expect(page.locator("codger-file-viewer")).toContainText("README.md");
+  await expectPreservedScroll(fileList, beforeFileScroll);
+
+  await page.locator('button[data-entry-path="src"]').click();
+  const gitButton = page.locator("codger-pathbar .git-mode-button");
+  await expect(gitButton).toBeVisible();
+  await gitButton.click();
+
+  const changesList = page.locator("codger-changes-tree .changes-tree-list");
+  const changeTarget = page.locator(`button[data-change-path="${LONG_CHANGE_FILE}"]`);
+  await changeTarget.scrollIntoViewIfNeeded();
+  const beforeChangesScroll = await scrollTop(changesList);
+  expect(beforeChangesScroll).toBeGreaterThan(0);
+
+  await changeTarget.click();
+  await expect(page.locator("codger-diff-viewer")).toContainText("long_change_name_fixture");
+  await expectPreservedScroll(changesList, beforeChangesScroll);
+});
+
 test("opens changed diffs from Changes mode", async ({ page }) => {
   await page.route(/\/api\/git\/diff(?:\?|$)/, (route) =>
     route.fulfill({
@@ -374,6 +411,16 @@ async function leftPanelWidth(page) {
   return page.locator("codger-file-list").evaluate((element) => {
     return element.getBoundingClientRect().width;
   });
+}
+
+async function scrollTop(locator) {
+  return locator.evaluate((element) => element.scrollTop);
+}
+
+async function expectPreservedScroll(locator, beforeScroll) {
+  const afterScroll = await scrollTop(locator);
+  expect(afterScroll).toBeGreaterThan(0);
+  expect(afterScroll).toBeGreaterThanOrEqual(beforeScroll - 32);
 }
 
 async function expectHorizontalScroller(page, selector) {

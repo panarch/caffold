@@ -288,8 +288,28 @@ class CodgerFileList extends HTMLElement {
   }
 
   setSelectedPath(path) {
-    this.selectedPath = path;
-    this.render();
+    const nextPath = path ?? "";
+    if (this.selectedPath === nextPath) {
+      return;
+    }
+
+    this.selectedPath = nextPath;
+    this.patchSelectedPath();
+  }
+
+  patchSelectedPath() {
+    for (const button of this.querySelectorAll('button[data-entry-path][aria-current="true"]')) {
+      button.setAttribute("aria-current", "false");
+    }
+
+    if (!this.selectedPath) {
+      return;
+    }
+
+    const button = this.entryButtonForPath(this.selectedPath);
+    if (button) {
+      button.setAttribute("aria-current", "true");
+    }
   }
 
   prepareTreeState(directory) {
