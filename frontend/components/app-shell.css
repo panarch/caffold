@@ -1,4 +1,5 @@
 codger-app-shell {
+  --left-panel-width: 20rem;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
   height: 100vh;
@@ -28,9 +29,40 @@ codger-app-shell .brand strong {
 
 codger-app-shell .app-main {
   display: grid;
-  grid-template-columns: minmax(220px, 20rem) minmax(0, 1fr);
+  grid-template-columns: var(--left-panel-width) 6px minmax(0, 1fr);
   overflow: hidden;
   min-height: 0;
+}
+
+codger-app-shell .app-main > codger-file-list,
+codger-app-shell .app-main > codger-changes-tree {
+  grid-column: 1;
+}
+
+codger-app-shell .app-main > codger-file-viewer {
+  grid-column: 3;
+}
+
+codger-app-shell .panel-resizer {
+  grid-column: 2;
+  min-width: 0;
+  border-right: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  background: var(--surface-muted);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+codger-app-shell .panel-resizer:hover,
+codger-app-shell .panel-resizer:focus-visible,
+codger-app-shell.is-resizing-left-panel .panel-resizer {
+  background: #d9e6df;
+  outline: none;
+}
+
+codger-app-shell.is-resizing-left-panel {
+  cursor: col-resize;
+  user-select: none;
 }
 
 @media (max-width: 860px) {
@@ -41,6 +73,21 @@ codger-app-shell .app-main {
   codger-app-shell .app-main {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 36dvh) minmax(0, 1fr);
+  }
+
+  codger-app-shell .app-main > codger-file-list,
+  codger-app-shell .app-main > codger-changes-tree {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  codger-app-shell .app-main > codger-file-viewer {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  codger-app-shell .panel-resizer {
+    display: none;
   }
 }
 

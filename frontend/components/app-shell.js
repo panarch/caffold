@@ -6,6 +6,10 @@ import "./changes-tree.js";
 
 const LOADING_DELAY_MS = 180;
 const LAST_DIRECTORY_KEY_PREFIX = "codger:last-directory-path";
+const LEFT_PANEL_DEFAULT_WIDTH = 320;
+const LEFT_PANEL_MIN_WIDTH = 180;
+const LEFT_PANEL_VIEWER_MIN_WIDTH = 320;
+const LEFT_PANEL_MAX_RATIO = 0.7;
 
 class CodgerAppShell extends HTMLElement {
   connectedCallback() {
@@ -20,12 +24,16 @@ class CodgerAppShell extends HTMLElement {
     this.gitStatusRequestId = 0;
     this.gitStatus = null;
     this.viewMode = "files";
+    this.leftPanelWidth = LEFT_PANEL_DEFAULT_WIDTH;
+    this.resizePointerId = null;
     this.render();
     this.appMain = this.querySelector(".app-main");
     this.pathbar = this.querySelector("codger-pathbar");
     this.fileList = this.querySelector("codger-file-list");
     this.changesTree = this.querySelector("codger-changes-tree");
+    this.panelResizer = this.querySelector(".panel-resizer");
     this.fileViewer = this.querySelector("codger-file-viewer");
+    this.applyLeftPanelWidth(this.leftPanelWidth);
 
     this.addEventListener("codger:navigate", (event) => {
       this.loadDirectory(event.detail.path);
@@ -42,6 +50,21 @@ class CodgerAppShell extends HTMLElement {
     this.addEventListener("codger:open-git-diff", (event) => {
       this.openDiff(event.detail.path, event.detail.kind);
     });
+    this.panelResizer.addEventListener("pointerdown", (event) => {
+      this.startLeftPanelResize(event);
+    });
+    this.panelResizer.addEventListener("pointermove", (event) => {
+      this.moveLeftPanelResize(event);
+    });
+    this.panelResizer.addEventListener("pointerup", (event) => {
+      this.endLeftPanelResize(event);
+    });
+    this.panelResizer.addEventListener("pointercancel", (event) => {
+      this.endLeftPanelResize(event);
+    });
+    this.panelResizer.addEventListener("keydown", (event) => {
+      this.adjustLeftPanelWidthFromKeyboard(event);
+    });
 
     this.bootstrap();
   }
@@ -57,6 +80,13 @@ class CodgerAppShell extends HTMLElement {
       <main class="app-main" data-view-mode="files" aria-label="Review browser">
         <codger-file-list></codger-file-list>
         <codger-changes-tree hidden></codger-changes-tree>
+        <div
+          class="panel-resizer"
+          role="separator"
+          aria-label="Resize left panel"
+          aria-orientation="vertical"
+          tabindex="0"
+        ></div>
         <codger-file-viewer></codger-file-viewer>
       </main>
     `;
@@ -271,6 +301,96 @@ class CodgerAppShell extends HTMLElement {
       count: this.gitStatus?.files.length ?? null,
       active: this.viewMode === "changes",
     };
+  }
+
+  startLeftPanelResize(event) {
+    if (!this.canResizeLeftPanel()) {
+      return;
+    }
+
+    event.preventDefault();
+    this.resizePointerId = event.pointerId;
+    this.panelResizer.setPointerCapture(event.pointerId);
+    this.classList.add("is-resizing-left-panel");
+    this.updateLeftPanelWidthFromPointer(event);
+  }
+
+  moveLeftPanelResize(event) {
+    if (this.resizePointerId !== event.pointerId) {
+      return;
+    }
+
+    event.preventDefault();
+    this.updateLeftPanelWidthFromPointer(event);
+  }
+
+  endLeftPanelResize(event) {
+    if (this.resizePointerId !== event.pointerId) {
+      return;
+    }
+
+    this.resizePointerId = null;
+    this.classList.remove("is-resizing-left-panel");
+    if (this.panelResizer.hasPointerCapture(event.pointerId)) {
+      this.panelResizer.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  adjustLeftPanelWidthFromKeyboard(event) {
+    if (!this.canResizeLeftPanel()) {
+      return;
+    }
+
+    const step = event.shiftKey ? 72 : 24;
+    let nextWidth = this.leftPanelWidth;
+
+    if (event.key === "ArrowLeft") {
+      nextWidth -= step;
+    } else if (event.key === "ArrowRight") {
+      nextWidth += step;
+    } else if (event.key === "Home") {
+      nextWidth = LEFT_PANEL_MIN_WIDTH;
+    } else if (event.key === "End") {
+      nextWidth = this.leftPanelMaxWidth();
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    this.applyLeftPanelWidth(nextWidth);
+  }
+
+  updateLeftPanelWidthFromPointer(event) {
+    const rect = this.appMain.getBoundingClientRect();
+    this.applyLeftPanelWidth(event.clientX - rect.left);
+  }
+
+  applyLeftPanelWidth(width) {
+    const nextWidth = this.clampLeftPanelWidth(width);
+    this.leftPanelWidth = nextWidth;
+    this.appMain.style.setProperty("--left-panel-width", `${nextWidth}px`);
+    this.panelResizer.setAttribute("aria-valuemin", `${LEFT_PANEL_MIN_WIDTH}`);
+    this.panelResizer.setAttribute("aria-valuemax", `${this.leftPanelMaxWidth()}`);
+    this.panelResizer.setAttribute("aria-valuenow", `${nextWidth}`);
+  }
+
+  clampLeftPanelWidth(width) {
+    return Math.min(Math.max(Math.round(width), LEFT_PANEL_MIN_WIDTH), this.leftPanelMaxWidth());
+  }
+
+  leftPanelMaxWidth() {
+    const appWidth = this.appMain?.getBoundingClientRect().width ?? LEFT_PANEL_DEFAULT_WIDTH;
+    const ratioMax = Math.round(appWidth * LEFT_PANEL_MAX_RATIO);
+    const viewerMax = Math.max(LEFT_PANEL_MIN_WIDTH, appWidth - LEFT_PANEL_VIEWER_MIN_WIDTH);
+    return Math.max(LEFT_PANEL_MIN_WIDTH, Math.min(ratioMax, viewerMax));
+  }
+
+  canResizeLeftPanel() {
+    return (
+      this.appMain &&
+      this.panelResizer &&
+      window.matchMedia("(min-width: 861px)").matches
+    );
   }
 
   showDirectoryLoadingAfterDelay(requestId) {

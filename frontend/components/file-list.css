@@ -66,9 +66,7 @@ codger-file-list .git-summary.is-dirty {
 }
 
 codger-file-list .file-list {
-  display: grid;
-  align-content: start;
-  gap: 0;
+  display: block;
   min-height: 0;
   margin: 0;
   overflow: auto;
@@ -77,15 +75,21 @@ codger-file-list .file-list {
   list-style: none;
 }
 
+codger-file-list .file-list > li {
+  width: max-content;
+  min-width: 100%;
+}
+
 codger-file-list .repo-tree {
   --tree-indent: 14px;
 }
 
 codger-file-list .file-entry {
   display: grid;
-  grid-template-columns: 1.75rem minmax(0, 1fr);
+  grid-template-columns: 1.75rem max-content;
   gap: 8px;
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   min-height: 30px;
   align-items: center;
   border: 0;
@@ -99,7 +103,7 @@ codger-file-list .file-entry {
 }
 
 codger-file-list .tree-entry {
-  grid-template-columns: 1.75rem minmax(0, 1fr);
+  grid-template-columns: 1.75rem max-content;
   padding-left: calc(7px + var(--tree-depth, 0) * var(--tree-indent));
 }
 
@@ -152,12 +156,14 @@ codger-file-list .entry-icon-svg {
 
 codger-file-list .entry-name {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
 codger-file-list .tree-status {
+  width: max-content;
+  min-width: 100%;
   min-height: 26px;
   padding: 5px 10px 5px
     calc(10px + 1.75rem + 8px + var(--tree-depth, 0) * var(--tree-indent));

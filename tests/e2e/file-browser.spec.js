@@ -2,6 +2,10 @@ import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
 
 const LAST_DIRECTORY_KEY = `codger:last-directory-path:${resolve("tests/fixtures/home")}`;
+const LONG_ROOT_FILE =
+  "this-is-a-very-long-file-name-used-to-test-horizontal-scrolling-in-the-files-pane.md";
+const LONG_CHANGE_FILE =
+  "src/planner/this-is-a-very-long-change-file-name-used-to-test-horizontal-scrolling-in-the-changes-pane.rs";
 
 test.beforeEach(async ({ page }) => {
   await page.route("https://esm.sh/**", (route) => {
@@ -156,6 +160,40 @@ test("keeps the toggled tree row anchored while expanding", async ({ page }) => 
   expect(Math.abs(afterTop - beforeTop)).toBeLessThanOrEqual(1);
 });
 
+test("resizes the left review panel", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "phone", "The phone layout stacks panels vertically.");
+
+  await page.goto("/");
+  const handle = page.locator(".panel-resizer");
+  await expect(handle).toBeVisible();
+
+  const beforeWidth = await leftPanelWidth(page);
+  const box = await handle.boundingBox();
+  expect(box).not.toBeNull();
+
+  await page.mouse.move(box.x + box.width / 2, box.y + 40);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 96, box.y + 40);
+  await page.mouse.up();
+
+  const afterWidth = await leftPanelWidth(page);
+  expect(afterWidth).toBeGreaterThan(beforeWidth + 48);
+});
+
+test("scrolls long names horizontally in Files and Changes", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.locator(`button[data-entry-path="${LONG_ROOT_FILE}"]`)).toBeVisible();
+  await expectHorizontalScroller(page, ".file-list");
+
+  await page.locator('button[data-entry-path="src"]').click();
+  const gitButton = page.locator("codger-pathbar .git-mode-button");
+  await expect(gitButton).toBeVisible();
+  await gitButton.click();
+  await expect(page.locator(`button[data-change-path="${LONG_CHANGE_FILE}"]`)).toBeVisible();
+  await expectHorizontalScroller(page, ".changes-tree-list");
+});
+
 test("opens changed diffs from Changes mode", async ({ page }) => {
   await page.goto("/");
   await page.locator('button[data-entry-path="src"]').click();
@@ -272,6 +310,28 @@ async function expectPanelScrollContainers(page) {
   expect(scrollState.fileList.overflowY).toBe("auto");
   expect(scrollState.codeLines.overflowY).toBe("auto");
   expect(scrollState.codeLines.scrollHeight).toBeGreaterThan(scrollState.codeLines.clientHeight);
+}
+
+async function leftPanelWidth(page) {
+  return page.locator("codger-file-list").evaluate((element) => {
+    return element.getBoundingClientRect().width;
+  });
+}
+
+async function expectHorizontalScroller(page, selector) {
+  const scrollState = await page.locator(selector).evaluate((element) => {
+    element.scrollLeft = element.scrollWidth;
+    return {
+      clientWidth: element.clientWidth,
+      overflowX: window.getComputedStyle(element).overflowX,
+      scrollLeft: element.scrollLeft,
+      scrollWidth: element.scrollWidth,
+    };
+  });
+
+  expect(scrollState.overflowX).toBe("auto");
+  expect(scrollState.scrollWidth).toBeGreaterThan(scrollState.clientWidth);
+  expect(scrollState.scrollLeft).toBeGreaterThan(0);
 }
 
 async function stabilizeDynamicText(page) {

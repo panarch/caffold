@@ -67,15 +67,18 @@ codger-changes-tree .changes-branch.is-dirty {
 
 codger-changes-tree .changes-tree-list {
   --tree-indent: 12px;
-  display: grid;
-  align-content: start;
-  gap: 0;
+  display: block;
   min-height: 0;
   margin: 0;
   overflow: auto;
   overscroll-behavior: contain;
   padding: 4px 0;
   list-style: none;
+}
+
+codger-changes-tree .changes-tree-list > li {
+  width: max-content;
+  min-width: 100%;
 }
 
 codger-changes-tree .change-section-label {
@@ -92,9 +95,10 @@ codger-changes-tree .change-section-label {
 
 codger-changes-tree .change-entry {
   display: grid;
-  grid-template-columns: 1.35rem minmax(0, 1fr);
+  grid-template-columns: 1.35rem max-content;
   gap: 4px;
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   min-height: 30px;
   align-items: center;
   border: 0;
@@ -129,7 +133,7 @@ codger-changes-tree .change-status-code {
 
 codger-changes-tree .change-node-label {
   display: grid;
-  grid-template-columns: 1.5rem minmax(0, 1fr);
+  grid-template-columns: 1.5rem max-content;
   gap: 6px;
   align-items: center;
   min-width: 0;
@@ -153,8 +157,8 @@ codger-changes-tree .entry-icon-svg {
 
 codger-changes-tree .change-name {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
