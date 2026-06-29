@@ -1,6 +1,7 @@
 import { escapeHtml, formatBytes, formatModified, languageLabel } from "./dom.js";
 import { imageUrl } from "../api.js";
 import "./code-viewer.js";
+import "./diff-viewer.js";
 
 class CodgerFileViewer extends HTMLElement {
   connectedCallback() {
@@ -149,14 +150,6 @@ class CodgerFileViewer extends HTMLElement {
 
   renderDiff() {
     const { diff } = this.state;
-    const diffFile = {
-      path: diff.path,
-      name: diff.repoRelativePath,
-      size: diff.diff.length,
-      modifiedMs: null,
-      languageHint: "diff",
-      content: diff.diff || "No diff for this file.",
-    };
 
     this.innerHTML = `
       <section class="viewer-panel file-panel diff-panel">
@@ -177,11 +170,11 @@ class CodgerFileViewer extends HTMLElement {
             </div>
           </dl>
         </header>
-        <codger-code-viewer></codger-code-viewer>
+        <codger-diff-viewer></codger-diff-viewer>
       </section>
     `;
 
-    this.querySelector("codger-code-viewer").setFile(diffFile);
+    this.querySelector("codger-diff-viewer").setDiff(diff);
   }
 }
 

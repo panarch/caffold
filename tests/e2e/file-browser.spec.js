@@ -210,6 +210,30 @@ test("scrolls long names horizontally in Files and Changes", async ({ page }) =>
 });
 
 test("opens changed diffs from Changes mode", async ({ page }) => {
+  await page.route(/\/api\/git\/diff(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository: { rootPath: "src", branch: "main", dirty: true },
+        path: "src/example.rs",
+        repoRelativePath: "example.rs",
+        kind: "unstaged",
+        diff: [
+          "diff --git a/example.rs b/example.rs",
+          "index 1111111..2222222 100644",
+          "--- a/example.rs",
+          "+++ b/example.rs",
+          "@@ -10,4 +10,5 @@ pub fn sample()",
+          " context line",
+          "-old line",
+          "+new line",
+          "+another line",
+          " trailing line",
+        ].join("\n"),
+      }),
+    }),
+  );
+
   await page.goto("/");
   await page.locator('button[data-entry-path="src"]').click();
 
@@ -225,8 +249,27 @@ test("opens changed diffs from Changes mode", async ({ page }) => {
 
   await page.locator('button[data-change-path="src/example.rs"]').click();
   await expect(page.locator("codger-file-viewer")).toContainText("example.rs");
-  await expect(page.locator("codger-code-viewer")).toContainText("+++");
-  await expect(page.locator("codger-code-viewer")).toContainText("pub fn sample");
+  await expect(page.locator("codger-diff-viewer")).toContainText("@@ -10,4 +10,5 @@");
+  await expect(page.locator("codger-diff-viewer")).toContainText("old line");
+  await expect(page.locator("codger-diff-viewer")).toContainText("new line");
+
+  const contextRow = page.locator(".diff-row-context").filter({ hasText: "context line" });
+  await expect(contextRow.locator(".diff-old-line")).toHaveText("10");
+  await expect(contextRow.locator(".diff-new-line")).toHaveText("10");
+
+  const removedRow = page.locator(".diff-row-removed").filter({ hasText: "old line" });
+  await expect(removedRow.locator(".diff-old-line")).toHaveText("11");
+  await expect(removedRow.locator(".diff-new-line")).toHaveText("");
+  await expect(removedRow.locator(".diff-prefix")).toHaveText("-");
+
+  const addedRow = page.locator(".diff-row-added").filter({ hasText: "new line" });
+  await expect(addedRow.locator(".diff-old-line")).toHaveText("");
+  await expect(addedRow.locator(".diff-new-line")).toHaveText("11");
+  await expect(addedRow.locator(".diff-prefix")).toHaveText("+");
+
+  const trailingRow = page.locator(".diff-row-context").filter({ hasText: "trailing line" });
+  await expect(trailingRow.locator(".diff-old-line")).toHaveText("12");
+  await expect(trailingRow.locator(".diff-new-line")).toHaveText("13");
 
   await gitButton.click();
   await expect(gitButton).not.toHaveClass(/is-active/);

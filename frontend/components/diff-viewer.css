@@ -1,0 +1,113 @@
+codger-diff-viewer {
+  display: block;
+  min-height: 0;
+}
+
+codger-diff-viewer .diff-viewer {
+  min-height: 0;
+  height: 100%;
+  background: var(--code-bg);
+  color: var(--code-text);
+}
+
+codger-diff-viewer .diff-lines {
+  --diff-old-width: 3.25rem;
+  --diff-new-width: 3.25rem;
+  --diff-prefix-width: 1.5rem;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--code-bg);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+codger-diff-viewer .diff-row {
+  display: grid;
+  grid-template-columns: var(--diff-old-width) var(--diff-new-width) var(--diff-prefix-width)
+    minmax(max-content, 1fr);
+  min-width: max-content;
+}
+
+codger-diff-viewer .diff-old-line,
+codger-diff-viewer .diff-new-line,
+codger-diff-viewer .diff-prefix {
+  position: sticky;
+  z-index: 1;
+  user-select: none;
+  background: inherit;
+  color: #78867d;
+}
+
+codger-diff-viewer .diff-old-line {
+  left: 0;
+  padding: 0 8px;
+  text-align: right;
+}
+
+codger-diff-viewer .diff-new-line {
+  left: var(--diff-old-width);
+  padding: 0 8px;
+  text-align: right;
+}
+
+codger-diff-viewer .diff-prefix {
+  left: calc(var(--diff-old-width) + var(--diff-new-width));
+  border-right: 1px solid var(--border);
+  padding: 0 6px;
+  text-align: center;
+}
+
+codger-diff-viewer .diff-code {
+  white-space: pre;
+  padding: 0 12px;
+}
+
+codger-diff-viewer .diff-row-metadata {
+  background: #f8faf8;
+  color: #65746a;
+}
+
+codger-diff-viewer .diff-row-hunk {
+  background: #e7eee9;
+  color: #0d5f47;
+}
+
+codger-diff-viewer .diff-row-added {
+  background: #e7f5ec;
+}
+
+codger-diff-viewer .diff-row-added .diff-prefix,
+codger-diff-viewer .diff-row-added .diff-new-line {
+  color: #167c5c;
+}
+
+codger-diff-viewer .diff-row-removed {
+  background: #f9e5e2;
+}
+
+codger-diff-viewer .diff-row-removed .diff-prefix,
+codger-diff-viewer .diff-row-removed .diff-old-line {
+  color: #9b2c2c;
+}
+
+codger-diff-viewer .diff-row-note {
+  background: #f8faf8;
+  color: #65746a;
+  font-style: italic;
+}
+
+codger-diff-viewer .diff-row-empty {
+  color: var(--muted);
+}
+
+@media (max-width: 520px) {
+  codger-diff-viewer .diff-lines {
+    --diff-old-width: 2.75rem;
+    --diff-new-width: 2.75rem;
+    --diff-prefix-width: 1.25rem;
+    font-size: 0.76rem;
+  }
+}

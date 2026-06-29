@@ -4,6 +4,7 @@
 @import "./components/changes-tree.css";
 @import "./components/file-viewer.css";
 @import "./components/code-viewer.css";
+@import "./components/diff-viewer.css";
 
 :root {
   color-scheme: light;
