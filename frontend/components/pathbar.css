@@ -8,7 +8,7 @@ codger-pathbar {
 
 codger-pathbar .pathbar {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   min-height: 34px;
@@ -80,4 +80,62 @@ codger-pathbar .path-crumbs button[aria-current="page"] {
   background: transparent;
   color: #0d5f47;
   font-weight: 500;
+}
+
+codger-pathbar .git-panel-button {
+  display: grid;
+  grid-auto-flow: column;
+  gap: 6px;
+  align-items: center;
+  min-height: 26px;
+  max-width: 12rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  padding: 0 8px;
+}
+
+codger-pathbar .git-panel-button:hover,
+codger-pathbar .git-panel-button:focus-visible {
+  border-color: #8bb8a8;
+  background: #f7fbf8;
+  outline: none;
+}
+
+codger-pathbar .git-panel-button.is-dirty {
+  border-color: #bd9960;
+  color: #764600;
+}
+
+codger-pathbar .git-branch {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+codger-pathbar .git-count {
+  min-width: 1.25rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-align: right;
+}
+
+@media (max-width: 520px) {
+  codger-pathbar .pathbar {
+    gap: 6px;
+    padding: 0 8px;
+  }
+
+  codger-pathbar .pathbar-label {
+    display: none;
+  }
+
+  codger-pathbar .git-panel-button {
+    max-width: 5.25rem;
+    padding: 0 6px;
+  }
 }

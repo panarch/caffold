@@ -2,6 +2,7 @@
 @import "./components/pathbar.css";
 @import "./components/file-list.css";
 @import "./components/file-viewer.css";
+@import "./components/git-panel.css";
 @import "./components/code-viewer.css";
 
 :root {

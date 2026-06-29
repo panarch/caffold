@@ -10,6 +10,14 @@ export async function readFile(path) {
   return requestJson("/api/file", { path });
 }
 
+export async function getGitStatus(path = "") {
+  return requestJson("/api/git/status", { path });
+}
+
+export async function getGitDiff(path = "", file, kind = "unstaged") {
+  return requestJson("/api/git/diff", { path, file, kind });
+}
+
 async function requestJson(endpoint, params = {}) {
   const url = new URL(endpoint, window.location.origin);
   for (const [key, value] of Object.entries(params)) {
@@ -32,4 +40,3 @@ async function requestJson(endpoint, params = {}) {
 
   return payload;
 }
-

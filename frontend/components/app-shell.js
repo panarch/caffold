@@ -1,7 +1,8 @@
-import { getHealth, listDirectory, readFile } from "../api.js";
+import { getGitDiff, getGitStatus, getHealth, listDirectory, readFile } from "../api.js";
 import "./pathbar.js";
 import "./file-list.js";
 import "./file-viewer.js";
+import "./git-panel.js";
 
 const LOADING_DELAY_MS = 180;
 const LAST_DIRECTORY_KEY_PREFIX = "codger:last-directory-path";
@@ -16,10 +17,12 @@ class CodgerAppShell extends HTMLElement {
     this.currentPath = "";
     this.directoryRequestId = 0;
     this.fileRequestId = 0;
+    this.gitStatusRequestId = 0;
     this.render();
     this.pathbar = this.querySelector("codger-pathbar");
     this.fileList = this.querySelector("codger-file-list");
     this.fileViewer = this.querySelector("codger-file-viewer");
+    this.gitPanel = this.querySelector("codger-git-panel");
 
     this.addEventListener("codger:navigate", (event) => {
       this.loadDirectory(event.detail.path);
@@ -29,6 +32,18 @@ class CodgerAppShell extends HTMLElement {
     });
     this.addEventListener("codger:open-file", (event) => {
       this.openFile(event.detail.path);
+    });
+    this.addEventListener("codger:toggle-git-panel", () => {
+      this.gitPanel.open();
+    });
+    this.addEventListener("codger:refresh-git", () => {
+      this.loadGitStatus(this.currentPath);
+    });
+    this.addEventListener("codger:open-git-file", (event) => {
+      this.openFile(event.detail.path);
+    });
+    this.addEventListener("codger:open-git-diff", (event) => {
+      this.openDiff(event.detail.path, event.detail.kind);
     });
 
     this.bootstrap();
@@ -46,6 +61,7 @@ class CodgerAppShell extends HTMLElement {
         <codger-file-list></codger-file-list>
         <codger-file-viewer></codger-file-viewer>
       </main>
+      <codger-git-panel></codger-git-panel>
     `;
   }
 
@@ -83,6 +99,7 @@ class CodgerAppShell extends HTMLElement {
       this.currentPath = directory.path;
       this.pathbar.path = directory.path;
       this.fileList.setDirectory(directory);
+      this.updateGitContext(directory);
       this.storeDirectoryPath(directory.path);
       return true;
     } catch (error) {
@@ -99,6 +116,7 @@ class CodgerAppShell extends HTMLElement {
       }
 
       this.fileList.setError(error);
+      this.clearGitContext();
       return false;
     } finally {
       window.clearTimeout(loadingTimer);
@@ -125,6 +143,82 @@ class CodgerAppShell extends HTMLElement {
       this.fileViewer.setError(path, error);
     } finally {
       window.clearTimeout(loadingTimer);
+    }
+  }
+
+  async openDiff(path, kind) {
+    const requestId = ++this.fileRequestId;
+    this.fileList.setSelectedPath(path);
+    const loadingTimer = this.showFileLoadingAfterDelay(`Diff ${path}`, requestId);
+
+    try {
+      const diff = await getGitDiff(this.currentPath, path, kind);
+      if (requestId !== this.fileRequestId) {
+        return;
+      }
+
+      this.fileViewer.setDiff(diff);
+    } catch (error) {
+      if (requestId !== this.fileRequestId) {
+        return;
+      }
+
+      this.fileViewer.setError(path, error);
+    } finally {
+      window.clearTimeout(loadingTimer);
+    }
+  }
+
+  updateGitContext(directory) {
+    if (!directory.git) {
+      this.clearGitContext();
+      return;
+    }
+
+    this.gitRepository = directory.git;
+    this.pathbar.gitStatus = {
+      branch: directory.git.branch,
+      dirty: directory.git.dirty,
+      count: null,
+    };
+    this.gitPanel.setLoading(directory.git);
+    this.loadGitStatus(directory.path);
+  }
+
+  clearGitContext() {
+    this.gitRepository = null;
+    this.gitStatusRequestId += 1;
+    this.pathbar.gitStatus = null;
+    this.gitPanel.reset();
+  }
+
+  async loadGitStatus(path) {
+    if (!this.gitRepository) {
+      return;
+    }
+
+    const requestId = ++this.gitStatusRequestId;
+    this.gitPanel.setLoading(this.gitRepository);
+
+    try {
+      const status = await getGitStatus(path);
+      if (requestId !== this.gitStatusRequestId) {
+        return;
+      }
+
+      this.gitRepository = status.repository;
+      this.pathbar.gitStatus = {
+        branch: status.repository.branch,
+        dirty: status.repository.dirty,
+        count: status.files.length,
+      };
+      this.gitPanel.setStatus(status);
+    } catch (error) {
+      if (requestId !== this.gitStatusRequestId) {
+        return;
+      }
+
+      this.gitPanel.setError(error, this.gitRepository);
     }
   }
 

@@ -1,0 +1,151 @@
+codger-git-panel {
+  display: contents;
+}
+
+codger-git-panel .git-panel-backdrop {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  align-items: end;
+  background: rgb(24 32 27 / 18%);
+}
+
+codger-git-panel .git-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: 100%;
+  max-height: 72vh;
+  min-height: 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 -8px 24px rgb(24 32 27 / 14%);
+}
+
+codger-git-panel .git-panel > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+codger-git-panel h2,
+codger-git-panel h3,
+codger-git-panel p {
+  margin: 0;
+}
+
+codger-git-panel h2 {
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+codger-git-panel header p {
+  overflow: hidden;
+  color: #764600;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+codger-git-panel .git-panel-actions {
+  display: grid;
+  grid-auto-flow: column;
+  gap: 6px;
+}
+
+codger-git-panel button {
+  min-height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  padding: 0 8px;
+}
+
+codger-git-panel button:hover,
+codger-git-panel button:focus-visible {
+  border-color: #8bb8a8;
+  background: #f7fbf8;
+  outline: none;
+}
+
+codger-git-panel .git-panel-body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 6px 0 12px;
+}
+
+codger-git-panel .git-change-section {
+  display: grid;
+  gap: 2px;
+}
+
+codger-git-panel .git-change-section h3 {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 12px 4px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+codger-git-panel .git-change-section ol {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+codger-git-panel .git-change-section li {
+  display: grid;
+  grid-template-columns: 2.4rem minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 32px;
+  padding: 2px 8px 2px 12px;
+}
+
+codger-git-panel .git-status-code {
+  color: #764600;
+  font-size: 0.78rem;
+  white-space: pre;
+}
+
+codger-git-panel .git-file-path {
+  min-width: 0;
+  overflow: hidden;
+  border-color: transparent;
+  background: transparent;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+codger-git-panel .git-diff-button {
+  color: #0d5f47;
+}
+
+@media (min-width: 861px) {
+  codger-git-panel .git-panel-backdrop {
+    align-items: stretch;
+    justify-items: end;
+  }
+
+  codger-git-panel .git-panel {
+    width: min(440px, 36vw);
+    max-height: 100vh;
+    border-top: 0;
+    border-left: 1px solid var(--border);
+    box-shadow: -8px 0 24px rgb(24 32 27 / 12%);
+  }
+}

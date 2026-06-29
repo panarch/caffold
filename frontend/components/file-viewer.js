@@ -23,6 +23,11 @@ class CodgerFileViewer extends HTMLElement {
     this.render();
   }
 
+  setDiff(diff) {
+    this.state = { status: "diff", diff };
+    this.render();
+  }
+
   setError(path, error) {
     this.state = { status: "error", path, error };
     this.render();
@@ -62,6 +67,11 @@ class CodgerFileViewer extends HTMLElement {
       return;
     }
 
+    if (this.state.status === "diff") {
+      this.renderDiff();
+      return;
+    }
+
     const { file } = this.state;
     const language = languageLabel(file.languageHint);
     this.innerHTML = `
@@ -92,6 +102,43 @@ class CodgerFileViewer extends HTMLElement {
     `;
 
     this.querySelector("codger-code-viewer").setFile(file);
+  }
+
+  renderDiff() {
+    const { diff } = this.state;
+    const diffFile = {
+      path: diff.path,
+      name: diff.repoRelativePath,
+      size: diff.diff.length,
+      modifiedMs: null,
+      languageHint: "diff",
+      content: diff.diff || "No diff for this file.",
+    };
+
+    this.innerHTML = `
+      <section class="viewer-panel file-panel diff-panel">
+        <header>
+          <h2>${escapeHtml(diff.repoRelativePath)}</h2>
+          <dl>
+            <div data-field="path">
+              <dt>Path</dt>
+              <dd>${escapeHtml(diff.path)}</dd>
+            </div>
+            <div data-field="kind">
+              <dt>Diff</dt>
+              <dd>${escapeHtml(diff.kind)}</dd>
+            </div>
+            <div data-field="repository">
+              <dt>Repository</dt>
+              <dd>${escapeHtml(diff.repository.rootPath || "/")}</dd>
+            </div>
+          </dl>
+        </header>
+        <codger-code-viewer></codger-code-viewer>
+      </section>
+    `;
+
+    this.querySelector("codger-code-viewer").setFile(diffFile);
   }
 }
 

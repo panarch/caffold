@@ -73,6 +73,43 @@ pub struct FileResponse {
     pub content: String,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitStatusResponse {
+    pub repository: DirectoryGitInfo,
+    pub files: Vec<GitChangedFile>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitChangedFile {
+    pub path: String,
+    pub repo_relative_path: String,
+    pub status: String,
+    pub category: GitChangeCategory,
+    pub staged: bool,
+    pub unstaged: bool,
+    pub untracked: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GitChangeCategory {
+    Staged,
+    Unstaged,
+    Untracked,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitDiffResponse {
+    pub repository: DirectoryGitInfo,
+    pub path: String,
+    pub repo_relative_path: String,
+    pub kind: String,
+    pub diff: String,
+}
+
 #[derive(Debug, Error)]
 pub enum FsError {
     #[error("root path is not accessible: {path}")]
@@ -99,6 +136,10 @@ pub enum FsError {
     BinaryFile { path: String },
     #[error("invalid UTF-8 files are not supported: {path}")]
     InvalidUtf8 { path: String },
+    #[error("path is not inside a Git repository: {path}")]
+    GitRepositoryNotFound { path: String },
+    #[error("git command failed while trying to {action}: {path}")]
+    GitCommandFailed { action: &'static str, path: String },
     #[error("filesystem error while trying to {action}: {path}")]
     Io {
         action: &'static str,
@@ -283,6 +324,72 @@ impl RootedFs {
         })
     }
 
+    pub fn git_status(&self, requested_path: &str) -> Result<GitStatusResponse, FsError> {
+        let repository = self.repository_for_request(requested_path)?;
+        let repository_info = self.git_info_for_repository(&repository)?;
+        let files = git::status_entries(&repository)
+            .ok_or_else(|| FsError::GitCommandFailed {
+                action: "read status",
+                path: requested_path.to_string(),
+            })?
+            .into_iter()
+            .map(|entry| {
+                let category = git_change_category(&entry);
+                GitChangedFile {
+                    path: join_relative_path(&repository_info.root_path, &entry.repo_relative_path),
+                    repo_relative_path: entry.repo_relative_path,
+                    status: entry.status,
+                    category,
+                    staged: entry.staged,
+                    unstaged: entry.unstaged,
+                    untracked: entry.untracked,
+                }
+            })
+            .collect();
+
+        Ok(GitStatusResponse {
+            repository: repository_info,
+            files,
+        })
+    }
+
+    pub fn git_diff(
+        &self,
+        requested_path: &str,
+        file_path: &str,
+        kind: &str,
+    ) -> Result<GitDiffResponse, FsError> {
+        let repository = self.repository_for_request(requested_path)?;
+        let repository_info = self.git_info_for_repository(&repository)?;
+        let logical_file_path = normalize_relative_path(file_path)?;
+        let logical_file_path = relative_path_string(&logical_file_path);
+        let repo_relative_path = strip_repo_root(&repository_info.root_path, &logical_file_path)
+            .ok_or(FsError::PathEscapesRoot)?
+            .to_string();
+        let kind = normalize_diff_kind(kind);
+
+        if let Ok(canonical) = self.root.join(&logical_file_path).canonicalize()
+            && !canonical.starts_with(&repository.root)
+        {
+            return Err(FsError::PathEscapesRoot);
+        }
+
+        let diff = git::diff(&repository, &repo_relative_path, kind).ok_or_else(|| {
+            FsError::GitCommandFailed {
+                action: "read diff",
+                path: file_path.to_string(),
+            }
+        })?;
+
+        Ok(GitDiffResponse {
+            repository: repository_info,
+            path: logical_file_path,
+            repo_relative_path,
+            kind: kind.to_string(),
+            diff,
+        })
+    }
+
     fn resolve_existing(&self, requested_path: &str) -> Result<ResolvedPath, FsError> {
         let logical = normalize_relative_path(requested_path)?;
         let candidate = self.root.join(&logical);
@@ -367,17 +474,56 @@ impl RootedFs {
 
     fn git_info_for(&self, absolute_path: &Path) -> Option<DirectoryGitInfo> {
         let repository = git::repository_for(absolute_path)?;
+        self.git_info_for_repository(&repository).ok()
+    }
+
+    fn git_info_for_repository(
+        &self,
+        repository: &git::Repository,
+    ) -> Result<DirectoryGitInfo, FsError> {
         if !repository.root.starts_with(&self.root) {
-            return None;
+            return Err(FsError::PathEscapesRoot);
         }
 
-        let root_path = repository.root.strip_prefix(&self.root).ok()?;
+        let root_path = repository
+            .root
+            .strip_prefix(&self.root)
+            .map_err(|_| FsError::PathEscapesRoot)?;
 
-        Some(DirectoryGitInfo {
+        Ok(DirectoryGitInfo {
             root_path: relative_path_string(root_path),
-            branch: repository.branch,
+            branch: repository.branch.clone(),
             dirty: repository.dirty,
         })
+    }
+
+    fn repository_for_request(&self, requested_path: &str) -> Result<git::Repository, FsError> {
+        let resolved = self.resolve_existing(requested_path)?;
+        let metadata = fs::metadata(&resolved.absolute).map_err(|source| FsError::Io {
+            action: "read metadata",
+            path: requested_path.to_string(),
+            source,
+        })?;
+        let git_path = if metadata.is_dir() {
+            resolved.absolute
+        } else {
+            resolved
+                .absolute
+                .parent()
+                .map(Path::to_path_buf)
+                .ok_or(FsError::PathEscapesRoot)?
+        };
+
+        let repository =
+            git::repository_for(&git_path).ok_or_else(|| FsError::GitRepositoryNotFound {
+                path: requested_path.to_string(),
+            })?;
+
+        if !repository.root.starts_with(&self.root) {
+            return Err(FsError::PathEscapesRoot);
+        }
+
+        Ok(repository)
     }
 }
 
@@ -409,6 +555,45 @@ fn normalize_relative_path(requested_path: &str) -> Result<PathBuf, FsError> {
     }
 
     Ok(normalized)
+}
+
+fn git_change_category(entry: &git::StatusEntry) -> GitChangeCategory {
+    if entry.untracked {
+        GitChangeCategory::Untracked
+    } else if entry.unstaged {
+        GitChangeCategory::Unstaged
+    } else {
+        GitChangeCategory::Staged
+    }
+}
+
+fn normalize_diff_kind(kind: &str) -> &'static str {
+    match kind {
+        "staged" => "staged",
+        "untracked" => "untracked",
+        _ => "unstaged",
+    }
+}
+
+fn join_relative_path(base: &str, child: &str) -> String {
+    if base.is_empty() {
+        child.to_string()
+    } else {
+        format!("{base}/{child}")
+    }
+}
+
+fn strip_repo_root<'a>(repo_root: &str, path: &'a str) -> Option<&'a str> {
+    if repo_root.is_empty() {
+        return (!path.is_empty()).then_some(path);
+    }
+
+    if path == repo_root {
+        return None;
+    }
+
+    path.strip_prefix(&format!("{repo_root}/"))
+        .filter(|relative| !relative.is_empty())
 }
 
 fn entry_kind(metadata: &fs::Metadata) -> EntryKind {

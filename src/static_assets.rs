@@ -31,6 +31,10 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "components/file-viewer.js" => {
             Some(js(include_str!("../frontend/components/file-viewer.js")))
         }
+        "components/git-panel.css" => {
+            Some(css(include_str!("../frontend/components/git-panel.css")))
+        }
+        "components/git-panel.js" => Some(js(include_str!("../frontend/components/git-panel.js"))),
         "components/icons.js" => Some(js(include_str!("../frontend/components/icons.js"))),
         "components/pathbar.css" => Some(css(include_str!("../frontend/components/pathbar.css"))),
         "components/pathbar.js" => Some(js(include_str!("../frontend/components/pathbar.js"))),

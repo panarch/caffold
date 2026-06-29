@@ -12,7 +12,10 @@ use tokio::net::TcpListener;
 use tracing::info;
 
 use crate::{
-    fs::{FileResponse, FsError, ListResponse, MAX_FILE_BYTES, RootedFs},
+    fs::{
+        FileResponse, FsError, GitDiffResponse, GitStatusResponse, ListResponse, MAX_FILE_BYTES,
+        RootedFs,
+    },
     static_assets,
 };
 
@@ -34,6 +37,15 @@ struct AppState {
 struct PathQuery {
     #[serde(default)]
     path: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitDiffQuery {
+    #[serde(default)]
+    path: String,
+    file: String,
+    #[serde(default = "default_diff_kind")]
+    kind: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -111,8 +123,14 @@ fn router_with_state(state: AppState) -> Router {
         .route("/api/health", get(health))
         .route("/api/list", get(list))
         .route("/api/file", get(file))
+        .route("/api/git/status", get(git_status))
+        .route("/api/git/diff", get(git_diff))
         .route("/assets/{*path}", get(asset))
         .with_state(state)
+}
+
+fn default_diff_kind() -> String {
+    "unstaged".to_string()
 }
 
 async fn shutdown_signal() {
@@ -182,6 +200,28 @@ async fn file(
         .map_err(ApiError::from)
 }
 
+async fn git_status(
+    State(state): State<AppState>,
+    Query(query): Query<PathQuery>,
+) -> Result<Json<GitStatusResponse>, ApiError> {
+    state
+        .fs
+        .git_status(&query.path)
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
+async fn git_diff(
+    State(state): State<AppState>,
+    Query(query): Query<GitDiffQuery>,
+) -> Result<Json<GitDiffResponse>, ApiError> {
+    state
+        .fs
+        .git_diff(&query.path, &query.file, &query.kind)
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
 struct ApiError(FsError);
 
 impl From<FsError> for ApiError {
@@ -242,6 +282,16 @@ impl IntoResponse for ApiError {
                 StatusCode::UNSUPPORTED_MEDIA_TYPE,
                 "invalid_utf8",
                 format!("invalid UTF-8 files are not supported: {path}"),
+            ),
+            FsError::GitRepositoryNotFound { path } => (
+                StatusCode::BAD_REQUEST,
+                "git_repository_not_found",
+                format!("path is not inside a Git repository: {path}"),
+            ),
+            FsError::GitCommandFailed { action, path } => (
+                StatusCode::BAD_REQUEST,
+                "git_command_failed",
+                format!("git command failed while trying to {action}: {path}"),
             ),
             FsError::Io { action, path, .. } => (
                 StatusCode::INTERNAL_SERVER_ERROR,

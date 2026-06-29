@@ -11,6 +11,7 @@ const LANGUAGE_LABELS = {
   c: "C",
   cpp: "C++",
   css: "CSS",
+  diff: "Diff",
   go: "Go",
   java: "Java",
   javascript: "JavaScript",
@@ -86,4 +87,3 @@ export function entryKindLabel(entry) {
 
   return "other";
 }
-
