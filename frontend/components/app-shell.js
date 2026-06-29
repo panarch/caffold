@@ -4,6 +4,7 @@ import "./file-list.js";
 import "./file-viewer.js";
 
 const LOADING_DELAY_MS = 180;
+const LAST_DIRECTORY_KEY_PREFIX = "codger:last-directory-path";
 
 class CodgerAppShell extends HTMLElement {
   connectedCallback() {
@@ -53,15 +54,18 @@ class CodgerAppShell extends HTMLElement {
 
     try {
       const health = await getHealth();
+      this.storageKey = `${LAST_DIRECTORY_KEY_PREFIX}:${health.root}`;
       this.pathbar.homePath = health.homePath ?? null;
-      await this.loadDirectory(health.initialPath ?? "");
+      const fallbackPath = health.initialPath ?? "";
+      const initialPath = this.loadStoredDirectoryPath() ?? fallbackPath;
+      await this.loadDirectory(initialPath, { fallbackPath });
     } catch (error) {
       this.fileList.setError(error);
       this.fileViewer.setError("", error);
     }
   }
 
-  async loadDirectory(path) {
+  async loadDirectory(path, options = {}) {
     const requestId = ++this.directoryRequestId;
     this.fileRequestId += 1;
     this.currentPath = path ?? "";
@@ -79,12 +83,23 @@ class CodgerAppShell extends HTMLElement {
       this.currentPath = directory.path;
       this.pathbar.path = directory.path;
       this.fileList.setDirectory(directory);
+      this.storeDirectoryPath(directory.path);
+      return true;
     } catch (error) {
       if (requestId !== this.directoryRequestId) {
-        return;
+        return false;
+      }
+
+      if (
+        options.fallbackPath !== undefined &&
+        this.currentPath !== options.fallbackPath
+      ) {
+        this.clearStoredDirectoryPath();
+        return this.loadDirectory(options.fallbackPath);
       }
 
       this.fileList.setError(error);
+      return false;
     } finally {
       window.clearTimeout(loadingTimer);
     }
@@ -127,6 +142,42 @@ class CodgerAppShell extends HTMLElement {
         this.fileViewer.setLoading(path);
       }
     }, LOADING_DELAY_MS);
+  }
+
+  loadStoredDirectoryPath() {
+    if (!this.storageKey) {
+      return null;
+    }
+
+    try {
+      return window.localStorage.getItem(this.storageKey);
+    } catch {
+      return null;
+    }
+  }
+
+  storeDirectoryPath(path) {
+    if (!this.storageKey) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(this.storageKey, path);
+    } catch {
+      // localStorage can be unavailable in private or restricted browser contexts.
+    }
+  }
+
+  clearStoredDirectoryPath() {
+    if (!this.storageKey) {
+      return;
+    }
+
+    try {
+      window.localStorage.removeItem(this.storageKey);
+    } catch {
+      // Ignore storage failures; the app can always fall back to health.initialPath.
+    }
   }
 }
 

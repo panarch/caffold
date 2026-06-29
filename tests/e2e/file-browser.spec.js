@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { resolve } from "node:path";
+
+const LAST_DIRECTORY_KEY = `codger:last-directory-path:${resolve("tests/fixtures/home")}`;
 
 test.beforeEach(async ({ page }) => {
   await page.route("https://esm.sh/**", (route) => {
@@ -151,6 +154,36 @@ test("keeps the toggled tree row anchored while expanding", async ({ page }) => 
 
   const afterTop = await planner.evaluate((element) => element.getBoundingClientRect().top);
   expect(Math.abs(afterTop - beforeTop)).toBeLessThanOrEqual(1);
+});
+
+test("restores the last opened directory after reload", async ({ page }) => {
+  await page.goto("/");
+  await page.locator('button[data-entry-path="src"]').click();
+  await expect(page.locator("codger-pathbar")).toContainText("src");
+  await expect(page.locator("codger-file-list .git-summary")).toBeVisible();
+
+  await page.reload();
+  await expect(page.locator("codger-pathbar")).toContainText("src");
+  await expect(page.locator("codger-file-list .git-summary")).toBeVisible();
+  await expect(page.evaluate((key) => localStorage.getItem(key), LAST_DIRECTORY_KEY)).resolves.toBe(
+    "src",
+  );
+});
+
+test("falls back when the stored directory no longer opens", async ({ page }) => {
+  await page.addInitScript(
+    ([key]) => {
+      localStorage.setItem(key, "missing-directory");
+    },
+    [LAST_DIRECTORY_KEY],
+  );
+
+  await page.goto("/");
+  await expect(page.locator("codger-file-list")).toContainText("src");
+  await expect(page.locator(".parent-entry")).toHaveCount(0);
+  await expect(page.evaluate((key) => localStorage.getItem(key), LAST_DIRECTORY_KEY)).resolves.toBe(
+    "",
+  );
 });
 
 test("extends the line-number gutter for short files", async ({ page }, testInfo) => {
