@@ -29,9 +29,6 @@ test.beforeEach(async ({ page }) => {
         export const Database = [["ellipse", { cx: "12", cy: "5", rx: "8", ry: "3" }], ["path", { d: "M4 5v10c0 1.7 3.6 3 8 3s8-1.3 8-3V5" }]];
         export const Link = [["path", { d: "M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1" }]];
         export const Lock = [["rect", { x: "5", y: "10", width: "14", height: "10", rx: "2" }], ["path", { d: "M8 10V7a4 4 0 0 1 8 0v3" }]];
-        export const RefreshCw = [["path", { d: "M21 12a9 9 0 0 1-9 9 9.8 9.8 0 0 1-7-3" }], ["path", { d: "M3 12a9 9 0 0 1 9-9 9.8 9.8 0 0 1 7 3" }], ["path", { d: "M3 18h6v-6" }], ["path", { d: "M21 6h-6v6" }]];
-        export const X = [["path", { d: "M18 6 6 18" }], ["path", { d: "m6 6 12 12" }]];
-
         export function createElement(iconNode, attrs = {}) {
           const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
           const baseAttrs = {
@@ -159,32 +156,28 @@ test("keeps the toggled tree row anchored while expanding", async ({ page }) => 
   expect(Math.abs(afterTop - beforeTop)).toBeLessThanOrEqual(1);
 });
 
-test("opens changed files and diffs from the Git panel", async ({ page }) => {
+test("opens changed diffs from Changes mode", async ({ page }) => {
   await page.goto("/");
   await page.locator('button[data-entry-path="src"]').click();
 
-  const gitButton = page.locator("codger-pathbar .git-panel-button");
+  const gitButton = page.locator("codger-pathbar .git-mode-button");
   await expect(gitButton).toBeVisible();
   await expect(gitButton.locator(".git-count")).not.toHaveText("");
 
   await gitButton.click();
-  await expect(page.locator("codger-git-panel")).toContainText("Untracked");
-  await expect(page.locator("codger-git-panel")).toContainText("example.rs");
+  await expect(gitButton).toHaveClass(/is-active/);
+  await expect(page.locator("codger-file-list")).toBeHidden();
+  await expect(page.locator("codger-changes-tree")).toContainText("Untracked");
+  await expect(page.locator("codger-changes-tree")).toContainText("example.rs");
 
-  const exampleChange = page
-    .locator("codger-git-panel .git-change-section li")
-    .filter({ hasText: "example.rs" })
-    .first();
-
-  await exampleChange.locator(".git-file-path").click();
-  await expect(page.locator("codger-file-viewer")).toContainText("example.rs");
-  await expect(page.locator("codger-code-viewer")).toContainText("pub fn sample");
-
-  await gitButton.click();
-  await exampleChange.locator(".git-diff-button").click();
+  await page.locator('button[data-change-path="src/example.rs"]').click();
   await expect(page.locator("codger-file-viewer")).toContainText("example.rs");
   await expect(page.locator("codger-code-viewer")).toContainText("+++");
   await expect(page.locator("codger-code-viewer")).toContainText("pub fn sample");
+
+  await gitButton.click();
+  await expect(gitButton).not.toHaveClass(/is-active/);
+  await expect(page.locator("codger-file-list")).toBeVisible();
 });
 
 test("restores the last opened directory after reload", async ({ page }) => {

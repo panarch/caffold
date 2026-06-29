@@ -1,0 +1,171 @@
+codger-changes-tree {
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+
+codger-changes-tree .changes-tree-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  height: 100%;
+}
+
+codger-changes-tree .changes-tree-panel > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  align-content: center;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+codger-changes-tree h2 {
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+codger-changes-tree .changes-tree-panel > header span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+codger-changes-tree .changes-tree-title-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
+codger-changes-tree .change-count {
+  justify-self: end;
+  white-space: nowrap;
+}
+
+codger-changes-tree .changes-branch {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--accent);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+codger-changes-tree .changes-branch.is-dirty {
+  color: #8a5200;
+}
+
+codger-changes-tree .changes-tree-list {
+  --tree-indent: 12px;
+  display: grid;
+  align-content: start;
+  gap: 0;
+  min-height: 0;
+  margin: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 4px 0;
+  list-style: none;
+}
+
+codger-changes-tree .change-section-label {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 12px 4px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+codger-changes-tree .change-entry {
+  display: grid;
+  grid-template-columns: 1.35rem minmax(0, 1fr);
+  gap: 4px;
+  width: 100%;
+  min-height: 30px;
+  align-items: center;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  padding: 4px 10px 4px 6px;
+  text-align: left;
+}
+
+codger-changes-tree .change-entry:hover,
+codger-changes-tree .change-entry:focus-visible {
+  border-left-color: #bdd7cc;
+  background: #f1f6f3;
+  outline: none;
+}
+
+codger-changes-tree .change-file[aria-current="true"] {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+codger-changes-tree .change-status-code {
+  align-self: center;
+  color: #764600;
+  font-size: 0.78rem;
+  justify-self: start;
+  white-space: pre;
+}
+
+codger-changes-tree .change-node-label {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  margin-left: calc(var(--tree-depth, 0) * var(--tree-indent));
+}
+
+codger-changes-tree .entry-icon {
+  display: inline-grid;
+  width: 1.5rem;
+  height: 1.5rem;
+  place-items: center;
+  justify-self: center;
+}
+
+codger-changes-tree .entry-icon-svg {
+  display: block;
+  width: 1.125rem;
+  height: 1.125rem;
+  stroke-width: 1.9;
+}
+
+codger-changes-tree .change-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+codger-changes-tree .error-panel {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+@media (max-width: 860px) {
+  codger-changes-tree {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+}

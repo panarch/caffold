@@ -1,8 +1,8 @@
 @import "./components/app-shell.css";
 @import "./components/pathbar.css";
 @import "./components/file-list.css";
+@import "./components/changes-tree.css";
 @import "./components/file-viewer.css";
-@import "./components/git-panel.css";
 @import "./components/code-viewer.css";
 
 :root {
@@ -47,6 +47,10 @@ body {
 
 button {
   font: inherit;
+}
+
+[hidden] {
+  display: none !important;
 }
 
 .surface-message {

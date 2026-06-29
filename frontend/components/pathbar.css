@@ -82,7 +82,7 @@ codger-pathbar .path-crumbs button[aria-current="page"] {
   font-weight: 500;
 }
 
-codger-pathbar .git-panel-button {
+codger-pathbar .git-mode-button {
   display: grid;
   grid-auto-flow: column;
   gap: 6px;
@@ -97,16 +97,22 @@ codger-pathbar .git-panel-button {
   padding: 0 8px;
 }
 
-codger-pathbar .git-panel-button:hover,
-codger-pathbar .git-panel-button:focus-visible {
+codger-pathbar .git-mode-button:hover,
+codger-pathbar .git-mode-button:focus-visible {
   border-color: #8bb8a8;
   background: #f7fbf8;
   outline: none;
 }
 
-codger-pathbar .git-panel-button.is-dirty {
+codger-pathbar .git-mode-button.is-dirty {
   border-color: #bd9960;
   color: #764600;
+}
+
+codger-pathbar .git-mode-button.is-active {
+  border-color: #8bb8a8;
+  background: var(--accent-soft);
+  color: #0d5f47;
 }
 
 codger-pathbar .git-branch {
@@ -134,7 +140,7 @@ codger-pathbar .git-count {
     display: none;
   }
 
-  codger-pathbar .git-panel-button {
+  codger-pathbar .git-mode-button {
     max-width: 5.25rem;
     padding: 0 6px;
   }

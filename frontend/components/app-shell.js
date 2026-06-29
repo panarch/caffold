@@ -2,7 +2,7 @@ import { getGitDiff, getGitStatus, getHealth, listDirectory, readFile } from "..
 import "./pathbar.js";
 import "./file-list.js";
 import "./file-viewer.js";
-import "./git-panel.js";
+import "./changes-tree.js";
 
 const LOADING_DELAY_MS = 180;
 const LAST_DIRECTORY_KEY_PREFIX = "codger:last-directory-path";
@@ -18,11 +18,14 @@ class CodgerAppShell extends HTMLElement {
     this.directoryRequestId = 0;
     this.fileRequestId = 0;
     this.gitStatusRequestId = 0;
+    this.gitStatus = null;
+    this.viewMode = "files";
     this.render();
+    this.appMain = this.querySelector(".app-main");
     this.pathbar = this.querySelector("codger-pathbar");
     this.fileList = this.querySelector("codger-file-list");
+    this.changesTree = this.querySelector("codger-changes-tree");
     this.fileViewer = this.querySelector("codger-file-viewer");
-    this.gitPanel = this.querySelector("codger-git-panel");
 
     this.addEventListener("codger:navigate", (event) => {
       this.loadDirectory(event.detail.path);
@@ -33,14 +36,8 @@ class CodgerAppShell extends HTMLElement {
     this.addEventListener("codger:open-file", (event) => {
       this.openFile(event.detail.path);
     });
-    this.addEventListener("codger:toggle-git-panel", () => {
-      this.gitPanel.open();
-    });
-    this.addEventListener("codger:refresh-git", () => {
-      this.loadGitStatus(this.currentPath);
-    });
-    this.addEventListener("codger:open-git-file", (event) => {
-      this.openFile(event.detail.path);
+    this.addEventListener("codger:toggle-git-mode", () => {
+      this.toggleGitMode();
     });
     this.addEventListener("codger:open-git-diff", (event) => {
       this.openDiff(event.detail.path, event.detail.kind);
@@ -57,11 +54,11 @@ class CodgerAppShell extends HTMLElement {
         </div>
       </header>
       <codger-pathbar></codger-pathbar>
-      <main class="app-main" aria-label="File browser">
+      <main class="app-main" data-view-mode="files" aria-label="Review browser">
         <codger-file-list></codger-file-list>
+        <codger-changes-tree hidden></codger-changes-tree>
         <codger-file-viewer></codger-file-viewer>
       </main>
-      <codger-git-panel></codger-git-panel>
     `;
   }
 
@@ -126,6 +123,7 @@ class CodgerAppShell extends HTMLElement {
   async openFile(path) {
     const requestId = ++this.fileRequestId;
     this.fileList.setSelectedPath(path);
+    this.changesTree.setSelectedPath("");
     const loadingTimer = this.showFileLoadingAfterDelay(path, requestId);
 
     try {
@@ -148,7 +146,8 @@ class CodgerAppShell extends HTMLElement {
 
   async openDiff(path, kind) {
     const requestId = ++this.fileRequestId;
-    this.fileList.setSelectedPath(path);
+    this.fileList.setSelectedPath("");
+    this.changesTree.setSelectedPath(path);
     const loadingTimer = this.showFileLoadingAfterDelay(`Diff ${path}`, requestId);
 
     try {
@@ -176,20 +175,26 @@ class CodgerAppShell extends HTMLElement {
     }
 
     this.gitRepository = directory.git;
+    this.gitStatus = null;
     this.pathbar.gitStatus = {
       branch: directory.git.branch,
       dirty: directory.git.dirty,
       count: null,
+      active: this.viewMode === "changes",
     };
-    this.gitPanel.setLoading(directory.git);
+    this.changesTree.setLoading(directory.git);
     this.loadGitStatus(directory.path);
   }
 
   clearGitContext() {
     this.gitRepository = null;
+    this.gitStatus = null;
     this.gitStatusRequestId += 1;
     this.pathbar.gitStatus = null;
-    this.gitPanel.reset();
+    this.changesTree.reset();
+    if (this.viewMode === "changes") {
+      this.setViewMode("files", { preserveViewer: true });
+    }
   }
 
   async loadGitStatus(path) {
@@ -198,7 +203,7 @@ class CodgerAppShell extends HTMLElement {
     }
 
     const requestId = ++this.gitStatusRequestId;
-    this.gitPanel.setLoading(this.gitRepository);
+    this.changesTree.setLoading(this.gitRepository);
 
     try {
       const status = await getGitStatus(path);
@@ -207,19 +212,65 @@ class CodgerAppShell extends HTMLElement {
       }
 
       this.gitRepository = status.repository;
-      this.pathbar.gitStatus = {
-        branch: status.repository.branch,
-        dirty: status.repository.dirty,
-        count: status.files.length,
-      };
-      this.gitPanel.setStatus(status);
+      this.gitStatus = status;
+      this.updateGitButton();
+      this.changesTree.setStatus(status);
     } catch (error) {
       if (requestId !== this.gitStatusRequestId) {
         return;
       }
 
-      this.gitPanel.setError(error, this.gitRepository);
+      this.changesTree.setError(error, this.gitRepository);
     }
+  }
+
+  toggleGitMode() {
+    if (!this.gitRepository) {
+      return;
+    }
+
+    this.setViewMode(this.viewMode === "changes" ? "files" : "changes");
+  }
+
+  setViewMode(mode, options = {}) {
+    if (mode !== "files" && mode !== "changes") {
+      return;
+    }
+
+    this.viewMode = mode;
+    if (this.appMain) {
+      this.appMain.dataset.viewMode = mode;
+    }
+
+    if (this.fileList) {
+      this.fileList.hidden = mode !== "files";
+    }
+
+    if (this.changesTree) {
+      this.changesTree.hidden = mode !== "changes";
+    }
+
+    this.updateGitButton();
+
+    if (!options.preserveViewer) {
+      this.fileList.setSelectedPath("");
+      this.changesTree.setSelectedPath("");
+      this.fileViewer.setEmpty();
+    }
+  }
+
+  updateGitButton() {
+    if (!this.gitRepository) {
+      this.pathbar.gitStatus = null;
+      return;
+    }
+
+    this.pathbar.gitStatus = {
+      branch: this.gitRepository.branch,
+      dirty: this.gitRepository.dirty,
+      count: this.gitStatus?.files.length ?? null,
+      active: this.viewMode === "changes",
+    };
   }
 
   showDirectoryLoadingAfterDelay(requestId) {

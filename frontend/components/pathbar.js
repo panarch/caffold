@@ -3,10 +3,10 @@ import { escapeHtml } from "./dom.js";
 class CodgerPathbar extends HTMLElement {
   connectedCallback() {
     this.addEventListener("click", (event) => {
-      const gitButton = event.target.closest("button[data-action='open-git-panel']");
+      const gitButton = event.target.closest("button[data-action='toggle-git-mode']");
       if (gitButton) {
         this.dispatchEvent(
-          new CustomEvent("codger:toggle-git-panel", {
+          new CustomEvent("codger:toggle-git-mode", {
             bubbles: true,
           }),
         );
@@ -90,16 +90,25 @@ class CodgerPathbar extends HTMLElement {
 
     const branch = gitStatus.branch ?? "HEAD";
     const count = gitStatus.count;
-    const countLabel = count === null || count === undefined ? "" : ` ${count}`;
+    const countLabel = count === null || count === undefined ? "" : `${count}`;
     const dirtyLabel = gitStatus.dirty ? "*" : "";
+    const className = [
+      "git-mode-button",
+      gitStatus.dirty ? "is-dirty" : "",
+      gitStatus.active ? "is-active" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const actionLabel = gitStatus.active ? "Show files" : "Show changes";
 
     return `
       <button
         type="button"
-        class="git-panel-button${gitStatus.dirty ? " is-dirty" : ""}"
-        data-action="open-git-panel"
-        title="${escapeHtml(`Git ${branch}${gitStatus.dirty ? ", changes" : ""}`)}"
-        aria-label="${escapeHtml(`Open Git panel for ${branch}`)}"
+        class="${escapeHtml(className)}"
+        data-action="toggle-git-mode"
+        title="${escapeHtml(`${actionLabel} for ${branch}`)}"
+        aria-label="${escapeHtml(`${actionLabel} for ${branch}`)}"
+        aria-pressed="${gitStatus.active ? "true" : "false"}"
       >
         <span class="git-branch">${escapeHtml(branch)}${dirtyLabel}</span>
         <span class="git-count">${escapeHtml(countLabel.trim())}</span>
