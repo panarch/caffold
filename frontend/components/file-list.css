@@ -119,8 +119,16 @@ codger-file-list .file-entry:disabled {
 }
 
 codger-file-list .parent-entry,
-codger-file-list .file-entry.is-hidden {
+codger-file-list .file-entry.is-ignored {
   color: #77857c;
+}
+
+codger-file-list .file-entry.is-hidden {
+  color: #9aa59e;
+}
+
+codger-file-list .file-entry.is-hidden .entry-kind {
+  color: #9aa59e;
 }
 
 codger-file-list .file-entry:focus-visible,

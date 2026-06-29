@@ -112,6 +112,16 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
   await expect(page.locator(".parent-entry")).toBeVisible();
   await expect(page.locator("codger-file-list .git-summary")).toBeVisible();
   await expect(page.locator("codger-file-list .git-summary")).toHaveClass(/is-dirty/);
+  await expect(page.locator('button[data-entry-path="src/ignored.log"]')).toHaveClass(
+    /is-ignored/,
+  );
+  await expect(page.locator('button[data-entry-path="src/ignored.log"]')).toHaveAttribute(
+    "title",
+    "Ignored by Git",
+  );
+  await expect(page.locator('button[data-entry-path="src/ignored-output"]')).toHaveClass(
+    /is-ignored/,
+  );
   await expect(page.locator('button[data-entry-path="src/planner/mod.rs"]')).toHaveCount(0);
 
   await page.locator('button[data-entry-path="src/example.rs"]').click();

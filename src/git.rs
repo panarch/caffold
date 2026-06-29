@@ -1,6 +1,8 @@
 use std::{
+    collections::HashSet,
+    io::Write,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,6 +53,37 @@ pub fn status_entries(repository: &Repository) -> Option<Vec<StatusEntry>> {
     Some(parse_status_entries(&output))
 }
 
+pub fn ignored_paths(
+    repository: &Repository,
+    repo_relative_paths: impl IntoIterator<Item = String>,
+) -> HashSet<String> {
+    let input = repo_relative_paths
+        .into_iter()
+        .filter(|path| !path.is_empty())
+        .collect::<Vec<_>>()
+        .join("\0");
+
+    if input.is_empty() {
+        return HashSet::new();
+    }
+
+    let input = format!("{input}\0");
+    let Some(output) = run_git_with_stdin_allowing_status(
+        &repository.root,
+        &["check-ignore", "-z", "--stdin"],
+        input.as_bytes(),
+        &[0, 1],
+    ) else {
+        return HashSet::new();
+    };
+
+    output
+        .split(|byte| *byte == 0)
+        .filter(|record| !record.is_empty())
+        .map(|record| String::from_utf8_lossy(record).into_owned())
+        .collect()
+}
+
 pub fn diff(repository: &Repository, repo_relative_path: &str, kind: &str) -> Option<String> {
     let null_path = if cfg!(windows) { "NUL" } else { "/dev/null" };
     let args = match kind {
@@ -99,6 +132,32 @@ fn run_git_allowing_status(path: &Path, args: &[&str], allowed_codes: &[i32]) ->
         .output()
         .ok()?;
 
+    let status_code = output.status.code()?;
+    if !allowed_codes.contains(&status_code) {
+        return None;
+    }
+
+    Some(output.stdout)
+}
+
+fn run_git_with_stdin_allowing_status(
+    path: &Path,
+    args: &[&str],
+    input: &[u8],
+    allowed_codes: &[i32],
+) -> Option<Vec<u8>> {
+    let mut child = Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .ok()?;
+
+    child.stdin.as_mut()?.write_all(input).ok()?;
+
+    let output = child.wait_with_output().ok()?;
     let status_code = output.status.code()?;
     if !allowed_codes.contains(&status_code) {
         return None;
@@ -184,6 +243,34 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn detects_ignored_paths() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        git(temp.path(), &["init"]);
+        fs::write(temp.path().join(".gitignore"), "ignored.log\nbuild/\n").unwrap();
+        fs::write(temp.path().join("ignored.log"), "ignore me").unwrap();
+        fs::write(temp.path().join("visible.log"), "show me").unwrap();
+        fs::create_dir(temp.path().join("build")).unwrap();
+
+        let repository = repository_for(temp.path()).unwrap();
+        let ignored = ignored_paths(
+            &repository,
+            [
+                "ignored.log".to_string(),
+                "visible.log".to_string(),
+                "build".to_string(),
+            ],
+        );
+
+        assert!(ignored.contains("ignored.log"));
+        assert!(ignored.contains("build"));
+        assert!(!ignored.contains("visible.log"));
     }
 
     fn git_is_available() -> bool {

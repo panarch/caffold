@@ -199,20 +199,21 @@ class CodgerFileList extends HTMLElement {
   renderEntry(entry) {
     const kind = entryKindLabel(entry);
     const disabled = entry.supported ? "" : "disabled";
-    const blockedTitle = entry.supported ? "" : 'title="This path resolves outside the root"';
-    const hiddenClass = isHiddenEntry(entry) ? " is-hidden" : "";
+    const entryTitle = titleAttributeForEntry(entry);
+    const className = fileEntryClassName(entry);
+    const ignoredLabel = entry.gitIgnored ? " ignored by Git" : "";
 
     return `
       <li>
         <button
           type="button"
-          class="file-entry${hiddenClass}"
+          class="${escapeHtml(className)}"
           data-kind="${escapeHtml(entry.kind)}"
           data-entry-path="${escapeHtml(entry.path)}"
           aria-current="${entry.path === this.selectedPath ? "true" : "false"}"
-          aria-label="${escapeHtml(`${entry.name} ${kind}`)}"
+          aria-label="${escapeHtml(`${entry.name} ${kind}${ignoredLabel}`)}"
           ${disabled}
-          ${blockedTitle}
+          ${entryTitle}
         >
           ${renderEntryIcon(entry)}
           <span class="entry-name">${escapeHtml(entry.name)}</span>
@@ -224,23 +225,24 @@ class CodgerFileList extends HTMLElement {
   renderTreeEntry(entry, depth) {
     const kind = entryKindLabel(entry);
     const disabled = entry.supported ? "" : "disabled";
-    const blockedTitle = entry.supported ? "" : 'title="This path resolves outside the root"';
-    const hiddenClass = isHiddenEntry(entry) ? " is-hidden" : "";
+    const entryTitle = titleAttributeForEntry(entry);
+    const className = fileEntryClassName(entry, "tree-entry");
     const expandable = isExpandableDirectory(entry);
     const expanded = expandable && this.treeState.expanded.has(entry.path);
     const action = expandable ? 'data-action="toggle-directory"' : "";
     const ariaExpanded = expandable ? `aria-expanded="${expanded ? "true" : "false"}"` : "";
     const toggleLabel = expandable ? (expanded ? "Collapse" : "Expand") : "";
+    const ignoredLabel = entry.gitIgnored ? " ignored by Git" : "";
     const ariaLabel = toggleLabel
-      ? `${toggleLabel} ${entry.name} ${kind}`
-      : `${entry.name} ${kind}`;
+      ? `${toggleLabel} ${entry.name} ${kind}${ignoredLabel}`
+      : `${entry.name} ${kind}${ignoredLabel}`;
     const iconEntry = expandable ? { ...entry, expanded } : entry;
 
     return `
       <li>
         <button
           type="button"
-          class="file-entry tree-entry${hiddenClass}"
+          class="${escapeHtml(className)}"
           style="--tree-depth: ${depth}"
           data-kind="${escapeHtml(entry.kind)}"
           data-entry-path="${escapeHtml(entry.path)}"
@@ -249,7 +251,7 @@ class CodgerFileList extends HTMLElement {
           ${ariaExpanded}
           ${action}
           ${disabled}
-          ${blockedTitle}
+          ${entryTitle}
         >
           ${renderEntryIcon(iconEntry)}
           <span class="entry-name">${escapeHtml(entry.name)}</span>
@@ -541,6 +543,29 @@ function parentDirectory(path) {
 
 function isHiddenEntry(entry) {
   return entry.name.startsWith(".") && entry.name !== "." && entry.name !== "..";
+}
+
+function fileEntryClassName(entry, ...extraClassNames) {
+  return [
+    "file-entry",
+    ...extraClassNames,
+    isHiddenEntry(entry) ? "is-hidden" : "",
+    entry.gitIgnored ? "is-ignored" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function titleAttributeForEntry(entry) {
+  if (!entry.supported) {
+    return 'title="This path resolves outside the root"';
+  }
+
+  if (entry.gitIgnored) {
+    return 'title="Ignored by Git"';
+  }
+
+  return "";
 }
 
 function isExpandableDirectory(entry) {

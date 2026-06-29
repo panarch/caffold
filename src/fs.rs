@@ -35,6 +35,7 @@ pub struct DirectoryEntry {
     pub kind: EntryKind,
     pub is_symlink: bool,
     pub supported: bool,
+    pub git_ignored: bool,
     pub size: Option<u64>,
     pub modified_ms: Option<u64>,
     pub git: Option<EntryGitInfo>,
@@ -231,6 +232,11 @@ impl RootedFs {
             });
         }
 
+        let repository = git::repository_for(&resolved.absolute)
+            .filter(|repository| repository.root.starts_with(&self.root));
+        let git = repository
+            .as_ref()
+            .and_then(|repository| self.git_info_for_repository(repository).ok());
         let mut entries = Vec::new();
 
         for entry in fs::read_dir(&resolved.absolute).map_err(|source| FsError::Io {
@@ -248,6 +254,10 @@ impl RootedFs {
             entries.push(self.directory_entry(name, logical_path, entry.path())?);
         }
 
+        if let Some(repository) = repository.as_ref() {
+            self.mark_git_ignored_entries(&mut entries, repository)?;
+        }
+
         entries.sort_by(|left, right| {
             left.kind
                 .cmp(&right.kind)
@@ -258,7 +268,7 @@ impl RootedFs {
             root: self.root.display().to_string(),
             path: relative_path_string(&resolved.logical),
             entries,
-            git: self.git_info_for(&resolved.absolute),
+            git,
         })
     }
 
@@ -517,6 +527,7 @@ impl RootedFs {
                 kind: EntryKind::Symlink,
                 is_symlink,
                 supported: false,
+                git_ignored: false,
                 size: None,
                 modified_ms: modified_ms(&symlink_metadata),
                 git: None,
@@ -539,15 +550,40 @@ impl RootedFs {
             kind,
             is_symlink,
             supported,
+            git_ignored: false,
             size: metadata.is_file().then_some(metadata.len()),
             modified_ms: modified_ms(&metadata),
             git,
         })
     }
 
-    fn git_info_for(&self, absolute_path: &Path) -> Option<DirectoryGitInfo> {
-        let repository = git::repository_for(absolute_path)?;
-        self.git_info_for_repository(&repository).ok()
+    fn mark_git_ignored_entries(
+        &self,
+        entries: &mut [DirectoryEntry],
+        repository: &git::Repository,
+    ) -> Result<(), FsError> {
+        let repo_root = repository
+            .root
+            .strip_prefix(&self.root)
+            .map_err(|_| FsError::PathEscapesRoot)?;
+        let repo_root = relative_path_string(repo_root);
+        let entry_paths = entries
+            .iter()
+            .filter_map(|entry| strip_repo_root(&repo_root, &entry.path))
+            .map(ToString::to_string);
+        let ignored = git::ignored_paths(repository, entry_paths);
+
+        if ignored.is_empty() {
+            return Ok(());
+        }
+
+        for entry in entries {
+            if let Some(repo_relative_path) = strip_repo_root(&repo_root, &entry.path) {
+                entry.git_ignored = ignored.contains(repo_relative_path);
+            }
+        }
+
+        Ok(())
     }
 
     fn git_info_for_repository(
@@ -787,6 +823,44 @@ mod tests {
         assert_eq!(git.root_path, "repo");
         assert!(git.branch.is_some());
         assert!(git.dirty);
+    }
+
+    #[test]
+    fn list_marks_git_ignored_entries_in_current_repo() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let repo_path = temp.path().join("repo");
+        fs::create_dir(&repo_path).unwrap();
+        git(&repo_path, &["init"]);
+        fs::write(repo_path.join(".gitignore"), "ignored.log\nbuild/\n").unwrap();
+        fs::write(repo_path.join("ignored.log"), "ignore me").unwrap();
+        fs::write(repo_path.join("visible.log"), "show me").unwrap();
+        fs::create_dir(repo_path.join("build")).unwrap();
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+        let repo_list = rooted.list("repo").unwrap();
+        let ignored_file = repo_list
+            .entries
+            .iter()
+            .find(|entry| entry.name == "ignored.log")
+            .unwrap();
+        let ignored_dir = repo_list
+            .entries
+            .iter()
+            .find(|entry| entry.name == "build")
+            .unwrap();
+        let visible_file = repo_list
+            .entries
+            .iter()
+            .find(|entry| entry.name == "visible.log")
+            .unwrap();
+
+        assert!(ignored_file.git_ignored);
+        assert!(ignored_dir.git_ignored);
+        assert!(!visible_file.git_ignored);
     }
 
     #[test]
