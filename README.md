@@ -1,0 +1,61 @@
+# Codger
+
+Codger is a review console for developers who want to inspect agent-generated code before they trust it.
+
+It runs Codex-powered development tasks on a trusted host and gives the developer a browser-based surface for reviewing task state, diffs, files, test results, approvals, and follow-up prompts.
+
+Codger is not an autonomous coding product, an IDE, or a replacement for the Codex GUI.
+
+Its narrower goal is to make agent-generated code review practical away from the desktop app, including on mobile and foldable devices.
+
+## Why
+
+Foldable phones and wider mobile displays make it increasingly plausible to review real code changes away from a desk.
+
+Agent-assisted development makes that more useful. The developer still makes the judgment calls, but more of the day-to-day work becomes reading diffs, checking tests, inspecting files, approving commands, and sending follow-up prompts instead of typing every edit by hand.
+
+That shift makes a browser-based review console practical. The important surface is not a full editor. It is a fast, reliable way to inspect agent output and decide what should happen next.
+
+For long-running code work, the hard part is often not the agent itself. It is the surface around the agent: finding the right session again, understanding which worktree changed, reading the diff without opening a full editor, approving commands remotely, and continuing the review loop from another device.
+
+Codger keeps Codex in the workflow, while giving mobile-friendly, long-running code review work a control surface owned by the developer.
+
+## Shape
+
+The intended shape is:
+
+- a Rust backend running on each trusted host
+- a browser/PWA frontend served by that backend
+- Codex app-server managed as a child process
+- JSON-RPC integration between the backend and Codex app-server
+- GlueSQL with redb for Codger-owned metadata and event history
+- git worktrees as the source of truth for code changes
+- Tailscale or another trusted private network for remote access
+
+## Core Principle
+
+Codger should make agent output easier to inspect, question, accept, reject, and continue.
+
+It should not try to become VS Code, a full git GUI, or a native mobile app.
+
+## Documentation
+
+Public-facing docs:
+
+- [Vision](docs/public/vision.md)
+- [Architecture](docs/public/architecture.md)
+
+Internal planning notes:
+
+- [MVP](docs/internal/mvp.md)
+- [Roadmap](docs/internal/roadmap.md)
+- [Workflows](docs/internal/workflows.md)
+- [Codex App Server](docs/internal/codex-app-server.md)
+- [Worktree Lifecycle](docs/internal/worktree-lifecycle.md)
+- [Operation Ledger](docs/internal/operation-ledger.md)
+- [UI Surfaces](docs/internal/ui-surfaces.md)
+- [Security and Approvals](docs/internal/security-approvals.md)
+
+## Status
+
+This repository is in planning stage. The first implementation should focus on a usable Codex-connected web console rather than a polished product shell.
