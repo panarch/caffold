@@ -38,6 +38,40 @@ Codger should make agent output easier to inspect, question, accept, reject, and
 
 It should not try to become VS Code, a full git GUI, or a native mobile app.
 
+## Run
+
+Start the first read-only file browser slice:
+
+```sh
+cargo run -- serve
+```
+
+Then open the printed local URL. By default Codger opens at `$HOME`, displays it as `~`, and allows read-only parent navigation up to the filesystem root.
+
+For deterministic local testing, a bounded root can be supplied:
+
+```sh
+cargo run -- serve --root tests/fixtures/home
+```
+
+## Test
+
+Run Rust checks:
+
+```sh
+cargo test
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+```
+
+Run browser tests:
+
+```sh
+npm run test:e2e
+```
+
+Playwright tests verify behavior and write review screenshots under the ignored `test-results` directory. Codger does not commit Playwright snapshot baselines; future CI visual checks should compare screenshots generated from `main` and the pull request head in the same runner.
+
 ## Documentation
 
 Public-facing docs:
@@ -58,4 +92,4 @@ Internal planning notes:
 
 ## Status
 
-This repository is in planning stage. The first implementation should focus on a usable Codex-connected web console rather than a polished product shell.
+This repository has an initial read-only web file browser slice. The broader Codex-connected review console remains under active design and implementation.

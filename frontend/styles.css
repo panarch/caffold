@@ -1,0 +1,71 @@
+@import "./components/app-shell.css";
+@import "./components/pathbar.css";
+@import "./components/file-list.css";
+@import "./components/file-viewer.css";
+@import "./components/code-viewer.css";
+
+:root {
+  color-scheme: light;
+  --bg: #f4f6f3;
+  --surface: #ffffff;
+  --surface-muted: #eef2ee;
+  --border: #cdd6ce;
+  --border-strong: #9aaba0;
+  --text: #18201b;
+  --muted: #5f6d64;
+  --accent: #167c5c;
+  --accent-soft: #ddefe8;
+  --danger: #9b2c2c;
+  --danger-soft: #f7e1df;
+  --code-bg: #ffffff;
+  --code-gutter: #f0f4f1;
+  --code-text: #17201b;
+  --line-gutter-width: 4rem;
+  --font-mono: ui-monospace, monospace;
+  --font-sans: system-ui, sans-serif;
+}
+
+html {
+  height: 100%;
+  overflow: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+
+button {
+  font: inherit;
+}
+
+.surface-message {
+  margin: 0;
+  padding: 14px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  :root {
+    --line-gutter-width: 3.25rem;
+  }
+}

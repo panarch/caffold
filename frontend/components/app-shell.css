@@ -1,0 +1,51 @@
+codger-app-shell {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+codger-app-shell .app-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  min-height: 34px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+codger-app-shell .brand {
+  display: grid;
+  min-width: 0;
+}
+
+codger-app-shell .brand strong {
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+codger-app-shell .app-main {
+  display: grid;
+  grid-template-columns: minmax(220px, 20rem) minmax(0, 1fr);
+  overflow: hidden;
+  min-height: 0;
+}
+
+@media (max-width: 860px) {
+  codger-app-shell {
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+
+  codger-app-shell .app-main {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 36dvh) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  codger-app-shell .app-header {
+    padding: 6px 10px;
+  }
+}

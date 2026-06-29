@@ -1,0 +1,6 @@
+/target
+/node_modules
+/playwright-report
+/test-results
+/tests/e2e/*-snapshots
+.DS_Store

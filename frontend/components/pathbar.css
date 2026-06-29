@@ -1,0 +1,83 @@
+codger-pathbar {
+  display: block;
+  min-width: 0;
+  border-top: 1px solid #e3e9e4;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+
+codger-pathbar .pathbar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+}
+
+codger-pathbar .pathbar-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+codger-pathbar .path-crumbs {
+  display: flex;
+  align-self: stretch;
+  min-width: 0;
+  margin: 0;
+  overflow-x: auto;
+  padding: 0;
+  list-style: none;
+}
+
+codger-pathbar .path-crumbs li {
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: stretch;
+}
+
+codger-pathbar .path-crumbs li + li::before {
+  content: "/";
+  display: inline-grid;
+  align-items: center;
+  color: #a9b6ad;
+  font-size: 0.78rem;
+  padding: 0 2px;
+}
+
+codger-pathbar .path-crumbs button {
+  display: inline-grid;
+  min-height: 100%;
+  align-items: center;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+codger-pathbar .path-crumbs button:hover {
+  background: #e7eee9;
+  color: #0d5f47;
+}
+
+codger-pathbar .path-crumbs button:focus-visible {
+  background: #e7eee9;
+  outline: 2px solid #abcbbf;
+  outline-offset: -2px;
+}
+
+codger-pathbar .path-crumbs button:focus:not(:focus-visible) {
+  outline: none;
+}
+
+codger-pathbar .path-crumbs button[aria-current="page"] {
+  background: transparent;
+  color: #0d5f47;
+  font-weight: 500;
+}

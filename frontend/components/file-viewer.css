@@ -1,0 +1,78 @@
+codger-file-viewer {
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+}
+
+codger-file-viewer .viewer-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  height: 100%;
+  background: var(--surface);
+}
+
+codger-file-viewer .viewer-panel > header {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+codger-file-viewer h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+codger-file-viewer .viewer-panel > header dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 2px 0 0;
+}
+
+codger-file-viewer .viewer-panel > header dl div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+codger-file-viewer dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+codger-file-viewer dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+}
+
+codger-file-viewer .empty-panel {
+  place-items: center;
+  color: var(--muted);
+}
+
+codger-file-viewer .error-panel {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+@media (max-width: 860px) {
+  codger-file-viewer .viewer-panel > header dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  codger-file-viewer .viewer-panel > header dl {
+    grid-template-columns: 1fr;
+  }
+}

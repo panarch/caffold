@@ -1,0 +1,126 @@
+codger-file-list {
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+
+codger-file-list .file-list-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  height: 100%;
+}
+
+codger-file-list .file-list-panel > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px;
+  align-items: center;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+codger-file-list h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+codger-file-list .file-list-panel > header span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+codger-file-list .file-list {
+  display: grid;
+  align-content: start;
+  gap: 0;
+  min-height: 0;
+  margin: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 4px 0;
+  list-style: none;
+}
+
+codger-file-list .file-entry {
+  display: grid;
+  grid-template-columns: 1.75rem minmax(0, 1fr);
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  align-items: center;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  padding: 4px 10px 4px 7px;
+  text-align: left;
+}
+
+codger-file-list .file-entry:hover,
+codger-file-list .file-entry:focus-visible {
+  background: #f1f6f3;
+  outline: none;
+}
+
+codger-file-list .file-entry:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+codger-file-list .parent-entry,
+codger-file-list .file-entry.is-hidden {
+  color: #77857c;
+}
+
+codger-file-list .file-entry:focus-visible,
+codger-file-list .file-entry:hover {
+  border-left-color: #bdd7cc;
+}
+
+codger-file-list .file-entry:not(.parent-entry)[aria-current="true"],
+codger-file-list .file-entry:not(.parent-entry).is-selected {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+codger-file-list .entry-kind {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+codger-file-list .entry-icon {
+  display: inline-grid;
+  width: 1.5rem;
+  height: 1.5rem;
+  place-items: center;
+  justify-self: center;
+}
+
+codger-file-list .entry-icon-svg {
+  display: block;
+  width: 1.125rem;
+  height: 1.125rem;
+  stroke-width: 1.9;
+}
+
+codger-file-list .entry-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 860px) {
+  codger-file-list {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+}

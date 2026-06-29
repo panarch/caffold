@@ -1,0 +1,110 @@
+codger-code-viewer {
+  display: block;
+  min-height: 0;
+}
+
+codger-code-viewer .code-viewer {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  height: 100%;
+  background: var(--code-bg);
+  color: var(--code-text);
+}
+
+codger-code-viewer .code-viewer > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-height: 34px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+codger-code-viewer .code-lines {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: linear-gradient(
+    to right,
+    var(--code-gutter) 0,
+    var(--code-gutter) var(--line-gutter-width),
+    var(--border) var(--line-gutter-width),
+    var(--border) calc(var(--line-gutter-width) + 1px),
+    transparent calc(var(--line-gutter-width) + 1px)
+  );
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+codger-code-viewer .code-row {
+  display: grid;
+  grid-template-columns: var(--line-gutter-width) minmax(max-content, 1fr);
+  min-width: max-content;
+}
+
+codger-code-viewer .line-number {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  user-select: none;
+  background: var(--code-gutter);
+  color: #78867d;
+  padding: 0 10px;
+  text-align: right;
+}
+
+codger-code-viewer .line-code {
+  white-space: pre;
+  padding: 0 12px;
+}
+
+codger-code-viewer .hljs-comment,
+codger-code-viewer .hljs-quote {
+  color: #65746a;
+}
+
+codger-code-viewer .hljs-keyword,
+codger-code-viewer .hljs-selector-tag,
+codger-code-viewer .hljs-subst {
+  color: #005ea8;
+}
+
+codger-code-viewer .hljs-literal,
+codger-code-viewer .hljs-number,
+codger-code-viewer .hljs-tag .hljs-attr,
+codger-code-viewer .hljs-template-variable,
+codger-code-viewer .hljs-variable {
+  color: #8a5200;
+}
+
+codger-code-viewer .hljs-doctag,
+codger-code-viewer .hljs-string {
+  color: #216e39;
+}
+
+codger-code-viewer .hljs-section,
+codger-code-viewer .hljs-selector-id,
+codger-code-viewer .hljs-title {
+  color: #9a4d00;
+}
+
+codger-code-viewer .hljs-type,
+codger-code-viewer .hljs-class .hljs-title {
+  color: #00736b;
+}
+
+@media (max-width: 520px) {
+  codger-code-viewer .code-lines {
+    font-size: 0.76rem;
+  }
+
+  codger-code-viewer .line-number {
+    padding: 0 8px;
+  }
+}
