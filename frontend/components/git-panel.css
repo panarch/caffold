@@ -32,6 +32,10 @@ codger-git-panel .git-panel > header {
   border-bottom: 1px solid var(--border);
 }
 
+codger-git-panel .git-panel > header > div:first-child {
+  min-width: 0;
+}
+
 codger-git-panel h2,
 codger-git-panel h3,
 codger-git-panel p {
@@ -58,13 +62,11 @@ codger-git-panel .git-panel-actions {
 }
 
 codger-git-panel button {
-  min-height: 28px;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--surface);
   color: var(--text);
   cursor: pointer;
-  padding: 0 8px;
 }
 
 codger-git-panel button:hover,
@@ -108,7 +110,7 @@ codger-git-panel .git-change-section ol {
 
 codger-git-panel .git-change-section li {
   display: grid;
-  grid-template-columns: 2.4rem minmax(0, 1fr) auto;
+  grid-template-columns: 2.4rem minmax(0, 1fr) 2rem;
   gap: 8px;
   align-items: center;
   min-height: 32px;
@@ -122,17 +124,33 @@ codger-git-panel .git-status-code {
 }
 
 codger-git-panel .git-file-path {
+  min-height: 28px;
   min-width: 0;
   overflow: hidden;
   border-color: transparent;
   background: transparent;
+  padding: 0 8px;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+codger-git-panel .git-icon-button,
 codger-git-panel .git-diff-button {
+  display: inline-grid;
+  width: 2rem;
+  height: 2rem;
+  min-height: 0;
+  place-items: center;
   color: #0d5f47;
+  padding: 0;
+}
+
+codger-git-panel .git-panel-icon-svg {
+  display: block;
+  width: 1.05rem;
+  height: 1.05rem;
+  stroke-width: 2;
 }
 
 @media (min-width: 861px) {
@@ -142,7 +160,7 @@ codger-git-panel .git-diff-button {
   }
 
   codger-git-panel .git-panel {
-    width: min(440px, 36vw);
+    width: min(560px, 44vw);
     max-height: 100vh;
     border-top: 0;
     border-left: 1px solid var(--border);

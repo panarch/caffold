@@ -16,6 +16,7 @@ test.beforeEach(async ({ page }) => {
         export const FileArchive = File;
         export const FileCode = [["path", { d: "M4 4h16v16H4z" }], ["path", { d: "m10 9-3 3 3 3" }], ["path", { d: "m14 9 3 3-3 3" }]];
         export const FileCog = File;
+        export const FileDiff = FileCode;
         export const FileImage = File;
         export const FileJson = FileCode;
         export const FileQuestion = File;
@@ -28,6 +29,8 @@ test.beforeEach(async ({ page }) => {
         export const Database = [["ellipse", { cx: "12", cy: "5", rx: "8", ry: "3" }], ["path", { d: "M4 5v10c0 1.7 3.6 3 8 3s8-1.3 8-3V5" }]];
         export const Link = [["path", { d: "M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1" }]];
         export const Lock = [["rect", { x: "5", y: "10", width: "14", height: "10", rx: "2" }], ["path", { d: "M8 10V7a4 4 0 0 1 8 0v3" }]];
+        export const RefreshCw = [["path", { d: "M21 12a9 9 0 0 1-9 9 9.8 9.8 0 0 1-7-3" }], ["path", { d: "M3 12a9 9 0 0 1 9-9 9.8 9.8 0 0 1 7 3" }], ["path", { d: "M3 18h6v-6" }], ["path", { d: "M21 6h-6v6" }]];
+        export const X = [["path", { d: "M18 6 6 18" }], ["path", { d: "m6 6 12 12" }]];
 
         export function createElement(iconNode, attrs = {}) {
           const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");

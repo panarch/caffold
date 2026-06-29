@@ -1,4 +1,5 @@
 import { escapeHtml } from "./dom.js";
+import { renderInlineIcon, warmIcons } from "./icons.js";
 
 const SECTIONS = [
   ["unstaged", "Unstaged"],
@@ -56,10 +57,18 @@ class CodgerGitPanel extends HTMLElement {
       }
     });
 
+    this.boundIconsReady = () => this.render();
+    window.addEventListener("codger:icons-ready", this.boundIconsReady);
+    warmIcons();
+
     if (!this.state) {
       this.state = { open: false, status: "idle" };
       this.render();
     }
+  }
+
+  disconnectedCallback() {
+    window.removeEventListener("codger:icons-ready", this.boundIconsReady);
   }
 
   open() {
@@ -110,8 +119,8 @@ class CodgerGitPanel extends HTMLElement {
               <p>${escapeHtml(branch)}${repository?.dirty ? " *" : ""}</p>
             </div>
             <div class="git-panel-actions">
-              <button type="button" data-action="refresh">Refresh</button>
-              <button type="button" data-action="close">Close</button>
+              ${this.renderIconButton("refresh", "Refresh Git status", "RefreshCw")}
+              ${this.renderIconButton("close", "Close Git panel", "X")}
             </div>
           </header>
           <div class="git-panel-body">
@@ -180,10 +189,26 @@ class CodgerGitPanel extends HTMLElement {
           data-action="open-diff"
           data-path="${escapeHtml(file.path)}"
           data-kind="${escapeHtml(kind)}"
+          title="Show diff"
+          aria-label="${escapeHtml(`Show diff for ${file.repoRelativePath}`)}"
         >
-          Diff
+          ${renderInlineIcon("FileDiff", "Show diff", "git-panel-icon-svg")}
         </button>
       </li>
+    `;
+  }
+
+  renderIconButton(action, label, icon) {
+    return `
+      <button
+        type="button"
+        class="git-icon-button"
+        data-action="${escapeHtml(action)}"
+        title="${escapeHtml(label)}"
+        aria-label="${escapeHtml(label)}"
+      >
+        ${renderInlineIcon(icon, label, "git-panel-icon-svg")}
+      </button>
     `;
   }
 }

@@ -82,6 +82,26 @@ export function renderEntryIcon(entry) {
   `;
 }
 
+export function renderInlineIcon(name, label, className = "inline-icon-svg") {
+  if (!lucideModule) {
+    return `<span class="sr-only">${escapeHtml(label)}</span>`;
+  }
+
+  const iconNode = lucideModule[name];
+  if (!iconNode || !lucideModule.createElement) {
+    return `<span class="sr-only">${escapeHtml(label)}</span>`;
+  }
+
+  const svg = lucideModule.createElement(iconNode, {
+    class: className,
+    "aria-hidden": "true",
+    width: "18",
+    height: "18",
+  });
+
+  return `${svg.outerHTML}<span class="sr-only">${escapeHtml(label)}</span>`;
+}
+
 function iconForEntry(entry) {
   if (!entry.supported) {
     return icon("Lock", "Blocked");
