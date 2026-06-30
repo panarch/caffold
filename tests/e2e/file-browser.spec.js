@@ -26,6 +26,10 @@ test.beforeEach(async ({ page }) => {
         export const FileQuestion = File;
         export const FileTerminal = FileCode;
         export const FileText = [["path", { d: "M6 3h12v18H6z" }], ["path", { d: "M9 8h6" }], ["path", { d: "M9 12h6" }]];
+        export const ChevronFirst = [["path", { d: "m17 18-6-6 6-6" }], ["path", { d: "M7 6v12" }]];
+        export const ChevronLast = [["path", { d: "m7 18 6-6-6-6" }], ["path", { d: "M17 6v12" }]];
+        export const ChevronLeft = [["path", { d: "m15 18-6-6 6-6" }]];
+        export const ChevronRight = [["path", { d: "m9 18 6-6-6-6" }]];
         export const Folder = [["path", { d: "M3 6h7l2 2h9v10H3z" }]];
         export const FolderGit2 = Folder;
         export const FolderOpen = Folder;
@@ -511,7 +515,7 @@ test("opens commit diffs from Log mode", async ({ page }) => {
     authorEmail: "codger@example.test",
     authorTimeMs: 1_767_000_000_000,
   };
-  const fillerCommits = Array.from({ length: 24 }, (_, index) => ({
+  const fillerCommits = Array.from({ length: 49 }, (_, index) => ({
     sha: `feed${index.toString(16).padStart(36, "0")}`,
     shortSha: `feed${index.toString(16).padStart(3, "0")}`,
     subject: `Earlier commit ${index + 1}`,
@@ -520,17 +524,45 @@ test("opens commit diffs from Log mode", async ({ page }) => {
     authorEmail: "codger@example.test",
     authorTimeMs: 1_766_000_000_000 - index * 1000,
   }));
+  const olderCommits = Array.from({ length: 25 }, (_, index) => ({
+    sha: `dead${index.toString(16).padStart(36, "0")}`,
+    shortSha: `dead${index.toString(16).padStart(3, "0")}`,
+    subject: `Oldest page commit ${index + 1}`,
+    body: "",
+    authorName: "Codger",
+    authorEmail: "codger@example.test",
+    authorTimeMs: 1_765_000_000_000 - index * 1000,
+  }));
+  const pageOneCommits = [...fillerCommits, commit];
+  const totalCommits = pageOneCommits.length + olderCommits.length;
   const repository = { rootPath: "src", branch: "main", dirty: true };
 
-  await page.route(/\/api\/git\/log(?:\?|$)/, (route) =>
-    route.fulfill({
+  await page.route(/\/api\/git\/log(?:\?|$)/, async (route) => {
+    const url = new URL(route.request().url());
+    const pageNumber = Number(url.searchParams.get("page") ?? "1");
+    const perPage = Number(url.searchParams.get("perPage") ?? "50");
+    const commits = pageNumber === 2 ? olderCommits : pageOneCommits;
+
+    if (pageNumber === 2) {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 80);
+      });
+    }
+
+    return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
         repository,
-        commits: [...fillerCommits, commit],
+        commits,
+        page: pageNumber,
+        perPage,
+        totalCommits,
+        totalPages: 2,
+        hasPrevious: pageNumber > 1,
+        hasNext: pageNumber < 2,
       }),
-    }),
-  );
+    });
+  });
 
   await page.route(/\/api\/git\/commit(?:\?|$)/, (route) =>
     route.fulfill({
@@ -597,6 +629,24 @@ test("opens commit diffs from Log mode", async ({ page }) => {
   await expect(page.locator("codger-log-list")).toContainText("abcdef1");
   await expect(page.locator("codger-log-list")).toBeVisible();
   await expect(page.locator(".log-review-detail")).toBeHidden();
+  const pagination = page.locator("codger-log-list .log-pagination");
+  await expect(pagination.locator(".log-page-indicator")).toHaveText("1 / 2");
+  await expect(pagination.getByRole("button", { name: "Newest page" })).toBeDisabled();
+  await expect(pagination.getByRole("button", { name: "Newer page" })).toBeDisabled();
+
+  await pagination.getByRole("button", { name: "Oldest page" }).click();
+  await page.waitForTimeout(40);
+  const preservedLogText = await page.locator("codger-log-list").textContent();
+  expect(preservedLogText).toContain("Update planner function");
+  expect(preservedLogText).not.toContain("Loading log...");
+  await expect(pagination.locator(".log-page-indicator")).toHaveText("2 / 2");
+  await expect(page.locator("codger-log-list")).toContainText("Oldest page commit 1");
+  await expect(pagination.getByRole("button", { name: "Older page" })).toBeDisabled();
+  await expect(pagination.getByRole("button", { name: "Oldest page" })).toBeDisabled();
+
+  await pagination.getByRole("button", { name: "Newest page" }).click();
+  await expect(pagination.locator(".log-page-indicator")).toHaveText("1 / 2");
+  await expect(page.locator("codger-log-list")).toContainText("Update planner function");
 
   const logEntry = page.locator(
     'codger-log-list .log-entry[data-commit-sha="abcdef1234567890abcdef1234567890abcdef12"]',

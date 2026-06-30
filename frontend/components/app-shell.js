@@ -52,6 +52,7 @@ class CodgerAppShell extends HTMLElement {
     this.currentProjectId = null;
     this.workspaceMode = null;
     this.logWorkspaceView = "list";
+    this.logPage = 1;
     this.selectedCommitSummary = null;
     this.leftPanelWidth = LEFT_PANEL_DEFAULT_WIDTH;
     this.resizePointerId = null;
@@ -102,6 +103,9 @@ class CodgerAppShell extends HTMLElement {
     });
     this.addEventListener("codger:open-git-commit", (event) => {
       this.openCommit(event.detail.sha);
+    });
+    this.addEventListener("codger:change-log-page", (event) => {
+      this.changeLogPage(event.detail.page);
     });
     this.addEventListener("codger:open-commit-diff", (event) => {
       this.openCommitDiff(event.detail.sha, event.detail.path, event.detail.status);
@@ -492,7 +496,8 @@ class CodgerAppShell extends HTMLElement {
     this.changesTree.setLoading(directory.git);
     this.loadGitStatus(directory.path);
     if (this.workspaceMode === "log") {
-      this.loadGitLog(directory.path);
+      this.logPage = 1;
+      this.loadGitLog(directory.path, this.logPage);
     }
     this.updateWorkspaceChrome();
   }
@@ -503,6 +508,7 @@ class CodgerAppShell extends HTMLElement {
     this.gitStatusRequestId += 1;
     this.gitLogRequestId += 1;
     this.gitCommitRequestId += 1;
+    this.logPage = 1;
     this.headerActions.gitStatus = null;
     this.changesTree.reset();
     this.logList.reset();
@@ -538,20 +544,21 @@ class CodgerAppShell extends HTMLElement {
     }
   }
 
-  async loadGitLog(path) {
+  async loadGitLog(path, page = this.logPage) {
     if (!this.gitRepository) {
       return;
     }
 
     const requestId = ++this.gitLogRequestId;
-    this.logList.setLoading(this.gitRepository);
+    const loadingTimer = this.showGitLogLoadingAfterDelay(requestId);
 
     try {
-      const log = await getGitLog(path);
+      const log = await getGitLog(path, page);
       if (requestId !== this.gitLogRequestId) {
         return;
       }
 
+      this.logPage = log.page ?? page;
       this.gitRepository = log.repository;
       this.updateGitButton();
       this.updateWorkspaceChrome();
@@ -562,7 +569,22 @@ class CodgerAppShell extends HTMLElement {
       }
 
       this.logList.setError(error, this.gitRepository);
+    } finally {
+      window.clearTimeout(loadingTimer);
     }
+  }
+
+  changeLogPage(page) {
+    if (this.workspaceMode !== "log" || this.logWorkspaceView !== "list") {
+      return;
+    }
+
+    const nextPage = Number.parseInt(`${page}`, 10);
+    if (!Number.isFinite(nextPage) || nextPage < 1 || nextPage === this.logPage) {
+      return;
+    }
+
+    this.loadGitLog(this.currentPath, nextPage);
   }
 
   openDiffWorkspace() {
@@ -592,6 +614,9 @@ class CodgerAppShell extends HTMLElement {
     const wasLogWorkspace = this.workspaceMode === "log";
     this.workspaceMode = "log";
     this.logWorkspaceView = options.view ?? "list";
+    if (!options.skipReload) {
+      this.logPage = options.page ?? 1;
+    }
     if (this.logWorkspaceView === "list") {
       this.selectedCommitSummary = null;
     }
@@ -603,13 +628,14 @@ class CodgerAppShell extends HTMLElement {
       this.logWorkspaceViewer.setEmpty();
     }
     if (!options.skipReload) {
-      this.loadGitLog(this.currentPath);
+      this.loadGitLog(this.currentPath, this.logPage);
     }
   }
 
   closeReviewWorkspace() {
     this.workspaceMode = null;
     this.logWorkspaceView = "list";
+    this.logPage = 1;
     this.selectedCommitSummary = null;
     this.reviewWorkspace.close();
     this.updateGitButton();
@@ -803,6 +829,14 @@ class CodgerAppShell extends HTMLElement {
     return window.setTimeout(() => {
       if (requestId === this.fileRequestId) {
         viewer.setLoading(path);
+      }
+    }, LOADING_DELAY_MS);
+  }
+
+  showGitLogLoadingAfterDelay(requestId) {
+    return window.setTimeout(() => {
+      if (requestId === this.gitLogRequestId) {
+        this.logList.setLoading(this.gitRepository);
       }
     }, LOADING_DELAY_MS);
   }

@@ -14,6 +14,11 @@ class CodgerLogList extends HTMLElement {
         return;
       }
 
+      if (button.dataset.action === "set-log-page") {
+        this.changePage(button.dataset.page);
+        return;
+      }
+
       if (button.dataset.action !== "open-commit") {
         return;
       }
@@ -62,6 +67,20 @@ class CodgerLogList extends HTMLElement {
     this.expandedShas = new Set();
     this.state = { status: "idle" };
     this.render();
+  }
+
+  changePage(pageValue) {
+    const page = Number.parseInt(pageValue ?? "", 10);
+    if (!Number.isFinite(page) || page < 1) {
+      return;
+    }
+
+    this.dispatchEvent(
+      new CustomEvent("codger:change-log-page", {
+        bubbles: true,
+        detail: { page },
+      }),
+    );
   }
 
   toggleCommitBody(sha) {
@@ -144,14 +163,16 @@ class CodgerLogList extends HTMLElement {
     }
 
     const commits = this.state.log.commits ?? [];
+    const totalCount = this.state.log.totalCommits ?? commits.length;
     this.innerHTML = `
       <section class="log-list-panel">
-        ${this.renderHeader(this.state.log.repository, commits.length)}
+        ${this.renderHeader(this.state.log.repository, totalCount)}
         ${
           commits.length === 0
             ? `<p class="surface-message">No commits.</p>`
             : `<ol class="log-list">${commits.map((commit) => this.renderCommit(commit)).join("")}</ol>`
         }
+        ${this.renderPagination(this.state.log)}
       </section>
     `;
   }
@@ -172,6 +193,65 @@ class CodgerLogList extends HTMLElement {
             : ""
         }
       </header>
+    `;
+  }
+
+  renderPagination(log) {
+    const page = log.page ?? 1;
+    const totalPages = log.totalPages ?? 0;
+    if (totalPages <= 1) {
+      return "";
+    }
+
+    return `
+      <footer class="log-pagination" aria-label="Log pagination">
+        ${this.renderPageButton({
+          icon: "ChevronFirst",
+          label: "Newest page",
+          page: 1,
+          disabled: page <= 1,
+        })}
+        ${this.renderPageButton({
+          icon: "ChevronLeft",
+          label: "Newer page",
+          page: page - 1,
+          disabled: !log.hasPrevious,
+        })}
+        <span
+          class="log-page-indicator"
+          aria-label="${escapeHtml(`Page ${page} of ${totalPages}`)}"
+        >
+          ${escapeHtml(`${page} / ${totalPages}`)}
+        </span>
+        ${this.renderPageButton({
+          icon: "ChevronRight",
+          label: "Older page",
+          page: page + 1,
+          disabled: !log.hasNext,
+        })}
+        ${this.renderPageButton({
+          icon: "ChevronLast",
+          label: "Oldest page",
+          page: totalPages,
+          disabled: page >= totalPages,
+        })}
+      </footer>
+    `;
+  }
+
+  renderPageButton({ icon, label, page, disabled }) {
+    return `
+      <button
+        type="button"
+        class="log-page-button"
+        data-action="set-log-page"
+        data-page="${escapeHtml(`${page}`)}"
+        aria-label="${escapeHtml(label)}"
+        title="${escapeHtml(label)}"
+        ${disabled ? "disabled" : ""}
+      >
+        ${renderInlineIcon(icon, label, "log-page-icon")}
+      </button>
     `;
   }
 

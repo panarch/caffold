@@ -55,8 +55,12 @@ struct GitDiffQuery {
 struct GitLogQuery {
     #[serde(default)]
     path: String,
-    #[serde(default = "default_git_log_limit")]
-    limit: usize,
+    #[serde(default = "default_git_log_page")]
+    page: usize,
+    #[serde(rename = "perPage")]
+    per_page: Option<usize>,
+    #[serde(default)]
+    limit: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -225,7 +229,11 @@ fn default_diff_kind() -> String {
     "unstaged".to_string()
 }
 
-fn default_git_log_limit() -> usize {
+fn default_git_log_page() -> usize {
+    1
+}
+
+fn default_git_log_per_page() -> usize {
     50
 }
 
@@ -405,9 +413,13 @@ async fn git_log(
     State(state): State<AppState>,
     Query(query): Query<GitLogQuery>,
 ) -> Result<Json<GitLogResponse>, ApiError> {
+    let per_page = query
+        .per_page
+        .or(query.limit)
+        .unwrap_or_else(default_git_log_per_page);
     state
         .fs
-        .git_log(&query.path, query.limit)
+        .git_log(&query.path, query.page, per_page)
         .map(Json)
         .map_err(ApiError::from)
 }

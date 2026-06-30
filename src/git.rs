@@ -120,14 +120,36 @@ pub fn diff(repository: &Repository, repo_relative_path: &str, kind: &str) -> Op
         .map(|stdout| stdout.trim_end().to_string())
 }
 
-pub fn log_entries(repository: &Repository, limit: usize) -> Option<Vec<LogEntry>> {
-    let limit = limit.clamp(1, 100).to_string();
+pub fn log_count(repository: &Repository) -> Option<usize> {
+    let output = run_git_owned_allowing_status(
+        &repository.root,
+        &[
+            "rev-list".to_string(),
+            "--count".to_string(),
+            "HEAD".to_string(),
+        ],
+        &[0, 128],
+    )?;
+    let count = String::from_utf8_lossy(&output);
+    let count = count.trim();
+    if count.is_empty() {
+        return Some(0);
+    }
+
+    count.parse().ok()
+}
+
+pub fn log_entries(repository: &Repository, page: usize, per_page: usize) -> Option<Vec<LogEntry>> {
+    let per_page = per_page.clamp(1, 100);
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
     let args = vec![
         "log".to_string(),
         "--date=unix".to_string(),
         "--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%at%x1f%s%x1f%b%x1e".to_string(),
+        "--skip".to_string(),
+        offset.to_string(),
         "-n".to_string(),
-        limit,
+        per_page.to_string(),
     ];
     let output = run_git_owned_allowing_status(&repository.root, &args, &[0, 128])?;
     Some(parse_log_entries(&output))
@@ -471,12 +493,17 @@ mod tests {
         );
 
         let repository = repository_for(temp.path()).unwrap();
-        let log = log_entries(&repository, 10).unwrap();
+        assert_eq!(log_count(&repository), Some(2));
+
+        let log = log_entries(&repository, 1, 10).unwrap();
         assert_eq!(log[0].subject, "Update sample");
         assert_eq!(
             log[0].body,
             "Explain the sample update.\n\nKeep the body available."
         );
+
+        let older_log = log_entries(&repository, 2, 1).unwrap();
+        assert_eq!(older_log[0].subject, "Add sample");
 
         let files = commit_files(&repository, &log[0].sha).unwrap();
         assert_eq!(

@@ -97,6 +97,12 @@ pub struct GitStatusResponse {
 pub struct GitLogResponse {
     pub repository: DirectoryGitInfo,
     pub commits: Vec<GitCommitSummary>,
+    pub page: usize,
+    pub per_page: usize,
+    pub total_commits: usize,
+    pub total_pages: usize,
+    pub has_previous: bool,
+    pub has_next: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -479,10 +485,32 @@ impl RootedFs {
         })
     }
 
-    pub fn git_log(&self, requested_path: &str, limit: usize) -> Result<GitLogResponse, FsError> {
+    pub fn git_log(
+        &self,
+        requested_path: &str,
+        page: usize,
+        per_page: usize,
+    ) -> Result<GitLogResponse, FsError> {
         let repository = self.repository_for_request(requested_path)?;
         let repository_info = self.git_info_for_repository(&repository)?;
-        let commits = git::log_entries(&repository, limit)
+        let per_page = per_page.clamp(1, 100);
+        let requested_page = page.max(1);
+        let total_commits =
+            git::log_count(&repository).ok_or_else(|| FsError::GitCommandFailed {
+                action: "count log",
+                path: requested_path.to_string(),
+            })?;
+        let total_pages = if total_commits == 0 {
+            0
+        } else {
+            total_commits.div_ceil(per_page)
+        };
+        let page = if total_pages == 0 {
+            1
+        } else {
+            requested_page.min(total_pages)
+        };
+        let commits = git::log_entries(&repository, page, per_page)
             .ok_or_else(|| FsError::GitCommandFailed {
                 action: "read log",
                 path: requested_path.to_string(),
@@ -494,6 +522,12 @@ impl RootedFs {
         Ok(GitLogResponse {
             repository: repository_info,
             commits,
+            page,
+            per_page,
+            total_commits,
+            total_pages,
+            has_previous: page > 1 && total_pages > 0,
+            has_next: page < total_pages,
         })
     }
 
@@ -1119,13 +1153,28 @@ mod tests {
         );
 
         let rooted = RootedFs::new(temp.path()).unwrap();
-        let log = rooted.git_log("repo", 10).unwrap();
+        let log = rooted.git_log("repo", 1, 10).unwrap();
         assert_eq!(log.repository.root_path, "repo");
+        assert_eq!(log.page, 1);
+        assert_eq!(log.per_page, 10);
+        assert_eq!(log.total_commits, 2);
+        assert_eq!(log.total_pages, 1);
+        assert!(!log.has_previous);
+        assert!(!log.has_next);
         assert_eq!(log.commits[0].subject, "Update sample");
         assert_eq!(
             log.commits[0].body,
             "Explain the sample update.\n\nKeep the body available."
         );
+
+        let older_log = rooted.git_log("repo", 2, 1).unwrap();
+        assert_eq!(older_log.page, 2);
+        assert_eq!(older_log.per_page, 1);
+        assert_eq!(older_log.total_commits, 2);
+        assert_eq!(older_log.total_pages, 2);
+        assert!(older_log.has_previous);
+        assert!(!older_log.has_next);
+        assert_eq!(older_log.commits[0].subject, "Add sample");
 
         let commit = rooted.git_commit("repo", &log.commits[0].sha).unwrap();
         assert_eq!(
