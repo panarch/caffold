@@ -20,6 +20,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "components/changes-tree.js" => {
             Some(js(include_str!("../frontend/components/changes-tree.js")))
         }
+        "components/commit-changes-tree.css" => Some(css(include_str!(
+            "../frontend/components/commit-changes-tree.css"
+        ))),
+        "components/commit-changes-tree.js" => Some(js(include_str!(
+            "../frontend/components/commit-changes-tree.js"
+        ))),
         "components/code-viewer.css" => {
             Some(css(include_str!("../frontend/components/code-viewer.css")))
         }
@@ -50,6 +56,8 @@ pub fn get(path: &str) -> Option<StaticAsset> {
             Some(js(include_str!("../frontend/components/header-actions.js")))
         }
         "components/icons.js" => Some(js(include_str!("../frontend/components/icons.js"))),
+        "components/log-list.css" => Some(css(include_str!("../frontend/components/log-list.css"))),
+        "components/log-list.js" => Some(js(include_str!("../frontend/components/log-list.js"))),
         "components/pathbar.css" => Some(css(include_str!("../frontend/components/pathbar.css"))),
         "components/pathbar.js" => Some(js(include_str!("../frontend/components/pathbar.js"))),
         "components/project-switcher.css" => Some(css(include_str!(
@@ -57,6 +65,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         ))),
         "components/project-switcher.js" => Some(js(include_str!(
             "../frontend/components/project-switcher.js"
+        ))),
+        "components/review-workspace.css" => Some(css(include_str!(
+            "../frontend/components/review-workspace.css"
+        ))),
+        "components/review-workspace.js" => Some(js(include_str!(
+            "../frontend/components/review-workspace.js"
         ))),
         _ => None,
     }

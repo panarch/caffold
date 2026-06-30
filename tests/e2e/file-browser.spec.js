@@ -30,6 +30,7 @@ test.beforeEach(async ({ page }) => {
         export const FolderGit2 = Folder;
         export const FolderOpen = Folder;
         export const FolderSymlink = Folder;
+        export const History = [["path", { d: "M3 12a9 9 0 1 0 3-6.7" }], ["path", { d: "M3 3v6h6" }], ["path", { d: "M12 7v5l3 2" }]];
         export const Info = [["circle", { cx: "12", cy: "12", r: "10" }], ["path", { d: "M12 16v-4" }], ["path", { d: "M12 8h.01" }]];
         export const Database = [["ellipse", { cx: "12", cy: "5", rx: "8", ry: "3" }], ["path", { d: "M4 5v10c0 1.7 3.6 3 8 3s8-1.3 8-3V5" }]];
         export const Link = [["path", { d: "M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1" }]];
@@ -37,6 +38,7 @@ test.beforeEach(async ({ page }) => {
         export const PanelTopOpen = [["rect", { x: "3", y: "4", width: "18", height: "16", rx: "2" }], ["path", { d: "M3 9h18" }]];
         export const Pencil = [["path", { d: "M17 3a2.8 2.8 0 0 1 4 4L7 21H3v-4z" }]];
         export const Trash2 = [["path", { d: "M3 6h18" }], ["path", { d: "M8 6V4h8v2" }], ["path", { d: "M19 6l-1 15H6L5 6" }]];
+        export const X = [["path", { d: "M18 6 6 18" }], ["path", { d: "m6 6 12 12" }]];
         export function createElement(iconNode, attrs = {}) {
           const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
           const baseAttrs = {
@@ -290,7 +292,7 @@ test("scrolls long names horizontally in Files and Changes", async ({ page }) =>
   await expectHorizontalScroller(page, ".file-list");
 
   await page.locator('button[data-entry-path="src"]').click();
-  const gitButton = page.locator("codger-header-actions .header-action-button");
+  const gitButton = page.locator('codger-header-actions button[data-action="open-diff-workspace"]');
   await expect(gitButton).toBeVisible();
   await gitButton.click();
   await expect(page.locator(`button[data-change-path="${LONG_CHANGE_FILE}"]`)).toBeVisible();
@@ -348,7 +350,7 @@ test("keeps list scroll positions when selecting files and changes", async ({ pa
   await expectPreservedScroll(fileList, beforeFileScroll);
 
   await page.locator('button[data-entry-path="src"]').click();
-  const gitButton = page.locator("codger-header-actions .header-action-button");
+  const gitButton = page.locator('codger-header-actions button[data-action="open-diff-workspace"]');
   await expect(gitButton).toBeVisible();
   await gitButton.click();
 
@@ -365,20 +367,53 @@ test("keeps list scroll positions when selecting files and changes", async ({ pa
 
 test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   const longContextLine = ` context line ${"long-diff-token-".repeat(36)}`;
+  const repository = { rootPath: "src", branch: "main", dirty: true };
 
-  await page.route(/\/api\/git\/diff(?:\?|$)/, (route) =>
+  await page.route(/\/api\/git\/status(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        repository: { rootPath: "src", branch: "main", dirty: true },
-        path: "src/example.rs",
-        repoRelativePath: "example.rs",
+        repository,
+        files: [
+          {
+            path: "src/example.rs",
+            repoRelativePath: "example.rs",
+            status: " M",
+            category: "unstaged",
+            staged: false,
+            unstaged: true,
+            untracked: false,
+          },
+          {
+            path: "src/deleted.rs",
+            repoRelativePath: "deleted.rs",
+            status: " D",
+            category: "unstaged",
+            staged: false,
+            unstaged: true,
+            untracked: false,
+          },
+        ],
+      }),
+    }),
+  );
+
+  await page.route(/\/api\/git\/diff(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    const file = url.searchParams.get("file");
+
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        path: file,
+        repoRelativePath: file.replace(/^src\//, ""),
         kind: "unstaged",
         diff: [
-          "diff --git a/example.rs b/example.rs",
+          `diff --git a/${file.replace(/^src\//, "")} b/${file.replace(/^src\//, "")}`,
           "index 1111111..2222222 100644",
-          "--- a/example.rs",
-          "+++ b/example.rs",
+          `--- a/${file.replace(/^src\//, "")}`,
+          `+++ b/${file.replace(/^src\//, "")}`,
           "@@ -10,4 +10,5 @@ pub fn sample()",
           longContextLine,
           "-old line",
@@ -387,30 +422,46 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
           " trailing line",
         ].join("\n"),
       }),
-    }),
-  );
+    });
+  });
 
   await page.goto("/");
   await page.locator('button[data-entry-path="src"]').click();
 
-  const gitButton = page.locator("codger-header-actions .header-action-button");
+  const gitButton = page.locator('codger-header-actions button[data-action="open-diff-workspace"]');
   await expect(gitButton).toBeVisible();
   await expect(page.locator("codger-pathbar .header-action-button")).toHaveCount(0);
   await expect(gitButton.locator(".header-action-count")).not.toHaveText("");
   await expect(gitButton.locator(".header-action-icon")).toBeVisible();
   await expect(gitButton.locator(".header-action-label")).toHaveText("Diff");
   await expect(gitButton).not.toContainText("master");
-  await expect(gitButton).toHaveAttribute("title", "Show changes");
+  await expect(gitButton).toHaveAttribute("title", "Open Diff");
 
   await gitButton.click();
-  await expect(gitButton).toHaveClass(/is-active/);
-  await expect(gitButton).toHaveAttribute("title", "Show files");
-  await expect(page.locator("codger-file-list")).toBeHidden();
-  await expect(page.locator("codger-changes-tree")).toContainText("Untracked");
+  const workspace = page.locator("codger-review-workspace");
+  await expect(workspace).toBeVisible();
+  await expect(workspace).toHaveAttribute("data-workspace-mode", "diff");
+  await expect(workspace.getByRole("button", { name: "Close review workspace" })).toBeVisible();
+  await expect(page.locator("codger-changes-tree")).toContainText("Unstaged");
   await expect(page.locator("codger-changes-tree")).toContainText("example.rs");
+  await expect(page.locator("codger-changes-tree")).toContainText("deleted.rs");
 
   await page.locator('button[data-change-path="src/example.rs"]').click();
-  await expect(page.locator("codger-file-viewer")).toContainText("example.rs");
+  await expect(page.locator(".workspace-mode-diff codger-review-file-viewer")).toContainText(
+    "example.rs",
+  );
+  await expect(page.locator(".workspace-mode-diff .viewer-subtitle")).toHaveText(
+    "Modified · Unstaged",
+  );
+  await expectAlignedWorkspaceHeaders(page, [
+    "codger-review-workspace .review-workspace-header",
+    "codger-changes-tree .changes-tree-panel > header",
+    ".workspace-mode-diff codger-review-file-viewer .viewer-panel > header",
+  ]);
+  await expectMatchingPaneTitleSizes(page, [
+    "codger-changes-tree .changes-tree-panel > header",
+    ".workspace-mode-diff codger-review-file-viewer .viewer-panel > header",
+  ]);
   await expect(page.locator("codger-diff-viewer")).toContainText("@@ -10,4 +10,5 @@");
   await expect(page.locator("codger-diff-viewer")).toContainText("old line");
   await expect(page.locator("codger-diff-viewer")).toContainText("new line");
@@ -436,9 +487,123 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   await expect(trailingRow.locator(".diff-old-line")).toHaveText("12");
   await expect(trailingRow.locator(".diff-new-line")).toHaveText("13");
 
-  await gitButton.click();
-  await expect(gitButton).not.toHaveClass(/is-active/);
+  await page.locator('button[data-change-path="src/deleted.rs"]').click();
+  await expect(page.locator(".workspace-mode-diff .viewer-subtitle")).toHaveText(
+    "Deleted · Unstaged",
+  );
+
+  await workspace.getByRole("button", { name: "Close review workspace" }).click();
+  await expect(workspace).toBeHidden();
   await expect(page.locator("codger-file-list")).toBeVisible();
+});
+
+test("opens commit diffs from Log mode", async ({ page }) => {
+  const commit = {
+    sha: "abcdef1234567890abcdef1234567890abcdef12",
+    shortSha: "abcdef1",
+    subject: "Update planner function",
+    authorName: "Codger",
+    authorEmail: "codger@example.test",
+    authorTimeMs: 1_767_000_000_000,
+  };
+  const repository = { rootPath: "src", branch: "main", dirty: true };
+
+  await page.route(/\/api\/git\/log(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        commits: [commit],
+      }),
+    }),
+  );
+
+  await page.route(/\/api\/git\/commit(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        commit,
+        files: [
+          {
+            path: "src/planner/function.rs",
+            repoRelativePath: "planner/function.rs",
+            status: "M",
+          },
+          {
+            path: "src/runtime/lib.rs",
+            repoRelativePath: "runtime/lib.rs",
+            status: "A",
+          },
+        ],
+      }),
+    }),
+  );
+
+  await page.route(/\/api\/git\/commit-diff(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    const file = url.searchParams.get("file");
+
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        path: file,
+        repoRelativePath: file.replace(/^src\//, ""),
+        kind: "commit abcdef1",
+        diff: [
+          `diff --git a/${file.replace(/^src\//, "")} b/${file.replace(/^src\//, "")}`,
+          "index 1111111..2222222 100644",
+          `--- a/${file.replace(/^src\//, "")}`,
+          `+++ b/${file.replace(/^src\//, "")}`,
+          "@@ -1,1 +1,2 @@",
+          "-old planner line",
+          "+new planner line",
+          "+another planner line",
+        ].join("\n"),
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await page.locator('button[data-entry-path="src"]').click();
+
+  const logButton = page.locator('codger-header-actions button[data-action="open-log-workspace"]');
+  await expect(logButton.locator(".header-action-label")).toHaveText("Log");
+  await expect(logButton).toHaveAttribute("title", "Open Log");
+  await logButton.click();
+  const workspace = page.locator("codger-review-workspace");
+  await expect(workspace).toBeVisible();
+  await expect(workspace).toHaveAttribute("data-workspace-mode", "log");
+  await expect(page.locator("codger-log-list")).toContainText("Update planner function");
+  await expect(page.locator("codger-log-list")).toContainText("abcdef1");
+
+  await page.locator('button[data-commit-sha="abcdef1234567890abcdef1234567890abcdef12"]').click();
+  await expect(page.locator("codger-commit-changes-tree")).toContainText("planner");
+  await expect(page.locator("codger-commit-changes-tree")).toContainText("function.rs");
+  await expect(page.locator('button[data-commit-path="src/planner/function.rs"]')).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  await expect(page.locator(".workspace-mode-log .viewer-subtitle")).toHaveText(
+    "Modified · Commit abcdef1",
+  );
+  await expectAlignedWorkspaceHeaders(page, [
+    "codger-review-workspace .review-workspace-header",
+    "codger-log-list .log-list-panel > header",
+    "codger-commit-changes-tree .commit-tree-panel > header",
+    ".workspace-mode-log codger-review-file-viewer .viewer-panel > header",
+  ]);
+  await expectMatchingPaneTitleSizes(page, [
+    "codger-log-list .log-list-panel > header",
+    "codger-commit-changes-tree .commit-tree-panel > header",
+    ".workspace-mode-log codger-review-file-viewer .viewer-panel > header",
+  ]);
+  await expect(page.locator("codger-diff-viewer")).toContainText("old planner line");
+  await expect(page.locator("codger-diff-viewer")).toContainText("new planner line");
+
+  await workspace.getByRole("button", { name: "Close review workspace" }).click();
+  await expect(workspace).toBeHidden();
 });
 
 test("restores the last opened directory after reload", async ({ page }) => {
@@ -605,6 +770,43 @@ async function expectUnifiedDiffRowsShareScrollWidth(page) {
   expect(scrollState.minRowWidth).toBeGreaterThanOrEqual(scrollState.tableWidth - 1);
   expect(scrollState.maxRowWidth).toBeLessThanOrEqual(scrollState.tableWidth + 1);
   expect(scrollState.transparentGutterCount).toBe(0);
+}
+
+async function expectAlignedWorkspaceHeaders(page, selectors) {
+  const metrics = await page.evaluate((headerSelectors) => {
+    return headerSelectors.map((selector) => {
+      const element = document.querySelector(selector);
+      return {
+        height: element?.getBoundingClientRect().height ?? 0,
+        clientHeight: element?.clientHeight ?? 0,
+        scrollHeight: element?.scrollHeight ?? 0,
+      };
+    });
+  }, selectors);
+  const heights = metrics.map((metric) => metric.height);
+
+  const minHeight = Math.min(...heights);
+  const maxHeight = Math.max(...heights);
+
+  expect(minHeight).toBeGreaterThan(0);
+  expect(maxHeight - minHeight).toBeLessThanOrEqual(1);
+  for (const metric of metrics) {
+    expect(metric.scrollHeight).toBeLessThanOrEqual(metric.clientHeight + 1);
+  }
+}
+
+async function expectMatchingPaneTitleSizes(page, selectors) {
+  const fontSizes = await page.evaluate((headerSelectors) => {
+    return headerSelectors.map((selector) => {
+      const heading = document.querySelector(`${selector} h2`);
+      return Number.parseFloat(window.getComputedStyle(heading).fontSize);
+    });
+  }, selectors);
+  const minSize = Math.min(...fontSizes);
+  const maxSize = Math.max(...fontSizes);
+
+  expect(minSize).toBeGreaterThan(0);
+  expect(maxSize - minSize).toBeLessThanOrEqual(0.1);
 }
 
 async function stabilizeDynamicText(page) {

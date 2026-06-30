@@ -24,6 +24,18 @@ export async function getGitDiff(path = "", file, kind = "unstaged") {
   return requestJson("/api/git/diff", { path, file, kind });
 }
 
+export async function getGitLog(path = "", limit = 50) {
+  return requestJson("/api/git/log", { path, limit });
+}
+
+export async function getGitCommit(path = "", sha) {
+  return requestJson("/api/git/commit", { path, sha });
+}
+
+export async function getGitCommitDiff(path = "", sha, file) {
+  return requestJson("/api/git/commit-diff", { path, sha, file });
+}
+
 export async function listProjects() {
   return requestJson("/api/projects");
 }

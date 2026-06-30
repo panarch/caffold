@@ -13,8 +13,8 @@ use tracing::info;
 
 use crate::{
     fs::{
-        FileResponse, FsError, GitDiffResponse, GitStatusResponse, ListResponse, MAX_FILE_BYTES,
-        ProjectRoot, RootedFs,
+        FileResponse, FsError, GitCommitResponse, GitDiffResponse, GitLogResponse,
+        GitStatusResponse, ListResponse, MAX_FILE_BYTES, ProjectRoot, RootedFs,
     },
     project_store::{ProjectRecord, ProjectStore, ProjectStoreError},
     static_assets,
@@ -49,6 +49,29 @@ struct GitDiffQuery {
     file: String,
     #[serde(default = "default_diff_kind")]
     kind: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitLogQuery {
+    #[serde(default)]
+    path: String,
+    #[serde(default = "default_git_log_limit")]
+    limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitCommitQuery {
+    #[serde(default)]
+    path: String,
+    sha: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitCommitDiffQuery {
+    #[serde(default)]
+    path: String,
+    sha: String,
+    file: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -187,6 +210,9 @@ fn router_with_state(state: AppState) -> Router {
         .route("/api/project-candidate", get(project_candidate))
         .route("/api/git/status", get(git_status))
         .route("/api/git/diff", get(git_diff))
+        .route("/api/git/log", get(git_log))
+        .route("/api/git/commit", get(git_commit))
+        .route("/api/git/commit-diff", get(git_commit_diff))
         .route("/assets/{*path}", get(asset))
         .with_state(state)
 }
@@ -197,6 +223,10 @@ fn default_data_dir() -> anyhow::Result<PathBuf> {
 
 fn default_diff_kind() -> String {
     "unstaged".to_string()
+}
+
+fn default_git_log_limit() -> usize {
+    50
 }
 
 async fn shutdown_signal() {
@@ -367,6 +397,39 @@ async fn git_diff(
     state
         .fs
         .git_diff(&query.path, &query.file, &query.kind)
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
+async fn git_log(
+    State(state): State<AppState>,
+    Query(query): Query<GitLogQuery>,
+) -> Result<Json<GitLogResponse>, ApiError> {
+    state
+        .fs
+        .git_log(&query.path, query.limit)
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
+async fn git_commit(
+    State(state): State<AppState>,
+    Query(query): Query<GitCommitQuery>,
+) -> Result<Json<GitCommitResponse>, ApiError> {
+    state
+        .fs
+        .git_commit(&query.path, &query.sha)
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
+async fn git_commit_diff(
+    State(state): State<AppState>,
+    Query(query): Query<GitCommitDiffQuery>,
+) -> Result<Json<GitDiffResponse>, ApiError> {
+    state
+        .fs
+        .git_commit_diff(&query.path, &query.sha, &query.file)
         .map(Json)
         .map_err(ApiError::from)
 }

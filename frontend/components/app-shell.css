@@ -42,8 +42,7 @@ codger-app-shell .app-main {
   min-height: 0;
 }
 
-codger-app-shell .app-main > codger-file-list,
-codger-app-shell .app-main > codger-changes-tree {
+codger-app-shell .app-main > codger-file-list {
   grid-column: 1;
 }
 
@@ -84,8 +83,7 @@ codger-app-shell.is-resizing-left-panel {
     grid-template-rows: minmax(0, 36dvh) minmax(0, 1fr);
   }
 
-  codger-app-shell .app-main > codger-file-list,
-  codger-app-shell .app-main > codger-changes-tree {
+  codger-app-shell .app-main > codger-file-list {
     grid-column: 1;
     grid-row: 1;
   }

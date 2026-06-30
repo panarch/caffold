@@ -9,16 +9,16 @@ class CodgerHeaderActions extends HTMLElement {
 
     this.initialized = true;
     this.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-action='toggle-git-mode']");
+      const button = event.target.closest("button[data-action]");
       if (!button) {
         return;
       }
 
-      this.dispatchEvent(
-        new CustomEvent("codger:toggle-git-mode", {
-          bubbles: true,
-        }),
-      );
+      const eventName =
+        button.dataset.action === "open-log-workspace"
+          ? "codger:open-log-workspace"
+          : "codger:open-diff-workspace";
+      this.dispatchEvent(new CustomEvent(eventName, { bubbles: true }));
     });
     this.boundIconsReady = () => this.render();
     window.addEventListener("codger:icons-ready", this.boundIconsReady);
@@ -54,31 +54,53 @@ class CodgerHeaderActions extends HTMLElement {
       return "";
     }
 
-    const count = gitStatus.count;
-    const countLabel = count === null || count === undefined ? "" : `${count}`;
-    const className = ["header-action-button", gitStatus.active ? "is-active" : ""]
-      .filter(Boolean)
-      .join(" ");
-    const actionLabel = gitStatus.active ? "Show files" : "Show changes";
+    return `
+      ${this.renderAction({
+        action: "open-diff-workspace",
+        icon: "FileDiff",
+        label: "Diff",
+        count: gitStatus.count,
+        title: "Open Diff",
+        metricLabel: "changed",
+      })}
+      ${this.renderAction({
+        action: "open-log-workspace",
+        icon: "History",
+        label: "Log",
+        title: "Open Log",
+      })}
+    `;
+  }
+
+  renderAction({
+    action,
+    icon,
+    label,
+    count = null,
+    title,
+    metricLabel = "",
+  }) {
+    const className = "header-action-button";
+    const actionLabel = title;
+    const countText = count === null || count === undefined ? "" : `${count}`.trim();
     const countAria =
-      count === null || count === undefined
-        ? ""
-        : `, ${count} changed ${count === 1 ? "file" : "files"}`;
+      countText && metricLabel
+        ? `, ${countText} ${metricLabel} ${count === 1 ? "file" : "files"}`
+        : "";
 
     return `
       <button
         type="button"
         class="${escapeHtml(className)}"
-        data-action="toggle-git-mode"
+        data-action="${escapeHtml(action)}"
         title="${escapeHtml(actionLabel)}"
         aria-label="${escapeHtml(`${actionLabel}${countAria}`)}"
-        aria-pressed="${gitStatus.active ? "true" : "false"}"
       >
-        ${renderInlineIcon("FileDiff", actionLabel, "header-action-icon")}
-        <span class="header-action-label">Diff</span>
+        ${renderInlineIcon(icon, actionLabel, "header-action-icon")}
+        <span class="header-action-label">${escapeHtml(label)}</span>
         ${
-          countLabel.trim()
-            ? `<span class="header-action-count">${escapeHtml(countLabel.trim())}</span>`
+          countText
+            ? `<span class="header-action-count">${escapeHtml(countText)}</span>`
             : ""
         }
       </button>

@@ -33,12 +33,6 @@ codger-header-actions .header-action-button:focus-visible {
   outline: none;
 }
 
-codger-header-actions .header-action-button.is-active {
-  border-color: #abcbbf;
-  background: #f7fbf8;
-  color: #0d5f47;
-}
-
 codger-header-actions .header-action-icon {
   display: block;
   width: 1rem;
@@ -59,8 +53,4 @@ codger-header-actions .header-action-count {
   font-variant-numeric: tabular-nums;
   line-height: 1;
   text-align: right;
-}
-
-codger-header-actions .header-action-button.is-active .header-action-count {
-  color: #0d5f47;
 }

@@ -4,8 +4,12 @@ import { imageUrl } from "../api.js";
 import "./code-viewer.js";
 import "./diff-viewer.js";
 
+let viewerInstanceId = 0;
+
 class CodgerFileViewer extends HTMLElement {
   connectedCallback() {
+    this.ensureDetailsPopoverId();
+
     if (!this.initialized) {
       this.initialized = true;
       this.boundIconsReady = () => this.render();
@@ -50,6 +54,13 @@ class CodgerFileViewer extends HTMLElement {
   setError(path, error) {
     this.state = { status: "error", path, error };
     this.render();
+  }
+
+  ensureDetailsPopoverId() {
+    if (!this.detailsPopoverId) {
+      viewerInstanceId += 1;
+      this.detailsPopoverId = `codger-viewer-details-${viewerInstanceId}`;
+    }
   }
 
   render() {
@@ -161,7 +172,9 @@ class CodgerFileViewer extends HTMLElement {
           { field: "path", label: "Path", value: diff.path },
           { field: "kind", label: "Diff", value: diff.kind },
           { field: "repository", label: "Repository", value: diff.repository.rootPath || "/" },
-        ])}
+        ], {
+          subtitle: diffSubtitle(diff),
+        })}
         <codger-diff-viewer></codger-diff-viewer>
       </section>
     `;
@@ -169,13 +182,22 @@ class CodgerFileViewer extends HTMLElement {
     this.querySelector("codger-diff-viewer").setDiff(diff);
   }
 
-  renderHeader(title, metadata) {
-    const popoverId = "codger-viewer-details";
+  renderHeader(title, metadata, options = {}) {
+    this.ensureDetailsPopoverId();
+    const popoverId = this.detailsPopoverId;
+    const subtitle = options.subtitle ?? "";
 
     return `
       <header class="viewer-header">
         <div class="viewer-title-row">
-          <h2 title="${escapeHtml(title)}">${escapeHtml(title)}</h2>
+          <div class="viewer-title-block">
+            <h2 title="${escapeHtml(title)}">${escapeHtml(title)}</h2>
+            ${
+              subtitle
+                ? `<span class="viewer-subtitle">${escapeHtml(subtitle)}</span>`
+                : ""
+            }
+          </div>
           <button
             type="button"
             class="viewer-info-button"
@@ -211,3 +233,57 @@ class CodgerFileViewer extends HTMLElement {
 }
 
 customElements.define("codger-file-viewer", CodgerFileViewer);
+customElements.define(
+  "codger-review-file-viewer",
+  class CodgerReviewFileViewer extends CodgerFileViewer {},
+);
+
+function diffSubtitle(diff) {
+  return [diffStatusLabel(diff.status), diffKindLabel(diff.kind)]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function diffKindLabel(kind) {
+  if (!kind) {
+    return "";
+  }
+
+  if (kind.startsWith("commit ")) {
+    return `Commit ${kind.slice("commit ".length)}`;
+  }
+
+  const labels = {
+    staged: "Staged",
+    unstaged: "Unstaged",
+    untracked: "Untracked",
+  };
+
+  return labels[kind] ?? kind;
+}
+
+function diffStatusLabel(status) {
+  if (!status) {
+    return "";
+  }
+
+  const code = String(status).trim() === "??"
+    ? "??"
+    : Array.from(String(status)).find((character) => character !== " ");
+
+  if (code === "??") {
+    return "Added";
+  }
+
+  const labels = {
+    A: "Added",
+    C: "Copied",
+    D: "Deleted",
+    M: "Modified",
+    R: "Renamed",
+    T: "Type changed",
+    U: "Unmerged",
+  };
+
+  return labels[code] ?? String(status).trim();
+}

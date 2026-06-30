@@ -1,0 +1,130 @@
+codger-log-list {
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+
+codger-log-list .log-list-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  height: 100%;
+}
+
+codger-log-list .log-list-panel > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  align-content: center;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+codger-log-list h2 {
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+codger-log-list .log-title-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
+codger-log-list .log-count {
+  justify-self: end;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+codger-log-list .log-branch {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--accent);
+  font-size: 0.74rem;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+codger-log-list .log-list {
+  display: block;
+  min-height: 0;
+  margin: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 4px 0;
+  list-style: none;
+}
+
+codger-log-list .log-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
+  width: 100%;
+  min-height: 38px;
+  align-items: center;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  padding: 5px 12px 5px 10px;
+  text-align: left;
+}
+
+codger-log-list .log-entry:hover,
+codger-log-list .log-entry:focus-visible {
+  border-left-color: #bdd7cc;
+  background: #f1f6f3;
+  outline: none;
+}
+
+codger-log-list .log-entry[aria-current="true"] {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+codger-log-list .log-subject,
+codger-log-list .log-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+codger-log-list .log-subject {
+  font-size: 0.84rem;
+  font-weight: 500;
+}
+
+codger-log-list .log-meta {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+codger-log-list .error-panel {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+@media (max-width: 860px) {
+  codger-log-list {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+}

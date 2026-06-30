@@ -1,4 +1,4 @@
-codger-changes-tree {
+codger-commit-changes-tree {
   display: block;
   min-width: 0;
   min-height: 0;
@@ -6,14 +6,14 @@ codger-changes-tree {
   background: var(--surface);
 }
 
-codger-changes-tree .changes-tree-panel {
+codger-commit-changes-tree .commit-tree-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
   height: 100%;
 }
 
-codger-changes-tree .changes-tree-panel > header {
+codger-commit-changes-tree .commit-tree-panel > header {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 2px;
@@ -22,7 +22,7 @@ codger-changes-tree .changes-tree-panel > header {
   border-bottom: 1px solid var(--border);
 }
 
-codger-changes-tree h2 {
+codger-commit-changes-tree h2 {
   margin: 0;
   overflow: hidden;
   font-size: 0.82rem;
@@ -32,13 +32,7 @@ codger-changes-tree h2 {
   white-space: nowrap;
 }
 
-codger-changes-tree .changes-tree-panel > header span {
-  color: var(--muted);
-  font-size: 0.74rem;
-  line-height: 1.1;
-}
-
-codger-changes-tree .changes-tree-title-row {
+codger-commit-changes-tree .commit-tree-title-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
@@ -47,25 +41,37 @@ codger-changes-tree .changes-tree-title-row {
   min-width: 0;
 }
 
-codger-changes-tree .change-count {
+codger-commit-changes-tree .commit-file-count {
   justify-self: end;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.1;
   white-space: nowrap;
 }
 
-codger-changes-tree .changes-branch {
-  display: block;
+codger-commit-changes-tree .commit-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px;
+  min-width: 0;
+  align-items: baseline;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.1;
+}
+
+codger-commit-changes-tree .commit-short-sha {
+  color: var(--accent);
+}
+
+codger-commit-changes-tree .commit-subject {
   min-width: 0;
   overflow: hidden;
-  color: var(--accent);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-codger-changes-tree .changes-branch.is-dirty {
-  color: #8a5200;
-}
-
-codger-changes-tree .changes-tree-list {
+codger-commit-changes-tree .commit-tree-list {
   --tree-indent: 12px;
   display: block;
   min-height: 0;
@@ -76,24 +82,12 @@ codger-changes-tree .changes-tree-list {
   list-style: none;
 }
 
-codger-changes-tree .changes-tree-list > li {
+codger-commit-changes-tree .commit-tree-list > li {
   width: max-content;
   min-width: 100%;
 }
 
-codger-changes-tree .change-section-label {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding: 8px 12px 4px;
-  background: var(--surface);
-  color: var(--muted);
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-codger-changes-tree .change-entry {
+codger-commit-changes-tree .commit-entry {
   display: grid;
   grid-template-columns: 1.35rem max-content;
   gap: 4px;
@@ -111,19 +105,19 @@ codger-changes-tree .change-entry {
   text-align: left;
 }
 
-codger-changes-tree .change-entry:hover,
-codger-changes-tree .change-entry:focus-visible {
+codger-commit-changes-tree .commit-entry:hover,
+codger-commit-changes-tree .commit-entry:focus-visible {
   border-left-color: #bdd7cc;
   background: #f1f6f3;
   outline: none;
 }
 
-codger-changes-tree .change-file[aria-current="true"] {
+codger-commit-changes-tree .commit-file[aria-current="true"] {
   border-left-color: var(--accent);
   background: var(--accent-soft);
 }
 
-codger-changes-tree .change-status-code {
+codger-commit-changes-tree .commit-status-code {
   align-self: center;
   color: #764600;
   font-size: 0.78rem;
@@ -131,7 +125,7 @@ codger-changes-tree .change-status-code {
   white-space: pre;
 }
 
-codger-changes-tree .change-node-label {
+codger-commit-changes-tree .commit-node-label {
   display: grid;
   grid-template-columns: 1.5rem max-content;
   gap: 6px;
@@ -140,7 +134,7 @@ codger-changes-tree .change-node-label {
   margin-left: calc(var(--tree-depth, 0) * var(--tree-indent));
 }
 
-codger-changes-tree .entry-icon {
+codger-commit-changes-tree .entry-icon {
   display: inline-grid;
   width: 1.5rem;
   height: 1.5rem;
@@ -148,27 +142,27 @@ codger-changes-tree .entry-icon {
   justify-self: center;
 }
 
-codger-changes-tree .entry-icon-svg {
+codger-commit-changes-tree .entry-icon-svg {
   display: block;
   width: 1.125rem;
   height: 1.125rem;
   stroke-width: 1.9;
 }
 
-codger-changes-tree .change-name {
+codger-commit-changes-tree .commit-name {
   min-width: 0;
   overflow: visible;
   text-overflow: clip;
   white-space: nowrap;
 }
 
-codger-changes-tree .error-panel {
+codger-commit-changes-tree .error-panel {
   background: var(--danger-soft);
   color: var(--danger);
 }
 
 @media (max-width: 860px) {
-  codger-changes-tree {
+  codger-commit-changes-tree {
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }

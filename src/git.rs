@@ -21,6 +21,22 @@ pub struct StatusEntry {
     pub untracked: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LogEntry {
+    pub sha: String,
+    pub short_sha: String,
+    pub subject: String,
+    pub author_name: String,
+    pub author_email: String,
+    pub author_time_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommitFile {
+    pub repo_relative_path: String,
+    pub status: String,
+}
+
 pub fn repository_for(path: &Path) -> Option<Repository> {
     let root = PathBuf::from(run_git(path, &["rev-parse", "--show-toplevel"])?)
         .canonicalize()
@@ -103,6 +119,74 @@ pub fn diff(repository: &Repository, repo_relative_path: &str, kind: &str) -> Op
         .map(|stdout| stdout.trim_end().to_string())
 }
 
+pub fn log_entries(repository: &Repository, limit: usize) -> Option<Vec<LogEntry>> {
+    let limit = limit.clamp(1, 100).to_string();
+    let args = vec![
+        "log".to_string(),
+        "--date=unix".to_string(),
+        "--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%at%x1f%s".to_string(),
+        "-n".to_string(),
+        limit,
+    ];
+    let output = run_git_owned_allowing_status(&repository.root, &args, &[0, 128])?;
+    Some(parse_log_entries(&output))
+}
+
+pub fn commit_summary(repository: &Repository, commit_sha: &str) -> Option<LogEntry> {
+    let commit_sha = normalize_commit_sha(commit_sha)?;
+    let args = vec![
+        "log".to_string(),
+        "--date=unix".to_string(),
+        "--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%at%x1f%s".to_string(),
+        "-n".to_string(),
+        "1".to_string(),
+        commit_sha.to_string(),
+    ];
+    parse_log_entries(&run_git_owned(&repository.root, &args)?)
+        .into_iter()
+        .next()
+}
+
+pub fn commit_files(repository: &Repository, commit_sha: &str) -> Option<Vec<CommitFile>> {
+    let commit_sha = normalize_commit_sha(commit_sha)?;
+    let args = vec![
+        "show".to_string(),
+        "--format=".to_string(),
+        "--name-status".to_string(),
+        "--find-renames".to_string(),
+        "--first-parent".to_string(),
+        commit_sha.to_string(),
+    ];
+
+    let output = run_git_owned(&repository.root, &args)?;
+    Some(parse_commit_files(&output))
+}
+
+pub fn commit_diff(
+    repository: &Repository,
+    commit_sha: &str,
+    repo_relative_path: &str,
+) -> Option<String> {
+    if repo_relative_path.is_empty() {
+        return None;
+    }
+
+    let commit_sha = normalize_commit_sha(commit_sha)?;
+    let args = vec![
+        "show".to_string(),
+        "--format=".to_string(),
+        "--first-parent".to_string(),
+        "--find-renames".to_string(),
+        commit_sha.to_string(),
+        "--".to_string(),
+        repo_relative_path.to_string(),
+    ];
+
+    String::from_utf8(run_git_owned(&repository.root, &args)?)
+        .ok()
+        .map(|stdout| stdout.trim_end().to_string())
+}
+
 fn current_branch(path: &Path) -> Option<String> {
     let branch = run_git(path, &["branch", "--show-current"])?;
     if !branch.is_empty() {
@@ -122,6 +206,30 @@ fn run_git(path: &Path, args: &[&str]) -> Option<String> {
 
 fn run_git_bytes(path: &Path, args: &[&str]) -> Option<Vec<u8>> {
     run_git_allowing_status(path, args, &[0])
+}
+
+fn run_git_owned(path: &Path, args: &[String]) -> Option<Vec<u8>> {
+    run_git_owned_allowing_status(path, args, &[0])
+}
+
+fn run_git_owned_allowing_status(
+    path: &Path,
+    args: &[String],
+    allowed_codes: &[i32],
+) -> Option<Vec<u8>> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(args)
+        .output()
+        .ok()?;
+
+    let status_code = output.status.code()?;
+    if !allowed_codes.contains(&status_code) {
+        return None;
+    }
+
+    Some(output.stdout)
 }
 
 fn run_git_allowing_status(path: &Path, args: &[&str], allowed_codes: &[i32]) -> Option<Vec<u8>> {
@@ -195,6 +303,64 @@ fn parse_status_entries(output: &[u8]) -> Vec<StatusEntry> {
     }
 
     entries
+}
+
+fn parse_log_entries(output: &[u8]) -> Vec<LogEntry> {
+    String::from_utf8_lossy(output)
+        .lines()
+        .filter_map(parse_log_entry)
+        .collect()
+}
+
+fn parse_log_entry(line: &str) -> Option<LogEntry> {
+    let mut parts = line.splitn(6, '\x1f');
+    let sha = parts.next()?.to_string();
+    let short_sha = parts.next()?.to_string();
+    let author_name = parts.next()?.to_string();
+    let author_email = parts.next()?.to_string();
+    let author_time_ms = parts.next()?.parse::<u64>().ok()? * 1000;
+    let subject = parts.next()?.to_string();
+
+    Some(LogEntry {
+        sha,
+        short_sha,
+        subject,
+        author_name,
+        author_email,
+        author_time_ms,
+    })
+}
+
+fn parse_commit_files(output: &[u8]) -> Vec<CommitFile> {
+    String::from_utf8_lossy(output)
+        .lines()
+        .filter_map(parse_commit_file)
+        .collect()
+}
+
+fn parse_commit_file(line: &str) -> Option<CommitFile> {
+    let mut parts = line.split('\t');
+    let raw_status = parts.next()?;
+    let first_path = parts.next()?;
+    let status = raw_status.chars().next()?.to_string();
+    let repo_relative_path = if matches!(status.as_str(), "R" | "C") {
+        parts.next().unwrap_or(first_path)
+    } else {
+        first_path
+    };
+
+    Some(CommitFile {
+        repo_relative_path: repo_relative_path.to_string(),
+        status,
+    })
+}
+
+fn normalize_commit_sha(commit_sha: &str) -> Option<&str> {
+    let commit_sha = commit_sha.trim();
+    let valid_length = (4..=64).contains(&commit_sha.len());
+    let valid_chars = commit_sha.bytes().all(|byte| byte.is_ascii_hexdigit());
+
+    (valid_length && valid_chars).then_some(commit_sha)
 }
 
 #[cfg(test)]
@@ -273,6 +439,52 @@ mod tests {
         assert!(!ignored.contains("visible.log"));
     }
 
+    #[test]
+    fn reads_log_files_and_diff_for_commits() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        git(temp.path(), &["init"]);
+        fs::write(temp.path().join("sample.txt"), "old\n").unwrap();
+        git(temp.path(), &["add", "sample.txt"]);
+        commit(temp.path(), "Add sample");
+        fs::write(temp.path().join("sample.txt"), "new\n").unwrap();
+        git(temp.path(), &["add", "sample.txt"]);
+        commit(temp.path(), "Update sample");
+
+        let repository = repository_for(temp.path()).unwrap();
+        let log = log_entries(&repository, 10).unwrap();
+        assert_eq!(log[0].subject, "Update sample");
+
+        let files = commit_files(&repository, &log[0].sha).unwrap();
+        assert_eq!(
+            files,
+            vec![CommitFile {
+                repo_relative_path: "sample.txt".to_string(),
+                status: "M".to_string(),
+            }]
+        );
+
+        let diff = commit_diff(&repository, &log[0].sha, "sample.txt").unwrap();
+        assert!(diff.contains("-old"));
+        assert!(diff.contains("+new"));
+    }
+
+    #[test]
+    fn parses_renamed_commit_file_paths() {
+        let files = parse_commit_files(b"R100\told.txt\tnew.txt\n");
+
+        assert_eq!(
+            files,
+            vec![CommitFile {
+                repo_relative_path: "new.txt".to_string(),
+                status: "R".to_string(),
+            }]
+        );
+    }
+
     fn git_is_available() -> bool {
         Command::new("git")
             .arg("--version")
@@ -292,6 +504,23 @@ mod tests {
             output.status.success(),
             "git failed: {}",
             String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn commit(path: &Path, message: &str) {
+        git(
+            path,
+            &[
+                "-c",
+                "user.name=Codger Test",
+                "-c",
+                "user.email=codger@example.test",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-m",
+                message,
+            ],
         );
     }
 }

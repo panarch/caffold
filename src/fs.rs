@@ -94,6 +94,40 @@ pub struct GitStatusResponse {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct GitLogResponse {
+    pub repository: DirectoryGitInfo,
+    pub commits: Vec<GitCommitSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommitResponse {
+    pub repository: DirectoryGitInfo,
+    pub commit: GitCommitSummary,
+    pub files: Vec<GitCommitFile>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommitSummary {
+    pub sha: String,
+    pub short_sha: String,
+    pub subject: String,
+    pub author_name: String,
+    pub author_email: String,
+    pub author_time_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommitFile {
+    pub path: String,
+    pub repo_relative_path: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct GitChangedFile {
     pub path: String,
     pub repo_relative_path: String,
@@ -444,6 +478,88 @@ impl RootedFs {
         })
     }
 
+    pub fn git_log(&self, requested_path: &str, limit: usize) -> Result<GitLogResponse, FsError> {
+        let repository = self.repository_for_request(requested_path)?;
+        let repository_info = self.git_info_for_repository(&repository)?;
+        let commits = git::log_entries(&repository, limit)
+            .ok_or_else(|| FsError::GitCommandFailed {
+                action: "read log",
+                path: requested_path.to_string(),
+            })?
+            .into_iter()
+            .map(git_commit_summary)
+            .collect();
+
+        Ok(GitLogResponse {
+            repository: repository_info,
+            commits,
+        })
+    }
+
+    pub fn git_commit(
+        &self,
+        requested_path: &str,
+        commit_sha: &str,
+    ) -> Result<GitCommitResponse, FsError> {
+        let repository = self.repository_for_request(requested_path)?;
+        let repository_info = self.git_info_for_repository(&repository)?;
+        let commit = git::commit_summary(&repository, commit_sha)
+            .map(git_commit_summary)
+            .ok_or_else(|| FsError::GitCommandFailed {
+                action: "read commit",
+                path: commit_sha.to_string(),
+            })?;
+        let files = git::commit_files(&repository, commit_sha)
+            .ok_or_else(|| FsError::GitCommandFailed {
+                action: "read commit files",
+                path: commit_sha.to_string(),
+            })?
+            .into_iter()
+            .map(|file| GitCommitFile {
+                path: join_relative_path(&repository_info.root_path, &file.repo_relative_path),
+                repo_relative_path: file.repo_relative_path,
+                status: file.status,
+            })
+            .collect();
+
+        Ok(GitCommitResponse {
+            repository: repository_info,
+            commit,
+            files,
+        })
+    }
+
+    pub fn git_commit_diff(
+        &self,
+        requested_path: &str,
+        commit_sha: &str,
+        file_path: &str,
+    ) -> Result<GitDiffResponse, FsError> {
+        let repository = self.repository_for_request(requested_path)?;
+        let repository_info = self.git_info_for_repository(&repository)?;
+        let logical_file_path = normalize_relative_path(file_path)?;
+        let logical_file_path = relative_path_string(&logical_file_path);
+        let repo_relative_path = strip_repo_root(&repository_info.root_path, &logical_file_path)
+            .ok_or(FsError::PathEscapesRoot)?
+            .to_string();
+        let diff =
+            git::commit_diff(&repository, commit_sha, &repo_relative_path).ok_or_else(|| {
+                FsError::GitCommandFailed {
+                    action: "read commit diff",
+                    path: file_path.to_string(),
+                }
+            })?;
+        let kind = format!("commit {}", short_commit_label(commit_sha));
+
+        Ok(GitDiffResponse {
+            repository: repository_info,
+            path: logical_file_path,
+            repo_relative_path,
+            kind,
+            diff,
+        })
+    }
+
     pub fn git_diff(
         &self,
         requested_path: &str,
@@ -760,6 +876,21 @@ fn normalize_diff_kind(kind: &str) -> &'static str {
     }
 }
 
+fn git_commit_summary(entry: git::LogEntry) -> GitCommitSummary {
+    GitCommitSummary {
+        sha: entry.sha,
+        short_sha: entry.short_sha,
+        subject: entry.subject,
+        author_name: entry.author_name,
+        author_email: entry.author_email,
+        author_time_ms: entry.author_time_ms,
+    }
+}
+
+fn short_commit_label(commit_sha: &str) -> String {
+    commit_sha.chars().take(7).collect()
+}
+
 fn join_relative_path(base: &str, child: &str) -> String {
     if base.is_empty() {
         child.to_string()
@@ -965,6 +1096,41 @@ mod tests {
     }
 
     #[test]
+    fn reads_git_log_commit_files_and_commit_diff() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let repo_path = temp.path().join("repo");
+        fs::create_dir(&repo_path).unwrap();
+        git(&repo_path, &["init"]);
+        fs::write(repo_path.join("sample.txt"), "old\n").unwrap();
+        git(&repo_path, &["add", "sample.txt"]);
+        commit(&repo_path, "Add sample");
+        fs::write(repo_path.join("sample.txt"), "new\n").unwrap();
+        git(&repo_path, &["add", "sample.txt"]);
+        commit(&repo_path, "Update sample");
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+        let log = rooted.git_log("repo", 10).unwrap();
+        assert_eq!(log.repository.root_path, "repo");
+        assert_eq!(log.commits[0].subject, "Update sample");
+
+        let commit = rooted.git_commit("repo", &log.commits[0].sha).unwrap();
+        assert_eq!(commit.files[0].path, "repo/sample.txt");
+        assert_eq!(commit.files[0].repo_relative_path, "sample.txt");
+        assert_eq!(commit.files[0].status, "M");
+
+        let diff = rooted
+            .git_commit_diff("repo", &log.commits[0].sha, "repo/sample.txt")
+            .unwrap();
+        assert_eq!(diff.repo_relative_path, "sample.txt");
+        assert!(diff.diff.contains("-old"));
+        assert!(diff.diff.contains("+new"));
+    }
+
+    #[test]
     fn rejects_parent_path_traversal() {
         let temp = tempfile::tempdir().unwrap();
         let rooted = RootedFs::new(temp.path()).unwrap();
@@ -1121,6 +1287,23 @@ mod tests {
             output.status.success(),
             "git failed: {}",
             String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn commit(path: &Path, message: &str) {
+        git(
+            path,
+            &[
+                "-c",
+                "user.name=Codger Test",
+                "-c",
+                "user.email=codger@example.test",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-m",
+                message,
+            ],
         );
     }
 }
