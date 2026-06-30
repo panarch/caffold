@@ -11,7 +11,7 @@ export default defineConfig({
   },
   webServer: {
     command:
-      "cargo run -- serve --host 127.0.0.1 --port 18765 --root tests/fixtures/home",
+      "cargo run -- serve --host 127.0.0.1 --port 18765 --root tests/fixtures/home --data-dir tests/fixtures/.codger-data",
     url: "http://127.0.0.1:18765/api/health",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

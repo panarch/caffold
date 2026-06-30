@@ -1,13 +1,17 @@
 codger-code-viewer {
   display: block;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 codger-code-viewer .code-viewer {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
   min-height: 0;
   height: 100%;
+  overflow: hidden;
   background: var(--code-bg);
   color: var(--code-text);
 }
@@ -26,6 +30,7 @@ codger-code-viewer .code-viewer > header {
 }
 
 codger-code-viewer .code-lines {
+  min-width: 0;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;

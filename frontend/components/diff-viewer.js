@@ -16,10 +16,13 @@ class CodgerDiffViewer extends HTMLElement {
 
   render() {
     const rows = parseUnifiedDiff(this.diff?.diff ?? "");
+    const codeWidth = `${diffCodeColumns(rows)}ch`;
     this.innerHTML = `
       <section class="diff-viewer" aria-label="Git diff">
         <div class="diff-lines">
-          ${rows.length === 0 ? this.renderEmpty() : rows.map((row) => this.renderRow(row)).join("")}
+          <div class="diff-table" style="--diff-code-width: ${codeWidth};">
+            ${rows.length === 0 ? this.renderEmpty() : rows.map((row) => this.renderRow(row)).join("")}
+          </div>
         </div>
       </section>
     `;
@@ -28,9 +31,11 @@ class CodgerDiffViewer extends HTMLElement {
   renderEmpty() {
     return `
       <div class="diff-row diff-row-empty">
-        <span class="diff-old-line"></span>
-        <span class="diff-new-line"></span>
-        <span class="diff-prefix"></span>
+        <span class="diff-gutter" aria-hidden="true">
+          <span class="diff-old-line"></span>
+          <span class="diff-new-line"></span>
+          <span class="diff-prefix"></span>
+        </span>
         <span class="diff-code">No diff for this file.</span>
       </div>
     `;
@@ -39,9 +44,11 @@ class CodgerDiffViewer extends HTMLElement {
   renderRow(row) {
     return `
       <div class="diff-row diff-row-${escapeHtml(row.type)}">
-        <span class="diff-old-line">${escapeHtml(row.oldLine ?? "")}</span>
-        <span class="diff-new-line">${escapeHtml(row.newLine ?? "")}</span>
-        <span class="diff-prefix">${escapeHtml(row.prefix)}</span>
+        <span class="diff-gutter">
+          <span class="diff-old-line">${escapeHtml(row.oldLine ?? "")}</span>
+          <span class="diff-new-line">${escapeHtml(row.newLine ?? "")}</span>
+          <span class="diff-prefix">${escapeHtml(row.prefix)}</span>
+        </span>
         <span class="diff-code">${escapeHtml(row.content)}</span>
       </div>
     `;
@@ -49,6 +56,24 @@ class CodgerDiffViewer extends HTMLElement {
 }
 
 customElements.define("codger-diff-viewer", CodgerDiffViewer);
+
+function diffCodeColumns(rows) {
+  const columns = rows.reduce((max, row) => {
+    return Math.max(max, monospaceColumns(row.content));
+  }, 0);
+
+  return Math.max(columns, "No diff for this file.".length, 1);
+}
+
+function monospaceColumns(text) {
+  let columns = 0;
+
+  for (const char of text) {
+    columns += char === "\t" ? 4 : 1;
+  }
+
+  return columns;
+}
 
 function parseUnifiedDiff(diffText) {
   if (!diffText) {

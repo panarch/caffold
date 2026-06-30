@@ -8,8 +8,10 @@ codger-file-viewer {
 codger-file-viewer .viewer-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
   min-height: 0;
   height: 100%;
+  overflow: hidden;
   background: var(--surface);
 }
 

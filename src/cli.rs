@@ -32,6 +32,10 @@ struct ServeArgs {
     /// Filesystem root boundary to browse. Without this, Codger starts at $HOME and allows parent navigation.
     #[arg(long, value_name = "PATH")]
     root: Option<PathBuf>,
+
+    /// Directory for Codger's local metadata database.
+    #[arg(long, value_name = "PATH")]
+    data_dir: Option<PathBuf>,
 }
 
 pub async fn run() -> anyhow::Result<()> {
@@ -49,6 +53,7 @@ pub async fn run() -> anyhow::Result<()> {
                 host: args.host,
                 port: args.port,
                 root: args.root,
+                data_dir: args.data_dir,
             })
             .await
         }

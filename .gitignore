@@ -3,6 +3,7 @@
 /playwright-report
 /test-results
 /tests/e2e/*-snapshots
+/tests/fixtures/.codger-data
 /tests/fixtures/**/.git
 .notes/
 .DS_Store

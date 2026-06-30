@@ -1,11 +1,15 @@
 codger-diff-viewer {
   display: block;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 codger-diff-viewer .diff-viewer {
+  min-width: 0;
   min-height: 0;
   height: 100%;
+  overflow: hidden;
   background: var(--code-bg);
   color: var(--code-text);
 }
@@ -14,6 +18,10 @@ codger-diff-viewer .diff-lines {
   --diff-old-width: 3.25rem;
   --diff-new-width: 3.25rem;
   --diff-prefix-width: 1.5rem;
+  --diff-gutter-width: calc(
+    var(--diff-old-width) + var(--diff-new-width) + var(--diff-prefix-width)
+  );
+  min-width: 0;
   min-height: 0;
   height: 100%;
   overflow: auto;
@@ -24,43 +32,49 @@ codger-diff-viewer .diff-lines {
   line-height: 1.55;
 }
 
+codger-diff-viewer .diff-table {
+  width: max(100%, calc(var(--diff-gutter-width) + var(--diff-code-width) + 24px));
+  min-height: 100%;
+}
+
 codger-diff-viewer .diff-row {
   display: grid;
-  grid-template-columns: var(--diff-old-width) var(--diff-new-width) var(--diff-prefix-width)
-    minmax(max-content, 1fr);
-  min-width: max-content;
+  grid-template-columns: var(--diff-gutter-width) minmax(0, 1fr);
+  width: 100%;
+  min-width: 0;
+  background: var(--code-bg);
+}
+
+codger-diff-viewer .diff-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: var(--diff-old-width) var(--diff-new-width) var(--diff-prefix-width);
+  user-select: none;
+  background: inherit;
+  border-right: 1px solid var(--border);
 }
 
 codger-diff-viewer .diff-old-line,
 codger-diff-viewer .diff-new-line,
 codger-diff-viewer .diff-prefix {
-  position: sticky;
-  z-index: 1;
-  user-select: none;
-  background: inherit;
   color: #78867d;
 }
 
-codger-diff-viewer .diff-old-line {
-  left: 0;
-  padding: 0 8px;
-  text-align: right;
-}
-
+codger-diff-viewer .diff-old-line,
 codger-diff-viewer .diff-new-line {
-  left: var(--diff-old-width);
   padding: 0 8px;
   text-align: right;
 }
 
 codger-diff-viewer .diff-prefix {
-  left: calc(var(--diff-old-width) + var(--diff-new-width));
-  border-right: 1px solid var(--border);
   padding: 0 6px;
   text-align: center;
 }
 
 codger-diff-viewer .diff-code {
+  min-width: 0;
   white-space: pre;
   padding: 0 12px;
 }

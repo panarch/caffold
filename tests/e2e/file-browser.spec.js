@@ -34,6 +34,9 @@ test.beforeEach(async ({ page }) => {
         export const Database = [["ellipse", { cx: "12", cy: "5", rx: "8", ry: "3" }], ["path", { d: "M4 5v10c0 1.7 3.6 3 8 3s8-1.3 8-3V5" }]];
         export const Link = [["path", { d: "M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1" }]];
         export const Lock = [["rect", { x: "5", y: "10", width: "14", height: "10", rx: "2" }], ["path", { d: "M8 10V7a4 4 0 0 1 8 0v3" }]];
+        export const PanelTopOpen = [["rect", { x: "3", y: "4", width: "18", height: "16", rx: "2" }], ["path", { d: "M3 9h18" }]];
+        export const Pencil = [["path", { d: "M17 3a2.8 2.8 0 0 1 4 4L7 21H3v-4z" }]];
+        export const Trash2 = [["path", { d: "M3 6h18" }], ["path", { d: "M8 6V4h8v2" }], ["path", { d: "M19 6l-1 15H6L5 6" }]];
         export function createElement(iconNode, attrs = {}) {
           const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
           const baseAttrs = {
@@ -90,6 +93,27 @@ test("delays file list loading feedback", async ({ page }) => {
 
   releaseListResponse();
   await expect(page.locator("codger-file-list")).toContainText("src");
+});
+
+test("keeps the file list visible while project metadata refresh is slow", async ({ page }) => {
+  let releaseProjectResponses;
+  const projectResponsesReleased = new Promise((resolve) => {
+    releaseProjectResponses = resolve;
+  });
+
+  await page.route(/\/api\/(?:projects|project-candidate)(?:\?|$)/, async (route) => {
+    await projectResponsesReleased;
+    await route.continue();
+  });
+
+  await page.goto("/");
+  await expect(page.locator("codger-file-list")).toContainText("src");
+
+  await page.waitForTimeout(240);
+  await expect(page.getByText("Loading files...")).toHaveCount(0);
+  await expect(page.locator("codger-file-list")).toContainText("src");
+
+  releaseProjectResponses();
 });
 
 test("browses directories and opens a source file", async ({ page }, testInfo) => {
@@ -149,6 +173,47 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
 
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "file-browser");
+});
+
+test("manages project records from the header switcher", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Project CRUD mutates shared fixture data.");
+
+  await page.goto("/");
+  const switcher = page.locator("codger-project-switcher");
+
+  await page.locator('button[data-entry-path="src"]').click();
+  await expect(switcher.locator(".project-switcher-button")).toContainText("Register");
+
+  await openProjectPopover(switcher);
+  await expect(switcher.locator(".project-candidate")).toContainText("src");
+  await switcher.locator(".project-candidate button").click();
+  await expect(switcher.locator(".project-switcher-button")).toContainText("src");
+  await expect(switcher.locator(".project-popover")).toBeHidden();
+
+  await openProjectPopover(switcher);
+  await switcher.getByRole("button", { name: "Rename src" }).click();
+  await switcher.locator('input[name="name"]').fill("Fixture Repo");
+  await switcher.getByRole("button", { name: "Save" }).click();
+  await expect(switcher.locator(".project-switcher-button")).toContainText("Fixture Repo");
+  await page.keyboard.press("Escape");
+
+  await page.locator('codger-pathbar button[data-path=""]').click();
+  await expect(page.locator("codger-pathbar")).not.toContainText("src");
+  await openProjectPopover(switcher);
+  await switcher.locator(".project-open").filter({ hasText: "Fixture Repo" }).click();
+  await expect(page.locator("codger-pathbar")).toContainText("src");
+  await expect(switcher.locator(".project-popover")).toBeHidden();
+
+  await page.reload();
+  await openProjectPopover(switcher);
+  const projectRow = switcher.locator(".project-row").filter({ hasText: "Fixture Repo" });
+  await expect(projectRow).toBeVisible();
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await projectRow.getByRole("button", { name: "Delete Fixture Repo" }).click();
+  await expect(switcher.locator(".project-row").filter({ hasText: "Fixture Repo" })).toHaveCount(
+    0,
+  );
 });
 
 test("previews image files in the viewer", async ({ page }) => {
@@ -232,6 +297,35 @@ test("scrolls long names horizontally in Files and Changes", async ({ page }) =>
   await expectHorizontalScroller(page, ".changes-tree-list");
 });
 
+test("scrolls long source lines horizontally in the code viewer", async ({ page }) => {
+  const longLine = "long-source-token-".repeat(48);
+
+  await page.route(/\/api\/file(?:\?|$)/, async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("path") !== "README.md") {
+      await route.continue();
+      return;
+    }
+
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        path: "README.md",
+        name: "README.md",
+        size: longLine.length,
+        modifiedMs: null,
+        languageHint: "markdown",
+        content: `# Fixture Home\n\n${longLine}\n`,
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await page.locator('button[data-entry-path="README.md"]').click();
+  await expect(page.locator("codger-code-viewer")).toContainText("long-source-token");
+  await expectHorizontalScroller(page, "codger-code-viewer .code-lines");
+});
+
 test("keeps list scroll positions when selecting files and changes", async ({ page }) => {
   await page.goto("/");
   await page.addStyleTag({
@@ -269,7 +363,9 @@ test("keeps list scroll positions when selecting files and changes", async ({ pa
   await expectPreservedScroll(changesList, beforeChangesScroll);
 });
 
-test("opens changed diffs from Changes mode", async ({ page }) => {
+test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
+  const longContextLine = ` context line ${"long-diff-token-".repeat(36)}`;
+
   await page.route(/\/api\/git\/diff(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -284,7 +380,7 @@ test("opens changed diffs from Changes mode", async ({ page }) => {
           "--- a/example.rs",
           "+++ b/example.rs",
           "@@ -10,4 +10,5 @@ pub fn sample()",
-          " context line",
+          longContextLine,
           "-old line",
           "+new line",
           "+another line",
@@ -312,6 +408,9 @@ test("opens changed diffs from Changes mode", async ({ page }) => {
   await expect(page.locator("codger-diff-viewer")).toContainText("@@ -10,4 +10,5 @@");
   await expect(page.locator("codger-diff-viewer")).toContainText("old line");
   await expect(page.locator("codger-diff-viewer")).toContainText("new line");
+  await expectHorizontalScroller(page, "codger-diff-viewer .diff-lines");
+  await expectUnifiedDiffRowsShareScrollWidth(page);
+  await captureReviewScreenshot(page, testInfo, "diff-viewer-horizontal-scroll");
 
   const contextRow = page.locator(".diff-row-context").filter({ hasText: "context line" });
   await expect(contextRow.locator(".diff-old-line")).toHaveText("10");
@@ -392,6 +491,15 @@ async function captureReviewScreenshot(page, testInfo, name) {
   });
 }
 
+async function openProjectPopover(switcher) {
+  const popover = switcher.locator(".project-popover");
+  if (!(await popover.isVisible())) {
+    await switcher.locator(".project-switcher-button").click();
+  }
+
+  await expect(popover).toBeVisible();
+}
+
 async function expectGlobalScrollLocked(page) {
   const scrollState = await page.evaluate(() => {
     const element = document.scrollingElement;
@@ -460,6 +568,37 @@ async function expectHorizontalScroller(page, selector) {
   expect(scrollState.overflowX).toBe("auto");
   expect(scrollState.scrollWidth).toBeGreaterThan(scrollState.clientWidth);
   expect(scrollState.scrollLeft).toBeGreaterThan(0);
+}
+
+async function expectUnifiedDiffRowsShareScrollWidth(page) {
+  const scrollState = await page.locator("codger-diff-viewer .diff-lines").evaluate((element) => {
+    element.scrollLeft = Math.min(220, element.scrollWidth - element.clientWidth);
+
+    const table = element.querySelector(".diff-table");
+    const rows = Array.from(element.querySelectorAll(".diff-row"));
+    const gutters = Array.from(element.querySelectorAll(".diff-gutter"));
+    const rowWidths = rows.map((row) => row.getBoundingClientRect().width);
+    const transparentGutters = gutters.filter((gutter) => {
+      const backgroundColor = window.getComputedStyle(gutter).backgroundColor;
+      return backgroundColor === "rgba(0, 0, 0, 0)" || backgroundColor === "transparent";
+    });
+
+    return {
+      clientWidth: element.clientWidth,
+      scrollLeft: element.scrollLeft,
+      scrollWidth: element.scrollWidth,
+      tableWidth: table.getBoundingClientRect().width,
+      minRowWidth: Math.min(...rowWidths),
+      maxRowWidth: Math.max(...rowWidths),
+      transparentGutterCount: transparentGutters.length,
+    };
+  });
+
+  expect(scrollState.scrollWidth).toBeGreaterThan(scrollState.clientWidth);
+  expect(scrollState.scrollLeft).toBeGreaterThan(0);
+  expect(scrollState.minRowWidth).toBeGreaterThanOrEqual(scrollState.tableWidth - 1);
+  expect(scrollState.maxRowWidth).toBeLessThanOrEqual(scrollState.tableWidth + 1);
+  expect(scrollState.transparentGutterCount).toBe(0);
 }
 
 async function stabilizeDynamicText(page) {

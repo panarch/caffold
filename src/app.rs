@@ -2,10 +2,10 @@ use std::{net::IpAddr, path::PathBuf, sync::Arc};
 
 use axum::{
     Json, Router,
-    extract::{Path, Query, State},
+    extract::{Path as AxumPath, Query, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{Html, IntoResponse, Response},
-    routing::get,
+    routing::{get, patch, post},
 };
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
@@ -14,8 +14,9 @@ use tracing::info;
 use crate::{
     fs::{
         FileResponse, FsError, GitDiffResponse, GitStatusResponse, ListResponse, MAX_FILE_BYTES,
-        RootedFs,
+        ProjectRoot, RootedFs,
     },
+    project_store::{ProjectRecord, ProjectStore, ProjectStoreError},
     static_assets,
 };
 
@@ -24,11 +25,13 @@ pub struct ServeConfig {
     pub host: IpAddr,
     pub port: u16,
     pub root: Option<PathBuf>,
+    pub data_dir: Option<PathBuf>,
 }
 
 #[derive(Clone)]
 struct AppState {
     fs: Arc<RootedFs>,
+    projects: ProjectStore,
     initial_path: String,
     home_path: Option<String>,
 }
@@ -48,6 +51,18 @@ struct GitDiffQuery {
     kind: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateProjectRequest {
+    root_path: String,
+    name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RenameProjectRequest {
+    name: String,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct HealthResponse {
@@ -56,6 +71,40 @@ struct HealthResponse {
     initial_path: String,
     home_path: Option<String>,
     max_file_bytes: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectListResponse {
+    projects: Vec<ProjectResponse>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectResponse {
+    id: String,
+    name: String,
+    root_path: String,
+    relative_path: String,
+    created_ms: u64,
+    updated_ms: u64,
+    last_opened_ms: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectCandidateResponse {
+    candidate: Option<ProjectCandidate>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectCandidate {
+    name: String,
+    root_path: String,
+    relative_path: String,
+    already_registered: bool,
+    project_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -79,9 +128,12 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
             (fs, home_path.clone(), Some(home_path))
         }
     };
+    let data_dir = config.data_dir.unwrap_or(default_data_dir()?);
+    let project_store = ProjectStore::redb(data_dir.join("codger.redb"))?;
     let root = fs.root().to_path_buf();
     let app = router_with_state(AppState {
         fs: Arc::new(fs),
+        projects: project_store,
         initial_path: initial_path.clone(),
         home_path,
     });
@@ -93,6 +145,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     info!("initial path {initial_path}");
     println!("Codger is serving http://{addr}");
     println!("Browsing root {}", root.display());
+    println!("Data directory {}", data_dir.display());
     println!(
         "Initial path {}",
         if initial_path.is_empty() {
@@ -109,12 +162,13 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn router(fs: RootedFs) -> Router {
-    router_with_state(AppState {
+pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
+    Ok(router_with_state(AppState {
         fs: Arc::new(fs),
+        projects: ProjectStore::memory()?,
         initial_path: String::new(),
         home_path: None,
-    })
+    }))
 }
 
 fn router_with_state(state: AppState) -> Router {
@@ -124,10 +178,21 @@ fn router_with_state(state: AppState) -> Router {
         .route("/api/list", get(list))
         .route("/api/file", get(file))
         .route("/api/image", get(image))
+        .route("/api/projects", get(list_projects).post(create_project))
+        .route(
+            "/api/projects/{id}",
+            patch(rename_project).delete(delete_project),
+        )
+        .route("/api/projects/{id}/open", post(open_project))
+        .route("/api/project-candidate", get(project_candidate))
         .route("/api/git/status", get(git_status))
         .route("/api/git/diff", get(git_diff))
         .route("/assets/{*path}", get(asset))
         .with_state(state)
+}
+
+fn default_data_dir() -> anyhow::Result<PathBuf> {
+    Ok(RootedFs::home_dir()?.join(".codger"))
 }
 
 fn default_diff_kind() -> String {
@@ -161,7 +226,7 @@ async fn index() -> Html<&'static str> {
     Html(static_assets::INDEX)
 }
 
-async fn asset(Path(path): Path<String>) -> Response {
+async fn asset(AxumPath(path): AxumPath<String>) -> Response {
     match static_assets::get(&path) {
         Some(asset) => (
             StatusCode::OK,
@@ -216,6 +281,74 @@ async fn image(
     Ok((headers, image.bytes).into_response())
 }
 
+async fn list_projects(
+    State(state): State<AppState>,
+) -> Result<Json<ProjectListResponse>, ApiError> {
+    let projects = state
+        .projects
+        .list_projects()?
+        .into_iter()
+        .map(|project| project_response(&state.fs, project))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(Json(ProjectListResponse { projects }))
+}
+
+async fn project_candidate(
+    State(state): State<AppState>,
+    Query(query): Query<PathQuery>,
+) -> Result<Json<ProjectCandidateResponse>, ApiError> {
+    let candidate = match state.fs.project_candidate_for_path(&query.path)? {
+        Some(project_root) => Some(project_candidate_response(&state.projects, project_root)?),
+        None => None,
+    };
+
+    Ok(Json(ProjectCandidateResponse { candidate }))
+}
+
+async fn create_project(
+    State(state): State<AppState>,
+    Json(request): Json<CreateProjectRequest>,
+) -> Result<Json<ProjectResponse>, ApiError> {
+    let project_root = state.fs.project_root_for_path(&request.root_path)?;
+    let name = request
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .unwrap_or(&project_root.name);
+    let project = state
+        .projects
+        .create_project(name, &project_root.root_path)?;
+
+    Ok(Json(project_response(&state.fs, project)?))
+}
+
+async fn rename_project(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<String>,
+    Json(request): Json<RenameProjectRequest>,
+) -> Result<Json<ProjectResponse>, ApiError> {
+    let project = state.projects.rename_project(&id, &request.name)?;
+    Ok(Json(project_response(&state.fs, project)?))
+}
+
+async fn delete_project(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<StatusCode, ApiError> {
+    state.projects.delete_project(&id)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn open_project(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Json<ProjectResponse>, ApiError> {
+    let project = state.projects.open_project(&id)?;
+    Ok(Json(project_response(&state.fs, project)?))
+}
+
 async fn git_status(
     State(state): State<AppState>,
     Query(query): Query<PathQuery>,
@@ -238,86 +371,144 @@ async fn git_diff(
         .map_err(ApiError::from)
 }
 
-struct ApiError(FsError);
+fn project_candidate_response(
+    store: &ProjectStore,
+    project_root: ProjectRoot,
+) -> Result<ProjectCandidate, ProjectStoreError> {
+    let registered = store.find_by_root_path(&project_root.root_path)?;
+
+    Ok(ProjectCandidate {
+        name: registered
+            .as_ref()
+            .map(|project| project.name.clone())
+            .unwrap_or(project_root.name),
+        root_path: project_root.root_path,
+        relative_path: project_root.relative_path,
+        already_registered: registered.is_some(),
+        project_id: registered.map(|project| project.id),
+    })
+}
+
+fn project_response(fs: &RootedFs, project: ProjectRecord) -> Result<ProjectResponse, FsError> {
+    Ok(ProjectResponse {
+        id: project.id,
+        name: project.name,
+        relative_path: fs.logical_path_for_absolute(std::path::Path::new(&project.root_path))?,
+        root_path: project.root_path,
+        created_ms: project.created_ms,
+        updated_ms: project.updated_ms,
+        last_opened_ms: project.last_opened_ms,
+    })
+}
+
+enum ApiError {
+    Fs(FsError),
+    Project(ProjectStoreError),
+}
 
 impl From<FsError> for ApiError {
     fn from(error: FsError) -> Self {
-        Self(error)
+        Self::Fs(error)
+    }
+}
+
+impl From<ProjectStoreError> for ApiError {
+    fn from(error: ProjectStoreError) -> Self {
+        Self::Project(error)
     }
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let (status, code, message) = match self.0 {
-            FsError::RootUnavailable { path, .. } => (
+        let (status, code, message) = match self {
+            ApiError::Fs(FsError::RootUnavailable { path, .. }) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "root_unavailable",
                 format!("root path is not accessible: {}", path.display()),
             ),
-            FsError::RootNotDirectory { path } => (
+            ApiError::Fs(FsError::RootNotDirectory { path }) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "root_not_directory",
                 format!("root path is not a directory: {}", path.display()),
             ),
-            FsError::PathEscapesRoot => (
+            ApiError::Fs(FsError::PathEscapesRoot) => (
                 StatusCode::BAD_REQUEST,
                 "path_escapes_root",
                 "path escapes the browsing root".to_string(),
             ),
-            FsError::NotFound { path } => (
+            ApiError::Fs(FsError::NotFound { path }) => (
                 StatusCode::NOT_FOUND,
                 "not_found",
                 format!("path was not found: {path}"),
             ),
-            FsError::NotDirectory { path } => (
+            ApiError::Fs(FsError::NotDirectory { path }) => (
                 StatusCode::BAD_REQUEST,
                 "not_directory",
                 format!("path is not a directory: {path}"),
             ),
-            FsError::IsDirectory { path } => (
+            ApiError::Fs(FsError::IsDirectory { path }) => (
                 StatusCode::BAD_REQUEST,
                 "is_directory",
                 format!("path is a directory, not a file: {path}"),
             ),
-            FsError::NotFile { path } => (
+            ApiError::Fs(FsError::NotFile { path }) => (
                 StatusCode::BAD_REQUEST,
                 "not_file",
                 format!("path is not a regular file: {path}"),
             ),
-            FsError::FileTooLarge { path, size, limit } => (
+            ApiError::Fs(FsError::FileTooLarge { path, size, limit }) => (
                 StatusCode::PAYLOAD_TOO_LARGE,
                 "file_too_large",
                 format!("file is too large: {path} ({size} bytes, limit {limit} bytes)"),
             ),
-            FsError::BinaryFile { path } => (
+            ApiError::Fs(FsError::BinaryFile { path }) => (
                 StatusCode::UNSUPPORTED_MEDIA_TYPE,
                 "binary_file",
                 format!("binary-looking files are not supported: {path}"),
             ),
-            FsError::InvalidUtf8 { path } => (
+            ApiError::Fs(FsError::InvalidUtf8 { path }) => (
                 StatusCode::UNSUPPORTED_MEDIA_TYPE,
                 "invalid_utf8",
                 format!("invalid UTF-8 files are not supported: {path}"),
             ),
-            FsError::UnsupportedImage { path } => (
+            ApiError::Fs(FsError::UnsupportedImage { path }) => (
                 StatusCode::UNSUPPORTED_MEDIA_TYPE,
                 "unsupported_image",
                 format!("image preview is not supported for this file type: {path}"),
             ),
-            FsError::GitRepositoryNotFound { path } => (
+            ApiError::Fs(FsError::GitRepositoryNotFound { path }) => (
                 StatusCode::BAD_REQUEST,
                 "git_repository_not_found",
                 format!("path is not inside a Git repository: {path}"),
             ),
-            FsError::GitCommandFailed { action, path } => (
+            ApiError::Fs(FsError::GitCommandFailed { action, path }) => (
                 StatusCode::BAD_REQUEST,
                 "git_command_failed",
                 format!("git command failed while trying to {action}: {path}"),
             ),
-            FsError::Io { action, path, .. } => (
+            ApiError::Fs(FsError::Io { action, path, .. }) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "filesystem_error",
                 format!("filesystem error while trying to {action}: {path}"),
+            ),
+            ApiError::Project(ProjectStoreError::NotFound(id)) => (
+                StatusCode::NOT_FOUND,
+                "project_not_found",
+                format!("project was not found: {id}"),
+            ),
+            ApiError::Project(ProjectStoreError::EmptyName) => (
+                StatusCode::BAD_REQUEST,
+                "empty_project_name",
+                "project name cannot be empty".to_string(),
+            ),
+            ApiError::Project(ProjectStoreError::UnexpectedPayload)
+            | ApiError::Project(ProjectStoreError::InvalidRow(_))
+            | ApiError::Project(ProjectStoreError::Poisoned)
+            | ApiError::Project(ProjectStoreError::Glue(_))
+            | ApiError::Project(ProjectStoreError::Io(_)) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "project_store_error",
+                "project store failed".to_string(),
             ),
         };
 

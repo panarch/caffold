@@ -122,6 +122,14 @@ pub struct GitDiffResponse {
     pub diff: String,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectRoot {
+    pub name: String,
+    pub root_path: String,
+    pub relative_path: String,
+}
+
 #[derive(Debug, Error)]
 pub enum FsError {
     #[error("root path is not accessible: {path}")]
@@ -473,6 +481,27 @@ impl RootedFs {
         })
     }
 
+    pub fn project_candidate_for_path(
+        &self,
+        requested_path: &str,
+    ) -> Result<Option<ProjectRoot>, FsError> {
+        let search_path = self.git_search_path(requested_path)?;
+        git::repository_for(&search_path)
+            .filter(|repository| repository.root.starts_with(&self.root))
+            .map(|repository| self.project_root_for_repository(&repository))
+            .transpose()
+    }
+
+    pub fn project_root_for_path(&self, requested_path: &str) -> Result<ProjectRoot, FsError> {
+        let search_path = self.git_search_path(requested_path)?;
+        let repository =
+            git::repository_for(&search_path).ok_or_else(|| FsError::GitRepositoryNotFound {
+                path: requested_path.to_string(),
+            })?;
+
+        self.project_root_for_repository(&repository)
+    }
+
     fn resolve_existing(&self, requested_path: &str) -> Result<ResolvedPath, FsError> {
         let logical = normalize_relative_path(requested_path)?;
         let candidate = self.root.join(&logical);
@@ -606,22 +635,31 @@ impl RootedFs {
         })
     }
 
+    fn project_root_for_repository(
+        &self,
+        repository: &git::Repository,
+    ) -> Result<ProjectRoot, FsError> {
+        if !repository.root.starts_with(&self.root) {
+            return Err(FsError::PathEscapesRoot);
+        }
+
+        let relative_path = self.logical_path_for_absolute(&repository.root)?;
+        let name = repository
+            .root
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| relative_path.clone());
+
+        Ok(ProjectRoot {
+            name,
+            root_path: repository.root.display().to_string(),
+            relative_path,
+        })
+    }
+
     fn repository_for_request(&self, requested_path: &str) -> Result<git::Repository, FsError> {
-        let resolved = self.resolve_existing(requested_path)?;
-        let metadata = fs::metadata(&resolved.absolute).map_err(|source| FsError::Io {
-            action: "read metadata",
-            path: requested_path.to_string(),
-            source,
-        })?;
-        let git_path = if metadata.is_dir() {
-            resolved.absolute
-        } else {
-            resolved
-                .absolute
-                .parent()
-                .map(Path::to_path_buf)
-                .ok_or(FsError::PathEscapesRoot)?
-        };
+        let git_path = self.git_search_path(requested_path)?;
 
         let repository =
             git::repository_for(&git_path).ok_or_else(|| FsError::GitRepositoryNotFound {
@@ -633,6 +671,44 @@ impl RootedFs {
         }
 
         Ok(repository)
+    }
+
+    fn git_search_path(&self, requested_path: &str) -> Result<PathBuf, FsError> {
+        let resolved = if Path::new(requested_path).is_absolute() {
+            let candidate = PathBuf::from(requested_path);
+            let absolute = candidate.canonicalize().map_err(|source| FsError::Io {
+                action: "resolve path",
+                path: requested_path.to_string(),
+                source,
+            })?;
+
+            if !absolute.starts_with(&self.root) {
+                return Err(FsError::PathEscapesRoot);
+            }
+
+            let logical = absolute
+                .strip_prefix(&self.root)
+                .map_err(|_| FsError::PathEscapesRoot)?
+                .to_path_buf();
+            ResolvedPath { logical, absolute }
+        } else {
+            self.resolve_existing(requested_path)?
+        };
+        let metadata = fs::metadata(&resolved.absolute).map_err(|source| FsError::Io {
+            action: "read metadata",
+            path: requested_path.to_string(),
+            source,
+        })?;
+
+        if metadata.is_dir() {
+            Ok(resolved.absolute)
+        } else {
+            resolved
+                .absolute
+                .parent()
+                .map(Path::to_path_buf)
+                .ok_or(FsError::PathEscapesRoot)
+        }
     }
 }
 
@@ -861,6 +937,31 @@ mod tests {
         assert!(ignored_file.git_ignored);
         assert!(ignored_dir.git_ignored);
         assert!(!visible_file.git_ignored);
+    }
+
+    #[test]
+    fn finds_project_root_for_path_inside_repo() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let repo_path = temp.path().join("repo");
+        let src_path = repo_path.join("src");
+        fs::create_dir(&repo_path).unwrap();
+        fs::create_dir(&src_path).unwrap();
+        git(&repo_path, &["init"]);
+        fs::write(src_path.join("main.rs"), "fn main() {}\n").unwrap();
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+        let project = rooted.project_root_for_path("repo/src/main.rs").unwrap();
+
+        assert_eq!(project.name, "repo");
+        assert_eq!(project.relative_path, "repo");
+        assert_eq!(
+            project.root_path,
+            repo_path.canonicalize().unwrap().display().to_string()
+        );
     }
 
     #[test]

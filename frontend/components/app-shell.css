@@ -9,12 +9,20 @@ codger-app-shell {
 
 codger-app-shell .app-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   min-height: 34px;
   padding: 6px 12px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
+}
+
+codger-app-shell .app-context {
+  display: grid;
+  grid-template-columns: auto minmax(0, auto);
+  align-items: center;
+  justify-content: start;
+  gap: 10px;
+  min-width: 0;
 }
 
 codger-app-shell .brand {
@@ -41,6 +49,7 @@ codger-app-shell .app-main > codger-changes-tree {
 
 codger-app-shell .app-main > codger-file-viewer {
   grid-column: 3;
+  min-width: 0;
 }
 
 codger-app-shell .panel-resizer {

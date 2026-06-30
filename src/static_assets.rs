@@ -46,6 +46,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "components/icons.js" => Some(js(include_str!("../frontend/components/icons.js"))),
         "components/pathbar.css" => Some(css(include_str!("../frontend/components/pathbar.css"))),
         "components/pathbar.js" => Some(js(include_str!("../frontend/components/pathbar.js"))),
+        "components/project-switcher.css" => Some(css(include_str!(
+            "../frontend/components/project-switcher.css"
+        ))),
+        "components/project-switcher.js" => Some(js(include_str!(
+            "../frontend/components/project-switcher.js"
+        ))),
         _ => None,
     }
 }
