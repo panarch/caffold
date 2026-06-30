@@ -75,7 +75,12 @@ class CodgerHeaderActions extends HTMLElement {
         aria-pressed="${gitStatus.active ? "true" : "false"}"
       >
         ${renderInlineIcon("FileDiff", actionLabel, "header-action-icon")}
-        <span class="header-action-count">${escapeHtml(countLabel.trim())}</span>
+        <span class="header-action-label">Diff</span>
+        ${
+          countLabel.trim()
+            ? `<span class="header-action-count">${escapeHtml(countLabel.trim())}</span>`
+            : ""
+        }
       </button>
     `;
   }

@@ -13,29 +13,29 @@ codger-header-actions .header-actions {
 
 codger-header-actions .header-action-button {
   display: grid;
-  grid-template-columns: auto auto;
-  gap: 4px;
+  grid-auto-flow: column;
+  gap: 5px;
   align-items: center;
   justify-content: center;
   min-height: 28px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid transparent;
   border-radius: 4px;
-  background: var(--surface);
-  color: var(--text);
+  background: transparent;
+  color: var(--accent);
   cursor: pointer;
-  padding: 0 6px;
+  padding: 0 7px;
 }
 
 codger-header-actions .header-action-button:hover,
 codger-header-actions .header-action-button:focus-visible {
-  border-color: #8bb8a8;
+  border-color: #d8e2db;
   background: #f7fbf8;
   outline: none;
 }
 
 codger-header-actions .header-action-button.is-active {
-  border-color: #8bb8a8;
-  background: var(--accent-soft);
+  border-color: #abcbbf;
+  background: #f7fbf8;
   color: #0d5f47;
 }
 
@@ -46,9 +46,21 @@ codger-header-actions .header-action-icon {
   stroke-width: 1.9;
 }
 
+codger-header-actions .header-action-label {
+  color: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
 codger-header-actions .header-action-count {
   color: var(--muted);
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
+  line-height: 1;
   text-align: right;
+}
+
+codger-header-actions .header-action-button.is-active .header-action-count {
+  color: #0d5f47;
 }

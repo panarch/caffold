@@ -398,6 +398,7 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   await expect(page.locator("codger-pathbar .header-action-button")).toHaveCount(0);
   await expect(gitButton.locator(".header-action-count")).not.toHaveText("");
   await expect(gitButton.locator(".header-action-icon")).toBeVisible();
+  await expect(gitButton.locator(".header-action-label")).toHaveText("Diff");
   await expect(gitButton).not.toContainText("master");
   await expect(gitButton).toHaveAttribute("title", "Show changes");
 
