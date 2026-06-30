@@ -8,6 +8,7 @@ These documents explain what Codger is and why it exists. They should avoid over
 
 - [Vision](public/vision.md)
 - [Architecture](public/architecture.md)
+- [Review Policy](public/review-policy.md)
 
 ## Internal Planning
 
