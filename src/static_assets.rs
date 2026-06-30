@@ -43,6 +43,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "components/file-viewer.js" => {
             Some(js(include_str!("../frontend/components/file-viewer.js")))
         }
+        "components/header-actions.css" => Some(css(include_str!(
+            "../frontend/components/header-actions.css"
+        ))),
+        "components/header-actions.js" => {
+            Some(js(include_str!("../frontend/components/header-actions.js")))
+        }
         "components/icons.js" => Some(js(include_str!("../frontend/components/icons.js"))),
         "components/pathbar.css" => Some(css(include_str!("../frontend/components/pathbar.css"))),
         "components/pathbar.js" => Some(js(include_str!("../frontend/components/pathbar.js"))),

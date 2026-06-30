@@ -290,7 +290,7 @@ test("scrolls long names horizontally in Files and Changes", async ({ page }) =>
   await expectHorizontalScroller(page, ".file-list");
 
   await page.locator('button[data-entry-path="src"]').click();
-  const gitButton = page.locator("codger-pathbar .git-mode-button");
+  const gitButton = page.locator("codger-header-actions .header-action-button");
   await expect(gitButton).toBeVisible();
   await gitButton.click();
   await expect(page.locator(`button[data-change-path="${LONG_CHANGE_FILE}"]`)).toBeVisible();
@@ -348,7 +348,7 @@ test("keeps list scroll positions when selecting files and changes", async ({ pa
   await expectPreservedScroll(fileList, beforeFileScroll);
 
   await page.locator('button[data-entry-path="src"]').click();
-  const gitButton = page.locator("codger-pathbar .git-mode-button");
+  const gitButton = page.locator("codger-header-actions .header-action-button");
   await expect(gitButton).toBeVisible();
   await gitButton.click();
 
@@ -393,12 +393,17 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.locator('button[data-entry-path="src"]').click();
 
-  const gitButton = page.locator("codger-pathbar .git-mode-button");
+  const gitButton = page.locator("codger-header-actions .header-action-button");
   await expect(gitButton).toBeVisible();
-  await expect(gitButton.locator(".git-count")).not.toHaveText("");
+  await expect(page.locator("codger-pathbar .header-action-button")).toHaveCount(0);
+  await expect(gitButton.locator(".header-action-count")).not.toHaveText("");
+  await expect(gitButton.locator(".header-action-icon")).toBeVisible();
+  await expect(gitButton).not.toContainText("master");
+  await expect(gitButton).toHaveAttribute("title", "Show changes");
 
   await gitButton.click();
   await expect(gitButton).toHaveClass(/is-active/);
+  await expect(gitButton).toHaveAttribute("title", "Show files");
   await expect(page.locator("codger-file-list")).toBeHidden();
   await expect(page.locator("codger-changes-tree")).toContainText("Untracked");
   await expect(page.locator("codger-changes-tree")).toContainText("example.rs");

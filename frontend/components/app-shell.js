@@ -14,6 +14,7 @@ import {
 import { fileNameFromPath, imageTypeLabel, isPreviewableImagePath } from "./dom.js";
 import "./pathbar.js";
 import "./project-switcher.js";
+import "./header-actions.js";
 import "./file-list.js";
 import "./file-viewer.js";
 import "./changes-tree.js";
@@ -48,6 +49,7 @@ class CodgerAppShell extends HTMLElement {
     this.appMain = this.querySelector(".app-main");
     this.pathbar = this.querySelector("codger-pathbar");
     this.projectSwitcher = this.querySelector("codger-project-switcher");
+    this.headerActions = this.querySelector("codger-header-actions");
     this.fileList = this.querySelector("codger-file-list");
     this.changesTree = this.querySelector("codger-changes-tree");
     this.panelResizer = this.querySelector(".panel-resizer");
@@ -108,6 +110,7 @@ class CodgerAppShell extends HTMLElement {
             <strong>Codger</strong>
           </div>
           <codger-project-switcher></codger-project-switcher>
+          <codger-header-actions></codger-header-actions>
         </div>
       </header>
       <codger-pathbar></codger-pathbar>
@@ -358,7 +361,7 @@ class CodgerAppShell extends HTMLElement {
 
     this.gitRepository = directory.git;
     this.gitStatus = null;
-    this.pathbar.gitStatus = {
+    this.headerActions.gitStatus = {
       branch: directory.git.branch,
       dirty: directory.git.dirty,
       count: null,
@@ -372,7 +375,7 @@ class CodgerAppShell extends HTMLElement {
     this.gitRepository = null;
     this.gitStatus = null;
     this.gitStatusRequestId += 1;
-    this.pathbar.gitStatus = null;
+    this.headerActions.gitStatus = null;
     this.changesTree.reset();
     if (this.viewMode === "changes") {
       this.setViewMode("files", { preserveViewer: true });
@@ -443,11 +446,11 @@ class CodgerAppShell extends HTMLElement {
 
   updateGitButton() {
     if (!this.gitRepository) {
-      this.pathbar.gitStatus = null;
+      this.headerActions.gitStatus = null;
       return;
     }
 
-    this.pathbar.gitStatus = {
+    this.headerActions.gitStatus = {
       branch: this.gitRepository.branch,
       dirty: this.gitRepository.dirty,
       count: this.gitStatus?.files.length ?? null,

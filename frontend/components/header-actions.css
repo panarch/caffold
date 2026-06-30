@@ -1,0 +1,54 @@
+codger-header-actions {
+  display: grid;
+  min-width: 0;
+}
+
+codger-header-actions .header-actions {
+  display: grid;
+  grid-auto-flow: column;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+codger-header-actions .header-action-button {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  padding: 0 6px;
+}
+
+codger-header-actions .header-action-button:hover,
+codger-header-actions .header-action-button:focus-visible {
+  border-color: #8bb8a8;
+  background: #f7fbf8;
+  outline: none;
+}
+
+codger-header-actions .header-action-button.is-active {
+  border-color: #8bb8a8;
+  background: var(--accent-soft);
+  color: #0d5f47;
+}
+
+codger-header-actions .header-action-icon {
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  stroke-width: 1.9;
+}
+
+codger-header-actions .header-action-count {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}

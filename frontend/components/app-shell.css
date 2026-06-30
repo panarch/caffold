@@ -18,7 +18,7 @@ codger-app-shell .app-header {
 
 codger-app-shell .app-context {
   display: grid;
-  grid-template-columns: auto minmax(0, auto);
+  grid-template-columns: auto minmax(0, auto) auto;
   align-items: center;
   justify-content: start;
   gap: 10px;
