@@ -231,7 +231,6 @@ class CodgerAppShell extends HTMLElement {
     const requestId = ++this.fileRequestId;
     this.fileList.setSelectedPath(path);
     this.changesTree.setSelectedPath("");
-    this.logList.setSelectedSha("");
     this.commitChangesTree.setSelectedPath("");
 
     if (isPreviewableImagePath(path)) {
@@ -269,7 +268,6 @@ class CodgerAppShell extends HTMLElement {
     const requestId = ++this.fileRequestId;
     this.fileList.setSelectedPath("");
     this.changesTree.setSelectedPath(path);
-    this.logList.setSelectedSha("");
     this.commitChangesTree.setSelectedPath("");
     const loadingTimer = this.showWorkspaceLoadingAfterDelay(
       this.diffWorkspaceViewer,
@@ -313,7 +311,6 @@ class CodgerAppShell extends HTMLElement {
     });
     this.fileList.setSelectedPath("");
     this.changesTree.setSelectedPath("");
-    this.logList.setSelectedSha(sha);
     this.commitChangesTree.setSelectedPath("");
     this.commitChangesTree.setLoading(this.gitRepository);
     this.logWorkspaceViewer.setLoading(`Commit ${sha.slice(0, 7)}`);
@@ -604,9 +601,6 @@ class CodgerAppShell extends HTMLElement {
     if (!options.preserveViewer) {
       this.commitChangesTree.reset();
       this.logWorkspaceViewer.setEmpty();
-    }
-    if (!wasLogWorkspace || !options.skipReload) {
-      this.logList.setSelectedSha("");
     }
     if (!options.skipReload) {
       this.loadGitLog(this.currentPath);

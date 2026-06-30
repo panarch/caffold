@@ -1,14 +1,23 @@
 import { escapeHtml } from "./dom.js";
+import { renderInlineIcon, warmIcons } from "./icons.js";
 
 class CodgerLogList extends HTMLElement {
   connectedCallback() {
     this.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-commit-sha]");
+      const button = event.target.closest("button[data-action]");
       if (!button) {
         return;
       }
 
-      this.setSelectedSha(button.dataset.commitSha);
+      if (button.dataset.action === "toggle-commit-body") {
+        this.toggleCommitBody(button.dataset.commitSha);
+        return;
+      }
+
+      if (button.dataset.action !== "open-commit") {
+        return;
+      }
+
       this.dispatchEvent(
         new CustomEvent("codger:open-git-commit", {
           bubbles: true,
@@ -19,9 +28,18 @@ class CodgerLogList extends HTMLElement {
       );
     });
 
+    this.boundIconsReady = () => this.render();
+    window.addEventListener("codger:icons-ready", this.boundIconsReady);
+    warmIcons();
+
+    this.expandedShas ??= new Set();
     if (!this.state) {
       this.reset();
     }
+  }
+
+  disconnectedCallback() {
+    window.removeEventListener("codger:icons-ready", this.boundIconsReady);
   }
 
   setLoading(repository) {
@@ -30,6 +48,7 @@ class CodgerLogList extends HTMLElement {
   }
 
   setLog(log) {
+    this.expandedShas = new Set();
     this.state = { status: "ready", log };
     this.render();
   }
@@ -39,37 +58,58 @@ class CodgerLogList extends HTMLElement {
     this.render();
   }
 
-  setSelectedSha(sha) {
-    const nextSha = sha ?? "";
-    if (this.selectedSha === nextSha) {
-      return;
-    }
-
-    this.selectedSha = nextSha;
-    this.patchSelectedSha();
-  }
-
-  patchSelectedSha() {
-    for (const button of this.querySelectorAll('button[data-commit-sha][aria-current="true"]')) {
-      button.setAttribute("aria-current", "false");
-    }
-
-    if (!this.selectedSha) {
-      return;
-    }
-
-    const button = this.querySelector(
-      `button[data-commit-sha="${CSS.escape(this.selectedSha)}"]`,
-    );
-    if (button) {
-      button.setAttribute("aria-current", "true");
-    }
-  }
-
   reset() {
-    this.selectedSha = "";
+    this.expandedShas = new Set();
     this.state = { status: "idle" };
     this.render();
+  }
+
+  toggleCommitBody(sha) {
+    if (!sha) {
+      return;
+    }
+
+    const commit = this.findCommit(sha);
+    const body = commit?.body?.trim() ?? "";
+    if (!commit || body.length === 0) {
+      return;
+    }
+
+    const expanded = !this.expandedShas.has(sha);
+    if (expanded) {
+      this.expandedShas.add(sha);
+    } else {
+      this.expandedShas.delete(sha);
+    }
+
+    this.patchCommitBody(commit, expanded);
+  }
+
+  findCommit(sha) {
+    return (this.state?.log?.commits ?? []).find((commit) => commit.sha === sha);
+  }
+
+  patchCommitBody(commit, expanded) {
+    const entry = this.querySelector(`.log-entry[data-commit-sha="${CSS.escape(commit.sha)}"]`);
+    if (!entry) {
+      return;
+    }
+
+    const toggle = entry.querySelector("button[data-action='toggle-commit-body']");
+    if (toggle) {
+      toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+      toggle.setAttribute("aria-label", commitBodyToggleLabel(commit, expanded));
+    }
+
+    const body = entry.querySelector(".log-body");
+    if (expanded) {
+      if (!body) {
+        entry.insertAdjacentHTML("beforeend", renderCommitBody(commit.body?.trim() ?? ""));
+      }
+      return;
+    }
+
+    body?.remove();
   }
 
   render() {
@@ -136,24 +176,54 @@ class CodgerLogList extends HTMLElement {
   }
 
   renderCommit(commit) {
-    const selected = commit.sha === this.selectedSha;
+    const body = commit.body?.trim() ?? "";
+    const expanded = body.length > 0 && this.expandedShas.has(commit.sha);
     const date = formatCommitDate(commit.authorTimeMs);
     const author = commit.authorName || commit.authorEmail || "";
     const meta = [commit.shortSha, author, date].filter(Boolean).join(" ");
+    const summary = `
+      <span class="log-subject">${escapeHtml(commit.subject || "(no subject)")}</span>
+      <span class="log-meta">${escapeHtml(meta)}</span>
+    `;
 
     return `
-      <li>
+      <li
+        class="log-entry"
+        data-commit-sha="${escapeHtml(commit.sha)}"
+      >
+        ${
+          body.length > 0
+            ? `<button
+                type="button"
+                class="log-summary log-summary-toggle"
+                data-action="toggle-commit-body"
+                data-commit-sha="${escapeHtml(commit.sha)}"
+                aria-expanded="${expanded ? "true" : "false"}"
+                aria-label="${escapeHtml(commitBodyToggleLabel(commit, expanded))}"
+                title="${escapeHtml(commit.subject)}"
+              >
+                ${summary}
+              </button>`
+            : `<div class="log-summary" title="${escapeHtml(commit.subject)}">
+                ${summary}
+              </div>`
+        }
         <button
           type="button"
-          class="log-entry"
+          class="log-review-button"
+          data-action="open-commit"
           data-commit-sha="${escapeHtml(commit.sha)}"
-          aria-current="${selected ? "true" : "false"}"
-          aria-label="${escapeHtml(`Open commit ${commit.shortSha} ${commit.subject}`)}"
-          title="${escapeHtml(commit.subject)}"
+          aria-label="${escapeHtml(`Open commit diff for ${commit.shortSha} ${commit.subject}`)}"
+          title="${escapeHtml(`Open commit diff for ${commit.shortSha}`)}"
         >
-          <span class="log-subject">${escapeHtml(commit.subject || "(no subject)")}</span>
-          <span class="log-meta">${escapeHtml(meta)}</span>
+          ${renderInlineIcon("FileDiff", "Diff", "log-review-icon")}
+          <span class="log-review-label">Diff</span>
         </button>
+        ${
+          expanded
+            ? renderCommitBody(body)
+            : ""
+        }
       </li>
     `;
   }
@@ -172,4 +242,12 @@ function formatCommitDate(ms) {
   }
 
   return date.toISOString().slice(0, 10);
+}
+
+function commitBodyToggleLabel(commit, expanded) {
+  return `${expanded ? "Collapse" : "Expand"} commit body for ${commit.shortSha}`;
+}
+
+function renderCommitBody(body) {
+  return `<p class="log-body">${escapeHtml(body)}</p>`;
 }

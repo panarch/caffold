@@ -113,6 +113,7 @@ pub struct GitCommitSummary {
     pub sha: String,
     pub short_sha: String,
     pub subject: String,
+    pub body: String,
     pub author_name: String,
     pub author_email: String,
     pub author_time_ms: u64,
@@ -881,6 +882,7 @@ fn git_commit_summary(entry: git::LogEntry) -> GitCommitSummary {
         sha: entry.sha,
         short_sha: entry.short_sha,
         subject: entry.subject,
+        body: entry.body,
         author_name: entry.author_name,
         author_email: entry.author_email,
         author_time_ms: entry.author_time_ms,
@@ -1110,14 +1112,26 @@ mod tests {
         commit(&repo_path, "Add sample");
         fs::write(repo_path.join("sample.txt"), "new\n").unwrap();
         git(&repo_path, &["add", "sample.txt"]);
-        commit(&repo_path, "Update sample");
+        commit_with_body(
+            &repo_path,
+            "Update sample",
+            "Explain the sample update.\n\nKeep the body available.",
+        );
 
         let rooted = RootedFs::new(temp.path()).unwrap();
         let log = rooted.git_log("repo", 10).unwrap();
         assert_eq!(log.repository.root_path, "repo");
         assert_eq!(log.commits[0].subject, "Update sample");
+        assert_eq!(
+            log.commits[0].body,
+            "Explain the sample update.\n\nKeep the body available."
+        );
 
         let commit = rooted.git_commit("repo", &log.commits[0].sha).unwrap();
+        assert_eq!(
+            commit.commit.body,
+            "Explain the sample update.\n\nKeep the body available."
+        );
         assert_eq!(commit.files[0].path, "repo/sample.txt");
         assert_eq!(commit.files[0].repo_relative_path, "sample.txt");
         assert_eq!(commit.files[0].status, "M");
@@ -1303,6 +1317,25 @@ mod tests {
                 "commit",
                 "-m",
                 message,
+            ],
+        );
+    }
+
+    fn commit_with_body(path: &Path, subject: &str, body: &str) {
+        git(
+            path,
+            &[
+                "-c",
+                "user.name=Codger Test",
+                "-c",
+                "user.email=codger@example.test",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-m",
+                subject,
+                "-m",
+                body,
             ],
         );
     }

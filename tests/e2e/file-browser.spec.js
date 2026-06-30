@@ -506,10 +506,20 @@ test("opens commit diffs from Log mode", async ({ page }) => {
     sha: "abcdef1234567890abcdef1234567890abcdef12",
     shortSha: "abcdef1",
     subject: "Update planner function",
+    body: "Explain the planner update.\n\nKeep review context visible in the log.",
     authorName: "Codger",
     authorEmail: "codger@example.test",
     authorTimeMs: 1_767_000_000_000,
   };
+  const fillerCommits = Array.from({ length: 24 }, (_, index) => ({
+    sha: `feed${index.toString(16).padStart(36, "0")}`,
+    shortSha: `feed${index.toString(16).padStart(3, "0")}`,
+    subject: `Earlier commit ${index + 1}`,
+    body: "",
+    authorName: "Codger",
+    authorEmail: "codger@example.test",
+    authorTimeMs: 1_766_000_000_000 - index * 1000,
+  }));
   const repository = { rootPath: "src", branch: "main", dirty: true };
 
   await page.route(/\/api\/git\/log(?:\?|$)/, (route) =>
@@ -517,7 +527,7 @@ test("opens commit diffs from Log mode", async ({ page }) => {
       contentType: "application/json",
       body: JSON.stringify({
         repository,
-        commits: [commit],
+        commits: [...fillerCommits, commit],
       }),
     }),
   );
@@ -588,7 +598,26 @@ test("opens commit diffs from Log mode", async ({ page }) => {
   await expect(page.locator("codger-log-list")).toBeVisible();
   await expect(page.locator(".log-review-detail")).toBeHidden();
 
-  await page.locator('button[data-commit-sha="abcdef1234567890abcdef1234567890abcdef12"]').click();
+  const logEntry = page.locator(
+    'codger-log-list .log-entry[data-commit-sha="abcdef1234567890abcdef1234567890abcdef12"]',
+  );
+  const logList = page.locator("codger-log-list .log-list");
+  await logEntry.scrollIntoViewIfNeeded();
+  const beforeLogScroll = await scrollTop(logList);
+  expect(beforeLogScroll).toBeGreaterThan(0);
+  await expect(logEntry).not.toHaveAttribute("aria-current");
+  const bodyToggle = logEntry.getByRole("button", { name: /Expand commit body for abcdef1/ });
+  await bodyToggle.click();
+  await expect(logView).toHaveAttribute("data-log-view", "list");
+  await expect(logEntry).not.toHaveAttribute("aria-current");
+  await expectPreservedScroll(logList, beforeLogScroll);
+  await expect(logEntry.locator(".log-body")).toContainText("Explain the planner update.");
+  await expect(logEntry.locator(".log-body")).toContainText("Keep review context visible");
+  await logEntry.getByRole("button", { name: /Collapse commit body for abcdef1/ }).click();
+  await expect(logEntry.locator(".log-body")).toHaveCount(0);
+  await expectPreservedScroll(logList, beforeLogScroll);
+
+  await logEntry.getByRole("button", { name: /Open commit diff for abcdef1/ }).click();
   await expect(logView).toHaveAttribute("data-log-view", "detail");
   await expect(page.locator("codger-log-list")).toBeHidden();
   await expect(page.locator(".log-review-detail")).toBeVisible();
@@ -625,11 +654,7 @@ test("opens commit diffs from Log mode", async ({ page }) => {
   await expect(workspace.locator(".review-workspace-title h2")).toHaveText("Log");
   await expect(page.locator("codger-log-list")).toBeVisible();
   await expect(page.locator(".log-review-detail")).toBeHidden();
-  await expect(
-    page.locator(
-      'codger-log-list button[data-commit-sha="abcdef1234567890abcdef1234567890abcdef12"]',
-    ),
-  ).toHaveAttribute("aria-current", "true");
+  await expect(logEntry).not.toHaveAttribute("aria-current");
 
   await workspace.getByRole("button", { name: "Close review workspace" }).click();
   await expect(workspace).toBeHidden();

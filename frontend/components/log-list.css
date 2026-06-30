@@ -72,31 +72,43 @@ codger-log-list .log-list {
 
 codger-log-list .log-entry {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 3px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
   width: 100%;
   min-height: 38px;
   align-items: center;
-  border: 0;
   border-left: 3px solid transparent;
-  border-radius: 0;
   background: transparent;
   color: var(--text);
-  cursor: pointer;
   padding: 5px 12px 5px 10px;
+}
+
+codger-log-list .log-summary {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
   text-align: left;
 }
 
-codger-log-list .log-entry:hover,
-codger-log-list .log-entry:focus-visible {
-  border-left-color: #bdd7cc;
-  background: #f1f6f3;
-  outline: none;
+codger-log-list .log-summary-toggle {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
 }
 
-codger-log-list .log-entry[aria-current="true"] {
-  border-left-color: var(--accent);
-  background: var(--accent-soft);
+codger-log-list .log-summary-toggle:hover .log-subject,
+codger-log-list .log-summary-toggle:focus-visible .log-subject {
+  color: var(--accent);
+}
+
+codger-log-list .log-summary-toggle:focus-visible {
+  outline: 1px solid #abcbbf;
+  outline-offset: 2px;
 }
 
 codger-log-list .log-subject,
@@ -115,6 +127,55 @@ codger-log-list .log-subject {
 codger-log-list .log-meta {
   color: var(--muted);
   font-size: 0.72rem;
+}
+
+codger-log-list .log-body {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 3px 0 7px 0.25rem;
+  padding: 3px 0 3px 0.7rem;
+  border-left: 2px solid #d3dfd8;
+  overflow: hidden;
+  color: #52635b;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+}
+
+codger-log-list .log-review-button {
+  display: grid;
+  grid-auto-flow: column;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+codger-log-list .log-review-icon {
+  width: 0.82rem;
+  height: 0.82rem;
+  stroke-width: 2.2;
+}
+
+codger-log-list .log-review-label {
+  line-height: 1;
+}
+
+codger-log-list .log-review-button:hover,
+codger-log-list .log-review-button:focus-visible {
+  border-color: #abcbbf;
+  background: #f7fbf8;
+  outline: none;
 }
 
 codger-log-list .error-panel {

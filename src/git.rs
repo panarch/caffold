@@ -26,6 +26,7 @@ pub struct LogEntry {
     pub sha: String,
     pub short_sha: String,
     pub subject: String,
+    pub body: String,
     pub author_name: String,
     pub author_email: String,
     pub author_time_ms: u64,
@@ -124,7 +125,7 @@ pub fn log_entries(repository: &Repository, limit: usize) -> Option<Vec<LogEntry
     let args = vec![
         "log".to_string(),
         "--date=unix".to_string(),
-        "--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%at%x1f%s".to_string(),
+        "--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%at%x1f%s%x1f%b%x1e".to_string(),
         "-n".to_string(),
         limit,
     ];
@@ -137,7 +138,7 @@ pub fn commit_summary(repository: &Repository, commit_sha: &str) -> Option<LogEn
     let args = vec![
         "log".to_string(),
         "--date=unix".to_string(),
-        "--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%at%x1f%s".to_string(),
+        "--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%at%x1f%s%x1f%b%x1e".to_string(),
         "-n".to_string(),
         "1".to_string(),
         commit_sha.to_string(),
@@ -307,24 +308,35 @@ fn parse_status_entries(output: &[u8]) -> Vec<StatusEntry> {
 
 fn parse_log_entries(output: &[u8]) -> Vec<LogEntry> {
     String::from_utf8_lossy(output)
-        .lines()
+        .split('\x1e')
         .filter_map(parse_log_entry)
         .collect()
 }
 
-fn parse_log_entry(line: &str) -> Option<LogEntry> {
-    let mut parts = line.splitn(6, '\x1f');
+fn parse_log_entry(record: &str) -> Option<LogEntry> {
+    let record = record.trim_start_matches('\n').trim_end_matches('\n');
+    if record.is_empty() {
+        return None;
+    }
+
+    let mut parts = record.splitn(7, '\x1f');
     let sha = parts.next()?.to_string();
     let short_sha = parts.next()?.to_string();
     let author_name = parts.next()?.to_string();
     let author_email = parts.next()?.to_string();
     let author_time_ms = parts.next()?.parse::<u64>().ok()? * 1000;
     let subject = parts.next()?.to_string();
+    let body = parts
+        .next()
+        .unwrap_or("")
+        .trim_end_matches('\n')
+        .to_string();
 
     Some(LogEntry {
         sha,
         short_sha,
         subject,
+        body,
         author_name,
         author_email,
         author_time_ms,
@@ -452,11 +464,19 @@ mod tests {
         commit(temp.path(), "Add sample");
         fs::write(temp.path().join("sample.txt"), "new\n").unwrap();
         git(temp.path(), &["add", "sample.txt"]);
-        commit(temp.path(), "Update sample");
+        commit_with_body(
+            temp.path(),
+            "Update sample",
+            "Explain the sample update.\n\nKeep the body available.",
+        );
 
         let repository = repository_for(temp.path()).unwrap();
         let log = log_entries(&repository, 10).unwrap();
         assert_eq!(log[0].subject, "Update sample");
+        assert_eq!(
+            log[0].body,
+            "Explain the sample update.\n\nKeep the body available."
+        );
 
         let files = commit_files(&repository, &log[0].sha).unwrap();
         assert_eq!(
@@ -520,6 +540,25 @@ mod tests {
                 "commit",
                 "-m",
                 message,
+            ],
+        );
+    }
+
+    fn commit_with_body(path: &Path, subject: &str, body: &str) {
+        git(
+            path,
+            &[
+                "-c",
+                "user.name=Codger Test",
+                "-c",
+                "user.email=codger@example.test",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-m",
+                subject,
+                "-m",
+                body,
             ],
         );
     }
