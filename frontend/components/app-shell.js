@@ -51,6 +51,8 @@ class CodgerAppShell extends HTMLElement {
     this.projectCandidate = null;
     this.currentProjectId = null;
     this.workspaceMode = null;
+    this.logWorkspaceView = "list";
+    this.selectedCommitSummary = null;
     this.leftPanelWidth = LEFT_PANEL_DEFAULT_WIDTH;
     this.resizePointerId = null;
     this.render();
@@ -91,6 +93,9 @@ class CodgerAppShell extends HTMLElement {
     });
     this.addEventListener("codger:close-review-workspace", () => {
       this.closeReviewWorkspace();
+    });
+    this.addEventListener("codger:back-review-workspace", () => {
+      this.backReviewWorkspace();
     });
     this.addEventListener("codger:open-git-diff", (event) => {
       this.openDiff(event.detail.path, event.detail.kind, event.detail.status);
@@ -297,7 +302,15 @@ class CodgerAppShell extends HTMLElement {
 
     const requestId = ++this.gitCommitRequestId;
     const viewerRequestId = ++this.fileRequestId;
-    this.openLogWorkspace({ preserveViewer: true, skipReload: true });
+    this.selectedCommitSummary = {
+      shortSha: sha.slice(0, 7),
+      subject: "",
+    };
+    this.openLogWorkspace({
+      preserveViewer: true,
+      skipReload: true,
+      view: "detail",
+    });
     this.fileList.setSelectedPath("");
     this.changesTree.setSelectedPath("");
     this.logList.setSelectedSha(sha);
@@ -312,6 +325,8 @@ class CodgerAppShell extends HTMLElement {
       }
 
       this.commitChangesTree.setCommit(commit);
+      this.selectedCommitSummary = commit.commit;
+      this.updateWorkspaceChrome();
       if (commit.files?.length) {
         await this.openCommitDiff(sha, commit.files[0].path, commit.files[0].status);
       } else if (viewerRequestId === this.fileRequestId) {
@@ -559,9 +574,11 @@ class CodgerAppShell extends HTMLElement {
     }
 
     this.workspaceMode = "diff";
+    this.logWorkspaceView = "list";
     this.reviewWorkspace.open("diff", {
       title: "Diff",
       subtitle: this.workspaceSubtitle("Working tree"),
+      backVisible: false,
     });
     this.updateGitButton();
     if (!this.gitStatus) {
@@ -577,10 +594,12 @@ class CodgerAppShell extends HTMLElement {
 
     const wasLogWorkspace = this.workspaceMode === "log";
     this.workspaceMode = "log";
-    this.reviewWorkspace.open("log", {
-      title: "Log",
-      subtitle: this.workspaceSubtitle("History"),
-    });
+    this.logWorkspaceView = options.view ?? "list";
+    if (this.logWorkspaceView === "list") {
+      this.selectedCommitSummary = null;
+    }
+    this.reviewWorkspace.open("log", this.workspaceDetails());
+    this.reviewWorkspace.setLogView(this.logWorkspaceView);
     this.updateGitButton();
     if (!options.preserveViewer) {
       this.commitChangesTree.reset();
@@ -596,8 +615,20 @@ class CodgerAppShell extends HTMLElement {
 
   closeReviewWorkspace() {
     this.workspaceMode = null;
+    this.logWorkspaceView = "list";
+    this.selectedCommitSummary = null;
     this.reviewWorkspace.close();
     this.updateGitButton();
+  }
+
+  backReviewWorkspace() {
+    if (this.workspaceMode !== "log" || this.logWorkspaceView !== "detail") {
+      return;
+    }
+
+    this.logWorkspaceView = "list";
+    this.reviewWorkspace.setLogView("list");
+    this.updateWorkspaceChrome();
   }
 
   updateWorkspaceChrome() {
@@ -605,13 +636,10 @@ class CodgerAppShell extends HTMLElement {
       return;
     }
 
-    this.reviewWorkspace.updateDetails({
-      title: this.workspaceMode === "diff" ? "Diff" : "Log",
-      subtitle:
-        this.workspaceMode === "diff"
-          ? this.workspaceSubtitle("Working tree")
-          : this.workspaceSubtitle("History"),
-    });
+    this.reviewWorkspace.updateDetails(this.workspaceDetails());
+    if (this.workspaceMode === "log") {
+      this.reviewWorkspace.setLogView(this.logWorkspaceView);
+    }
   }
 
   updateGitButton() {
@@ -638,6 +666,37 @@ class CodgerAppShell extends HTMLElement {
     const count = this.gitStatus?.files.length;
     const countLabel = count === undefined ? "" : ` · ${count} changes`;
     return `${label} · ${branch}${dirty}${countLabel}`;
+  }
+
+  workspaceDetails() {
+    if (this.workspaceMode === "diff") {
+      return {
+        title: "Diff",
+        subtitle: this.workspaceSubtitle("Working tree"),
+        backVisible: false,
+      };
+    }
+
+    if (this.workspaceMode === "log" && this.logWorkspaceView === "detail") {
+      return {
+        title: "Commit",
+        subtitle: this.commitSubtitle(),
+        backVisible: true,
+        backLabel: "Back to log",
+      };
+    }
+
+    return {
+      title: "Log",
+      subtitle: this.workspaceSubtitle("History"),
+      backVisible: false,
+    };
+  }
+
+  commitSubtitle() {
+    const shortSha = this.selectedCommitSummary?.shortSha ?? "";
+    const subject = this.selectedCommitSummary?.subject ?? "";
+    return [shortSha, subject].filter(Boolean).join(" ");
   }
 
   startLeftPanelResize(event) {

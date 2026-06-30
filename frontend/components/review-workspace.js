@@ -4,8 +4,21 @@ class CodgerReviewWorkspace extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
     this.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-action='close-review-workspace']");
+      const button = event.target.closest("button[data-action]");
       if (!button) {
+        return;
+      }
+
+      if (button.dataset.action === "back-review-workspace") {
+        this.dispatchEvent(
+          new CustomEvent("codger:back-review-workspace", {
+            bubbles: true,
+          }),
+        );
+        return;
+      }
+
+      if (button.dataset.action !== "close-review-workspace") {
         return;
       }
 
@@ -38,13 +51,23 @@ class CodgerReviewWorkspace extends HTMLElement {
         aria-label="Review workspace"
       >
         <header class="review-workspace-header">
-          <button
-            type="button"
-            class="review-workspace-close"
-            data-action="close-review-workspace"
-            aria-label="Close review workspace"
-            title="Close"
-          ></button>
+          <div class="review-workspace-nav">
+            <button
+              type="button"
+              class="review-workspace-back"
+              data-action="back-review-workspace"
+              aria-label="Back to log"
+              title="Back"
+              hidden
+            ></button>
+            <button
+              type="button"
+              class="review-workspace-close"
+              data-action="close-review-workspace"
+              aria-label="Close review workspace"
+              title="Close"
+            ></button>
+          </div>
           <div class="review-workspace-title">
             <h2></h2>
             <span class="review-workspace-subtitle"></span>
@@ -67,6 +90,7 @@ class CodgerReviewWorkspace extends HTMLElement {
     `;
     this.titleEl = this.querySelector(".review-workspace-title h2");
     this.subtitleEl = this.querySelector(".review-workspace-subtitle");
+    this.backButton = this.querySelector(".review-workspace-back");
     this.closeButton = this.querySelector(".review-workspace-close");
     this.diffView = this.querySelector(".workspace-mode-diff");
     this.logView = this.querySelector(".workspace-mode-log");
@@ -80,6 +104,8 @@ class CodgerReviewWorkspace extends HTMLElement {
     this.dataset.workspaceMode = mode;
     this.workspaceTitle = options.title ?? workspaceTitle(mode);
     this.subtitle = options.subtitle ?? "";
+    this.backVisible = Boolean(options.backVisible);
+    this.backLabel = options.backLabel ?? "Back";
     this.renderChrome();
     this.diffView.hidden = mode !== "diff";
     this.logView.hidden = mode !== "log";
@@ -89,13 +115,23 @@ class CodgerReviewWorkspace extends HTMLElement {
     this.hidden = true;
     this.mode = null;
     this.dataset.workspaceMode = "";
+    this.backVisible = false;
     this.renderChrome();
   }
 
   updateDetails(options = {}) {
     this.workspaceTitle = options.title ?? this.workspaceTitle ?? workspaceTitle(this.mode);
     this.subtitle = options.subtitle ?? this.subtitle ?? "";
+    if (options.backVisible !== undefined) {
+      this.backVisible = Boolean(options.backVisible);
+    }
+    this.backLabel = options.backLabel ?? this.backLabel ?? "Back";
     this.renderChrome();
+  }
+
+  setLogView(view) {
+    this.ensureRendered();
+    this.logView.dataset.logView = view;
   }
 
   renderChrome() {
@@ -105,6 +141,14 @@ class CodgerReviewWorkspace extends HTMLElement {
 
     this.titleEl.textContent = this.workspaceTitle ?? workspaceTitle(this.mode);
     this.subtitleEl.textContent = this.subtitle ?? "";
+    this.backButton.hidden = !this.backVisible;
+    this.backButton.setAttribute("aria-label", this.backLabel ?? "Back");
+    this.backButton.setAttribute("title", this.backLabel ?? "Back");
+    this.backButton.innerHTML = renderInlineIcon(
+      "ArrowLeft",
+      this.backLabel ?? "Back",
+      "review-workspace-back-icon",
+    );
     this.closeButton.innerHTML = renderInlineIcon("X", "Close", "review-workspace-close-icon");
   }
 }

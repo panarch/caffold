@@ -30,6 +30,10 @@ test.beforeEach(async ({ page }) => {
         export const FolderGit2 = Folder;
         export const FolderOpen = Folder;
         export const FolderSymlink = Folder;
+        export const ArrowLeft = [
+          ["path", { d: "m12 19-7-7 7-7" }],
+          ["path", { d: "M19 12H5" }],
+        ];
         export const History = [["path", { d: "M3 12a9 9 0 1 0 3-6.7" }], ["path", { d: "M3 3v6h6" }], ["path", { d: "M12 7v5l3 2" }]];
         export const Info = [["circle", { cx: "12", cy: "12", r: "10" }], ["path", { d: "M12 16v-4" }], ["path", { d: "M12 8h.01" }]];
         export const Database = [["ellipse", { cx: "12", cy: "5", rx: "8", ry: "3" }], ["path", { d: "M4 5v10c0 1.7 3.6 3 8 3s8-1.3 8-3V5" }]];
@@ -573,14 +577,29 @@ test("opens commit diffs from Log mode", async ({ page }) => {
   await expect(logButton).toHaveAttribute("title", "Open Log");
   await logButton.click();
   const workspace = page.locator("codger-review-workspace");
+  const logView = workspace.locator(".workspace-mode-log");
+  const backButton = workspace.locator('button[data-action="back-review-workspace"]');
   await expect(workspace).toBeVisible();
   await expect(workspace).toHaveAttribute("data-workspace-mode", "log");
+  await expect(logView).toHaveAttribute("data-log-view", "list");
+  await expect(backButton).toBeHidden();
   await expect(page.locator("codger-log-list")).toContainText("Update planner function");
   await expect(page.locator("codger-log-list")).toContainText("abcdef1");
+  await expect(page.locator("codger-log-list")).toBeVisible();
+  await expect(page.locator(".log-review-detail")).toBeHidden();
 
   await page.locator('button[data-commit-sha="abcdef1234567890abcdef1234567890abcdef12"]').click();
-  await expect(page.locator("codger-commit-changes-tree")).toContainText("planner");
-  await expect(page.locator("codger-commit-changes-tree")).toContainText("function.rs");
+  await expect(logView).toHaveAttribute("data-log-view", "detail");
+  await expect(page.locator("codger-log-list")).toBeHidden();
+  await expect(page.locator(".log-review-detail")).toBeVisible();
+  await expect(backButton).toBeVisible();
+  await expect(workspace.locator(".review-workspace-title h2")).toHaveText("Commit");
+  await expect(workspace.locator(".review-workspace-subtitle")).toContainText("abcdef1");
+  const commitTree = page.locator("codger-commit-changes-tree");
+  await expect(commitTree).toContainText("2 files");
+  await expect(commitTree).not.toContainText("Update planner function");
+  await expect(commitTree).toContainText("planner");
+  await expect(commitTree).toContainText("function.rs");
   await expect(page.locator('button[data-commit-path="src/planner/function.rs"]')).toHaveAttribute(
     "aria-current",
     "true",
@@ -590,17 +609,27 @@ test("opens commit diffs from Log mode", async ({ page }) => {
   );
   await expectAlignedWorkspaceHeaders(page, [
     "codger-review-workspace .review-workspace-header",
-    "codger-log-list .log-list-panel > header",
     "codger-commit-changes-tree .commit-tree-panel > header",
     ".workspace-mode-log codger-review-file-viewer .viewer-panel > header",
   ]);
   await expectMatchingPaneTitleSizes(page, [
-    "codger-log-list .log-list-panel > header",
     "codger-commit-changes-tree .commit-tree-panel > header",
     ".workspace-mode-log codger-review-file-viewer .viewer-panel > header",
   ]);
   await expect(page.locator("codger-diff-viewer")).toContainText("old planner line");
   await expect(page.locator("codger-diff-viewer")).toContainText("new planner line");
+
+  await backButton.click();
+  await expect(logView).toHaveAttribute("data-log-view", "list");
+  await expect(backButton).toBeHidden();
+  await expect(workspace.locator(".review-workspace-title h2")).toHaveText("Log");
+  await expect(page.locator("codger-log-list")).toBeVisible();
+  await expect(page.locator(".log-review-detail")).toBeHidden();
+  await expect(
+    page.locator(
+      'codger-log-list button[data-commit-sha="abcdef1234567890abcdef1234567890abcdef12"]',
+    ),
+  ).toHaveAttribute("aria-current", "true");
 
   await workspace.getByRole("button", { name: "Close review workspace" }).click();
   await expect(workspace).toBeHidden();

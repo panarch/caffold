@@ -16,7 +16,6 @@ codger-commit-changes-tree .commit-tree-panel {
 codger-commit-changes-tree .commit-tree-panel > header {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 2px;
   align-content: center;
   padding: 5px 12px;
   border-bottom: 1px solid var(--border);
@@ -46,28 +45,6 @@ codger-commit-changes-tree .commit-file-count {
   color: var(--muted);
   font-size: 0.74rem;
   line-height: 1.1;
-  white-space: nowrap;
-}
-
-codger-commit-changes-tree .commit-summary {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 7px;
-  min-width: 0;
-  align-items: baseline;
-  color: var(--muted);
-  font-size: 0.74rem;
-  line-height: 1.1;
-}
-
-codger-commit-changes-tree .commit-short-sha {
-  color: var(--accent);
-}
-
-codger-commit-changes-tree .commit-subject {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

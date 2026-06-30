@@ -136,9 +136,7 @@ class CodgerCommitChangesTree extends HTMLElement {
     `;
   }
 
-  renderHeader(repository, commit, count) {
-    const subject = commit?.subject ?? repository?.branch ?? "Commit";
-    const shortSha = commit?.shortSha ?? "";
+  renderHeader(_repository, _commit, count) {
     const countLabel = count === null || count === undefined ? "" : `${count} files`;
 
     return `
@@ -147,14 +145,6 @@ class CodgerCommitChangesTree extends HTMLElement {
           <h2>Commit</h2>
           <span class="commit-file-count">${escapeHtml(countLabel)}</span>
         </div>
-        <span class="commit-summary" title="${escapeHtml(subject)}">
-          ${
-            shortSha
-              ? `<span class="commit-short-sha">${escapeHtml(shortSha)}</span>`
-              : ""
-          }
-          <span class="commit-subject">${escapeHtml(subject)}</span>
-        </span>
       </header>
     `;
   }
