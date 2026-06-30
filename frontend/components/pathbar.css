@@ -88,7 +88,6 @@ codger-pathbar .git-mode-button {
   gap: 6px;
   align-items: center;
   min-height: 26px;
-  max-width: 12rem;
   border: 1px solid var(--border-strong);
   border-radius: 4px;
   background: var(--surface);
@@ -116,10 +115,7 @@ codger-pathbar .git-mode-button.is-active {
 }
 
 codger-pathbar .git-branch {
-  min-width: 0;
-  overflow: hidden;
   font-size: 0.78rem;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -141,7 +137,6 @@ codger-pathbar .git-count {
   }
 
   codger-pathbar .git-mode-button {
-    max-width: 5.25rem;
     padding: 0 6px;
   }
 }
