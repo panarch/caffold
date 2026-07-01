@@ -273,7 +273,7 @@ test("keeps the toggled tree row anchored while expanding", async ({ page }) => 
   expect(Math.abs(afterTop - beforeTop)).toBeLessThanOrEqual(1);
 });
 
-test("resizes the left review panel", async ({ page }, testInfo) => {
+test("resizes the left file panel", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "phone", "The phone layout stacks panels vertically.");
 
   await page.goto("/");
@@ -281,13 +281,7 @@ test("resizes the left review panel", async ({ page }, testInfo) => {
   await expect(handle).toBeVisible();
 
   const beforeWidth = await leftPanelWidth(page);
-  const box = await handle.boundingBox();
-  expect(box).not.toBeNull();
-
-  await page.mouse.move(box.x + box.width / 2, box.y + 40);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width / 2 + 96, box.y + 40);
-  await page.mouse.up();
+  await dragHorizontalResizer(page, handle, 96);
 
   const afterWidth = await leftPanelWidth(page);
   expect(afterWidth).toBeGreaterThan(beforeWidth + 48);
@@ -453,6 +447,20 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   await expect(page.locator("codger-changes-tree")).toContainText("Unstaged");
   await expect(page.locator("codger-changes-tree")).toContainText("example.rs");
   await expect(page.locator("codger-changes-tree")).toContainText("deleted.rs");
+  if (testInfo.project.name !== "phone") {
+    const resizeHandle = workspace.locator(".workspace-mode-diff .review-panel-resizer");
+    await expect(resizeHandle).toBeVisible();
+    const beforeReviewWidth = await elementWidth(
+      page,
+      "codger-review-workspace .workspace-mode-diff > codger-changes-tree",
+    );
+    await dragHorizontalResizer(page, resizeHandle, 96);
+    const afterReviewWidth = await elementWidth(
+      page,
+      "codger-review-workspace .workspace-mode-diff > codger-changes-tree",
+    );
+    expect(afterReviewWidth).toBeGreaterThan(beforeReviewWidth + 48);
+  }
 
   await page.locator('button[data-change-path="src/example.rs"]').click();
   await expect(page.locator(".workspace-mode-diff codger-review-file-viewer")).toContainText(
@@ -505,7 +513,7 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   await expect(page.locator("codger-file-list")).toBeVisible();
 });
 
-test("opens commit diffs from Log mode", async ({ page }) => {
+test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
   const commit = {
     sha: "abcdef1234567890abcdef1234567890abcdef12",
     shortSha: "abcdef1",
@@ -683,6 +691,20 @@ test("opens commit diffs from Log mode", async ({ page }) => {
     "aria-current",
     "true",
   );
+  if (testInfo.project.name === "desktop") {
+    const resizeHandle = workspace.locator(".log-review-detail .review-panel-resizer");
+    await expect(resizeHandle).toBeVisible();
+    const beforeReviewWidth = await elementWidth(
+      page,
+      "codger-review-workspace .log-review-detail > codger-commit-changes-tree",
+    );
+    await dragHorizontalResizer(page, resizeHandle, 96);
+    const afterReviewWidth = await elementWidth(
+      page,
+      "codger-review-workspace .log-review-detail > codger-commit-changes-tree",
+    );
+    expect(afterReviewWidth).toBeGreaterThan(beforeReviewWidth + 48);
+  }
   await expect(page.locator(".workspace-mode-log .viewer-subtitle")).toHaveText(
     "Modified · Commit abcdef1",
   );
@@ -817,6 +839,24 @@ async function leftPanelWidth(page) {
   return page.locator("codger-file-list").evaluate((element) => {
     return element.getBoundingClientRect().width;
   });
+}
+
+async function elementWidth(page, selector) {
+  return page.locator(selector).evaluate((element) => {
+    return element.getBoundingClientRect().width;
+  });
+}
+
+async function dragHorizontalResizer(page, handle, deltaX) {
+  const box = await handle.boundingBox();
+  expect(box).not.toBeNull();
+
+  const x = box.x + box.width / 2;
+  const y = box.y + Math.min(40, Math.max(1, box.height / 2));
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + deltaX, y);
+  await page.mouse.up();
 }
 
 async function scrollTop(locator) {

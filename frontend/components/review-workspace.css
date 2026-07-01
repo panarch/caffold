@@ -1,5 +1,6 @@
 codger-review-workspace {
   --review-header-height: 42px;
+  --review-left-panel-width: 20rem;
   --review-pane-title-size: 0.82rem;
   position: fixed;
   inset: 0;
@@ -104,8 +105,16 @@ codger-review-workspace .review-workspace-view {
 
 codger-review-workspace .workspace-mode-diff {
   display: grid;
-  grid-template-columns: minmax(17rem, 34vw) minmax(0, 1fr);
+  grid-template-columns: var(--review-left-panel-width) 6px minmax(0, 1fr);
   height: 100%;
+}
+
+codger-review-workspace .workspace-mode-diff > codger-changes-tree {
+  grid-column: 1;
+}
+
+codger-review-workspace .workspace-mode-diff > codger-review-file-viewer {
+  grid-column: 3;
 }
 
 codger-review-workspace .workspace-mode-log {
@@ -125,10 +134,40 @@ codger-review-workspace .workspace-mode-log[data-log-view="detail"] codger-log-l
 
 codger-review-workspace .log-review-detail {
   display: grid;
-  grid-template-columns: minmax(18rem, 30vw) minmax(0, 1fr);
+  grid-template-columns: var(--review-left-panel-width) 6px minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+codger-review-workspace .log-review-detail > codger-commit-changes-tree {
+  grid-column: 1;
+}
+
+codger-review-workspace .log-review-detail > codger-review-file-viewer {
+  grid-column: 3;
+}
+
+codger-review-workspace .review-panel-resizer {
+  grid-column: 2;
+  min-width: 0;
+  border-right: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  background: var(--surface-muted);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+codger-review-workspace .review-panel-resizer:hover,
+codger-review-workspace .review-panel-resizer:focus-visible,
+codger-review-workspace.is-resizing-review-panel .review-panel-resizer {
+  background: #d9e6df;
+  outline: none;
+}
+
+codger-review-workspace.is-resizing-review-panel {
+  cursor: col-resize;
+  user-select: none;
 }
 
 codger-review-workspace codger-changes-tree,
@@ -176,6 +215,20 @@ codger-review-workspace codger-commit-changes-tree h2 {
     grid-template-rows: minmax(0, 32dvh) minmax(0, 1fr);
   }
 
+  codger-review-workspace .log-review-detail > codger-commit-changes-tree {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  codger-review-workspace .log-review-detail > codger-review-file-viewer {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  codger-review-workspace .log-review-detail > .review-panel-resizer {
+    display: none;
+  }
+
   codger-review-workspace .log-review-detail codger-commit-changes-tree {
     border-right: 0;
     border-bottom: 1px solid var(--border);
@@ -186,6 +239,20 @@ codger-review-workspace codger-commit-changes-tree h2 {
   codger-review-workspace .workspace-mode-diff {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 36dvh) minmax(0, 1fr);
+  }
+
+  codger-review-workspace .workspace-mode-diff > codger-changes-tree {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  codger-review-workspace .workspace-mode-diff > codger-review-file-viewer {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  codger-review-workspace .workspace-mode-diff > .review-panel-resizer {
+    display: none;
   }
 
   codger-review-workspace .workspace-mode-log {
