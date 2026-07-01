@@ -553,6 +553,21 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
     const headRef = url.searchParams.get("head");
     const changedPath =
       baseRef === "origin/release" ? "src/runtime/release.rs" : "src/planner/function.rs";
+    const files =
+      baseRef === headRef
+        ? []
+        : [
+            {
+              path: changedPath,
+              repoRelativePath: changedPath.replace(/^src\//, ""),
+              status: baseRef === "origin/release" ? "A" : "M",
+            },
+            {
+              path: "src/runtime/new.rs",
+              repoRelativePath: "runtime/new.rs",
+              status: "A",
+            },
+          ];
 
     return route.fulfill({
       contentType: "application/json",
@@ -560,18 +575,7 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
         repository,
         baseRef,
         headRef,
-        files: [
-          {
-            path: changedPath,
-            repoRelativePath: changedPath.replace(/^src\//, ""),
-            status: baseRef === "origin/release" ? "A" : "M",
-          },
-          {
-            path: "src/runtime/new.rs",
-            repoRelativePath: "runtime/new.rs",
-            status: "A",
-          },
-        ],
+        files,
       }),
     });
   });
@@ -635,6 +639,18 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
   await expect(page.locator("codger-compare-tree")).toContainText("planner");
   await expect(page.locator("codger-compare-tree")).toContainText("function.rs");
   await expect(page.locator("codger-compare-tree")).toContainText("new.rs");
+
+  await workspace.locator('select[data-compare-ref="base"]').selectOption("main");
+  await workspace.locator('select[data-compare-ref="head"]').selectOption("main");
+  await expect(workspace.locator('select[data-compare-ref="base"]')).toHaveValue("main");
+  await expect(workspace.locator('select[data-compare-ref="head"]')).toHaveValue("main");
+  await expectCompareRefControlsFit(page, testInfo, {
+    compactRefs: true,
+    sameRefCss: true,
+    tightRefGaps: true,
+  });
+  await captureReviewScreenshot(page, testInfo, "compare-empty-short-refs");
+  await expect(page.locator("codger-compare-tree")).toContainText("0 files");
 
   await workspace.locator('select[data-compare-ref="base"]').selectOption("origin/main");
   await workspace.locator('select[data-compare-ref="head"]').selectOption("feature/review");
@@ -1100,6 +1116,7 @@ async function expectCompareRefControlsFit(page, testInfo, options = {}) {
     );
     const baseSelect = document.querySelector('select[data-compare-ref="base"]');
     const headSelect = document.querySelector('select[data-compare-ref="head"]');
+    const separator = controls.querySelector(".review-compare-ref-separator");
     const subtitle = document.querySelector(
       "codger-review-workspace .review-workspace-subtitle",
     );
@@ -1150,6 +1167,7 @@ async function expectCompareRefControlsFit(page, testInfo, options = {}) {
       controls: box(controls),
       headSelect: selectMetrics(headSelect),
       header: scrollBox(header),
+      separator: box(separator),
       subtitle: box(subtitle),
       title: scrollBox(title),
       titleHeading: box(titleHeading),
@@ -1174,8 +1192,8 @@ async function expectCompareRefControlsFit(page, testInfo, options = {}) {
     expect(box.top).toBeGreaterThanOrEqual(metrics.header.top - 1);
     expect(box.bottom).toBeLessThanOrEqual(metrics.header.bottom + 1);
   }
-  expect(metrics.baseSelect.width).toBeGreaterThan(80);
-  expect(metrics.headSelect.width).toBeGreaterThan(80);
+  expect(metrics.baseSelect.width).toBeGreaterThan(70);
+  expect(metrics.headSelect.width).toBeGreaterThan(70);
   if (options.sameRefCss) {
     expect(metrics.baseSelect.hasInlineStyle).toBe(false);
     expect(metrics.headSelect.hasInlineStyle).toBe(false);
@@ -1192,6 +1210,10 @@ async function expectCompareRefControlsFit(page, testInfo, options = {}) {
   if (options.mixedRefs && testInfo.project.name !== "phone") {
     expect(metrics.baseSelect.width).toBeLessThan(180);
     expect(metrics.headSelect.width).toBeGreaterThan(metrics.baseSelect.width + 120);
+  }
+  if (options.tightRefGaps && testInfo.project.name !== "phone") {
+    expect(metrics.separator.left - metrics.baseSelect.right).toBeLessThanOrEqual(16);
+    expect(metrics.headSelect.left - metrics.separator.right).toBeLessThanOrEqual(72);
   }
   if (options.visibleHeadRef && testInfo.project.name !== "phone") {
     expect(metrics.headSelect.scrollWidth).toBeLessThanOrEqual(

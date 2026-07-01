@@ -122,14 +122,10 @@ codger-review-workspace .review-compare-ref-controls {
 }
 
 codger-review-workspace .review-compare-ref-controls label {
-  display: flex;
-  flex: 0 1 auto;
-  gap: 6px;
-  align-items: center;
-  min-width: 15ch;
+  flex: 0 0 auto;
 }
 
-codger-review-workspace .review-compare-ref-controls label > span,
+codger-review-workspace .review-compare-ref-controls label,
 codger-review-workspace .review-compare-ref-separator {
   color: var(--muted);
   font-size: 0.72rem;
@@ -139,7 +135,6 @@ codger-review-workspace .review-compare-ref-separator {
 codger-review-workspace .review-compare-ref-controls select {
   field-sizing: content;
   min-width: 10ch;
-  min-inline-size: 0;
   max-width: 100%;
   flex: 0 1 auto;
   width: auto;
@@ -318,11 +313,9 @@ codger-review-workspace codger-commit-changes-tree h2 {
   }
 
   codger-review-workspace .review-compare-ref-controls {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto minmax(0, 1fr);
     width: 100%;
-  }
-
-  codger-review-workspace .review-compare-ref-controls label {
-    flex: 1 1 0;
   }
 
   codger-review-workspace .review-compare-ref-controls select {

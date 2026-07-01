@@ -271,27 +271,25 @@ class CodgerReviewWorkspace extends HTMLElement {
 
     return `
       <div class="review-compare-ref-controls" aria-label="Compare refs">
-        <label>
-          <span>Base</span>
-          <select
-            data-compare-ref="base"
-            aria-label="Base ref"
-            title="${escapeHtml(this.compareBaseRef ?? "")}"
-          >
-            ${renderRefOptions(refs, this.compareBaseRef)}
-          </select>
-        </label>
+        <label for="codger-compare-base-ref">Base</label>
+        <select
+          id="codger-compare-base-ref"
+          data-compare-ref="base"
+          aria-label="Base ref"
+          title="${escapeHtml(this.compareBaseRef ?? "")}"
+        >
+          ${renderRefOptions(refs, this.compareBaseRef)}
+        </select>
         <span class="review-compare-ref-separator" aria-hidden="true">...</span>
-        <label>
-          <span>Head</span>
-          <select
-            data-compare-ref="head"
-            aria-label="Head ref"
-            title="${escapeHtml(this.compareHeadRef ?? "")}"
-          >
-            ${renderRefOptions(refs, this.compareHeadRef)}
-          </select>
-        </label>
+        <label for="codger-compare-head-ref">Head</label>
+        <select
+          id="codger-compare-head-ref"
+          data-compare-ref="head"
+          aria-label="Head ref"
+          title="${escapeHtml(this.compareHeadRef ?? "")}"
+        >
+          ${renderRefOptions(refs, this.compareHeadRef)}
+        </select>
       </div>
     `;
   }
