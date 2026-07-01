@@ -81,7 +81,7 @@ codger-review-workspace .review-workspace-title {
 }
 
 codger-review-workspace .review-workspace-title.has-controls {
-  grid-template-columns: auto max-content auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   justify-content: start;
 }
@@ -94,9 +94,9 @@ codger-review-workspace .review-workspace-title h2 {
 }
 
 codger-review-workspace .review-workspace-controls {
+  justify-self: stretch;
   min-width: 0;
-  width: max-content;
-  max-width: 100%;
+  width: 100%;
 }
 
 codger-review-workspace .review-workspace-subtitle {
@@ -113,17 +113,20 @@ codger-review-workspace .review-workspace-title.has-controls .review-workspace-s
 }
 
 codger-review-workspace .review-compare-ref-controls {
-  display: inline-grid;
-  grid-template-columns: auto auto auto auto auto;
+  display: flex;
   gap: 6px;
   align-items: center;
   min-width: 0;
-  width: max-content;
+  width: 100%;
   max-width: 100%;
 }
 
 codger-review-workspace .review-compare-ref-controls label {
-  display: contents;
+  display: flex;
+  flex: 0 1 auto;
+  gap: 6px;
+  align-items: center;
+  min-width: 15ch;
 }
 
 codger-review-workspace .review-compare-ref-controls label > span,
@@ -136,7 +139,9 @@ codger-review-workspace .review-compare-ref-separator {
 codger-review-workspace .review-compare-ref-controls select {
   field-sizing: content;
   min-width: 10ch;
-  max-width: none;
+  min-inline-size: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
   width: auto;
   height: 28px;
   border: 1px solid var(--border);
@@ -313,14 +318,17 @@ codger-review-workspace codger-commit-changes-tree h2 {
   }
 
   codger-review-workspace .review-compare-ref-controls {
-    grid-template-columns: auto minmax(0, 1fr) auto auto minmax(0, 1fr);
     width: 100%;
+  }
+
+  codger-review-workspace .review-compare-ref-controls label {
+    flex: 1 1 0;
   }
 
   codger-review-workspace .review-compare-ref-controls select {
     field-sizing: fixed;
     width: 100%;
-    max-width: none;
+    max-width: 100%;
   }
 
   codger-review-workspace .workspace-mode-diff,
