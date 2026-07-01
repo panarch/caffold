@@ -180,7 +180,7 @@ codger-review-workspace .workspace-mode-log {
 
 codger-review-workspace .workspace-mode-issues {
   display: grid;
-  grid-template-columns: var(--review-left-panel-width) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   height: 100%;
 }
 
@@ -190,6 +190,15 @@ codger-review-workspace .workspace-mode-log[data-log-view="list"] codger-log-lis
 
 codger-review-workspace .workspace-mode-log[data-log-view="list"] .log-review-detail,
 codger-review-workspace .workspace-mode-log[data-log-view="detail"] codger-log-list {
+  display: none;
+}
+
+codger-review-workspace .workspace-mode-issues[data-issues-view="list"] codger-github-issues-list {
+  border-right: 0;
+}
+
+codger-review-workspace .workspace-mode-issues[data-issues-view="list"] codger-github-issue-viewer,
+codger-review-workspace .workspace-mode-issues[data-issues-view="detail"] codger-github-issues-list {
   display: none;
 }
 
@@ -364,15 +373,6 @@ codger-review-workspace codger-github-issues-list h2 {
 
   codger-review-workspace .workspace-mode-issues {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 36dvh) minmax(0, 1fr);
-  }
-
-  codger-review-workspace .workspace-mode-issues > codger-github-issues-list {
-    grid-row: 1;
-  }
-
-  codger-review-workspace .workspace-mode-issues > codger-github-issue-viewer {
-    grid-row: 2;
   }
 
   codger-review-workspace .log-review-detail {

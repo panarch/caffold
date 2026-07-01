@@ -228,6 +228,11 @@ class CodgerReviewWorkspace extends HTMLElement {
     this.logView.dataset.logView = view;
   }
 
+  setIssuesView(view) {
+    this.ensureRendered();
+    this.issuesView.dataset.issuesView = view;
+  }
+
   setCompareRefs(refsPayload, baseRef, headRef) {
     this.compareRefsPayload = refsPayload ?? null;
     this.compareBaseRef = baseRef ?? "";

@@ -76,9 +76,7 @@ class CodgerGithubIssueViewer extends HTMLElement {
           </div>
           ${this.renderLabels(issue.labels ?? [])}
         </header>
-        <article class="github-issue-body">
-          ${escapeHtml(issue.body?.trim() || "No description.")}
-        </article>
+        <article class="github-issue-body">${escapeHtml(issue.body?.trim() || "No description.")}</article>
       </section>
     `;
   }

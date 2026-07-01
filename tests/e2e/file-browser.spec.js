@@ -846,9 +846,8 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
   await expect(issuePagination.locator(".pagination-indicator")).toHaveText("1 / 2");
   await expect(issuePagination.getByRole("button", { name: "Newest issue page" })).toBeDisabled();
   await expect(issuePagination.getByRole("button", { name: "Newer issue page" })).toBeDisabled();
-  await expect(page.locator("codger-github-issue-viewer")).toContainText(
-    "Select an issue to inspect it.",
-  );
+  await expect(page.locator("codger-github-issues-list")).toBeVisible();
+  await expect(page.locator("codger-github-issue-viewer")).toBeHidden();
   await expectAlignedWorkspaceHeaders(page, [
     "codger-review-workspace .review-workspace-header",
     "codger-github-issues-list .github-issues-panel > header",
@@ -859,11 +858,19 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
   await captureReviewScreenshot(page, testInfo, "github-issues-list");
 
   await page.locator('button[data-issue-number="42"]').click();
-  await expect(page.locator('button[data-issue-number="42"]')).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
   const issueViewer = page.locator("codger-github-issue-viewer");
+  await expect(workspace).toHaveAttribute("data-workspace-mode", "issues");
+  await expect(workspace.locator(".workspace-mode-issues")).toHaveAttribute(
+    "data-issues-view",
+    "detail",
+  );
+  await expect(workspace.locator(".review-workspace-title h2")).toHaveText("Issue");
+  await expect(workspace.locator(".review-workspace-subtitle")).toContainText(
+    "#42 Track mobile review issues",
+  );
+  await expect(workspace.getByRole("button", { name: "Back to issues" })).toBeVisible();
+  await expect(page.locator("codger-github-issues-list")).toBeHidden();
+  await expect(issueViewer).toBeVisible();
   await expect(issueViewer).toContainText("Track mobile review issues");
   await expect(issueViewer).toContainText("Review GitHub issues without leaving");
   await expect(issueViewer).toContainText("3 comments");
@@ -871,6 +878,16 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
     "href",
     "https://github.com/example/codger/issues/42",
   );
+  await captureReviewScreenshot(page, testInfo, "github-issue-detail");
+
+  await workspace.getByRole("button", { name: "Back to issues" }).click();
+  await expect(workspace.locator(".workspace-mode-issues")).toHaveAttribute(
+    "data-issues-view",
+    "list",
+  );
+  await expect(workspace.locator(".review-workspace-title h2")).toHaveText("Issues");
+  await expect(page.locator("codger-github-issues-list")).toBeVisible();
+  await expect(issueViewer).toBeHidden();
 
   await issuePagination.getByRole("button", { name: "Oldest issue page" }).click();
   await page.waitForTimeout(220);
@@ -890,7 +907,7 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
   await expect(issuePagination.getByRole("button", { name: "Older issue page" })).toBeDisabled();
   await expect(issuePagination.getByRole("button", { name: "Oldest issue page" })).toBeDisabled();
   await expectGlobalScrollLocked(page);
-  await captureReviewScreenshot(page, testInfo, "github-issue-detail");
+  await captureReviewScreenshot(page, testInfo, "github-issues-page-2");
 });
 
 test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
@@ -1181,6 +1198,8 @@ async function expectGlobalScrollLocked(page) {
   const scrollState = await page.evaluate(() => {
     const element = document.scrollingElement;
     return {
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
       clientHeight: element.clientHeight,
       scrollHeight: element.scrollHeight,
       overflow: window.getComputedStyle(document.body).overflow,
@@ -1188,6 +1207,7 @@ async function expectGlobalScrollLocked(page) {
   });
 
   expect(scrollState.overflow).toBe("hidden");
+  expect(scrollState.scrollWidth).toBe(scrollState.clientWidth);
   expect(scrollState.scrollHeight).toBe(scrollState.clientHeight);
 }
 

@@ -81,6 +81,21 @@ codger-github-issues-list .github-issue-row {
   display: block;
 }
 
+codger-github-issues-list .github-issue-row + .github-issue-row {
+  position: relative;
+}
+
+codger-github-issues-list .github-issue-row + .github-issue-row::before {
+  position: absolute;
+  top: 0;
+  right: 12px;
+  left: 12px;
+  height: 1px;
+  background: #e3ebe5;
+  content: "";
+  pointer-events: none;
+}
+
 codger-github-issues-list .github-issue-button {
   display: grid;
   gap: 3px;

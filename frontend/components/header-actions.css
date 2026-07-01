@@ -54,3 +54,18 @@ codger-header-actions .header-action-count {
   line-height: 1;
   text-align: right;
 }
+
+@media (max-width: 520px) {
+  codger-header-actions .header-actions {
+    gap: 4px;
+  }
+
+  codger-header-actions .header-action-button {
+    min-width: 30px;
+    padding: 0 6px;
+  }
+
+  codger-header-actions .header-action-label {
+    display: none;
+  }
+}
