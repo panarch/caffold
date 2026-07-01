@@ -3,6 +3,9 @@ import {
   deleteProject,
   getGitCommit,
   getGitCommitDiff,
+  getGitCompare,
+  getGitCompareDiff,
+  getGitRefs,
   getGitDiff,
   getGitLog,
   getGitStatus,
@@ -23,6 +26,7 @@ import "./file-viewer.js";
 import "./changes-tree.js";
 import "./log-list.js";
 import "./commit-changes-tree.js";
+import "./compare-tree.js";
 import "./review-workspace.js";
 
 const LOADING_DELAY_MS = 180;
@@ -45,11 +49,17 @@ class CodgerAppShell extends HTMLElement {
     this.gitStatusRequestId = 0;
     this.gitLogRequestId = 0;
     this.gitCommitRequestId = 0;
+    this.gitCompareRequestId = 0;
+    this.gitRefsRequestId = 0;
     this.projectRequestId = 0;
     this.gitStatus = null;
     this.projects = [];
     this.projectCandidate = null;
     this.currentProjectId = null;
+    this.gitCompare = null;
+    this.gitRefs = null;
+    this.compareBaseRef = null;
+    this.compareHeadRef = null;
     this.workspaceMode = null;
     this.logWorkspaceView = "list";
     this.logPage = 1;
@@ -69,11 +79,15 @@ class CodgerAppShell extends HTMLElement {
     this.changesTree = this.reviewWorkspace.querySelector("codger-changes-tree");
     this.logList = this.reviewWorkspace.querySelector("codger-log-list");
     this.commitChangesTree = this.reviewWorkspace.querySelector("codger-commit-changes-tree");
+    this.compareTree = this.reviewWorkspace.querySelector("codger-compare-tree");
     this.diffWorkspaceViewer = this.reviewWorkspace.querySelector(
       ".workspace-mode-diff codger-review-file-viewer",
     );
     this.logWorkspaceViewer = this.reviewWorkspace.querySelector(
       ".workspace-mode-log codger-review-file-viewer",
+    );
+    this.compareWorkspaceViewer = this.reviewWorkspace.querySelector(
+      ".workspace-mode-compare codger-review-file-viewer",
     );
     this.applyLeftPanelWidth(this.leftPanelWidth);
 
@@ -92,6 +106,9 @@ class CodgerAppShell extends HTMLElement {
     this.addEventListener("codger:open-log-workspace", () => {
       this.openLogWorkspace();
     });
+    this.addEventListener("codger:open-compare-workspace", () => {
+      this.openCompareWorkspace();
+    });
     this.addEventListener("codger:close-review-workspace", () => {
       this.closeReviewWorkspace();
     });
@@ -109,6 +126,12 @@ class CodgerAppShell extends HTMLElement {
     });
     this.addEventListener("codger:open-commit-diff", (event) => {
       this.openCommitDiff(event.detail.sha, event.detail.path, event.detail.status);
+    });
+    this.addEventListener("codger:open-compare-diff", (event) => {
+      this.openCompareDiff(event.detail.path, event.detail.status);
+    });
+    this.addEventListener("codger:change-compare-refs", (event) => {
+      this.changeCompareRefs(event.detail.baseRef, event.detail.headRef);
     });
     this.addEventListener("codger:register-current-project", () => {
       this.registerCurrentProject();
@@ -236,6 +259,7 @@ class CodgerAppShell extends HTMLElement {
     this.fileList.setSelectedPath(path);
     this.changesTree.setSelectedPath("");
     this.commitChangesTree.setSelectedPath("");
+    this.compareTree.setSelectedPath("");
 
     if (isPreviewableImagePath(path)) {
       this.fileViewer.setImage({
@@ -273,6 +297,7 @@ class CodgerAppShell extends HTMLElement {
     this.fileList.setSelectedPath("");
     this.changesTree.setSelectedPath(path);
     this.commitChangesTree.setSelectedPath("");
+    this.compareTree.setSelectedPath("");
     const loadingTimer = this.showWorkspaceLoadingAfterDelay(
       this.diffWorkspaceViewer,
       `Diff ${path}`,
@@ -316,6 +341,7 @@ class CodgerAppShell extends HTMLElement {
     this.fileList.setSelectedPath("");
     this.changesTree.setSelectedPath("");
     this.commitChangesTree.setSelectedPath("");
+    this.compareTree.setSelectedPath("");
     this.commitChangesTree.setLoading(this.gitRepository);
     this.logWorkspaceViewer.setLoading(`Commit ${sha.slice(0, 7)}`);
 
@@ -354,6 +380,7 @@ class CodgerAppShell extends HTMLElement {
     this.fileList.setSelectedPath("");
     this.changesTree.setSelectedPath("");
     this.commitChangesTree.setSelectedPath(path);
+    this.compareTree.setSelectedPath("");
     const loadingTimer = this.showWorkspaceLoadingAfterDelay(
       this.logWorkspaceViewer,
       `Commit diff ${path}`,
@@ -373,6 +400,45 @@ class CodgerAppShell extends HTMLElement {
       }
 
       this.logWorkspaceViewer.setError(path, error);
+    } finally {
+      window.clearTimeout(loadingTimer);
+    }
+  }
+
+  async openCompareDiff(path, status = "") {
+    if (!path || !this.gitCompare) {
+      return;
+    }
+
+    const requestId = ++this.fileRequestId;
+    this.fileList.setSelectedPath("");
+    this.changesTree.setSelectedPath("");
+    this.commitChangesTree.setSelectedPath("");
+    this.compareTree.setSelectedPath(path);
+    const loadingTimer = this.showWorkspaceLoadingAfterDelay(
+      this.compareWorkspaceViewer,
+      `Compare diff ${path}`,
+      requestId,
+    );
+
+    try {
+      const diff = await getGitCompareDiff(
+        this.currentPath,
+        this.gitCompare.baseRef,
+        this.gitCompare.headRef,
+        path,
+      );
+      if (requestId !== this.fileRequestId) {
+        return;
+      }
+
+      this.compareWorkspaceViewer.setDiff({ ...diff, status });
+    } catch (error) {
+      if (requestId !== this.fileRequestId) {
+        return;
+      }
+
+      this.compareWorkspaceViewer.setError(path, error);
     } finally {
       window.clearTimeout(loadingTimer);
     }
@@ -487,6 +553,10 @@ class CodgerAppShell extends HTMLElement {
 
     this.gitRepository = directory.git;
     this.gitStatus = null;
+    this.gitCompare = null;
+    this.gitRefs = null;
+    this.compareBaseRef = null;
+    this.compareHeadRef = null;
     this.headerActions.gitStatus = {
       branch: directory.git.branch,
       dirty: directory.git.dirty,
@@ -498,6 +568,8 @@ class CodgerAppShell extends HTMLElement {
     if (this.workspaceMode === "log") {
       this.logPage = 1;
       this.loadGitLog(directory.path, this.logPage);
+    } else if (this.workspaceMode === "compare") {
+      this.loadGitRefsAndCompare(directory.path);
     }
     this.updateWorkspaceChrome();
   }
@@ -505,14 +577,22 @@ class CodgerAppShell extends HTMLElement {
   clearGitContext() {
     this.gitRepository = null;
     this.gitStatus = null;
+    this.gitCompare = null;
     this.gitStatusRequestId += 1;
     this.gitLogRequestId += 1;
     this.gitCommitRequestId += 1;
+    this.gitCompareRequestId += 1;
+    this.gitRefsRequestId += 1;
     this.logPage = 1;
+    this.gitRefs = null;
+    this.compareBaseRef = null;
+    this.compareHeadRef = null;
     this.headerActions.gitStatus = null;
     this.changesTree.reset();
     this.logList.reset();
     this.commitChangesTree.reset();
+    this.compareTree.reset();
+    this.reviewWorkspace.clearCompareRefs();
     this.closeReviewWorkspace();
   }
 
@@ -574,6 +654,89 @@ class CodgerAppShell extends HTMLElement {
     }
   }
 
+  async loadGitRefsAndCompare(path) {
+    if (!this.gitRepository) {
+      return;
+    }
+
+    const requestId = ++this.gitRefsRequestId;
+    this.compareTree.setLoading(this.gitRepository);
+    this.reviewWorkspace.setCompareRefs(this.gitRefs, this.compareBaseRef, this.compareHeadRef);
+    this.compareWorkspaceViewer.setEmpty();
+
+    try {
+      const refs = await getGitRefs(path);
+      if (requestId !== this.gitRefsRequestId) {
+        return;
+      }
+
+      this.gitRefs = refs;
+      this.gitRepository = refs.repository;
+      this.compareBaseRef = chooseCompareRef(this.compareBaseRef, refs.defaultBaseRef, refs.refs);
+      this.compareHeadRef = chooseCompareRef(this.compareHeadRef, refs.defaultHeadRef, refs.refs);
+      this.reviewWorkspace.setCompareRefs(this.gitRefs, this.compareBaseRef, this.compareHeadRef);
+      this.updateGitButton();
+      this.updateWorkspaceChrome();
+      await this.loadGitCompare(path, this.compareBaseRef, this.compareHeadRef);
+    } catch (error) {
+      if (requestId !== this.gitRefsRequestId) {
+        return;
+      }
+
+      this.compareTree.setError(error, this.gitRepository);
+    }
+  }
+
+  async loadGitCompare(path, baseRef = this.compareBaseRef, headRef = this.compareHeadRef) {
+    if (!this.gitRepository) {
+      return;
+    }
+
+    const requestId = ++this.gitCompareRequestId;
+    this.compareTree.setLoading(this.gitRepository);
+    this.reviewWorkspace.setCompareRefs(this.gitRefs, baseRef, headRef);
+
+    try {
+      const compare = await getGitCompare(path, baseRef, headRef);
+      if (requestId !== this.gitCompareRequestId) {
+        return;
+      }
+
+      this.compareBaseRef = compare.baseRef;
+      this.compareHeadRef = compare.headRef;
+      this.gitCompare = compare;
+      this.gitRepository = compare.repository;
+      this.reviewWorkspace.setCompareRefs(this.gitRefs, this.compareBaseRef, this.compareHeadRef);
+      this.updateGitButton();
+      this.updateWorkspaceChrome();
+      this.compareTree.setCompare(compare);
+    } catch (error) {
+      if (requestId !== this.gitCompareRequestId) {
+        return;
+      }
+
+      this.compareTree.setError(error, this.gitRepository);
+    }
+  }
+
+  changeCompareRefs(baseRef, headRef) {
+    if (this.workspaceMode !== "compare") {
+      return;
+    }
+
+    if (!baseRef || !headRef || (baseRef === this.compareBaseRef && headRef === this.compareHeadRef)) {
+      return;
+    }
+
+    this.compareBaseRef = baseRef;
+    this.compareHeadRef = headRef;
+    this.gitCompare = null;
+    this.compareTree.setSelectedPath("");
+    this.reviewWorkspace.setCompareRefs(this.gitRefs, baseRef, headRef);
+    this.compareWorkspaceViewer.setEmpty();
+    this.loadGitCompare(this.currentPath, baseRef, headRef);
+  }
+
   changeLogPage(page) {
     if (this.workspaceMode !== "log" || this.logWorkspaceView !== "list") {
       return;
@@ -604,6 +767,23 @@ class CodgerAppShell extends HTMLElement {
       this.changesTree.setLoading(this.gitRepository);
     }
     this.diffWorkspaceViewer.setEmpty();
+  }
+
+  openCompareWorkspace() {
+    if (!this.gitRepository) {
+      return;
+    }
+
+    this.workspaceMode = "compare";
+    this.logWorkspaceView = "list";
+    this.reviewWorkspace.open("compare", {
+      title: "Compare",
+      subtitle: this.compareSubtitle(),
+      backVisible: false,
+    });
+    this.updateGitButton();
+    this.compareWorkspaceViewer.setEmpty();
+    this.loadGitRefsAndCompare(this.currentPath);
   }
 
   openLogWorkspace(options = {}) {
@@ -697,6 +877,14 @@ class CodgerAppShell extends HTMLElement {
       };
     }
 
+    if (this.workspaceMode === "compare") {
+      return {
+        title: "Compare",
+        subtitle: this.compareSubtitle(),
+        backVisible: false,
+      };
+    }
+
     if (this.workspaceMode === "log" && this.logWorkspaceView === "detail") {
       return {
         title: "Commit",
@@ -717,6 +905,20 @@ class CodgerAppShell extends HTMLElement {
     const shortSha = this.selectedCommitSummary?.shortSha ?? "";
     const subject = this.selectedCommitSummary?.subject ?? "";
     return [shortSha, subject].filter(Boolean).join(" ");
+  }
+
+  compareSubtitle() {
+    if (!this.gitCompare) {
+      return this.workspaceSubtitle("Branches");
+    }
+
+    const count = this.gitCompare.files?.length ?? 0;
+    const countLabel = `${count} ${count === 1 ? "file" : "files"}`;
+    if ((this.gitRefs?.refs ?? []).length > 0) {
+      return countLabel;
+    }
+
+    return `${this.gitCompare.baseRef}...${this.gitCompare.headRef} · ${countLabel}`;
   }
 
   startLeftPanelResize(event) {
@@ -879,3 +1081,16 @@ class CodgerAppShell extends HTMLElement {
 }
 
 customElements.define("codger-app-shell", CodgerAppShell);
+
+function chooseCompareRef(preferredRef, fallbackRef, refs = []) {
+  const names = new Set((refs ?? []).map((ref) => ref.name));
+  if (preferredRef && names.has(preferredRef)) {
+    return preferredRef;
+  }
+
+  if (fallbackRef && names.has(fallbackRef)) {
+    return fallbackRef;
+  }
+
+  return refs?.[0]?.name ?? fallbackRef ?? preferredRef ?? null;
+}

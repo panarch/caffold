@@ -6,6 +6,7 @@
 @import "./components/changes-tree.css";
 @import "./components/log-list.css";
 @import "./components/commit-changes-tree.css";
+@import "./components/compare-tree.css";
 @import "./components/review-workspace.css";
 @import "./components/file-viewer.css";
 @import "./components/code-viewer.css";

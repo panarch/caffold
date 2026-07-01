@@ -80,11 +80,23 @@ codger-review-workspace .review-workspace-title {
   min-width: 0;
 }
 
+codger-review-workspace .review-workspace-title.has-controls {
+  grid-template-columns: auto max-content auto;
+  align-items: center;
+  justify-content: start;
+}
+
 codger-review-workspace .review-workspace-title h2 {
   margin: 0;
   font-size: 0.96rem;
   font-weight: 600;
   line-height: 1.15;
+}
+
+codger-review-workspace .review-workspace-controls {
+  min-width: 0;
+  width: max-content;
+  max-width: 100%;
 }
 
 codger-review-workspace .review-workspace-subtitle {
@@ -96,6 +108,45 @@ codger-review-workspace .review-workspace-subtitle {
   white-space: nowrap;
 }
 
+codger-review-workspace .review-workspace-title.has-controls .review-workspace-subtitle {
+  justify-self: start;
+}
+
+codger-review-workspace .review-compare-ref-controls {
+  display: inline-grid;
+  grid-template-columns: auto auto auto auto auto;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  width: max-content;
+  max-width: 100%;
+}
+
+codger-review-workspace .review-compare-ref-controls label {
+  display: contents;
+}
+
+codger-review-workspace .review-compare-ref-controls label > span,
+codger-review-workspace .review-compare-ref-separator {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+codger-review-workspace .review-compare-ref-controls select {
+  field-sizing: content;
+  min-width: 10ch;
+  max-width: none;
+  width: auto;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
+}
+
 codger-review-workspace .review-workspace-body,
 codger-review-workspace .review-workspace-view {
   min-width: 0;
@@ -103,17 +154,20 @@ codger-review-workspace .review-workspace-view {
   overflow: hidden;
 }
 
-codger-review-workspace .workspace-mode-diff {
+codger-review-workspace .workspace-mode-diff,
+codger-review-workspace .workspace-mode-compare {
   display: grid;
   grid-template-columns: var(--review-left-panel-width) 6px minmax(0, 1fr);
   height: 100%;
 }
 
-codger-review-workspace .workspace-mode-diff > codger-changes-tree {
+codger-review-workspace .workspace-mode-diff > codger-changes-tree,
+codger-review-workspace .workspace-mode-compare > codger-compare-tree {
   grid-column: 1;
 }
 
-codger-review-workspace .workspace-mode-diff > codger-review-file-viewer {
+codger-review-workspace .workspace-mode-diff > codger-review-file-viewer,
+codger-review-workspace .workspace-mode-compare > codger-review-file-viewer {
   grid-column: 3;
 }
 
@@ -171,6 +225,7 @@ codger-review-workspace.is-resizing-review-panel {
 }
 
 codger-review-workspace codger-changes-tree,
+codger-review-workspace codger-compare-tree,
 codger-review-workspace codger-log-list,
 codger-review-workspace codger-commit-changes-tree,
 codger-review-workspace codger-review-file-viewer {
@@ -184,6 +239,7 @@ codger-review-workspace codger-review-file-viewer {
 }
 
 codger-review-workspace codger-changes-tree .changes-tree-panel > header,
+codger-review-workspace codger-compare-tree .compare-tree-panel > header,
 codger-review-workspace codger-log-list .log-list-panel > header,
 codger-review-workspace codger-commit-changes-tree .commit-tree-panel > header,
 codger-review-workspace codger-review-file-viewer .viewer-panel > header {
@@ -204,6 +260,7 @@ codger-review-workspace codger-review-file-viewer h2 {
 }
 
 codger-review-workspace codger-changes-tree h2,
+codger-review-workspace codger-compare-tree h2,
 codger-review-workspace codger-log-list h2,
 codger-review-workspace codger-commit-changes-tree h2 {
   font-size: var(--review-pane-title-size);
@@ -236,22 +293,56 @@ codger-review-workspace codger-commit-changes-tree h2 {
 }
 
 @media (max-width: 860px) {
-  codger-review-workspace .workspace-mode-diff {
+  codger-review-workspace .review-workspace-header {
+    height: auto;
+    min-height: var(--review-header-height);
+  }
+
+  codger-review-workspace .review-workspace-title.has-controls {
+    grid-template-columns: auto minmax(0, 1fr);
+    row-gap: 4px;
+    justify-content: stretch;
+  }
+
+  codger-review-workspace .review-workspace-title.has-controls .review-workspace-controls {
+    grid-column: 1 / -1;
+  }
+
+  codger-review-workspace .review-workspace-title.has-controls .review-workspace-subtitle {
+    justify-self: end;
+  }
+
+  codger-review-workspace .review-compare-ref-controls {
+    grid-template-columns: auto minmax(0, 1fr) auto auto minmax(0, 1fr);
+    width: 100%;
+  }
+
+  codger-review-workspace .review-compare-ref-controls select {
+    field-sizing: fixed;
+    width: 100%;
+    max-width: none;
+  }
+
+  codger-review-workspace .workspace-mode-diff,
+  codger-review-workspace .workspace-mode-compare {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 36dvh) minmax(0, 1fr);
   }
 
-  codger-review-workspace .workspace-mode-diff > codger-changes-tree {
+  codger-review-workspace .workspace-mode-diff > codger-changes-tree,
+  codger-review-workspace .workspace-mode-compare > codger-compare-tree {
     grid-column: 1;
     grid-row: 1;
   }
 
-  codger-review-workspace .workspace-mode-diff > codger-review-file-viewer {
+  codger-review-workspace .workspace-mode-diff > codger-review-file-viewer,
+  codger-review-workspace .workspace-mode-compare > codger-review-file-viewer {
     grid-column: 1;
     grid-row: 2;
   }
 
-  codger-review-workspace .workspace-mode-diff > .review-panel-resizer {
+  codger-review-workspace .workspace-mode-diff > .review-panel-resizer,
+  codger-review-workspace .workspace-mode-compare > .review-panel-resizer {
     display: none;
   }
 
@@ -263,7 +354,8 @@ codger-review-workspace codger-commit-changes-tree h2 {
     grid-template-rows: minmax(0, 28dvh) minmax(0, 1fr);
   }
 
-  codger-review-workspace .workspace-mode-diff codger-changes-tree {
+  codger-review-workspace .workspace-mode-diff codger-changes-tree,
+  codger-review-workspace .workspace-mode-compare codger-compare-tree {
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }

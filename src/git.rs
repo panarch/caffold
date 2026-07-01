@@ -38,6 +38,25 @@ pub struct CommitFile {
     pub status: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompareRefs {
+    pub base: String,
+    pub head: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BranchRef {
+    pub name: String,
+    pub kind: BranchRefKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BranchRefKind {
+    Head,
+    Local,
+    Remote,
+}
+
 pub fn repository_for(path: &Path) -> Option<Repository> {
     let root = PathBuf::from(run_git(path, &["rev-parse", "--show-toplevel"])?)
         .canonicalize()
@@ -210,6 +229,86 @@ pub fn commit_diff(
         .map(|stdout| stdout.trim_end().to_string())
 }
 
+pub fn compare_refs(
+    repository: &Repository,
+    base_ref: Option<&str>,
+    head_ref: Option<&str>,
+) -> Option<CompareRefs> {
+    let head = match head_ref {
+        Some(head_ref) => resolve_compare_ref(repository, head_ref)?,
+        None => current_compare_ref(repository)?,
+    };
+    let base = match base_ref {
+        Some(base_ref) => resolve_compare_ref(repository, base_ref)?,
+        None => default_compare_base_ref(repository)?,
+    };
+
+    Some(CompareRefs { base, head })
+}
+
+pub fn branch_refs(repository: &Repository) -> Option<Vec<BranchRef>> {
+    let output = run_git_bytes(
+        &repository.root,
+        &[
+            "for-each-ref",
+            "--format=%(refname)%09%(refname:short)",
+            "refs/heads",
+            "refs/remotes",
+        ],
+    )?;
+
+    let mut refs = parse_branch_refs(&output);
+    if current_compare_ref(repository).as_deref() == Some("HEAD")
+        && !refs.iter().any(|branch_ref| branch_ref.name == "HEAD")
+    {
+        refs.insert(
+            0,
+            BranchRef {
+                name: "HEAD".to_string(),
+                kind: BranchRefKind::Head,
+            },
+        );
+    }
+
+    Some(refs)
+}
+
+pub fn compare_files(repository: &Repository, refs: &CompareRefs) -> Option<Vec<CommitFile>> {
+    let range = compare_range(refs);
+    let args = vec![
+        "diff".to_string(),
+        "--name-status".to_string(),
+        "--find-renames".to_string(),
+        range,
+    ];
+
+    let output = run_git_owned(&repository.root, &args)?;
+    Some(parse_commit_files(&output))
+}
+
+pub fn compare_diff(
+    repository: &Repository,
+    refs: &CompareRefs,
+    repo_relative_path: &str,
+) -> Option<String> {
+    if repo_relative_path.is_empty() {
+        return None;
+    }
+
+    let range = compare_range(refs);
+    let args = vec![
+        "diff".to_string(),
+        "--find-renames".to_string(),
+        range,
+        "--".to_string(),
+        repo_relative_path.to_string(),
+    ];
+
+    String::from_utf8(run_git_owned(&repository.root, &args)?)
+        .ok()
+        .map(|stdout| stdout.trim_end().to_string())
+}
+
 fn current_branch(path: &Path) -> Option<String> {
     let branch = run_git(path, &["branch", "--show-current"])?;
     if !branch.is_empty() {
@@ -219,6 +318,62 @@ fn current_branch(path: &Path) -> Option<String> {
     run_git(path, &["rev-parse", "--short", "HEAD"])
         .filter(|head| !head.is_empty())
         .map(|head| format!("HEAD {head}"))
+}
+
+pub fn current_compare_ref(repository: &Repository) -> Option<String> {
+    if let Some(branch) = repository.branch.as_deref()
+        && !branch.starts_with("HEAD ")
+        && let Some(branch) = resolve_compare_ref(repository, branch)
+    {
+        return Some(branch);
+    }
+
+    resolve_compare_ref(repository, "HEAD")
+}
+
+pub fn default_compare_base_ref(repository: &Repository) -> Option<String> {
+    ["origin/main", "origin/master", "main", "master"]
+        .into_iter()
+        .find_map(|candidate| resolve_compare_ref(repository, candidate))
+}
+
+fn resolve_compare_ref(repository: &Repository, ref_name: &str) -> Option<String> {
+    let ref_name = normalize_compare_ref(repository, ref_name)?;
+    let commit_ref = format!("{ref_name}^{{commit}}");
+    let args = vec![
+        "rev-parse".to_string(),
+        "--verify".to_string(),
+        "--quiet".to_string(),
+        commit_ref,
+    ];
+    run_git_owned(&repository.root, &args)?;
+
+    Some(ref_name)
+}
+
+fn normalize_compare_ref(repository: &Repository, ref_name: &str) -> Option<String> {
+    let ref_name = ref_name.trim();
+    if ref_name == "HEAD" {
+        return Some(ref_name.to_string());
+    }
+
+    if ref_name.is_empty()
+        || ref_name.starts_with('-')
+        || ref_name.contains("..")
+        || ref_name.contains("@{")
+    {
+        return None;
+    }
+
+    let checked = run_git(
+        &repository.root,
+        &["check-ref-format", "--branch", ref_name],
+    )?;
+    (checked == ref_name).then_some(ref_name.to_string())
+}
+
+fn compare_range(refs: &CompareRefs) -> String {
+    format!("{}...{}", refs.base, refs.head)
 }
 
 fn run_git(path: &Path, args: &[&str]) -> Option<String> {
@@ -372,6 +527,49 @@ fn parse_commit_files(output: &[u8]) -> Vec<CommitFile> {
         .collect()
 }
 
+fn parse_branch_refs(output: &[u8]) -> Vec<BranchRef> {
+    let mut refs = String::from_utf8_lossy(output)
+        .lines()
+        .filter_map(parse_branch_ref)
+        .collect::<Vec<_>>();
+    refs.sort_by(|left, right| {
+        branch_ref_sort_key(&left.kind)
+            .cmp(&branch_ref_sort_key(&right.kind))
+            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+    });
+
+    refs
+}
+
+fn parse_branch_ref(line: &str) -> Option<BranchRef> {
+    let (full_ref, short_ref) = line.split_once('\t')?;
+    let kind = if full_ref.starts_with("refs/heads/") {
+        BranchRefKind::Local
+    } else if full_ref.starts_with("refs/remotes/") {
+        BranchRefKind::Remote
+    } else {
+        return None;
+    };
+
+    let name = short_ref.trim();
+    if name.is_empty() || name.ends_with("/HEAD") {
+        return None;
+    }
+
+    Some(BranchRef {
+        name: name.to_string(),
+        kind,
+    })
+}
+
+fn branch_ref_sort_key(kind: &BranchRefKind) -> u8 {
+    match kind {
+        BranchRefKind::Head => 0,
+        BranchRefKind::Local => 1,
+        BranchRefKind::Remote => 2,
+    }
+}
+
 fn parse_commit_file(line: &str) -> Option<CommitFile> {
     let mut parts = line.split('\t');
     let raw_status = parts.next()?;
@@ -520,6 +718,52 @@ mod tests {
     }
 
     #[test]
+    fn reads_compare_files_and_diff_between_refs() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        git(temp.path(), &["init"]);
+        fs::write(temp.path().join("sample.txt"), "old\n").unwrap();
+        git(temp.path(), &["add", "sample.txt"]);
+        commit(temp.path(), "Add sample");
+        git(
+            temp.path(),
+            &["update-ref", "refs/remotes/origin/main", "HEAD"],
+        );
+        git(temp.path(), &["checkout", "-b", "feature/review"]);
+        fs::write(temp.path().join("sample.txt"), "new\n").unwrap();
+        fs::write(temp.path().join("added.txt"), "added\n").unwrap();
+        git(temp.path(), &["add", "sample.txt", "added.txt"]);
+        commit(temp.path(), "Update sample");
+
+        let repository = repository_for(temp.path()).unwrap();
+        let refs = compare_refs(&repository, None, None).unwrap();
+        assert_eq!(refs.base, "origin/main");
+        assert_eq!(refs.head, "feature/review");
+
+        let files = compare_files(&repository, &refs).unwrap();
+        assert_eq!(
+            files,
+            vec![
+                CommitFile {
+                    repo_relative_path: "added.txt".to_string(),
+                    status: "A".to_string(),
+                },
+                CommitFile {
+                    repo_relative_path: "sample.txt".to_string(),
+                    status: "M".to_string(),
+                },
+            ]
+        );
+
+        let diff = compare_diff(&repository, &refs, "sample.txt").unwrap();
+        assert!(diff.contains("-old"));
+        assert!(diff.contains("+new"));
+    }
+
+    #[test]
     fn parses_renamed_commit_file_paths() {
         let files = parse_commit_files(b"R100\told.txt\tnew.txt\n");
 
@@ -529,6 +773,97 @@ mod tests {
                 repo_relative_path: "new.txt".to_string(),
                 status: "R".to_string(),
             }]
+        );
+    }
+
+    #[test]
+    fn normalizes_compare_refs_with_hashes() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        git(temp.path(), &["init"]);
+        let repository = repository_for(temp.path()).unwrap();
+
+        assert_eq!(
+            normalize_compare_ref(
+                &repository,
+                "origin/codex/complete-pr-#1599-work-on-main-branch"
+            ),
+            Some("origin/codex/complete-pr-#1599-work-on-main-branch".to_string())
+        );
+    }
+
+    #[test]
+    fn normalizes_compare_refs_with_git_branch_rules() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        git(temp.path(), &["init"]);
+        let repository = repository_for(temp.path()).unwrap();
+
+        for ref_name in [
+            "feature/foo+bar",
+            "feature/foo=bar",
+            "feature/foo,bar",
+            "feature/foo#bar",
+        ] {
+            assert_eq!(
+                normalize_compare_ref(&repository, ref_name),
+                Some(ref_name.to_string())
+            );
+        }
+
+        for ref_name in ["-bad", "feature/foo..bar", "feature/foo@{bar"] {
+            assert_eq!(normalize_compare_ref(&repository, ref_name), None);
+        }
+    }
+
+    #[test]
+    fn lists_head_ref_for_detached_compare_state() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        git(temp.path(), &["init"]);
+        fs::write(temp.path().join("sample.txt"), "hello\n").unwrap();
+        git(temp.path(), &["add", "sample.txt"]);
+        commit(temp.path(), "Add sample");
+        git(temp.path(), &["checkout", "--detach", "HEAD"]);
+
+        let repository = repository_for(temp.path()).unwrap();
+        assert_eq!(current_compare_ref(&repository).as_deref(), Some("HEAD"));
+
+        let refs = branch_refs(&repository).unwrap();
+        assert!(
+            refs.iter()
+                .any(|branch_ref| branch_ref.name == "HEAD"
+                    && branch_ref.kind == BranchRefKind::Head)
+        );
+    }
+
+    #[test]
+    fn parses_branch_refs_without_remote_head_aliases() {
+        let refs = parse_branch_refs(
+            b"refs/remotes/origin/HEAD\torigin/HEAD\nrefs/heads/feature/review\tfeature/review\nrefs/remotes/origin/main\torigin/main\n",
+        );
+
+        assert_eq!(
+            refs,
+            vec![
+                BranchRef {
+                    name: "feature/review".to_string(),
+                    kind: BranchRefKind::Local,
+                },
+                BranchRef {
+                    name: "origin/main".to_string(),
+                    kind: BranchRefKind::Remote,
+                },
+            ]
         );
     }
 

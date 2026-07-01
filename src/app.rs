@@ -13,8 +13,9 @@ use tracing::info;
 
 use crate::{
     fs::{
-        FileResponse, FsError, GitCommitResponse, GitDiffResponse, GitLogResponse,
-        GitStatusResponse, ListResponse, MAX_FILE_BYTES, ProjectRoot, RootedFs,
+        FileResponse, FsError, GitCommitResponse, GitCompareResponse, GitDiffResponse,
+        GitLogResponse, GitRefsResponse, GitStatusResponse, ListResponse, MAX_FILE_BYTES,
+        ProjectRoot, RootedFs,
     },
     project_store::{ProjectRecord, ProjectStore, ProjectStoreError},
     static_assets,
@@ -75,6 +76,27 @@ struct GitCommitDiffQuery {
     #[serde(default)]
     path: String,
     sha: String,
+    file: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitCompareQuery {
+    #[serde(default)]
+    path: String,
+    #[serde(default)]
+    base: Option<String>,
+    #[serde(default)]
+    head: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitCompareDiffQuery {
+    #[serde(default)]
+    path: String,
+    #[serde(default)]
+    base: Option<String>,
+    #[serde(default)]
+    head: Option<String>,
     file: String,
 }
 
@@ -217,6 +239,9 @@ fn router_with_state(state: AppState) -> Router {
         .route("/api/git/log", get(git_log))
         .route("/api/git/commit", get(git_commit))
         .route("/api/git/commit-diff", get(git_commit_diff))
+        .route("/api/git/compare", get(git_compare))
+        .route("/api/git/compare-diff", get(git_compare_diff))
+        .route("/api/git/refs", get(git_refs))
         .route("/assets/{*path}", get(asset))
         .with_state(state)
 }
@@ -442,6 +467,44 @@ async fn git_commit_diff(
     state
         .fs
         .git_commit_diff(&query.path, &query.sha, &query.file)
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
+async fn git_compare(
+    State(state): State<AppState>,
+    Query(query): Query<GitCompareQuery>,
+) -> Result<Json<GitCompareResponse>, ApiError> {
+    state
+        .fs
+        .git_compare(&query.path, query.base.as_deref(), query.head.as_deref())
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
+async fn git_compare_diff(
+    State(state): State<AppState>,
+    Query(query): Query<GitCompareDiffQuery>,
+) -> Result<Json<GitDiffResponse>, ApiError> {
+    state
+        .fs
+        .git_compare_diff(
+            &query.path,
+            query.base.as_deref(),
+            query.head.as_deref(),
+            &query.file,
+        )
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
+async fn git_refs(
+    State(state): State<AppState>,
+    Query(query): Query<PathQuery>,
+) -> Result<Json<GitRefsResponse>, ApiError> {
+    state
+        .fs
+        .git_refs(&query.path)
         .map(Json)
         .map_err(ApiError::from)
 }

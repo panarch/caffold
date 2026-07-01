@@ -34,6 +34,7 @@ test.beforeEach(async ({ page }) => {
         export const FolderGit2 = Folder;
         export const FolderOpen = Folder;
         export const FolderSymlink = Folder;
+        export const GitCompare = [["circle", { cx: "18", cy: "18", r: "3" }], ["circle", { cx: "6", cy: "6", r: "3" }], ["path", { d: "M13 6h3a2 2 0 0 1 2 2v7" }], ["path", { d: "M6 9v7a2 2 0 0 0 2 2h3" }]];
         export const ArrowLeft = [
           ["path", { d: "m12 19-7-7 7-7" }],
           ["path", { d: "M19 12H5" }],
@@ -511,6 +512,143 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   await workspace.getByRole("button", { name: "Close review workspace" }).click();
   await expect(workspace).toBeHidden();
   await expect(page.locator("codger-file-list")).toBeVisible();
+});
+
+test("opens branch compare diffs", async ({ page }) => {
+  const repository = { rootPath: "src", branch: "feature/review", dirty: false };
+  const headRef = "origin/codex/complete-pr-#1599-work-on-main-branch";
+  const compareRefs = {
+    repository,
+    refs: [
+      { name: "HEAD", kind: "head" },
+      { name: "feature/review", kind: "local" },
+      { name: "main", kind: "local" },
+      { name: "origin/main", kind: "remote" },
+      { name: headRef, kind: "remote" },
+      { name: "origin/release", kind: "remote" },
+    ],
+    currentRef: "feature/review",
+    defaultBaseRef: "origin/main",
+    defaultHeadRef: headRef,
+  };
+
+  await page.route(/\/api\/git\/refs(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("path")).toBe("src");
+
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(compareRefs),
+    });
+  });
+
+  await page.route(/\/api\/git\/compare(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("path")).toBe("src");
+    const baseRef = url.searchParams.get("base");
+    const headRef = url.searchParams.get("head");
+    const changedPath =
+      baseRef === "origin/release" ? "src/runtime/release.rs" : "src/planner/function.rs";
+
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        baseRef,
+        headRef,
+        files: [
+          {
+            path: changedPath,
+            repoRelativePath: changedPath.replace(/^src\//, ""),
+            status: baseRef === "origin/release" ? "A" : "M",
+          },
+          {
+            path: "src/runtime/new.rs",
+            repoRelativePath: "runtime/new.rs",
+            status: "A",
+          },
+        ],
+      }),
+    });
+  });
+
+  await page.route(/\/api\/git\/compare-diff(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("base")).toBe("origin/release");
+    expect(url.searchParams.get("head")).toBe(headRef);
+    expect(url.searchParams.get("file")).toBe("src/runtime/release.rs");
+
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        path: "src/runtime/release.rs",
+        repoRelativePath: "runtime/release.rs",
+        kind: `origin/release...${headRef}`,
+        diff: [
+          "diff --git a/runtime/release.rs b/runtime/release.rs",
+          "index 1111111..2222222 100644",
+          "--- a/runtime/release.rs",
+          "+++ b/runtime/release.rs",
+          "@@ -1,1 +1,2 @@",
+          "-old compare line",
+          "+new compare line",
+          "+another compare line",
+        ].join("\n"),
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await page.locator('button[data-entry-path="src"]').click();
+
+  const compareButton = page.locator(
+    'codger-header-actions button[data-action="open-compare-workspace"]',
+  );
+  await expect(compareButton.locator(".header-action-label")).toHaveText("Compare");
+  await expect(compareButton).toHaveAttribute("title", "Open Compare");
+  await compareButton.click();
+
+  const workspace = page.locator("codger-review-workspace");
+  await expect(workspace).toBeVisible();
+  await expect(workspace).toHaveAttribute("data-workspace-mode", "compare");
+  await expect(workspace.locator(".review-workspace-title h2")).toHaveText("Compare");
+  await expect(workspace.locator(".review-workspace-subtitle")).toContainText(
+    "2 files",
+  );
+  await expect(workspace.locator('select[data-compare-ref="base"]')).toHaveValue(
+    "origin/main",
+  );
+  await expect(workspace.locator('select[data-compare-ref="head"]')).toHaveValue(
+    headRef,
+  );
+  await expect(workspace.locator('select[data-compare-ref="head"] optgroup[label="Current"]')).toHaveCount(
+    1,
+  );
+  await expect(page.locator("codger-compare-tree")).toContainText("2 files");
+  await expect(page.locator("codger-compare-tree")).toContainText("planner");
+  await expect(page.locator("codger-compare-tree")).toContainText("function.rs");
+  await expect(page.locator("codger-compare-tree")).toContainText("new.rs");
+
+  await workspace.locator('select[data-compare-ref="base"]').selectOption(
+    "origin/release",
+  );
+  await expect(workspace.locator('select[data-compare-ref="base"]')).toHaveValue("origin/release");
+  await expect(page.locator("codger-compare-tree")).toContainText("release.rs");
+
+  await page.locator('button[data-compare-path="src/runtime/release.rs"]').click();
+  await expect(page.locator('button[data-compare-path="src/runtime/release.rs"]')).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  await expect(page.locator(".workspace-mode-compare codger-review-file-viewer")).toContainText(
+    "release.rs",
+  );
+  await expect(page.locator(".workspace-mode-compare .viewer-subtitle")).toHaveText(
+    `Added · origin/release...${headRef}`,
+  );
+  await expect(page.locator("codger-diff-viewer")).toContainText("old compare line");
+  await expect(page.locator("codger-diff-viewer")).toContainText("new compare line");
 });
 
 test("opens commit diffs from Log mode", async ({ page }, testInfo) => {

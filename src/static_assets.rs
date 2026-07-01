@@ -26,6 +26,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "components/commit-changes-tree.js" => Some(js(include_str!(
             "../frontend/components/commit-changes-tree.js"
         ))),
+        "components/compare-tree.css" => {
+            Some(css(include_str!("../frontend/components/compare-tree.css")))
+        }
+        "components/compare-tree.js" => {
+            Some(js(include_str!("../frontend/components/compare-tree.js")))
+        }
         "components/code-viewer.css" => {
             Some(css(include_str!("../frontend/components/code-viewer.css")))
         }

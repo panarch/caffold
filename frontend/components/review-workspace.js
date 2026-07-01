@@ -1,3 +1,4 @@
+import { escapeHtml } from "./dom.js";
 import { renderInlineIcon, warmIcons } from "./icons.js";
 
 const REVIEW_PANEL_DEFAULT_WIDTH = 320;
@@ -42,6 +43,21 @@ class CodgerReviewWorkspace extends HTMLElement {
       this.dispatchEvent(
         new CustomEvent("codger:close-review-workspace", {
           bubbles: true,
+        }),
+      );
+    });
+    this.addEventListener("change", (event) => {
+      const select = event.target.closest("select[data-compare-ref]");
+      if (!select) {
+        return;
+      }
+
+      const baseRef = this.querySelector('select[data-compare-ref="base"]')?.value ?? "";
+      const headRef = this.querySelector('select[data-compare-ref="head"]')?.value ?? "";
+      this.dispatchEvent(
+        new CustomEvent("codger:change-compare-refs", {
+          bubbles: true,
+          detail: { baseRef, headRef },
         }),
       );
     });
@@ -109,6 +125,7 @@ class CodgerReviewWorkspace extends HTMLElement {
           </div>
           <div class="review-workspace-title">
             <h2></h2>
+            <div class="review-workspace-controls" hidden></div>
             <span class="review-workspace-subtitle"></span>
           </div>
         </header>
@@ -122,6 +139,18 @@ class CodgerReviewWorkspace extends HTMLElement {
               aria-orientation="vertical"
               tabindex="0"
               data-resize-target="diff"
+            ></div>
+            <codger-review-file-viewer></codger-review-file-viewer>
+          </div>
+          <div class="review-workspace-view workspace-mode-compare" hidden>
+            <codger-compare-tree></codger-compare-tree>
+            <div
+              class="review-panel-resizer"
+              role="separator"
+              aria-label="Resize review side panel"
+              aria-orientation="vertical"
+              tabindex="0"
+              data-resize-target="compare"
             ></div>
             <codger-review-file-viewer></codger-review-file-viewer>
           </div>
@@ -143,11 +172,14 @@ class CodgerReviewWorkspace extends HTMLElement {
         </div>
       </section>
     `;
+    this.titleWrapper = this.querySelector(".review-workspace-title");
     this.titleEl = this.querySelector(".review-workspace-title h2");
+    this.controlsEl = this.querySelector(".review-workspace-controls");
     this.subtitleEl = this.querySelector(".review-workspace-subtitle");
     this.backButton = this.querySelector(".review-workspace-back");
     this.closeButton = this.querySelector(".review-workspace-close");
     this.diffView = this.querySelector(".workspace-mode-diff");
+    this.compareView = this.querySelector(".workspace-mode-compare");
     this.logView = this.querySelector(".workspace-mode-log");
     this.renderChrome();
   }
@@ -163,6 +195,7 @@ class CodgerReviewWorkspace extends HTMLElement {
     this.backLabel = options.backLabel ?? "Back";
     this.renderChrome();
     this.diffView.hidden = mode !== "diff";
+    this.compareView.hidden = mode !== "compare";
     this.logView.hidden = mode !== "log";
   }
 
@@ -189,6 +222,20 @@ class CodgerReviewWorkspace extends HTMLElement {
     this.logView.dataset.logView = view;
   }
 
+  setCompareRefs(refsPayload, baseRef, headRef) {
+    this.compareRefsPayload = refsPayload ?? null;
+    this.compareBaseRef = baseRef ?? "";
+    this.compareHeadRef = headRef ?? "";
+    this.renderChrome();
+  }
+
+  clearCompareRefs() {
+    this.compareRefsPayload = null;
+    this.compareBaseRef = "";
+    this.compareHeadRef = "";
+    this.renderChrome();
+  }
+
   renderChrome() {
     if (!this.rendered) {
       return;
@@ -196,6 +243,10 @@ class CodgerReviewWorkspace extends HTMLElement {
 
     this.titleEl.textContent = this.workspaceTitle ?? workspaceTitle(this.mode);
     this.subtitleEl.textContent = this.subtitle ?? "";
+    const controlsHtml = this.renderCompareControls();
+    this.controlsEl.innerHTML = controlsHtml;
+    this.controlsEl.hidden = controlsHtml.length === 0;
+    this.titleWrapper.classList.toggle("has-controls", controlsHtml.length > 0);
     this.backButton.hidden = !this.backVisible;
     this.backButton.setAttribute("aria-label", this.backLabel ?? "Back");
     this.backButton.setAttribute("title", this.backLabel ?? "Back");
@@ -206,6 +257,35 @@ class CodgerReviewWorkspace extends HTMLElement {
     );
     this.closeButton.innerHTML = renderInlineIcon("X", "Close", "review-workspace-close-icon");
     this.updateReviewPanelResizeAttributes();
+  }
+
+  renderCompareControls() {
+    if (this.mode !== "compare") {
+      return "";
+    }
+
+    const refs = this.compareRefsPayload?.refs ?? [];
+    if (refs.length === 0) {
+      return "";
+    }
+
+    return `
+      <div class="review-compare-ref-controls" aria-label="Compare refs">
+        <label>
+          <span>Base</span>
+          <select data-compare-ref="base" aria-label="Base ref">
+            ${renderRefOptions(refs, this.compareBaseRef)}
+          </select>
+        </label>
+        <span class="review-compare-ref-separator" aria-hidden="true">...</span>
+        <label>
+          <span>Head</span>
+          <select data-compare-ref="head" aria-label="Head ref">
+            ${renderRefOptions(refs, this.compareHeadRef)}
+          </select>
+        </label>
+      </div>
+    `;
   }
 
   startReviewPanelResize(event, handle) {
@@ -314,7 +394,10 @@ class CodgerReviewWorkspace extends HTMLElement {
       return window.matchMedia(REVIEW_LOG_RESIZE_QUERY).matches;
     }
 
-    return target === "diff" && window.matchMedia(REVIEW_DIFF_RESIZE_QUERY).matches;
+    return (
+      (target === "diff" || target === "compare") &&
+      window.matchMedia(REVIEW_DIFF_RESIZE_QUERY).matches
+    );
   }
 
   reviewPanelForTarget(target) {
@@ -324,6 +407,10 @@ class CodgerReviewWorkspace extends HTMLElement {
 
     if (target === "diff") {
       return this.querySelector(".workspace-mode-diff");
+    }
+
+    if (target === "compare") {
+      return this.querySelector(".workspace-mode-compare");
     }
 
     return null;
@@ -351,5 +438,40 @@ function workspaceTitle(mode) {
     return "Log";
   }
 
+  if (mode === "compare") {
+    return "Compare";
+  }
+
   return "Review";
+}
+
+function renderRefOptions(refs, selectedRef) {
+  let lastKind = null;
+  let html = "";
+
+  for (const ref of refs) {
+    if (ref.kind !== lastKind) {
+      if (lastKind) {
+        html += "</optgroup>";
+      }
+      lastKind = ref.kind;
+      html += `<optgroup label="${escapeHtml(refKindLabel(ref.kind))}">`;
+    }
+
+    html += `
+      <option value="${escapeHtml(ref.name)}" ${ref.name === selectedRef ? "selected" : ""}>
+        ${escapeHtml(ref.name)}
+      </option>
+    `;
+  }
+
+  return lastKind ? `${html}</optgroup>` : html;
+}
+
+function refKindLabel(kind) {
+  if (kind === "head") {
+    return "Current";
+  }
+
+  return kind === "remote" ? "Remote" : "Local";
 }

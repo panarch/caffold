@@ -36,6 +36,18 @@ export async function getGitCommitDiff(path = "", sha, file) {
   return requestJson("/api/git/commit-diff", { path, sha, file });
 }
 
+export async function getGitCompare(path = "", base = null, head = null) {
+  return requestJson("/api/git/compare", { path, base, head });
+}
+
+export async function getGitRefs(path = "") {
+  return requestJson("/api/git/refs", { path });
+}
+
+export async function getGitCompareDiff(path = "", base = null, head = null, file) {
+  return requestJson("/api/git/compare-diff", { path, base, head, file });
+}
+
 export async function listProjects() {
   return requestJson("/api/projects");
 }

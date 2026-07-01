@@ -115,6 +115,25 @@ pub struct GitCommitResponse {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct GitCompareResponse {
+    pub repository: DirectoryGitInfo,
+    pub base_ref: String,
+    pub head_ref: String,
+    pub files: Vec<GitCompareFile>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitRefsResponse {
+    pub repository: DirectoryGitInfo,
+    pub refs: Vec<GitRef>,
+    pub current_ref: Option<String>,
+    pub default_base_ref: Option<String>,
+    pub default_head_ref: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct GitCommitSummary {
     pub sha: String,
     pub short_sha: String,
@@ -131,6 +150,29 @@ pub struct GitCommitFile {
     pub path: String,
     pub repo_relative_path: String,
     pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCompareFile {
+    pub path: String,
+    pub repo_relative_path: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitRef {
+    pub name: String,
+    pub kind: GitRefKind,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GitRefKind {
+    Head,
+    Local,
+    Remote,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -595,6 +637,98 @@ impl RootedFs {
         })
     }
 
+    pub fn git_compare(
+        &self,
+        requested_path: &str,
+        base_ref: Option<&str>,
+        head_ref: Option<&str>,
+    ) -> Result<GitCompareResponse, FsError> {
+        let repository = self.repository_for_request(requested_path)?;
+        let repository_info = self.git_info_for_repository(&repository)?;
+        let refs = git::compare_refs(&repository, base_ref, head_ref).ok_or_else(|| {
+            FsError::GitCommandFailed {
+                action: "resolve compare refs",
+                path: requested_path.to_string(),
+            }
+        })?;
+        let files = git::compare_files(&repository, &refs)
+            .ok_or_else(|| FsError::GitCommandFailed {
+                action: "read compare files",
+                path: format!("{}...{}", refs.base, refs.head),
+            })?
+            .into_iter()
+            .map(|file| GitCompareFile {
+                path: join_relative_path(&repository_info.root_path, &file.repo_relative_path),
+                repo_relative_path: file.repo_relative_path,
+                status: file.status,
+            })
+            .collect();
+
+        Ok(GitCompareResponse {
+            repository: repository_info,
+            base_ref: refs.base,
+            head_ref: refs.head,
+            files,
+        })
+    }
+
+    pub fn git_compare_diff(
+        &self,
+        requested_path: &str,
+        base_ref: Option<&str>,
+        head_ref: Option<&str>,
+        file_path: &str,
+    ) -> Result<GitDiffResponse, FsError> {
+        let repository = self.repository_for_request(requested_path)?;
+        let repository_info = self.git_info_for_repository(&repository)?;
+        let refs = git::compare_refs(&repository, base_ref, head_ref).ok_or_else(|| {
+            FsError::GitCommandFailed {
+                action: "resolve compare refs",
+                path: requested_path.to_string(),
+            }
+        })?;
+        let logical_file_path = normalize_relative_path(file_path)?;
+        let logical_file_path = relative_path_string(&logical_file_path);
+        let repo_relative_path = strip_repo_root(&repository_info.root_path, &logical_file_path)
+            .ok_or(FsError::PathEscapesRoot)?
+            .to_string();
+        let diff = git::compare_diff(&repository, &refs, &repo_relative_path).ok_or_else(|| {
+            FsError::GitCommandFailed {
+                action: "read compare diff",
+                path: file_path.to_string(),
+            }
+        })?;
+
+        Ok(GitDiffResponse {
+            repository: repository_info,
+            path: logical_file_path,
+            repo_relative_path,
+            kind: format!("{}...{}", refs.base, refs.head),
+            diff,
+        })
+    }
+
+    pub fn git_refs(&self, requested_path: &str) -> Result<GitRefsResponse, FsError> {
+        let repository = self.repository_for_request(requested_path)?;
+        let repository_info = self.git_info_for_repository(&repository)?;
+        let refs = git::branch_refs(&repository)
+            .ok_or_else(|| FsError::GitCommandFailed {
+                action: "read refs",
+                path: requested_path.to_string(),
+            })?
+            .into_iter()
+            .map(git_ref)
+            .collect();
+
+        Ok(GitRefsResponse {
+            repository: repository_info,
+            refs,
+            current_ref: git::current_compare_ref(&repository),
+            default_base_ref: git::default_compare_base_ref(&repository),
+            default_head_ref: git::current_compare_ref(&repository),
+        })
+    }
+
     pub fn git_diff(
         &self,
         requested_path: &str,
@@ -923,6 +1057,17 @@ fn git_commit_summary(entry: git::LogEntry) -> GitCommitSummary {
     }
 }
 
+fn git_ref(branch_ref: git::BranchRef) -> GitRef {
+    GitRef {
+        name: branch_ref.name,
+        kind: match branch_ref.kind {
+            git::BranchRefKind::Head => GitRefKind::Head,
+            git::BranchRefKind::Local => GitRefKind::Local,
+            git::BranchRefKind::Remote => GitRefKind::Remote,
+        },
+    }
+}
+
 fn short_commit_label(commit_sha: &str) -> String {
     commit_sha.chars().take(7).collect()
 }
@@ -1191,6 +1336,91 @@ mod tests {
         assert_eq!(diff.repo_relative_path, "sample.txt");
         assert!(diff.diff.contains("-old"));
         assert!(diff.diff.contains("+new"));
+    }
+
+    #[test]
+    fn reads_git_compare_files_and_compare_diff() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let repo_path = temp.path().join("repo");
+        fs::create_dir(&repo_path).unwrap();
+        git(&repo_path, &["init"]);
+        fs::write(repo_path.join("sample.txt"), "old\n").unwrap();
+        git(&repo_path, &["add", "sample.txt"]);
+        commit(&repo_path, "Add sample");
+        git(
+            &repo_path,
+            &["update-ref", "refs/remotes/origin/main", "HEAD"],
+        );
+        git(&repo_path, &["checkout", "-b", "feature/review"]);
+        fs::write(repo_path.join("sample.txt"), "new\n").unwrap();
+        fs::write(repo_path.join("added.txt"), "added\n").unwrap();
+        git(&repo_path, &["add", "sample.txt", "added.txt"]);
+        commit(&repo_path, "Update sample");
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+        let refs = rooted.git_refs("repo").unwrap();
+        assert_eq!(refs.default_base_ref.as_deref(), Some("origin/main"));
+        assert_eq!(refs.default_head_ref.as_deref(), Some("feature/review"));
+        assert!(refs.refs.iter().any(|branch_ref| {
+            branch_ref.name == "feature/review" && branch_ref.kind == GitRefKind::Local
+        }));
+        assert!(refs.refs.iter().any(|branch_ref| {
+            branch_ref.name == "origin/main" && branch_ref.kind == GitRefKind::Remote
+        }));
+
+        let compare = rooted.git_compare("repo", None, None).unwrap();
+        assert_eq!(compare.repository.root_path, "repo");
+        assert_eq!(compare.base_ref, "origin/main");
+        assert_eq!(compare.head_ref, "feature/review");
+        assert_eq!(compare.files.len(), 2);
+        assert!(compare.files.iter().any(|file| {
+            file.path == "repo/sample.txt"
+                && file.repo_relative_path == "sample.txt"
+                && file.status == "M"
+        }));
+
+        let diff = rooted
+            .git_compare_diff(
+                "repo",
+                Some("origin/main"),
+                Some("feature/review"),
+                "repo/sample.txt",
+            )
+            .unwrap();
+        assert_eq!(diff.repo_relative_path, "sample.txt");
+        assert_eq!(diff.kind, "origin/main...feature/review");
+        assert!(diff.diff.contains("-old"));
+        assert!(diff.diff.contains("+new"));
+    }
+
+    #[test]
+    fn exposes_detached_head_as_git_ref() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let repo_path = temp.path().join("repo");
+        fs::create_dir(&repo_path).unwrap();
+        git(&repo_path, &["init"]);
+        fs::write(repo_path.join("sample.txt"), "old\n").unwrap();
+        git(&repo_path, &["add", "sample.txt"]);
+        commit(&repo_path, "Add sample");
+        git(&repo_path, &["checkout", "--detach", "HEAD"]);
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+        let refs = rooted.git_refs("repo").unwrap();
+
+        assert_eq!(refs.default_head_ref.as_deref(), Some("HEAD"));
+        assert!(
+            refs.refs
+                .iter()
+                .any(|branch_ref| branch_ref.name == "HEAD" && branch_ref.kind == GitRefKind::Head)
+        );
     }
 
     #[test]

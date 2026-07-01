@@ -14,10 +14,15 @@ class CodgerHeaderActions extends HTMLElement {
         return;
       }
 
-      const eventName =
-        button.dataset.action === "open-log-workspace"
-          ? "codger:open-log-workspace"
-          : "codger:open-diff-workspace";
+      const eventName = {
+        "open-compare-workspace": "codger:open-compare-workspace",
+        "open-log-workspace": "codger:open-log-workspace",
+        "open-diff-workspace": "codger:open-diff-workspace",
+      }[button.dataset.action];
+      if (!eventName) {
+        return;
+      }
+
       this.dispatchEvent(new CustomEvent(eventName, { bubbles: true }));
     });
     this.boundIconsReady = () => this.render();
@@ -62,6 +67,12 @@ class CodgerHeaderActions extends HTMLElement {
         count: gitStatus.count,
         title: "Open Diff",
         metricLabel: "changed",
+      })}
+      ${this.renderAction({
+        action: "open-compare-workspace",
+        icon: "GitCompare",
+        label: "Compare",
+        title: "Open Compare",
       })}
       ${this.renderAction({
         action: "open-log-workspace",
