@@ -1,5 +1,6 @@
 import { escapeHtml } from "./dom.js";
 import { renderInlineIcon, warmIcons } from "./icons.js";
+import "./pagination.js";
 
 class CodgerLogList extends HTMLElement {
   connectedCallback() {
@@ -11,11 +12,6 @@ class CodgerLogList extends HTMLElement {
 
       if (button.dataset.action === "toggle-commit-body") {
         this.toggleCommitBody(button.dataset.commitSha);
-        return;
-      }
-
-      if (button.dataset.action === "set-log-page") {
-        this.changePage(button.dataset.page);
         return;
       }
 
@@ -31,6 +27,10 @@ class CodgerLogList extends HTMLElement {
           },
         }),
       );
+    });
+    this.addEventListener("codger:change-page", (event) => {
+      event.stopPropagation();
+      this.changePage(event.detail.page);
     });
 
     this.boundIconsReady = () => this.render();
@@ -204,54 +204,17 @@ class CodgerLogList extends HTMLElement {
     }
 
     return `
-      <footer class="log-pagination" aria-label="Log pagination">
-        ${this.renderPageButton({
-          icon: "ChevronFirst",
-          label: "Newest page",
-          page: 1,
-          disabled: page <= 1,
-        })}
-        ${this.renderPageButton({
-          icon: "ChevronLeft",
-          label: "Newer page",
-          page: page - 1,
-          disabled: !log.hasPrevious,
-        })}
-        <span
-          class="log-page-indicator"
-          aria-label="${escapeHtml(`Page ${page} of ${totalPages}`)}"
-        >
-          ${escapeHtml(`${page} / ${totalPages}`)}
-        </span>
-        ${this.renderPageButton({
-          icon: "ChevronRight",
-          label: "Older page",
-          page: page + 1,
-          disabled: !log.hasNext,
-        })}
-        ${this.renderPageButton({
-          icon: "ChevronLast",
-          label: "Oldest page",
-          page: totalPages,
-          disabled: page >= totalPages,
-        })}
-      </footer>
-    `;
-  }
-
-  renderPageButton({ icon, label, page, disabled }) {
-    return `
-      <button
-        type="button"
-        class="log-page-button"
-        data-action="set-log-page"
-        data-page="${escapeHtml(`${page}`)}"
-        aria-label="${escapeHtml(label)}"
-        title="${escapeHtml(label)}"
-        ${disabled ? "disabled" : ""}
-      >
-        ${renderInlineIcon(icon, label, "log-page-icon")}
-      </button>
+      <codger-pagination
+        aria-label="Log pagination"
+        page="${escapeHtml(`${page}`)}"
+        total-pages="${escapeHtml(`${totalPages}`)}"
+        ${log.hasPrevious ? "has-previous" : ""}
+        ${log.hasNext ? "has-next" : ""}
+        first-label="Newest page"
+        previous-label="Newer page"
+        next-label="Older page"
+        last-label="Oldest page"
+      ></codger-pagination>
     `;
   }
 

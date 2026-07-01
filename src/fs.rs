@@ -8,7 +8,7 @@ use std::{
 use serde::Serialize;
 use thiserror::Error;
 
-use crate::git;
+use crate::{git, github};
 
 pub const MAX_FILE_BYTES: u64 = 1024 * 1024;
 pub const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
@@ -134,6 +134,79 @@ pub struct GitRefsResponse {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct GithubStatusResponse {
+    pub repository: DirectoryGitInfo,
+    pub github: Option<GithubRepositoryInfo>,
+    pub gh_available: bool,
+    pub authenticated: bool,
+    pub issues_available: bool,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubIssuesResponse {
+    pub repository: DirectoryGitInfo,
+    pub github: GithubRepositoryInfo,
+    pub state: String,
+    pub issues: Vec<GithubIssueSummary>,
+    pub page: usize,
+    pub per_page: usize,
+    pub total_issues: usize,
+    pub total_pages: usize,
+    pub has_previous: bool,
+    pub has_next: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubIssueResponse {
+    pub repository: DirectoryGitInfo,
+    pub github: GithubRepositoryInfo,
+    pub issue: GithubIssueDetail,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubRepositoryInfo {
+    pub owner: String,
+    pub name: String,
+    pub name_with_owner: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubIssueSummary {
+    pub number: u64,
+    pub title: String,
+    pub state: String,
+    pub author: Option<String>,
+    pub labels: Vec<String>,
+    pub assignees: Vec<String>,
+    pub comments: u64,
+    pub updated_at: Option<String>,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubIssueDetail {
+    pub number: u64,
+    pub title: String,
+    pub state: String,
+    pub author: Option<String>,
+    pub labels: Vec<String>,
+    pub assignees: Vec<String>,
+    pub comments: u64,
+    pub body: String,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct GitCommitSummary {
     pub sha: String,
     pub short_sha: String,
@@ -245,6 +318,12 @@ pub enum FsError {
     GitRepositoryNotFound { path: String },
     #[error("git command failed while trying to {action}: {path}")]
     GitCommandFailed { action: &'static str, path: String },
+    #[error("path is not inside a GitHub repository: {path}")]
+    GithubRepositoryNotFound { path: String },
+    #[error("GitHub is unavailable for {action}: {path}")]
+    GithubUnavailable { action: &'static str, path: String },
+    #[error("GitHub CLI command failed while trying to {action}: {path}")]
+    GithubCommandFailed { action: &'static str, path: String },
     #[error("filesystem error while trying to {action}: {path}")]
     Io {
         action: &'static str,
@@ -729,6 +808,115 @@ impl RootedFs {
         })
     }
 
+    pub fn github_status(&self, requested_path: &str) -> Result<GithubStatusResponse, FsError> {
+        let repository = self.repository_for_request(requested_path)?;
+        let repository_info = self.git_info_for_repository(&repository)?;
+        let capability = github::capability(&repository);
+        let message = match capability.as_ref() {
+            Some(capability) => capability.message.clone(),
+            None => Some("GitHub remote was not found.".to_string()),
+        };
+
+        Ok(GithubStatusResponse {
+            repository: repository_info,
+            github: capability
+                .as_ref()
+                .map(|capability| github_repository_info(capability.repository.clone())),
+            gh_available: capability
+                .as_ref()
+                .map(|capability| capability.gh_available)
+                .unwrap_or(false),
+            authenticated: capability
+                .as_ref()
+                .map(|capability| capability.authenticated)
+                .unwrap_or(false),
+            issues_available: capability
+                .as_ref()
+                .map(|capability| capability.issues_available)
+                .unwrap_or(false),
+            message,
+        })
+    }
+
+    pub fn github_issues(
+        &self,
+        requested_path: &str,
+        state: &str,
+        page: usize,
+        per_page: usize,
+    ) -> Result<GithubIssuesResponse, FsError> {
+        let repository = self.repository_for_request(requested_path)?;
+        let repository_info = self.git_info_for_repository(&repository)?;
+        let capability =
+            github::capability(&repository).ok_or_else(|| FsError::GithubRepositoryNotFound {
+                path: requested_path.to_string(),
+            })?;
+        if !capability.issues_available {
+            return Err(FsError::GithubUnavailable {
+                action: "read issues",
+                path: capability.repository.name_with_owner,
+            });
+        }
+
+        let github = github_repository_info(capability.repository.clone());
+        let issue_page = github::issue_page(&capability.repository, state, page, per_page)
+            .ok_or_else(|| FsError::GithubCommandFailed {
+                action: "read issues",
+                path: github.name_with_owner.clone(),
+            })?;
+        let issues = issue_page
+            .issues
+            .into_iter()
+            .map(github_issue_summary)
+            .collect();
+
+        Ok(GithubIssuesResponse {
+            repository: repository_info,
+            github,
+            state: normalize_github_issue_state(state).to_string(),
+            issues,
+            page: issue_page.page,
+            per_page: issue_page.per_page,
+            total_issues: issue_page.total_issues,
+            total_pages: issue_page.total_pages,
+            has_previous: issue_page.has_previous,
+            has_next: issue_page.has_next,
+        })
+    }
+
+    pub fn github_issue(
+        &self,
+        requested_path: &str,
+        number: u64,
+    ) -> Result<GithubIssueResponse, FsError> {
+        let repository = self.repository_for_request(requested_path)?;
+        let repository_info = self.git_info_for_repository(&repository)?;
+        let capability =
+            github::capability(&repository).ok_or_else(|| FsError::GithubRepositoryNotFound {
+                path: requested_path.to_string(),
+            })?;
+        if !capability.issues_available {
+            return Err(FsError::GithubUnavailable {
+                action: "read issue",
+                path: capability.repository.name_with_owner,
+            });
+        }
+
+        let github = github_repository_info(capability.repository.clone());
+        let issue = github::issue_detail(&capability.repository, number)
+            .ok_or_else(|| FsError::GithubCommandFailed {
+                action: "read issue",
+                path: format!("{}#{number}", github.name_with_owner),
+            })
+            .map(github_issue_detail)?;
+
+        Ok(GithubIssueResponse {
+            repository: repository_info,
+            github,
+            issue,
+        })
+    }
+
     pub fn git_diff(
         &self,
         requested_path: &str,
@@ -1065,6 +1253,53 @@ fn git_ref(branch_ref: git::BranchRef) -> GitRef {
             git::BranchRefKind::Local => GitRefKind::Local,
             git::BranchRefKind::Remote => GitRefKind::Remote,
         },
+    }
+}
+
+fn github_repository_info(repository: github::GithubRepository) -> GithubRepositoryInfo {
+    GithubRepositoryInfo {
+        owner: repository.owner,
+        name: repository.name,
+        name_with_owner: repository.name_with_owner,
+        url: repository.url,
+    }
+}
+
+fn github_issue_summary(issue: github::GithubIssueSummary) -> GithubIssueSummary {
+    GithubIssueSummary {
+        number: issue.number,
+        title: issue.title,
+        state: issue.state,
+        author: issue.author,
+        labels: issue.labels,
+        assignees: issue.assignees,
+        comments: issue.comments,
+        updated_at: issue.updated_at,
+        url: issue.url,
+    }
+}
+
+fn github_issue_detail(issue: github::GithubIssueDetail) -> GithubIssueDetail {
+    GithubIssueDetail {
+        number: issue.number,
+        title: issue.title,
+        state: issue.state,
+        author: issue.author,
+        labels: issue.labels,
+        assignees: issue.assignees,
+        comments: issue.comments,
+        body: issue.body,
+        created_at: issue.created_at,
+        updated_at: issue.updated_at,
+        url: issue.url,
+    }
+}
+
+fn normalize_github_issue_state(state: &str) -> &'static str {
+    match state {
+        "closed" => "closed",
+        "all" => "all",
+        _ => "open",
     }
 }
 

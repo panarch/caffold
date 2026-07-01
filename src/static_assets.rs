@@ -61,9 +61,27 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "components/header-actions.js" => {
             Some(js(include_str!("../frontend/components/header-actions.js")))
         }
+        "components/github-issue-viewer.css" => Some(css(include_str!(
+            "../frontend/components/github-issue-viewer.css"
+        ))),
+        "components/github-issue-viewer.js" => Some(js(include_str!(
+            "../frontend/components/github-issue-viewer.js"
+        ))),
+        "components/github-issues-list.css" => Some(css(include_str!(
+            "../frontend/components/github-issues-list.css"
+        ))),
+        "components/github-issues-list.js" => Some(js(include_str!(
+            "../frontend/components/github-issues-list.js"
+        ))),
         "components/icons.js" => Some(js(include_str!("../frontend/components/icons.js"))),
         "components/log-list.css" => Some(css(include_str!("../frontend/components/log-list.css"))),
         "components/log-list.js" => Some(js(include_str!("../frontend/components/log-list.js"))),
+        "components/pagination.css" => {
+            Some(css(include_str!("../frontend/components/pagination.css")))
+        }
+        "components/pagination.js" => {
+            Some(js(include_str!("../frontend/components/pagination.js")))
+        }
         "components/pathbar.css" => Some(css(include_str!("../frontend/components/pathbar.css"))),
         "components/pathbar.js" => Some(js(include_str!("../frontend/components/pathbar.js"))),
         "components/project-switcher.css" => Some(css(include_str!(

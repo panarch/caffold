@@ -4,4 +4,5 @@ pub mod fs;
 pub mod project_store;
 
 mod git;
+mod github;
 mod static_assets;

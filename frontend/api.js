@@ -48,6 +48,18 @@ export async function getGitCompareDiff(path = "", base = null, head = null, fil
   return requestJson("/api/git/compare-diff", { path, base, head, file });
 }
 
+export async function getGitHubStatus(path = "") {
+  return requestJson("/api/github/status", { path });
+}
+
+export async function getGitHubIssues(path = "", state = "open", page = 1, perPage = 50) {
+  return requestJson("/api/github/issues", { path, state, page, perPage });
+}
+
+export async function getGitHubIssue(path = "", number) {
+  return requestJson("/api/github/issue", { path, number });
+}
+
 export async function listProjects() {
   return requestJson("/api/projects");
 }

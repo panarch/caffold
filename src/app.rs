@@ -14,8 +14,9 @@ use tracing::info;
 use crate::{
     fs::{
         FileResponse, FsError, GitCommitResponse, GitCompareResponse, GitDiffResponse,
-        GitLogResponse, GitRefsResponse, GitStatusResponse, ListResponse, MAX_FILE_BYTES,
-        ProjectRoot, RootedFs,
+        GitLogResponse, GitRefsResponse, GitStatusResponse, GithubIssueResponse,
+        GithubIssuesResponse, GithubStatusResponse, ListResponse, MAX_FILE_BYTES, ProjectRoot,
+        RootedFs,
     },
     project_store::{ProjectRecord, ProjectStore, ProjectStoreError},
     static_assets,
@@ -98,6 +99,27 @@ struct GitCompareDiffQuery {
     #[serde(default)]
     head: Option<String>,
     file: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubIssuesQuery {
+    #[serde(default)]
+    path: String,
+    #[serde(default = "default_github_issue_state")]
+    state: String,
+    #[serde(default = "default_github_issues_page")]
+    page: usize,
+    #[serde(rename = "perPage")]
+    per_page: Option<usize>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubIssueQuery {
+    #[serde(default)]
+    path: String,
+    number: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -242,6 +264,9 @@ fn router_with_state(state: AppState) -> Router {
         .route("/api/git/compare", get(git_compare))
         .route("/api/git/compare-diff", get(git_compare_diff))
         .route("/api/git/refs", get(git_refs))
+        .route("/api/github/status", get(github_status))
+        .route("/api/github/issues", get(github_issues))
+        .route("/api/github/issue", get(github_issue))
         .route("/assets/{*path}", get(asset))
         .with_state(state)
 }
@@ -259,6 +284,18 @@ fn default_git_log_page() -> usize {
 }
 
 fn default_git_log_per_page() -> usize {
+    50
+}
+
+fn default_github_issue_state() -> String {
+    "open".to_string()
+}
+
+fn default_github_issues_page() -> usize {
+    1
+}
+
+fn default_github_issues_per_page() -> usize {
     50
 }
 
@@ -509,6 +546,43 @@ async fn git_refs(
         .map_err(ApiError::from)
 }
 
+async fn github_status(
+    State(state): State<AppState>,
+    Query(query): Query<PathQuery>,
+) -> Result<Json<GithubStatusResponse>, ApiError> {
+    state
+        .fs
+        .github_status(&query.path)
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
+async fn github_issues(
+    State(state): State<AppState>,
+    Query(query): Query<GithubIssuesQuery>,
+) -> Result<Json<GithubIssuesResponse>, ApiError> {
+    let per_page = query
+        .per_page
+        .or(query.limit)
+        .unwrap_or_else(default_github_issues_per_page);
+    state
+        .fs
+        .github_issues(&query.path, &query.state, query.page, per_page)
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
+async fn github_issue(
+    State(state): State<AppState>,
+    Query(query): Query<GithubIssueQuery>,
+) -> Result<Json<GithubIssueResponse>, ApiError> {
+    state
+        .fs
+        .github_issue(&query.path, query.number)
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
 fn project_candidate_response(
     store: &ProjectStore,
     project_root: ProjectRoot,
@@ -623,6 +697,21 @@ impl IntoResponse for ApiError {
                 StatusCode::BAD_REQUEST,
                 "git_command_failed",
                 format!("git command failed while trying to {action}: {path}"),
+            ),
+            ApiError::Fs(FsError::GithubRepositoryNotFound { path }) => (
+                StatusCode::BAD_REQUEST,
+                "github_repository_not_found",
+                format!("path is not inside a GitHub repository: {path}"),
+            ),
+            ApiError::Fs(FsError::GithubUnavailable { action, path }) => (
+                StatusCode::BAD_REQUEST,
+                "github_unavailable",
+                format!("GitHub is unavailable while trying to {action}: {path}"),
+            ),
+            ApiError::Fs(FsError::GithubCommandFailed { action, path }) => (
+                StatusCode::BAD_REQUEST,
+                "github_command_failed",
+                format!("GitHub CLI command failed while trying to {action}: {path}"),
             ),
             ApiError::Fs(FsError::Io { action, path, .. }) => (
                 StatusCode::INTERNAL_SERVER_ERROR,

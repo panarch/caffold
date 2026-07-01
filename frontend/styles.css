@@ -2,11 +2,14 @@
 @import "./components/pathbar.css";
 @import "./components/project-switcher.css";
 @import "./components/header-actions.css";
+@import "./components/pagination.css";
 @import "./components/file-list.css";
 @import "./components/changes-tree.css";
 @import "./components/log-list.css";
 @import "./components/commit-changes-tree.css";
 @import "./components/compare-tree.css";
+@import "./components/github-issues-list.css";
+@import "./components/github-issue-viewer.css";
 @import "./components/review-workspace.css";
 @import "./components/file-viewer.css";
 @import "./components/code-viewer.css";

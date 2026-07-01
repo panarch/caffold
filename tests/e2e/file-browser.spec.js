@@ -26,6 +26,7 @@ test.beforeEach(async ({ page }) => {
         export const FileQuestion = File;
         export const FileTerminal = FileCode;
         export const FileText = [["path", { d: "M6 3h12v18H6z" }], ["path", { d: "M9 8h6" }], ["path", { d: "M9 12h6" }]];
+        export const CircleDot = [["circle", { cx: "12", cy: "12", r: "10" }], ["circle", { cx: "12", cy: "12", r: "2" }]];
         export const ChevronFirst = [["path", { d: "m17 18-6-6 6-6" }], ["path", { d: "M7 6v12" }]];
         export const ChevronLast = [["path", { d: "m7 18 6-6-6-6" }], ["path", { d: "M17 6v12" }]];
         export const ChevronLeft = [["path", { d: "m15 18-6-6 6-6" }]];
@@ -704,6 +705,194 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
   await expect(page.locator("codger-diff-viewer")).toContainText("new compare line");
 });
 
+test("opens GitHub issues from the header", async ({ page }, testInfo) => {
+  const repository = { rootPath: "src", branch: "feature/review", dirty: false };
+  const github = {
+    owner: "example",
+    name: "codger",
+    nameWithOwner: "example/codger",
+    url: "https://github.com/example/codger",
+  };
+  const issues = [
+    {
+      number: 42,
+      title: "Track mobile review issues",
+      state: "OPEN",
+      author: "taehoon",
+      labels: ["review", "mobile"],
+      assignees: [],
+      comments: 3,
+      updatedAt: "2026-07-01T10:00:00Z",
+      url: "https://github.com/example/codger/issues/42",
+    },
+    {
+      number: 41,
+      title: "Keep readonly GitHub access narrow",
+      state: "OPEN",
+      author: "codex",
+      labels: ["github"],
+      assignees: ["taehoon"],
+      comments: 0,
+      updatedAt: "2026-07-01T09:00:00Z",
+      url: "https://github.com/example/codger/issues/41",
+    },
+  ];
+  const olderIssues = [
+    {
+      number: 7,
+      title: "Older issue still reachable by pagination",
+      state: "OPEN",
+      author: "taehoon",
+      labels: ["pagination"],
+      assignees: [],
+      comments: 1,
+      updatedAt: "2026-06-30T09:00:00Z",
+      url: "https://github.com/example/codger/issues/7",
+    },
+  ];
+
+  await page.route(/\/api\/github\/status(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("path")).toBe("src");
+
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        github,
+        ghAvailable: true,
+        authenticated: true,
+        issuesAvailable: true,
+        message: null,
+      }),
+    });
+  });
+
+  await page.route(/\/api\/github\/issues(?:\?|$)/, async (route) => {
+    const url = new URL(route.request().url());
+    const pageNumber = Number(url.searchParams.get("page") ?? "1");
+    expect(url.searchParams.get("path")).toBe("src");
+    expect(url.searchParams.get("state")).toBe("open");
+    expect(url.searchParams.get("perPage")).toBe("50");
+    if (pageNumber === 2) {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 260);
+      });
+    }
+
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        github,
+        state: "open",
+        issues: pageNumber === 2 ? olderIssues : issues,
+        page: pageNumber,
+        perPage: 50,
+        totalIssues: 75,
+        totalPages: 2,
+        hasPrevious: pageNumber > 1,
+        hasNext: pageNumber < 2,
+      }),
+    });
+  });
+
+  await page.route(/\/api\/github\/issue(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("path")).toBe("src");
+    expect(url.searchParams.get("number")).toBe("42");
+
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        github,
+        issue: {
+          ...issues[0],
+          body: "Review GitHub issues without leaving the readonly console.",
+          createdAt: "2026-07-01T08:00:00Z",
+        },
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await page.locator('button[data-entry-path="src"]').click();
+
+  const issuesButton = page.locator(
+    'codger-header-actions button[data-action="open-github-issues-workspace"]',
+  );
+  await expect(issuesButton).toBeVisible();
+  await expect(issuesButton.locator(".header-action-label")).toHaveText("Issues");
+  await issuesButton.click();
+
+  const workspace = page.locator("codger-review-workspace");
+  await expect(workspace).toBeVisible();
+  await expect(workspace).toHaveAttribute("data-workspace-mode", "issues");
+  await expect(workspace.locator(".review-workspace-title h2")).toHaveText("Issues");
+  await expect(workspace.locator(".review-workspace-subtitle")).toHaveText(
+    "example/codger · 75 issues",
+  );
+  await expect(page.locator("codger-github-issues-list")).toContainText(
+    "Track mobile review issues",
+  );
+  await expect(page.locator("codger-github-issues-list")).toContainText(
+    "Keep readonly GitHub access narrow",
+  );
+  await expect(page.locator("codger-github-issues-list .github-issues-count")).toHaveText(
+    "75 issues",
+  );
+  const issuePagination = page.locator("codger-github-issues-list codger-pagination");
+  await expect(issuePagination.locator(".pagination-indicator")).toHaveText("1 / 2");
+  await expect(issuePagination.getByRole("button", { name: "Newest issue page" })).toBeDisabled();
+  await expect(issuePagination.getByRole("button", { name: "Newer issue page" })).toBeDisabled();
+  await expect(page.locator("codger-github-issue-viewer")).toContainText(
+    "Select an issue to inspect it.",
+  );
+  await expectAlignedWorkspaceHeaders(page, [
+    "codger-review-workspace .review-workspace-header",
+    "codger-github-issues-list .github-issues-panel > header",
+  ]);
+  await expectMatchingPaneTitleSizes(page, [
+    "codger-github-issues-list .github-issues-panel > header",
+  ]);
+  await captureReviewScreenshot(page, testInfo, "github-issues-list");
+
+  await page.locator('button[data-issue-number="42"]').click();
+  await expect(page.locator('button[data-issue-number="42"]')).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  const issueViewer = page.locator("codger-github-issue-viewer");
+  await expect(issueViewer).toContainText("Track mobile review issues");
+  await expect(issueViewer).toContainText("Review GitHub issues without leaving");
+  await expect(issueViewer).toContainText("3 comments");
+  await expect(issueViewer.getByRole("link", { name: "GitHub" })).toHaveAttribute(
+    "href",
+    "https://github.com/example/codger/issues/42",
+  );
+
+  await issuePagination.getByRole("button", { name: "Oldest issue page" }).click();
+  await page.waitForTimeout(220);
+  await expect(page.locator("codger-github-issues-list .github-issues-loading-body")).toHaveText(
+    "Loading issues...",
+  );
+  await expect(page.locator("codger-github-issues-list")).not.toContainText(
+    "Track mobile review issues",
+  );
+  await expect(issuePagination.locator(".pagination-indicator")).toHaveText("2 / 2");
+  await expect(issuePagination.getByRole("button", { name: "Newest issue page" })).toBeEnabled();
+  await expect(issuePagination.getByRole("button", { name: "Oldest issue page" })).toBeDisabled();
+  await expect(page.locator("codger-github-issues-list")).toContainText(
+    "Older issue still reachable by pagination",
+  );
+  await expect(page.locator("codger-github-issues-list")).not.toContainText("Loading issues...");
+  await expect(issuePagination.getByRole("button", { name: "Older issue page" })).toBeDisabled();
+  await expect(issuePagination.getByRole("button", { name: "Oldest issue page" })).toBeDisabled();
+  await expectGlobalScrollLocked(page);
+  await captureReviewScreenshot(page, testInfo, "github-issue-detail");
+});
+
 test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
   const commit = {
     sha: "abcdef1234567890abcdef1234567890abcdef12",
@@ -828,8 +1017,8 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
   await expect(page.locator("codger-log-list")).toContainText("abcdef1");
   await expect(page.locator("codger-log-list")).toBeVisible();
   await expect(page.locator(".log-review-detail")).toBeHidden();
-  const pagination = page.locator("codger-log-list .log-pagination");
-  await expect(pagination.locator(".log-page-indicator")).toHaveText("1 / 2");
+  const pagination = page.locator("codger-log-list codger-pagination");
+  await expect(pagination.locator(".pagination-indicator")).toHaveText("1 / 2");
   await expect(pagination.getByRole("button", { name: "Newest page" })).toBeDisabled();
   await expect(pagination.getByRole("button", { name: "Newer page" })).toBeDisabled();
 
@@ -838,13 +1027,13 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
   const preservedLogText = await page.locator("codger-log-list").textContent();
   expect(preservedLogText).toContain("Update planner function");
   expect(preservedLogText).not.toContain("Loading log...");
-  await expect(pagination.locator(".log-page-indicator")).toHaveText("2 / 2");
+  await expect(pagination.locator(".pagination-indicator")).toHaveText("2 / 2");
   await expect(page.locator("codger-log-list")).toContainText("Oldest page commit 1");
   await expect(pagination.getByRole("button", { name: "Older page" })).toBeDisabled();
   await expect(pagination.getByRole("button", { name: "Oldest page" })).toBeDisabled();
 
   await pagination.getByRole("button", { name: "Newest page" }).click();
-  await expect(pagination.locator(".log-page-indicator")).toHaveText("1 / 2");
+  await expect(pagination.locator(".pagination-indicator")).toHaveText("1 / 2");
   await expect(page.locator("codger-log-list")).toContainText("Update planner function");
 
   const logEntry = page.locator(

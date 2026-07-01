@@ -6,6 +6,9 @@ import {
   getGitCompare,
   getGitCompareDiff,
   getGitRefs,
+  getGitHubIssue,
+  getGitHubIssues,
+  getGitHubStatus,
   getGitDiff,
   getGitLog,
   getGitStatus,
@@ -27,10 +30,13 @@ import "./changes-tree.js";
 import "./log-list.js";
 import "./commit-changes-tree.js";
 import "./compare-tree.js";
+import "./github-issues-list.js";
+import "./github-issue-viewer.js";
 import "./review-workspace.js";
 
 const LOADING_DELAY_MS = 180;
 const LAST_DIRECTORY_KEY_PREFIX = "codger:last-directory-path";
+const GITHUB_ISSUES_PER_PAGE = 50;
 const LEFT_PANEL_DEFAULT_WIDTH = 320;
 const LEFT_PANEL_MIN_WIDTH = 180;
 const LEFT_PANEL_VIEWER_MIN_WIDTH = 320;
@@ -51,8 +57,13 @@ class CodgerAppShell extends HTMLElement {
     this.gitCommitRequestId = 0;
     this.gitCompareRequestId = 0;
     this.gitRefsRequestId = 0;
+    this.githubStatusRequestId = 0;
+    this.githubIssuesRequestId = 0;
+    this.githubIssueRequestId = 0;
     this.projectRequestId = 0;
     this.gitStatus = null;
+    this.githubStatus = null;
+    this.githubIssues = null;
     this.projects = [];
     this.projectCandidate = null;
     this.currentProjectId = null;
@@ -63,6 +74,7 @@ class CodgerAppShell extends HTMLElement {
     this.workspaceMode = null;
     this.logWorkspaceView = "list";
     this.logPage = 1;
+    this.githubIssuesPage = 1;
     this.selectedCommitSummary = null;
     this.leftPanelWidth = LEFT_PANEL_DEFAULT_WIDTH;
     this.resizePointerId = null;
@@ -80,6 +92,8 @@ class CodgerAppShell extends HTMLElement {
     this.logList = this.reviewWorkspace.querySelector("codger-log-list");
     this.commitChangesTree = this.reviewWorkspace.querySelector("codger-commit-changes-tree");
     this.compareTree = this.reviewWorkspace.querySelector("codger-compare-tree");
+    this.githubIssuesList = this.reviewWorkspace.querySelector("codger-github-issues-list");
+    this.githubIssueViewer = this.reviewWorkspace.querySelector("codger-github-issue-viewer");
     this.diffWorkspaceViewer = this.reviewWorkspace.querySelector(
       ".workspace-mode-diff codger-review-file-viewer",
     );
@@ -109,6 +123,9 @@ class CodgerAppShell extends HTMLElement {
     this.addEventListener("codger:open-compare-workspace", () => {
       this.openCompareWorkspace();
     });
+    this.addEventListener("codger:open-github-issues-workspace", () => {
+      this.openGithubIssuesWorkspace();
+    });
     this.addEventListener("codger:close-review-workspace", () => {
       this.closeReviewWorkspace();
     });
@@ -132,6 +149,12 @@ class CodgerAppShell extends HTMLElement {
     });
     this.addEventListener("codger:change-compare-refs", (event) => {
       this.changeCompareRefs(event.detail.baseRef, event.detail.headRef);
+    });
+    this.addEventListener("codger:open-github-issue", (event) => {
+      this.openGithubIssue(event.detail.number);
+    });
+    this.addEventListener("codger:change-github-issues-page", (event) => {
+      this.changeGithubIssuesPage(event.detail.page);
     });
     this.addEventListener("codger:register-current-project", () => {
       this.registerCurrentProject();
@@ -553,6 +576,8 @@ class CodgerAppShell extends HTMLElement {
 
     this.gitRepository = directory.git;
     this.gitStatus = null;
+    this.githubStatus = null;
+    this.githubIssues = null;
     this.gitCompare = null;
     this.gitRefs = null;
     this.compareBaseRef = null;
@@ -563,13 +588,20 @@ class CodgerAppShell extends HTMLElement {
       count: null,
       workspaceMode: this.workspaceMode,
     };
+    this.headerActions.githubStatus = null;
     this.changesTree.setLoading(directory.git);
+    this.githubIssuesList.reset();
+    this.githubIssueViewer.setEmpty();
     this.loadGitStatus(directory.path);
+    this.loadGithubStatus(directory.path);
     if (this.workspaceMode === "log") {
       this.logPage = 1;
       this.loadGitLog(directory.path, this.logPage);
     } else if (this.workspaceMode === "compare") {
       this.loadGitRefsAndCompare(directory.path);
+    } else if (this.workspaceMode === "issues") {
+      this.githubIssuesPage = 1;
+      this.githubIssuesList.setLoading(null);
     }
     this.updateWorkspaceChrome();
   }
@@ -583,15 +615,24 @@ class CodgerAppShell extends HTMLElement {
     this.gitCommitRequestId += 1;
     this.gitCompareRequestId += 1;
     this.gitRefsRequestId += 1;
+    this.githubStatusRequestId += 1;
+    this.githubIssuesRequestId += 1;
+    this.githubIssueRequestId += 1;
     this.logPage = 1;
+    this.githubIssuesPage = 1;
     this.gitRefs = null;
+    this.githubStatus = null;
+    this.githubIssues = null;
     this.compareBaseRef = null;
     this.compareHeadRef = null;
     this.headerActions.gitStatus = null;
+    this.headerActions.githubStatus = null;
     this.changesTree.reset();
     this.logList.reset();
     this.commitChangesTree.reset();
     this.compareTree.reset();
+    this.githubIssuesList.reset();
+    this.githubIssueViewer.setEmpty();
     this.reviewWorkspace.clearCompareRefs();
     this.closeReviewWorkspace();
   }
@@ -621,6 +662,100 @@ class CodgerAppShell extends HTMLElement {
       }
 
       this.changesTree.setError(error, this.gitRepository);
+    }
+  }
+
+  async loadGithubStatus(path) {
+    if (!this.gitRepository) {
+      return;
+    }
+
+    const requestId = ++this.githubStatusRequestId;
+
+    try {
+      const status = await getGitHubStatus(path);
+      if (requestId !== this.githubStatusRequestId) {
+        return;
+      }
+
+      this.githubStatus = status;
+      this.headerActions.githubStatus = status;
+      this.updateWorkspaceChrome();
+      if (this.workspaceMode === "issues") {
+        if (status.github && status.issuesAvailable) {
+          this.loadGithubIssues(path, "open", this.githubIssuesPage);
+        } else {
+          this.githubIssuesList.setUnavailable(status);
+          this.githubIssueViewer.setEmpty();
+        }
+      }
+    } catch (error) {
+      if (requestId !== this.githubStatusRequestId) {
+        return;
+      }
+
+      this.githubStatus = null;
+      this.headerActions.githubStatus = null;
+      if (this.workspaceMode === "issues") {
+        this.githubIssuesList.setError(error);
+        this.githubIssueViewer.setEmpty();
+      }
+    }
+  }
+
+  async loadGithubIssues(path, state = "open", page = this.githubIssuesPage) {
+    if (!this.gitRepository || !this.githubStatus?.github || !this.githubStatus.issuesAvailable) {
+      return;
+    }
+
+    const requestId = ++this.githubIssuesRequestId;
+    const loadingTimer = this.showGithubIssuesLoadingAfterDelay(requestId);
+
+    try {
+      const issues = await getGitHubIssues(path, state, page, GITHUB_ISSUES_PER_PAGE);
+      if (requestId !== this.githubIssuesRequestId) {
+        return;
+      }
+
+      this.githubIssuesPage = issues.page ?? page;
+      this.githubIssues = issues;
+      this.githubIssuesList.setIssues(issues);
+      this.githubIssueViewer.setEmpty();
+      this.updateWorkspaceChrome();
+    } catch (error) {
+      if (requestId !== this.githubIssuesRequestId) {
+        return;
+      }
+
+      this.githubIssuesList.setError(error, this.githubStatus);
+      this.githubIssueViewer.setEmpty();
+    } finally {
+      window.clearTimeout(loadingTimer);
+    }
+  }
+
+  async openGithubIssue(number) {
+    if (!this.gitRepository || !Number.isFinite(number)) {
+      return;
+    }
+
+    const requestId = ++this.githubIssueRequestId;
+    this.githubIssuesList.setSelectedIssue(number);
+    this.githubIssueViewer.setLoading(number);
+
+    try {
+      const issue = await getGitHubIssue(this.currentPath, number);
+      if (requestId !== this.githubIssueRequestId) {
+        return;
+      }
+
+      this.githubIssueViewer.setIssue(issue);
+    } catch (error) {
+      if (requestId !== this.githubIssueRequestId) {
+        return;
+      }
+
+      this.githubIssueViewer.setError(number, error);
     }
   }
 
@@ -750,6 +885,20 @@ class CodgerAppShell extends HTMLElement {
     this.loadGitLog(this.currentPath, nextPage);
   }
 
+  changeGithubIssuesPage(page) {
+    if (this.workspaceMode !== "issues") {
+      return;
+    }
+
+    const nextPage = Number.parseInt(`${page}`, 10);
+    if (!Number.isFinite(nextPage) || nextPage < 1 || nextPage === this.githubIssuesPage) {
+      return;
+    }
+
+    this.githubIssuesPage = nextPage;
+    this.loadGithubIssues(this.currentPath, "open", nextPage);
+  }
+
   openDiffWorkspace() {
     if (!this.gitRepository) {
       return;
@@ -786,6 +935,31 @@ class CodgerAppShell extends HTMLElement {
     this.loadGitRefsAndCompare(this.currentPath);
   }
 
+  openGithubIssuesWorkspace() {
+    if (!this.gitRepository) {
+      return;
+    }
+
+    this.workspaceMode = "issues";
+    this.logWorkspaceView = "list";
+    this.githubIssuesPage = 1;
+    this.reviewWorkspace.open("issues", this.workspaceDetails());
+    this.updateGitButton();
+    this.githubIssueViewer.setEmpty();
+    if (!this.githubStatus) {
+      this.githubIssuesList.setLoading(null);
+      this.loadGithubStatus(this.currentPath);
+      return;
+    }
+
+    if (!this.githubStatus.github || !this.githubStatus.issuesAvailable) {
+      this.githubIssuesList.setUnavailable(this.githubStatus);
+      return;
+    }
+
+    this.loadGithubIssues(this.currentPath, "open", this.githubIssuesPage);
+  }
+
   openLogWorkspace(options = {}) {
     if (!this.gitRepository) {
       return;
@@ -816,7 +990,9 @@ class CodgerAppShell extends HTMLElement {
     this.workspaceMode = null;
     this.logWorkspaceView = "list";
     this.logPage = 1;
+    this.githubIssuesPage = 1;
     this.selectedCommitSummary = null;
+    this.githubIssuesList.setSelectedIssue(null);
     this.reviewWorkspace.close();
     this.updateGitButton();
   }
@@ -854,6 +1030,7 @@ class CodgerAppShell extends HTMLElement {
       count: this.gitStatus?.files.length ?? null,
       workspaceMode: this.workspaceMode,
     };
+    this.headerActions.githubStatus = this.githubStatus;
   }
 
   workspaceSubtitle(label) {
@@ -894,9 +1071,17 @@ class CodgerAppShell extends HTMLElement {
       };
     }
 
+    if (this.workspaceMode === "log") {
+      return {
+        title: "Log",
+        subtitle: this.workspaceSubtitle("History"),
+        backVisible: false,
+      };
+    }
+
     return {
-      title: "Log",
-      subtitle: this.workspaceSubtitle("History"),
+      title: "Issues",
+      subtitle: this.githubIssuesSubtitle(),
       backVisible: false,
     };
   }
@@ -919,6 +1104,16 @@ class CodgerAppShell extends HTMLElement {
     }
 
     return `${this.gitCompare.baseRef}...${this.gitCompare.headRef} · ${countLabel}`;
+  }
+
+  githubIssuesSubtitle() {
+    if (!this.githubStatus?.github) {
+      return "GitHub";
+    }
+
+    const count = this.githubIssues?.totalIssues;
+    const countLabel = count === undefined ? "" : ` · ${count} issues`;
+    return `${this.githubStatus.github.nameWithOwner}${countLabel}`;
   }
 
   startLeftPanelResize(event) {
@@ -1039,6 +1234,18 @@ class CodgerAppShell extends HTMLElement {
     return window.setTimeout(() => {
       if (requestId === this.gitLogRequestId) {
         this.logList.setLoading(this.gitRepository);
+      }
+    }, LOADING_DELAY_MS);
+  }
+
+  showGithubIssuesLoadingAfterDelay(requestId) {
+    return window.setTimeout(() => {
+      if (requestId === this.githubIssuesRequestId) {
+        this.githubIssuesList.setLoading(
+          this.githubStatus,
+          this.githubIssues,
+          this.githubIssuesPage,
+        );
       }
     }, LOADING_DELAY_MS);
   }

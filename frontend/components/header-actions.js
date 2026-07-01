@@ -18,6 +18,7 @@ class CodgerHeaderActions extends HTMLElement {
         "open-compare-workspace": "codger:open-compare-workspace",
         "open-log-workspace": "codger:open-log-workspace",
         "open-diff-workspace": "codger:open-diff-workspace",
+        "open-github-issues-workspace": "codger:open-github-issues-workspace",
       }[button.dataset.action];
       if (!eventName) {
         return;
@@ -45,10 +46,20 @@ class CodgerHeaderActions extends HTMLElement {
     return this.gitStatusValue ?? null;
   }
 
+  set githubStatus(value) {
+    this.githubStatusValue = value ?? null;
+    this.render();
+  }
+
+  get githubStatus() {
+    return this.githubStatusValue ?? null;
+  }
+
   render() {
     this.innerHTML = `
       <div class="header-actions" aria-label="Review actions">
         ${this.renderGitToggle()}
+        ${this.renderGitHubActions()}
       </div>
     `;
   }
@@ -81,6 +92,22 @@ class CodgerHeaderActions extends HTMLElement {
         title: "Open Log",
       })}
     `;
+  }
+
+  renderGitHubActions() {
+    const githubStatus = this.githubStatus;
+    if (!githubStatus?.github) {
+      return "";
+    }
+
+    return this.renderAction({
+      action: "open-github-issues-workspace",
+      icon: "CircleDot",
+      label: "Issues",
+      title: githubStatus.issuesAvailable
+        ? "Open Issues"
+        : `Open Issues (${githubStatus.message ?? "GitHub unavailable"})`,
+    });
   }
 
   renderAction({

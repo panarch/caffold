@@ -60,64 +60,6 @@ codger-log-list .log-branch {
   white-space: nowrap;
 }
 
-codger-log-list .log-pagination {
-  display: grid;
-  grid-template-columns: 30px 30px minmax(3.8rem, auto) 30px 30px;
-  gap: 6px;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  padding: 5px 8px;
-  border-top: 1px solid var(--border);
-  background: var(--surface);
-}
-
-codger-log-list .log-page-button {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--surface);
-  color: var(--accent);
-  cursor: pointer;
-}
-
-codger-log-list .log-page-button:hover,
-codger-log-list .log-page-button:focus-visible {
-  border-color: #abcbbf;
-  background: #f7fbf8;
-  outline: none;
-}
-
-codger-log-list .log-page-button:disabled {
-  color: #a4b0aa;
-  cursor: default;
-  opacity: 0.55;
-}
-
-codger-log-list .log-page-button:disabled:hover {
-  border-color: var(--border);
-  background: var(--surface);
-}
-
-codger-log-list .log-page-icon {
-  width: 0.9rem;
-  height: 0.9rem;
-  stroke-width: 2.2;
-}
-
-codger-log-list .log-page-indicator {
-  min-width: 0;
-  color: var(--muted);
-  font-size: 0.74rem;
-  line-height: 1;
-  text-align: center;
-  white-space: nowrap;
-}
-
 codger-log-list .log-list {
   display: block;
   min-height: 0;

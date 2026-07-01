@@ -2,12 +2,13 @@ codger-review-workspace {
   --review-header-height: 42px;
   --review-left-panel-width: 20rem;
   --review-pane-title-size: 0.82rem;
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 20;
   display: block;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
   background: var(--surface);
 }
 
@@ -177,6 +178,12 @@ codger-review-workspace .workspace-mode-log {
   height: 100%;
 }
 
+codger-review-workspace .workspace-mode-issues {
+  display: grid;
+  grid-template-columns: var(--review-left-panel-width) minmax(0, 1fr);
+  height: 100%;
+}
+
 codger-review-workspace .workspace-mode-log[data-log-view="list"] codger-log-list {
   border-right: 0;
 }
@@ -228,6 +235,8 @@ codger-review-workspace codger-changes-tree,
 codger-review-workspace codger-compare-tree,
 codger-review-workspace codger-log-list,
 codger-review-workspace codger-commit-changes-tree,
+codger-review-workspace codger-github-issues-list,
+codger-review-workspace codger-github-issue-viewer,
 codger-review-workspace codger-review-file-viewer {
   min-width: 0;
   min-height: 0;
@@ -242,6 +251,7 @@ codger-review-workspace codger-changes-tree .changes-tree-panel > header,
 codger-review-workspace codger-compare-tree .compare-tree-panel > header,
 codger-review-workspace codger-log-list .log-list-panel > header,
 codger-review-workspace codger-commit-changes-tree .commit-tree-panel > header,
+codger-review-workspace codger-github-issues-list .github-issues-panel > header,
 codger-review-workspace codger-review-file-viewer .viewer-panel > header {
   box-sizing: border-box;
   height: var(--review-header-height);
@@ -262,7 +272,8 @@ codger-review-workspace codger-review-file-viewer h2 {
 codger-review-workspace codger-changes-tree h2,
 codger-review-workspace codger-compare-tree h2,
 codger-review-workspace codger-log-list h2,
-codger-review-workspace codger-commit-changes-tree h2 {
+codger-review-workspace codger-commit-changes-tree h2,
+codger-review-workspace codger-github-issues-list h2 {
   font-size: var(--review-pane-title-size);
 }
 
@@ -349,6 +360,19 @@ codger-review-workspace codger-commit-changes-tree h2 {
 
   codger-review-workspace .workspace-mode-log {
     grid-template-columns: 1fr;
+  }
+
+  codger-review-workspace .workspace-mode-issues {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 36dvh) minmax(0, 1fr);
+  }
+
+  codger-review-workspace .workspace-mode-issues > codger-github-issues-list {
+    grid-row: 1;
+  }
+
+  codger-review-workspace .workspace-mode-issues > codger-github-issue-viewer {
+    grid-row: 2;
   }
 
   codger-review-workspace .log-review-detail {

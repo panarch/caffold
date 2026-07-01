@@ -169,6 +169,10 @@ class CodgerReviewWorkspace extends HTMLElement {
               <codger-review-file-viewer></codger-review-file-viewer>
             </div>
           </div>
+          <div class="review-workspace-view workspace-mode-issues" hidden>
+            <codger-github-issues-list></codger-github-issues-list>
+            <codger-github-issue-viewer></codger-github-issue-viewer>
+          </div>
         </div>
       </section>
     `;
@@ -181,6 +185,7 @@ class CodgerReviewWorkspace extends HTMLElement {
     this.diffView = this.querySelector(".workspace-mode-diff");
     this.compareView = this.querySelector(".workspace-mode-compare");
     this.logView = this.querySelector(".workspace-mode-log");
+    this.issuesView = this.querySelector(".workspace-mode-issues");
     this.renderChrome();
   }
 
@@ -197,6 +202,7 @@ class CodgerReviewWorkspace extends HTMLElement {
     this.diffView.hidden = mode !== "diff";
     this.compareView.hidden = mode !== "compare";
     this.logView.hidden = mode !== "log";
+    this.issuesView.hidden = mode !== "issues";
   }
 
   close() {
@@ -446,6 +452,10 @@ function workspaceTitle(mode) {
 
   if (mode === "compare") {
     return "Compare";
+  }
+
+  if (mode === "issues") {
+    return "Issues";
   }
 
   return "Review";
