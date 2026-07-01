@@ -58,6 +58,7 @@ pub struct GithubIssueDetail {
     pub assignees: Vec<String>,
     pub comments: u64,
     pub body: String,
+    pub body_html: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
     pub url: String,
@@ -162,13 +163,16 @@ fn run_issue_search(
 
 pub fn issue_detail(repository: &GithubRepository, number: u64) -> Option<GithubIssueDetail> {
     let output = Command::new("gh")
-        .arg("-R")
-        .arg(&repository.name_with_owner)
-        .arg("issue")
-        .arg("view")
-        .arg(number.to_string())
-        .arg("--json")
-        .arg("number,title,state,author,labels,assignees,comments,body,createdAt,updatedAt,url")
+        .arg("api")
+        .arg("graphql")
+        .arg("-f")
+        .arg(format!("owner={}", repository.owner))
+        .arg("-f")
+        .arg(format!("name={}", repository.name))
+        .arg("-F")
+        .arg(format!("number={number}"))
+        .arg("-f")
+        .arg(format!("query={}", issue_detail_query()))
         .output()
         .ok()?;
 
@@ -193,6 +197,41 @@ fn issue_search_query(repository: &GithubRepository, state: &str) -> String {
         query.push_str(&format!(" is:{state}"));
     }
     query
+}
+
+fn issue_detail_query() -> &'static str {
+    r#"
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
+      number
+      title
+      state
+      author {
+        login
+      }
+      labels(first: 50) {
+        nodes {
+          name
+        }
+      }
+      assignees(first: 50) {
+        nodes {
+          login
+        }
+      }
+      comments(first: 1) {
+        totalCount
+      }
+      body
+      bodyHTML
+      createdAt
+      updatedAt
+      url
+    }
+  }
+}
+"#
 }
 
 fn total_pages(total_count: usize, per_page: usize) -> usize {
@@ -266,9 +305,8 @@ fn parse_issue_search(output: &[u8]) -> Option<GhIssueSearchResponse> {
 }
 
 fn parse_issue_detail(output: &[u8]) -> Option<GithubIssueDetail> {
-    serde_json::from_slice::<GhIssueDetail>(output)
-        .ok()
-        .map(GithubIssueDetail::from)
+    let response = serde_json::from_slice::<GhIssueDetailResponse>(output).ok()?;
+    response.data.repository.issue.map(GithubIssueDetail::from)
 }
 
 #[derive(Debug, Deserialize)]
@@ -295,6 +333,21 @@ struct GhSearchIssue {
 }
 
 #[derive(Debug, Deserialize)]
+struct GhIssueDetailResponse {
+    data: GhIssueDetailData,
+}
+
+#[derive(Debug, Deserialize)]
+struct GhIssueDetailData {
+    repository: GhIssueDetailRepository,
+}
+
+#[derive(Debug, Deserialize)]
+struct GhIssueDetailRepository {
+    issue: Option<GhIssueDetail>,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GhIssueDetail {
     number: u64,
@@ -302,45 +355,46 @@ struct GhIssueDetail {
     state: String,
     author: Option<GhUser>,
     #[serde(default)]
-    labels: Vec<GhLabel>,
+    labels: GhNodeConnection<GhLabel>,
     #[serde(default)]
-    assignees: Vec<GhUser>,
+    assignees: GhNodeConnection<GhUser>,
     #[serde(default)]
-    comments: GhComments,
+    comments: GhCommentsConnection,
     #[serde(default)]
     body: String,
+    #[serde(rename = "bodyHTML")]
+    body_html: Option<String>,
     created_at: Option<String>,
     updated_at: Option<String>,
     url: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 struct GhUser {
     login: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 struct GhLabel {
     name: String,
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(untagged)]
-enum GhComments {
-    Count(u64),
-    Items(Vec<serde_json::Value>),
-    #[default]
-    Missing,
+#[derive(Debug, Deserialize)]
+struct GhNodeConnection<T> {
+    #[serde(default)]
+    nodes: Vec<T>,
 }
 
-impl GhComments {
-    fn count(&self) -> u64 {
-        match self {
-            Self::Count(count) => *count,
-            Self::Items(items) => items.len() as u64,
-            Self::Missing => 0,
-        }
+impl<T> Default for GhNodeConnection<T> {
+    fn default() -> Self {
+        Self { nodes: Vec::new() }
     }
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GhCommentsConnection {
+    total_count: u64,
 }
 
 impl From<GhSearchIssue> for GithubIssueSummary {
@@ -370,14 +424,21 @@ impl From<GhIssueDetail> for GithubIssueDetail {
             title: issue.title,
             state: issue.state,
             author: issue.author.map(|author| author.login),
-            labels: issue.labels.into_iter().map(|label| label.name).collect(),
+            labels: issue
+                .labels
+                .nodes
+                .into_iter()
+                .map(|label| label.name)
+                .collect(),
             assignees: issue
                 .assignees
+                .nodes
                 .into_iter()
                 .map(|assignee| assignee.login)
                 .collect(),
-            comments: issue.comments.count(),
+            comments: issue.comments.total_count,
             body: issue.body,
+            body_html: issue.body_html,
             created_at: issue.created_at,
             updated_at: issue.updated_at,
             url: issue.url,
@@ -438,26 +499,39 @@ mod tests {
     }
 
     #[test]
-    fn parses_issue_detail_json_with_comment_items() {
+    fn parses_issue_detail_graphql_json() {
         let issue = parse_issue_detail(
             br#"{
-              "number": 9,
-              "title": "Add issue viewer",
-              "state": "OPEN",
-              "author": { "login": "taehoon" },
-              "labels": [],
-              "assignees": [],
-              "comments": [{ "id": 1 }, { "id": 2 }],
-              "body": "Issue body",
-              "createdAt": "2026-07-01T09:00:00Z",
-              "updatedAt": "2026-07-01T10:00:00Z",
-              "url": "https://github.com/example/codger/issues/9"
+              "data": {
+                "repository": {
+                  "issue": {
+                    "number": 9,
+                    "title": "Add issue viewer",
+                    "state": "OPEN",
+                    "author": { "login": "taehoon" },
+                    "labels": { "nodes": [{ "name": "ui" }] },
+                    "assignees": { "nodes": [{ "login": "codex" }] },
+                    "comments": { "totalCount": 2 },
+                    "body": "**Issue** body",
+                    "bodyHTML": "<p><strong>Issue</strong> body</p>",
+                    "createdAt": "2026-07-01T09:00:00Z",
+                    "updatedAt": "2026-07-01T10:00:00Z",
+                    "url": "https://github.com/example/codger/issues/9"
+                  }
+                }
+              }
             }"#,
         )
         .unwrap();
 
         assert_eq!(issue.number, 9);
+        assert_eq!(issue.labels, ["ui"]);
+        assert_eq!(issue.assignees, ["codex"]);
         assert_eq!(issue.comments, 2);
-        assert_eq!(issue.body, "Issue body");
+        assert_eq!(issue.body, "**Issue** body");
+        assert_eq!(
+            issue.body_html.as_deref(),
+            Some("<p><strong>Issue</strong> body</p>")
+        );
     }
 }

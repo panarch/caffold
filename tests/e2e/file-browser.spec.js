@@ -809,7 +809,14 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
         github,
         issue: {
           ...issues[0],
-          body: "Review GitHub issues without leaving the readonly console.",
+          body: "**Review** GitHub issues without leaving the readonly console.\n\n```sh\ncargo test\n```",
+          bodyHtml: `
+            <p><strong>Review</strong> GitHub issues without leaving the readonly console.</p>
+            <pre><code>cargo test</code></pre>
+            <a href="https://example.com/docs">docs</a>
+            <a href="javascript:alert(1)">unsafe</a>
+            <script>alert(1)</script>
+          `,
           createdAt: "2026-07-01T08:00:00Z",
         },
       }),
@@ -872,8 +879,35 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
   await expect(page.locator("codger-github-issues-list")).toBeHidden();
   await expect(issueViewer).toBeVisible();
   await expect(issueViewer).toContainText("Track mobile review issues");
-  await expect(issueViewer).toContainText("Review GitHub issues without leaving");
   await expect(issueViewer).toContainText("3 comments");
+  const markdownViewer = issueViewer.locator("codger-github-markdown");
+  await expect(markdownViewer).toBeVisible();
+  await expect(markdownViewer.locator("strong")).toHaveText("Review");
+  await expect(markdownViewer.locator("pre")).toContainText("cargo test");
+  const markdownSafety = await markdownViewer.evaluate((element) => {
+    const root = element.shadowRoot;
+    const docsLink = [...root.querySelectorAll("a")].find(
+      (link) => link.textContent === "docs",
+    );
+    const unsafeLink = [...root.querySelectorAll("a")].find(
+      (link) => link.textContent === "unsafe",
+    );
+
+    return {
+      scripts: root.querySelectorAll("script").length,
+      docsTarget: docsLink?.getAttribute("target"),
+      docsRel: docsLink?.getAttribute("rel"),
+      unsafeLinkPresent: Boolean(unsafeLink),
+      unsafeHref: unsafeLink?.getAttribute("href") ?? null,
+    };
+  });
+  expect(markdownSafety).toEqual({
+    scripts: 0,
+    docsTarget: "_blank",
+    docsRel: "noreferrer",
+    unsafeLinkPresent: false,
+    unsafeHref: null,
+  });
   await expect(issueViewer.getByRole("link", { name: "GitHub" })).toHaveAttribute(
     "href",
     "https://github.com/example/codger/issues/42",

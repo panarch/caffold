@@ -61,6 +61,9 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "components/header-actions.js" => {
             Some(js(include_str!("../frontend/components/header-actions.js")))
         }
+        "components/github-markdown.js" => Some(js(include_str!(
+            "../frontend/components/github-markdown.js"
+        ))),
         "components/github-issue-viewer.css" => Some(css(include_str!(
             "../frontend/components/github-issue-viewer.css"
         ))),

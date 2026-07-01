@@ -1,4 +1,5 @@
 import { escapeHtml } from "./dom.js";
+import "./github-markdown.js";
 
 class CodgerGithubIssueViewer extends HTMLElement {
   connectedCallback() {
@@ -56,6 +57,7 @@ class CodgerGithubIssueViewer extends HTMLElement {
     }
 
     const issue = this.state.payload.issue;
+    const bodyHtml = issue.bodyHtml?.trim();
     this.innerHTML = `
       <section class="github-issue-viewer-panel">
         <header>
@@ -76,9 +78,13 @@ class CodgerGithubIssueViewer extends HTMLElement {
           </div>
           ${this.renderLabels(issue.labels ?? [])}
         </header>
-        <article class="github-issue-body">${escapeHtml(issue.body?.trim() || "No description.")}</article>
+        ${this.renderBody(issue, bodyHtml)}
       </section>
     `;
+
+    if (bodyHtml) {
+      this.querySelector("codger-github-markdown")?.setHtml(bodyHtml);
+    }
   }
 
   renderLabels(labels) {
@@ -90,6 +96,18 @@ class CodgerGithubIssueViewer extends HTMLElement {
       <div class="github-issue-viewer-labels">
         ${labels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}
       </div>
+    `;
+  }
+
+  renderBody(issue, bodyHtml) {
+    if (bodyHtml) {
+      return `<codger-github-markdown class="github-issue-body"></codger-github-markdown>`;
+    }
+
+    return `
+      <article class="github-issue-body github-issue-raw-body">
+        ${escapeHtml(issue.body?.trim() || "No description.")}
+      </article>
     `;
   }
 }

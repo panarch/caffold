@@ -86,12 +86,13 @@ codger-github-issue-viewer .github-issue-viewer-labels span {
 
 codger-github-issue-viewer .github-issue-body {
   min-width: 0;
+  min-height: 0;
+}
+
+codger-github-issue-viewer .github-issue-raw-body {
   overflow: auto;
   overscroll-behavior: contain;
   padding: 12px;
-  color: var(--text);
-  font-size: 0.8rem;
-  line-height: 1.45;
   white-space: pre-wrap;
 }
 
