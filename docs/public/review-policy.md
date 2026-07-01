@@ -60,7 +60,15 @@ Examples:
 - A compact panel should not force unrelated controls to stretch just because the parent uses grid or flex.
 - A loading, refresh, or selection state should not replace stable content unless the delay is meaningful.
 
+Before changing layout CSS, state the intended behavior for short content, long content, constrained width, and extra available width. Review the implementation against that contract rather than only against the screenshot that triggered the change.
+
+Controls that represent the same kind of choice should share the same DOM shape and CSS rules. Do not special-case one peer control unless the visual contract explicitly requires different behavior.
+
 Prefer browser-native intrinsic layout behavior over hand-computed widths. Use CSS primitives such as `max-content`, `minmax`, `field-sizing`, and viewport/container breakpoints before adding JavaScript string-length sizing. If a hard cap is needed, explain which viewport or neighboring control it protects.
+
+Do not use JavaScript to decide ordinary layout. Layout sizing, wrapping, clipping, and space distribution should be expressed in CSS so the browser owns reflow across content, viewport, font, and platform differences. JavaScript may set semantic state, user-selected values, or explicit user-controlled dimensions such as a resizable pane, but it should not measure text, calculate element widths, or assign layout sizes for normal controls unless CSS cannot express the behavior. Exceptions should be rare, documented in the change, and backed by visual checks that cover the affected viewport and content cases.
+
+If a visual fix produces a second related regression, stop incremental patching. Re-state the layout contract, inspect the DOM and CSS ownership, and update tests to cover the failing content and viewport cases before making another fix.
 
 Frontend fixtures should include inconvenient examples, not only normal labels:
 
