@@ -50,6 +50,26 @@ The UI is a work tool, not a marketing site. Review frontend changes for density
 - Check that labels, buttons, and headers do not clip text.
 - Use visual evidence when layout or scrolling behavior is affected.
 
+When changing layout, define the visual contract before accepting the implementation. The contract should describe how the surface uses space, not only which elements exist.
+
+Examples:
+
+- A control may be content-sized, fill available space, or share space with peers; do not leave that behavior implicit.
+- Dynamic labels such as paths, branch names, and commit subjects should have an explicit growth and clipping rule.
+- A desktop or foldable layout may allow wider content than the phone layout.
+- A compact panel should not force unrelated controls to stretch just because the parent uses grid or flex.
+- A loading, refresh, or selection state should not replace stable content unless the delay is meaningful.
+
+Prefer browser-native intrinsic layout behavior over hand-computed widths. Use CSS primitives such as `max-content`, `minmax`, `field-sizing`, and viewport/container breakpoints before adding JavaScript string-length sizing. If a hard cap is needed, explain which viewport or neighboring control it protects.
+
+Frontend fixtures should include inconvenient examples, not only normal labels:
+
+- long file paths and file names
+- long branch names, including remote branches
+- many changed files or commits
+- short content that does not fill the viewer
+- narrow foldable and phone widths
+
 ## Web Components And CSS
 
 Codger currently uses internal Web Components rendered in Light DOM. This keeps browser behavior, debugging, Playwright tests, shared theme variables, and small frontend modules straightforward. It also means CSS is still one global cascade.
@@ -120,6 +140,8 @@ For frontend layout or review-surface changes:
 - run Playwright in desktop, foldable, and phone projects
 - inspect screenshots when visual behavior is the point of the change
 - test clipping, scrolling, and selection stability directly
+- include edge-case fixture values that exercise the layout contract
+- distinguish code changes from what the browser is actually serving
 
 For CSS changes, tests should catch behavior, not just element presence:
 
@@ -127,6 +149,8 @@ For CSS changes, tests should catch behavior, not just element presence:
 - no clipped header text
 - preserved scroll positions where navigation should not move the viewport
 - stable visual structure across supported viewport widths
+
+When a local server is used for manual review, verify that the served assets include the intended change and say when a browser refresh is required. A passing unit or Playwright assertion does not prove that the currently open browser tab has the latest CSS or JavaScript.
 
 ## Review Output
 
