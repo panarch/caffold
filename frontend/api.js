@@ -60,6 +60,22 @@ export async function getGitHubIssue(path = "", number) {
   return requestJson("/api/github/issue", { path, number });
 }
 
+export async function getGitHubPulls(path = "", state = "open", page = 1, perPage = 50) {
+  return requestJson("/api/github/pulls", { path, state, page, perPage });
+}
+
+export async function getGitHubPull(path = "", number) {
+  return requestJson("/api/github/pull", { path, number });
+}
+
+export async function getGitHubPullFiles(path = "", number) {
+  return requestJson("/api/github/pull-files", { path, number });
+}
+
+export async function getGitHubPullFile(path = "", number, file) {
+  return requestJson("/api/github/pull-file", { path, number, file });
+}
+
 export async function listProjects() {
   return requestJson("/api/projects");
 }

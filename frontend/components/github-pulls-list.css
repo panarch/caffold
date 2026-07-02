@@ -1,0 +1,196 @@
+caffold-github-pulls-list {
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+
+caffold-github-pulls-list .github-pulls-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+  height: 100%;
+}
+
+caffold-github-pulls-list .github-pulls-panel > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  align-content: center;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+caffold-github-pulls-list h2 {
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+caffold-github-pulls-list .github-pulls-title-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
+caffold-github-pulls-list .github-pulls-count {
+  justify-self: end;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+caffold-github-pulls-list .github-pulls-repo {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--accent);
+  font-size: 0.74rem;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+caffold-github-pulls-list .github-pulls-list {
+  display: block;
+  min-height: 0;
+  margin: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 4px 0;
+  list-style: none;
+}
+
+caffold-github-pulls-list .github-pulls-loading-body {
+  display: grid;
+  min-height: 0;
+  place-items: center;
+}
+
+caffold-github-pulls-list .github-pull-row {
+  display: block;
+}
+
+caffold-github-pulls-list .github-pull-row + .github-pull-row {
+  position: relative;
+}
+
+caffold-github-pulls-list .github-pull-row + .github-pull-row::before {
+  position: absolute;
+  top: 0;
+  right: 12px;
+  left: 12px;
+  height: 1px;
+  background: #e3ebe5;
+  content: "";
+  pointer-events: none;
+}
+
+caffold-github-pulls-list .github-pull-button {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 5px 12px 5px 10px;
+  border: 0;
+  border-left: 3px solid transparent;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+caffold-github-pulls-list .github-pull-button:hover,
+caffold-github-pulls-list .github-pull-button:focus-visible {
+  background: #eef7f2;
+  outline: none;
+}
+
+caffold-github-pulls-list .github-pull-button[aria-current="true"] {
+  border-left-color: var(--accent);
+  background: #dff1ea;
+}
+
+caffold-github-pulls-list .github-pull-title,
+caffold-github-pulls-list .github-pull-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+caffold-github-pulls-list .github-pull-title {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+caffold-github-pulls-list .github-pull-title > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+caffold-github-pulls-list .github-pull-icon {
+  width: 0.9rem;
+  height: 0.9rem;
+  color: var(--accent);
+  stroke-width: 2;
+}
+
+caffold-github-pulls-list .github-pull-meta {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+caffold-github-pulls-list .github-pull-draft {
+  margin-left: 6px;
+  color: var(--accent);
+}
+
+caffold-github-pulls-list .github-pull-labels {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+caffold-github-pulls-list .github-pull-labels span {
+  overflow: hidden;
+  max-width: 10rem;
+  padding: 1px 5px;
+  border: 1px solid #c8d8d0;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.66rem;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+caffold-github-pulls-list .error-panel {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+@media (max-width: 860px) {
+  caffold-github-pulls-list {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+}

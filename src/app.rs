@@ -16,7 +16,8 @@ use crate::{
     fs::{
         FileResponse, FsError, GitCommitResponse, GitCompareResponse, GitDiffResponse,
         GitLogResponse, GitRefsResponse, GitStatusResponse, GithubIssueResponse,
-        GithubIssuesResponse, GithubStatusResponse, ListResponse, MAX_FILE_BYTES, ProjectRoot,
+        GithubIssuesResponse, GithubPullFileResponse, GithubPullFilesResponse, GithubPullResponse,
+        GithubPullsResponse, GithubStatusResponse, ListResponse, MAX_FILE_BYTES, ProjectRoot,
         RootedFs,
     },
     project_store::{ProjectRecord, ProjectStore, ProjectStoreError},
@@ -121,6 +122,35 @@ struct GithubIssueQuery {
     #[serde(default)]
     path: String,
     number: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubPullsQuery {
+    #[serde(default)]
+    path: String,
+    #[serde(default = "default_github_issue_state")]
+    state: String,
+    #[serde(default = "default_github_issues_page")]
+    page: usize,
+    #[serde(rename = "perPage")]
+    per_page: Option<usize>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubPullQuery {
+    #[serde(default)]
+    path: String,
+    number: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubPullFileQuery {
+    #[serde(default)]
+    path: String,
+    number: u64,
+    file: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -268,6 +298,10 @@ fn router_with_state(state: AppState) -> Router {
         .route("/api/github/status", get(github_status))
         .route("/api/github/issues", get(github_issues))
         .route("/api/github/issue", get(github_issue))
+        .route("/api/github/pulls", get(github_pulls))
+        .route("/api/github/pull", get(github_pull))
+        .route("/api/github/pull-files", get(github_pull_files))
+        .route("/api/github/pull-file", get(github_pull_file))
         .route("/service-worker.js", get(service_worker))
         .route("/assets/{*path}", get(asset))
         .route("/projects", get(index))
@@ -606,6 +640,54 @@ async fn github_issue(
     state
         .fs
         .github_issue(&query.path, query.number)
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
+async fn github_pulls(
+    State(state): State<AppState>,
+    Query(query): Query<GithubPullsQuery>,
+) -> Result<Json<GithubPullsResponse>, ApiError> {
+    let per_page = query
+        .per_page
+        .or(query.limit)
+        .unwrap_or_else(default_github_issues_per_page);
+    state
+        .fs
+        .github_pulls(&query.path, &query.state, query.page, per_page)
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
+async fn github_pull(
+    State(state): State<AppState>,
+    Query(query): Query<GithubPullQuery>,
+) -> Result<Json<GithubPullResponse>, ApiError> {
+    state
+        .fs
+        .github_pull(&query.path, query.number)
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
+async fn github_pull_files(
+    State(state): State<AppState>,
+    Query(query): Query<GithubPullQuery>,
+) -> Result<Json<GithubPullFilesResponse>, ApiError> {
+    state
+        .fs
+        .github_pull_files(&query.path, query.number)
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
+async fn github_pull_file(
+    State(state): State<AppState>,
+    Query(query): Query<GithubPullFileQuery>,
+) -> Result<Json<GithubPullFileResponse>, ApiError> {
+    state
+        .fs
+        .github_pull_file(&query.path, query.number, &query.file)
         .map(Json)
         .map_err(ApiError::from)
 }

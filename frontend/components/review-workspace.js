@@ -173,6 +173,22 @@ class CaffoldReviewWorkspace extends HTMLElement {
             <caffold-github-issues-list></caffold-github-issues-list>
             <caffold-github-issue-viewer></caffold-github-issue-viewer>
           </div>
+          <div class="review-workspace-view workspace-mode-pulls" hidden>
+            <caffold-github-pulls-list></caffold-github-pulls-list>
+            <caffold-github-pull-viewer></caffold-github-pull-viewer>
+            <div class="pull-files-review-detail">
+              <caffold-github-pull-files-tree></caffold-github-pull-files-tree>
+              <div
+                class="review-panel-resizer"
+                role="separator"
+                aria-label="Resize review side panel"
+                aria-orientation="vertical"
+                tabindex="0"
+                data-resize-target="pulls"
+              ></div>
+              <caffold-review-file-viewer></caffold-review-file-viewer>
+            </div>
+          </div>
         </div>
       </section>
     `;
@@ -187,6 +203,8 @@ class CaffoldReviewWorkspace extends HTMLElement {
     this.logView = this.querySelector(".workspace-mode-log");
     this.logDetailView = this.querySelector(".log-review-detail");
     this.issuesView = this.querySelector(".workspace-mode-issues");
+    this.pullsView = this.querySelector(".workspace-mode-pulls");
+    this.pullFilesView = this.querySelector(".pull-files-review-detail");
     this.renderChrome();
   }
 
@@ -204,6 +222,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
     this.compareView.hidden = mode !== "compare";
     this.logView.hidden = mode !== "log";
     this.issuesView.hidden = mode !== "issues";
+    this.pullsView.hidden = mode !== "pulls";
     this.updateMobileDetailState();
   }
 
@@ -252,6 +271,18 @@ class CaffoldReviewWorkspace extends HTMLElement {
   setIssuesView(view) {
     this.ensureRendered();
     this.issuesView.dataset.issuesView = view;
+    this.updateMobileDetailState();
+  }
+
+  setPullsView(view) {
+    this.ensureRendered();
+    this.pullsView.dataset.pullsView = normalizePullsView(view);
+    this.updateMobileDetailState();
+  }
+
+  setPullFilesView(view) {
+    this.ensureRendered();
+    this.pullFilesView.dataset.detailView = normalizeDetailView(view);
     this.updateMobileDetailState();
   }
 
@@ -433,6 +464,10 @@ class CaffoldReviewWorkspace extends HTMLElement {
       return window.matchMedia(REVIEW_LOG_RESIZE_QUERY).matches;
     }
 
+    if (target === "pulls") {
+      return window.matchMedia(REVIEW_DIFF_RESIZE_QUERY).matches;
+    }
+
     return (
       (target === "diff" || target === "compare") &&
       window.matchMedia(REVIEW_DIFF_RESIZE_QUERY).matches
@@ -450,6 +485,10 @@ class CaffoldReviewWorkspace extends HTMLElement {
 
     if (target === "compare") {
       return this.querySelector(".workspace-mode-compare");
+    }
+
+    if (target === "pulls") {
+      return this.querySelector(".pull-files-review-detail");
     }
 
     return null;
@@ -476,7 +515,11 @@ class CaffoldReviewWorkspace extends HTMLElement {
       (this.mode === "log" &&
         this.logView.dataset.logView === "detail" &&
         this.logDetailView.dataset.detailView === "viewer") ||
-      (this.mode === "issues" && this.issuesView.dataset.issuesView === "detail");
+      (this.mode === "issues" && this.issuesView.dataset.issuesView === "detail") ||
+      (this.mode === "pulls" &&
+        (this.pullsView.dataset.pullsView === "detail" ||
+          (this.pullsView.dataset.pullsView === "files" &&
+            this.pullFilesView.dataset.detailView === "viewer")));
 
     this.dataset.mobileDetail = detailOpen ? "true" : "false";
   }
@@ -499,6 +542,10 @@ function workspaceTitle(mode) {
 
   if (mode === "issues") {
     return "Issues";
+  }
+
+  if (mode === "pulls") {
+    return "Pull Requests";
   }
 
   return "Review";
@@ -537,4 +584,8 @@ function refKindLabel(kind) {
 
 function normalizeDetailView(view) {
   return view === "viewer" ? "viewer" : "list";
+}
+
+function normalizePullsView(view) {
+  return view === "detail" || view === "files" ? view : "list";
 }

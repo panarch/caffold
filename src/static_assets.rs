@@ -91,6 +91,24 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "components/github-issues-list.js" => Some(js(include_str!(
             "../frontend/components/github-issues-list.js"
         ))),
+        "components/github-pulls-list.css" => Some(css(include_str!(
+            "../frontend/components/github-pulls-list.css"
+        ))),
+        "components/github-pulls-list.js" => Some(js(include_str!(
+            "../frontend/components/github-pulls-list.js"
+        ))),
+        "components/github-pull-viewer.css" => Some(css(include_str!(
+            "../frontend/components/github-pull-viewer.css"
+        ))),
+        "components/github-pull-viewer.js" => Some(js(include_str!(
+            "../frontend/components/github-pull-viewer.js"
+        ))),
+        "components/github-pull-files-tree.css" => Some(css(include_str!(
+            "../frontend/components/github-pull-files-tree.css"
+        ))),
+        "components/github-pull-files-tree.js" => Some(js(include_str!(
+            "../frontend/components/github-pull-files-tree.js"
+        ))),
         "components/icons.js" => Some(js(include_str!("../frontend/components/icons.js"))),
         "components/log-list.css" => Some(css(include_str!("../frontend/components/log-list.css"))),
         "components/log-list.js" => Some(js(include_str!("../frontend/components/log-list.js"))),

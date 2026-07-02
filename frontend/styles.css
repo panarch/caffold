@@ -10,6 +10,9 @@
 @import "./components/compare-tree.css";
 @import "./components/github-issues-list.css";
 @import "./components/github-issue-viewer.css";
+@import "./components/github-pulls-list.css";
+@import "./components/github-pull-viewer.css";
+@import "./components/github-pull-files-tree.css";
 @import "./components/review-workspace.css";
 @import "./components/file-viewer.css";
 @import "./components/code-viewer.css";

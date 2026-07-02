@@ -36,6 +36,7 @@ test.beforeEach(async ({ page }) => {
         export const FolderOpen = Folder;
         export const FolderSymlink = Folder;
         export const GitCompare = [["circle", { cx: "18", cy: "18", r: "3" }], ["circle", { cx: "6", cy: "6", r: "3" }], ["path", { d: "M13 6h3a2 2 0 0 1 2 2v7" }], ["path", { d: "M6 9v7a2 2 0 0 0 2 2h3" }]];
+        export const GitPullRequest = [["circle", { cx: "18", cy: "18", r: "3" }], ["circle", { cx: "6", cy: "6", r: "3" }], ["path", { d: "M6 9v12" }], ["path", { d: "M18 15V5" }], ["path", { d: "M18 5h-5" }]];
         export const ArrowLeft = [
           ["path", { d: "m12 19-7-7 7-7" }],
           ["path", { d: "M19 12H5" }],
@@ -139,7 +140,7 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorkerResponse.headers()["cache-control"]).toContain("no-cache");
   expect(serviceWorkerResponse.headers()["service-worker-allowed"]).toBe("/");
   const serviceWorker = await serviceWorkerResponse.text();
-  expect(serviceWorker).toContain('const CACHE_NAME = "caffold-shell-v2"');
+  expect(serviceWorker).toContain('const CACHE_NAME = "caffold-shell-v5"');
   expect(serviceWorker).toContain('url.pathname.startsWith("/api/")');
   expect(serviceWorker).toContain("networkFirst(request, \"/\")");
   expect(serviceWorker).toContain('url.pathname.startsWith("/assets/")');
@@ -406,6 +407,9 @@ test("restores project review routes", async ({ page }) => {
   let gitCompareRequests = 0;
   let gitCommitRequests = 0;
   let githubIssuesRequests = 0;
+  let githubPullsRequests = 0;
+  let githubPullRequests = 0;
+  let githubPullFilesRequests = 0;
   let listRequests = 0;
 
   await page.route(/\/api\/list(?:\?|$)/, async (route) => {
@@ -580,6 +584,7 @@ test("restores project review routes", async ({ page }) => {
         ghAvailable: true,
         authenticated: true,
         issuesAvailable: true,
+        pullsAvailable: true,
         message: null,
       }),
     }),
@@ -636,6 +641,155 @@ test("restores project review routes", async ({ page }) => {
           updatedAt: "2026-07-01T10:00:00Z",
           url: "https://github.com/example/caffold/issues/42",
         },
+      }),
+    });
+  });
+  await page.route(/\/api\/github\/pulls(?:\?|$)/, (route) => {
+    githubPullsRequests += 1;
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("page")).toBe("2");
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        github,
+        state: "open",
+        pulls: [
+          {
+            number: 12,
+            title: "Route pull request detail",
+            state: "open",
+            draft: false,
+            author: "Caffold",
+            labels: ["routing"],
+            comments: 2,
+            updatedAt: "2026-07-01T10:00:00Z",
+            url: "https://github.com/example/caffold/pull/12",
+          },
+        ],
+        page: 2,
+        perPage: 50,
+        totalPulls: 51,
+        totalPages: 2,
+        hasPrevious: true,
+        hasNext: false,
+      }),
+    });
+  });
+  await page.route(/\/api\/github\/pull(?:\?|$)/, (route) => {
+    githubPullRequests += 1;
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("number")).toBe("12");
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        github,
+        pull: {
+          number: 12,
+          title: "Route pull request detail",
+          state: "OPEN",
+          draft: false,
+          author: "Caffold",
+          labels: ["routing"],
+          comments: 1,
+          reviews: 1,
+          commits: 1,
+          additions: 4,
+          deletions: 2,
+          changedFiles: 1,
+          baseRefName: "main",
+          headRefName: "feature/pr-route",
+          body: "Route PR body",
+          bodyHtml: "<p>Route PR body</p>",
+          createdAt: "2026-07-01T08:00:00Z",
+          updatedAt: "2026-07-01T10:00:00Z",
+          url: "https://github.com/example/caffold/pull/12",
+          conversationComments: [
+            {
+              author: "taehoon",
+              body: "Conversation route comment",
+              bodyHtml: "<p>Conversation route comment</p>",
+              createdAt: "2026-07-01T08:30:00Z",
+              updatedAt: "2026-07-01T08:30:00Z",
+              url: "https://github.com/example/caffold/pull/12#issuecomment-1",
+            },
+          ],
+          reviewComments: [
+            {
+              author: "codex",
+              state: "COMMENTED",
+              body: "Review summary route comment",
+              bodyHtml: "<p>Review summary route comment</p>",
+              submittedAt: "2026-07-01T09:00:00Z",
+            },
+          ],
+          commitSummaries: [
+            {
+              sha: "1234567890abcdef1234567890abcdef12345678",
+              shortSha: "1234567",
+              subject: "Route PR commit",
+              authorName: "Caffold",
+              authorEmail: "caffold@example.test",
+              authoredAt: "2026-07-01T09:00:00Z",
+              committedAt: "2026-07-01T09:00:00Z",
+              url: "https://github.com/example/caffold/commit/1234567",
+            },
+          ],
+        },
+      }),
+    });
+  });
+  await page.route(/\/api\/github\/pull-files(?:\?|$)/, (route) => {
+    githubPullFilesRequests += 1;
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("number")).toBe("12");
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        github,
+        number: 12,
+        files: [
+          {
+            path: "src/planner/mod.rs",
+            repoRelativePath: "planner/mod.rs",
+            previousPath: null,
+            status: "M",
+            additions: 4,
+            deletions: 2,
+            changes: 6,
+            patchAvailable: true,
+            blobUrl: "https://github.com/example/caffold/blob/pr/planner/mod.rs",
+            rawUrl: "https://raw.githubusercontent.com/example/caffold/pr/planner/mod.rs",
+          },
+        ],
+        totalFiles: 1,
+      }),
+    });
+  });
+  await page.route(/\/api\/github\/pull-file(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("number")).toBe("12");
+    expect(url.searchParams.get("file")).toBe("src/planner/mod.rs");
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        github,
+        number: 12,
+        path: "src/planner/mod.rs",
+        repoRelativePath: "planner/mod.rs",
+        status: "M",
+        kind: "PR #12",
+        diff: [
+          "diff --git a/planner/mod.rs b/planner/mod.rs",
+          "@@ -1,1 +1,2 @@",
+          "-old PR route line",
+          "+new PR route line",
+        ].join("\n"),
+        diffUnavailable: false,
+        message: null,
       }),
     });
   });
@@ -753,6 +907,41 @@ test("restores project review routes", async ({ page }) => {
   await expect(page).toHaveURL(`/projects/${project.id}/issues/42?page=2`);
   await expect(page.locator("caffold-github-issue-viewer")).toContainText("Route issue body");
   expect(githubIssuesRequests).toBe(githubIssuesRequestsBeforeIssueClick);
+
+  await page.goto(`/projects/${project.id}/pulls/12/files/planner/mod.rs?page=2`);
+  await expect(page.locator("caffold-review-workspace")).toHaveAttribute(
+    "data-workspace-mode",
+    "pulls",
+  );
+  await expect(page.locator(".workspace-mode-pulls")).toHaveAttribute(
+    "data-pulls-view",
+    "files",
+  );
+  await expect(page.locator("caffold-diff-viewer")).toContainText("new PR route line");
+  await page.goto(`/projects/${project.id}/pulls/12/files?page=2`);
+  await expect(page).toHaveURL(`/projects/${project.id}/pulls/12/files?page=2`);
+  await expect(page.locator("caffold-github-pull-files-tree")).toBeVisible();
+  await expect(page.locator(".workspace-mode-pulls caffold-review-file-viewer")).toContainText(
+    "Select a file to inspect it.",
+  );
+  const githubPullFilesRequestsBeforeFileClick = githubPullFilesRequests;
+  await page.locator('button[data-pull-file-path="src/planner/mod.rs"]').click();
+  await expect(page).toHaveURL(`/projects/${project.id}/pulls/12/files/planner/mod.rs?page=2`);
+  await expect(page.locator("caffold-diff-viewer")).toContainText("new PR route line");
+  expect(githubPullFilesRequests).toBe(githubPullFilesRequestsBeforeFileClick);
+  await page.goBack();
+  await expect(page).toHaveURL(`/projects/${project.id}/pulls/12/files?page=2`);
+  await page.getByRole("button", { name: "Back to PR" }).click();
+  await expect(page).toHaveURL(`/projects/${project.id}/pulls/12?page=2`);
+  await expect(page.locator("caffold-github-pull-viewer")).toContainText("Route PR body");
+  const githubPullRequestsBeforeBack = githubPullRequests;
+  await page.getByRole("button", { name: "Back to pull requests" }).click();
+  await expect(page).toHaveURL(`/projects/${project.id}/pulls?page=2`);
+  expect(githubPullRequests).toBe(githubPullRequestsBeforeBack);
+  await expect(page.locator('button[data-pull-number="12"]')).toBeVisible();
+  await page.locator('button[data-pull-number="12"]').click();
+  await expect(page).toHaveURL(`/projects/${project.id}/pulls/12?page=2`);
+  await expect(page.locator("caffold-github-pull-viewer")).toContainText("Route PR body");
 });
 
 test("previews image files in the viewer", async ({ page }) => {
@@ -1384,6 +1573,7 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
         ghAvailable: true,
         authenticated: true,
         issuesAvailable: true,
+        pullsAvailable: true,
         message: null,
       }),
     });
@@ -1571,6 +1761,419 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
   await expect(issuePagination.getByRole("button", { name: "Oldest issue page" })).toBeDisabled();
   await expectGlobalScrollLocked(page);
   await captureReviewScreenshot(page, testInfo, "github-issues-page-2");
+});
+
+test("opens GitHub pull requests from the header", async ({ page }, testInfo) => {
+  const project = await mockRegisteredProject(page);
+  const repository = { rootPath: "src", branch: "feature/pr-review", dirty: false };
+  const github = {
+    owner: "example",
+    name: "caffold",
+    nameWithOwner: "example/caffold",
+    url: "https://github.com/example/caffold",
+  };
+  const pulls = [
+    {
+      number: 12,
+      title: "Add read-only PR review surface",
+      state: "open",
+      draft: false,
+      author: "taehoon",
+      labels: ["github", "review"],
+      comments: 4,
+      updatedAt: "2026-07-01T10:00:00Z",
+      url: "https://github.com/example/caffold/pull/12",
+    },
+    {
+      number: 11,
+      title: "Keep PR actions readonly",
+      state: "open",
+      draft: true,
+      author: "codex",
+      labels: ["safety"],
+      comments: 1,
+      updatedAt: "2026-07-01T09:00:00Z",
+      url: "https://github.com/example/caffold/pull/11",
+    },
+  ];
+  const olderPulls = [
+    {
+      number: 5,
+      title: "Older PR reachable by pagination",
+      state: "open",
+      draft: false,
+      author: "taehoon",
+      labels: ["pagination"],
+      comments: 0,
+      updatedAt: "2026-06-30T09:00:00Z",
+      url: "https://github.com/example/caffold/pull/5",
+    },
+  ];
+  const longPullBodyHtml = [
+    "<p><strong>Review</strong> PR body for the readonly surface.</p>",
+    ...Array.from(
+      { length: 36 },
+      (_, index) => `
+        <h2>Deep PR section ${index + 1}</h2>
+        <p>Scrollable pull request detail content line ${index + 1}.</p>
+      `,
+    ),
+    "<p>Deep PR body sentinel</p>",
+  ].join("");
+  let pullFilesRequests = 0;
+  let listRequests = 0;
+
+  await page.route(/\/api\/list(?:\?|$)/, async (route) => {
+    listRequests += 1;
+    await route.continue();
+  });
+  await page.route(/\/api\/git\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        files: [],
+      }),
+    }),
+  );
+  await page.route(/\/api\/github\/status(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("path")).toBe("src");
+
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        github,
+        ghAvailable: true,
+        authenticated: true,
+        issuesAvailable: true,
+        pullsAvailable: true,
+        message: null,
+      }),
+    });
+  });
+  await page.route(/\/api\/github\/pulls(?:\?|$)/, async (route) => {
+    const url = new URL(route.request().url());
+    const pageNumber = Number(url.searchParams.get("page") ?? "1");
+    expect(url.searchParams.get("path")).toBe("src");
+    expect(url.searchParams.get("state")).toBe("open");
+    expect(url.searchParams.get("perPage")).toBe("50");
+    if (pageNumber === 2) {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 260);
+      });
+    }
+
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        github,
+        state: "open",
+        pulls: pageNumber === 2 ? olderPulls : pulls,
+        page: pageNumber,
+        perPage: 50,
+        totalPulls: 64,
+        totalPages: 2,
+        hasPrevious: pageNumber > 1,
+        hasNext: pageNumber < 2,
+      }),
+    });
+  });
+  await page.route(/\/api\/github\/pull(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("path")).toBe("src");
+    expect(url.searchParams.get("number")).toBe("12");
+
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        github,
+        pull: {
+          ...pulls[0],
+          state: "OPEN",
+          comments: 1,
+          reviews: 1,
+          commits: 2,
+          additions: 12,
+          deletions: 3,
+          changedFiles: 2,
+          baseRefName: "main",
+          headRefName: "feature/pr-review",
+          body: "**Review** PR body for the readonly surface.\n\nDeep PR body sentinel",
+          bodyHtml: longPullBodyHtml,
+          createdAt: "2026-07-01T08:00:00Z",
+          conversationComments: [
+            {
+              author: "taehoon",
+              body: "Conversation comment body",
+              bodyHtml: "<p>Conversation comment body</p>",
+              createdAt: "2026-07-01T08:30:00Z",
+              updatedAt: "2026-07-01T08:30:00Z",
+              url: "https://github.com/example/caffold/pull/12#issuecomment-1",
+            },
+          ],
+          reviewComments: [
+            {
+              author: "codex",
+              state: "COMMENTED",
+              body: "Review summary body",
+              bodyHtml: "<p>Review summary body</p>",
+              submittedAt: "2026-07-01T09:00:00Z",
+            },
+          ],
+          commitSummaries: [
+            {
+              sha: "1234567890abcdef1234567890abcdef12345678",
+              shortSha: "1234567",
+              subject: "Add PR files route",
+              authorName: "Caffold",
+              authorEmail: "caffold@example.test",
+              authoredAt: "2026-07-01T09:00:00Z",
+              committedAt: "2026-07-01T09:00:00Z",
+              url: "https://github.com/example/caffold/commit/1234567",
+            },
+            {
+              sha: "abcdef1234567890abcdef1234567890abcdef12",
+              shortSha: "abcdef1",
+              subject: "Render PR conversation",
+              authorName: "Caffold",
+              authorEmail: "caffold@example.test",
+              authoredAt: "2026-07-01T09:10:00Z",
+              committedAt: "2026-07-01T09:10:00Z",
+              url: "https://github.com/example/caffold/commit/abcdef1",
+            },
+          ],
+        },
+      }),
+    });
+  });
+  await page.route(/\/api\/github\/pull-files(?:\?|$)/, (route) => {
+    pullFilesRequests += 1;
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("path")).toBe("src");
+    expect(url.searchParams.get("number")).toBe("12");
+
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        github,
+        number: 12,
+        files: [
+          {
+            path: "src/planner/mod.rs",
+            repoRelativePath: "planner/mod.rs",
+            previousPath: null,
+            status: "M",
+            additions: 10,
+            deletions: 2,
+            changes: 12,
+            patchAvailable: true,
+            blobUrl: "https://github.com/example/caffold/blob/pr/planner/mod.rs",
+            rawUrl: "https://raw.githubusercontent.com/example/caffold/pr/planner/mod.rs",
+          },
+          {
+            path: "src/runtime/lib.rs",
+            repoRelativePath: "runtime/lib.rs",
+            previousPath: null,
+            status: "A",
+            additions: 2,
+            deletions: 0,
+            changes: 2,
+            patchAvailable: true,
+            blobUrl: "https://github.com/example/caffold/blob/pr/runtime/lib.rs",
+            rawUrl: "https://raw.githubusercontent.com/example/caffold/pr/runtime/lib.rs",
+          },
+        ],
+        totalFiles: 2,
+      }),
+    });
+  });
+  await page.route(/\/api\/github\/pull-file(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    const file = url.searchParams.get("file");
+    expect(url.searchParams.get("path")).toBe("src");
+    expect(url.searchParams.get("number")).toBe("12");
+
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        github,
+        number: 12,
+        path: file,
+        repoRelativePath: file.replace(/^src\//, ""),
+        status: file.endsWith("lib.rs") ? "A" : "M",
+        kind: "PR #12",
+        diff: [
+          `diff --git a/${file.replace(/^src\//, "")} b/${file.replace(/^src\//, "")}`,
+          "@@ -1,1 +1,2 @@",
+          "-old PR review line",
+          "+new PR review line",
+          "+another PR review line",
+        ].join("\n"),
+        diffUnavailable: false,
+        message: null,
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await page.locator('button[data-entry-path="src"]').click();
+  await expect(page.locator("caffold-project-switcher")).toContainText(project.name);
+
+  const pullsButton = page.locator(
+    'caffold-header-actions button[data-action="open-github-pulls-workspace"]',
+  );
+  await expect(pullsButton).toBeVisible();
+  await expect(pullsButton.locator(".header-action-label")).toHaveText("PRs");
+  await pullsButton.click();
+
+  const workspace = page.locator("caffold-review-workspace");
+  await expect(workspace).toBeVisible();
+  await expect(workspace).toHaveAttribute("data-workspace-mode", "pulls");
+  await expect(workspace.locator(".review-workspace-title h2")).toHaveText("Pull Requests");
+  await expect(workspace.locator(".review-workspace-subtitle")).toHaveText(
+    "example/caffold · 64 PRs",
+  );
+  await expect(page.locator("caffold-github-pulls-list")).toContainText(
+    "Add read-only PR review surface",
+  );
+  await expect(page.locator("caffold-github-pulls-list")).toContainText(
+    "Keep PR actions readonly",
+  );
+  await expect(page.locator("caffold-github-pulls-list .github-pulls-count")).toHaveText(
+    "64 PRs",
+  );
+  await expect(page.locator("caffold-github-pull-viewer")).toBeHidden();
+  await captureReviewScreenshot(page, testInfo, "github-pulls-list");
+
+  await page.locator('button[data-pull-number="12"]').click();
+  const pullViewer = page.locator("caffold-github-pull-viewer");
+  await expect(workspace.locator(".workspace-mode-pulls")).toHaveAttribute(
+    "data-pulls-view",
+    "detail",
+  );
+  await expect(workspace.locator(".review-workspace-title h2")).toHaveText("PR");
+  await expect(workspace.locator(".review-workspace-subtitle")).toContainText(
+    "#12 Add read-only PR review surface",
+  );
+  await expect(page.locator("caffold-github-pulls-list")).toBeHidden();
+  await expect(pullViewer).toBeVisible();
+  await expect(pullViewer).toContainText("Conversation comment body");
+  await expect(pullViewer).toContainText("Review summary body");
+  await expect(pullViewer).toContainText("Add PR files route");
+  await expect(pullViewer).toContainText("Deep PR body sentinel");
+  await expect(pullViewer.locator("caffold-github-markdown").first().locator("strong")).toHaveText(
+    "Review",
+  );
+  const pullDetailScroll = await pullViewer.locator(".github-pull-viewer-scroll").evaluate((el) => {
+    return {
+      clientHeight: el.clientHeight,
+      scrollHeight: el.scrollHeight,
+      scrollTop: el.scrollTop,
+      overflowY: getComputedStyle(el).overflowY,
+    };
+  });
+  expect(pullDetailScroll.overflowY).toBe("auto");
+  expect(pullDetailScroll.scrollHeight).toBeGreaterThan(pullDetailScroll.clientHeight);
+  expect(pullDetailScroll.scrollTop).toBe(0);
+
+  const pullDetailScrollBox = await pullViewer
+    .locator(".github-pull-viewer-scroll")
+    .boundingBox();
+  expect(pullDetailScrollBox).not.toBeNull();
+  await page.mouse.move(
+    pullDetailScrollBox.x + pullDetailScrollBox.width / 2,
+    pullDetailScrollBox.y + pullDetailScrollBox.height / 2,
+  );
+  await page.mouse.wheel(0, 700);
+  await page.waitForTimeout(100);
+  const pullDetailScrollTop = await pullViewer
+    .locator(".github-pull-viewer-scroll")
+    .evaluate((el) => el.scrollTop);
+  expect(pullDetailScrollTop).toBeGreaterThan(0);
+  if (testInfo.project.name === "phone") {
+    await expectMobileReviewDetail(page, {
+      backName: "Back to pull requests",
+      detailSelector: "caffold-github-pull-viewer",
+      listSelector: "caffold-github-pulls-list",
+    });
+  }
+  await captureReviewScreenshot(page, testInfo, "github-pull-detail");
+
+  await pullViewer.getByRole("button", { name: "Open files for PR #12" }).click();
+  await expect(workspace.locator(".workspace-mode-pulls")).toHaveAttribute(
+    "data-pulls-view",
+    "files",
+  );
+  await expect(page.locator("caffold-github-pull-files-tree")).toContainText("2 files");
+  await expect(page.locator('button[data-pull-file-path="src/planner/mod.rs"]')).toBeVisible();
+  await expect(page.locator(".workspace-mode-pulls caffold-review-file-viewer")).toContainText(
+    "Select a file to inspect it.",
+  );
+  if (testInfo.project.name === "phone") {
+    await expect(workspace).toHaveAttribute("data-mobile-detail", "false");
+    await expect(page.locator("caffold-github-pull-files-tree")).toBeVisible();
+    await expect(page.locator(".workspace-mode-pulls caffold-review-file-viewer")).toBeHidden();
+  }
+
+  const listRequestsBeforeFileClick = listRequests;
+  const pullFilesRequestsBeforeFileClick = pullFilesRequests;
+  await page.locator('button[data-pull-file-path="src/planner/mod.rs"]').click();
+  await expect(page).toHaveURL(
+    `/projects/${project.id}/pulls/12/files/planner/mod.rs`,
+  );
+  await expect(page.locator("caffold-diff-viewer")).toContainText("new PR review line");
+  expect(listRequests).toBe(listRequestsBeforeFileClick);
+  expect(pullFilesRequests).toBe(pullFilesRequestsBeforeFileClick);
+  if (testInfo.project.name === "phone") {
+    await expectMobileReviewDetail(page, {
+      backName: "Back to PR files",
+      detailSelector: ".workspace-mode-pulls caffold-review-file-viewer",
+      listSelector: "caffold-github-pull-files-tree",
+    });
+  } else {
+    await expectAlignedWorkspaceHeaders(page, [
+      "caffold-review-workspace .review-workspace-header",
+      "caffold-github-pull-files-tree .github-pull-files-panel > header",
+      ".workspace-mode-pulls caffold-review-file-viewer .viewer-panel > header",
+    ]);
+    await expectMatchingPaneTitleSizes(page, [
+      "caffold-github-pull-files-tree .github-pull-files-panel > header",
+      ".workspace-mode-pulls caffold-review-file-viewer .viewer-panel > header",
+    ]);
+  }
+  await captureReviewScreenshot(page, testInfo, "github-pull-file-diff");
+
+  await page.goBack();
+  await expect(page).toHaveURL(`/projects/${project.id}/pulls/12/files`);
+  await expect(page.locator("caffold-github-pull-files-tree")).toBeVisible();
+  await workspace.getByRole("button", { name: "Back to PR" }).click();
+  await expect(page).toHaveURL(`/projects/${project.id}/pulls/12`);
+  await expect(pullViewer).toBeVisible();
+  await workspace.getByRole("button", { name: "Back to pull requests" }).click();
+  await expect(page).toHaveURL(`/projects/${project.id}/pulls`);
+  await expect(page.locator("caffold-github-pulls-list")).toBeVisible();
+
+  const pullPagination = page.locator("caffold-github-pulls-list caffold-pagination");
+  await pullPagination.getByRole("button", { name: "Oldest pull request page" }).click();
+  await page.waitForTimeout(220);
+  await expect(page.locator("caffold-github-pulls-list .github-pulls-loading-body")).toHaveText(
+    "Loading pull requests...",
+  );
+  await expect(pullPagination.locator(".pagination-indicator")).toHaveText("2 / 2");
+  await expect(page.locator("caffold-github-pulls-list")).toContainText(
+    "Older PR reachable by pagination",
+  );
+  await expect(page.locator("caffold-github-pulls-list")).not.toContainText(
+    "Loading pull requests...",
+  );
+  await expectGlobalScrollLocked(page);
+  await captureReviewScreenshot(page, testInfo, "github-pulls-page-2");
 });
 
 test("opens commit diffs from Log mode", async ({ page }, testInfo) => {

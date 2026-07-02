@@ -57,6 +57,19 @@ export function parseRoute(url = window.location.href) {
     };
   }
 
+  if (area === "pulls") {
+    const number = positiveInteger(tail[0]);
+    const isFilesRoute = tail[1] === "files";
+    return {
+      kind: "pulls",
+      projectId,
+      page: positiveInteger(parsed.searchParams.get("page")) ?? 1,
+      number,
+      files: Boolean(number && isFilesRoute),
+      path: number && isFilesRoute ? decodePathTail(tail.slice(2)) : "",
+    };
+  }
+
   return null;
 }
 
@@ -73,7 +86,7 @@ export function routeUrl(route) {
     }
   }
 
-  if ((route.kind === "log" || route.kind === "issues") && route.page > 1) {
+  if ((route.kind === "log" || route.kind === "issues" || route.kind === "pulls") && route.page > 1) {
     url.searchParams.set("page", `${route.page}`);
   }
 
@@ -121,6 +134,30 @@ export function parentRoute(route) {
     return { kind: "issues", projectId: route.projectId, page: route.page };
   }
 
+  if (route.kind === "pulls" && route.number && route.files && route.path) {
+    return {
+      kind: "pulls",
+      projectId: route.projectId,
+      page: route.page,
+      number: route.number,
+      files: true,
+      path: "",
+    };
+  }
+
+  if (route.kind === "pulls" && route.number && route.files) {
+    return {
+      kind: "pulls",
+      projectId: route.projectId,
+      page: route.page,
+      number: route.number,
+    };
+  }
+
+  if (route.kind === "pulls" && route.number) {
+    return { kind: "pulls", projectId: route.projectId, page: route.page };
+  }
+
   if (route.kind !== "files") {
     return { kind: "files", projectId: route.projectId, path: "" };
   }
@@ -150,6 +187,14 @@ function routePath(route) {
   if (route.kind === "issues") {
     const issueTail = route.number ? `/${encodeURIComponent(route.number)}` : "";
     return `${base}/issues${issueTail}`;
+  }
+  if (route.kind === "pulls") {
+    if (!route.number) {
+      return `${base}/pulls`;
+    }
+
+    const filesTail = route.files ? `/files${encodedTail(route.path)}` : "";
+    return `${base}/pulls/${encodeURIComponent(route.number)}${filesTail}`;
   }
 
   return "/";

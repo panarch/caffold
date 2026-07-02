@@ -140,6 +140,7 @@ pub struct GithubStatusResponse {
     pub gh_available: bool,
     pub authenticated: bool,
     pub issues_available: bool,
+    pub pulls_available: bool,
     pub message: Option<String>,
 }
 
@@ -164,6 +165,54 @@ pub struct GithubIssueResponse {
     pub repository: DirectoryGitInfo,
     pub github: GithubRepositoryInfo,
     pub issue: GithubIssueDetail,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubPullsResponse {
+    pub repository: DirectoryGitInfo,
+    pub github: GithubRepositoryInfo,
+    pub state: String,
+    pub pulls: Vec<GithubPullSummary>,
+    pub page: usize,
+    pub per_page: usize,
+    pub total_pulls: usize,
+    pub total_pages: usize,
+    pub has_previous: bool,
+    pub has_next: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubPullResponse {
+    pub repository: DirectoryGitInfo,
+    pub github: GithubRepositoryInfo,
+    pub pull: GithubPullDetail,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubPullFilesResponse {
+    pub repository: DirectoryGitInfo,
+    pub github: GithubRepositoryInfo,
+    pub number: u64,
+    pub files: Vec<GithubPullFile>,
+    pub total_files: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubPullFileResponse {
+    pub repository: DirectoryGitInfo,
+    pub github: GithubRepositoryInfo,
+    pub number: u64,
+    pub path: String,
+    pub repo_relative_path: String,
+    pub status: String,
+    pub kind: String,
+    pub diff: String,
+    pub diff_unavailable: bool,
+    pub message: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -204,6 +253,97 @@ pub struct GithubIssueDetail {
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
     pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubPullSummary {
+    pub number: u64,
+    pub title: String,
+    pub state: String,
+    pub draft: bool,
+    pub author: Option<String>,
+    pub labels: Vec<String>,
+    pub comments: u64,
+    pub updated_at: Option<String>,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubPullDetail {
+    pub number: u64,
+    pub title: String,
+    pub state: String,
+    pub draft: bool,
+    pub author: Option<String>,
+    pub labels: Vec<String>,
+    pub comments: u64,
+    pub reviews: u64,
+    pub commits: u64,
+    pub additions: u64,
+    pub deletions: u64,
+    pub changed_files: u64,
+    pub base_ref_name: String,
+    pub head_ref_name: String,
+    pub body: String,
+    pub body_html: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub url: String,
+    pub conversation_comments: Vec<GithubPullComment>,
+    pub review_comments: Vec<GithubPullReview>,
+    pub commit_summaries: Vec<GithubPullCommit>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubPullComment {
+    pub author: Option<String>,
+    pub body: String,
+    pub body_html: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubPullReview {
+    pub author: Option<String>,
+    pub state: String,
+    pub body: String,
+    pub body_html: Option<String>,
+    pub submitted_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubPullCommit {
+    pub sha: String,
+    pub short_sha: String,
+    pub subject: String,
+    pub author_name: Option<String>,
+    pub author_email: Option<String>,
+    pub authored_at: Option<String>,
+    pub committed_at: Option<String>,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubPullFile {
+    pub path: String,
+    pub repo_relative_path: String,
+    pub previous_path: Option<String>,
+    pub previous_repo_relative_path: Option<String>,
+    pub status: String,
+    pub additions: u64,
+    pub deletions: u64,
+    pub changes: u64,
+    pub patch_available: bool,
+    pub blob_url: Option<String>,
+    pub raw_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -835,6 +975,10 @@ impl RootedFs {
                 .as_ref()
                 .map(|capability| capability.issues_available)
                 .unwrap_or(false),
+            pulls_available: capability
+                .as_ref()
+                .map(|capability| capability.pulls_available)
+                .unwrap_or(false),
             message,
         })
     }
@@ -915,6 +1059,185 @@ impl RootedFs {
             repository: repository_info,
             github,
             issue,
+        })
+    }
+
+    pub fn github_pulls(
+        &self,
+        requested_path: &str,
+        state: &str,
+        page: usize,
+        per_page: usize,
+    ) -> Result<GithubPullsResponse, FsError> {
+        let repository = self.repository_for_request(requested_path)?;
+        let repository_info = self.git_info_for_repository(&repository)?;
+        let capability =
+            github::capability(&repository).ok_or_else(|| FsError::GithubRepositoryNotFound {
+                path: requested_path.to_string(),
+            })?;
+        if !capability.pulls_available {
+            return Err(FsError::GithubUnavailable {
+                action: "read pull requests",
+                path: capability.repository.name_with_owner,
+            });
+        }
+
+        let github = github_repository_info(capability.repository.clone());
+        let pull_page = github::pull_page(&capability.repository, state, page, per_page)
+            .ok_or_else(|| FsError::GithubCommandFailed {
+                action: "read pull requests",
+                path: github.name_with_owner.clone(),
+            })?;
+        let pulls = pull_page
+            .pulls
+            .into_iter()
+            .map(github_pull_summary)
+            .collect();
+
+        Ok(GithubPullsResponse {
+            repository: repository_info,
+            github,
+            state: normalize_github_issue_state(state).to_string(),
+            pulls,
+            page: pull_page.page,
+            per_page: pull_page.per_page,
+            total_pulls: pull_page.total_pulls,
+            total_pages: pull_page.total_pages,
+            has_previous: pull_page.has_previous,
+            has_next: pull_page.has_next,
+        })
+    }
+
+    pub fn github_pull(
+        &self,
+        requested_path: &str,
+        number: u64,
+    ) -> Result<GithubPullResponse, FsError> {
+        let repository = self.repository_for_request(requested_path)?;
+        let repository_info = self.git_info_for_repository(&repository)?;
+        let capability =
+            github::capability(&repository).ok_or_else(|| FsError::GithubRepositoryNotFound {
+                path: requested_path.to_string(),
+            })?;
+        if !capability.pulls_available {
+            return Err(FsError::GithubUnavailable {
+                action: "read pull request",
+                path: capability.repository.name_with_owner,
+            });
+        }
+
+        let github = github_repository_info(capability.repository.clone());
+        let pull = github::pull_detail(&capability.repository, number)
+            .ok_or_else(|| FsError::GithubCommandFailed {
+                action: "read pull request",
+                path: format!("{}#{number}", github.name_with_owner),
+            })
+            .map(github_pull_detail)?;
+
+        Ok(GithubPullResponse {
+            repository: repository_info,
+            github,
+            pull,
+        })
+    }
+
+    pub fn github_pull_files(
+        &self,
+        requested_path: &str,
+        number: u64,
+    ) -> Result<GithubPullFilesResponse, FsError> {
+        let repository = self.repository_for_request(requested_path)?;
+        let repository_info = self.git_info_for_repository(&repository)?;
+        let capability =
+            github::capability(&repository).ok_or_else(|| FsError::GithubRepositoryNotFound {
+                path: requested_path.to_string(),
+            })?;
+        if !capability.pulls_available {
+            return Err(FsError::GithubUnavailable {
+                action: "read pull request files",
+                path: capability.repository.name_with_owner,
+            });
+        }
+
+        let github = github_repository_info(capability.repository.clone());
+        let pull_files = github::pull_files(&capability.repository, number).ok_or_else(|| {
+            FsError::GithubCommandFailed {
+                action: "read pull request files",
+                path: format!("{}#{number}", github.name_with_owner),
+            }
+        })?;
+        let total_files = pull_files.files.len();
+        let files = pull_files
+            .files
+            .into_iter()
+            .map(|file| github_pull_file(&repository_info, file))
+            .collect();
+
+        Ok(GithubPullFilesResponse {
+            repository: repository_info,
+            github,
+            number,
+            files,
+            total_files,
+        })
+    }
+
+    pub fn github_pull_file(
+        &self,
+        requested_path: &str,
+        number: u64,
+        file_path: &str,
+    ) -> Result<GithubPullFileResponse, FsError> {
+        let repository = self.repository_for_request(requested_path)?;
+        let repository_info = self.git_info_for_repository(&repository)?;
+        let capability =
+            github::capability(&repository).ok_or_else(|| FsError::GithubRepositoryNotFound {
+                path: requested_path.to_string(),
+            })?;
+        if !capability.pulls_available {
+            return Err(FsError::GithubUnavailable {
+                action: "read pull request file",
+                path: capability.repository.name_with_owner,
+            });
+        }
+
+        let logical_file_path = normalize_relative_path(file_path)?;
+        let logical_file_path = relative_path_string(&logical_file_path);
+        let repo_relative_path = strip_repo_root(&repository_info.root_path, &logical_file_path)
+            .ok_or(FsError::PathEscapesRoot)?
+            .to_string();
+        let github = github_repository_info(capability.repository.clone());
+        let pull_files = github::pull_files(&capability.repository, number).ok_or_else(|| {
+            FsError::GithubCommandFailed {
+                action: "read pull request file",
+                path: format!("{}#{number}", github.name_with_owner),
+            }
+        })?;
+        let file = pull_files
+            .files
+            .into_iter()
+            .find(|file| file.filename == repo_relative_path)
+            .ok_or_else(|| FsError::GithubCommandFailed {
+                action: "read pull request file",
+                path: format!("{}#{number}:{repo_relative_path}", github.name_with_owner),
+            })?;
+        let message = if file.patch.is_some() {
+            None
+        } else {
+            Some("GitHub did not provide a text diff for this file.".to_string())
+        };
+
+        Ok(GithubPullFileResponse {
+            repository: repository_info,
+            github,
+            number,
+            path: logical_file_path,
+            repo_relative_path,
+            status: file.status,
+            kind: format!("PR #{number}"),
+            diff: file.patch.unwrap_or_default(),
+            diff_unavailable: message.is_some(),
+            message,
         })
     }
 
@@ -1294,6 +1617,112 @@ fn github_issue_detail(issue: github::GithubIssueDetail) -> GithubIssueDetail {
         created_at: issue.created_at,
         updated_at: issue.updated_at,
         url: issue.url,
+    }
+}
+
+fn github_pull_summary(pull: github::GithubPullSummary) -> GithubPullSummary {
+    GithubPullSummary {
+        number: pull.number,
+        title: pull.title,
+        state: pull.state,
+        draft: pull.draft,
+        author: pull.author,
+        labels: pull.labels,
+        comments: pull.comments,
+        updated_at: pull.updated_at,
+        url: pull.url,
+    }
+}
+
+fn github_pull_detail(pull: github::GithubPullDetail) -> GithubPullDetail {
+    GithubPullDetail {
+        number: pull.number,
+        title: pull.title,
+        state: pull.state,
+        draft: pull.draft,
+        author: pull.author,
+        labels: pull.labels,
+        comments: pull.comments,
+        reviews: pull.reviews,
+        commits: pull.commits,
+        additions: pull.additions,
+        deletions: pull.deletions,
+        changed_files: pull.changed_files,
+        base_ref_name: pull.base_ref_name,
+        head_ref_name: pull.head_ref_name,
+        body: pull.body,
+        body_html: pull.body_html,
+        created_at: pull.created_at,
+        updated_at: pull.updated_at,
+        url: pull.url,
+        conversation_comments: pull
+            .conversation_comments
+            .into_iter()
+            .map(github_pull_comment)
+            .collect(),
+        review_comments: pull
+            .review_comments
+            .into_iter()
+            .map(github_pull_review)
+            .collect(),
+        commit_summaries: pull
+            .commit_summaries
+            .into_iter()
+            .map(github_pull_commit)
+            .collect(),
+    }
+}
+
+fn github_pull_comment(comment: github::GithubPullComment) -> GithubPullComment {
+    GithubPullComment {
+        author: comment.author,
+        body: comment.body,
+        body_html: comment.body_html,
+        created_at: comment.created_at,
+        updated_at: comment.updated_at,
+        url: comment.url,
+    }
+}
+
+fn github_pull_review(review: github::GithubPullReview) -> GithubPullReview {
+    GithubPullReview {
+        author: review.author,
+        state: review.state,
+        body: review.body,
+        body_html: review.body_html,
+        submitted_at: review.submitted_at,
+    }
+}
+
+fn github_pull_commit(commit: github::GithubPullCommit) -> GithubPullCommit {
+    GithubPullCommit {
+        sha: commit.sha,
+        short_sha: commit.short_sha,
+        subject: commit.subject,
+        author_name: commit.author_name,
+        author_email: commit.author_email,
+        authored_at: commit.authored_at,
+        committed_at: commit.committed_at,
+        url: commit.url,
+    }
+}
+
+fn github_pull_file(repository: &DirectoryGitInfo, file: github::GithubPullFile) -> GithubPullFile {
+    GithubPullFile {
+        path: join_relative_path(&repository.root_path, &file.filename),
+        repo_relative_path: file.filename,
+        previous_path: file
+            .previous_filename
+            .as_deref()
+            .map(|path| join_relative_path(&repository.root_path, path)),
+        previous_repo_relative_path: file.previous_filename,
+        status: file.status,
+        additions: file.additions,
+        deletions: file.deletions,
+        changes: file.changes,
+        patch_available: file.patch.is_some(),
+        blob_url: file.blob_url,
+        raw_url: file.raw_url,
     }
 }
 

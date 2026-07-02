@@ -19,6 +19,7 @@ class CaffoldHeaderActions extends HTMLElement {
         "open-log-workspace": "caffold:open-log-workspace",
         "open-diff-workspace": "caffold:open-diff-workspace",
         "open-github-issues-workspace": "caffold:open-github-issues-workspace",
+        "open-github-pulls-workspace": "caffold:open-github-pulls-workspace",
       }[button.dataset.action];
       if (!eventName) {
         return;
@@ -110,14 +111,24 @@ class CaffoldHeaderActions extends HTMLElement {
       return "";
     }
 
-    return this.renderAction({
-      action: "open-github-issues-workspace",
-      icon: "CircleDot",
-      label: "Issues",
-      title: githubStatus.issuesAvailable
-        ? "Open Issues"
-        : `Open Issues (${githubStatus.message ?? "GitHub unavailable"})`,
-    });
+    return `
+      ${this.renderAction({
+        action: "open-github-pulls-workspace",
+        icon: "GitPullRequest",
+        label: "PRs",
+        title: githubStatus.pullsAvailable
+          ? "Open Pull Requests"
+          : `Open Pull Requests (${githubStatus.message ?? "GitHub unavailable"})`,
+      })}
+      ${this.renderAction({
+        action: "open-github-issues-workspace",
+        icon: "CircleDot",
+        label: "Issues",
+        title: githubStatus.issuesAvailable
+          ? "Open Issues"
+          : `Open Issues (${githubStatus.message ?? "GitHub unavailable"})`,
+      })}
+    `;
   }
 
   renderAction({
@@ -179,6 +190,7 @@ function sameGithubStatus(left, right) {
     left.ghAvailable === right.ghAvailable &&
     left.authenticated === right.authenticated &&
     left.issuesAvailable === right.issuesAvailable &&
+    left.pullsAvailable === right.pullsAvailable &&
     left.message === right.message &&
     left.github?.owner === right.github?.owner &&
     left.github?.name === right.github?.name &&

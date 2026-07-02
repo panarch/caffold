@@ -23,6 +23,10 @@ display-only because they can be renamed.
 - `/projects/:projectId/log/:sha/*path`
 - `/projects/:projectId/issues?page=...`
 - `/projects/:projectId/issues/:number`
+- `/projects/:projectId/pulls?page=...`
+- `/projects/:projectId/pulls/:number?page=...`
+- `/projects/:projectId/pulls/:number/files?page=...`
+- `/projects/:projectId/pulls/:number/files/*path?page=...`
 
 Route paths are project-relative. The frontend resolves the project ID through
 the existing project API, then maps the route path onto the project's registered
@@ -48,6 +52,9 @@ Back and close controls use deterministic parent routes:
 - commit file -> commit detail
 - commit detail -> log list
 - issue detail -> issue list
+- PR file -> PR files
+- PR files -> PR detail
+- PR detail -> PR list
 - review workspace close -> project files
 
 Browser back/forward should produce the same state transitions as the visible

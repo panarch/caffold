@@ -25,13 +25,19 @@ class CaffoldGithubMarkdown extends HTMLElement {
           display: block;
           min-width: 0;
           min-height: 0;
-          height: 100%;
-          overflow: auto;
-          overscroll-behavior: contain;
+          height: auto;
+          overflow: visible;
+          overscroll-behavior: auto;
           padding: 12px;
           color: var(--text);
           font-size: 0.8rem;
           line-height: 1.45;
+        }
+
+        :host(.github-issue-body) {
+          height: 100%;
+          overflow: auto;
+          overscroll-behavior: contain;
         }
 
         .markdown-body {
