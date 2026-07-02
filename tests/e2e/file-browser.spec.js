@@ -139,8 +139,12 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorkerResponse.headers()["cache-control"]).toContain("no-cache");
   expect(serviceWorkerResponse.headers()["service-worker-allowed"]).toBe("/");
   const serviceWorker = await serviceWorkerResponse.text();
+  expect(serviceWorker).toContain('const CACHE_NAME = "caffold-shell-v2"');
   expect(serviceWorker).toContain('url.pathname.startsWith("/api/")');
   expect(serviceWorker).toContain("networkFirst(request, \"/\")");
+  expect(serviceWorker).toContain('url.pathname.startsWith("/assets/")');
+  expect(serviceWorker).toContain("networkFirst(request)");
+  expect(serviceWorker).not.toContain("cacheFirst");
 
   const serviceWorkerScope = await page.evaluate(async () => {
     if (!("serviceWorker" in navigator)) {
@@ -311,6 +315,17 @@ test("manages project records from the header switcher", async ({ page }, testIn
 
 test("restores project file routes and browser navigation", async ({ page }, testInfo) => {
   const project = await mockRegisteredProject(page);
+  let gitStatusRequests = 0;
+  let listRequests = 0;
+
+  await page.route(/\/api\/git\/status(?:\?|$)/, async (route) => {
+    gitStatusRequests += 1;
+    await route.continue();
+  });
+  await page.route(/\/api\/list(?:\?|$)/, async (route) => {
+    listRequests += 1;
+    await route.continue();
+  });
 
   await page.goto(`/projects/${project.id}/files/example.rs`);
   await expect(page).toHaveURL(`/projects/${project.id}/files/example.rs`);
@@ -330,8 +345,32 @@ test("restores project file routes and browser navigation", async ({ page }, tes
 
   await page.goto(`/projects/${project.id}/files`);
   await expect(page.locator("caffold-file-list")).toBeVisible();
+  const diffButton = page.locator(
+    'caffold-header-actions button[data-action="open-diff-workspace"]',
+  );
+  await expect(diffButton.locator(".header-action-count")).toHaveText(/\d+/);
+  const headerActionsHtml = await page.locator("caffold-header-actions").evaluate((element) => {
+    window.__caffoldDiffButton = element.querySelector(
+      'button[data-action="open-diff-workspace"]',
+    );
+    return element.innerHTML;
+  });
+  const listRequestsBeforeFileClick = listRequests;
+  const gitStatusRequestsBeforeFileClick = gitStatusRequests;
   await page.locator('button[data-entry-path="src/example.rs"]').click();
   await expect(page).toHaveURL(`/projects/${project.id}/files/example.rs`);
+  await expect(page.locator("caffold-file-viewer")).toContainText("example.rs");
+  expect(listRequests).toBe(listRequestsBeforeFileClick);
+  expect(gitStatusRequests).toBe(gitStatusRequestsBeforeFileClick);
+  const headerActionsState = await page.locator("caffold-header-actions").evaluate((element) => {
+    const diffButton = element.querySelector('button[data-action="open-diff-workspace"]');
+    return {
+      html: element.innerHTML,
+      sameDiffButton: diffButton === window.__caffoldDiffButton,
+    };
+  });
+  expect(headerActionsState.sameDiffButton).toBe(true);
+  expect(headerActionsState.html).toBe(headerActionsHtml);
   await page.goBack();
   await expect(page).toHaveURL(`/projects/${project.id}/files`);
   await expect(page.locator("caffold-file-list")).toBeVisible();
@@ -367,6 +406,12 @@ test("restores project review routes", async ({ page }) => {
   let gitCompareRequests = 0;
   let gitCommitRequests = 0;
   let githubIssuesRequests = 0;
+  let listRequests = 0;
+
+  await page.route(/\/api\/list(?:\?|$)/, async (route) => {
+    listRequests += 1;
+    await route.continue();
+  });
 
   await page.route(/\/api\/git\/status(?:\?|$)/, (route) => {
     gitStatusRequests += 1;
@@ -416,6 +461,7 @@ test("restores project review routes", async ({ page }) => {
       body: JSON.stringify({
         repository,
         refs: [
+          { name: "main", kind: "local" },
           { name: "feature/review", kind: "local" },
           { name: "origin/main", kind: "remote" },
         ],
@@ -429,20 +475,26 @@ test("restores project review routes", async ({ page }) => {
     gitCompareRequests += 1;
     const url = new URL(route.request().url());
     expect(url.searchParams.get("base")).toBe("origin/main");
-    expect(url.searchParams.get("head")).toBe("feature/review");
+    const head = url.searchParams.get("head");
+    expect(["feature/review", "main"]).toContain(head);
+    const files =
+      head === "main"
+        ? []
+        : [
+            {
+              path: "src/example.rs",
+              repoRelativePath: "example.rs",
+              status: "M",
+            },
+          ];
+
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
         repository,
         baseRef: "origin/main",
-        headRef: "feature/review",
-        files: [
-          {
-            path: "src/example.rs",
-            repoRelativePath: "example.rs",
-            status: "M",
-          },
-        ],
+        headRef: head,
+        files,
       }),
     });
   });
@@ -617,6 +669,38 @@ test("restores project review routes", async ({ page }) => {
   await expect(page.locator('select[data-compare-ref="head"]')).toHaveValue("feature/review");
   await expect(page.locator("caffold-diff-viewer")).toContainText("new compare route line");
   await page.goto(`/projects/${project.id}/compare?base=origin%2Fmain&head=feature%2Freview`);
+  await expect(page.locator('button[data-compare-path="src/example.rs"]')).toBeVisible();
+  const compareHeaderActionsHtml = await page
+    .locator("caffold-header-actions")
+    .evaluate((element) => {
+      window.__caffoldCompareDiffButton = element.querySelector(
+        'button[data-action="open-diff-workspace"]',
+      );
+      return element.innerHTML;
+    });
+  const listRequestsBeforeCompareRefChange = listRequests;
+  const gitStatusRequestsBeforeCompareRefChange = gitStatusRequests;
+  await page.locator('select[data-compare-ref="head"]').selectOption("main");
+  await expect(page).toHaveURL(`/projects/${project.id}/compare?base=origin%2Fmain&head=main`);
+  await expect(page.locator("caffold-compare-tree")).toContainText("0 files");
+  expect(listRequests).toBe(listRequestsBeforeCompareRefChange);
+  expect(gitStatusRequests).toBe(gitStatusRequestsBeforeCompareRefChange);
+  const compareHeaderActionsState = await page
+    .locator("caffold-header-actions")
+    .evaluate((element) => {
+      const diffButton = element.querySelector('button[data-action="open-diff-workspace"]');
+      return {
+        html: element.innerHTML,
+        sameDiffButton: diffButton === window.__caffoldCompareDiffButton,
+      };
+    });
+  expect(compareHeaderActionsState.sameDiffButton).toBe(true);
+  expect(compareHeaderActionsState.html).toBe(compareHeaderActionsHtml);
+
+  await page.locator('select[data-compare-ref="head"]').selectOption("feature/review");
+  await expect(page).toHaveURL(
+    `/projects/${project.id}/compare?base=origin%2Fmain&head=feature%2Freview`,
+  );
   await expect(page.locator('button[data-compare-path="src/example.rs"]')).toBeVisible();
   const gitCompareRequestsBeforeClick = gitCompareRequests;
   await page.locator('button[data-compare-path="src/example.rs"]').click();

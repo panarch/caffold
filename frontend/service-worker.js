@@ -1,4 +1,4 @@
-const CACHE_NAME = "caffold-shell-v1";
+const CACHE_NAME = "caffold-shell-v2";
 
 const APP_SHELL_ASSETS = [
   "/",
@@ -93,25 +93,11 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (url.pathname.startsWith("/assets/")) {
-    event.respondWith(cacheFirst(request));
+    event.respondWith(networkFirst(request));
   }
 });
 
-async function cacheFirst(request) {
-  const cached = await caches.match(request);
-  if (cached) {
-    return cached;
-  }
-
-  const response = await fetch(request);
-  if (response.ok) {
-    const cache = await caches.open(CACHE_NAME);
-    cache.put(request, response.clone());
-  }
-  return response;
-}
-
-async function networkFirst(request, fallbackPath) {
+async function networkFirst(request, fallbackPath = null) {
   try {
     const response = await fetch(request);
     if (response.ok) {
@@ -121,6 +107,6 @@ async function networkFirst(request, fallbackPath) {
     return response;
   } catch {
     const cached = await caches.match(request);
-    return cached ?? caches.match(fallbackPath);
+    return cached ?? (fallbackPath ? caches.match(fallbackPath) : Response.error());
   }
 }

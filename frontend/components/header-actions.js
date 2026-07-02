@@ -38,7 +38,12 @@ class CaffoldHeaderActions extends HTMLElement {
   }
 
   set gitStatus(value) {
-    this.gitStatusValue = value ?? null;
+    const nextValue = value ?? null;
+    if (sameGitStatus(this.gitStatusValue, nextValue)) {
+      return;
+    }
+
+    this.gitStatusValue = nextValue;
     this.render();
   }
 
@@ -47,7 +52,12 @@ class CaffoldHeaderActions extends HTMLElement {
   }
 
   set githubStatus(value) {
-    this.githubStatusValue = value ?? null;
+    const nextValue = value ?? null;
+    if (sameGithubStatus(this.githubStatusValue, nextValue)) {
+      return;
+    }
+
+    this.githubStatusValue = nextValue;
     this.render();
   }
 
@@ -147,3 +157,32 @@ class CaffoldHeaderActions extends HTMLElement {
 }
 
 customElements.define("caffold-header-actions", CaffoldHeaderActions);
+
+function sameGitStatus(left, right) {
+  if (!left || !right) {
+    return !left && !right;
+  }
+
+  return (
+    left.branch === right.branch &&
+    left.dirty === right.dirty &&
+    left.count === right.count
+  );
+}
+
+function sameGithubStatus(left, right) {
+  if (!left || !right) {
+    return !left && !right;
+  }
+
+  return (
+    left.ghAvailable === right.ghAvailable &&
+    left.authenticated === right.authenticated &&
+    left.issuesAvailable === right.issuesAvailable &&
+    left.message === right.message &&
+    left.github?.owner === right.github?.owner &&
+    left.github?.name === right.github?.name &&
+    left.github?.nameWithOwner === right.github?.nameWithOwner &&
+    left.github?.url === right.github?.url
+  );
+}

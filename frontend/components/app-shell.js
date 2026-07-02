@@ -69,6 +69,7 @@ class CaffoldAppShell extends HTMLElement {
     this.projectCandidate = null;
     this.currentProjectId = null;
     this.gitCompare = null;
+    this.pendingGitCompare = null;
     this.gitRefs = null;
     this.compareBaseRef = null;
     this.compareHeadRef = null;
@@ -446,6 +447,12 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     const fullPath = this.projectPath(project, route.path);
+    const loadedEntry = this.fileList.entryForPath(fullPath);
+    if (loadedEntry && loadedEntry.kind !== "directory") {
+      await this.openFile(fullPath, loadedEntry);
+      return;
+    }
+
     if (await this.loadDirectory(fullPath, { allowFailure: true })) {
       return;
     }
@@ -461,7 +468,7 @@ class CaffoldAppShell extends HTMLElement {
 
   async applyDiffRoute(project, route) {
     if (this.canApplyLoadedDiffRoute(project, route)) {
-      this.openDiffWorkspace();
+      this.openDiffWorkspace({ preserveViewer: Boolean(route.path) });
       if (!route.path) {
         this.changesTree.setSelectedPath("");
         return;
@@ -477,8 +484,11 @@ class CaffoldAppShell extends HTMLElement {
       return;
     }
 
-    await this.loadDirectory(project.relativePath);
-    this.openDiffWorkspace();
+    if (!(await this.ensureProjectRootLoaded(project))) {
+      return;
+    }
+
+    this.openDiffWorkspace({ preserveViewer: Boolean(route.path) });
     if (!route.path) {
       return;
     }
@@ -494,10 +504,13 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   async applyCompareRoute(project, route) {
+    const routeBaseRef = route.baseRef || null;
+    const routeHeadRef = route.headRef || null;
+
     if (this.canApplyLoadedCompareRoute(project, route)) {
-      this.compareBaseRef = route.baseRef || null;
-      this.compareHeadRef = route.headRef || null;
-      this.openCompareWorkspace({ skipReload: true });
+      this.compareBaseRef = routeBaseRef;
+      this.compareHeadRef = routeHeadRef;
+      this.openCompareWorkspace({ preserveViewer: Boolean(route.path), skipReload: true });
       if (!route.path) {
         this.compareTree.setSelectedPath("");
         return;
@@ -509,10 +522,28 @@ class CaffoldAppShell extends HTMLElement {
       return;
     }
 
-    await this.loadDirectory(project.relativePath);
-    this.compareBaseRef = route.baseRef || null;
-    this.compareHeadRef = route.headRef || null;
-    await this.openCompareWorkspace();
+    if (!(await this.ensureProjectRootLoaded(project))) {
+      return;
+    }
+
+    this.compareBaseRef = routeBaseRef;
+    this.compareHeadRef = routeHeadRef;
+    this.openCompareWorkspace({ preserveViewer: Boolean(route.path), skipReload: true });
+    if (!this.gitRefs) {
+      await this.loadGitRefsAndCompare(this.currentPath);
+    } else if (
+      !this.gitCompare ||
+      this.gitCompare.baseRef !== routeBaseRef ||
+      this.gitCompare.headRef !== routeHeadRef
+    ) {
+      this.compareTree.setSelectedPath("");
+      this.showCompareList();
+      if (!route.path) {
+        this.compareWorkspaceViewer.setEmpty();
+      }
+      await this.loadGitCompare(this.currentPath, this.compareBaseRef, this.compareHeadRef);
+    }
+
     if (!route.path) {
       return;
     }
@@ -553,7 +584,10 @@ class CaffoldAppShell extends HTMLElement {
       return;
     }
 
-    await this.loadDirectory(project.relativePath);
+    if (!(await this.ensureProjectRootLoaded(project))) {
+      return;
+    }
+
     if (!route.sha) {
       await this.openLogWorkspace({ page: route.page });
       return;
@@ -584,7 +618,10 @@ class CaffoldAppShell extends HTMLElement {
       return;
     }
 
-    await this.loadDirectory(project.relativePath);
+    if (!(await this.ensureProjectRootLoaded(project))) {
+      return;
+    }
+
     await this.openGithubIssuesWorkspace({ page: route.page });
     if (route.number) {
       await this.openGithubIssue(route.number);
@@ -1080,6 +1117,14 @@ class CaffoldAppShell extends HTMLElement {
     return cleanPath(this.currentPath) === cleanPath(project?.relativePath ?? "");
   }
 
+  async ensureProjectRootLoaded(project) {
+    if (this.isProjectRootLoaded(project)) {
+      return true;
+    }
+
+    return await this.loadDirectory(project.relativePath);
+  }
+
   canApplyLoadedDiffRoute(project, _route) {
     return (
       this.isProjectRootLoaded(project) &&
@@ -1233,7 +1278,6 @@ class CaffoldAppShell extends HTMLElement {
       branch: directory.git.branch,
       dirty: directory.git.dirty,
       count: null,
-      workspaceMode: this.workspaceMode,
     };
     this.headerActions.githubStatus = null;
     this.changesTree.setLoading(directory.git);
@@ -1498,14 +1542,19 @@ class CaffoldAppShell extends HTMLElement {
       return;
     }
 
+    const requestKey = `${path ?? ""}\u0000${baseRef ?? ""}\u0000${headRef ?? ""}`;
+    if (this.pendingGitCompare?.key === requestKey) {
+      return await this.pendingGitCompare.promise;
+    }
+
     const requestId = ++this.gitCompareRequestId;
     this.compareTree.setLoading(this.gitRepository);
     this.reviewWorkspace.setCompareRefs(this.gitRefs, baseRef, headRef);
 
-    try {
+    const promise = (async () => {
       const compare = await getGitCompare(path, baseRef, headRef);
       if (requestId !== this.gitCompareRequestId) {
-        return;
+        return null;
       }
 
       this.compareBaseRef = compare.baseRef;
@@ -1517,12 +1566,23 @@ class CaffoldAppShell extends HTMLElement {
       this.updateWorkspaceChrome();
       this.compareTree.setCompare(compare);
       return compare;
+    })();
+
+    this.pendingGitCompare = { key: requestKey, promise };
+
+    try {
+      return await promise;
     } catch (error) {
       if (requestId !== this.gitCompareRequestId) {
-        return;
+        return null;
       }
 
       this.compareTree.setError(error, this.gitRepository);
+      return null;
+    } finally {
+      if (this.pendingGitCompare?.key === requestKey && this.pendingGitCompare.promise === promise) {
+        this.pendingGitCompare = null;
+      }
     }
   }
 
@@ -1572,7 +1632,7 @@ class CaffoldAppShell extends HTMLElement {
     this.loadGithubIssues(this.currentPath, "open", nextPage);
   }
 
-  openDiffWorkspace() {
+  openDiffWorkspace(options = {}) {
     if (!this.gitRepository) {
       return;
     }
@@ -1590,7 +1650,9 @@ class CaffoldAppShell extends HTMLElement {
     if (!this.gitStatus) {
       this.changesTree.setLoading(this.gitRepository);
     }
-    this.diffWorkspaceViewer.setEmpty();
+    if (!options.preserveViewer) {
+      this.diffWorkspaceViewer.setEmpty();
+    }
   }
 
   openCompareWorkspace(options = {}) {
@@ -1609,7 +1671,9 @@ class CaffoldAppShell extends HTMLElement {
     this.reviewWorkspace.setCompareView("list");
     this.reviewWorkspace.setCompareRefs(this.gitRefs, this.compareBaseRef, this.compareHeadRef);
     this.updateGitButton();
-    this.compareWorkspaceViewer.setEmpty();
+    if (!options.preserveViewer) {
+      this.compareWorkspaceViewer.setEmpty();
+    }
     if (options.skipReload) {
       return;
     }
@@ -1681,6 +1745,10 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   closeReviewWorkspace() {
+    if (!this.workspaceMode && this.reviewWorkspace.hidden) {
+      return;
+    }
+
     this.workspaceMode = null;
     this.diffWorkspaceView = "list";
     this.compareWorkspaceView = "list";
@@ -1754,7 +1822,6 @@ class CaffoldAppShell extends HTMLElement {
       branch: this.gitRepository.branch,
       dirty: this.gitRepository.dirty,
       count: this.gitStatus?.files.length ?? null,
-      workspaceMode: this.workspaceMode,
     };
     this.headerActions.githubStatus = this.githubStatus;
   }
