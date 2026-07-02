@@ -1,7 +1,7 @@
 import { escapeHtml } from "./dom.js";
 import { renderInlineIcon, warmIcons } from "./icons.js";
 
-class CodgerPagination extends HTMLElement {
+class CaffoldPagination extends HTMLElement {
   static observedAttributes = [
     "page",
     "total-pages",
@@ -26,7 +26,7 @@ class CodgerPagination extends HTMLElement {
       }
 
       this.dispatchEvent(
-        new CustomEvent("codger:change-page", {
+        new CustomEvent("caffold:change-page", {
           bubbles: true,
           detail: { page },
         }),
@@ -34,13 +34,13 @@ class CodgerPagination extends HTMLElement {
     });
 
     this.boundIconsReady = () => this.render();
-    window.addEventListener("codger:icons-ready", this.boundIconsReady);
+    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     warmIcons();
     this.render();
   }
 
   disconnectedCallback() {
-    window.removeEventListener("codger:icons-ready", this.boundIconsReady);
+    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
   attributeChangedCallback() {
@@ -124,4 +124,4 @@ class CodgerPagination extends HTMLElement {
   }
 }
 
-customElements.define("codger-pagination", CodgerPagination);
+customElements.define("caffold-pagination", CaffoldPagination);

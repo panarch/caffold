@@ -1,8 +1,8 @@
 # Security and Approvals
 
-> Internal planning note. This is an early safety model and should be revisited before exposing Codger beyond personal trusted networks.
+> Internal planning note. This is an early safety model and should be revisited before exposing Caffold beyond personal trusted networks.
 
-Codger is a remote control surface for a local development machine. Its safety model matters from the first MVP.
+Caffold is a remote control surface for a local development machine. Its safety model matters from the first MVP.
 
 ## Trust Boundary
 
@@ -13,7 +13,7 @@ Expected deployment:
 - no public unauthenticated exposure
 - local filesystem and command access only through the backend
 
-Codger should still assume that remote command execution is sensitive.
+Caffold should still assume that remote command execution is sensitive.
 
 ## Approval Principles
 
@@ -42,7 +42,7 @@ Future rules can add allowlists, deny lists, or command classes.
 
 Direct git mutation UI is excluded from the MVP.
 
-This avoids making Codger responsible for complex destructive flows too early. Git mutation can happen through Codex instructions or manual terminal work until a controlled flow is designed.
+This avoids making Caffold responsible for complex destructive flows too early. Git mutation can happen through Codex instructions or manual terminal work until a controlled flow is designed.
 
 ## Worktree Deletion
 
@@ -54,4 +54,4 @@ MVP should prefer no automatic deletion.
 
 Tailscale reduces exposure but is not a full product security model.
 
-For personal use, it is a practical deployment assumption. If Codger becomes more broadly used, authentication, authorization, and audit controls need a separate design.
+For personal use, it is a practical deployment assumption. If Caffold becomes more broadly used, authentication, authorization, and audit controls need a separate design.

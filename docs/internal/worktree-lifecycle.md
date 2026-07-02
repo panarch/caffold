@@ -2,7 +2,7 @@
 
 > Internal planning note. This describes the intended lifecycle model before implementation.
 
-Worktree lifecycle is a product-level decision in Codger. It should be designed for Codger's review workflow rather than copied wholesale from another surface.
+Worktree lifecycle is a product-level decision in Caffold. It should be designed for Caffold's review workflow rather than copied wholesale from another surface.
 
 ## Principles
 
@@ -41,7 +41,7 @@ A worktree can be:
 - cleanup_requested
 - cleanup_blocked
 
-These states belong to Codger metadata. The actual file state belongs to git.
+These states belong to Caffold metadata. The actual file state belongs to git.
 
 ## Cleanup
 
@@ -58,7 +58,7 @@ Future behavior can add policies, but only after the review workflow is stable.
 
 ## Git Mutations
 
-Codger's initial git features are read/review oriented:
+Caffold's initial git features are read/review oriented:
 
 - status
 - changed files
@@ -70,4 +70,4 @@ Codger's initial git features are read/review oriented:
 - branch and base info
 - base branch diff
 
-Git mutations should be performed by Codex, the user, or a later controlled Codger flow with explicit confirmation.
+Git mutations should be performed by Codex, the user, or a later controlled Caffold flow with explicit confirmation.

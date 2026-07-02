@@ -2,7 +2,7 @@ import { escapeHtml } from "./dom.js";
 import { renderInlineIcon, warmIcons } from "./icons.js";
 import "./pagination.js";
 
-class CodgerLogList extends HTMLElement {
+class CaffoldLogList extends HTMLElement {
   connectedCallback() {
     this.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-action]");
@@ -20,7 +20,7 @@ class CodgerLogList extends HTMLElement {
       }
 
       this.dispatchEvent(
-        new CustomEvent("codger:open-git-commit", {
+        new CustomEvent("caffold:open-git-commit", {
           bubbles: true,
           detail: {
             sha: button.dataset.commitSha,
@@ -28,13 +28,13 @@ class CodgerLogList extends HTMLElement {
         }),
       );
     });
-    this.addEventListener("codger:change-page", (event) => {
+    this.addEventListener("caffold:change-page", (event) => {
       event.stopPropagation();
       this.changePage(event.detail.page);
     });
 
     this.boundIconsReady = () => this.render();
-    window.addEventListener("codger:icons-ready", this.boundIconsReady);
+    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     warmIcons();
 
     this.expandedShas ??= new Set();
@@ -44,7 +44,7 @@ class CodgerLogList extends HTMLElement {
   }
 
   disconnectedCallback() {
-    window.removeEventListener("codger:icons-ready", this.boundIconsReady);
+    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
   setLoading(repository) {
@@ -76,7 +76,7 @@ class CodgerLogList extends HTMLElement {
     }
 
     this.dispatchEvent(
-      new CustomEvent("codger:change-log-page", {
+      new CustomEvent("caffold:change-log-page", {
         bubbles: true,
         detail: { page },
       }),
@@ -204,7 +204,7 @@ class CodgerLogList extends HTMLElement {
     }
 
     return `
-      <codger-pagination
+      <caffold-pagination
         aria-label="Log pagination"
         page="${escapeHtml(`${page}`)}"
         total-pages="${escapeHtml(`${totalPages}`)}"
@@ -214,7 +214,7 @@ class CodgerLogList extends HTMLElement {
         previous-label="Newer page"
         next-label="Older page"
         last-label="Oldest page"
-      ></codger-pagination>
+      ></caffold-pagination>
     `;
   }
 
@@ -272,7 +272,7 @@ class CodgerLogList extends HTMLElement {
   }
 }
 
-customElements.define("codger-log-list", CodgerLogList);
+customElements.define("caffold-log-list", CaffoldLogList);
 
 function formatCommitDate(ms) {
   if (!ms) {

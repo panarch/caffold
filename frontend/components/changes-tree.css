@@ -1,4 +1,4 @@
-codger-changes-tree {
+caffold-changes-tree {
   display: block;
   min-width: 0;
   min-height: 0;
@@ -6,14 +6,14 @@ codger-changes-tree {
   background: var(--surface);
 }
 
-codger-changes-tree .changes-tree-panel {
+caffold-changes-tree .changes-tree-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
   height: 100%;
 }
 
-codger-changes-tree .changes-tree-panel > header {
+caffold-changes-tree .changes-tree-panel > header {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 2px;
@@ -22,7 +22,7 @@ codger-changes-tree .changes-tree-panel > header {
   border-bottom: 1px solid var(--border);
 }
 
-codger-changes-tree h2 {
+caffold-changes-tree h2 {
   margin: 0;
   overflow: hidden;
   font-size: 0.82rem;
@@ -32,13 +32,13 @@ codger-changes-tree h2 {
   white-space: nowrap;
 }
 
-codger-changes-tree .changes-tree-panel > header span {
+caffold-changes-tree .changes-tree-panel > header span {
   color: var(--muted);
   font-size: 0.74rem;
   line-height: 1.1;
 }
 
-codger-changes-tree .changes-tree-title-row {
+caffold-changes-tree .changes-tree-title-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
@@ -47,12 +47,12 @@ codger-changes-tree .changes-tree-title-row {
   min-width: 0;
 }
 
-codger-changes-tree .change-count {
+caffold-changes-tree .change-count {
   justify-self: end;
   white-space: nowrap;
 }
 
-codger-changes-tree .changes-branch {
+caffold-changes-tree .changes-branch {
   display: block;
   min-width: 0;
   overflow: hidden;
@@ -61,11 +61,11 @@ codger-changes-tree .changes-branch {
   white-space: nowrap;
 }
 
-codger-changes-tree .changes-branch.is-dirty {
+caffold-changes-tree .changes-branch.is-dirty {
   color: #8a5200;
 }
 
-codger-changes-tree .changes-tree-list {
+caffold-changes-tree .changes-tree-list {
   --tree-indent: 12px;
   display: block;
   min-height: 0;
@@ -76,12 +76,12 @@ codger-changes-tree .changes-tree-list {
   list-style: none;
 }
 
-codger-changes-tree .changes-tree-list > li {
+caffold-changes-tree .changes-tree-list > li {
   width: max-content;
   min-width: 100%;
 }
 
-codger-changes-tree .change-section-label {
+caffold-changes-tree .change-section-label {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -93,7 +93,7 @@ codger-changes-tree .change-section-label {
   text-transform: uppercase;
 }
 
-codger-changes-tree .change-entry {
+caffold-changes-tree .change-entry {
   display: grid;
   grid-template-columns: 1.35rem max-content;
   gap: 4px;
@@ -111,19 +111,19 @@ codger-changes-tree .change-entry {
   text-align: left;
 }
 
-codger-changes-tree .change-entry:hover,
-codger-changes-tree .change-entry:focus-visible {
+caffold-changes-tree .change-entry:hover,
+caffold-changes-tree .change-entry:focus-visible {
   border-left-color: #bdd7cc;
   background: #f1f6f3;
   outline: none;
 }
 
-codger-changes-tree .change-file[aria-current="true"] {
+caffold-changes-tree .change-file[aria-current="true"] {
   border-left-color: var(--accent);
   background: var(--accent-soft);
 }
 
-codger-changes-tree .change-status-code {
+caffold-changes-tree .change-status-code {
   align-self: center;
   color: #764600;
   font-size: 0.78rem;
@@ -131,7 +131,7 @@ codger-changes-tree .change-status-code {
   white-space: pre;
 }
 
-codger-changes-tree .change-node-label {
+caffold-changes-tree .change-node-label {
   display: grid;
   grid-template-columns: 1.5rem max-content;
   gap: 6px;
@@ -140,7 +140,7 @@ codger-changes-tree .change-node-label {
   margin-left: calc(var(--tree-depth, 0) * var(--tree-indent));
 }
 
-codger-changes-tree .entry-icon {
+caffold-changes-tree .entry-icon {
   display: inline-grid;
   width: 1.5rem;
   height: 1.5rem;
@@ -148,27 +148,27 @@ codger-changes-tree .entry-icon {
   justify-self: center;
 }
 
-codger-changes-tree .entry-icon-svg {
+caffold-changes-tree .entry-icon-svg {
   display: block;
   width: 1.125rem;
   height: 1.125rem;
   stroke-width: 1.9;
 }
 
-codger-changes-tree .change-name {
+caffold-changes-tree .change-name {
   min-width: 0;
   overflow: visible;
   text-overflow: clip;
   white-space: nowrap;
 }
 
-codger-changes-tree .error-panel {
+caffold-changes-tree .error-panel {
   background: var(--danger-soft);
   color: var(--danger);
 }
 
 @media (max-width: 860px) {
-  codger-changes-tree {
+  caffold-changes-tree {
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }

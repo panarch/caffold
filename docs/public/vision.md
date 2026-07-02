@@ -1,8 +1,8 @@
 # Vision
 
-Codger is a personal review console for developers who use coding agents actively and want to inspect agent-generated code before trusting it.
+Caffold is scaffolding for agent-assisted development: a personal review and control surface for developers who use coding agents actively and want to inspect agent-generated code before trusting it.
 
-Codex remains the execution engine, while Codger provides a mobile-friendly review layer around task tracking, worktree visibility, diff review, test review, approvals, and follow-up prompts.
+Codex remains the execution engine, while Caffold provides a mobile-friendly review layer around task tracking, worktree visibility, diff review, test review, approvals, and follow-up prompts.
 
 ## Motivation
 
@@ -20,7 +20,7 @@ That matters because agent-assisted development makes review and direction a lar
 
 This workflow does not require a full desktop IDE on every device. It needs a mobile-friendly review console connected to the machine where the work is actually running.
 
-Codger's product bet is that review-first agent development can make phone-first development workflows practical without replacing the rich desktop Codex experience.
+Caffold's product bet is that review-first agent development can make phone-first development workflows practical without replacing the rich desktop Codex experience.
 
 ## Need
 
@@ -28,7 +28,7 @@ The target workflow uses a remote development host as the execution environment 
 
 The core need is simple: open a lightweight review surface from a mobile or tablet device, send prompts, approve commands, inspect diffs, read related files, and decide what should happen next.
 
-That means Codger needs to make these actions comfortable without requiring a full desktop IDE:
+That means Caffold needs to make these actions comfortable without requiring a full desktop IDE:
 
 - send a prompt or follow-up instruction
 - see which task, thread, and worktree are connected
@@ -40,7 +40,7 @@ That means Codger needs to make these actions comfortable without requiring a fu
 
 ## Positioning
 
-Codger is a review-centric console optimized for inspecting agent-generated code from a browser, including mobile and foldable screens.
+Caffold is a review-centric control surface optimized for inspecting, guiding, and validating agent-generated code from a browser, including mobile and foldable screens.
 
 It is for developers who:
 
@@ -52,7 +52,7 @@ It is for developers who:
 
 ## Non-Goals
 
-Codger is not:
+Caffold is not:
 
 - an autonomous coding agent
 - an IDE
@@ -62,4 +62,4 @@ Codger is not:
 - a full git mutation UI
 - a reimplementation of browser use or computer use workflows
 
-The Codex GUI remains useful as a rich interactive workspace, especially where visual context, browser use, computer use, exploratory work, or the desktop app experience itself matters. Codger is a narrower companion surface for long-running code tasks where mobile review, worktree visibility, remote approval, and recovery need to be optimized outside the desktop app.
+The Codex GUI remains useful as a rich interactive workspace, especially where visual context, browser use, computer use, exploratory work, or the desktop app experience itself matters. Caffold is a narrower companion surface for long-running code tasks where mobile review, worktree visibility, remote approval, and recovery need to be optimized outside the desktop app.

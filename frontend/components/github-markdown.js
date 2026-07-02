@@ -15,7 +15,7 @@ const FORBIDDEN_ELEMENTS = new Set([
 
 const URL_ATTRIBUTES = new Set(["href", "src"]);
 
-class CodgerGithubMarkdown extends HTMLElement {
+class CaffoldGithubMarkdown extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
@@ -235,4 +235,4 @@ function isSafeUrl(value) {
   }
 }
 
-customElements.define("codger-github-markdown", CodgerGithubMarkdown);
+customElements.define("caffold-github-markdown", CaffoldGithubMarkdown);

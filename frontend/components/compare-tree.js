@@ -1,7 +1,7 @@
 import { escapeHtml } from "./dom.js";
 import { renderEntryIcon, warmIcons } from "./icons.js";
 
-class CodgerCompareTree extends HTMLElement {
+class CaffoldCompareTree extends HTMLElement {
   connectedCallback() {
     this.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-node-key], button[data-compare-path]");
@@ -16,7 +16,7 @@ class CodgerCompareTree extends HTMLElement {
 
       this.setSelectedPath(button.dataset.comparePath);
       this.dispatchEvent(
-        new CustomEvent("codger:open-compare-diff", {
+        new CustomEvent("caffold:open-compare-diff", {
           bubbles: true,
           detail: {
             path: button.dataset.comparePath,
@@ -26,7 +26,7 @@ class CodgerCompareTree extends HTMLElement {
       );
     });
     this.boundIconsReady = () => this.render();
-    window.addEventListener("codger:icons-ready", this.boundIconsReady);
+    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     warmIcons();
 
     if (!this.state) {
@@ -35,7 +35,7 @@ class CodgerCompareTree extends HTMLElement {
   }
 
   disconnectedCallback() {
-    window.removeEventListener("codger:icons-ready", this.boundIconsReady);
+    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
   setLoading(repository) {
@@ -264,7 +264,7 @@ class CodgerCompareTree extends HTMLElement {
   }
 }
 
-customElements.define("codger-compare-tree", CodgerCompareTree);
+customElements.define("caffold-compare-tree", CaffoldCompareTree);
 
 function buildCompareTree(files) {
   const root = { kind: "root", children: new Map() };

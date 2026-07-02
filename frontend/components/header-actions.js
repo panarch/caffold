@@ -1,7 +1,7 @@
 import { escapeHtml } from "./dom.js";
 import { renderInlineIcon, warmIcons } from "./icons.js";
 
-class CodgerHeaderActions extends HTMLElement {
+class CaffoldHeaderActions extends HTMLElement {
   connectedCallback() {
     if (this.initialized) {
       return;
@@ -15,10 +15,10 @@ class CodgerHeaderActions extends HTMLElement {
       }
 
       const eventName = {
-        "open-compare-workspace": "codger:open-compare-workspace",
-        "open-log-workspace": "codger:open-log-workspace",
-        "open-diff-workspace": "codger:open-diff-workspace",
-        "open-github-issues-workspace": "codger:open-github-issues-workspace",
+        "open-compare-workspace": "caffold:open-compare-workspace",
+        "open-log-workspace": "caffold:open-log-workspace",
+        "open-diff-workspace": "caffold:open-diff-workspace",
+        "open-github-issues-workspace": "caffold:open-github-issues-workspace",
       }[button.dataset.action];
       if (!eventName) {
         return;
@@ -27,14 +27,14 @@ class CodgerHeaderActions extends HTMLElement {
       this.dispatchEvent(new CustomEvent(eventName, { bubbles: true }));
     });
     this.boundIconsReady = () => this.render();
-    window.addEventListener("codger:icons-ready", this.boundIconsReady);
+    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     warmIcons();
 
     this.render();
   }
 
   disconnectedCallback() {
-    window.removeEventListener("codger:icons-ready", this.boundIconsReady);
+    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
   set gitStatus(value) {
@@ -146,4 +146,4 @@ class CodgerHeaderActions extends HTMLElement {
   }
 }
 
-customElements.define("codger-header-actions", CodgerHeaderActions);
+customElements.define("caffold-header-actions", CaffoldHeaderActions);

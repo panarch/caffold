@@ -1,4 +1,4 @@
-codger-review-workspace {
+caffold-review-workspace {
   --review-header-height: 42px;
   --review-left-panel-width: 20rem;
   --review-pane-title-size: 0.82rem;
@@ -12,7 +12,7 @@ codger-review-workspace {
   background: var(--surface);
 }
 
-codger-review-workspace .review-workspace-panel {
+caffold-review-workspace .review-workspace-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   width: 100%;
@@ -23,7 +23,7 @@ codger-review-workspace .review-workspace-panel {
   background: var(--surface);
 }
 
-codger-review-workspace .review-workspace-header {
+caffold-review-workspace .review-workspace-header {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 10px;
@@ -36,15 +36,15 @@ codger-review-workspace .review-workspace-header {
   overflow: hidden;
 }
 
-codger-review-workspace .review-workspace-nav {
+caffold-review-workspace .review-workspace-nav {
   display: grid;
   grid-auto-flow: column;
   gap: 6px;
   align-items: center;
 }
 
-codger-review-workspace .review-workspace-back,
-codger-review-workspace .review-workspace-close {
+caffold-review-workspace .review-workspace-back,
+caffold-review-workspace .review-workspace-close {
   display: grid;
   place-items: center;
   width: 30px;
@@ -57,23 +57,23 @@ codger-review-workspace .review-workspace-close {
   cursor: pointer;
 }
 
-codger-review-workspace .review-workspace-back:hover,
-codger-review-workspace .review-workspace-back:focus-visible,
-codger-review-workspace .review-workspace-close:hover,
-codger-review-workspace .review-workspace-close:focus-visible {
+caffold-review-workspace .review-workspace-back:hover,
+caffold-review-workspace .review-workspace-back:focus-visible,
+caffold-review-workspace .review-workspace-close:hover,
+caffold-review-workspace .review-workspace-close:focus-visible {
   border-color: #abcbbf;
   background: #f7fbf8;
   outline: none;
 }
 
-codger-review-workspace .review-workspace-back-icon,
-codger-review-workspace .review-workspace-close-icon {
+caffold-review-workspace .review-workspace-back-icon,
+caffold-review-workspace .review-workspace-close-icon {
   width: 1rem;
   height: 1rem;
   stroke-width: 2;
 }
 
-codger-review-workspace .review-workspace-title {
+caffold-review-workspace .review-workspace-title {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 10px;
@@ -81,26 +81,26 @@ codger-review-workspace .review-workspace-title {
   min-width: 0;
 }
 
-codger-review-workspace .review-workspace-title.has-controls {
+caffold-review-workspace .review-workspace-title.has-controls {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   justify-content: start;
 }
 
-codger-review-workspace .review-workspace-title h2 {
+caffold-review-workspace .review-workspace-title h2 {
   margin: 0;
   font-size: 0.96rem;
   font-weight: 600;
   line-height: 1.15;
 }
 
-codger-review-workspace .review-workspace-controls {
+caffold-review-workspace .review-workspace-controls {
   justify-self: stretch;
   min-width: 0;
   width: 100%;
 }
 
-codger-review-workspace .review-workspace-subtitle {
+caffold-review-workspace .review-workspace-subtitle {
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
@@ -109,11 +109,11 @@ codger-review-workspace .review-workspace-subtitle {
   white-space: nowrap;
 }
 
-codger-review-workspace .review-workspace-title.has-controls .review-workspace-subtitle {
+caffold-review-workspace .review-workspace-title.has-controls .review-workspace-subtitle {
   justify-self: start;
 }
 
-codger-review-workspace .review-compare-ref-controls {
+caffold-review-workspace .review-compare-ref-controls {
   display: flex;
   gap: 6px;
   align-items: center;
@@ -122,18 +122,18 @@ codger-review-workspace .review-compare-ref-controls {
   max-width: 100%;
 }
 
-codger-review-workspace .review-compare-ref-controls label {
+caffold-review-workspace .review-compare-ref-controls label {
   flex: 0 0 auto;
 }
 
-codger-review-workspace .review-compare-ref-controls label,
-codger-review-workspace .review-compare-ref-separator {
+caffold-review-workspace .review-compare-ref-controls label,
+caffold-review-workspace .review-compare-ref-separator {
   color: var(--muted);
   font-size: 0.72rem;
   line-height: 1;
 }
 
-codger-review-workspace .review-compare-ref-controls select {
+caffold-review-workspace .review-compare-ref-controls select {
   field-sizing: content;
   min-width: 10ch;
   max-width: 100%;
@@ -148,61 +148,61 @@ codger-review-workspace .review-compare-ref-controls select {
   font-size: 0.78rem;
 }
 
-codger-review-workspace .review-workspace-body,
-codger-review-workspace .review-workspace-view {
+caffold-review-workspace .review-workspace-body,
+caffold-review-workspace .review-workspace-view {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 
-codger-review-workspace .workspace-mode-diff,
-codger-review-workspace .workspace-mode-compare {
+caffold-review-workspace .workspace-mode-diff,
+caffold-review-workspace .workspace-mode-compare {
   display: grid;
   grid-template-columns: var(--review-left-panel-width) 6px minmax(0, 1fr);
   height: 100%;
 }
 
-codger-review-workspace .workspace-mode-diff > codger-changes-tree,
-codger-review-workspace .workspace-mode-compare > codger-compare-tree {
+caffold-review-workspace .workspace-mode-diff > caffold-changes-tree,
+caffold-review-workspace .workspace-mode-compare > caffold-compare-tree {
   grid-column: 1;
 }
 
-codger-review-workspace .workspace-mode-diff > codger-review-file-viewer,
-codger-review-workspace .workspace-mode-compare > codger-review-file-viewer {
+caffold-review-workspace .workspace-mode-diff > caffold-review-file-viewer,
+caffold-review-workspace .workspace-mode-compare > caffold-review-file-viewer {
   grid-column: 3;
 }
 
-codger-review-workspace .workspace-mode-log {
+caffold-review-workspace .workspace-mode-log {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   height: 100%;
 }
 
-codger-review-workspace .workspace-mode-issues {
+caffold-review-workspace .workspace-mode-issues {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   height: 100%;
 }
 
-codger-review-workspace .workspace-mode-log[data-log-view="list"] codger-log-list {
+caffold-review-workspace .workspace-mode-log[data-log-view="list"] caffold-log-list {
   border-right: 0;
 }
 
-codger-review-workspace .workspace-mode-log[data-log-view="list"] .log-review-detail,
-codger-review-workspace .workspace-mode-log[data-log-view="detail"] codger-log-list {
+caffold-review-workspace .workspace-mode-log[data-log-view="list"] .log-review-detail,
+caffold-review-workspace .workspace-mode-log[data-log-view="detail"] caffold-log-list {
   display: none;
 }
 
-codger-review-workspace .workspace-mode-issues[data-issues-view="list"] codger-github-issues-list {
+caffold-review-workspace .workspace-mode-issues[data-issues-view="list"] caffold-github-issues-list {
   border-right: 0;
 }
 
-codger-review-workspace .workspace-mode-issues[data-issues-view="list"] codger-github-issue-viewer,
-codger-review-workspace .workspace-mode-issues[data-issues-view="detail"] codger-github-issues-list {
+caffold-review-workspace .workspace-mode-issues[data-issues-view="list"] caffold-github-issue-viewer,
+caffold-review-workspace .workspace-mode-issues[data-issues-view="detail"] caffold-github-issues-list {
   display: none;
 }
 
-codger-review-workspace .log-review-detail {
+caffold-review-workspace .log-review-detail {
   display: grid;
   grid-template-columns: var(--review-left-panel-width) 6px minmax(0, 1fr);
   min-width: 0;
@@ -210,15 +210,15 @@ codger-review-workspace .log-review-detail {
   overflow: hidden;
 }
 
-codger-review-workspace .log-review-detail > codger-commit-changes-tree {
+caffold-review-workspace .log-review-detail > caffold-commit-changes-tree {
   grid-column: 1;
 }
 
-codger-review-workspace .log-review-detail > codger-review-file-viewer {
+caffold-review-workspace .log-review-detail > caffold-review-file-viewer {
   grid-column: 3;
 }
 
-codger-review-workspace .review-panel-resizer {
+caffold-review-workspace .review-panel-resizer {
   grid-column: 2;
   min-width: 0;
   border-right: 1px solid var(--border);
@@ -228,201 +228,201 @@ codger-review-workspace .review-panel-resizer {
   touch-action: none;
 }
 
-codger-review-workspace .review-panel-resizer:hover,
-codger-review-workspace .review-panel-resizer:focus-visible,
-codger-review-workspace.is-resizing-review-panel .review-panel-resizer {
+caffold-review-workspace .review-panel-resizer:hover,
+caffold-review-workspace .review-panel-resizer:focus-visible,
+caffold-review-workspace.is-resizing-review-panel .review-panel-resizer {
   background: #d9e6df;
   outline: none;
 }
 
-codger-review-workspace.is-resizing-review-panel {
+caffold-review-workspace.is-resizing-review-panel {
   cursor: col-resize;
   user-select: none;
 }
 
-codger-review-workspace codger-changes-tree,
-codger-review-workspace codger-compare-tree,
-codger-review-workspace codger-log-list,
-codger-review-workspace codger-commit-changes-tree,
-codger-review-workspace codger-github-issues-list,
-codger-review-workspace codger-github-issue-viewer,
-codger-review-workspace codger-review-file-viewer {
+caffold-review-workspace caffold-changes-tree,
+caffold-review-workspace caffold-compare-tree,
+caffold-review-workspace caffold-log-list,
+caffold-review-workspace caffold-commit-changes-tree,
+caffold-review-workspace caffold-github-issues-list,
+caffold-review-workspace caffold-github-issue-viewer,
+caffold-review-workspace caffold-review-file-viewer {
   min-width: 0;
   min-height: 0;
 }
 
-codger-review-workspace codger-review-file-viewer {
+caffold-review-workspace caffold-review-file-viewer {
   display: block;
   background: var(--bg);
 }
 
-codger-review-workspace codger-changes-tree .changes-tree-panel > header,
-codger-review-workspace codger-compare-tree .compare-tree-panel > header,
-codger-review-workspace codger-log-list .log-list-panel > header,
-codger-review-workspace codger-commit-changes-tree .commit-tree-panel > header,
-codger-review-workspace codger-github-issues-list .github-issues-panel > header,
-codger-review-workspace codger-review-file-viewer .viewer-panel > header {
+caffold-review-workspace caffold-changes-tree .changes-tree-panel > header,
+caffold-review-workspace caffold-compare-tree .compare-tree-panel > header,
+caffold-review-workspace caffold-log-list .log-list-panel > header,
+caffold-review-workspace caffold-commit-changes-tree .commit-tree-panel > header,
+caffold-review-workspace caffold-github-issues-list .github-issues-panel > header,
+caffold-review-workspace caffold-review-file-viewer .viewer-panel > header {
   box-sizing: border-box;
   height: var(--review-header-height);
   min-height: 0;
   overflow: hidden;
 }
 
-codger-review-workspace codger-review-file-viewer .viewer-panel > header {
+caffold-review-workspace caffold-review-file-viewer .viewer-panel > header {
   padding-top: 4px;
   padding-bottom: 4px;
 }
 
-codger-review-workspace codger-review-file-viewer h2 {
+caffold-review-workspace caffold-review-file-viewer h2 {
   font-size: var(--review-pane-title-size);
   line-height: 1.05;
 }
 
-codger-review-workspace codger-changes-tree h2,
-codger-review-workspace codger-compare-tree h2,
-codger-review-workspace codger-log-list h2,
-codger-review-workspace codger-commit-changes-tree h2,
-codger-review-workspace codger-github-issues-list h2 {
+caffold-review-workspace caffold-changes-tree h2,
+caffold-review-workspace caffold-compare-tree h2,
+caffold-review-workspace caffold-log-list h2,
+caffold-review-workspace caffold-commit-changes-tree h2,
+caffold-review-workspace caffold-github-issues-list h2 {
   font-size: var(--review-pane-title-size);
 }
 
 @media (max-width: 1100px) {
-  codger-review-workspace .log-review-detail {
+  caffold-review-workspace .log-review-detail {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 32dvh) minmax(0, 1fr);
   }
 
-  codger-review-workspace .log-review-detail > codger-commit-changes-tree {
+  caffold-review-workspace .log-review-detail > caffold-commit-changes-tree {
     grid-column: 1;
     grid-row: 1;
   }
 
-  codger-review-workspace .log-review-detail > codger-review-file-viewer {
+  caffold-review-workspace .log-review-detail > caffold-review-file-viewer {
     grid-column: 1;
     grid-row: 2;
   }
 
-  codger-review-workspace .log-review-detail > .review-panel-resizer {
+  caffold-review-workspace .log-review-detail > .review-panel-resizer {
     display: none;
   }
 
-  codger-review-workspace .log-review-detail codger-commit-changes-tree {
+  caffold-review-workspace .log-review-detail caffold-commit-changes-tree {
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }
 }
 
 @media (max-width: 860px) {
-  codger-review-workspace[data-mobile-detail="true"] .review-workspace-panel {
+  caffold-review-workspace[data-mobile-detail="true"] .review-workspace-panel {
     grid-template-rows: minmax(0, 1fr);
   }
 
-  codger-review-workspace[data-mobile-detail="true"] .review-workspace-header {
+  caffold-review-workspace[data-mobile-detail="true"] .review-workspace-header {
     display: none;
   }
 
-  codger-review-workspace .review-workspace-header {
+  caffold-review-workspace .review-workspace-header {
     height: auto;
     min-height: var(--review-header-height);
   }
 
-  codger-review-workspace .review-workspace-title.has-controls {
+  caffold-review-workspace .review-workspace-title.has-controls {
     grid-template-columns: auto minmax(0, 1fr);
     row-gap: 4px;
     justify-content: stretch;
   }
 
-  codger-review-workspace .review-workspace-title.has-controls .review-workspace-controls {
+  caffold-review-workspace .review-workspace-title.has-controls .review-workspace-controls {
     grid-column: 1 / -1;
   }
 
-  codger-review-workspace .review-workspace-title.has-controls .review-workspace-subtitle {
+  caffold-review-workspace .review-workspace-title.has-controls .review-workspace-subtitle {
     justify-self: end;
   }
 
-  codger-review-workspace .review-compare-ref-controls {
+  caffold-review-workspace .review-compare-ref-controls {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto auto minmax(0, 1fr);
     width: 100%;
   }
 
-  codger-review-workspace .review-compare-ref-controls select {
+  caffold-review-workspace .review-compare-ref-controls select {
     field-sizing: fixed;
     width: 100%;
     max-width: 100%;
   }
 
-  codger-review-workspace .workspace-mode-diff,
-  codger-review-workspace .workspace-mode-compare {
+  caffold-review-workspace .workspace-mode-diff,
+  caffold-review-workspace .workspace-mode-compare {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 1fr);
   }
 
-  codger-review-workspace .workspace-mode-diff > codger-changes-tree,
-  codger-review-workspace .workspace-mode-compare > codger-compare-tree {
+  caffold-review-workspace .workspace-mode-diff > caffold-changes-tree,
+  caffold-review-workspace .workspace-mode-compare > caffold-compare-tree {
     grid-column: 1;
     grid-row: 1;
   }
 
-  codger-review-workspace .workspace-mode-diff > codger-review-file-viewer,
-  codger-review-workspace .workspace-mode-compare > codger-review-file-viewer {
+  caffold-review-workspace .workspace-mode-diff > caffold-review-file-viewer,
+  caffold-review-workspace .workspace-mode-compare > caffold-review-file-viewer {
     grid-column: 1;
     grid-row: 1;
   }
 
-  codger-review-workspace .workspace-mode-diff[data-detail-view="list"] > codger-review-file-viewer,
-  codger-review-workspace .workspace-mode-diff[data-detail-view="viewer"] > codger-changes-tree,
-  codger-review-workspace .workspace-mode-compare[data-detail-view="list"] > codger-review-file-viewer,
-  codger-review-workspace .workspace-mode-compare[data-detail-view="viewer"] > codger-compare-tree {
+  caffold-review-workspace .workspace-mode-diff[data-detail-view="list"] > caffold-review-file-viewer,
+  caffold-review-workspace .workspace-mode-diff[data-detail-view="viewer"] > caffold-changes-tree,
+  caffold-review-workspace .workspace-mode-compare[data-detail-view="list"] > caffold-review-file-viewer,
+  caffold-review-workspace .workspace-mode-compare[data-detail-view="viewer"] > caffold-compare-tree {
     display: none;
   }
 
-  codger-review-workspace .workspace-mode-diff > .review-panel-resizer,
-  codger-review-workspace .workspace-mode-compare > .review-panel-resizer {
+  caffold-review-workspace .workspace-mode-diff > .review-panel-resizer,
+  caffold-review-workspace .workspace-mode-compare > .review-panel-resizer {
     display: none;
   }
 
-  codger-review-workspace .workspace-mode-log {
+  caffold-review-workspace .workspace-mode-log {
     grid-template-columns: 1fr;
   }
 
-  codger-review-workspace .workspace-mode-issues {
+  caffold-review-workspace .workspace-mode-issues {
     grid-template-columns: 1fr;
   }
 
-  codger-review-workspace .log-review-detail {
+  caffold-review-workspace .log-review-detail {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 1fr);
   }
 
-  codger-review-workspace .log-review-detail > codger-commit-changes-tree,
-  codger-review-workspace .log-review-detail > codger-review-file-viewer {
+  caffold-review-workspace .log-review-detail > caffold-commit-changes-tree,
+  caffold-review-workspace .log-review-detail > caffold-review-file-viewer {
     grid-column: 1;
     grid-row: 1;
   }
 
-  codger-review-workspace .log-review-detail[data-detail-view="list"] > codger-review-file-viewer,
-  codger-review-workspace .log-review-detail[data-detail-view="viewer"] > codger-commit-changes-tree {
+  caffold-review-workspace .log-review-detail[data-detail-view="list"] > caffold-review-file-viewer,
+  caffold-review-workspace .log-review-detail[data-detail-view="viewer"] > caffold-commit-changes-tree {
     display: none;
   }
 
-  codger-review-workspace .workspace-mode-diff codger-changes-tree,
-  codger-review-workspace .workspace-mode-compare codger-compare-tree {
+  caffold-review-workspace .workspace-mode-diff caffold-changes-tree,
+  caffold-review-workspace .workspace-mode-compare caffold-compare-tree {
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }
 
-  codger-review-workspace .workspace-mode-log[data-log-view="list"] codger-log-list {
+  caffold-review-workspace .workspace-mode-log[data-log-view="list"] caffold-log-list {
     border-bottom: 0;
   }
 }
 
 @media (max-width: 520px) {
-  codger-review-workspace .review-workspace-header {
+  caffold-review-workspace .review-workspace-header {
     padding: 6px 10px;
   }
 
-  codger-review-workspace .review-workspace-title {
+  caffold-review-workspace .review-workspace-title {
     grid-template-columns: auto minmax(0, 1fr);
     gap: 8px;
   }

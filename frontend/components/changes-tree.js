@@ -7,7 +7,7 @@ const SECTIONS = [
   ["untracked", "Untracked"],
 ];
 
-class CodgerChangesTree extends HTMLElement {
+class CaffoldChangesTree extends HTMLElement {
   connectedCallback() {
     this.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-node-key], button[data-change-path]");
@@ -22,7 +22,7 @@ class CodgerChangesTree extends HTMLElement {
 
       this.setSelectedPath(button.dataset.changePath);
       this.dispatchEvent(
-        new CustomEvent("codger:open-git-diff", {
+        new CustomEvent("caffold:open-git-diff", {
           bubbles: true,
           detail: {
             path: button.dataset.changePath,
@@ -34,7 +34,7 @@ class CodgerChangesTree extends HTMLElement {
     });
 
     this.boundIconsReady = () => this.render();
-    window.addEventListener("codger:icons-ready", this.boundIconsReady);
+    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     warmIcons();
 
     if (!this.state) {
@@ -43,7 +43,7 @@ class CodgerChangesTree extends HTMLElement {
   }
 
   disconnectedCallback() {
-    window.removeEventListener("codger:icons-ready", this.boundIconsReady);
+    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
   setLoading(repository) {
@@ -295,7 +295,7 @@ class CodgerChangesTree extends HTMLElement {
   }
 }
 
-customElements.define("codger-changes-tree", CodgerChangesTree);
+customElements.define("caffold-changes-tree", CaffoldChangesTree);
 
 function buildChangeTree(files) {
   const sections = new Map(

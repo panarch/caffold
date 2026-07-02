@@ -452,15 +452,15 @@ mod tests {
 
     #[test]
     fn parses_github_remote_urls() {
-        let https = github_repository_from_url("https://github.com/example/codger.git").unwrap();
-        let ssh = github_repository_from_url("git@github.com:example/codger.git").unwrap();
+        let https = github_repository_from_url("https://github.com/example/caffold.git").unwrap();
+        let ssh = github_repository_from_url("git@github.com:example/caffold.git").unwrap();
         let explicit_ssh =
-            github_repository_from_url("ssh://git@github.com/example/codger.git").unwrap();
+            github_repository_from_url("ssh://git@github.com/example/caffold.git").unwrap();
 
-        assert_eq!(https.name_with_owner, "example/codger");
+        assert_eq!(https.name_with_owner, "example/caffold");
         assert_eq!(ssh, https);
         assert_eq!(explicit_ssh, https);
-        assert!(github_repository_from_url("https://gitlab.com/example/codger.git").is_none());
+        assert!(github_repository_from_url("https://gitlab.com/example/caffold.git").is_none());
     }
 
     #[test]
@@ -478,7 +478,7 @@ mod tests {
                   "assignees": [{ "login": "codex" }],
                   "comments": 4,
                   "updated_at": "2026-07-01T10:00:00Z",
-                  "html_url": "https://github.com/example/codger/issues/42"
+                  "html_url": "https://github.com/example/caffold/issues/42"
                 }
               ]
             }"#,
@@ -495,7 +495,10 @@ mod tests {
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].number, 42);
         assert_eq!(issues[0].comments, 4);
-        assert_eq!(issues[0].url, "https://github.com/example/codger/issues/42");
+        assert_eq!(
+            issues[0].url,
+            "https://github.com/example/caffold/issues/42"
+        );
     }
 
     #[test]
@@ -516,7 +519,7 @@ mod tests {
                     "bodyHTML": "<p><strong>Issue</strong> body</p>",
                     "createdAt": "2026-07-01T09:00:00Z",
                     "updatedAt": "2026-07-01T10:00:00Z",
-                    "url": "https://github.com/example/codger/issues/9"
+                    "url": "https://github.com/example/caffold/issues/9"
                   }
                 }
               }

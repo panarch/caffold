@@ -6,8 +6,8 @@ use tracing_subscriber::EnvFilter;
 use crate::app::{self, ServeConfig};
 
 #[derive(Debug, Parser)]
-#[command(name = "codger")]
-#[command(about = "A browser-based review console for agent-generated code")]
+#[command(name = "caffold")]
+#[command(about = "A browser-based review and control surface for agent-assisted development")]
 pub struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -15,7 +15,7 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Serve the Codger web console.
+    /// Serve the Caffold web console.
     Serve(ServeArgs),
 }
 
@@ -29,11 +29,11 @@ struct ServeArgs {
     #[arg(long, default_value_t = 5177)]
     port: u16,
 
-    /// Filesystem root boundary to browse. Without this, Codger starts at $HOME and allows parent navigation.
+    /// Filesystem root boundary to browse. Without this, Caffold starts at $HOME and allows parent navigation.
     #[arg(long, value_name = "PATH")]
     root: Option<PathBuf>,
 
-    /// Directory for Codger's local metadata database.
+    /// Directory for Caffold's local metadata database.
     #[arg(long, value_name = "PATH")]
     data_dir: Option<PathBuf>,
 }
@@ -41,7 +41,7 @@ struct ServeArgs {
 pub async fn run() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("codger=info")),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("caffold=info")),
         )
         .init();
 

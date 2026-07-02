@@ -3,8 +3,8 @@
 /playwright-report
 /test-results
 /tests/e2e/*-snapshots
-/tests/fixtures/.codger-data
+/tests/fixtures/.caffold-data
 /tests/fixtures/**/.git
-.codger-dev/
+.caffold-dev/
 .notes/
 .DS_Store

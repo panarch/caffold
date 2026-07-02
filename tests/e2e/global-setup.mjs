@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 
 const fixtureRepo = resolve("tests/fixtures/home/src");
 const fixtureGitDir = resolve(fixtureRepo, ".git");
-const fixtureDataDir = resolve("tests/fixtures/.codger-data");
+const fixtureDataDir = resolve("tests/fixtures/.caffold-data");
 
 export default function globalSetup() {
   rmSync(fixtureGitDir, { recursive: true, force: true });

@@ -1,10 +1,10 @@
-# Codger
+# Caffold
 
-Codger is a review console for developers who want to inspect agent-generated code before they trust it.
+Caffold is scaffolding for agent-assisted development: a browser-based review and control surface that helps developers inspect, guide, and validate Codex-backed code work across git worktrees.
 
 It runs Codex-powered development tasks on a trusted host and gives the developer a browser-based surface for reviewing task state, diffs, files, test results, approvals, and follow-up prompts.
 
-Codger is not an autonomous coding product, an IDE, or a replacement for the Codex GUI.
+Caffold is not an autonomous coding product, an IDE, or a replacement for the Codex GUI.
 
 Its narrower goal is to make agent-generated code review practical away from the desktop app, including on mobile and foldable devices.
 
@@ -18,7 +18,7 @@ That shift makes a browser-based review console practical. The important surface
 
 For long-running code work, the hard part is often not the agent itself. It is the surface around the agent: finding the right session again, understanding which worktree changed, reading the diff without opening a full editor, approving commands remotely, and continuing the review loop from another device.
 
-Codger keeps Codex in the workflow, while giving mobile-friendly, long-running code review work a control surface owned by the developer.
+Codex remains the work execution engine. The git worktree remains the construction site. Caffold is the structure a developer uses to get close to the work, inspect it, guide it, and decide what is safe to keep.
 
 ## Shape
 
@@ -28,13 +28,13 @@ The intended shape is:
 - a browser/PWA frontend served by that backend
 - Codex app-server managed as a child process
 - JSON-RPC integration between the backend and Codex app-server
-- GlueSQL with redb for Codger-owned metadata and event history
+- GlueSQL with redb for Caffold-owned metadata and event history
 - git worktrees as the source of truth for code changes
 - Tailscale or another trusted private network for remote access
 
 ## Core Principle
 
-Codger should make agent output easier to inspect, question, accept, reject, and continue.
+Caffold should make agent output easier to inspect, question, accept, reject, and continue.
 
 It should not try to become VS Code, a full git GUI, or a native mobile app.
 
@@ -46,7 +46,7 @@ Start the first read-only file browser slice:
 cargo run -- serve
 ```
 
-Then open the printed local URL. By default Codger opens at `$HOME`, displays it as `~`, and allows read-only parent navigation up to the filesystem root.
+Then open the printed local URL. By default Caffold opens at `$HOME`, displays it as `~`, and allows read-only parent navigation up to the filesystem root.
 
 For deterministic local testing, a bounded root can be supplied:
 
@@ -70,7 +70,7 @@ Run browser tests:
 npm run test:e2e
 ```
 
-Playwright tests verify behavior and write review screenshots under the ignored `test-results` directory. Codger does not commit Playwright snapshot baselines; future CI visual checks should compare screenshots generated from `main` and the pull request head in the same runner.
+Playwright tests verify behavior and write review screenshots under the ignored `test-results` directory. Caffold does not commit Playwright snapshot baselines; future CI visual checks should compare screenshots generated from `main` and the pull request head in the same runner.
 
 ## Documentation
 
@@ -92,4 +92,4 @@ Internal planning notes:
 
 ## Status
 
-This repository has an initial read-only web file browser slice. The broader Codex-connected review console remains under active design and implementation.
+This repository has an initial read-only web file browser slice. The broader Codex-connected review and control surface remains under active design and implementation.

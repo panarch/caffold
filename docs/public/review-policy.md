@@ -1,6 +1,6 @@
 # Review Policy
 
-Codger is a review console. Changes to Codger should be reviewed with the same bias the product gives its users: make the relevant state visible, keep the workflow inspectable, and avoid trusting generated output until the behavior has been checked.
+Caffold is scaffolding for agent-assisted development. Changes to Caffold should be reviewed with the same bias the product gives its users: make the relevant state visible, keep the workflow inspectable, and avoid trusting generated output until the behavior has been checked.
 
 This document is a public engineering policy, not a fixed roadmap or compatibility contract.
 
@@ -16,7 +16,7 @@ Review changes in this order:
 
 ## Review Workflow
 
-Codger exists to make review-heavy agent work practical from a browser. A change should not make these actions harder:
+Caffold exists to make review-heavy agent work practical from a browser. A change should not make these actions harder:
 
 - understand what changed and why it matters
 - inspect diffs and surrounding source files
@@ -29,11 +29,11 @@ When a change affects layout, navigation, scrolling, or review surfaces, the rev
 
 ## Source of Truth
 
-Codger should present state without pretending to own state it does not own.
+Caffold should present state without pretending to own state it does not own.
 
 - git is the source of truth for file changes, diffs, logs, and repository state.
 - Codex app-server is the source of truth for Codex thread and turn behavior.
-- Codger storage is for Codger-owned metadata, indexes, recovery data, and UI-facing summaries.
+- Caffold storage is for Caffold-owned metadata, indexes, recovery data, and UI-facing summaries.
 - The browser UI is a view and control surface, not durable state.
 
 Duplicating external state is acceptable only when it supports recovery, indexing, or a clearer review experience. The copied data should be treated as a snapshot, not as the authority.
@@ -80,7 +80,7 @@ Frontend fixtures should include inconvenient examples, not only normal labels:
 
 ## Web Components And CSS
 
-Codger currently uses internal Web Components rendered in Light DOM. This keeps browser behavior, debugging, Playwright tests, shared theme variables, and small frontend modules straightforward. It also means CSS is still one global cascade.
+Caffold currently uses internal Web Components rendered in Light DOM. This keeps browser behavior, debugging, Playwright tests, shared theme variables, and small frontend modules straightforward. It also means CSS is still one global cascade.
 
 Light DOM is the default until a component has a clear reason to isolate styles with Shadow DOM. Good reasons include reusable leaf widgets, third-party-like components, or a component whose styles cannot reasonably share the app cascade.
 
@@ -89,7 +89,7 @@ Because nested custom elements are still normal descendants in Light DOM, contai
 Preferred patterns:
 
 ```css
-codger-review-workspace > .review-workspace-panel {
+caffold-review-workspace > .review-workspace-panel {
   display: grid;
 }
 
@@ -97,7 +97,7 @@ codger-review-workspace > .review-workspace-panel {
   font-weight: 600;
 }
 
-codger-log-list .log-entry {
+caffold-log-list .log-entry {
   display: grid;
 }
 ```
@@ -105,11 +105,11 @@ codger-log-list .log-entry {
 Avoid broad container selectors that can enter child components:
 
 ```css
-codger-review-workspace h2 {
+caffold-review-workspace h2 {
   font-weight: 600;
 }
 
-codger-app-shell button {
+caffold-app-shell button {
   font-size: 0.9rem;
 }
 ```

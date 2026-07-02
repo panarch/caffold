@@ -104,6 +104,6 @@ mod tests {
 
     #[test]
     fn formats_sample_message() {
-        assert_eq!(sample("codger"), "hello, codger");
+        assert_eq!(sample("caffold"), "hello, caffold");
     }
 }

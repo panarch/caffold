@@ -6,7 +6,7 @@ import "./diff-viewer.js";
 
 let viewerInstanceId = 0;
 
-class CodgerFileViewer extends HTMLElement {
+class CaffoldFileViewer extends HTMLElement {
   connectedCallback() {
     this.ensureDetailsPopoverId();
 
@@ -19,13 +19,13 @@ class CodgerFileViewer extends HTMLElement {
         }
 
         this.dispatchEvent(
-          new CustomEvent("codger:close-file-viewer", {
+          new CustomEvent("caffold:close-file-viewer", {
             bubbles: true,
           }),
         );
       });
       this.boundIconsReady = () => this.render();
-      window.addEventListener("codger:icons-ready", this.boundIconsReady);
+      window.addEventListener("caffold:icons-ready", this.boundIconsReady);
       warmIcons();
     }
 
@@ -35,7 +35,7 @@ class CodgerFileViewer extends HTMLElement {
   }
 
   disconnectedCallback() {
-    window.removeEventListener("codger:icons-ready", this.boundIconsReady);
+    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
   setEmpty() {
@@ -78,7 +78,7 @@ class CodgerFileViewer extends HTMLElement {
   ensureDetailsPopoverId() {
     if (!this.detailsPopoverId) {
       viewerInstanceId += 1;
-      this.detailsPopoverId = `codger-viewer-details-${viewerInstanceId}`;
+      this.detailsPopoverId = `caffold-viewer-details-${viewerInstanceId}`;
     }
   }
 
@@ -136,11 +136,11 @@ class CodgerFileViewer extends HTMLElement {
           },
           { field: "language", label: "Language", value: language },
         ])}
-        <codger-code-viewer></codger-code-viewer>
+        <caffold-code-viewer></caffold-code-viewer>
       </section>
     `;
 
-    this.querySelector("codger-code-viewer").setFile(file);
+    this.querySelector("caffold-code-viewer").setFile(file);
   }
 
   renderImage() {
@@ -190,11 +190,11 @@ class CodgerFileViewer extends HTMLElement {
         ], {
           subtitle: diffSubtitle(diff),
         })}
-        <codger-diff-viewer></codger-diff-viewer>
+        <caffold-diff-viewer></caffold-diff-viewer>
       </section>
     `;
 
-    this.querySelector("codger-diff-viewer").setDiff(diff);
+    this.querySelector("caffold-diff-viewer").setDiff(diff);
   }
 
   renderHeader(title, metadata, options = {}) {
@@ -277,10 +277,10 @@ class CodgerFileViewer extends HTMLElement {
   }
 }
 
-customElements.define("codger-file-viewer", CodgerFileViewer);
+customElements.define("caffold-file-viewer", CaffoldFileViewer);
 customElements.define(
-  "codger-review-file-viewer",
-  class CodgerReviewFileViewer extends CodgerFileViewer {},
+  "caffold-review-file-viewer",
+  class CaffoldReviewFileViewer extends CaffoldFileViewer {},
 );
 
 function diffSubtitle(diff) {

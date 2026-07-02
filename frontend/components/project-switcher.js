@@ -1,9 +1,9 @@
 import { escapeHtml } from "./dom.js";
 import { renderInlineIcon, warmIcons } from "./icons.js";
 
-const POPOVER_ID = "codger-projects-popover";
+const POPOVER_ID = "caffold-projects-popover";
 
-class CodgerProjectSwitcher extends HTMLElement {
+class CaffoldProjectSwitcher extends HTMLElement {
   connectedCallback() {
     if (this.initialized) {
       return;
@@ -24,13 +24,13 @@ class CodgerProjectSwitcher extends HTMLElement {
       this.handleSubmit(event);
     });
     this.boundIconsReady = () => this.renderKeepingPopover();
-    window.addEventListener("codger:icons-ready", this.boundIconsReady);
+    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     warmIcons();
     this.render();
   }
 
   disconnectedCallback() {
-    window.removeEventListener("codger:icons-ready", this.boundIconsReady);
+    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
   setState(nextState) {
@@ -57,7 +57,7 @@ class CodgerProjectSwitcher extends HTMLElement {
     if (action === "register-current-project") {
       this.closePopover();
       this.dispatchEvent(
-        new CustomEvent("codger:register-current-project", {
+        new CustomEvent("caffold:register-current-project", {
           bubbles: true,
         }),
       );
@@ -67,7 +67,7 @@ class CodgerProjectSwitcher extends HTMLElement {
     if (action === "open-project" && projectId) {
       this.closePopover();
       this.dispatchEvent(
-        new CustomEvent("codger:open-project", {
+        new CustomEvent("caffold:open-project", {
           bubbles: true,
           detail: { id: projectId },
         }),
@@ -89,7 +89,7 @@ class CodgerProjectSwitcher extends HTMLElement {
 
     if (action === "delete-project" && projectId) {
       this.dispatchEvent(
-        new CustomEvent("codger:delete-project", {
+        new CustomEvent("caffold:delete-project", {
           bubbles: true,
           detail: { id: projectId },
         }),
@@ -112,7 +112,7 @@ class CodgerProjectSwitcher extends HTMLElement {
     const name = new FormData(form).get("name")?.toString() ?? "";
     this.editingId = null;
     this.dispatchEvent(
-      new CustomEvent("codger:rename-project", {
+      new CustomEvent("caffold:rename-project", {
         bubbles: true,
         detail: { id: projectId, name },
       }),
@@ -289,4 +289,4 @@ class CodgerProjectSwitcher extends HTMLElement {
   }
 }
 
-customElements.define("codger-project-switcher", CodgerProjectSwitcher);
+customElements.define("caffold-project-switcher", CaffoldProjectSwitcher);

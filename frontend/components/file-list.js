@@ -4,7 +4,7 @@ import { renderEntryIcon, warmIcons } from "./icons.js";
 
 const TREE_LOADING_DELAY_MS = 180;
 
-class CodgerFileList extends HTMLElement {
+class CaffoldFileList extends HTMLElement {
   connectedCallback() {
     this.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-entry-path]");
@@ -20,8 +20,8 @@ class CodgerFileList extends HTMLElement {
       const path = button.dataset.entryPath;
       const eventName =
         button.dataset.kind === "directory"
-          ? "codger:open-directory"
-          : "codger:open-file";
+          ? "caffold:open-directory"
+          : "caffold:open-file";
 
       this.dispatchEvent(
         new CustomEvent(eventName, {
@@ -31,14 +31,14 @@ class CodgerFileList extends HTMLElement {
       );
     });
     this.boundIconsReady = () => this.render();
-    window.addEventListener("codger:icons-ready", this.boundIconsReady);
+    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     warmIcons();
 
     this.setIdle();
   }
 
   disconnectedCallback() {
-    window.removeEventListener("codger:icons-ready", this.boundIconsReady);
+    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
     this.clearTreeLoadingTimers();
   }
 
@@ -533,7 +533,7 @@ class CodgerFileList extends HTMLElement {
   }
 }
 
-customElements.define("codger-file-list", CodgerFileList);
+customElements.define("caffold-file-list", CaffoldFileList);
 
 function parentDirectory(path) {
   const parts = path.split("/").filter(Boolean);

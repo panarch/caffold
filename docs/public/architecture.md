@@ -2,14 +2,14 @@
 
 This is an initial architecture sketch, not a fixed public contract.
 
-Codger is organized around one control instance per trusted host.
+Caffold is organized around one control instance per trusted host.
 
-That instance is expected to serve the UI, store Codger metadata, manage Codex app-server, talk to git, and expose task/review APIs to the browser.
+That instance is expected to serve the UI, store Caffold metadata, manage Codex app-server, talk to git, and expose task/review APIs to the browser.
 
 ```mermaid
 flowchart TD
     PWA["Browser / PWA"]
-    Backend["Codger Rust Backend"]
+    Backend["Caffold Rust Backend"]
     DB["GlueSQL + redb"]
     AppServer["Codex app-server"]
     Git["git worktree"]
@@ -46,11 +46,11 @@ The backend owns:
 
 ### Codex App Server
 
-Codex app-server owns Codex thread, turn, approval, and event stream behavior. Codger should treat it as an external integration boundary rather than embedding Codex internals in the first implementation.
+Codex app-server owns Codex thread, turn, approval, and event stream behavior. Caffold should treat it as an external integration boundary rather than embedding Codex internals in the first implementation.
 
 ### GlueSQL + redb
 
-The database stores Codger-owned state:
+The database stores Caffold-owned state:
 
 - host records
 - projects
@@ -66,17 +66,17 @@ It should not duplicate the full Codex transcript or all command output by defau
 
 ### Git Worktree
 
-The worktree is the source of truth for code changes. Codger reads from git and file contents to present review surfaces.
+The worktree is the source of truth for code changes. Caffold reads from git and file contents to present review surfaces.
 
 ## Source of Truth
 
 - Codex thread/session: conversation, turns, agent activity
 - git worktree: actual file and code changes
-- GlueSQL/redb: Codger task metadata and operation events
+- GlueSQL/redb: Caffold task metadata and operation events
 - PWA: view and controller only
 
 ## Process Model
 
-The initial model is one Codger backend instance per host. That backend manages one Codex app-server process for the host unless implementation evidence later suggests a different process model.
+The initial model is one Caffold backend instance per host. That backend manages one Codex app-server process for the host unless implementation evidence later suggests a different process model.
 
 Tasks are normally bound to one worktree and one Codex thread.

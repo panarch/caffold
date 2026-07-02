@@ -1,4 +1,4 @@
-codger-file-list {
+caffold-file-list {
   display: block;
   min-width: 0;
   min-height: 0;
@@ -6,14 +6,14 @@ codger-file-list {
   background: var(--surface);
 }
 
-codger-file-list .file-list-panel {
+caffold-file-list .file-list-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
   height: 100%;
 }
 
-codger-file-list .file-list-panel > header {
+caffold-file-list .file-list-panel > header {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 2px;
@@ -22,7 +22,7 @@ codger-file-list .file-list-panel > header {
   border-bottom: 1px solid var(--border);
 }
 
-codger-file-list h2 {
+caffold-file-list h2 {
   margin: 0;
   overflow: hidden;
   font-size: 0.95rem;
@@ -32,12 +32,12 @@ codger-file-list h2 {
   white-space: nowrap;
 }
 
-codger-file-list .file-list-panel > header span {
+caffold-file-list .file-list-panel > header span {
   color: var(--muted);
   font-size: 0.82rem;
 }
 
-codger-file-list .file-list-title-row {
+caffold-file-list .file-list-title-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
@@ -46,12 +46,12 @@ codger-file-list .file-list-title-row {
   min-width: 0;
 }
 
-codger-file-list .entry-count {
+caffold-file-list .entry-count {
   justify-self: end;
   white-space: nowrap;
 }
 
-codger-file-list .git-summary {
+caffold-file-list .git-summary {
   display: block;
   min-width: 0;
   overflow: hidden;
@@ -61,11 +61,11 @@ codger-file-list .git-summary {
   white-space: nowrap;
 }
 
-codger-file-list .git-summary.is-dirty {
+caffold-file-list .git-summary.is-dirty {
   color: #8a5200;
 }
 
-codger-file-list .file-list {
+caffold-file-list .file-list {
   display: block;
   min-height: 0;
   margin: 0;
@@ -75,16 +75,16 @@ codger-file-list .file-list {
   list-style: none;
 }
 
-codger-file-list .file-list > li {
+caffold-file-list .file-list > li {
   width: max-content;
   min-width: 100%;
 }
 
-codger-file-list .repo-tree {
+caffold-file-list .repo-tree {
   --tree-indent: 14px;
 }
 
-codger-file-list .file-entry {
+caffold-file-list .file-entry {
   display: grid;
   grid-template-columns: 1.75rem max-content;
   gap: 8px;
@@ -102,52 +102,52 @@ codger-file-list .file-entry {
   text-align: left;
 }
 
-codger-file-list .tree-entry {
+caffold-file-list .tree-entry {
   grid-template-columns: 1.75rem max-content;
   padding-left: calc(7px + var(--tree-depth, 0) * var(--tree-indent));
 }
 
-codger-file-list .file-entry:hover,
-codger-file-list .file-entry:focus-visible {
+caffold-file-list .file-entry:hover,
+caffold-file-list .file-entry:focus-visible {
   background: #f1f6f3;
   outline: none;
 }
 
-codger-file-list .file-entry:disabled {
+caffold-file-list .file-entry:disabled {
   cursor: not-allowed;
   opacity: 0.58;
 }
 
-codger-file-list .parent-entry,
-codger-file-list .file-entry.is-ignored {
+caffold-file-list .parent-entry,
+caffold-file-list .file-entry.is-ignored {
   color: #77857c;
 }
 
-codger-file-list .file-entry.is-hidden {
+caffold-file-list .file-entry.is-hidden {
   color: #9aa59e;
 }
 
-codger-file-list .file-entry.is-hidden .entry-kind {
+caffold-file-list .file-entry.is-hidden .entry-kind {
   color: #9aa59e;
 }
 
-codger-file-list .file-entry:focus-visible,
-codger-file-list .file-entry:hover {
+caffold-file-list .file-entry:focus-visible,
+caffold-file-list .file-entry:hover {
   border-left-color: #bdd7cc;
 }
 
-codger-file-list .file-entry:not(.parent-entry)[aria-current="true"],
-codger-file-list .file-entry:not(.parent-entry).is-selected {
+caffold-file-list .file-entry:not(.parent-entry)[aria-current="true"],
+caffold-file-list .file-entry:not(.parent-entry).is-selected {
   border-left-color: var(--accent);
   background: var(--accent-soft);
 }
 
-codger-file-list .entry-kind {
+caffold-file-list .entry-kind {
   color: var(--muted);
   white-space: nowrap;
 }
 
-codger-file-list .entry-icon {
+caffold-file-list .entry-icon {
   display: inline-grid;
   width: 1.5rem;
   height: 1.5rem;
@@ -155,21 +155,21 @@ codger-file-list .entry-icon {
   justify-self: center;
 }
 
-codger-file-list .entry-icon-svg {
+caffold-file-list .entry-icon-svg {
   display: block;
   width: 1.125rem;
   height: 1.125rem;
   stroke-width: 1.9;
 }
 
-codger-file-list .entry-name {
+caffold-file-list .entry-name {
   min-width: 0;
   overflow: visible;
   text-overflow: clip;
   white-space: nowrap;
 }
 
-codger-file-list .tree-status {
+caffold-file-list .tree-status {
   width: max-content;
   min-width: 100%;
   min-height: 26px;
@@ -179,12 +179,12 @@ codger-file-list .tree-status {
   font-size: 0.78rem;
 }
 
-codger-file-list .tree-status.is-error {
+caffold-file-list .tree-status.is-error {
   color: var(--danger);
 }
 
 @media (max-width: 860px) {
-  codger-file-list {
+  caffold-file-list {
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }

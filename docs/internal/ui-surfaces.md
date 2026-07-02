@@ -2,7 +2,7 @@
 
 > Internal planning note. These surfaces describe product intent before UI implementation.
 
-Codger UI should be dense, review-oriented, and useful on mobile. It should not feel like a marketing site or a general IDE.
+Caffold UI should be dense, review-oriented, and useful on mobile. It should not feel like a marketing site or a general IDE.
 
 ## Task List
 

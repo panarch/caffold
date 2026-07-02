@@ -2,7 +2,7 @@
 
 > Internal planning note. These workflows describe intended product behavior before implementation.
 
-Codger workflows should be described from the reviewer's point of view. The reviewer is not trying to edit code on a phone. The reviewer is trying to understand, approve, interrupt, continue, or reject agent work.
+Caffold workflows should be described from the reviewer's point of view. The reviewer is not trying to edit code on a phone. The reviewer is trying to understand, approve, interrupt, continue, or reject agent work.
 
 ## Task Creation
 
@@ -34,7 +34,7 @@ Codger workflows should be described from the reviewer's point of view. The revi
 ## Approval Loop
 
 1. Codex requests permission for an action.
-2. Codger displays the requested command, cwd, risk context, and available decision buttons.
+2. Caffold displays the requested command, cwd, risk context, and available decision buttons.
 3. User accepts, accepts for the session, declines, or cancels.
 4. Backend forwards the decision to app-server.
 5. Ledger records the decision and resulting state.
@@ -43,7 +43,7 @@ Codger workflows should be described from the reviewer's point of view. The revi
 
 Resume is a core workflow.
 
-When a user returns after time away, Codger should show:
+When a user returns after time away, Caffold should show:
 
 - task title and status
 - host
@@ -59,6 +59,6 @@ The user should not need to remember which terminal, tab, or GUI state held the 
 
 ## Completion
 
-Task completion does not mean Codger performs a git commit. In the MVP, completion means the reviewer marks the task as reviewed, accepted, rejected, paused, or archived.
+Task completion does not mean Caffold performs a git commit. In the MVP, completion means the reviewer marks the task as reviewed, accepted, rejected, paused, or archived.
 
 Git mutation remains primarily agent-driven or manual until a controlled flow is designed.

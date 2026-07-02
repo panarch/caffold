@@ -36,14 +36,14 @@ import "./github-issue-viewer.js";
 import "./review-workspace.js";
 
 const LOADING_DELAY_MS = 180;
-const LAST_DIRECTORY_KEY_PREFIX = "codger:last-directory-path";
+const LAST_DIRECTORY_KEY_PREFIX = "caffold:last-directory-path";
 const GITHUB_ISSUES_PER_PAGE = 50;
 const LEFT_PANEL_DEFAULT_WIDTH = 320;
 const LEFT_PANEL_MIN_WIDTH = 180;
 const LEFT_PANEL_VIEWER_MIN_WIDTH = 320;
 const LEFT_PANEL_MAX_RATIO = 0.7;
 
-class CodgerAppShell extends HTMLElement {
+class CaffoldAppShell extends HTMLElement {
   connectedCallback() {
     if (this.initialized) {
       return;
@@ -92,28 +92,28 @@ class CodgerAppShell extends HTMLElement {
     this.resizePointerId = null;
     this.render();
     this.appMain = this.querySelector(".app-main");
-    this.pathbar = this.querySelector("codger-pathbar");
-    this.projectSwitcher = this.querySelector("codger-project-switcher");
-    this.headerActions = this.querySelector("codger-header-actions");
-    this.fileList = this.querySelector("codger-file-list");
+    this.pathbar = this.querySelector("caffold-pathbar");
+    this.projectSwitcher = this.querySelector("caffold-project-switcher");
+    this.headerActions = this.querySelector("caffold-header-actions");
+    this.fileList = this.querySelector("caffold-file-list");
     this.panelResizer = this.querySelector(".panel-resizer");
-    this.fileViewer = this.querySelector("codger-file-viewer");
-    this.reviewWorkspace = this.querySelector("codger-review-workspace");
+    this.fileViewer = this.querySelector("caffold-file-viewer");
+    this.reviewWorkspace = this.querySelector("caffold-review-workspace");
     this.reviewWorkspace.ensureRendered();
-    this.changesTree = this.reviewWorkspace.querySelector("codger-changes-tree");
-    this.logList = this.reviewWorkspace.querySelector("codger-log-list");
-    this.commitChangesTree = this.reviewWorkspace.querySelector("codger-commit-changes-tree");
-    this.compareTree = this.reviewWorkspace.querySelector("codger-compare-tree");
-    this.githubIssuesList = this.reviewWorkspace.querySelector("codger-github-issues-list");
-    this.githubIssueViewer = this.reviewWorkspace.querySelector("codger-github-issue-viewer");
+    this.changesTree = this.reviewWorkspace.querySelector("caffold-changes-tree");
+    this.logList = this.reviewWorkspace.querySelector("caffold-log-list");
+    this.commitChangesTree = this.reviewWorkspace.querySelector("caffold-commit-changes-tree");
+    this.compareTree = this.reviewWorkspace.querySelector("caffold-compare-tree");
+    this.githubIssuesList = this.reviewWorkspace.querySelector("caffold-github-issues-list");
+    this.githubIssueViewer = this.reviewWorkspace.querySelector("caffold-github-issue-viewer");
     this.diffWorkspaceViewer = this.reviewWorkspace.querySelector(
-      ".workspace-mode-diff codger-review-file-viewer",
+      ".workspace-mode-diff caffold-review-file-viewer",
     );
     this.logWorkspaceViewer = this.reviewWorkspace.querySelector(
-      ".workspace-mode-log codger-review-file-viewer",
+      ".workspace-mode-log caffold-review-file-viewer",
     );
     this.compareWorkspaceViewer = this.reviewWorkspace.querySelector(
-      ".workspace-mode-compare codger-review-file-viewer",
+      ".workspace-mode-compare caffold-review-file-viewer",
     );
     this.fileViewer.setCloseLabel("Back to files");
     this.diffWorkspaceViewer.setCloseLabel("Back to changes");
@@ -123,32 +123,32 @@ class CodgerAppShell extends HTMLElement {
 
     this.installNavigationHandlers();
 
-    this.addEventListener("codger:navigate", (event) => {
+    this.addEventListener("caffold:navigate", (event) => {
       this.navigateToFileRoute(event.detail.path) || this.loadDirectory(event.detail.path);
     });
-    this.addEventListener("codger:open-directory", (event) => {
+    this.addEventListener("caffold:open-directory", (event) => {
       this.navigateToFileRoute(event.detail.path) || this.loadDirectory(event.detail.path);
     });
-    this.addEventListener("codger:open-file", (event) => {
+    this.addEventListener("caffold:open-file", (event) => {
       this.navigateToFileRoute(event.detail.path) ||
         this.openFile(event.detail.path, event.detail.entry);
     });
-    this.addEventListener("codger:close-file-viewer", (event) => {
+    this.addEventListener("caffold:close-file-viewer", (event) => {
       this.closeFileViewer(event);
     });
-    this.addEventListener("codger:close-github-issue-viewer", () => {
+    this.addEventListener("caffold:close-github-issue-viewer", () => {
       this.navigateToReviewParent() || this.backReviewWorkspace();
     });
-    this.addEventListener("codger:open-diff-workspace", () => {
+    this.addEventListener("caffold:open-diff-workspace", () => {
       this.navigateToCurrentProjectRoute({ kind: "diff", path: "" }) || this.openDiffWorkspace();
     });
-    this.addEventListener("codger:open-log-workspace", () => {
+    this.addEventListener("caffold:open-log-workspace", () => {
       this.navigateToCurrentProjectRoute({
         kind: "log",
         page: this.logPage,
       }) || this.openLogWorkspace();
     });
-    this.addEventListener("codger:open-compare-workspace", () => {
+    this.addEventListener("caffold:open-compare-workspace", () => {
       this.navigateToCurrentProjectRoute({
         kind: "compare",
         baseRef: this.compareBaseRef ?? "",
@@ -156,38 +156,38 @@ class CodgerAppShell extends HTMLElement {
         path: "",
       }) || this.openCompareWorkspace();
     });
-    this.addEventListener("codger:open-github-issues-workspace", () => {
+    this.addEventListener("caffold:open-github-issues-workspace", () => {
       this.navigateToCurrentProjectRoute({
         kind: "issues",
         page: this.githubIssuesPage,
       }) || this.openGithubIssuesWorkspace();
     });
-    this.addEventListener("codger:close-review-workspace", () => {
+    this.addEventListener("caffold:close-review-workspace", () => {
       this.navigateToReviewParent({ closeWorkspace: true }) || this.closeReviewWorkspace();
     });
-    this.addEventListener("codger:back-review-workspace", () => {
+    this.addEventListener("caffold:back-review-workspace", () => {
       this.navigateToReviewParent() || this.backReviewWorkspace();
     });
-    this.addEventListener("codger:open-git-diff", (event) => {
+    this.addEventListener("caffold:open-git-diff", (event) => {
       this.navigateToCurrentProjectRoute({
         kind: "diff",
         path: this.projectRelativePath(event.detail.path),
       }) || this.openDiff(event.detail.path, event.detail.kind, event.detail.status);
     });
-    this.addEventListener("codger:open-git-commit", (event) => {
+    this.addEventListener("caffold:open-git-commit", (event) => {
       this.navigateToCurrentProjectRoute({
         kind: "log",
         page: this.logPage,
         sha: event.detail.sha,
       }) || this.openCommit(event.detail.sha);
     });
-    this.addEventListener("codger:change-log-page", (event) => {
+    this.addEventListener("caffold:change-log-page", (event) => {
       this.navigateToCurrentProjectRoute({
         kind: "log",
         page: event.detail.page,
       }) || this.changeLogPage(event.detail.page);
     });
-    this.addEventListener("codger:open-commit-diff", (event) => {
+    this.addEventListener("caffold:open-commit-diff", (event) => {
       this.navigateToCurrentProjectRoute({
         kind: "log",
         page: this.logPage,
@@ -195,7 +195,7 @@ class CodgerAppShell extends HTMLElement {
         path: this.projectRelativePath(event.detail.path),
       }) || this.openCommitDiff(event.detail.sha, event.detail.path, event.detail.status);
     });
-    this.addEventListener("codger:open-compare-diff", (event) => {
+    this.addEventListener("caffold:open-compare-diff", (event) => {
       this.navigateToCurrentProjectRoute({
         kind: "compare",
         baseRef: this.compareBaseRef ?? "",
@@ -203,7 +203,7 @@ class CodgerAppShell extends HTMLElement {
         path: this.projectRelativePath(event.detail.path),
       }) || this.openCompareDiff(event.detail.path, event.detail.status);
     });
-    this.addEventListener("codger:change-compare-refs", (event) => {
+    this.addEventListener("caffold:change-compare-refs", (event) => {
       this.navigateToCurrentProjectRoute({
         kind: "compare",
         baseRef: event.detail.baseRef,
@@ -211,29 +211,29 @@ class CodgerAppShell extends HTMLElement {
         path: "",
       }) || this.changeCompareRefs(event.detail.baseRef, event.detail.headRef);
     });
-    this.addEventListener("codger:open-github-issue", (event) => {
+    this.addEventListener("caffold:open-github-issue", (event) => {
       this.navigateToCurrentProjectRoute({
         kind: "issues",
         page: this.githubIssuesPage,
         number: event.detail.number,
       }) || this.openGithubIssue(event.detail.number);
     });
-    this.addEventListener("codger:change-github-issues-page", (event) => {
+    this.addEventListener("caffold:change-github-issues-page", (event) => {
       this.navigateToCurrentProjectRoute({
         kind: "issues",
         page: event.detail.page,
       }) || this.changeGithubIssuesPage(event.detail.page);
     });
-    this.addEventListener("codger:register-current-project", () => {
+    this.addEventListener("caffold:register-current-project", () => {
       this.registerCurrentProject();
     });
-    this.addEventListener("codger:open-project", (event) => {
+    this.addEventListener("caffold:open-project", (event) => {
       this.openRegisteredProject(event.detail.id);
     });
-    this.addEventListener("codger:rename-project", (event) => {
+    this.addEventListener("caffold:rename-project", (event) => {
       this.renameRegisteredProject(event.detail.id, event.detail.name);
     });
-    this.addEventListener("codger:delete-project", (event) => {
+    this.addEventListener("caffold:delete-project", (event) => {
       this.deleteRegisteredProject(event.detail.id);
     });
     this.panelResizer.addEventListener("pointerdown", (event) => {
@@ -260,15 +260,15 @@ class CodgerAppShell extends HTMLElement {
       <header class="app-header">
         <div class="app-context">
           <div class="brand">
-            <strong>Codger</strong>
+            <strong>Caffold</strong>
           </div>
-          <codger-project-switcher></codger-project-switcher>
-          <codger-header-actions></codger-header-actions>
+          <caffold-project-switcher></caffold-project-switcher>
+          <caffold-header-actions></caffold-header-actions>
         </div>
       </header>
-      <codger-pathbar></codger-pathbar>
+      <caffold-pathbar></caffold-pathbar>
       <main class="app-main" aria-label="File browser">
-        <codger-file-list></codger-file-list>
+        <caffold-file-list></caffold-file-list>
         <div
           class="panel-resizer"
           role="separator"
@@ -276,9 +276,9 @@ class CodgerAppShell extends HTMLElement {
           aria-orientation="vertical"
           tabindex="0"
         ></div>
-        <codger-file-viewer></codger-file-viewer>
+        <caffold-file-viewer></caffold-file-viewer>
       </main>
-      <codger-review-workspace hidden></codger-review-workspace>
+      <caffold-review-workspace hidden></caffold-review-workspace>
     `;
   }
 
@@ -376,7 +376,7 @@ class CodgerAppShell extends HTMLElement {
       return true;
     }
 
-    const state = { codgerRoute: route };
+    const state = { caffoldRoute: route };
     if (options.replace) {
       window.history.replaceState(state, "", url);
     } else {
@@ -392,7 +392,7 @@ class CodgerAppShell extends HTMLElement {
     }
 
     this.currentRoute = route;
-    window.history.replaceState({ codgerRoute: route }, "", routeUrl(route));
+    window.history.replaceState({ caffoldRoute: route }, "", routeUrl(route));
   }
 
   async applyRoute(route) {
@@ -1073,7 +1073,7 @@ class CodgerAppShell extends HTMLElement {
 
     const project = this.projects.find((candidate) => candidate.id === id);
     const name = project?.name ?? "this project";
-    if (!window.confirm(`Delete ${name} from Codger projects? Files are not deleted.`)) {
+    if (!window.confirm(`Delete ${name} from Caffold projects? Files are not deleted.`)) {
       return;
     }
 
@@ -1894,7 +1894,7 @@ class CodgerAppShell extends HTMLElement {
   }
 }
 
-customElements.define("codger-app-shell", CodgerAppShell);
+customElements.define("caffold-app-shell", CaffoldAppShell);
 
 function chooseCompareRef(preferredRef, fallbackRef, refs = []) {
   const names = new Set((refs ?? []).map((ref) => ref.name));

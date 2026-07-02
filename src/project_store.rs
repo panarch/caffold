@@ -502,23 +502,23 @@ mod tests {
     fn creates_lists_renames_opens_and_deletes_projects() {
         let store = ProjectStore::memory().unwrap();
         let created = store
-            .create_project("Codger", "/Users/example/codger")
+            .create_project("Caffold", "/Users/example/caffold")
             .unwrap();
 
-        assert_eq!(created.name, "Codger");
-        assert_eq!(created.root_path, "/Users/example/codger");
+        assert_eq!(created.name, "Caffold");
+        assert_eq!(created.root_path, "/Users/example/caffold");
         assert_eq!(created.id.len(), 8);
         assert!(created.id.chars().all(is_lower_hex_digit));
         assert!(created.last_opened_ms.is_none());
 
         let duplicate = store
-            .create_project("Ignored", "/Users/example/codger")
+            .create_project("Ignored", "/Users/example/caffold")
             .unwrap();
         assert_eq!(duplicate.id, created.id);
         assert_eq!(store.list_projects().unwrap().len(), 1);
 
-        let renamed = store.rename_project(&created.id, "Codger UI").unwrap();
-        assert_eq!(renamed.name, "Codger UI");
+        let renamed = store.rename_project(&created.id, "Caffold UI").unwrap();
+        assert_eq!(renamed.name, "Caffold UI");
 
         let opened = store.open_project(&created.id).unwrap();
         assert!(opened.last_opened_ms.is_some());
@@ -532,7 +532,7 @@ mod tests {
         let store = ProjectStore::memory().unwrap();
 
         assert!(matches!(
-            store.create_project(" ", "/tmp/codger"),
+            store.create_project(" ", "/tmp/caffold"),
             Err(ProjectStoreError::EmptyName)
         ));
     }

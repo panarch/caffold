@@ -1,4 +1,4 @@
 # Fixture Home
 
-This directory is used by Codger's Playwright smoke test.
+This directory is used by Caffold's Playwright smoke test.
 

@@ -1,7 +1,7 @@
 import { escapeHtml } from "./dom.js";
 import "./pagination.js";
 
-class CodgerGithubIssuesList extends HTMLElement {
+class CaffoldGithubIssuesList extends HTMLElement {
   connectedCallback() {
     this.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-issue-number]");
@@ -10,16 +10,16 @@ class CodgerGithubIssuesList extends HTMLElement {
       }
 
       this.dispatchEvent(
-        new CustomEvent("codger:open-github-issue", {
+        new CustomEvent("caffold:open-github-issue", {
           bubbles: true,
           detail: { number: Number.parseInt(button.dataset.issueNumber ?? "", 10) },
         }),
       );
     });
-    this.addEventListener("codger:change-page", (event) => {
+    this.addEventListener("caffold:change-page", (event) => {
       event.stopPropagation();
       this.dispatchEvent(
-        new CustomEvent("codger:change-github-issues-page", {
+        new CustomEvent("caffold:change-github-issues-page", {
           bubbles: true,
           detail: { page: event.detail.page },
         }),
@@ -177,7 +177,7 @@ class CodgerGithubIssuesList extends HTMLElement {
     }
 
     return `
-      <codger-pagination
+      <caffold-pagination
         aria-label="Issue pagination"
         page="${escapeHtml(`${page}`)}"
         total-pages="${escapeHtml(`${totalPages}`)}"
@@ -187,7 +187,7 @@ class CodgerGithubIssuesList extends HTMLElement {
         previous-label="Newer issue page"
         next-label="Older issue page"
         last-label="Oldest issue page"
-      ></codger-pagination>
+      ></caffold-pagination>
     `;
   }
 
@@ -241,4 +241,4 @@ class CodgerGithubIssuesList extends HTMLElement {
   }
 }
 
-customElements.define("codger-github-issues-list", CodgerGithubIssuesList);
+customElements.define("caffold-github-issues-list", CaffoldGithubIssuesList);

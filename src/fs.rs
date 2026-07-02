@@ -1825,9 +1825,9 @@ mod tests {
             path,
             &[
                 "-c",
-                "user.name=Codger Test",
+                "user.name=Caffold Test",
                 "-c",
-                "user.email=codger@example.test",
+                "user.email=caffold@example.test",
                 "-c",
                 "commit.gpgsign=false",
                 "commit",
@@ -1842,9 +1842,9 @@ mod tests {
             path,
             &[
                 "-c",
-                "user.name=Codger Test",
+                "user.name=Caffold Test",
                 "-c",
-                "user.email=codger@example.test",
+                "user.email=caffold@example.test",
                 "-c",
                 "commit.gpgsign=false",
                 "commit",

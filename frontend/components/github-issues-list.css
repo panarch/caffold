@@ -1,4 +1,4 @@
-codger-github-issues-list {
+caffold-github-issues-list {
   display: block;
   min-width: 0;
   min-height: 0;
@@ -7,14 +7,14 @@ codger-github-issues-list {
   background: var(--surface);
 }
 
-codger-github-issues-list .github-issues-panel {
+caffold-github-issues-list .github-issues-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
   height: 100%;
 }
 
-codger-github-issues-list .github-issues-panel > header {
+caffold-github-issues-list .github-issues-panel > header {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 2px;
@@ -23,7 +23,7 @@ codger-github-issues-list .github-issues-panel > header {
   border-bottom: 1px solid var(--border);
 }
 
-codger-github-issues-list h2 {
+caffold-github-issues-list h2 {
   margin: 0;
   overflow: hidden;
   font-size: 0.82rem;
@@ -33,7 +33,7 @@ codger-github-issues-list h2 {
   white-space: nowrap;
 }
 
-codger-github-issues-list .github-issues-title-row {
+caffold-github-issues-list .github-issues-title-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
@@ -42,7 +42,7 @@ codger-github-issues-list .github-issues-title-row {
   min-width: 0;
 }
 
-codger-github-issues-list .github-issues-count {
+caffold-github-issues-list .github-issues-count {
   justify-self: end;
   color: var(--muted);
   font-size: 0.74rem;
@@ -50,7 +50,7 @@ codger-github-issues-list .github-issues-count {
   white-space: nowrap;
 }
 
-codger-github-issues-list .github-issues-repo {
+caffold-github-issues-list .github-issues-repo {
   display: block;
   min-width: 0;
   overflow: hidden;
@@ -61,7 +61,7 @@ codger-github-issues-list .github-issues-repo {
   white-space: nowrap;
 }
 
-codger-github-issues-list .github-issues-list {
+caffold-github-issues-list .github-issues-list {
   display: block;
   min-height: 0;
   margin: 0;
@@ -71,21 +71,21 @@ codger-github-issues-list .github-issues-list {
   list-style: none;
 }
 
-codger-github-issues-list .github-issues-loading-body {
+caffold-github-issues-list .github-issues-loading-body {
   display: grid;
   min-height: 0;
   place-items: center;
 }
 
-codger-github-issues-list .github-issue-row {
+caffold-github-issues-list .github-issue-row {
   display: block;
 }
 
-codger-github-issues-list .github-issue-row + .github-issue-row {
+caffold-github-issues-list .github-issue-row + .github-issue-row {
   position: relative;
 }
 
-codger-github-issues-list .github-issue-row + .github-issue-row::before {
+caffold-github-issues-list .github-issue-row + .github-issue-row::before {
   position: absolute;
   top: 0;
   right: 12px;
@@ -96,7 +96,7 @@ codger-github-issues-list .github-issue-row + .github-issue-row::before {
   pointer-events: none;
 }
 
-codger-github-issues-list .github-issue-button {
+caffold-github-issues-list .github-issue-button {
   display: grid;
   gap: 3px;
   width: 100%;
@@ -112,43 +112,43 @@ codger-github-issues-list .github-issue-button {
   text-align: left;
 }
 
-codger-github-issues-list .github-issue-button:hover,
-codger-github-issues-list .github-issue-button:focus-visible {
+caffold-github-issues-list .github-issue-button:hover,
+caffold-github-issues-list .github-issue-button:focus-visible {
   background: #eef7f2;
   outline: none;
 }
 
-codger-github-issues-list .github-issue-button[aria-current="true"] {
+caffold-github-issues-list .github-issue-button[aria-current="true"] {
   border-left-color: var(--accent);
   background: #dff1ea;
 }
 
-codger-github-issues-list .github-issue-title,
-codger-github-issues-list .github-issue-meta {
+caffold-github-issues-list .github-issue-title,
+caffold-github-issues-list .github-issue-meta {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-codger-github-issues-list .github-issue-title {
+caffold-github-issues-list .github-issue-title {
   font-size: 0.82rem;
   font-weight: 500;
 }
 
-codger-github-issues-list .github-issue-meta {
+caffold-github-issues-list .github-issue-meta {
   color: var(--muted);
   font-size: 0.72rem;
 }
 
-codger-github-issues-list .github-issue-labels {
+caffold-github-issues-list .github-issue-labels {
   display: flex;
   gap: 4px;
   min-width: 0;
   overflow: hidden;
 }
 
-codger-github-issues-list .github-issue-labels span {
+caffold-github-issues-list .github-issue-labels span {
   overflow: hidden;
   max-width: 10rem;
   padding: 1px 5px;
@@ -161,13 +161,13 @@ codger-github-issues-list .github-issue-labels span {
   white-space: nowrap;
 }
 
-codger-github-issues-list .error-panel {
+caffold-github-issues-list .error-panel {
   background: var(--danger-soft);
   color: var(--danger);
 }
 
 @media (max-width: 860px) {
-  codger-github-issues-list {
+  caffold-github-issues-list {
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }

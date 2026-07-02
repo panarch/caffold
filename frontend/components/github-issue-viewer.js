@@ -2,7 +2,7 @@ import { escapeHtml } from "./dom.js";
 import { renderInlineIcon, warmIcons } from "./icons.js";
 import "./github-markdown.js";
 
-class CodgerGithubIssueViewer extends HTMLElement {
+class CaffoldGithubIssueViewer extends HTMLElement {
   connectedCallback() {
     if (!this.initialized) {
       this.initialized = true;
@@ -13,13 +13,13 @@ class CodgerGithubIssueViewer extends HTMLElement {
         }
 
         this.dispatchEvent(
-          new CustomEvent("codger:close-github-issue-viewer", {
+          new CustomEvent("caffold:close-github-issue-viewer", {
             bubbles: true,
           }),
         );
       });
       this.boundIconsReady = () => this.render();
-      window.addEventListener("codger:icons-ready", this.boundIconsReady);
+      window.addEventListener("caffold:icons-ready", this.boundIconsReady);
       warmIcons();
     }
 
@@ -29,7 +29,7 @@ class CodgerGithubIssueViewer extends HTMLElement {
   }
 
   disconnectedCallback() {
-    window.removeEventListener("codger:icons-ready", this.boundIconsReady);
+    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
   setEmpty() {
@@ -110,7 +110,7 @@ class CodgerGithubIssueViewer extends HTMLElement {
     `;
 
     if (bodyHtml) {
-      this.querySelector("codger-github-markdown")?.setHtml(bodyHtml);
+      this.querySelector("caffold-github-markdown")?.setHtml(bodyHtml);
     }
   }
 
@@ -155,7 +155,7 @@ class CodgerGithubIssueViewer extends HTMLElement {
 
   renderBody(issue, bodyHtml) {
     if (bodyHtml) {
-      return `<codger-github-markdown class="github-issue-body"></codger-github-markdown>`;
+      return `<caffold-github-markdown class="github-issue-body"></caffold-github-markdown>`;
     }
 
     return `
@@ -166,4 +166,4 @@ class CodgerGithubIssueViewer extends HTMLElement {
   }
 }
 
-customElements.define("codger-github-issue-viewer", CodgerGithubIssueViewer);
+customElements.define("caffold-github-issue-viewer", CaffoldGithubIssueViewer);

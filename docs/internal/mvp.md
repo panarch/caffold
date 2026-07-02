@@ -2,7 +2,7 @@
 
 > Internal planning note. This is a working scope document, not a public feature commitment.
 
-The MVP should not shrink the product into a standalone diff viewer. Codger's minimum viable shape includes the web console, Codex app-server integration, and review surface together.
+The MVP should not shrink the product into a standalone diff viewer. Caffold's minimum viable shape includes the web console, Codex app-server integration, and review surface together.
 
 The right way to reduce scope is to keep the main pillars and make each pillar shallow.
 
@@ -10,7 +10,7 @@ The right way to reduce scope is to keep the main pillars and make each pillar s
 
 The MVP must include:
 
-- `codger serve` or equivalent host process
+- `caffold serve` or equivalent host process
 - browser/PWA access to the host
 - task, project, worktree, and Codex thread mapping
 - Codex app-server process management

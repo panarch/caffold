@@ -1,7 +1,7 @@
 import { escapeHtml } from "./dom.js";
 import { renderEntryIcon, warmIcons } from "./icons.js";
 
-class CodgerCommitChangesTree extends HTMLElement {
+class CaffoldCommitChangesTree extends HTMLElement {
   connectedCallback() {
     this.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-node-key], button[data-commit-path]");
@@ -16,7 +16,7 @@ class CodgerCommitChangesTree extends HTMLElement {
 
       this.setSelectedPath(button.dataset.commitPath);
       this.dispatchEvent(
-        new CustomEvent("codger:open-commit-diff", {
+        new CustomEvent("caffold:open-commit-diff", {
           bubbles: true,
           detail: {
             sha: button.dataset.commitSha,
@@ -28,7 +28,7 @@ class CodgerCommitChangesTree extends HTMLElement {
     });
 
     this.boundIconsReady = () => this.render();
-    window.addEventListener("codger:icons-ready", this.boundIconsReady);
+    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     warmIcons();
 
     if (!this.state) {
@@ -37,7 +37,7 @@ class CodgerCommitChangesTree extends HTMLElement {
   }
 
   disconnectedCallback() {
-    window.removeEventListener("codger:icons-ready", this.boundIconsReady);
+    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
   setLoading(repository, commit = null) {
@@ -267,7 +267,7 @@ class CodgerCommitChangesTree extends HTMLElement {
   }
 }
 
-customElements.define("codger-commit-changes-tree", CodgerCommitChangesTree);
+customElements.define("caffold-commit-changes-tree", CaffoldCommitChangesTree);
 
 function buildCommitTree(files) {
   const root = { kind: "root", children: new Map() };

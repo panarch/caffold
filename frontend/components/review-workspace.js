@@ -8,7 +8,7 @@ const REVIEW_PANEL_MAX_RATIO = 0.7;
 const REVIEW_DIFF_RESIZE_QUERY = "(min-width: 861px)";
 const REVIEW_LOG_RESIZE_QUERY = "(min-width: 1101px)";
 
-class CodgerReviewWorkspace extends HTMLElement {
+class CaffoldReviewWorkspace extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
     if (this.initialized) {
@@ -29,7 +29,7 @@ class CodgerReviewWorkspace extends HTMLElement {
 
       if (button.dataset.action === "back-review-workspace") {
         this.dispatchEvent(
-          new CustomEvent("codger:back-review-workspace", {
+          new CustomEvent("caffold:back-review-workspace", {
             bubbles: true,
           }),
         );
@@ -41,7 +41,7 @@ class CodgerReviewWorkspace extends HTMLElement {
       }
 
       this.dispatchEvent(
-        new CustomEvent("codger:close-review-workspace", {
+        new CustomEvent("caffold:close-review-workspace", {
           bubbles: true,
         }),
       );
@@ -55,7 +55,7 @@ class CodgerReviewWorkspace extends HTMLElement {
       const baseRef = this.querySelector('select[data-compare-ref="base"]')?.value ?? "";
       const headRef = this.querySelector('select[data-compare-ref="head"]')?.value ?? "";
       this.dispatchEvent(
-        new CustomEvent("codger:change-compare-refs", {
+        new CustomEvent("caffold:change-compare-refs", {
           bubbles: true,
           detail: { baseRef, headRef },
         }),
@@ -83,12 +83,12 @@ class CodgerReviewWorkspace extends HTMLElement {
       }
     });
     this.boundIconsReady = () => this.renderChrome();
-    window.addEventListener("codger:icons-ready", this.boundIconsReady);
+    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     warmIcons();
   }
 
   disconnectedCallback() {
-    window.removeEventListener("codger:icons-ready", this.boundIconsReady);
+    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
   ensureRendered() {
@@ -131,7 +131,7 @@ class CodgerReviewWorkspace extends HTMLElement {
         </header>
         <div class="review-workspace-body">
           <div class="review-workspace-view workspace-mode-diff" hidden>
-            <codger-changes-tree></codger-changes-tree>
+            <caffold-changes-tree></caffold-changes-tree>
             <div
               class="review-panel-resizer"
               role="separator"
@@ -140,10 +140,10 @@ class CodgerReviewWorkspace extends HTMLElement {
               tabindex="0"
               data-resize-target="diff"
             ></div>
-            <codger-review-file-viewer></codger-review-file-viewer>
+            <caffold-review-file-viewer></caffold-review-file-viewer>
           </div>
           <div class="review-workspace-view workspace-mode-compare" hidden>
-            <codger-compare-tree></codger-compare-tree>
+            <caffold-compare-tree></caffold-compare-tree>
             <div
               class="review-panel-resizer"
               role="separator"
@@ -152,12 +152,12 @@ class CodgerReviewWorkspace extends HTMLElement {
               tabindex="0"
               data-resize-target="compare"
             ></div>
-            <codger-review-file-viewer></codger-review-file-viewer>
+            <caffold-review-file-viewer></caffold-review-file-viewer>
           </div>
           <div class="review-workspace-view workspace-mode-log" hidden>
-            <codger-log-list></codger-log-list>
+            <caffold-log-list></caffold-log-list>
             <div class="log-review-detail">
-              <codger-commit-changes-tree></codger-commit-changes-tree>
+              <caffold-commit-changes-tree></caffold-commit-changes-tree>
               <div
                 class="review-panel-resizer"
                 role="separator"
@@ -166,12 +166,12 @@ class CodgerReviewWorkspace extends HTMLElement {
                 tabindex="0"
                 data-resize-target="log"
               ></div>
-              <codger-review-file-viewer></codger-review-file-viewer>
+              <caffold-review-file-viewer></caffold-review-file-viewer>
             </div>
           </div>
           <div class="review-workspace-view workspace-mode-issues" hidden>
-            <codger-github-issues-list></codger-github-issues-list>
-            <codger-github-issue-viewer></codger-github-issue-viewer>
+            <caffold-github-issues-list></caffold-github-issues-list>
+            <caffold-github-issue-viewer></caffold-github-issue-viewer>
           </div>
         </div>
       </section>
@@ -304,9 +304,9 @@ class CodgerReviewWorkspace extends HTMLElement {
 
     return `
       <div class="review-compare-ref-controls" aria-label="Compare refs">
-        <label for="codger-compare-base-ref">Base</label>
+        <label for="caffold-compare-base-ref">Base</label>
         <select
-          id="codger-compare-base-ref"
+          id="caffold-compare-base-ref"
           data-compare-ref="base"
           aria-label="Base ref"
           title="${escapeHtml(this.compareBaseRef ?? "")}"
@@ -314,9 +314,9 @@ class CodgerReviewWorkspace extends HTMLElement {
           ${renderRefOptions(refs, this.compareBaseRef)}
         </select>
         <span class="review-compare-ref-separator" aria-hidden="true">...</span>
-        <label for="codger-compare-head-ref">Head</label>
+        <label for="caffold-compare-head-ref">Head</label>
         <select
-          id="codger-compare-head-ref"
+          id="caffold-compare-head-ref"
           data-compare-ref="head"
           aria-label="Head ref"
           title="${escapeHtml(this.compareHeadRef ?? "")}"
@@ -482,7 +482,7 @@ class CodgerReviewWorkspace extends HTMLElement {
   }
 }
 
-customElements.define("codger-review-workspace", CodgerReviewWorkspace);
+customElements.define("caffold-review-workspace", CaffoldReviewWorkspace);
 
 function workspaceTitle(mode) {
   if (mode === "diff") {

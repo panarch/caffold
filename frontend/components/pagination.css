@@ -1,11 +1,11 @@
-codger-pagination {
+caffold-pagination {
   display: block;
   min-width: 0;
   border-top: 1px solid var(--border);
   background: var(--surface);
 }
 
-codger-pagination .pagination-panel {
+caffold-pagination .pagination-panel {
   display: grid;
   grid-template-columns: 30px 30px minmax(3.8rem, auto) 30px 30px;
   gap: 6px;
@@ -15,7 +15,7 @@ codger-pagination .pagination-panel {
   padding: 5px 8px;
 }
 
-codger-pagination .pagination-button {
+caffold-pagination .pagination-button {
   display: grid;
   place-items: center;
   width: 30px;
@@ -28,31 +28,31 @@ codger-pagination .pagination-button {
   cursor: pointer;
 }
 
-codger-pagination .pagination-button:hover,
-codger-pagination .pagination-button:focus-visible {
+caffold-pagination .pagination-button:hover,
+caffold-pagination .pagination-button:focus-visible {
   border-color: #abcbbf;
   background: #f7fbf8;
   outline: none;
 }
 
-codger-pagination .pagination-button:disabled {
+caffold-pagination .pagination-button:disabled {
   color: #a4b0aa;
   cursor: default;
   opacity: 0.55;
 }
 
-codger-pagination .pagination-button:disabled:hover {
+caffold-pagination .pagination-button:disabled:hover {
   border-color: var(--border);
   background: var(--surface);
 }
 
-codger-pagination .pagination-icon {
+caffold-pagination .pagination-icon {
   width: 0.9rem;
   height: 0.9rem;
   stroke-width: 2.2;
 }
 
-codger-pagination .pagination-indicator {
+caffold-pagination .pagination-indicator {
   min-width: 0;
   color: var(--muted);
   font-size: 0.74rem;

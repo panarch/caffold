@@ -46,7 +46,7 @@ export function warmIcons() {
     lucidePromise = import(LUCIDE_CDN)
       .then((module) => {
         lucideModule = module;
-        window.dispatchEvent(new CustomEvent("codger:icons-ready"));
+        window.dispatchEvent(new CustomEvent("caffold:icons-ready"));
         return module;
       })
       .catch(() => null);

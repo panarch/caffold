@@ -4,7 +4,7 @@ const HIGHLIGHT_IMPORT = "https://esm.sh/highlight.js@11.11.1/lib/common";
 
 let highlighterPromise;
 
-class CodgerCodeViewer extends HTMLElement {
+class CaffoldCodeViewer extends HTMLElement {
   setFile(file) {
     this.file = file;
     this.renderPlain();
@@ -89,4 +89,4 @@ function renderLines(html) {
     .join("");
 }
 
-customElements.define("codger-code-viewer", CodgerCodeViewer);
+customElements.define("caffold-code-viewer", CaffoldCodeViewer);

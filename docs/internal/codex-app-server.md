@@ -2,13 +2,13 @@
 
 > Internal planning note. This captures the current integration direction and may change as app-server behavior is verified.
 
-Codger should integrate with Codex through Codex app-server rather than by directly embedding internal Codex crates in the first implementation.
+Caffold should integrate with Codex through Codex app-server rather than by directly embedding internal Codex crates in the first implementation.
 
-The reason is practical: Codger is an external review console, not a Codex internal fork.
+The reason is practical: Caffold is an external review console, not a Codex internal fork.
 
 ## Why App Server
 
-Codger needs:
+Caffold needs:
 
 - thread creation and lookup
 - turn execution
@@ -22,7 +22,7 @@ These needs fit the app-server boundary better than a simple CLI wrapper.
 
 ## Boundary
 
-Codger should keep a narrow adapter layer around app-server.
+Caffold should keep a narrow adapter layer around app-server.
 
 The adapter should own:
 
@@ -33,15 +33,15 @@ The adapter should own:
 - request/response matching
 - event stream handling
 - app-server error normalization
-- mapping app-server thread IDs to Codger task IDs
+- mapping app-server thread IDs to Caffold task IDs
 
-The rest of Codger should not depend directly on app-server protocol details.
+The rest of Caffold should not depend directly on app-server protocol details.
 
 ## Process Ownership
 
 Default assumption:
 
-- one Codger backend instance per host
+- one Caffold backend instance per host
 - one app-server child process per host instance
 - multiple tasks/threads managed through that process
 

@@ -1,6 +1,6 @@
 # Operation Ledger
 
-> Internal planning note. This describes Codger-owned event history before the schema is implemented.
+> Internal planning note. This describes Caffold-owned event history before the schema is implemented.
 
 The operation ledger is an application-level append-only event log.
 
@@ -19,16 +19,16 @@ The ledger exists for:
 
 ## Source of Truth Boundary
 
-Codger should not try to own every original event.
+Caffold should not try to own every original event.
 
 Source ownership:
 
 - Codex owns thread/session originals
 - git owns file changes
 - command runner owns immediate process output while running
-- Codger owns task metadata and operation events
+- Caffold owns task metadata and operation events
 
-Codger can store summaries and snapshots when they make the UI more reliable, but full transcript duplication is not the default.
+Caffold can store summaries and snapshots when they make the UI more reliable, but full transcript duplication is not the default.
 
 ## Event Types
 
@@ -81,7 +81,7 @@ The payload should be typed per event. Avoid storing important state only as fre
 
 ## Snapshot Policy
 
-Codger can store small UI-facing snapshots such as:
+Caffold can store small UI-facing snapshots such as:
 
 - latest git status summary
 - latest diff stat

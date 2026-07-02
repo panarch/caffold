@@ -1,11 +1,11 @@
-:is(codger-file-viewer, codger-review-file-viewer) {
+:is(caffold-file-viewer, caffold-review-file-viewer) {
   display: block;
   min-width: 0;
   min-height: 0;
   background: var(--bg);
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) .viewer-panel {
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
@@ -15,30 +15,30 @@
   background: var(--surface);
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) .viewer-panel > header {
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-panel > header {
   display: grid;
   padding: 6px 8px 6px 14px;
   border-bottom: 1px solid var(--border);
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) .viewer-title-row {
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-title-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) .viewer-close-button {
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-close-button {
   display: none;
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) .viewer-title-block {
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-title-block {
   display: grid;
   gap: 2px;
   min-width: 0;
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) h2 {
+:is(caffold-file-viewer, caffold-review-file-viewer) h2 {
   margin: 0;
   min-width: 0;
   overflow: hidden;
@@ -49,7 +49,7 @@
   line-height: 1.3;
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) .viewer-subtitle {
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-subtitle {
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
@@ -59,7 +59,7 @@
   white-space: nowrap;
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) .viewer-info-button {
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-info-button {
   display: grid;
   place-items: center;
   width: 32px;
@@ -72,23 +72,23 @@
   cursor: pointer;
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) .viewer-info-button:hover {
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-info-button:hover {
   border-color: var(--accent-soft);
   background: var(--accent-soft);
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) .viewer-info-button:not(:has(svg))::before {
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-info-button:not(:has(svg))::before {
   content: "i";
   font-size: 0.86rem;
   font-weight: 600;
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) .viewer-info-icon {
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-info-icon {
   width: 18px;
   height: 18px;
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) .viewer-meta-popover {
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-meta-popover {
   position: fixed;
   inset: 72px 12px auto auto;
   width: fit-content;
@@ -105,61 +105,61 @@
   box-shadow: 0 14px 34px rgb(20 36 29 / 18%);
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) .viewer-meta-popover::backdrop {
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-meta-popover::backdrop {
   background: transparent;
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) .viewer-meta-popover dl {
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-meta-popover dl {
   display: grid;
   grid-template-columns: minmax(12rem, max-content) max-content;
   gap: 10px 14px;
   margin: 0;
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) .viewer-meta-popover dl div {
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-meta-popover dl div {
   display: grid;
   gap: 2px;
   min-width: 0;
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) .viewer-meta-popover [data-field="path"],
-:is(codger-file-viewer, codger-review-file-viewer) .viewer-meta-popover [data-field="modified"],
-:is(codger-file-viewer, codger-review-file-viewer) .viewer-meta-popover [data-field="repository"] {
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-meta-popover [data-field="path"],
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-meta-popover [data-field="modified"],
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-meta-popover [data-field="repository"] {
   grid-column: 1;
   max-width: min(26rem, calc(100vw - 12rem));
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) .viewer-meta-popover [data-field="size"],
-:is(codger-file-viewer, codger-review-file-viewer) .viewer-meta-popover [data-field="type"],
-:is(codger-file-viewer, codger-review-file-viewer) .viewer-meta-popover [data-field="kind"],
-:is(codger-file-viewer, codger-review-file-viewer) .viewer-meta-popover [data-field="language"] {
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-meta-popover [data-field="size"],
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-meta-popover [data-field="type"],
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-meta-popover [data-field="kind"],
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-meta-popover [data-field="language"] {
   grid-column: 2;
   min-width: 7ch;
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) dt {
+:is(caffold-file-viewer, caffold-review-file-viewer) dt {
   color: var(--muted);
   font-size: 0.72rem;
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) dd {
+:is(caffold-file-viewer, caffold-review-file-viewer) dd {
   min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
   font-size: 0.8rem;
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) .empty-panel {
+:is(caffold-file-viewer, caffold-review-file-viewer) .empty-panel {
   place-items: center;
   color: var(--muted);
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) .error-panel {
+:is(caffold-file-viewer, caffold-review-file-viewer) .error-panel {
   background: var(--danger-soft);
   color: var(--danger);
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) .image-stage {
+:is(caffold-file-viewer, caffold-review-file-viewer) .image-stage {
   display: grid;
   min-height: 0;
   overflow: auto;
@@ -168,7 +168,7 @@
   padding: 16px;
 }
 
-:is(codger-file-viewer, codger-review-file-viewer) .image-preview {
+:is(caffold-file-viewer, caffold-review-file-viewer) .image-preview {
   display: block;
   max-width: 100%;
   max-height: 100%;
@@ -176,41 +176,41 @@
 }
 
 @media (max-width: 520px) {
-  :is(codger-file-viewer, codger-review-file-viewer) .viewer-panel > header {
+  :is(caffold-file-viewer, caffold-review-file-viewer) .viewer-panel > header {
     padding-left: 10px;
   }
 
-  :is(codger-file-viewer, codger-review-file-viewer) .viewer-meta-popover {
+  :is(caffold-file-viewer, caffold-review-file-viewer) .viewer-meta-popover {
     inset: 64px 8px auto 8px;
     width: auto;
   }
 
-  :is(codger-file-viewer, codger-review-file-viewer) .viewer-meta-popover dl {
+  :is(caffold-file-viewer, caffold-review-file-viewer) .viewer-meta-popover dl {
     grid-template-columns: 1fr;
   }
 
-  :is(codger-file-viewer, codger-review-file-viewer) .viewer-meta-popover dl div {
+  :is(caffold-file-viewer, caffold-review-file-viewer) .viewer-meta-popover dl div {
     grid-column: auto;
     max-width: none;
   }
 }
 
 @media (max-width: 860px) {
-  codger-app-shell[data-browser-view="viewer"] .app-main > codger-file-viewer .viewer-panel > header,
-  codger-review-workspace[data-mobile-detail="true"] codger-review-file-viewer .viewer-panel > header {
+  caffold-app-shell[data-browser-view="viewer"] .app-main > caffold-file-viewer .viewer-panel > header,
+  caffold-review-workspace[data-mobile-detail="true"] caffold-review-file-viewer .viewer-panel > header {
     padding: 4px 8px;
   }
 
-  codger-app-shell[data-browser-view="viewer"] .app-main > codger-file-viewer .viewer-title-row,
-  codger-review-workspace[data-mobile-detail="true"] codger-review-file-viewer .viewer-title-row {
+  caffold-app-shell[data-browser-view="viewer"] .app-main > caffold-file-viewer .viewer-title-row,
+  caffold-review-workspace[data-mobile-detail="true"] caffold-review-file-viewer .viewer-title-row {
     grid-template-columns: 28px minmax(0, 1fr) auto;
     gap: 6px;
   }
 
-  codger-app-shell[data-browser-view="viewer"] .app-main > codger-file-viewer .viewer-info-button,
-  codger-app-shell[data-browser-view="viewer"] .app-main > codger-file-viewer .viewer-close-button,
-  codger-review-workspace[data-mobile-detail="true"] codger-review-file-viewer .viewer-info-button,
-  codger-review-workspace[data-mobile-detail="true"] codger-review-file-viewer .viewer-close-button {
+  caffold-app-shell[data-browser-view="viewer"] .app-main > caffold-file-viewer .viewer-info-button,
+  caffold-app-shell[data-browser-view="viewer"] .app-main > caffold-file-viewer .viewer-close-button,
+  caffold-review-workspace[data-mobile-detail="true"] caffold-review-file-viewer .viewer-info-button,
+  caffold-review-workspace[data-mobile-detail="true"] caffold-review-file-viewer .viewer-close-button {
     display: grid;
     place-items: center;
     width: 28px;
@@ -223,17 +223,17 @@
     cursor: pointer;
   }
 
-  codger-app-shell[data-browser-view="viewer"] .app-main > codger-file-viewer .viewer-close-button:hover,
-  codger-app-shell[data-browser-view="viewer"] .app-main > codger-file-viewer .viewer-close-button:focus-visible,
-  codger-review-workspace[data-mobile-detail="true"] codger-review-file-viewer .viewer-close-button:hover,
-  codger-review-workspace[data-mobile-detail="true"] codger-review-file-viewer .viewer-close-button:focus-visible {
+  caffold-app-shell[data-browser-view="viewer"] .app-main > caffold-file-viewer .viewer-close-button:hover,
+  caffold-app-shell[data-browser-view="viewer"] .app-main > caffold-file-viewer .viewer-close-button:focus-visible,
+  caffold-review-workspace[data-mobile-detail="true"] caffold-review-file-viewer .viewer-close-button:hover,
+  caffold-review-workspace[data-mobile-detail="true"] caffold-review-file-viewer .viewer-close-button:focus-visible {
     border-color: #abcbbf;
     background: #f7fbf8;
     outline: none;
   }
 
-  codger-app-shell[data-browser-view="viewer"] .app-main > codger-file-viewer .viewer-close-icon,
-  codger-review-workspace[data-mobile-detail="true"] codger-review-file-viewer .viewer-close-icon {
+  caffold-app-shell[data-browser-view="viewer"] .app-main > caffold-file-viewer .viewer-close-icon,
+  caffold-review-workspace[data-mobile-detail="true"] caffold-review-file-viewer .viewer-close-icon {
     width: 1rem;
     height: 1rem;
     stroke-width: 2;

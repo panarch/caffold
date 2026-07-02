@@ -1,10 +1,10 @@
 # Documentation
 
-Codger docs are split by audience.
+Caffold docs are split by audience.
 
 ## Public-Facing
 
-These documents explain what Codger is and why it exists. They should avoid overpromising implementation details.
+These documents explain what Caffold is and why it exists. They should avoid overpromising implementation details.
 
 - [Vision](public/vision.md)
 - [Architecture](public/architecture.md)

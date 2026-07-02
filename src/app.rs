@@ -200,7 +200,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         }
     };
     let data_dir = config.data_dir.unwrap_or(default_data_dir()?);
-    let project_store = ProjectStore::redb(data_dir.join("codger.redb"))?;
+    let project_store = ProjectStore::redb(data_dir.join("caffold.redb"))?;
     let root = fs.root().to_path_buf();
     let app = router_with_state(AppState {
         fs: Arc::new(fs),
@@ -211,10 +211,10 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let listener = TcpListener::bind((config.host, config.port)).await?;
     let addr = listener.local_addr()?;
 
-    info!("serving Codger at http://{addr}");
+    info!("serving Caffold at http://{addr}");
     info!("browsing root {}", root.display());
     info!("initial path {initial_path}");
-    println!("Codger is serving http://{addr}");
+    println!("Caffold is serving http://{addr}");
     println!("Browsing root {}", root.display());
     println!("Data directory {}", data_dir.display());
     println!(
@@ -274,7 +274,7 @@ fn router_with_state(state: AppState) -> Router {
 }
 
 fn default_data_dir() -> anyhow::Result<PathBuf> {
-    Ok(RootedFs::home_dir()?.join(".codger"))
+    Ok(RootedFs::home_dir()?.join(".caffold"))
 }
 
 fn default_diff_kind() -> String {

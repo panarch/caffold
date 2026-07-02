@@ -1,4 +1,4 @@
-codger-log-list {
+caffold-log-list {
   display: block;
   min-width: 0;
   min-height: 0;
@@ -6,14 +6,14 @@ codger-log-list {
   background: var(--surface);
 }
 
-codger-log-list .log-list-panel {
+caffold-log-list .log-list-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
   height: 100%;
 }
 
-codger-log-list .log-list-panel > header {
+caffold-log-list .log-list-panel > header {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 2px;
@@ -22,7 +22,7 @@ codger-log-list .log-list-panel > header {
   border-bottom: 1px solid var(--border);
 }
 
-codger-log-list h2 {
+caffold-log-list h2 {
   margin: 0;
   overflow: hidden;
   font-size: 0.82rem;
@@ -32,7 +32,7 @@ codger-log-list h2 {
   white-space: nowrap;
 }
 
-codger-log-list .log-title-row {
+caffold-log-list .log-title-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
@@ -41,7 +41,7 @@ codger-log-list .log-title-row {
   min-width: 0;
 }
 
-codger-log-list .log-count {
+caffold-log-list .log-count {
   justify-self: end;
   color: var(--muted);
   font-size: 0.74rem;
@@ -49,7 +49,7 @@ codger-log-list .log-count {
   white-space: nowrap;
 }
 
-codger-log-list .log-branch {
+caffold-log-list .log-branch {
   display: block;
   min-width: 0;
   overflow: hidden;
@@ -60,7 +60,7 @@ codger-log-list .log-branch {
   white-space: nowrap;
 }
 
-codger-log-list .log-list {
+caffold-log-list .log-list {
   display: block;
   min-height: 0;
   margin: 0;
@@ -70,7 +70,7 @@ codger-log-list .log-list {
   list-style: none;
 }
 
-codger-log-list .log-entry {
+caffold-log-list .log-entry {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
@@ -83,14 +83,14 @@ codger-log-list .log-entry {
   padding: 5px 12px 5px 10px;
 }
 
-codger-log-list .log-summary {
+caffold-log-list .log-summary {
   display: grid;
   gap: 3px;
   min-width: 0;
   text-align: left;
 }
 
-codger-log-list .log-summary-toggle {
+caffold-log-list .log-summary-toggle {
   width: 100%;
   margin: 0;
   padding: 0;
@@ -101,35 +101,35 @@ codger-log-list .log-summary-toggle {
   font: inherit;
 }
 
-codger-log-list .log-summary-toggle:hover .log-subject,
-codger-log-list .log-summary-toggle:focus-visible .log-subject {
+caffold-log-list .log-summary-toggle:hover .log-subject,
+caffold-log-list .log-summary-toggle:focus-visible .log-subject {
   color: var(--accent);
 }
 
-codger-log-list .log-summary-toggle:focus-visible {
+caffold-log-list .log-summary-toggle:focus-visible {
   outline: 1px solid #abcbbf;
   outline-offset: 2px;
 }
 
-codger-log-list .log-subject,
-codger-log-list .log-meta {
+caffold-log-list .log-subject,
+caffold-log-list .log-meta {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-codger-log-list .log-subject {
+caffold-log-list .log-subject {
   font-size: 0.84rem;
   font-weight: 500;
 }
 
-codger-log-list .log-meta {
+caffold-log-list .log-meta {
   color: var(--muted);
   font-size: 0.72rem;
 }
 
-codger-log-list .log-body {
+caffold-log-list .log-body {
   grid-column: 1 / -1;
   min-width: 0;
   margin: 3px 0 7px 0.25rem;
@@ -142,7 +142,7 @@ codger-log-list .log-body {
   white-space: pre-wrap;
 }
 
-codger-log-list .log-review-button {
+caffold-log-list .log-review-button {
   display: grid;
   grid-auto-flow: column;
   gap: 5px;
@@ -161,30 +161,30 @@ codger-log-list .log-review-button {
   line-height: 1;
 }
 
-codger-log-list .log-review-icon {
+caffold-log-list .log-review-icon {
   width: 0.82rem;
   height: 0.82rem;
   stroke-width: 2.2;
 }
 
-codger-log-list .log-review-label {
+caffold-log-list .log-review-label {
   line-height: 1;
 }
 
-codger-log-list .log-review-button:hover,
-codger-log-list .log-review-button:focus-visible {
+caffold-log-list .log-review-button:hover,
+caffold-log-list .log-review-button:focus-visible {
   border-color: #abcbbf;
   background: #f7fbf8;
   outline: none;
 }
 
-codger-log-list .error-panel {
+caffold-log-list .error-panel {
   background: var(--danger-soft);
   color: var(--danger);
 }
 
 @media (max-width: 860px) {
-  codger-log-list {
+  caffold-log-list {
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }

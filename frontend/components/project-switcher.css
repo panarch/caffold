@@ -1,9 +1,9 @@
-codger-project-switcher {
+caffold-project-switcher {
   display: grid;
   min-width: 0;
 }
 
-codger-project-switcher .project-switcher-button {
+caffold-project-switcher .project-switcher-button {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   column-gap: 7px;
@@ -19,51 +19,51 @@ codger-project-switcher .project-switcher-button {
   text-align: left;
 }
 
-codger-project-switcher .project-switcher-button:hover,
-codger-project-switcher .project-switcher-button:focus-visible {
+caffold-project-switcher .project-switcher-button:hover,
+caffold-project-switcher .project-switcher-button:focus-visible {
   border-color: #8bb8a8;
   background: #f7fbf8;
   outline: none;
 }
 
-codger-project-switcher .project-switcher-button.is-active {
+caffold-project-switcher .project-switcher-button.is-active {
   border-color: #8bb8a8;
   background: var(--accent-soft);
   color: #0d5f47;
 }
 
-codger-project-switcher .project-switcher-button.has-candidate {
+caffold-project-switcher .project-switcher-button.has-candidate {
   border-color: #bd9960;
   color: #764600;
 }
 
-codger-project-switcher .project-switcher-icon {
+caffold-project-switcher .project-switcher-icon {
   width: 16px;
   height: 16px;
 }
 
-codger-project-switcher .project-switcher-label,
-codger-project-switcher .project-switcher-path {
+caffold-project-switcher .project-switcher-label,
+caffold-project-switcher .project-switcher-path {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-codger-project-switcher .project-switcher-label {
+caffold-project-switcher .project-switcher-label {
   font-size: 0.78rem;
   font-weight: 500;
   line-height: 1.2;
 }
 
-codger-project-switcher .project-switcher-path {
+caffold-project-switcher .project-switcher-path {
   display: none;
   color: var(--muted);
   font-size: 0.66rem;
   line-height: 1.05;
 }
 
-codger-project-switcher .project-popover {
+caffold-project-switcher .project-popover {
   position: fixed;
   inset: 38px auto auto 12px;
   width: min(30rem, calc(100vw - 24px));
@@ -78,7 +78,7 @@ codger-project-switcher .project-popover {
   box-shadow: 0 12px 28px rgb(24 32 27 / 18%);
 }
 
-codger-project-switcher .project-popover-header {
+caffold-project-switcher .project-popover-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -89,18 +89,18 @@ codger-project-switcher .project-popover-header {
   padding: 0 10px;
 }
 
-codger-project-switcher .project-popover-header h2 {
+caffold-project-switcher .project-popover-header h2 {
   margin: 0;
   font-size: 0.82rem;
   line-height: 1.2;
 }
 
-codger-project-switcher .project-popover-header span {
+caffold-project-switcher .project-popover-header span {
   color: var(--muted);
   font-size: 0.72rem;
 }
 
-codger-project-switcher .project-candidate {
+caffold-project-switcher .project-candidate {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -110,54 +110,54 @@ codger-project-switcher .project-candidate {
   padding: 8px 10px;
 }
 
-codger-project-switcher .project-candidate-copy {
+caffold-project-switcher .project-candidate-copy {
   display: grid;
   min-width: 0;
   gap: 2px;
 }
 
-codger-project-switcher .project-candidate-copy strong,
-codger-project-switcher .project-candidate-copy span {
+caffold-project-switcher .project-candidate-copy strong,
+caffold-project-switcher .project-candidate-copy span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-codger-project-switcher .project-candidate-copy strong {
+caffold-project-switcher .project-candidate-copy strong {
   font-size: 0.78rem;
   font-weight: 500;
   color: #764600;
 }
 
-codger-project-switcher .project-candidate-copy span {
+caffold-project-switcher .project-candidate-copy span {
   color: var(--muted);
   font-size: 0.7rem;
 }
 
-codger-project-switcher .project-list {
+caffold-project-switcher .project-list {
   display: grid;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-codger-project-switcher .project-row {
+caffold-project-switcher .project-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: stretch;
   border-bottom: 1px solid #e6ede8;
 }
 
-codger-project-switcher .project-row:last-child {
+caffold-project-switcher .project-row:last-child {
   border-bottom: 0;
 }
 
-codger-project-switcher .project-row.is-current {
+caffold-project-switcher .project-row.is-current {
   background: var(--accent-soft);
 }
 
-codger-project-switcher .project-open {
+caffold-project-switcher .project-open {
   display: grid;
   min-width: 0;
   border: 0;
@@ -168,31 +168,31 @@ codger-project-switcher .project-open {
   text-align: left;
 }
 
-codger-project-switcher .project-open:hover,
-codger-project-switcher .project-open:focus-visible {
+caffold-project-switcher .project-open:hover,
+caffold-project-switcher .project-open:focus-visible {
   background: #eef7f2;
   outline: none;
 }
 
-codger-project-switcher .project-name,
-codger-project-switcher .project-path {
+caffold-project-switcher .project-name,
+caffold-project-switcher .project-path {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-codger-project-switcher .project-name {
+caffold-project-switcher .project-name {
   font-size: 0.82rem;
   font-weight: 500;
 }
 
-codger-project-switcher .project-path {
+caffold-project-switcher .project-path {
   color: var(--muted);
   font-size: 0.68rem;
 }
 
-codger-project-switcher .project-icon-button {
+caffold-project-switcher .project-icon-button {
   display: grid;
   align-items: center;
   justify-items: center;
@@ -204,33 +204,33 @@ codger-project-switcher .project-icon-button {
   cursor: pointer;
 }
 
-codger-project-switcher .project-icon-button:hover,
-codger-project-switcher .project-icon-button:focus-visible {
+caffold-project-switcher .project-icon-button:hover,
+caffold-project-switcher .project-icon-button:focus-visible {
   background: #eef7f2;
   outline: none;
 }
 
-codger-project-switcher .project-icon-button.is-danger {
+caffold-project-switcher .project-icon-button.is-danger {
   color: var(--danger);
 }
 
-codger-project-switcher .project-row-icon {
+caffold-project-switcher .project-row-icon {
   width: 16px;
   height: 16px;
 }
 
-codger-project-switcher .project-row.is-editing {
+caffold-project-switcher .project-row.is-editing {
   padding: 8px 10px;
 }
 
-codger-project-switcher .project-row form {
+caffold-project-switcher .project-row form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 6px;
   width: 100%;
 }
 
-codger-project-switcher input {
+caffold-project-switcher input {
   min-width: 0;
   border: 1px solid var(--border-strong);
   border-radius: 4px;
@@ -240,12 +240,12 @@ codger-project-switcher input {
   padding: 4px 6px;
 }
 
-codger-project-switcher input:focus {
+caffold-project-switcher input:focus {
   border-color: #8bb8a8;
   outline: 2px solid #c9e1d6;
 }
 
-codger-project-switcher .project-action {
+caffold-project-switcher .project-action {
   min-height: 28px;
   border: 1px solid var(--border-strong);
   border-radius: 4px;
@@ -255,40 +255,40 @@ codger-project-switcher .project-action {
   padding: 0 8px;
 }
 
-codger-project-switcher .project-action:hover,
-codger-project-switcher .project-action:focus-visible {
+caffold-project-switcher .project-action:hover,
+caffold-project-switcher .project-action:focus-visible {
   border-color: #8bb8a8;
   background: #f7fbf8;
   outline: none;
 }
 
-codger-project-switcher .project-action.is-secondary {
+caffold-project-switcher .project-action.is-secondary {
   color: var(--muted);
 }
 
-codger-project-switcher .project-message {
+caffold-project-switcher .project-message {
   margin: 0;
   padding: 10px;
   color: var(--muted);
   font-size: 0.76rem;
 }
 
-codger-project-switcher .project-message.is-error {
+caffold-project-switcher .project-message.is-error {
   color: var(--danger);
 }
 
 @media (max-width: 520px) {
-  codger-project-switcher .project-switcher-button {
+  caffold-project-switcher .project-switcher-button {
     max-width: 56vw;
     padding: 2px 6px;
   }
 
-  codger-project-switcher .project-popover {
+  caffold-project-switcher .project-popover {
     inset: 38px 8px auto 8px;
     width: auto;
   }
 
-  codger-project-switcher .project-row {
+  caffold-project-switcher .project-row {
     grid-template-columns: minmax(0, 1fr) 32px 32px;
   }
 }

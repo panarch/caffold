@@ -1,4 +1,4 @@
-codger-pathbar {
+caffold-pathbar {
   display: block;
   min-width: 0;
   border-top: 1px solid #e3e9e4;
@@ -6,7 +6,7 @@ codger-pathbar {
   background: var(--surface-muted);
 }
 
-codger-pathbar .pathbar {
+caffold-pathbar .pathbar {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
@@ -15,7 +15,7 @@ codger-pathbar .pathbar {
   padding: 0 12px;
 }
 
-codger-pathbar .pathbar-label {
+caffold-pathbar .pathbar-label {
   color: var(--muted);
   font-size: 0.72rem;
   font-weight: 600;
@@ -23,7 +23,7 @@ codger-pathbar .pathbar-label {
   text-transform: uppercase;
 }
 
-codger-pathbar .path-crumbs {
+caffold-pathbar .path-crumbs {
   display: flex;
   align-self: stretch;
   min-width: 0;
@@ -33,13 +33,13 @@ codger-pathbar .path-crumbs {
   list-style: none;
 }
 
-codger-pathbar .path-crumbs li {
+caffold-pathbar .path-crumbs li {
   display: inline-grid;
   grid-auto-flow: column;
   align-items: stretch;
 }
 
-codger-pathbar .path-crumbs li + li::before {
+caffold-pathbar .path-crumbs li + li::before {
   content: "/";
   display: inline-grid;
   align-items: center;
@@ -48,7 +48,7 @@ codger-pathbar .path-crumbs li + li::before {
   padding: 0 2px;
 }
 
-codger-pathbar .path-crumbs button {
+caffold-pathbar .path-crumbs button {
   display: inline-grid;
   min-height: 100%;
   align-items: center;
@@ -61,34 +61,34 @@ codger-pathbar .path-crumbs button {
   white-space: nowrap;
 }
 
-codger-pathbar .path-crumbs button:hover {
+caffold-pathbar .path-crumbs button:hover {
   background: #e7eee9;
   color: #0d5f47;
 }
 
-codger-pathbar .path-crumbs button:focus-visible {
+caffold-pathbar .path-crumbs button:focus-visible {
   background: #e7eee9;
   outline: 2px solid #abcbbf;
   outline-offset: -2px;
 }
 
-codger-pathbar .path-crumbs button:focus:not(:focus-visible) {
+caffold-pathbar .path-crumbs button:focus:not(:focus-visible) {
   outline: none;
 }
 
-codger-pathbar .path-crumbs button[aria-current="page"] {
+caffold-pathbar .path-crumbs button[aria-current="page"] {
   background: transparent;
   color: #0d5f47;
   font-weight: 500;
 }
 
 @media (max-width: 520px) {
-  codger-pathbar .pathbar {
+  caffold-pathbar .pathbar {
     gap: 6px;
     padding: 0 8px;
   }
 
-  codger-pathbar .pathbar-label {
+  caffold-pathbar .pathbar-label {
     display: none;
   }
 

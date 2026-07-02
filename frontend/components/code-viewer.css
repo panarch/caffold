@@ -1,11 +1,11 @@
-codger-code-viewer {
+caffold-code-viewer {
   display: block;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 
-codger-code-viewer .code-viewer {
+caffold-code-viewer .code-viewer {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
@@ -16,7 +16,7 @@ codger-code-viewer .code-viewer {
   color: var(--code-text);
 }
 
-codger-code-viewer .code-viewer > header {
+caffold-code-viewer .code-viewer > header {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 12px;
@@ -29,7 +29,7 @@ codger-code-viewer .code-viewer > header {
   font-size: 0.78rem;
 }
 
-codger-code-viewer .code-lines {
+caffold-code-viewer .code-lines {
   min-width: 0;
   min-height: 0;
   overflow: auto;
@@ -47,13 +47,13 @@ codger-code-viewer .code-lines {
   line-height: 1.55;
 }
 
-codger-code-viewer .code-row {
+caffold-code-viewer .code-row {
   display: grid;
   grid-template-columns: var(--line-gutter-width) minmax(max-content, 1fr);
   min-width: max-content;
 }
 
-codger-code-viewer .line-number {
+caffold-code-viewer .line-number {
   position: sticky;
   left: 0;
   z-index: 1;
@@ -64,52 +64,52 @@ codger-code-viewer .line-number {
   text-align: right;
 }
 
-codger-code-viewer .line-code {
+caffold-code-viewer .line-code {
   white-space: pre;
   padding: 0 12px;
 }
 
-codger-code-viewer .hljs-comment,
-codger-code-viewer .hljs-quote {
+caffold-code-viewer .hljs-comment,
+caffold-code-viewer .hljs-quote {
   color: #65746a;
 }
 
-codger-code-viewer .hljs-keyword,
-codger-code-viewer .hljs-selector-tag,
-codger-code-viewer .hljs-subst {
+caffold-code-viewer .hljs-keyword,
+caffold-code-viewer .hljs-selector-tag,
+caffold-code-viewer .hljs-subst {
   color: #005ea8;
 }
 
-codger-code-viewer .hljs-literal,
-codger-code-viewer .hljs-number,
-codger-code-viewer .hljs-tag .hljs-attr,
-codger-code-viewer .hljs-template-variable,
-codger-code-viewer .hljs-variable {
+caffold-code-viewer .hljs-literal,
+caffold-code-viewer .hljs-number,
+caffold-code-viewer .hljs-tag .hljs-attr,
+caffold-code-viewer .hljs-template-variable,
+caffold-code-viewer .hljs-variable {
   color: #8a5200;
 }
 
-codger-code-viewer .hljs-doctag,
-codger-code-viewer .hljs-string {
+caffold-code-viewer .hljs-doctag,
+caffold-code-viewer .hljs-string {
   color: #216e39;
 }
 
-codger-code-viewer .hljs-section,
-codger-code-viewer .hljs-selector-id,
-codger-code-viewer .hljs-title {
+caffold-code-viewer .hljs-section,
+caffold-code-viewer .hljs-selector-id,
+caffold-code-viewer .hljs-title {
   color: #9a4d00;
 }
 
-codger-code-viewer .hljs-type,
-codger-code-viewer .hljs-class .hljs-title {
+caffold-code-viewer .hljs-type,
+caffold-code-viewer .hljs-class .hljs-title {
   color: #00736b;
 }
 
 @media (max-width: 520px) {
-  codger-code-viewer .code-lines {
+  caffold-code-viewer .code-lines {
     font-size: 0.76rem;
   }
 
-  codger-code-viewer .line-number {
+  caffold-code-viewer .line-number {
     padding: 0 8px;
   }
 }

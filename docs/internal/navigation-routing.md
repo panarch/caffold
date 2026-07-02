@@ -1,9 +1,9 @@
 # Navigation Routing
 
 > Internal planning note. This document describes the first URL routing layer for
-> Codger's browser UI.
+> Caffold's browser UI.
 
-Codger uses URLs to preserve review orientation across reloads, bookmarks, and
+Caffold uses URLs to preserve review orientation across reloads, bookmarks, and
 browser back/forward. URLs describe semantic review state only. They do not
 encode mobile, foldable, or desktop layout state.
 

@@ -2,7 +2,7 @@ import { escapeHtml } from "./dom.js";
 
 const HUNK_HEADER_PATTERN = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/;
 
-class CodgerDiffViewer extends HTMLElement {
+class CaffoldDiffViewer extends HTMLElement {
   connectedCallback() {
     if (this.diff) {
       this.render();
@@ -56,7 +56,7 @@ class CodgerDiffViewer extends HTMLElement {
   }
 }
 
-customElements.define("codger-diff-viewer", CodgerDiffViewer);
+customElements.define("caffold-diff-viewer", CaffoldDiffViewer);
 
 function diffCodeColumns(rows) {
   const columns = rows.reduce((max, row) => {

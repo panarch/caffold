@@ -1,4 +1,4 @@
-codger-app-shell {
+caffold-app-shell {
   --left-panel-width: 20rem;
   position: relative;
   display: grid;
@@ -8,7 +8,7 @@ codger-app-shell {
   overflow: hidden;
 }
 
-codger-app-shell .app-header {
+caffold-app-shell .app-header {
   display: grid;
   align-items: center;
   min-height: 34px;
@@ -17,7 +17,7 @@ codger-app-shell .app-header {
   background: var(--surface);
 }
 
-codger-app-shell .app-context {
+caffold-app-shell .app-context {
   display: grid;
   grid-template-columns: auto minmax(0, auto) auto;
   align-items: center;
@@ -26,33 +26,33 @@ codger-app-shell .app-context {
   min-width: 0;
 }
 
-codger-app-shell .brand {
+caffold-app-shell .brand {
   display: grid;
   min-width: 0;
 }
 
-codger-app-shell .brand strong {
+caffold-app-shell .brand strong {
   font-size: 0.95rem;
   line-height: 1.2;
 }
 
-codger-app-shell .app-main {
+caffold-app-shell .app-main {
   display: grid;
   grid-template-columns: var(--left-panel-width) 6px minmax(0, 1fr);
   overflow: hidden;
   min-height: 0;
 }
 
-codger-app-shell .app-main > codger-file-list {
+caffold-app-shell .app-main > caffold-file-list {
   grid-column: 1;
 }
 
-codger-app-shell .app-main > codger-file-viewer {
+caffold-app-shell .app-main > caffold-file-viewer {
   grid-column: 3;
   min-width: 0;
 }
 
-codger-app-shell .panel-resizer {
+caffold-app-shell .panel-resizer {
   grid-column: 2;
   min-width: 0;
   border-right: 1px solid var(--border);
@@ -62,44 +62,44 @@ codger-app-shell .panel-resizer {
   touch-action: none;
 }
 
-codger-app-shell .panel-resizer:hover,
-codger-app-shell .panel-resizer:focus-visible,
-codger-app-shell.is-resizing-left-panel .panel-resizer {
+caffold-app-shell .panel-resizer:hover,
+caffold-app-shell .panel-resizer:focus-visible,
+caffold-app-shell.is-resizing-left-panel .panel-resizer {
   background: #d9e6df;
   outline: none;
 }
 
-codger-app-shell.is-resizing-left-panel {
+caffold-app-shell.is-resizing-left-panel {
   cursor: col-resize;
   user-select: none;
 }
 
 @media (max-width: 860px) {
-  codger-app-shell {
+  caffold-app-shell {
     grid-template-rows: auto auto minmax(0, 1fr);
   }
 
-  codger-app-shell .app-main {
+  caffold-app-shell .app-main {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 1fr);
   }
 
-  codger-app-shell .app-main > codger-file-list {
+  caffold-app-shell .app-main > caffold-file-list {
     grid-column: 1;
     grid-row: 1;
   }
 
-  codger-app-shell .app-main > codger-file-viewer {
+  caffold-app-shell .app-main > caffold-file-viewer {
     grid-column: 1;
     grid-row: 1;
   }
 
-  codger-app-shell[data-browser-view="list"] .app-main > codger-file-viewer,
-  codger-app-shell[data-browser-view="viewer"] .app-main > codger-file-list {
+  caffold-app-shell[data-browser-view="list"] .app-main > caffold-file-viewer,
+  caffold-app-shell[data-browser-view="viewer"] .app-main > caffold-file-list {
     display: none;
   }
 
-  codger-app-shell[data-browser-view="viewer"] .app-main {
+  caffold-app-shell[data-browser-view="viewer"] .app-main {
     position: fixed;
     inset: 0;
     z-index: 10;
@@ -110,17 +110,17 @@ codger-app-shell.is-resizing-left-panel {
     background: var(--surface);
   }
 
-  codger-app-shell[data-browser-view="viewer"] .app-main > codger-file-viewer {
+  caffold-app-shell[data-browser-view="viewer"] .app-main > caffold-file-viewer {
     grid-row: 1;
   }
 
-  codger-app-shell .panel-resizer {
+  caffold-app-shell .panel-resizer {
     display: none;
   }
 }
 
 @media (max-width: 520px) {
-  codger-app-shell .app-header {
+  caffold-app-shell .app-header {
     padding: 6px 10px;
   }
 }

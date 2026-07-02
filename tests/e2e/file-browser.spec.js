@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
 
-const LAST_DIRECTORY_KEY = `codger:last-directory-path:${resolve("tests/fixtures/home")}`;
+const LAST_DIRECTORY_KEY = `caffold:last-directory-path:${resolve("tests/fixtures/home")}`;
 const LONG_ROOT_FILE =
   "this-is-a-very-long-file-name-used-to-test-horizontal-scrolling-in-the-files-pane.md";
 const LONG_CHANGE_FILE =
@@ -104,7 +104,7 @@ test("delays file list loading feedback", async ({ page }) => {
   await expect(page.getByText("Loading files...")).toBeVisible();
 
   releaseListResponse();
-  await expect(page.locator("codger-file-list")).toContainText("src");
+  await expect(page.locator("caffold-file-list")).toContainText("src");
 });
 
 test("keeps the file list visible while project metadata refresh is slow", async ({ page }) => {
@@ -119,11 +119,11 @@ test("keeps the file list visible while project metadata refresh is slow", async
   });
 
   await page.goto("/");
-  await expect(page.locator("codger-file-list")).toContainText("src");
+  await expect(page.locator("caffold-file-list")).toContainText("src");
 
   await page.waitForTimeout(240);
   await expect(page.getByText("Loading files...")).toHaveCount(0);
-  await expect(page.locator("codger-file-list")).toContainText("src");
+  await expect(page.locator("caffold-file-list")).toContainText("src");
 
   releaseProjectResponses();
 });
@@ -132,22 +132,22 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
   await page.goto("/");
 
   await expect(page.getByText("Loading files...")).toHaveCount(0);
-  await expect(page.locator("codger-file-list")).toContainText(".codger-hidden");
-  await expect(page.locator("codger-file-list")).toContainText("src");
+  await expect(page.locator("caffold-file-list")).toContainText(".caffold-hidden");
+  await expect(page.locator("caffold-file-list")).toContainText("src");
   await expect(page.locator('button[data-entry-path="src"] .entry-icon')).toHaveAttribute(
     "title",
     "Git repository",
   );
-  await expect(page.locator('button[data-entry-path=".codger-hidden"]')).toHaveClass(
+  await expect(page.locator('button[data-entry-path=".caffold-hidden"]')).toHaveClass(
     /is-hidden/,
   );
   await expect(page.locator(".parent-entry")).toHaveCount(0);
 
   await page.locator('button[data-entry-path="src"]').click();
-  await expect(page.locator("codger-pathbar")).toContainText("src");
+  await expect(page.locator("caffold-pathbar")).toContainText("src");
   await expect(page.locator(".parent-entry")).toBeVisible();
-  await expect(page.locator("codger-file-list .git-summary")).toBeVisible();
-  await expect(page.locator("codger-file-list .git-summary")).toHaveClass(/is-dirty/);
+  await expect(page.locator("caffold-file-list .git-summary")).toBeVisible();
+  await expect(page.locator("caffold-file-list .git-summary")).toHaveClass(/is-dirty/);
   await expect(page.locator('button[data-entry-path="src/ignored.log"]')).toHaveClass(
     /is-ignored/,
   );
@@ -159,18 +159,18 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
     /is-ignored/,
   );
   await expect(page.locator('button[data-entry-path="src/planner/mod.rs"]')).toHaveCount(0);
-  await expect(page.locator("codger-file-list .entry-icon-svg").first()).toBeVisible();
+  await expect(page.locator("caffold-file-list .entry-icon-svg").first()).toBeVisible();
 
   await page.locator('button[data-entry-path="src/example.rs"]').click();
   await expect(page.getByText("Loading file...")).toHaveCount(0);
-  await expect(page.locator("codger-file-viewer")).toContainText("example.rs");
-  await expect(page.locator("codger-code-viewer")).toContainText("pub fn sample");
-  await expect(page.locator("codger-code-viewer")).not.toContainText("Highlighted");
+  await expect(page.locator("caffold-file-viewer")).toContainText("example.rs");
+  await expect(page.locator("caffold-code-viewer")).toContainText("pub fn sample");
+  await expect(page.locator("caffold-code-viewer")).not.toContainText("Highlighted");
   await expect(page.locator(".line-number").first()).toHaveText("1");
   await expectGlobalScrollLocked(page);
   await expectPanelScrollContainers(page);
   await page.getByRole("button", { name: "Show details for example.rs" }).click();
-  const details = page.locator("codger-file-viewer .viewer-meta-popover");
+  const details = page.locator("caffold-file-viewer .viewer-meta-popover");
   await expect(details).toBeVisible();
   await expect(details.locator('[data-field="path"] dd')).toHaveText("src/example.rs");
   await expect(details.locator('[data-field="language"] dd')).toHaveText("Rust");
@@ -178,14 +178,14 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
   await expect(details).toBeHidden();
   if (testInfo.project.name === "phone") {
     await page.getByRole("button", { name: "Back to files" }).click();
-    await expect(page.locator("codger-file-list")).toBeVisible();
-    await expect(page.locator("codger-file-viewer")).toBeHidden();
+    await expect(page.locator("caffold-file-list")).toBeVisible();
+    await expect(page.locator("caffold-file-viewer")).toBeHidden();
   }
   await page.locator('button[data-entry-path="src/planner"]').click();
   await expect(page.locator('button[data-entry-path="src/planner/mod.rs"]')).toBeVisible();
   await page.locator('button[data-entry-path="src/planner/mod.rs"]').click();
-  await expect(page.locator("codger-file-viewer")).toContainText("mod.rs");
-  await expect(page.locator("codger-code-viewer")).toContainText("plan_review");
+  await expect(page.locator("caffold-file-viewer")).toContainText("mod.rs");
+  await expect(page.locator("caffold-code-viewer")).toContainText("plan_review");
   await expect(page.locator(".line-number").first()).toHaveText("1");
 
   await stabilizeDynamicText(page);
@@ -196,7 +196,7 @@ test("manages project records from the header switcher", async ({ page }, testIn
   test.skip(testInfo.project.name !== "desktop", "Project CRUD mutates shared fixture data.");
 
   await page.goto("/");
-  const switcher = page.locator("codger-project-switcher");
+  const switcher = page.locator("caffold-project-switcher");
 
   await page.locator('button[data-entry-path="src"]').click();
   await expect(switcher.locator(".project-switcher-button")).toContainText("Register");
@@ -214,11 +214,11 @@ test("manages project records from the header switcher", async ({ page }, testIn
   await expect(switcher.locator(".project-switcher-button")).toContainText("Fixture Repo");
   await page.keyboard.press("Escape");
 
-  await page.locator('codger-pathbar button[data-path=""]').click();
-  await expect(page.locator("codger-pathbar")).not.toContainText("src");
+  await page.locator('caffold-pathbar button[data-path=""]').click();
+  await expect(page.locator("caffold-pathbar")).not.toContainText("src");
   await openProjectPopover(switcher);
   await switcher.locator(".project-open").filter({ hasText: "Fixture Repo" }).click();
-  await expect(page.locator("codger-pathbar")).toContainText("src");
+  await expect(page.locator("caffold-pathbar")).toContainText("src");
   await expect(switcher.locator(".project-popover")).toBeHidden();
 
   await page.reload();
@@ -238,27 +238,27 @@ test("restores project file routes and browser navigation", async ({ page }, tes
 
   await page.goto(`/projects/${project.id}/files/example.rs`);
   await expect(page).toHaveURL(`/projects/${project.id}/files/example.rs`);
-  await expect(page.locator("codger-pathbar")).toContainText("src");
-  await expect(page.locator("codger-file-viewer")).toContainText("example.rs");
-  await expect(page.locator("codger-code-viewer")).toContainText("pub fn sample");
+  await expect(page.locator("caffold-pathbar")).toContainText("src");
+  await expect(page.locator("caffold-file-viewer")).toContainText("example.rs");
+  await expect(page.locator("caffold-code-viewer")).toContainText("pub fn sample");
 
   await page.reload();
   await expect(page).toHaveURL(`/projects/${project.id}/files/example.rs`);
-  await expect(page.locator("codger-file-viewer")).toContainText("example.rs");
+  await expect(page.locator("caffold-file-viewer")).toContainText("example.rs");
 
   if (testInfo.project.name === "phone") {
     await page.getByRole("button", { name: "Back to files" }).click();
     await expect(page).toHaveURL(`/projects/${project.id}/files`);
-    await expect(page.locator("codger-file-list")).toBeVisible();
+    await expect(page.locator("caffold-file-list")).toBeVisible();
   }
 
   await page.goto(`/projects/${project.id}/files`);
-  await expect(page.locator("codger-file-list")).toBeVisible();
+  await expect(page.locator("caffold-file-list")).toBeVisible();
   await page.locator('button[data-entry-path="src/example.rs"]').click();
   await expect(page).toHaveURL(`/projects/${project.id}/files/example.rs`);
   await page.goBack();
   await expect(page).toHaveURL(`/projects/${project.id}/files`);
-  await expect(page.locator("codger-file-list")).toBeVisible();
+  await expect(page.locator("caffold-file-list")).toBeVisible();
 
   await page.goto(`/projects/${project.id}/files/planner`);
   await expect(page).toHaveURL(`/projects/${project.id}/files/planner`);
@@ -277,15 +277,15 @@ test("restores project review routes", async ({ page }) => {
     shortSha: "abcdef1",
     subject: "Route review state",
     body: "",
-    authorName: "Codger",
-    authorEmail: "codger@example.test",
+    authorName: "Caffold",
+    authorEmail: "caffold@example.test",
     authorTimeMs: 1_767_000_000_000,
   };
   const github = {
     owner: "example",
-    name: "codger",
-    nameWithOwner: "example/codger",
-    url: "https://github.com/example/codger",
+    name: "caffold",
+    nameWithOwner: "example/caffold",
+    url: "https://github.com/example/caffold",
   };
 
   await page.route(/\/api\/git\/status(?:\?|$)/, (route) =>
@@ -461,12 +461,12 @@ test("restores project review routes", async ({ page }) => {
             number: 42,
             title: "Route issue detail",
             state: "OPEN",
-            author: "Codger",
+            author: "Caffold",
             labels: ["routing"],
             assignees: [],
             comments: 1,
             updatedAt: "2026-07-01T10:00:00Z",
-            url: "https://github.com/example/codger/issues/42",
+            url: "https://github.com/example/caffold/issues/42",
           },
         ],
         page: 2,
@@ -490,7 +490,7 @@ test("restores project review routes", async ({ page }) => {
           number: 42,
           title: "Route issue detail",
           state: "OPEN",
-          author: "Codger",
+          author: "Caffold",
           labels: ["routing"],
           assignees: [],
           comments: 1,
@@ -498,18 +498,18 @@ test("restores project review routes", async ({ page }) => {
           bodyHtml: "<p>Route issue body</p>",
           createdAt: "2026-07-01T08:00:00Z",
           updatedAt: "2026-07-01T10:00:00Z",
-          url: "https://github.com/example/codger/issues/42",
+          url: "https://github.com/example/caffold/issues/42",
         },
       }),
     });
   });
 
   await page.goto(`/projects/${project.id}/diff/example.rs`);
-  await expect(page.locator("codger-review-workspace")).toHaveAttribute(
+  await expect(page.locator("caffold-review-workspace")).toHaveAttribute(
     "data-workspace-mode",
     "diff",
   );
-  await expect(page.locator("codger-diff-viewer")).toContainText("new route line");
+  await expect(page.locator("caffold-diff-viewer")).toContainText("new route line");
   await page.goto(`/projects/${project.id}/diff`);
   await page.locator('button[data-change-path="src/example.rs"]').click();
   await expect(page).toHaveURL(`/projects/${project.id}/diff/example.rs`);
@@ -519,13 +519,13 @@ test("restores project review routes", async ({ page }) => {
   await page.goto(
     `/projects/${project.id}/compare/example.rs?base=origin%2Fmain&head=feature%2Freview`,
   );
-  await expect(page.locator("codger-review-workspace")).toHaveAttribute(
+  await expect(page.locator("caffold-review-workspace")).toHaveAttribute(
     "data-workspace-mode",
     "compare",
   );
   await expect(page.locator('select[data-compare-ref="base"]')).toHaveValue("origin/main");
   await expect(page.locator('select[data-compare-ref="head"]')).toHaveValue("feature/review");
-  await expect(page.locator("codger-diff-viewer")).toContainText("new compare route line");
+  await expect(page.locator("caffold-diff-viewer")).toContainText("new compare route line");
   await page.goto(`/projects/${project.id}/compare?base=origin%2Fmain&head=feature%2Freview`);
   await page.locator('button[data-compare-path="src/example.rs"]').click();
   await expect(page).toHaveURL(
@@ -537,12 +537,12 @@ test("restores project review routes", async ({ page }) => {
   );
 
   await page.goto(`/projects/${project.id}/log/${commit.sha}/planner/mod.rs?page=2`);
-  await expect(page.locator("codger-review-workspace")).toHaveAttribute(
+  await expect(page.locator("caffold-review-workspace")).toHaveAttribute(
     "data-workspace-mode",
     "log",
   );
   await expect(page.locator(".review-workspace-title h2")).toHaveText("Commit");
-  await expect(page.locator("codger-diff-viewer")).toContainText("new commit route line");
+  await expect(page.locator("caffold-diff-viewer")).toContainText("new commit route line");
   await page.goto(`/projects/${project.id}/log/${commit.sha}?page=2`);
   await page.locator('button[data-commit-path="src/planner/mod.rs"]').click();
   await expect(page).toHaveURL(`/projects/${project.id}/log/${commit.sha}/planner/mod.rs?page=2`);
@@ -552,11 +552,11 @@ test("restores project review routes", async ({ page }) => {
   await expect(page).toHaveURL(`/projects/${project.id}/log?page=2`);
 
   await page.goto(`/projects/${project.id}/issues/42?page=2`);
-  await expect(page.locator("codger-review-workspace")).toHaveAttribute(
+  await expect(page.locator("caffold-review-workspace")).toHaveAttribute(
     "data-workspace-mode",
     "issues",
   );
-  await expect(page.locator("codger-github-issue-viewer")).toContainText("Route issue body");
+  await expect(page.locator("caffold-github-issue-viewer")).toContainText("Route issue body");
   await page.getByRole("button", { name: "Back to issues" }).click();
   await expect(page).toHaveURL(`/projects/${project.id}/issues?page=2`);
 });
@@ -565,14 +565,14 @@ test("previews image files in the viewer", async ({ page }) => {
   await page.goto("/");
 
   await page.locator('button[data-entry-path="preview-image.svg"]').click();
-  await expect(page.locator("codger-file-viewer")).toContainText("preview-image.svg");
-  await expect(page.locator("codger-file-viewer")).toContainText("SVG image");
+  await expect(page.locator("caffold-file-viewer")).toContainText("preview-image.svg");
+  await expect(page.locator("caffold-file-viewer")).toContainText("SVG image");
   await page.getByRole("button", { name: "Show details for preview-image.svg" }).click();
-  const details = page.locator("codger-file-viewer .viewer-meta-popover");
+  const details = page.locator("caffold-file-viewer .viewer-meta-popover");
   await expect(details.locator('[data-field="size"] dd')).toHaveText("325 B");
   await expect(details.locator('[data-field="type"] dd')).toHaveText("SVG image");
 
-  const preview = page.locator("codger-file-viewer img.image-preview");
+  const preview = page.locator("caffold-file-viewer img.image-preview");
   await expect(preview).toBeVisible();
   await expect(preview).toHaveAttribute("src", /\/api\/image\?path=preview-image\.svg$/);
   await expect(
@@ -584,7 +584,7 @@ test("keeps the toggled tree row anchored while expanding", async ({ page }) => 
   await page.goto("/");
   await page.addStyleTag({
     content: `
-      codger-file-list .file-list {
+      caffold-file-list .file-list {
         max-height: 150px;
       }
     `,
@@ -629,7 +629,7 @@ test("scrolls long names horizontally in Files and Changes", async ({ page }) =>
   await expectHorizontalScroller(page, ".file-list");
 
   await page.locator('button[data-entry-path="src"]').click();
-  const gitButton = page.locator('codger-header-actions button[data-action="open-diff-workspace"]');
+  const gitButton = page.locator('caffold-header-actions button[data-action="open-diff-workspace"]');
   await expect(gitButton).toBeVisible();
   await gitButton.click();
   await expect(page.locator(`button[data-change-path="${LONG_CHANGE_FILE}"]`)).toBeVisible();
@@ -661,8 +661,8 @@ test("scrolls long source lines horizontally in the code viewer", async ({ page 
 
   await page.goto("/");
   await page.locator('button[data-entry-path="README.md"]').click();
-  await expect(page.locator("codger-code-viewer")).toContainText("long-source-token");
-  await expectHorizontalScroller(page, "codger-code-viewer .code-lines");
+  await expect(page.locator("caffold-code-viewer")).toContainText("long-source-token");
+  await expectHorizontalScroller(page, "caffold-code-viewer .code-lines");
 });
 
 test("uses a single-pane file viewer on phone", async ({ page }, testInfo) => {
@@ -671,18 +671,18 @@ test("uses a single-pane file viewer on phone", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.addStyleTag({
     content: `
-      codger-file-list .file-list {
+      caffold-file-list .file-list {
         max-height: 140px;
       }
     `,
   });
 
-  const shell = page.locator("codger-app-shell");
-  const fileList = page.locator("codger-file-list .file-list");
+  const shell = page.locator("caffold-app-shell");
+  const fileList = page.locator("caffold-file-list .file-list");
   const fileTarget = page.locator(`button[data-entry-path="${LONG_ROOT_FILE}"]`);
   await expect(shell).toHaveAttribute("data-browser-view", "list");
-  await expect(page.locator("codger-file-list")).toBeVisible();
-  await expect(page.locator("codger-file-viewer")).toBeHidden();
+  await expect(page.locator("caffold-file-list")).toBeVisible();
+  await expect(page.locator("caffold-file-viewer")).toBeHidden();
 
   await fileTarget.scrollIntoViewIfNeeded();
   const beforeFileScroll = await scrollTop(fileList);
@@ -690,9 +690,9 @@ test("uses a single-pane file viewer on phone", async ({ page }, testInfo) => {
 
   await fileTarget.click();
   await expect(shell).toHaveAttribute("data-browser-view", "viewer");
-  await expect(page.locator("codger-file-list")).toBeHidden();
-  await expect(page.locator("codger-file-viewer")).toBeVisible();
-  await expect(page.locator("codger-file-viewer")).toContainText(LONG_ROOT_FILE);
+  await expect(page.locator("caffold-file-list")).toBeHidden();
+  await expect(page.locator("caffold-file-viewer")).toBeVisible();
+  await expect(page.locator("caffold-file-viewer")).toContainText(LONG_ROOT_FILE);
   await expect(page.getByRole("button", { name: "Back to files" })).toBeVisible();
   await expectMobileBrowserViewerOverlay(page);
   await expectMobileViewerCompactHeader(page);
@@ -701,8 +701,8 @@ test("uses a single-pane file viewer on phone", async ({ page }, testInfo) => {
 
   await page.getByRole("button", { name: "Back to files" }).click();
   await expect(shell).toHaveAttribute("data-browser-view", "list");
-  await expect(page.locator("codger-file-list")).toBeVisible();
-  await expect(page.locator("codger-file-viewer")).toBeHidden();
+  await expect(page.locator("caffold-file-list")).toBeVisible();
+  await expect(page.locator("caffold-file-viewer")).toBeHidden();
   await expect(fileTarget).toHaveAttribute("aria-current", "true");
   await expectPreservedScroll(fileList, beforeFileScroll);
 });
@@ -711,43 +711,43 @@ test("keeps list scroll positions when selecting files and changes", async ({ pa
   await page.goto("/");
   await page.addStyleTag({
     content: `
-      codger-file-list .file-list,
-      codger-changes-tree .changes-tree-list {
+      caffold-file-list .file-list,
+      caffold-changes-tree .changes-tree-list {
         max-height: 72px;
       }
     `,
   });
 
-  const fileList = page.locator("codger-file-list .file-list");
+  const fileList = page.locator("caffold-file-list .file-list");
   const fileTarget = page.locator('button[data-entry-path="README.md"]');
   await fileTarget.scrollIntoViewIfNeeded();
   const beforeFileScroll = await scrollTop(fileList);
   expect(beforeFileScroll).toBeGreaterThan(0);
 
   await fileTarget.click();
-  await expect(page.locator("codger-file-viewer")).toContainText("README.md");
+  await expect(page.locator("caffold-file-viewer")).toContainText("README.md");
   if (testInfo.project.name === "phone") {
     await page.getByRole("button", { name: "Back to files" }).click();
-    await expect(page.locator("codger-file-list")).toBeVisible();
+    await expect(page.locator("caffold-file-list")).toBeVisible();
   }
   await expectPreservedScroll(fileList, beforeFileScroll);
 
   await page.locator('button[data-entry-path="src"]').click();
-  const gitButton = page.locator('codger-header-actions button[data-action="open-diff-workspace"]');
+  const gitButton = page.locator('caffold-header-actions button[data-action="open-diff-workspace"]');
   await expect(gitButton).toBeVisible();
   await gitButton.click();
 
-  const changesList = page.locator("codger-changes-tree .changes-tree-list");
+  const changesList = page.locator("caffold-changes-tree .changes-tree-list");
   const changeTarget = page.locator(`button[data-change-path="${LONG_CHANGE_FILE}"]`);
   await changeTarget.scrollIntoViewIfNeeded();
   const beforeChangesScroll = await scrollTop(changesList);
   expect(beforeChangesScroll).toBeGreaterThan(0);
 
   await changeTarget.click();
-  await expect(page.locator("codger-diff-viewer")).toContainText("long_change_name_fixture");
+  await expect(page.locator("caffold-diff-viewer")).toContainText("long_change_name_fixture");
   if (testInfo.project.name === "phone") {
     await page.getByRole("button", { name: "Back to changes" }).click();
-    await expect(page.locator("codger-changes-tree")).toBeVisible();
+    await expect(page.locator("caffold-changes-tree")).toBeVisible();
   }
   await expectPreservedScroll(changesList, beforeChangesScroll);
 });
@@ -815,9 +815,9 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.locator('button[data-entry-path="src"]').click();
 
-  const gitButton = page.locator('codger-header-actions button[data-action="open-diff-workspace"]');
+  const gitButton = page.locator('caffold-header-actions button[data-action="open-diff-workspace"]');
   await expect(gitButton).toBeVisible();
-  await expect(page.locator("codger-pathbar .header-action-button")).toHaveCount(0);
+  await expect(page.locator("caffold-pathbar .header-action-button")).toHaveCount(0);
   await expect(gitButton.locator(".header-action-count")).not.toHaveText("");
   await expect(gitButton.locator(".header-action-icon")).toBeVisible();
   await expect(gitButton.locator(".header-action-label")).toHaveText("Diff");
@@ -825,30 +825,30 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   await expect(gitButton).toHaveAttribute("title", "Open Diff");
 
   await gitButton.click();
-  const workspace = page.locator("codger-review-workspace");
+  const workspace = page.locator("caffold-review-workspace");
   await expect(workspace).toBeVisible();
   await expect(workspace).toHaveAttribute("data-workspace-mode", "diff");
   await expect(workspace.getByRole("button", { name: "Close review workspace" })).toBeVisible();
-  await expect(page.locator("codger-changes-tree")).toContainText("Unstaged");
-  await expect(page.locator("codger-changes-tree")).toContainText("example.rs");
-  await expect(page.locator("codger-changes-tree")).toContainText("deleted.rs");
+  await expect(page.locator("caffold-changes-tree")).toContainText("Unstaged");
+  await expect(page.locator("caffold-changes-tree")).toContainText("example.rs");
+  await expect(page.locator("caffold-changes-tree")).toContainText("deleted.rs");
   if (testInfo.project.name !== "phone") {
     const resizeHandle = workspace.locator(".workspace-mode-diff .review-panel-resizer");
     await expect(resizeHandle).toBeVisible();
     const beforeReviewWidth = await elementWidth(
       page,
-      "codger-review-workspace .workspace-mode-diff > codger-changes-tree",
+      "caffold-review-workspace .workspace-mode-diff > caffold-changes-tree",
     );
     await dragHorizontalResizer(page, resizeHandle, 96);
     const afterReviewWidth = await elementWidth(
       page,
-      "codger-review-workspace .workspace-mode-diff > codger-changes-tree",
+      "caffold-review-workspace .workspace-mode-diff > caffold-changes-tree",
     );
     expect(afterReviewWidth).toBeGreaterThan(beforeReviewWidth + 48);
   }
 
   await page.locator('button[data-change-path="src/example.rs"]').click();
-  await expect(page.locator(".workspace-mode-diff codger-review-file-viewer")).toContainText(
+  await expect(page.locator(".workspace-mode-diff caffold-review-file-viewer")).toContainText(
     "example.rs",
   );
   await expect(page.locator(".workspace-mode-diff .viewer-subtitle")).toHaveText(
@@ -857,24 +857,24 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   if (testInfo.project.name === "phone") {
     await expectMobileReviewDetail(page, {
       backName: "Back to changes",
-      detailSelector: ".workspace-mode-diff codger-review-file-viewer",
-      listSelector: "codger-changes-tree",
+      detailSelector: ".workspace-mode-diff caffold-review-file-viewer",
+      listSelector: "caffold-changes-tree",
     });
   } else {
     await expectAlignedWorkspaceHeaders(page, [
-      "codger-review-workspace .review-workspace-header",
-      "codger-changes-tree .changes-tree-panel > header",
-      ".workspace-mode-diff codger-review-file-viewer .viewer-panel > header",
+      "caffold-review-workspace .review-workspace-header",
+      "caffold-changes-tree .changes-tree-panel > header",
+      ".workspace-mode-diff caffold-review-file-viewer .viewer-panel > header",
     ]);
     await expectMatchingPaneTitleSizes(page, [
-      "codger-changes-tree .changes-tree-panel > header",
-      ".workspace-mode-diff codger-review-file-viewer .viewer-panel > header",
+      "caffold-changes-tree .changes-tree-panel > header",
+      ".workspace-mode-diff caffold-review-file-viewer .viewer-panel > header",
     ]);
   }
-  await expect(page.locator("codger-diff-viewer")).toContainText("@@ -10,4 +10,5 @@");
-  await expect(page.locator("codger-diff-viewer")).toContainText("old line");
-  await expect(page.locator("codger-diff-viewer")).toContainText("new line");
-  await expectHorizontalScroller(page, "codger-diff-viewer .diff-lines");
+  await expect(page.locator("caffold-diff-viewer")).toContainText("@@ -10,4 +10,5 @@");
+  await expect(page.locator("caffold-diff-viewer")).toContainText("old line");
+  await expect(page.locator("caffold-diff-viewer")).toContainText("new line");
+  await expectHorizontalScroller(page, "caffold-diff-viewer .diff-lines");
   await expectUnifiedDiffRowsShareScrollWidth(page);
   await expectDiffScrollerFillsViewer(page);
   await captureReviewScreenshot(page, testInfo, "diff-viewer-horizontal-scroll");
@@ -900,8 +900,8 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   if (testInfo.project.name === "phone") {
     await page.getByRole("button", { name: "Back to changes" }).click();
     await expect(workspace).toHaveAttribute("data-mobile-detail", "false");
-    await expect(page.locator("codger-changes-tree")).toBeVisible();
-    await expect(page.locator(".workspace-mode-diff codger-review-file-viewer")).toBeHidden();
+    await expect(page.locator("caffold-changes-tree")).toBeVisible();
+    await expect(page.locator(".workspace-mode-diff caffold-review-file-viewer")).toBeHidden();
   }
   await page.locator('button[data-change-path="src/deleted.rs"]').click();
   await expect(page.locator(".workspace-mode-diff .viewer-subtitle")).toHaveText(
@@ -914,8 +914,8 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
       "data-detail-view",
       "list",
     );
-    await expect(page.locator("codger-changes-tree")).toBeVisible();
-    await expect(page.locator(".workspace-mode-diff codger-review-file-viewer")).toBeHidden();
+    await expect(page.locator("caffold-changes-tree")).toBeVisible();
+    await expect(page.locator(".workspace-mode-diff caffold-review-file-viewer")).toBeHidden();
     await expect(page.locator('button[data-change-path="src/deleted.rs"]')).toHaveAttribute(
       "aria-current",
       "true",
@@ -924,7 +924,7 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
 
   await workspace.getByRole("button", { name: "Close review workspace" }).click();
   await expect(workspace).toBeHidden();
-  await expect(page.locator("codger-file-list")).toBeVisible();
+  await expect(page.locator("caffold-file-list")).toBeVisible();
 });
 
 test("opens branch compare diffs", async ({ page }, testInfo) => {
@@ -1024,13 +1024,13 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
   await page.locator('button[data-entry-path="src"]').click();
 
   const compareButton = page.locator(
-    'codger-header-actions button[data-action="open-compare-workspace"]',
+    'caffold-header-actions button[data-action="open-compare-workspace"]',
   );
   await expect(compareButton.locator(".header-action-label")).toHaveText("Compare");
   await expect(compareButton).toHaveAttribute("title", "Open Compare");
   await compareButton.click();
 
-  const workspace = page.locator("codger-review-workspace");
+  const workspace = page.locator("caffold-review-workspace");
   await expect(workspace).toBeVisible();
   await expect(workspace).toHaveAttribute("data-workspace-mode", "compare");
   await expect(workspace.locator(".review-workspace-title h2")).toHaveText("Compare");
@@ -1048,10 +1048,10 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
   ).toHaveCount(1);
   await expectCompareRefControlsFit(page, testInfo, { sameRefCss: true });
   await captureReviewScreenshot(page, testInfo, "compare-long-refs");
-  await expect(page.locator("codger-compare-tree")).toContainText("2 files");
-  await expect(page.locator("codger-compare-tree")).toContainText("planner");
-  await expect(page.locator("codger-compare-tree")).toContainText("function.rs");
-  await expect(page.locator("codger-compare-tree")).toContainText("new.rs");
+  await expect(page.locator("caffold-compare-tree")).toContainText("2 files");
+  await expect(page.locator("caffold-compare-tree")).toContainText("planner");
+  await expect(page.locator("caffold-compare-tree")).toContainText("function.rs");
+  await expect(page.locator("caffold-compare-tree")).toContainText("new.rs");
 
   await workspace.locator('select[data-compare-ref="base"]').selectOption("main");
   await workspace.locator('select[data-compare-ref="head"]').selectOption("main");
@@ -1063,7 +1063,7 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
     tightRefGaps: true,
   });
   await captureReviewScreenshot(page, testInfo, "compare-empty-short-refs");
-  await expect(page.locator("codger-compare-tree")).toContainText("0 files");
+  await expect(page.locator("caffold-compare-tree")).toContainText("0 files");
 
   await workspace.locator('select[data-compare-ref="base"]').selectOption("origin/main");
   await workspace.locator('select[data-compare-ref="head"]').selectOption("feature/review");
@@ -1100,26 +1100,26 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
   );
   await expect(workspace.locator('select[data-compare-ref="base"]')).toHaveValue("origin/release");
   await expect(workspace.locator('select[data-compare-ref="head"]')).toHaveValue(headRef);
-  await expect(page.locator("codger-compare-tree")).toContainText("release.rs");
+  await expect(page.locator("caffold-compare-tree")).toContainText("release.rs");
 
   await page.locator('button[data-compare-path="src/runtime/release.rs"]').click();
   await expect(page.locator('button[data-compare-path="src/runtime/release.rs"]')).toHaveAttribute(
     "aria-current",
     "true",
   );
-  await expect(page.locator(".workspace-mode-compare codger-review-file-viewer")).toContainText(
+  await expect(page.locator(".workspace-mode-compare caffold-review-file-viewer")).toContainText(
     "release.rs",
   );
   await expect(page.locator(".workspace-mode-compare .viewer-subtitle")).toHaveText(
     `Added · origin/release...${headRef}`,
   );
-  await expect(page.locator("codger-diff-viewer")).toContainText("old compare line");
-  await expect(page.locator("codger-diff-viewer")).toContainText("new compare line");
+  await expect(page.locator("caffold-diff-viewer")).toContainText("old compare line");
+  await expect(page.locator("caffold-diff-viewer")).toContainText("new compare line");
   if (testInfo.project.name === "phone") {
     await expectMobileReviewDetail(page, {
       backName: "Back to compare",
-      detailSelector: ".workspace-mode-compare codger-review-file-viewer",
-      listSelector: "codger-compare-tree",
+      detailSelector: ".workspace-mode-compare caffold-review-file-viewer",
+      listSelector: "caffold-compare-tree",
     });
     await page.getByRole("button", { name: "Back to compare" }).click();
     await expect(workspace).toHaveAttribute("data-mobile-detail", "false");
@@ -1127,8 +1127,8 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
       "data-detail-view",
       "list",
     );
-    await expect(page.locator("codger-compare-tree")).toBeVisible();
-    await expect(page.locator(".workspace-mode-compare codger-review-file-viewer")).toBeHidden();
+    await expect(page.locator("caffold-compare-tree")).toBeVisible();
+    await expect(page.locator(".workspace-mode-compare caffold-review-file-viewer")).toBeHidden();
   }
 });
 
@@ -1136,9 +1136,9 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
   const repository = { rootPath: "src", branch: "feature/review", dirty: false };
   const github = {
     owner: "example",
-    name: "codger",
-    nameWithOwner: "example/codger",
-    url: "https://github.com/example/codger",
+    name: "caffold",
+    nameWithOwner: "example/caffold",
+    url: "https://github.com/example/caffold",
   };
   const issues = [
     {
@@ -1150,7 +1150,7 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
       assignees: [],
       comments: 3,
       updatedAt: "2026-07-01T10:00:00Z",
-      url: "https://github.com/example/codger/issues/42",
+      url: "https://github.com/example/caffold/issues/42",
     },
     {
       number: 41,
@@ -1161,7 +1161,7 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
       assignees: ["taehoon"],
       comments: 0,
       updatedAt: "2026-07-01T09:00:00Z",
-      url: "https://github.com/example/codger/issues/41",
+      url: "https://github.com/example/caffold/issues/41",
     },
   ];
   const olderIssues = [
@@ -1174,7 +1174,7 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
       assignees: [],
       comments: 1,
       updatedAt: "2026-06-30T09:00:00Z",
-      url: "https://github.com/example/codger/issues/7",
+      url: "https://github.com/example/caffold/issues/7",
     },
   ];
 
@@ -1254,45 +1254,45 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
   await page.locator('button[data-entry-path="src"]').click();
 
   const issuesButton = page.locator(
-    'codger-header-actions button[data-action="open-github-issues-workspace"]',
+    'caffold-header-actions button[data-action="open-github-issues-workspace"]',
   );
   await expect(issuesButton).toBeVisible();
   await expect(issuesButton.locator(".header-action-label")).toHaveText("Issues");
   await issuesButton.click();
 
-  const workspace = page.locator("codger-review-workspace");
+  const workspace = page.locator("caffold-review-workspace");
   await expect(workspace).toBeVisible();
   await expect(workspace).toHaveAttribute("data-workspace-mode", "issues");
   await expect(workspace.locator(".review-workspace-title h2")).toHaveText("Issues");
   await expect(workspace.locator(".review-workspace-subtitle")).toHaveText(
-    "example/codger · 75 issues",
+    "example/caffold · 75 issues",
   );
-  await expect(page.locator("codger-github-issues-list")).toContainText(
+  await expect(page.locator("caffold-github-issues-list")).toContainText(
     "Track mobile review issues",
   );
-  await expect(page.locator("codger-github-issues-list")).toContainText(
+  await expect(page.locator("caffold-github-issues-list")).toContainText(
     "Keep readonly GitHub access narrow",
   );
-  await expect(page.locator("codger-github-issues-list .github-issues-count")).toHaveText(
+  await expect(page.locator("caffold-github-issues-list .github-issues-count")).toHaveText(
     "75 issues",
   );
-  const issuePagination = page.locator("codger-github-issues-list codger-pagination");
+  const issuePagination = page.locator("caffold-github-issues-list caffold-pagination");
   await expect(issuePagination.locator(".pagination-indicator")).toHaveText("1 / 2");
   await expect(issuePagination.getByRole("button", { name: "Newest issue page" })).toBeDisabled();
   await expect(issuePagination.getByRole("button", { name: "Newer issue page" })).toBeDisabled();
-  await expect(page.locator("codger-github-issues-list")).toBeVisible();
-  await expect(page.locator("codger-github-issue-viewer")).toBeHidden();
+  await expect(page.locator("caffold-github-issues-list")).toBeVisible();
+  await expect(page.locator("caffold-github-issue-viewer")).toBeHidden();
   await expectAlignedWorkspaceHeaders(page, [
-    "codger-review-workspace .review-workspace-header",
-    "codger-github-issues-list .github-issues-panel > header",
+    "caffold-review-workspace .review-workspace-header",
+    "caffold-github-issues-list .github-issues-panel > header",
   ]);
   await expectMatchingPaneTitleSizes(page, [
-    "codger-github-issues-list .github-issues-panel > header",
+    "caffold-github-issues-list .github-issues-panel > header",
   ]);
   await captureReviewScreenshot(page, testInfo, "github-issues-list");
 
   await page.locator('button[data-issue-number="42"]').click();
-  const issueViewer = page.locator("codger-github-issue-viewer");
+  const issueViewer = page.locator("caffold-github-issue-viewer");
   await expect(workspace).toHaveAttribute("data-workspace-mode", "issues");
   await expect(workspace.locator(".workspace-mode-issues")).toHaveAttribute(
     "data-issues-view",
@@ -1303,18 +1303,18 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
     "#42 Track mobile review issues",
   );
   await expect(workspace.getByRole("button", { name: "Back to issues" })).toBeVisible();
-  await expect(page.locator("codger-github-issues-list")).toBeHidden();
+  await expect(page.locator("caffold-github-issues-list")).toBeHidden();
   await expect(issueViewer).toBeVisible();
   await expect(issueViewer).toContainText("Track mobile review issues");
   await expect(issueViewer).toContainText("3 comments");
   if (testInfo.project.name === "phone") {
     await expectMobileReviewDetail(page, {
       backName: "Back to issues",
-      detailSelector: "codger-github-issue-viewer",
-      listSelector: "codger-github-issues-list",
+      detailSelector: "caffold-github-issue-viewer",
+      listSelector: "caffold-github-issues-list",
     });
   }
-  const markdownViewer = issueViewer.locator("codger-github-markdown");
+  const markdownViewer = issueViewer.locator("caffold-github-markdown");
   await expect(markdownViewer).toBeVisible();
   await expect(markdownViewer.locator("strong")).toHaveText("Review");
   await expect(markdownViewer.locator("pre")).toContainText("cargo test");
@@ -1344,7 +1344,7 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
   });
   await expect(issueViewer.getByRole("link", { name: "GitHub" })).toHaveAttribute(
     "href",
-    "https://github.com/example/codger/issues/42",
+    "https://github.com/example/caffold/issues/42",
   );
   await captureReviewScreenshot(page, testInfo, "github-issue-detail");
 
@@ -1355,24 +1355,24 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
   );
   await expect(workspace).toHaveAttribute("data-mobile-detail", "false");
   await expect(workspace.locator(".review-workspace-title h2")).toHaveText("Issues");
-  await expect(page.locator("codger-github-issues-list")).toBeVisible();
+  await expect(page.locator("caffold-github-issues-list")).toBeVisible();
   await expect(issueViewer).toBeHidden();
 
   await issuePagination.getByRole("button", { name: "Oldest issue page" }).click();
   await page.waitForTimeout(220);
-  await expect(page.locator("codger-github-issues-list .github-issues-loading-body")).toHaveText(
+  await expect(page.locator("caffold-github-issues-list .github-issues-loading-body")).toHaveText(
     "Loading issues...",
   );
-  await expect(page.locator("codger-github-issues-list")).not.toContainText(
+  await expect(page.locator("caffold-github-issues-list")).not.toContainText(
     "Track mobile review issues",
   );
   await expect(issuePagination.locator(".pagination-indicator")).toHaveText("2 / 2");
   await expect(issuePagination.getByRole("button", { name: "Newest issue page" })).toBeEnabled();
   await expect(issuePagination.getByRole("button", { name: "Oldest issue page" })).toBeDisabled();
-  await expect(page.locator("codger-github-issues-list")).toContainText(
+  await expect(page.locator("caffold-github-issues-list")).toContainText(
     "Older issue still reachable by pagination",
   );
-  await expect(page.locator("codger-github-issues-list")).not.toContainText("Loading issues...");
+  await expect(page.locator("caffold-github-issues-list")).not.toContainText("Loading issues...");
   await expect(issuePagination.getByRole("button", { name: "Older issue page" })).toBeDisabled();
   await expect(issuePagination.getByRole("button", { name: "Oldest issue page" })).toBeDisabled();
   await expectGlobalScrollLocked(page);
@@ -1385,8 +1385,8 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
     shortSha: "abcdef1",
     subject: "Update planner function",
     body: "Explain the planner update.\n\nKeep review context visible in the log.",
-    authorName: "Codger",
-    authorEmail: "codger@example.test",
+    authorName: "Caffold",
+    authorEmail: "caffold@example.test",
     authorTimeMs: 1_767_000_000_000,
   };
   const fillerCommits = Array.from({ length: 49 }, (_, index) => ({
@@ -1394,8 +1394,8 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
     shortSha: `feed${index.toString(16).padStart(3, "0")}`,
     subject: `Earlier commit ${index + 1}`,
     body: "",
-    authorName: "Codger",
-    authorEmail: "codger@example.test",
+    authorName: "Caffold",
+    authorEmail: "caffold@example.test",
     authorTimeMs: 1_766_000_000_000 - index * 1000,
   }));
   const olderCommits = Array.from({ length: 25 }, (_, index) => ({
@@ -1403,8 +1403,8 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
     shortSha: `dead${index.toString(16).padStart(3, "0")}`,
     subject: `Oldest page commit ${index + 1}`,
     body: "",
-    authorName: "Codger",
-    authorEmail: "codger@example.test",
+    authorName: "Caffold",
+    authorEmail: "caffold@example.test",
     authorTimeMs: 1_765_000_000_000 - index * 1000,
   }));
   const pageOneCommits = [...fillerCommits, commit];
@@ -1488,44 +1488,44 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.locator('button[data-entry-path="src"]').click();
 
-  const logButton = page.locator('codger-header-actions button[data-action="open-log-workspace"]');
+  const logButton = page.locator('caffold-header-actions button[data-action="open-log-workspace"]');
   await expect(logButton.locator(".header-action-label")).toHaveText("Log");
   await expect(logButton).toHaveAttribute("title", "Open Log");
   await logButton.click();
-  const workspace = page.locator("codger-review-workspace");
+  const workspace = page.locator("caffold-review-workspace");
   const logView = workspace.locator(".workspace-mode-log");
   const backButton = workspace.locator('button[data-action="back-review-workspace"]');
   await expect(workspace).toBeVisible();
   await expect(workspace).toHaveAttribute("data-workspace-mode", "log");
   await expect(logView).toHaveAttribute("data-log-view", "list");
   await expect(backButton).toBeHidden();
-  await expect(page.locator("codger-log-list")).toContainText("Update planner function");
-  await expect(page.locator("codger-log-list")).toContainText("abcdef1");
-  await expect(page.locator("codger-log-list")).toBeVisible();
+  await expect(page.locator("caffold-log-list")).toContainText("Update planner function");
+  await expect(page.locator("caffold-log-list")).toContainText("abcdef1");
+  await expect(page.locator("caffold-log-list")).toBeVisible();
   await expect(page.locator(".log-review-detail")).toBeHidden();
-  const pagination = page.locator("codger-log-list codger-pagination");
+  const pagination = page.locator("caffold-log-list caffold-pagination");
   await expect(pagination.locator(".pagination-indicator")).toHaveText("1 / 2");
   await expect(pagination.getByRole("button", { name: "Newest page" })).toBeDisabled();
   await expect(pagination.getByRole("button", { name: "Newer page" })).toBeDisabled();
 
   await pagination.getByRole("button", { name: "Oldest page" }).click();
   await page.waitForTimeout(40);
-  const preservedLogText = await page.locator("codger-log-list").textContent();
+  const preservedLogText = await page.locator("caffold-log-list").textContent();
   expect(preservedLogText).toContain("Update planner function");
   expect(preservedLogText).not.toContain("Loading log...");
   await expect(pagination.locator(".pagination-indicator")).toHaveText("2 / 2");
-  await expect(page.locator("codger-log-list")).toContainText("Oldest page commit 1");
+  await expect(page.locator("caffold-log-list")).toContainText("Oldest page commit 1");
   await expect(pagination.getByRole("button", { name: "Older page" })).toBeDisabled();
   await expect(pagination.getByRole("button", { name: "Oldest page" })).toBeDisabled();
 
   await pagination.getByRole("button", { name: "Newest page" }).click();
   await expect(pagination.locator(".pagination-indicator")).toHaveText("1 / 2");
-  await expect(page.locator("codger-log-list")).toContainText("Update planner function");
+  await expect(page.locator("caffold-log-list")).toContainText("Update planner function");
 
   const logEntry = page.locator(
-    'codger-log-list .log-entry[data-commit-sha="abcdef1234567890abcdef1234567890abcdef12"]',
+    'caffold-log-list .log-entry[data-commit-sha="abcdef1234567890abcdef1234567890abcdef12"]',
   );
-  const logList = page.locator("codger-log-list .log-list");
+  const logList = page.locator("caffold-log-list .log-list");
   await logEntry.scrollIntoViewIfNeeded();
   const beforeLogScroll = await scrollTop(logList);
   expect(beforeLogScroll).toBeGreaterThan(0);
@@ -1543,19 +1543,19 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
 
   await logEntry.getByRole("button", { name: /Open commit diff for abcdef1/ }).click();
   await expect(logView).toHaveAttribute("data-log-view", "detail");
-  await expect(page.locator("codger-log-list")).toBeHidden();
+  await expect(page.locator("caffold-log-list")).toBeHidden();
   await expect(page.locator(".log-review-detail")).toBeVisible();
   await expect(backButton).toBeVisible();
   await expect(workspace.locator(".review-workspace-title h2")).toHaveText("Commit");
   await expect(workspace.locator(".review-workspace-subtitle")).toContainText("abcdef1");
-  const commitTree = page.locator("codger-commit-changes-tree");
+  const commitTree = page.locator("caffold-commit-changes-tree");
   await expect(commitTree).toContainText("2 files");
   await expect(commitTree).not.toContainText("Update planner function");
   await expect(commitTree).toContainText("planner");
   await expect(commitTree).toContainText("function.rs");
   const commitFileButton = page.locator('button[data-commit-path="src/planner/function.rs"]');
   await expect(commitFileButton).toHaveAttribute("aria-current", "false");
-  await expect(page.locator(".workspace-mode-log codger-review-file-viewer")).toContainText(
+  await expect(page.locator(".workspace-mode-log caffold-review-file-viewer")).toContainText(
     "Select a file to inspect it.",
   );
   if (testInfo.project.name === "phone") {
@@ -1564,19 +1564,19 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
       "list",
     );
     await expect(commitTree).toBeVisible();
-    await expect(page.locator(".workspace-mode-log codger-review-file-viewer")).toBeHidden();
+    await expect(page.locator(".workspace-mode-log caffold-review-file-viewer")).toBeHidden();
   }
   if (testInfo.project.name === "desktop") {
     const resizeHandle = workspace.locator(".log-review-detail .review-panel-resizer");
     await expect(resizeHandle).toBeVisible();
     const beforeReviewWidth = await elementWidth(
       page,
-      "codger-review-workspace .log-review-detail > codger-commit-changes-tree",
+      "caffold-review-workspace .log-review-detail > caffold-commit-changes-tree",
     );
     await dragHorizontalResizer(page, resizeHandle, 96);
     const afterReviewWidth = await elementWidth(
       page,
-      "codger-review-workspace .log-review-detail > codger-commit-changes-tree",
+      "caffold-review-workspace .log-review-detail > caffold-commit-changes-tree",
     );
     expect(afterReviewWidth).toBeGreaterThan(beforeReviewWidth + 48);
   }
@@ -1593,22 +1593,22 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
     );
     await expectMobileReviewDetail(page, {
       backName: "Back to commit",
-      detailSelector: ".workspace-mode-log codger-review-file-viewer",
-      listSelector: "codger-commit-changes-tree",
+      detailSelector: ".workspace-mode-log caffold-review-file-viewer",
+      listSelector: "caffold-commit-changes-tree",
     });
   } else {
     await expectAlignedWorkspaceHeaders(page, [
-      "codger-review-workspace .review-workspace-header",
-      "codger-commit-changes-tree .commit-tree-panel > header",
-      ".workspace-mode-log codger-review-file-viewer .viewer-panel > header",
+      "caffold-review-workspace .review-workspace-header",
+      "caffold-commit-changes-tree .commit-tree-panel > header",
+      ".workspace-mode-log caffold-review-file-viewer .viewer-panel > header",
     ]);
     await expectMatchingPaneTitleSizes(page, [
-      "codger-commit-changes-tree .commit-tree-panel > header",
-      ".workspace-mode-log codger-review-file-viewer .viewer-panel > header",
+      "caffold-commit-changes-tree .commit-tree-panel > header",
+      ".workspace-mode-log caffold-review-file-viewer .viewer-panel > header",
     ]);
   }
-  await expect(page.locator("codger-diff-viewer")).toContainText("old planner line");
-  await expect(page.locator("codger-diff-viewer")).toContainText("new planner line");
+  await expect(page.locator("caffold-diff-viewer")).toContainText("old planner line");
+  await expect(page.locator("caffold-diff-viewer")).toContainText("new planner line");
 
   if (testInfo.project.name === "phone") {
     await page.getByRole("button", { name: "Back to commit" }).click();
@@ -1618,13 +1618,13 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
       "list",
     );
     await expect(commitTree).toBeVisible();
-    await expect(page.locator(".workspace-mode-log codger-review-file-viewer")).toBeHidden();
+    await expect(page.locator(".workspace-mode-log caffold-review-file-viewer")).toBeHidden();
   }
   await backButton.click();
   await expect(logView).toHaveAttribute("data-log-view", "list");
   await expect(backButton).toBeHidden();
   await expect(workspace.locator(".review-workspace-title h2")).toHaveText("Log");
-  await expect(page.locator("codger-log-list")).toBeVisible();
+  await expect(page.locator("caffold-log-list")).toBeVisible();
   await expect(page.locator(".log-review-detail")).toBeHidden();
   await expect(logEntry).not.toHaveAttribute("aria-current");
 
@@ -1635,12 +1635,12 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
 test("restores the last opened directory after reload", async ({ page }) => {
   await page.goto("/");
   await page.locator('button[data-entry-path="src"]').click();
-  await expect(page.locator("codger-pathbar")).toContainText("src");
-  await expect(page.locator("codger-file-list .git-summary")).toBeVisible();
+  await expect(page.locator("caffold-pathbar")).toContainText("src");
+  await expect(page.locator("caffold-file-list .git-summary")).toBeVisible();
 
   await page.reload();
-  await expect(page.locator("codger-pathbar")).toContainText("src");
-  await expect(page.locator("codger-file-list .git-summary")).toBeVisible();
+  await expect(page.locator("caffold-pathbar")).toContainText("src");
+  await expect(page.locator("caffold-file-list .git-summary")).toBeVisible();
   await expect(page.evaluate((key) => localStorage.getItem(key), LAST_DIRECTORY_KEY)).resolves.toBe(
     "src",
   );
@@ -1655,7 +1655,7 @@ test("falls back when the stored directory no longer opens", async ({ page }) =>
   );
 
   await page.goto("/");
-  await expect(page.locator("codger-file-list")).toContainText("src");
+  await expect(page.locator("caffold-file-list")).toContainText("src");
   await expect(page.locator(".parent-entry")).toHaveCount(0);
   await expect(page.evaluate((key) => localStorage.getItem(key), LAST_DIRECTORY_KEY)).resolves.toBe(
     "",
@@ -1666,8 +1666,8 @@ test("extends the line-number gutter for short files", async ({ page }, testInfo
   await page.goto("/");
 
   await page.locator('button[data-entry-path="README.md"]').click();
-  await expect(page.locator("codger-file-viewer")).toContainText("README.md");
-  await expect(page.locator("codger-code-viewer")).toContainText("Fixture Home");
+  await expect(page.locator("caffold-file-viewer")).toContainText("README.md");
+  await expect(page.locator("caffold-code-viewer")).toContainText("Fixture Home");
   await expect(page.locator(".line-number").first()).toHaveText("1");
   await expectGlobalScrollLocked(page);
 
@@ -1790,7 +1790,7 @@ async function expectPanelScrollContainers(page) {
 }
 
 async function leftPanelWidth(page) {
-  return page.locator("codger-file-list").evaluate((element) => {
+  return page.locator("caffold-file-list").evaluate((element) => {
     return element.getBoundingClientRect().width;
   });
 }
@@ -1841,9 +1841,9 @@ async function expectHorizontalScroller(page, selector) {
 
 async function expectMobileBrowserViewerOverlay(page) {
   const metrics = await page.evaluate(() => {
-    const appMain = document.querySelector("codger-app-shell .app-main");
-    const header = document.querySelector("codger-app-shell .app-header");
-    const pathbar = document.querySelector("codger-pathbar");
+    const appMain = document.querySelector("caffold-app-shell .app-main");
+    const header = document.querySelector("caffold-app-shell .app-header");
+    const pathbar = document.querySelector("caffold-pathbar");
     const rect = appMain.getBoundingClientRect();
     const style = window.getComputedStyle(appMain);
 
@@ -1870,10 +1870,10 @@ async function expectMobileBrowserViewerOverlay(page) {
 
 async function expectMobileViewerCompactHeader(page) {
   const metrics = await page.evaluate(() => {
-    const header = document.querySelector("codger-file-viewer .viewer-panel > header");
-    const closeButton = document.querySelector("codger-file-viewer .viewer-close-button");
-    const title = document.querySelector("codger-file-viewer h2");
-    const infoButton = document.querySelector("codger-file-viewer .viewer-info-button");
+    const header = document.querySelector("caffold-file-viewer .viewer-panel > header");
+    const closeButton = document.querySelector("caffold-file-viewer .viewer-close-button");
+    const title = document.querySelector("caffold-file-viewer h2");
+    const infoButton = document.querySelector("caffold-file-viewer .viewer-info-button");
 
     function box(element) {
       const rect = element.getBoundingClientRect();
@@ -1906,7 +1906,7 @@ async function expectMobileViewerCompactHeader(page) {
 }
 
 async function expectMobileReviewDetail(page, { backName, detailSelector, listSelector }) {
-  const workspace = page.locator("codger-review-workspace");
+  const workspace = page.locator("caffold-review-workspace");
 
   await expect(workspace).toHaveAttribute("data-mobile-detail", "true");
   await expect(workspace.locator(".review-workspace-header")).toBeHidden();
@@ -1915,7 +1915,7 @@ async function expectMobileReviewDetail(page, { backName, detailSelector, listSe
   await expect(page.getByRole("button", { name: backName })).toBeVisible();
 
   const metrics = await page.locator(detailSelector).evaluate((element) => {
-    const workspace = document.querySelector("codger-review-workspace");
+    const workspace = document.querySelector("caffold-review-workspace");
     const panel = element.querySelector(".viewer-panel") ?? element;
     const panelRect = panel.getBoundingClientRect();
     const workspaceRect = workspace.getBoundingClientRect();
@@ -1933,7 +1933,7 @@ async function expectMobileReviewDetail(page, { backName, detailSelector, listSe
 }
 
 async function expectUnifiedDiffRowsShareScrollWidth(page) {
-  const scrollState = await page.locator("codger-diff-viewer .diff-lines").evaluate((element) => {
+  const scrollState = await page.locator("caffold-diff-viewer .diff-lines").evaluate((element) => {
     element.scrollLeft = Math.min(220, element.scrollWidth - element.clientWidth);
 
     const table = element.querySelector(".diff-table");
@@ -1965,7 +1965,7 @@ async function expectUnifiedDiffRowsShareScrollWidth(page) {
 
 async function expectDiffScrollerFillsViewer(page) {
   const metrics = await page.evaluate(() => {
-    const element = [...document.querySelectorAll("codger-diff-viewer")].find((candidate) => {
+    const element = [...document.querySelectorAll("caffold-diff-viewer")].find((candidate) => {
       const rect = candidate.getBoundingClientRect();
       return rect.width > 0 && rect.height > 0;
     });
@@ -2003,19 +2003,19 @@ async function expectDiffScrollerFillsViewer(page) {
 
 async function expectCompareRefControlsFit(page, testInfo, options = {}) {
   const metrics = await page.evaluate(() => {
-    const header = document.querySelector("codger-review-workspace .review-workspace-header");
-    const title = document.querySelector("codger-review-workspace .review-workspace-title");
+    const header = document.querySelector("caffold-review-workspace .review-workspace-header");
+    const title = document.querySelector("caffold-review-workspace .review-workspace-title");
     const controls = document.querySelector(
-      "codger-review-workspace .review-compare-ref-controls",
+      "caffold-review-workspace .review-compare-ref-controls",
     );
     const baseSelect = document.querySelector('select[data-compare-ref="base"]');
     const headSelect = document.querySelector('select[data-compare-ref="head"]');
     const separator = controls.querySelector(".review-compare-ref-separator");
     const subtitle = document.querySelector(
-      "codger-review-workspace .review-workspace-subtitle",
+      "caffold-review-workspace .review-workspace-subtitle",
     );
     const titleHeading = document.querySelector(
-      "codger-review-workspace .review-workspace-title h2",
+      "caffold-review-workspace .review-workspace-title h2",
     );
 
     function box(element) {

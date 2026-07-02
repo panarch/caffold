@@ -1,6 +1,6 @@
 import { escapeHtml } from "./dom.js";
 
-class CodgerPathbar extends HTMLElement {
+class CaffoldPathbar extends HTMLElement {
   connectedCallback() {
     if (this.initialized) {
       return;
@@ -14,7 +14,7 @@ class CodgerPathbar extends HTMLElement {
       }
 
       this.dispatchEvent(
-        new CustomEvent("codger:navigate", {
+        new CustomEvent("caffold:navigate", {
           bubbles: true,
           detail: { path: button.dataset.path },
         }),
@@ -67,7 +67,7 @@ class CodgerPathbar extends HTMLElement {
   }
 }
 
-customElements.define("codger-pathbar", CodgerPathbar);
+customElements.define("caffold-pathbar", CaffoldPathbar);
 
 function buildCrumbs(path, homePath) {
   if (!homePath) {
