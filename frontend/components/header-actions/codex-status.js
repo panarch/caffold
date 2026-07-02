@@ -3,15 +3,20 @@ import { escapeHtml } from "../dom.js";
 const CODEX_POPOVER_ID = "caffold-codex-actions-popover";
 
 export function renderCodexActions(codexStatus, { renderGroupButton }) {
-  if (!codexStatus) {
-    return "";
-  }
-
-  const statusLabel = codexStatus.available ? "Connected" : "Unavailable";
+  const state = !codexStatus
+    ? "pending"
+    : codexStatus.available
+      ? "available"
+      : "unavailable";
+  const statusLabel =
+    state === "pending" ? "Checking..." : codexStatus.available ? "Connected" : "Unavailable";
   const accountLabel = formatCodexAccount(codexStatus);
-  const title = codexStatus.available
-    ? `Codex app-server connected, ${accountLabel}`
-    : `Codex app-server unavailable${codexStatus.message ? `, ${codexStatus.message}` : ""}`;
+  const title =
+    state === "pending"
+      ? "Checking Codex app-server status"
+      : codexStatus.available
+        ? `Codex app-server connected, ${accountLabel}`
+        : `Codex app-server unavailable${codexStatus.message ? `, ${codexStatus.message}` : ""}`;
 
   return `
     <div class="header-action-group">
@@ -24,6 +29,7 @@ export function renderCodexActions(codexStatus, { renderGroupButton }) {
         },
         label: "Codex",
         title,
+        state,
       })}
       <section
         id="${CODEX_POPOVER_ID}"
@@ -36,19 +42,23 @@ export function renderCodexActions(codexStatus, { renderGroupButton }) {
           <h2>Codex</h2>
           <span>${escapeHtml(statusLabel)}</span>
         </header>
-        <div class="header-status-panel">
-          <strong class="header-status-account">${escapeHtml(accountLabel)}</strong>
-          ${renderStatusRow("Plan", formatCodexPlan(codexStatus))}
-          <div class="header-status-section-title">Remaining usage</div>
-          ${renderUsageRow(codexStatus, "primary")}
-          ${renderUsageRow(codexStatus, "secondary")}
-          ${renderStatusRow("Resets", formatResetCredits(codexStatus))}
-          ${
-            codexStatus.message
-              ? `<p class="header-status-message">${escapeHtml(codexStatus.message)}</p>`
-              : ""
-          }
-        </div>
+        ${
+          state === "pending"
+            ? renderCodexNotice(title)
+            : `<div class="header-status-panel">
+                <strong class="header-status-account">${escapeHtml(accountLabel)}</strong>
+                ${renderStatusRow("Plan", formatCodexPlan(codexStatus))}
+                <div class="header-status-section-title">Remaining usage</div>
+                ${renderUsageRow(codexStatus, "primary")}
+                ${renderUsageRow(codexStatus, "secondary")}
+                ${renderStatusRow("Resets", formatResetCredits(codexStatus))}
+                ${
+                  codexStatus.message
+                    ? `<p class="header-status-message">${escapeHtml(codexStatus.message)}</p>`
+                    : ""
+                }
+              </div>`
+        }
       </section>
     </div>
   `;
@@ -91,6 +101,14 @@ function renderStatusRow(label, value) {
     <div class="header-status-row">
       <span>${escapeHtml(label)}</span>
       <strong>${escapeHtml(value)}</strong>
+    </div>
+  `;
+}
+
+function renderCodexNotice(message) {
+  return `
+    <div class="header-actions-notice">
+      <p>${escapeHtml(message)}</p>
     </div>
   `;
 }

@@ -44,6 +44,16 @@ caffold-header-actions .header-action-group-button[aria-expanded="true"] {
   color: var(--accent);
 }
 
+caffold-header-actions .header-action-group-button[data-state="unavailable"] {
+  opacity: 0.42;
+}
+
+caffold-header-actions .header-action-group-button[data-state="unavailable"]:hover,
+caffold-header-actions .header-action-group-button[data-state="unavailable"]:focus-visible,
+caffold-header-actions .header-action-group-button[data-state="unavailable"][aria-expanded="true"] {
+  opacity: 0.72;
+}
+
 caffold-header-actions .header-action-icon {
   display: block;
   width: 1rem;
@@ -141,6 +151,17 @@ caffold-header-actions .header-actions-popover-header span {
 
 caffold-header-actions .header-actions-menu {
   display: grid;
+}
+
+caffold-header-actions .header-actions-notice {
+  padding: 10px;
+}
+
+caffold-header-actions .header-actions-notice p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.35;
 }
 
 caffold-header-actions .header-menu-item {

@@ -1445,6 +1445,7 @@ class CaffoldAppShell extends HTMLElement {
     this.compareBaseRef = null;
     this.compareHeadRef = null;
     this.headerActions.gitStatus = {
+      available: true,
       branch: directory.git.branch,
       dirty: directory.git.dirty,
       count: null,
@@ -1507,8 +1508,14 @@ class CaffoldAppShell extends HTMLElement {
     this.githubPullFiles = null;
     this.compareBaseRef = null;
     this.compareHeadRef = null;
-    this.headerActions.gitStatus = null;
-    this.headerActions.githubStatus = null;
+    this.headerActions.gitStatus = {
+      available: false,
+      message: "Not a Git repository",
+    };
+    this.headerActions.githubStatus = {
+      available: false,
+      message: "No GitHub repository context",
+    };
     this.changesTree.reset();
     this.logList.reset();
     this.commitChangesTree.reset();
@@ -1596,8 +1603,18 @@ class CaffoldAppShell extends HTMLElement {
         return;
       }
 
-      this.githubStatus = null;
-      this.headerActions.githubStatus = null;
+      const status = {
+        available: false,
+        repository: this.gitRepository,
+        github: null,
+        ghAvailable: false,
+        authenticated: false,
+        issuesAvailable: false,
+        pullsAvailable: false,
+        message: error.message,
+      };
+      this.githubStatus = status;
+      this.headerActions.githubStatus = status;
       if (this.workspaceMode === "issues") {
         this.githubIssuesList.setError(error);
         this.githubIssueViewer.setEmpty();
@@ -2305,11 +2322,15 @@ class CaffoldAppShell extends HTMLElement {
 
   updateGitButton() {
     if (!this.gitRepository) {
-      this.headerActions.gitStatus = null;
+      this.headerActions.gitStatus = {
+        available: false,
+        message: "Not a Git repository",
+      };
       return;
     }
 
     this.headerActions.gitStatus = {
+      available: true,
       branch: this.gitRepository.branch,
       dirty: this.gitRepository.dirty,
       count: this.gitStatus?.files.length ?? null,

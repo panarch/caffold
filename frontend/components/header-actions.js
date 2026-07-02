@@ -165,13 +165,26 @@ class CaffoldHeaderActions extends HTMLElement {
 
   renderGitActions() {
     const gitStatus = this.gitStatus;
-    if (!gitStatus) {
-      return "";
-    }
-
-    const count = Number(gitStatus.count ?? 0);
-    const badge = count > 0 ? (count > 99 ? "99+" : `${count}`) : "";
-    const countLabel = `${count} changed ${count === 1 ? "file" : "files"}`;
+    const state = actionState(gitStatus);
+    const rawCount = gitStatus?.count;
+    const count = Number(rawCount);
+    const countKnown = rawCount !== null && rawCount !== undefined && Number.isFinite(count);
+    const badge =
+      state === "available" && countKnown && count > 0
+        ? count > 99
+          ? "99+"
+          : `${count}`
+        : "";
+    const countLabel =
+      state === "pending" || (state === "available" && !countKnown)
+        ? "Checking..."
+        : state === "unavailable"
+          ? "Unavailable"
+        : `${count} changed ${count === 1 ? "file" : "files"}`;
+    const title =
+      state === "available"
+        ? `Git actions, ${countLabel}`
+        : gitStatus?.message ?? "Checking Git status";
 
     return `
       <div class="header-action-group">
@@ -183,8 +196,9 @@ class CaffoldHeaderActions extends HTMLElement {
             dark: "/assets/brand/git-logomark-dark.svg",
           },
           label: "Git",
-          title: `Git actions, ${countLabel}`,
+          title,
           badge,
+          state,
         })}
         <section
           id="${GIT_POPOVER_ID}"
@@ -197,27 +211,31 @@ class CaffoldHeaderActions extends HTMLElement {
             <h2>Git</h2>
             <span>${escapeHtml(countLabel)}</span>
           </header>
-          <div class="header-actions-menu">
-            ${this.renderMenuAction({
-              action: "open-diff-workspace",
-              icon: "FileDiff",
-              label: "Diff",
-              title: "Open Diff",
-              metric: `${count}`,
-            })}
-            ${this.renderMenuAction({
-              action: "open-compare-workspace",
-              icon: "GitCompare",
-              label: "Compare",
-              title: "Open Compare",
-            })}
-            ${this.renderMenuAction({
-              action: "open-log-workspace",
-              icon: "History",
-              label: "Log",
-              title: "Open Log",
-            })}
-          </div>
+          ${
+            state === "available"
+              ? `<div class="header-actions-menu">
+                  ${this.renderMenuAction({
+                    action: "open-diff-workspace",
+                    icon: "FileDiff",
+                    label: "Diff",
+                    title: "Open Diff",
+                    metric: countKnown ? `${count}` : "",
+                  })}
+                  ${this.renderMenuAction({
+                    action: "open-compare-workspace",
+                    icon: "GitCompare",
+                    label: "Compare",
+                    title: "Open Compare",
+                  })}
+                  ${this.renderMenuAction({
+                    action: "open-log-workspace",
+                    icon: "History",
+                    label: "Log",
+                    title: "Open Log",
+                  })}
+                </div>`
+              : renderHeaderNotice(title)
+          }
         </section>
       </div>
     `;
@@ -225,12 +243,16 @@ class CaffoldHeaderActions extends HTMLElement {
 
   renderGitHubActions() {
     const githubStatus = this.githubStatus;
-    if (!githubStatus?.github) {
-      return "";
-    }
+    const state = actionState(githubStatus, (status) => Boolean(status?.github));
 
     const repositoryLabel =
-      githubStatus.github.nameWithOwner ?? githubStatus.github.name ?? "GitHub";
+      state === "pending"
+        ? "Checking..."
+        : githubStatus?.github?.nameWithOwner ?? githubStatus?.github?.name ?? "Unavailable";
+    const title =
+      state === "available"
+        ? "GitHub actions"
+        : githubStatus?.message ?? "Checking GitHub status";
 
     return `
       <div class="header-action-group">
@@ -242,7 +264,8 @@ class CaffoldHeaderActions extends HTMLElement {
             dark: "/assets/brand/github-invertocat-dark.svg",
           },
           label: "GitHub",
-          title: "GitHub actions",
+          title,
+          state,
         })}
         <section
           id="${GITHUB_POPOVER_ID}"
@@ -255,24 +278,28 @@ class CaffoldHeaderActions extends HTMLElement {
             <h2>GitHub</h2>
             <span>${escapeHtml(repositoryLabel)}</span>
           </header>
-          <div class="header-actions-menu">
-            ${this.renderMenuAction({
-              action: "open-github-pulls-workspace",
-              icon: "GitPullRequest",
-              label: "PRs",
-              title: githubStatus.pullsAvailable
-                ? "Open Pull Requests"
-                : `Open Pull Requests (${githubStatus.message ?? "GitHub unavailable"})`,
-            })}
-            ${this.renderMenuAction({
-              action: "open-github-issues-workspace",
-              icon: "CircleDot",
-              label: "Issues",
-              title: githubStatus.issuesAvailable
-                ? "Open Issues"
-                : `Open Issues (${githubStatus.message ?? "GitHub unavailable"})`,
-            })}
-          </div>
+          ${
+            state === "available"
+              ? `<div class="header-actions-menu">
+                  ${this.renderMenuAction({
+                    action: "open-github-pulls-workspace",
+                    icon: "GitPullRequest",
+                    label: "PRs",
+                    title: githubStatus.pullsAvailable
+                      ? "Open Pull Requests"
+                      : `Open Pull Requests (${githubStatus.message ?? "GitHub unavailable"})`,
+                  })}
+                  ${this.renderMenuAction({
+                    action: "open-github-issues-workspace",
+                    icon: "CircleDot",
+                    label: "Issues",
+                    title: githubStatus.issuesAvailable
+                      ? "Open Issues"
+                      : `Open Issues (${githubStatus.message ?? "GitHub unavailable"})`,
+                  })}
+                </div>`
+              : renderHeaderNotice(title)
+          }
         </section>
       </div>
     `;
@@ -292,12 +319,14 @@ class CaffoldHeaderActions extends HTMLElement {
     label,
     title,
     badge = "",
+    state = "available",
   }) {
     return `
       <button
         type="button"
         class="header-action-group-button"
         data-action-group="${escapeHtml(group)}"
+        data-state="${escapeHtml(state)}"
         aria-controls="${escapeHtml(popoverId)}"
         aria-expanded="false"
         title="${escapeHtml(title)}"
@@ -366,12 +395,34 @@ function renderBrandIcon(icon, label) {
   `;
 }
 
+function renderHeaderNotice(message) {
+  return `
+    <div class="header-actions-notice">
+      <p>${escapeHtml(message)}</p>
+    </div>
+  `;
+}
+
+function actionState(status, isAvailable = Boolean) {
+  if (!status) {
+    return "pending";
+  }
+
+  if (status.available === false || !isAvailable(status)) {
+    return "unavailable";
+  }
+
+  return "available";
+}
+
 function sameGitStatus(left, right) {
   if (!left || !right) {
     return !left && !right;
   }
 
   return (
+    left.available === right.available &&
+    left.message === right.message &&
     left.branch === right.branch &&
     left.dirty === right.dirty &&
     left.count === right.count
@@ -384,6 +435,7 @@ function sameGithubStatus(left, right) {
   }
 
   return (
+    left.available === right.available &&
     left.ghAvailable === right.ghAvailable &&
     left.authenticated === right.authenticated &&
     left.issuesAvailable === right.issuesAvailable &&

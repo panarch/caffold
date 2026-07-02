@@ -508,6 +508,88 @@ test("groups header review actions into Git, GitHub, and Codex popovers", async 
   await captureReviewScreenshot(page, testInfo, "header-actions-codex-popover");
 });
 
+test("keeps header action slots stable while status checks resolve", async ({ page }) => {
+  const repository = { rootPath: "src", branch: "main", dirty: false };
+  let resolveGitStatus;
+  let resolveGithubStatus;
+  const gitStatusResponse = new Promise((resolve) => {
+    resolveGitStatus = resolve;
+  });
+  const githubStatusResponse = new Promise((resolve) => {
+    resolveGithubStatus = resolve;
+  });
+
+  await page.route(/\/api\/git\/status(?:\?|$)/, async (route) => {
+    const body = await gitStatusResponse;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(body),
+    });
+  });
+  await page.route(/\/api\/github\/status(?:\?|$)/, async (route) => {
+    const body = await githubStatusResponse;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(body),
+    });
+  });
+
+  await page.goto("/");
+  const sourceDirectory = page.locator('button[data-entry-path="src"]');
+  await expect(sourceDirectory).toBeVisible();
+  await sourceDirectory.click();
+
+  const gitButton = headerActionGroupButton(page, "git");
+  const githubButton = headerActionGroupButton(page, "github");
+  const codexButton = headerActionGroupButton(page, "codex");
+  await expect(gitButton).toBeVisible();
+  await expect(githubButton).toBeVisible();
+  await expect(codexButton).toBeVisible();
+  await expect(gitButton).toHaveAttribute("data-state", "available");
+  await expect(gitButton).toHaveAttribute("title", "Git actions, Checking...");
+  await expect(githubButton).toHaveAttribute("data-state", "pending");
+  await expect(codexButton).toHaveAttribute("data-state", "available");
+  await expectHeaderButtonOpacity(page, "git", 1);
+  await expectHeaderButtonOpacity(page, "github", 1);
+
+  const githubPendingPopover = await openHeaderActionGroup(page, "github");
+  await expect(githubPendingPopover).toContainText("Checking GitHub status");
+
+  resolveGithubStatus({
+    repository,
+    github: null,
+    ghAvailable: true,
+    authenticated: true,
+    issuesAvailable: false,
+    pullsAvailable: false,
+    message: "No GitHub remote detected",
+  });
+  await expect(githubButton).toHaveAttribute("data-state", "unavailable");
+  await expect(githubButton).toHaveAttribute("title", "No GitHub remote detected");
+  await expectHeaderButtonOpacity(page, "github", 0.72);
+  await expect(githubPendingPopover).toContainText("No GitHub remote detected");
+  await expect(
+    githubPendingPopover.locator('button[data-action="open-github-pulls-workspace"]'),
+  ).toHaveCount(0);
+
+  resolveGitStatus({
+    repository,
+    files: Array.from({ length: 7 }, (_, index) => ({
+      path: `src/pending-${index}.rs`,
+      repoRelativePath: `pending-${index}.rs`,
+      status: " M",
+      category: "unstaged",
+      staged: false,
+      unstaged: true,
+      untracked: false,
+    })),
+  });
+  await expect(gitButton).toHaveAttribute("data-state", "available");
+  await expect(gitButton).toHaveAttribute("title", "Git actions, 7 changed files");
+  await expect(gitButton.locator(".header-action-badge")).toHaveText("7");
+  await expectHeaderActionsFit(page);
+});
+
 test("restores project file routes and browser navigation", async ({ page }, testInfo) => {
   const project = await mockRegisteredProject(page);
   let gitStatusRequests = 0;
@@ -2841,6 +2923,14 @@ async function expectHeaderActionsFit(page) {
     expect(metrics.badge.bottom).toBeGreaterThan(metrics.git.top);
     expect(metrics.badge.top).toBeLessThanOrEqual(metrics.git.top + 2);
   }
+}
+
+async function expectHeaderButtonOpacity(page, group, expected) {
+  const opacity = await headerActionGroupButton(page, group).evaluate((button) =>
+    Number.parseFloat(window.getComputedStyle(button).opacity),
+  );
+
+  expect(opacity).toBeCloseTo(expected, 2);
 }
 
 async function expectHeaderPopoverFits(page, group) {
