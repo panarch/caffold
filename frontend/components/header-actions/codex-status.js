@@ -1,8 +1,60 @@
 import { escapeHtml } from "../dom.js";
+import { renderGroupButton, renderHeaderNotice } from "./shared.js";
 
 const CODEX_POPOVER_ID = "caffold-codex-actions-popover";
 
-export function renderCodexActions(codexStatus, { renderGroupButton }) {
+class CaffoldCodexHeaderAction extends HTMLElement {
+  connectedCallback() {
+    if (this.initialized) {
+      return;
+    }
+
+    this.initialized = true;
+    this.render();
+  }
+
+  set status(value) {
+    const nextValue = value ?? null;
+    if (sameCodexStatus(this.statusValue, nextValue)) {
+      return;
+    }
+
+    this.statusValue = nextValue;
+    this.renderKeepingOpenPopover();
+  }
+
+  get status() {
+    return this.statusValue ?? null;
+  }
+
+  renderKeepingOpenPopover() {
+    const wasOpen = !this.querySelector(".header-actions-popover")?.hidden;
+    this.render();
+
+    if (wasOpen) {
+      this.openPopover();
+    }
+  }
+
+  openPopover() {
+    const popover = this.querySelector(".header-actions-popover");
+    const button = this.querySelector("button[data-action-group]");
+    if (!popover || !button) {
+      return;
+    }
+
+    popover.hidden = false;
+    button.setAttribute("aria-expanded", "true");
+  }
+
+  render() {
+    this.innerHTML = renderCodexActions(this.status);
+  }
+}
+
+customElements.define("caffold-codex-header-action", CaffoldCodexHeaderAction);
+
+function renderCodexActions(codexStatus) {
   const state = !codexStatus
     ? "pending"
     : codexStatus.available
@@ -44,7 +96,7 @@ export function renderCodexActions(codexStatus, { renderGroupButton }) {
         </header>
         ${
           state === "pending"
-            ? renderCodexNotice(title)
+            ? renderHeaderNotice(title)
             : `<div class="header-status-panel">
                 <strong class="header-status-account">${escapeHtml(accountLabel)}</strong>
                 ${renderStatusRow("Plan", formatCodexPlan(codexStatus))}
@@ -101,14 +153,6 @@ function renderStatusRow(label, value) {
     <div class="header-status-row">
       <span>${escapeHtml(label)}</span>
       <strong>${escapeHtml(value)}</strong>
-    </div>
-  `;
-}
-
-function renderCodexNotice(message) {
-  return `
-    <div class="header-actions-notice">
-      <p>${escapeHtml(message)}</p>
     </div>
   `;
 }

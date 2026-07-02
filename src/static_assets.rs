@@ -103,6 +103,15 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "components/header-actions/codex-status.js" => Some(js(include_str!(
             "../frontend/components/header-actions/codex-status.js"
         ))),
+        "components/header-actions/git-status.js" => Some(js(include_str!(
+            "../frontend/components/header-actions/git-status.js"
+        ))),
+        "components/header-actions/github-status.js" => Some(js(include_str!(
+            "../frontend/components/header-actions/github-status.js"
+        ))),
+        "components/header-actions/shared.js" => Some(js(include_str!(
+            "../frontend/components/header-actions/shared.js"
+        ))),
         "components/github-markdown.js" => Some(js(include_str!(
             "../frontend/components/github-markdown.js"
         ))),
@@ -246,6 +255,27 @@ mod tests {
             get("components/header-actions/codex-status.css").expect("codex status css asset");
         assert_eq!(codex_status_css.content_type, "text/css; charset=utf-8");
         assert!(codex_status_css.body.starts_with(b"caffold-header-actions"));
+
+        let git_status_js =
+            get("components/header-actions/git-status.js").expect("git status js asset");
+        assert_eq!(git_status_js.content_type, "text/javascript; charset=utf-8");
+        assert!(git_status_js.body.starts_with(b"import "));
+
+        let github_status_js =
+            get("components/header-actions/github-status.js").expect("github status js asset");
+        assert_eq!(
+            github_status_js.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(github_status_js.body.starts_with(b"import "));
+
+        let header_actions_shared =
+            get("components/header-actions/shared.js").expect("header actions shared js asset");
+        assert_eq!(
+            header_actions_shared.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(header_actions_shared.body.starts_with(b"import "));
 
         let png = get("icons/icon-192.png").expect("png icon asset");
         assert_eq!(png.content_type, "image/png");

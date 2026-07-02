@@ -1,9 +1,7 @@
-import { escapeHtml } from "./dom.js";
-import { renderCodexActions, sameCodexStatus } from "./header-actions/codex-status.js";
-import { renderInlineIcon, warmIcons } from "./icons.js";
-
-const GIT_POPOVER_ID = "caffold-git-actions-popover";
-const GITHUB_POPOVER_ID = "caffold-github-actions-popover";
+import { sameCodexStatus } from "./header-actions/codex-status.js";
+import { sameGitStatus } from "./header-actions/git-status.js";
+import { sameGithubStatus } from "./header-actions/github-status.js";
+import { warmIcons } from "./icons.js";
 
 class CaffoldHeaderActions extends HTMLElement {
   connectedCallback() {
@@ -72,7 +70,7 @@ class CaffoldHeaderActions extends HTMLElement {
     }
 
     this.gitStatusValue = nextValue;
-    this.renderKeepingOpenPopover();
+    this.syncActionStatuses();
   }
 
   get gitStatus() {
@@ -86,7 +84,7 @@ class CaffoldHeaderActions extends HTMLElement {
     }
 
     this.githubStatusValue = nextValue;
-    this.renderKeepingOpenPopover();
+    this.syncActionStatuses();
   }
 
   get githubStatus() {
@@ -100,7 +98,7 @@ class CaffoldHeaderActions extends HTMLElement {
     }
 
     this.codexStatusValue = nextValue;
-    this.renderKeepingOpenPopover();
+    this.syncActionStatuses();
   }
 
   get codexStatus() {
@@ -110,11 +108,12 @@ class CaffoldHeaderActions extends HTMLElement {
   render() {
     this.innerHTML = `
       <div class="header-actions" aria-label="Review actions">
-        ${this.renderGitActions()}
-        ${this.renderGitHubActions()}
-        ${this.renderCodexActions()}
+        <caffold-git-header-action></caffold-git-header-action>
+        <caffold-github-header-action></caffold-github-header-action>
+        <caffold-codex-header-action></caffold-codex-header-action>
       </div>
     `;
+    this.syncActionStatuses();
   }
 
   renderKeepingOpenPopover() {
@@ -124,6 +123,22 @@ class CaffoldHeaderActions extends HTMLElement {
 
     if (openGroup) {
       this.openPopoverByGroup(openGroup);
+    }
+  }
+
+  syncActionStatuses() {
+    const gitAction = this.querySelector("caffold-git-header-action");
+    const githubAction = this.querySelector("caffold-github-header-action");
+    const codexAction = this.querySelector("caffold-codex-header-action");
+
+    if (gitAction) {
+      gitAction.status = this.gitStatus;
+    }
+    if (githubAction) {
+      githubAction.status = this.githubStatus;
+    }
+    if (codexAction) {
+      codexAction.status = this.codexStatus;
     }
   }
 
@@ -163,287 +178,6 @@ class CaffoldHeaderActions extends HTMLElement {
     });
   }
 
-  renderGitActions() {
-    const gitStatus = this.gitStatus;
-    const state = actionState(gitStatus);
-    const rawCount = gitStatus?.count;
-    const count = Number(rawCount);
-    const countKnown = rawCount !== null && rawCount !== undefined && Number.isFinite(count);
-    const badge =
-      state === "available" && countKnown && count > 0
-        ? count > 99
-          ? "99+"
-          : `${count}`
-        : "";
-    const countLabel =
-      state === "pending" || (state === "available" && !countKnown)
-        ? "Checking..."
-        : state === "unavailable"
-          ? "Unavailable"
-        : `${count} changed ${count === 1 ? "file" : "files"}`;
-    const title =
-      state === "available"
-        ? `Git actions, ${countLabel}`
-        : gitStatus?.message ?? "Checking Git status";
-
-    return `
-      <div class="header-action-group">
-        ${this.renderGroupButton({
-          group: "git",
-          popoverId: GIT_POPOVER_ID,
-          brandIcon: {
-            light: "/assets/brand/git-logomark-light.svg",
-            dark: "/assets/brand/git-logomark-dark.svg",
-          },
-          label: "Git",
-          title,
-          badge,
-          state,
-        })}
-        <section
-          id="${GIT_POPOVER_ID}"
-          class="header-actions-popover"
-          data-action-group="git"
-          aria-label="Git actions"
-          hidden
-        >
-          <header class="header-actions-popover-header">
-            <h2>Git</h2>
-            <span>${escapeHtml(countLabel)}</span>
-          </header>
-          ${
-            state === "available"
-              ? `<div class="header-actions-menu">
-                  ${this.renderMenuAction({
-                    action: "open-diff-workspace",
-                    icon: "FileDiff",
-                    label: "Diff",
-                    title: "Open Diff",
-                    metric: countKnown ? `${count}` : "",
-                  })}
-                  ${this.renderMenuAction({
-                    action: "open-compare-workspace",
-                    icon: "GitCompare",
-                    label: "Compare",
-                    title: "Open Compare",
-                  })}
-                  ${this.renderMenuAction({
-                    action: "open-log-workspace",
-                    icon: "History",
-                    label: "Log",
-                    title: "Open Log",
-                  })}
-                </div>`
-              : renderHeaderNotice(title)
-          }
-        </section>
-      </div>
-    `;
-  }
-
-  renderGitHubActions() {
-    const githubStatus = this.githubStatus;
-    const state = actionState(githubStatus, (status) => Boolean(status?.github));
-
-    const repositoryLabel =
-      state === "pending"
-        ? "Checking..."
-        : githubStatus?.github?.nameWithOwner ?? githubStatus?.github?.name ?? "Unavailable";
-    const title =
-      state === "available"
-        ? "GitHub actions"
-        : githubStatus?.message ?? "Checking GitHub status";
-
-    return `
-      <div class="header-action-group">
-        ${this.renderGroupButton({
-          group: "github",
-          popoverId: GITHUB_POPOVER_ID,
-          brandIcon: {
-            light: "/assets/brand/github-invertocat-light.svg",
-            dark: "/assets/brand/github-invertocat-dark.svg",
-          },
-          label: "GitHub",
-          title,
-          state,
-        })}
-        <section
-          id="${GITHUB_POPOVER_ID}"
-          class="header-actions-popover"
-          data-action-group="github"
-          aria-label="GitHub actions"
-          hidden
-        >
-          <header class="header-actions-popover-header">
-            <h2>GitHub</h2>
-            <span>${escapeHtml(repositoryLabel)}</span>
-          </header>
-          ${
-            state === "available"
-              ? `<div class="header-actions-menu">
-                  ${this.renderMenuAction({
-                    action: "open-github-pulls-workspace",
-                    icon: "GitPullRequest",
-                    label: "PRs",
-                    title: githubStatus.pullsAvailable
-                      ? "Open Pull Requests"
-                      : `Open Pull Requests (${githubStatus.message ?? "GitHub unavailable"})`,
-                  })}
-                  ${this.renderMenuAction({
-                    action: "open-github-issues-workspace",
-                    icon: "CircleDot",
-                    label: "Issues",
-                    title: githubStatus.issuesAvailable
-                      ? "Open Issues"
-                      : `Open Issues (${githubStatus.message ?? "GitHub unavailable"})`,
-                  })}
-                </div>`
-              : renderHeaderNotice(title)
-          }
-        </section>
-      </div>
-    `;
-  }
-
-  renderCodexActions() {
-    return renderCodexActions(this.codexStatus, {
-      renderGroupButton: (options) => this.renderGroupButton(options),
-    });
-  }
-
-  renderGroupButton({
-    group,
-    popoverId,
-    icon,
-    brandIcon = null,
-    label,
-    title,
-    badge = "",
-    state = "available",
-  }) {
-    return `
-      <button
-        type="button"
-        class="header-action-group-button"
-        data-action-group="${escapeHtml(group)}"
-        data-state="${escapeHtml(state)}"
-        aria-controls="${escapeHtml(popoverId)}"
-        aria-expanded="false"
-        title="${escapeHtml(title)}"
-        aria-label="${escapeHtml(title)}"
-      >
-        ${
-          brandIcon
-            ? renderBrandIcon(brandIcon, label)
-            : renderInlineIcon(icon, label, "header-action-icon")
-        }
-        ${
-          badge
-            ? `<span class="header-action-badge" aria-hidden="true">${escapeHtml(badge)}</span>`
-            : ""
-        }
-      </button>
-    `;
-  }
-
-  renderMenuAction({
-    action,
-    icon,
-    label,
-    title,
-    metric = "",
-  }) {
-    const metricText = metric === null || metric === undefined ? "" : `${metric}`.trim();
-
-    return `
-      <button
-        type="button"
-        class="header-menu-item"
-        data-action="${escapeHtml(action)}"
-        title="${escapeHtml(title)}"
-        aria-label="${escapeHtml(title)}"
-      >
-        ${renderInlineIcon(icon, title, "header-menu-icon")}
-        <span class="header-menu-label">${escapeHtml(label)}</span>
-        ${
-          metricText
-            ? `<span class="header-menu-metric">${escapeHtml(metricText)}</span>`
-            : ""
-        }
-      </button>
-    `;
-  }
 }
 
 customElements.define("caffold-header-actions", CaffoldHeaderActions);
-
-function renderBrandIcon(icon, label) {
-  return `
-    <picture class="header-action-brand-picture" aria-hidden="true">
-      <source
-        srcset="${escapeHtml(icon.dark)}"
-        media="(prefers-color-scheme: dark)"
-      />
-      <img
-        class="header-action-icon header-action-brand-icon"
-        src="${escapeHtml(icon.light)}"
-        alt=""
-        draggable="false"
-      />
-    </picture>
-    <span class="sr-only">${escapeHtml(label)}</span>
-  `;
-}
-
-function renderHeaderNotice(message) {
-  return `
-    <div class="header-actions-notice">
-      <p>${escapeHtml(message)}</p>
-    </div>
-  `;
-}
-
-function actionState(status, isAvailable = Boolean) {
-  if (!status) {
-    return "pending";
-  }
-
-  if (status.available === false || !isAvailable(status)) {
-    return "unavailable";
-  }
-
-  return "available";
-}
-
-function sameGitStatus(left, right) {
-  if (!left || !right) {
-    return !left && !right;
-  }
-
-  return (
-    left.available === right.available &&
-    left.message === right.message &&
-    left.branch === right.branch &&
-    left.dirty === right.dirty &&
-    left.count === right.count
-  );
-}
-
-function sameGithubStatus(left, right) {
-  if (!left || !right) {
-    return !left && !right;
-  }
-
-  return (
-    left.available === right.available &&
-    left.ghAvailable === right.ghAvailable &&
-    left.authenticated === right.authenticated &&
-    left.issuesAvailable === right.issuesAvailable &&
-    left.pullsAvailable === right.pullsAvailable &&
-    left.message === right.message &&
-    left.github?.owner === right.github?.owner &&
-    left.github?.name === right.github?.name &&
-    left.github?.nameWithOwner === right.github?.nameWithOwner &&
-    left.github?.url === right.github?.url
-  );
-}

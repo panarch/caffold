@@ -175,6 +175,9 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain("/assets/brand/codex-template@2x.png");
   expect(serviceWorker).toContain("/assets/components/header-actions/codex-status.css");
   expect(serviceWorker).toContain("/assets/components/header-actions/codex-status.js");
+  expect(serviceWorker).toContain("/assets/components/header-actions/git-status.js");
+  expect(serviceWorker).toContain("/assets/components/header-actions/github-status.js");
+  expect(serviceWorker).toContain("/assets/components/header-actions/shared.js");
   expect(serviceWorker).toContain('url.pathname.startsWith("/api/")');
   expect(serviceWorker).toContain("networkFirst(request, \"/\")");
   expect(serviceWorker).toContain('url.pathname.startsWith("/assets/")');
