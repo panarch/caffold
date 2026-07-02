@@ -77,6 +77,48 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+test("serves PWA manifest and icon assets", async ({ page, request }) => {
+  await page.goto("/");
+
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute(
+    "href",
+    "/assets/manifest.webmanifest",
+  );
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute(
+    "href",
+    "/assets/icons/caffold.svg",
+  );
+  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute(
+    "href",
+    "/assets/icons/apple-touch-icon.png",
+  );
+
+  const manifestResponse = await request.get("/assets/manifest.webmanifest");
+  expect(manifestResponse.headers()["content-type"]).toContain(
+    "application/manifest+json",
+  );
+  const manifest = await manifestResponse.json();
+  expect(manifest.name).toBe("Caffold");
+  expect(manifest.icons.map((icon) => icon.src)).toEqual(
+    expect.arrayContaining([
+      "/assets/icons/caffold.svg",
+      "/assets/icons/icon-192.png",
+      "/assets/icons/icon-512.png",
+      "/assets/icons/maskable-192.png",
+      "/assets/icons/maskable-512.png",
+    ]),
+  );
+
+  const svgResponse = await request.get("/assets/icons/caffold.svg");
+  expect(svgResponse.headers()["content-type"]).toContain("image/svg+xml");
+  expect(await svgResponse.text()).toContain('rx="48"');
+
+  const pngResponse = await request.get("/assets/icons/icon-192.png");
+  expect(pngResponse.headers()["content-type"]).toContain("image/png");
+  const png = await pngResponse.body();
+  expect([...png.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+});
+
 test("delays file list loading feedback", async ({ page }) => {
   let resolveListRequest;
   let releaseListResponse;

@@ -2,6 +2,7 @@ use std::{net::IpAddr, path::PathBuf, sync::Arc};
 
 use axum::{
     Json, Router,
+    body::Body,
     extract::{Path as AxumPath, Query, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{Html, IntoResponse, Response},
@@ -330,12 +331,14 @@ async fn index() -> Html<&'static str> {
 
 async fn asset(AxumPath(path): AxumPath<String>) -> Response {
     match static_assets::get(&path) {
-        Some(asset) => (
-            StatusCode::OK,
-            [(header::CONTENT_TYPE, asset.content_type)],
-            asset.body,
-        )
-            .into_response(),
+        Some(asset) => {
+            let mut response = Response::new(Body::from(asset.body));
+            response.headers_mut().insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static(asset.content_type),
+            );
+            response
+        }
         None => StatusCode::NOT_FOUND.into_response(),
     }
 }

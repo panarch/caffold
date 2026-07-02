@@ -2,15 +2,28 @@ pub const INDEX: &str = include_str!("../frontend/index.html");
 
 pub struct StaticAsset {
     pub content_type: &'static str,
-    pub body: &'static str,
+    pub body: &'static [u8],
 }
 
 pub fn get(path: &str) -> Option<StaticAsset> {
     match path {
+        "manifest.webmanifest" => Some(manifest(include_str!("../frontend/manifest.webmanifest"))),
         "styles.css" => Some(css(include_str!("../frontend/styles.css"))),
         "app.js" => Some(js(include_str!("../frontend/app.js"))),
         "api.js" => Some(js(include_str!("../frontend/api.js"))),
         "navigation-routes.js" => Some(js(include_str!("../frontend/navigation-routes.js"))),
+        "icons/caffold.svg" => Some(svg(include_str!("../frontend/assets/icons/caffold.svg"))),
+        "icons/icon-192.png" => Some(png(include_bytes!("../frontend/assets/icons/icon-192.png"))),
+        "icons/icon-512.png" => Some(png(include_bytes!("../frontend/assets/icons/icon-512.png"))),
+        "icons/maskable-192.png" => Some(png(include_bytes!(
+            "../frontend/assets/icons/maskable-192.png"
+        ))),
+        "icons/maskable-512.png" => Some(png(include_bytes!(
+            "../frontend/assets/icons/maskable-512.png"
+        ))),
+        "icons/apple-touch-icon.png" => Some(png(include_bytes!(
+            "../frontend/assets/icons/apple-touch-icon.png"
+        ))),
         "components/app-shell.css" => {
             Some(css(include_str!("../frontend/components/app-shell.css")))
         }
@@ -107,13 +120,57 @@ pub fn get(path: &str) -> Option<StaticAsset> {
 fn css(body: &'static str) -> StaticAsset {
     StaticAsset {
         content_type: "text/css; charset=utf-8",
-        body,
+        body: body.as_bytes(),
     }
 }
 
 fn js(body: &'static str) -> StaticAsset {
     StaticAsset {
         content_type: "text/javascript; charset=utf-8",
+        body: body.as_bytes(),
+    }
+}
+
+fn manifest(body: &'static str) -> StaticAsset {
+    StaticAsset {
+        content_type: "application/manifest+json; charset=utf-8",
+        body: body.as_bytes(),
+    }
+}
+
+fn svg(body: &'static str) -> StaticAsset {
+    StaticAsset {
+        content_type: "image/svg+xml",
+        body: body.as_bytes(),
+    }
+}
+
+fn png(body: &'static [u8]) -> StaticAsset {
+    StaticAsset {
+        content_type: "image/png",
         body,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::get;
+
+    #[test]
+    fn serves_pwa_icon_assets() {
+        let manifest = get("manifest.webmanifest").expect("manifest asset");
+        assert_eq!(
+            manifest.content_type,
+            "application/manifest+json; charset=utf-8"
+        );
+        assert!(manifest.body.starts_with(b"{\n"));
+
+        let svg = get("icons/caffold.svg").expect("svg icon asset");
+        assert_eq!(svg.content_type, "image/svg+xml");
+        assert!(svg.body.starts_with(b"<svg"));
+
+        let png = get("icons/icon-192.png").expect("png icon asset");
+        assert_eq!(png.content_type, "image/png");
+        assert!(png.body.starts_with(b"\x89PNG\r\n\x1a\n"));
     }
 }
