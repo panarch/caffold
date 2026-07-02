@@ -13,7 +13,7 @@ gluesql = { git = "https://github.com/gluesql/gluesql.git", rev = "fd8339a76eaf2
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 thiserror = "2.0.12"
-tokio = { version = "1.45.1", features = ["macros", "net", "rt-multi-thread", "signal"] }
+tokio = { version = "1.45.1", features = ["io-util", "macros", "net", "process", "rt-multi-thread", "signal", "time"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 uuid = { version = "1.23.4", features = ["v4"] }

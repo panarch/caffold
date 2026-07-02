@@ -13,6 +13,7 @@ use tokio::net::TcpListener;
 use tracing::info;
 
 use crate::{
+    codex_app_server::{self, CodexStatusResponse},
     fs::{
         FileResponse, FsError, GitCommitResponse, GitCompareResponse, GitDiffResponse,
         GitLogResponse, GitRefsResponse, GitStatusResponse, GithubIssueResponse,
@@ -302,6 +303,7 @@ fn router_with_state(state: AppState) -> Router {
         .route("/api/github/pull", get(github_pull))
         .route("/api/github/pull-files", get(github_pull_files))
         .route("/api/github/pull-file", get(github_pull_file))
+        .route("/api/codex/status", get(codex_status))
         .route("/service-worker.js", get(service_worker))
         .route("/assets/{*path}", get(asset))
         .route("/projects", get(index))
@@ -690,6 +692,10 @@ async fn github_pull_file(
         .github_pull_file(&query.path, query.number, &query.file)
         .map(Json)
         .map_err(ApiError::from)
+}
+
+async fn codex_status() -> Json<CodexStatusResponse> {
+    Json(codex_app_server::status().await)
 }
 
 fn project_candidate_response(

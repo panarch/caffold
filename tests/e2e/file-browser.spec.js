@@ -8,6 +8,13 @@ const LONG_CHANGE_FILE =
   "src/planner/this-is-a-very-long-change-file-name-used-to-test-horizontal-scrolling-in-the-changes-pane.rs";
 
 test.beforeEach(async ({ page }) => {
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(mockCodexStatus()),
+    }),
+  );
+
   await page.route("https://esm.sh/**", (route) => {
     if (route.request().url() !== "https://esm.sh/lucide@1.22.0") {
       return route.abort();
@@ -146,6 +153,11 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(githubBrandResponse.headers()["content-type"]).toContain("image/svg+xml");
   expect(await githubBrandResponse.text()).toContain("<svg");
 
+  const codexBrandResponse = await request.get("/assets/brand/codex-template@2x.png");
+  expect(codexBrandResponse.headers()["content-type"]).toContain("image/png");
+  const codexBrand = await codexBrandResponse.body();
+  expect([...codexBrand.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+
   const pngResponse = await request.get("/assets/icons/icon-192.png");
   expect(pngResponse.headers()["content-type"]).toContain("image/png");
   const png = await pngResponse.body();
@@ -160,6 +172,9 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain("/assets/icons/caffold-mark.svg");
   expect(serviceWorker).toContain("/assets/brand/git-logomark-light.svg");
   expect(serviceWorker).toContain("/assets/brand/github-invertocat-light.svg");
+  expect(serviceWorker).toContain("/assets/brand/codex-template@2x.png");
+  expect(serviceWorker).toContain("/assets/components/header-actions/codex-status.css");
+  expect(serviceWorker).toContain("/assets/components/header-actions/codex-status.js");
   expect(serviceWorker).toContain('url.pathname.startsWith("/api/")');
   expect(serviceWorker).toContain("networkFirst(request, \"/\")");
   expect(serviceWorker).toContain('url.pathname.startsWith("/assets/")');
@@ -333,7 +348,7 @@ test("manages project records from the header switcher", async ({ page }, testIn
   );
 });
 
-test("groups header review actions into Git and GitHub popovers", async ({ page }, testInfo) => {
+test("groups header review actions into Git, GitHub, and Codex popovers", async ({ page }, testInfo) => {
   const repository = { rootPath: "src", branch: "main", dirty: true };
   let gitFileCount = 0;
   const githubStatus = {
@@ -409,11 +424,14 @@ test("groups header review actions into Git and GitHub popovers", async ({ page 
 
   const gitButton = headerActionGroupButton(page, "git");
   const githubButton = headerActionGroupButton(page, "github");
+  const codexButton = headerActionGroupButton(page, "codex");
   await expect(gitButton.locator(".header-action-badge")).toHaveCount(0);
   const gitBrandIcon = gitButton.locator("img.header-action-brand-icon");
   const githubBrandIcon = githubButton.locator("img.header-action-brand-icon");
+  const codexBrandIcon = codexButton.locator("img.header-action-brand-icon");
   await expect(gitBrandIcon).toBeVisible();
   await expect(githubBrandIcon).toBeVisible();
+  await expect(codexBrandIcon).toBeVisible();
   await expect(gitBrandIcon).toHaveAttribute(
     "src",
     "/assets/brand/git-logomark-light.svg",
@@ -421,6 +439,10 @@ test("groups header review actions into Git and GitHub popovers", async ({ page 
   await expect(githubBrandIcon).toHaveAttribute(
     "src",
     "/assets/brand/github-invertocat-light.svg",
+  );
+  await expect(codexBrandIcon).toHaveAttribute(
+    "src",
+    "/assets/brand/codex-template@2x.png",
   );
   await expectHeaderBrand(page);
   await expectHeaderActionsFit(page);
@@ -463,6 +485,27 @@ test("groups header review actions into Git and GitHub popovers", async ({ page 
   await expectHeaderActionsFit(page);
   await expectHeaderPopoverFits(page, "github");
   await captureReviewScreenshot(page, testInfo, "header-actions-github-popover");
+
+  const codexPopover = await openHeaderActionGroup(page, "codex");
+  await expectHeaderGroupOpenVisualState(page, "codex");
+  await expect(codexPopover.locator(".header-actions-popover-header")).toContainText(
+    "Connected",
+  );
+  await expect(codexPopover.locator(".header-status-panel")).toContainText(
+    "user@example.com",
+  );
+  await expect(codexPopover.locator(".header-status-panel")).toContainText("pro");
+  await expect(codexPopover.locator(".header-status-panel")).toContainText(
+    "Remaining usage",
+  );
+  await expect(codexPopover.locator(".header-status-panel")).toContainText("5 hours");
+  await expect(codexPopover.locator(".header-status-panel")).toContainText("17%");
+  await expect(codexPopover.locator(".header-status-panel")).toContainText("1 week");
+  await expect(codexPopover.locator(".header-status-panel")).toContainText("69%");
+  await expect(codexPopover.locator(".header-status-panel")).toContainText("3 available");
+  await expectHeaderActionsFit(page);
+  await expectHeaderPopoverFits(page, "codex");
+  await captureReviewScreenshot(page, testInfo, "header-actions-codex-popover");
 });
 
 test("restores project file routes and browser navigation", async ({ page }, testInfo) => {
@@ -2647,6 +2690,50 @@ function headerActionGroupButton(page, group) {
   return page.locator(`caffold-header-actions button[data-action-group="${group}"]`);
 }
 
+function mockCodexStatus(overrides = {}) {
+  return {
+    available: true,
+    codexCliAvailable: true,
+    appServerAvailable: true,
+    message: null,
+    account: {
+      accountType: "chatgpt",
+      email: "user@example.com",
+      planType: "pro",
+    },
+    requiresOpenaiAuth: true,
+    rateLimits: {
+      rateLimitResetCredits: {
+        availableCount: 3,
+      },
+      rateLimits: {
+        primary: {
+          usedPercent: 83,
+          resetsAt: 1914709200,
+          windowDurationMins: 300,
+        },
+        secondary: {
+          usedPercent: 31,
+          resetsAt: 1915243200,
+          windowDurationMins: 10080,
+        },
+      },
+    },
+    usage: {
+      summary: {
+        lifetimeTokens: 1234567,
+      },
+    },
+    appServer: {
+      userAgent: "Codex Desktop/0.142.3",
+      codexHome: "/Users/example/.codex",
+      platformFamily: "unix",
+      platformOs: "macos",
+    },
+    ...overrides,
+  };
+}
+
 async function expectHeaderBrand(page) {
   const brand = page.locator("caffold-app-shell .brand");
   const mark = brand.locator(".brand-mark");
@@ -2714,6 +2801,9 @@ async function expectHeaderActionsFit(page) {
     const github = document.querySelector(
       'caffold-header-actions button[data-action-group="github"]',
     );
+    const codex = document.querySelector(
+      'caffold-header-actions button[data-action-group="codex"]',
+    );
     const badge = git?.querySelector(".header-action-badge");
 
     return {
@@ -2726,6 +2816,7 @@ async function expectHeaderActionsFit(page) {
       project: box(project),
       git: box(git),
       github: box(github),
+      codex: box(codex),
       badge: box(badge),
     };
   });
@@ -2734,11 +2825,14 @@ async function expectHeaderActionsFit(page) {
   expect(metrics.brand.right).toBeLessThanOrEqual(metrics.project.left);
   expect(metrics.project.right).toBeLessThanOrEqual(metrics.git.left);
   expect(metrics.git.right).toBeLessThanOrEqual(metrics.github.left);
-  expect(metrics.github.right).toBeLessThanOrEqual(metrics.viewportWidth + 1);
+  expect(metrics.github.right).toBeLessThanOrEqual(metrics.codex.left);
+  expect(metrics.codex.right).toBeLessThanOrEqual(metrics.viewportWidth + 1);
   expect(metrics.git.width).toBeGreaterThanOrEqual(30);
   expect(metrics.git.width).toBeLessThanOrEqual(32);
   expect(metrics.github.width).toBeGreaterThanOrEqual(30);
   expect(metrics.github.width).toBeLessThanOrEqual(32);
+  expect(metrics.codex.width).toBeGreaterThanOrEqual(30);
+  expect(metrics.codex.width).toBeLessThanOrEqual(32);
 
   if (metrics.badge) {
     expect(metrics.badge.left).toBeGreaterThanOrEqual(metrics.git.left);

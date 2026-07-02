@@ -2,6 +2,7 @@
 @import "./components/pathbar.css";
 @import "./components/project-switcher.css";
 @import "./components/header-actions.css";
+@import "./components/header-actions/codex-status.css";
 @import "./components/pagination.css";
 @import "./components/file-list.css";
 @import "./components/changes-tree.css";

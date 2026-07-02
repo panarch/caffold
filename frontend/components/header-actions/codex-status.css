@@ -1,0 +1,92 @@
+caffold-header-actions .header-status-panel {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+caffold-header-actions .header-status-account {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.76rem;
+  font-weight: 500;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+caffold-header-actions .header-status-section-title {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+caffold-header-actions .header-status-row {
+  display: grid;
+  grid-template-columns: minmax(0, 5.5rem) minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 10px;
+  min-width: 0;
+}
+
+caffold-header-actions .header-status-row span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+
+caffold-header-actions .header-status-row strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.74rem;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+caffold-header-actions .header-usage-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(3.75rem, auto);
+  align-items: baseline;
+  column-gap: 10px;
+  min-width: 0;
+}
+
+caffold-header-actions .header-usage-row span,
+caffold-header-actions .header-usage-row time {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.74rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+caffold-header-actions .header-usage-row strong {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+caffold-header-actions .header-usage-row time {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+caffold-header-actions .header-status-message {
+  margin: 2px 0 0;
+  border-top: 1px solid #eef3ef;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.35;
+  padding-top: 8px;
+}

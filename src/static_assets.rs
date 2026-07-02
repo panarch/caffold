@@ -40,6 +40,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "brand/github-invertocat-dark.svg" => Some(svg(include_str!(
             "../frontend/assets/brand/github-invertocat-dark.svg"
         ))),
+        "brand/codex-template.png" => Some(png(include_bytes!(
+            "../frontend/assets/brand/codex-template.png"
+        ))),
+        "brand/codex-template@2x.png" => Some(png(include_bytes!(
+            "../frontend/assets/brand/codex-template@2x.png"
+        ))),
         "components/app-shell.css" => {
             Some(css(include_str!("../frontend/components/app-shell.css")))
         }
@@ -91,6 +97,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "components/header-actions.js" => {
             Some(js(include_str!("../frontend/components/header-actions.js")))
         }
+        "components/header-actions/codex-status.css" => Some(css(include_str!(
+            "../frontend/components/header-actions/codex-status.css"
+        ))),
+        "components/header-actions/codex-status.js" => Some(js(include_str!(
+            "../frontend/components/header-actions/codex-status.js"
+        ))),
         "components/github-markdown.js" => Some(js(include_str!(
             "../frontend/components/github-markdown.js"
         ))),
@@ -217,6 +229,23 @@ mod tests {
         let brand_svg = get("brand/github-invertocat-light.svg").expect("brand svg asset");
         assert_eq!(brand_svg.content_type, "image/svg+xml");
         assert!(brand_svg.body.starts_with(b"<svg"));
+
+        let codex_brand = get("brand/codex-template@2x.png").expect("codex brand asset");
+        assert_eq!(codex_brand.content_type, "image/png");
+        assert!(codex_brand.body.starts_with(b"\x89PNG\r\n\x1a\n"));
+
+        let codex_status_js =
+            get("components/header-actions/codex-status.js").expect("codex status js asset");
+        assert_eq!(
+            codex_status_js.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(codex_status_js.body.starts_with(b"import "));
+
+        let codex_status_css =
+            get("components/header-actions/codex-status.css").expect("codex status css asset");
+        assert_eq!(codex_status_css.content_type, "text/css; charset=utf-8");
+        assert!(codex_status_css.body.starts_with(b"caffold-header-actions"));
 
         let png = get("icons/icon-192.png").expect("png icon asset");
         assert_eq!(png.content_type, "image/png");

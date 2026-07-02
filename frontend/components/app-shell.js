@@ -1,6 +1,7 @@
 import {
   createProject,
   deleteProject,
+  getCodexStatus,
   getGitCommit,
   getGitCommitDiff,
   getGitCompare,
@@ -72,9 +73,11 @@ class CaffoldAppShell extends HTMLElement {
     this.githubPullsRequestId = 0;
     this.githubPullRequestId = 0;
     this.githubPullFilesRequestId = 0;
+    this.codexStatusRequestId = 0;
     this.projectRequestId = 0;
     this.gitStatus = null;
     this.githubStatus = null;
+    this.codexStatus = null;
     this.githubIssues = null;
     this.githubPulls = null;
     this.githubPullFiles = null;
@@ -147,6 +150,7 @@ class CaffoldAppShell extends HTMLElement {
     this.compareWorkspaceViewer.setCloseLabel("Back to compare");
     this.pullWorkspaceViewer.setCloseLabel("Back to PR files");
     this.applyLeftPanelWidth(this.leftPanelWidth);
+    this.loadCodexStatus();
 
     this.installNavigationHandlers();
 
@@ -1394,6 +1398,33 @@ class CaffoldAppShell extends HTMLElement {
       await this.refreshProjects(this.currentPath);
     } catch (error) {
       this.renderProjectState({ error });
+    }
+  }
+
+  async loadCodexStatus() {
+    const requestId = ++this.codexStatusRequestId;
+
+    try {
+      const status = await getCodexStatus();
+      if (requestId !== this.codexStatusRequestId) {
+        return;
+      }
+
+      this.codexStatus = status;
+      this.headerActions.codexStatus = status;
+    } catch (error) {
+      if (requestId !== this.codexStatusRequestId) {
+        return;
+      }
+
+      const status = {
+        available: false,
+        codexCliAvailable: null,
+        appServerAvailable: null,
+        message: error.message,
+      };
+      this.codexStatus = status;
+      this.headerActions.codexStatus = status;
     }
   }
 

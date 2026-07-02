@@ -2,6 +2,10 @@ export async function getHealth() {
   return requestJson("/api/health");
 }
 
+export async function getCodexStatus() {
+  return requestJson("/api/codex/status");
+}
+
 export async function listDirectory(path = "") {
   return requestJson("/api/list", { path });
 }

@@ -1,4 +1,4 @@
-const CACHE_NAME = "caffold-shell-v7";
+const CACHE_NAME = "caffold-shell-v8";
 
 const APP_SHELL_ASSETS = [
   "/",
@@ -18,6 +18,8 @@ const APP_SHELL_ASSETS = [
   "/assets/brand/git-logomark-dark.svg",
   "/assets/brand/github-invertocat-light.svg",
   "/assets/brand/github-invertocat-dark.svg",
+  "/assets/brand/codex-template.png",
+  "/assets/brand/codex-template@2x.png",
   "/assets/components/app-shell.css",
   "/assets/components/app-shell.js",
   "/assets/components/changes-tree.css",
@@ -48,6 +50,8 @@ const APP_SHELL_ASSETS = [
   "/assets/components/github-pulls-list.js",
   "/assets/components/header-actions.css",
   "/assets/components/header-actions.js",
+  "/assets/components/header-actions/codex-status.css",
+  "/assets/components/header-actions/codex-status.js",
   "/assets/components/icons.js",
   "/assets/components/log-list.css",
   "/assets/components/log-list.js",

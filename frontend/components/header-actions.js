@@ -1,4 +1,5 @@
 import { escapeHtml } from "./dom.js";
+import { renderCodexActions, sameCodexStatus } from "./header-actions/codex-status.js";
 import { renderInlineIcon, warmIcons } from "./icons.js";
 
 const GIT_POPOVER_ID = "caffold-git-actions-popover";
@@ -92,11 +93,26 @@ class CaffoldHeaderActions extends HTMLElement {
     return this.githubStatusValue ?? null;
   }
 
+  set codexStatus(value) {
+    const nextValue = value ?? null;
+    if (sameCodexStatus(this.codexStatusValue, nextValue)) {
+      return;
+    }
+
+    this.codexStatusValue = nextValue;
+    this.renderKeepingOpenPopover();
+  }
+
+  get codexStatus() {
+    return this.codexStatusValue ?? null;
+  }
+
   render() {
     this.innerHTML = `
       <div class="header-actions" aria-label="Review actions">
         ${this.renderGitActions()}
         ${this.renderGitHubActions()}
+        ${this.renderCodexActions()}
       </div>
     `;
   }
@@ -260,6 +276,12 @@ class CaffoldHeaderActions extends HTMLElement {
         </section>
       </div>
     `;
+  }
+
+  renderCodexActions() {
+    return renderCodexActions(this.codexStatus, {
+      renderGroupButton: (options) => this.renderGroupButton(options),
+    });
   }
 
   renderGroupButton({
