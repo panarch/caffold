@@ -329,9 +329,14 @@ test("restores project review routes", async ({ page }) => {
     nameWithOwner: "example/caffold",
     url: "https://github.com/example/caffold",
   };
+  let gitStatusRequests = 0;
+  let gitCompareRequests = 0;
+  let gitCommitRequests = 0;
+  let githubIssuesRequests = 0;
 
-  await page.route(/\/api\/git\/status(?:\?|$)/, (route) =>
-    route.fulfill({
+  await page.route(/\/api\/git\/status(?:\?|$)/, (route) => {
+    gitStatusRequests += 1;
+    return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
         repository,
@@ -347,8 +352,8 @@ test("restores project review routes", async ({ page }) => {
           },
         ],
       }),
-    }),
-  );
+    });
+  });
   await page.route(/\/api\/git\/diff(?:\?|$)/, (route) => {
     const url = new URL(route.request().url());
     expect(url.searchParams.get("file")).toBe("src/example.rs");
@@ -387,6 +392,7 @@ test("restores project review routes", async ({ page }) => {
     }),
   );
   await page.route(/\/api\/git\/compare(?:\?|$)/, (route) => {
+    gitCompareRequests += 1;
     const url = new URL(route.request().url());
     expect(url.searchParams.get("base")).toBe("origin/main");
     expect(url.searchParams.get("head")).toBe("feature/review");
@@ -442,8 +448,9 @@ test("restores project review routes", async ({ page }) => {
       }),
     }),
   );
-  await page.route(/\/api\/git\/commit(?:\?|$)/, (route) =>
-    route.fulfill({
+  await page.route(/\/api\/git\/commit(?:\?|$)/, (route) => {
+    gitCommitRequests += 1;
+    return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
         repository,
@@ -456,8 +463,8 @@ test("restores project review routes", async ({ page }) => {
           },
         ],
       }),
-    }),
-  );
+    });
+  });
   await page.route(/\/api\/git\/commit-diff(?:\?|$)/, (route) => {
     const url = new URL(route.request().url());
     expect(url.searchParams.get("sha")).toBe(commit.sha);
@@ -491,8 +498,9 @@ test("restores project review routes", async ({ page }) => {
       }),
     }),
   );
-  await page.route(/\/api\/github\/issues(?:\?|$)/, (route) =>
-    route.fulfill({
+  await page.route(/\/api\/github\/issues(?:\?|$)/, (route) => {
+    githubIssuesRequests += 1;
+    return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
         repository,
@@ -518,8 +526,8 @@ test("restores project review routes", async ({ page }) => {
         hasPrevious: true,
         hasNext: false,
       }),
-    }),
-  );
+    });
+  });
   await page.route(/\/api\/github\/issue(?:\?|$)/, (route) => {
     const url = new URL(route.request().url());
     expect(url.searchParams.get("number")).toBe("42");
@@ -553,10 +561,16 @@ test("restores project review routes", async ({ page }) => {
   );
   await expect(page.locator("caffold-diff-viewer")).toContainText("new route line");
   await page.goto(`/projects/${project.id}/diff`);
+  await expect(page.locator('button[data-change-path="src/example.rs"]')).toBeVisible();
+  const gitStatusRequestsBeforeDiffClick = gitStatusRequests;
   await page.locator('button[data-change-path="src/example.rs"]').click();
   await expect(page).toHaveURL(`/projects/${project.id}/diff/example.rs`);
+  await expect(page.locator("caffold-diff-viewer")).toContainText("new route line");
+  expect(gitStatusRequests).toBe(gitStatusRequestsBeforeDiffClick);
+  const gitStatusRequestsBeforeDiffBack = gitStatusRequests;
   await page.goBack();
   await expect(page).toHaveURL(`/projects/${project.id}/diff`);
+  expect(gitStatusRequests).toBe(gitStatusRequestsBeforeDiffBack);
 
   await page.goto(
     `/projects/${project.id}/compare/example.rs?base=origin%2Fmain&head=feature%2Freview`,
@@ -569,14 +583,20 @@ test("restores project review routes", async ({ page }) => {
   await expect(page.locator('select[data-compare-ref="head"]')).toHaveValue("feature/review");
   await expect(page.locator("caffold-diff-viewer")).toContainText("new compare route line");
   await page.goto(`/projects/${project.id}/compare?base=origin%2Fmain&head=feature%2Freview`);
+  await expect(page.locator('button[data-compare-path="src/example.rs"]')).toBeVisible();
+  const gitCompareRequestsBeforeClick = gitCompareRequests;
   await page.locator('button[data-compare-path="src/example.rs"]').click();
   await expect(page).toHaveURL(
     `/projects/${project.id}/compare/example.rs?base=origin%2Fmain&head=feature%2Freview`,
   );
+  await expect(page.locator("caffold-diff-viewer")).toContainText("new compare route line");
+  expect(gitCompareRequests).toBe(gitCompareRequestsBeforeClick);
+  const gitCompareRequestsBeforeBack = gitCompareRequests;
   await page.goBack();
   await expect(page).toHaveURL(
     `/projects/${project.id}/compare?base=origin%2Fmain&head=feature%2Freview`,
   );
+  expect(gitCompareRequests).toBe(gitCompareRequestsBeforeBack);
 
   await page.goto(`/projects/${project.id}/log/${commit.sha}/planner/mod.rs?page=2`);
   await expect(page.locator("caffold-review-workspace")).toHaveAttribute(
@@ -586,10 +606,16 @@ test("restores project review routes", async ({ page }) => {
   await expect(page.locator(".review-workspace-title h2")).toHaveText("Commit");
   await expect(page.locator("caffold-diff-viewer")).toContainText("new commit route line");
   await page.goto(`/projects/${project.id}/log/${commit.sha}?page=2`);
+  await expect(page.locator('button[data-commit-path="src/planner/mod.rs"]')).toBeVisible();
+  const gitCommitRequestsBeforeClick = gitCommitRequests;
   await page.locator('button[data-commit-path="src/planner/mod.rs"]').click();
   await expect(page).toHaveURL(`/projects/${project.id}/log/${commit.sha}/planner/mod.rs?page=2`);
+  await expect(page.locator("caffold-diff-viewer")).toContainText("new commit route line");
+  expect(gitCommitRequests).toBe(gitCommitRequestsBeforeClick);
+  const gitCommitRequestsBeforeBack = gitCommitRequests;
   await page.goBack();
   await expect(page).toHaveURL(`/projects/${project.id}/log/${commit.sha}?page=2`);
+  expect(gitCommitRequests).toBe(gitCommitRequestsBeforeBack);
   await page.getByRole("button", { name: "Back to log" }).click();
   await expect(page).toHaveURL(`/projects/${project.id}/log?page=2`);
 
@@ -599,8 +625,16 @@ test("restores project review routes", async ({ page }) => {
     "issues",
   );
   await expect(page.locator("caffold-github-issue-viewer")).toContainText("Route issue body");
+  const githubIssuesRequestsBeforeBack = githubIssuesRequests;
   await page.getByRole("button", { name: "Back to issues" }).click();
   await expect(page).toHaveURL(`/projects/${project.id}/issues?page=2`);
+  expect(githubIssuesRequests).toBe(githubIssuesRequestsBeforeBack);
+  await expect(page.locator('button[data-issue-number="42"]')).toBeVisible();
+  const githubIssuesRequestsBeforeIssueClick = githubIssuesRequests;
+  await page.locator('button[data-issue-number="42"]').click();
+  await expect(page).toHaveURL(`/projects/${project.id}/issues/42?page=2`);
+  await expect(page.locator("caffold-github-issue-viewer")).toContainText("Route issue body");
+  expect(githubIssuesRequests).toBe(githubIssuesRequestsBeforeIssueClick);
 });
 
 test("previews image files in the viewer", async ({ page }) => {
