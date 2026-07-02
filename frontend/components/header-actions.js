@@ -14,7 +14,7 @@ class CaffoldHeaderActions extends HTMLElement {
     this.addEventListener("click", (event) => {
       const groupButton = event.target.closest("button[data-action-group]");
       if (groupButton) {
-        this.closeOtherPopovers(groupButton.getAttribute("popovertarget"));
+        this.togglePopover(groupButton);
         return;
       }
 
@@ -34,11 +34,25 @@ class CaffoldHeaderActions extends HTMLElement {
         return;
       }
 
-      button.closest(".header-actions-popover")?.hidePopover?.();
+      this.closeAllPopovers();
       this.dispatchEvent(new CustomEvent(eventName, { bubbles: true }));
     });
     this.boundIconsReady = () => this.renderKeepingOpenPopover();
+    this.boundDocumentClick = (event) => {
+      if (!this.contains(event.target)) {
+        this.closeAllPopovers();
+      }
+    };
+    this.boundDocumentKeyDown = (event) => {
+      if (event.key === "Escape") {
+        const openButton = this.querySelector('button[aria-expanded="true"]');
+        this.closeAllPopovers();
+        openButton?.focus();
+      }
+    };
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
+    document.addEventListener("click", this.boundDocumentClick);
+    document.addEventListener("keydown", this.boundDocumentKeyDown);
     warmIcons();
 
     this.render();
@@ -46,6 +60,8 @@ class CaffoldHeaderActions extends HTMLElement {
 
   disconnectedCallback() {
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
+    document.removeEventListener("click", this.boundDocumentClick);
+    document.removeEventListener("keydown", this.boundDocumentKeyDown);
   }
 
   set gitStatus(value) {
@@ -86,22 +102,48 @@ class CaffoldHeaderActions extends HTMLElement {
   }
 
   renderKeepingOpenPopover() {
-    const openPopover = this.querySelector(".header-actions-popover:popover-open");
+    const openPopover = this.querySelector(".header-actions-popover:not([hidden])");
     const openGroup = openPopover?.dataset.actionGroup;
     this.render();
 
     if (openGroup) {
-      this.querySelector(
-        `.header-actions-popover[data-action-group="${openGroup}"]`,
-      )?.showPopover?.();
+      this.openPopoverByGroup(openGroup);
     }
   }
 
-  closeOtherPopovers(targetId) {
+  togglePopover(groupButton) {
+    const targetId = groupButton.getAttribute("aria-controls");
+    const target = targetId ? this.querySelector(`#${targetId}`) : null;
+    const shouldOpen = target?.hidden;
+
+    this.closeAllPopovers();
+
+    if (target && shouldOpen) {
+      target.hidden = false;
+      groupButton.setAttribute("aria-expanded", "true");
+    }
+  }
+
+  openPopoverByGroup(group) {
+    const popover = this.querySelector(
+      `.header-actions-popover[data-action-group="${group}"]`,
+    );
+    const button = this.querySelector(`button[data-action-group="${group}"]`);
+
+    if (!popover || !button) {
+      return;
+    }
+
+    popover.hidden = false;
+    button.setAttribute("aria-expanded", "true");
+  }
+
+  closeAllPopovers() {
     this.querySelectorAll(".header-actions-popover").forEach((popover) => {
-      if (popover.id !== targetId) {
-        popover.hidePopover?.();
-      }
+      popover.hidden = true;
+    });
+    this.querySelectorAll("button[data-action-group]").forEach((button) => {
+      button.setAttribute("aria-expanded", "false");
     });
   }
 
@@ -116,50 +158,52 @@ class CaffoldHeaderActions extends HTMLElement {
     const countLabel = `${count} changed ${count === 1 ? "file" : "files"}`;
 
     return `
-      ${this.renderGroupButton({
-        group: "git",
-        popoverId: GIT_POPOVER_ID,
-        brandIcon: {
-          light: "/assets/brand/git-logomark-light.svg",
-          dark: "/assets/brand/git-logomark-dark.svg",
-        },
-        label: "Git",
-        title: `Git actions, ${countLabel}`,
-        badge,
-      })}
-      <section
-        id="${GIT_POPOVER_ID}"
-        class="header-actions-popover"
-        data-action-group="git"
-        popover="auto"
-        aria-label="Git actions"
-      >
-        <header class="header-actions-popover-header">
-          <h2>Git</h2>
-          <span>${escapeHtml(countLabel)}</span>
-        </header>
-        <div class="header-actions-menu">
-          ${this.renderMenuAction({
-            action: "open-diff-workspace",
-            icon: "FileDiff",
-            label: "Diff",
-            title: "Open Diff",
-            metric: `${count}`,
-          })}
-          ${this.renderMenuAction({
-            action: "open-compare-workspace",
-            icon: "GitCompare",
-            label: "Compare",
-            title: "Open Compare",
-          })}
-          ${this.renderMenuAction({
-            action: "open-log-workspace",
-            icon: "History",
-            label: "Log",
-            title: "Open Log",
-          })}
-        </div>
-      </section>
+      <div class="header-action-group">
+        ${this.renderGroupButton({
+          group: "git",
+          popoverId: GIT_POPOVER_ID,
+          brandIcon: {
+            light: "/assets/brand/git-logomark-light.svg",
+            dark: "/assets/brand/git-logomark-dark.svg",
+          },
+          label: "Git",
+          title: `Git actions, ${countLabel}`,
+          badge,
+        })}
+        <section
+          id="${GIT_POPOVER_ID}"
+          class="header-actions-popover"
+          data-action-group="git"
+          aria-label="Git actions"
+          hidden
+        >
+          <header class="header-actions-popover-header">
+            <h2>Git</h2>
+            <span>${escapeHtml(countLabel)}</span>
+          </header>
+          <div class="header-actions-menu">
+            ${this.renderMenuAction({
+              action: "open-diff-workspace",
+              icon: "FileDiff",
+              label: "Diff",
+              title: "Open Diff",
+              metric: `${count}`,
+            })}
+            ${this.renderMenuAction({
+              action: "open-compare-workspace",
+              icon: "GitCompare",
+              label: "Compare",
+              title: "Open Compare",
+            })}
+            ${this.renderMenuAction({
+              action: "open-log-workspace",
+              icon: "History",
+              label: "Log",
+              title: "Open Log",
+            })}
+          </div>
+        </section>
+      </div>
     `;
   }
 
@@ -173,46 +217,48 @@ class CaffoldHeaderActions extends HTMLElement {
       githubStatus.github.nameWithOwner ?? githubStatus.github.name ?? "GitHub";
 
     return `
-      ${this.renderGroupButton({
-        group: "github",
-        popoverId: GITHUB_POPOVER_ID,
-        brandIcon: {
-          light: "/assets/brand/github-invertocat-light.svg",
-          dark: "/assets/brand/github-invertocat-dark.svg",
-        },
-        label: "GitHub",
-        title: "GitHub actions",
-      })}
-      <section
-        id="${GITHUB_POPOVER_ID}"
-        class="header-actions-popover"
-        data-action-group="github"
-        popover="auto"
-        aria-label="GitHub actions"
-      >
-        <header class="header-actions-popover-header">
-          <h2>GitHub</h2>
-          <span>${escapeHtml(repositoryLabel)}</span>
-        </header>
-        <div class="header-actions-menu">
-          ${this.renderMenuAction({
-            action: "open-github-pulls-workspace",
-            icon: "GitPullRequest",
-            label: "PRs",
-            title: githubStatus.pullsAvailable
-              ? "Open Pull Requests"
-              : `Open Pull Requests (${githubStatus.message ?? "GitHub unavailable"})`,
-          })}
-          ${this.renderMenuAction({
-            action: "open-github-issues-workspace",
-            icon: "CircleDot",
-            label: "Issues",
-            title: githubStatus.issuesAvailable
-              ? "Open Issues"
-              : `Open Issues (${githubStatus.message ?? "GitHub unavailable"})`,
-          })}
-        </div>
-      </section>
+      <div class="header-action-group">
+        ${this.renderGroupButton({
+          group: "github",
+          popoverId: GITHUB_POPOVER_ID,
+          brandIcon: {
+            light: "/assets/brand/github-invertocat-light.svg",
+            dark: "/assets/brand/github-invertocat-dark.svg",
+          },
+          label: "GitHub",
+          title: "GitHub actions",
+        })}
+        <section
+          id="${GITHUB_POPOVER_ID}"
+          class="header-actions-popover"
+          data-action-group="github"
+          aria-label="GitHub actions"
+          hidden
+        >
+          <header class="header-actions-popover-header">
+            <h2>GitHub</h2>
+            <span>${escapeHtml(repositoryLabel)}</span>
+          </header>
+          <div class="header-actions-menu">
+            ${this.renderMenuAction({
+              action: "open-github-pulls-workspace",
+              icon: "GitPullRequest",
+              label: "PRs",
+              title: githubStatus.pullsAvailable
+                ? "Open Pull Requests"
+                : `Open Pull Requests (${githubStatus.message ?? "GitHub unavailable"})`,
+            })}
+            ${this.renderMenuAction({
+              action: "open-github-issues-workspace",
+              icon: "CircleDot",
+              label: "Issues",
+              title: githubStatus.issuesAvailable
+                ? "Open Issues"
+                : `Open Issues (${githubStatus.message ?? "GitHub unavailable"})`,
+            })}
+          </div>
+        </section>
+      </div>
     `;
   }
 
@@ -230,7 +276,8 @@ class CaffoldHeaderActions extends HTMLElement {
         type="button"
         class="header-action-group-button"
         data-action-group="${escapeHtml(group)}"
-        popovertarget="${escapeHtml(popoverId)}"
+        aria-controls="${escapeHtml(popoverId)}"
+        aria-expanded="false"
         title="${escapeHtml(title)}"
         aria-label="${escapeHtml(title)}"
       >

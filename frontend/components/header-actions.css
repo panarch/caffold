@@ -11,6 +11,12 @@ caffold-header-actions .header-actions {
   min-width: 0;
 }
 
+caffold-header-actions .header-action-group {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
 caffold-header-actions .header-action-group-button {
   position: relative;
   display: grid;
@@ -30,6 +36,12 @@ caffold-header-actions .header-action-group-button:focus-visible {
   border-color: #d8e2db;
   background: #f7fbf8;
   outline: none;
+}
+
+caffold-header-actions .header-action-group-button[aria-expanded="true"] {
+  border-color: #b6c7bd;
+  background: #edf4ef;
+  color: var(--accent);
 }
 
 caffold-header-actions .header-action-icon {
@@ -70,11 +82,13 @@ caffold-header-actions .header-action-badge {
 }
 
 caffold-header-actions .header-actions-popover {
-  position: fixed;
-  inset: 42px auto auto 12px;
-  width: min(16rem, calc(100vw - 24px));
+  --header-popover-arrow-left: 123px;
+  position: absolute;
+  z-index: 20;
+  inset: 36px auto auto -112px;
+  width: 256px;
   max-height: min(24rem, calc(100dvh - 64px));
-  overflow: auto;
+  overflow: visible;
   margin: 0;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -82,6 +96,20 @@ caffold-header-actions .header-actions-popover {
   color: var(--text);
   padding: 0;
   box-shadow: 0 12px 28px rgb(24 32 27 / 18%);
+}
+
+caffold-header-actions .header-actions-popover::before {
+  position: absolute;
+  inset-block-start: -6px;
+  inset-inline-start: var(--header-popover-arrow-left);
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--border);
+  border-inline-end: 0;
+  border-block-end: 0;
+  background: var(--surface-muted);
+  content: "";
+  transform: rotate(45deg);
 }
 
 caffold-header-actions .header-actions-popover-header {
@@ -172,5 +200,20 @@ caffold-header-actions .header-menu-metric {
 
   caffold-header-actions .header-action-group-button {
     width: 30px;
+  }
+}
+
+@media (max-width: 520px) {
+  caffold-header-actions .header-actions-popover,
+  caffold-header-actions .header-actions-popover[data-action-group="github"] {
+    position: fixed;
+    inset: 42px 8px auto 8px;
+    width: auto;
+    max-height: calc(100dvh - 52px);
+    overflow: auto;
+  }
+
+  caffold-header-actions .header-actions-popover::before {
+    display: none;
   }
 }

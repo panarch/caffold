@@ -422,6 +422,7 @@ test("groups header review actions into Git and GitHub popovers", async ({ page 
   await openSourceDirectoryWithGitCount(13);
   await expect(gitButton.locator(".header-action-badge")).toHaveText("13");
   const gitPopover = await openHeaderActionGroup(page, "git");
+  await expectHeaderGroupOpenVisualState(page, "git");
   await expect(gitPopover.locator(".header-actions-popover-header")).toContainText(
     "13 changed files",
   );
@@ -441,6 +442,7 @@ test("groups header review actions into Git and GitHub popovers", async ({ page 
   await openSourceDirectoryWithGitCount(120);
   await expect(gitButton.locator(".header-action-badge")).toHaveText("99+");
   const githubPopover = await openHeaderActionGroup(page, "github");
+  await expectHeaderGroupOpenVisualState(page, "github");
   await expect(githubPopover.locator(".header-actions-popover-header")).toContainText(
     "example/caffold",
   );
@@ -2645,7 +2647,10 @@ async function openHeaderActionGroup(page, group) {
   await expect(button).toBeVisible();
   await page.locator("caffold-header-actions").evaluate((element) => {
     element.querySelectorAll(".header-actions-popover").forEach((panel) => {
-      panel.hidePopover?.();
+      panel.hidden = true;
+    });
+    element.querySelectorAll("button[data-action-group]").forEach((actionButton) => {
+      actionButton.setAttribute("aria-expanded", "false");
     });
   });
   await button.click();
@@ -2740,6 +2745,60 @@ async function expectHeaderPopoverFits(page, group) {
   expect(metrics.bottom).toBeLessThanOrEqual(metrics.viewportHeight + 1);
   expect(metrics.width).toBeGreaterThan(0);
   expect(metrics.height).toBeGreaterThan(0);
+}
+
+async function expectHeaderGroupOpenVisualState(page, group) {
+  const metrics = await page.evaluate((actionGroup) => {
+    const button = document.querySelector(
+      `caffold-header-actions button[data-action-group="${actionGroup}"]`,
+    );
+    const popover = document.querySelector(
+      `caffold-header-actions .header-actions-popover[data-action-group="${actionGroup}"]`,
+    );
+    const buttonRect = button.getBoundingClientRect();
+    const popoverRect = popover.getBoundingClientRect();
+    const buttonStyle = window.getComputedStyle(button);
+    const arrowStyle = window.getComputedStyle(popover, "::before");
+    const arrowLeft = Number.parseFloat(arrowStyle.left);
+    const arrowTop = Number.parseFloat(arrowStyle.top);
+    const arrowWidth = Number.parseFloat(arrowStyle.width);
+    const arrowVisualTop =
+      popoverRect.top + arrowTop + arrowWidth / 2 - (Math.SQRT2 * arrowWidth) / 2;
+
+    return {
+      arrowCenter: popoverRect.left + arrowLeft + arrowWidth / 2,
+      arrowContent: arrowStyle.content,
+      arrowDisplay: arrowStyle.display,
+      arrowHeight: arrowStyle.height,
+      arrowWidth: arrowStyle.width,
+      buttonBackground: buttonStyle.backgroundColor,
+      buttonBottom: buttonRect.bottom,
+      buttonBorderColor: buttonStyle.borderTopColor,
+      buttonCenter: buttonRect.left + buttonRect.width / 2,
+      buttonToArrowGap: arrowVisualTop - buttonRect.bottom,
+      isMobileLayout: window.matchMedia("(max-width: 520px)").matches,
+      popoverLeft: popoverRect.left,
+      popoverRight: popoverRect.right,
+      viewportWidth: window.innerWidth,
+    };
+  }, group);
+
+  expect(metrics.buttonBackground).toBe("rgb(237, 244, 239)");
+  expect(metrics.buttonBorderColor).toBe("rgb(182, 199, 189)");
+
+  if (metrics.isMobileLayout) {
+    expect(metrics.arrowDisplay).toBe("none");
+    expect(metrics.popoverLeft).toBeGreaterThanOrEqual(7);
+    expect(metrics.popoverRight).toBeLessThanOrEqual(metrics.viewportWidth - 7);
+    return;
+  }
+
+  expect(metrics.arrowContent).toBe('""');
+  expect(metrics.arrowWidth).toBe("10px");
+  expect(metrics.arrowHeight).toBe("10px");
+  expect(Math.abs(metrics.arrowCenter - metrics.buttonCenter)).toBeLessThanOrEqual(4);
+  expect(metrics.buttonToArrowGap).toBeGreaterThanOrEqual(-1);
+  expect(metrics.buttonToArrowGap).toBeLessThanOrEqual(3);
 }
 
 async function mockRegisteredProject(page) {
