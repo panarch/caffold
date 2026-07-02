@@ -1183,6 +1183,7 @@ test("scrolls long source lines horizontally in the code viewer", async ({ page 
   await page.locator('button[data-entry-path="README.md"]').click();
   await expect(page.locator("caffold-code-viewer")).toContainText("long-source-token");
   await expectHorizontalScroller(page, "caffold-code-viewer .code-lines");
+  await expectCodeViewerGutterSeparated(page);
 });
 
 test("uses a single-pane file viewer on phone", async ({ page }, testInfo) => {
@@ -2941,6 +2942,30 @@ async function expectHorizontalScroller(page, selector) {
   expect(scrollState.overflowX).toBe("auto");
   expect(scrollState.scrollWidth).toBeGreaterThan(scrollState.clientWidth);
   expect(scrollState.scrollLeft).toBeGreaterThan(0);
+}
+
+async function expectCodeViewerGutterSeparated(page) {
+  const metrics = await page.locator("caffold-code-viewer .code-lines").evaluate((element) => {
+    element.scrollLeft = element.scrollWidth;
+
+    const container = element.getBoundingClientRect();
+    const backdrop = element.querySelector(".code-gutter-backdrop").getBoundingClientRect();
+    const lineNumber = element.querySelector(".line-number").getBoundingClientRect();
+
+    return {
+      backdropLeft: backdrop.left,
+      backdropRight: backdrop.right,
+      containerLeft: container.left,
+      lineNumberLeft: lineNumber.left,
+      lineNumberRight: lineNumber.right,
+      scrollLeft: element.scrollLeft,
+    };
+  });
+
+  expect(metrics.scrollLeft).toBeGreaterThan(0);
+  expect(Math.abs(metrics.backdropLeft - metrics.containerLeft)).toBeLessThanOrEqual(1);
+  expect(Math.abs(metrics.lineNumberLeft - metrics.containerLeft)).toBeLessThanOrEqual(1);
+  expect(Math.abs(metrics.lineNumberRight - metrics.backdropRight)).toBeLessThanOrEqual(1);
 }
 
 async function expectMobileBrowserViewerOverlay(page) {

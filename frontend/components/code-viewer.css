@@ -30,41 +30,57 @@ caffold-code-viewer .code-viewer > header {
 }
 
 caffold-code-viewer .code-lines {
+  display: grid;
   min-width: 0;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  background: linear-gradient(
-    to right,
-    var(--code-gutter) 0,
-    var(--code-gutter) var(--line-gutter-width),
-    var(--border) var(--line-gutter-width),
-    var(--border) calc(var(--line-gutter-width) + 1px),
-    transparent calc(var(--line-gutter-width) + 1px)
-  );
+  background: var(--code-bg);
   font-family: var(--font-mono);
   font-size: 0.82rem;
   line-height: 1.55;
 }
 
+caffold-code-viewer .code-gutter-backdrop {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  grid-area: 1 / 1;
+  width: var(--line-gutter-width);
+  min-height: 100%;
+  border-right: 1px solid var(--border);
+  background: var(--code-gutter);
+  pointer-events: none;
+}
+
+caffold-code-viewer .code-table {
+  grid-area: 1 / 1;
+  width: max(100%, calc(var(--line-gutter-width) + var(--code-content-width) + 24px));
+  min-height: 100%;
+}
+
 caffold-code-viewer .code-row {
   display: grid;
-  grid-template-columns: var(--line-gutter-width) minmax(max-content, 1fr);
-  min-width: max-content;
+  grid-template-columns: var(--line-gutter-width) minmax(0, 1fr);
+  width: 100%;
+  min-width: 0;
+  background: var(--code-bg);
 }
 
 caffold-code-viewer .line-number {
   position: sticky;
   left: 0;
-  z-index: 1;
+  z-index: 2;
   user-select: none;
   background: var(--code-gutter);
+  border-right: 1px solid var(--border);
   color: #78867d;
   padding: 0 10px;
   text-align: right;
 }
 
 caffold-code-viewer .line-code {
+  min-width: 0;
   white-space: pre;
   padding: 0 12px;
 }

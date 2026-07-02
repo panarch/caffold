@@ -18,9 +18,7 @@ class CaffoldCodeViewer extends HTMLElement {
         <header>
           <span>${escapeHtml(language)}</span>
         </header>
-        <div class="code-lines" role="region" aria-label="File content">
-          ${renderLines(escapeHtml(this.file.content))}
-        </div>
+        ${renderCodeLines(escapeHtml(this.file.content), this.file.content)}
       </section>
     `;
   }
@@ -41,9 +39,7 @@ class CaffoldCodeViewer extends HTMLElement {
           <header>
             <span>${escapeHtml(language)}</span>
           </header>
-          <div class="code-lines" role="region" aria-label="File content">
-            ${renderLines(highlighted)}
-          </div>
+          ${renderCodeLines(highlighted, this.file.content)}
         </section>
       `;
     } catch {
@@ -73,6 +69,19 @@ async function getHighlighter() {
   return highlighterPromise;
 }
 
+function renderCodeLines(html, rawContent) {
+  const codeWidth = `${codeColumns(rawContent)}ch`;
+
+  return `
+    <div class="code-lines" role="region" aria-label="File content">
+      <div class="code-gutter-backdrop" aria-hidden="true"></div>
+      <div class="code-table" style="--code-content-width: ${codeWidth};">
+        ${renderLines(html)}
+      </div>
+    </div>
+  `;
+}
+
 function renderLines(html) {
   const lines = html.split(/\r?\n/);
 
@@ -87,6 +96,24 @@ function renderLines(html) {
       `;
     })
     .join("");
+}
+
+function codeColumns(content) {
+  const columns = content.split(/\r?\n/).reduce((max, line) => {
+    return Math.max(max, monospaceColumns(line));
+  }, 0);
+
+  return Math.max(columns, 1);
+}
+
+function monospaceColumns(text) {
+  let columns = 0;
+
+  for (const char of text) {
+    columns += char === "\t" ? 4 : 1;
+  }
+
+  return columns;
 }
 
 customElements.define("caffold-code-viewer", CaffoldCodeViewer);
