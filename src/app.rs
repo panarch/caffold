@@ -4,7 +4,7 @@ use axum::{
     Json, Router,
     body::Body,
     extract::{Path as AxumPath, Query, State},
-    http::{HeaderMap, HeaderValue, StatusCode, header},
+    http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header},
     response::{Html, IntoResponse, Response},
     routing::{get, patch, post},
 };
@@ -268,6 +268,7 @@ fn router_with_state(state: AppState) -> Router {
         .route("/api/github/status", get(github_status))
         .route("/api/github/issues", get(github_issues))
         .route("/api/github/issue", get(github_issue))
+        .route("/service-worker.js", get(service_worker))
         .route("/assets/{*path}", get(asset))
         .route("/projects", get(index))
         .route("/projects/{*path}", get(index))
@@ -327,6 +328,27 @@ async fn shutdown_signal() {
 
 async fn index() -> Html<&'static str> {
     Html(static_assets::INDEX)
+}
+
+async fn service_worker() -> Response {
+    match static_assets::get("service-worker.js") {
+        Some(asset) => {
+            let mut response = Response::new(Body::from(asset.body));
+            response.headers_mut().insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static(asset.content_type),
+            );
+            response
+                .headers_mut()
+                .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+            response.headers_mut().insert(
+                HeaderName::from_static("service-worker-allowed"),
+                HeaderValue::from_static("/"),
+            );
+            response
+        }
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 async fn asset(AxumPath(path): AxumPath<String>) -> Response {

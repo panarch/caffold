@@ -92,6 +92,18 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
     "href",
     "/assets/icons/apple-touch-icon.png",
   );
+  await expect(page.locator('meta[name="mobile-web-app-capable"]')).toHaveAttribute(
+    "content",
+    "yes",
+  );
+  await expect(page.locator('meta[name="apple-mobile-web-app-capable"]')).toHaveAttribute(
+    "content",
+    "yes",
+  );
+  await expect(page.locator('meta[name="apple-mobile-web-app-status-bar-style"]')).toHaveAttribute(
+    "content",
+    "default",
+  );
 
   const manifestResponse = await request.get("/assets/manifest.webmanifest");
   expect(manifestResponse.headers()["content-type"]).toContain(
@@ -99,6 +111,10 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   );
   const manifest = await manifestResponse.json();
   expect(manifest.name).toBe("Caffold");
+  expect(manifest.id).toBe("/");
+  expect(manifest.start_url).toBe("/");
+  expect(manifest.scope).toBe("/");
+  expect(manifest.display).toBe("standalone");
   expect(manifest.icons.map((icon) => icon.src)).toEqual(
     expect.arrayContaining([
       "/assets/icons/caffold.svg",
@@ -117,6 +133,24 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(pngResponse.headers()["content-type"]).toContain("image/png");
   const png = await pngResponse.body();
   expect([...png.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+
+  const serviceWorkerResponse = await request.get("/service-worker.js");
+  expect(serviceWorkerResponse.headers()["content-type"]).toContain("text/javascript");
+  expect(serviceWorkerResponse.headers()["cache-control"]).toContain("no-cache");
+  expect(serviceWorkerResponse.headers()["service-worker-allowed"]).toBe("/");
+  const serviceWorker = await serviceWorkerResponse.text();
+  expect(serviceWorker).toContain('url.pathname.startsWith("/api/")');
+  expect(serviceWorker).toContain("networkFirst(request, \"/\")");
+
+  const serviceWorkerScope = await page.evaluate(async () => {
+    if (!("serviceWorker" in navigator)) {
+      return null;
+    }
+
+    const registration = await navigator.serviceWorker.ready;
+    return registration.scope;
+  });
+  expect(serviceWorkerScope).toBe("http://127.0.0.1:18765/");
 });
 
 test("delays file list loading feedback", async ({ page }) => {

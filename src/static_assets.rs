@@ -8,6 +8,7 @@ pub struct StaticAsset {
 pub fn get(path: &str) -> Option<StaticAsset> {
     match path {
         "manifest.webmanifest" => Some(manifest(include_str!("../frontend/manifest.webmanifest"))),
+        "service-worker.js" => Some(js(include_str!("../frontend/service-worker.js"))),
         "styles.css" => Some(css(include_str!("../frontend/styles.css"))),
         "app.js" => Some(js(include_str!("../frontend/app.js"))),
         "api.js" => Some(js(include_str!("../frontend/api.js"))),
@@ -164,6 +165,13 @@ mod tests {
             "application/manifest+json; charset=utf-8"
         );
         assert!(manifest.body.starts_with(b"{\n"));
+
+        let service_worker = get("service-worker.js").expect("service worker asset");
+        assert_eq!(
+            service_worker.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(service_worker.body.starts_with(b"const CACHE_NAME"));
 
         let svg = get("icons/caffold.svg").expect("svg icon asset");
         assert_eq!(svg.content_type, "image/svg+xml");

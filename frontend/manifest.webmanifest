@@ -1,6 +1,7 @@
 {
   "name": "Caffold",
   "short_name": "Caffold",
+  "id": "/",
   "description": "A browser-based review and control surface for agent-assisted development.",
   "start_url": "/",
   "scope": "/",
