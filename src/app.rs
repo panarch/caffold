@@ -733,6 +733,7 @@ impl IntoResponse for ApiError {
             ApiError::Project(ProjectStoreError::UnexpectedPayload)
             | ApiError::Project(ProjectStoreError::InvalidRow(_))
             | ApiError::Project(ProjectStoreError::Poisoned)
+            | ApiError::Project(ProjectStoreError::IdCollision)
             | ApiError::Project(ProjectStoreError::Glue(_))
             | ApiError::Project(ProjectStoreError::Io(_)) => (
                 StatusCode::INTERNAL_SERVER_ERROR,

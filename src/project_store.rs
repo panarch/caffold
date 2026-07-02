@@ -1,10 +1,7 @@
 use std::{
     collections::HashMap,
     path::Path,
-    sync::{
-        Arc, Mutex, MutexGuard,
-        atomic::{AtomicU64, Ordering},
-    },
+    sync::{Arc, Mutex, MutexGuard},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -18,8 +15,9 @@ use gluesql::{
 };
 use serde::Serialize;
 use thiserror::Error;
+use uuid::Uuid;
 
-static NEXT_ID_SUFFIX: AtomicU64 = AtomicU64::new(1);
+const MAX_PROJECT_ID_ATTEMPTS: usize = 16;
 
 const CREATE_PROJECTS_TABLE: &str = "
     CREATE TABLE IF NOT EXISTS projects (
@@ -55,6 +53,8 @@ pub enum ProjectStoreError {
     InvalidRow(&'static str),
     #[error("project store mutex was poisoned")]
     Poisoned,
+    #[error("could not allocate project id after repeated collisions")]
+    IdCollision,
     #[error("project store error: {0}")]
     Glue(#[from] GlueError),
     #[error("filesystem error while preparing project store: {0}")]
@@ -143,7 +143,7 @@ impl ProjectStore {
 
         let now = now_ms();
         let project = ProjectRecord {
-            id: new_project_id(now),
+            id: self.create_project_id()?,
             name,
             root_path: root_path.to_string(),
             created_ms: now,
@@ -238,6 +238,19 @@ impl ProjectStore {
         };
 
         project.ok_or_else(|| ProjectStoreError::NotFound(id.to_string()))
+    }
+
+    fn create_project_id(&self) -> ProjectStoreResult<String> {
+        for _ in 0..MAX_PROJECT_ID_ATTEMPTS {
+            let id = new_project_id();
+            match self.get_project(&id) {
+                Ok(_) => continue,
+                Err(ProjectStoreError::NotFound(_)) => return Ok(id),
+                Err(error) => return Err(error),
+            }
+        }
+
+        Err(ProjectStoreError::IdCollision)
     }
 }
 
@@ -472,9 +485,13 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-fn new_project_id(now_ms: u64) -> String {
-    let suffix = NEXT_ID_SUFFIX.fetch_add(1, Ordering::Relaxed);
-    format!("prj_{now_ms:x}_{suffix:x}")
+fn new_project_id() -> String {
+    let uuid = Uuid::new_v4();
+    let bytes = uuid.as_bytes();
+    format!(
+        "{:08x}",
+        u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+    )
 }
 
 #[cfg(test)]
@@ -490,6 +507,8 @@ mod tests {
 
         assert_eq!(created.name, "Codger");
         assert_eq!(created.root_path, "/Users/example/codger");
+        assert_eq!(created.id.len(), 8);
+        assert!(created.id.chars().all(is_lower_hex_digit));
         assert!(created.last_opened_ms.is_none());
 
         let duplicate = store
@@ -516,5 +535,9 @@ mod tests {
             store.create_project(" ", "/tmp/codger"),
             Err(ProjectStoreError::EmptyName)
         ));
+    }
+
+    fn is_lower_hex_digit(character: char) -> bool {
+        character.is_ascii_digit() || ('a'..='f').contains(&character)
     }
 }

@@ -33,10 +33,10 @@ root path before calling file, git, or GitHub APIs.
 Project IDs are URL identities, not user-facing names. They should stay opaque
 and stable even when a project is renamed.
 
-The current timestamp-plus-counter ID format is only an implementation detail.
-A shorter opaque hex ID would be enough for this local tool. Avoid making names
-globally unique just to use them in URLs; duplicate project names can remain a
-display concern.
+Project IDs use short opaque lowercase hex values. Eight hex digits are enough
+for this local single-user project registry when paired with collision retries.
+Avoid making names globally unique just to use them in URLs; duplicate project
+names can remain a display concern.
 
 ## Parent Routes
 
