@@ -1,11 +1,35 @@
 import { escapeHtml } from "./dom.js";
+import { renderInlineIcon, warmIcons } from "./icons.js";
 import "./github-markdown.js";
 
 class CodgerGithubIssueViewer extends HTMLElement {
   connectedCallback() {
+    if (!this.initialized) {
+      this.initialized = true;
+      this.addEventListener("click", (event) => {
+        const button = event.target.closest('button[data-action="close-github-issue-viewer"]');
+        if (!button) {
+          return;
+        }
+
+        this.dispatchEvent(
+          new CustomEvent("codger:close-github-issue-viewer", {
+            bubbles: true,
+          }),
+        );
+      });
+      this.boundIconsReady = () => this.render();
+      window.addEventListener("codger:icons-ready", this.boundIconsReady);
+      warmIcons();
+    }
+
     if (!this.state) {
       this.setEmpty();
     }
+  }
+
+  disconnectedCallback() {
+    window.removeEventListener("codger:icons-ready", this.boundIconsReady);
   }
 
   setEmpty() {
@@ -41,6 +65,7 @@ class CodgerGithubIssueViewer extends HTMLElement {
     if (this.state.status === "loading") {
       this.innerHTML = `
         <section class="github-issue-viewer-panel" aria-busy="true">
+          ${this.renderBasicHeader(`Issue #${this.state.number}`)}
           <p class="surface-message">Loading issue #${escapeHtml(`${this.state.number}`)}...</p>
         </section>
       `;
@@ -50,6 +75,7 @@ class CodgerGithubIssueViewer extends HTMLElement {
     if (this.state.status === "error") {
       this.innerHTML = `
         <section class="github-issue-viewer-panel error-panel">
+          ${this.renderBasicHeader(`Issue #${this.state.number}`)}
           <p class="surface-message">${escapeHtml(this.state.error.message)}</p>
         </section>
       `;
@@ -62,6 +88,7 @@ class CodgerGithubIssueViewer extends HTMLElement {
       <section class="github-issue-viewer-panel">
         <header>
           <div class="github-issue-viewer-title-row">
+            ${this.renderCloseButton()}
             <h2>${escapeHtml(issue.title)}</h2>
             <a
               class="github-issue-link"
@@ -96,6 +123,33 @@ class CodgerGithubIssueViewer extends HTMLElement {
       <div class="github-issue-viewer-labels">
         ${labels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}
       </div>
+    `;
+  }
+
+  renderBasicHeader(title) {
+    return `
+      <header>
+        <div class="github-issue-viewer-title-row">
+          ${this.renderCloseButton()}
+          <h2>${escapeHtml(title)}</h2>
+        </div>
+      </header>
+    `;
+  }
+
+  renderCloseButton() {
+    const label = "Back to issues";
+
+    return `
+      <button
+        type="button"
+        class="github-issue-close-button"
+        data-action="close-github-issue-viewer"
+        aria-label="${escapeHtml(label)}"
+        title="${escapeHtml(label)}"
+      >
+        ${renderInlineIcon("X", label, "github-issue-close-icon")}
+      </button>
     `;
   }
 

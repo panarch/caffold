@@ -81,7 +81,7 @@ codger-app-shell.is-resizing-left-panel {
 
   codger-app-shell .app-main {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 36dvh) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
   }
 
   codger-app-shell .app-main > codger-file-list {
@@ -91,7 +91,27 @@ codger-app-shell.is-resizing-left-panel {
 
   codger-app-shell .app-main > codger-file-viewer {
     grid-column: 1;
-    grid-row: 2;
+    grid-row: 1;
+  }
+
+  codger-app-shell[data-browser-view="list"] .app-main > codger-file-viewer,
+  codger-app-shell[data-browser-view="viewer"] .app-main > codger-file-list {
+    display: none;
+  }
+
+  codger-app-shell[data-browser-view="viewer"] .app-main {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    grid-template-rows: minmax(0, 1fr);
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    background: var(--surface);
+  }
+
+  codger-app-shell[data-browser-view="viewer"] .app-main > codger-file-viewer {
+    grid-row: 1;
   }
 
   codger-app-shell .panel-resizer {

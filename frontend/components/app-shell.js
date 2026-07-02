@@ -72,12 +72,18 @@ class CodgerAppShell extends HTMLElement {
     this.compareBaseRef = null;
     this.compareHeadRef = null;
     this.workspaceMode = null;
+    this.diffWorkspaceView = "list";
+    this.compareWorkspaceView = "list";
     this.logWorkspaceView = "list";
+    this.logDetailFileView = "list";
     this.issuesWorkspaceView = "list";
     this.logPage = 1;
     this.githubIssuesPage = 1;
     this.selectedCommitSummary = null;
     this.selectedGithubIssueSummary = null;
+    this.scrollPositions = {};
+    this.browserView = "list";
+    this.setBrowserView(this.browserView);
     this.leftPanelWidth = LEFT_PANEL_DEFAULT_WIDTH;
     this.resizePointerId = null;
     this.render();
@@ -105,6 +111,10 @@ class CodgerAppShell extends HTMLElement {
     this.compareWorkspaceViewer = this.reviewWorkspace.querySelector(
       ".workspace-mode-compare codger-review-file-viewer",
     );
+    this.fileViewer.setCloseLabel("Back to files");
+    this.diffWorkspaceViewer.setCloseLabel("Back to changes");
+    this.logWorkspaceViewer.setCloseLabel("Back to commit");
+    this.compareWorkspaceViewer.setCloseLabel("Back to compare");
     this.applyLeftPanelWidth(this.leftPanelWidth);
 
     this.addEventListener("codger:navigate", (event) => {
@@ -115,6 +125,12 @@ class CodgerAppShell extends HTMLElement {
     });
     this.addEventListener("codger:open-file", (event) => {
       this.openFile(event.detail.path, event.detail.entry);
+    });
+    this.addEventListener("codger:close-file-viewer", (event) => {
+      this.closeFileViewer(event);
+    });
+    this.addEventListener("codger:close-github-issue-viewer", () => {
+      this.backReviewWorkspace();
     });
     this.addEventListener("codger:open-diff-workspace", () => {
       this.openDiffWorkspace();
@@ -235,6 +251,7 @@ class CodgerAppShell extends HTMLElement {
   async loadDirectory(path, options = {}) {
     const requestId = ++this.directoryRequestId;
     this.fileRequestId += 1;
+    this.setBrowserView("list");
     this.currentPath = path ?? "";
     this.fileList.setSelectedPath("");
     this.pathbar.path = this.currentPath;
@@ -282,6 +299,8 @@ class CodgerAppShell extends HTMLElement {
   async openFile(path, entry = null) {
     const requestId = ++this.fileRequestId;
     this.fileList.setSelectedPath(path);
+    this.rememberScroller("files", this.fileList, ".file-list");
+    this.setBrowserView("viewer");
     this.changesTree.setSelectedPath("");
     this.commitChangesTree.setSelectedPath("");
     this.compareTree.setSelectedPath("");
@@ -317,12 +336,95 @@ class CodgerAppShell extends HTMLElement {
     }
   }
 
+  showFileList() {
+    this.setBrowserView("list");
+    this.restoreScroller("files", this.fileList, ".file-list");
+  }
+
+  closeFileViewer(event) {
+    if (event.target === this.fileViewer) {
+      this.showFileList();
+      return;
+    }
+
+    if (event.target === this.diffWorkspaceViewer) {
+      this.showDiffList();
+      return;
+    }
+
+    if (event.target === this.logWorkspaceViewer) {
+      this.showCommitFileList();
+      return;
+    }
+
+    if (event.target === this.compareWorkspaceViewer) {
+      this.showCompareList();
+    }
+  }
+
+  setBrowserView(view) {
+    const nextView = view === "viewer" ? "viewer" : "list";
+    this.browserView = nextView;
+    this.setAttribute("data-browser-view", nextView);
+  }
+
+  showDiffList() {
+    this.diffWorkspaceView = "list";
+    this.reviewWorkspace.setDiffView("list");
+    this.restoreScroller("changes", this.changesTree, ".changes-tree-list");
+  }
+
+  showCompareList() {
+    this.compareWorkspaceView = "list";
+    this.reviewWorkspace.setCompareView("list");
+    this.restoreScroller("compare", this.compareTree, ".compare-tree-list");
+  }
+
+  showCommitFileList() {
+    this.logDetailFileView = "list";
+    this.reviewWorkspace.setLogDetailView("list");
+    this.restoreScroller("commit", this.commitChangesTree, ".commit-tree-list");
+  }
+
+  rememberScroller(key, host, selector) {
+    const scroller = host?.querySelector(selector);
+    if (!scroller) {
+      return;
+    }
+
+    this.scrollPositions[key] = scroller.scrollTop;
+  }
+
+  restoreScroller(key, host, selector) {
+    const top = this.scrollPositions[key] ?? 0;
+    if (top <= 0) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      const scroller = host?.querySelector(selector);
+      if (!scroller) {
+        return;
+      }
+
+      scroller.scrollTop = top;
+      window.requestAnimationFrame(() => {
+        if (scroller.scrollTop < top - 32) {
+          scroller.scrollTop = top;
+        }
+      });
+    });
+  }
+
   async openDiff(path, kind, status = "") {
     const requestId = ++this.fileRequestId;
     this.fileList.setSelectedPath("");
     this.changesTree.setSelectedPath(path);
     this.commitChangesTree.setSelectedPath("");
     this.compareTree.setSelectedPath("");
+    this.rememberScroller("changes", this.changesTree, ".changes-tree-list");
+    this.diffWorkspaceView = "viewer";
+    this.reviewWorkspace.setDiffView("viewer");
     const loadingTimer = this.showWorkspaceLoadingAfterDelay(
       this.diffWorkspaceViewer,
       `Diff ${path}`,
@@ -358,6 +460,7 @@ class CodgerAppShell extends HTMLElement {
       shortSha: sha.slice(0, 7),
       subject: "",
     };
+    this.logDetailFileView = "list";
     this.openLogWorkspace({
       preserveViewer: true,
       skipReload: true,
@@ -379,9 +482,7 @@ class CodgerAppShell extends HTMLElement {
       this.commitChangesTree.setCommit(commit);
       this.selectedCommitSummary = commit.commit;
       this.updateWorkspaceChrome();
-      if (commit.files?.length) {
-        await this.openCommitDiff(sha, commit.files[0].path, commit.files[0].status);
-      } else if (viewerRequestId === this.fileRequestId) {
+      if (viewerRequestId === this.fileRequestId) {
         this.logWorkspaceViewer.setEmpty();
       }
     } catch (error) {
@@ -406,6 +507,9 @@ class CodgerAppShell extends HTMLElement {
     this.changesTree.setSelectedPath("");
     this.commitChangesTree.setSelectedPath(path);
     this.compareTree.setSelectedPath("");
+    this.rememberScroller("commit", this.commitChangesTree, ".commit-tree-list");
+    this.logDetailFileView = "viewer";
+    this.reviewWorkspace.setLogDetailView("viewer");
     const loadingTimer = this.showWorkspaceLoadingAfterDelay(
       this.logWorkspaceViewer,
       `Commit diff ${path}`,
@@ -440,6 +544,9 @@ class CodgerAppShell extends HTMLElement {
     this.changesTree.setSelectedPath("");
     this.commitChangesTree.setSelectedPath("");
     this.compareTree.setSelectedPath(path);
+    this.rememberScroller("compare", this.compareTree, ".compare-tree-list");
+    this.compareWorkspaceView = "viewer";
+    this.reviewWorkspace.setCompareView("viewer");
     const loadingTimer = this.showWorkspaceLoadingAfterDelay(
       this.compareWorkspaceViewer,
       `Compare diff ${path}`,
@@ -621,6 +728,9 @@ class CodgerAppShell extends HTMLElement {
     this.githubIssuesRequestId += 1;
     this.githubIssueRequestId += 1;
     this.logPage = 1;
+    this.diffWorkspaceView = "list";
+    this.compareWorkspaceView = "list";
+    this.logDetailFileView = "list";
     this.issuesWorkspaceView = "list";
     this.githubIssuesPage = 1;
     this.selectedGithubIssueSummary = null;
@@ -638,6 +748,10 @@ class CodgerAppShell extends HTMLElement {
     this.githubIssuesList.reset();
     this.githubIssueViewer.setEmpty();
     this.reviewWorkspace.clearCompareRefs();
+    this.reviewWorkspace.setDiffView("list");
+    this.reviewWorkspace.setCompareView("list");
+    this.reviewWorkspace.setLogDetailView("list");
+    this.reviewWorkspace.setIssuesView("list");
     this.closeReviewWorkspace();
   }
 
@@ -811,6 +925,7 @@ class CodgerAppShell extends HTMLElement {
     const requestId = ++this.gitRefsRequestId;
     this.compareTree.setLoading(this.gitRepository);
     this.reviewWorkspace.setCompareRefs(this.gitRefs, this.compareBaseRef, this.compareHeadRef);
+    this.showCompareList();
     this.compareWorkspaceViewer.setEmpty();
 
     try {
@@ -882,6 +997,7 @@ class CodgerAppShell extends HTMLElement {
     this.gitCompare = null;
     this.compareTree.setSelectedPath("");
     this.reviewWorkspace.setCompareRefs(this.gitRefs, baseRef, headRef);
+    this.showCompareList();
     this.compareWorkspaceViewer.setEmpty();
     this.loadGitCompare(this.currentPath, baseRef, headRef);
   }
@@ -919,12 +1035,14 @@ class CodgerAppShell extends HTMLElement {
     }
 
     this.workspaceMode = "diff";
+    this.diffWorkspaceView = "list";
     this.logWorkspaceView = "list";
     this.reviewWorkspace.open("diff", {
       title: "Diff",
       subtitle: this.workspaceSubtitle("Working tree"),
       backVisible: false,
     });
+    this.reviewWorkspace.setDiffView("list");
     this.updateGitButton();
     if (!this.gitStatus) {
       this.changesTree.setLoading(this.gitRepository);
@@ -938,12 +1056,14 @@ class CodgerAppShell extends HTMLElement {
     }
 
     this.workspaceMode = "compare";
+    this.compareWorkspaceView = "list";
     this.logWorkspaceView = "list";
     this.reviewWorkspace.open("compare", {
       title: "Compare",
       subtitle: this.compareSubtitle(),
       backVisible: false,
     });
+    this.reviewWorkspace.setCompareView("list");
     this.updateGitButton();
     this.compareWorkspaceViewer.setEmpty();
     this.loadGitRefsAndCompare(this.currentPath);
@@ -955,7 +1075,10 @@ class CodgerAppShell extends HTMLElement {
     }
 
     this.workspaceMode = "issues";
+    this.diffWorkspaceView = "list";
+    this.compareWorkspaceView = "list";
     this.logWorkspaceView = "list";
+    this.logDetailFileView = "list";
     this.issuesWorkspaceView = "list";
     this.githubIssuesPage = 1;
     this.selectedGithubIssueSummary = null;
@@ -982,9 +1105,11 @@ class CodgerAppShell extends HTMLElement {
       return;
     }
 
-    const wasLogWorkspace = this.workspaceMode === "log";
     this.workspaceMode = "log";
+    this.diffWorkspaceView = "list";
+    this.compareWorkspaceView = "list";
     this.logWorkspaceView = options.view ?? "list";
+    this.logDetailFileView = this.logWorkspaceView === "detail" ? this.logDetailFileView : "list";
     if (!options.skipReload) {
       this.logPage = options.page ?? 1;
     }
@@ -993,6 +1118,7 @@ class CodgerAppShell extends HTMLElement {
     }
     this.reviewWorkspace.open("log", this.workspaceDetails());
     this.reviewWorkspace.setLogView(this.logWorkspaceView);
+    this.reviewWorkspace.setLogDetailView(this.logDetailFileView);
     this.updateGitButton();
     if (!options.preserveViewer) {
       this.commitChangesTree.reset();
@@ -1005,26 +1131,38 @@ class CodgerAppShell extends HTMLElement {
 
   closeReviewWorkspace() {
     this.workspaceMode = null;
+    this.diffWorkspaceView = "list";
+    this.compareWorkspaceView = "list";
     this.logWorkspaceView = "list";
+    this.logDetailFileView = "list";
     this.issuesWorkspaceView = "list";
     this.logPage = 1;
     this.githubIssuesPage = 1;
     this.selectedCommitSummary = null;
     this.selectedGithubIssueSummary = null;
     this.githubIssuesList.setSelectedIssue(null);
+    this.reviewWorkspace.setDiffView("list");
+    this.reviewWorkspace.setCompareView("list");
+    this.reviewWorkspace.setLogDetailView("list");
+    this.reviewWorkspace.setIssuesView("list");
     this.reviewWorkspace.close();
     this.updateGitButton();
   }
 
   backReviewWorkspace() {
     if (this.workspaceMode === "log" && this.logWorkspaceView === "detail") {
+      this.gitCommitRequestId += 1;
+      this.fileRequestId += 1;
       this.logWorkspaceView = "list";
+      this.logDetailFileView = "list";
       this.reviewWorkspace.setLogView("list");
+      this.reviewWorkspace.setLogDetailView("list");
       this.updateWorkspaceChrome();
       return;
     }
 
     if (this.workspaceMode === "issues" && this.issuesWorkspaceView === "detail") {
+      this.githubIssueRequestId += 1;
       this.issuesWorkspaceView = "list";
       this.selectedGithubIssueSummary = null;
       this.githubIssuesList.setSelectedIssue(null);
@@ -1040,8 +1178,15 @@ class CodgerAppShell extends HTMLElement {
     }
 
     this.reviewWorkspace.updateDetails(this.workspaceDetails());
+    if (this.workspaceMode === "diff") {
+      this.reviewWorkspace.setDiffView(this.diffWorkspaceView);
+    }
+    if (this.workspaceMode === "compare") {
+      this.reviewWorkspace.setCompareView(this.compareWorkspaceView);
+    }
     if (this.workspaceMode === "log") {
       this.reviewWorkspace.setLogView(this.logWorkspaceView);
+      this.reviewWorkspace.setLogDetailView(this.logDetailFileView);
     }
     if (this.workspaceMode === "issues") {
       this.reviewWorkspace.setIssuesView(this.issuesWorkspaceView);

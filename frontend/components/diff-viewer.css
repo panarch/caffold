@@ -6,6 +6,8 @@ codger-diff-viewer {
 }
 
 codger-diff-viewer .diff-viewer {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   height: 100%;
@@ -24,6 +26,7 @@ codger-diff-viewer .diff-lines {
   min-width: 0;
   min-height: 0;
   height: 100%;
+  display: grid;
   overflow: auto;
   overscroll-behavior: contain;
   background: var(--code-bg);
@@ -32,7 +35,20 @@ codger-diff-viewer .diff-lines {
   line-height: 1.55;
 }
 
+codger-diff-viewer .diff-gutter-backdrop {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  grid-area: 1 / 1;
+  width: var(--diff-gutter-width);
+  min-height: 100%;
+  pointer-events: none;
+  background: var(--code-gutter);
+  border-right: 1px solid var(--border);
+}
+
 codger-diff-viewer .diff-table {
+  grid-area: 1 / 1;
   width: max(100%, calc(var(--diff-gutter-width) + var(--diff-code-width) + 24px));
   min-height: 100%;
 }

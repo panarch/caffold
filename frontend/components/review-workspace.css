@@ -313,6 +313,14 @@ codger-review-workspace codger-github-issues-list h2 {
 }
 
 @media (max-width: 860px) {
+  codger-review-workspace[data-mobile-detail="true"] .review-workspace-panel {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  codger-review-workspace[data-mobile-detail="true"] .review-workspace-header {
+    display: none;
+  }
+
   codger-review-workspace .review-workspace-header {
     height: auto;
     min-height: var(--review-header-height);
@@ -347,7 +355,7 @@ codger-review-workspace codger-github-issues-list h2 {
   codger-review-workspace .workspace-mode-diff,
   codger-review-workspace .workspace-mode-compare {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 36dvh) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
   }
 
   codger-review-workspace .workspace-mode-diff > codger-changes-tree,
@@ -359,7 +367,14 @@ codger-review-workspace codger-github-issues-list h2 {
   codger-review-workspace .workspace-mode-diff > codger-review-file-viewer,
   codger-review-workspace .workspace-mode-compare > codger-review-file-viewer {
     grid-column: 1;
-    grid-row: 2;
+    grid-row: 1;
+  }
+
+  codger-review-workspace .workspace-mode-diff[data-detail-view="list"] > codger-review-file-viewer,
+  codger-review-workspace .workspace-mode-diff[data-detail-view="viewer"] > codger-changes-tree,
+  codger-review-workspace .workspace-mode-compare[data-detail-view="list"] > codger-review-file-viewer,
+  codger-review-workspace .workspace-mode-compare[data-detail-view="viewer"] > codger-compare-tree {
+    display: none;
   }
 
   codger-review-workspace .workspace-mode-diff > .review-panel-resizer,
@@ -376,7 +391,19 @@ codger-review-workspace codger-github-issues-list h2 {
   }
 
   codger-review-workspace .log-review-detail {
-    grid-template-rows: minmax(0, 28dvh) minmax(0, 1fr);
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  codger-review-workspace .log-review-detail > codger-commit-changes-tree,
+  codger-review-workspace .log-review-detail > codger-review-file-viewer {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  codger-review-workspace .log-review-detail[data-detail-view="list"] > codger-review-file-viewer,
+  codger-review-workspace .log-review-detail[data-detail-view="viewer"] > codger-commit-changes-tree {
+    display: none;
   }
 
   codger-review-workspace .workspace-mode-diff codger-changes-tree,

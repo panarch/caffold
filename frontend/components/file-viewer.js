@@ -12,6 +12,18 @@ class CodgerFileViewer extends HTMLElement {
 
     if (!this.initialized) {
       this.initialized = true;
+      this.addEventListener("click", (event) => {
+        const button = event.target.closest('button[data-action="close-browser-viewer"]');
+        if (!button) {
+          return;
+        }
+
+        this.dispatchEvent(
+          new CustomEvent("codger:close-file-viewer", {
+            bubbles: true,
+          }),
+        );
+      });
       this.boundIconsReady = () => this.render();
       window.addEventListener("codger:icons-ready", this.boundIconsReady);
       warmIcons();
@@ -56,6 +68,13 @@ class CodgerFileViewer extends HTMLElement {
     this.render();
   }
 
+  setCloseLabel(label) {
+    this.closeLabel = label;
+    if (this.state && this.state.status !== "empty") {
+      this.render();
+    }
+  }
+
   ensureDetailsPopoverId() {
     if (!this.detailsPopoverId) {
       viewerInstanceId += 1;
@@ -76,9 +95,7 @@ class CodgerFileViewer extends HTMLElement {
     if (this.state.status === "loading") {
       this.innerHTML = `
         <section class="viewer-panel" aria-busy="true">
-          <header>
-            <h2>${escapeHtml(this.state.path)}</h2>
-          </header>
+          ${this.renderBasicHeader(this.state.path)}
           <p class="surface-message">Loading file...</p>
         </section>
       `;
@@ -88,9 +105,7 @@ class CodgerFileViewer extends HTMLElement {
     if (this.state.status === "error") {
       this.innerHTML = `
         <section class="viewer-panel error-panel">
-          <header>
-            <h2>${escapeHtml(this.state.path || "File")}</h2>
-          </header>
+          ${this.renderBasicHeader(this.state.path || "File")}
           <p class="surface-message">${escapeHtml(this.state.error.message)}</p>
         </section>
       `;
@@ -190,6 +205,7 @@ class CodgerFileViewer extends HTMLElement {
     return `
       <header class="viewer-header">
         <div class="viewer-title-row">
+          ${this.renderCloseButton()}
           <div class="viewer-title-block">
             <h2 title="${escapeHtml(title)}">${escapeHtml(title)}</h2>
             ${
@@ -228,6 +244,35 @@ class CodgerFileViewer extends HTMLElement {
           </dl>
         </div>
       </header>
+    `;
+  }
+
+  renderBasicHeader(title) {
+    return `
+      <header class="viewer-header">
+        <div class="viewer-title-row">
+          ${this.renderCloseButton()}
+          <div class="viewer-title-block">
+            <h2 title="${escapeHtml(title)}">${escapeHtml(title)}</h2>
+          </div>
+        </div>
+      </header>
+    `;
+  }
+
+  renderCloseButton() {
+    const label = this.closeLabel ?? "Back to files";
+
+    return `
+      <button
+        type="button"
+        class="viewer-close-button"
+        data-action="close-browser-viewer"
+        aria-label="${escapeHtml(label)}"
+        title="${escapeHtml(label)}"
+      >
+        ${renderInlineIcon("X", label, "viewer-close-icon")}
+      </button>
     `;
   }
 }

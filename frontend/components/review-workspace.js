@@ -185,6 +185,7 @@ class CodgerReviewWorkspace extends HTMLElement {
     this.diffView = this.querySelector(".workspace-mode-diff");
     this.compareView = this.querySelector(".workspace-mode-compare");
     this.logView = this.querySelector(".workspace-mode-log");
+    this.logDetailView = this.querySelector(".log-review-detail");
     this.issuesView = this.querySelector(".workspace-mode-issues");
     this.renderChrome();
   }
@@ -203,6 +204,7 @@ class CodgerReviewWorkspace extends HTMLElement {
     this.compareView.hidden = mode !== "compare";
     this.logView.hidden = mode !== "log";
     this.issuesView.hidden = mode !== "issues";
+    this.updateMobileDetailState();
   }
 
   close() {
@@ -226,11 +228,31 @@ class CodgerReviewWorkspace extends HTMLElement {
   setLogView(view) {
     this.ensureRendered();
     this.logView.dataset.logView = view;
+    this.updateMobileDetailState();
+  }
+
+  setDiffView(view) {
+    this.ensureRendered();
+    this.diffView.dataset.detailView = normalizeDetailView(view);
+    this.updateMobileDetailState();
+  }
+
+  setCompareView(view) {
+    this.ensureRendered();
+    this.compareView.dataset.detailView = normalizeDetailView(view);
+    this.updateMobileDetailState();
+  }
+
+  setLogDetailView(view) {
+    this.ensureRendered();
+    this.logDetailView.dataset.detailView = normalizeDetailView(view);
+    this.updateMobileDetailState();
   }
 
   setIssuesView(view) {
     this.ensureRendered();
     this.issuesView.dataset.issuesView = view;
+    this.updateMobileDetailState();
   }
 
   setCompareRefs(refsPayload, baseRef, headRef) {
@@ -442,6 +464,22 @@ class CodgerReviewWorkspace extends HTMLElement {
       handle.setAttribute("aria-valuenow", `${this.reviewPanelWidth}`);
     }
   }
+
+  updateMobileDetailState() {
+    if (!this.rendered) {
+      return;
+    }
+
+    const detailOpen =
+      (this.mode === "diff" && this.diffView.dataset.detailView === "viewer") ||
+      (this.mode === "compare" && this.compareView.dataset.detailView === "viewer") ||
+      (this.mode === "log" &&
+        this.logView.dataset.logView === "detail" &&
+        this.logDetailView.dataset.detailView === "viewer") ||
+      (this.mode === "issues" && this.issuesView.dataset.issuesView === "detail");
+
+    this.dataset.mobileDetail = detailOpen ? "true" : "false";
+  }
 }
 
 customElements.define("codger-review-workspace", CodgerReviewWorkspace);
@@ -495,4 +533,8 @@ function refKindLabel(kind) {
   }
 
   return kind === "remote" ? "Remote" : "Local";
+}
+
+function normalizeDetailView(view) {
+  return view === "viewer" ? "viewer" : "list";
 }

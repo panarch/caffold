@@ -28,6 +28,10 @@
   gap: 8px;
 }
 
+:is(codger-file-viewer, codger-review-file-viewer) .viewer-close-button {
+  display: none;
+}
+
 :is(codger-file-viewer, codger-review-file-viewer) .viewer-title-block {
   display: grid;
   gap: 2px;
@@ -188,5 +192,50 @@
   :is(codger-file-viewer, codger-review-file-viewer) .viewer-meta-popover dl div {
     grid-column: auto;
     max-width: none;
+  }
+}
+
+@media (max-width: 860px) {
+  codger-app-shell[data-browser-view="viewer"] .app-main > codger-file-viewer .viewer-panel > header,
+  codger-review-workspace[data-mobile-detail="true"] codger-review-file-viewer .viewer-panel > header {
+    padding: 4px 8px;
+  }
+
+  codger-app-shell[data-browser-view="viewer"] .app-main > codger-file-viewer .viewer-title-row,
+  codger-review-workspace[data-mobile-detail="true"] codger-review-file-viewer .viewer-title-row {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    gap: 6px;
+  }
+
+  codger-app-shell[data-browser-view="viewer"] .app-main > codger-file-viewer .viewer-info-button,
+  codger-app-shell[data-browser-view="viewer"] .app-main > codger-file-viewer .viewer-close-button,
+  codger-review-workspace[data-mobile-detail="true"] codger-review-file-viewer .viewer-info-button,
+  codger-review-workspace[data-mobile-detail="true"] codger-review-file-viewer .viewer-close-button {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--accent);
+    cursor: pointer;
+  }
+
+  codger-app-shell[data-browser-view="viewer"] .app-main > codger-file-viewer .viewer-close-button:hover,
+  codger-app-shell[data-browser-view="viewer"] .app-main > codger-file-viewer .viewer-close-button:focus-visible,
+  codger-review-workspace[data-mobile-detail="true"] codger-review-file-viewer .viewer-close-button:hover,
+  codger-review-workspace[data-mobile-detail="true"] codger-review-file-viewer .viewer-close-button:focus-visible {
+    border-color: #abcbbf;
+    background: #f7fbf8;
+    outline: none;
+  }
+
+  codger-app-shell[data-browser-view="viewer"] .app-main > codger-file-viewer .viewer-close-icon,
+  codger-review-workspace[data-mobile-detail="true"] codger-review-file-viewer .viewer-close-icon {
+    width: 1rem;
+    height: 1rem;
+    stroke-width: 2;
   }
 }

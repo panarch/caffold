@@ -159,6 +159,7 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
     /is-ignored/,
   );
   await expect(page.locator('button[data-entry-path="src/planner/mod.rs"]')).toHaveCount(0);
+  await expect(page.locator("codger-file-list .entry-icon-svg").first()).toBeVisible();
 
   await page.locator('button[data-entry-path="src/example.rs"]').click();
   await expect(page.getByText("Loading file...")).toHaveCount(0);
@@ -166,7 +167,6 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
   await expect(page.locator("codger-code-viewer")).toContainText("pub fn sample");
   await expect(page.locator("codger-code-viewer")).not.toContainText("Highlighted");
   await expect(page.locator(".line-number").first()).toHaveText("1");
-  await expect(page.locator(".entry-icon-svg").first()).toBeVisible();
   await expectGlobalScrollLocked(page);
   await expectPanelScrollContainers(page);
   await page.getByRole("button", { name: "Show details for example.rs" }).click();
@@ -176,6 +176,11 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
   await expect(details.locator('[data-field="language"] dd')).toHaveText("Rust");
   await page.keyboard.press("Escape");
   await expect(details).toBeHidden();
+  if (testInfo.project.name === "phone") {
+    await page.getByRole("button", { name: "Back to files" }).click();
+    await expect(page.locator("codger-file-list")).toBeVisible();
+    await expect(page.locator("codger-file-viewer")).toBeHidden();
+  }
   await page.locator('button[data-entry-path="src/planner"]').click();
   await expect(page.locator('button[data-entry-path="src/planner/mod.rs"]')).toBeVisible();
   await page.locator('button[data-entry-path="src/planner/mod.rs"]').click();
@@ -332,7 +337,49 @@ test("scrolls long source lines horizontally in the code viewer", async ({ page 
   await expectHorizontalScroller(page, "codger-code-viewer .code-lines");
 });
 
-test("keeps list scroll positions when selecting files and changes", async ({ page }) => {
+test("uses a single-pane file viewer on phone", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "Only the phone layout switches browser panes.");
+
+  await page.goto("/");
+  await page.addStyleTag({
+    content: `
+      codger-file-list .file-list {
+        max-height: 140px;
+      }
+    `,
+  });
+
+  const shell = page.locator("codger-app-shell");
+  const fileList = page.locator("codger-file-list .file-list");
+  const fileTarget = page.locator(`button[data-entry-path="${LONG_ROOT_FILE}"]`);
+  await expect(shell).toHaveAttribute("data-browser-view", "list");
+  await expect(page.locator("codger-file-list")).toBeVisible();
+  await expect(page.locator("codger-file-viewer")).toBeHidden();
+
+  await fileTarget.scrollIntoViewIfNeeded();
+  const beforeFileScroll = await scrollTop(fileList);
+  expect(beforeFileScroll).toBeGreaterThan(0);
+
+  await fileTarget.click();
+  await expect(shell).toHaveAttribute("data-browser-view", "viewer");
+  await expect(page.locator("codger-file-list")).toBeHidden();
+  await expect(page.locator("codger-file-viewer")).toBeVisible();
+  await expect(page.locator("codger-file-viewer")).toContainText(LONG_ROOT_FILE);
+  await expect(page.getByRole("button", { name: "Back to files" })).toBeVisible();
+  await expectMobileBrowserViewerOverlay(page);
+  await expectMobileViewerCompactHeader(page);
+  await expectGlobalScrollLocked(page);
+  await captureReviewScreenshot(page, testInfo, "mobile-file-viewer-single-pane");
+
+  await page.getByRole("button", { name: "Back to files" }).click();
+  await expect(shell).toHaveAttribute("data-browser-view", "list");
+  await expect(page.locator("codger-file-list")).toBeVisible();
+  await expect(page.locator("codger-file-viewer")).toBeHidden();
+  await expect(fileTarget).toHaveAttribute("aria-current", "true");
+  await expectPreservedScroll(fileList, beforeFileScroll);
+});
+
+test("keeps list scroll positions when selecting files and changes", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.addStyleTag({
     content: `
@@ -351,6 +398,10 @@ test("keeps list scroll positions when selecting files and changes", async ({ pa
 
   await fileTarget.click();
   await expect(page.locator("codger-file-viewer")).toContainText("README.md");
+  if (testInfo.project.name === "phone") {
+    await page.getByRole("button", { name: "Back to files" }).click();
+    await expect(page.locator("codger-file-list")).toBeVisible();
+  }
   await expectPreservedScroll(fileList, beforeFileScroll);
 
   await page.locator('button[data-entry-path="src"]').click();
@@ -366,6 +417,10 @@ test("keeps list scroll positions when selecting files and changes", async ({ pa
 
   await changeTarget.click();
   await expect(page.locator("codger-diff-viewer")).toContainText("long_change_name_fixture");
+  if (testInfo.project.name === "phone") {
+    await page.getByRole("button", { name: "Back to changes" }).click();
+    await expect(page.locator("codger-changes-tree")).toBeVisible();
+  }
   await expectPreservedScroll(changesList, beforeChangesScroll);
 });
 
@@ -471,20 +526,29 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   await expect(page.locator(".workspace-mode-diff .viewer-subtitle")).toHaveText(
     "Modified · Unstaged",
   );
-  await expectAlignedWorkspaceHeaders(page, [
-    "codger-review-workspace .review-workspace-header",
-    "codger-changes-tree .changes-tree-panel > header",
-    ".workspace-mode-diff codger-review-file-viewer .viewer-panel > header",
-  ]);
-  await expectMatchingPaneTitleSizes(page, [
-    "codger-changes-tree .changes-tree-panel > header",
-    ".workspace-mode-diff codger-review-file-viewer .viewer-panel > header",
-  ]);
+  if (testInfo.project.name === "phone") {
+    await expectMobileReviewDetail(page, {
+      backName: "Back to changes",
+      detailSelector: ".workspace-mode-diff codger-review-file-viewer",
+      listSelector: "codger-changes-tree",
+    });
+  } else {
+    await expectAlignedWorkspaceHeaders(page, [
+      "codger-review-workspace .review-workspace-header",
+      "codger-changes-tree .changes-tree-panel > header",
+      ".workspace-mode-diff codger-review-file-viewer .viewer-panel > header",
+    ]);
+    await expectMatchingPaneTitleSizes(page, [
+      "codger-changes-tree .changes-tree-panel > header",
+      ".workspace-mode-diff codger-review-file-viewer .viewer-panel > header",
+    ]);
+  }
   await expect(page.locator("codger-diff-viewer")).toContainText("@@ -10,4 +10,5 @@");
   await expect(page.locator("codger-diff-viewer")).toContainText("old line");
   await expect(page.locator("codger-diff-viewer")).toContainText("new line");
   await expectHorizontalScroller(page, "codger-diff-viewer .diff-lines");
   await expectUnifiedDiffRowsShareScrollWidth(page);
+  await expectDiffScrollerFillsViewer(page);
   await captureReviewScreenshot(page, testInfo, "diff-viewer-horizontal-scroll");
 
   const contextRow = page.locator(".diff-row-context").filter({ hasText: "context line" });
@@ -505,10 +569,30 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   await expect(trailingRow.locator(".diff-old-line")).toHaveText("12");
   await expect(trailingRow.locator(".diff-new-line")).toHaveText("13");
 
+  if (testInfo.project.name === "phone") {
+    await page.getByRole("button", { name: "Back to changes" }).click();
+    await expect(workspace).toHaveAttribute("data-mobile-detail", "false");
+    await expect(page.locator("codger-changes-tree")).toBeVisible();
+    await expect(page.locator(".workspace-mode-diff codger-review-file-viewer")).toBeHidden();
+  }
   await page.locator('button[data-change-path="src/deleted.rs"]').click();
   await expect(page.locator(".workspace-mode-diff .viewer-subtitle")).toHaveText(
     "Deleted · Unstaged",
   );
+  if (testInfo.project.name === "phone") {
+    await page.getByRole("button", { name: "Back to changes" }).click();
+    await expect(workspace).toHaveAttribute("data-mobile-detail", "false");
+    await expect(workspace.locator(".workspace-mode-diff")).toHaveAttribute(
+      "data-detail-view",
+      "list",
+    );
+    await expect(page.locator("codger-changes-tree")).toBeVisible();
+    await expect(page.locator(".workspace-mode-diff codger-review-file-viewer")).toBeHidden();
+    await expect(page.locator('button[data-change-path="src/deleted.rs"]')).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+  }
 
   await workspace.getByRole("button", { name: "Close review workspace" }).click();
   await expect(workspace).toBeHidden();
@@ -703,6 +787,21 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
   );
   await expect(page.locator("codger-diff-viewer")).toContainText("old compare line");
   await expect(page.locator("codger-diff-viewer")).toContainText("new compare line");
+  if (testInfo.project.name === "phone") {
+    await expectMobileReviewDetail(page, {
+      backName: "Back to compare",
+      detailSelector: ".workspace-mode-compare codger-review-file-viewer",
+      listSelector: "codger-compare-tree",
+    });
+    await page.getByRole("button", { name: "Back to compare" }).click();
+    await expect(workspace).toHaveAttribute("data-mobile-detail", "false");
+    await expect(workspace.locator(".workspace-mode-compare")).toHaveAttribute(
+      "data-detail-view",
+      "list",
+    );
+    await expect(page.locator("codger-compare-tree")).toBeVisible();
+    await expect(page.locator(".workspace-mode-compare codger-review-file-viewer")).toBeHidden();
+  }
 });
 
 test("opens GitHub issues from the header", async ({ page }, testInfo) => {
@@ -880,6 +979,13 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
   await expect(issueViewer).toBeVisible();
   await expect(issueViewer).toContainText("Track mobile review issues");
   await expect(issueViewer).toContainText("3 comments");
+  if (testInfo.project.name === "phone") {
+    await expectMobileReviewDetail(page, {
+      backName: "Back to issues",
+      detailSelector: "codger-github-issue-viewer",
+      listSelector: "codger-github-issues-list",
+    });
+  }
   const markdownViewer = issueViewer.locator("codger-github-markdown");
   await expect(markdownViewer).toBeVisible();
   await expect(markdownViewer.locator("strong")).toHaveText("Review");
@@ -919,6 +1025,7 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
     "data-issues-view",
     "list",
   );
+  await expect(workspace).toHaveAttribute("data-mobile-detail", "false");
   await expect(workspace.locator(".review-workspace-title h2")).toHaveText("Issues");
   await expect(page.locator("codger-github-issues-list")).toBeVisible();
   await expect(issueViewer).toBeHidden();
@@ -1118,10 +1225,19 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
   await expect(commitTree).not.toContainText("Update planner function");
   await expect(commitTree).toContainText("planner");
   await expect(commitTree).toContainText("function.rs");
-  await expect(page.locator('button[data-commit-path="src/planner/function.rs"]')).toHaveAttribute(
-    "aria-current",
-    "true",
+  const commitFileButton = page.locator('button[data-commit-path="src/planner/function.rs"]');
+  await expect(commitFileButton).toHaveAttribute("aria-current", "false");
+  await expect(page.locator(".workspace-mode-log codger-review-file-viewer")).toContainText(
+    "Select a file to inspect it.",
   );
+  if (testInfo.project.name === "phone") {
+    await expect(logView.locator(".log-review-detail")).toHaveAttribute(
+      "data-detail-view",
+      "list",
+    );
+    await expect(commitTree).toBeVisible();
+    await expect(page.locator(".workspace-mode-log codger-review-file-viewer")).toBeHidden();
+  }
   if (testInfo.project.name === "desktop") {
     const resizeHandle = workspace.locator(".log-review-detail .review-panel-resizer");
     await expect(resizeHandle).toBeVisible();
@@ -1136,21 +1252,46 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
     );
     expect(afterReviewWidth).toBeGreaterThan(beforeReviewWidth + 48);
   }
+
+  await commitFileButton.click();
+  await expect(commitFileButton).toHaveAttribute("aria-current", "true");
   await expect(page.locator(".workspace-mode-log .viewer-subtitle")).toHaveText(
     "Modified · Commit abcdef1",
   );
-  await expectAlignedWorkspaceHeaders(page, [
-    "codger-review-workspace .review-workspace-header",
-    "codger-commit-changes-tree .commit-tree-panel > header",
-    ".workspace-mode-log codger-review-file-viewer .viewer-panel > header",
-  ]);
-  await expectMatchingPaneTitleSizes(page, [
-    "codger-commit-changes-tree .commit-tree-panel > header",
-    ".workspace-mode-log codger-review-file-viewer .viewer-panel > header",
-  ]);
+  if (testInfo.project.name === "phone") {
+    await expect(logView.locator(".log-review-detail")).toHaveAttribute(
+      "data-detail-view",
+      "viewer",
+    );
+    await expectMobileReviewDetail(page, {
+      backName: "Back to commit",
+      detailSelector: ".workspace-mode-log codger-review-file-viewer",
+      listSelector: "codger-commit-changes-tree",
+    });
+  } else {
+    await expectAlignedWorkspaceHeaders(page, [
+      "codger-review-workspace .review-workspace-header",
+      "codger-commit-changes-tree .commit-tree-panel > header",
+      ".workspace-mode-log codger-review-file-viewer .viewer-panel > header",
+    ]);
+    await expectMatchingPaneTitleSizes(page, [
+      "codger-commit-changes-tree .commit-tree-panel > header",
+      ".workspace-mode-log codger-review-file-viewer .viewer-panel > header",
+    ]);
+  }
   await expect(page.locator("codger-diff-viewer")).toContainText("old planner line");
   await expect(page.locator("codger-diff-viewer")).toContainText("new planner line");
 
+  if (testInfo.project.name === "phone") {
+    await page.getByRole("button", { name: "Back to commit" }).click();
+    await expect(workspace).toHaveAttribute("data-mobile-detail", "false");
+    await expect(logView.locator(".log-review-detail")).toHaveAttribute(
+      "data-detail-view",
+      "list",
+    );
+    await expect(commitTree).toBeVisible();
+    await expect(page.locator(".workspace-mode-log codger-review-file-viewer")).toBeHidden();
+  }
   await backButton.click();
   await expect(logView).toHaveAttribute("data-log-view", "list");
   await expect(backButton).toBeHidden();
@@ -1319,6 +1460,99 @@ async function expectHorizontalScroller(page, selector) {
   expect(scrollState.scrollLeft).toBeGreaterThan(0);
 }
 
+async function expectMobileBrowserViewerOverlay(page) {
+  const metrics = await page.evaluate(() => {
+    const appMain = document.querySelector("codger-app-shell .app-main");
+    const header = document.querySelector("codger-app-shell .app-header");
+    const pathbar = document.querySelector("codger-pathbar");
+    const rect = appMain.getBoundingClientRect();
+    const style = window.getComputedStyle(appMain);
+
+    return {
+      bottom: rect.bottom,
+      height: rect.height,
+      headerBottom: header.getBoundingClientRect().bottom,
+      pathbarBottom: pathbar.getBoundingClientRect().bottom,
+      position: style.position,
+      top: rect.top,
+      viewportHeight: window.innerHeight,
+      viewportWidth: window.innerWidth,
+      width: rect.width,
+    };
+  });
+
+  expect(metrics.position).toBe("fixed");
+  expect(metrics.top).toBeLessThanOrEqual(1);
+  expect(metrics.bottom).toBeGreaterThanOrEqual(metrics.viewportHeight - 1);
+  expect(metrics.width).toBeGreaterThanOrEqual(metrics.viewportWidth - 1);
+  expect(metrics.top).toBeLessThan(metrics.headerBottom);
+  expect(metrics.top).toBeLessThan(metrics.pathbarBottom);
+}
+
+async function expectMobileViewerCompactHeader(page) {
+  const metrics = await page.evaluate(() => {
+    const header = document.querySelector("codger-file-viewer .viewer-panel > header");
+    const closeButton = document.querySelector("codger-file-viewer .viewer-close-button");
+    const title = document.querySelector("codger-file-viewer h2");
+    const infoButton = document.querySelector("codger-file-viewer .viewer-info-button");
+
+    function box(element) {
+      const rect = element.getBoundingClientRect();
+      return {
+        bottom: rect.bottom,
+        height: rect.height,
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        width: rect.width,
+      };
+    }
+
+    return {
+      closeButton: box(closeButton),
+      header: box(header),
+      infoButton: box(infoButton),
+      title: box(title),
+    };
+  });
+
+  expect(metrics.header.height).toBeLessThanOrEqual(42);
+  expect(metrics.closeButton.left).toBeGreaterThanOrEqual(metrics.header.left - 1);
+  expect(metrics.title.left).toBeGreaterThan(metrics.closeButton.right);
+  expect(metrics.infoButton.left).toBeGreaterThan(metrics.title.left);
+  for (const box of [metrics.closeButton, metrics.title, metrics.infoButton]) {
+    expect(box.top).toBeGreaterThanOrEqual(metrics.header.top - 1);
+    expect(box.bottom).toBeLessThanOrEqual(metrics.header.bottom + 1);
+  }
+}
+
+async function expectMobileReviewDetail(page, { backName, detailSelector, listSelector }) {
+  const workspace = page.locator("codger-review-workspace");
+
+  await expect(workspace).toHaveAttribute("data-mobile-detail", "true");
+  await expect(workspace.locator(".review-workspace-header")).toBeHidden();
+  await expect(page.locator(listSelector)).toBeHidden();
+  await expect(page.locator(detailSelector)).toBeVisible();
+  await expect(page.getByRole("button", { name: backName })).toBeVisible();
+
+  const metrics = await page.locator(detailSelector).evaluate((element) => {
+    const workspace = document.querySelector("codger-review-workspace");
+    const panel = element.querySelector(".viewer-panel") ?? element;
+    const panelRect = panel.getBoundingClientRect();
+    const workspaceRect = workspace.getBoundingClientRect();
+
+    return {
+      panelBottom: panelRect.bottom,
+      panelTop: panelRect.top,
+      workspaceBottom: workspaceRect.bottom,
+      workspaceTop: workspaceRect.top,
+    };
+  });
+
+  expect(metrics.panelTop).toBeLessThanOrEqual(metrics.workspaceTop + 1);
+  expect(metrics.panelBottom).toBeGreaterThanOrEqual(metrics.workspaceBottom - 1);
+}
+
 async function expectUnifiedDiffRowsShareScrollWidth(page) {
   const scrollState = await page.locator("codger-diff-viewer .diff-lines").evaluate((element) => {
     element.scrollLeft = Math.min(220, element.scrollWidth - element.clientWidth);
@@ -1348,6 +1582,44 @@ async function expectUnifiedDiffRowsShareScrollWidth(page) {
   expect(scrollState.minRowWidth).toBeGreaterThanOrEqual(scrollState.tableWidth - 1);
   expect(scrollState.maxRowWidth).toBeLessThanOrEqual(scrollState.tableWidth + 1);
   expect(scrollState.transparentGutterCount).toBe(0);
+}
+
+async function expectDiffScrollerFillsViewer(page) {
+  const metrics = await page.evaluate(() => {
+    const element = [...document.querySelectorAll("codger-diff-viewer")].find((candidate) => {
+      const rect = candidate.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    });
+    const viewer = element.querySelector(".diff-viewer");
+    const lines = element.querySelector(".diff-lines");
+    const table = element.querySelector(".diff-table");
+    const backdrop = element.querySelector(".diff-gutter-backdrop");
+    const backdropRect = backdrop.getBoundingClientRect();
+    const viewerRect = viewer.getBoundingClientRect();
+    const linesRect = lines.getBoundingClientRect();
+    const tableRect = table.getBoundingClientRect();
+    const backdropStyle = window.getComputedStyle(backdrop);
+
+    return {
+      backdropBackground: backdropStyle.backgroundColor,
+      backdropHeight: backdropRect.height,
+      backdropLeft: backdropRect.left,
+      linesLeft: linesRect.left,
+      linesBottom: linesRect.bottom,
+      linesHeight: linesRect.height,
+      tableHeight: tableRect.height,
+      viewerBottom: viewerRect.bottom,
+      viewerHeight: viewerRect.height,
+    };
+  });
+
+  expect(metrics.linesHeight).toBeGreaterThanOrEqual(metrics.viewerHeight - 1);
+  expect(metrics.linesBottom).toBeGreaterThanOrEqual(metrics.viewerBottom - 1);
+  expect(metrics.tableHeight).toBeGreaterThanOrEqual(metrics.linesHeight - 1);
+  expect(metrics.backdropHeight).toBeGreaterThanOrEqual(metrics.linesHeight - 1);
+  expect(metrics.backdropLeft).toBeGreaterThanOrEqual(metrics.linesLeft - 1);
+  expect(metrics.backdropBackground).not.toBe("rgba(0, 0, 0, 0)");
+  expect(metrics.backdropBackground).not.toBe("transparent");
 }
 
 async function expectCompareRefControlsFit(page, testInfo, options = {}) {

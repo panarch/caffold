@@ -20,6 +20,7 @@ class CodgerDiffViewer extends HTMLElement {
     this.innerHTML = `
       <section class="diff-viewer" aria-label="Git diff">
         <div class="diff-lines">
+          <div class="diff-gutter-backdrop" aria-hidden="true"></div>
           <div class="diff-table" style="--diff-code-width: ${codeWidth};">
             ${rows.length === 0 ? this.renderEmpty() : rows.map((row) => this.renderRow(row)).join("")}
           </div>
