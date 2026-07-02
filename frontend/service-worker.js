@@ -1,4 +1,4 @@
-const CACHE_NAME = "caffold-shell-v5";
+const CACHE_NAME = "caffold-shell-v6";
 
 const APP_SHELL_ASSETS = [
   "/",
@@ -13,6 +13,10 @@ const APP_SHELL_ASSETS = [
   "/assets/icons/maskable-192.png",
   "/assets/icons/maskable-512.png",
   "/assets/icons/apple-touch-icon.png",
+  "/assets/brand/git-logomark-light.svg",
+  "/assets/brand/git-logomark-dark.svg",
+  "/assets/brand/github-invertocat-light.svg",
+  "/assets/brand/github-invertocat-dark.svg",
   "/assets/components/app-shell.css",
   "/assets/components/app-shell.js",
   "/assets/components/changes-tree.css",

@@ -6,28 +6,27 @@ caffold-header-actions {
 caffold-header-actions .header-actions {
   display: grid;
   grid-auto-flow: column;
-  gap: 6px;
+  gap: 12px;
   align-items: center;
   min-width: 0;
 }
 
-caffold-header-actions .header-action-button {
+caffold-header-actions .header-action-group-button {
+  position: relative;
   display: grid;
-  grid-auto-flow: column;
-  gap: 5px;
-  align-items: center;
-  justify-content: center;
+  place-items: center;
+  width: 32px;
   min-height: 28px;
   border: 1px solid transparent;
   border-radius: 4px;
   background: transparent;
   color: var(--accent);
   cursor: pointer;
-  padding: 0 7px;
+  padding: 0;
 }
 
-caffold-header-actions .header-action-button:hover,
-caffold-header-actions .header-action-button:focus-visible {
+caffold-header-actions .header-action-group-button:hover,
+caffold-header-actions .header-action-group-button:focus-visible {
   border-color: #d8e2db;
   background: #f7fbf8;
   outline: none;
@@ -40,32 +39,138 @@ caffold-header-actions .header-action-icon {
   stroke-width: 1.9;
 }
 
-caffold-header-actions .header-action-label {
-  color: inherit;
-  font-size: 0.78rem;
-  font-weight: 500;
-  line-height: 1;
+caffold-header-actions .header-action-brand-picture {
+  display: block;
+  width: 1rem;
+  height: 1rem;
 }
 
-caffold-header-actions .header-action-count {
+caffold-header-actions .header-action-brand-icon {
+  object-fit: contain;
+}
+
+caffold-header-actions .header-action-badge {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  display: grid;
+  min-width: 14px;
+  height: 14px;
+  border: 1px solid var(--surface);
+  border-radius: 999px;
+  background: #dfe7e1;
+  color: #4d5d54;
+  font-size: 0.52rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  place-items: center;
+  padding: 0 3px;
+  pointer-events: none;
+  transform: translate(45%, -35%);
+}
+
+caffold-header-actions .header-actions-popover {
+  position: fixed;
+  inset: 42px auto auto 12px;
+  width: min(16rem, calc(100vw - 24px));
+  max-height: min(24rem, calc(100dvh - 64px));
+  overflow: auto;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 0;
+  box-shadow: 0 12px 28px rgb(24 32 27 / 18%);
+}
+
+caffold-header-actions .header-actions-popover-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-muted);
+  padding: 0 10px;
+}
+
+caffold-header-actions .header-actions-popover-header h2 {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.2;
+}
+
+caffold-header-actions .header-actions-popover-header span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+caffold-header-actions .header-actions-menu {
+  display: grid;
+}
+
+caffold-header-actions .header-menu-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  min-height: 34px;
+  border: 0;
+  border-bottom: 1px solid #eef3ef;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  padding: 0 10px;
+  text-align: left;
+}
+
+caffold-header-actions .header-menu-item:last-child {
+  border-bottom: 0;
+}
+
+caffold-header-actions .header-menu-item:hover,
+caffold-header-actions .header-menu-item:focus-visible {
+  background: var(--accent-soft);
+  outline: none;
+}
+
+caffold-header-actions .header-menu-icon {
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  color: var(--accent);
+  stroke-width: 1.9;
+}
+
+caffold-header-actions .header-menu-label {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+caffold-header-actions .header-menu-metric {
   color: var(--muted);
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
-  line-height: 1;
-  text-align: right;
+  line-height: 1.2;
 }
 
 @media (max-width: 520px) {
   caffold-header-actions .header-actions {
-    gap: 4px;
+    gap: 12px;
   }
 
-  caffold-header-actions .header-action-button {
-    min-width: 30px;
-    padding: 0 6px;
-  }
-
-  caffold-header-actions .header-action-label {
-    display: none;
+  caffold-header-actions .header-action-group-button {
+    width: 30px;
   }
 }

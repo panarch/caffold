@@ -1,6 +1,9 @@
 import { escapeHtml } from "./dom.js";
 import { renderInlineIcon, warmIcons } from "./icons.js";
 
+const GIT_POPOVER_ID = "caffold-git-actions-popover";
+const GITHUB_POPOVER_ID = "caffold-github-actions-popover";
+
 class CaffoldHeaderActions extends HTMLElement {
   connectedCallback() {
     if (this.initialized) {
@@ -9,6 +12,12 @@ class CaffoldHeaderActions extends HTMLElement {
 
     this.initialized = true;
     this.addEventListener("click", (event) => {
+      const groupButton = event.target.closest("button[data-action-group]");
+      if (groupButton) {
+        this.closeOtherPopovers(groupButton.getAttribute("popovertarget"));
+        return;
+      }
+
       const button = event.target.closest("button[data-action]");
       if (!button) {
         return;
@@ -25,9 +34,10 @@ class CaffoldHeaderActions extends HTMLElement {
         return;
       }
 
+      button.closest(".header-actions-popover")?.hidePopover?.();
       this.dispatchEvent(new CustomEvent(eventName, { bubbles: true }));
     });
-    this.boundIconsReady = () => this.render();
+    this.boundIconsReady = () => this.renderKeepingOpenPopover();
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     warmIcons();
 
@@ -45,7 +55,7 @@ class CaffoldHeaderActions extends HTMLElement {
     }
 
     this.gitStatusValue = nextValue;
-    this.render();
+    this.renderKeepingOpenPopover();
   }
 
   get gitStatus() {
@@ -59,7 +69,7 @@ class CaffoldHeaderActions extends HTMLElement {
     }
 
     this.githubStatusValue = nextValue;
-    this.render();
+    this.renderKeepingOpenPopover();
   }
 
   get githubStatus() {
@@ -69,39 +79,87 @@ class CaffoldHeaderActions extends HTMLElement {
   render() {
     this.innerHTML = `
       <div class="header-actions" aria-label="Review actions">
-        ${this.renderGitToggle()}
+        ${this.renderGitActions()}
         ${this.renderGitHubActions()}
       </div>
     `;
   }
 
-  renderGitToggle() {
+  renderKeepingOpenPopover() {
+    const openPopover = this.querySelector(".header-actions-popover:popover-open");
+    const openGroup = openPopover?.dataset.actionGroup;
+    this.render();
+
+    if (openGroup) {
+      this.querySelector(
+        `.header-actions-popover[data-action-group="${openGroup}"]`,
+      )?.showPopover?.();
+    }
+  }
+
+  closeOtherPopovers(targetId) {
+    this.querySelectorAll(".header-actions-popover").forEach((popover) => {
+      if (popover.id !== targetId) {
+        popover.hidePopover?.();
+      }
+    });
+  }
+
+  renderGitActions() {
     const gitStatus = this.gitStatus;
     if (!gitStatus) {
       return "";
     }
 
+    const count = Number(gitStatus.count ?? 0);
+    const badge = count > 0 ? (count > 99 ? "99+" : `${count}`) : "";
+    const countLabel = `${count} changed ${count === 1 ? "file" : "files"}`;
+
     return `
-      ${this.renderAction({
-        action: "open-diff-workspace",
-        icon: "FileDiff",
-        label: "Diff",
-        count: gitStatus.count,
-        title: "Open Diff",
-        metricLabel: "changed",
+      ${this.renderGroupButton({
+        group: "git",
+        popoverId: GIT_POPOVER_ID,
+        brandIcon: {
+          light: "/assets/brand/git-logomark-light.svg",
+          dark: "/assets/brand/git-logomark-dark.svg",
+        },
+        label: "Git",
+        title: `Git actions, ${countLabel}`,
+        badge,
       })}
-      ${this.renderAction({
-        action: "open-compare-workspace",
-        icon: "GitCompare",
-        label: "Compare",
-        title: "Open Compare",
-      })}
-      ${this.renderAction({
-        action: "open-log-workspace",
-        icon: "History",
-        label: "Log",
-        title: "Open Log",
-      })}
+      <section
+        id="${GIT_POPOVER_ID}"
+        class="header-actions-popover"
+        data-action-group="git"
+        popover="auto"
+        aria-label="Git actions"
+      >
+        <header class="header-actions-popover-header">
+          <h2>Git</h2>
+          <span>${escapeHtml(countLabel)}</span>
+        </header>
+        <div class="header-actions-menu">
+          ${this.renderMenuAction({
+            action: "open-diff-workspace",
+            icon: "FileDiff",
+            label: "Diff",
+            title: "Open Diff",
+            metric: `${count}`,
+          })}
+          ${this.renderMenuAction({
+            action: "open-compare-workspace",
+            icon: "GitCompare",
+            label: "Compare",
+            title: "Open Compare",
+          })}
+          ${this.renderMenuAction({
+            action: "open-log-workspace",
+            icon: "History",
+            label: "Log",
+            title: "Open Log",
+          })}
+        </div>
+      </section>
     `;
   }
 
@@ -111,55 +169,107 @@ class CaffoldHeaderActions extends HTMLElement {
       return "";
     }
 
+    const repositoryLabel =
+      githubStatus.github.nameWithOwner ?? githubStatus.github.name ?? "GitHub";
+
     return `
-      ${this.renderAction({
-        action: "open-github-pulls-workspace",
-        icon: "GitPullRequest",
-        label: "PRs",
-        title: githubStatus.pullsAvailable
-          ? "Open Pull Requests"
-          : `Open Pull Requests (${githubStatus.message ?? "GitHub unavailable"})`,
+      ${this.renderGroupButton({
+        group: "github",
+        popoverId: GITHUB_POPOVER_ID,
+        brandIcon: {
+          light: "/assets/brand/github-invertocat-light.svg",
+          dark: "/assets/brand/github-invertocat-dark.svg",
+        },
+        label: "GitHub",
+        title: "GitHub actions",
       })}
-      ${this.renderAction({
-        action: "open-github-issues-workspace",
-        icon: "CircleDot",
-        label: "Issues",
-        title: githubStatus.issuesAvailable
-          ? "Open Issues"
-          : `Open Issues (${githubStatus.message ?? "GitHub unavailable"})`,
-      })}
+      <section
+        id="${GITHUB_POPOVER_ID}"
+        class="header-actions-popover"
+        data-action-group="github"
+        popover="auto"
+        aria-label="GitHub actions"
+      >
+        <header class="header-actions-popover-header">
+          <h2>GitHub</h2>
+          <span>${escapeHtml(repositoryLabel)}</span>
+        </header>
+        <div class="header-actions-menu">
+          ${this.renderMenuAction({
+            action: "open-github-pulls-workspace",
+            icon: "GitPullRequest",
+            label: "PRs",
+            title: githubStatus.pullsAvailable
+              ? "Open Pull Requests"
+              : `Open Pull Requests (${githubStatus.message ?? "GitHub unavailable"})`,
+          })}
+          ${this.renderMenuAction({
+            action: "open-github-issues-workspace",
+            icon: "CircleDot",
+            label: "Issues",
+            title: githubStatus.issuesAvailable
+              ? "Open Issues"
+              : `Open Issues (${githubStatus.message ?? "GitHub unavailable"})`,
+          })}
+        </div>
+      </section>
     `;
   }
 
-  renderAction({
+  renderGroupButton({
+    group,
+    popoverId,
+    icon,
+    brandIcon = null,
+    label,
+    title,
+    badge = "",
+  }) {
+    return `
+      <button
+        type="button"
+        class="header-action-group-button"
+        data-action-group="${escapeHtml(group)}"
+        popovertarget="${escapeHtml(popoverId)}"
+        title="${escapeHtml(title)}"
+        aria-label="${escapeHtml(title)}"
+      >
+        ${
+          brandIcon
+            ? renderBrandIcon(brandIcon, label)
+            : renderInlineIcon(icon, label, "header-action-icon")
+        }
+        ${
+          badge
+            ? `<span class="header-action-badge" aria-hidden="true">${escapeHtml(badge)}</span>`
+            : ""
+        }
+      </button>
+    `;
+  }
+
+  renderMenuAction({
     action,
     icon,
     label,
-    count = null,
     title,
-    metricLabel = "",
+    metric = "",
   }) {
-    const className = "header-action-button";
-    const actionLabel = title;
-    const countText = count === null || count === undefined ? "" : `${count}`.trim();
-    const countAria =
-      countText && metricLabel
-        ? `, ${countText} ${metricLabel} ${count === 1 ? "file" : "files"}`
-        : "";
+    const metricText = metric === null || metric === undefined ? "" : `${metric}`.trim();
 
     return `
       <button
         type="button"
-        class="${escapeHtml(className)}"
+        class="header-menu-item"
         data-action="${escapeHtml(action)}"
-        title="${escapeHtml(actionLabel)}"
-        aria-label="${escapeHtml(`${actionLabel}${countAria}`)}"
+        title="${escapeHtml(title)}"
+        aria-label="${escapeHtml(title)}"
       >
-        ${renderInlineIcon(icon, actionLabel, "header-action-icon")}
-        <span class="header-action-label">${escapeHtml(label)}</span>
+        ${renderInlineIcon(icon, title, "header-menu-icon")}
+        <span class="header-menu-label">${escapeHtml(label)}</span>
         ${
-          countText
-            ? `<span class="header-action-count">${escapeHtml(countText)}</span>`
+          metricText
+            ? `<span class="header-menu-metric">${escapeHtml(metricText)}</span>`
             : ""
         }
       </button>
@@ -168,6 +278,24 @@ class CaffoldHeaderActions extends HTMLElement {
 }
 
 customElements.define("caffold-header-actions", CaffoldHeaderActions);
+
+function renderBrandIcon(icon, label) {
+  return `
+    <picture class="header-action-brand-picture" aria-hidden="true">
+      <source
+        srcset="${escapeHtml(icon.dark)}"
+        media="(prefers-color-scheme: dark)"
+      />
+      <img
+        class="header-action-icon header-action-brand-icon"
+        src="${escapeHtml(icon.light)}"
+        alt=""
+        draggable="false"
+      />
+    </picture>
+    <span class="sr-only">${escapeHtml(label)}</span>
+  `;
+}
 
 function sameGitStatus(left, right) {
   if (!left || !right) {

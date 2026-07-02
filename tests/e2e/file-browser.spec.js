@@ -130,6 +130,16 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(svgResponse.headers()["content-type"]).toContain("image/svg+xml");
   expect(await svgResponse.text()).toContain('rx="48"');
 
+  const gitBrandResponse = await request.get("/assets/brand/git-logomark-light.svg");
+  expect(gitBrandResponse.headers()["content-type"]).toContain("image/svg+xml");
+  expect(await gitBrandResponse.text()).toContain("#100f0d");
+
+  const githubBrandResponse = await request.get(
+    "/assets/brand/github-invertocat-light.svg",
+  );
+  expect(githubBrandResponse.headers()["content-type"]).toContain("image/svg+xml");
+  expect(await githubBrandResponse.text()).toContain("<svg");
+
   const pngResponse = await request.get("/assets/icons/icon-192.png");
   expect(pngResponse.headers()["content-type"]).toContain("image/png");
   const png = await pngResponse.body();
@@ -140,7 +150,9 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorkerResponse.headers()["cache-control"]).toContain("no-cache");
   expect(serviceWorkerResponse.headers()["service-worker-allowed"]).toBe("/");
   const serviceWorker = await serviceWorkerResponse.text();
-  expect(serviceWorker).toContain('const CACHE_NAME = "caffold-shell-v5"');
+  expect(serviceWorker).toMatch(/const CACHE_NAME = "caffold-shell-v\d+"/);
+  expect(serviceWorker).toContain("/assets/brand/git-logomark-light.svg");
+  expect(serviceWorker).toContain("/assets/brand/github-invertocat-light.svg");
   expect(serviceWorker).toContain('url.pathname.startsWith("/api/")');
   expect(serviceWorker).toContain("networkFirst(request, \"/\")");
   expect(serviceWorker).toContain('url.pathname.startsWith("/assets/")');
@@ -314,6 +326,135 @@ test("manages project records from the header switcher", async ({ page }, testIn
   );
 });
 
+test("groups header review actions into Git and GitHub popovers", async ({ page }, testInfo) => {
+  const repository = { rootPath: "src", branch: "main", dirty: true };
+  let gitFileCount = 0;
+  const githubStatus = {
+    repository,
+    github: {
+      owner: "example",
+      name: "caffold",
+      nameWithOwner: "example/caffold",
+      url: "https://github.com/example/caffold",
+    },
+    ghAvailable: true,
+    authenticated: true,
+    issuesAvailable: true,
+    pullsAvailable: true,
+    message: null,
+  };
+
+  await page.route(/\/api\/git\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        files: Array.from({ length: gitFileCount }, (_, index) => ({
+          path: `src/header-${index}.rs`,
+          repoRelativePath: `header-${index}.rs`,
+          status: " M",
+          category: "unstaged",
+          staged: false,
+          unstaged: true,
+          untracked: false,
+        })),
+      }),
+    }),
+  );
+  await page.route(/\/api\/github\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(githubStatus),
+    }),
+  );
+
+  const openSourceDirectoryWithGitCount = async (count) => {
+    gitFileCount = count;
+    await page.goto("/");
+    const expectedTitle = `Git actions, ${count} changed ${count === 1 ? "file" : "files"}`;
+    const gitButton = headerActionGroupButton(page, "git");
+    const entryPoint = await page
+      .waitForFunction((title) => {
+        const git = document.querySelector(
+          'caffold-header-actions button[data-action-group="git"]',
+        );
+        if (git?.getAttribute("title") === title) {
+          return "git";
+        }
+
+        if (document.querySelector('button[data-entry-path="src"]')) {
+          return "src";
+        }
+
+        return null;
+      }, expectedTitle)
+      .then((handle) => handle.jsonValue());
+
+    if (entryPoint === "src") {
+      const sourceDirectory = page.locator('button[data-entry-path="src"]');
+      await expect(sourceDirectory).toBeVisible();
+      await sourceDirectory.click();
+    }
+    await expect(gitButton).toHaveAttribute("title", expectedTitle);
+  };
+
+  await openSourceDirectoryWithGitCount(0);
+
+  const gitButton = headerActionGroupButton(page, "git");
+  const githubButton = headerActionGroupButton(page, "github");
+  await expect(gitButton.locator(".header-action-badge")).toHaveCount(0);
+  const gitBrandIcon = gitButton.locator("img.header-action-brand-icon");
+  const githubBrandIcon = githubButton.locator("img.header-action-brand-icon");
+  await expect(gitBrandIcon).toBeVisible();
+  await expect(githubBrandIcon).toBeVisible();
+  await expect(gitBrandIcon).toHaveAttribute(
+    "src",
+    "/assets/brand/git-logomark-light.svg",
+  );
+  await expect(githubBrandIcon).toHaveAttribute(
+    "src",
+    "/assets/brand/github-invertocat-light.svg",
+  );
+  await expectHeaderActionsFit(page);
+  await stabilizeDynamicText(page);
+  await captureReviewScreenshot(page, testInfo, "header-actions-badge-zero");
+
+  await openSourceDirectoryWithGitCount(13);
+  await expect(gitButton.locator(".header-action-badge")).toHaveText("13");
+  const gitPopover = await openHeaderActionGroup(page, "git");
+  await expect(gitPopover.locator(".header-actions-popover-header")).toContainText(
+    "13 changed files",
+  );
+  await expect(
+    gitPopover.locator('button[data-action="open-diff-workspace"] .header-menu-metric'),
+  ).toHaveText("13");
+  await expect(gitPopover.locator('button[data-action="open-compare-workspace"]')).toContainText(
+    "Compare",
+  );
+  await expect(gitPopover.locator('button[data-action="open-log-workspace"]')).toContainText(
+    "Log",
+  );
+  await expectHeaderActionsFit(page);
+  await expectHeaderPopoverFits(page, "git");
+  await captureReviewScreenshot(page, testInfo, "header-actions-git-popover");
+
+  await openSourceDirectoryWithGitCount(120);
+  await expect(gitButton.locator(".header-action-badge")).toHaveText("99+");
+  const githubPopover = await openHeaderActionGroup(page, "github");
+  await expect(githubPopover.locator(".header-actions-popover-header")).toContainText(
+    "example/caffold",
+  );
+  await expect(githubPopover.locator('button[data-action="open-github-pulls-workspace"]')).toContainText(
+    "PRs",
+  );
+  await expect(githubPopover.locator('button[data-action="open-github-issues-workspace"]')).toContainText(
+    "Issues",
+  );
+  await expectHeaderActionsFit(page);
+  await expectHeaderPopoverFits(page, "github");
+  await captureReviewScreenshot(page, testInfo, "header-actions-github-popover");
+});
+
 test("restores project file routes and browser navigation", async ({ page }, testInfo) => {
   const project = await mockRegisteredProject(page);
   let gitStatusRequests = 0;
@@ -346,14 +487,10 @@ test("restores project file routes and browser navigation", async ({ page }, tes
 
   await page.goto(`/projects/${project.id}/files`);
   await expect(page.locator("caffold-file-list")).toBeVisible();
-  const diffButton = page.locator(
-    'caffold-header-actions button[data-action="open-diff-workspace"]',
-  );
-  await expect(diffButton.locator(".header-action-count")).toHaveText(/\d+/);
+  const gitGroupButton = headerActionGroupButton(page, "git");
+  await expect(gitGroupButton.locator(".header-action-badge")).toHaveText(/\d+/);
   const headerActionsHtml = await page.locator("caffold-header-actions").evaluate((element) => {
-    window.__caffoldDiffButton = element.querySelector(
-      'button[data-action="open-diff-workspace"]',
-    );
+    window.__caffoldGitGroupButton = element.querySelector('button[data-action-group="git"]');
     return element.innerHTML;
   });
   const listRequestsBeforeFileClick = listRequests;
@@ -364,13 +501,13 @@ test("restores project file routes and browser navigation", async ({ page }, tes
   expect(listRequests).toBe(listRequestsBeforeFileClick);
   expect(gitStatusRequests).toBe(gitStatusRequestsBeforeFileClick);
   const headerActionsState = await page.locator("caffold-header-actions").evaluate((element) => {
-    const diffButton = element.querySelector('button[data-action="open-diff-workspace"]');
+    const gitGroupButton = element.querySelector('button[data-action-group="git"]');
     return {
       html: element.innerHTML,
-      sameDiffButton: diffButton === window.__caffoldDiffButton,
+      sameGitGroupButton: gitGroupButton === window.__caffoldGitGroupButton,
     };
   });
-  expect(headerActionsState.sameDiffButton).toBe(true);
+  expect(headerActionsState.sameGitGroupButton).toBe(true);
   expect(headerActionsState.html).toBe(headerActionsHtml);
   await page.goBack();
   await expect(page).toHaveURL(`/projects/${project.id}/files`);
@@ -827,8 +964,8 @@ test("restores project review routes", async ({ page }) => {
   const compareHeaderActionsHtml = await page
     .locator("caffold-header-actions")
     .evaluate((element) => {
-      window.__caffoldCompareDiffButton = element.querySelector(
-        'button[data-action="open-diff-workspace"]',
+      window.__caffoldCompareGitGroupButton = element.querySelector(
+        'button[data-action-group="git"]',
       );
       return element.innerHTML;
     });
@@ -842,13 +979,13 @@ test("restores project review routes", async ({ page }) => {
   const compareHeaderActionsState = await page
     .locator("caffold-header-actions")
     .evaluate((element) => {
-      const diffButton = element.querySelector('button[data-action="open-diff-workspace"]');
+      const gitGroupButton = element.querySelector('button[data-action-group="git"]');
       return {
         html: element.innerHTML,
-        sameDiffButton: diffButton === window.__caffoldCompareDiffButton,
+        sameGitGroupButton: gitGroupButton === window.__caffoldCompareGitGroupButton,
       };
     });
-  expect(compareHeaderActionsState.sameDiffButton).toBe(true);
+  expect(compareHeaderActionsState.sameGitGroupButton).toBe(true);
   expect(compareHeaderActionsState.html).toBe(compareHeaderActionsHtml);
 
   await page.locator('select[data-compare-ref="head"]').selectOption("feature/review");
@@ -1012,9 +1149,7 @@ test("scrolls long names horizontally in Files and Changes", async ({ page }) =>
   await expectHorizontalScroller(page, ".file-list");
 
   await page.locator('button[data-entry-path="src"]').click();
-  const gitButton = page.locator('caffold-header-actions button[data-action="open-diff-workspace"]');
-  await expect(gitButton).toBeVisible();
-  await gitButton.click();
+  await clickHeaderAction(page, "git", "open-diff-workspace");
   await expect(page.locator(`button[data-change-path="${LONG_CHANGE_FILE}"]`)).toBeVisible();
   await expectHorizontalScroller(page, ".changes-tree-list");
 });
@@ -1116,9 +1251,7 @@ test("keeps list scroll positions when selecting files and changes", async ({ pa
   await expectPreservedScroll(fileList, beforeFileScroll);
 
   await page.locator('button[data-entry-path="src"]').click();
-  const gitButton = page.locator('caffold-header-actions button[data-action="open-diff-workspace"]');
-  await expect(gitButton).toBeVisible();
-  await gitButton.click();
+  await clickHeaderAction(page, "git", "open-diff-workspace");
 
   const changesList = page.locator("caffold-changes-tree .changes-tree-list");
   const changeTarget = page.locator(`button[data-change-path="${LONG_CHANGE_FILE}"]`);
@@ -1198,16 +1331,23 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.locator('button[data-entry-path="src"]').click();
 
-  const gitButton = page.locator('caffold-header-actions button[data-action="open-diff-workspace"]');
+  const gitButton = headerActionGroupButton(page, "git");
   await expect(gitButton).toBeVisible();
   await expect(page.locator("caffold-pathbar .header-action-button")).toHaveCount(0);
-  await expect(gitButton.locator(".header-action-count")).not.toHaveText("");
-  await expect(gitButton.locator(".header-action-icon")).toBeVisible();
-  await expect(gitButton.locator(".header-action-label")).toHaveText("Diff");
+  await expect(gitButton.locator(".header-action-badge")).toHaveText("2");
+  await expect(gitButton.locator("img.header-action-brand-icon")).toBeVisible();
+  await expect(gitButton.locator("img.header-action-brand-icon")).toHaveAttribute(
+    "src",
+    "/assets/brand/git-logomark-light.svg",
+  );
   await expect(gitButton).not.toContainText("master");
-  await expect(gitButton).toHaveAttribute("title", "Open Diff");
+  await expect(gitButton).toHaveAttribute("title", "Git actions, 2 changed files");
 
-  await gitButton.click();
+  const gitPopover = await openHeaderActionGroup(page, "git");
+  const diffMenuItem = gitPopover.locator('button[data-action="open-diff-workspace"]');
+  await expect(diffMenuItem.locator(".header-menu-label")).toHaveText("Diff");
+  await expect(diffMenuItem.locator(".header-menu-metric")).toHaveText("2");
+  await diffMenuItem.click();
   const workspace = page.locator("caffold-review-workspace");
   await expect(workspace).toBeVisible();
   await expect(workspace).toHaveAttribute("data-workspace-mode", "diff");
@@ -1406,10 +1546,9 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.locator('button[data-entry-path="src"]').click();
 
-  const compareButton = page.locator(
-    'caffold-header-actions button[data-action="open-compare-workspace"]',
-  );
-  await expect(compareButton.locator(".header-action-label")).toHaveText("Compare");
+  const gitPopover = await openHeaderActionGroup(page, "git");
+  const compareButton = gitPopover.locator('button[data-action="open-compare-workspace"]');
+  await expect(compareButton.locator(".header-menu-label")).toHaveText("Compare");
   await expect(compareButton).toHaveAttribute("title", "Open Compare");
   await compareButton.click();
 
@@ -1637,11 +1776,11 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.locator('button[data-entry-path="src"]').click();
 
-  const issuesButton = page.locator(
-    'caffold-header-actions button[data-action="open-github-issues-workspace"]',
+  const githubPopover = await openHeaderActionGroup(page, "github");
+  const issuesButton = githubPopover.locator(
+    'button[data-action="open-github-issues-workspace"]',
   );
-  await expect(issuesButton).toBeVisible();
-  await expect(issuesButton.locator(".header-action-label")).toHaveText("Issues");
+  await expect(issuesButton.locator(".header-menu-label")).toHaveText("Issues");
   await issuesButton.click();
 
   const workspace = page.locator("caffold-review-workspace");
@@ -2025,11 +2164,9 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
   await page.locator('button[data-entry-path="src"]').click();
   await expect(page.locator("caffold-project-switcher")).toContainText(project.name);
 
-  const pullsButton = page.locator(
-    'caffold-header-actions button[data-action="open-github-pulls-workspace"]',
-  );
-  await expect(pullsButton).toBeVisible();
-  await expect(pullsButton.locator(".header-action-label")).toHaveText("PRs");
+  const githubPopover = await openHeaderActionGroup(page, "github");
+  const pullsButton = githubPopover.locator('button[data-action="open-github-pulls-workspace"]');
+  await expect(pullsButton.locator(".header-menu-label")).toHaveText("PRs");
   await pullsButton.click();
 
   const workspace = page.locator("caffold-review-workspace");
@@ -2285,8 +2422,9 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.locator('button[data-entry-path="src"]').click();
 
-  const logButton = page.locator('caffold-header-actions button[data-action="open-log-workspace"]');
-  await expect(logButton.locator(".header-action-label")).toHaveText("Log");
+  const gitPopover = await openHeaderActionGroup(page, "git");
+  const logButton = gitPopover.locator('button[data-action="open-log-workspace"]');
+  await expect(logButton.locator(".header-menu-label")).toHaveText("Log");
   await expect(logButton).toHaveAttribute("title", "Open Log");
   await logButton.click();
   const workspace = page.locator("caffold-review-workspace");
@@ -2492,6 +2630,116 @@ async function openProjectPopover(switcher) {
   }
 
   await expect(popover).toBeVisible();
+}
+
+function headerActionGroupButton(page, group) {
+  return page.locator(`caffold-header-actions button[data-action-group="${group}"]`);
+}
+
+async function openHeaderActionGroup(page, group) {
+  const button = headerActionGroupButton(page, group);
+  const popover = page.locator(
+    `caffold-header-actions .header-actions-popover[data-action-group="${group}"]`,
+  );
+
+  await expect(button).toBeVisible();
+  await page.locator("caffold-header-actions").evaluate((element) => {
+    element.querySelectorAll(".header-actions-popover").forEach((panel) => {
+      panel.hidePopover?.();
+    });
+  });
+  await button.click();
+  await expect(popover).toBeVisible();
+
+  return popover;
+}
+
+async function clickHeaderAction(page, group, action) {
+  const popover = await openHeaderActionGroup(page, group);
+  await popover.locator(`button[data-action="${action}"]`).click();
+}
+
+async function expectHeaderActionsFit(page) {
+  const metrics = await page.evaluate(() => {
+    const box = (element) => {
+      if (!element) {
+        return null;
+      }
+
+      const rect = element.getBoundingClientRect();
+      return {
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
+      };
+    };
+    const header = document.querySelector("caffold-app-shell .app-header");
+    const project = document.querySelector("caffold-project-switcher .project-switcher-button");
+    const git = document.querySelector('caffold-header-actions button[data-action-group="git"]');
+    const github = document.querySelector(
+      'caffold-header-actions button[data-action-group="github"]',
+    );
+    const badge = git?.querySelector(".header-action-badge");
+
+    return {
+      viewportWidth: window.innerWidth,
+      header: {
+        clientWidth: header?.clientWidth ?? 0,
+        scrollWidth: header?.scrollWidth ?? 0,
+      },
+      project: box(project),
+      git: box(git),
+      github: box(github),
+      badge: box(badge),
+    };
+  });
+
+  expect(metrics.header.scrollWidth).toBeLessThanOrEqual(metrics.header.clientWidth + 1);
+  expect(metrics.project.right).toBeLessThanOrEqual(metrics.git.left);
+  expect(metrics.git.right).toBeLessThanOrEqual(metrics.github.left);
+  expect(metrics.github.right).toBeLessThanOrEqual(metrics.viewportWidth + 1);
+  expect(metrics.git.width).toBeGreaterThanOrEqual(30);
+  expect(metrics.git.width).toBeLessThanOrEqual(32);
+  expect(metrics.github.width).toBeGreaterThanOrEqual(30);
+  expect(metrics.github.width).toBeLessThanOrEqual(32);
+
+  if (metrics.badge) {
+    expect(metrics.badge.left).toBeGreaterThanOrEqual(metrics.git.left);
+    expect(metrics.badge.right).toBeGreaterThan(metrics.git.right);
+    expect(metrics.badge.right).toBeLessThanOrEqual(metrics.github.left);
+    expect(metrics.badge.bottom).toBeGreaterThan(metrics.git.top);
+    expect(metrics.badge.top).toBeLessThanOrEqual(metrics.git.top + 2);
+  }
+}
+
+async function expectHeaderPopoverFits(page, group) {
+  const metrics = await page.evaluate((actionGroup) => {
+    const popover = document.querySelector(
+      `caffold-header-actions .header-actions-popover[data-action-group="${actionGroup}"]`,
+    );
+    const rect = popover.getBoundingClientRect();
+
+    return {
+      left: rect.left,
+      right: rect.right,
+      top: rect.top,
+      bottom: rect.bottom,
+      width: rect.width,
+      height: rect.height,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    };
+  }, group);
+
+  expect(metrics.left).toBeGreaterThanOrEqual(0);
+  expect(metrics.top).toBeGreaterThanOrEqual(0);
+  expect(metrics.right).toBeLessThanOrEqual(metrics.viewportWidth + 1);
+  expect(metrics.bottom).toBeLessThanOrEqual(metrics.viewportHeight + 1);
+  expect(metrics.width).toBeGreaterThan(0);
+  expect(metrics.height).toBeGreaterThan(0);
 }
 
 async function mockRegisteredProject(page) {

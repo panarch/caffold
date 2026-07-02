@@ -25,6 +25,18 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "icons/apple-touch-icon.png" => Some(png(include_bytes!(
             "../frontend/assets/icons/apple-touch-icon.png"
         ))),
+        "brand/git-logomark-light.svg" => Some(svg(include_str!(
+            "../frontend/assets/brand/git-logomark-light.svg"
+        ))),
+        "brand/git-logomark-dark.svg" => Some(svg(include_str!(
+            "../frontend/assets/brand/git-logomark-dark.svg"
+        ))),
+        "brand/github-invertocat-light.svg" => Some(svg(include_str!(
+            "../frontend/assets/brand/github-invertocat-light.svg"
+        ))),
+        "brand/github-invertocat-dark.svg" => Some(svg(include_str!(
+            "../frontend/assets/brand/github-invertocat-dark.svg"
+        ))),
         "components/app-shell.css" => {
             Some(css(include_str!("../frontend/components/app-shell.css")))
         }
@@ -194,6 +206,10 @@ mod tests {
         let svg = get("icons/caffold.svg").expect("svg icon asset");
         assert_eq!(svg.content_type, "image/svg+xml");
         assert!(svg.body.starts_with(b"<svg"));
+
+        let brand_svg = get("brand/github-invertocat-light.svg").expect("brand svg asset");
+        assert_eq!(brand_svg.content_type, "image/svg+xml");
+        assert!(brand_svg.body.starts_with(b"<svg"));
 
         let png = get("icons/icon-192.png").expect("png icon asset");
         assert_eq!(png.content_type, "image/png");
