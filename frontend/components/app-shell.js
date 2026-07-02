@@ -333,8 +333,9 @@ class CaffoldAppShell extends HTMLElement {
     this.innerHTML = `
       <header class="app-header">
         <div class="app-context">
-          <div class="brand">
-            <strong>Caffold</strong>
+          <div class="brand" aria-label="Caffold">
+            <img class="brand-mark" src="/assets/icons/caffold-mark.svg" alt="" />
+            <strong class="brand-name">Caffold</strong>
           </div>
           <caffold-project-switcher></caffold-project-switcher>
           <caffold-header-actions></caffold-header-actions>

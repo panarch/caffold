@@ -14,6 +14,9 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "api.js" => Some(js(include_str!("../frontend/api.js"))),
         "navigation-routes.js" => Some(js(include_str!("../frontend/navigation-routes.js"))),
         "icons/caffold.svg" => Some(svg(include_str!("../frontend/assets/icons/caffold.svg"))),
+        "icons/caffold-mark.svg" => Some(svg(include_str!(
+            "../frontend/assets/icons/caffold-mark.svg"
+        ))),
         "icons/icon-192.png" => Some(png(include_bytes!("../frontend/assets/icons/icon-192.png"))),
         "icons/icon-512.png" => Some(png(include_bytes!("../frontend/assets/icons/icon-512.png"))),
         "icons/maskable-192.png" => Some(png(include_bytes!(
@@ -206,6 +209,10 @@ mod tests {
         let svg = get("icons/caffold.svg").expect("svg icon asset");
         assert_eq!(svg.content_type, "image/svg+xml");
         assert!(svg.body.starts_with(b"<svg"));
+
+        let mark_svg = get("icons/caffold-mark.svg").expect("svg mark asset");
+        assert_eq!(mark_svg.content_type, "image/svg+xml");
+        assert!(mark_svg.body.starts_with(b"<svg"));
 
         let brand_svg = get("brand/github-invertocat-light.svg").expect("brand svg asset");
         assert_eq!(brand_svg.content_type, "image/svg+xml");

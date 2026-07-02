@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="40 40 176 176" role="img" aria-label="Caffold logo mark">
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M68 58v140M188 58v140" stroke="#1f2a24" stroke-width="14"/>
+    <path d="M50 86h156M50 128h156M50 170h156" stroke="#1f2a24" stroke-width="12"/>
+    <path d="M68 86l60 42M68 170l60-42" stroke="#0b7a5f" stroke-width="10"/>
+    <path d="M188 86l-60 42M188 170l-60-42" stroke="#697a70" stroke-width="10"/>
+    <path d="M86 198h84" stroke="#697a70" stroke-width="10"/>
+  </g>
+
+  <g fill="#f7faf7" stroke="#1f2a24" stroke-width="8">
+    <circle cx="68" cy="58" r="8"/>
+    <circle cx="188" cy="58" r="8"/>
+    <circle cx="68" cy="198" r="8"/>
+    <circle cx="188" cy="198" r="8"/>
+  </g>
+</svg>

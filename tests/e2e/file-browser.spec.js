@@ -130,6 +130,12 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(svgResponse.headers()["content-type"]).toContain("image/svg+xml");
   expect(await svgResponse.text()).toContain('rx="48"');
 
+  const markResponse = await request.get("/assets/icons/caffold-mark.svg");
+  expect(markResponse.headers()["content-type"]).toContain("image/svg+xml");
+  const markSvg = await markResponse.text();
+  expect(markSvg).toContain('viewBox="40 40 176 176"');
+  expect(markSvg).not.toContain("<rect");
+
   const gitBrandResponse = await request.get("/assets/brand/git-logomark-light.svg");
   expect(gitBrandResponse.headers()["content-type"]).toContain("image/svg+xml");
   expect(await gitBrandResponse.text()).toContain("#100f0d");
@@ -151,6 +157,7 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorkerResponse.headers()["service-worker-allowed"]).toBe("/");
   const serviceWorker = await serviceWorkerResponse.text();
   expect(serviceWorker).toMatch(/const CACHE_NAME = "caffold-shell-v\d+"/);
+  expect(serviceWorker).toContain("/assets/icons/caffold-mark.svg");
   expect(serviceWorker).toContain("/assets/brand/git-logomark-light.svg");
   expect(serviceWorker).toContain("/assets/brand/github-invertocat-light.svg");
   expect(serviceWorker).toContain('url.pathname.startsWith("/api/")');
@@ -415,6 +422,7 @@ test("groups header review actions into Git and GitHub popovers", async ({ page 
     "src",
     "/assets/brand/github-invertocat-light.svg",
   );
+  await expectHeaderBrand(page);
   await expectHeaderActionsFit(page);
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "header-actions-badge-zero");
@@ -2639,6 +2647,23 @@ function headerActionGroupButton(page, group) {
   return page.locator(`caffold-header-actions button[data-action-group="${group}"]`);
 }
 
+async function expectHeaderBrand(page) {
+  const brand = page.locator("caffold-app-shell .brand");
+  const mark = brand.locator(".brand-mark");
+  const name = brand.locator(".brand-name");
+
+  await expect(mark).toBeVisible();
+  await expect(mark).toHaveAttribute("src", "/assets/icons/caffold-mark.svg");
+
+  const isPhone = await page.evaluate(() => window.matchMedia("(max-width: 520px)").matches);
+  if (isPhone) {
+    await expect(name).toBeHidden();
+  } else {
+    await expect(name).toBeVisible();
+    await expect(name).toHaveText("Caffold");
+  }
+}
+
 async function openHeaderActionGroup(page, group) {
   const button = headerActionGroupButton(page, group);
   const popover = page.locator(
@@ -2683,6 +2708,7 @@ async function expectHeaderActionsFit(page) {
       };
     };
     const header = document.querySelector("caffold-app-shell .app-header");
+    const brand = document.querySelector("caffold-app-shell .brand");
     const project = document.querySelector("caffold-project-switcher .project-switcher-button");
     const git = document.querySelector('caffold-header-actions button[data-action-group="git"]');
     const github = document.querySelector(
@@ -2696,6 +2722,7 @@ async function expectHeaderActionsFit(page) {
         clientWidth: header?.clientWidth ?? 0,
         scrollWidth: header?.scrollWidth ?? 0,
       },
+      brand: box(brand),
       project: box(project),
       git: box(git),
       github: box(github),
@@ -2704,6 +2731,7 @@ async function expectHeaderActionsFit(page) {
   });
 
   expect(metrics.header.scrollWidth).toBeLessThanOrEqual(metrics.header.clientWidth + 1);
+  expect(metrics.brand.right).toBeLessThanOrEqual(metrics.project.left);
   expect(metrics.project.right).toBeLessThanOrEqual(metrics.git.left);
   expect(metrics.git.right).toBeLessThanOrEqual(metrics.github.left);
   expect(metrics.github.right).toBeLessThanOrEqual(metrics.viewportWidth + 1);
