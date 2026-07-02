@@ -20,6 +20,7 @@ import {
   readFile,
   renameProject,
 } from "../api.js";
+import { parentRoute, parseRoute, routeEquals, routeUrl } from "../navigation-routes.js";
 import { fileNameFromPath, imageTypeLabel, isPreviewableImagePath } from "./dom.js";
 import "./pathbar.js";
 import "./project-switcher.js";
@@ -82,6 +83,9 @@ class CodgerAppShell extends HTMLElement {
     this.selectedCommitSummary = null;
     this.selectedGithubIssueSummary = null;
     this.scrollPositions = {};
+    this.currentRoute = null;
+    this.isApplyingRoute = false;
+    this.routedProject = null;
     this.browserView = "list";
     this.setBrowserView(this.browserView);
     this.leftPanelWidth = LEFT_PANEL_DEFAULT_WIDTH;
@@ -117,62 +121,108 @@ class CodgerAppShell extends HTMLElement {
     this.compareWorkspaceViewer.setCloseLabel("Back to compare");
     this.applyLeftPanelWidth(this.leftPanelWidth);
 
+    this.installNavigationHandlers();
+
     this.addEventListener("codger:navigate", (event) => {
-      this.loadDirectory(event.detail.path);
+      this.navigateToFileRoute(event.detail.path) || this.loadDirectory(event.detail.path);
     });
     this.addEventListener("codger:open-directory", (event) => {
-      this.loadDirectory(event.detail.path);
+      this.navigateToFileRoute(event.detail.path) || this.loadDirectory(event.detail.path);
     });
     this.addEventListener("codger:open-file", (event) => {
-      this.openFile(event.detail.path, event.detail.entry);
+      this.navigateToFileRoute(event.detail.path) ||
+        this.openFile(event.detail.path, event.detail.entry);
     });
     this.addEventListener("codger:close-file-viewer", (event) => {
       this.closeFileViewer(event);
     });
     this.addEventListener("codger:close-github-issue-viewer", () => {
-      this.backReviewWorkspace();
+      this.navigateToReviewParent() || this.backReviewWorkspace();
     });
     this.addEventListener("codger:open-diff-workspace", () => {
-      this.openDiffWorkspace();
+      this.navigateToCurrentProjectRoute({ kind: "diff", path: "" }) || this.openDiffWorkspace();
     });
     this.addEventListener("codger:open-log-workspace", () => {
-      this.openLogWorkspace();
+      this.navigateToCurrentProjectRoute({
+        kind: "log",
+        page: this.logPage,
+      }) || this.openLogWorkspace();
     });
     this.addEventListener("codger:open-compare-workspace", () => {
-      this.openCompareWorkspace();
+      this.navigateToCurrentProjectRoute({
+        kind: "compare",
+        baseRef: this.compareBaseRef ?? "",
+        headRef: this.compareHeadRef ?? "",
+        path: "",
+      }) || this.openCompareWorkspace();
     });
     this.addEventListener("codger:open-github-issues-workspace", () => {
-      this.openGithubIssuesWorkspace();
+      this.navigateToCurrentProjectRoute({
+        kind: "issues",
+        page: this.githubIssuesPage,
+      }) || this.openGithubIssuesWorkspace();
     });
     this.addEventListener("codger:close-review-workspace", () => {
-      this.closeReviewWorkspace();
+      this.navigateToReviewParent({ closeWorkspace: true }) || this.closeReviewWorkspace();
     });
     this.addEventListener("codger:back-review-workspace", () => {
-      this.backReviewWorkspace();
+      this.navigateToReviewParent() || this.backReviewWorkspace();
     });
     this.addEventListener("codger:open-git-diff", (event) => {
-      this.openDiff(event.detail.path, event.detail.kind, event.detail.status);
+      this.navigateToCurrentProjectRoute({
+        kind: "diff",
+        path: this.projectRelativePath(event.detail.path),
+      }) || this.openDiff(event.detail.path, event.detail.kind, event.detail.status);
     });
     this.addEventListener("codger:open-git-commit", (event) => {
-      this.openCommit(event.detail.sha);
+      this.navigateToCurrentProjectRoute({
+        kind: "log",
+        page: this.logPage,
+        sha: event.detail.sha,
+      }) || this.openCommit(event.detail.sha);
     });
     this.addEventListener("codger:change-log-page", (event) => {
-      this.changeLogPage(event.detail.page);
+      this.navigateToCurrentProjectRoute({
+        kind: "log",
+        page: event.detail.page,
+      }) || this.changeLogPage(event.detail.page);
     });
     this.addEventListener("codger:open-commit-diff", (event) => {
-      this.openCommitDiff(event.detail.sha, event.detail.path, event.detail.status);
+      this.navigateToCurrentProjectRoute({
+        kind: "log",
+        page: this.logPage,
+        sha: event.detail.sha,
+        path: this.projectRelativePath(event.detail.path),
+      }) || this.openCommitDiff(event.detail.sha, event.detail.path, event.detail.status);
     });
     this.addEventListener("codger:open-compare-diff", (event) => {
-      this.openCompareDiff(event.detail.path, event.detail.status);
+      this.navigateToCurrentProjectRoute({
+        kind: "compare",
+        baseRef: this.compareBaseRef ?? "",
+        headRef: this.compareHeadRef ?? "",
+        path: this.projectRelativePath(event.detail.path),
+      }) || this.openCompareDiff(event.detail.path, event.detail.status);
     });
     this.addEventListener("codger:change-compare-refs", (event) => {
-      this.changeCompareRefs(event.detail.baseRef, event.detail.headRef);
+      this.navigateToCurrentProjectRoute({
+        kind: "compare",
+        baseRef: event.detail.baseRef,
+        headRef: event.detail.headRef,
+        path: "",
+      }) || this.changeCompareRefs(event.detail.baseRef, event.detail.headRef);
     });
     this.addEventListener("codger:open-github-issue", (event) => {
-      this.openGithubIssue(event.detail.number);
+      this.navigateToCurrentProjectRoute({
+        kind: "issues",
+        page: this.githubIssuesPage,
+        number: event.detail.number,
+      }) || this.openGithubIssue(event.detail.number);
     });
     this.addEventListener("codger:change-github-issues-page", (event) => {
-      this.changeGithubIssuesPage(event.detail.page);
+      this.navigateToCurrentProjectRoute({
+        kind: "issues",
+        page: event.detail.page,
+      }) || this.changeGithubIssuesPage(event.detail.page);
     });
     this.addEventListener("codger:register-current-project", () => {
       this.registerCurrentProject();
@@ -232,6 +282,57 @@ class CodgerAppShell extends HTMLElement {
     `;
   }
 
+  installNavigationHandlers() {
+    this.usesNavigationApi =
+      "navigation" in window &&
+      typeof window.navigation?.addEventListener === "function" &&
+      typeof window.navigation?.navigate === "function";
+
+    if (this.usesNavigationApi) {
+      window.navigation.addEventListener("navigate", (event) => {
+        if (!event.canIntercept || event.hashChange || event.downloadRequest) {
+          return;
+        }
+
+        const destination = new URL(event.destination.url);
+        if (destination.origin !== window.location.origin) {
+          return;
+        }
+
+        const route = parseRoute(destination.href);
+        if (!route) {
+          return;
+        }
+
+        event.intercept({
+          handler: async () => {
+            if (this.currentRoute && routeEquals(this.currentRoute, route)) {
+              return;
+            }
+
+            await this.applyRoute(route);
+          },
+        });
+      });
+      window.navigation.addEventListener("currententrychange", () => {
+        const route = parseRoute(window.location.href);
+        if (!route || (this.currentRoute && routeEquals(this.currentRoute, route))) {
+          return;
+        }
+
+        this.applyRoute(route);
+      });
+      return;
+    }
+
+    window.addEventListener("popstate", () => {
+      const route = parseRoute(window.location.href);
+      if (route) {
+        this.applyRoute(route);
+      }
+    });
+  }
+
   async bootstrap() {
     this.fileViewer.setEmpty();
 
@@ -239,18 +340,241 @@ class CodgerAppShell extends HTMLElement {
       const health = await getHealth();
       this.storageKey = `${LAST_DIRECTORY_KEY_PREFIX}:${health.root}`;
       this.pathbar.homePath = health.homePath ?? null;
+      const initialRoute = parseRoute(window.location.href);
+      if (initialRoute) {
+        await this.applyRoute(initialRoute);
+        return;
+      }
+
       const fallbackPath = health.initialPath ?? "";
       const initialPath = this.loadStoredDirectoryPath() ?? fallbackPath;
       await this.loadDirectory(initialPath, { fallbackPath });
+      this.replaceWithCurrentProjectFileRoute();
     } catch (error) {
       this.fileList.setError(error);
       this.fileViewer.setError("", error);
     }
   }
 
+  navigateToRoute(route, options = {}) {
+    if (!route) {
+      return false;
+    }
+
+    if (this.currentRoute && routeEquals(this.currentRoute, route)) {
+      this.applyRoute(route);
+      return true;
+    }
+
+    const url = routeUrl(route);
+    if (this.usesNavigationApi) {
+      this.currentRoute = route;
+      window.navigation.navigate(url, {
+        history: options.replace ? "replace" : "push",
+      });
+      this.applyRoute(route);
+      return true;
+    }
+
+    const state = { codgerRoute: route };
+    if (options.replace) {
+      window.history.replaceState(state, "", url);
+    } else {
+      window.history.pushState(state, "", url);
+    }
+    this.applyRoute(route);
+    return true;
+  }
+
+  replaceRoute(route) {
+    if (!route) {
+      return;
+    }
+
+    this.currentRoute = route;
+    window.history.replaceState({ codgerRoute: route }, "", routeUrl(route));
+  }
+
+  async applyRoute(route) {
+    this.isApplyingRoute = true;
+    this.currentRoute = route;
+    try {
+      const project = await this.openProjectForRoute(route.projectId);
+      if (!project) {
+        return false;
+      }
+
+      if (route.kind === "files") {
+        await this.applyFilesRoute(project, route);
+      } else if (route.kind === "diff") {
+        await this.applyDiffRoute(project, route);
+      } else if (route.kind === "compare") {
+        await this.applyCompareRoute(project, route);
+      } else if (route.kind === "log") {
+        await this.applyLogRoute(project, route);
+      } else if (route.kind === "issues") {
+        await this.applyIssuesRoute(project, route);
+      }
+
+      return true;
+    } catch (error) {
+      this.fileList.setError(error);
+      this.fileViewer.setError("", error);
+      return false;
+    } finally {
+      this.isApplyingRoute = false;
+    }
+  }
+
+  async openProjectForRoute(projectId) {
+    if (!projectId) {
+      return null;
+    }
+
+    const project = await openProject(projectId);
+    this.currentProjectId = project.id;
+    this.routedProject = project;
+    return project;
+  }
+
+  async applyFilesRoute(project, route) {
+    this.closeReviewWorkspace();
+    if (!route.path) {
+      await this.loadDirectory(project.relativePath);
+      this.showFileList();
+      return;
+    }
+
+    const fullPath = this.projectPath(project, route.path);
+    if (await this.loadDirectory(fullPath, { allowFailure: true })) {
+      return;
+    }
+
+    const parent = this.projectPath(project, parentPath(route.path));
+    const openedParent = await this.loadDirectory(parent, {
+      fallbackPath: project.relativePath,
+    });
+    if (openedParent) {
+      await this.openFile(fullPath);
+    }
+  }
+
+  async applyDiffRoute(project, route) {
+    await this.loadDirectory(project.relativePath);
+    this.openDiffWorkspace();
+    if (!route.path) {
+      return;
+    }
+
+    const fullPath = this.projectPath(project, route.path);
+    await this.ensureGitStatus();
+    const file = this.gitStatus?.files?.find((entry) => entry.path === fullPath);
+    await this.openDiff(
+      fullPath,
+      file?.untracked ? "untracked" : file?.category ?? "unstaged",
+      file?.status ?? "",
+    );
+  }
+
+  async applyCompareRoute(project, route) {
+    await this.loadDirectory(project.relativePath);
+    this.compareBaseRef = route.baseRef || null;
+    this.compareHeadRef = route.headRef || null;
+    await this.openCompareWorkspace();
+    if (!route.path) {
+      return;
+    }
+
+    const fullPath = this.projectPath(project, route.path);
+    const file = this.gitCompare?.files?.find((entry) => entry.path === fullPath);
+    await this.openCompareDiff(fullPath, file?.status ?? "");
+  }
+
+  async applyLogRoute(project, route) {
+    await this.loadDirectory(project.relativePath);
+    if (!route.sha) {
+      await this.openLogWorkspace({ page: route.page });
+      return;
+    }
+
+    this.logPage = route.page ?? this.logPage;
+    await this.openCommit(route.sha);
+    if (!route.path) {
+      return;
+    }
+
+    const fullPath = this.projectPath(project, route.path);
+    const file = this.commitChangesTree.state?.commitPayload?.files?.find(
+      (entry) => entry.path === fullPath,
+    );
+    await this.openCommitDiff(route.sha, fullPath, file?.status ?? "");
+  }
+
+  async applyIssuesRoute(project, route) {
+    await this.loadDirectory(project.relativePath);
+    await this.openGithubIssuesWorkspace({ page: route.page });
+    if (route.number) {
+      await this.openGithubIssue(route.number);
+    }
+  }
+
+  navigateToFileRoute(path) {
+    const routePath = this.projectRelativePath(path);
+    if (routePath === null) {
+      return false;
+    }
+
+    return this.navigateToCurrentProjectRoute({
+      kind: "files",
+      path: routePath,
+    });
+  }
+
+  navigateToCurrentProjectRoute(route) {
+    if (!this.currentProjectId) {
+      return false;
+    }
+
+    return this.navigateToRoute({
+      ...route,
+      projectId: this.currentProjectId,
+    });
+  }
+
+  navigateToReviewParent(options = {}) {
+    const currentRoute = parseRoute(window.location.href) ?? this.currentRoute;
+    if (!currentRoute) {
+      if (options.closeWorkspace) {
+        return this.navigateToCurrentProjectRoute({ kind: "files", path: "" });
+      }
+      return false;
+    }
+
+    const parent = options.closeWorkspace
+      ? { kind: "files", projectId: currentRoute.projectId, path: "" }
+      : parentRoute(currentRoute);
+    return parent ? this.navigateToRoute(parent) : false;
+  }
+
+  replaceWithCurrentProjectFileRoute() {
+    const routePath = this.projectRelativePath(this.currentPath);
+    if (!this.currentProjectId || routePath === null) {
+      return;
+    }
+
+    this.replaceRoute({
+      kind: "files",
+      projectId: this.currentProjectId,
+      path: routePath,
+    });
+  }
+
   async loadDirectory(path, options = {}) {
     const requestId = ++this.directoryRequestId;
     this.fileRequestId += 1;
+    if (!this.isApplyingRoute && !options.preserveRoute) {
+      this.currentRoute = null;
+    }
     this.setBrowserView("list");
     this.currentPath = path ?? "";
     this.fileList.setSelectedPath("");
@@ -283,6 +607,10 @@ class CodgerAppShell extends HTMLElement {
       ) {
         this.clearStoredDirectoryPath();
         return this.loadDirectory(options.fallbackPath);
+      }
+
+      if (options.allowFailure) {
+        return false;
       }
 
       this.fileList.setError(error);
@@ -342,22 +670,39 @@ class CodgerAppShell extends HTMLElement {
   }
 
   closeFileViewer(event) {
+    const currentRoute = parseRoute(window.location.href) ?? this.currentRoute;
     if (event.target === this.fileViewer) {
+      if (currentRoute?.kind === "files" && currentRoute.path) {
+        this.navigateToRoute(parentRoute(currentRoute));
+        return;
+      }
       this.showFileList();
       return;
     }
 
     if (event.target === this.diffWorkspaceViewer) {
+      if (currentRoute?.kind === "diff" && currentRoute.path) {
+        this.navigateToRoute(parentRoute(currentRoute));
+        return;
+      }
       this.showDiffList();
       return;
     }
 
     if (event.target === this.logWorkspaceViewer) {
+      if (currentRoute?.kind === "log" && currentRoute.path) {
+        this.navigateToRoute(parentRoute(currentRoute));
+        return;
+      }
       this.showCommitFileList();
       return;
     }
 
     if (event.target === this.compareWorkspaceViewer) {
+      if (currentRoute?.kind === "compare" && currentRoute.path) {
+        this.navigateToRoute(parentRoute(currentRoute));
+        return;
+      }
       this.showCompareList();
     }
   }
@@ -594,6 +939,11 @@ class CodgerAppShell extends HTMLElement {
       this.currentProjectId = this.projectCandidate?.alreadyRegistered
         ? this.projectCandidate.projectId
         : null;
+      if (this.currentProjectId) {
+        this.routedProject =
+          this.projects.find((project) => project.id === this.currentProjectId) ??
+          this.routedProject;
+      }
       this.renderProjectState();
     } catch (error) {
       if (requestId !== this.projectRequestId) {
@@ -615,6 +965,52 @@ class CodgerAppShell extends HTMLElement {
     });
   }
 
+  currentProject() {
+    return (
+      this.projects.find((project) => project.id === this.currentProjectId) ??
+      (this.routedProject?.id === this.currentProjectId ? this.routedProject : null)
+    );
+  }
+
+  projectPath(project, path = "") {
+    const rootPath = cleanPath(project?.relativePath ?? "");
+    const relativePath = cleanPath(path);
+    if (!relativePath) {
+      return rootPath;
+    }
+
+    return rootPath ? `${rootPath}/${relativePath}` : relativePath;
+  }
+
+  projectRelativePath(path) {
+    const project = this.currentProject();
+    if (!project) {
+      return null;
+    }
+
+    const rootPath = cleanPath(project.relativePath ?? "");
+    const fullPath = cleanPath(path ?? "");
+    if (!rootPath) {
+      return fullPath;
+    }
+    if (fullPath === rootPath) {
+      return "";
+    }
+    if (fullPath.startsWith(`${rootPath}/`)) {
+      return fullPath.slice(rootPath.length + 1);
+    }
+
+    return null;
+  }
+
+  async ensureGitStatus() {
+    if (!this.gitRepository || this.gitStatus) {
+      return;
+    }
+
+    await this.loadGitStatus(this.currentPath);
+  }
+
   async registerCurrentProject() {
     const candidate = this.projectCandidate;
     if (!candidate || candidate.alreadyRegistered) {
@@ -626,7 +1022,13 @@ class CodgerAppShell extends HTMLElement {
         rootPath: candidate.rootPath,
         name: candidate.name,
       });
-      await this.loadDirectory(project.relativePath);
+      this.currentProjectId = project.id;
+      this.routedProject = project;
+      this.navigateToRoute({
+        kind: "files",
+        projectId: project.id,
+        path: "",
+      }) || (await this.loadDirectory(project.relativePath));
     } catch (error) {
       this.renderProjectState({ error });
     }
@@ -639,7 +1041,13 @@ class CodgerAppShell extends HTMLElement {
 
     try {
       const project = await openProject(id);
-      await this.loadDirectory(project.relativePath);
+      this.currentProjectId = project.id;
+      this.routedProject = project;
+      this.navigateToRoute({
+        kind: "files",
+        projectId: project.id,
+        path: "",
+      }) || (await this.loadDirectory(project.relativePath));
     } catch (error) {
       this.renderProjectState({ error });
     }
@@ -801,12 +1209,13 @@ class CodgerAppShell extends HTMLElement {
       this.updateWorkspaceChrome();
       if (this.workspaceMode === "issues") {
         if (status.github && status.issuesAvailable) {
-          this.loadGithubIssues(path, "open", this.githubIssuesPage);
+          await this.loadGithubIssues(path, "open", this.githubIssuesPage);
         } else {
           this.githubIssuesList.setUnavailable(status);
           this.githubIssueViewer.setEmpty();
         }
       }
+      return status;
     } catch (error) {
       if (requestId !== this.githubStatusRequestId) {
         return;
@@ -843,6 +1252,7 @@ class CodgerAppShell extends HTMLElement {
         this.githubIssueViewer.setEmpty();
       }
       this.updateWorkspaceChrome();
+      return issues;
     } catch (error) {
       if (requestId !== this.githubIssuesRequestId) {
         return;
@@ -878,6 +1288,7 @@ class CodgerAppShell extends HTMLElement {
       this.githubIssueViewer.setIssue(issue);
       this.selectedGithubIssueSummary = issue.issue;
       this.updateWorkspaceChrome();
+      return issue;
     } catch (error) {
       if (requestId !== this.githubIssueRequestId) {
         return;
@@ -906,6 +1317,7 @@ class CodgerAppShell extends HTMLElement {
       this.updateGitButton();
       this.updateWorkspaceChrome();
       this.logList.setLog(log);
+      return log;
     } catch (error) {
       if (requestId !== this.gitLogRequestId) {
         return;
@@ -941,7 +1353,7 @@ class CodgerAppShell extends HTMLElement {
       this.reviewWorkspace.setCompareRefs(this.gitRefs, this.compareBaseRef, this.compareHeadRef);
       this.updateGitButton();
       this.updateWorkspaceChrome();
-      await this.loadGitCompare(path, this.compareBaseRef, this.compareHeadRef);
+      return await this.loadGitCompare(path, this.compareBaseRef, this.compareHeadRef);
     } catch (error) {
       if (requestId !== this.gitRefsRequestId) {
         return;
@@ -974,6 +1386,7 @@ class CodgerAppShell extends HTMLElement {
       this.updateGitButton();
       this.updateWorkspaceChrome();
       this.compareTree.setCompare(compare);
+      return compare;
     } catch (error) {
       if (requestId !== this.gitCompareRequestId) {
         return;
@@ -1066,10 +1479,10 @@ class CodgerAppShell extends HTMLElement {
     this.reviewWorkspace.setCompareView("list");
     this.updateGitButton();
     this.compareWorkspaceViewer.setEmpty();
-    this.loadGitRefsAndCompare(this.currentPath);
+    return this.loadGitRefsAndCompare(this.currentPath);
   }
 
-  openGithubIssuesWorkspace() {
+  async openGithubIssuesWorkspace(options = {}) {
     if (!this.gitRepository) {
       return;
     }
@@ -1080,7 +1493,7 @@ class CodgerAppShell extends HTMLElement {
     this.logWorkspaceView = "list";
     this.logDetailFileView = "list";
     this.issuesWorkspaceView = "list";
-    this.githubIssuesPage = 1;
+    this.githubIssuesPage = options.page ?? 1;
     this.selectedGithubIssueSummary = null;
     this.reviewWorkspace.open("issues", this.workspaceDetails());
     this.reviewWorkspace.setIssuesView(this.issuesWorkspaceView);
@@ -1088,8 +1501,7 @@ class CodgerAppShell extends HTMLElement {
     this.githubIssueViewer.setEmpty();
     if (!this.githubStatus) {
       this.githubIssuesList.setLoading(null);
-      this.loadGithubStatus(this.currentPath);
-      return;
+      return await this.loadGithubStatus(this.currentPath);
     }
 
     if (!this.githubStatus.github || !this.githubStatus.issuesAvailable) {
@@ -1097,10 +1509,10 @@ class CodgerAppShell extends HTMLElement {
       return;
     }
 
-    this.loadGithubIssues(this.currentPath, "open", this.githubIssuesPage);
+    return await this.loadGithubIssues(this.currentPath, "open", this.githubIssuesPage);
   }
 
-  openLogWorkspace(options = {}) {
+  async openLogWorkspace(options = {}) {
     if (!this.gitRepository) {
       return;
     }
@@ -1125,7 +1537,7 @@ class CodgerAppShell extends HTMLElement {
       this.logWorkspaceViewer.setEmpty();
     }
     if (!options.skipReload) {
-      this.loadGitLog(this.currentPath, this.logPage);
+      return await this.loadGitLog(this.currentPath, this.logPage);
     }
   }
 
@@ -1495,4 +1907,17 @@ function chooseCompareRef(preferredRef, fallbackRef, refs = []) {
   }
 
   return refs?.[0]?.name ?? fallbackRef ?? preferredRef ?? null;
+}
+
+function cleanPath(path) {
+  return `${path ?? ""}`
+    .split("/")
+    .filter((segment) => segment && segment !== "." && segment !== "..")
+    .join("/");
+}
+
+function parentPath(path) {
+  const parts = cleanPath(path).split("/").filter(Boolean);
+  parts.pop();
+  return parts.join("/");
 }

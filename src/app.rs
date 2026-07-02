@@ -268,6 +268,8 @@ fn router_with_state(state: AppState) -> Router {
         .route("/api/github/issues", get(github_issues))
         .route("/api/github/issue", get(github_issue))
         .route("/assets/{*path}", get(asset))
+        .route("/projects", get(index))
+        .route("/projects/{*path}", get(index))
         .with_state(state)
 }
 

@@ -233,6 +233,334 @@ test("manages project records from the header switcher", async ({ page }, testIn
   );
 });
 
+test("restores project file routes and browser navigation", async ({ page }, testInfo) => {
+  const project = await mockRegisteredProject(page);
+
+  await page.goto(`/projects/${project.id}/files/example.rs`);
+  await expect(page).toHaveURL(`/projects/${project.id}/files/example.rs`);
+  await expect(page.locator("codger-pathbar")).toContainText("src");
+  await expect(page.locator("codger-file-viewer")).toContainText("example.rs");
+  await expect(page.locator("codger-code-viewer")).toContainText("pub fn sample");
+
+  await page.reload();
+  await expect(page).toHaveURL(`/projects/${project.id}/files/example.rs`);
+  await expect(page.locator("codger-file-viewer")).toContainText("example.rs");
+
+  if (testInfo.project.name === "phone") {
+    await page.getByRole("button", { name: "Back to files" }).click();
+    await expect(page).toHaveURL(`/projects/${project.id}/files`);
+    await expect(page.locator("codger-file-list")).toBeVisible();
+  }
+
+  await page.goto(`/projects/${project.id}/files`);
+  await expect(page.locator("codger-file-list")).toBeVisible();
+  await page.locator('button[data-entry-path="src/example.rs"]').click();
+  await expect(page).toHaveURL(`/projects/${project.id}/files/example.rs`);
+  await page.goBack();
+  await expect(page).toHaveURL(`/projects/${project.id}/files`);
+  await expect(page.locator("codger-file-list")).toBeVisible();
+
+  await page.goto(`/projects/${project.id}/files/planner`);
+  await expect(page).toHaveURL(`/projects/${project.id}/files/planner`);
+  await expect(page.locator('button[data-entry-path="src/planner/mod.rs"]')).toBeVisible();
+
+  await page.goBack();
+  await expect(page).toHaveURL(`/projects/${project.id}/files`);
+  await expect(page.locator('button[data-entry-path="src/example.rs"]')).toBeVisible();
+});
+
+test("restores project review routes", async ({ page }) => {
+  const project = await mockRegisteredProject(page);
+  const repository = { rootPath: "src", branch: "feature/review", dirty: true };
+  const commit = {
+    sha: "abcdef1234567890abcdef1234567890abcdef12",
+    shortSha: "abcdef1",
+    subject: "Route review state",
+    body: "",
+    authorName: "Codger",
+    authorEmail: "codger@example.test",
+    authorTimeMs: 1_767_000_000_000,
+  };
+  const github = {
+    owner: "example",
+    name: "codger",
+    nameWithOwner: "example/codger",
+    url: "https://github.com/example/codger",
+  };
+
+  await page.route(/\/api\/git\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        files: [
+          {
+            path: "src/example.rs",
+            repoRelativePath: "example.rs",
+            status: " M",
+            category: "unstaged",
+            staged: false,
+            unstaged: true,
+            untracked: false,
+          },
+        ],
+      }),
+    }),
+  );
+  await page.route(/\/api\/git\/diff(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("file")).toBe("src/example.rs");
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        path: "src/example.rs",
+        repoRelativePath: "example.rs",
+        kind: "unstaged",
+        diff: [
+          "diff --git a/example.rs b/example.rs",
+          "index 1111111..2222222 100644",
+          "--- a/example.rs",
+          "+++ b/example.rs",
+          "@@ -1,1 +1,2 @@",
+          "-old route line",
+          "+new route line",
+        ].join("\n"),
+      }),
+    });
+  });
+  await page.route(/\/api\/git\/refs(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        refs: [
+          { name: "feature/review", kind: "local" },
+          { name: "origin/main", kind: "remote" },
+        ],
+        currentRef: "feature/review",
+        defaultBaseRef: "origin/main",
+        defaultHeadRef: "feature/review",
+      }),
+    }),
+  );
+  await page.route(/\/api\/git\/compare(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("base")).toBe("origin/main");
+    expect(url.searchParams.get("head")).toBe("feature/review");
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        baseRef: "origin/main",
+        headRef: "feature/review",
+        files: [
+          {
+            path: "src/example.rs",
+            repoRelativePath: "example.rs",
+            status: "M",
+          },
+        ],
+      }),
+    });
+  });
+  await page.route(/\/api\/git\/compare-diff(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("base")).toBe("origin/main");
+    expect(url.searchParams.get("head")).toBe("feature/review");
+    expect(url.searchParams.get("file")).toBe("src/example.rs");
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        path: "src/example.rs",
+        repoRelativePath: "example.rs",
+        kind: "origin/main...feature/review",
+        diff: [
+          "diff --git a/example.rs b/example.rs",
+          "@@ -1,1 +1,2 @@",
+          "-old compare route line",
+          "+new compare route line",
+        ].join("\n"),
+      }),
+    });
+  });
+  await page.route(/\/api\/git\/log(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        commits: [commit],
+        page: 2,
+        perPage: 50,
+        totalCommits: 51,
+        totalPages: 2,
+        hasPrevious: true,
+        hasNext: false,
+      }),
+    }),
+  );
+  await page.route(/\/api\/git\/commit(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        commit,
+        files: [
+          {
+            path: "src/planner/mod.rs",
+            repoRelativePath: "planner/mod.rs",
+            status: "M",
+          },
+        ],
+      }),
+    }),
+  );
+  await page.route(/\/api\/git\/commit-diff(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("sha")).toBe(commit.sha);
+    expect(url.searchParams.get("file")).toBe("src/planner/mod.rs");
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        path: "src/planner/mod.rs",
+        repoRelativePath: "planner/mod.rs",
+        kind: "commit abcdef1",
+        diff: [
+          "diff --git a/planner/mod.rs b/planner/mod.rs",
+          "@@ -1,1 +1,2 @@",
+          "-old commit route line",
+          "+new commit route line",
+        ].join("\n"),
+      }),
+    });
+  });
+  await page.route(/\/api\/github\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        github,
+        ghAvailable: true,
+        authenticated: true,
+        issuesAvailable: true,
+        message: null,
+      }),
+    }),
+  );
+  await page.route(/\/api\/github\/issues(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        github,
+        state: "open",
+        issues: [
+          {
+            number: 42,
+            title: "Route issue detail",
+            state: "OPEN",
+            author: "Codger",
+            labels: ["routing"],
+            assignees: [],
+            comments: 1,
+            updatedAt: "2026-07-01T10:00:00Z",
+            url: "https://github.com/example/codger/issues/42",
+          },
+        ],
+        page: 2,
+        perPage: 50,
+        totalIssues: 51,
+        totalPages: 2,
+        hasPrevious: true,
+        hasNext: false,
+      }),
+    }),
+  );
+  await page.route(/\/api\/github\/issue(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("number")).toBe("42");
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        github,
+        issue: {
+          number: 42,
+          title: "Route issue detail",
+          state: "OPEN",
+          author: "Codger",
+          labels: ["routing"],
+          assignees: [],
+          comments: 1,
+          body: "Route issue body",
+          bodyHtml: "<p>Route issue body</p>",
+          createdAt: "2026-07-01T08:00:00Z",
+          updatedAt: "2026-07-01T10:00:00Z",
+          url: "https://github.com/example/codger/issues/42",
+        },
+      }),
+    });
+  });
+
+  await page.goto(`/projects/${project.id}/diff/example.rs`);
+  await expect(page.locator("codger-review-workspace")).toHaveAttribute(
+    "data-workspace-mode",
+    "diff",
+  );
+  await expect(page.locator("codger-diff-viewer")).toContainText("new route line");
+  await page.goto(`/projects/${project.id}/diff`);
+  await page.locator('button[data-change-path="src/example.rs"]').click();
+  await expect(page).toHaveURL(`/projects/${project.id}/diff/example.rs`);
+  await page.goBack();
+  await expect(page).toHaveURL(`/projects/${project.id}/diff`);
+
+  await page.goto(
+    `/projects/${project.id}/compare/example.rs?base=origin%2Fmain&head=feature%2Freview`,
+  );
+  await expect(page.locator("codger-review-workspace")).toHaveAttribute(
+    "data-workspace-mode",
+    "compare",
+  );
+  await expect(page.locator('select[data-compare-ref="base"]')).toHaveValue("origin/main");
+  await expect(page.locator('select[data-compare-ref="head"]')).toHaveValue("feature/review");
+  await expect(page.locator("codger-diff-viewer")).toContainText("new compare route line");
+  await page.goto(`/projects/${project.id}/compare?base=origin%2Fmain&head=feature%2Freview`);
+  await page.locator('button[data-compare-path="src/example.rs"]').click();
+  await expect(page).toHaveURL(
+    `/projects/${project.id}/compare/example.rs?base=origin%2Fmain&head=feature%2Freview`,
+  );
+  await page.goBack();
+  await expect(page).toHaveURL(
+    `/projects/${project.id}/compare?base=origin%2Fmain&head=feature%2Freview`,
+  );
+
+  await page.goto(`/projects/${project.id}/log/${commit.sha}/planner/mod.rs?page=2`);
+  await expect(page.locator("codger-review-workspace")).toHaveAttribute(
+    "data-workspace-mode",
+    "log",
+  );
+  await expect(page.locator(".review-workspace-title h2")).toHaveText("Commit");
+  await expect(page.locator("codger-diff-viewer")).toContainText("new commit route line");
+  await page.goto(`/projects/${project.id}/log/${commit.sha}?page=2`);
+  await page.locator('button[data-commit-path="src/planner/mod.rs"]').click();
+  await expect(page).toHaveURL(`/projects/${project.id}/log/${commit.sha}/planner/mod.rs?page=2`);
+  await page.goBack();
+  await expect(page).toHaveURL(`/projects/${project.id}/log/${commit.sha}?page=2`);
+  await page.getByRole("button", { name: "Back to log" }).click();
+  await expect(page).toHaveURL(`/projects/${project.id}/log?page=2`);
+
+  await page.goto(`/projects/${project.id}/issues/42?page=2`);
+  await expect(page.locator("codger-review-workspace")).toHaveAttribute(
+    "data-workspace-mode",
+    "issues",
+  );
+  await expect(page.locator("codger-github-issue-viewer")).toContainText("Route issue body");
+  await page.getByRole("button", { name: "Back to issues" }).click();
+  await expect(page).toHaveURL(`/projects/${project.id}/issues?page=2`);
+});
+
 test("previews image files in the viewer", async ({ page }) => {
   await page.goto("/");
 
@@ -1367,6 +1695,57 @@ async function openProjectPopover(switcher) {
   }
 
   await expect(popover).toBeVisible();
+}
+
+async function mockRegisteredProject(page) {
+  const project = {
+    id: "prj_route_fixture",
+    name: "src",
+    rootPath: resolve("tests/fixtures/home/src"),
+    relativePath: "src",
+    createdMs: 1,
+    updatedMs: 1,
+    lastOpenedMs: 1,
+  };
+
+  await page.route(`/api/projects/${project.id}/open`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(project),
+    }),
+  );
+  await page.route(/\/api\/projects(?:\?|$)/, (route) => {
+    if (route.request().method() !== "GET") {
+      return route.continue();
+    }
+
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ projects: [project] }),
+    });
+  });
+  await page.route(/\/api\/project-candidate(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    const path = url.searchParams.get("path") ?? "";
+    const inProject = path === project.relativePath || path.startsWith(`${project.relativePath}/`);
+
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        candidate: inProject
+          ? {
+              name: project.name,
+              rootPath: project.rootPath,
+              relativePath: project.relativePath,
+              alreadyRegistered: true,
+              projectId: project.id,
+            }
+          : null,
+      }),
+    });
+  });
+
+  return project;
 }
 
 async function expectGlobalScrollLocked(page) {

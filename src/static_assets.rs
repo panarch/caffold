@@ -10,6 +10,7 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "styles.css" => Some(css(include_str!("../frontend/styles.css"))),
         "app.js" => Some(js(include_str!("../frontend/app.js"))),
         "api.js" => Some(js(include_str!("../frontend/api.js"))),
+        "navigation-routes.js" => Some(js(include_str!("../frontend/navigation-routes.js"))),
         "components/app-shell.css" => {
             Some(css(include_str!("../frontend/components/app-shell.css")))
         }
