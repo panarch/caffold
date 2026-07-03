@@ -173,79 +173,79 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain("/assets/brand/git-logomark-light.svg");
   expect(serviceWorker).toContain("/assets/brand/github-invertocat-light.svg");
   expect(serviceWorker).toContain("/assets/brand/codex-template@2x.png");
-  expect(serviceWorker).toContain("/assets/pages/(app-shell)/layout.js");
-  expect(serviceWorker).toContain("/assets/pages/(app-shell)/layout.css");
-  expect(serviceWorker).toContain("/assets/pages/(app-shell)/components/pathbar.js");
-  expect(serviceWorker).toContain("/assets/pages/(app-shell)/components/project-switcher.js");
-  expect(serviceWorker).toContain("/assets/pages/(app-shell)/components/header-actions.js");
+  expect(serviceWorker).toContain("/assets/pages/layout.js");
+  expect(serviceWorker).toContain("/assets/pages/layout.css");
+  expect(serviceWorker).toContain("/assets/pages/components/pathbar.js");
+  expect(serviceWorker).toContain("/assets/pages/components/project-switcher.js");
+  expect(serviceWorker).toContain("/assets/pages/components/header-actions.js");
   expect(serviceWorker).not.toContain("/assets/components/pathbar.js");
   expect(serviceWorker).not.toContain("/assets/components/project-switcher.js");
   expect(serviceWorker).not.toContain("/assets/components/header-actions.js");
-  expect(serviceWorker).toContain("/assets/pages/(app-shell)/files/page.js");
-  expect(serviceWorker).toContain("/assets/pages/(app-shell)/files/components/list.js");
+  expect(serviceWorker).toContain("/assets/pages/files/page.js");
+  expect(serviceWorker).toContain("/assets/pages/files/components/list.js");
   expect(serviceWorker).not.toContain("/assets/components/file-list.js");
-  expect(serviceWorker).toContain("/assets/pages/(app-shell)/(review-workspace)/layout.js");
+  expect(serviceWorker).toContain("/assets/pages/(review-workspace)/layout.js");
   expect(serviceWorker).toContain(
-    "/assets/pages/(app-shell)/(review-workspace)/(git)/layout.js",
+    "/assets/pages/(review-workspace)/(git)/layout.js",
   );
   expect(serviceWorker).toContain(
-    "/assets/pages/(app-shell)/(review-workspace)/(git)/diff/page.js",
+    "/assets/pages/(review-workspace)/(git)/diff/page.js",
   );
   expect(serviceWorker).toContain(
-    "/assets/pages/(app-shell)/(review-workspace)/(git)/diff/components/changes-tree.js",
+    "/assets/pages/(review-workspace)/(git)/diff/components/changes-tree.js",
   );
   expect(serviceWorker).toContain(
-    "/assets/pages/(app-shell)/(review-workspace)/(git)/(log)/layout.js",
+    "/assets/pages/(review-workspace)/(git)/(log)/layout.js",
   );
   expect(serviceWorker).not.toContain(
-    "/assets/pages/(app-shell)/(review-workspace)/(git)/(log)/page.js",
+    "/assets/pages/(review-workspace)/(git)/(log)/page.js",
   );
   expect(serviceWorker).toContain(
-    "/assets/pages/(app-shell)/(review-workspace)/(git)/(log)/list/page.js",
+    "/assets/pages/(review-workspace)/(git)/(log)/list/page.js",
   );
   expect(serviceWorker).toContain(
-    "/assets/pages/(app-shell)/(review-workspace)/(git)/(log)/commit/page.js",
+    "/assets/pages/(review-workspace)/(git)/(log)/commit/page.js",
   );
   expect(serviceWorker).toContain(
-    "/assets/pages/(app-shell)/(review-workspace)/(git)/(log)/commit/components/changes-tree.js",
+    "/assets/pages/(review-workspace)/(git)/(log)/commit/components/changes-tree.js",
   );
   expect(serviceWorker).toContain(
-    "/assets/pages/(app-shell)/(review-workspace)/(git)/compare/components/compare-tree.js",
+    "/assets/pages/(review-workspace)/(git)/compare/components/compare-tree.js",
   );
   expect(serviceWorker).not.toContain(
-    "/assets/pages/(app-shell)/(review-workspace)/(git)/(log)/components/list.js",
+    "/assets/pages/(review-workspace)/(git)/(log)/components/list.js",
   );
   expect(serviceWorker).not.toContain(
-    "/assets/pages/(app-shell)/(review-workspace)/(git)/(log)/components/commit-tree.js",
+    "/assets/pages/(review-workspace)/(git)/(log)/components/commit-tree.js",
   );
   expect(serviceWorker).not.toContain("/assets/components/changes-tree.js");
   expect(serviceWorker).not.toContain("/assets/components/log-list.js");
   expect(serviceWorker).not.toContain("/assets/components/commit-changes-tree.js");
   expect(serviceWorker).toContain(
-    "/assets/pages/(app-shell)/(review-workspace)/(github)/(issues)/layout.js",
+    "/assets/pages/(review-workspace)/(github)/(issues)/layout.js",
   );
   expect(serviceWorker).toContain(
-    "/assets/pages/(app-shell)/(review-workspace)/(github)/(issues)/list/page.js",
+    "/assets/pages/(review-workspace)/(github)/(issues)/list/page.js",
   );
   expect(serviceWorker).toContain(
-    "/assets/pages/(app-shell)/(review-workspace)/(github)/(issues)/detail/page.js",
+    "/assets/pages/(review-workspace)/(github)/(issues)/detail/page.js",
   );
   expect(serviceWorker).not.toContain("/assets/components/github-issues-list.js");
   expect(serviceWorker).not.toContain("/assets/components/github-issue-viewer.js");
   expect(serviceWorker).toContain(
-    "/assets/pages/(app-shell)/(review-workspace)/(github)/(pulls)/layout.js",
+    "/assets/pages/(review-workspace)/(github)/(pulls)/layout.js",
   );
   expect(serviceWorker).toContain(
-    "/assets/pages/(app-shell)/(review-workspace)/(github)/(pulls)/list/page.js",
+    "/assets/pages/(review-workspace)/(github)/(pulls)/list/page.js",
   );
   expect(serviceWorker).toContain(
-    "/assets/pages/(app-shell)/(review-workspace)/(github)/(pulls)/detail/page.js",
+    "/assets/pages/(review-workspace)/(github)/(pulls)/detail/page.js",
   );
   expect(serviceWorker).toContain(
-    "/assets/pages/(app-shell)/(review-workspace)/(github)/(pulls)/files/page.js",
+    "/assets/pages/(review-workspace)/(github)/(pulls)/files/page.js",
   );
   expect(serviceWorker).toContain(
-    "/assets/pages/(app-shell)/(review-workspace)/(github)/(pulls)/files/components/tree.js",
+    "/assets/pages/(review-workspace)/(github)/(pulls)/files/components/tree.js",
   );
   expect(serviceWorker).not.toContain("/assets/components/github-pulls-list.js");
   expect(serviceWorker).not.toContain("/assets/components/github-pull-viewer.js");
@@ -253,18 +253,18 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).not.toContain("/assets/components/app-shell.js");
   expect(serviceWorker).not.toContain("/assets/components/review-workspace.js");
   expect(serviceWorker).toContain(
-    "/assets/pages/(app-shell)/components/header-actions/codex-status.css",
+    "/assets/pages/components/header-actions/codex-status.css",
   );
   expect(serviceWorker).toContain(
-    "/assets/pages/(app-shell)/components/header-actions/codex-status.js",
+    "/assets/pages/components/header-actions/codex-status.js",
   );
   expect(serviceWorker).toContain(
-    "/assets/pages/(app-shell)/components/header-actions/git-status.js",
+    "/assets/pages/components/header-actions/git-status.js",
   );
   expect(serviceWorker).toContain(
-    "/assets/pages/(app-shell)/components/header-actions/github-status.js",
+    "/assets/pages/components/header-actions/github-status.js",
   );
-  expect(serviceWorker).toContain("/assets/pages/(app-shell)/components/header-actions/shared.js");
+  expect(serviceWorker).toContain("/assets/pages/components/header-actions/shared.js");
   expect(serviceWorker).not.toContain("/assets/components/header-actions/codex-status.css");
   expect(serviceWorker).not.toContain("/assets/components/header-actions/codex-status.js");
   expect(serviceWorker).not.toContain("/assets/components/header-actions/git-status.js");

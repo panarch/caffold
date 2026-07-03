@@ -15,8 +15,8 @@ filename communicates whether the custom element is a layout or a leaf page.
 Example:
 
 ```text
-frontend/pages/(app-shell)/layout.js
-frontend/pages/(app-shell)/layout.css
+frontend/pages/layout.js
+frontend/pages/layout.css
 ```
 
 defines the app-level `<caffold-app-shell>` layout. Nested page directories
@@ -69,7 +69,12 @@ caffold-app-shell
               scaffold-review-file-viewer
 ```
 
-`(review-workspace)` is a pathless review container inside `(app-shell)`. It owns
+`frontend/pages/layout.js` is the app root layout and defines
+`<caffold-app-shell>` directly. `frontend/pages` is the one exception to the
+parenthesized grouping rule because wrapping the root app shell would only
+repeat the root hierarchy.
+
+`(review-workspace)` is a pathless review container inside the app root. It owns
 shared review chrome, close/back behavior, panel resizing, and mobile
 list/detail transitions. It is not a Git-only or GitHub-only page.
 Nested layouts own their own list/detail flow once they have a clear domain
@@ -88,83 +93,82 @@ The current page-level skeleton is:
 
 ```text
 frontend/pages/
-  (app-shell)/
+  layout.js
+  layout.css
+  components/
+    pathbar.js
+    pathbar.css
+    project-switcher.js
+    project-switcher.css
+    header-actions.js
+    header-actions.css
+    header-actions/
+      shared.js
+      git-status.js
+      github-status.js
+      codex-status.js
+      codex-status.css
+
+  files/
+    page.js
+    page.css
+    components/
+      list.js
+      list.css
+
+  (review-workspace)/
     layout.js
     layout.css
-    components/
-      pathbar.js
-      pathbar.css
-      project-switcher.js
-      project-switcher.css
-      header-actions.js
-      header-actions.css
-      header-actions/
-        shared.js
-        git-status.js
-        github-status.js
-        codex-status.js
-        codex-status.css
 
-    files/
-      page.js
-      page.css
-      components/
-        list.js
-        list.css
-
-    (review-workspace)/
+    (git)/
       layout.js
       layout.css
-
-      (git)/
+      diff/
+        page.js
+        page.css
+      compare/
+        page.js
+        page.css
+      (log)/
         layout.js
         layout.css
-        diff/
+        list/
           page.js
           page.css
-        compare/
+        commit/
           page.js
           page.css
-        (log)/
-          layout.js
-          layout.css
-          list/
-            page.js
-            page.css
-          commit/
-            page.js
-            page.css
-            components/
-              changes-tree.js
-              changes-tree.css
+          components/
+            changes-tree.js
+            changes-tree.css
 
-      (github)/
+    (github)/
+      layout.js
+      layout.css
+      (issues)/
         layout.js
         layout.css
-        (issues)/
-          layout.js
-          layout.css
-          list/
-            page.js
-            page.css
-          detail/
-            page.js
-            page.css
-        (pulls)/
-          layout.js
-          layout.css
-          list/
-            page.js
-            page.css
-          detail/
-            page.js
-            page.css
-          files/
-            page.js
-            page.css
-            components/
-              tree.js
-              tree.css
+        list/
+          page.js
+          page.css
+        detail/
+          page.js
+          page.css
+      (pulls)/
+        layout.js
+        layout.css
+        list/
+          page.js
+          page.css
+        detail/
+          page.js
+          page.css
+        files/
+          page.js
+          page.css
+          components/
+            tree.js
+            tree.css
 ```
 
 Keep reusable building blocks in `frontend/components`:
@@ -180,12 +184,12 @@ Keep reusable building blocks in `frontend/components`:
 Page-specific helper components can live under that page's `components/`
 directory when moving them to shared `frontend/components` would hide the
 ownership boundary. For example, the file browser list belongs only to
-`(app-shell)/files/page`, the Git log list belongs only to
-`(git)/(log)/list/page`, the commit changes tree belongs only to
+`files/page`, the Git log list belongs only to `(git)/(log)/list/page`,
+the commit changes tree belongs only to
 `(git)/(log)/commit/page`, and the PR files tree belongs only to
 `(github)/(pulls)/files/page`.
 Layout-specific helper components follow the same rule. App chrome such as the
-pathbar, project switcher, and header actions belongs to `(app-shell)/layout`.
+pathbar, project switcher, and header actions belongs to `frontend/pages/layout`.
 
 ## Naming Rules
 
@@ -200,8 +204,9 @@ pathbar, project switcher, and header actions belongs to `(app-shell)/layout`.
   the current screen. Components such as `pagination`, `file-viewer`,
   `diff-viewer`, and `github-markdown` stay component-level.
 - Wrap intermediate `frontend/pages` directories that do not contain `page.js`
-  in parentheses, such as `(app-shell)`, `(review-workspace)`, `(git)`, or
-  `(github)`. These are pathless grouping/layout nodes, not URL segments.
+  in parentheses, such as `(review-workspace)`, `(git)`, or `(github)`. These
+  are pathless grouping/layout nodes, not URL segments. Do not wrap the
+  `frontend/pages` root layout itself.
 
 ## Migration Rules
 
