@@ -1,7 +1,7 @@
-import { escapeHtml } from "./dom.js";
-import { renderEntryIcon, warmIcons } from "./icons.js";
+import { escapeHtml } from "../../../../../components/dom.js";
+import { renderEntryIcon, warmIcons } from "../../../../../components/icons.js";
 
-class CaffoldCompareTree extends HTMLElement {
+class CaffoldGitComparePage extends HTMLElement {
   connectedCallback() {
     this.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-node-key], button[data-compare-path]");
@@ -264,7 +264,7 @@ class CaffoldCompareTree extends HTMLElement {
   }
 }
 
-customElements.define("caffold-compare-tree", CaffoldCompareTree);
+customElements.define("caffold-git-compare-page", CaffoldGitComparePage);
 
 function buildCompareTree(files) {
   const root = { kind: "root", children: new Map() };

@@ -1,5 +1,5 @@
-import { escapeHtml } from "./dom.js";
-import { renderInlineIcon, warmIcons } from "./icons.js";
+import { escapeHtml } from "../../../components/dom.js";
+import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
 
 const REVIEW_PANEL_DEFAULT_WIDTH = 320;
 const REVIEW_PANEL_MIN_WIDTH = 180;
@@ -131,7 +131,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
         </header>
         <div class="review-workspace-body">
           <div class="review-workspace-view workspace-mode-diff" hidden>
-            <caffold-changes-tree></caffold-changes-tree>
+            <caffold-git-working-tree-page></caffold-git-working-tree-page>
             <div
               class="review-panel-resizer"
               role="separator"
@@ -143,7 +143,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
             <caffold-review-file-viewer></caffold-review-file-viewer>
           </div>
           <div class="review-workspace-view workspace-mode-compare" hidden>
-            <caffold-compare-tree></caffold-compare-tree>
+            <caffold-git-compare-page></caffold-git-compare-page>
             <div
               class="review-panel-resizer"
               role="separator"
@@ -170,24 +170,10 @@ class CaffoldReviewWorkspace extends HTMLElement {
             </div>
           </div>
           <div class="review-workspace-view workspace-mode-issues" hidden>
-            <caffold-github-issues-list></caffold-github-issues-list>
-            <caffold-github-issue-viewer></caffold-github-issue-viewer>
+            <caffold-github-issues-layout></caffold-github-issues-layout>
           </div>
           <div class="review-workspace-view workspace-mode-pulls" hidden>
-            <caffold-github-pulls-list></caffold-github-pulls-list>
-            <caffold-github-pull-viewer></caffold-github-pull-viewer>
-            <div class="pull-files-review-detail">
-              <caffold-github-pull-files-tree></caffold-github-pull-files-tree>
-              <div
-                class="review-panel-resizer"
-                role="separator"
-                aria-label="Resize review side panel"
-                aria-orientation="vertical"
-                tabindex="0"
-                data-resize-target="pulls"
-              ></div>
-              <caffold-review-file-viewer></caffold-review-file-viewer>
-            </div>
+            <caffold-github-pulls-layout></caffold-github-pulls-layout>
           </div>
         </div>
       </section>
@@ -203,8 +189,12 @@ class CaffoldReviewWorkspace extends HTMLElement {
     this.logView = this.querySelector(".workspace-mode-log");
     this.logDetailView = this.querySelector(".log-review-detail");
     this.issuesView = this.querySelector(".workspace-mode-issues");
+    this.issuesLayout = this.querySelector("caffold-github-issues-layout");
+    this.issuesLayout.ensureRendered();
     this.pullsView = this.querySelector(".workspace-mode-pulls");
-    this.pullFilesView = this.querySelector(".pull-files-review-detail");
+    this.pullsLayout = this.querySelector("caffold-github-pulls-layout");
+    this.pullsLayout.ensureRendered();
+    this.pullFilesView = this.querySelector("caffold-github-pull-files-page");
     this.renderChrome();
   }
 
@@ -270,13 +260,17 @@ class CaffoldReviewWorkspace extends HTMLElement {
 
   setIssuesView(view) {
     this.ensureRendered();
-    this.issuesView.dataset.issuesView = view;
+    const nextView = view === "detail" ? "detail" : "list";
+    this.issuesView.dataset.issuesView = nextView;
+    this.issuesLayout.setView(nextView);
     this.updateMobileDetailState();
   }
 
   setPullsView(view) {
     this.ensureRendered();
-    this.pullsView.dataset.pullsView = normalizePullsView(view);
+    const nextView = normalizePullsView(view);
+    this.pullsView.dataset.pullsView = nextView;
+    this.pullsLayout.setView(nextView);
     this.updateMobileDetailState();
   }
 
@@ -488,7 +482,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
     }
 
     if (target === "pulls") {
-      return this.querySelector(".pull-files-review-detail");
+      return this.querySelector("caffold-github-pull-files-page");
     }
 
     return null;
@@ -515,10 +509,10 @@ class CaffoldReviewWorkspace extends HTMLElement {
       (this.mode === "log" &&
         this.logView.dataset.logView === "detail" &&
         this.logDetailView.dataset.detailView === "viewer") ||
-      (this.mode === "issues" && this.issuesView.dataset.issuesView === "detail") ||
+      (this.mode === "issues" && this.issuesLayout.dataset.issuesView === "detail") ||
       (this.mode === "pulls" &&
-        (this.pullsView.dataset.pullsView === "detail" ||
-          (this.pullsView.dataset.pullsView === "files" &&
+        (this.pullsLayout.dataset.pullsView === "detail" ||
+          (this.pullsLayout.dataset.pullsView === "files" &&
             this.pullFilesView.dataset.detailView === "viewer")));
 
     this.dataset.mobileDetail = detailOpen ? "true" : "false";

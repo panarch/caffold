@@ -1,0 +1,18 @@
+caffold-github-issues-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+caffold-github-issues-layout[data-issues-view="list"] caffold-github-issues-list-page {
+  border-right: 0;
+}
+
+caffold-github-issues-layout[data-issues-view="list"] caffold-github-issue-detail-page,
+caffold-github-issues-layout[data-issues-view="detail"] caffold-github-issues-list-page {
+  display: none;
+}

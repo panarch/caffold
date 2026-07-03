@@ -1,4 +1,4 @@
-caffold-github-pull-viewer {
+caffold-github-pull-detail-page {
   display: block;
   min-width: 0;
   min-height: 0;
@@ -6,7 +6,7 @@ caffold-github-pull-viewer {
   background: var(--surface);
 }
 
-caffold-github-pull-viewer .github-pull-viewer-panel {
+caffold-github-pull-detail-page .github-pull-viewer-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
@@ -15,7 +15,7 @@ caffold-github-pull-viewer .github-pull-viewer-panel {
   overflow: hidden;
 }
 
-caffold-github-pull-viewer .github-pull-viewer-panel > header {
+caffold-github-pull-detail-page .github-pull-viewer-panel > header {
   display: grid;
   gap: 4px;
   min-width: 0;
@@ -23,7 +23,7 @@ caffold-github-pull-viewer .github-pull-viewer-panel > header {
   border-bottom: 1px solid var(--border);
 }
 
-caffold-github-pull-viewer .github-pull-viewer-title-row {
+caffold-github-pull-detail-page .github-pull-viewer-title-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 10px;
@@ -31,12 +31,12 @@ caffold-github-pull-viewer .github-pull-viewer-title-row {
   min-width: 0;
 }
 
-caffold-github-pull-viewer .github-pull-close-button {
+caffold-github-pull-detail-page .github-pull-close-button {
   display: none;
 }
 
-caffold-github-pull-viewer h2,
-caffold-github-pull-viewer h3 {
+caffold-github-pull-detail-page h2,
+caffold-github-pull-detail-page h3 {
   min-width: 0;
   margin: 0;
   overflow: hidden;
@@ -44,13 +44,13 @@ caffold-github-pull-viewer h3 {
   white-space: nowrap;
 }
 
-caffold-github-pull-viewer h2 {
+caffold-github-pull-detail-page h2 {
   font-size: 0.9rem;
   font-weight: 600;
   line-height: 1.15;
 }
 
-caffold-github-pull-viewer h3 {
+caffold-github-pull-detail-page h3 {
   padding: 8px 12px 6px;
   border-bottom: 1px solid #e3ebe5;
   color: var(--muted);
@@ -59,22 +59,22 @@ caffold-github-pull-viewer h3 {
   line-height: 1.1;
 }
 
-caffold-github-pull-viewer .github-pull-link,
-caffold-github-pull-viewer .github-pull-comment-meta a {
+caffold-github-pull-detail-page .github-pull-link,
+caffold-github-pull-detail-page .github-pull-comment-meta a {
   color: var(--accent);
   font-size: 0.72rem;
   line-height: 1;
   text-decoration: none;
 }
 
-caffold-github-pull-viewer .github-pull-link:hover,
-caffold-github-pull-viewer .github-pull-link:focus-visible,
-caffold-github-pull-viewer .github-pull-comment-meta a:hover,
-caffold-github-pull-viewer .github-pull-comment-meta a:focus-visible {
+caffold-github-pull-detail-page .github-pull-link:hover,
+caffold-github-pull-detail-page .github-pull-link:focus-visible,
+caffold-github-pull-detail-page .github-pull-comment-meta a:hover,
+caffold-github-pull-detail-page .github-pull-comment-meta a:focus-visible {
   text-decoration: underline;
 }
 
-caffold-github-pull-viewer .github-pull-files-button {
+caffold-github-pull-detail-page .github-pull-files-button {
   display: grid;
   grid-template-columns: auto auto;
   gap: 5px;
@@ -90,20 +90,20 @@ caffold-github-pull-viewer .github-pull-files-button {
   font-size: 0.72rem;
 }
 
-caffold-github-pull-viewer .github-pull-files-button:hover,
-caffold-github-pull-viewer .github-pull-files-button:focus-visible {
+caffold-github-pull-detail-page .github-pull-files-button:hover,
+caffold-github-pull-detail-page .github-pull-files-button:focus-visible {
   border-color: #abcbbf;
   background: #f7fbf8;
   outline: none;
 }
 
-caffold-github-pull-viewer .github-pull-files-icon {
+caffold-github-pull-detail-page .github-pull-files-icon {
   width: 0.9rem;
   height: 0.9rem;
   stroke-width: 2;
 }
 
-caffold-github-pull-viewer .github-pull-viewer-meta {
+caffold-github-pull-detail-page .github-pull-viewer-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 8px;
@@ -113,14 +113,14 @@ caffold-github-pull-viewer .github-pull-viewer-meta {
   line-height: 1.2;
 }
 
-caffold-github-pull-viewer .github-pull-viewer-labels {
+caffold-github-pull-detail-page .github-pull-viewer-labels {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   min-width: 0;
 }
 
-caffold-github-pull-viewer .github-pull-viewer-labels span {
+caffold-github-pull-detail-page .github-pull-viewer-labels span {
   max-width: 12rem;
   overflow: hidden;
   padding: 1px 5px;
@@ -133,29 +133,29 @@ caffold-github-pull-viewer .github-pull-viewer-labels span {
   white-space: nowrap;
 }
 
-caffold-github-pull-viewer .github-pull-viewer-scroll {
+caffold-github-pull-detail-page .github-pull-viewer-scroll {
   min-width: 0;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
 }
 
-caffold-github-pull-viewer .github-pull-section {
+caffold-github-pull-detail-page .github-pull-section {
   border-bottom: 1px solid var(--border);
 }
 
-caffold-github-pull-viewer .github-pull-section caffold-github-markdown {
+caffold-github-pull-detail-page .github-pull-section caffold-github-markdown {
   height: auto;
   max-height: none;
 }
 
-caffold-github-pull-viewer .github-pull-raw-body {
+caffold-github-pull-detail-page .github-pull-raw-body {
   padding: 12px;
   white-space: pre-wrap;
 }
 
-caffold-github-pull-viewer .github-pull-comments,
-caffold-github-pull-viewer .github-pull-commits {
+caffold-github-pull-detail-page .github-pull-comments,
+caffold-github-pull-detail-page .github-pull-commits {
   display: grid;
   gap: 0;
   margin: 0;
@@ -163,19 +163,19 @@ caffold-github-pull-viewer .github-pull-commits {
   list-style: none;
 }
 
-caffold-github-pull-viewer .github-pull-comment,
-caffold-github-pull-viewer .github-pull-commit {
+caffold-github-pull-detail-page .github-pull-comment,
+caffold-github-pull-detail-page .github-pull-commit {
   display: grid;
   min-width: 0;
   border-top: 1px solid #e3ebe5;
 }
 
-caffold-github-pull-viewer .github-pull-comment:first-child,
-caffold-github-pull-viewer .github-pull-commit:first-child {
+caffold-github-pull-detail-page .github-pull-comment:first-child,
+caffold-github-pull-detail-page .github-pull-commit:first-child {
   border-top: 0;
 }
 
-caffold-github-pull-viewer .github-pull-comment-meta {
+caffold-github-pull-detail-page .github-pull-comment-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 8px;
@@ -186,18 +186,18 @@ caffold-github-pull-viewer .github-pull-comment-meta {
   line-height: 1.2;
 }
 
-caffold-github-pull-viewer .github-pull-empty-note {
+caffold-github-pull-detail-page .github-pull-empty-note {
   margin: 0;
   padding: 10px 12px;
   color: var(--muted);
   font-size: 0.78rem;
 }
 
-caffold-github-pull-viewer .github-pull-commit {
+caffold-github-pull-detail-page .github-pull-commit {
   padding: 8px 12px;
 }
 
-caffold-github-pull-viewer .github-pull-commit a {
+caffold-github-pull-detail-page .github-pull-commit a {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 8px;
@@ -206,14 +206,14 @@ caffold-github-pull-viewer .github-pull-commit a {
   text-decoration: none;
 }
 
-caffold-github-pull-viewer .github-pull-commit a span:last-child {
+caffold-github-pull-detail-page .github-pull-commit a span:last-child {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-caffold-github-pull-viewer .github-pull-commit > span {
+caffold-github-pull-detail-page .github-pull-commit > span {
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
@@ -222,26 +222,26 @@ caffold-github-pull-viewer .github-pull-commit > span {
   white-space: nowrap;
 }
 
-caffold-github-pull-viewer .error-panel {
+caffold-github-pull-detail-page .error-panel {
   background: var(--danger-soft);
   color: var(--danger);
 }
 
 @media (max-width: 860px) {
-  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="pulls"] caffold-github-pull-viewer .github-pull-viewer-panel > header {
+  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="pulls"] caffold-github-pull-detail-page .github-pull-viewer-panel > header {
     padding: 4px 8px;
   }
 
-  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="pulls"] caffold-github-pull-viewer .github-pull-viewer-title-row {
+  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="pulls"] caffold-github-pull-detail-page .github-pull-viewer-title-row {
     grid-template-columns: 28px minmax(0, 1fr) auto;
     gap: 6px;
   }
 
-  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="pulls"] caffold-github-pull-viewer .github-pull-link {
+  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="pulls"] caffold-github-pull-detail-page .github-pull-link {
     display: none;
   }
 
-  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="pulls"] caffold-github-pull-viewer .github-pull-close-button {
+  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="pulls"] caffold-github-pull-detail-page .github-pull-close-button {
     display: grid;
     place-items: center;
     width: 28px;
@@ -254,14 +254,14 @@ caffold-github-pull-viewer .error-panel {
     cursor: pointer;
   }
 
-  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="pulls"] caffold-github-pull-viewer .github-pull-close-button:hover,
-  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="pulls"] caffold-github-pull-viewer .github-pull-close-button:focus-visible {
+  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="pulls"] caffold-github-pull-detail-page .github-pull-close-button:hover,
+  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="pulls"] caffold-github-pull-detail-page .github-pull-close-button:focus-visible {
     border-color: #abcbbf;
     background: #f7fbf8;
     outline: none;
   }
 
-  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="pulls"] caffold-github-pull-viewer .github-pull-close-icon {
+  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="pulls"] caffold-github-pull-detail-page .github-pull-close-icon {
     width: 1rem;
     height: 1rem;
     stroke-width: 2;

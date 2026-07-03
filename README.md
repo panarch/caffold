@@ -88,6 +88,7 @@ Internal planning notes:
 - [Worktree Lifecycle](docs/internal/worktree-lifecycle.md)
 - [Operation Ledger](docs/internal/operation-ledger.md)
 - [UI Surfaces](docs/internal/ui-surfaces.md)
+- [Frontend Structure](docs/internal/frontend-structure.md)
 - [Security and Approvals](docs/internal/security-approvals.md)
 
 ## Status

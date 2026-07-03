@@ -1,0 +1,164 @@
+# Frontend Structure
+
+> Internal planning note. This document describes the intended frontend file
+> organization before broad component moves.
+
+Caffold does not use filesystem routes. `frontend/pages` should not be treated
+as a URL router like Next.js. It is a hierarchy for page-level custom elements:
+large Light DOM Web Components that own a major app surface or layout container.
+
+Use `layout.js` and `layout.css` for containers that own nested surfaces,
+shared chrome, state transitions, or pane behavior. Use `page.js` and
+`page.css` for leaf app surfaces. The directory path carries the meaning; the
+filename communicates whether the custom element is a layout or a leaf page.
+
+Example:
+
+```text
+frontend/pages/app-shell/layout.js
+frontend/pages/app-shell/layout.css
+```
+
+defines the app-level `<caffold-app-shell>` layout. Nested page directories
+represent UI ownership rather than URL paths.
+
+## Current Ownership Model
+
+The current runtime hierarchy is:
+
+```text
+caffold-app-shell
+  app header
+    scaffold-project-switcher
+    scaffold-header-actions
+  scaffold-pathbar
+  file browsing surface
+    scaffold-files-page
+      scaffold-file-list
+      scaffold-file-viewer
+  scaffold-review-workspace
+    diff
+      scaffold-git-working-tree-page
+      scaffold-review-file-viewer
+    compare
+      scaffold-git-compare-page
+      scaffold-review-file-viewer
+    log
+      scaffold-log-list
+      scaffold-commit-changes-tree
+      scaffold-review-file-viewer
+    issues
+      scaffold-github-issues-layout
+        scaffold-github-issues-list-page
+        scaffold-github-issue-detail-page
+    pulls
+      scaffold-github-pulls-layout
+        scaffold-github-pulls-list-page
+        scaffold-github-pull-detail-page
+        scaffold-github-pull-files-page
+          scaffold-github-pull-files-tree
+          scaffold-review-file-viewer
+```
+
+`review-workspace` is a pathless review container inside `app-shell`. It owns
+shared review chrome, close/back behavior, panel resizing, compare controls, and
+mobile list/detail transitions. It is not a Git-only or GitHub-only page.
+
+## Page/Layout Skeleton
+
+The current page-level skeleton is:
+
+```text
+frontend/pages/
+  app-shell/
+    layout.js
+    layout.css
+
+    files/
+      page.js
+      page.css
+
+    review-workspace/
+      layout.js
+      layout.css
+
+      git/
+        working-tree/
+          page.js
+          page.css
+        compare/
+          page.js
+          page.css
+        log/
+          page.js
+          page.css
+
+      github/
+        issues/
+          layout.js
+          layout.css
+          list/
+            page.js
+            page.css
+          detail/
+            page.js
+            page.css
+        pulls/
+          layout.js
+          layout.css
+          list/
+            page.js
+            page.css
+          detail/
+            page.js
+            page.css
+          files/
+            page.js
+            page.css
+            components/
+              tree.js
+              tree.css
+```
+
+Keep reusable building blocks in `frontend/components`:
+
+- `header-actions/*`
+- `pathbar.*`
+- `project-switcher.*`
+- `pagination.*`
+- `code-viewer.*`
+- `diff-viewer.*`
+- `github-markdown.*`
+- `file-list.*`
+- `file-viewer.*`
+- `commit-changes-tree.*`
+- `log-list.*`
+
+Page-specific helper components can live under that page's `components/`
+directory when moving them to shared `frontend/components` would hide the
+ownership boundary. For example, the PR files tree belongs only to
+`github/pulls/files/page`.
+- `icons.js`
+- `dom.js`
+
+## Naming Rules
+
+- `layout.js` means a container Web Component, not a URL layout.
+- `page.js` is a leaf surface entrypoint. If the surface itself is page-owned,
+  define its custom element in `page.js` instead of leaving an import-only
+  wrapper.
+- Existing custom element names stay stable when a reusable component remains a
+  reusable component. When a surface is promoted to a page-owned element, use
+  the page-level custom element name.
+- Do not move lower-level or reusable components under `pages` just to mirror
+  the current screen. Components such as `pagination`, `file-list`,
+  `diff-viewer`, and `github-markdown` stay component-level.
+
+## Migration Rules
+
+- Do not mix file movement with behavior changes.
+- Update imports, `styles.css`, `service-worker.js`, `src/static_assets.rs`,
+  and asset tests in the same commit.
+- Prefer stable custom element names. Moving a file should not require changing
+  `<caffold-*>` names.
+- Treat `pages` as a Web Component hierarchy, not a URL hierarchy.

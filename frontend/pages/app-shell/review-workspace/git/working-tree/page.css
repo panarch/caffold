@@ -1,4 +1,4 @@
-caffold-compare-tree {
+caffold-git-working-tree-page {
   display: block;
   min-width: 0;
   min-height: 0;
@@ -6,22 +6,23 @@ caffold-compare-tree {
   background: var(--surface);
 }
 
-caffold-compare-tree .compare-tree-panel {
+caffold-git-working-tree-page .changes-tree-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
   height: 100%;
 }
 
-caffold-compare-tree .compare-tree-panel > header {
+caffold-git-working-tree-page .changes-tree-panel > header {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
   align-content: center;
-  padding: 4px 12px;
+  padding: 5px 12px;
   border-bottom: 1px solid var(--border);
 }
 
-caffold-compare-tree h2 {
+caffold-git-working-tree-page h2 {
   margin: 0;
   overflow: hidden;
   font-size: 0.82rem;
@@ -31,7 +32,13 @@ caffold-compare-tree h2 {
   white-space: nowrap;
 }
 
-caffold-compare-tree .compare-tree-title-row {
+caffold-git-working-tree-page .changes-tree-panel > header span {
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.1;
+}
+
+caffold-git-working-tree-page .changes-tree-title-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
@@ -40,15 +47,25 @@ caffold-compare-tree .compare-tree-title-row {
   min-width: 0;
 }
 
-caffold-compare-tree .compare-file-count {
+caffold-git-working-tree-page .change-count {
   justify-self: end;
-  color: var(--muted);
-  font-size: 0.74rem;
-  line-height: 1.1;
   white-space: nowrap;
 }
 
-caffold-compare-tree .compare-tree-list {
+caffold-git-working-tree-page .changes-branch {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--accent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+caffold-git-working-tree-page .changes-branch.is-dirty {
+  color: #8a5200;
+}
+
+caffold-git-working-tree-page .changes-tree-list {
   --tree-indent: 12px;
   display: block;
   min-height: 0;
@@ -59,12 +76,24 @@ caffold-compare-tree .compare-tree-list {
   list-style: none;
 }
 
-caffold-compare-tree .compare-tree-list > li {
+caffold-git-working-tree-page .changes-tree-list > li {
   width: max-content;
   min-width: 100%;
 }
 
-caffold-compare-tree .compare-entry {
+caffold-git-working-tree-page .change-section-label {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 12px 4px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+caffold-git-working-tree-page .change-entry {
   display: grid;
   grid-template-columns: 1.35rem max-content;
   gap: 4px;
@@ -82,19 +111,19 @@ caffold-compare-tree .compare-entry {
   text-align: left;
 }
 
-caffold-compare-tree .compare-entry:hover,
-caffold-compare-tree .compare-entry:focus-visible {
+caffold-git-working-tree-page .change-entry:hover,
+caffold-git-working-tree-page .change-entry:focus-visible {
   border-left-color: #bdd7cc;
   background: #f1f6f3;
   outline: none;
 }
 
-caffold-compare-tree .compare-file[aria-current="true"] {
+caffold-git-working-tree-page .change-file[aria-current="true"] {
   border-left-color: var(--accent);
   background: var(--accent-soft);
 }
 
-caffold-compare-tree .compare-status-code {
+caffold-git-working-tree-page .change-status-code {
   align-self: center;
   color: #764600;
   font-size: 0.78rem;
@@ -102,7 +131,7 @@ caffold-compare-tree .compare-status-code {
   white-space: pre;
 }
 
-caffold-compare-tree .compare-node-label {
+caffold-git-working-tree-page .change-node-label {
   display: grid;
   grid-template-columns: 1.5rem max-content;
   gap: 6px;
@@ -111,7 +140,7 @@ caffold-compare-tree .compare-node-label {
   margin-left: calc(var(--tree-depth, 0) * var(--tree-indent));
 }
 
-caffold-compare-tree .entry-icon {
+caffold-git-working-tree-page .entry-icon {
   display: inline-grid;
   width: 1.5rem;
   height: 1.5rem;
@@ -119,27 +148,27 @@ caffold-compare-tree .entry-icon {
   justify-self: center;
 }
 
-caffold-compare-tree .entry-icon-svg {
+caffold-git-working-tree-page .entry-icon-svg {
   display: block;
   width: 1.125rem;
   height: 1.125rem;
   stroke-width: 1.9;
 }
 
-caffold-compare-tree .compare-name {
+caffold-git-working-tree-page .change-name {
   min-width: 0;
   overflow: visible;
   text-overflow: clip;
   white-space: nowrap;
 }
 
-caffold-compare-tree .error-panel {
+caffold-git-working-tree-page .error-panel {
   background: var(--danger-soft);
   color: var(--danger);
 }
 
 @media (max-width: 860px) {
-  caffold-compare-tree {
+  caffold-git-working-tree-page {
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }

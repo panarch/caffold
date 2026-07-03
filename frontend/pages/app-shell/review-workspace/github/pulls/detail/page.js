@@ -1,8 +1,8 @@
-import { escapeHtml } from "./dom.js";
-import { renderInlineIcon, warmIcons } from "./icons.js";
-import "./github-markdown.js";
+import { escapeHtml } from "../../../../../../components/dom.js";
+import { renderInlineIcon, warmIcons } from "../../../../../../components/icons.js";
+import "../../../../../../components/github-markdown.js";
 
-class CaffoldGithubPullViewer extends HTMLElement {
+class CaffoldGithubPullDetailPage extends HTMLElement {
   connectedCallback() {
     if (!this.initialized) {
       this.initialized = true;
@@ -313,4 +313,4 @@ class CaffoldGithubPullViewer extends HTMLElement {
   }
 }
 
-customElements.define("caffold-github-pull-viewer", CaffoldGithubPullViewer);
+customElements.define("caffold-github-pull-detail-page", CaffoldGithubPullDetailPage);

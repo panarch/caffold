@@ -1,0 +1,37 @@
+caffold-github-pull-files-page {
+  display: grid;
+  grid-template-columns: var(--review-left-panel-width) 6px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+caffold-github-pull-files-page > caffold-github-pull-files-tree {
+  grid-column: 1;
+}
+
+caffold-github-pull-files-page > caffold-review-file-viewer {
+  grid-column: 3;
+}
+
+@media (max-width: 860px) {
+  caffold-github-pull-files-page {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  caffold-github-pull-files-page > caffold-github-pull-files-tree,
+  caffold-github-pull-files-page > caffold-review-file-viewer {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  caffold-github-pull-files-page[data-detail-view="list"] > caffold-review-file-viewer,
+  caffold-github-pull-files-page[data-detail-view="viewer"] > caffold-github-pull-files-tree {
+    display: none;
+  }
+
+  caffold-github-pull-files-page > .review-panel-resizer {
+    display: none;
+  }
+}

@@ -1,4 +1,4 @@
-import "./components/app-shell.js";
+import "./pages/app-shell/layout.js";
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {

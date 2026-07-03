@@ -21,4 +21,5 @@ These are working notes for shaping the implementation. They can be more specifi
 - [Worktree Lifecycle](internal/worktree-lifecycle.md)
 - [Operation Ledger](internal/operation-ledger.md)
 - [UI Surfaces](internal/ui-surfaces.md)
+- [Frontend Structure](internal/frontend-structure.md)
 - [Security and Approvals](internal/security-approvals.md)

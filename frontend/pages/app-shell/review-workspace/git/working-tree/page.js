@@ -1,5 +1,5 @@
-import { escapeHtml } from "./dom.js";
-import { renderEntryIcon, warmIcons } from "./icons.js";
+import { escapeHtml } from "../../../../../components/dom.js";
+import { renderEntryIcon, warmIcons } from "../../../../../components/icons.js";
 
 const SECTIONS = [
   ["unstaged", "Unstaged"],
@@ -7,7 +7,7 @@ const SECTIONS = [
   ["untracked", "Untracked"],
 ];
 
-class CaffoldChangesTree extends HTMLElement {
+class CaffoldGitWorkingTreePage extends HTMLElement {
   connectedCallback() {
     this.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-node-key], button[data-change-path]");
@@ -295,7 +295,7 @@ class CaffoldChangesTree extends HTMLElement {
   }
 }
 
-customElements.define("caffold-changes-tree", CaffoldChangesTree);
+customElements.define("caffold-git-working-tree-page", CaffoldGitWorkingTreePage);
 
 function buildChangeTree(files) {
   const sections = new Map(

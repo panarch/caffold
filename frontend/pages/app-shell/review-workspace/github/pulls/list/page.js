@@ -1,8 +1,8 @@
-import { escapeHtml } from "./dom.js";
-import { renderInlineIcon, warmIcons } from "./icons.js";
-import "./pagination.js";
+import { escapeHtml } from "../../../../../../components/dom.js";
+import { renderInlineIcon, warmIcons } from "../../../../../../components/icons.js";
+import "../../../../../../components/pagination.js";
 
-class CaffoldGithubPullsList extends HTMLElement {
+class CaffoldGithubPullsListPage extends HTMLElement {
   connectedCallback() {
     if (this.initialized) {
       return;
@@ -259,4 +259,4 @@ class CaffoldGithubPullsList extends HTMLElement {
   }
 }
 
-customElements.define("caffold-github-pulls-list", CaffoldGithubPullsList);
+customElements.define("caffold-github-pulls-list-page", CaffoldGithubPullsListPage);

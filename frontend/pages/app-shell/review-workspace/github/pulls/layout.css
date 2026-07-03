@@ -1,0 +1,22 @@
+caffold-github-pulls-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+caffold-github-pulls-layout[data-pulls-view="list"] caffold-github-pulls-list-page {
+  border-right: 0;
+}
+
+caffold-github-pulls-layout[data-pulls-view="list"] caffold-github-pull-detail-page,
+caffold-github-pulls-layout[data-pulls-view="list"] caffold-github-pull-files-page,
+caffold-github-pulls-layout[data-pulls-view="detail"] caffold-github-pulls-list-page,
+caffold-github-pulls-layout[data-pulls-view="detail"] caffold-github-pull-files-page,
+caffold-github-pulls-layout[data-pulls-view="files"] caffold-github-pulls-list-page,
+caffold-github-pulls-layout[data-pulls-view="files"] caffold-github-pull-detail-page {
+  display: none;
+}

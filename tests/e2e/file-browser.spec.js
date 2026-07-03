@@ -173,6 +173,46 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain("/assets/brand/git-logomark-light.svg");
   expect(serviceWorker).toContain("/assets/brand/github-invertocat-light.svg");
   expect(serviceWorker).toContain("/assets/brand/codex-template@2x.png");
+  expect(serviceWorker).toContain("/assets/pages/app-shell/layout.js");
+  expect(serviceWorker).toContain("/assets/pages/app-shell/layout.css");
+  expect(serviceWorker).toContain("/assets/pages/app-shell/files/page.js");
+  expect(serviceWorker).toContain("/assets/components/file-list.js");
+  expect(serviceWorker).toContain("/assets/pages/app-shell/review-workspace/layout.js");
+  expect(serviceWorker).toContain(
+    "/assets/pages/app-shell/review-workspace/git/working-tree/page.js",
+  );
+  expect(serviceWorker).not.toContain("/assets/components/changes-tree.js");
+  expect(serviceWorker).toContain(
+    "/assets/pages/app-shell/review-workspace/github/issues/layout.js",
+  );
+  expect(serviceWorker).toContain(
+    "/assets/pages/app-shell/review-workspace/github/issues/list/page.js",
+  );
+  expect(serviceWorker).toContain(
+    "/assets/pages/app-shell/review-workspace/github/issues/detail/page.js",
+  );
+  expect(serviceWorker).not.toContain("/assets/components/github-issues-list.js");
+  expect(serviceWorker).not.toContain("/assets/components/github-issue-viewer.js");
+  expect(serviceWorker).toContain(
+    "/assets/pages/app-shell/review-workspace/github/pulls/layout.js",
+  );
+  expect(serviceWorker).toContain(
+    "/assets/pages/app-shell/review-workspace/github/pulls/list/page.js",
+  );
+  expect(serviceWorker).toContain(
+    "/assets/pages/app-shell/review-workspace/github/pulls/detail/page.js",
+  );
+  expect(serviceWorker).toContain(
+    "/assets/pages/app-shell/review-workspace/github/pulls/files/page.js",
+  );
+  expect(serviceWorker).toContain(
+    "/assets/pages/app-shell/review-workspace/github/pulls/files/components/tree.js",
+  );
+  expect(serviceWorker).not.toContain("/assets/components/github-pulls-list.js");
+  expect(serviceWorker).not.toContain("/assets/components/github-pull-viewer.js");
+  expect(serviceWorker).not.toContain("/assets/components/github-pull-files-tree.js");
+  expect(serviceWorker).not.toContain("/assets/components/app-shell.js");
+  expect(serviceWorker).not.toContain("/assets/components/review-workspace.js");
   expect(serviceWorker).toContain("/assets/components/header-actions/codex-status.css");
   expect(serviceWorker).toContain("/assets/components/header-actions/codex-status.js");
   expect(serviceWorker).toContain("/assets/components/header-actions/git-status.js");
@@ -1111,7 +1151,7 @@ test("restores project review routes", async ({ page }) => {
   const gitStatusRequestsBeforeCompareRefChange = gitStatusRequests;
   await page.locator('select[data-compare-ref="head"]').selectOption("main");
   await expect(page).toHaveURL(`/projects/${project.id}/compare?base=origin%2Fmain&head=main`);
-  await expect(page.locator("caffold-compare-tree")).toContainText("0 files");
+  await expect(page.locator("caffold-git-compare-page")).toContainText("0 files");
   expect(listRequests).toBe(listRequestsBeforeCompareRefChange);
   expect(gitStatusRequests).toBe(gitStatusRequestsBeforeCompareRefChange);
   const compareHeaderActionsState = await page
@@ -1171,7 +1211,7 @@ test("restores project review routes", async ({ page }) => {
     "data-workspace-mode",
     "issues",
   );
-  await expect(page.locator("caffold-github-issue-viewer")).toContainText("Route issue body");
+  await expect(page.locator("caffold-github-issue-detail-page")).toContainText("Route issue body");
   const githubIssuesRequestsBeforeBack = githubIssuesRequests;
   await page.getByRole("button", { name: "Back to issues" }).click();
   await expect(page).toHaveURL(`/projects/${project.id}/issues?page=2`);
@@ -1180,7 +1220,7 @@ test("restores project review routes", async ({ page }) => {
   const githubIssuesRequestsBeforeIssueClick = githubIssuesRequests;
   await page.locator('button[data-issue-number="42"]').click();
   await expect(page).toHaveURL(`/projects/${project.id}/issues/42?page=2`);
-  await expect(page.locator("caffold-github-issue-viewer")).toContainText("Route issue body");
+  await expect(page.locator("caffold-github-issue-detail-page")).toContainText("Route issue body");
   expect(githubIssuesRequests).toBe(githubIssuesRequestsBeforeIssueClick);
 
   await page.goto(`/projects/${project.id}/pulls/12/files/planner/mod.rs?page=2`);
@@ -1195,7 +1235,7 @@ test("restores project review routes", async ({ page }) => {
   await expect(page.locator("caffold-diff-viewer")).toContainText("new PR route line");
   await page.goto(`/projects/${project.id}/pulls/12/files?page=2`);
   await expect(page).toHaveURL(`/projects/${project.id}/pulls/12/files?page=2`);
-  await expect(page.locator("caffold-github-pull-files-tree")).toBeVisible();
+  await expect(page.locator("caffold-github-pull-files-page")).toBeVisible();
   await expect(page.locator(".workspace-mode-pulls caffold-review-file-viewer")).toContainText(
     "Select a file to inspect it.",
   );
@@ -1208,7 +1248,7 @@ test("restores project review routes", async ({ page }) => {
   await expect(page).toHaveURL(`/projects/${project.id}/pulls/12/files?page=2`);
   await page.getByRole("button", { name: "Back to PR" }).click();
   await expect(page).toHaveURL(`/projects/${project.id}/pulls/12?page=2`);
-  await expect(page.locator("caffold-github-pull-viewer")).toContainText("Route PR body");
+  await expect(page.locator("caffold-github-pull-detail-page")).toContainText("Route PR body");
   const githubPullRequestsBeforeBack = githubPullRequests;
   await page.getByRole("button", { name: "Back to pull requests" }).click();
   await expect(page).toHaveURL(`/projects/${project.id}/pulls?page=2`);
@@ -1216,7 +1256,7 @@ test("restores project review routes", async ({ page }) => {
   await expect(page.locator('button[data-pull-number="12"]')).toBeVisible();
   await page.locator('button[data-pull-number="12"]').click();
   await expect(page).toHaveURL(`/projects/${project.id}/pulls/12?page=2`);
-  await expect(page.locator("caffold-github-pull-viewer")).toContainText("Route PR body");
+  await expect(page.locator("caffold-github-pull-detail-page")).toContainText("Route PR body");
 });
 
 test("previews image files in the viewer", async ({ page }) => {
@@ -1369,7 +1409,7 @@ test("keeps list scroll positions when selecting files and changes", async ({ pa
   await page.addStyleTag({
     content: `
       caffold-file-list .file-list,
-      caffold-changes-tree .changes-tree-list {
+      caffold-git-working-tree-page .changes-tree-list {
         max-height: 72px;
       }
     `,
@@ -1392,7 +1432,7 @@ test("keeps list scroll positions when selecting files and changes", async ({ pa
   await page.locator('button[data-entry-path="src"]').click();
   await clickHeaderAction(page, "git", "open-diff-workspace");
 
-  const changesList = page.locator("caffold-changes-tree .changes-tree-list");
+  const changesList = page.locator("caffold-git-working-tree-page .changes-tree-list");
   const changeTarget = page.locator(`button[data-change-path="${LONG_CHANGE_FILE}"]`);
   await changeTarget.scrollIntoViewIfNeeded();
   const beforeChangesScroll = await scrollTop(changesList);
@@ -1402,7 +1442,7 @@ test("keeps list scroll positions when selecting files and changes", async ({ pa
   await expect(page.locator("caffold-diff-viewer")).toContainText("long_change_name_fixture");
   if (testInfo.project.name === "phone") {
     await page.getByRole("button", { name: "Back to changes" }).click();
-    await expect(page.locator("caffold-changes-tree")).toBeVisible();
+    await expect(page.locator("caffold-git-working-tree-page")).toBeVisible();
   }
   await expectPreservedScroll(changesList, beforeChangesScroll);
 });
@@ -1491,20 +1531,20 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   await expect(workspace).toBeVisible();
   await expect(workspace).toHaveAttribute("data-workspace-mode", "diff");
   await expect(workspace.getByRole("button", { name: "Close review workspace" })).toBeVisible();
-  await expect(page.locator("caffold-changes-tree")).toContainText("Unstaged");
-  await expect(page.locator("caffold-changes-tree")).toContainText("example.rs");
-  await expect(page.locator("caffold-changes-tree")).toContainText("deleted.rs");
+  await expect(page.locator("caffold-git-working-tree-page")).toContainText("Unstaged");
+  await expect(page.locator("caffold-git-working-tree-page")).toContainText("example.rs");
+  await expect(page.locator("caffold-git-working-tree-page")).toContainText("deleted.rs");
   if (testInfo.project.name !== "phone") {
     const resizeHandle = workspace.locator(".workspace-mode-diff .review-panel-resizer");
     await expect(resizeHandle).toBeVisible();
     const beforeReviewWidth = await elementWidth(
       page,
-      "caffold-review-workspace .workspace-mode-diff > caffold-changes-tree",
+      "caffold-review-workspace .workspace-mode-diff > caffold-git-working-tree-page",
     );
     await dragHorizontalResizer(page, resizeHandle, 96);
     const afterReviewWidth = await elementWidth(
       page,
-      "caffold-review-workspace .workspace-mode-diff > caffold-changes-tree",
+      "caffold-review-workspace .workspace-mode-diff > caffold-git-working-tree-page",
     );
     expect(afterReviewWidth).toBeGreaterThan(beforeReviewWidth + 48);
   }
@@ -1520,16 +1560,16 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
     await expectMobileReviewDetail(page, {
       backName: "Back to changes",
       detailSelector: ".workspace-mode-diff caffold-review-file-viewer",
-      listSelector: "caffold-changes-tree",
+      listSelector: "caffold-git-working-tree-page",
     });
   } else {
     await expectAlignedWorkspaceHeaders(page, [
       "caffold-review-workspace .review-workspace-header",
-      "caffold-changes-tree .changes-tree-panel > header",
+      "caffold-git-working-tree-page .changes-tree-panel > header",
       ".workspace-mode-diff caffold-review-file-viewer .viewer-panel > header",
     ]);
     await expectMatchingPaneTitleSizes(page, [
-      "caffold-changes-tree .changes-tree-panel > header",
+      "caffold-git-working-tree-page .changes-tree-panel > header",
       ".workspace-mode-diff caffold-review-file-viewer .viewer-panel > header",
     ]);
   }
@@ -1562,7 +1602,7 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   if (testInfo.project.name === "phone") {
     await page.getByRole("button", { name: "Back to changes" }).click();
     await expect(workspace).toHaveAttribute("data-mobile-detail", "false");
-    await expect(page.locator("caffold-changes-tree")).toBeVisible();
+    await expect(page.locator("caffold-git-working-tree-page")).toBeVisible();
     await expect(page.locator(".workspace-mode-diff caffold-review-file-viewer")).toBeHidden();
   }
   await page.locator('button[data-change-path="src/deleted.rs"]').click();
@@ -1576,7 +1616,7 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
       "data-detail-view",
       "list",
     );
-    await expect(page.locator("caffold-changes-tree")).toBeVisible();
+    await expect(page.locator("caffold-git-working-tree-page")).toBeVisible();
     await expect(page.locator(".workspace-mode-diff caffold-review-file-viewer")).toBeHidden();
     await expect(page.locator('button[data-change-path="src/deleted.rs"]')).toHaveAttribute(
       "aria-current",
@@ -1709,10 +1749,10 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
   ).toHaveCount(1);
   await expectCompareRefControlsFit(page, testInfo, { sameRefCss: true });
   await captureReviewScreenshot(page, testInfo, "compare-long-refs");
-  await expect(page.locator("caffold-compare-tree")).toContainText("2 files");
-  await expect(page.locator("caffold-compare-tree")).toContainText("planner");
-  await expect(page.locator("caffold-compare-tree")).toContainText("function.rs");
-  await expect(page.locator("caffold-compare-tree")).toContainText("new.rs");
+  await expect(page.locator("caffold-git-compare-page")).toContainText("2 files");
+  await expect(page.locator("caffold-git-compare-page")).toContainText("planner");
+  await expect(page.locator("caffold-git-compare-page")).toContainText("function.rs");
+  await expect(page.locator("caffold-git-compare-page")).toContainText("new.rs");
 
   await workspace.locator('select[data-compare-ref="base"]').selectOption("main");
   await workspace.locator('select[data-compare-ref="head"]').selectOption("main");
@@ -1724,7 +1764,7 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
     tightRefGaps: true,
   });
   await captureReviewScreenshot(page, testInfo, "compare-empty-short-refs");
-  await expect(page.locator("caffold-compare-tree")).toContainText("0 files");
+  await expect(page.locator("caffold-git-compare-page")).toContainText("0 files");
 
   await workspace.locator('select[data-compare-ref="base"]').selectOption("origin/main");
   await workspace.locator('select[data-compare-ref="head"]').selectOption("feature/review");
@@ -1761,7 +1801,7 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
   );
   await expect(workspace.locator('select[data-compare-ref="base"]')).toHaveValue("origin/release");
   await expect(workspace.locator('select[data-compare-ref="head"]')).toHaveValue(headRef);
-  await expect(page.locator("caffold-compare-tree")).toContainText("release.rs");
+  await expect(page.locator("caffold-git-compare-page")).toContainText("release.rs");
 
   await page.locator('button[data-compare-path="src/runtime/release.rs"]').click();
   await expect(page.locator('button[data-compare-path="src/runtime/release.rs"]')).toHaveAttribute(
@@ -1780,7 +1820,7 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
     await expectMobileReviewDetail(page, {
       backName: "Back to compare",
       detailSelector: ".workspace-mode-compare caffold-review-file-viewer",
-      listSelector: "caffold-compare-tree",
+      listSelector: "caffold-git-compare-page",
     });
     await page.getByRole("button", { name: "Back to compare" }).click();
     await expect(workspace).toHaveAttribute("data-mobile-detail", "false");
@@ -1788,7 +1828,7 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
       "data-detail-view",
       "list",
     );
-    await expect(page.locator("caffold-compare-tree")).toBeVisible();
+    await expect(page.locator("caffold-git-compare-page")).toBeVisible();
     await expect(page.locator(".workspace-mode-compare caffold-review-file-viewer")).toBeHidden();
   }
 });
@@ -1929,32 +1969,32 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
   await expect(workspace.locator(".review-workspace-subtitle")).toHaveText(
     "example/caffold · 75 issues",
   );
-  await expect(page.locator("caffold-github-issues-list")).toContainText(
+  await expect(page.locator("caffold-github-issues-list-page")).toContainText(
     "Track mobile review issues",
   );
-  await expect(page.locator("caffold-github-issues-list")).toContainText(
+  await expect(page.locator("caffold-github-issues-list-page")).toContainText(
     "Keep readonly GitHub access narrow",
   );
-  await expect(page.locator("caffold-github-issues-list .github-issues-count")).toHaveText(
+  await expect(page.locator("caffold-github-issues-list-page .github-issues-count")).toHaveText(
     "75 issues",
   );
-  const issuePagination = page.locator("caffold-github-issues-list caffold-pagination");
+  const issuePagination = page.locator("caffold-github-issues-list-page caffold-pagination");
   await expect(issuePagination.locator(".pagination-indicator")).toHaveText("1 / 2");
   await expect(issuePagination.getByRole("button", { name: "Newest issue page" })).toBeDisabled();
   await expect(issuePagination.getByRole("button", { name: "Newer issue page" })).toBeDisabled();
-  await expect(page.locator("caffold-github-issues-list")).toBeVisible();
-  await expect(page.locator("caffold-github-issue-viewer")).toBeHidden();
+  await expect(page.locator("caffold-github-issues-list-page")).toBeVisible();
+  await expect(page.locator("caffold-github-issue-detail-page")).toBeHidden();
   await expectAlignedWorkspaceHeaders(page, [
     "caffold-review-workspace .review-workspace-header",
-    "caffold-github-issues-list .github-issues-panel > header",
+    "caffold-github-issues-list-page .github-issues-panel > header",
   ]);
   await expectMatchingPaneTitleSizes(page, [
-    "caffold-github-issues-list .github-issues-panel > header",
+    "caffold-github-issues-list-page .github-issues-panel > header",
   ]);
   await captureReviewScreenshot(page, testInfo, "github-issues-list");
 
   await page.locator('button[data-issue-number="42"]').click();
-  const issueViewer = page.locator("caffold-github-issue-viewer");
+  const issueViewer = page.locator("caffold-github-issue-detail-page");
   await expect(workspace).toHaveAttribute("data-workspace-mode", "issues");
   await expect(workspace.locator(".workspace-mode-issues")).toHaveAttribute(
     "data-issues-view",
@@ -1965,15 +2005,15 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
     "#42 Track mobile review issues",
   );
   await expect(workspace.getByRole("button", { name: "Back to issues" })).toBeVisible();
-  await expect(page.locator("caffold-github-issues-list")).toBeHidden();
+  await expect(page.locator("caffold-github-issues-list-page")).toBeHidden();
   await expect(issueViewer).toBeVisible();
   await expect(issueViewer).toContainText("Track mobile review issues");
   await expect(issueViewer).toContainText("3 comments");
   if (testInfo.project.name === "phone") {
     await expectMobileReviewDetail(page, {
       backName: "Back to issues",
-      detailSelector: "caffold-github-issue-viewer",
-      listSelector: "caffold-github-issues-list",
+      detailSelector: "caffold-github-issue-detail-page",
+      listSelector: "caffold-github-issues-list-page",
     });
   }
   const markdownViewer = issueViewer.locator("caffold-github-markdown");
@@ -2017,24 +2057,24 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
   );
   await expect(workspace).toHaveAttribute("data-mobile-detail", "false");
   await expect(workspace.locator(".review-workspace-title h2")).toHaveText("Issues");
-  await expect(page.locator("caffold-github-issues-list")).toBeVisible();
+  await expect(page.locator("caffold-github-issues-list-page")).toBeVisible();
   await expect(issueViewer).toBeHidden();
 
   await issuePagination.getByRole("button", { name: "Oldest issue page" }).click();
   await page.waitForTimeout(220);
-  await expect(page.locator("caffold-github-issues-list .github-issues-loading-body")).toHaveText(
+  await expect(page.locator("caffold-github-issues-list-page .github-issues-loading-body")).toHaveText(
     "Loading issues...",
   );
-  await expect(page.locator("caffold-github-issues-list")).not.toContainText(
+  await expect(page.locator("caffold-github-issues-list-page")).not.toContainText(
     "Track mobile review issues",
   );
   await expect(issuePagination.locator(".pagination-indicator")).toHaveText("2 / 2");
   await expect(issuePagination.getByRole("button", { name: "Newest issue page" })).toBeEnabled();
   await expect(issuePagination.getByRole("button", { name: "Oldest issue page" })).toBeDisabled();
-  await expect(page.locator("caffold-github-issues-list")).toContainText(
+  await expect(page.locator("caffold-github-issues-list-page")).toContainText(
     "Older issue still reachable by pagination",
   );
-  await expect(page.locator("caffold-github-issues-list")).not.toContainText("Loading issues...");
+  await expect(page.locator("caffold-github-issues-list-page")).not.toContainText("Loading issues...");
   await expect(issuePagination.getByRole("button", { name: "Older issue page" })).toBeDisabled();
   await expect(issuePagination.getByRole("button", { name: "Oldest issue page" })).toBeDisabled();
   await expectGlobalScrollLocked(page);
@@ -2315,20 +2355,20 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
   await expect(workspace.locator(".review-workspace-subtitle")).toHaveText(
     "example/caffold · 64 PRs",
   );
-  await expect(page.locator("caffold-github-pulls-list")).toContainText(
+  await expect(page.locator("caffold-github-pulls-list-page")).toContainText(
     "Add read-only PR review surface",
   );
-  await expect(page.locator("caffold-github-pulls-list")).toContainText(
+  await expect(page.locator("caffold-github-pulls-list-page")).toContainText(
     "Keep PR actions readonly",
   );
-  await expect(page.locator("caffold-github-pulls-list .github-pulls-count")).toHaveText(
+  await expect(page.locator("caffold-github-pulls-list-page .github-pulls-count")).toHaveText(
     "64 PRs",
   );
-  await expect(page.locator("caffold-github-pull-viewer")).toBeHidden();
+  await expect(page.locator("caffold-github-pull-detail-page")).toBeHidden();
   await captureReviewScreenshot(page, testInfo, "github-pulls-list");
 
   await page.locator('button[data-pull-number="12"]').click();
-  const pullViewer = page.locator("caffold-github-pull-viewer");
+  const pullViewer = page.locator("caffold-github-pull-detail-page");
   await expect(workspace.locator(".workspace-mode-pulls")).toHaveAttribute(
     "data-pulls-view",
     "detail",
@@ -2337,7 +2377,7 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
   await expect(workspace.locator(".review-workspace-subtitle")).toContainText(
     "#12 Add read-only PR review surface",
   );
-  await expect(page.locator("caffold-github-pulls-list")).toBeHidden();
+  await expect(page.locator("caffold-github-pulls-list-page")).toBeHidden();
   await expect(pullViewer).toBeVisible();
   await expect(pullViewer).toContainText("Conversation comment body");
   await expect(pullViewer).toContainText("Review summary body");
@@ -2375,8 +2415,8 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
   if (testInfo.project.name === "phone") {
     await expectMobileReviewDetail(page, {
       backName: "Back to pull requests",
-      detailSelector: "caffold-github-pull-viewer",
-      listSelector: "caffold-github-pulls-list",
+      detailSelector: "caffold-github-pull-detail-page",
+      listSelector: "caffold-github-pulls-list-page",
     });
   }
   await captureReviewScreenshot(page, testInfo, "github-pull-detail");
@@ -2427,25 +2467,25 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
 
   await page.goBack();
   await expect(page).toHaveURL(`/projects/${project.id}/pulls/12/files`);
-  await expect(page.locator("caffold-github-pull-files-tree")).toBeVisible();
+  await expect(page.locator("caffold-github-pull-files-page")).toBeVisible();
   await workspace.getByRole("button", { name: "Back to PR" }).click();
   await expect(page).toHaveURL(`/projects/${project.id}/pulls/12`);
   await expect(pullViewer).toBeVisible();
   await workspace.getByRole("button", { name: "Back to pull requests" }).click();
   await expect(page).toHaveURL(`/projects/${project.id}/pulls`);
-  await expect(page.locator("caffold-github-pulls-list")).toBeVisible();
+  await expect(page.locator("caffold-github-pulls-list-page")).toBeVisible();
 
-  const pullPagination = page.locator("caffold-github-pulls-list caffold-pagination");
+  const pullPagination = page.locator("caffold-github-pulls-list-page caffold-pagination");
   await pullPagination.getByRole("button", { name: "Oldest pull request page" }).click();
   await page.waitForTimeout(220);
-  await expect(page.locator("caffold-github-pulls-list .github-pulls-loading-body")).toHaveText(
+  await expect(page.locator("caffold-github-pulls-list-page .github-pulls-loading-body")).toHaveText(
     "Loading pull requests...",
   );
   await expect(pullPagination.locator(".pagination-indicator")).toHaveText("2 / 2");
-  await expect(page.locator("caffold-github-pulls-list")).toContainText(
+  await expect(page.locator("caffold-github-pulls-list-page")).toContainText(
     "Older PR reachable by pagination",
   );
-  await expect(page.locator("caffold-github-pulls-list")).not.toContainText(
+  await expect(page.locator("caffold-github-pulls-list-page")).not.toContainText(
     "Loading pull requests...",
   );
   await expectGlobalScrollLocked(page);

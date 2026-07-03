@@ -1,7 +1,7 @@
-import { escapeHtml } from "./dom.js";
-import "./pagination.js";
+import { escapeHtml } from "../../../../../../components/dom.js";
+import "../../../../../../components/pagination.js";
 
-class CaffoldGithubIssuesList extends HTMLElement {
+class CaffoldGithubIssuesListPage extends HTMLElement {
   connectedCallback() {
     this.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-issue-number]");
@@ -241,4 +241,4 @@ class CaffoldGithubIssuesList extends HTMLElement {
   }
 }
 
-customElements.define("caffold-github-issues-list", CaffoldGithubIssuesList);
+customElements.define("caffold-github-issues-list-page", CaffoldGithubIssuesListPage);

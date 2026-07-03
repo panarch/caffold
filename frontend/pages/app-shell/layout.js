@@ -24,24 +24,23 @@ import {
   openProject,
   readFile,
   renameProject,
-} from "../api.js";
-import { parentRoute, parseRoute, routeEquals, routeUrl } from "../navigation-routes.js";
-import { fileNameFromPath, imageTypeLabel, isPreviewableImagePath } from "./dom.js";
-import "./pathbar.js";
-import "./project-switcher.js";
-import "./header-actions.js";
-import "./file-list.js";
-import "./file-viewer.js";
-import "./changes-tree.js";
-import "./log-list.js";
-import "./commit-changes-tree.js";
-import "./compare-tree.js";
-import "./github-issues-list.js";
-import "./github-issue-viewer.js";
-import "./github-pulls-list.js";
-import "./github-pull-viewer.js";
-import "./github-pull-files-tree.js";
-import "./review-workspace.js";
+} from "../../api.js";
+import { parentRoute, parseRoute, routeEquals, routeUrl } from "../../navigation-routes.js";
+import {
+  fileNameFromPath,
+  imageTypeLabel,
+  isPreviewableImagePath,
+} from "../../components/dom.js";
+import "../../components/pathbar.js";
+import "../../components/project-switcher.js";
+import "../../components/header-actions.js";
+import "./files/page.js";
+import "./review-workspace/git/working-tree/page.js";
+import "./review-workspace/git/log/page.js";
+import "./review-workspace/git/compare/page.js";
+import "./review-workspace/github/issues/layout.js";
+import "./review-workspace/github/pulls/layout.js";
+import "./review-workspace/layout.js";
 
 const LOADING_DELAY_MS = 180;
 const LAST_DIRECTORY_KEY_PREFIX = "caffold:last-directory-path";
@@ -113,24 +112,31 @@ class CaffoldAppShell extends HTMLElement {
     this.resizePointerId = null;
     this.render();
     this.appMain = this.querySelector(".app-main");
+    this.filesPage = this.querySelector("caffold-files-page");
+    this.filesPage.ensureRendered();
+    this.filesPage.setAttribute("data-browser-view", this.browserView);
     this.pathbar = this.querySelector("caffold-pathbar");
     this.projectSwitcher = this.querySelector("caffold-project-switcher");
     this.headerActions = this.querySelector("caffold-header-actions");
-    this.fileList = this.querySelector("caffold-file-list");
-    this.panelResizer = this.querySelector(".panel-resizer");
-    this.fileViewer = this.querySelector("caffold-file-viewer");
+    this.fileList = this.filesPage.querySelector("caffold-file-list");
+    this.panelResizer = this.filesPage.querySelector(".panel-resizer");
+    this.fileViewer = this.filesPage.querySelector("caffold-file-viewer");
     this.reviewWorkspace = this.querySelector("caffold-review-workspace");
     this.reviewWorkspace.ensureRendered();
-    this.changesTree = this.reviewWorkspace.querySelector("caffold-changes-tree");
+    this.changesTree = this.reviewWorkspace.querySelector("caffold-git-working-tree-page");
     this.logList = this.reviewWorkspace.querySelector("caffold-log-list");
     this.commitChangesTree = this.reviewWorkspace.querySelector("caffold-commit-changes-tree");
-    this.compareTree = this.reviewWorkspace.querySelector("caffold-compare-tree");
-    this.githubIssuesList = this.reviewWorkspace.querySelector("caffold-github-issues-list");
-    this.githubIssueViewer = this.reviewWorkspace.querySelector("caffold-github-issue-viewer");
-    this.githubPullsList = this.reviewWorkspace.querySelector("caffold-github-pulls-list");
-    this.githubPullViewer = this.reviewWorkspace.querySelector("caffold-github-pull-viewer");
-    this.githubPullFilesTree = this.reviewWorkspace.querySelector(
-      "caffold-github-pull-files-tree",
+    this.compareTree = this.reviewWorkspace.querySelector("caffold-git-compare-page");
+    this.githubIssuesList = this.reviewWorkspace.querySelector(
+      "caffold-github-issues-list-page",
+    );
+    this.githubIssueViewer = this.reviewWorkspace.querySelector(
+      "caffold-github-issue-detail-page",
+    );
+    this.githubPullsList = this.reviewWorkspace.querySelector("caffold-github-pulls-list-page");
+    this.githubPullViewer = this.reviewWorkspace.querySelector("caffold-github-pull-detail-page");
+    this.githubPullFilesPage = this.reviewWorkspace.querySelector(
+      "caffold-github-pull-files-page",
     );
     this.diffWorkspaceViewer = this.reviewWorkspace.querySelector(
       ".workspace-mode-diff caffold-review-file-viewer",
@@ -347,15 +353,7 @@ class CaffoldAppShell extends HTMLElement {
       </header>
       <caffold-pathbar></caffold-pathbar>
       <main class="app-main" aria-label="File browser">
-        <caffold-file-list></caffold-file-list>
-        <div
-          class="panel-resizer"
-          role="separator"
-          aria-label="Resize left panel"
-          aria-orientation="vertical"
-          tabindex="0"
-        ></div>
-        <caffold-file-viewer></caffold-file-viewer>
+        <caffold-files-page></caffold-files-page>
       </main>
       <caffold-review-workspace hidden></caffold-review-workspace>
     `;
@@ -727,7 +725,7 @@ class CaffoldAppShell extends HTMLElement {
         skipReload,
       });
       if (!route.path) {
-        this.githubPullFilesTree.setSelectedPath("");
+        this.githubPullFilesPage.setSelectedPath("");
         this.pullWorkspaceViewer.setEmpty();
         this.showPullFilesList();
         return;
@@ -944,6 +942,7 @@ class CaffoldAppShell extends HTMLElement {
     const nextView = view === "viewer" ? "viewer" : "list";
     this.browserView = nextView;
     this.setAttribute("data-browser-view", nextView);
+    this.filesPage?.setAttribute("data-browser-view", nextView);
   }
 
   showDiffList() {
@@ -967,7 +966,7 @@ class CaffoldAppShell extends HTMLElement {
   showPullFilesList() {
     this.pullFilesView = "list";
     this.reviewWorkspace.setPullFilesView("list");
-    this.restoreScroller("pull-files", this.githubPullFilesTree, ".github-pull-files-list");
+    this.restoreScroller("pull-files", this.githubPullFilesPage, ".github-pull-files-list");
   }
 
   rememberScroller(key, host, selector) {
@@ -1456,7 +1455,7 @@ class CaffoldAppShell extends HTMLElement {
     this.githubIssueViewer.setEmpty();
     this.githubPullsList.reset();
     this.githubPullViewer.setEmpty();
-    this.githubPullFilesTree.reset();
+    this.githubPullFilesPage.reset();
     this.pullWorkspaceViewer.setEmpty();
     this.loadGitStatus(directory.path);
     this.loadGithubStatus(directory.path);
@@ -1524,7 +1523,7 @@ class CaffoldAppShell extends HTMLElement {
     this.githubIssueViewer.setEmpty();
     this.githubPullsList.reset();
     this.githubPullViewer.setEmpty();
-    this.githubPullFilesTree.reset();
+    this.githubPullFilesPage.reset();
     this.pullWorkspaceViewer.setEmpty();
     this.reviewWorkspace.clearCompareRefs();
     this.reviewWorkspace.setDiffView("list");
@@ -1593,7 +1592,7 @@ class CaffoldAppShell extends HTMLElement {
         } else if (!status.github || !status.pullsAvailable) {
           this.githubPullsList.setUnavailable(status);
           this.githubPullViewer.setEmpty();
-          this.githubPullFilesTree.reset();
+          this.githubPullFilesPage.reset();
           this.pullWorkspaceViewer.setEmpty();
         }
       }
@@ -1621,7 +1620,7 @@ class CaffoldAppShell extends HTMLElement {
       } else if (this.workspaceMode === "pulls") {
         this.githubPullsList.setError(error);
         this.githubPullViewer.setEmpty();
-        this.githubPullFilesTree.setError(error, this.gitRepository);
+        this.githubPullFilesPage.setError(error, this.gitRepository);
         this.pullWorkspaceViewer.setEmpty();
       }
     }
@@ -1715,7 +1714,7 @@ class CaffoldAppShell extends HTMLElement {
       if (this.pullsWorkspaceView === "list") {
         this.selectedGithubPullSummary = null;
         this.githubPullViewer.setEmpty();
-        this.githubPullFilesTree.reset();
+        this.githubPullFilesPage.reset();
         this.pullWorkspaceViewer.setEmpty();
       }
       this.updateWorkspaceChrome();
@@ -1803,7 +1802,7 @@ class CaffoldAppShell extends HTMLElement {
     this.updateWorkspaceChrome();
     this.githubPullsList.setSelectedPull(number);
     if (!options.skipReload) {
-      this.githubPullFilesTree.setLoading(this.gitRepository, number);
+      this.githubPullFilesPage.setLoading(this.gitRepository, number);
     }
     if (!options.preserveViewer && viewerRequestId === this.fileRequestId) {
       this.pullWorkspaceViewer.setEmpty();
@@ -1819,7 +1818,7 @@ class CaffoldAppShell extends HTMLElement {
       }
 
       this.githubPullFiles = files;
-      this.githubPullFilesTree.setFiles(files);
+      this.githubPullFilesPage.setFiles(files);
       if (viewerRequestId === this.fileRequestId && !options.preserveViewer) {
         this.pullWorkspaceViewer.setEmpty();
       }
@@ -1830,7 +1829,7 @@ class CaffoldAppShell extends HTMLElement {
         return;
       }
 
-      this.githubPullFilesTree.setError(error, this.gitRepository);
+      this.githubPullFilesPage.setError(error, this.gitRepository);
       if (viewerRequestId === this.fileRequestId) {
         this.pullWorkspaceViewer.setError(`PR #${number}`, error);
       }
@@ -1848,8 +1847,8 @@ class CaffoldAppShell extends HTMLElement {
     this.changesTree.setSelectedPath("");
     this.commitChangesTree.setSelectedPath("");
     this.compareTree.setSelectedPath("");
-    this.githubPullFilesTree.setSelectedPath(path);
-    this.rememberScroller("pull-files", this.githubPullFilesTree, ".github-pull-files-list");
+    this.githubPullFilesPage.setSelectedPath(path);
+    this.rememberScroller("pull-files", this.githubPullFilesPage, ".github-pull-files-list");
     this.workspaceMode = "pulls";
     this.pullsWorkspaceView = "files";
     this.pullFilesView = "viewer";
@@ -2160,7 +2159,7 @@ class CaffoldAppShell extends HTMLElement {
     this.reviewWorkspace.setPullFilesView(this.pullFilesView);
     this.updateGitButton();
     this.githubPullViewer.setEmpty();
-    this.githubPullFilesTree.reset();
+    this.githubPullFilesPage.reset();
     this.pullWorkspaceViewer.setEmpty();
     if (options.skipReload) {
       return;
@@ -2278,7 +2277,7 @@ class CaffoldAppShell extends HTMLElement {
         this.fileRequestId += 1;
         this.pullFilesView = "list";
         this.pullWorkspaceViewer.setEmpty();
-        this.githubPullFilesTree.setSelectedPath("");
+        this.githubPullFilesPage.setSelectedPath("");
         this.reviewWorkspace.setPullFilesView("list");
         this.updateWorkspaceChrome();
         return;
@@ -2287,7 +2286,7 @@ class CaffoldAppShell extends HTMLElement {
       this.githubPullFilesRequestId += 1;
       this.pullsWorkspaceView = "detail";
       this.pullFilesView = "list";
-      this.githubPullFilesTree.reset();
+      this.githubPullFilesPage.reset();
       this.pullWorkspaceViewer.setEmpty();
       this.reviewWorkspace.setPullsView("detail");
       this.reviewWorkspace.setPullFilesView("list");
