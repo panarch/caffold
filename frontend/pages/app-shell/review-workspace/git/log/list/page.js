@@ -2,7 +2,7 @@ import { escapeHtml } from "../../../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../../../components/icons.js";
 import "../../../../../../components/pagination.js";
 
-class CaffoldLogList extends HTMLElement {
+class CaffoldGitLogListPage extends HTMLElement {
   connectedCallback() {
     this.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-action]");
@@ -272,7 +272,7 @@ class CaffoldLogList extends HTMLElement {
   }
 }
 
-customElements.define("caffold-log-list", CaffoldLogList);
+customElements.define("caffold-git-log-list-page", CaffoldGitLogListPage);
 
 function formatCommitDate(ms) {
   if (!ms) {

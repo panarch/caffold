@@ -26,7 +26,7 @@ import "./components/pathbar.js";
 import "./components/project-switcher.js";
 import "./components/header-actions.js";
 import "./files/page.js";
-import "./review-workspace/git/working-tree/page.js";
+import "./review-workspace/git/diff/page.js";
 import "./review-workspace/git/log/layout.js";
 import "./review-workspace/git/compare/page.js";
 import "./review-workspace/github/issues/layout.js";
@@ -91,7 +91,7 @@ class CaffoldAppShell extends HTMLElement {
     this.fileViewer = this.filesPage.querySelector("caffold-file-viewer");
     this.reviewWorkspace = this.querySelector("caffold-review-workspace");
     this.reviewWorkspace.ensureRendered();
-    this.changesTree = this.reviewWorkspace.querySelector("caffold-git-working-tree-page");
+    this.changesTree = this.reviewWorkspace.querySelector("caffold-git-diff-page");
     this.logLayout = this.reviewWorkspace.querySelector("caffold-git-log-layout");
     this.logLayout.ensureRendered();
     this.compareTree = this.reviewWorkspace.querySelector("caffold-git-compare-page");

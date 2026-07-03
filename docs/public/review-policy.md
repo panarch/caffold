@@ -97,7 +97,7 @@ caffold-review-workspace > .review-workspace-panel {
   font-weight: 600;
 }
 
-caffold-log-list .log-entry {
+caffold-git-log-list-page .log-entry {
   display: grid;
 }
 ```

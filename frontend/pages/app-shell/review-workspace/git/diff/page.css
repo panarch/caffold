@@ -1,4 +1,4 @@
-caffold-git-working-tree-page {
+caffold-git-diff-page {
   display: block;
   min-width: 0;
   min-height: 0;
@@ -6,14 +6,14 @@ caffold-git-working-tree-page {
   background: var(--surface);
 }
 
-caffold-git-working-tree-page .changes-tree-panel {
+caffold-git-diff-page .changes-tree-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
   height: 100%;
 }
 
-caffold-git-working-tree-page .changes-tree-panel > header {
+caffold-git-diff-page .changes-tree-panel > header {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 2px;
@@ -22,7 +22,7 @@ caffold-git-working-tree-page .changes-tree-panel > header {
   border-bottom: 1px solid var(--border);
 }
 
-caffold-git-working-tree-page h2 {
+caffold-git-diff-page h2 {
   margin: 0;
   overflow: hidden;
   font-size: 0.82rem;
@@ -32,13 +32,13 @@ caffold-git-working-tree-page h2 {
   white-space: nowrap;
 }
 
-caffold-git-working-tree-page .changes-tree-panel > header span {
+caffold-git-diff-page .changes-tree-panel > header span {
   color: var(--muted);
   font-size: 0.74rem;
   line-height: 1.1;
 }
 
-caffold-git-working-tree-page .changes-tree-title-row {
+caffold-git-diff-page .changes-tree-title-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
@@ -47,12 +47,12 @@ caffold-git-working-tree-page .changes-tree-title-row {
   min-width: 0;
 }
 
-caffold-git-working-tree-page .change-count {
+caffold-git-diff-page .change-count {
   justify-self: end;
   white-space: nowrap;
 }
 
-caffold-git-working-tree-page .changes-branch {
+caffold-git-diff-page .changes-branch {
   display: block;
   min-width: 0;
   overflow: hidden;
@@ -61,11 +61,11 @@ caffold-git-working-tree-page .changes-branch {
   white-space: nowrap;
 }
 
-caffold-git-working-tree-page .changes-branch.is-dirty {
+caffold-git-diff-page .changes-branch.is-dirty {
   color: #8a5200;
 }
 
-caffold-git-working-tree-page .changes-tree-list {
+caffold-git-diff-page .changes-tree-list {
   --tree-indent: 12px;
   display: block;
   min-height: 0;
@@ -76,12 +76,12 @@ caffold-git-working-tree-page .changes-tree-list {
   list-style: none;
 }
 
-caffold-git-working-tree-page .changes-tree-list > li {
+caffold-git-diff-page .changes-tree-list > li {
   width: max-content;
   min-width: 100%;
 }
 
-caffold-git-working-tree-page .change-section-label {
+caffold-git-diff-page .change-section-label {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -93,7 +93,7 @@ caffold-git-working-tree-page .change-section-label {
   text-transform: uppercase;
 }
 
-caffold-git-working-tree-page .change-entry {
+caffold-git-diff-page .change-entry {
   display: grid;
   grid-template-columns: 1.35rem max-content;
   gap: 4px;
@@ -111,19 +111,19 @@ caffold-git-working-tree-page .change-entry {
   text-align: left;
 }
 
-caffold-git-working-tree-page .change-entry:hover,
-caffold-git-working-tree-page .change-entry:focus-visible {
+caffold-git-diff-page .change-entry:hover,
+caffold-git-diff-page .change-entry:focus-visible {
   border-left-color: #bdd7cc;
   background: #f1f6f3;
   outline: none;
 }
 
-caffold-git-working-tree-page .change-file[aria-current="true"] {
+caffold-git-diff-page .change-file[aria-current="true"] {
   border-left-color: var(--accent);
   background: var(--accent-soft);
 }
 
-caffold-git-working-tree-page .change-status-code {
+caffold-git-diff-page .change-status-code {
   align-self: center;
   color: #764600;
   font-size: 0.78rem;
@@ -131,7 +131,7 @@ caffold-git-working-tree-page .change-status-code {
   white-space: pre;
 }
 
-caffold-git-working-tree-page .change-node-label {
+caffold-git-diff-page .change-node-label {
   display: grid;
   grid-template-columns: 1.5rem max-content;
   gap: 6px;
@@ -140,7 +140,7 @@ caffold-git-working-tree-page .change-node-label {
   margin-left: calc(var(--tree-depth, 0) * var(--tree-indent));
 }
 
-caffold-git-working-tree-page .entry-icon {
+caffold-git-diff-page .entry-icon {
   display: inline-grid;
   width: 1.5rem;
   height: 1.5rem;
@@ -148,27 +148,27 @@ caffold-git-working-tree-page .entry-icon {
   justify-self: center;
 }
 
-caffold-git-working-tree-page .entry-icon-svg {
+caffold-git-diff-page .entry-icon-svg {
   display: block;
   width: 1.125rem;
   height: 1.125rem;
   stroke-width: 1.9;
 }
 
-caffold-git-working-tree-page .change-name {
+caffold-git-diff-page .change-name {
   min-width: 0;
   overflow: visible;
   text-overflow: clip;
   white-space: nowrap;
 }
 
-caffold-git-working-tree-page .error-panel {
+caffold-git-diff-page .error-panel {
   background: var(--danger-soft);
   color: var(--danger);
 }
 
 @media (max-width: 860px) {
-  caffold-git-working-tree-page {
+  caffold-git-diff-page {
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }

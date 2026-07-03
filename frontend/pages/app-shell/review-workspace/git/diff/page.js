@@ -1,10 +1,16 @@
-import { escapeHtml } from "../../../../../../components/dom.js";
-import { renderEntryIcon, warmIcons } from "../../../../../../components/icons.js";
+import { escapeHtml } from "../../../../../components/dom.js";
+import { renderEntryIcon, warmIcons } from "../../../../../components/icons.js";
 
-class CaffoldCommitChangesTree extends HTMLElement {
+const SECTIONS = [
+  ["unstaged", "Unstaged"],
+  ["staged", "Staged"],
+  ["untracked", "Untracked"],
+];
+
+class CaffoldGitDiffPage extends HTMLElement {
   connectedCallback() {
     this.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-node-key], button[data-commit-path]");
+      const button = event.target.closest("button[data-node-key], button[data-change-path]");
       if (!button || button.disabled) {
         return;
       }
@@ -14,14 +20,14 @@ class CaffoldCommitChangesTree extends HTMLElement {
         return;
       }
 
-      this.setSelectedPath(button.dataset.commitPath);
+      this.setSelectedPath(button.dataset.changePath);
       this.dispatchEvent(
-        new CustomEvent("caffold:open-commit-diff", {
+        new CustomEvent("caffold:open-git-diff", {
           bubbles: true,
           detail: {
-            sha: button.dataset.commitSha,
-            path: button.dataset.commitPath,
-            status: button.dataset.commitStatus,
+            path: button.dataset.changePath,
+            kind: button.dataset.changeKind,
+            status: button.dataset.changeStatus,
           },
         }),
       );
@@ -40,20 +46,20 @@ class CaffoldCommitChangesTree extends HTMLElement {
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
-  setLoading(repository, commit = null) {
-    this.state = { status: "loading", repository, commit };
+  setLoading(repository) {
+    this.state = { status: "loading", repository };
     this.render();
   }
 
-  setCommit(commitPayload) {
-    const tree = buildCommitTree(commitPayload.files ?? []);
+  setStatus(gitStatus) {
+    const tree = buildChangeTree(gitStatus.files);
     this.expandedKeys = new Set(tree.directoryKeys);
-    this.state = { status: "ready", commitPayload, tree };
+    this.state = { status: "ready", gitStatus, tree };
     this.render();
   }
 
-  setError(error, repository = null, commit = null) {
-    this.state = { status: "error", error, repository, commit };
+  setError(error, repository = null) {
+    this.state = { status: "error", error, repository };
     this.render();
   }
 
@@ -68,7 +74,7 @@ class CaffoldCommitChangesTree extends HTMLElement {
   }
 
   patchSelectedPath() {
-    for (const button of this.querySelectorAll('button[data-commit-path][aria-current="true"]')) {
+    for (const button of this.querySelectorAll('button[data-change-path][aria-current="true"]')) {
       button.setAttribute("aria-current", "false");
     }
 
@@ -77,7 +83,7 @@ class CaffoldCommitChangesTree extends HTMLElement {
     }
 
     const button = this.querySelector(
-      `button[data-commit-path="${CSS.escape(this.selectedPath)}"]`,
+      `button[data-change-path="${CSS.escape(this.selectedPath)}"]`,
     );
     if (button) {
       button.setAttribute("aria-current", "true");
@@ -94,9 +100,9 @@ class CaffoldCommitChangesTree extends HTMLElement {
   render() {
     if (!this.state || this.state.status === "idle") {
       this.innerHTML = `
-        <section class="commit-tree-panel">
-          ${this.renderHeader(null, null, null)}
-          <ol class="commit-tree-list"></ol>
+        <section class="changes-tree-panel">
+          ${this.renderHeader(null, null)}
+          <ol class="changes-tree-list"></ol>
         </section>
       `;
       return;
@@ -104,9 +110,9 @@ class CaffoldCommitChangesTree extends HTMLElement {
 
     if (this.state.status === "loading") {
       this.innerHTML = `
-        <section class="commit-tree-panel" aria-busy="true">
-          ${this.renderHeader(this.state.repository, this.state.commit, null)}
-          <p class="surface-message">Loading commit...</p>
+        <section class="changes-tree-panel" aria-busy="true">
+          ${this.renderHeader(this.state.repository, null)}
+          <p class="surface-message">Loading changes...</p>
         </section>
       `;
       return;
@@ -114,39 +120,60 @@ class CaffoldCommitChangesTree extends HTMLElement {
 
     if (this.state.status === "error") {
       this.innerHTML = `
-        <section class="commit-tree-panel error-panel">
-          ${this.renderHeader(this.state.repository, this.state.commit, null)}
+        <section class="changes-tree-panel error-panel">
+          ${this.renderHeader(this.state.repository, null)}
           <p class="surface-message">${escapeHtml(this.state.error.message)}</p>
         </section>
       `;
       return;
     }
 
-    const payload = this.state.commitPayload;
-    const files = payload.files ?? [];
+    const files = this.state.gitStatus.files;
     this.innerHTML = `
-      <section class="commit-tree-panel">
-        ${this.renderHeader(payload.repository, payload.commit, files.length)}
+      <section class="changes-tree-panel">
+        ${this.renderHeader(this.state.gitStatus.repository, files.length)}
         ${
           files.length === 0
-            ? `<p class="surface-message">No files changed.</p>`
-            : `<ol class="commit-tree-list">${this.renderNodes(this.state.tree.children, 0)}</ol>`
+            ? `<p class="surface-message">No changes.</p>`
+            : `<ol class="changes-tree-list">${this.renderSections()}</ol>`
         }
       </section>
     `;
   }
 
-  renderHeader(_repository, _commit, count) {
-    const countLabel = count === null || count === undefined ? "" : `${count} files`;
+  renderHeader(repository, count) {
+    const branch = repository?.branch ?? "HEAD";
+    const countLabel = count === null || count === undefined ? "" : `${count} changes`;
 
     return `
       <header>
-        <div class="commit-tree-title-row">
-          <h2>Commit</h2>
-          <span class="commit-file-count">${escapeHtml(countLabel)}</span>
+        <div class="changes-tree-title-row">
+          <h2>Changes</h2>
+          <span class="change-count">${escapeHtml(countLabel)}</span>
         </div>
+        ${
+          repository
+            ? `<span class="changes-branch${repository.dirty ? " is-dirty" : ""}">
+                ${escapeHtml(branch)}${repository.dirty ? " *" : ""}
+              </span>`
+            : ""
+        }
       </header>
     `;
+  }
+
+  renderSections() {
+    return SECTIONS.map(([category, label]) => {
+      const section = this.state.tree.sections.get(category);
+      if (!section || section.children.size === 0) {
+        return "";
+      }
+
+      return `
+        <li class="change-section-label">${escapeHtml(label)}</li>
+        ${this.renderNodes(section.children, 0)}
+      `;
+    }).join("");
   }
 
   renderNodes(children, depth) {
@@ -174,16 +201,16 @@ class CaffoldCommitChangesTree extends HTMLElement {
       <li>
         <button
           type="button"
-          class="commit-entry commit-directory"
+          class="change-entry change-directory"
           style="--tree-depth: ${depth}"
           data-node-key="${escapeHtml(node.key)}"
           aria-expanded="${expanded ? "true" : "false"}"
           aria-label="${escapeHtml(`${expanded ? "Collapse" : "Expand"} ${node.name}`)}"
         >
-          <span class="commit-status-code" aria-hidden="true"></span>
-          <span class="commit-node-label">
+          <span class="change-status-code" aria-hidden="true"></span>
+          <span class="change-node-label">
             ${renderEntryIcon(entry)}
-            <span class="commit-name">${escapeHtml(node.name)}</span>
+            <span class="change-name">${escapeHtml(node.name)}</span>
           </span>
         </button>
       </li>
@@ -193,6 +220,7 @@ class CaffoldCommitChangesTree extends HTMLElement {
 
   renderFile(file, depth) {
     const name = file.repoRelativePath.split("/").filter(Boolean).pop() ?? file.repoRelativePath;
+    const kind = file.untracked ? "untracked" : file.category;
     const selected = file.path === this.selectedPath;
     const entry = {
       name,
@@ -206,19 +234,19 @@ class CaffoldCommitChangesTree extends HTMLElement {
       <li>
         <button
           type="button"
-          class="commit-entry commit-file"
+          class="change-entry change-file"
           style="--tree-depth: ${depth}"
-          data-commit-sha="${escapeHtml(this.state.commitPayload.commit.sha)}"
-          data-commit-path="${escapeHtml(file.path)}"
-          data-commit-status="${escapeHtml(file.status)}"
+          data-change-path="${escapeHtml(file.path)}"
+          data-change-kind="${escapeHtml(kind)}"
+          data-change-status="${escapeHtml(file.status)}"
           aria-current="${selected ? "true" : "false"}"
-          aria-label="${escapeHtml(`Show commit diff for ${file.repoRelativePath}`)}"
+          aria-label="${escapeHtml(`Show diff for ${file.repoRelativePath}`)}"
           title="${escapeHtml(file.repoRelativePath)}"
         >
-          <span class="commit-status-code">${escapeHtml(file.status)}</span>
-          <span class="commit-node-label">
+          <span class="change-status-code">${escapeHtml(file.status)}</span>
+          <span class="change-node-label">
             ${renderEntryIcon(entry)}
-            <span class="commit-name">${escapeHtml(name)}</span>
+            <span class="change-name">${escapeHtml(name)}</span>
           </span>
         </button>
       </li>
@@ -238,7 +266,7 @@ class CaffoldCommitChangesTree extends HTMLElement {
   }
 
   captureScrollAnchor(button) {
-    const scroller = this.querySelector(".commit-tree-list");
+    const scroller = this.querySelector(".changes-tree-list");
     if (!button || !scroller) {
       return null;
     }
@@ -255,7 +283,7 @@ class CaffoldCommitChangesTree extends HTMLElement {
     }
 
     requestAnimationFrame(() => {
-      const scroller = this.querySelector(".commit-tree-list");
+      const scroller = this.querySelector(".changes-tree-list");
       const button = this.querySelector(`button[data-node-key="${CSS.escape(anchor.key)}"]`);
       if (!scroller || !button) {
         return;
@@ -267,24 +295,31 @@ class CaffoldCommitChangesTree extends HTMLElement {
   }
 }
 
-customElements.define("caffold-commit-changes-tree", CaffoldCommitChangesTree);
+customElements.define("caffold-git-diff-page", CaffoldGitDiffPage);
 
-function buildCommitTree(files) {
-  const root = { kind: "root", children: new Map() };
+function buildChangeTree(files) {
+  const sections = new Map(
+    SECTIONS.map(([category]) => [category, { kind: "section", children: new Map() }]),
+  );
   const directoryKeys = [];
 
   for (const file of files) {
+    const section = sections.get(file.category);
+    if (!section) {
+      continue;
+    }
+
     const parts = file.repoRelativePath.split("/").filter(Boolean);
     if (parts.length === 0) {
       continue;
     }
 
-    let children = root.children;
+    let children = section.children;
     let directoryPath = "";
 
     for (const part of parts.slice(0, -1)) {
       directoryPath = directoryPath ? `${directoryPath}/${part}` : part;
-      const key = `commit:${directoryPath}`;
+      const key = `${file.category}:${directoryPath}`;
       let directory = children.get(key);
 
       if (!directory) {
@@ -301,14 +336,14 @@ function buildCommitTree(files) {
       children = directory.children;
     }
 
-    children.set(`commit:file:${file.repoRelativePath}`, {
+    children.set(`${file.category}:file:${file.repoRelativePath}`, {
       kind: "file",
       name: parts[parts.length - 1],
       file,
     });
   }
 
-  return { children: root.children, directoryKeys };
+  return { sections, directoryKeys };
 }
 
 function sortedNodes(children) {

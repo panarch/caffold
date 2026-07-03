@@ -186,7 +186,7 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).not.toContain("/assets/components/file-list.js");
   expect(serviceWorker).toContain("/assets/pages/app-shell/review-workspace/layout.js");
   expect(serviceWorker).toContain(
-    "/assets/pages/app-shell/review-workspace/git/working-tree/page.js",
+    "/assets/pages/app-shell/review-workspace/git/diff/page.js",
   );
   expect(serviceWorker).toContain(
     "/assets/pages/app-shell/review-workspace/git/log/layout.js",
@@ -195,9 +195,18 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
     "/assets/pages/app-shell/review-workspace/git/log/page.js",
   );
   expect(serviceWorker).toContain(
-    "/assets/pages/app-shell/review-workspace/git/log/components/list.js",
+    "/assets/pages/app-shell/review-workspace/git/log/list/page.js",
   );
   expect(serviceWorker).toContain(
+    "/assets/pages/app-shell/review-workspace/git/log/commit/page.js",
+  );
+  expect(serviceWorker).toContain(
+    "/assets/pages/app-shell/review-workspace/git/log/commit/components/changes-tree.js",
+  );
+  expect(serviceWorker).not.toContain(
+    "/assets/pages/app-shell/review-workspace/git/log/components/list.js",
+  );
+  expect(serviceWorker).not.toContain(
     "/assets/pages/app-shell/review-workspace/git/log/components/commit-tree.js",
   );
   expect(serviceWorker).not.toContain("/assets/components/changes-tree.js");
@@ -1443,7 +1452,7 @@ test("keeps list scroll positions when selecting files and changes", async ({ pa
   await page.addStyleTag({
     content: `
       caffold-file-list .file-list,
-      caffold-git-working-tree-page .changes-tree-list {
+      caffold-git-diff-page .changes-tree-list {
         max-height: 72px;
       }
     `,
@@ -1466,7 +1475,7 @@ test("keeps list scroll positions when selecting files and changes", async ({ pa
   await page.locator('button[data-entry-path="src"]').click();
   await clickHeaderAction(page, "git", "open-diff-workspace");
 
-  const changesList = page.locator("caffold-git-working-tree-page .changes-tree-list");
+  const changesList = page.locator("caffold-git-diff-page .changes-tree-list");
   const changeTarget = page.locator(`button[data-change-path="${LONG_CHANGE_FILE}"]`);
   await changeTarget.scrollIntoViewIfNeeded();
   const beforeChangesScroll = await scrollTop(changesList);
@@ -1476,7 +1485,7 @@ test("keeps list scroll positions when selecting files and changes", async ({ pa
   await expect(page.locator("caffold-diff-viewer")).toContainText("long_change_name_fixture");
   if (testInfo.project.name === "phone") {
     await page.getByRole("button", { name: "Back to changes" }).click();
-    await expect(page.locator("caffold-git-working-tree-page")).toBeVisible();
+    await expect(page.locator("caffold-git-diff-page")).toBeVisible();
   }
   await expectPreservedScroll(changesList, beforeChangesScroll);
 });
@@ -1565,20 +1574,20 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   await expect(workspace).toBeVisible();
   await expect(workspace).toHaveAttribute("data-workspace-mode", "diff");
   await expect(workspace.getByRole("button", { name: "Close review workspace" })).toBeVisible();
-  await expect(page.locator("caffold-git-working-tree-page")).toContainText("Unstaged");
-  await expect(page.locator("caffold-git-working-tree-page")).toContainText("example.rs");
-  await expect(page.locator("caffold-git-working-tree-page")).toContainText("deleted.rs");
+  await expect(page.locator("caffold-git-diff-page")).toContainText("Unstaged");
+  await expect(page.locator("caffold-git-diff-page")).toContainText("example.rs");
+  await expect(page.locator("caffold-git-diff-page")).toContainText("deleted.rs");
   if (testInfo.project.name !== "phone") {
     const resizeHandle = workspace.locator(".workspace-mode-diff .review-panel-resizer");
     await expect(resizeHandle).toBeVisible();
     const beforeReviewWidth = await elementWidth(
       page,
-      "caffold-review-workspace .workspace-mode-diff > caffold-git-working-tree-page",
+      "caffold-review-workspace .workspace-mode-diff > caffold-git-diff-page",
     );
     await dragHorizontalResizer(page, resizeHandle, 96);
     const afterReviewWidth = await elementWidth(
       page,
-      "caffold-review-workspace .workspace-mode-diff > caffold-git-working-tree-page",
+      "caffold-review-workspace .workspace-mode-diff > caffold-git-diff-page",
     );
     expect(afterReviewWidth).toBeGreaterThan(beforeReviewWidth + 48);
   }
@@ -1594,16 +1603,16 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
     await expectMobileReviewDetail(page, {
       backName: "Back to changes",
       detailSelector: ".workspace-mode-diff caffold-review-file-viewer",
-      listSelector: "caffold-git-working-tree-page",
+      listSelector: "caffold-git-diff-page",
     });
   } else {
     await expectAlignedWorkspaceHeaders(page, [
       "caffold-review-workspace .review-workspace-header",
-      "caffold-git-working-tree-page .changes-tree-panel > header",
+      "caffold-git-diff-page .changes-tree-panel > header",
       ".workspace-mode-diff caffold-review-file-viewer .viewer-panel > header",
     ]);
     await expectMatchingPaneTitleSizes(page, [
-      "caffold-git-working-tree-page .changes-tree-panel > header",
+      "caffold-git-diff-page .changes-tree-panel > header",
       ".workspace-mode-diff caffold-review-file-viewer .viewer-panel > header",
     ]);
   }
@@ -1636,7 +1645,7 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   if (testInfo.project.name === "phone") {
     await page.getByRole("button", { name: "Back to changes" }).click();
     await expect(workspace).toHaveAttribute("data-mobile-detail", "false");
-    await expect(page.locator("caffold-git-working-tree-page")).toBeVisible();
+    await expect(page.locator("caffold-git-diff-page")).toBeVisible();
     await expect(page.locator(".workspace-mode-diff caffold-review-file-viewer")).toBeHidden();
   }
   await page.locator('button[data-change-path="src/deleted.rs"]').click();
@@ -1650,7 +1659,7 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
       "data-detail-view",
       "list",
     );
-    await expect(page.locator("caffold-git-working-tree-page")).toBeVisible();
+    await expect(page.locator("caffold-git-diff-page")).toBeVisible();
     await expect(page.locator(".workspace-mode-diff caffold-review-file-viewer")).toBeHidden();
     await expect(page.locator('button[data-change-path="src/deleted.rs"]')).toHaveAttribute(
       "aria-current",
@@ -2647,33 +2656,33 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
   await expect(workspace).toHaveAttribute("data-workspace-mode", "log");
   await expect(logView).toHaveAttribute("data-log-view", "list");
   await expect(backButton).toBeHidden();
-  await expect(page.locator("caffold-log-list")).toContainText("Update planner function");
-  await expect(page.locator("caffold-log-list")).toContainText("abcdef1");
-  await expect(page.locator("caffold-log-list")).toBeVisible();
-  await expect(page.locator(".log-review-detail")).toBeHidden();
-  const pagination = page.locator("caffold-log-list caffold-pagination");
+  await expect(page.locator("caffold-git-log-list-page")).toContainText("Update planner function");
+  await expect(page.locator("caffold-git-log-list-page")).toContainText("abcdef1");
+  await expect(page.locator("caffold-git-log-list-page")).toBeVisible();
+  await expect(page.locator("caffold-git-log-commit-page")).toBeHidden();
+  const pagination = page.locator("caffold-git-log-list-page caffold-pagination");
   await expect(pagination.locator(".pagination-indicator")).toHaveText("1 / 2");
   await expect(pagination.getByRole("button", { name: "Newest page" })).toBeDisabled();
   await expect(pagination.getByRole("button", { name: "Newer page" })).toBeDisabled();
 
   await pagination.getByRole("button", { name: "Oldest page" }).click();
   await page.waitForTimeout(40);
-  const preservedLogText = await page.locator("caffold-log-list").textContent();
+  const preservedLogText = await page.locator("caffold-git-log-list-page").textContent();
   expect(preservedLogText).toContain("Update planner function");
   expect(preservedLogText).not.toContain("Loading log...");
   await expect(pagination.locator(".pagination-indicator")).toHaveText("2 / 2");
-  await expect(page.locator("caffold-log-list")).toContainText("Oldest page commit 1");
+  await expect(page.locator("caffold-git-log-list-page")).toContainText("Oldest page commit 1");
   await expect(pagination.getByRole("button", { name: "Older page" })).toBeDisabled();
   await expect(pagination.getByRole("button", { name: "Oldest page" })).toBeDisabled();
 
   await pagination.getByRole("button", { name: "Newest page" }).click();
   await expect(pagination.locator(".pagination-indicator")).toHaveText("1 / 2");
-  await expect(page.locator("caffold-log-list")).toContainText("Update planner function");
+  await expect(page.locator("caffold-git-log-list-page")).toContainText("Update planner function");
 
   const logEntry = page.locator(
-    'caffold-log-list .log-entry[data-commit-sha="abcdef1234567890abcdef1234567890abcdef12"]',
+    'caffold-git-log-list-page .log-entry[data-commit-sha="abcdef1234567890abcdef1234567890abcdef12"]',
   );
-  const logList = page.locator("caffold-log-list .log-list");
+  const logList = page.locator("caffold-git-log-list-page .log-list");
   await logEntry.scrollIntoViewIfNeeded();
   const beforeLogScroll = await scrollTop(logList);
   expect(beforeLogScroll).toBeGreaterThan(0);
@@ -2691,8 +2700,8 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
 
   await logEntry.getByRole("button", { name: /Open commit diff for abcdef1/ }).click();
   await expect(logView).toHaveAttribute("data-log-view", "detail");
-  await expect(page.locator("caffold-log-list")).toBeHidden();
-  await expect(page.locator(".log-review-detail")).toBeVisible();
+  await expect(page.locator("caffold-git-log-list-page")).toBeHidden();
+  await expect(page.locator("caffold-git-log-commit-page")).toBeVisible();
   await expect(backButton).toBeVisible();
   await expect(workspace.locator(".review-workspace-title h2")).toHaveText("Commit");
   await expect(workspace.locator(".review-workspace-subtitle")).toContainText("abcdef1");
@@ -2707,7 +2716,7 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
     "Select a file to inspect it.",
   );
   if (testInfo.project.name === "phone") {
-    await expect(logView.locator(".log-review-detail")).toHaveAttribute(
+    await expect(logView.locator("caffold-git-log-commit-page")).toHaveAttribute(
       "data-detail-view",
       "list",
     );
@@ -2715,16 +2724,16 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
     await expect(page.locator(".workspace-mode-log caffold-review-file-viewer")).toBeHidden();
   }
   if (testInfo.project.name === "desktop") {
-    const resizeHandle = workspace.locator(".log-review-detail .review-panel-resizer");
+    const resizeHandle = workspace.locator("caffold-git-log-commit-page .review-panel-resizer");
     await expect(resizeHandle).toBeVisible();
     const beforeReviewWidth = await elementWidth(
       page,
-      "caffold-review-workspace .log-review-detail > caffold-commit-changes-tree",
+      "caffold-review-workspace caffold-git-log-commit-page > caffold-commit-changes-tree",
     );
     await dragHorizontalResizer(page, resizeHandle, 96);
     const afterReviewWidth = await elementWidth(
       page,
-      "caffold-review-workspace .log-review-detail > caffold-commit-changes-tree",
+      "caffold-review-workspace caffold-git-log-commit-page > caffold-commit-changes-tree",
     );
     expect(afterReviewWidth).toBeGreaterThan(beforeReviewWidth + 48);
   }
@@ -2735,7 +2744,7 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
     "Modified · Commit abcdef1",
   );
   if (testInfo.project.name === "phone") {
-    await expect(logView.locator(".log-review-detail")).toHaveAttribute(
+    await expect(logView.locator("caffold-git-log-commit-page")).toHaveAttribute(
       "data-detail-view",
       "viewer",
     );
@@ -2761,7 +2770,7 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
   if (testInfo.project.name === "phone") {
     await page.getByRole("button", { name: "Back to commit" }).click();
     await expect(workspace).toHaveAttribute("data-mobile-detail", "false");
-    await expect(logView.locator(".log-review-detail")).toHaveAttribute(
+    await expect(logView.locator("caffold-git-log-commit-page")).toHaveAttribute(
       "data-detail-view",
       "list",
     );
@@ -2772,8 +2781,8 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
   await expect(logView).toHaveAttribute("data-log-view", "list");
   await expect(backButton).toBeHidden();
   await expect(workspace.locator(".review-workspace-title h2")).toHaveText("Log");
-  await expect(page.locator("caffold-log-list")).toBeVisible();
-  await expect(page.locator(".log-review-detail")).toBeHidden();
+  await expect(page.locator("caffold-git-log-list-page")).toBeVisible();
+  await expect(page.locator("caffold-git-log-commit-page")).toBeHidden();
   await expect(logEntry).not.toHaveAttribute("aria-current");
 
   await workspace.getByRole("button", { name: "Close review workspace" }).click();

@@ -41,15 +41,17 @@ caffold-app-shell
       scaffold-file-viewer
   scaffold-review-workspace
     diff
-      scaffold-git-working-tree-page
+      scaffold-git-diff-page
       scaffold-review-file-viewer
     compare
       scaffold-git-compare-page
       scaffold-review-file-viewer
     log
-      scaffold-log-list
-      scaffold-commit-changes-tree
-      scaffold-review-file-viewer
+      scaffold-git-log-layout
+        scaffold-git-log-list-page
+        scaffold-git-log-commit-page
+          scaffold-commit-changes-tree
+          scaffold-review-file-viewer
     issues
       scaffold-github-issues-layout
         scaffold-github-issues-list-page
@@ -108,7 +110,7 @@ frontend/pages/
       layout.css
 
       git/
-        working-tree/
+        diff/
           page.js
           page.css
         compare/
@@ -117,11 +119,15 @@ frontend/pages/
         log/
           layout.js
           layout.css
-          components/
-            list.js
-            list.css
-            commit-tree.js
-            commit-tree.css
+          list/
+            page.js
+            page.css
+          commit/
+            page.js
+            page.css
+            components/
+              changes-tree.js
+              changes-tree.css
 
       github/
         issues/
@@ -163,8 +169,9 @@ Keep reusable building blocks in `frontend/components`:
 Page-specific helper components can live under that page's `components/`
 directory when moving them to shared `frontend/components` would hide the
 ownership boundary. For example, the file browser list belongs only to
-`app-shell/files/page`, the Git log list and commit tree belong only to
-`git/log/layout`, and the PR files tree belongs only to `github/pulls/files/page`.
+`app-shell/files/page`, the Git log list belongs only to `git/log/list/page`,
+the commit changes tree belongs only to `git/log/commit/page`, and the PR files
+tree belongs only to `github/pulls/files/page`.
 Layout-specific helper components follow the same rule. App chrome such as the
 pathbar, project switcher, and header actions belongs to `app-shell/layout`.
 

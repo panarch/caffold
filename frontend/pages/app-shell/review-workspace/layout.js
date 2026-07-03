@@ -131,7 +131,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
         </header>
         <div class="review-workspace-body">
           <div class="review-workspace-view workspace-mode-diff" hidden>
-            <caffold-git-working-tree-page></caffold-git-working-tree-page>
+            <caffold-git-diff-page></caffold-git-diff-page>
             <div
               class="review-panel-resizer"
               role="separator"
@@ -177,7 +177,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
     this.logView = this.querySelector(".workspace-mode-log");
     this.logLayout = this.querySelector("caffold-git-log-layout");
     this.logLayout.ensureRendered();
-    this.logDetailView = this.logLayout.querySelector(".log-review-detail");
+    this.logDetailView = this.logLayout.querySelector("caffold-git-log-commit-page");
     this.issuesView = this.querySelector(".workspace-mode-issues");
     this.issuesLayout = this.querySelector("caffold-github-issues-layout");
     this.issuesLayout.ensureRendered();
@@ -246,7 +246,6 @@ class CaffoldReviewWorkspace extends HTMLElement {
   setLogDetailView(view) {
     this.ensureRendered();
     this.logLayout.setDetailView(view);
-    this.logDetailView.dataset.detailView = this.logLayout.detailView;
     this.updateMobileDetailState();
   }
 
@@ -462,7 +461,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
 
   reviewPanelForTarget(target) {
     if (target === "log") {
-      return this.querySelector(".log-review-detail");
+      return this.querySelector("caffold-git-log-commit-page");
     }
 
     if (target === "diff") {

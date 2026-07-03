@@ -1,11 +1,6 @@
-import {
-  getGitCommit,
-  getGitCommitDiff,
-  getGitLog,
-} from "../../../../../api.js";
-import "./components/list.js";
-import "./components/commit-tree.js";
-import "../../../../../components/file-viewer.js";
+import { getGitLog } from "../../../../../api.js";
+import "./commit/page.js";
+import "./list/page.js";
 
 const LOADING_DELAY_MS = 180;
 
@@ -21,49 +16,32 @@ class CaffoldGitLogLayout extends HTMLElement {
 
     this.rendered = true;
     this.innerHTML = `
-      <caffold-log-list></caffold-log-list>
-      <div class="log-review-detail">
-        <caffold-commit-changes-tree></caffold-commit-changes-tree>
-        <div
-          class="review-panel-resizer"
-          role="separator"
-          aria-label="Resize review side panel"
-          aria-orientation="vertical"
-          tabindex="0"
-          data-resize-target="log"
-        ></div>
-        <caffold-review-file-viewer></caffold-review-file-viewer>
-      </div>
+      <caffold-git-log-list-page></caffold-git-log-list-page>
+      <caffold-git-log-commit-page></caffold-git-log-commit-page>
     `;
-    this.list = this.querySelector("caffold-log-list");
-    this.commitTree = this.querySelector("caffold-commit-changes-tree");
-    this.fileViewer = this.querySelector("caffold-review-file-viewer");
-    this.fileViewer.setCloseLabel("Back to commit");
+    this.list = this.querySelector("caffold-git-log-list-page");
+    this.commitPage = this.querySelector("caffold-git-log-commit-page");
     this.logRequestId ??= 0;
-    this.commitRequestId ??= 0;
-    this.fileRequestId ??= 0;
     this.page ??= 1;
     this.view ??= "list";
     this.detailView ??= "list";
-    this.scrollPositions ??= {};
+    this.commitPage.addEventListener("caffold:git-log-commit-state-change", () => {
+      this.detailView = this.commitPage.detailView;
+      this.emitStateChange();
+    });
   }
 
   reset() {
     this.ensureRendered();
     this.logRequestId += 1;
-    this.commitRequestId += 1;
-    this.fileRequestId += 1;
     this.currentPath = "";
     this.repository = null;
     this.log = null;
-    this.commitPayload = null;
-    this.selectedCommitSummary = null;
     this.page = 1;
     this.setView("list");
     this.setDetailView("list");
     this.list.reset();
-    this.commitTree.reset();
-    this.fileViewer.setEmpty();
+    this.commitPage.reset();
     this.emitStateChange();
   }
 
@@ -72,11 +50,9 @@ class CaffoldGitLogLayout extends HTMLElement {
     if (!options.skipReload) {
       this.page = normalizePage(options.page ?? this.page);
     }
-    this.selectedCommitSummary = null;
     this.setView("list");
     this.setDetailView("list");
-    this.commitTree.reset();
-    this.fileViewer.setEmpty();
+    this.commitPage.prepareForList();
     this.emitStateChange();
 
     if (options.skipReload) {
@@ -100,63 +76,24 @@ class CaffoldGitLogLayout extends HTMLElement {
   }
 
   async openCommit(sha, options = {}) {
+    this.setContext(options);
     if (!sha || !this.repository) {
       return null;
     }
 
-    this.setContext(options);
     this.page = normalizePage(options.page ?? this.page);
-    if (options.skipReload && this.commitPayload?.commit?.sha === sha) {
-      this.selectedCommitSummary = this.commitPayload.commit;
-      this.setView("detail");
-      this.setDetailView(options.preserveViewer ? this.detailView : "list");
-      if (!options.preserveViewer) {
-        this.commitTree.setSelectedPath("");
-        this.fileViewer.setEmpty();
-      }
-      this.emitStateChange();
-      return this.commitPayload;
-    }
-
-    const requestId = ++this.commitRequestId;
-    const viewerRequestId = ++this.fileRequestId;
-    this.selectedCommitSummary = {
-      shortSha: sha.slice(0, 7),
-      subject: "",
-    };
     this.setView("detail");
-    this.setDetailView("list");
-    this.commitTree.setSelectedPath("");
-    this.commitTree.setLoading(this.repository);
-    this.fileViewer.setLoading(`Commit ${sha.slice(0, 7)}`);
+    const commit = await this.commitPage.openCommit({
+      currentPath: this.currentPath,
+      repository: this.repository,
+      sha,
+      page: this.page,
+      skipReload: options.skipReload,
+      preserveViewer: options.preserveViewer,
+    });
+    this.detailView = this.commitPage.detailView;
     this.emitStateChange();
-
-    try {
-      const commit = await getGitCommit(this.currentPath, sha);
-      if (requestId !== this.commitRequestId) {
-        return null;
-      }
-
-      this.commitPayload = commit;
-      this.commitTree.setCommit(commit);
-      this.selectedCommitSummary = commit.commit;
-      if (viewerRequestId === this.fileRequestId) {
-        this.fileViewer.setEmpty();
-      }
-      this.emitStateChange();
-      return commit;
-    } catch (error) {
-      if (requestId !== this.commitRequestId) {
-        return null;
-      }
-
-      this.commitTree.setError(error, this.repository);
-      if (viewerRequestId === this.fileRequestId) {
-        this.fileViewer.setError(`Commit ${sha.slice(0, 7)}`, error);
-      }
-      this.emitStateChange();
-      return null;
-    }
+    return commit;
   }
 
   async openCommitDiff(sha, path, status = "") {
@@ -164,39 +101,21 @@ class CaffoldGitLogLayout extends HTMLElement {
       return null;
     }
 
-    const requestId = ++this.fileRequestId;
-    this.commitTree.setSelectedPath(path);
-    this.rememberScroller("commit", this.commitTree, ".commit-tree-list");
     this.setView("detail");
-    this.setDetailView("viewer");
+    const diff = await this.commitPage.openDiff({
+      currentPath: this.currentPath,
+      sha,
+      path,
+      status,
+    });
+    this.detailView = this.commitPage.detailView;
     this.emitStateChange();
-    const loadingTimer = this.showFileLoadingAfterDelay(`Commit diff ${path}`, requestId);
-
-    try {
-      const diff = await getGitCommitDiff(this.currentPath, sha, path);
-      if (requestId !== this.fileRequestId) {
-        return null;
-      }
-
-      this.fileViewer.setDiff({ ...diff, status });
-      return diff;
-    } catch (error) {
-      if (requestId !== this.fileRequestId) {
-        return null;
-      }
-
-      this.fileViewer.setError(path, error);
-      return null;
-    } finally {
-      window.clearTimeout(loadingTimer);
-    }
+    return diff;
   }
 
   showCommitFileList() {
-    this.setDetailView("list");
-    this.commitTree.setSelectedPath("");
-    this.fileViewer.setEmpty();
-    this.restoreScroller("commit", this.commitTree, ".commit-tree-list");
+    this.commitPage.showFileList();
+    this.detailView = this.commitPage.detailView;
     this.emitStateChange();
   }
 
@@ -205,13 +124,9 @@ class CaffoldGitLogLayout extends HTMLElement {
       return false;
     }
 
-    this.commitRequestId += 1;
-    this.fileRequestId += 1;
-    this.selectedCommitSummary = null;
     this.setView("list");
     this.setDetailView("list");
-    this.commitTree.setSelectedPath("");
-    this.fileViewer.setEmpty();
+    this.commitPage.prepareForList();
     this.emitStateChange();
     return true;
   }
@@ -229,12 +144,8 @@ class CaffoldGitLogLayout extends HTMLElement {
 
     if (contextChanged) {
       this.logRequestId += 1;
-      this.commitRequestId += 1;
-      this.fileRequestId += 1;
       this.log = null;
-      this.commitPayload = null;
-      this.selectedCommitSummary = null;
-      this.scrollPositions = {};
+      this.commitPage.reset();
     }
   }
 
@@ -277,26 +188,23 @@ class CaffoldGitLogLayout extends HTMLElement {
       return Boolean(this.log) && normalizePage(page ?? this.page) === this.page;
     }
 
-    return this.commitPayload?.commit?.sha === sha;
+    return this.commitPage.canReuse(sha);
   }
 
   findCommitFile(path) {
-    return this.commitPayload?.files?.find((entry) => entry.path === path) ?? null;
+    return this.commitPage.findFile(path);
   }
 
   setSelectedPath(path) {
-    this.ensureRendered();
-    this.commitTree.setSelectedPath(path ?? "");
+    this.commitPage.setSelectedPath(path);
   }
 
   isFileViewer(target) {
-    return target === this.fileViewer;
+    return this.commitPage.isFileViewer(target);
   }
 
   commitSubtitle() {
-    const shortSha = this.selectedCommitSummary?.shortSha ?? "";
-    const subject = this.selectedCommitSummary?.subject ?? "";
-    return [shortSha, subject].filter(Boolean).join(" ");
+    return this.commitPage.commitSubtitle();
   }
 
   setView(view) {
@@ -307,52 +215,14 @@ class CaffoldGitLogLayout extends HTMLElement {
 
   setDetailView(view) {
     this.ensureRendered();
-    this.detailView = view === "viewer" ? "viewer" : "list";
-    this.querySelector(".log-review-detail").dataset.detailView = this.detailView;
-  }
-
-  rememberScroller(key, host, selector) {
-    const scroller = host?.querySelector(selector);
-    if (!scroller) {
-      return;
-    }
-
-    this.scrollPositions[key] = scroller.scrollTop;
-  }
-
-  restoreScroller(key, host, selector) {
-    const top = this.scrollPositions[key] ?? 0;
-    if (top <= 0) {
-      return;
-    }
-
-    window.requestAnimationFrame(() => {
-      const scroller = host?.querySelector(selector);
-      if (!scroller) {
-        return;
-      }
-
-      scroller.scrollTop = top;
-      window.requestAnimationFrame(() => {
-        if (scroller.scrollTop < top - 32) {
-          scroller.scrollTop = top;
-        }
-      });
-    });
+    this.commitPage.setDetailView(view);
+    this.detailView = this.commitPage.detailView;
   }
 
   showLogLoadingAfterDelay(requestId) {
     return window.setTimeout(() => {
       if (requestId === this.logRequestId) {
         this.list.setLoading(this.repository);
-      }
-    }, LOADING_DELAY_MS);
-  }
-
-  showFileLoadingAfterDelay(path, requestId) {
-    return window.setTimeout(() => {
-      if (requestId === this.fileRequestId) {
-        this.fileViewer.setLoading(path);
       }
     }, LOADING_DELAY_MS);
   }

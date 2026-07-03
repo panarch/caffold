@@ -103,11 +103,11 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/app-shell/review-workspace/layout.js" => Some(js(include_str!(
             "../frontend/pages/app-shell/review-workspace/layout.js"
         ))),
-        "pages/app-shell/review-workspace/git/working-tree/page.css" => Some(css(include_str!(
-            "../frontend/pages/app-shell/review-workspace/git/working-tree/page.css"
+        "pages/app-shell/review-workspace/git/diff/page.css" => Some(css(include_str!(
+            "../frontend/pages/app-shell/review-workspace/git/diff/page.css"
         ))),
-        "pages/app-shell/review-workspace/git/working-tree/page.js" => Some(js(include_str!(
-            "../frontend/pages/app-shell/review-workspace/git/working-tree/page.js"
+        "pages/app-shell/review-workspace/git/diff/page.js" => Some(js(include_str!(
+            "../frontend/pages/app-shell/review-workspace/git/diff/page.js"
         ))),
         "pages/app-shell/review-workspace/git/compare/page.css" => Some(css(include_str!(
             "../frontend/pages/app-shell/review-workspace/git/compare/page.css"
@@ -121,20 +121,26 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/app-shell/review-workspace/git/log/layout.js" => Some(js(include_str!(
             "../frontend/pages/app-shell/review-workspace/git/log/layout.js"
         ))),
-        "pages/app-shell/review-workspace/git/log/components/list.css" => Some(css(include_str!(
-            "../frontend/pages/app-shell/review-workspace/git/log/components/list.css"
+        "pages/app-shell/review-workspace/git/log/list/page.css" => Some(css(include_str!(
+            "../frontend/pages/app-shell/review-workspace/git/log/list/page.css"
         ))),
-        "pages/app-shell/review-workspace/git/log/components/list.js" => Some(js(include_str!(
-            "../frontend/pages/app-shell/review-workspace/git/log/components/list.js"
+        "pages/app-shell/review-workspace/git/log/list/page.js" => Some(js(include_str!(
+            "../frontend/pages/app-shell/review-workspace/git/log/list/page.js"
         ))),
-        "pages/app-shell/review-workspace/git/log/components/commit-tree.css" => {
+        "pages/app-shell/review-workspace/git/log/commit/page.css" => Some(css(include_str!(
+            "../frontend/pages/app-shell/review-workspace/git/log/commit/page.css"
+        ))),
+        "pages/app-shell/review-workspace/git/log/commit/page.js" => Some(js(include_str!(
+            "../frontend/pages/app-shell/review-workspace/git/log/commit/page.js"
+        ))),
+        "pages/app-shell/review-workspace/git/log/commit/components/changes-tree.css" => {
             Some(css(include_str!(
-                "../frontend/pages/app-shell/review-workspace/git/log/components/commit-tree.css"
+                "../frontend/pages/app-shell/review-workspace/git/log/commit/components/changes-tree.css"
             )))
         }
-        "pages/app-shell/review-workspace/git/log/components/commit-tree.js" => {
+        "pages/app-shell/review-workspace/git/log/commit/components/changes-tree.js" => {
             Some(js(include_str!(
-                "../frontend/pages/app-shell/review-workspace/git/log/components/commit-tree.js"
+                "../frontend/pages/app-shell/review-workspace/git/log/commit/components/changes-tree.js"
             )))
         }
         "pages/app-shell/review-workspace/github/issues/layout.css" => Some(css(include_str!(
@@ -371,19 +377,17 @@ mod tests {
         );
         assert!(get("components/compare-tree.js").is_none());
 
-        let working_tree_page = get("pages/app-shell/review-workspace/git/working-tree/page.js")
-            .expect("working tree page js");
-        assert_eq!(
-            working_tree_page.content_type,
-            "text/javascript; charset=utf-8"
-        );
-        assert!(working_tree_page.body.starts_with(b"import "));
+        let diff_page =
+            get("pages/app-shell/review-workspace/git/diff/page.js").expect("diff page js");
+        assert_eq!(diff_page.content_type, "text/javascript; charset=utf-8");
+        assert!(diff_page.body.starts_with(b"import "));
         assert!(
-            working_tree_page
+            diff_page
                 .body
-                .windows(b"caffold-git-working-tree-page".len())
-                .any(|window| window == b"caffold-git-working-tree-page")
+                .windows(b"caffold-git-diff-page".len())
+                .any(|window| window == b"caffold-git-diff-page")
         );
+        assert!(get("pages/app-shell/review-workspace/git/working-tree/page.js").is_none());
         assert!(get("components/changes-tree.js").is_none());
 
         let issues_layout = get("pages/app-shell/review-workspace/github/issues/layout.js")
@@ -534,22 +538,32 @@ mod tests {
                 .windows(b"caffold-git-log-layout".len())
                 .any(|window| window == b"caffold-git-log-layout")
         );
-        let log_list_component = get("pages/app-shell/review-workspace/git/log/components/list.js")
-            .expect("log list component js asset");
+        let log_list_page = get("pages/app-shell/review-workspace/git/log/list/page.js")
+            .expect("log list page js asset");
+        assert_eq!(log_list_page.content_type, "text/javascript; charset=utf-8");
+        assert!(log_list_page.body.starts_with(b"import "));
+        assert!(
+            log_list_page
+                .body
+                .windows(b"caffold-git-log-list-page".len())
+                .any(|window| window == b"caffold-git-log-list-page")
+        );
+        let log_commit_page = get("pages/app-shell/review-workspace/git/log/commit/page.js")
+            .expect("log commit page js asset");
         assert_eq!(
-            log_list_component.content_type,
+            log_commit_page.content_type,
             "text/javascript; charset=utf-8"
         );
-        assert!(log_list_component.body.starts_with(b"import "));
+        assert!(log_commit_page.body.starts_with(b"import "));
         assert!(
-            log_list_component
+            log_commit_page
                 .body
-                .windows(b"caffold-log-list".len())
-                .any(|window| window == b"caffold-log-list")
+                .windows(b"caffold-git-log-commit-page".len())
+                .any(|window| window == b"caffold-git-log-commit-page")
         );
         let commit_tree_component =
-            get("pages/app-shell/review-workspace/git/log/components/commit-tree.js")
-                .expect("commit tree component js asset");
+            get("pages/app-shell/review-workspace/git/log/commit/components/changes-tree.js")
+                .expect("commit changes tree component js asset");
         assert_eq!(
             commit_tree_component.content_type,
             "text/javascript; charset=utf-8"
@@ -564,6 +578,10 @@ mod tests {
         assert!(get("components/file-list.js").is_none());
         assert!(get("components/log-list.js").is_none());
         assert!(get("components/commit-changes-tree.js").is_none());
+        assert!(get("pages/app-shell/review-workspace/git/log/components/list.js").is_none());
+        assert!(
+            get("pages/app-shell/review-workspace/git/log/components/commit-tree.js").is_none()
+        );
 
         let png = get("icons/icon-192.png").expect("png icon asset");
         assert_eq!(png.content_type, "image/png");

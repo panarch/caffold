@@ -1,4 +1,4 @@
-const CACHE_NAME = "caffold-shell-v13";
+const CACHE_NAME = "caffold-shell-v14";
 
 const APP_SHELL_ASSETS = [
   "/",
@@ -39,14 +39,16 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/app-shell/files/components/list.js",
   "/assets/pages/app-shell/review-workspace/layout.css",
   "/assets/pages/app-shell/review-workspace/layout.js",
-  "/assets/pages/app-shell/review-workspace/git/working-tree/page.css",
-  "/assets/pages/app-shell/review-workspace/git/working-tree/page.js",
+  "/assets/pages/app-shell/review-workspace/git/diff/page.css",
+  "/assets/pages/app-shell/review-workspace/git/diff/page.js",
   "/assets/pages/app-shell/review-workspace/git/log/layout.css",
   "/assets/pages/app-shell/review-workspace/git/log/layout.js",
-  "/assets/pages/app-shell/review-workspace/git/log/components/list.css",
-  "/assets/pages/app-shell/review-workspace/git/log/components/list.js",
-  "/assets/pages/app-shell/review-workspace/git/log/components/commit-tree.css",
-  "/assets/pages/app-shell/review-workspace/git/log/components/commit-tree.js",
+  "/assets/pages/app-shell/review-workspace/git/log/list/page.css",
+  "/assets/pages/app-shell/review-workspace/git/log/list/page.js",
+  "/assets/pages/app-shell/review-workspace/git/log/commit/page.css",
+  "/assets/pages/app-shell/review-workspace/git/log/commit/page.js",
+  "/assets/pages/app-shell/review-workspace/git/log/commit/components/changes-tree.css",
+  "/assets/pages/app-shell/review-workspace/git/log/commit/components/changes-tree.js",
   "/assets/pages/app-shell/review-workspace/git/compare/page.css",
   "/assets/pages/app-shell/review-workspace/git/compare/page.js",
   "/assets/pages/app-shell/review-workspace/github/issues/layout.css",

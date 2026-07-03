@@ -1,4 +1,4 @@
-caffold-log-list {
+caffold-git-log-list-page {
   display: block;
   min-width: 0;
   min-height: 0;
@@ -6,14 +6,14 @@ caffold-log-list {
   background: var(--surface);
 }
 
-caffold-log-list .log-list-panel {
+caffold-git-log-list-page .log-list-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
   height: 100%;
 }
 
-caffold-log-list .log-list-panel > header {
+caffold-git-log-list-page .log-list-panel > header {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 2px;
@@ -22,7 +22,7 @@ caffold-log-list .log-list-panel > header {
   border-bottom: 1px solid var(--border);
 }
 
-caffold-log-list h2 {
+caffold-git-log-list-page h2 {
   margin: 0;
   overflow: hidden;
   font-size: 0.82rem;
@@ -32,7 +32,7 @@ caffold-log-list h2 {
   white-space: nowrap;
 }
 
-caffold-log-list .log-title-row {
+caffold-git-log-list-page .log-title-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
@@ -41,7 +41,7 @@ caffold-log-list .log-title-row {
   min-width: 0;
 }
 
-caffold-log-list .log-count {
+caffold-git-log-list-page .log-count {
   justify-self: end;
   color: var(--muted);
   font-size: 0.74rem;
@@ -49,7 +49,7 @@ caffold-log-list .log-count {
   white-space: nowrap;
 }
 
-caffold-log-list .log-branch {
+caffold-git-log-list-page .log-branch {
   display: block;
   min-width: 0;
   overflow: hidden;
@@ -60,7 +60,7 @@ caffold-log-list .log-branch {
   white-space: nowrap;
 }
 
-caffold-log-list .log-list {
+caffold-git-log-list-page .log-list {
   display: block;
   min-height: 0;
   margin: 0;
@@ -70,7 +70,7 @@ caffold-log-list .log-list {
   list-style: none;
 }
 
-caffold-log-list .log-entry {
+caffold-git-log-list-page .log-entry {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
@@ -83,14 +83,14 @@ caffold-log-list .log-entry {
   padding: 5px 12px 5px 10px;
 }
 
-caffold-log-list .log-summary {
+caffold-git-log-list-page .log-summary {
   display: grid;
   gap: 3px;
   min-width: 0;
   text-align: left;
 }
 
-caffold-log-list .log-summary-toggle {
+caffold-git-log-list-page .log-summary-toggle {
   width: 100%;
   margin: 0;
   padding: 0;
@@ -101,35 +101,35 @@ caffold-log-list .log-summary-toggle {
   font: inherit;
 }
 
-caffold-log-list .log-summary-toggle:hover .log-subject,
-caffold-log-list .log-summary-toggle:focus-visible .log-subject {
+caffold-git-log-list-page .log-summary-toggle:hover .log-subject,
+caffold-git-log-list-page .log-summary-toggle:focus-visible .log-subject {
   color: var(--accent);
 }
 
-caffold-log-list .log-summary-toggle:focus-visible {
+caffold-git-log-list-page .log-summary-toggle:focus-visible {
   outline: 1px solid #abcbbf;
   outline-offset: 2px;
 }
 
-caffold-log-list .log-subject,
-caffold-log-list .log-meta {
+caffold-git-log-list-page .log-subject,
+caffold-git-log-list-page .log-meta {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-caffold-log-list .log-subject {
+caffold-git-log-list-page .log-subject {
   font-size: 0.84rem;
   font-weight: 500;
 }
 
-caffold-log-list .log-meta {
+caffold-git-log-list-page .log-meta {
   color: var(--muted);
   font-size: 0.72rem;
 }
 
-caffold-log-list .log-body {
+caffold-git-log-list-page .log-body {
   grid-column: 1 / -1;
   min-width: 0;
   margin: 3px 0 7px 0.25rem;
@@ -142,7 +142,7 @@ caffold-log-list .log-body {
   white-space: pre-wrap;
 }
 
-caffold-log-list .log-review-button {
+caffold-git-log-list-page .log-review-button {
   display: grid;
   grid-auto-flow: column;
   gap: 5px;
@@ -161,30 +161,30 @@ caffold-log-list .log-review-button {
   line-height: 1;
 }
 
-caffold-log-list .log-review-icon {
+caffold-git-log-list-page .log-review-icon {
   width: 0.82rem;
   height: 0.82rem;
   stroke-width: 2.2;
 }
 
-caffold-log-list .log-review-label {
+caffold-git-log-list-page .log-review-label {
   line-height: 1;
 }
 
-caffold-log-list .log-review-button:hover,
-caffold-log-list .log-review-button:focus-visible {
+caffold-git-log-list-page .log-review-button:hover,
+caffold-git-log-list-page .log-review-button:focus-visible {
   border-color: #abcbbf;
   background: #f7fbf8;
   outline: none;
 }
 
-caffold-log-list .error-panel {
+caffold-git-log-list-page .error-panel {
   background: var(--danger-soft);
   color: var(--danger);
 }
 
 @media (max-width: 860px) {
-  caffold-log-list {
+  caffold-git-log-list-page {
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }
