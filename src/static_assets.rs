@@ -109,6 +109,16 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/app-shell/review-workspace/git/diff/page.js" => Some(js(include_str!(
             "../frontend/pages/app-shell/review-workspace/git/diff/page.js"
         ))),
+        "pages/app-shell/review-workspace/git/diff/components/changes-tree.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/app-shell/review-workspace/git/diff/components/changes-tree.css"
+            )))
+        }
+        "pages/app-shell/review-workspace/git/diff/components/changes-tree.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/app-shell/review-workspace/git/diff/components/changes-tree.js"
+            )))
+        }
         "pages/app-shell/review-workspace/git/compare/page.css" => Some(css(include_str!(
             "../frontend/pages/app-shell/review-workspace/git/compare/page.css"
         ))),
@@ -386,6 +396,19 @@ mod tests {
                 .body
                 .windows(b"caffold-git-diff-page".len())
                 .any(|window| window == b"caffold-git-diff-page")
+        );
+        let diff_changes_tree =
+            get("pages/app-shell/review-workspace/git/diff/components/changes-tree.js")
+                .expect("diff changes tree js");
+        assert_eq!(
+            diff_changes_tree.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(
+            diff_changes_tree
+                .body
+                .windows(b"caffold-git-diff-changes-tree".len())
+                .any(|window| window == b"caffold-git-diff-changes-tree")
         );
         assert!(get("pages/app-shell/review-workspace/git/working-tree/page.js").is_none());
         assert!(get("components/changes-tree.js").is_none());

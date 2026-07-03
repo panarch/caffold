@@ -132,15 +132,6 @@ class CaffoldReviewWorkspace extends HTMLElement {
         <div class="review-workspace-body">
           <div class="review-workspace-view workspace-mode-diff" hidden>
             <caffold-git-diff-page></caffold-git-diff-page>
-            <div
-              class="review-panel-resizer"
-              role="separator"
-              aria-label="Resize review side panel"
-              aria-orientation="vertical"
-              tabindex="0"
-              data-resize-target="diff"
-            ></div>
-            <caffold-review-file-viewer></caffold-review-file-viewer>
           </div>
           <div class="review-workspace-view workspace-mode-compare" hidden>
             <caffold-git-compare-page></caffold-git-compare-page>
@@ -173,6 +164,8 @@ class CaffoldReviewWorkspace extends HTMLElement {
     this.backButton = this.querySelector(".review-workspace-back");
     this.closeButton = this.querySelector(".review-workspace-close");
     this.diffView = this.querySelector(".workspace-mode-diff");
+    this.diffPage = this.querySelector("caffold-git-diff-page");
+    this.diffPage.ensureRendered();
     this.compareView = this.querySelector(".workspace-mode-compare");
     this.logView = this.querySelector(".workspace-mode-log");
     this.logLayout = this.querySelector("caffold-git-log-layout");
@@ -233,7 +226,9 @@ class CaffoldReviewWorkspace extends HTMLElement {
 
   setDiffView(view) {
     this.ensureRendered();
-    this.diffView.dataset.detailView = normalizeDetailView(view);
+    const nextView = normalizeDetailView(view);
+    this.diffView.dataset.detailView = nextView;
+    this.diffPage.setView(nextView);
     this.updateMobileDetailState();
   }
 
@@ -465,7 +460,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
     }
 
     if (target === "diff") {
-      return this.querySelector(".workspace-mode-diff");
+      return this.diffPage;
     }
 
     if (target === "compare") {
@@ -495,7 +490,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
     }
 
     const detailOpen =
-      (this.mode === "diff" && this.diffView.dataset.detailView === "viewer") ||
+      (this.mode === "diff" && this.diffPage.dataset.detailView === "viewer") ||
       (this.mode === "compare" && this.compareView.dataset.detailView === "viewer") ||
       (this.mode === "log" &&
         this.logView.dataset.logView === "detail" &&

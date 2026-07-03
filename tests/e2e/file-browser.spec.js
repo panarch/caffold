@@ -189,6 +189,9 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
     "/assets/pages/app-shell/review-workspace/git/diff/page.js",
   );
   expect(serviceWorker).toContain(
+    "/assets/pages/app-shell/review-workspace/git/diff/components/changes-tree.js",
+  );
+  expect(serviceWorker).toContain(
     "/assets/pages/app-shell/review-workspace/git/log/layout.js",
   );
   expect(serviceWorker).not.toContain(
@@ -1582,12 +1585,12 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
     await expect(resizeHandle).toBeVisible();
     const beforeReviewWidth = await elementWidth(
       page,
-      "caffold-review-workspace .workspace-mode-diff > caffold-git-diff-page",
+      "caffold-git-diff-page > caffold-git-diff-changes-tree",
     );
     await dragHorizontalResizer(page, resizeHandle, 96);
     const afterReviewWidth = await elementWidth(
       page,
-      "caffold-review-workspace .workspace-mode-diff > caffold-git-diff-page",
+      "caffold-git-diff-page > caffold-git-diff-changes-tree",
     );
     expect(afterReviewWidth).toBeGreaterThan(beforeReviewWidth + 48);
   }
@@ -1603,16 +1606,16 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
     await expectMobileReviewDetail(page, {
       backName: "Back to changes",
       detailSelector: ".workspace-mode-diff caffold-review-file-viewer",
-      listSelector: "caffold-git-diff-page",
+      listSelector: "caffold-git-diff-changes-tree",
     });
   } else {
     await expectAlignedWorkspaceHeaders(page, [
       "caffold-review-workspace .review-workspace-header",
-      "caffold-git-diff-page .changes-tree-panel > header",
+      "caffold-git-diff-changes-tree .changes-tree-panel > header",
       ".workspace-mode-diff caffold-review-file-viewer .viewer-panel > header",
     ]);
     await expectMatchingPaneTitleSizes(page, [
-      "caffold-git-diff-page .changes-tree-panel > header",
+      "caffold-git-diff-changes-tree .changes-tree-panel > header",
       ".workspace-mode-diff caffold-review-file-viewer .viewer-panel > header",
     ]);
   }
