@@ -77,6 +77,9 @@ frontend/pages/
     files/
       page.js
       page.css
+      components/
+        list.js
+        list.css
 
     review-workspace/
       layout.js
@@ -92,6 +95,11 @@ frontend/pages/
         log/
           page.js
           page.css
+          components/
+            list.js
+            list.css
+            commit-tree.js
+            commit-tree.css
 
       github/
         issues/
@@ -129,17 +137,15 @@ Keep reusable building blocks in `frontend/components`:
 - `code-viewer.*`
 - `diff-viewer.*`
 - `github-markdown.*`
-- `file-list.*`
 - `file-viewer.*`
-- `commit-changes-tree.*`
-- `log-list.*`
+- `icons.js`
+- `dom.js`
 
 Page-specific helper components can live under that page's `components/`
 directory when moving them to shared `frontend/components` would hide the
-ownership boundary. For example, the PR files tree belongs only to
-`github/pulls/files/page`.
-- `icons.js`
-- `dom.js`
+ownership boundary. For example, the file browser list belongs only to
+`app-shell/files/page`, the Git log list and commit tree belong only to
+`git/log/page`, and the PR files tree belongs only to `github/pulls/files/page`.
 
 ## Naming Rules
 
@@ -151,7 +157,7 @@ ownership boundary. For example, the PR files tree belongs only to
   reusable component. When a surface is promoted to a page-owned element, use
   the page-level custom element name.
 - Do not move lower-level or reusable components under `pages` just to mirror
-  the current screen. Components such as `pagination`, `file-list`,
+  the current screen. Components such as `pagination`, `file-viewer`,
   `diff-viewer`, and `github-markdown` stay component-level.
 
 ## Migration Rules

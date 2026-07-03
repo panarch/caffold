@@ -1,4 +1,4 @@
-import "../../../components/file-list.js";
+import "./components/list.js";
 import "../../../components/file-viewer.js";
 
 class CaffoldFilesPage extends HTMLElement {

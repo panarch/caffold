@@ -1,4 +1,4 @@
-@import "../../../components/file-list.css";
+@import "./components/list.css";
 @import "../../../components/file-viewer.css";
 
 caffold-files-page {

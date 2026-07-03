@@ -1,6 +1,6 @@
-import { escapeHtml } from "./dom.js";
-import { renderInlineIcon, warmIcons } from "./icons.js";
-import "./pagination.js";
+import { escapeHtml } from "../../../../../../components/dom.js";
+import { renderInlineIcon, warmIcons } from "../../../../../../components/icons.js";
+import "../../../../../../components/pagination.js";
 
 class CaffoldLogList extends HTMLElement {
   connectedCallback() {

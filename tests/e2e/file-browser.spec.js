@@ -176,12 +176,21 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain("/assets/pages/app-shell/layout.js");
   expect(serviceWorker).toContain("/assets/pages/app-shell/layout.css");
   expect(serviceWorker).toContain("/assets/pages/app-shell/files/page.js");
-  expect(serviceWorker).toContain("/assets/components/file-list.js");
+  expect(serviceWorker).toContain("/assets/pages/app-shell/files/components/list.js");
+  expect(serviceWorker).not.toContain("/assets/components/file-list.js");
   expect(serviceWorker).toContain("/assets/pages/app-shell/review-workspace/layout.js");
   expect(serviceWorker).toContain(
     "/assets/pages/app-shell/review-workspace/git/working-tree/page.js",
   );
+  expect(serviceWorker).toContain(
+    "/assets/pages/app-shell/review-workspace/git/log/components/list.js",
+  );
+  expect(serviceWorker).toContain(
+    "/assets/pages/app-shell/review-workspace/git/log/components/commit-tree.js",
+  );
   expect(serviceWorker).not.toContain("/assets/components/changes-tree.js");
+  expect(serviceWorker).not.toContain("/assets/components/log-list.js");
+  expect(serviceWorker).not.toContain("/assets/components/commit-changes-tree.js");
   expect(serviceWorker).toContain(
     "/assets/pages/app-shell/review-workspace/github/issues/layout.js",
   );

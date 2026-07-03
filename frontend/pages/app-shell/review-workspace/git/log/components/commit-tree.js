@@ -1,5 +1,5 @@
-import { escapeHtml } from "./dom.js";
-import { renderEntryIcon, warmIcons } from "./icons.js";
+import { escapeHtml } from "../../../../../../components/dom.js";
+import { renderEntryIcon, warmIcons } from "../../../../../../components/icons.js";
 
 class CaffoldCommitChangesTree extends HTMLElement {
   connectedCallback() {

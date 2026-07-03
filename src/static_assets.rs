@@ -58,6 +58,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/app-shell/files/page.js" => Some(js(include_str!(
             "../frontend/pages/app-shell/files/page.js"
         ))),
+        "pages/app-shell/files/components/list.css" => Some(css(include_str!(
+            "../frontend/pages/app-shell/files/components/list.css"
+        ))),
+        "pages/app-shell/files/components/list.js" => Some(js(include_str!(
+            "../frontend/pages/app-shell/files/components/list.js"
+        ))),
         "pages/app-shell/review-workspace/layout.css" => Some(css(include_str!(
             "../frontend/pages/app-shell/review-workspace/layout.css"
         ))),
@@ -82,6 +88,22 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/app-shell/review-workspace/git/log/page.js" => Some(js(include_str!(
             "../frontend/pages/app-shell/review-workspace/git/log/page.js"
         ))),
+        "pages/app-shell/review-workspace/git/log/components/list.css" => Some(css(include_str!(
+            "../frontend/pages/app-shell/review-workspace/git/log/components/list.css"
+        ))),
+        "pages/app-shell/review-workspace/git/log/components/list.js" => Some(js(include_str!(
+            "../frontend/pages/app-shell/review-workspace/git/log/components/list.js"
+        ))),
+        "pages/app-shell/review-workspace/git/log/components/commit-tree.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/app-shell/review-workspace/git/log/components/commit-tree.css"
+            )))
+        }
+        "pages/app-shell/review-workspace/git/log/components/commit-tree.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/app-shell/review-workspace/git/log/components/commit-tree.js"
+            )))
+        }
         "pages/app-shell/review-workspace/github/issues/layout.css" => Some(css(include_str!(
             "../frontend/pages/app-shell/review-workspace/github/issues/layout.css"
         ))),
@@ -136,12 +158,6 @@ pub fn get(path: &str) -> Option<StaticAsset> {
                 "../frontend/pages/app-shell/review-workspace/github/pulls/files/components/tree.js"
             )))
         }
-        "components/commit-changes-tree.css" => Some(css(include_str!(
-            "../frontend/components/commit-changes-tree.css"
-        ))),
-        "components/commit-changes-tree.js" => Some(js(include_str!(
-            "../frontend/components/commit-changes-tree.js"
-        ))),
         "components/code-viewer.css" => {
             Some(css(include_str!("../frontend/components/code-viewer.css")))
         }
@@ -155,10 +171,6 @@ pub fn get(path: &str) -> Option<StaticAsset> {
             Some(js(include_str!("../frontend/components/diff-viewer.js")))
         }
         "components/dom.js" => Some(js(include_str!("../frontend/components/dom.js"))),
-        "components/file-list.css" => {
-            Some(css(include_str!("../frontend/components/file-list.css")))
-        }
-        "components/file-list.js" => Some(js(include_str!("../frontend/components/file-list.js"))),
         "components/file-viewer.css" => {
             Some(css(include_str!("../frontend/components/file-viewer.css")))
         }
@@ -190,8 +202,6 @@ pub fn get(path: &str) -> Option<StaticAsset> {
             "../frontend/components/github-markdown.js"
         ))),
         "components/icons.js" => Some(js(include_str!("../frontend/components/icons.js"))),
-        "components/log-list.css" => Some(css(include_str!("../frontend/components/log-list.css"))),
-        "components/log-list.js" => Some(js(include_str!("../frontend/components/log-list.js"))),
         "components/pagination.css" => {
             Some(css(include_str!("../frontend/components/pagination.css")))
         }
@@ -487,12 +497,48 @@ mod tests {
         );
 
         let file_list_component =
-            get("components/file-list.js").expect("file list component js asset");
+            get("pages/app-shell/files/components/list.js").expect("file list component js asset");
         assert_eq!(
             file_list_component.content_type,
             "text/javascript; charset=utf-8"
         );
         assert!(file_list_component.body.starts_with(b"import "));
+        assert!(
+            file_list_component
+                .body
+                .windows(b"caffold-file-list".len())
+                .any(|window| window == b"caffold-file-list")
+        );
+        let log_list_component = get("pages/app-shell/review-workspace/git/log/components/list.js")
+            .expect("log list component js asset");
+        assert_eq!(
+            log_list_component.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(log_list_component.body.starts_with(b"import "));
+        assert!(
+            log_list_component
+                .body
+                .windows(b"caffold-log-list".len())
+                .any(|window| window == b"caffold-log-list")
+        );
+        let commit_tree_component =
+            get("pages/app-shell/review-workspace/git/log/components/commit-tree.js")
+                .expect("commit tree component js asset");
+        assert_eq!(
+            commit_tree_component.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(commit_tree_component.body.starts_with(b"import "));
+        assert!(
+            commit_tree_component
+                .body
+                .windows(b"caffold-commit-changes-tree".len())
+                .any(|window| window == b"caffold-commit-changes-tree")
+        );
+        assert!(get("components/file-list.js").is_none());
+        assert!(get("components/log-list.js").is_none());
+        assert!(get("components/commit-changes-tree.js").is_none());
 
         let png = get("icons/icon-192.png").expect("png icon asset");
         assert_eq!(png.content_type, "image/png");

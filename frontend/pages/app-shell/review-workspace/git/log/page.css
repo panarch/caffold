@@ -1,2 +1,2 @@
-@import "../../../../../components/log-list.css";
-@import "../../../../../components/commit-changes-tree.css";
+@import "./components/list.css";
+@import "./components/commit-tree.css";
