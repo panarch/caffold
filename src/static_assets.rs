@@ -103,6 +103,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/app-shell/review-workspace/layout.js" => Some(js(include_str!(
             "../frontend/pages/app-shell/review-workspace/layout.js"
         ))),
+        "pages/app-shell/review-workspace/git/layout.css" => Some(css(include_str!(
+            "../frontend/pages/app-shell/review-workspace/git/layout.css"
+        ))),
+        "pages/app-shell/review-workspace/git/layout.js" => Some(js(include_str!(
+            "../frontend/pages/app-shell/review-workspace/git/layout.js"
+        ))),
         "pages/app-shell/review-workspace/git/diff/page.css" => Some(css(include_str!(
             "../frontend/pages/app-shell/review-workspace/git/diff/page.css"
         ))),
@@ -383,6 +389,20 @@ mod tests {
             review_workspace_layout_css
                 .body
                 .starts_with(b"caffold-review-workspace")
+        );
+
+        let git_review_layout =
+            get("pages/app-shell/review-workspace/git/layout.js").expect("git review layout js");
+        assert_eq!(
+            git_review_layout.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(git_review_layout.body.starts_with(b"import "));
+        assert!(
+            git_review_layout
+                .body
+                .windows(b"caffold-git-review-layout".len())
+                .any(|window| window == b"caffold-git-review-layout")
         );
 
         let compare_page =

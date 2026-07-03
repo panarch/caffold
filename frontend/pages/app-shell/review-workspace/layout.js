@@ -1,4 +1,3 @@
-import { escapeHtml } from "../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
 
 const REVIEW_PANEL_DEFAULT_WIDTH = 320;
@@ -130,14 +129,8 @@ class CaffoldReviewWorkspace extends HTMLElement {
           </div>
         </header>
         <div class="review-workspace-body">
-          <div class="review-workspace-view workspace-mode-diff" hidden>
-            <caffold-git-diff-page></caffold-git-diff-page>
-          </div>
-          <div class="review-workspace-view workspace-mode-compare" hidden>
-            <caffold-git-compare-page></caffold-git-compare-page>
-          </div>
-          <div class="review-workspace-view workspace-mode-log" hidden>
-            <caffold-git-log-layout></caffold-git-log-layout>
+          <div class="review-workspace-view workspace-mode-git" hidden>
+            <caffold-git-review-layout></caffold-git-review-layout>
           </div>
           <div class="review-workspace-view workspace-mode-issues" hidden>
             <caffold-github-issues-layout></caffold-github-issues-layout>
@@ -154,16 +147,9 @@ class CaffoldReviewWorkspace extends HTMLElement {
     this.subtitleEl = this.querySelector(".review-workspace-subtitle");
     this.backButton = this.querySelector(".review-workspace-back");
     this.closeButton = this.querySelector(".review-workspace-close");
-    this.diffView = this.querySelector(".workspace-mode-diff");
-    this.diffPage = this.querySelector("caffold-git-diff-page");
-    this.diffPage.ensureRendered();
-    this.compareView = this.querySelector(".workspace-mode-compare");
-    this.comparePage = this.querySelector("caffold-git-compare-page");
-    this.comparePage.ensureRendered();
-    this.logView = this.querySelector(".workspace-mode-log");
-    this.logLayout = this.querySelector("caffold-git-log-layout");
-    this.logLayout.ensureRendered();
-    this.logDetailView = this.logLayout.querySelector("caffold-git-log-commit-page");
+    this.gitView = this.querySelector(".workspace-mode-git");
+    this.gitLayout = this.querySelector("caffold-git-review-layout");
+    this.gitLayout.ensureRendered();
     this.issuesView = this.querySelector(".workspace-mode-issues");
     this.issuesLayout = this.querySelector("caffold-github-issues-layout");
     this.issuesLayout.ensureRendered();
@@ -181,12 +167,11 @@ class CaffoldReviewWorkspace extends HTMLElement {
     this.dataset.workspaceMode = mode;
     this.workspaceTitle = options.title ?? workspaceTitle(mode);
     this.subtitle = options.subtitle ?? "";
+    this.controlsHtml = options.controlsHtml ?? "";
     this.backVisible = Boolean(options.backVisible);
     this.backLabel = options.backLabel ?? "Back";
     this.renderChrome();
-    this.diffView.hidden = mode !== "diff";
-    this.compareView.hidden = mode !== "compare";
-    this.logView.hidden = mode !== "log";
+    this.gitView.hidden = mode !== "git";
     this.issuesView.hidden = mode !== "issues";
     this.pullsView.hidden = mode !== "pulls";
     this.updateMobileDetailState();
@@ -197,6 +182,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
     this.mode = null;
     this.dataset.workspaceMode = "";
     this.backVisible = false;
+    this.controlsHtml = "";
     this.renderChrome();
   }
 
@@ -206,36 +192,13 @@ class CaffoldReviewWorkspace extends HTMLElement {
     if (options.backVisible !== undefined) {
       this.backVisible = Boolean(options.backVisible);
     }
+    this.controlsHtml = options.controlsHtml ?? "";
     this.backLabel = options.backLabel ?? this.backLabel ?? "Back";
     this.renderChrome();
   }
 
-  setLogView(view) {
+  setGitView() {
     this.ensureRendered();
-    this.logLayout.setView(view);
-    this.logView.dataset.logView = this.logLayout.view;
-    this.updateMobileDetailState();
-  }
-
-  setDiffView(view) {
-    this.ensureRendered();
-    const nextView = normalizeDetailView(view);
-    this.diffView.dataset.detailView = nextView;
-    this.diffPage.setView(nextView);
-    this.updateMobileDetailState();
-  }
-
-  setCompareView(view) {
-    this.ensureRendered();
-    const nextView = normalizeDetailView(view);
-    this.compareView.dataset.detailView = nextView;
-    this.comparePage.setView(nextView);
-    this.updateMobileDetailState();
-  }
-
-  setLogDetailView(view) {
-    this.ensureRendered();
-    this.logLayout.setDetailView(view);
     this.updateMobileDetailState();
   }
 
@@ -261,20 +224,6 @@ class CaffoldReviewWorkspace extends HTMLElement {
     this.updateMobileDetailState();
   }
 
-  setCompareRefs(refsPayload, baseRef, headRef) {
-    this.compareRefsPayload = refsPayload ?? null;
-    this.compareBaseRef = baseRef ?? "";
-    this.compareHeadRef = headRef ?? "";
-    this.renderChrome();
-  }
-
-  clearCompareRefs() {
-    this.compareRefsPayload = null;
-    this.compareBaseRef = "";
-    this.compareHeadRef = "";
-    this.renderChrome();
-  }
-
   renderChrome() {
     if (!this.rendered) {
       return;
@@ -282,7 +231,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
 
     this.titleEl.textContent = this.workspaceTitle ?? workspaceTitle(this.mode);
     this.subtitleEl.textContent = this.subtitle ?? "";
-    const controlsHtml = this.renderCompareControls();
+    const controlsHtml = this.controlsHtml ?? "";
     this.controlsEl.innerHTML = controlsHtml;
     this.controlsEl.hidden = controlsHtml.length === 0;
     this.titleWrapper.classList.toggle("has-controls", controlsHtml.length > 0);
@@ -296,41 +245,6 @@ class CaffoldReviewWorkspace extends HTMLElement {
     );
     this.closeButton.innerHTML = renderInlineIcon("X", "Close", "review-workspace-close-icon");
     this.updateReviewPanelResizeAttributes();
-  }
-
-  renderCompareControls() {
-    if (this.mode !== "compare") {
-      return "";
-    }
-
-    const refs = this.compareRefsPayload?.refs ?? [];
-    if (refs.length === 0) {
-      return "";
-    }
-
-    return `
-      <div class="review-compare-ref-controls" aria-label="Compare refs">
-        <label for="caffold-compare-base-ref">Base</label>
-        <select
-          id="caffold-compare-base-ref"
-          data-compare-ref="base"
-          aria-label="Base ref"
-          title="${escapeHtml(this.compareBaseRef ?? "")}"
-        >
-          ${renderRefOptions(refs, this.compareBaseRef)}
-        </select>
-        <span class="review-compare-ref-separator" aria-hidden="true">...</span>
-        <label for="caffold-compare-head-ref">Head</label>
-        <select
-          id="caffold-compare-head-ref"
-          data-compare-ref="head"
-          aria-label="Head ref"
-          title="${escapeHtml(this.compareHeadRef ?? "")}"
-        >
-          ${renderRefOptions(refs, this.compareHeadRef)}
-        </select>
-      </div>
-    `;
   }
 
   startReviewPanelResize(event, handle) {
@@ -451,15 +365,15 @@ class CaffoldReviewWorkspace extends HTMLElement {
 
   reviewPanelForTarget(target) {
     if (target === "log") {
-      return this.querySelector("caffold-git-log-commit-page");
+      return this.gitLayout.reviewPanelForTarget(target);
     }
 
     if (target === "diff") {
-      return this.diffPage;
+      return this.gitLayout.reviewPanelForTarget(target);
     }
 
     if (target === "compare") {
-      return this.comparePage;
+      return this.gitLayout.reviewPanelForTarget(target);
     }
 
     if (target === "pulls") {
@@ -485,11 +399,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
     }
 
     const detailOpen =
-      (this.mode === "diff" && this.diffPage.dataset.detailView === "viewer") ||
-      (this.mode === "compare" && this.comparePage.dataset.detailView === "viewer") ||
-      (this.mode === "log" &&
-        this.logView.dataset.logView === "detail" &&
-        this.logDetailView.dataset.detailView === "viewer") ||
+      (this.mode === "git" && this.gitLayout.isMobileDetailOpen()) ||
       (this.mode === "issues" && this.issuesLayout.dataset.issuesView === "detail") ||
       (this.mode === "pulls" &&
         (this.pullsLayout.dataset.pullsView === "detail" ||
@@ -503,16 +413,8 @@ class CaffoldReviewWorkspace extends HTMLElement {
 customElements.define("caffold-review-workspace", CaffoldReviewWorkspace);
 
 function workspaceTitle(mode) {
-  if (mode === "diff") {
-    return "Diff";
-  }
-
-  if (mode === "log") {
-    return "Log";
-  }
-
-  if (mode === "compare") {
-    return "Compare";
+  if (mode === "git") {
+    return "Git";
   }
 
   if (mode === "issues") {
@@ -524,37 +426,6 @@ function workspaceTitle(mode) {
   }
 
   return "Review";
-}
-
-function renderRefOptions(refs, selectedRef) {
-  let lastKind = null;
-  let html = "";
-
-  for (const ref of refs) {
-    if (ref.kind !== lastKind) {
-      if (lastKind) {
-        html += "</optgroup>";
-      }
-      lastKind = ref.kind;
-      html += `<optgroup label="${escapeHtml(refKindLabel(ref.kind))}">`;
-    }
-
-    html += `
-      <option value="${escapeHtml(ref.name)}" ${ref.name === selectedRef ? "selected" : ""}>
-        ${escapeHtml(ref.name)}
-      </option>
-    `;
-  }
-
-  return lastKind ? `${html}</optgroup>` : html;
-}
-
-function refKindLabel(kind) {
-  if (kind === "head") {
-    return "Current";
-  }
-
-  return kind === "remote" ? "Remote" : "Local";
 }
 
 function normalizeDetailView(view) {

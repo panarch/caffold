@@ -155,21 +155,7 @@ caffold-review-workspace .review-workspace-view {
   overflow: hidden;
 }
 
-caffold-review-workspace .workspace-mode-diff {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
-  height: 100%;
-}
-
-caffold-review-workspace .workspace-mode-compare {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
-  height: 100%;
-}
-
-caffold-review-workspace .workspace-mode-log {
+caffold-review-workspace .workspace-mode-git {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
@@ -216,6 +202,7 @@ caffold-review-workspace caffold-git-diff-page,
 caffold-review-workspace caffold-git-diff-changes-tree,
 caffold-review-workspace caffold-git-compare-page,
 caffold-review-workspace caffold-git-compare-tree,
+caffold-review-workspace caffold-git-review-layout,
 caffold-review-workspace caffold-git-log-layout,
 caffold-review-workspace caffold-git-log-list-page,
 caffold-review-workspace caffold-git-log-commit-page,
@@ -312,7 +299,7 @@ caffold-review-workspace caffold-github-pull-files-tree h2 {
     max-width: 100%;
   }
 
-  caffold-review-workspace .workspace-mode-log {
+  caffold-review-workspace .workspace-mode-git {
     grid-template-columns: 1fr;
   }
 
@@ -324,8 +311,8 @@ caffold-review-workspace caffold-github-pull-files-tree h2 {
     grid-template-columns: 1fr;
   }
 
-  caffold-review-workspace .workspace-mode-diff caffold-git-diff-changes-tree,
-  caffold-review-workspace .workspace-mode-compare caffold-git-compare-tree,
+  caffold-review-workspace .git-mode-diff caffold-git-diff-changes-tree,
+  caffold-review-workspace .git-mode-compare caffold-git-compare-tree,
   caffold-review-workspace .workspace-mode-pulls caffold-github-pull-files-tree {
     border-right: 0;
     border-bottom: 1px solid var(--border);
