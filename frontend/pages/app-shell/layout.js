@@ -6,7 +6,6 @@ import {
   getGitCompareDiff,
   getGitRefs,
   getGitHubStatus,
-  getGitDiff,
   getGitStatus,
   getHealth,
   getProjectCandidate,
@@ -68,7 +67,6 @@ class CaffoldAppShell extends HTMLElement {
     this.compareBaseRef = null;
     this.compareHeadRef = null;
     this.workspaceMode = null;
-    this.diffWorkspaceView = "list";
     this.compareWorkspaceView = "list";
     this.scrollPositions = {};
     this.currentRoute = null;
@@ -91,20 +89,16 @@ class CaffoldAppShell extends HTMLElement {
     this.fileViewer = this.filesPage.querySelector("caffold-file-viewer");
     this.reviewWorkspace = this.querySelector("caffold-review-workspace");
     this.reviewWorkspace.ensureRendered();
-    this.changesTree = this.reviewWorkspace.querySelector("caffold-git-diff-page");
+    this.diffPage = this.reviewWorkspace.querySelector("caffold-git-diff-page");
     this.logLayout = this.reviewWorkspace.querySelector("caffold-git-log-layout");
     this.logLayout.ensureRendered();
     this.compareTree = this.reviewWorkspace.querySelector("caffold-git-compare-page");
     this.githubIssuesLayout = this.reviewWorkspace.querySelector("caffold-github-issues-layout");
     this.githubPullsLayout = this.reviewWorkspace.querySelector("caffold-github-pulls-layout");
-    this.diffWorkspaceViewer = this.reviewWorkspace.querySelector(
-      ".workspace-mode-diff caffold-review-file-viewer",
-    );
     this.compareWorkspaceViewer = this.reviewWorkspace.querySelector(
       ".workspace-mode-compare caffold-review-file-viewer",
     );
     this.fileViewer.setCloseLabel("Back to files");
-    this.diffWorkspaceViewer.setCloseLabel("Back to changes");
     this.compareWorkspaceViewer.setCloseLabel("Back to compare");
     this.applyLeftPanelWidth(this.leftPanelWidth);
     this.loadCodexStatus();
@@ -179,6 +173,11 @@ class CaffoldAppShell extends HTMLElement {
         kind: "diff",
         path: this.projectRelativePath(event.detail.path),
       }) || this.openDiff(event.detail.path, event.detail.kind, event.detail.status);
+    });
+    this.addEventListener("caffold:git-diff-state-change", () => {
+      if (this.workspaceMode === "diff") {
+        this.reviewWorkspace.setDiffView(this.diffPage.detailView);
+      }
     });
     this.addEventListener("caffold:open-git-commit", (event) => {
       this.navigateToCurrentProjectRoute({
@@ -523,7 +522,7 @@ class CaffoldAppShell extends HTMLElement {
     if (this.canApplyLoadedDiffRoute(project, route)) {
       this.openDiffWorkspace({ preserveViewer: Boolean(route.path) });
       if (!route.path) {
-        this.changesTree.setSelectedPath("");
+        this.diffPage.setSelectedPath("");
         return;
       }
 
@@ -793,7 +792,7 @@ class CaffoldAppShell extends HTMLElement {
     this.fileList.setSelectedPath(path);
     this.rememberScroller("files", this.fileList, ".file-list");
     this.setBrowserView("viewer");
-    this.changesTree.setSelectedPath("");
+    this.diffPage.setSelectedPath("");
     this.logLayout.setSelectedPath("");
     this.compareTree.setSelectedPath("");
 
@@ -844,7 +843,7 @@ class CaffoldAppShell extends HTMLElement {
       return;
     }
 
-    if (event.target === this.diffWorkspaceViewer) {
+    if (this.diffPage.isFileViewer(event.target)) {
       if (currentRoute?.kind === "diff" && currentRoute.path) {
         this.navigateToRoute(parentRoute(currentRoute));
         return;
@@ -888,9 +887,8 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   showDiffList() {
-    this.diffWorkspaceView = "list";
-    this.reviewWorkspace.setDiffView("list");
-    this.restoreScroller("changes", this.changesTree, ".changes-tree-list");
+    this.diffPage.showList();
+    this.reviewWorkspace.setDiffView(this.diffPage.detailView);
   }
 
   showCompareList() {
@@ -938,36 +936,17 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   async openDiff(path, kind, status = "") {
-    const requestId = ++this.fileRequestId;
+    this.fileRequestId += 1;
     this.fileList.setSelectedPath("");
-    this.changesTree.setSelectedPath(path);
     this.logLayout.setSelectedPath("");
     this.compareTree.setSelectedPath("");
-    this.rememberScroller("changes", this.changesTree, ".changes-tree-list");
-    this.diffWorkspaceView = "viewer";
-    this.reviewWorkspace.setDiffView("viewer");
-    const loadingTimer = this.showWorkspaceLoadingAfterDelay(
-      this.diffWorkspaceViewer,
-      `Diff ${path}`,
-      requestId,
-    );
-
-    try {
-      const diff = await getGitDiff(this.currentPath, path, kind);
-      if (requestId !== this.fileRequestId) {
-        return;
-      }
-
-      this.diffWorkspaceViewer.setDiff({ ...diff, status });
-    } catch (error) {
-      if (requestId !== this.fileRequestId) {
-        return;
-      }
-
-      this.diffWorkspaceViewer.setError(path, error);
-    } finally {
-      window.clearTimeout(loadingTimer);
-    }
+    this.diffPage.setContext({
+      path: this.currentPath,
+      repository: this.gitRepository,
+    });
+    const diff = await this.diffPage.openDiff(path, kind, status);
+    this.reviewWorkspace.setDiffView(this.diffPage.detailView);
+    return diff;
   }
 
   async openCommit(sha, options = {}) {
@@ -976,7 +955,7 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     this.fileList.setSelectedPath("");
-    this.changesTree.setSelectedPath("");
+    this.diffPage.setSelectedPath("");
     this.logLayout.setSelectedPath("");
     this.compareTree.setSelectedPath("");
     this.workspaceMode = "log";
@@ -997,7 +976,7 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     this.fileList.setSelectedPath("");
-    this.changesTree.setSelectedPath("");
+    this.diffPage.setSelectedPath("");
     this.compareTree.setSelectedPath("");
     this.workspaceMode = "log";
     this.logLayout.setContext({
@@ -1018,7 +997,7 @@ class CaffoldAppShell extends HTMLElement {
 
     const requestId = ++this.fileRequestId;
     this.fileList.setSelectedPath("");
-    this.changesTree.setSelectedPath("");
+    this.diffPage.setSelectedPath("");
     this.logLayout.setSelectedPath("");
     this.compareTree.setSelectedPath(path);
     this.rememberScroller("compare", this.compareTree, ".compare-tree-list");
@@ -1355,7 +1334,11 @@ class CaffoldAppShell extends HTMLElement {
       count: null,
     };
     this.headerActions.githubStatus = null;
-    this.changesTree.setLoading(directory.git);
+    this.diffPage.setContext({
+      path: directory.path,
+      repository: directory.git,
+    });
+    this.diffPage.setLoading(directory.git);
     this.githubIssuesLayout.reset();
     this.githubPullsLayout.reset();
     this.loadGitStatus(directory.path);
@@ -1394,7 +1377,6 @@ class CaffoldAppShell extends HTMLElement {
     this.gitCompareRequestId += 1;
     this.gitRefsRequestId += 1;
     this.githubStatusRequestId += 1;
-    this.diffWorkspaceView = "list";
     this.compareWorkspaceView = "list";
     this.gitRefs = null;
     this.githubStatus = null;
@@ -1408,7 +1390,7 @@ class CaffoldAppShell extends HTMLElement {
       available: false,
       message: "No GitHub repository context",
     };
-    this.changesTree.reset();
+    this.diffPage.reset();
     this.logLayout.reset();
     this.compareTree.reset();
     this.githubIssuesLayout.reset();
@@ -1429,7 +1411,11 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     const requestId = ++this.gitStatusRequestId;
-    this.changesTree.setLoading(this.gitRepository);
+    this.diffPage.setContext({
+      path,
+      repository: this.gitRepository,
+    });
+    this.diffPage.setLoading(this.gitRepository);
 
     try {
       const status = await getGitStatus(path);
@@ -1441,13 +1427,13 @@ class CaffoldAppShell extends HTMLElement {
       this.gitStatus = status;
       this.updateGitButton();
       this.updateWorkspaceChrome();
-      this.changesTree.setStatus(status);
+      this.diffPage.setStatus(status);
     } catch (error) {
       if (requestId !== this.gitStatusRequestId) {
         return;
       }
 
-      this.changesTree.setError(error, this.gitRepository);
+      this.diffPage.setError(error, this.gitRepository);
     }
   }
 
@@ -1562,7 +1548,7 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     this.fileList.setSelectedPath("");
-    this.changesTree.setSelectedPath("");
+    this.diffPage.setSelectedPath("");
     this.logLayout.setSelectedPath("");
     this.compareTree.setSelectedPath("");
     this.workspaceMode = "pulls";
@@ -1711,19 +1697,23 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     this.workspaceMode = "diff";
-    this.diffWorkspaceView = "list";
+    this.diffPage.setContext({
+      path: this.currentPath,
+      repository: this.gitRepository,
+    });
+    this.diffPage.showList();
     this.reviewWorkspace.open("diff", {
       title: "Diff",
       subtitle: this.workspaceSubtitle("Working tree"),
       backVisible: false,
     });
-    this.reviewWorkspace.setDiffView("list");
+    this.reviewWorkspace.setDiffView(this.diffPage.detailView);
     this.updateGitButton();
     if (!this.gitStatus) {
-      this.changesTree.setLoading(this.gitRepository);
+      this.diffPage.setLoading(this.gitRepository);
     }
     if (!options.preserveViewer) {
-      this.diffWorkspaceViewer.setEmpty();
+      this.diffPage.setEmpty();
     }
   }
 
@@ -1758,7 +1748,7 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     this.workspaceMode = "issues";
-    this.diffWorkspaceView = "list";
+    this.diffPage.setView("list");
     this.compareWorkspaceView = "list";
     this.reviewWorkspace.open("issues", this.workspaceDetails());
     this.updateGitButton();
@@ -1784,7 +1774,7 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     this.workspaceMode = "pulls";
-    this.diffWorkspaceView = "list";
+    this.diffPage.setView("list");
     this.compareWorkspaceView = "list";
     this.reviewWorkspace.open("pulls", this.workspaceDetails());
     this.updateGitButton();
@@ -1810,7 +1800,7 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     this.workspaceMode = "log";
-    this.diffWorkspaceView = "list";
+    this.diffPage.setView("list");
     this.compareWorkspaceView = "list";
     this.logLayout.setContext({
       path: this.currentPath,
@@ -1834,7 +1824,7 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     this.workspaceMode = null;
-    this.diffWorkspaceView = "list";
+    this.diffPage.setView("list");
     this.compareWorkspaceView = "list";
     this.logLayout.backToList();
     this.githubIssuesLayout.backToList();
@@ -1873,7 +1863,7 @@ class CaffoldAppShell extends HTMLElement {
 
     this.reviewWorkspace.updateDetails(this.workspaceDetails());
     if (this.workspaceMode === "diff") {
-      this.reviewWorkspace.setDiffView(this.diffWorkspaceView);
+      this.reviewWorkspace.setDiffView(this.diffPage.detailView);
     }
     if (this.workspaceMode === "compare") {
       this.reviewWorkspace.setCompareView(this.compareWorkspaceView);
