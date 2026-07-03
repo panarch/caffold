@@ -206,6 +206,9 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain(
     "/assets/pages/app-shell/review-workspace/git/log/commit/components/changes-tree.js",
   );
+  expect(serviceWorker).toContain(
+    "/assets/pages/app-shell/review-workspace/git/compare/components/compare-tree.js",
+  );
   expect(serviceWorker).not.toContain(
     "/assets/pages/app-shell/review-workspace/git/log/components/list.js",
   );
@@ -1866,7 +1869,7 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
     await expectMobileReviewDetail(page, {
       backName: "Back to compare",
       detailSelector: ".workspace-mode-compare caffold-review-file-viewer",
-      listSelector: "caffold-git-compare-page",
+      listSelector: "caffold-git-compare-tree",
     });
     await page.getByRole("button", { name: "Back to compare" }).click();
     await expect(workspace).toHaveAttribute("data-mobile-detail", "false");

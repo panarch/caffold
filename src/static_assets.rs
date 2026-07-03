@@ -125,6 +125,16 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/app-shell/review-workspace/git/compare/page.js" => Some(js(include_str!(
             "../frontend/pages/app-shell/review-workspace/git/compare/page.js"
         ))),
+        "pages/app-shell/review-workspace/git/compare/components/compare-tree.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/app-shell/review-workspace/git/compare/components/compare-tree.css"
+            )))
+        }
+        "pages/app-shell/review-workspace/git/compare/components/compare-tree.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/app-shell/review-workspace/git/compare/components/compare-tree.js"
+            )))
+        }
         "pages/app-shell/review-workspace/git/log/layout.css" => Some(css(include_str!(
             "../frontend/pages/app-shell/review-workspace/git/log/layout.css"
         ))),
@@ -384,6 +394,16 @@ mod tests {
                 .body
                 .windows(b"caffold-git-compare-page".len())
                 .any(|window| window == b"caffold-git-compare-page")
+        );
+        let compare_tree =
+            get("pages/app-shell/review-workspace/git/compare/components/compare-tree.js")
+                .expect("compare tree js");
+        assert_eq!(compare_tree.content_type, "text/javascript; charset=utf-8");
+        assert!(
+            compare_tree
+                .body
+                .windows(b"caffold-git-compare-tree".len())
+                .any(|window| window == b"caffold-git-compare-tree")
         );
         assert!(get("components/compare-tree.js").is_none());
 

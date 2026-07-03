@@ -135,15 +135,6 @@ class CaffoldReviewWorkspace extends HTMLElement {
           </div>
           <div class="review-workspace-view workspace-mode-compare" hidden>
             <caffold-git-compare-page></caffold-git-compare-page>
-            <div
-              class="review-panel-resizer"
-              role="separator"
-              aria-label="Resize review side panel"
-              aria-orientation="vertical"
-              tabindex="0"
-              data-resize-target="compare"
-            ></div>
-            <caffold-review-file-viewer></caffold-review-file-viewer>
           </div>
           <div class="review-workspace-view workspace-mode-log" hidden>
             <caffold-git-log-layout></caffold-git-log-layout>
@@ -167,6 +158,8 @@ class CaffoldReviewWorkspace extends HTMLElement {
     this.diffPage = this.querySelector("caffold-git-diff-page");
     this.diffPage.ensureRendered();
     this.compareView = this.querySelector(".workspace-mode-compare");
+    this.comparePage = this.querySelector("caffold-git-compare-page");
+    this.comparePage.ensureRendered();
     this.logView = this.querySelector(".workspace-mode-log");
     this.logLayout = this.querySelector("caffold-git-log-layout");
     this.logLayout.ensureRendered();
@@ -234,7 +227,9 @@ class CaffoldReviewWorkspace extends HTMLElement {
 
   setCompareView(view) {
     this.ensureRendered();
-    this.compareView.dataset.detailView = normalizeDetailView(view);
+    const nextView = normalizeDetailView(view);
+    this.compareView.dataset.detailView = nextView;
+    this.comparePage.setView(nextView);
     this.updateMobileDetailState();
   }
 
@@ -464,7 +459,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
     }
 
     if (target === "compare") {
-      return this.querySelector(".workspace-mode-compare");
+      return this.comparePage;
     }
 
     if (target === "pulls") {
@@ -491,7 +486,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
 
     const detailOpen =
       (this.mode === "diff" && this.diffPage.dataset.detailView === "viewer") ||
-      (this.mode === "compare" && this.compareView.dataset.detailView === "viewer") ||
+      (this.mode === "compare" && this.comparePage.dataset.detailView === "viewer") ||
       (this.mode === "log" &&
         this.logView.dataset.logView === "detail" &&
         this.logDetailView.dataset.detailView === "viewer") ||

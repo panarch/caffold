@@ -1,4 +1,4 @@
-const CACHE_NAME = "caffold-shell-v15";
+const CACHE_NAME = "caffold-shell-v16";
 
 const APP_SHELL_ASSETS = [
   "/",
@@ -53,6 +53,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/app-shell/review-workspace/git/log/commit/components/changes-tree.js",
   "/assets/pages/app-shell/review-workspace/git/compare/page.css",
   "/assets/pages/app-shell/review-workspace/git/compare/page.js",
+  "/assets/pages/app-shell/review-workspace/git/compare/components/compare-tree.css",
+  "/assets/pages/app-shell/review-workspace/git/compare/components/compare-tree.js",
   "/assets/pages/app-shell/review-workspace/github/issues/layout.css",
   "/assets/pages/app-shell/review-workspace/github/issues/layout.js",
   "/assets/pages/app-shell/review-workspace/github/issues/list/page.css",
