@@ -1,7 +1,7 @@
 import { sameCodexStatus } from "./header-actions/codex-status.js";
 import { sameGitStatus } from "./header-actions/git-status.js";
 import { sameGithubStatus } from "./header-actions/github-status.js";
-import { warmIcons } from "./icons.js";
+import { warmIcons } from "../../../components/icons.js";
 
 class CaffoldHeaderActions extends HTMLElement {
   connectedCallback() {

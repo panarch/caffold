@@ -1,4 +1,4 @@
-const CACHE_NAME = "caffold-shell-v11";
+const CACHE_NAME = "caffold-shell-v12";
 
 const APP_SHELL_ASSETS = [
   "/",
@@ -22,6 +22,17 @@ const APP_SHELL_ASSETS = [
   "/assets/brand/codex-template@2x.png",
   "/assets/pages/app-shell/layout.css",
   "/assets/pages/app-shell/layout.js",
+  "/assets/pages/app-shell/components/pathbar.css",
+  "/assets/pages/app-shell/components/pathbar.js",
+  "/assets/pages/app-shell/components/project-switcher.css",
+  "/assets/pages/app-shell/components/project-switcher.js",
+  "/assets/pages/app-shell/components/header-actions.css",
+  "/assets/pages/app-shell/components/header-actions.js",
+  "/assets/pages/app-shell/components/header-actions/codex-status.css",
+  "/assets/pages/app-shell/components/header-actions/codex-status.js",
+  "/assets/pages/app-shell/components/header-actions/git-status.js",
+  "/assets/pages/app-shell/components/header-actions/github-status.js",
+  "/assets/pages/app-shell/components/header-actions/shared.js",
   "/assets/pages/app-shell/files/page.css",
   "/assets/pages/app-shell/files/page.js",
   "/assets/pages/app-shell/files/components/list.css",
@@ -62,20 +73,9 @@ const APP_SHELL_ASSETS = [
   "/assets/components/file-viewer.css",
   "/assets/components/file-viewer.js",
   "/assets/components/github-markdown.js",
-  "/assets/components/header-actions.css",
-  "/assets/components/header-actions.js",
-  "/assets/components/header-actions/codex-status.css",
-  "/assets/components/header-actions/codex-status.js",
-  "/assets/components/header-actions/git-status.js",
-  "/assets/components/header-actions/github-status.js",
-  "/assets/components/header-actions/shared.js",
   "/assets/components/icons.js",
   "/assets/components/pagination.css",
   "/assets/components/pagination.js",
-  "/assets/components/pathbar.css",
-  "/assets/components/pathbar.js",
-  "/assets/components/project-switcher.css",
-  "/assets/components/project-switcher.js",
 ];
 
 self.addEventListener("install", (event) => {

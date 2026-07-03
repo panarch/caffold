@@ -1,5 +1,5 @@
-import { escapeHtml } from "./dom.js";
-import { renderInlineIcon, warmIcons } from "./icons.js";
+import { escapeHtml } from "../../../components/dom.js";
+import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
 
 const POPOVER_ID = "caffold-projects-popover";
 

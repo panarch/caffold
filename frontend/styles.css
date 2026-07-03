@@ -1,8 +1,8 @@
 @import "./pages/app-shell/layout.css";
-@import "./components/pathbar.css";
-@import "./components/project-switcher.css";
-@import "./components/header-actions.css";
-@import "./components/header-actions/codex-status.css";
+@import "./pages/app-shell/components/pathbar.css";
+@import "./pages/app-shell/components/project-switcher.css";
+@import "./pages/app-shell/components/header-actions.css";
+@import "./pages/app-shell/components/header-actions/codex-status.css";
 @import "./components/pagination.css";
 @import "./pages/app-shell/files/page.css";
 @import "./pages/app-shell/review-workspace/git/working-tree/page.css";

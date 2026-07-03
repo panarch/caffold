@@ -31,6 +31,9 @@ caffold-app-shell
   app header
     scaffold-project-switcher
     scaffold-header-actions
+      scaffold-git-header-action
+      scaffold-github-header-action
+      scaffold-codex-header-action
   scaffold-pathbar
   file browsing surface
     scaffold-files-page
@@ -73,6 +76,19 @@ frontend/pages/
   app-shell/
     layout.js
     layout.css
+    components/
+      pathbar.js
+      pathbar.css
+      project-switcher.js
+      project-switcher.css
+      header-actions.js
+      header-actions.css
+      header-actions/
+        shared.js
+        git-status.js
+        github-status.js
+        codex-status.js
+        codex-status.css
 
     files/
       page.js
@@ -130,9 +146,6 @@ frontend/pages/
 
 Keep reusable building blocks in `frontend/components`:
 
-- `header-actions/*`
-- `pathbar.*`
-- `project-switcher.*`
 - `pagination.*`
 - `code-viewer.*`
 - `diff-viewer.*`
@@ -146,6 +159,8 @@ directory when moving them to shared `frontend/components` would hide the
 ownership boundary. For example, the file browser list belongs only to
 `app-shell/files/page`, the Git log list and commit tree belong only to
 `git/log/page`, and the PR files tree belongs only to `github/pulls/files/page`.
+Layout-specific helper components follow the same rule. App chrome such as the
+pathbar, project switcher, and header actions belongs to `app-shell/layout`.
 
 ## Naming Rules
 

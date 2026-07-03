@@ -1,4 +1,4 @@
-import { escapeHtml } from "./dom.js";
+import { escapeHtml } from "../../../components/dom.js";
 
 class CaffoldPathbar extends HTMLElement {
   connectedCallback() {

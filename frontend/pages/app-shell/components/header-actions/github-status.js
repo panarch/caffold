@@ -1,4 +1,4 @@
-import { escapeHtml } from "../dom.js";
+import { escapeHtml } from "../../../../components/dom.js";
 import { renderGroupButton, renderHeaderNotice, renderMenuAction } from "./shared.js";
 
 const GITHUB_POPOVER_ID = "caffold-github-actions-popover";

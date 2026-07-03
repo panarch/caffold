@@ -52,6 +52,39 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/app-shell/layout.js" => {
             Some(js(include_str!("../frontend/pages/app-shell/layout.js")))
         }
+        "pages/app-shell/components/pathbar.css" => Some(css(include_str!(
+            "../frontend/pages/app-shell/components/pathbar.css"
+        ))),
+        "pages/app-shell/components/pathbar.js" => Some(js(include_str!(
+            "../frontend/pages/app-shell/components/pathbar.js"
+        ))),
+        "pages/app-shell/components/project-switcher.css" => Some(css(include_str!(
+            "../frontend/pages/app-shell/components/project-switcher.css"
+        ))),
+        "pages/app-shell/components/project-switcher.js" => Some(js(include_str!(
+            "../frontend/pages/app-shell/components/project-switcher.js"
+        ))),
+        "pages/app-shell/components/header-actions.css" => Some(css(include_str!(
+            "../frontend/pages/app-shell/components/header-actions.css"
+        ))),
+        "pages/app-shell/components/header-actions.js" => Some(js(include_str!(
+            "../frontend/pages/app-shell/components/header-actions.js"
+        ))),
+        "pages/app-shell/components/header-actions/codex-status.css" => Some(css(include_str!(
+            "../frontend/pages/app-shell/components/header-actions/codex-status.css"
+        ))),
+        "pages/app-shell/components/header-actions/codex-status.js" => Some(js(include_str!(
+            "../frontend/pages/app-shell/components/header-actions/codex-status.js"
+        ))),
+        "pages/app-shell/components/header-actions/git-status.js" => Some(js(include_str!(
+            "../frontend/pages/app-shell/components/header-actions/git-status.js"
+        ))),
+        "pages/app-shell/components/header-actions/github-status.js" => Some(js(include_str!(
+            "../frontend/pages/app-shell/components/header-actions/github-status.js"
+        ))),
+        "pages/app-shell/components/header-actions/shared.js" => Some(js(include_str!(
+            "../frontend/pages/app-shell/components/header-actions/shared.js"
+        ))),
         "pages/app-shell/files/page.css" => Some(css(include_str!(
             "../frontend/pages/app-shell/files/page.css"
         ))),
@@ -177,27 +210,6 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "components/file-viewer.js" => {
             Some(js(include_str!("../frontend/components/file-viewer.js")))
         }
-        "components/header-actions.css" => Some(css(include_str!(
-            "../frontend/components/header-actions.css"
-        ))),
-        "components/header-actions.js" => {
-            Some(js(include_str!("../frontend/components/header-actions.js")))
-        }
-        "components/header-actions/codex-status.css" => Some(css(include_str!(
-            "../frontend/components/header-actions/codex-status.css"
-        ))),
-        "components/header-actions/codex-status.js" => Some(js(include_str!(
-            "../frontend/components/header-actions/codex-status.js"
-        ))),
-        "components/header-actions/git-status.js" => Some(js(include_str!(
-            "../frontend/components/header-actions/git-status.js"
-        ))),
-        "components/header-actions/github-status.js" => Some(js(include_str!(
-            "../frontend/components/header-actions/github-status.js"
-        ))),
-        "components/header-actions/shared.js" => Some(js(include_str!(
-            "../frontend/components/header-actions/shared.js"
-        ))),
         "components/github-markdown.js" => Some(js(include_str!(
             "../frontend/components/github-markdown.js"
         ))),
@@ -208,14 +220,6 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "components/pagination.js" => {
             Some(js(include_str!("../frontend/components/pagination.js")))
         }
-        "components/pathbar.css" => Some(css(include_str!("../frontend/components/pathbar.css"))),
-        "components/pathbar.js" => Some(js(include_str!("../frontend/components/pathbar.js"))),
-        "components/project-switcher.css" => Some(css(include_str!(
-            "../frontend/components/project-switcher.css"
-        ))),
-        "components/project-switcher.js" => Some(js(include_str!(
-            "../frontend/components/project-switcher.js"
-        ))),
         _ => None,
     }
 }
@@ -291,39 +295,50 @@ mod tests {
         assert_eq!(codex_brand.content_type, "image/png");
         assert!(codex_brand.body.starts_with(b"\x89PNG\r\n\x1a\n"));
 
-        let codex_status_js =
-            get("components/header-actions/codex-status.js").expect("codex status js asset");
+        let codex_status_js = get("pages/app-shell/components/header-actions/codex-status.js")
+            .expect("codex status js asset");
         assert_eq!(
             codex_status_js.content_type,
             "text/javascript; charset=utf-8"
         );
         assert!(codex_status_js.body.starts_with(b"import "));
 
-        let codex_status_css =
-            get("components/header-actions/codex-status.css").expect("codex status css asset");
+        let codex_status_css = get("pages/app-shell/components/header-actions/codex-status.css")
+            .expect("codex status css asset");
         assert_eq!(codex_status_css.content_type, "text/css; charset=utf-8");
         assert!(codex_status_css.body.starts_with(b"caffold-header-actions"));
 
-        let git_status_js =
-            get("components/header-actions/git-status.js").expect("git status js asset");
+        let git_status_js = get("pages/app-shell/components/header-actions/git-status.js")
+            .expect("git status js asset");
         assert_eq!(git_status_js.content_type, "text/javascript; charset=utf-8");
         assert!(git_status_js.body.starts_with(b"import "));
 
-        let github_status_js =
-            get("components/header-actions/github-status.js").expect("github status js asset");
+        let github_status_js = get("pages/app-shell/components/header-actions/github-status.js")
+            .expect("github status js asset");
         assert_eq!(
             github_status_js.content_type,
             "text/javascript; charset=utf-8"
         );
         assert!(github_status_js.body.starts_with(b"import "));
 
-        let header_actions_shared =
-            get("components/header-actions/shared.js").expect("header actions shared js asset");
+        let header_actions_shared = get("pages/app-shell/components/header-actions/shared.js")
+            .expect("header actions shared js asset");
         assert_eq!(
             header_actions_shared.content_type,
             "text/javascript; charset=utf-8"
         );
         assert!(header_actions_shared.body.starts_with(b"import "));
+        assert!(get("components/header-actions/codex-status.js").is_none());
+        assert!(get("components/header-actions/codex-status.css").is_none());
+        assert!(get("components/header-actions/git-status.js").is_none());
+        assert!(get("components/header-actions/github-status.js").is_none());
+        assert!(get("components/header-actions/shared.js").is_none());
+        assert!(get("components/header-actions.js").is_none());
+        assert!(get("components/header-actions.css").is_none());
+        assert!(get("components/pathbar.js").is_none());
+        assert!(get("components/pathbar.css").is_none());
+        assert!(get("components/project-switcher.js").is_none());
+        assert!(get("components/project-switcher.css").is_none());
 
         let app_shell_layout = get("pages/app-shell/layout.js").expect("app shell layout js asset");
         assert_eq!(

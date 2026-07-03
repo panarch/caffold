@@ -31,9 +31,9 @@ import {
   imageTypeLabel,
   isPreviewableImagePath,
 } from "../../components/dom.js";
-import "../../components/pathbar.js";
-import "../../components/project-switcher.js";
-import "../../components/header-actions.js";
+import "./components/pathbar.js";
+import "./components/project-switcher.js";
+import "./components/header-actions.js";
 import "./files/page.js";
 import "./review-workspace/git/working-tree/page.js";
 import "./review-workspace/git/log/page.js";

@@ -175,6 +175,12 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain("/assets/brand/codex-template@2x.png");
   expect(serviceWorker).toContain("/assets/pages/app-shell/layout.js");
   expect(serviceWorker).toContain("/assets/pages/app-shell/layout.css");
+  expect(serviceWorker).toContain("/assets/pages/app-shell/components/pathbar.js");
+  expect(serviceWorker).toContain("/assets/pages/app-shell/components/project-switcher.js");
+  expect(serviceWorker).toContain("/assets/pages/app-shell/components/header-actions.js");
+  expect(serviceWorker).not.toContain("/assets/components/pathbar.js");
+  expect(serviceWorker).not.toContain("/assets/components/project-switcher.js");
+  expect(serviceWorker).not.toContain("/assets/components/header-actions.js");
   expect(serviceWorker).toContain("/assets/pages/app-shell/files/page.js");
   expect(serviceWorker).toContain("/assets/pages/app-shell/files/components/list.js");
   expect(serviceWorker).not.toContain("/assets/components/file-list.js");
@@ -222,11 +228,24 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).not.toContain("/assets/components/github-pull-files-tree.js");
   expect(serviceWorker).not.toContain("/assets/components/app-shell.js");
   expect(serviceWorker).not.toContain("/assets/components/review-workspace.js");
-  expect(serviceWorker).toContain("/assets/components/header-actions/codex-status.css");
-  expect(serviceWorker).toContain("/assets/components/header-actions/codex-status.js");
-  expect(serviceWorker).toContain("/assets/components/header-actions/git-status.js");
-  expect(serviceWorker).toContain("/assets/components/header-actions/github-status.js");
-  expect(serviceWorker).toContain("/assets/components/header-actions/shared.js");
+  expect(serviceWorker).toContain(
+    "/assets/pages/app-shell/components/header-actions/codex-status.css",
+  );
+  expect(serviceWorker).toContain(
+    "/assets/pages/app-shell/components/header-actions/codex-status.js",
+  );
+  expect(serviceWorker).toContain(
+    "/assets/pages/app-shell/components/header-actions/git-status.js",
+  );
+  expect(serviceWorker).toContain(
+    "/assets/pages/app-shell/components/header-actions/github-status.js",
+  );
+  expect(serviceWorker).toContain("/assets/pages/app-shell/components/header-actions/shared.js");
+  expect(serviceWorker).not.toContain("/assets/components/header-actions/codex-status.css");
+  expect(serviceWorker).not.toContain("/assets/components/header-actions/codex-status.js");
+  expect(serviceWorker).not.toContain("/assets/components/header-actions/git-status.js");
+  expect(serviceWorker).not.toContain("/assets/components/header-actions/github-status.js");
+  expect(serviceWorker).not.toContain("/assets/components/header-actions/shared.js");
   expect(serviceWorker).toContain('url.pathname.startsWith("/api/")');
   expect(serviceWorker).toContain("networkFirst(request, \"/\")");
   expect(serviceWorker).toContain('url.pathname.startsWith("/assets/")');

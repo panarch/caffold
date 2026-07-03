@@ -1,5 +1,5 @@
-import { escapeHtml } from "../dom.js";
-import { renderInlineIcon } from "../icons.js";
+import { escapeHtml } from "../../../../components/dom.js";
+import { renderInlineIcon } from "../../../../components/icons.js";
 
 export function renderGroupButton({
   group,

@@ -1,4 +1,4 @@
-import { escapeHtml } from "../dom.js";
+import { escapeHtml } from "../../../../components/dom.js";
 import { renderGroupButton, renderHeaderNotice } from "./shared.js";
 
 const CODEX_POPOVER_ID = "caffold-codex-actions-popover";
