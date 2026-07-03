@@ -6,7 +6,7 @@
 @import "./components/pagination.css";
 @import "./pages/app-shell/files/page.css";
 @import "./pages/app-shell/review-workspace/git/working-tree/page.css";
-@import "./pages/app-shell/review-workspace/git/log/page.css";
+@import "./pages/app-shell/review-workspace/git/log/layout.css";
 @import "./pages/app-shell/review-workspace/git/compare/page.css";
 @import "./pages/app-shell/review-workspace/github/issues/layout.css";
 @import "./pages/app-shell/review-workspace/github/issues/list/page.css";

@@ -115,11 +115,11 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/app-shell/review-workspace/git/compare/page.js" => Some(js(include_str!(
             "../frontend/pages/app-shell/review-workspace/git/compare/page.js"
         ))),
-        "pages/app-shell/review-workspace/git/log/page.css" => Some(css(include_str!(
-            "../frontend/pages/app-shell/review-workspace/git/log/page.css"
+        "pages/app-shell/review-workspace/git/log/layout.css" => Some(css(include_str!(
+            "../frontend/pages/app-shell/review-workspace/git/log/layout.css"
         ))),
-        "pages/app-shell/review-workspace/git/log/page.js" => Some(js(include_str!(
-            "../frontend/pages/app-shell/review-workspace/git/log/page.js"
+        "pages/app-shell/review-workspace/git/log/layout.js" => Some(js(include_str!(
+            "../frontend/pages/app-shell/review-workspace/git/log/layout.js"
         ))),
         "pages/app-shell/review-workspace/git/log/components/list.css" => Some(css(include_str!(
             "../frontend/pages/app-shell/review-workspace/git/log/components/list.css"
@@ -523,6 +523,16 @@ mod tests {
                 .body
                 .windows(b"caffold-file-list".len())
                 .any(|window| window == b"caffold-file-list")
+        );
+        let log_layout = get("pages/app-shell/review-workspace/git/log/layout.js")
+            .expect("git log layout js asset");
+        assert_eq!(log_layout.content_type, "text/javascript; charset=utf-8");
+        assert!(log_layout.body.starts_with(b"import "));
+        assert!(
+            log_layout
+                .body
+                .windows(b"caffold-git-log-layout".len())
+                .any(|window| window == b"caffold-git-log-layout")
         );
         let log_list_component = get("pages/app-shell/review-workspace/git/log/components/list.js")
             .expect("log list component js asset");

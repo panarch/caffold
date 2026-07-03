@@ -115,8 +115,8 @@ frontend/pages/
           page.js
           page.css
         log/
-          page.js
-          page.css
+          layout.js
+          layout.css
           components/
             list.js
             list.css
@@ -164,7 +164,7 @@ Page-specific helper components can live under that page's `components/`
 directory when moving them to shared `frontend/components` would hide the
 ownership boundary. For example, the file browser list belongs only to
 `app-shell/files/page`, the Git log list and commit tree belong only to
-`git/log/page`, and the PR files tree belongs only to `github/pulls/files/page`.
+`git/log/layout`, and the PR files tree belongs only to `github/pulls/files/page`.
 Layout-specific helper components follow the same rule. App chrome such as the
 pathbar, project switcher, and header actions belongs to `app-shell/layout`.
 

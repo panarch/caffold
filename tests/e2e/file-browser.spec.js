@@ -189,6 +189,12 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
     "/assets/pages/app-shell/review-workspace/git/working-tree/page.js",
   );
   expect(serviceWorker).toContain(
+    "/assets/pages/app-shell/review-workspace/git/log/layout.js",
+  );
+  expect(serviceWorker).not.toContain(
+    "/assets/pages/app-shell/review-workspace/git/log/page.js",
+  );
+  expect(serviceWorker).toContain(
     "/assets/pages/app-shell/review-workspace/git/log/components/list.js",
   );
   expect(serviceWorker).toContain(

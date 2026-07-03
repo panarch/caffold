@@ -155,19 +155,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
             <caffold-review-file-viewer></caffold-review-file-viewer>
           </div>
           <div class="review-workspace-view workspace-mode-log" hidden>
-            <caffold-log-list></caffold-log-list>
-            <div class="log-review-detail">
-              <caffold-commit-changes-tree></caffold-commit-changes-tree>
-              <div
-                class="review-panel-resizer"
-                role="separator"
-                aria-label="Resize review side panel"
-                aria-orientation="vertical"
-                tabindex="0"
-                data-resize-target="log"
-              ></div>
-              <caffold-review-file-viewer></caffold-review-file-viewer>
-            </div>
+            <caffold-git-log-layout></caffold-git-log-layout>
           </div>
           <div class="review-workspace-view workspace-mode-issues" hidden>
             <caffold-github-issues-layout></caffold-github-issues-layout>
@@ -187,7 +175,9 @@ class CaffoldReviewWorkspace extends HTMLElement {
     this.diffView = this.querySelector(".workspace-mode-diff");
     this.compareView = this.querySelector(".workspace-mode-compare");
     this.logView = this.querySelector(".workspace-mode-log");
-    this.logDetailView = this.querySelector(".log-review-detail");
+    this.logLayout = this.querySelector("caffold-git-log-layout");
+    this.logLayout.ensureRendered();
+    this.logDetailView = this.logLayout.querySelector(".log-review-detail");
     this.issuesView = this.querySelector(".workspace-mode-issues");
     this.issuesLayout = this.querySelector("caffold-github-issues-layout");
     this.issuesLayout.ensureRendered();
@@ -236,7 +226,8 @@ class CaffoldReviewWorkspace extends HTMLElement {
 
   setLogView(view) {
     this.ensureRendered();
-    this.logView.dataset.logView = view;
+    this.logLayout.setView(view);
+    this.logView.dataset.logView = this.logLayout.view;
     this.updateMobileDetailState();
   }
 
@@ -254,7 +245,8 @@ class CaffoldReviewWorkspace extends HTMLElement {
 
   setLogDetailView(view) {
     this.ensureRendered();
-    this.logDetailView.dataset.detailView = normalizeDetailView(view);
+    this.logLayout.setDetailView(view);
+    this.logDetailView.dataset.detailView = this.logLayout.detailView;
     this.updateMobileDetailState();
   }
 

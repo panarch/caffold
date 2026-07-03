@@ -194,31 +194,6 @@ caffold-review-workspace .workspace-mode-pulls {
   height: 100%;
 }
 
-caffold-review-workspace .workspace-mode-log[data-log-view="list"] caffold-log-list {
-  border-right: 0;
-}
-
-caffold-review-workspace .workspace-mode-log[data-log-view="list"] .log-review-detail,
-caffold-review-workspace .workspace-mode-log[data-log-view="detail"] caffold-log-list {
-  display: none;
-}
-
-caffold-review-workspace .log-review-detail {
-  display: grid;
-  grid-template-columns: var(--review-left-panel-width) 6px minmax(0, 1fr);
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-caffold-review-workspace .log-review-detail > caffold-commit-changes-tree {
-  grid-column: 1;
-}
-
-caffold-review-workspace .log-review-detail > caffold-review-file-viewer {
-  grid-column: 3;
-}
-
 caffold-review-workspace .review-panel-resizer {
   grid-column: 2;
   min-width: 0;
@@ -243,6 +218,7 @@ caffold-review-workspace.is-resizing-review-panel {
 
 caffold-review-workspace caffold-git-working-tree-page,
 caffold-review-workspace caffold-git-compare-page,
+caffold-review-workspace caffold-git-log-layout,
 caffold-review-workspace caffold-log-list,
 caffold-review-workspace caffold-commit-changes-tree,
 caffold-review-workspace caffold-github-issues-layout,
@@ -295,32 +271,6 @@ caffold-review-workspace caffold-github-issues-list-page h2,
 caffold-review-workspace caffold-github-pulls-list-page h2,
 caffold-review-workspace caffold-github-pull-files-tree h2 {
   font-size: var(--review-pane-title-size);
-}
-
-@media (max-width: 1100px) {
-  caffold-review-workspace .log-review-detail {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 32dvh) minmax(0, 1fr);
-  }
-
-  caffold-review-workspace .log-review-detail > caffold-commit-changes-tree {
-    grid-column: 1;
-    grid-row: 1;
-  }
-
-  caffold-review-workspace .log-review-detail > caffold-review-file-viewer {
-    grid-column: 1;
-    grid-row: 2;
-  }
-
-  caffold-review-workspace .log-review-detail > .review-panel-resizer {
-    display: none;
-  }
-
-  caffold-review-workspace .log-review-detail caffold-commit-changes-tree {
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-  }
 }
 
 @media (max-width: 860px) {
@@ -405,31 +355,11 @@ caffold-review-workspace caffold-github-pull-files-tree h2 {
     grid-template-columns: 1fr;
   }
 
-  caffold-review-workspace .log-review-detail {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr);
-  }
-
-  caffold-review-workspace .log-review-detail > caffold-commit-changes-tree,
-  caffold-review-workspace .log-review-detail > caffold-review-file-viewer {
-    grid-column: 1;
-    grid-row: 1;
-  }
-
-  caffold-review-workspace .log-review-detail[data-detail-view="list"] > caffold-review-file-viewer,
-  caffold-review-workspace .log-review-detail[data-detail-view="viewer"] > caffold-commit-changes-tree {
-    display: none;
-  }
-
   caffold-review-workspace .workspace-mode-diff caffold-git-working-tree-page,
   caffold-review-workspace .workspace-mode-compare caffold-git-compare-page,
   caffold-review-workspace .workspace-mode-pulls caffold-github-pull-files-tree {
     border-right: 0;
     border-bottom: 1px solid var(--border);
-  }
-
-  caffold-review-workspace .workspace-mode-log[data-log-view="list"] caffold-log-list {
-    border-bottom: 0;
   }
 
 }

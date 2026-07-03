@@ -1,0 +1,85 @@
+@import "./components/list.css";
+@import "./components/commit-tree.css";
+
+caffold-git-log-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+caffold-git-log-layout[data-log-view="list"] caffold-log-list {
+  border-right: 0;
+}
+
+caffold-git-log-layout[data-log-view="list"] .log-review-detail,
+caffold-git-log-layout[data-log-view="detail"] caffold-log-list {
+  display: none;
+}
+
+caffold-git-log-layout .log-review-detail {
+  display: grid;
+  grid-template-columns: var(--review-left-panel-width) 6px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+caffold-git-log-layout .log-review-detail > caffold-commit-changes-tree {
+  grid-column: 1;
+}
+
+caffold-git-log-layout .log-review-detail > caffold-review-file-viewer {
+  grid-column: 3;
+}
+
+@media (max-width: 1100px) {
+  caffold-git-log-layout .log-review-detail {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 32dvh) minmax(0, 1fr);
+  }
+
+  caffold-git-log-layout .log-review-detail > caffold-commit-changes-tree {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  caffold-git-log-layout .log-review-detail > caffold-review-file-viewer {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  caffold-git-log-layout .log-review-detail > .review-panel-resizer {
+    display: none;
+  }
+
+  caffold-git-log-layout .log-review-detail caffold-commit-changes-tree {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+@media (max-width: 860px) {
+  caffold-git-log-layout .log-review-detail {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  caffold-git-log-layout .log-review-detail > caffold-commit-changes-tree,
+  caffold-git-log-layout .log-review-detail > caffold-review-file-viewer {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  caffold-git-log-layout .log-review-detail[data-detail-view="list"] > caffold-review-file-viewer,
+  caffold-git-log-layout .log-review-detail[data-detail-view="viewer"] > caffold-commit-changes-tree {
+    display: none;
+  }
+
+  caffold-git-log-layout[data-log-view="list"] caffold-log-list {
+    border-bottom: 0;
+  }
+}
