@@ -70,6 +70,8 @@ Nested layouts should own their own list/detail flow once they have a clear
 domain boundary. For example, `github/issues/layout` owns issue list loading,
 pagination state, issue detail loading, and selected issue state; `app-shell`
 keeps only route selection and top-level workspace coordination.
+Likewise, `github/pulls/layout` owns pull request list/detail/files loading,
+PR file diff state, PR pagination, and PR file list scroll restoration.
 
 ## Page/Layout Skeleton
 

@@ -7,10 +7,6 @@ import {
   getGitCompare,
   getGitCompareDiff,
   getGitRefs,
-  getGitHubPull,
-  getGitHubPullFile,
-  getGitHubPullFiles,
-  getGitHubPulls,
   getGitHubStatus,
   getGitDiff,
   getGitLog,
@@ -42,7 +38,6 @@ import "./review-workspace/layout.js";
 
 const LOADING_DELAY_MS = 180;
 const LAST_DIRECTORY_KEY_PREFIX = "caffold:last-directory-path";
-const GITHUB_PULLS_PER_PAGE = 50;
 const LEFT_PANEL_DEFAULT_WIDTH = 320;
 const LEFT_PANEL_MIN_WIDTH = 180;
 const LEFT_PANEL_VIEWER_MIN_WIDTH = 320;
@@ -64,16 +59,11 @@ class CaffoldAppShell extends HTMLElement {
     this.gitCompareRequestId = 0;
     this.gitRefsRequestId = 0;
     this.githubStatusRequestId = 0;
-    this.githubPullsRequestId = 0;
-    this.githubPullRequestId = 0;
-    this.githubPullFilesRequestId = 0;
     this.codexStatusRequestId = 0;
     this.projectRequestId = 0;
     this.gitStatus = null;
     this.githubStatus = null;
     this.codexStatus = null;
-    this.githubPulls = null;
-    this.githubPullFiles = null;
     this.projects = [];
     this.projectCandidate = null;
     this.currentProjectId = null;
@@ -87,12 +77,8 @@ class CaffoldAppShell extends HTMLElement {
     this.compareWorkspaceView = "list";
     this.logWorkspaceView = "list";
     this.logDetailFileView = "list";
-    this.pullsWorkspaceView = "list";
-    this.pullFilesView = "list";
     this.logPage = 1;
-    this.githubPullsPage = 1;
     this.selectedCommitSummary = null;
-    this.selectedGithubPullSummary = null;
     this.scrollPositions = {};
     this.currentRoute = null;
     this.isApplyingRoute = false;
@@ -119,11 +105,7 @@ class CaffoldAppShell extends HTMLElement {
     this.commitChangesTree = this.reviewWorkspace.querySelector("caffold-commit-changes-tree");
     this.compareTree = this.reviewWorkspace.querySelector("caffold-git-compare-page");
     this.githubIssuesLayout = this.reviewWorkspace.querySelector("caffold-github-issues-layout");
-    this.githubPullsList = this.reviewWorkspace.querySelector("caffold-github-pulls-list-page");
-    this.githubPullViewer = this.reviewWorkspace.querySelector("caffold-github-pull-detail-page");
-    this.githubPullFilesPage = this.reviewWorkspace.querySelector(
-      "caffold-github-pull-files-page",
-    );
+    this.githubPullsLayout = this.reviewWorkspace.querySelector("caffold-github-pulls-layout");
     this.diffWorkspaceViewer = this.reviewWorkspace.querySelector(
       ".workspace-mode-diff caffold-review-file-viewer",
     );
@@ -133,14 +115,10 @@ class CaffoldAppShell extends HTMLElement {
     this.compareWorkspaceViewer = this.reviewWorkspace.querySelector(
       ".workspace-mode-compare caffold-review-file-viewer",
     );
-    this.pullWorkspaceViewer = this.reviewWorkspace.querySelector(
-      ".workspace-mode-pulls caffold-review-file-viewer",
-    );
     this.fileViewer.setCloseLabel("Back to files");
     this.diffWorkspaceViewer.setCloseLabel("Back to changes");
     this.logWorkspaceViewer.setCloseLabel("Back to commit");
     this.compareWorkspaceViewer.setCloseLabel("Back to compare");
-    this.pullWorkspaceViewer.setCloseLabel("Back to PR files");
     this.applyLeftPanelWidth(this.leftPanelWidth);
     this.loadCodexStatus();
 
@@ -191,7 +169,7 @@ class CaffoldAppShell extends HTMLElement {
     this.addEventListener("caffold:open-github-pulls-workspace", () => {
       this.navigateToCurrentProjectRoute({
         kind: "pulls",
-        page: this.githubPullsPage,
+        page: this.githubPullsLayout.page,
       }) || this.openGithubPullsWorkspace();
     });
     this.addEventListener("caffold:close-review-workspace", () => {
@@ -264,7 +242,7 @@ class CaffoldAppShell extends HTMLElement {
     this.addEventListener("caffold:open-github-pull", (event) => {
       this.navigateToCurrentProjectRoute({
         kind: "pulls",
-        page: this.githubPullsPage,
+        page: this.githubPullsLayout.page,
         number: event.detail.number,
       }) || this.openGithubPull(event.detail.number);
     });
@@ -277,19 +255,19 @@ class CaffoldAppShell extends HTMLElement {
     this.addEventListener("caffold:open-github-pull-files", (event) => {
       this.navigateToCurrentProjectRoute({
         kind: "pulls",
-        page: this.githubPullsPage,
+        page: this.githubPullsLayout.page,
         number: event.detail.number,
         files: true,
         path: "",
       }) || this.openGithubPullFiles(event.detail.number);
     });
     this.addEventListener("caffold:open-github-pull-file", (event) => {
-      const number = this.selectedGithubPullSummary?.number ?? this.githubPullFiles?.number;
+      const number = this.githubPullsLayout.currentPullNumber();
       const path = this.projectRelativePath(event.detail.path);
       if (number && path !== null) {
         this.navigateToCurrentProjectRoute({
           kind: "pulls",
-          page: this.githubPullsPage,
+          page: this.githubPullsLayout.page,
           number,
           files: true,
           path,
@@ -298,6 +276,11 @@ class CaffoldAppShell extends HTMLElement {
       }
 
       this.openGithubPullFile(event.detail.path, event.detail.status);
+    });
+    this.addEventListener("caffold:github-pulls-state-change", () => {
+      if (this.workspaceMode === "pulls") {
+        this.updateWorkspaceChrome();
+      }
     });
     this.addEventListener("caffold:register-current-project", () => {
       this.registerCurrentProject();
@@ -695,32 +678,32 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     if (!route.number) {
-      await this.openGithubPullsWorkspace({ page: route.page });
+      await this.openGithubPullsWorkspace({
+        page: route.page,
+        skipReload: this.canApplyLoadedPullsRoute(project, route),
+      });
       return;
     }
 
-    this.githubPullsPage = route.page ?? this.githubPullsPage;
-
     if (route.files) {
-      const skipReload = this.githubPullFiles?.number === route.number;
+      const skipReload = this.githubPullsLayout.canReuseFiles(route.number);
       await this.openGithubPullFiles(route.number, {
+        page: route.page,
         preserveViewer: Boolean(route.path),
         skipReload,
       });
       if (!route.path) {
-        this.githubPullFilesPage.setSelectedPath("");
-        this.pullWorkspaceViewer.setEmpty();
-        this.showPullFilesList();
+        this.githubPullsLayout.showFilesList();
         return;
       }
 
       const fullPath = this.projectPath(project, route.path);
-      const file = this.githubPullFiles?.files?.find((entry) => entry.path === fullPath);
+      const file = this.githubPullsLayout.findFile(fullPath);
       await this.openGithubPullFile(fullPath, file?.status ?? "");
       return;
     }
 
-    await this.openGithubPull(route.number);
+    await this.openGithubPull(route.number, { page: route.page });
   }
 
   navigateToFileRoute(path) {
@@ -912,12 +895,12 @@ class CaffoldAppShell extends HTMLElement {
       return;
     }
 
-    if (event.target === this.pullWorkspaceViewer) {
+    if (this.githubPullsLayout.isFileViewer(event.target)) {
       if (currentRoute?.kind === "pulls" && currentRoute.files && currentRoute.path) {
         this.navigateToRoute(parentRoute(currentRoute));
         return;
       }
-      this.showPullFilesList();
+      this.githubPullsLayout.showFilesList();
     }
   }
 
@@ -947,9 +930,7 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   showPullFilesList() {
-    this.pullFilesView = "list";
-    this.reviewWorkspace.setPullFilesView("list");
-    this.restoreScroller("pull-files", this.githubPullFilesPage, ".github-pull-files-list");
+    this.githubPullsLayout.showFilesList();
   }
 
   rememberScroller(key, host, selector) {
@@ -1288,6 +1269,26 @@ class CaffoldAppShell extends HTMLElement {
     return this.githubIssuesLayout.canReuseRoute(route.page);
   }
 
+  canApplyLoadedPullsRoute(project, route) {
+    if (
+      !this.isProjectRootLoaded(project) ||
+      this.workspaceMode !== "pulls" ||
+      !this.gitRepository
+    ) {
+      return false;
+    }
+
+    if (!route.number) {
+      return this.githubPullsLayout.canReuseList(route.page);
+    }
+
+    if (route.files) {
+      return this.githubPullsLayout.canReuseFiles(route.number);
+    }
+
+    return this.githubPullsLayout.selectedPullSummary?.number === route.number;
+  }
+
   async ensureGitStatus() {
     if (!this.gitRepository || this.gitStatus) {
       return;
@@ -1418,8 +1419,6 @@ class CaffoldAppShell extends HTMLElement {
     this.gitRepository = directory.git;
     this.gitStatus = null;
     this.githubStatus = null;
-    this.githubPulls = null;
-    this.githubPullFiles = null;
     this.gitCompare = null;
     this.gitRefs = null;
     this.compareBaseRef = null;
@@ -1433,10 +1432,7 @@ class CaffoldAppShell extends HTMLElement {
     this.headerActions.githubStatus = null;
     this.changesTree.setLoading(directory.git);
     this.githubIssuesLayout.reset();
-    this.githubPullsList.reset();
-    this.githubPullViewer.setEmpty();
-    this.githubPullFilesPage.reset();
-    this.pullWorkspaceViewer.setEmpty();
+    this.githubPullsLayout.reset();
     this.loadGitStatus(directory.path);
     this.loadGithubStatus(directory.path);
     if (this.workspaceMode === "log") {
@@ -1452,8 +1448,12 @@ class CaffoldAppShell extends HTMLElement {
         page: 1,
       });
     } else if (this.workspaceMode === "pulls") {
-      this.githubPullsPage = 1;
-      this.githubPullsList.setLoading(null);
+      this.githubPullsLayout.openList({
+        path: directory.path,
+        repository: directory.git,
+        githubStatus: null,
+        page: 1,
+      });
     }
     this.updateWorkspaceChrome();
   }
@@ -1468,21 +1468,12 @@ class CaffoldAppShell extends HTMLElement {
     this.gitCompareRequestId += 1;
     this.gitRefsRequestId += 1;
     this.githubStatusRequestId += 1;
-    this.githubPullsRequestId += 1;
-    this.githubPullRequestId += 1;
-    this.githubPullFilesRequestId += 1;
     this.logPage = 1;
     this.diffWorkspaceView = "list";
     this.compareWorkspaceView = "list";
     this.logDetailFileView = "list";
-    this.pullsWorkspaceView = "list";
-    this.pullFilesView = "list";
-    this.githubPullsPage = 1;
-    this.selectedGithubPullSummary = null;
     this.gitRefs = null;
     this.githubStatus = null;
-    this.githubPulls = null;
-    this.githubPullFiles = null;
     this.compareBaseRef = null;
     this.compareHeadRef = null;
     this.headerActions.gitStatus = {
@@ -1498,10 +1489,7 @@ class CaffoldAppShell extends HTMLElement {
     this.commitChangesTree.reset();
     this.compareTree.reset();
     this.githubIssuesLayout.reset();
-    this.githubPullsList.reset();
-    this.githubPullViewer.setEmpty();
-    this.githubPullFilesPage.reset();
-    this.pullWorkspaceViewer.setEmpty();
+    this.githubPullsLayout.reset();
     this.reviewWorkspace.clearCompareRefs();
     this.reviewWorkspace.setDiffView("list");
     this.reviewWorkspace.setCompareView("list");
@@ -1564,14 +1552,12 @@ class CaffoldAppShell extends HTMLElement {
         });
         await this.githubIssuesLayout.setGithubStatus(status);
       } else if (this.workspaceMode === "pulls") {
-        if (status.github && status.pullsAvailable && this.pullsWorkspaceView === "list") {
-          await this.loadGithubPulls(path, "open", this.githubPullsPage);
-        } else if (!status.github || !status.pullsAvailable) {
-          this.githubPullsList.setUnavailable(status);
-          this.githubPullViewer.setEmpty();
-          this.githubPullFilesPage.reset();
-          this.pullWorkspaceViewer.setEmpty();
-        }
+        this.githubPullsLayout.setContext({
+          path,
+          repository: this.gitRepository,
+          githubStatus: status,
+        });
+        await this.githubPullsLayout.setGithubStatus(status);
       }
       return status;
     } catch (error) {
@@ -1599,10 +1585,12 @@ class CaffoldAppShell extends HTMLElement {
         });
         await this.githubIssuesLayout.setGithubStatus(status);
       } else if (this.workspaceMode === "pulls") {
-        this.githubPullsList.setError(error);
-        this.githubPullViewer.setEmpty();
-        this.githubPullFilesPage.setError(error, this.gitRepository);
-        this.pullWorkspaceViewer.setEmpty();
+        this.githubPullsLayout.setContext({
+          path,
+          repository: this.gitRepository,
+          githubStatus: status,
+        });
+        await this.githubPullsLayout.setGithubStatus(status);
       }
     }
   }
@@ -1611,192 +1599,51 @@ class CaffoldAppShell extends HTMLElement {
     return await this.githubIssuesLayout.openIssue(number);
   }
 
-  async loadGithubPulls(path, state = "open", page = this.githubPullsPage) {
-    if (!this.gitRepository || !this.githubStatus?.github || !this.githubStatus.pullsAvailable) {
-      return;
-    }
-
-    const requestId = ++this.githubPullsRequestId;
-    const loadingTimer = this.showGithubPullsLoadingAfterDelay(requestId);
-
-    try {
-      const pulls = await getGitHubPulls(path, state, page, GITHUB_PULLS_PER_PAGE);
-      if (requestId !== this.githubPullsRequestId) {
-        return;
-      }
-
-      this.githubPullsPage = pulls.page ?? page;
-      this.githubPulls = pulls;
-      this.githubPullsList.setPulls(pulls);
-      if (this.pullsWorkspaceView === "list") {
-        this.selectedGithubPullSummary = null;
-        this.githubPullViewer.setEmpty();
-        this.githubPullFilesPage.reset();
-        this.pullWorkspaceViewer.setEmpty();
-      }
-      this.updateWorkspaceChrome();
-      return pulls;
-    } catch (error) {
-      if (requestId !== this.githubPullsRequestId) {
-        return;
-      }
-
-      this.githubPullsList.setError(error, this.githubStatus);
-      this.githubPullViewer.setEmpty();
-    } finally {
-      window.clearTimeout(loadingTimer);
-    }
-  }
-
-  async openGithubPull(number) {
-    if (!this.gitRepository || !Number.isFinite(number)) {
-      return;
+  async openGithubPull(number, options = {}) {
+    if (!this.gitRepository) {
+      return null;
     }
 
     const status = await this.ensureGithubStatus();
-    if (!status?.github || !status.pullsAvailable) {
-      this.githubPullsList.setUnavailable(status);
-      return;
-    }
-
-    const requestId = ++this.githubPullRequestId;
-    this.selectedGithubPullSummary =
-      this.githubPulls?.pulls?.find((pull) => pull.number === number) ?? { number };
+    this.githubPullsLayout.setContext({
+      path: this.currentPath,
+      repository: this.gitRepository,
+      githubStatus: status,
+    });
     this.workspaceMode = "pulls";
-    this.pullsWorkspaceView = "detail";
-    this.pullFilesView = "list";
     this.reviewWorkspace.open("pulls", this.workspaceDetails());
-    this.reviewWorkspace.setPullsView("detail");
-    this.reviewWorkspace.setPullFilesView("list");
     this.updateGitButton();
-    this.updateWorkspaceChrome();
-    this.githubPullsList.setSelectedPull(number);
-    this.githubPullViewer.setLoading(number);
-
-    try {
-      const pull = await getGitHubPull(this.currentPath, number);
-      if (requestId !== this.githubPullRequestId) {
-        return;
-      }
-
-      this.githubPullViewer.setPull(pull);
-      this.selectedGithubPullSummary = pull.pull;
-      this.updateWorkspaceChrome();
-      return pull;
-    } catch (error) {
-      if (requestId !== this.githubPullRequestId) {
-        return;
-      }
-
-      this.githubPullViewer.setError(number, error);
-    }
+    return await this.githubPullsLayout.openPull(number, options);
   }
 
   async openGithubPullFiles(number, options = {}) {
-    if (!this.gitRepository || !Number.isFinite(number)) {
-      return;
+    if (!this.gitRepository) {
+      return null;
     }
 
     const status = await this.ensureGithubStatus();
-    if (!status?.github || !status.pullsAvailable) {
-      this.githubPullsList.setUnavailable(status);
-      return;
-    }
-
-    const requestId = ++this.githubPullFilesRequestId;
-    const viewerRequestId = ++this.fileRequestId;
-    this.selectedGithubPullSummary =
-      this.selectedGithubPullSummary?.number === number
-        ? this.selectedGithubPullSummary
-        : (this.githubPulls?.pulls?.find((pull) => pull.number === number) ?? { number });
+    this.githubPullsLayout.setContext({
+      path: this.currentPath,
+      repository: this.gitRepository,
+      githubStatus: status,
+    });
     this.workspaceMode = "pulls";
-    this.pullsWorkspaceView = "files";
-    this.pullFilesView = "list";
     this.reviewWorkspace.open("pulls", this.workspaceDetails());
-    this.reviewWorkspace.setPullsView("files");
-    this.reviewWorkspace.setPullFilesView("list");
     this.updateGitButton();
-    this.updateWorkspaceChrome();
-    this.githubPullsList.setSelectedPull(number);
-    if (!options.skipReload) {
-      this.githubPullFilesPage.setLoading(this.gitRepository, number);
-    }
-    if (!options.preserveViewer && viewerRequestId === this.fileRequestId) {
-      this.pullWorkspaceViewer.setEmpty();
-    }
-    if (options.skipReload) {
-      return this.githubPullFiles;
-    }
-
-    try {
-      const files = await getGitHubPullFiles(this.currentPath, number);
-      if (requestId !== this.githubPullFilesRequestId) {
-        return;
-      }
-
-      this.githubPullFiles = files;
-      this.githubPullFilesPage.setFiles(files);
-      if (viewerRequestId === this.fileRequestId && !options.preserveViewer) {
-        this.pullWorkspaceViewer.setEmpty();
-      }
-      this.updateWorkspaceChrome();
-      return files;
-    } catch (error) {
-      if (requestId !== this.githubPullFilesRequestId) {
-        return;
-      }
-
-      this.githubPullFilesPage.setError(error, this.gitRepository);
-      if (viewerRequestId === this.fileRequestId) {
-        this.pullWorkspaceViewer.setError(`PR #${number}`, error);
-      }
-    }
+    return await this.githubPullsLayout.openFiles(number, options);
   }
 
   async openGithubPullFile(path, status = "") {
-    const number = this.selectedGithubPullSummary?.number ?? this.githubPullFiles?.number;
-    if (!number || !path) {
-      return;
+    if (!path) {
+      return null;
     }
 
-    const requestId = ++this.fileRequestId;
     this.fileList.setSelectedPath("");
     this.changesTree.setSelectedPath("");
     this.commitChangesTree.setSelectedPath("");
     this.compareTree.setSelectedPath("");
-    this.githubPullFilesPage.setSelectedPath(path);
-    this.rememberScroller("pull-files", this.githubPullFilesPage, ".github-pull-files-list");
     this.workspaceMode = "pulls";
-    this.pullsWorkspaceView = "files";
-    this.pullFilesView = "viewer";
-    this.reviewWorkspace.setPullsView("files");
-    this.reviewWorkspace.setPullFilesView("viewer");
-    const loadingTimer = this.showWorkspaceLoadingAfterDelay(
-      this.pullWorkspaceViewer,
-      `PR diff ${path}`,
-      requestId,
-    );
-
-    try {
-      const diff = await getGitHubPullFile(this.currentPath, number, path);
-      if (requestId !== this.fileRequestId) {
-        return;
-      }
-
-      if (diff.diffUnavailable) {
-        this.pullWorkspaceViewer.setError(path, new Error(diff.message ?? "Diff unavailable."));
-      } else {
-        this.pullWorkspaceViewer.setDiff({ ...diff, status });
-      }
-    } catch (error) {
-      if (requestId !== this.fileRequestId) {
-        return;
-      }
-
-      this.pullWorkspaceViewer.setError(path, error);
-    } finally {
-      window.clearTimeout(loadingTimer);
-    }
+    return await this.githubPullsLayout.openFile(path, status);
   }
 
   async loadGitLog(path, page = this.logPage) {
@@ -1959,17 +1806,16 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   changeGithubPullsPage(page) {
-    if (this.workspaceMode !== "pulls" || this.pullsWorkspaceView !== "list") {
+    if (this.workspaceMode !== "pulls" || this.githubPullsLayout.view !== "list") {
       return;
     }
 
     const nextPage = Number.parseInt(`${page}`, 10);
-    if (!Number.isFinite(nextPage) || nextPage < 1 || nextPage === this.githubPullsPage) {
+    if (!Number.isFinite(nextPage) || nextPage < 1 || nextPage === this.githubPullsLayout.page) {
       return;
     }
 
-    this.githubPullsPage = nextPage;
-    this.loadGithubPulls(this.currentPath, "open", nextPage);
+    this.githubPullsLayout.changePage(nextPage);
   }
 
   openDiffWorkspace(options = {}) {
@@ -2059,32 +1905,22 @@ class CaffoldAppShell extends HTMLElement {
     this.compareWorkspaceView = "list";
     this.logWorkspaceView = "list";
     this.logDetailFileView = "list";
-    this.pullsWorkspaceView = "list";
-    this.pullFilesView = "list";
-    this.githubPullsPage = options.page ?? 1;
-    this.selectedGithubPullSummary = null;
     this.reviewWorkspace.open("pulls", this.workspaceDetails());
-    this.reviewWorkspace.setPullsView(this.pullsWorkspaceView);
-    this.reviewWorkspace.setPullFilesView(this.pullFilesView);
     this.updateGitButton();
-    this.githubPullViewer.setEmpty();
-    this.githubPullFilesPage.reset();
-    this.pullWorkspaceViewer.setEmpty();
-    if (options.skipReload) {
-      return;
-    }
+    await this.githubPullsLayout.openList({
+      path: this.currentPath,
+      repository: this.gitRepository,
+      githubStatus: this.githubStatus,
+      page: options.page ?? 1,
+      skipReload: options.skipReload,
+    });
+    this.updateWorkspaceChrome();
 
-    if (!this.githubStatus) {
-      this.githubPullsList.setLoading(null);
+    if (!options.skipReload && !this.githubStatus) {
       return await this.loadGithubStatus(this.currentPath);
     }
 
-    if (!this.githubStatus.github || !this.githubStatus.pullsAvailable) {
-      this.githubPullsList.setUnavailable(this.githubStatus);
-      return;
-    }
-
-    return await this.loadGithubPulls(this.currentPath, "open", this.githubPullsPage);
+    return null;
   }
 
   async openLogWorkspace(options = {}) {
@@ -2126,14 +1962,10 @@ class CaffoldAppShell extends HTMLElement {
     this.compareWorkspaceView = "list";
     this.logWorkspaceView = "list";
     this.logDetailFileView = "list";
-    this.pullsWorkspaceView = "list";
-    this.pullFilesView = "list";
     this.logPage = 1;
-    this.githubPullsPage = 1;
     this.selectedCommitSummary = null;
-    this.selectedGithubPullSummary = null;
     this.githubIssuesLayout.backToList();
-    this.githubPullsList.setSelectedPull(null);
+    this.githubPullsLayout.backToList();
     this.reviewWorkspace.setDiffView("list");
     this.reviewWorkspace.setCompareView("list");
     this.reviewWorkspace.setLogDetailView("list");
@@ -2162,35 +1994,7 @@ class CaffoldAppShell extends HTMLElement {
       return;
     }
 
-    if (this.workspaceMode === "pulls" && this.pullsWorkspaceView === "detail") {
-      this.githubPullRequestId += 1;
-      this.pullsWorkspaceView = "list";
-      this.selectedGithubPullSummary = null;
-      this.githubPullsList.setSelectedPull(null);
-      this.githubPullViewer.setEmpty();
-      this.reviewWorkspace.setPullsView("list");
-      this.updateWorkspaceChrome();
-      return;
-    }
-
-    if (this.workspaceMode === "pulls" && this.pullsWorkspaceView === "files") {
-      if (this.pullFilesView === "viewer") {
-        this.fileRequestId += 1;
-        this.pullFilesView = "list";
-        this.pullWorkspaceViewer.setEmpty();
-        this.githubPullFilesPage.setSelectedPath("");
-        this.reviewWorkspace.setPullFilesView("list");
-        this.updateWorkspaceChrome();
-        return;
-      }
-
-      this.githubPullFilesRequestId += 1;
-      this.pullsWorkspaceView = "detail";
-      this.pullFilesView = "list";
-      this.githubPullFilesPage.reset();
-      this.pullWorkspaceViewer.setEmpty();
-      this.reviewWorkspace.setPullsView("detail");
-      this.reviewWorkspace.setPullFilesView("list");
+    if (this.workspaceMode === "pulls" && this.githubPullsLayout.back()) {
       this.updateWorkspaceChrome();
     }
   }
@@ -2215,8 +2019,8 @@ class CaffoldAppShell extends HTMLElement {
       this.reviewWorkspace.setIssuesView(this.githubIssuesLayout.view);
     }
     if (this.workspaceMode === "pulls") {
-      this.reviewWorkspace.setPullsView(this.pullsWorkspaceView);
-      this.reviewWorkspace.setPullFilesView(this.pullFilesView);
+      this.reviewWorkspace.setPullsView(this.githubPullsLayout.view);
+      this.reviewWorkspace.setPullFilesView(this.githubPullsLayout.filesView);
     }
   }
 
@@ -2301,19 +2105,19 @@ class CaffoldAppShell extends HTMLElement {
       };
     }
 
-    if (this.workspaceMode === "pulls" && this.pullsWorkspaceView === "detail") {
+    if (this.workspaceMode === "pulls" && this.githubPullsLayout.view === "detail") {
       return {
         title: "PR",
-        subtitle: this.githubPullSubtitle(),
+        subtitle: this.githubPullsLayout.pullSubtitle(),
         backVisible: true,
         backLabel: "Back to pull requests",
       };
     }
 
-    if (this.workspaceMode === "pulls" && this.pullsWorkspaceView === "files") {
+    if (this.workspaceMode === "pulls" && this.githubPullsLayout.view === "files") {
       return {
         title: "PR Files",
-        subtitle: this.githubPullSubtitle(),
+        subtitle: this.githubPullsLayout.pullSubtitle(),
         backVisible: true,
         backLabel: "Back to PR",
       };
@@ -2322,7 +2126,7 @@ class CaffoldAppShell extends HTMLElement {
     if (this.workspaceMode === "pulls") {
       return {
         title: "Pull Requests",
-        subtitle: this.githubPullsSubtitle(),
+        subtitle: this.githubPullsLayout.pullsSubtitle(),
         backVisible: false,
       };
     }
@@ -2352,27 +2156,6 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     return `${this.gitCompare.baseRef}...${this.gitCompare.headRef} · ${countLabel}`;
-  }
-
-  githubPullsSubtitle() {
-    if (!this.githubStatus?.github) {
-      return "GitHub";
-    }
-
-    const count = this.githubPulls?.totalPulls;
-    const countLabel = count === undefined ? "" : ` · ${count} PRs`;
-    return `${this.githubStatus.github.nameWithOwner}${countLabel}`;
-  }
-
-  githubPullSubtitle() {
-    const pull = this.selectedGithubPullSummary;
-    if (!pull) {
-      return "";
-    }
-
-    const number = pull.number === undefined ? "" : `#${pull.number}`;
-    const title = pull.title ?? "";
-    return [number, title].filter(Boolean).join(" ");
   }
 
   startLeftPanelResize(event) {
@@ -2493,14 +2276,6 @@ class CaffoldAppShell extends HTMLElement {
     return window.setTimeout(() => {
       if (requestId === this.gitLogRequestId) {
         this.logList.setLoading(this.gitRepository);
-      }
-    }, LOADING_DELAY_MS);
-  }
-
-  showGithubPullsLoadingAfterDelay(requestId) {
-    return window.setTimeout(() => {
-      if (requestId === this.githubPullsRequestId) {
-        this.githubPullsList.setLoading(this.githubStatus, this.githubPulls, this.githubPullsPage);
       }
     }, LOADING_DELAY_MS);
   }
