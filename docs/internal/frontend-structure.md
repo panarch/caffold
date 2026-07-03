@@ -66,6 +66,10 @@ caffold-app-shell
 `review-workspace` is a pathless review container inside `app-shell`. It owns
 shared review chrome, close/back behavior, panel resizing, compare controls, and
 mobile list/detail transitions. It is not a Git-only or GitHub-only page.
+Nested layouts should own their own list/detail flow once they have a clear
+domain boundary. For example, `github/issues/layout` owns issue list loading,
+pagination state, issue detail loading, and selected issue state; `app-shell`
+keeps only route selection and top-level workspace coordination.
 
 ## Page/Layout Skeleton
 
