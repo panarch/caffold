@@ -132,11 +132,8 @@ class CaffoldReviewWorkspace extends HTMLElement {
           <div class="review-workspace-view workspace-mode-git" hidden>
             <caffold-git-review-layout></caffold-git-review-layout>
           </div>
-          <div class="review-workspace-view workspace-mode-issues" hidden>
-            <caffold-github-issues-layout></caffold-github-issues-layout>
-          </div>
-          <div class="review-workspace-view workspace-mode-pulls" hidden>
-            <caffold-github-pulls-layout></caffold-github-pulls-layout>
+          <div class="review-workspace-view workspace-mode-github" hidden>
+            <caffold-github-review-layout></caffold-github-review-layout>
           </div>
         </div>
       </section>
@@ -150,13 +147,9 @@ class CaffoldReviewWorkspace extends HTMLElement {
     this.gitView = this.querySelector(".workspace-mode-git");
     this.gitLayout = this.querySelector("caffold-git-review-layout");
     this.gitLayout.ensureRendered();
-    this.issuesView = this.querySelector(".workspace-mode-issues");
-    this.issuesLayout = this.querySelector("caffold-github-issues-layout");
-    this.issuesLayout.ensureRendered();
-    this.pullsView = this.querySelector(".workspace-mode-pulls");
-    this.pullsLayout = this.querySelector("caffold-github-pulls-layout");
-    this.pullsLayout.ensureRendered();
-    this.pullFilesView = this.querySelector("caffold-github-pull-files-page");
+    this.githubView = this.querySelector(".workspace-mode-github");
+    this.githubLayout = this.querySelector("caffold-github-review-layout");
+    this.githubLayout.ensureRendered();
     this.renderChrome();
   }
 
@@ -172,8 +165,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
     this.backLabel = options.backLabel ?? "Back";
     this.renderChrome();
     this.gitView.hidden = mode !== "git";
-    this.issuesView.hidden = mode !== "issues";
-    this.pullsView.hidden = mode !== "pulls";
+    this.githubView.hidden = mode !== "github";
     this.updateMobileDetailState();
   }
 
@@ -202,25 +194,8 @@ class CaffoldReviewWorkspace extends HTMLElement {
     this.updateMobileDetailState();
   }
 
-  setIssuesView(view) {
+  setGithubView() {
     this.ensureRendered();
-    const nextView = view === "detail" ? "detail" : "list";
-    this.issuesView.dataset.issuesView = nextView;
-    this.issuesLayout.setView(nextView);
-    this.updateMobileDetailState();
-  }
-
-  setPullsView(view) {
-    this.ensureRendered();
-    const nextView = normalizePullsView(view);
-    this.pullsView.dataset.pullsView = nextView;
-    this.pullsLayout.setView(nextView);
-    this.updateMobileDetailState();
-  }
-
-  setPullFilesView(view) {
-    this.ensureRendered();
-    this.pullFilesView.dataset.detailView = normalizeDetailView(view);
     this.updateMobileDetailState();
   }
 
@@ -377,7 +352,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
     }
 
     if (target === "pulls") {
-      return this.querySelector("caffold-github-pull-files-page");
+      return this.githubLayout.reviewPanelForTarget(target);
     }
 
     return null;
@@ -400,11 +375,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
 
     const detailOpen =
       (this.mode === "git" && this.gitLayout.isMobileDetailOpen()) ||
-      (this.mode === "issues" && this.issuesLayout.dataset.issuesView === "detail") ||
-      (this.mode === "pulls" &&
-        (this.pullsLayout.dataset.pullsView === "detail" ||
-          (this.pullsLayout.dataset.pullsView === "files" &&
-            this.pullFilesView.dataset.detailView === "viewer")));
+      (this.mode === "github" && this.githubLayout.isMobileDetailOpen());
 
     this.dataset.mobileDetail = detailOpen ? "true" : "false";
   }
@@ -417,21 +388,9 @@ function workspaceTitle(mode) {
     return "Git";
   }
 
-  if (mode === "issues") {
-    return "Issues";
-  }
-
-  if (mode === "pulls") {
-    return "Pull Requests";
+  if (mode === "github") {
+    return "GitHub";
   }
 
   return "Review";
-}
-
-function normalizeDetailView(view) {
-  return view === "viewer" ? "viewer" : "list";
-}
-
-function normalizePullsView(view) {
-  return view === "detail" || view === "files" ? view : "list";
 }

@@ -197,8 +197,9 @@ class CaffoldGithubIssuesLayout extends HTMLElement {
     return [number, title].filter(Boolean).join(" ");
   }
 
-  setContext({ path, repository, githubStatus }) {
+  setContext(options = {}) {
     this.ensureRendered();
+    const { path, repository, githubStatus } = options;
     const nextPath = path ?? this.currentPath ?? "";
     const nextRepository = repository ?? this.repository ?? null;
     const contextChanged =
@@ -207,7 +208,9 @@ class CaffoldGithubIssuesLayout extends HTMLElement {
 
     this.currentPath = nextPath;
     this.repository = nextRepository;
-    this.githubStatus = githubStatus ?? this.githubStatus ?? null;
+    this.githubStatus = Object.prototype.hasOwnProperty.call(options, "githubStatus")
+      ? githubStatus
+      : (this.githubStatus ?? null);
 
     if (contextChanged) {
       this.issueListRequestId += 1;

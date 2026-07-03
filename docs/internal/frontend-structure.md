@@ -54,17 +54,19 @@ caffold-app-shell
             scaffold-git-log-commit-page
               scaffold-commit-changes-tree
               scaffold-review-file-viewer
-    issues
-      scaffold-github-issues-layout
-        scaffold-github-issues-list-page
-        scaffold-github-issue-detail-page
-    pulls
-      scaffold-github-pulls-layout
-        scaffold-github-pulls-list-page
-        scaffold-github-pull-detail-page
-        scaffold-github-pull-files-page
-          scaffold-github-pull-files-tree
-          scaffold-review-file-viewer
+    github
+      scaffold-github-review-layout
+        issues
+          scaffold-github-issues-layout
+            scaffold-github-issues-list-page
+            scaffold-github-issue-detail-page
+        pulls
+          scaffold-github-pulls-layout
+            scaffold-github-pulls-list-page
+            scaffold-github-pull-detail-page
+            scaffold-github-pull-files-page
+              scaffold-github-pull-files-tree
+              scaffold-review-file-viewer
 ```
 
 `review-workspace` is a pathless review container inside `app-shell`. It owns
@@ -72,10 +74,11 @@ shared review chrome, close/back behavior, panel resizing, and mobile
 list/detail transitions. It is not a Git-only or GitHub-only page.
 Nested layouts own their own list/detail flow once they have a clear domain
 boundary. `git/layout` owns Git submode switching, Compare controls, Diff,
-Compare, and Log list/detail state. For example, `github/issues/layout` owns
-issue list loading, pagination state, issue detail loading, and selected issue
-state; `app-shell` keeps only route selection and top-level workspace
-coordination.
+Compare, and Log list/detail state. `github/layout` owns GitHub submode
+switching and delegates issue and pull request internals to their nested
+layouts. For example, `github/issues/layout` owns issue list loading,
+pagination state, issue detail loading, and selected issue state; `app-shell`
+keeps only route selection and top-level workspace coordination.
 Likewise, `github/pulls/layout` owns pull request list/detail/files loading,
 PR file diff state, PR pagination, and PR file list scroll restoration.
 
@@ -136,6 +139,8 @@ frontend/pages/
               changes-tree.css
 
       github/
+        layout.js
+        layout.css
         issues/
           layout.js
           layout.css

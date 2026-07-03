@@ -1273,6 +1273,10 @@ test("restores project review routes", async ({ page }) => {
   await page.goto(`/projects/${project.id}/issues/42?page=2`);
   await expect(page.locator("caffold-review-workspace")).toHaveAttribute(
     "data-workspace-mode",
+    "github",
+  );
+  await expect(page.locator("caffold-github-review-layout")).toHaveAttribute(
+    "data-github-mode",
     "issues",
   );
   await expect(page.locator("caffold-github-issue-detail-page")).toContainText("Route issue body");
@@ -1290,9 +1294,9 @@ test("restores project review routes", async ({ page }) => {
   await page.goto(`/projects/${project.id}/pulls/12/files/planner/mod.rs?page=2`);
   await expect(page.locator("caffold-review-workspace")).toHaveAttribute(
     "data-workspace-mode",
-    "pulls",
+    "github",
   );
-  await expect(page.locator(".workspace-mode-pulls")).toHaveAttribute(
+  await expect(page.locator(".github-mode-pulls")).toHaveAttribute(
     "data-pulls-view",
     "files",
   );
@@ -1300,7 +1304,7 @@ test("restores project review routes", async ({ page }) => {
   await page.goto(`/projects/${project.id}/pulls/12/files?page=2`);
   await expect(page).toHaveURL(`/projects/${project.id}/pulls/12/files?page=2`);
   await expect(page.locator("caffold-github-pull-files-page")).toBeVisible();
-  await expect(page.locator(".workspace-mode-pulls caffold-review-file-viewer")).toContainText(
+  await expect(page.locator(".github-mode-pulls caffold-review-file-viewer")).toContainText(
     "Select a file to inspect it.",
   );
   const githubPullFilesRequestsBeforeFileClick = githubPullFilesRequests;
@@ -2036,7 +2040,7 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
 
   const workspace = page.locator("caffold-review-workspace");
   await expect(workspace).toBeVisible();
-  await expect(workspace).toHaveAttribute("data-workspace-mode", "issues");
+  await expect(workspace).toHaveAttribute("data-workspace-mode", "github");
   await expect(workspace.locator(".review-workspace-title h2")).toHaveText("Issues");
   await expect(workspace.locator(".review-workspace-subtitle")).toHaveText(
     "example/caffold · 75 issues",
@@ -2067,8 +2071,8 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
 
   await page.locator('button[data-issue-number="42"]').click();
   const issueViewer = page.locator("caffold-github-issue-detail-page");
-  await expect(workspace).toHaveAttribute("data-workspace-mode", "issues");
-  await expect(workspace.locator(".workspace-mode-issues")).toHaveAttribute(
+  await expect(workspace).toHaveAttribute("data-workspace-mode", "github");
+  await expect(workspace.locator(".github-mode-issues")).toHaveAttribute(
     "data-issues-view",
     "detail",
   );
@@ -2123,7 +2127,7 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
   await captureReviewScreenshot(page, testInfo, "github-issue-detail");
 
   await workspace.getByRole("button", { name: "Back to issues" }).click();
-  await expect(workspace.locator(".workspace-mode-issues")).toHaveAttribute(
+  await expect(workspace.locator(".github-mode-issues")).toHaveAttribute(
     "data-issues-view",
     "list",
   );
@@ -2422,7 +2426,7 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
 
   const workspace = page.locator("caffold-review-workspace");
   await expect(workspace).toBeVisible();
-  await expect(workspace).toHaveAttribute("data-workspace-mode", "pulls");
+  await expect(workspace).toHaveAttribute("data-workspace-mode", "github");
   await expect(workspace.locator(".review-workspace-title h2")).toHaveText("Pull Requests");
   await expect(workspace.locator(".review-workspace-subtitle")).toHaveText(
     "example/caffold · 64 PRs",
@@ -2441,7 +2445,7 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
 
   await page.locator('button[data-pull-number="12"]').click();
   const pullViewer = page.locator("caffold-github-pull-detail-page");
-  await expect(workspace.locator(".workspace-mode-pulls")).toHaveAttribute(
+  await expect(workspace.locator(".github-mode-pulls")).toHaveAttribute(
     "data-pulls-view",
     "detail",
   );
@@ -2494,19 +2498,19 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
   await captureReviewScreenshot(page, testInfo, "github-pull-detail");
 
   await pullViewer.getByRole("button", { name: "Open files for PR #12" }).click();
-  await expect(workspace.locator(".workspace-mode-pulls")).toHaveAttribute(
+  await expect(workspace.locator(".github-mode-pulls")).toHaveAttribute(
     "data-pulls-view",
     "files",
   );
   await expect(page.locator("caffold-github-pull-files-tree")).toContainText("2 files");
   await expect(page.locator('button[data-pull-file-path="src/planner/mod.rs"]')).toBeVisible();
-  await expect(page.locator(".workspace-mode-pulls caffold-review-file-viewer")).toContainText(
+  await expect(page.locator(".github-mode-pulls caffold-review-file-viewer")).toContainText(
     "Select a file to inspect it.",
   );
   if (testInfo.project.name === "phone") {
     await expect(workspace).toHaveAttribute("data-mobile-detail", "false");
     await expect(page.locator("caffold-github-pull-files-tree")).toBeVisible();
-    await expect(page.locator(".workspace-mode-pulls caffold-review-file-viewer")).toBeHidden();
+    await expect(page.locator(".github-mode-pulls caffold-review-file-viewer")).toBeHidden();
   }
 
   const listRequestsBeforeFileClick = listRequests;
@@ -2521,18 +2525,18 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
   if (testInfo.project.name === "phone") {
     await expectMobileReviewDetail(page, {
       backName: "Back to PR files",
-      detailSelector: ".workspace-mode-pulls caffold-review-file-viewer",
+      detailSelector: ".github-mode-pulls caffold-review-file-viewer",
       listSelector: "caffold-github-pull-files-tree",
     });
   } else {
     await expectAlignedWorkspaceHeaders(page, [
       "caffold-review-workspace .review-workspace-header",
       "caffold-github-pull-files-tree .github-pull-files-panel > header",
-      ".workspace-mode-pulls caffold-review-file-viewer .viewer-panel > header",
+      ".github-mode-pulls caffold-review-file-viewer .viewer-panel > header",
     ]);
     await expectMatchingPaneTitleSizes(page, [
       "caffold-github-pull-files-tree .github-pull-files-panel > header",
-      ".workspace-mode-pulls caffold-review-file-viewer .viewer-panel > header",
+      ".github-mode-pulls caffold-review-file-viewer .viewer-panel > header",
     ]);
   }
   await captureReviewScreenshot(page, testInfo, "github-pull-file-diff");

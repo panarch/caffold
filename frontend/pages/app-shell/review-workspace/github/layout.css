@@ -1,0 +1,23 @@
+caffold-github-review-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+caffold-github-review-layout .github-review-view {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+caffold-github-review-layout .github-mode-issues,
+caffold-github-review-layout .github-mode-pulls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
+}

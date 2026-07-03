@@ -169,6 +169,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
                 "../frontend/pages/app-shell/review-workspace/git/log/commit/components/changes-tree.js"
             )))
         }
+        "pages/app-shell/review-workspace/github/layout.css" => Some(css(include_str!(
+            "../frontend/pages/app-shell/review-workspace/github/layout.css"
+        ))),
+        "pages/app-shell/review-workspace/github/layout.js" => Some(js(include_str!(
+            "../frontend/pages/app-shell/review-workspace/github/layout.js"
+        ))),
         "pages/app-shell/review-workspace/github/issues/layout.css" => Some(css(include_str!(
             "../frontend/pages/app-shell/review-workspace/github/issues/layout.css"
         ))),
@@ -452,6 +458,20 @@ mod tests {
         );
         assert!(get("pages/app-shell/review-workspace/git/working-tree/page.js").is_none());
         assert!(get("components/changes-tree.js").is_none());
+
+        let github_review_layout = get("pages/app-shell/review-workspace/github/layout.js")
+            .expect("github review layout js");
+        assert_eq!(
+            github_review_layout.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(github_review_layout.body.starts_with(b"import "));
+        assert!(
+            github_review_layout
+                .body
+                .windows(b"caffold-github-review-layout".len())
+                .any(|window| window == b"caffold-github-review-layout")
+        );
 
         let issues_layout = get("pages/app-shell/review-workspace/github/issues/layout.js")
             .expect("issues layout js");

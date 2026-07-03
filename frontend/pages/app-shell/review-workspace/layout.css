@@ -162,14 +162,7 @@ caffold-review-workspace .workspace-mode-git {
   height: 100%;
 }
 
-caffold-review-workspace .workspace-mode-issues {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
-  height: 100%;
-}
-
-caffold-review-workspace .workspace-mode-pulls {
+caffold-review-workspace .workspace-mode-github {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
@@ -207,6 +200,7 @@ caffold-review-workspace caffold-git-log-layout,
 caffold-review-workspace caffold-git-log-list-page,
 caffold-review-workspace caffold-git-log-commit-page,
 caffold-review-workspace caffold-commit-changes-tree,
+caffold-review-workspace caffold-github-review-layout,
 caffold-review-workspace caffold-github-issues-layout,
 caffold-review-workspace caffold-github-issues-list-page,
 caffold-review-workspace caffold-github-issue-detail-page,
@@ -303,17 +297,13 @@ caffold-review-workspace caffold-github-pull-files-tree h2 {
     grid-template-columns: 1fr;
   }
 
-  caffold-review-workspace .workspace-mode-issues {
-    grid-template-columns: 1fr;
-  }
-
-  caffold-review-workspace .workspace-mode-pulls {
+  caffold-review-workspace .workspace-mode-github {
     grid-template-columns: 1fr;
   }
 
   caffold-review-workspace .git-mode-diff caffold-git-diff-changes-tree,
   caffold-review-workspace .git-mode-compare caffold-git-compare-tree,
-  caffold-review-workspace .workspace-mode-pulls caffold-github-pull-files-tree {
+  caffold-review-workspace .github-mode-pulls caffold-github-pull-files-tree {
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }

@@ -106,16 +106,16 @@ caffold-github-issue-detail-page .error-panel {
 }
 
 @media (max-width: 860px) {
-  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="issues"] caffold-github-issue-detail-page .github-issue-viewer-panel > header {
+  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-issue-detail-page .github-issue-viewer-panel > header {
     padding: 4px 8px;
   }
 
-  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="issues"] caffold-github-issue-detail-page .github-issue-viewer-title-row {
+  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-issue-detail-page .github-issue-viewer-title-row {
     grid-template-columns: 28px minmax(0, 1fr) auto;
     gap: 6px;
   }
 
-  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="issues"] caffold-github-issue-detail-page .github-issue-close-button {
+  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-issue-detail-page .github-issue-close-button {
     display: grid;
     place-items: center;
     width: 28px;
@@ -128,14 +128,14 @@ caffold-github-issue-detail-page .error-panel {
     cursor: pointer;
   }
 
-  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="issues"] caffold-github-issue-detail-page .github-issue-close-button:hover,
-  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="issues"] caffold-github-issue-detail-page .github-issue-close-button:focus-visible {
+  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-issue-detail-page .github-issue-close-button:hover,
+  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-issue-detail-page .github-issue-close-button:focus-visible {
     border-color: #abcbbf;
     background: #f7fbf8;
     outline: none;
   }
 
-  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="issues"] caffold-github-issue-detail-page .github-issue-close-icon {
+  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-issue-detail-page .github-issue-close-icon {
     width: 1rem;
     height: 1rem;
     stroke-width: 2;
