@@ -15,8 +15,8 @@ filename communicates whether the custom element is a layout or a leaf page.
 Example:
 
 ```text
-frontend/pages/app-shell/layout.js
-frontend/pages/app-shell/layout.css
+frontend/pages/(app-shell)/layout.js
+frontend/pages/(app-shell)/layout.css
 ```
 
 defines the app-level `<caffold-app-shell>` layout. Nested page directories
@@ -69,17 +69,17 @@ caffold-app-shell
               scaffold-review-file-viewer
 ```
 
-`review-workspace` is a pathless review container inside `app-shell`. It owns
+`(review-workspace)` is a pathless review container inside `(app-shell)`. It owns
 shared review chrome, close/back behavior, panel resizing, and mobile
 list/detail transitions. It is not a Git-only or GitHub-only page.
 Nested layouts own their own list/detail flow once they have a clear domain
-boundary. `git/layout` owns Git submode switching, Compare controls, Diff,
-Compare, and Log list/detail state. `github/layout` owns GitHub submode
+boundary. `(git)/layout` owns Git submode switching, Compare controls, Diff,
+Compare, and Log list/detail state. `(github)/layout` owns GitHub submode
 switching and delegates issue and pull request internals to their nested
-layouts. For example, `github/issues/layout` owns issue list loading,
+layouts. For example, `(github)/(issues)/layout` owns issue list loading,
 pagination state, issue detail loading, and selected issue state; `app-shell`
 keeps only route selection and top-level workspace coordination.
-Likewise, `github/pulls/layout` owns pull request list/detail/files loading,
+Likewise, `(github)/(pulls)/layout` owns pull request list/detail/files loading,
 PR file diff state, PR pagination, and PR file list scroll restoration.
 
 ## Page/Layout Skeleton
@@ -88,7 +88,7 @@ The current page-level skeleton is:
 
 ```text
 frontend/pages/
-  app-shell/
+  (app-shell)/
     layout.js
     layout.css
     components/
@@ -112,11 +112,11 @@ frontend/pages/
         list.js
         list.css
 
-    review-workspace/
+    (review-workspace)/
       layout.js
       layout.css
 
-      git/
+      (git)/
         layout.js
         layout.css
         diff/
@@ -125,7 +125,7 @@ frontend/pages/
         compare/
           page.js
           page.css
-        log/
+        (log)/
           layout.js
           layout.css
           list/
@@ -138,10 +138,10 @@ frontend/pages/
               changes-tree.js
               changes-tree.css
 
-      github/
+      (github)/
         layout.js
         layout.css
-        issues/
+        (issues)/
           layout.js
           layout.css
           list/
@@ -150,7 +150,7 @@ frontend/pages/
           detail/
             page.js
             page.css
-        pulls/
+        (pulls)/
           layout.js
           layout.css
           list/
@@ -180,11 +180,12 @@ Keep reusable building blocks in `frontend/components`:
 Page-specific helper components can live under that page's `components/`
 directory when moving them to shared `frontend/components` would hide the
 ownership boundary. For example, the file browser list belongs only to
-`app-shell/files/page`, the Git log list belongs only to `git/log/list/page`,
-the commit changes tree belongs only to `git/log/commit/page`, and the PR files
-tree belongs only to `github/pulls/files/page`.
+`(app-shell)/files/page`, the Git log list belongs only to
+`(git)/(log)/list/page`, the commit changes tree belongs only to
+`(git)/(log)/commit/page`, and the PR files tree belongs only to
+`(github)/(pulls)/files/page`.
 Layout-specific helper components follow the same rule. App chrome such as the
-pathbar, project switcher, and header actions belongs to `app-shell/layout`.
+pathbar, project switcher, and header actions belongs to `(app-shell)/layout`.
 
 ## Naming Rules
 
@@ -198,6 +199,9 @@ pathbar, project switcher, and header actions belongs to `app-shell/layout`.
 - Do not move lower-level or reusable components under `pages` just to mirror
   the current screen. Components such as `pagination`, `file-viewer`,
   `diff-viewer`, and `github-markdown` stay component-level.
+- Wrap intermediate `frontend/pages` directories that do not contain `page.js`
+  in parentheses, such as `(app-shell)`, `(review-workspace)`, `(git)`, or
+  `(github)`. These are pathless grouping/layout nodes, not URL segments.
 
 ## Migration Rules
 

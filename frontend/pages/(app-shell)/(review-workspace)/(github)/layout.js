@@ -1,5 +1,5 @@
-import "./issues/layout.js";
-import "./pulls/layout.js";
+import "./(issues)/layout.js";
+import "./(pulls)/layout.js";
 
 class CaffoldGithubReviewLayout extends HTMLElement {
   connectedCallback() {

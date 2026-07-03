@@ -22,9 +22,9 @@ import "./components/pathbar.js";
 import "./components/project-switcher.js";
 import "./components/header-actions.js";
 import "./files/page.js";
-import "./review-workspace/git/layout.js";
-import "./review-workspace/github/layout.js";
-import "./review-workspace/layout.js";
+import "./(review-workspace)/(git)/layout.js";
+import "./(review-workspace)/(github)/layout.js";
+import "./(review-workspace)/layout.js";
 
 const LOADING_DELAY_MS = 180;
 const LAST_DIRECTORY_KEY_PREFIX = "caffold:last-directory-path";

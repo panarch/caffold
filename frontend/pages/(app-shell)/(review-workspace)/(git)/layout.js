@@ -1,7 +1,7 @@
 import { escapeHtml } from "../../../../components/dom.js";
 import "./compare/page.js";
 import "./diff/page.js";
-import "./log/layout.js";
+import "./(log)/layout.js";
 
 class CaffoldGitReviewLayout extends HTMLElement {
   connectedCallback() {
