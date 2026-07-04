@@ -395,10 +395,8 @@ class CaffoldAppShell extends HTMLElement {
         await this.applyCompareRoute(project, route);
       } else if (route.kind === "log") {
         await this.applyLogRoute(project, route);
-      } else if (route.kind === "issues") {
-        await this.applyIssuesRoute(project, route);
-      } else if (route.kind === "pulls") {
-        await this.applyPullsRoute(project, route);
+      } else if (route.kind === "issues" || route.kind === "pulls") {
+        await this.applyGithubRoute(project, route);
       }
 
       return true;
@@ -556,52 +554,15 @@ class CaffoldAppShell extends HTMLElement {
     await this.openCommitDiff(route.sha, fullPath, file?.status ?? "");
   }
 
-  async applyIssuesRoute(project, route) {
+  async applyGithubRoute(project, route) {
     if (!(await this.ensureProjectRootLoaded(project))) {
       return;
     }
 
-    await this.openGithubIssuesWorkspace({
-      page: route.page,
-      skipReload: this.canApplyLoadedIssuesRoute(project, route),
+    await this.openGithubRoute(route, {
+      resolvePath: (path) => this.projectPath(project, path),
+      skipReload: this.canApplyLoadedGithubRoute(project, route),
     });
-    if (route.number) {
-      await this.openGithubIssue(route.number);
-    }
-  }
-
-  async applyPullsRoute(project, route) {
-    if (!(await this.ensureProjectRootLoaded(project))) {
-      return;
-    }
-
-    if (!route.number) {
-      await this.openGithubPullsWorkspace({
-        page: route.page,
-        skipReload: this.canApplyLoadedPullsRoute(project, route),
-      });
-      return;
-    }
-
-    if (route.files) {
-      const skipReload = this.githubLayout.canReusePullFiles(route.number);
-      await this.openGithubPullFiles(route.number, {
-        page: route.page,
-        preserveViewer: Boolean(route.path),
-        skipReload,
-      });
-      if (!route.path) {
-        this.githubLayout.showPullFilesList();
-        return;
-      }
-
-      const fullPath = this.projectPath(project, route.path);
-      const file = this.githubLayout.findPullFile(fullPath);
-      await this.openGithubPullFile(fullPath, file?.status ?? "");
-      return;
-    }
-
-    await this.openGithubPull(route.number, { page: route.page });
   }
 
   navigateToFileRoute(path) {
@@ -913,7 +874,7 @@ class CaffoldAppShell extends HTMLElement {
     return this.gitLayout.canReuseLogRoute(route);
   }
 
-  canApplyLoadedIssuesRoute(project, route) {
+  canApplyLoadedGithubRoute(project, route) {
     if (
       !this.isProjectRootLoaded(project) ||
       this.workspaceMode !== "github" ||
@@ -922,19 +883,7 @@ class CaffoldAppShell extends HTMLElement {
       return false;
     }
 
-    return this.githubLayout.canReuseIssuesRoute(route);
-  }
-
-  canApplyLoadedPullsRoute(project, route) {
-    if (
-      !this.isProjectRootLoaded(project) ||
-      this.workspaceMode !== "github" ||
-      !this.gitRepository
-    ) {
-      return false;
-    }
-
-    return this.githubLayout.canReusePullsRoute(route);
+    return this.githubLayout.canReuseRoute(route);
   }
 
   async ensureGitStatus() {
@@ -1219,47 +1168,67 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   async openGithubIssue(number) {
-    return await this.githubLayout.openIssue(number);
+    return await this.openGithubRoute({
+      kind: "issues",
+      page: this.githubLayout.issuesPage,
+      number,
+    });
+  }
+
+  async openGithubRoute(route, options = {}) {
+    if (!this.gitRepository) {
+      return null;
+    }
+
+    const needsStatus = Boolean(route.number);
+    const status = needsStatus ? await this.ensureGithubStatus() : this.githubStatus;
+    this.workspaceMode = "github";
+    if (!route.number) {
+      this.gitLayout.setView("list");
+    }
+    this.githubLayout.setContext({
+      path: this.currentPath,
+      repository: this.gitRepository,
+      githubStatus: status,
+    });
+    const routePromise = this.githubLayout.openRoute(route, {
+      resolvePath: options.resolvePath,
+      skipReload: options.skipReload,
+    });
+    this.reviewWorkspace.open("github", this.workspaceDetails());
+    this.updateGitButton();
+    const result = await routePromise;
+    this.updateWorkspaceChrome();
+
+    if (!route.number && !options.skipReload && !this.githubStatus) {
+      return await this.loadGithubStatus(this.currentPath);
+    }
+
+    return result;
   }
 
   async openGithubPull(number, options = {}) {
-    if (!this.gitRepository) {
-      return null;
-    }
-
-    const status = await this.ensureGithubStatus();
-    this.githubLayout.setContext({
-      path: this.currentPath,
-      repository: this.gitRepository,
-      githubStatus: status,
-    });
-    this.workspaceMode = "github";
-    const pullPromise = this.githubLayout.openPull(number, options);
-    this.reviewWorkspace.open("github", this.workspaceDetails());
-    this.updateGitButton();
-    const pull = await pullPromise;
-    this.updateWorkspaceChrome();
-    return pull;
+    return await this.openGithubRoute(
+      {
+        kind: "pulls",
+        page: options.page,
+        number,
+      },
+      options,
+    );
   }
 
   async openGithubPullFiles(number, options = {}) {
-    if (!this.gitRepository) {
-      return null;
-    }
-
-    const status = await this.ensureGithubStatus();
-    this.githubLayout.setContext({
-      path: this.currentPath,
-      repository: this.gitRepository,
-      githubStatus: status,
-    });
-    this.workspaceMode = "github";
-    const filesPromise = this.githubLayout.openPullFiles(number, options);
-    this.reviewWorkspace.open("github", this.workspaceDetails());
-    this.updateGitButton();
-    const files = await filesPromise;
-    this.updateWorkspaceChrome();
-    return files;
+    return await this.openGithubRoute(
+      {
+        kind: "pulls",
+        page: options.page,
+        number,
+        files: true,
+        path: "",
+      },
+      options,
+    );
   }
 
   async openGithubPullFile(path, status = "") {
@@ -1356,59 +1325,23 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   async openGithubIssuesWorkspace(options = {}) {
-    if (!this.gitRepository) {
-      return;
-    }
-
-    this.workspaceMode = "github";
-    this.gitLayout.setView("list");
-    this.githubLayout.setContext({
-      path: this.currentPath,
-      repository: this.gitRepository,
-      githubStatus: this.githubStatus,
-    });
-    const issuesPromise = this.githubLayout.openIssuesWorkspace({
-      page: options.page ?? 1,
-      skipReload: options.skipReload,
-    });
-    this.reviewWorkspace.open("github", this.workspaceDetails());
-    this.updateGitButton();
-    await issuesPromise;
-    this.updateWorkspaceChrome();
-
-    if (!options.skipReload && !this.githubStatus) {
-      return await this.loadGithubStatus(this.currentPath);
-    }
-
-    return null;
+    return await this.openGithubRoute(
+      {
+        kind: "issues",
+        page: options.page ?? 1,
+      },
+      options,
+    );
   }
 
   async openGithubPullsWorkspace(options = {}) {
-    if (!this.gitRepository) {
-      return;
-    }
-
-    this.workspaceMode = "github";
-    this.gitLayout.setView("list");
-    this.githubLayout.setContext({
-      path: this.currentPath,
-      repository: this.gitRepository,
-      githubStatus: this.githubStatus,
-    });
-    const pullsPromise = this.githubLayout.openPullsWorkspace({
-      page: options.page ?? 1,
-      skipReload: options.skipReload,
-    });
-    this.reviewWorkspace.open("github", this.workspaceDetails());
-    this.updateGitButton();
-    await pullsPromise;
-    this.updateWorkspaceChrome();
-
-    if (!options.skipReload && !this.githubStatus) {
-      return await this.loadGithubStatus(this.currentPath);
-    }
-
-    return null;
+    return await this.openGithubRoute(
+      {
+        kind: "pulls",
+        page: options.page ?? 1,
+      },
+      options,
+    );
   }
 
   async openLogWorkspace(options = {}) {

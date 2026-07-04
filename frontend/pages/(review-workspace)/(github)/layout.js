@@ -181,6 +181,54 @@ class CaffoldGithubReviewLayout extends HTMLElement {
     return await this.pullsLayout.changePage(page);
   }
 
+  async openRoute(route, options = {}) {
+    if (route.kind === "issues") {
+      const issues = await this.openIssuesWorkspace({
+        page: route.page,
+        skipReload: options.skipReload,
+      });
+      if (route.number) {
+        return await this.openIssue(route.number);
+      }
+
+      return issues;
+    }
+
+    if (route.kind !== "pulls") {
+      return null;
+    }
+
+    if (!route.number) {
+      return await this.openPullsWorkspace({
+        page: route.page,
+        skipReload: options.skipReload,
+      });
+    }
+
+    if (route.files) {
+      const files = await this.openPullFiles(route.number, {
+        page: route.page,
+        preserveViewer: Boolean(route.path),
+        skipReload: options.skipReload,
+      });
+      if (!route.path) {
+        this.showPullFilesList();
+        return files;
+      }
+
+      const fullPath =
+        typeof options.resolvePath === "function" ? options.resolvePath(route.path) : route.path;
+      if (!fullPath) {
+        return null;
+      }
+
+      const file = this.findPullFile(fullPath);
+      return await this.openPullFile(fullPath, file?.status ?? "");
+    }
+
+    return await this.openPull(route.number, { page: route.page });
+  }
+
   back() {
     if (this.mode === "issues" && this.issuesLayout.view === "detail") {
       this.issuesLayout.backToList();
@@ -245,6 +293,18 @@ class CaffoldGithubReviewLayout extends HTMLElement {
     }
 
     return this.pullsLayout.selectedPullSummary?.number === route.number;
+  }
+
+  canReuseRoute(route) {
+    if (route.kind === "issues") {
+      return this.canReuseIssuesRoute(route);
+    }
+
+    if (route.kind === "pulls") {
+      return this.canReusePullsRoute(route);
+    }
+
+    return false;
   }
 
   canReusePullFiles(number) {
