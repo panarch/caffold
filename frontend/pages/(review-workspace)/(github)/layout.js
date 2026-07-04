@@ -223,7 +223,7 @@ class CaffoldGithubReviewLayout extends HTMLElement {
       }
 
       const file = this.findPullFile(fullPath);
-      return await this.openPullFile(fullPath, file?.status ?? "");
+      return await this.openPullFile(fullPath, file?.status ?? options.status ?? "");
     }
 
     return await this.openPull(route.number, { page: route.page });

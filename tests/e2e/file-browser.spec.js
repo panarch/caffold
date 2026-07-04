@@ -1327,12 +1327,20 @@ test("restores project review routes", async ({ page }) => {
   await expect(page.locator("caffold-github-pull-detail-page")).toContainText("Route PR body");
 });
 
-test("reloads active Git review mode when the directory context changes", async ({ page }) => {
+test("reloads active review modes when the directory context changes", async ({ page }) => {
   const repository = { rootPath: "src", branch: "main", dirty: true };
+  const github = {
+    owner: "example",
+    name: "caffold",
+    nameWithOwner: "example/caffold",
+    url: "https://github.com/example/caffold",
+  };
   const gitStatusPaths = [];
   const gitRefsPaths = [];
   const gitComparePaths = [];
   const gitLogPaths = [];
+  const githubIssuesPaths = [];
+  const githubPullsPaths = [];
 
   const fileEntry = (name, path) => ({
     name,
@@ -1452,6 +1460,62 @@ test("reloads active Git review mode when the directory context changes", async 
       },
     ],
   };
+  const issuesByPath = {
+    src: [
+      {
+        number: 10,
+        title: "Source context issue",
+        state: "OPEN",
+        author: "Caffold",
+        labels: ["source"],
+        assignees: [],
+        comments: 0,
+        updatedAt: "2026-07-01T10:00:00Z",
+        url: "https://github.com/example/caffold/issues/10",
+      },
+    ],
+    "src/planner": [
+      {
+        number: 11,
+        title: "Planner context issue",
+        state: "OPEN",
+        author: "Caffold",
+        labels: ["planner"],
+        assignees: [],
+        comments: 0,
+        updatedAt: "2026-07-01T10:01:00Z",
+        url: "https://github.com/example/caffold/issues/11",
+      },
+    ],
+  };
+  const pullsByPath = {
+    src: [
+      {
+        number: 20,
+        title: "Source context pull",
+        state: "open",
+        draft: false,
+        author: "Caffold",
+        labels: ["source"],
+        comments: 0,
+        updatedAt: "2026-07-01T11:00:00Z",
+        url: "https://github.com/example/caffold/pull/20",
+      },
+    ],
+    "src/planner": [
+      {
+        number: 21,
+        title: "Planner context pull",
+        state: "open",
+        draft: false,
+        author: "Caffold",
+        labels: ["planner"],
+        comments: 0,
+        updatedAt: "2026-07-01T11:01:00Z",
+        url: "https://github.com/example/caffold/pull/21",
+      },
+    ],
+  };
 
   await page.route(/\/api\/list(?:\?|$)/, (route) => {
     const url = new URL(route.request().url());
@@ -1468,12 +1532,12 @@ test("reloads active Git review mode when the directory context changes", async 
       contentType: "application/json",
       body: JSON.stringify({
         repository,
-        github: null,
-        ghAvailable: false,
-        authenticated: false,
-        issuesAvailable: false,
-        pullsAvailable: false,
-        message: "GitHub unavailable in this test",
+        github,
+        ghAvailable: true,
+        authenticated: true,
+        issuesAvailable: true,
+        pullsAvailable: true,
+        message: null,
       }),
     }),
   );
@@ -1540,6 +1604,46 @@ test("reloads active Git review mode when the directory context changes", async 
       }),
     });
   });
+  await page.route(/\/api\/github\/issues(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    const path = url.searchParams.get("path") ?? "";
+    githubIssuesPaths.push(path);
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        github,
+        state: "open",
+        issues: issuesByPath[path] ?? [],
+        page: 1,
+        perPage: 50,
+        totalIssues: (issuesByPath[path] ?? []).length,
+        totalPages: 1,
+        hasPrevious: false,
+        hasNext: false,
+      }),
+    });
+  });
+  await page.route(/\/api\/github\/pulls(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    const path = url.searchParams.get("path") ?? "";
+    githubPullsPaths.push(path);
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        github,
+        state: "open",
+        pulls: pullsByPath[path] ?? [],
+        page: 1,
+        perPage: 50,
+        totalPulls: (pullsByPath[path] ?? []).length,
+        totalPages: 1,
+        hasPrevious: false,
+        hasNext: false,
+      }),
+    });
+  });
 
   const loadDirectory = async (path) => {
     await page.locator("caffold-app-shell").evaluate(
@@ -1592,6 +1696,40 @@ test("reloads active Git review mode when the directory context changes", async 
     "log",
   );
   await expect(page.locator("caffold-git-log-list-page")).toContainText("Planner context commit");
+  await page.getByRole("button", { name: "Close review workspace" }).click();
+
+  await loadDirectory("src");
+  await clickHeaderAction(page, "github", "open-github-issues-workspace");
+  await expectLastPath(githubIssuesPaths, "src");
+  await expect(page.locator("caffold-github-issues-list-page")).toContainText(
+    "Source context issue",
+  );
+  await loadDirectory("src/planner");
+  await expectLastPath(githubIssuesPaths, "src/planner");
+  await expect(page.locator("caffold-github-review-layout")).toHaveAttribute(
+    "data-github-mode",
+    "issues",
+  );
+  await expect(page.locator("caffold-github-issues-list-page")).toContainText(
+    "Planner context issue",
+  );
+  await page.getByRole("button", { name: "Close review workspace" }).click();
+
+  await loadDirectory("src");
+  await clickHeaderAction(page, "github", "open-github-pulls-workspace");
+  await expectLastPath(githubPullsPaths, "src");
+  await expect(page.locator("caffold-github-pulls-list-page")).toContainText(
+    "Source context pull",
+  );
+  await loadDirectory("src/planner");
+  await expectLastPath(githubPullsPaths, "src/planner");
+  await expect(page.locator("caffold-github-review-layout")).toHaveAttribute(
+    "data-github-mode",
+    "pulls",
+  );
+  await expect(page.locator("caffold-github-pulls-list-page")).toContainText(
+    "Planner context pull",
+  );
 });
 
 test("previews image files in the viewer", async ({ page }, testInfo) => {
