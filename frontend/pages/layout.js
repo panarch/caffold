@@ -2,7 +2,6 @@ import {
   createProject,
   deleteProject,
   getCodexStatus,
-  getGitStatus,
   getHealth,
   getProjectCandidate,
   listProjects,
@@ -27,10 +26,8 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     this.initialized = true;
-    this.gitStatusRequestId = 0;
     this.codexStatusRequestId = 0;
     this.projectRequestId = 0;
-    this.gitStatus = null;
     this.codexStatus = null;
     this.projects = [];
     this.projectCandidate = null;
@@ -351,6 +348,10 @@ class CaffoldAppShell extends HTMLElement {
 
   get githubStatus() {
     return this.githubLayout?.githubStatus ?? null;
+  }
+
+  get gitStatus() {
+    return this.gitLayout?.gitStatus ?? null;
   }
 
   render() {
@@ -854,11 +855,15 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   async ensureGitStatus() {
-    if (!this.gitRepository || this.gitStatus) {
-      return;
+    if (!this.gitRepository) {
+      return null;
     }
 
-    await this.loadGitStatus(this.currentPath);
+    this.gitLayout.setContext({
+      path: this.currentPath,
+      repository: this.gitRepository,
+    });
+    return await this.gitLayout.ensureStatus(this.currentPath);
   }
 
   async ensureGithubStatus() {
@@ -981,7 +986,6 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     this.gitRepository = directory.git;
-    this.gitStatus = null;
     this.headerActions.gitStatus = {
       available: true,
       branch: directory.git.branch,
@@ -993,7 +997,6 @@ class CaffoldAppShell extends HTMLElement {
       path: directory.path,
       repository: directory.git,
     });
-    this.gitLayout.setGitStatus(null);
     this.githubLayout.setContext({
       path: directory.path,
       repository: directory.git,
@@ -1036,8 +1039,6 @@ class CaffoldAppShell extends HTMLElement {
 
   clearGitContext() {
     this.gitRepository = null;
-    this.gitStatus = null;
-    this.gitStatusRequestId += 1;
     this.headerActions.gitStatus = {
       available: false,
       message: "Not a Git repository",
@@ -1053,34 +1054,20 @@ class CaffoldAppShell extends HTMLElement {
 
   async loadGitStatus(path) {
     if (!this.gitRepository) {
-      return;
+      return null;
     }
 
-    const requestId = ++this.gitStatusRequestId;
     this.gitLayout.setContext({
       path,
       repository: this.gitRepository,
     });
-    this.gitLayout.setGitStatus(null);
-
-    try {
-      const status = await getGitStatus(path);
-      if (requestId !== this.gitStatusRequestId) {
-        return;
-      }
-
+    const status = await this.gitLayout.loadStatus(path);
+    if (status?.repository) {
       this.gitRepository = status.repository;
-      this.gitStatus = status;
-      this.gitLayout.setGitStatus(status);
-      this.updateGitButton();
-      this.updateWorkspaceChrome();
-    } catch (error) {
-      if (requestId !== this.gitStatusRequestId) {
-        return;
-      }
-
-      this.gitLayout.setGitStatusError(error);
     }
+    this.updateGitButton();
+    this.updateWorkspaceChrome();
+    return status;
   }
 
   async loadGithubStatus(path) {

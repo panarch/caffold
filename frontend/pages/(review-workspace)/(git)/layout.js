@@ -1,3 +1,4 @@
+import { getGitStatus } from "../../../api.js";
 import { escapeHtml } from "../../../components/dom.js";
 import "./compare/page.js";
 import "./diff/page.js";
@@ -38,6 +39,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
     this.currentPath ??= "";
     this.repository ??= null;
     this.gitStatus ??= null;
+    this.gitStatusRequestId ??= 0;
     this.diffPage.addEventListener("caffold:git-diff-state-change", () => {
       this.emitStateChange();
     });
@@ -59,6 +61,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
     this.currentPath = "";
     this.repository = null;
     this.gitStatus = null;
+    this.gitStatusRequestId += 1;
     this.diffPage.reset();
     this.comparePage.reset();
     this.logLayout.reset();
@@ -82,6 +85,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
 
     if (contextChanged) {
       this.gitStatus = null;
+      this.gitStatusRequestId += 1;
       if (this.repository) {
         this.diffPage.setLoading(this.repository);
       }
@@ -116,6 +120,51 @@ class CaffoldGitReviewLayout extends HTMLElement {
     this.ensureRendered();
     this.diffPage.setError(error, this.repository);
     this.emitStateChange();
+  }
+
+  async loadStatus(path) {
+    this.ensureRendered();
+    if (!this.repository) {
+      return null;
+    }
+
+    const nextPath = path ?? this.currentPath ?? "";
+    this.setContext({
+      path: nextPath,
+      repository: this.repository,
+    });
+    const requestId = ++this.gitStatusRequestId;
+    this.setGitStatus(null);
+
+    try {
+      const status = await getGitStatus(nextPath);
+      if (requestId !== this.gitStatusRequestId) {
+        return null;
+      }
+
+      this.setGitStatus(status);
+      return status;
+    } catch (error) {
+      if (requestId !== this.gitStatusRequestId) {
+        return null;
+      }
+
+      this.setGitStatusError(error);
+      return null;
+    }
+  }
+
+  async ensureStatus(path) {
+    this.ensureRendered();
+    if (!this.repository) {
+      return null;
+    }
+
+    if (this.gitStatus) {
+      return this.gitStatus;
+    }
+
+    return await this.loadStatus(path ?? this.currentPath);
   }
 
   openDiffWorkspace(options = {}) {
