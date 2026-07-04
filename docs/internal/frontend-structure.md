@@ -74,6 +74,12 @@ caffold-app-shell
 parenthesized grouping rule because wrapping the root app shell would only
 repeat the root hierarchy.
 
+`files/page` owns the file browser surface: directory loading, file preview
+loading, list/viewer state, file-list scroll restoration, delayed loading
+indicators, and the left file-panel resizer. The app root coordinates routes,
+projects, pathbar, header actions, and Git/GitHub status updates around that
+surface instead of owning file browser internals.
+
 `(review-workspace)` is a pathless review container inside the app root. It owns
 shared review chrome, close/back behavior, panel resizing, and mobile
 list/detail transitions. It is not a Git-only or GitHub-only page.

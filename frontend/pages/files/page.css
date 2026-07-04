@@ -2,6 +2,7 @@
 @import "../../components/file-viewer.css";
 
 caffold-files-page {
+  --left-panel-width: 20rem;
   display: grid;
   grid-template-columns: var(--left-panel-width) 6px minmax(0, 1fr);
   min-width: 0;
@@ -19,6 +20,11 @@ caffold-files-page > caffold-file-viewer {
   min-width: 0;
 }
 
+caffold-files-page.is-resizing-left-panel {
+  cursor: col-resize;
+  user-select: none;
+}
+
 caffold-files-page > .panel-resizer {
   grid-column: 2;
   min-width: 0;
@@ -31,15 +37,26 @@ caffold-files-page > .panel-resizer {
 
 caffold-files-page > .panel-resizer:hover,
 caffold-files-page > .panel-resizer:focus-visible,
-caffold-app-shell.is-resizing-left-panel caffold-files-page > .panel-resizer {
+caffold-files-page.is-resizing-left-panel > .panel-resizer {
   background: #d9e6df;
   outline: none;
 }
 
 @media (max-width: 860px) {
   caffold-files-page {
+    position: relative;
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 1fr);
+  }
+
+  caffold-files-page[data-browser-view="viewer"] {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    background: var(--surface);
   }
 
   caffold-files-page > caffold-file-list,

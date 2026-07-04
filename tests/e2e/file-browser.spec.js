@@ -1327,7 +1327,7 @@ test("restores project review routes", async ({ page }) => {
   await expect(page.locator("caffold-github-pull-detail-page")).toContainText("Route PR body");
 });
 
-test("previews image files in the viewer", async ({ page }) => {
+test("previews image files in the viewer", async ({ page }, testInfo) => {
   await page.goto("/");
 
   await page.locator('button[data-entry-path="preview-image.svg"]').click();
@@ -1344,6 +1344,9 @@ test("previews image files in the viewer", async ({ page }) => {
   await expect(
     preview.evaluate((image) => image.complete && image.naturalWidth > 0),
   ).resolves.toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(details).toBeHidden();
+  await captureReviewScreenshot(page, testInfo, "image-file-viewer");
 });
 
 test("keeps the toggled tree row anchored while expanding", async ({ page }) => {
@@ -1386,6 +1389,7 @@ test("resizes the left file panel", async ({ page }, testInfo) => {
 
   const afterWidth = await leftPanelWidth(page);
   expect(afterWidth).toBeGreaterThan(beforeWidth + 48);
+  await captureReviewScreenshot(page, testInfo, "file-panel-resized");
 });
 
 test("scrolls long names horizontally in Files and Changes", async ({ page }) => {
@@ -1442,10 +1446,10 @@ test("uses a single-pane file viewer on phone", async ({ page }, testInfo) => {
     `,
   });
 
-  const shell = page.locator("caffold-app-shell");
+  const filesPage = page.locator("caffold-files-page");
   const fileList = page.locator("caffold-file-list .file-list");
   const fileTarget = page.locator(`button[data-entry-path="${LONG_ROOT_FILE}"]`);
-  await expect(shell).toHaveAttribute("data-browser-view", "list");
+  await expect(filesPage).toHaveAttribute("data-browser-view", "list");
   await expect(page.locator("caffold-file-list")).toBeVisible();
   await expect(page.locator("caffold-file-viewer")).toBeHidden();
 
@@ -1454,7 +1458,7 @@ test("uses a single-pane file viewer on phone", async ({ page }, testInfo) => {
   expect(beforeFileScroll).toBeGreaterThan(0);
 
   await fileTarget.click();
-  await expect(shell).toHaveAttribute("data-browser-view", "viewer");
+  await expect(filesPage).toHaveAttribute("data-browser-view", "viewer");
   await expect(page.locator("caffold-file-list")).toBeHidden();
   await expect(page.locator("caffold-file-viewer")).toBeVisible();
   await expect(page.locator("caffold-file-viewer")).toContainText(LONG_ROOT_FILE);
@@ -1465,7 +1469,7 @@ test("uses a single-pane file viewer on phone", async ({ page }, testInfo) => {
   await captureReviewScreenshot(page, testInfo, "mobile-file-viewer-single-pane");
 
   await page.getByRole("button", { name: "Back to files" }).click();
-  await expect(shell).toHaveAttribute("data-browser-view", "list");
+  await expect(filesPage).toHaveAttribute("data-browser-view", "list");
   await expect(page.locator("caffold-file-list")).toBeVisible();
   await expect(page.locator("caffold-file-viewer")).toBeHidden();
   await expect(fileTarget).toHaveAttribute("aria-current", "true");
@@ -3308,11 +3312,11 @@ async function expectCodeViewerGutterSeparated(page) {
 
 async function expectMobileBrowserViewerOverlay(page) {
   const metrics = await page.evaluate(() => {
-    const appMain = document.querySelector("caffold-app-shell .app-main");
+    const filesPage = document.querySelector("caffold-files-page");
     const header = document.querySelector("caffold-app-shell .app-header");
     const pathbar = document.querySelector("caffold-pathbar");
-    const rect = appMain.getBoundingClientRect();
-    const style = window.getComputedStyle(appMain);
+    const rect = filesPage.getBoundingClientRect();
+    const style = window.getComputedStyle(filesPage);
 
     return {
       bottom: rect.bottom,

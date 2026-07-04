@@ -6,18 +6,11 @@ import {
   getGitStatus,
   getHealth,
   getProjectCandidate,
-  listDirectory,
   listProjects,
   openProject,
-  readFile,
   renameProject,
 } from "../api.js";
 import { parentRoute, parseRoute, routeEquals, routeUrl } from "../navigation-routes.js";
-import {
-  fileNameFromPath,
-  imageTypeLabel,
-  isPreviewableImagePath,
-} from "../components/dom.js";
 import "./components/pathbar.js";
 import "./components/project-switcher.js";
 import "./components/header-actions.js";
@@ -26,12 +19,7 @@ import "./(review-workspace)/(git)/layout.js";
 import "./(review-workspace)/(github)/layout.js";
 import "./(review-workspace)/layout.js";
 
-const LOADING_DELAY_MS = 180;
 const LAST_DIRECTORY_KEY_PREFIX = "caffold:last-directory-path";
-const LEFT_PANEL_DEFAULT_WIDTH = 320;
-const LEFT_PANEL_MIN_WIDTH = 180;
-const LEFT_PANEL_VIEWER_MIN_WIDTH = 320;
-const LEFT_PANEL_MAX_RATIO = 0.7;
 
 class CaffoldAppShell extends HTMLElement {
   connectedCallback() {
@@ -40,9 +28,6 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     this.initialized = true;
-    this.currentPath = "";
-    this.directoryRequestId = 0;
-    this.fileRequestId = 0;
     this.gitStatusRequestId = 0;
     this.githubStatusRequestId = 0;
     this.codexStatusRequestId = 0;
@@ -54,33 +39,21 @@ class CaffoldAppShell extends HTMLElement {
     this.projectCandidate = null;
     this.currentProjectId = null;
     this.workspaceMode = null;
-    this.scrollPositions = {};
     this.currentRoute = null;
     this.isApplyingRoute = false;
     this.routedProject = null;
-    this.browserView = "list";
-    this.setBrowserView(this.browserView);
-    this.leftPanelWidth = LEFT_PANEL_DEFAULT_WIDTH;
-    this.resizePointerId = null;
     this.render();
-    this.appMain = this.querySelector(".app-main");
     this.filesPage = this.querySelector("caffold-files-page");
     this.filesPage.ensureRendered();
-    this.filesPage.setAttribute("data-browser-view", this.browserView);
     this.pathbar = this.querySelector("caffold-pathbar");
     this.projectSwitcher = this.querySelector("caffold-project-switcher");
     this.headerActions = this.querySelector("caffold-header-actions");
-    this.fileList = this.filesPage.querySelector("caffold-file-list");
-    this.panelResizer = this.filesPage.querySelector(".panel-resizer");
-    this.fileViewer = this.filesPage.querySelector("caffold-file-viewer");
     this.reviewWorkspace = this.querySelector("caffold-review-workspace");
     this.reviewWorkspace.ensureRendered();
     this.gitLayout = this.reviewWorkspace.querySelector("caffold-git-review-layout");
     this.gitLayout.ensureRendered();
     this.githubLayout = this.reviewWorkspace.querySelector("caffold-github-review-layout");
     this.githubLayout.ensureRendered();
-    this.fileViewer.setCloseLabel("Back to files");
-    this.applyLeftPanelWidth(this.leftPanelWidth);
     this.loadCodexStatus();
 
     this.installNavigationHandlers();
@@ -268,23 +241,11 @@ class CaffoldAppShell extends HTMLElement {
     this.addEventListener("caffold:delete-project", (event) => {
       this.deleteRegisteredProject(event.detail.id);
     });
-    this.panelResizer.addEventListener("pointerdown", (event) => {
-      this.startLeftPanelResize(event);
-    });
-    this.panelResizer.addEventListener("pointermove", (event) => {
-      this.moveLeftPanelResize(event);
-    });
-    this.panelResizer.addEventListener("pointerup", (event) => {
-      this.endLeftPanelResize(event);
-    });
-    this.panelResizer.addEventListener("pointercancel", (event) => {
-      this.endLeftPanelResize(event);
-    });
-    this.panelResizer.addEventListener("keydown", (event) => {
-      this.adjustLeftPanelWidthFromKeyboard(event);
-    });
-
     this.bootstrap();
+  }
+
+  get currentPath() {
+    return this.filesPage?.currentPath ?? "";
   }
 
   render() {
@@ -359,11 +320,9 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   async bootstrap() {
-    this.fileViewer.setEmpty();
-
     try {
       const health = await getHealth();
-      this.storageKey = `${LAST_DIRECTORY_KEY_PREFIX}:${health.root}`;
+      this.filesPage.setStorageKey(`${LAST_DIRECTORY_KEY_PREFIX}:${health.root}`);
       this.pathbar.homePath = health.homePath ?? null;
       const initialRoute = parseRoute(window.location.href);
       if (initialRoute) {
@@ -372,12 +331,11 @@ class CaffoldAppShell extends HTMLElement {
       }
 
       const fallbackPath = health.initialPath ?? "";
-      const initialPath = this.loadStoredDirectoryPath() ?? fallbackPath;
+      const initialPath = this.filesPage.loadStoredDirectoryPath() ?? fallbackPath;
       await this.loadDirectory(initialPath, { fallbackPath });
       this.replaceWithCurrentProjectFileRoute();
     } catch (error) {
-      this.fileList.setError(error);
-      this.fileViewer.setError("", error);
+      this.filesPage.setError(error);
     }
   }
 
@@ -445,8 +403,7 @@ class CaffoldAppShell extends HTMLElement {
 
       return true;
     } catch (error) {
-      this.fileList.setError(error);
-      this.fileViewer.setError("", error);
+      this.filesPage.setError(error);
       return false;
     } finally {
       this.isApplyingRoute = false;
@@ -473,7 +430,7 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     const fullPath = this.projectPath(project, route.path);
-    const loadedEntry = this.fileList.entryForPath(fullPath);
+    const loadedEntry = this.filesPage.entryForPath(fullPath);
     if (loadedEntry && loadedEntry.kind !== "directory") {
       await this.openFile(fullPath, loadedEntry);
       return;
@@ -699,106 +656,46 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   async loadDirectory(path, options = {}) {
-    const requestId = ++this.directoryRequestId;
-    this.fileRequestId += 1;
     if (!this.isApplyingRoute && !options.preserveRoute) {
       this.currentRoute = null;
     }
-    this.setBrowserView("list");
-    this.currentPath = path ?? "";
-    this.fileList.setSelectedPath("");
+    this.pathbar.path = path ?? "";
+    const directory = await this.filesPage.loadDirectory(path, options);
     this.pathbar.path = this.currentPath;
-    this.fileViewer.setEmpty();
-    const loadingTimer = this.showDirectoryLoadingAfterDelay(requestId);
-
-    try {
-      const directory = await listDirectory(this.currentPath);
-      if (requestId !== this.directoryRequestId) {
-        return;
-      }
-
-      window.clearTimeout(loadingTimer);
-      this.currentPath = directory.path;
-      this.pathbar.path = directory.path;
-      this.fileList.setDirectory(directory);
-      this.updateGitContext(directory);
-      this.storeDirectoryPath(directory.path);
-      await this.refreshProjects(directory.path);
-      return true;
-    } catch (error) {
-      if (requestId !== this.directoryRequestId) {
-        return false;
-      }
-
-      if (
-        options.fallbackPath !== undefined &&
-        this.currentPath !== options.fallbackPath
-      ) {
-        this.clearStoredDirectoryPath();
-        return this.loadDirectory(options.fallbackPath);
-      }
-
-      if (options.allowFailure) {
-        return false;
-      }
-
-      this.fileList.setError(error);
-      this.clearGitContext();
-      this.currentProjectId = null;
-      this.projectCandidate = null;
-      this.renderProjectState({ error });
+    if (directory === null) {
       return false;
-    } finally {
-      window.clearTimeout(loadingTimer);
     }
+
+    if (directory) {
+      this.pathbar.path = directory.path;
+      this.updateGitContext(directory);
+      await this.refreshProjects(directory.path);
+      return directory;
+    }
+
+    if (options.allowFailure) {
+      return false;
+    }
+
+    this.clearGitContext();
+    this.currentProjectId = null;
+    this.projectCandidate = null;
+    this.renderProjectState({ error: this.filesPage.lastError });
+    return false;
   }
 
   async openFile(path, entry = null) {
-    const requestId = ++this.fileRequestId;
-    this.fileList.setSelectedPath(path);
-    this.rememberScroller("files", this.fileList, ".file-list");
-    this.setBrowserView("viewer");
     this.gitLayout.setSelectedPath("");
-
-    if (isPreviewableImagePath(path)) {
-      this.fileViewer.setImage({
-        path,
-        name: fileNameFromPath(path),
-        imageType: imageTypeLabel(path),
-        size: entry?.size,
-        modifiedMs: entry?.modifiedMs,
-      });
-      return;
-    }
-
-    const loadingTimer = this.showFileLoadingAfterDelay(path, requestId);
-
-    try {
-      const file = await readFile(path);
-      if (requestId !== this.fileRequestId) {
-        return;
-      }
-
-      this.fileViewer.setFile(file);
-    } catch (error) {
-      if (requestId !== this.fileRequestId) {
-        return;
-      }
-
-      this.fileViewer.setError(path, error);
-    } finally {
-      window.clearTimeout(loadingTimer);
-    }
+    return await this.filesPage.openFile(path, entry);
   }
 
   showFileList() {
-    this.setBrowserView("list");
-    this.restoreScroller("files", this.fileList, ".file-list");
+    this.filesPage.showList();
   }
 
   closeFileViewer(event) {
     const currentRoute = parseRoute(window.location.href) ?? this.currentRoute;
-    if (event.target === this.fileViewer) {
+    if (this.filesPage.isFileViewer(event.target)) {
       if (currentRoute?.kind === "files" && currentRoute.path) {
         this.navigateToRoute(parentRoute(currentRoute));
         return;
@@ -826,13 +723,6 @@ class CaffoldAppShell extends HTMLElement {
     }
   }
 
-  setBrowserView(view) {
-    const nextView = view === "viewer" ? "viewer" : "list";
-    this.browserView = nextView;
-    this.setAttribute("data-browser-view", nextView);
-    this.filesPage?.setAttribute("data-browser-view", nextView);
-  }
-
   showDiffList() {
     this.gitLayout.showDiffList();
     this.updateWorkspaceChrome();
@@ -851,39 +741,8 @@ class CaffoldAppShell extends HTMLElement {
     this.githubLayout.showPullFilesList();
   }
 
-  rememberScroller(key, host, selector) {
-    const scroller = host?.querySelector(selector);
-    if (!scroller) {
-      return;
-    }
-
-    this.scrollPositions[key] = scroller.scrollTop;
-  }
-
-  restoreScroller(key, host, selector) {
-    const top = this.scrollPositions[key] ?? 0;
-    if (top <= 0) {
-      return;
-    }
-
-    window.requestAnimationFrame(() => {
-      const scroller = host?.querySelector(selector);
-      if (!scroller) {
-        return;
-      }
-
-      scroller.scrollTop = top;
-      window.requestAnimationFrame(() => {
-        if (scroller.scrollTop < top - 32) {
-          scroller.scrollTop = top;
-        }
-      });
-    });
-  }
-
   async openDiff(path, kind, status = "") {
-    this.fileRequestId += 1;
-    this.fileList.setSelectedPath("");
+    this.filesPage.clearSelectedFile();
     const diff = await this.gitLayout.openDiff(path, kind, status);
     this.updateWorkspaceChrome();
     return diff;
@@ -894,7 +753,7 @@ class CaffoldAppShell extends HTMLElement {
       return null;
     }
 
-    this.fileList.setSelectedPath("");
+    this.filesPage.clearSelectedFile();
     this.workspaceMode = "git";
     const commitPromise = this.gitLayout.openCommit(sha, options);
     this.reviewWorkspace.open("git", this.workspaceDetails());
@@ -909,7 +768,7 @@ class CaffoldAppShell extends HTMLElement {
       return null;
     }
 
-    this.fileList.setSelectedPath("");
+    this.filesPage.clearSelectedFile();
     this.workspaceMode = "git";
     const diffPromise = this.gitLayout.openCommitDiff(sha, path, status);
     this.reviewWorkspace.open("git", this.workspaceDetails());
@@ -924,8 +783,7 @@ class CaffoldAppShell extends HTMLElement {
       return null;
     }
 
-    this.fileRequestId += 1;
-    this.fileList.setSelectedPath("");
+    this.filesPage.clearSelectedFile();
     const diff = await this.gitLayout.openCompareDiff(path, status);
     this.updateWorkspaceChrome();
     return diff;
@@ -1409,7 +1267,7 @@ class CaffoldAppShell extends HTMLElement {
       return null;
     }
 
-    this.fileList.setSelectedPath("");
+    this.filesPage.clearSelectedFile();
     this.gitLayout.setSelectedPath("");
     this.workspaceMode = "github";
     const file = await this.githubLayout.openPullFile(path, status);
@@ -1655,148 +1513,6 @@ class CaffoldAppShell extends HTMLElement {
       subtitle: "",
       backVisible: false,
     };
-  }
-
-  startLeftPanelResize(event) {
-    if (!this.canResizeLeftPanel()) {
-      return;
-    }
-
-    event.preventDefault();
-    this.resizePointerId = event.pointerId;
-    this.panelResizer.setPointerCapture(event.pointerId);
-    this.classList.add("is-resizing-left-panel");
-    this.updateLeftPanelWidthFromPointer(event);
-  }
-
-  moveLeftPanelResize(event) {
-    if (this.resizePointerId !== event.pointerId) {
-      return;
-    }
-
-    event.preventDefault();
-    this.updateLeftPanelWidthFromPointer(event);
-  }
-
-  endLeftPanelResize(event) {
-    if (this.resizePointerId !== event.pointerId) {
-      return;
-    }
-
-    this.resizePointerId = null;
-    this.classList.remove("is-resizing-left-panel");
-    if (this.panelResizer.hasPointerCapture(event.pointerId)) {
-      this.panelResizer.releasePointerCapture(event.pointerId);
-    }
-  }
-
-  adjustLeftPanelWidthFromKeyboard(event) {
-    if (!this.canResizeLeftPanel()) {
-      return;
-    }
-
-    const step = event.shiftKey ? 72 : 24;
-    let nextWidth = this.leftPanelWidth;
-
-    if (event.key === "ArrowLeft") {
-      nextWidth -= step;
-    } else if (event.key === "ArrowRight") {
-      nextWidth += step;
-    } else if (event.key === "Home") {
-      nextWidth = LEFT_PANEL_MIN_WIDTH;
-    } else if (event.key === "End") {
-      nextWidth = this.leftPanelMaxWidth();
-    } else {
-      return;
-    }
-
-    event.preventDefault();
-    this.applyLeftPanelWidth(nextWidth);
-  }
-
-  updateLeftPanelWidthFromPointer(event) {
-    const rect = this.appMain.getBoundingClientRect();
-    this.applyLeftPanelWidth(event.clientX - rect.left);
-  }
-
-  applyLeftPanelWidth(width) {
-    const nextWidth = this.clampLeftPanelWidth(width);
-    this.leftPanelWidth = nextWidth;
-    this.appMain.style.setProperty("--left-panel-width", `${nextWidth}px`);
-    this.panelResizer.setAttribute("aria-valuemin", `${LEFT_PANEL_MIN_WIDTH}`);
-    this.panelResizer.setAttribute("aria-valuemax", `${this.leftPanelMaxWidth()}`);
-    this.panelResizer.setAttribute("aria-valuenow", `${nextWidth}`);
-  }
-
-  clampLeftPanelWidth(width) {
-    return Math.min(Math.max(Math.round(width), LEFT_PANEL_MIN_WIDTH), this.leftPanelMaxWidth());
-  }
-
-  leftPanelMaxWidth() {
-    const appWidth = this.appMain?.getBoundingClientRect().width ?? LEFT_PANEL_DEFAULT_WIDTH;
-    const ratioMax = Math.round(appWidth * LEFT_PANEL_MAX_RATIO);
-    const viewerMax = Math.max(LEFT_PANEL_MIN_WIDTH, appWidth - LEFT_PANEL_VIEWER_MIN_WIDTH);
-    return Math.max(LEFT_PANEL_MIN_WIDTH, Math.min(ratioMax, viewerMax));
-  }
-
-  canResizeLeftPanel() {
-    return (
-      this.appMain &&
-      this.panelResizer &&
-      window.matchMedia("(min-width: 861px)").matches
-    );
-  }
-
-  showDirectoryLoadingAfterDelay(requestId) {
-    return window.setTimeout(() => {
-      if (requestId === this.directoryRequestId) {
-        this.fileList.setLoading();
-      }
-    }, LOADING_DELAY_MS);
-  }
-
-  showFileLoadingAfterDelay(path, requestId) {
-    return window.setTimeout(() => {
-      if (requestId === this.fileRequestId) {
-        this.fileViewer.setLoading(path);
-      }
-    }, LOADING_DELAY_MS);
-  }
-
-  loadStoredDirectoryPath() {
-    if (!this.storageKey) {
-      return null;
-    }
-
-    try {
-      return window.localStorage.getItem(this.storageKey);
-    } catch {
-      return null;
-    }
-  }
-
-  storeDirectoryPath(path) {
-    if (!this.storageKey) {
-      return;
-    }
-
-    try {
-      window.localStorage.setItem(this.storageKey, path);
-    } catch {
-      // localStorage can be unavailable in private or restricted browser contexts.
-    }
-  }
-
-  clearStoredDirectoryPath() {
-    if (!this.storageKey) {
-      return;
-    }
-
-    try {
-      window.localStorage.removeItem(this.storageKey);
-    } catch {
-      // Ignore storage failures; the app can always fall back to health.initialPath.
-    }
   }
 }
 

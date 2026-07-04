@@ -1,5 +1,4 @@
 caffold-app-shell {
-  --left-panel-width: 20rem;
   position: relative;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
@@ -51,25 +50,9 @@ caffold-app-shell .app-main {
   overflow: hidden;
 }
 
-caffold-app-shell.is-resizing-left-panel {
-  cursor: col-resize;
-  user-select: none;
-}
-
 @media (max-width: 860px) {
   caffold-app-shell {
     grid-template-rows: auto auto minmax(0, 1fr);
-  }
-
-  caffold-app-shell[data-browser-view="viewer"] .app-main {
-    position: fixed;
-    inset: 0;
-    z-index: 10;
-    grid-template-rows: minmax(0, 1fr);
-    width: 100vw;
-    height: 100vh;
-    height: 100dvh;
-    background: var(--surface);
   }
 }
 
