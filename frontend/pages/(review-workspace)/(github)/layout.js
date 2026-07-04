@@ -1,3 +1,4 @@
+import { getGitHubStatus } from "../../../api.js";
 import "./(issues)/layout.js";
 import "./(pulls)/layout.js";
 
@@ -30,6 +31,7 @@ class CaffoldGithubReviewLayout extends HTMLElement {
     this.currentPath ??= "";
     this.repository ??= null;
     this.githubStatus ??= null;
+    this.githubStatusRequestId ??= 0;
     this.issuesLayout.addEventListener("caffold:github-issues-state-change", () => {
       this.emitStateChange();
     });
@@ -45,6 +47,7 @@ class CaffoldGithubReviewLayout extends HTMLElement {
     this.currentPath = "";
     this.repository = null;
     this.githubStatus = null;
+    this.githubStatusRequestId += 1;
     this.issuesLayout.reset();
     this.pullsLayout.reset();
     this.updateVisibleMode();
@@ -83,6 +86,60 @@ class CaffoldGithubReviewLayout extends HTMLElement {
 
     this.emitStateChange();
     return null;
+  }
+
+  async loadStatus(path) {
+    this.ensureRendered();
+    if (!this.repository) {
+      return null;
+    }
+
+    const nextPath = path ?? this.currentPath ?? "";
+    const requestId = ++this.githubStatusRequestId;
+    this.setContext({
+      path: nextPath,
+      githubStatus: null,
+    });
+
+    try {
+      const status = await getGitHubStatus(nextPath);
+      if (requestId !== this.githubStatusRequestId) {
+        return null;
+      }
+
+      await this.setGithubStatus(status);
+      return status;
+    } catch (error) {
+      if (requestId !== this.githubStatusRequestId) {
+        return null;
+      }
+
+      const status = {
+        available: false,
+        repository: this.repository,
+        github: null,
+        ghAvailable: false,
+        authenticated: false,
+        issuesAvailable: false,
+        pullsAvailable: false,
+        message: error.message,
+      };
+      await this.setGithubStatus(status);
+      return status;
+    }
+  }
+
+  async ensureStatus(path) {
+    this.ensureRendered();
+    if (!this.repository) {
+      return null;
+    }
+
+    if (this.githubStatus) {
+      return this.githubStatus;
+    }
+
+    return await this.loadStatus(path ?? this.currentPath);
   }
 
   async openIssuesWorkspace(options = {}) {

@@ -2,7 +2,6 @@ import {
   createProject,
   deleteProject,
   getCodexStatus,
-  getGitHubStatus,
   getGitStatus,
   getHealth,
   getProjectCandidate,
@@ -29,11 +28,9 @@ class CaffoldAppShell extends HTMLElement {
 
     this.initialized = true;
     this.gitStatusRequestId = 0;
-    this.githubStatusRequestId = 0;
     this.codexStatusRequestId = 0;
     this.projectRequestId = 0;
     this.gitStatus = null;
-    this.githubStatus = null;
     this.codexStatus = null;
     this.projects = [];
     this.projectCandidate = null;
@@ -249,6 +246,9 @@ class CaffoldAppShell extends HTMLElement {
       }) || this.changeGithubIssuesPage(event.detail.page);
     });
     this.addEventListener("caffold:github-review-state-change", () => {
+      if (this.gitRepository) {
+        this.headerActions.githubStatus = this.githubStatus;
+      }
       if (this.workspaceMode === "github") {
         this.updateWorkspaceChrome();
       }
@@ -347,6 +347,10 @@ class CaffoldAppShell extends HTMLElement {
 
   get currentPath() {
     return this.filesPage?.currentPath ?? "";
+  }
+
+  get githubStatus() {
+    return this.githubLayout?.githubStatus ?? null;
   }
 
   render() {
@@ -862,11 +866,11 @@ class CaffoldAppShell extends HTMLElement {
       return null;
     }
 
-    if (this.githubStatus) {
-      return this.githubStatus;
-    }
-
-    return await this.loadGithubStatus(this.currentPath);
+    this.githubLayout.setContext({
+      path: this.currentPath,
+      repository: this.gitRepository,
+    });
+    return await this.githubLayout.ensureStatus(this.currentPath);
   }
 
   async registerCurrentProject() {
@@ -978,7 +982,6 @@ class CaffoldAppShell extends HTMLElement {
 
     this.gitRepository = directory.git;
     this.gitStatus = null;
-    this.githubStatus = null;
     this.headerActions.gitStatus = {
       available: true,
       branch: directory.git.branch,
@@ -1035,8 +1038,6 @@ class CaffoldAppShell extends HTMLElement {
     this.gitRepository = null;
     this.gitStatus = null;
     this.gitStatusRequestId += 1;
-    this.githubStatusRequestId += 1;
-    this.githubStatus = null;
     this.headerActions.gitStatus = {
       available: false,
       message: "Not a Git repository",
@@ -1084,55 +1085,19 @@ class CaffoldAppShell extends HTMLElement {
 
   async loadGithubStatus(path) {
     if (!this.gitRepository) {
-      return;
+      return null;
     }
 
-    const requestId = ++this.githubStatusRequestId;
-
-    try {
-      const status = await getGitHubStatus(path);
-      if (requestId !== this.githubStatusRequestId) {
-        return;
-      }
-
-      this.githubStatus = status;
-      this.headerActions.githubStatus = status;
+    this.githubLayout.setContext({
+      path,
+      repository: this.gitRepository,
+    });
+    const status = await this.githubLayout.loadStatus(path);
+    this.headerActions.githubStatus = this.githubStatus;
+    if (this.workspaceMode === "github") {
       this.updateWorkspaceChrome();
-      if (this.workspaceMode === "github") {
-        this.githubLayout.setContext({
-          path,
-          repository: this.gitRepository,
-          githubStatus: status,
-        });
-        await this.githubLayout.setGithubStatus(status);
-      }
-      return status;
-    } catch (error) {
-      if (requestId !== this.githubStatusRequestId) {
-        return;
-      }
-
-      const status = {
-        available: false,
-        repository: this.gitRepository,
-        github: null,
-        ghAvailable: false,
-        authenticated: false,
-        issuesAvailable: false,
-        pullsAvailable: false,
-        message: error.message,
-      };
-      this.githubStatus = status;
-      this.headerActions.githubStatus = status;
-      if (this.workspaceMode === "github") {
-        this.githubLayout.setContext({
-          path,
-          repository: this.gitRepository,
-          githubStatus: status,
-        });
-        await this.githubLayout.setGithubStatus(status);
-      }
     }
+    return status;
   }
 
   async openGithubRoute(route, options = {}) {
