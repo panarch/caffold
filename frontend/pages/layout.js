@@ -389,12 +389,8 @@ class CaffoldAppShell extends HTMLElement {
 
       if (route.kind === "files") {
         await this.applyFilesRoute(project, route);
-      } else if (route.kind === "diff") {
-        await this.applyDiffRoute(project, route);
-      } else if (route.kind === "compare") {
-        await this.applyCompareRoute(project, route);
-      } else if (route.kind === "log") {
-        await this.applyLogRoute(project, route);
+      } else if (route.kind === "diff" || route.kind === "compare" || route.kind === "log") {
+        await this.applyGitRoute(project, route);
       } else if (route.kind === "issues" || route.kind === "pulls") {
         await this.applyGithubRoute(project, route);
       }
@@ -447,111 +443,16 @@ class CaffoldAppShell extends HTMLElement {
     }
   }
 
-  async applyDiffRoute(project, route) {
-    if (this.canApplyLoadedDiffRoute(project, route)) {
-      this.openDiffWorkspace({ preserveViewer: Boolean(route.path) });
-      if (!route.path) {
-        this.gitLayout.setSelectedPath("");
-        return;
-      }
-
-      const fullPath = this.projectPath(project, route.path);
-      const file = this.gitLayout.findDiffFile(fullPath);
-      await this.openDiff(
-        fullPath,
-        file?.untracked ? "untracked" : file?.category ?? "unstaged",
-        file?.status ?? "",
-      );
-      return;
-    }
-
+  async applyGitRoute(project, route) {
     if (!(await this.ensureProjectRootLoaded(project))) {
       return;
     }
 
-    this.openDiffWorkspace({ preserveViewer: Boolean(route.path) });
-    if (!route.path) {
-      return;
-    }
-
-    const fullPath = this.projectPath(project, route.path);
-    await this.ensureGitStatus();
-    const file = this.gitLayout.findDiffFile(fullPath);
-    await this.openDiff(
-      fullPath,
-      file?.untracked ? "untracked" : file?.category ?? "unstaged",
-      file?.status ?? "",
-    );
-  }
-
-  async applyCompareRoute(project, route) {
-    const routeBaseRef = route.baseRef || null;
-    const routeHeadRef = route.headRef || null;
-    const preserveViewer = Boolean(route.path);
-
-    if (this.canApplyLoadedCompareRoute(project, route)) {
-      await this.openCompareWorkspace({
-        baseRef: routeBaseRef,
-        headRef: routeHeadRef,
-        preserveViewer,
-        skipReload: true,
-      });
-      if (!route.path) {
-        this.gitLayout.setSelectedPath("");
-        return;
-      }
-
-      const fullPath = this.projectPath(project, route.path);
-      const file = this.gitLayout.findCompareFile(fullPath);
-      await this.openCompareDiff(fullPath, file?.status ?? "");
-      return;
-    }
-
-    if (!(await this.ensureProjectRootLoaded(project))) {
-      return;
-    }
-
-    await this.openCompareWorkspace({
-      baseRef: routeBaseRef,
-      headRef: routeHeadRef,
-      preserveViewer,
+    await this.openGitRoute(route, {
+      ensureGitStatus: () => this.ensureGitStatus(),
+      resolvePath: (path) => this.projectPath(project, path),
+      skipReload: this.canApplyLoadedGitRoute(project, route),
     });
-
-    if (!route.path) {
-      return;
-    }
-
-    const fullPath = this.projectPath(project, route.path);
-    const file = this.gitLayout.findCompareFile(fullPath);
-    await this.openCompareDiff(fullPath, file?.status ?? "");
-  }
-
-  async applyLogRoute(project, route) {
-    if (!(await this.ensureProjectRootLoaded(project))) {
-      return;
-    }
-
-    if (!route.sha) {
-      await this.openLogWorkspace({
-        page: route.page,
-        skipReload: this.canApplyLoadedLogRoute(project, route),
-      });
-      return;
-    }
-
-    const canReuseCommit = this.canApplyLoadedLogRoute(project, route);
-    await this.openCommit(route.sha, {
-      page: route.page,
-      skipReload: canReuseCommit,
-      preserveViewer: Boolean(route.path),
-    });
-    if (!route.path) {
-      return;
-    }
-
-    const fullPath = this.projectPath(project, route.path);
-    const file = this.gitLayout.findCommitFile(fullPath);
-    await this.openCommitDiff(route.sha, fullPath, file?.status ?? "");
   }
 
   async applyGithubRoute(project, route) {
@@ -702,6 +603,31 @@ class CaffoldAppShell extends HTMLElement {
     this.githubLayout.showPullFilesList();
   }
 
+  async openGitRoute(route, options = {}) {
+    if (!this.gitRepository) {
+      return null;
+    }
+
+    if (route.path || (route.kind === "log" && route.sha)) {
+      this.filesPage.clearSelectedFile();
+    }
+    this.workspaceMode = "git";
+    this.gitLayout.setContext({
+      path: this.currentPath,
+      repository: this.gitRepository,
+    });
+    const routePromise = this.gitLayout.openRoute(route, {
+      ensureGitStatus: options.ensureGitStatus,
+      resolvePath: options.resolvePath,
+      skipReload: options.skipReload,
+    });
+    this.reviewWorkspace.open("git", this.workspaceDetails());
+    this.updateGitButton();
+    const result = await routePromise;
+    this.updateWorkspaceChrome();
+    return result;
+  }
+
   async openDiff(path, kind, status = "") {
     this.filesPage.clearSelectedFile();
     const diff = await this.gitLayout.openDiff(path, kind, status);
@@ -844,25 +770,7 @@ class CaffoldAppShell extends HTMLElement {
     return await this.loadDirectory(project.relativePath);
   }
 
-  canApplyLoadedDiffRoute(project, _route) {
-    return (
-      this.isProjectRootLoaded(project) &&
-      this.workspaceMode === "git" &&
-      Boolean(this.gitRepository) &&
-      this.gitLayout.canReuseDiffRoute(_route)
-    );
-  }
-
-  canApplyLoadedCompareRoute(project, route) {
-    return (
-      this.isProjectRootLoaded(project) &&
-      this.workspaceMode === "git" &&
-      Boolean(this.gitRepository) &&
-      this.gitLayout.canReuseCompareRoute(route)
-    );
-  }
-
-  canApplyLoadedLogRoute(project, route) {
+  canApplyLoadedGitRoute(project, route) {
     if (
       !this.isProjectRootLoaded(project) ||
       this.workspaceMode !== "git" ||
@@ -871,7 +779,7 @@ class CaffoldAppShell extends HTMLElement {
       return false;
     }
 
-    return this.gitLayout.canReuseLogRoute(route);
+    return this.gitLayout.canReuseRoute(route);
   }
 
   canApplyLoadedGithubRoute(project, route) {

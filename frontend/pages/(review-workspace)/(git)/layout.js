@@ -265,6 +265,83 @@ class CaffoldGitReviewLayout extends HTMLElement {
     return diff;
   }
 
+  async openRoute(route, options = {}) {
+    if (route.kind === "diff") {
+      this.openDiffWorkspace({ preserveViewer: Boolean(route.path) });
+      if (!route.path) {
+        this.setSelectedPath("");
+        return this.gitStatus;
+      }
+
+      if (typeof options.ensureGitStatus === "function") {
+        await options.ensureGitStatus();
+      }
+
+      const fullPath = this.resolveRoutePath(route.path, options);
+      if (!fullPath) {
+        return null;
+      }
+
+      const file = this.findDiffFile(fullPath);
+      return await this.openDiff(
+        fullPath,
+        file?.untracked ? "untracked" : file?.category ?? "unstaged",
+        file?.status ?? "",
+      );
+    }
+
+    if (route.kind === "compare") {
+      const routeBaseRef = route.baseRef || null;
+      const routeHeadRef = route.headRef || null;
+      const compare = await this.openCompareWorkspace({
+        baseRef: routeBaseRef,
+        headRef: routeHeadRef,
+        preserveViewer: Boolean(route.path),
+        skipReload: options.skipReload,
+      });
+      if (!route.path) {
+        this.setSelectedPath("");
+        return compare;
+      }
+
+      const fullPath = this.resolveRoutePath(route.path, options);
+      if (!fullPath) {
+        return null;
+      }
+
+      const file = this.findCompareFile(fullPath);
+      return await this.openCompareDiff(fullPath, file?.status ?? "");
+    }
+
+    if (route.kind !== "log") {
+      return null;
+    }
+
+    if (!route.sha) {
+      return await this.openLogWorkspace({
+        page: route.page,
+        skipReload: options.skipReload,
+      });
+    }
+
+    const commit = await this.openCommit(route.sha, {
+      page: route.page,
+      skipReload: options.skipReload,
+      preserveViewer: Boolean(route.path),
+    });
+    if (!route.path) {
+      return commit;
+    }
+
+    const fullPath = this.resolveRoutePath(route.path, options);
+    if (!fullPath) {
+      return null;
+    }
+
+    const file = this.findCommitFile(fullPath);
+    return await this.openCommitDiff(route.sha, fullPath, file?.status ?? "");
+  }
+
   back() {
     if (this.mode === "log" && this.logLayout.backToList()) {
       this.emitStateChange();
@@ -342,6 +419,22 @@ class CaffoldGitReviewLayout extends HTMLElement {
     return this.mode === "log" && this.logLayout.canReuseRoute(route.page, route.sha);
   }
 
+  canReuseRoute(route) {
+    if (route.kind === "diff") {
+      return this.canReuseDiffRoute(route);
+    }
+
+    if (route.kind === "compare") {
+      return this.canReuseCompareRoute(route);
+    }
+
+    if (route.kind === "log") {
+      return this.canReuseLogRoute(route);
+    }
+
+    return false;
+  }
+
   findDiffFile(path) {
     return this.gitStatus?.files?.find((entry) => entry.path === path) ?? null;
   }
@@ -378,6 +471,10 @@ class CaffoldGitReviewLayout extends HTMLElement {
         this.logLayout.dataset.logView === "detail" &&
         this.logLayout.detailView === "viewer")
     );
+  }
+
+  resolveRoutePath(path, options = {}) {
+    return typeof options.resolvePath === "function" ? options.resolvePath(path) : path;
   }
 
   details(workspaceSubtitle) {
