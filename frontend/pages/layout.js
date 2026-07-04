@@ -78,13 +78,18 @@ class CaffoldAppShell extends HTMLElement {
       this.navigateToReviewParent() || this.backReviewWorkspace();
     });
     this.addEventListener("caffold:open-diff-workspace", () => {
-      this.navigateToCurrentProjectRoute({ kind: "diff", path: "" }) || this.openDiffWorkspace();
+      this.navigateToCurrentProjectRoute({ kind: "diff", path: "" }) ||
+        this.openGitRoute({ kind: "diff", path: "" });
     });
     this.addEventListener("caffold:open-log-workspace", () => {
       this.navigateToCurrentProjectRoute({
         kind: "log",
         page: this.gitLayout.logPage,
-      }) || this.openLogWorkspace();
+      }) ||
+        this.openGitRoute({
+          kind: "log",
+          page: this.gitLayout.logPage,
+        });
     });
     this.addEventListener("caffold:open-compare-workspace", () => {
       this.navigateToCurrentProjectRoute({
@@ -92,7 +97,13 @@ class CaffoldAppShell extends HTMLElement {
         baseRef: this.gitLayout.compareBaseRef,
         headRef: this.gitLayout.compareHeadRef,
         path: "",
-      }) || this.openCompareWorkspace();
+      }) ||
+        this.openGitRoute({
+          kind: "compare",
+          baseRef: this.gitLayout.compareBaseRef,
+          headRef: this.gitLayout.compareHeadRef,
+          path: "",
+        });
     });
     this.addEventListener("caffold:open-github-issues-workspace", () => {
       this.navigateToCurrentProjectRoute({
@@ -125,14 +136,30 @@ class CaffoldAppShell extends HTMLElement {
       this.navigateToCurrentProjectRoute({
         kind: "diff",
         path: this.projectRelativePath(event.detail.path),
-      }) || this.openDiff(event.detail.path, event.detail.kind, event.detail.status);
+      }) ||
+        this.openGitRoute(
+          {
+            kind: "diff",
+            path: event.detail.path,
+          },
+          {
+            ensureGitStatus: () => this.ensureGitStatus(),
+            kind: event.detail.kind,
+            status: event.detail.status,
+          },
+        );
     });
     this.addEventListener("caffold:open-git-commit", (event) => {
       this.navigateToCurrentProjectRoute({
         kind: "log",
         page: this.gitLayout.logPage,
         sha: event.detail.sha,
-      }) || this.openCommit(event.detail.sha);
+      }) ||
+        this.openGitRoute({
+          kind: "log",
+          page: this.gitLayout.logPage,
+          sha: event.detail.sha,
+        });
     });
     this.addEventListener("caffold:change-log-page", (event) => {
       this.navigateToCurrentProjectRoute({
@@ -146,7 +173,18 @@ class CaffoldAppShell extends HTMLElement {
         page: this.gitLayout.logPage,
         sha: event.detail.sha,
         path: this.projectRelativePath(event.detail.path),
-      }) || this.openCommitDiff(event.detail.sha, event.detail.path, event.detail.status);
+      }) ||
+        this.openGitRoute(
+          {
+            kind: "log",
+            page: this.gitLayout.logPage,
+            sha: event.detail.sha,
+            path: event.detail.path,
+          },
+          {
+            status: event.detail.status,
+          },
+        );
     });
     this.addEventListener("caffold:open-compare-diff", (event) => {
       this.navigateToCurrentProjectRoute({
@@ -154,7 +192,18 @@ class CaffoldAppShell extends HTMLElement {
         baseRef: this.gitLayout.compareBaseRef,
         headRef: this.gitLayout.compareHeadRef,
         path: this.projectRelativePath(event.detail.path),
-      }) || this.openCompareDiff(event.detail.path, event.detail.status);
+      }) ||
+        this.openGitRoute(
+          {
+            kind: "compare",
+            baseRef: this.gitLayout.compareBaseRef,
+            headRef: this.gitLayout.compareHeadRef,
+            path: event.detail.path,
+          },
+          {
+            status: event.detail.status,
+          },
+        );
     });
     this.addEventListener("caffold:change-compare-refs", (event) => {
       this.navigateToCurrentProjectRoute({
@@ -618,62 +667,16 @@ class CaffoldAppShell extends HTMLElement {
     });
     const routePromise = this.gitLayout.openRoute(route, {
       ensureGitStatus: options.ensureGitStatus,
+      kind: options.kind,
       resolvePath: options.resolvePath,
       skipReload: options.skipReload,
+      status: options.status,
     });
     this.reviewWorkspace.open("git", this.workspaceDetails());
     this.updateGitButton();
     const result = await routePromise;
     this.updateWorkspaceChrome();
     return result;
-  }
-
-  async openDiff(path, kind, status = "") {
-    this.filesPage.clearSelectedFile();
-    const diff = await this.gitLayout.openDiff(path, kind, status);
-    this.updateWorkspaceChrome();
-    return diff;
-  }
-
-  async openCommit(sha, options = {}) {
-    if (!sha || !this.gitRepository) {
-      return null;
-    }
-
-    this.filesPage.clearSelectedFile();
-    this.workspaceMode = "git";
-    const commitPromise = this.gitLayout.openCommit(sha, options);
-    this.reviewWorkspace.open("git", this.workspaceDetails());
-    this.updateGitButton();
-    const commit = await commitPromise;
-    this.updateWorkspaceChrome();
-    return commit;
-  }
-
-  async openCommitDiff(sha, path, status = "") {
-    if (!sha || !path) {
-      return null;
-    }
-
-    this.filesPage.clearSelectedFile();
-    this.workspaceMode = "git";
-    const diffPromise = this.gitLayout.openCommitDiff(sha, path, status);
-    this.reviewWorkspace.open("git", this.workspaceDetails());
-    this.updateGitButton();
-    const diff = await diffPromise;
-    this.updateWorkspaceChrome();
-    return diff;
-  }
-
-  async openCompareDiff(path, status = "") {
-    if (!path) {
-      return null;
-    }
-
-    this.filesPage.clearSelectedFile();
-    const diff = await this.gitLayout.openCompareDiff(path, status);
-    this.updateWorkspaceChrome();
-    return diff;
   }
 
   async refreshProjects(path = this.currentPath) {
@@ -945,11 +948,20 @@ class CaffoldAppShell extends HTMLElement {
     this.loadGithubStatus(directory.path);
     if (this.workspaceMode === "git") {
       if (this.gitLayout.activeMode === "log") {
-        this.gitLayout.openLogWorkspace({ page: 1 });
+        this.openGitRoute({
+          kind: "log",
+          page: 1,
+        });
       } else if (this.gitLayout.activeMode === "compare") {
-        this.openCompareWorkspace();
+        this.openGitRoute({
+          kind: "compare",
+          path: "",
+        });
       } else {
-        this.openDiffWorkspace();
+        this.openGitRoute({
+          kind: "diff",
+          path: "",
+        });
       }
     } else if (this.workspaceMode === "github") {
       if (this.githubLayout.activeMode === "pulls") {
@@ -1194,44 +1206,6 @@ class CaffoldAppShell extends HTMLElement {
     this.githubLayout.changePullsPage(nextPage);
   }
 
-  openDiffWorkspace(options = {}) {
-    if (!this.gitRepository) {
-      return;
-    }
-
-    this.workspaceMode = "git";
-    this.gitLayout.setContext({
-      path: this.currentPath,
-      repository: this.gitRepository,
-    });
-    this.gitLayout.openDiffWorkspace(options);
-    this.reviewWorkspace.open("git", this.workspaceDetails());
-    this.updateGitButton();
-  }
-
-  async openCompareWorkspace(options = {}) {
-    if (!this.gitRepository) {
-      return null;
-    }
-
-    this.workspaceMode = "git";
-    this.gitLayout.setContext({
-      path: this.currentPath,
-      repository: this.gitRepository,
-    });
-    const comparePromise = this.gitLayout.openCompareWorkspace({
-      baseRef: options.baseRef,
-      headRef: options.headRef,
-      preserveViewer: options.preserveViewer,
-      skipReload: options.skipReload,
-    });
-    this.reviewWorkspace.open("git", this.workspaceDetails());
-    this.updateGitButton();
-    const compare = await comparePromise;
-    this.updateWorkspaceChrome();
-    return compare;
-  }
-
   async openGithubIssuesWorkspace(options = {}) {
     return await this.openGithubRoute(
       {
@@ -1250,27 +1224,6 @@ class CaffoldAppShell extends HTMLElement {
       },
       options,
     );
-  }
-
-  async openLogWorkspace(options = {}) {
-    if (!this.gitRepository) {
-      return null;
-    }
-
-    this.workspaceMode = "git";
-    this.gitLayout.setContext({
-      path: this.currentPath,
-      repository: this.gitRepository,
-    });
-    const logPromise = this.gitLayout.openLogWorkspace({
-      page: options.page ?? 1,
-      skipReload: options.skipReload,
-    });
-    this.reviewWorkspace.open("git", this.workspaceDetails());
-    this.updateGitButton();
-    const log = await logPromise;
-    this.updateWorkspaceChrome();
-    return log;
   }
 
   closeReviewWorkspace() {

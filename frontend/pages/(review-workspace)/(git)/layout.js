@@ -285,8 +285,8 @@ class CaffoldGitReviewLayout extends HTMLElement {
       const file = this.findDiffFile(fullPath);
       return await this.openDiff(
         fullPath,
-        file?.untracked ? "untracked" : file?.category ?? "unstaged",
-        file?.status ?? "",
+        file?.untracked ? "untracked" : file?.category ?? options.kind ?? "unstaged",
+        file?.status ?? options.status ?? "",
       );
     }
 
@@ -310,7 +310,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
       }
 
       const file = this.findCompareFile(fullPath);
-      return await this.openCompareDiff(fullPath, file?.status ?? "");
+      return await this.openCompareDiff(fullPath, file?.status ?? options.status ?? "");
     }
 
     if (route.kind !== "log") {
@@ -339,7 +339,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
     }
 
     const file = this.findCommitFile(fullPath);
-    return await this.openCommitDiff(route.sha, fullPath, file?.status ?? "");
+    return await this.openCommitDiff(route.sha, fullPath, file?.status ?? options.status ?? "");
   }
 
   back() {

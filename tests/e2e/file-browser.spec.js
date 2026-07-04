@@ -1327,6 +1327,273 @@ test("restores project review routes", async ({ page }) => {
   await expect(page.locator("caffold-github-pull-detail-page")).toContainText("Route PR body");
 });
 
+test("reloads active Git review mode when the directory context changes", async ({ page }) => {
+  const repository = { rootPath: "src", branch: "main", dirty: true };
+  const gitStatusPaths = [];
+  const gitRefsPaths = [];
+  const gitComparePaths = [];
+  const gitLogPaths = [];
+
+  const fileEntry = (name, path) => ({
+    name,
+    path,
+    kind: "file",
+    isSymlink: false,
+    supported: true,
+    gitIgnored: false,
+    size: 10,
+    modifiedMs: null,
+    git: null,
+  });
+  const directoryEntry = (name, path) => ({
+    name,
+    path,
+    kind: "directory",
+    isSymlink: false,
+    supported: true,
+    gitIgnored: false,
+    size: null,
+    modifiedMs: null,
+    git: null,
+  });
+  const directories = new Map([
+    [
+      "",
+      {
+        root: "tests/fixtures/home",
+        path: "",
+        entries: [directoryEntry("src", "src")],
+        git: null,
+      },
+    ],
+    [
+      "src",
+      {
+        root: "tests/fixtures/home",
+        path: "src",
+        entries: [
+          directoryEntry("planner", "src/planner"),
+          fileEntry("example.rs", "src/example.rs"),
+        ],
+        git: repository,
+      },
+    ],
+    [
+      "src/planner",
+      {
+        root: "tests/fixtures/home",
+        path: "src/planner",
+        entries: [fileEntry("mod.rs", "src/planner/mod.rs")],
+        git: repository,
+      },
+    ],
+  ]);
+  const statusFiles = {
+    src: [
+      {
+        path: "src/example.rs",
+        repoRelativePath: "example.rs",
+        status: " M",
+        category: "unstaged",
+        staged: false,
+        unstaged: true,
+        untracked: false,
+      },
+    ],
+    "src/planner": [
+      {
+        path: "src/planner/mod.rs",
+        repoRelativePath: "planner/mod.rs",
+        status: " M",
+        category: "unstaged",
+        staged: false,
+        unstaged: true,
+        untracked: false,
+      },
+    ],
+  };
+  const compareFiles = {
+    src: [
+      {
+        path: "src/example.rs",
+        repoRelativePath: "example.rs",
+        status: "M",
+      },
+    ],
+    "src/planner": [
+      {
+        path: "src/planner/mod.rs",
+        repoRelativePath: "planner/mod.rs",
+        status: "M",
+      },
+    ],
+  };
+  const logCommits = {
+    src: [
+      {
+        sha: "1111111111111111111111111111111111111111",
+        shortSha: "1111111",
+        subject: "Source context commit",
+        body: "",
+        authorName: "Caffold",
+        authorEmail: "caffold@example.test",
+        authorTimeMs: 1_767_000_000_000,
+      },
+    ],
+    "src/planner": [
+      {
+        sha: "2222222222222222222222222222222222222222",
+        shortSha: "2222222",
+        subject: "Planner context commit",
+        body: "",
+        authorName: "Caffold",
+        authorEmail: "caffold@example.test",
+        authorTimeMs: 1_767_000_001_000,
+      },
+    ],
+  };
+
+  await page.route(/\/api\/list(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    const path = url.searchParams.get("path") ?? "";
+    const directory = directories.get(path);
+    expect(directory, `mocked directory for ${path}`).toBeTruthy();
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(directory),
+    });
+  });
+  await page.route(/\/api\/github\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        github: null,
+        ghAvailable: false,
+        authenticated: false,
+        issuesAvailable: false,
+        pullsAvailable: false,
+        message: "GitHub unavailable in this test",
+      }),
+    }),
+  );
+  await page.route(/\/api\/git\/status(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    const path = url.searchParams.get("path") ?? "";
+    gitStatusPaths.push(path);
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        files: statusFiles[path] ?? [],
+      }),
+    });
+  });
+  await page.route(/\/api\/git\/refs(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    const path = url.searchParams.get("path") ?? "";
+    gitRefsPaths.push(path);
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        refs: [
+          { name: "main", kind: "local" },
+          { name: "feature/review", kind: "local" },
+          { name: "origin/main", kind: "remote" },
+        ],
+        currentRef: "feature/review",
+        defaultBaseRef: "origin/main",
+        defaultHeadRef: "feature/review",
+      }),
+    });
+  });
+  await page.route(/\/api\/git\/compare(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    const path = url.searchParams.get("path") ?? "";
+    gitComparePaths.push(path);
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        baseRef: url.searchParams.get("base") ?? "origin/main",
+        headRef: url.searchParams.get("head") ?? "feature/review",
+        files: compareFiles[path] ?? [],
+      }),
+    });
+  });
+  await page.route(/\/api\/git\/log(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    const path = url.searchParams.get("path") ?? "";
+    gitLogPaths.push(path);
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository,
+        commits: logCommits[path] ?? [],
+        page: 1,
+        perPage: 50,
+        totalCommits: (logCommits[path] ?? []).length,
+        totalPages: 1,
+        hasPrevious: false,
+        hasNext: false,
+      }),
+    });
+  });
+
+  const loadDirectory = async (path) => {
+    await page.locator("caffold-app-shell").evaluate(
+      (shell, nextPath) => shell.loadDirectory(nextPath),
+      path,
+    );
+  };
+  const expectLastPath = async (calls, path) => {
+    await expect.poll(() => calls.at(-1) ?? "").toBe(path);
+  };
+
+  await page.goto("/");
+
+  await loadDirectory("src");
+  await expectLastPath(gitStatusPaths, "src");
+  await clickHeaderAction(page, "git", "open-diff-workspace");
+  await expect(page.locator('button[data-change-path="src/example.rs"]')).toBeVisible();
+  await loadDirectory("src/planner");
+  await expectLastPath(gitStatusPaths, "src/planner");
+  await expect(page.locator("caffold-git-review-layout")).toHaveAttribute(
+    "data-git-mode",
+    "diff",
+  );
+  await expect(page.locator('button[data-change-path="src/planner/mod.rs"]')).toBeVisible();
+  await page.getByRole("button", { name: "Close review workspace" }).click();
+
+  await loadDirectory("src");
+  await clickHeaderAction(page, "git", "open-compare-workspace");
+  await expectLastPath(gitRefsPaths, "src");
+  await expectLastPath(gitComparePaths, "src");
+  await expect(page.locator('button[data-compare-path="src/example.rs"]')).toBeVisible();
+  await loadDirectory("src/planner");
+  await expectLastPath(gitRefsPaths, "src/planner");
+  await expectLastPath(gitComparePaths, "src/planner");
+  await expect(page.locator("caffold-git-review-layout")).toHaveAttribute(
+    "data-git-mode",
+    "compare",
+  );
+  await expect(page.locator('button[data-compare-path="src/planner/mod.rs"]')).toBeVisible();
+  await page.getByRole("button", { name: "Close review workspace" }).click();
+
+  await loadDirectory("src");
+  await clickHeaderAction(page, "git", "open-log-workspace");
+  await expectLastPath(gitLogPaths, "src");
+  await expect(page.locator("caffold-git-log-list-page")).toContainText("Source context commit");
+  await loadDirectory("src/planner");
+  await expectLastPath(gitLogPaths, "src/planner");
+  await expect(page.locator("caffold-git-review-layout")).toHaveAttribute(
+    "data-git-mode",
+    "log",
+  );
+  await expect(page.locator("caffold-git-log-list-page")).toContainText("Planner context commit");
+});
+
 test("previews image files in the viewer", async ({ page }, testInfo) => {
   await page.goto("/");
 
