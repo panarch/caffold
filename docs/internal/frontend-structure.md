@@ -90,8 +90,10 @@ switching and delegates issue and pull request internals to their nested
 layouts. For example, `(github)/(issues)/layout` owns issue list loading,
 pagination state, issue detail loading, and selected issue state; `app-shell`
 keeps only route selection and top-level workspace coordination.
-Likewise, `(github)/(pulls)/layout` owns pull request list/detail/files loading,
-PR file diff state, PR pagination, and PR file list scroll restoration.
+Likewise, `(github)/(pulls)/layout` owns pull request list/detail/files mode
+switching, PR pagination, and selected PR summary state. Its `files/page` owns
+PR changed-file loading, PR file diff state, and PR file list scroll
+restoration.
 
 CSS follows the same ownership boundary. A layout may expose shared variables
 such as pane header height, but it should style only its own chrome and direct
