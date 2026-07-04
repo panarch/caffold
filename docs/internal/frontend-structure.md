@@ -93,6 +93,13 @@ keeps only route selection and top-level workspace coordination.
 Likewise, `(github)/(pulls)/layout` owns pull request list/detail/files loading,
 PR file diff state, PR pagination, and PR file list scroll restoration.
 
+CSS follows the same ownership boundary. A layout may expose shared variables
+such as pane header height, but it should style only its own chrome and direct
+layout children. Nested pages/components own their panel headers, titles, and
+detail selectors. If a domain-owned control is rendered into shared chrome, keep
+its CSS in the owning domain's stylesheet and scope the selector to the shared
+slot instead of adding broad descendant rules to the parent layout.
+
 ## Page/Layout Skeleton
 
 The current page-level skeleton is:

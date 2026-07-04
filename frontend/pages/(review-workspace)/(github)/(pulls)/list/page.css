@@ -15,10 +15,14 @@ caffold-github-pulls-list-page .github-pulls-panel {
 }
 
 caffold-github-pulls-list-page .github-pulls-panel > header {
+  box-sizing: border-box;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 2px;
   align-content: center;
+  height: var(--review-header-height, 42px);
+  min-height: 0;
+  overflow: hidden;
   padding: 5px 12px;
   border-bottom: 1px solid var(--border);
 }
@@ -26,7 +30,7 @@ caffold-github-pulls-list-page .github-pulls-panel > header {
 caffold-github-pulls-list-page h2 {
   margin: 0;
   overflow: hidden;
-  font-size: 0.82rem;
+  font-size: var(--review-pane-title-size, 0.82rem);
   font-weight: 600;
   line-height: 1.05;
   text-overflow: ellipsis;

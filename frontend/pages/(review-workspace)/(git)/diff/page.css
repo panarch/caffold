@@ -27,6 +27,11 @@ caffold-git-diff-page > caffold-review-file-viewer {
     grid-row: 1;
   }
 
+  caffold-git-diff-page > caffold-git-diff-changes-tree {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
   caffold-git-diff-page[data-detail-view="list"] > caffold-review-file-viewer,
   caffold-git-diff-page[data-detail-view="viewer"] > caffold-git-diff-changes-tree {
     display: none;

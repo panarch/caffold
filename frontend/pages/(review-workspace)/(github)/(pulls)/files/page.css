@@ -26,6 +26,11 @@ caffold-github-pull-files-page > caffold-review-file-viewer {
     grid-row: 1;
   }
 
+  caffold-github-pull-files-page > caffold-github-pull-files-tree {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
   caffold-github-pull-files-page[data-detail-view="list"] > caffold-review-file-viewer,
   caffold-github-pull-files-page[data-detail-view="viewer"] > caffold-github-pull-files-tree {
     display: none;

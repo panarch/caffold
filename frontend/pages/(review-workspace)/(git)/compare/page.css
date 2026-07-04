@@ -27,6 +27,11 @@ caffold-git-compare-page > caffold-review-file-viewer {
     grid-row: 1;
   }
 
+  caffold-git-compare-page > caffold-git-compare-tree {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
   caffold-git-compare-page[data-detail-view="list"] > caffold-review-file-viewer,
   caffold-git-compare-page[data-detail-view="viewer"] > caffold-git-compare-tree {
     display: none;

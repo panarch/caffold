@@ -22,3 +22,52 @@ caffold-git-review-layout .git-mode-log {
   grid-template-rows: minmax(0, 1fr);
   height: 100%;
 }
+
+caffold-review-workspace[data-workspace-mode="git"] .review-compare-ref-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+caffold-review-workspace[data-workspace-mode="git"] .review-compare-ref-controls label {
+  flex: 0 0 auto;
+}
+
+caffold-review-workspace[data-workspace-mode="git"] .review-compare-ref-controls label,
+caffold-review-workspace[data-workspace-mode="git"] .review-compare-ref-separator {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+caffold-review-workspace[data-workspace-mode="git"] .review-compare-ref-controls select {
+  field-sizing: content;
+  min-width: 10ch;
+  max-width: 100%;
+  flex: 0 1 auto;
+  width: auto;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+@media (max-width: 860px) {
+  caffold-review-workspace[data-workspace-mode="git"] .review-compare-ref-controls {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto minmax(0, 1fr);
+    width: 100%;
+  }
+
+  caffold-review-workspace[data-workspace-mode="git"] .review-compare-ref-controls select {
+    field-sizing: fixed;
+    width: 100%;
+    max-width: 100%;
+  }
+}
