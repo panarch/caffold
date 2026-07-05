@@ -27,11 +27,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
       }
 
       if (button.dataset.action === "back-review-workspace") {
-        this.dispatchEvent(
-          new CustomEvent("caffold:back-review-workspace", {
-            bubbles: true,
-          }),
-        );
+        this.requestWorkspaceBackRoute() || this.dispatchWorkspaceBack();
         return;
       }
 
@@ -248,6 +244,55 @@ class CaffoldReviewWorkspace extends HTMLElement {
     }
 
     return {};
+  }
+
+  requestWorkspaceBackRoute() {
+    const route = this.routeForWorkspaceBack();
+    if (!route) {
+      return false;
+    }
+
+    if (this.isActive("git")) {
+      this.dispatchEvent(
+        new CustomEvent("caffold:request-git-route", {
+          bubbles: true,
+          detail: { route },
+        }),
+      );
+      return true;
+    }
+
+    if (this.isActive("github")) {
+      this.dispatchEvent(
+        new CustomEvent("caffold:request-github-route", {
+          bubbles: true,
+          detail: { route },
+        }),
+      );
+      return true;
+    }
+
+    return false;
+  }
+
+  routeForWorkspaceBack() {
+    if (this.isActive("git")) {
+      return this.gitLayout.routeForWorkspaceBack();
+    }
+
+    if (this.isActive("github")) {
+      return this.githubLayout.routeForWorkspaceBack();
+    }
+
+    return null;
+  }
+
+  dispatchWorkspaceBack() {
+    this.dispatchEvent(
+      new CustomEvent("caffold:back-review-workspace", {
+        bubbles: true,
+      }),
+    );
   }
 
   updateVisibleMode() {

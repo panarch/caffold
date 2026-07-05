@@ -106,7 +106,9 @@ status or assemble header display state.
 the active review domain, shared review chrome, close/back behavior, panel
 resizing, and mobile list/detail transitions. It refreshes shared chrome by
 reading details from the active child layout rather than receiving chrome
-details from the app root. It is not a Git-only or GitHub-only page.
+details from the app root. Back controls ask the active child layout for a
+domain route before falling back to the app root's browser-parent route. It is
+not a Git-only or GitHub-only page.
 Nested layouts own their own list/detail flow once they have a clear domain
 boundary. `(git)/layout` owns Git status loading, Git submode switching,
 Compare controls, Diff, Compare, and Log list/detail state. It also translates

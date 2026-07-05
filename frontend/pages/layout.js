@@ -65,7 +65,7 @@ class CaffoldAppShell extends HTMLElement {
       this.navigateToReviewParent({ closeWorkspace: true }) || this.closeReviewWorkspace();
     });
     this.addEventListener("caffold:back-review-workspace", () => {
-      this.navigateToWorkspaceBackRoute() || this.navigateToReviewParent();
+      this.navigateToReviewParent();
     });
     this.addEventListener("caffold:request-git-route", (event) => {
       this.navigateOrOpenGitRoute(event.detail.route, event.detail.options);
@@ -390,20 +390,6 @@ class CaffoldAppShell extends HTMLElement {
       ...route,
       path,
     };
-  }
-
-  navigateToWorkspaceBackRoute() {
-    if (this.reviewWorkspace.isActive("git")) {
-      const route = this.gitLayout.routeForWorkspaceBack();
-      return route ? this.navigateOrOpenGitRoute(route) : false;
-    }
-
-    if (this.reviewWorkspace.isActive("github")) {
-      const route = this.githubLayout.routeForWorkspaceBack();
-      return route ? this.navigateOrOpenGithubRoute(route) : false;
-    }
-
-    return false;
   }
 
   navigateToReviewParent(options = {}) {
