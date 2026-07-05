@@ -1,13 +1,4 @@
-import {
-  createProject,
-  deleteProject,
-  getCodexStatus,
-  getHealth,
-  getProjectCandidate,
-  listProjects,
-  openProject,
-  renameProject,
-} from "../api.js";
+import { getCodexStatus, getHealth, openProject } from "../api.js";
 import { parentRoute, parseRoute, routeEquals, routeUrl } from "../navigation-routes.js";
 import "./components/pathbar.js";
 import "./components/project-switcher.js";
@@ -27,15 +18,10 @@ class CaffoldAppShell extends HTMLElement {
 
     this.initialized = true;
     this.codexStatusRequestId = 0;
-    this.projectRequestId = 0;
     this.codexStatus = null;
-    this.projects = [];
-    this.projectCandidate = null;
-    this.currentProjectId = null;
     this.workspaceMode = null;
     this.currentRoute = null;
     this.isApplyingRoute = false;
-    this.routedProject = null;
     this.render();
     this.filesPage = this.querySelector("caffold-files-page");
     this.filesPage.ensureRendered();
@@ -114,17 +100,8 @@ class CaffoldAppShell extends HTMLElement {
         this.updateWorkspaceChrome();
       }
     });
-    this.addEventListener("caffold:register-current-project", () => {
-      this.registerCurrentProject();
-    });
-    this.addEventListener("caffold:open-project", (event) => {
-      this.openRegisteredProject(event.detail.id);
-    });
-    this.addEventListener("caffold:rename-project", (event) => {
-      this.renameRegisteredProject(event.detail.id, event.detail.name);
-    });
-    this.addEventListener("caffold:delete-project", (event) => {
-      this.deleteRegisteredProject(event.detail.id);
+    this.addEventListener("caffold:project-selected", (event) => {
+      this.openProjectRoute(event.detail.project);
     });
     this.bootstrap();
   }
@@ -303,8 +280,7 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     const project = await openProject(projectId);
-    this.currentProjectId = project.id;
-    this.routedProject = project;
+    this.projectSwitcher.setCurrentProject(project);
     return project;
   }
 
@@ -371,13 +347,13 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   navigateToCurrentProjectRoute(route) {
-    if (!this.currentProjectId) {
+    if (!this.projectSwitcher.currentProjectId) {
       return false;
     }
 
     return this.navigateToRoute({
       ...route,
-      projectId: this.currentProjectId,
+      projectId: this.projectSwitcher.currentProjectId,
     });
   }
 
@@ -450,13 +426,13 @@ class CaffoldAppShell extends HTMLElement {
 
   replaceWithCurrentProjectFileRoute() {
     const routePath = this.projectRelativePath(this.currentPath);
-    if (!this.currentProjectId || routePath === null) {
+    if (!this.projectSwitcher.currentProjectId || routePath === null) {
       return;
     }
 
     this.replaceRoute({
       kind: "files",
-      projectId: this.currentProjectId,
+      projectId: this.projectSwitcher.currentProjectId,
       path: routePath,
     });
   }
@@ -484,9 +460,7 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     this.clearGitContext();
-    this.currentProjectId = null;
-    this.projectCandidate = null;
-    this.renderProjectState({ error: this.filesPage.lastError });
+    this.projectSwitcher.clearContext({ error: this.filesPage.lastError });
     return false;
   }
 
@@ -538,54 +512,11 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   async refreshProjects(path = this.currentPath) {
-    const requestId = ++this.projectRequestId;
-
-    try {
-      const [projectsPayload, candidatePayload] = await Promise.all([
-        listProjects(),
-        getProjectCandidate(path),
-      ]);
-
-      if (requestId !== this.projectRequestId) {
-        return;
-      }
-
-      this.projects = projectsPayload.projects ?? [];
-      this.projectCandidate = candidatePayload.candidate ?? null;
-      this.currentProjectId = this.projectCandidate?.alreadyRegistered
-        ? this.projectCandidate.projectId
-        : null;
-      if (this.currentProjectId) {
-        this.routedProject =
-          this.projects.find((project) => project.id === this.currentProjectId) ??
-          this.routedProject;
-      }
-      this.renderProjectState();
-    } catch (error) {
-      if (requestId !== this.projectRequestId) {
-        return;
-      }
-
-      this.currentProjectId = null;
-      this.projectCandidate = null;
-      this.renderProjectState({ error });
-    }
-  }
-
-  renderProjectState(options = {}) {
-    this.projectSwitcher.setState({
-      projects: this.projects,
-      candidate: this.projectCandidate,
-      currentProjectId: this.currentProjectId,
-      error: options.error ?? null,
-    });
+    return await this.projectSwitcher.refresh(path);
   }
 
   currentProject() {
-    return (
-      this.projects.find((project) => project.id === this.currentProjectId) ??
-      (this.routedProject?.id === this.currentProjectId ? this.routedProject : null)
-    );
+    return this.projectSwitcher.currentProject();
   }
 
   projectPath(project, path = "") {
@@ -667,78 +598,16 @@ class CaffoldAppShell extends HTMLElement {
     return await this.githubLayout.ensureStatus(this.currentPath);
   }
 
-  async registerCurrentProject() {
-    const candidate = this.projectCandidate;
-    if (!candidate || candidate.alreadyRegistered) {
+  async openProjectRoute(project) {
+    if (!project?.id) {
       return;
     }
 
-    try {
-      const project = await createProject({
-        rootPath: candidate.rootPath,
-        name: candidate.name,
-      });
-      this.currentProjectId = project.id;
-      this.routedProject = project;
-      this.navigateToRoute({
-        kind: "files",
-        projectId: project.id,
-        path: "",
-      }) || (await this.loadDirectory(project.relativePath));
-    } catch (error) {
-      this.renderProjectState({ error });
-    }
-  }
-
-  async openRegisteredProject(id) {
-    if (!id) {
-      return;
-    }
-
-    try {
-      const project = await openProject(id);
-      this.currentProjectId = project.id;
-      this.routedProject = project;
-      this.navigateToRoute({
-        kind: "files",
-        projectId: project.id,
-        path: "",
-      }) || (await this.loadDirectory(project.relativePath));
-    } catch (error) {
-      this.renderProjectState({ error });
-    }
-  }
-
-  async renameRegisteredProject(id, name) {
-    if (!id) {
-      return;
-    }
-
-    try {
-      await renameProject(id, name);
-      await this.refreshProjects(this.currentPath);
-    } catch (error) {
-      this.renderProjectState({ error });
-    }
-  }
-
-  async deleteRegisteredProject(id) {
-    if (!id) {
-      return;
-    }
-
-    const project = this.projects.find((candidate) => candidate.id === id);
-    const name = project?.name ?? "this project";
-    if (!window.confirm(`Delete ${name} from Caffold projects? Files are not deleted.`)) {
-      return;
-    }
-
-    try {
-      await deleteProject(id);
-      await this.refreshProjects(this.currentPath);
-    } catch (error) {
-      this.renderProjectState({ error });
-    }
+    this.navigateToRoute({
+      kind: "files",
+      projectId: project.id,
+      path: "",
+    }) || (await this.loadDirectory(project.relativePath));
   }
 
   async loadCodexStatus() {

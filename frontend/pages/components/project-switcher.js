@@ -1,3 +1,11 @@
+import {
+  createProject,
+  deleteProject,
+  getProjectCandidate,
+  listProjects,
+  openProject,
+  renameProject,
+} from "../../api.js";
 import { escapeHtml } from "../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../components/icons.js";
 
@@ -10,6 +18,9 @@ class CaffoldProjectSwitcher extends HTMLElement {
     }
 
     this.initialized = true;
+    this.projectRequestId = 0;
+    this.currentPath = "";
+    this.routedProject = null;
     this.state = {
       projects: [],
       candidate: null,
@@ -46,7 +57,117 @@ class CaffoldProjectSwitcher extends HTMLElement {
     this.renderKeepingPopover();
   }
 
-  handleClick(event) {
+  async refresh(path = "") {
+    const requestId = ++this.projectRequestId;
+    this.currentPath = path;
+
+    try {
+      const [projectsPayload, candidatePayload] = await Promise.all([
+        listProjects(),
+        getProjectCandidate(path),
+      ]);
+
+      if (requestId !== this.projectRequestId) {
+        return null;
+      }
+
+      const projects = projectsPayload.projects ?? [];
+      const candidate = candidatePayload.candidate ?? null;
+      const currentProjectId = candidate?.alreadyRegistered ? candidate.projectId : null;
+      const routedProject =
+        currentProjectId && this.routedProject?.id === currentProjectId
+          ? this.routedProject
+          : null;
+      this.routedProject =
+        projects.find((project) => project.id === currentProjectId) ?? routedProject;
+
+      this.setState({
+        projects,
+        candidate,
+        currentProjectId,
+        error: null,
+      });
+      return {
+        projects,
+        candidate,
+        currentProjectId,
+      };
+    } catch (error) {
+      if (requestId !== this.projectRequestId) {
+        return null;
+      }
+
+      this.setContextError(error);
+      return null;
+    }
+  }
+
+  setCurrentProject(project) {
+    if (!project?.id) {
+      return;
+    }
+
+    this.invalidateProjectRequests();
+    const projects = this.upsertProject(project);
+    this.routedProject = project;
+    this.setState({
+      projects,
+      candidate: this.state.candidate,
+      currentProjectId: project.id,
+      error: null,
+    });
+  }
+
+  setContextError(error) {
+    this.invalidateProjectRequests();
+    this.routedProject = null;
+    this.setState({
+      projects: this.state.projects,
+      candidate: null,
+      currentProjectId: null,
+      error,
+    });
+  }
+
+  clearContext(options = {}) {
+    this.invalidateProjectRequests();
+    this.routedProject = null;
+    this.setState({
+      projects: this.state.projects,
+      candidate: null,
+      currentProjectId: null,
+      error: options.error ?? null,
+    });
+  }
+
+  upsertProject(project) {
+    const projects = this.state.projects.filter((candidate) => candidate.id !== project.id);
+    return [project, ...projects];
+  }
+
+  invalidateProjectRequests() {
+    this.projectRequestId += 1;
+  }
+
+  updateProjectRecord(project) {
+    if (!project?.id) {
+      return;
+    }
+
+    this.invalidateProjectRequests();
+    const projects = this.upsertProject(project);
+    if (this.routedProject?.id === project.id) {
+      this.routedProject = project;
+    }
+    this.setState({
+      projects,
+      candidate: this.state.candidate,
+      currentProjectId: this.state.currentProjectId,
+      error: null,
+    });
+  }
+
+  async handleClick(event) {
     const button = event.target.closest("button[data-action]");
     if (!button) {
       return;
@@ -56,22 +177,13 @@ class CaffoldProjectSwitcher extends HTMLElement {
 
     if (action === "register-current-project") {
       this.closePopover();
-      this.dispatchEvent(
-        new CustomEvent("caffold:register-current-project", {
-          bubbles: true,
-        }),
-      );
+      await this.registerCurrentProject();
       return;
     }
 
     if (action === "open-project" && projectId) {
       this.closePopover();
-      this.dispatchEvent(
-        new CustomEvent("caffold:open-project", {
-          bubbles: true,
-          detail: { id: projectId },
-        }),
-      );
+      await this.openRegisteredProject(projectId);
       return;
     }
 
@@ -88,12 +200,7 @@ class CaffoldProjectSwitcher extends HTMLElement {
     }
 
     if (action === "delete-project" && projectId) {
-      this.dispatchEvent(
-        new CustomEvent("caffold:delete-project", {
-          bubbles: true,
-          detail: { id: projectId },
-        }),
-      );
+      await this.deleteRegisteredProject(projectId);
     }
   }
 
@@ -101,7 +208,7 @@ class CaffoldProjectSwitcher extends HTMLElement {
     this.querySelector(".project-popover")?.hidePopover?.();
   }
 
-  handleSubmit(event) {
+  async handleSubmit(event) {
     const form = event.target.closest("form[data-action='save-rename']");
     if (!form) {
       return;
@@ -111,10 +218,78 @@ class CaffoldProjectSwitcher extends HTMLElement {
     const projectId = form.dataset.projectId;
     const name = new FormData(form).get("name")?.toString() ?? "";
     this.editingId = null;
+    await this.renameRegisteredProject(projectId, name);
+  }
+
+  async registerCurrentProject() {
+    const candidate = this.state.candidate;
+    if (!candidate || candidate.alreadyRegistered) {
+      return;
+    }
+
+    try {
+      const project = await createProject({
+        rootPath: candidate.rootPath,
+        name: candidate.name,
+      });
+      this.setCurrentProject(project);
+      this.dispatchProjectSelected(project);
+    } catch (error) {
+      this.setContextError(error);
+    }
+  }
+
+  async openRegisteredProject(id) {
+    if (!id) {
+      return;
+    }
+
+    try {
+      const project = await openProject(id);
+      this.setCurrentProject(project);
+      this.dispatchProjectSelected(project);
+    } catch (error) {
+      this.setContextError(error);
+    }
+  }
+
+  async renameRegisteredProject(id, name) {
+    if (!id) {
+      return;
+    }
+
+    try {
+      const project = await renameProject(id, name);
+      this.updateProjectRecord(project);
+    } catch (error) {
+      this.setContextError(error);
+    }
+  }
+
+  async deleteRegisteredProject(id) {
+    if (!id) {
+      return;
+    }
+
+    const project = this.state.projects.find((candidate) => candidate.id === id);
+    const name = project?.name ?? "this project";
+    if (!window.confirm(`Delete ${name} from Caffold projects? Files are not deleted.`)) {
+      return;
+    }
+
+    try {
+      await deleteProject(id);
+      await this.refresh(this.currentPath);
+    } catch (error) {
+      this.setContextError(error);
+    }
+  }
+
+  dispatchProjectSelected(project) {
     this.dispatchEvent(
-      new CustomEvent("caffold:rename-project", {
+      new CustomEvent("caffold:project-selected", {
         bubbles: true,
-        detail: { id: projectId, name },
+        detail: { project },
       }),
     );
   }
@@ -285,7 +460,14 @@ class CaffoldProjectSwitcher extends HTMLElement {
       return null;
     }
 
-    return this.state.projects.find((project) => project.id === this.state.currentProjectId) ?? null;
+    return (
+      this.state.projects.find((project) => project.id === this.state.currentProjectId) ??
+      (this.routedProject?.id === this.state.currentProjectId ? this.routedProject : null)
+    );
+  }
+
+  get currentProjectId() {
+    return this.state.currentProjectId;
   }
 }
 

@@ -80,6 +80,11 @@ indicators, and the left file-panel resizer. The app root coordinates project
 context, URL navigation, pathbar, and header actions around that surface instead
 of owning file browser internals.
 
+`scaffold-project-switcher` owns project record state and project candidate
+state for the current directory. It performs project list/candidate refresh and
+project CRUD requests, then emits selected project records upward. The app root
+keeps only project-aware URL execution and project-relative path mapping.
+
 `(review-workspace)` is a pathless review container inside the app root. It owns
 shared review chrome, close/back behavior, panel resizing, and mobile
 list/detail transitions. It is not a Git-only or GitHub-only page.
