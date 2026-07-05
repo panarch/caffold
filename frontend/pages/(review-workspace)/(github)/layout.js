@@ -35,8 +35,68 @@ class CaffoldGithubReviewLayout extends HTMLElement {
     this.issuesLayout.addEventListener("caffold:github-issues-state-change", () => {
       this.emitStateChange();
     });
+    this.addEventListener("caffold:open-github-issue", (event) => {
+      event.stopPropagation();
+      this.requestGithubRoute({
+        kind: "issues",
+        page: this.issuesPage,
+        number: event.detail.number,
+      });
+    });
+    this.addEventListener("caffold:change-github-issues-page", (event) => {
+      event.stopPropagation();
+      this.requestGithubRoute({
+        kind: "issues",
+        page: event.detail.page,
+      });
+    });
     this.pullsLayout.addEventListener("caffold:github-pulls-state-change", () => {
       this.emitStateChange();
+    });
+    this.addEventListener("caffold:open-github-pull", (event) => {
+      event.stopPropagation();
+      this.requestGithubRoute({
+        kind: "pulls",
+        page: this.pullsPage,
+        number: event.detail.number,
+      });
+    });
+    this.addEventListener("caffold:change-github-pulls-page", (event) => {
+      event.stopPropagation();
+      this.requestGithubRoute({
+        kind: "pulls",
+        page: event.detail.page,
+      });
+    });
+    this.addEventListener("caffold:open-github-pull-files", (event) => {
+      event.stopPropagation();
+      this.requestGithubRoute({
+        kind: "pulls",
+        page: this.pullsPage,
+        number: event.detail.number,
+        files: true,
+        path: "",
+      });
+    });
+    this.addEventListener("caffold:open-github-pull-file", (event) => {
+      event.stopPropagation();
+      const number = this.currentPullNumber();
+      if (!number) {
+        return;
+      }
+
+      this.requestGithubRoute(
+        {
+          kind: "pulls",
+          page: this.pullsPage,
+          number,
+          files: true,
+          path: event.detail.path,
+        },
+        {
+          status: event.detail.status,
+        },
+      );
     });
     this.updateVisibleMode();
   }
@@ -395,6 +455,32 @@ class CaffoldGithubReviewLayout extends HTMLElement {
         (this.pullsLayout.dataset.pullsView === "detail" ||
           (this.pullsLayout.dataset.pullsView === "files" &&
             this.pullsLayout.filesPage?.dataset.detailView === "viewer")))
+    );
+  }
+
+  routeForAction(action) {
+    if (action === "pulls") {
+      return {
+        kind: "pulls",
+        page: this.pullsPage,
+      };
+    }
+
+    return {
+      kind: "issues",
+      page: this.issuesPage,
+    };
+  }
+
+  requestGithubRoute(route, options = {}) {
+    this.dispatchEvent(
+      new CustomEvent("caffold:request-github-route", {
+        bubbles: true,
+        detail: {
+          route,
+          options,
+        },
+      }),
     );
   }
 

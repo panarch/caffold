@@ -43,14 +43,70 @@ class CaffoldGitReviewLayout extends HTMLElement {
     this.diffPage.addEventListener("caffold:git-diff-state-change", () => {
       this.emitStateChange();
     });
+    this.addEventListener("caffold:open-git-diff", (event) => {
+      event.stopPropagation();
+      this.requestGitRoute(
+        {
+          kind: "diff",
+          path: event.detail.path,
+        },
+        {
+          kind: event.detail.kind,
+          status: event.detail.status,
+        },
+      );
+    });
     this.comparePage.addEventListener("caffold:git-compare-state-change", () => {
       if (this.comparePage.repository) {
         this.repository = this.comparePage.repository;
       }
       this.emitStateChange();
     });
+    this.addEventListener("caffold:open-compare-diff", (event) => {
+      event.stopPropagation();
+      this.requestGitRoute(
+        {
+          kind: "compare",
+          baseRef: this.compareBaseRef,
+          headRef: this.compareHeadRef,
+          path: event.detail.path,
+        },
+        {
+          status: event.detail.status,
+        },
+      );
+    });
     this.logLayout.addEventListener("caffold:git-log-state-change", () => {
       this.emitStateChange();
+    });
+    this.addEventListener("caffold:open-git-commit", (event) => {
+      event.stopPropagation();
+      this.requestGitRoute({
+        kind: "log",
+        page: this.logPage,
+        sha: event.detail.sha,
+      });
+    });
+    this.addEventListener("caffold:change-log-page", (event) => {
+      event.stopPropagation();
+      this.requestGitRoute({
+        kind: "log",
+        page: event.detail.page,
+      });
+    });
+    this.addEventListener("caffold:open-commit-diff", (event) => {
+      event.stopPropagation();
+      this.requestGitRoute(
+        {
+          kind: "log",
+          page: this.logPage,
+          sha: event.detail.sha,
+          path: event.detail.path,
+        },
+        {
+          status: event.detail.status,
+        },
+      );
     });
     this.updateVisibleMode();
   }
@@ -242,14 +298,6 @@ class CaffoldGitReviewLayout extends HTMLElement {
     return diff;
   }
 
-  changeCompareRefs(baseRef, headRef) {
-    if (this.mode !== "compare") {
-      return null;
-    }
-
-    return this.comparePage.changeRefs(baseRef, headRef);
-  }
-
   async openLogWorkspace(options = {}) {
     if (!this.repository) {
       return null;
@@ -270,14 +318,6 @@ class CaffoldGitReviewLayout extends HTMLElement {
     });
     this.emitStateChange();
     return log;
-  }
-
-  changeLogPage(page) {
-    if (this.mode !== "log") {
-      return null;
-    }
-
-    return this.logLayout.changePage(page);
   }
 
   async openCommit(sha, options = {}) {
@@ -322,9 +362,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
         return this.gitStatus;
       }
 
-      if (typeof options.ensureGitStatus === "function") {
-        await options.ensureGitStatus();
-      }
+      await this.ensureStatus(this.currentPath);
 
       const fullPath = this.resolveRoutePath(route.path, options);
       if (!fullPath) {
@@ -524,6 +562,45 @@ class CaffoldGitReviewLayout extends HTMLElement {
 
   resolveRoutePath(path, options = {}) {
     return typeof options.resolvePath === "function" ? options.resolvePath(path) : path;
+  }
+
+  routeForAction(action) {
+    if (action === "compare") {
+      return this.routeForCompareRefs(this.compareBaseRef, this.compareHeadRef);
+    }
+
+    if (action === "log") {
+      return {
+        kind: "log",
+        page: this.logPage,
+      };
+    }
+
+    return {
+      kind: "diff",
+      path: "",
+    };
+  }
+
+  routeForCompareRefs(baseRef, headRef) {
+    return {
+      kind: "compare",
+      baseRef,
+      headRef,
+      path: "",
+    };
+  }
+
+  requestGitRoute(route, options = {}) {
+    this.dispatchEvent(
+      new CustomEvent("caffold:request-git-route", {
+        bubbles: true,
+        detail: {
+          route,
+          options,
+        },
+      }),
+    );
   }
 
   details(workspaceSubtitle) {

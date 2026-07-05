@@ -76,20 +76,23 @@ repeat the root hierarchy.
 
 `files/page` owns the file browser surface: directory loading, file preview
 loading, list/viewer state, file-list scroll restoration, delayed loading
-indicators, and the left file-panel resizer. The app root coordinates routes,
-projects, pathbar, header actions, and Git/GitHub status updates around that
-surface instead of owning file browser internals.
+indicators, and the left file-panel resizer. The app root coordinates project
+context, URL navigation, pathbar, and header actions around that surface instead
+of owning file browser internals.
 
 `(review-workspace)` is a pathless review container inside the app root. It owns
 shared review chrome, close/back behavior, panel resizing, and mobile
 list/detail transitions. It is not a Git-only or GitHub-only page.
 Nested layouts own their own list/detail flow once they have a clear domain
-boundary. `(git)/layout` owns Git submode switching, Compare controls, Diff,
-Compare, and Log list/detail state. `(github)/layout` owns GitHub submode
-switching and delegates issue and pull request internals to their nested
-layouts. For example, `(github)/(issues)/layout` owns issue list loading,
-pagination state, issue detail loading, and selected issue state; `app-shell`
-keeps only route selection and top-level workspace coordination.
+boundary. `(git)/layout` owns Git status loading, Git submode switching,
+Compare controls, Diff, Compare, and Log list/detail state. It also translates
+Git-domain events from child pages into Git route intents. `(github)/layout`
+owns GitHub status loading, GitHub submode switching, and delegates issue and
+pull request internals to their nested layouts. It translates GitHub-domain
+events from child pages into GitHub route intents. For example,
+`(github)/(issues)/layout` owns issue list loading, pagination state, issue
+detail loading, and selected issue state; `app-shell` keeps project-aware URL
+execution and top-level workspace coordination.
 Likewise, `(github)/(pulls)/layout` owns pull request list/detail/files mode
 switching, PR pagination, and selected PR summary state. Its `files/page` owns
 PR changed-file loading, PR file diff state, and PR file list scroll

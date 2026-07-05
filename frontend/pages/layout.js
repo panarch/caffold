@@ -72,52 +72,19 @@ class CaffoldAppShell extends HTMLElement {
       this.navigateToReviewParent() || this.backReviewWorkspace();
     });
     this.addEventListener("caffold:open-diff-workspace", () => {
-      this.navigateToCurrentProjectRoute({ kind: "diff", path: "" }) ||
-        this.openGitRoute({ kind: "diff", path: "" });
+      this.navigateOrOpenGitRoute(this.gitLayout.routeForAction("diff"));
     });
     this.addEventListener("caffold:open-log-workspace", () => {
-      this.navigateToCurrentProjectRoute({
-        kind: "log",
-        page: this.gitLayout.logPage,
-      }) ||
-        this.openGitRoute({
-          kind: "log",
-          page: this.gitLayout.logPage,
-        });
+      this.navigateOrOpenGitRoute(this.gitLayout.routeForAction("log"));
     });
     this.addEventListener("caffold:open-compare-workspace", () => {
-      this.navigateToCurrentProjectRoute({
-        kind: "compare",
-        baseRef: this.gitLayout.compareBaseRef,
-        headRef: this.gitLayout.compareHeadRef,
-        path: "",
-      }) ||
-        this.openGitRoute({
-          kind: "compare",
-          baseRef: this.gitLayout.compareBaseRef,
-          headRef: this.gitLayout.compareHeadRef,
-          path: "",
-        });
+      this.navigateOrOpenGitRoute(this.gitLayout.routeForAction("compare"));
     });
     this.addEventListener("caffold:open-github-issues-workspace", () => {
-      this.navigateToCurrentProjectRoute({
-        kind: "issues",
-        page: this.githubLayout.issuesPage,
-      }) ||
-        this.openGithubRoute({
-          kind: "issues",
-          page: this.githubLayout.issuesPage,
-        });
+      this.navigateOrOpenGithubRoute(this.githubLayout.routeForAction("issues"));
     });
     this.addEventListener("caffold:open-github-pulls-workspace", () => {
-      this.navigateToCurrentProjectRoute({
-        kind: "pulls",
-        page: this.githubLayout.pullsPage,
-      }) ||
-        this.openGithubRoute({
-          kind: "pulls",
-          page: this.githubLayout.pullsPage,
-        });
+      this.navigateOrOpenGithubRoute(this.githubLayout.routeForAction("pulls"));
     });
     this.addEventListener("caffold:close-review-workspace", () => {
       this.navigateToReviewParent({ closeWorkspace: true }) || this.closeReviewWorkspace();
@@ -134,86 +101,13 @@ class CaffoldAppShell extends HTMLElement {
       }
       this.navigateToReviewParent() || this.backReviewWorkspace();
     });
-    this.addEventListener("caffold:open-git-diff", (event) => {
-      this.navigateToCurrentProjectRoute({
-        kind: "diff",
-        path: this.projectRelativePath(event.detail.path),
-      }) ||
-        this.openGitRoute(
-          {
-            kind: "diff",
-            path: event.detail.path,
-          },
-          {
-            ensureGitStatus: () => this.ensureGitStatus(),
-            kind: event.detail.kind,
-            status: event.detail.status,
-          },
-        );
-    });
-    this.addEventListener("caffold:open-git-commit", (event) => {
-      this.navigateToCurrentProjectRoute({
-        kind: "log",
-        page: this.gitLayout.logPage,
-        sha: event.detail.sha,
-      }) ||
-        this.openGitRoute({
-          kind: "log",
-          page: this.gitLayout.logPage,
-          sha: event.detail.sha,
-        });
-    });
-    this.addEventListener("caffold:change-log-page", (event) => {
-      this.navigateToCurrentProjectRoute({
-        kind: "log",
-        page: event.detail.page,
-      }) || this.changeLogPage(event.detail.page);
-    });
-    this.addEventListener("caffold:open-commit-diff", (event) => {
-      this.navigateToCurrentProjectRoute({
-        kind: "log",
-        page: this.gitLayout.logPage,
-        sha: event.detail.sha,
-        path: this.projectRelativePath(event.detail.path),
-      }) ||
-        this.openGitRoute(
-          {
-            kind: "log",
-            page: this.gitLayout.logPage,
-            sha: event.detail.sha,
-            path: event.detail.path,
-          },
-          {
-            status: event.detail.status,
-          },
-        );
-    });
-    this.addEventListener("caffold:open-compare-diff", (event) => {
-      this.navigateToCurrentProjectRoute({
-        kind: "compare",
-        baseRef: this.gitLayout.compareBaseRef,
-        headRef: this.gitLayout.compareHeadRef,
-        path: this.projectRelativePath(event.detail.path),
-      }) ||
-        this.openGitRoute(
-          {
-            kind: "compare",
-            baseRef: this.gitLayout.compareBaseRef,
-            headRef: this.gitLayout.compareHeadRef,
-            path: event.detail.path,
-          },
-          {
-            status: event.detail.status,
-          },
-        );
+    this.addEventListener("caffold:request-git-route", (event) => {
+      this.navigateOrOpenGitRoute(event.detail.route, event.detail.options);
     });
     this.addEventListener("caffold:change-compare-refs", (event) => {
-      this.navigateToCurrentProjectRoute({
-        kind: "compare",
-        baseRef: event.detail.baseRef,
-        headRef: event.detail.headRef,
-        path: "",
-      }) || this.changeCompareRefs(event.detail.baseRef, event.detail.headRef);
+      this.navigateOrOpenGitRoute(
+        this.gitLayout.routeForCompareRefs(event.detail.baseRef, event.detail.headRef),
+      );
     });
     this.addEventListener("caffold:git-review-state-change", () => {
       if (this.workspaceMode === "git") {
@@ -224,23 +118,8 @@ class CaffoldAppShell extends HTMLElement {
         this.updateWorkspaceChrome();
       }
     });
-    this.addEventListener("caffold:open-github-issue", (event) => {
-      this.navigateToCurrentProjectRoute({
-        kind: "issues",
-        page: this.githubLayout.issuesPage,
-        number: event.detail.number,
-      }) ||
-        this.openGithubRoute({
-          kind: "issues",
-          page: this.githubLayout.issuesPage,
-          number: event.detail.number,
-        });
-    });
-    this.addEventListener("caffold:change-github-issues-page", (event) => {
-      this.navigateToCurrentProjectRoute({
-        kind: "issues",
-        page: event.detail.page,
-      }) || this.changeGithubIssuesPage(event.detail.page);
+    this.addEventListener("caffold:request-github-route", (event) => {
+      this.navigateOrOpenGithubRoute(event.detail.route, event.detail.options);
     });
     this.addEventListener("caffold:github-review-state-change", () => {
       if (this.gitRepository) {
@@ -249,83 +128,6 @@ class CaffoldAppShell extends HTMLElement {
       if (this.workspaceMode === "github") {
         this.updateWorkspaceChrome();
       }
-    });
-    this.addEventListener("caffold:open-github-pull", (event) => {
-      this.navigateToCurrentProjectRoute({
-        kind: "pulls",
-        page: this.githubLayout.pullsPage,
-        number: event.detail.number,
-      }) ||
-        this.openGithubRoute({
-          kind: "pulls",
-          page: this.githubLayout.pullsPage,
-          number: event.detail.number,
-        });
-    });
-    this.addEventListener("caffold:change-github-pulls-page", (event) => {
-      this.navigateToCurrentProjectRoute({
-        kind: "pulls",
-        page: event.detail.page,
-      }) || this.changeGithubPullsPage(event.detail.page);
-    });
-    this.addEventListener("caffold:open-github-pull-files", (event) => {
-      this.navigateToCurrentProjectRoute({
-        kind: "pulls",
-        page: this.githubLayout.pullsPage,
-        number: event.detail.number,
-        files: true,
-        path: "",
-      }) ||
-        this.openGithubRoute({
-          kind: "pulls",
-          page: this.githubLayout.pullsPage,
-          number: event.detail.number,
-          files: true,
-          path: "",
-        });
-    });
-    this.addEventListener("caffold:open-github-pull-file", (event) => {
-      const number = this.githubLayout.currentPullNumber();
-      const path = this.projectRelativePath(event.detail.path);
-      if (!number) {
-        return;
-      }
-
-      if (path !== null) {
-        this.navigateToCurrentProjectRoute({
-          kind: "pulls",
-          page: this.githubLayout.pullsPage,
-          number,
-          files: true,
-          path,
-        }) ||
-          this.openGithubRoute(
-            {
-              kind: "pulls",
-              page: this.githubLayout.pullsPage,
-              number,
-              files: true,
-              path: event.detail.path,
-            },
-            {
-              status: event.detail.status,
-            },
-          );
-        return;
-      }
-
-      this.openGithubRoute(
-        {
-          kind: "pulls",
-          page: this.githubLayout.pullsPage,
-          number,
-          files: true,
-          path: event.detail.path,
-        },
-        {
-          status: event.detail.status,
-        },
-      );
     });
     this.addEventListener("caffold:register-current-project", () => {
       this.registerCurrentProject();
@@ -555,7 +357,6 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     await this.openGitRoute(route, {
-      ensureGitStatus: () => this.ensureGitStatus(),
       resolvePath: (path) => this.projectPath(project, path),
       skipReload: this.canApplyLoadedGitRoute(project, route),
     });
@@ -593,6 +394,44 @@ class CaffoldAppShell extends HTMLElement {
       ...route,
       projectId: this.currentProjectId,
     });
+  }
+
+  navigateOrOpenGitRoute(route, options = {}) {
+    const { fallbackRoute, ...openOptions } = options;
+    const navigationRoute = this.projectRouteForReviewRoute(route);
+    return (
+      (navigationRoute && this.navigateToCurrentProjectRoute(navigationRoute)) ||
+      this.openGitRoute(fallbackRoute ?? route, openOptions)
+    );
+  }
+
+  navigateOrOpenGithubRoute(route, options = {}) {
+    const { fallbackRoute, ...openOptions } = options;
+    const navigationRoute = this.projectRouteForReviewRoute(route);
+    return (
+      (navigationRoute && this.navigateToCurrentProjectRoute(navigationRoute)) ||
+      this.openGithubRoute(fallbackRoute ?? route, openOptions)
+    );
+  }
+
+  projectRouteForReviewRoute(route) {
+    if (!route) {
+      return null;
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(route, "path") || !route.path) {
+      return route;
+    }
+
+    const path = this.projectRelativePath(route.path);
+    if (path === null) {
+      return null;
+    }
+
+    return {
+      ...route,
+      path,
+    };
   }
 
   navigateToReviewParent(options = {}) {
@@ -723,7 +562,6 @@ class CaffoldAppShell extends HTMLElement {
       repository: this.gitRepository,
     });
     const routePromise = this.gitLayout.openRoute(route, {
-      ensureGitStatus: options.ensureGitStatus,
       kind: options.kind,
       resolvePath: options.resolvePath,
       skipReload: options.skipReload,
@@ -852,18 +690,6 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     return this.githubLayout.canReuseRoute(route);
-  }
-
-  async ensureGitStatus() {
-    if (!this.gitRepository) {
-      return null;
-    }
-
-    this.gitLayout.setContext({
-      path: this.currentPath,
-      repository: this.gitRepository,
-    });
-    return await this.gitLayout.ensureStatus(this.currentPath);
   }
 
   async ensureGithubStatus() {
@@ -1122,48 +948,6 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     return result;
-  }
-
-  changeCompareRefs(baseRef, headRef) {
-    if (this.workspaceMode !== "git" || this.gitLayout.activeMode !== "compare") {
-      return;
-    }
-
-    this.gitLayout.changeCompareRefs(baseRef, headRef);
-  }
-
-  changeLogPage(page) {
-    if (this.workspaceMode !== "git" || this.gitLayout.activeMode !== "log") {
-      return;
-    }
-
-    this.gitLayout.changeLogPage(page);
-  }
-
-  changeGithubIssuesPage(page) {
-    if (this.workspaceMode !== "github" || this.githubLayout.activeMode !== "issues") {
-      return;
-    }
-
-    const nextPage = Number.parseInt(`${page}`, 10);
-    if (!Number.isFinite(nextPage) || nextPage < 1 || nextPage === this.githubLayout.issuesPage) {
-      return;
-    }
-
-    this.githubLayout.changeIssuesPage(nextPage);
-  }
-
-  changeGithubPullsPage(page) {
-    if (this.workspaceMode !== "github" || this.githubLayout.activeMode !== "pulls") {
-      return;
-    }
-
-    const nextPage = Number.parseInt(`${page}`, 10);
-    if (!Number.isFinite(nextPage) || nextPage < 1 || nextPage === this.githubLayout.pullsPage) {
-      return;
-    }
-
-    this.githubLayout.changePullsPage(nextPage);
   }
 
   closeReviewWorkspace() {
