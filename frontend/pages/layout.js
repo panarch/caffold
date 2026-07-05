@@ -699,18 +699,6 @@ class CaffoldAppShell extends HTMLElement {
     });
   }
 
-  workspaceSubtitle(label) {
-    if (!this.gitRepository) {
-      return label;
-    }
-
-    const branch = this.gitRepository.branch ?? "HEAD";
-    const dirty = this.gitRepository.dirty ? " *" : "";
-    const count = this.gitStatus?.files.length;
-    const countLabel = count === undefined ? "" : ` · ${count} changes`;
-    return `${label} · ${branch}${dirty}${countLabel}`;
-  }
-
   workspaceDetails() {
     if (this.reviewWorkspace.isActive("git")) {
       return this.gitWorkspaceDetails();
@@ -728,7 +716,7 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   gitWorkspaceDetails() {
-    return this.gitLayout.details((label) => this.workspaceSubtitle(label));
+    return this.gitLayout.details();
   }
 
   githubWorkspaceDetails() {

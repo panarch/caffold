@@ -641,11 +641,11 @@ class CaffoldGitReviewLayout extends HTMLElement {
     );
   }
 
-  details(workspaceSubtitle) {
+  details() {
     if (this.mode === "diff") {
       return {
         title: "Diff",
-        subtitle: workspaceSubtitle("Working tree"),
+        subtitle: this.workspaceSubtitle("Working tree"),
         backVisible: false,
       };
     }
@@ -653,7 +653,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
     if (this.mode === "compare") {
       return {
         title: "Compare",
-        subtitle: this.comparePage.compareSubtitle(workspaceSubtitle("Branches")),
+        subtitle: this.comparePage.compareSubtitle(this.workspaceSubtitle("Branches")),
         backVisible: false,
         controlsHtml: this.renderCompareControls(),
       };
@@ -671,7 +671,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
     if (this.mode === "log") {
       return {
         title: "Log",
-        subtitle: workspaceSubtitle("History"),
+        subtitle: this.workspaceSubtitle("History"),
         backVisible: false,
       };
     }
@@ -681,6 +681,18 @@ class CaffoldGitReviewLayout extends HTMLElement {
       subtitle: "",
       backVisible: false,
     };
+  }
+
+  workspaceSubtitle(label) {
+    if (!this.repository) {
+      return label;
+    }
+
+    const branch = this.repository.branch ?? "HEAD";
+    const dirty = this.repository.dirty ? " *" : "";
+    const count = this.gitStatus?.files?.length;
+    const countLabel = count === undefined ? "" : ` · ${count} changes`;
+    return `${label} · ${branch}${dirty}${countLabel}`;
   }
 
   renderCompareControls() {
