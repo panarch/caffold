@@ -403,7 +403,8 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
 });
 
 test("manages project records from the header switcher", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Project CRUD mutates shared fixture data.");
+  test.skip(testInfo.project.name !== "desktop", "Project switcher CRUD is covered on desktop.");
+  await mockProjectCrudApi(page);
 
   await page.goto("/");
   const switcher = page.locator("caffold-project-switcher");
@@ -3643,6 +3644,136 @@ async function mockRegisteredProject(page) {
   });
 
   return project;
+}
+
+async function mockProjectCrudApi(page) {
+  let projects = [];
+  let nextProjectId = 1;
+  const rootPath = resolve("tests/fixtures/home/src");
+  const relativePath = "src";
+
+  const projectResponse = (project) => ({
+    ...project,
+    rootPath,
+    relativePath,
+    createdMs: project.createdMs ?? 1,
+    updatedMs: project.updatedMs ?? 1,
+    lastOpenedMs: project.lastOpenedMs ?? null,
+  });
+
+  const projectCandidate = (path) => {
+    const isProjectPath = path === relativePath || path.startsWith(`${relativePath}/`);
+    if (!isProjectPath) {
+      return null;
+    }
+
+    const registeredProject = projects.find((project) => project.rootPath === rootPath);
+    return {
+      name: registeredProject?.name ?? "src",
+      rootPath,
+      relativePath,
+      alreadyRegistered: Boolean(registeredProject),
+      projectId: registeredProject?.id ?? null,
+    };
+  };
+
+  await page.route(/\/api\/project-candidate(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    const path = url.searchParams.get("path") ?? "";
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ candidate: projectCandidate(path) }),
+    });
+  });
+
+  await page.route(/\/api\/projects(?:\/[^/]+(?:\/open)?|)(?:\?|$)/, async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const segments = url.pathname.split("/").filter(Boolean);
+    const projectId = segments[2] ? decodeURIComponent(segments[2]) : null;
+    const method = request.method();
+
+    if (url.pathname === "/api/projects" && method === "GET") {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ projects: projects.map(projectResponse) }),
+      });
+    }
+
+    if (url.pathname === "/api/projects" && method === "POST") {
+      const body = request.postDataJSON();
+      const name = body.name?.trim() || "src";
+      const project = projectResponse({
+        id: `test_project_${nextProjectId}`,
+        name,
+        rootPath,
+        relativePath,
+        createdMs: nextProjectId,
+        updatedMs: nextProjectId,
+      });
+      nextProjectId += 1;
+      projects = [project, ...projects];
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(project),
+      });
+    }
+
+    if (segments.length === 4 && segments[3] === "open" && projectId && method === "POST") {
+      const project = projects.find((candidate) => candidate.id === projectId);
+      if (!project) {
+        return route.fulfill({
+          status: 404,
+          contentType: "application/json",
+          body: JSON.stringify({ error: { message: "Project not found" } }),
+        });
+      }
+
+      const openedProject = projectResponse({
+        ...project,
+        lastOpenedMs: Date.now(),
+      });
+      projects = projects.map((candidate) =>
+        candidate.id === openedProject.id ? openedProject : candidate,
+      );
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(openedProject),
+      });
+    }
+
+    if (segments.length === 3 && projectId && method === "PATCH") {
+      const body = request.postDataJSON();
+      const project = projects.find((candidate) => candidate.id === projectId);
+      if (!project) {
+        return route.fulfill({
+          status: 404,
+          contentType: "application/json",
+          body: JSON.stringify({ error: { message: "Project not found" } }),
+        });
+      }
+
+      const renamedProject = projectResponse({
+        ...project,
+        name: body.name?.trim() || project.name,
+        updatedMs: Date.now(),
+      });
+      projects = projects.map((candidate) =>
+        candidate.id === renamedProject.id ? renamedProject : candidate,
+      );
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(renamedProject),
+      });
+    }
+
+    if (segments.length === 3 && projectId && method === "DELETE") {
+      projects = projects.filter((project) => project.id !== projectId);
+      return route.fulfill({ status: 204, body: "" });
+    }
+
+    return route.continue();
+  });
 }
 
 async function expectGlobalScrollLocked(page) {
