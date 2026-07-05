@@ -90,6 +90,7 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     const requestId = ++this.commitRequestId;
     const viewerRequestId = ++this.fileRequestId;
     this.selectedCommitSummary = {
+      sha,
       shortSha: sha.slice(0, 7),
       subject: "",
     };
@@ -174,6 +175,10 @@ class CaffoldGitLogCommitPage extends HTMLElement {
 
   canReuse(sha) {
     return this.commitPayload?.commit?.sha === sha;
+  }
+
+  currentCommitSha() {
+    return this.commitPayload?.commit?.sha ?? this.selectedCommitSummary?.sha ?? "";
   }
 
   findFile(path) {

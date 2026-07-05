@@ -86,10 +86,11 @@ list/detail transitions. It is not a Git-only or GitHub-only page.
 Nested layouts own their own list/detail flow once they have a clear domain
 boundary. `(git)/layout` owns Git status loading, Git submode switching,
 Compare controls, Diff, Compare, and Log list/detail state. It also translates
-Git-domain events from child pages into Git route intents. `(github)/layout`
-owns GitHub status loading, GitHub submode switching, and delegates issue and
-pull request internals to their nested layouts. It translates GitHub-domain
-events from child pages into GitHub route intents. For example,
+Git-domain open, close, and back events from child pages into Git route intents.
+`(github)/layout` owns GitHub status loading, GitHub submode switching, and
+delegates issue and pull request internals to their nested layouts. It
+translates GitHub-domain open, close, and back events from child pages into
+GitHub route intents. For example,
 `(github)/(issues)/layout` owns issue list loading, pagination state, issue
 detail loading, and selected issue state; `app-shell` keeps project-aware URL
 execution and top-level workspace coordination.

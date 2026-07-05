@@ -225,32 +225,6 @@ class CaffoldGithubPullsLayout extends HTMLElement {
     this.emitStateChange();
   }
 
-  back() {
-    if (this.view === "detail") {
-      this.pullDetailRequestId += 1;
-      this.selectedPullSummary = null;
-      this.setView("list");
-      this.listPage.setSelectedPull(null);
-      this.detailPage.setEmpty();
-      this.emitStateChange();
-      return true;
-    }
-
-    if (this.view === "files") {
-      if (this.filesPage.detailView === "viewer") {
-        this.showFilesList();
-        return true;
-      }
-
-      this.setView("detail");
-      this.filesPage.reset();
-      this.emitStateChange();
-      return true;
-    }
-
-    return false;
-  }
-
   backToList() {
     if (this.view === "list") {
       return false;

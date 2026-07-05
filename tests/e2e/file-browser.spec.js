@@ -2101,7 +2101,7 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
     await expect(page.locator(".git-mode-diff caffold-review-file-viewer")).toBeHidden();
     await expect(page.locator('button[data-change-path="src/deleted.rs"]')).toHaveAttribute(
       "aria-current",
-      "true",
+      "false",
     );
   }
 
@@ -2535,7 +2535,11 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
   );
   await captureReviewScreenshot(page, testInfo, "github-issue-detail");
 
-  await workspace.getByRole("button", { name: "Back to issues" }).click();
+  if (testInfo.project.name === "phone") {
+    await issueViewer.getByRole("button", { name: "Back to issues" }).click();
+  } else {
+    await workspace.getByRole("button", { name: "Back to issues" }).click();
+  }
   await expect(workspace.locator(".github-mode-issues")).toHaveAttribute(
     "data-issues-view",
     "list",
@@ -2950,13 +2954,26 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
   }
   await captureReviewScreenshot(page, testInfo, "github-pull-file-diff");
 
-  await page.goBack();
-  await expect(page).toHaveURL(`/projects/${project.id}/pulls/12/files`);
-  await expect(page.locator("caffold-github-pull-files-page")).toBeVisible();
+  if (testInfo.project.name === "phone") {
+    await page.getByRole("button", { name: "Back to PR files" }).click();
+    await expect(page).toHaveURL(`/projects/${project.id}/pulls/12/files`);
+    await expect(page.locator("caffold-github-pull-files-page")).toBeVisible();
+    await expect(page.locator(".github-mode-pulls caffold-review-file-viewer")).toBeHidden();
+    await page.locator('button[data-pull-file-path="src/planner/mod.rs"]').click();
+    await expect(page).toHaveURL(
+      `/projects/${project.id}/pulls/12/files/planner/mod.rs`,
+    );
+    await page.getByRole("button", { name: "Back to PR files" }).click();
+    await expect(page).toHaveURL(`/projects/${project.id}/pulls/12/files`);
+  }
   await workspace.getByRole("button", { name: "Back to PR" }).click();
   await expect(page).toHaveURL(`/projects/${project.id}/pulls/12`);
   await expect(pullViewer).toBeVisible();
-  await workspace.getByRole("button", { name: "Back to pull requests" }).click();
+  if (testInfo.project.name === "phone") {
+    await pullViewer.getByRole("button", { name: "Back to pull requests" }).click();
+  } else {
+    await workspace.getByRole("button", { name: "Back to pull requests" }).click();
+  }
   await expect(page).toHaveURL(`/projects/${project.id}/pulls`);
   await expect(page.locator("caffold-github-pulls-list-page")).toBeVisible();
 

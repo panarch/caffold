@@ -113,12 +113,6 @@ class CaffoldGitLogLayout extends HTMLElement {
     return diff;
   }
 
-  showCommitFileList() {
-    this.commitPage.showFileList();
-    this.detailView = this.commitPage.detailView;
-    this.emitStateChange();
-  }
-
   backToList() {
     if (this.view === "list") {
       return false;
@@ -189,6 +183,10 @@ class CaffoldGitLogLayout extends HTMLElement {
     }
 
     return this.commitPage.canReuse(sha);
+  }
+
+  currentCommitSha() {
+    return this.commitPage.currentCommitSha();
   }
 
   findCommitFile(path) {

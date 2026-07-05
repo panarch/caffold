@@ -108,6 +108,15 @@ class CaffoldGitReviewLayout extends HTMLElement {
         },
       );
     });
+    this.addEventListener("caffold:close-file-viewer", (event) => {
+      const route = this.routeForCloseFileViewerTarget(event.target);
+      if (!route) {
+        return;
+      }
+
+      event.stopPropagation();
+      this.requestGitRoute(route);
+    });
     this.updateVisibleMode();
   }
 
@@ -429,43 +438,35 @@ class CaffoldGitReviewLayout extends HTMLElement {
     return await this.openCommitDiff(route.sha, fullPath, file?.status ?? options.status ?? "");
   }
 
-  back() {
-    if (this.mode === "log" && this.logLayout.backToList()) {
-      this.emitStateChange();
-      return true;
-    }
-
-    return false;
-  }
-
-  showDiffList() {
-    this.diffPage.showList();
-    this.emitStateChange();
-  }
-
-  showCompareList() {
-    this.comparePage.showList();
-    this.emitStateChange();
-  }
-
-  showCommitFileList() {
-    this.logLayout.showCommitFileList();
-  }
-
-  showFileListForTarget(target) {
+  routeForCloseFileViewerTarget(target) {
     if (this.diffPage.isFileViewer(target)) {
-      this.showDiffList();
-      return "diff";
+      return {
+        kind: "diff",
+        path: "",
+      };
     }
 
     if (this.comparePage.isFileViewer(target)) {
-      this.showCompareList();
-      return "compare";
+      return {
+        kind: "compare",
+        baseRef: this.compareBaseRef,
+        headRef: this.compareHeadRef,
+        path: "",
+      };
     }
 
     if (this.logLayout.isFileViewer(target)) {
-      this.showCommitFileList();
-      return "log";
+      const sha = this.logLayout.currentCommitSha();
+      if (!sha) {
+        return null;
+      }
+
+      return {
+        kind: "log",
+        page: this.logPage,
+        sha,
+        path: "",
+      };
     }
 
     return null;
@@ -589,6 +590,17 @@ class CaffoldGitReviewLayout extends HTMLElement {
       headRef,
       path: "",
     };
+  }
+
+  routeForWorkspaceBack() {
+    if (this.mode === "log" && this.logLayout.view === "detail") {
+      return {
+        kind: "log",
+        page: this.logPage,
+      };
+    }
+
+    return null;
   }
 
   requestGitRoute(route, options = {}) {

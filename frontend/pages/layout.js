@@ -65,12 +65,6 @@ class CaffoldAppShell extends HTMLElement {
     this.addEventListener("caffold:close-file-viewer", (event) => {
       this.closeFileViewer(event);
     });
-    this.addEventListener("caffold:close-github-issue-viewer", () => {
-      this.navigateToReviewParent() || this.backReviewWorkspace();
-    });
-    this.addEventListener("caffold:close-github-pull-viewer", () => {
-      this.navigateToReviewParent() || this.backReviewWorkspace();
-    });
     this.addEventListener("caffold:open-diff-workspace", () => {
       this.navigateOrOpenGitRoute(this.gitLayout.routeForAction("diff"));
     });
@@ -90,16 +84,7 @@ class CaffoldAppShell extends HTMLElement {
       this.navigateToReviewParent({ closeWorkspace: true }) || this.closeReviewWorkspace();
     });
     this.addEventListener("caffold:back-review-workspace", () => {
-      const currentRoute = parseRoute(window.location.href) ?? this.currentRoute;
-      if (currentRoute?.kind === "log" && currentRoute.sha) {
-        this.navigateToRoute({
-          kind: "log",
-          projectId: currentRoute.projectId,
-          page: currentRoute.page,
-        });
-        return;
-      }
-      this.navigateToReviewParent() || this.backReviewWorkspace();
+      this.navigateToWorkspaceBackRoute() || this.navigateToReviewParent();
     });
     this.addEventListener("caffold:request-git-route", (event) => {
       this.navigateOrOpenGitRoute(event.detail.route, event.detail.options);
@@ -434,6 +419,20 @@ class CaffoldAppShell extends HTMLElement {
     };
   }
 
+  navigateToWorkspaceBackRoute() {
+    if (this.workspaceMode === "git") {
+      const route = this.gitLayout.routeForWorkspaceBack();
+      return route ? this.navigateOrOpenGitRoute(route) : false;
+    }
+
+    if (this.workspaceMode === "github") {
+      const route = this.githubLayout.routeForWorkspaceBack();
+      return route ? this.navigateOrOpenGithubRoute(route) : false;
+    }
+
+    return false;
+  }
+
   navigateToReviewParent(options = {}) {
     const currentRoute = parseRoute(window.location.href) ?? this.currentRoute;
     if (!currentRoute) {
@@ -510,42 +509,6 @@ class CaffoldAppShell extends HTMLElement {
       this.showFileList();
       return;
     }
-
-    const gitViewer = this.gitLayout.showFileListForTarget(event.target);
-    if (gitViewer) {
-      if (currentRoute?.kind === gitViewer && currentRoute.path) {
-        this.navigateToRoute(parentRoute(currentRoute));
-        return;
-      }
-      this.updateWorkspaceChrome();
-      return;
-    }
-
-    if (this.githubLayout.isFileViewer(event.target)) {
-      if (currentRoute?.kind === "pulls" && currentRoute.files && currentRoute.path) {
-        this.navigateToRoute(parentRoute(currentRoute));
-        return;
-      }
-      this.githubLayout.showPullFilesList();
-    }
-  }
-
-  showDiffList() {
-    this.gitLayout.showDiffList();
-    this.updateWorkspaceChrome();
-  }
-
-  showCompareList() {
-    this.gitLayout.showCompareList();
-    this.updateWorkspaceChrome();
-  }
-
-  showCommitFileList() {
-    this.gitLayout.showCommitFileList();
-  }
-
-  showPullFilesList() {
-    this.githubLayout.showPullFilesList();
   }
 
   async openGitRoute(route, options = {}) {
@@ -960,17 +923,6 @@ class CaffoldAppShell extends HTMLElement {
     this.githubLayout.backToList();
     this.reviewWorkspace.close();
     this.updateGitButton();
-  }
-
-  backReviewWorkspace() {
-    if (this.workspaceMode === "git" && this.gitLayout.back()) {
-      this.updateWorkspaceChrome();
-      return;
-    }
-
-    if (this.workspaceMode === "github" && this.githubLayout.back()) {
-      this.updateWorkspaceChrome();
-    }
   }
 
   updateWorkspaceChrome() {

@@ -50,6 +50,13 @@ class CaffoldGithubReviewLayout extends HTMLElement {
         page: event.detail.page,
       });
     });
+    this.addEventListener("caffold:close-github-issue-viewer", (event) => {
+      event.stopPropagation();
+      this.requestGithubRoute({
+        kind: "issues",
+        page: this.issuesPage,
+      });
+    });
     this.pullsLayout.addEventListener("caffold:github-pulls-state-change", () => {
       this.emitStateChange();
     });
@@ -97,6 +104,32 @@ class CaffoldGithubReviewLayout extends HTMLElement {
           status: event.detail.status,
         },
       );
+    });
+    this.addEventListener("caffold:close-github-pull-viewer", (event) => {
+      event.stopPropagation();
+      this.requestGithubRoute({
+        kind: "pulls",
+        page: this.pullsPage,
+      });
+    });
+    this.addEventListener("caffold:close-file-viewer", (event) => {
+      if (!this.isFileViewer(event.target)) {
+        return;
+      }
+
+      event.stopPropagation();
+      const number = this.currentPullNumber();
+      if (!number) {
+        return;
+      }
+
+      this.requestGithubRoute({
+        kind: "pulls",
+        page: this.pullsPage,
+        number,
+        files: true,
+        path: "",
+      });
     });
     this.updateVisibleMode();
   }
@@ -346,21 +379,6 @@ class CaffoldGithubReviewLayout extends HTMLElement {
     return await this.openPull(route.number, { page: route.page });
   }
 
-  back() {
-    if (this.mode === "issues" && this.issuesLayout.view === "detail") {
-      this.issuesLayout.backToList();
-      this.emitStateChange();
-      return true;
-    }
-
-    if (this.mode === "pulls" && this.pullsLayout.back()) {
-      this.emitStateChange();
-      return true;
-    }
-
-    return false;
-  }
-
   backToList() {
     let changed = false;
 
@@ -470,6 +488,37 @@ class CaffoldGithubReviewLayout extends HTMLElement {
       kind: "issues",
       page: this.issuesPage,
     };
+  }
+
+  routeForWorkspaceBack() {
+    if (this.mode === "issues" && this.issuesLayout.view === "detail") {
+      return {
+        kind: "issues",
+        page: this.issuesPage,
+      };
+    }
+
+    if (this.mode === "pulls" && this.pullsLayout.view === "detail") {
+      return {
+        kind: "pulls",
+        page: this.pullsPage,
+      };
+    }
+
+    if (this.mode === "pulls" && this.pullsLayout.view === "files") {
+      const number = this.currentPullNumber();
+      if (!number) {
+        return null;
+      }
+
+      return {
+        kind: "pulls",
+        page: this.pullsPage,
+        number,
+      };
+    }
+
+    return null;
   }
 
   requestGithubRoute(route, options = {}) {
