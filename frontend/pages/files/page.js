@@ -116,6 +116,53 @@ class CaffoldFilesPage extends HTMLElement {
     }
   }
 
+  async openPath(path, options = {}) {
+    this.ensureRendered();
+    const targetPath = path ?? "";
+    const fallbackPath = options.fallbackPath ?? "";
+
+    const loadedEntry = this.entryForPath(targetPath);
+    if (loadedEntry && loadedEntry.kind !== "directory") {
+      const file = await this.openFile(targetPath, loadedEntry);
+      return {
+        kind: "file",
+        directory: null,
+        file,
+      };
+    }
+
+    const directory = await this.loadDirectory(targetPath, { allowFailure: true });
+    if (directory) {
+      return {
+        kind: "directory",
+        directory,
+      };
+    }
+    if (directory === null) {
+      return {
+        kind: "stale",
+        directory: null,
+      };
+    }
+
+    const parentDirectory = await this.loadDirectory(parentPath(targetPath), {
+      fallbackPath,
+    });
+    if (parentDirectory) {
+      const file = await this.openFile(targetPath);
+      return {
+        kind: "file",
+        directory: parentDirectory,
+        file,
+      };
+    }
+
+    return {
+      kind: "error",
+      directory: parentDirectory,
+    };
+  }
+
   async openFile(path, entry = null) {
     this.ensureRendered();
     const requestId = ++this.fileRequestId;
@@ -374,3 +421,16 @@ class CaffoldFilesPage extends HTMLElement {
 }
 
 customElements.define("caffold-files-page", CaffoldFilesPage);
+
+function cleanPath(path) {
+  return `${path ?? ""}`
+    .split("/")
+    .filter((segment) => segment && segment !== "." && segment !== "..")
+    .join("/");
+}
+
+function parentPath(path) {
+  const parts = cleanPath(path).split("/").filter(Boolean);
+  parts.pop();
+  return parts.join("/");
+}

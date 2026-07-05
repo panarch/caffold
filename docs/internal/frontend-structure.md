@@ -75,10 +75,10 @@ parenthesized grouping rule because wrapping the root app shell would only
 repeat the root hierarchy.
 
 `files/page` owns the file browser surface: directory loading, file preview
-loading, list/viewer state, file-list scroll restoration, delayed loading
-indicators, and the left file-panel resizer. The app root coordinates project
-context, URL navigation, pathbar, and header actions around that surface instead
-of owning file browser internals.
+loading, files-route path materialization, list/viewer state, file-list scroll
+restoration, delayed loading indicators, and the left file-panel resizer. The
+app root coordinates project context, URL navigation, pathbar, and header
+actions around that surface instead of owning file browser internals.
 
 `scaffold-project-switcher` owns project record state and project candidate
 state for the current directory. It performs project list/candidate refresh and

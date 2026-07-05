@@ -273,29 +273,15 @@ class CaffoldAppShell extends HTMLElement {
 
   async applyFilesRoute(project, route) {
     this.closeReviewWorkspace();
-    if (!route.path) {
-      await this.loadDirectory(project.relativePath);
-      this.showFileList();
-      return;
-    }
-
+    this.reviewWorkspace.prepareForFileBrowserOpen();
     const fullPath = this.projectPath(project, route.path);
-    const loadedEntry = this.filesPage.entryForPath(fullPath);
-    if (loadedEntry && loadedEntry.kind !== "directory") {
-      await this.openFile(fullPath, loadedEntry);
-      return;
-    }
-
-    if (await this.loadDirectory(fullPath, { allowFailure: true })) {
-      return;
-    }
-
-    const parent = this.projectPath(project, parentPath(route.path));
-    const openedParent = await this.loadDirectory(parent, {
+    this.pathbar.path = fullPath;
+    const result = await this.filesPage.openPath(fullPath, {
       fallbackPath: project.relativePath,
     });
-    if (openedParent) {
-      await this.openFile(fullPath);
+    this.pathbar.path = this.currentPath;
+    if (result?.directory) {
+      await this.syncDirectoryContext(result.directory);
     }
   }
 
@@ -432,9 +418,7 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     if (directory) {
-      this.pathbar.path = directory.path;
-      this.updateRepositoryContext(directory);
-      await this.refreshProjects(directory.path);
+      await this.syncDirectoryContext(directory);
       return directory;
     }
 
@@ -445,6 +429,12 @@ class CaffoldAppShell extends HTMLElement {
     this.clearRepositoryContext();
     this.projectSwitcher.clearContext({ error: this.filesPage.lastError });
     return false;
+  }
+
+  async syncDirectoryContext(directory) {
+    this.pathbar.path = directory.path;
+    this.updateRepositoryContext(directory);
+    await this.refreshProjects(directory.path);
   }
 
   async openFile(path, entry = null) {
@@ -657,10 +647,4 @@ function cleanPath(path) {
     .split("/")
     .filter((segment) => segment && segment !== "." && segment !== "..")
     .join("/");
-}
-
-function parentPath(path) {
-  const parts = cleanPath(path).split("/").filter(Boolean);
-  parts.pop();
-  return parts.join("/");
 }
