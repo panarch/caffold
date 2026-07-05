@@ -79,7 +79,7 @@ class CaffoldAppShell extends HTMLElement {
       if (this.gitLayout.repository) {
         this.gitRepository = this.gitLayout.repository;
       }
-      this.syncHeaderReviewStatus();
+      this.syncHeaderReviewContext();
       if (this.reviewWorkspace.isActive("git")) {
         this.updateWorkspaceChrome();
       }
@@ -88,7 +88,7 @@ class CaffoldAppShell extends HTMLElement {
       this.navigateOrOpenGithubRoute(event.detail.route, event.detail.options);
     });
     this.addEventListener("caffold:github-review-state-change", () => {
-      this.syncHeaderReviewStatus();
+      this.syncHeaderReviewContext();
       if (this.reviewWorkspace.isActive("github")) {
         this.updateWorkspaceChrome();
       }
@@ -507,7 +507,7 @@ class CaffoldAppShell extends HTMLElement {
       },
       details: () => this.gitWorkspaceDetails(),
     });
-    this.syncHeaderReviewStatus();
+    this.syncHeaderReviewContext();
     return await routePromise;
   }
 
@@ -619,7 +619,7 @@ class CaffoldAppShell extends HTMLElement {
     this.gitRepository = repository;
     void this.gitLayout.applyRepositoryContext({ path, repository });
     void this.githubLayout.applyRepositoryContext({ path, repository });
-    this.syncHeaderReviewStatus();
+    this.syncHeaderReviewContext();
   }
 
   reloadActiveReviewContext() {
@@ -637,7 +637,7 @@ class CaffoldAppShell extends HTMLElement {
     this.gitRepository = null;
     this.gitLayout.reset();
     this.githubLayout.reset();
-    this.syncHeaderReviewStatus();
+    this.syncHeaderReviewContext();
     this.closeReviewWorkspace();
   }
 
@@ -660,7 +660,7 @@ class CaffoldAppShell extends HTMLElement {
       },
       details: () => this.githubWorkspaceDetails(),
     });
-    this.syncHeaderReviewStatus();
+    this.syncHeaderReviewContext();
     return await routePromise;
   }
 
@@ -680,7 +680,7 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     this.reviewWorkspace.close();
-    this.syncHeaderReviewStatus();
+    this.syncHeaderReviewContext();
   }
 
   updateWorkspaceChrome() {
@@ -691,26 +691,12 @@ class CaffoldAppShell extends HTMLElement {
     this.reviewWorkspace.updateDetails(this.workspaceDetails());
   }
 
-  syncHeaderReviewStatus() {
-    if (!this.gitRepository) {
-      this.headerActions.gitStatus = {
-        available: false,
-        message: "Not a Git repository",
-      };
-      this.headerActions.githubStatus = {
-        available: false,
-        message: "No GitHub repository context",
-      };
-      return;
-    }
-
-    this.headerActions.gitStatus = {
-      available: true,
-      branch: this.gitRepository.branch,
-      dirty: this.gitRepository.dirty,
-      count: this.gitStatus?.files.length ?? null,
-    };
-    this.headerActions.githubStatus = this.githubStatus;
+  syncHeaderReviewContext() {
+    this.headerActions.setReviewContext({
+      repository: this.gitRepository,
+      gitStatus: this.gitStatus,
+      githubStatus: this.githubStatus,
+    });
   }
 
   workspaceSubtitle(label) {

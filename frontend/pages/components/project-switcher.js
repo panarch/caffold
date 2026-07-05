@@ -111,7 +111,9 @@ class CaffoldProjectSwitcher extends HTMLElement {
     }
 
     this.invalidateProjectRequests();
-    const existingProject = this.state.projects.find((candidate) => candidate.id === project.id);
+    const existingProject =
+      this.projectOverrides.get(project.id) ??
+      this.state.projects.find((candidate) => candidate.id === project.id);
     const nextProject = existingProject ?? project;
     this.projectOverrides.set(nextProject.id, nextProject);
     const projects = this.upsertProject(nextProject);
@@ -265,10 +267,22 @@ class CaffoldProjectSwitcher extends HTMLElement {
       return;
     }
 
+    const previousProject = this.state.projects.find((candidate) => candidate.id === id);
+    const nextName = name.trim();
+    if (previousProject && nextName) {
+      this.updateProjectRecord({
+        ...previousProject,
+        name: nextName,
+      });
+    }
+
     try {
       const project = await renameProject(id, name);
       this.updateProjectRecord(project);
     } catch (error) {
+      if (previousProject) {
+        this.updateProjectRecord(previousProject);
+      }
       this.setContextError(error);
     }
   }
@@ -468,10 +482,14 @@ class CaffoldProjectSwitcher extends HTMLElement {
       return null;
     }
 
-    return (
-      this.state.projects.find((project) => project.id === this.state.currentProjectId) ??
-      (this.routedProject?.id === this.state.currentProjectId ? this.routedProject : null)
-    );
+    const project =
+      this.state.projects.find((candidate) => candidate.id === this.state.currentProjectId) ??
+      (this.routedProject?.id === this.state.currentProjectId ? this.routedProject : null);
+    if (!project) {
+      return null;
+    }
+
+    return this.projectOverrides.get(project.id) ?? project;
   }
 
   get currentProjectId() {

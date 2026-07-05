@@ -85,21 +85,22 @@ state for the current directory. It performs project list/candidate refresh and
 project CRUD requests, then emits selected project records upward. The app root
 keeps only project-aware URL execution and project-relative path mapping.
 When a loaded directory enters or leaves a Git repository, the app root decides
-the current repository context, mirrors domain status into the header, and
-reloads the active review route if needed. The Git and GitHub layouts apply
-that repository context and own their own status refresh requests. Git and
-GitHub review route entry stays domain-specific: the app root prepares
-project-aware path options and cross-surface cleanup, the review workspace owns
-active-domain chrome lifecycle, and the Git/GitHub layouts own their own route
-execution semantics. The two flows should not be hidden behind one generic
-helper because GitHub availability/status refresh has different semantics from
-Git review state.
+the current repository context and reloads the active review route if needed.
+The Git and GitHub layouts apply that repository context and own their own
+status refresh requests. Git and GitHub review route entry stays
+domain-specific: the app root prepares project-aware path options and
+cross-surface cleanup, the review workspace owns active-domain chrome
+lifecycle, and the Git/GitHub layouts own their own route execution semantics.
+The two flows should not be hidden behind one generic helper because GitHub
+availability/status refresh has different semantics from Git review state.
 
-`scaffold-header-actions` owns header-only action status. Git and GitHub status
-are still supplied by the domain layouts because they depend on the loaded
-repository, but Codex app-server status is header-local and is loaded directly
-by the header actions component, then passed to `scaffold-codex-header-action`.
-The app root should not fetch Codex status.
+`scaffold-header-actions` owns header-only action status derivation. The app
+root supplies only the loaded repository context plus raw Git/GitHub status
+payloads, and the header actions component maps those into Git/GitHub button
+availability, labels, messages, and badges. Codex app-server status is
+header-local and is loaded directly by the header actions component, then
+passed to `scaffold-codex-header-action`. The app root should not fetch Codex
+status or assemble header display state.
 
 `(review-workspace)` is a pathless review container inside the app root. It owns
 the active review domain, shared review chrome, close/back behavior, panel

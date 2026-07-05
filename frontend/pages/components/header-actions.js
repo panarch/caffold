@@ -108,6 +108,15 @@ class CaffoldHeaderActions extends HTMLElement {
     return this.codexStatusValue ?? null;
   }
 
+  setReviewContext(context = {}) {
+    const repository = context?.repository ?? null;
+    const gitStatus = context?.gitStatus ?? null;
+    const githubStatus = context?.githubStatus ?? null;
+
+    this.gitStatus = gitHeaderStatus(repository, gitStatus);
+    this.githubStatus = githubHeaderStatus(repository, githubStatus);
+  }
+
   async loadCodexStatus() {
     const requestId = ++this.codexStatusRequestId;
 
@@ -208,3 +217,30 @@ class CaffoldHeaderActions extends HTMLElement {
 }
 
 customElements.define("caffold-header-actions", CaffoldHeaderActions);
+
+function gitHeaderStatus(repository, gitStatus) {
+  if (!repository) {
+    return {
+      available: false,
+      message: "Not a Git repository",
+    };
+  }
+
+  return {
+    available: true,
+    branch: repository.branch,
+    dirty: repository.dirty,
+    count: gitStatus?.files?.length ?? null,
+  };
+}
+
+function githubHeaderStatus(repository, githubStatus) {
+  if (!repository) {
+    return {
+      available: false,
+      message: "No GitHub repository context",
+    };
+  }
+
+  return githubStatus ?? null;
+}
