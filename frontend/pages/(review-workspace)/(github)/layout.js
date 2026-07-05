@@ -337,6 +337,39 @@ class CaffoldGithubReviewLayout extends HTMLElement {
   }
 
   async openRoute(route, options = {}) {
+    this.setRouteMode(route);
+    const status = await this.githubStatusForRoute(route);
+    this.setContext({ githubStatus: status });
+    const result = await this.openRouteContent(route, options);
+    return await this.finishGithubReviewRoute(route, options, result);
+  }
+
+  setRouteMode(route) {
+    if (route.kind === "issues") {
+      this.setMode("issues");
+      return;
+    }
+
+    if (route.kind === "pulls") {
+      this.setMode("pulls");
+    }
+  }
+
+  async githubStatusForRoute(route) {
+    return route.number
+      ? await this.ensureStatus(this.currentPath)
+      : this.githubStatus;
+  }
+
+  async finishGithubReviewRoute(route, options, result) {
+    if (!route.number && !options.skipReload && !this.githubStatus) {
+      return await this.ensureStatus(this.currentPath);
+    }
+
+    return result;
+  }
+
+  async openRouteContent(route, options = {}) {
     if (route.kind === "issues") {
       const issues = await this.openIssuesWorkspace({
         page: route.page,
@@ -492,6 +525,20 @@ class CaffoldGithubReviewLayout extends HTMLElement {
     return {
       kind: "issues",
       page: this.issuesPage,
+    };
+  }
+
+  routeForActiveMode() {
+    if (this.activeMode === "pulls") {
+      return {
+        kind: "pulls",
+        page: 1,
+      };
+    }
+
+    return {
+      kind: "issues",
+      page: 1,
     };
   }
 

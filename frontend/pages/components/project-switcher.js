@@ -21,6 +21,7 @@ class CaffoldProjectSwitcher extends HTMLElement {
     this.projectRequestId = 0;
     this.currentPath = "";
     this.routedProject = null;
+    this.projectOverrides = new Map();
     this.state = {
       projects: [],
       candidate: null,
@@ -71,7 +72,9 @@ class CaffoldProjectSwitcher extends HTMLElement {
         return null;
       }
 
-      const projects = projectsPayload.projects ?? [];
+      const projects = (projectsPayload.projects ?? []).map(
+        (project) => this.projectOverrides.get(project.id) ?? project,
+      );
       const candidate = candidatePayload.candidate ?? null;
       const currentProjectId = candidate?.alreadyRegistered ? candidate.projectId : null;
       const routedProject =
@@ -108,12 +111,15 @@ class CaffoldProjectSwitcher extends HTMLElement {
     }
 
     this.invalidateProjectRequests();
-    const projects = this.upsertProject(project);
-    this.routedProject = project;
+    const existingProject = this.state.projects.find((candidate) => candidate.id === project.id);
+    const nextProject = existingProject ?? project;
+    this.projectOverrides.set(nextProject.id, nextProject);
+    const projects = this.upsertProject(nextProject);
+    this.routedProject = nextProject;
     this.setState({
       projects,
       candidate: this.state.candidate,
-      currentProjectId: project.id,
+      currentProjectId: nextProject.id,
       error: null,
     });
   }
@@ -155,6 +161,7 @@ class CaffoldProjectSwitcher extends HTMLElement {
     }
 
     this.invalidateProjectRequests();
+    this.projectOverrides.set(project.id, project);
     const projects = this.upsertProject(project);
     if (this.routedProject?.id === project.id) {
       this.routedProject = project;
@@ -279,6 +286,7 @@ class CaffoldProjectSwitcher extends HTMLElement {
 
     try {
       await deleteProject(id);
+      this.projectOverrides.delete(id);
       await this.refresh(this.currentPath);
     } catch (error) {
       this.setContextError(error);

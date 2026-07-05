@@ -588,6 +588,27 @@ class CaffoldGitReviewLayout extends HTMLElement {
     };
   }
 
+  routeForActiveMode() {
+    if (this.activeMode === "log") {
+      return {
+        kind: "log",
+        page: 1,
+      };
+    }
+
+    if (this.activeMode === "compare") {
+      return {
+        kind: "compare",
+        path: "",
+      };
+    }
+
+    return {
+      kind: "diff",
+      path: "",
+    };
+  }
+
   routeForCompareRefs(baseRef, headRef) {
     return {
       kind: "compare",

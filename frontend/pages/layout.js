@@ -17,7 +17,6 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     this.initialized = true;
-    this.workspaceMode = null;
     this.currentRoute = null;
     this.isApplyingRoute = false;
     this.render();
@@ -81,7 +80,7 @@ class CaffoldAppShell extends HTMLElement {
         this.gitRepository = this.gitLayout.repository;
       }
       this.syncHeaderReviewStatus();
-      if (this.workspaceMode === "git") {
+      if (this.reviewWorkspace.isActive("git")) {
         this.updateWorkspaceChrome();
       }
     });
@@ -90,7 +89,7 @@ class CaffoldAppShell extends HTMLElement {
     });
     this.addEventListener("caffold:github-review-state-change", () => {
       this.syncHeaderReviewStatus();
-      if (this.workspaceMode === "github") {
+      if (this.reviewWorkspace.isActive("github")) {
         this.updateWorkspaceChrome();
       }
     });
@@ -310,6 +309,9 @@ class CaffoldAppShell extends HTMLElement {
     if (!(await this.ensureProjectRootLoaded(project))) {
       return;
     }
+    if (!this.isCurrentRoute(route)) {
+      return;
+    }
 
     await this.openGitRoute(route, {
       resolvePath: (path) => this.projectPath(project, path),
@@ -319,6 +321,9 @@ class CaffoldAppShell extends HTMLElement {
 
   async applyGithubRoute(project, route) {
     if (!(await this.ensureProjectRootLoaded(project))) {
+      return;
+    }
+    if (!this.isCurrentRoute(route)) {
       return;
     }
 
@@ -338,6 +343,10 @@ class CaffoldAppShell extends HTMLElement {
       kind: "files",
       path: routePath,
     });
+  }
+
+  isCurrentRoute(route) {
+    return Boolean(this.currentRoute && routeEquals(this.currentRoute, route));
   }
 
   navigateToCurrentProjectRoute(route) {
@@ -390,12 +399,12 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   navigateToWorkspaceBackRoute() {
-    if (this.workspaceMode === "git") {
+    if (this.reviewWorkspace.isActive("git")) {
       const route = this.gitLayout.routeForWorkspaceBack();
       return route ? this.navigateOrOpenGitRoute(route) : false;
     }
 
-    if (this.workspaceMode === "github") {
+    if (this.reviewWorkspace.isActive("github")) {
       const route = this.githubLayout.routeForWorkspaceBack();
       return route ? this.navigateOrOpenGithubRoute(route) : false;
     }
@@ -484,25 +493,28 @@ class CaffoldAppShell extends HTMLElement {
       return null;
     }
 
+    this.prepareGitReviewRoute(route);
+    const routePromise = this.reviewWorkspace.openGitReviewRoute(route, {
+      context: {
+        path: this.currentPath,
+        repository: this.gitRepository,
+      },
+      routeOptions: {
+        kind: options.kind,
+        resolvePath: options.resolvePath,
+        skipReload: options.skipReload,
+        status: options.status,
+      },
+      details: () => this.gitWorkspaceDetails(),
+    });
+    this.syncHeaderReviewStatus();
+    return await routePromise;
+  }
+
+  prepareGitReviewRoute(route) {
     if (route.path || (route.kind === "log" && route.sha)) {
       this.filesPage.clearSelectedFile();
     }
-    this.workspaceMode = "git";
-    this.gitLayout.setContext({
-      path: this.currentPath,
-      repository: this.gitRepository,
-    });
-    const routePromise = this.gitLayout.openRoute(route, {
-      kind: options.kind,
-      resolvePath: options.resolvePath,
-      skipReload: options.skipReload,
-      status: options.status,
-    });
-    this.reviewWorkspace.open("git", this.workspaceDetails());
-    this.syncHeaderReviewStatus();
-    const result = await routePromise;
-    this.updateWorkspaceChrome();
-    return result;
   }
 
   async refreshProjects(path = this.currentPath) {
@@ -559,7 +571,7 @@ class CaffoldAppShell extends HTMLElement {
   canApplyLoadedGitRoute(project, route) {
     if (
       !this.isProjectRootLoaded(project) ||
-      this.workspaceMode !== "git" ||
+      !this.reviewWorkspace.isActive("git") ||
       !this.gitRepository
     ) {
       return false;
@@ -571,7 +583,7 @@ class CaffoldAppShell extends HTMLElement {
   canApplyLoadedGithubRoute(project, route) {
     if (
       !this.isProjectRootLoaded(project) ||
-      this.workspaceMode !== "github" ||
+      !this.reviewWorkspace.isActive("github") ||
       !this.gitRepository
     ) {
       return false;
@@ -611,49 +623,14 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   reloadActiveReviewContext() {
-    if (this.workspaceMode === "git") {
-      this.openGitRoute(this.gitRouteForActiveMode());
+    if (this.reviewWorkspace.isActive("git")) {
+      this.openGitRoute(this.gitLayout.routeForActiveMode());
       return;
     }
 
-    if (this.workspaceMode === "github") {
-      this.openGithubRoute(this.githubRouteForActiveMode());
+    if (this.reviewWorkspace.isActive("github")) {
+      this.openGithubRoute(this.githubLayout.routeForActiveMode());
     }
-  }
-
-  gitRouteForActiveMode() {
-    if (this.gitLayout.activeMode === "log") {
-      return {
-        kind: "log",
-        page: 1,
-      };
-    }
-
-    if (this.gitLayout.activeMode === "compare") {
-      return {
-        kind: "compare",
-        path: "",
-      };
-    }
-
-    return {
-      kind: "diff",
-      path: "",
-    };
-  }
-
-  githubRouteForActiveMode() {
-    if (this.githubLayout.activeMode === "pulls") {
-      return {
-        kind: "pulls",
-        page: 1,
-      };
-    }
-
-    return {
-      kind: "issues",
-      page: 1,
-    };
   }
 
   clearRepositoryContext() {
@@ -669,11 +646,25 @@ class CaffoldAppShell extends HTMLElement {
       return null;
     }
 
-    const needsStatus = Boolean(route.number);
-    const status = needsStatus
-      ? await this.githubLayout.ensureStatus(this.currentPath)
-      : this.githubStatus;
-    this.workspaceMode = "github";
+    this.prepareGithubReviewRoute(route);
+    const routePromise = this.reviewWorkspace.openGithubReviewRoute(route, {
+      context: {
+        path: this.currentPath,
+        repository: this.gitRepository,
+        githubStatus: this.githubStatus,
+      },
+      routeOptions: {
+        resolvePath: options.resolvePath,
+        skipReload: options.skipReload,
+        status: options.status,
+      },
+      details: () => this.githubWorkspaceDetails(),
+    });
+    this.syncHeaderReviewStatus();
+    return await routePromise;
+  }
+
+  prepareGithubReviewRoute(route) {
     if (route.path || route.number) {
       this.filesPage.clearSelectedFile();
       this.gitLayout.setSelectedPath("");
@@ -681,57 +672,23 @@ class CaffoldAppShell extends HTMLElement {
     if (!route.number) {
       this.gitLayout.setView("list");
     }
-    this.githubLayout.setContext({
-      path: this.currentPath,
-      repository: this.gitRepository,
-      githubStatus: status,
-    });
-    const routePromise = this.githubLayout.openRoute(route, {
-      resolvePath: options.resolvePath,
-      skipReload: options.skipReload,
-      status: options.status,
-    });
-    this.reviewWorkspace.open("github", this.workspaceDetails());
-    this.syncHeaderReviewStatus();
-    const result = await routePromise;
-    this.updateWorkspaceChrome();
-
-    if (!route.number && !options.skipReload && !this.githubStatus) {
-      const latestStatus = await this.githubLayout.ensureStatus(this.currentPath);
-      this.syncHeaderReviewStatus();
-      if (this.workspaceMode === "github") {
-        this.updateWorkspaceChrome();
-      }
-      return latestStatus;
-    }
-
-    return result;
   }
 
   closeReviewWorkspace() {
-    if (!this.workspaceMode && this.reviewWorkspace.hidden) {
+    if (!this.reviewWorkspace.activeMode && this.reviewWorkspace.hidden) {
       return;
     }
 
-    this.workspaceMode = null;
-    this.gitLayout.setView("list");
-    this.githubLayout.backToList();
     this.reviewWorkspace.close();
     this.syncHeaderReviewStatus();
   }
 
   updateWorkspaceChrome() {
-    if (!this.workspaceMode) {
+    if (!this.reviewWorkspace.activeMode) {
       return;
     }
 
     this.reviewWorkspace.updateDetails(this.workspaceDetails());
-    if (this.workspaceMode === "git") {
-      this.reviewWorkspace.setGitView();
-    }
-    if (this.workspaceMode === "github") {
-      this.reviewWorkspace.setGithubView();
-    }
   }
 
   syncHeaderReviewStatus() {
@@ -769,12 +726,12 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   workspaceDetails() {
-    if (this.workspaceMode === "git") {
-      return this.gitLayout.details((label) => this.workspaceSubtitle(label));
+    if (this.reviewWorkspace.isActive("git")) {
+      return this.gitWorkspaceDetails();
     }
 
-    if (this.workspaceMode === "github") {
-      return this.githubLayout.details();
+    if (this.reviewWorkspace.isActive("github")) {
+      return this.githubWorkspaceDetails();
     }
 
     return {
@@ -782,6 +739,14 @@ class CaffoldAppShell extends HTMLElement {
       subtitle: "",
       backVisible: false,
     };
+  }
+
+  gitWorkspaceDetails() {
+    return this.gitLayout.details((label) => this.workspaceSubtitle(label));
+  }
+
+  githubWorkspaceDetails() {
+    return this.githubLayout.details();
   }
 }
 

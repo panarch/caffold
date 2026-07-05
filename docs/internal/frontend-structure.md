@@ -87,7 +87,13 @@ keeps only project-aware URL execution and project-relative path mapping.
 When a loaded directory enters or leaves a Git repository, the app root decides
 the current repository context, mirrors domain status into the header, and
 reloads the active review route if needed. The Git and GitHub layouts apply
-that repository context and own their own status refresh requests.
+that repository context and own their own status refresh requests. Git and
+GitHub review route entry stays domain-specific: the app root prepares
+project-aware path options and cross-surface cleanup, the review workspace owns
+active-domain chrome lifecycle, and the Git/GitHub layouts own their own route
+execution semantics. The two flows should not be hidden behind one generic
+helper because GitHub availability/status refresh has different semantics from
+Git review state.
 
 `scaffold-header-actions` owns header-only action status. Git and GitHub status
 are still supplied by the domain layouts because they depend on the loaded
@@ -96,8 +102,9 @@ by the header actions component, then passed to `scaffold-codex-header-action`.
 The app root should not fetch Codex status.
 
 `(review-workspace)` is a pathless review container inside the app root. It owns
-shared review chrome, close/back behavior, panel resizing, and mobile
-list/detail transitions. It is not a Git-only or GitHub-only page.
+the active review domain, shared review chrome, close/back behavior, panel
+resizing, and mobile list/detail transitions. It is not a Git-only or
+GitHub-only page.
 Nested layouts own their own list/detail flow once they have a clear domain
 boundary. `(git)/layout` owns Git status loading, Git submode switching,
 Compare controls, Diff, Compare, and Log list/detail state. It also translates

@@ -164,18 +164,20 @@ class CaffoldReviewWorkspace extends HTMLElement {
     this.backVisible = Boolean(options.backVisible);
     this.backLabel = options.backLabel ?? "Back";
     this.renderChrome();
-    this.gitView.hidden = mode !== "git";
-    this.githubView.hidden = mode !== "github";
-    this.updateMobileDetailState();
+    this.updateVisibleMode();
   }
 
   close() {
+    this.ensureRendered();
+    this.gitLayout.setView("list");
+    this.githubLayout.backToList();
     this.hidden = true;
     this.mode = null;
     this.dataset.workspaceMode = "";
     this.backVisible = false;
     this.controlsHtml = "";
     this.renderChrome();
+    this.updateVisibleMode();
   }
 
   updateDetails(options = {}) {
@@ -187,15 +189,44 @@ class CaffoldReviewWorkspace extends HTMLElement {
     this.controlsHtml = options.controlsHtml ?? "";
     this.backLabel = options.backLabel ?? this.backLabel ?? "Back";
     this.renderChrome();
+    this.updateVisibleMode();
   }
 
-  setGitView() {
-    this.ensureRendered();
-    this.updateMobileDetailState();
+  get activeMode() {
+    return this.mode ?? null;
   }
 
-  setGithubView() {
+  isActive(mode) {
+    return this.activeMode === mode;
+  }
+
+  async openGitReviewRoute(route, options = {}) {
     this.ensureRendered();
+    this.gitLayout.setContext(options.context);
+    const routePromise = this.gitLayout.openRoute(route, options.routeOptions);
+    this.open("git", resolveDetails(options.details));
+    const result = await routePromise;
+    this.updateDetails(resolveDetails(options.details));
+    return result;
+  }
+
+  async openGithubReviewRoute(route, options = {}) {
+    this.ensureRendered();
+    this.githubLayout.setContext(options.context);
+    const routePromise = this.githubLayout.openRoute(route, options.routeOptions);
+    this.open("github", resolveDetails(options.details));
+    const result = await routePromise;
+    this.updateDetails(resolveDetails(options.details));
+    return result;
+  }
+
+  updateVisibleMode() {
+    if (!this.rendered) {
+      return;
+    }
+
+    this.gitView.hidden = this.mode !== "git";
+    this.githubView.hidden = this.mode !== "github";
     this.updateMobileDetailState();
   }
 
@@ -393,4 +424,12 @@ function workspaceTitle(mode) {
   }
 
   return "Review";
+}
+
+function resolveDetails(details) {
+  if (typeof details === "function") {
+    return details();
+  }
+
+  return details ?? {};
 }
