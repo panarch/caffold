@@ -247,6 +247,33 @@ class CaffoldReviewWorkspace extends HTMLElement {
     }
   }
 
+  applyRepositoryContext({ path, repository } = {}) {
+    this.ensureRendered();
+    void this.gitLayout.applyRepositoryContext({ path, repository });
+    void this.githubLayout.applyRepositoryContext({ path, repository });
+  }
+
+  reloadActiveReviewContext(options = {}) {
+    if (this.isActive("git")) {
+      options.openGitRoute?.(this.gitLayout.routeForActiveMode());
+      return true;
+    }
+
+    if (this.isActive("github")) {
+      options.openGithubRoute?.(this.githubLayout.routeForActiveMode());
+      return true;
+    }
+
+    return false;
+  }
+
+  clearRepositoryContext() {
+    this.ensureRendered();
+    this.gitLayout.reset();
+    this.githubLayout.reset();
+    this.close();
+  }
+
   refreshDetails() {
     if (!this.activeMode) {
       return;

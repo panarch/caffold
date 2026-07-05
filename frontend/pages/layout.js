@@ -591,28 +591,21 @@ class CaffoldAppShell extends HTMLElement {
 
   applyRepositoryContext(path, repository) {
     this.gitRepository = repository;
-    void this.gitLayout.applyRepositoryContext({ path, repository });
-    void this.githubLayout.applyRepositoryContext({ path, repository });
+    this.reviewWorkspace.applyRepositoryContext({ path, repository });
     this.syncHeaderReviewContext();
   }
 
   reloadActiveReviewContext() {
-    if (this.reviewWorkspace.isActive("git")) {
-      this.openGitRoute(this.gitLayout.routeForActiveMode());
-      return;
-    }
-
-    if (this.reviewWorkspace.isActive("github")) {
-      this.openGithubRoute(this.githubLayout.routeForActiveMode());
-    }
+    this.reviewWorkspace.reloadActiveReviewContext({
+      openGitRoute: (route) => this.openGitRoute(route),
+      openGithubRoute: (route) => this.openGithubRoute(route),
+    });
   }
 
   clearRepositoryContext() {
     this.gitRepository = null;
-    this.gitLayout.reset();
-    this.githubLayout.reset();
+    this.reviewWorkspace.clearRepositoryContext();
     this.syncHeaderReviewContext();
-    this.closeReviewWorkspace();
   }
 
   async openGithubRoute(route, options = {}) {

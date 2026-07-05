@@ -86,9 +86,10 @@ project CRUD requests, then emits selected project records upward. The app root
 keeps only project-aware URL execution and project-relative path mapping.
 When a loaded directory enters or leaves a Git repository, the app root decides
 the current repository context and reloads the active review route if needed.
-The Git and GitHub layouts apply that repository context and own their own
-status refresh requests. Git and GitHub review route entry stays
-domain-specific: the app root prepares project-aware path options and
+The review workspace applies or clears that repository context across review
+domains and asks the active domain for the route to reload. The Git and GitHub
+layouts own their own status refresh requests. Git and GitHub review route entry
+stays domain-specific: the app root prepares project-aware path options and
 file-browser cleanup callbacks, the review workspace decides active-domain
 cleanup and chrome lifecycle, and the Git/GitHub layouts own their own route
 execution semantics.
