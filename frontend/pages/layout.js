@@ -1,4 +1,4 @@
-import { getCodexStatus, getHealth, openProject } from "../api.js";
+import { getHealth, openProject } from "../api.js";
 import { parentRoute, parseRoute, routeEquals, routeUrl } from "../navigation-routes.js";
 import "./components/pathbar.js";
 import "./components/project-switcher.js";
@@ -17,8 +17,6 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     this.initialized = true;
-    this.codexStatusRequestId = 0;
-    this.codexStatus = null;
     this.workspaceMode = null;
     this.currentRoute = null;
     this.isApplyingRoute = false;
@@ -34,8 +32,6 @@ class CaffoldAppShell extends HTMLElement {
     this.gitLayout.ensureRendered();
     this.githubLayout = this.reviewWorkspace.querySelector("caffold-github-review-layout");
     this.githubLayout.ensureRendered();
-    this.loadCodexStatus();
-
     this.installNavigationHandlers();
 
     this.addEventListener("caffold:navigate", (event) => {
@@ -608,33 +604,6 @@ class CaffoldAppShell extends HTMLElement {
       projectId: project.id,
       path: "",
     }) || (await this.loadDirectory(project.relativePath));
-  }
-
-  async loadCodexStatus() {
-    const requestId = ++this.codexStatusRequestId;
-
-    try {
-      const status = await getCodexStatus();
-      if (requestId !== this.codexStatusRequestId) {
-        return;
-      }
-
-      this.codexStatus = status;
-      this.headerActions.codexStatus = status;
-    } catch (error) {
-      if (requestId !== this.codexStatusRequestId) {
-        return;
-      }
-
-      const status = {
-        available: false,
-        codexCliAvailable: null,
-        appServerAvailable: null,
-        message: error.message,
-      };
-      this.codexStatus = status;
-      this.headerActions.codexStatus = status;
-    }
   }
 
   updateGitContext(directory) {

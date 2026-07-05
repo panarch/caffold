@@ -1,3 +1,4 @@
+import { getCodexStatus } from "../../api.js";
 import { sameCodexStatus } from "./header-actions/codex-status.js";
 import { sameGitStatus } from "./header-actions/git-status.js";
 import { sameGithubStatus } from "./header-actions/github-status.js";
@@ -10,6 +11,7 @@ class CaffoldHeaderActions extends HTMLElement {
     }
 
     this.initialized = true;
+    this.codexStatusRequestId = 0;
     this.addEventListener("click", (event) => {
       const groupButton = event.target.closest("button[data-action-group]");
       if (groupButton) {
@@ -55,6 +57,7 @@ class CaffoldHeaderActions extends HTMLElement {
     warmIcons();
 
     this.render();
+    this.loadCodexStatus();
   }
 
   disconnectedCallback() {
@@ -103,6 +106,30 @@ class CaffoldHeaderActions extends HTMLElement {
 
   get codexStatus() {
     return this.codexStatusValue ?? null;
+  }
+
+  async loadCodexStatus() {
+    const requestId = ++this.codexStatusRequestId;
+
+    try {
+      const status = await getCodexStatus();
+      if (requestId !== this.codexStatusRequestId) {
+        return;
+      }
+
+      this.codexStatus = status;
+    } catch (error) {
+      if (requestId !== this.codexStatusRequestId) {
+        return;
+      }
+
+      this.codexStatus = {
+        available: false,
+        codexCliAvailable: null,
+        appServerAvailable: null,
+        message: error.message,
+      };
+    }
   }
 
   render() {

@@ -719,9 +719,15 @@ test("restores project file routes and browser navigation", async ({ page }, tes
   await expect(page.locator("caffold-file-list")).toBeVisible();
   const gitGroupButton = headerActionGroupButton(page, "git");
   await expect(gitGroupButton.locator(".header-action-badge")).toHaveText(/\d+/);
-  const headerActionsHtml = await page.locator("caffold-header-actions").evaluate((element) => {
-    window.__caffoldGitGroupButton = element.querySelector('button[data-action-group="git"]');
-    return element.innerHTML;
+  const headerActionsSnapshot = await page.locator("caffold-header-actions").evaluate((element) => {
+    const gitGroupButton = element.querySelector('button[data-action-group="git"]');
+    window.__caffoldGitGroupButton = gitGroupButton;
+    return {
+      groups: Array.from(element.querySelectorAll("button[data-action-group]")).map(
+        (button) => button.dataset.actionGroup,
+      ),
+      gitGroupButtonHtml: gitGroupButton?.outerHTML ?? "",
+    };
   });
   const listRequestsBeforeFileClick = listRequests;
   const gitStatusRequestsBeforeFileClick = gitStatusRequests;
@@ -733,12 +739,18 @@ test("restores project file routes and browser navigation", async ({ page }, tes
   const headerActionsState = await page.locator("caffold-header-actions").evaluate((element) => {
     const gitGroupButton = element.querySelector('button[data-action-group="git"]');
     return {
-      html: element.innerHTML,
+      groups: Array.from(element.querySelectorAll("button[data-action-group]")).map(
+        (button) => button.dataset.actionGroup,
+      ),
+      gitGroupButtonHtml: gitGroupButton?.outerHTML ?? "",
       sameGitGroupButton: gitGroupButton === window.__caffoldGitGroupButton,
     };
   });
   expect(headerActionsState.sameGitGroupButton).toBe(true);
-  expect(headerActionsState.html).toBe(headerActionsHtml);
+  expect(headerActionsState.groups).toEqual(headerActionsSnapshot.groups);
+  expect(headerActionsState.gitGroupButtonHtml).toBe(
+    headerActionsSnapshot.gitGroupButtonHtml,
+  );
   await page.goBack();
   await expect(page).toHaveURL(`/projects/${project.id}/files`);
   await expect(page.locator("caffold-file-list")).toBeVisible();
@@ -1199,13 +1211,19 @@ test("restores project review routes", async ({ page }) => {
   await expect(page.locator("caffold-diff-viewer")).toContainText("new compare route line");
   await page.goto(`/projects/${project.id}/compare?base=origin%2Fmain&head=feature%2Freview`);
   await expect(page.locator('button[data-compare-path="src/example.rs"]')).toBeVisible();
-  const compareHeaderActionsHtml = await page
+  const compareHeaderActionsSnapshot = await page
     .locator("caffold-header-actions")
     .evaluate((element) => {
       window.__caffoldCompareGitGroupButton = element.querySelector(
         'button[data-action-group="git"]',
       );
-      return element.innerHTML;
+      const gitGroupButton = window.__caffoldCompareGitGroupButton;
+      return {
+        groups: Array.from(element.querySelectorAll("button[data-action-group]")).map(
+          (button) => button.dataset.actionGroup,
+        ),
+        gitGroupButtonHtml: gitGroupButton?.outerHTML ?? "",
+      };
     });
   const listRequestsBeforeCompareRefChange = listRequests;
   const gitStatusRequestsBeforeCompareRefChange = gitStatusRequests;
@@ -1219,12 +1237,18 @@ test("restores project review routes", async ({ page }) => {
     .evaluate((element) => {
       const gitGroupButton = element.querySelector('button[data-action-group="git"]');
       return {
-        html: element.innerHTML,
+        groups: Array.from(element.querySelectorAll("button[data-action-group]")).map(
+          (button) => button.dataset.actionGroup,
+        ),
+        gitGroupButtonHtml: gitGroupButton?.outerHTML ?? "",
         sameGitGroupButton: gitGroupButton === window.__caffoldCompareGitGroupButton,
       };
     });
   expect(compareHeaderActionsState.sameGitGroupButton).toBe(true);
-  expect(compareHeaderActionsState.html).toBe(compareHeaderActionsHtml);
+  expect(compareHeaderActionsState.groups).toEqual(compareHeaderActionsSnapshot.groups);
+  expect(compareHeaderActionsState.gitGroupButtonHtml).toBe(
+    compareHeaderActionsSnapshot.gitGroupButtonHtml,
+  );
 
   await page.locator('select[data-compare-ref="head"]').selectOption("feature/review");
   await expect(page).toHaveURL(

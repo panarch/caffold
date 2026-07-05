@@ -85,6 +85,12 @@ state for the current directory. It performs project list/candidate refresh and
 project CRUD requests, then emits selected project records upward. The app root
 keeps only project-aware URL execution and project-relative path mapping.
 
+`scaffold-header-actions` owns header-only action status. Git and GitHub status
+are still supplied by the domain layouts because they depend on the loaded
+repository, but Codex app-server status is header-local and is loaded directly
+by the header actions component, then passed to `scaffold-codex-header-action`.
+The app root should not fetch Codex status.
+
 `(review-workspace)` is a pathless review container inside the app root. It owns
 shared review chrome, close/back behavior, panel resizing, and mobile
 list/detail transitions. It is not a Git-only or GitHub-only page.
