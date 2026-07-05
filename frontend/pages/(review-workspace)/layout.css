@@ -192,6 +192,42 @@ caffold-review-workspace.is-resizing-review-panel {
     grid-template-columns: 1fr;
   }
 
+  caffold-review-workspace[data-mobile-detail="true"] caffold-review-file-viewer .viewer-panel > header {
+    padding: 4px 8px;
+  }
+
+  caffold-review-workspace[data-mobile-detail="true"] caffold-review-file-viewer .viewer-title-row {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    gap: 6px;
+  }
+
+  caffold-review-workspace[data-mobile-detail="true"] caffold-review-file-viewer .viewer-info-button,
+  caffold-review-workspace[data-mobile-detail="true"] caffold-review-file-viewer .viewer-close-button {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--accent);
+    cursor: pointer;
+  }
+
+  caffold-review-workspace[data-mobile-detail="true"] caffold-review-file-viewer .viewer-close-button:hover,
+  caffold-review-workspace[data-mobile-detail="true"] caffold-review-file-viewer .viewer-close-button:focus-visible {
+    border-color: #abcbbf;
+    background: #f7fbf8;
+    outline: none;
+  }
+
+  caffold-review-workspace[data-mobile-detail="true"] caffold-review-file-viewer .viewer-close-icon {
+    width: 1rem;
+    height: 1rem;
+    stroke-width: 2;
+  }
+
 }
 
 @media (max-width: 520px) {
