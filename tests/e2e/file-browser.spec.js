@@ -1943,7 +1943,11 @@ test("keeps list scroll positions when selecting files and changes", async ({ pa
   await expect(page.locator("caffold-diff-viewer")).toContainText("long_change_name_fixture");
   if (testInfo.project.name === "phone") {
     await page.getByRole("button", { name: "Back to changes" }).click();
-    await expect(page.locator("caffold-git-diff-page")).toBeVisible();
+    await expect(page.locator("caffold-git-diff-page")).toHaveAttribute(
+      "data-detail-view",
+      "list",
+    );
+    await expect(changesList).toBeVisible();
   }
   await expectPreservedScroll(changesList, beforeChangesScroll);
 });

@@ -77,11 +77,11 @@ class CaffoldAppShell extends HTMLElement {
       );
     });
     this.addEventListener("caffold:git-review-state-change", () => {
+      if (this.gitLayout.repository) {
+        this.gitRepository = this.gitLayout.repository;
+      }
+      this.syncHeaderReviewStatus();
       if (this.workspaceMode === "git") {
-        if (this.gitLayout.repository) {
-          this.gitRepository = this.gitLayout.repository;
-        }
-        this.updateGitButton();
         this.updateWorkspaceChrome();
       }
     });
@@ -89,9 +89,7 @@ class CaffoldAppShell extends HTMLElement {
       this.navigateOrOpenGithubRoute(event.detail.route, event.detail.options);
     });
     this.addEventListener("caffold:github-review-state-change", () => {
-      if (this.gitRepository) {
-        this.headerActions.githubStatus = this.githubStatus;
-      }
+      this.syncHeaderReviewStatus();
       if (this.workspaceMode === "github") {
         this.updateWorkspaceChrome();
       }
@@ -446,7 +444,7 @@ class CaffoldAppShell extends HTMLElement {
 
     if (directory) {
       this.pathbar.path = directory.path;
-      this.updateGitContext(directory);
+      this.updateRepositoryContext(directory);
       await this.refreshProjects(directory.path);
       return directory;
     }
@@ -455,7 +453,7 @@ class CaffoldAppShell extends HTMLElement {
       return false;
     }
 
-    this.clearGitContext();
+    this.clearRepositoryContext();
     this.projectSwitcher.clearContext({ error: this.filesPage.lastError });
     return false;
   }
@@ -501,7 +499,7 @@ class CaffoldAppShell extends HTMLElement {
       status: options.status,
     });
     this.reviewWorkspace.open("git", this.workspaceDetails());
-    this.updateGitButton();
+    this.syncHeaderReviewStatus();
     const result = await routePromise;
     this.updateWorkspaceChrome();
     return result;
@@ -582,18 +580,6 @@ class CaffoldAppShell extends HTMLElement {
     return this.githubLayout.canReuseRoute(route);
   }
 
-  async ensureGithubStatus() {
-    if (!this.gitRepository) {
-      return null;
-    }
-
-    this.githubLayout.setContext({
-      path: this.currentPath,
-      repository: this.gitRepository,
-    });
-    return await this.githubLayout.ensureStatus(this.currentPath);
-  }
-
   async openProjectRoute(project) {
     if (!project?.id) {
       return;
@@ -606,112 +592,76 @@ class CaffoldAppShell extends HTMLElement {
     }) || (await this.loadDirectory(project.relativePath));
   }
 
-  updateGitContext(directory) {
+  updateRepositoryContext(directory) {
     if (!directory.git) {
-      this.clearGitContext();
+      this.clearRepositoryContext();
       return;
     }
 
-    this.gitRepository = directory.git;
-    this.headerActions.gitStatus = {
-      available: true,
-      branch: directory.git.branch,
-      dirty: directory.git.dirty,
-      count: null,
-    };
-    this.headerActions.githubStatus = null;
-    this.gitLayout.setContext({
-      path: directory.path,
-      repository: directory.git,
-    });
-    this.githubLayout.setContext({
-      path: directory.path,
-      repository: directory.git,
-      githubStatus: null,
-    });
-    this.loadGitStatus(directory.path);
-    this.loadGithubStatus(directory.path);
-    if (this.workspaceMode === "git") {
-      if (this.gitLayout.activeMode === "log") {
-        this.openGitRoute({
-          kind: "log",
-          page: 1,
-        });
-      } else if (this.gitLayout.activeMode === "compare") {
-        this.openGitRoute({
-          kind: "compare",
-          path: "",
-        });
-      } else {
-        this.openGitRoute({
-          kind: "diff",
-          path: "",
-        });
-      }
-    } else if (this.workspaceMode === "github") {
-      if (this.githubLayout.activeMode === "pulls") {
-        this.openGithubRoute({
-          kind: "pulls",
-          page: 1,
-        });
-      } else {
-        this.openGithubRoute({
-          kind: "issues",
-          page: 1,
-        });
-      }
-    }
+    this.applyRepositoryContext(directory.path, directory.git);
+    this.reloadActiveReviewContext();
     this.updateWorkspaceChrome();
   }
 
-  clearGitContext() {
+  applyRepositoryContext(path, repository) {
+    this.gitRepository = repository;
+    void this.gitLayout.applyRepositoryContext({ path, repository });
+    void this.githubLayout.applyRepositoryContext({ path, repository });
+    this.syncHeaderReviewStatus();
+  }
+
+  reloadActiveReviewContext() {
+    if (this.workspaceMode === "git") {
+      this.openGitRoute(this.gitRouteForActiveMode());
+      return;
+    }
+
+    if (this.workspaceMode === "github") {
+      this.openGithubRoute(this.githubRouteForActiveMode());
+    }
+  }
+
+  gitRouteForActiveMode() {
+    if (this.gitLayout.activeMode === "log") {
+      return {
+        kind: "log",
+        page: 1,
+      };
+    }
+
+    if (this.gitLayout.activeMode === "compare") {
+      return {
+        kind: "compare",
+        path: "",
+      };
+    }
+
+    return {
+      kind: "diff",
+      path: "",
+    };
+  }
+
+  githubRouteForActiveMode() {
+    if (this.githubLayout.activeMode === "pulls") {
+      return {
+        kind: "pulls",
+        page: 1,
+      };
+    }
+
+    return {
+      kind: "issues",
+      page: 1,
+    };
+  }
+
+  clearRepositoryContext() {
     this.gitRepository = null;
-    this.headerActions.gitStatus = {
-      available: false,
-      message: "Not a Git repository",
-    };
-    this.headerActions.githubStatus = {
-      available: false,
-      message: "No GitHub repository context",
-    };
     this.gitLayout.reset();
     this.githubLayout.reset();
+    this.syncHeaderReviewStatus();
     this.closeReviewWorkspace();
-  }
-
-  async loadGitStatus(path) {
-    if (!this.gitRepository) {
-      return null;
-    }
-
-    this.gitLayout.setContext({
-      path,
-      repository: this.gitRepository,
-    });
-    const status = await this.gitLayout.loadStatus(path);
-    if (status?.repository) {
-      this.gitRepository = status.repository;
-    }
-    this.updateGitButton();
-    this.updateWorkspaceChrome();
-    return status;
-  }
-
-  async loadGithubStatus(path) {
-    if (!this.gitRepository) {
-      return null;
-    }
-
-    this.githubLayout.setContext({
-      path,
-      repository: this.gitRepository,
-    });
-    const status = await this.githubLayout.loadStatus(path);
-    this.headerActions.githubStatus = this.githubStatus;
-    if (this.workspaceMode === "github") {
-      this.updateWorkspaceChrome();
-    }
-    return status;
   }
 
   async openGithubRoute(route, options = {}) {
@@ -720,7 +670,9 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     const needsStatus = Boolean(route.number);
-    const status = needsStatus ? await this.ensureGithubStatus() : this.githubStatus;
+    const status = needsStatus
+      ? await this.githubLayout.ensureStatus(this.currentPath)
+      : this.githubStatus;
     this.workspaceMode = "github";
     if (route.path || route.number) {
       this.filesPage.clearSelectedFile();
@@ -740,12 +692,17 @@ class CaffoldAppShell extends HTMLElement {
       status: options.status,
     });
     this.reviewWorkspace.open("github", this.workspaceDetails());
-    this.updateGitButton();
+    this.syncHeaderReviewStatus();
     const result = await routePromise;
     this.updateWorkspaceChrome();
 
     if (!route.number && !options.skipReload && !this.githubStatus) {
-      return await this.loadGithubStatus(this.currentPath);
+      const latestStatus = await this.githubLayout.ensureStatus(this.currentPath);
+      this.syncHeaderReviewStatus();
+      if (this.workspaceMode === "github") {
+        this.updateWorkspaceChrome();
+      }
+      return latestStatus;
     }
 
     return result;
@@ -760,7 +717,7 @@ class CaffoldAppShell extends HTMLElement {
     this.gitLayout.setView("list");
     this.githubLayout.backToList();
     this.reviewWorkspace.close();
-    this.updateGitButton();
+    this.syncHeaderReviewStatus();
   }
 
   updateWorkspaceChrome() {
@@ -777,11 +734,15 @@ class CaffoldAppShell extends HTMLElement {
     }
   }
 
-  updateGitButton() {
+  syncHeaderReviewStatus() {
     if (!this.gitRepository) {
       this.headerActions.gitStatus = {
         available: false,
         message: "Not a Git repository",
+      };
+      this.headerActions.githubStatus = {
+        available: false,
+        message: "No GitHub repository context",
       };
       return;
     }

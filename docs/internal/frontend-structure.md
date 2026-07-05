@@ -84,6 +84,10 @@ of owning file browser internals.
 state for the current directory. It performs project list/candidate refresh and
 project CRUD requests, then emits selected project records upward. The app root
 keeps only project-aware URL execution and project-relative path mapping.
+When a loaded directory enters or leaves a Git repository, the app root decides
+the current repository context, mirrors domain status into the header, and
+reloads the active review route if needed. The Git and GitHub layouts apply
+that repository context and own their own status refresh requests.
 
 `scaffold-header-actions` owns header-only action status. Git and GitHub status
 are still supplied by the domain layouts because they depend on the loaded

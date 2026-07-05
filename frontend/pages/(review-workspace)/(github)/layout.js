@@ -164,6 +164,11 @@ class CaffoldGithubReviewLayout extends HTMLElement {
     this.pullsLayout.setContext(context);
   }
 
+  async applyRepositoryContext({ path, repository } = {}) {
+    this.setContext({ path, repository, githubStatus: null });
+    return await this.loadStatus(path ?? this.currentPath);
+  }
+
   async setGithubStatus(status) {
     this.ensureRendered();
     this.githubStatus = status ?? null;
