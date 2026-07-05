@@ -2458,8 +2458,21 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
           ...issues[0],
           body: "**Review** GitHub issues without leaving the readonly console.\n\n```sh\ncargo test\n```",
           bodyHtml: `
+            <h2>Review Steps</h2>
             <p><strong>Review</strong> GitHub issues without leaving the readonly console.</p>
             <pre><code>cargo test</code></pre>
+            <table>
+              <thead>
+                <tr><th>Feature</th><th>Status</th><th>Notes</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Long markdown table support</td>
+                  <td>Ready</td>
+                  <td>Preserve readable columns without splitting words on phone-width review screens</td>
+                </tr>
+              </tbody>
+            </table>
             <a href="https://example.com/docs">docs</a>
             <a href="javascript:alert(1)">unsafe</a>
             <script>alert(1)</script>
@@ -2536,6 +2549,7 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
   }
   const markdownViewer = issueViewer.locator("caffold-github-markdown");
   await expect(markdownViewer).toBeVisible();
+  await expect(markdownViewer.locator("h2")).toHaveText("Review Steps");
   await expect(markdownViewer.locator("strong")).toHaveText("Review");
   await expect(markdownViewer.locator("pre")).toContainText("cargo test");
   const markdownSafety = await markdownViewer.evaluate((element) => {
@@ -2562,6 +2576,31 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
     unsafeLinkPresent: false,
     unsafeHref: null,
   });
+  const markdownLayout = await markdownViewer.evaluate((element) => {
+    const root = element.shadowRoot;
+    const wrapper = root.querySelector(".markdown-table-scroll");
+    const cell = root.querySelector("td");
+    const hostStyle = getComputedStyle(element);
+    const headingStyle = getComputedStyle(root.querySelector("h2"));
+    const cellStyle = getComputedStyle(cell);
+
+    return {
+      hasTableScrollWrapper: Boolean(wrapper),
+      tableScrolls: wrapper ? wrapper.scrollWidth > wrapper.clientWidth : false,
+      cellWhiteSpace: cellStyle.whiteSpace,
+      hostFontSize: hostStyle.fontSize,
+      headingFontSize: headingStyle.fontSize,
+    };
+  });
+  expect(markdownLayout).toMatchObject({
+    hasTableScrollWrapper: true,
+    cellWhiteSpace: "nowrap",
+    hostFontSize: "14px",
+  });
+  expect(Number.parseFloat(markdownLayout.headingFontSize)).toBeGreaterThan(14);
+  if (testInfo.project.name === "phone") {
+    expect(markdownLayout.tableScrolls).toBe(true);
+  }
   await expect(issueViewer.getByRole("link", { name: "GitHub" })).toHaveAttribute(
     "href",
     "https://github.com/example/caffold/issues/42",
@@ -2934,6 +2973,34 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
     .locator(".github-pull-viewer-scroll")
     .evaluate((el) => el.scrollTop);
   expect(pullDetailScrollTop).toBeGreaterThan(0);
+  const pullContentLayout = await pullViewer.evaluate((element) => {
+    const scroll = element.querySelector(".github-pull-viewer-scroll").getBoundingClientRect();
+    const heading = element.querySelector(".github-pull-section > h3").getBoundingClientRect();
+    const commits = element.querySelector(".github-pull-commits").getBoundingClientRect();
+
+    return {
+      scrollLeft: scroll.left,
+      scrollWidth: scroll.width,
+      headingLeft: heading.left,
+      headingWidth: heading.width,
+      commitsLeft: commits.left,
+      commitsWidth: commits.width,
+    };
+  });
+  expect(pullContentLayout.headingWidth).toBeLessThanOrEqual(
+    Math.min(pullContentLayout.scrollWidth, 980) + 1,
+  );
+  expect(pullContentLayout.commitsWidth).toBeLessThanOrEqual(
+    Math.min(pullContentLayout.scrollWidth, 980) + 1,
+  );
+  if (pullContentLayout.scrollWidth > 1040) {
+    expect(pullContentLayout.headingLeft).toBeGreaterThan(
+      pullContentLayout.scrollLeft + 40,
+    );
+    expect(pullContentLayout.commitsLeft).toBeGreaterThan(
+      pullContentLayout.scrollLeft + 40,
+    );
+  }
   if (testInfo.project.name === "phone") {
     await expectMobileReviewDetail(page, {
       backName: "Back to pull requests",

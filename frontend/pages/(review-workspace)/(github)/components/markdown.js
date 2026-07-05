@@ -28,10 +28,10 @@ class CaffoldGithubMarkdown extends HTMLElement {
           height: auto;
           overflow: visible;
           overscroll-behavior: auto;
-          padding: 12px;
+          padding: 16px;
           color: var(--text);
-          font-size: 0.8rem;
-          line-height: 1.45;
+          font-size: 0.875rem;
+          line-height: 1.5;
         }
 
         :host(.github-issue-body) {
@@ -41,16 +41,15 @@ class CaffoldGithubMarkdown extends HTMLElement {
         }
 
         .markdown-body {
+          width: 100%;
+          max-width: var(--github-markdown-content-width, 980px);
+          margin-inline: auto;
           min-width: 0;
-          overflow-wrap: anywhere;
+          overflow-wrap: break-word;
         }
 
         .markdown-body > :first-child {
           margin-top: 0;
-        }
-
-        .markdown-body > :last-child {
-          margin-bottom: 0;
         }
 
         p,
@@ -58,8 +57,8 @@ class CaffoldGithubMarkdown extends HTMLElement {
         ol,
         blockquote,
         pre,
-        table {
-          margin: 0 0 0.75rem;
+        .markdown-table-scroll {
+          margin: 0 0 1rem;
         }
 
         h1,
@@ -68,14 +67,32 @@ class CaffoldGithubMarkdown extends HTMLElement {
         h4,
         h5,
         h6 {
-          margin: 1rem 0 0.45rem;
-          font-size: 0.9rem;
-          line-height: 1.2;
+          margin: 1.5rem 0 1rem;
+          font-weight: 600;
+          line-height: 1.25;
+        }
+
+        h1 {
+          font-size: 1.75rem;
+        }
+
+        h2 {
+          font-size: 1.35rem;
+        }
+
+        h3 {
+          font-size: 1.1rem;
+        }
+
+        h4,
+        h5,
+        h6 {
+          font-size: 1rem;
         }
 
         h1,
         h2 {
-          padding-bottom: 0.25rem;
+          padding-bottom: 0.35rem;
           border-bottom: 1px solid var(--border);
         }
 
@@ -84,7 +101,7 @@ class CaffoldGithubMarkdown extends HTMLElement {
         }
 
         code {
-          padding: 0.05rem 0.25rem;
+          padding: 0.15rem 0.35rem;
           border: 1px solid var(--border);
           border-radius: 4px;
           background: var(--code-gutter);
@@ -95,7 +112,7 @@ class CaffoldGithubMarkdown extends HTMLElement {
 
         pre {
           overflow: auto;
-          padding: 0.65rem;
+          padding: 0.85rem;
           border: 1px solid var(--border);
           border-radius: 4px;
           background: var(--code-bg);
@@ -109,21 +126,30 @@ class CaffoldGithubMarkdown extends HTMLElement {
         }
 
         blockquote {
-          padding-left: 0.75rem;
+          padding-left: 1rem;
           border-left: 3px solid var(--border);
           color: var(--muted);
         }
 
         ul,
         ol {
-          padding-left: 1.35rem;
+          padding-left: 1.75rem;
+        }
+
+        li + li {
+          margin-top: 0.25rem;
+        }
+
+        .markdown-table-scroll {
+          max-width: 100%;
+          overflow-x: auto;
+          overflow-y: hidden;
+          overscroll-behavior-x: contain;
         }
 
         table {
-          display: block;
           width: max-content;
-          max-width: 100%;
-          overflow: auto;
+          min-width: 100%;
           border-collapse: collapse;
         }
 
@@ -131,6 +157,9 @@ class CaffoldGithubMarkdown extends HTMLElement {
         td {
           padding: 0.3rem 0.45rem;
           border: 1px solid var(--border);
+          overflow-wrap: normal;
+          vertical-align: top;
+          white-space: nowrap;
         }
 
         img {
@@ -139,13 +168,19 @@ class CaffoldGithubMarkdown extends HTMLElement {
         }
 
         hr {
+          height: 4px;
+          margin: 1.5rem 0;
           border: 0;
-          border-top: 1px solid var(--border);
+          background: var(--border);
         }
 
         input[type="checkbox"] {
           margin: 0 0.35rem 0 0;
           vertical-align: middle;
+        }
+
+        .markdown-body > :last-child {
+          margin-bottom: 0;
         }
       </style>
       <article class="markdown-body"></article>
@@ -156,6 +191,7 @@ class CaffoldGithubMarkdown extends HTMLElement {
     const template = document.createElement("template");
     template.innerHTML = html || "";
     sanitizeChildren(template.content);
+    wrapTables(template.content);
     this.shadowRoot
       .querySelector(".markdown-body")
       .replaceChildren(template.content.cloneNode(true));
@@ -238,6 +274,19 @@ function isSafeUrl(value) {
     return ["http:", "https:", "mailto:"].includes(url.protocol);
   } catch {
     return false;
+  }
+}
+
+function wrapTables(parent) {
+  for (const table of [...parent.querySelectorAll("table")]) {
+    if (table.parentElement?.classList.contains("markdown-table-scroll")) {
+      continue;
+    }
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "markdown-table-scroll";
+    table.parentNode.insertBefore(wrapper, table);
+    wrapper.append(table);
   }
 }
 
