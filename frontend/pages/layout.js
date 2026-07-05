@@ -80,18 +80,12 @@ class CaffoldAppShell extends HTMLElement {
         this.gitRepository = this.gitLayout.repository;
       }
       this.syncHeaderReviewContext();
-      if (this.reviewWorkspace.isActive("git")) {
-        this.updateWorkspaceChrome();
-      }
     });
     this.addEventListener("caffold:request-github-route", (event) => {
       this.navigateOrOpenGithubRoute(event.detail.route, event.detail.options);
     });
     this.addEventListener("caffold:github-review-state-change", () => {
       this.syncHeaderReviewContext();
-      if (this.reviewWorkspace.isActive("github")) {
-        this.updateWorkspaceChrome();
-      }
     });
     this.addEventListener("caffold:project-selected", (event) => {
       this.openProjectRoute(event.detail.project);
@@ -505,7 +499,6 @@ class CaffoldAppShell extends HTMLElement {
         skipReload: options.skipReload,
         status: options.status,
       },
-      details: () => this.gitWorkspaceDetails(),
     });
     this.syncHeaderReviewContext();
     return await routePromise;
@@ -612,7 +605,6 @@ class CaffoldAppShell extends HTMLElement {
 
     this.applyRepositoryContext(directory.path, directory.git);
     this.reloadActiveReviewContext();
-    this.updateWorkspaceChrome();
   }
 
   applyRepositoryContext(path, repository) {
@@ -658,7 +650,6 @@ class CaffoldAppShell extends HTMLElement {
         skipReload: options.skipReload,
         status: options.status,
       },
-      details: () => this.githubWorkspaceDetails(),
     });
     this.syncHeaderReviewContext();
     return await routePromise;
@@ -683,44 +674,12 @@ class CaffoldAppShell extends HTMLElement {
     this.syncHeaderReviewContext();
   }
 
-  updateWorkspaceChrome() {
-    if (!this.reviewWorkspace.activeMode) {
-      return;
-    }
-
-    this.reviewWorkspace.updateDetails(this.workspaceDetails());
-  }
-
   syncHeaderReviewContext() {
     this.headerActions.setReviewContext({
       repository: this.gitRepository,
       gitStatus: this.gitStatus,
       githubStatus: this.githubStatus,
     });
-  }
-
-  workspaceDetails() {
-    if (this.reviewWorkspace.isActive("git")) {
-      return this.gitWorkspaceDetails();
-    }
-
-    if (this.reviewWorkspace.isActive("github")) {
-      return this.githubWorkspaceDetails();
-    }
-
-    return {
-      title: "Review",
-      subtitle: "",
-      backVisible: false,
-    };
-  }
-
-  gitWorkspaceDetails() {
-    return this.gitLayout.details();
-  }
-
-  githubWorkspaceDetails() {
-    return this.githubLayout.details();
   }
 }
 

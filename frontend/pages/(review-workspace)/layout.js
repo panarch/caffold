@@ -60,6 +60,16 @@ class CaffoldReviewWorkspace extends HTMLElement {
         }),
       );
     });
+    this.addEventListener("caffold:git-review-state-change", () => {
+      if (this.isActive("git")) {
+        this.refreshDetails();
+      }
+    });
+    this.addEventListener("caffold:github-review-state-change", () => {
+      if (this.isActive("github")) {
+        this.refreshDetails();
+      }
+    });
     this.addEventListener("pointerdown", (event) => {
       const handle = event.target.closest(".review-panel-resizer");
       if (handle) {
@@ -204,9 +214,9 @@ class CaffoldReviewWorkspace extends HTMLElement {
     this.ensureRendered();
     this.gitLayout.setContext(options.context);
     const routePromise = this.gitLayout.openRoute(route, options.routeOptions);
-    this.open("git", resolveDetails(options.details));
+    this.open("git", this.detailsForMode("git"));
     const result = await routePromise;
-    this.updateDetails(resolveDetails(options.details));
+    this.refreshDetails();
     return result;
   }
 
@@ -214,10 +224,30 @@ class CaffoldReviewWorkspace extends HTMLElement {
     this.ensureRendered();
     this.githubLayout.setContext(options.context);
     const routePromise = this.githubLayout.openRoute(route, options.routeOptions);
-    this.open("github", resolveDetails(options.details));
+    this.open("github", this.detailsForMode("github"));
     const result = await routePromise;
-    this.updateDetails(resolveDetails(options.details));
+    this.refreshDetails();
     return result;
+  }
+
+  refreshDetails() {
+    if (!this.activeMode) {
+      return;
+    }
+
+    this.updateDetails(this.detailsForMode(this.activeMode));
+  }
+
+  detailsForMode(mode) {
+    if (mode === "git") {
+      return this.gitLayout.details();
+    }
+
+    if (mode === "github") {
+      return this.githubLayout.details();
+    }
+
+    return {};
   }
 
   updateVisibleMode() {
@@ -424,12 +454,4 @@ function workspaceTitle(mode) {
   }
 
   return "Review";
-}
-
-function resolveDetails(details) {
-  if (typeof details === "function") {
-    return details();
-  }
-
-  return details ?? {};
 }

@@ -104,8 +104,9 @@ status or assemble header display state.
 
 `(review-workspace)` is a pathless review container inside the app root. It owns
 the active review domain, shared review chrome, close/back behavior, panel
-resizing, and mobile list/detail transitions. It is not a Git-only or
-GitHub-only page.
+resizing, and mobile list/detail transitions. It refreshes shared chrome by
+reading details from the active child layout rather than receiving chrome
+details from the app root. It is not a Git-only or GitHub-only page.
 Nested layouts own their own list/detail flow once they have a clear domain
 boundary. `(git)/layout` owns Git status loading, Git submode switching,
 Compare controls, Diff, Compare, and Log list/detail state. It also translates
