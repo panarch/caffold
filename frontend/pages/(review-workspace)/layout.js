@@ -226,6 +226,27 @@ class CaffoldReviewWorkspace extends HTMLElement {
     return result;
   }
 
+  prepareForFileBrowserOpen() {
+    this.gitLayout.setSelectedPath("");
+  }
+
+  prepareForGitReviewRoute(route, options = {}) {
+    if (route.path || (route.kind === "log" && route.sha)) {
+      options.clearFileSelection?.();
+    }
+  }
+
+  prepareForGithubReviewRoute(route, options = {}) {
+    if (route.path || route.number) {
+      options.clearFileSelection?.();
+      this.gitLayout.setSelectedPath("");
+    }
+
+    if (!route.number) {
+      this.gitLayout.setView("list");
+    }
+  }
+
   refreshDetails() {
     if (!this.activeMode) {
       return;

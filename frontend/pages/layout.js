@@ -448,7 +448,7 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   async openFile(path, entry = null) {
-    this.gitLayout.setSelectedPath("");
+    this.reviewWorkspace.prepareForFileBrowserOpen();
     return await this.filesPage.openFile(path, entry);
   }
 
@@ -473,7 +473,9 @@ class CaffoldAppShell extends HTMLElement {
       return null;
     }
 
-    this.prepareGitReviewRoute(route);
+    this.reviewWorkspace.prepareForGitReviewRoute(route, {
+      clearFileSelection: () => this.filesPage.clearSelectedFile(),
+    });
     const routePromise = this.reviewWorkspace.openGitReviewRoute(route, {
       context: {
         path: this.currentPath,
@@ -488,12 +490,6 @@ class CaffoldAppShell extends HTMLElement {
     });
     this.syncHeaderReviewContext();
     return await routePromise;
-  }
-
-  prepareGitReviewRoute(route) {
-    if (route.path || (route.kind === "log" && route.sha)) {
-      this.filesPage.clearSelectedFile();
-    }
   }
 
   async refreshProjects(path = this.currentPath) {
@@ -624,7 +620,9 @@ class CaffoldAppShell extends HTMLElement {
       return null;
     }
 
-    this.prepareGithubReviewRoute(route);
+    this.reviewWorkspace.prepareForGithubReviewRoute(route, {
+      clearFileSelection: () => this.filesPage.clearSelectedFile(),
+    });
     const routePromise = this.reviewWorkspace.openGithubReviewRoute(route, {
       context: {
         path: this.currentPath,
@@ -639,16 +637,6 @@ class CaffoldAppShell extends HTMLElement {
     });
     this.syncHeaderReviewContext();
     return await routePromise;
-  }
-
-  prepareGithubReviewRoute(route) {
-    if (route.path || route.number) {
-      this.filesPage.clearSelectedFile();
-      this.gitLayout.setSelectedPath("");
-    }
-    if (!route.number) {
-      this.gitLayout.setView("list");
-    }
   }
 
   closeReviewWorkspace() {

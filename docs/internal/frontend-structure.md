@@ -89,8 +89,9 @@ the current repository context and reloads the active review route if needed.
 The Git and GitHub layouts apply that repository context and own their own
 status refresh requests. Git and GitHub review route entry stays
 domain-specific: the app root prepares project-aware path options and
-cross-surface cleanup, the review workspace owns active-domain chrome
-lifecycle, and the Git/GitHub layouts own their own route execution semantics.
+file-browser cleanup callbacks, the review workspace decides active-domain
+cleanup and chrome lifecycle, and the Git/GitHub layouts own their own route
+execution semantics.
 The two flows should not be hidden behind one generic helper because GitHub
 availability/status refresh has different semantics from Git review state.
 
