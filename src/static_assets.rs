@@ -165,6 +165,9 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(review-workspace)/(github)/layout.js" => Some(js(include_str!(
             "../frontend/pages/(review-workspace)/(github)/layout.js"
         ))),
+        "pages/(review-workspace)/(github)/components/markdown.js" => Some(js(include_str!(
+            "../frontend/pages/(review-workspace)/(github)/components/markdown.js"
+        ))),
         "pages/(review-workspace)/(github)/(issues)/layout.css" => Some(css(include_str!(
             "../frontend/pages/(review-workspace)/(github)/(issues)/layout.css"
         ))),
@@ -236,9 +239,6 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "components/file-viewer.js" => {
             Some(js(include_str!("../frontend/components/file-viewer.js")))
         }
-        "components/github-markdown.js" => Some(js(include_str!(
-            "../frontend/components/github-markdown.js"
-        ))),
         "components/icons.js" => Some(js(include_str!("../frontend/components/icons.js"))),
         "components/pagination.css" => {
             Some(css(include_str!("../frontend/components/pagination.css")))
@@ -458,6 +458,23 @@ mod tests {
                 .windows(b"caffold-github-review-layout".len())
                 .any(|window| window == b"caffold-github-review-layout")
         );
+        let github_markdown = get("pages/(review-workspace)/(github)/components/markdown.js")
+            .expect("github markdown component js");
+        assert_eq!(
+            github_markdown.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(
+            github_markdown
+                .body
+                .starts_with(b"const FORBIDDEN_ELEMENTS")
+        );
+        assert!(
+            github_markdown
+                .body
+                .windows(b"caffold-github-markdown".len())
+                .any(|window| window == b"caffold-github-markdown")
+        );
 
         let issues_layout =
             get("pages/(review-workspace)/(github)/(issues)/layout.js").expect("issues layout js");
@@ -499,6 +516,7 @@ mod tests {
         );
         assert!(get("components/github-issues-list.js").is_none());
         assert!(get("components/github-issue-viewer.js").is_none());
+        assert!(get("components/github-markdown.js").is_none());
 
         let pulls_layout =
             get("pages/(review-workspace)/(github)/(pulls)/layout.js").expect("pulls layout js");

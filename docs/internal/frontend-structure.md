@@ -225,7 +225,6 @@ Keep reusable building blocks in `frontend/components`:
 - `pagination.*`
 - `code-viewer.*`
 - `diff-viewer.*`
-- `github-markdown.*`
 - `file-viewer.*`
 - `icons.js`
 - `dom.js`
@@ -236,7 +235,8 @@ ownership boundary. For example, the file browser list belongs only to
 `files/page`, the Git log list belongs only to `(git)/(log)/list/page`,
 the commit changes tree belongs only to
 `(git)/(log)/commit/page`, and the PR files tree belongs only to
-`(github)/(pulls)/files/page`.
+`(github)/(pulls)/files/page`. GitHub-only helpers shared by GitHub pages,
+such as the Markdown renderer, belong under `(github)/components`.
 Layout-specific helper components follow the same rule. App chrome such as the
 pathbar, project switcher, and header actions belongs to `frontend/pages/layout`.
 
@@ -250,8 +250,8 @@ pathbar, project switcher, and header actions belongs to `frontend/pages/layout`
   reusable component. When a surface is promoted to a page-owned element, use
   the page-level custom element name.
 - Do not move lower-level or reusable components under `pages` just to mirror
-  the current screen. Components such as `pagination`, `file-viewer`,
-  `diff-viewer`, and `github-markdown` stay component-level.
+  the current screen. Components such as `pagination`, `file-viewer`, and
+  `diff-viewer` stay component-level.
 - Wrap intermediate `frontend/pages` directories that do not contain `page.js`
   in parentheses, such as `(review-workspace)`, `(git)`, or `(github)`. These
   are pathless grouping/layout nodes, not URL segments. Do not wrap the

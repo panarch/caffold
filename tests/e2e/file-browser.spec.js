@@ -247,9 +247,13 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain(
     "/assets/pages/(review-workspace)/(github)/(pulls)/files/components/tree.js",
   );
+  expect(serviceWorker).toContain(
+    "/assets/pages/(review-workspace)/(github)/components/markdown.js",
+  );
   expect(serviceWorker).not.toContain("/assets/components/github-pulls-list.js");
   expect(serviceWorker).not.toContain("/assets/components/github-pull-viewer.js");
   expect(serviceWorker).not.toContain("/assets/components/github-pull-files-tree.js");
+  expect(serviceWorker).not.toContain("/assets/components/github-markdown.js");
   expect(serviceWorker).not.toContain("/assets/components/app-shell.js");
   expect(serviceWorker).not.toContain("/assets/components/review-workspace.js");
   expect(serviceWorker).toContain(

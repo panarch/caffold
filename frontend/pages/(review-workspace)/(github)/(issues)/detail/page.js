@@ -1,6 +1,6 @@
 import { escapeHtml } from "../../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../../components/icons.js";
-import "../../../../../components/github-markdown.js";
+import "../../components/markdown.js";
 
 class CaffoldGithubIssueDetailPage extends HTMLElement {
   connectedCallback() {
