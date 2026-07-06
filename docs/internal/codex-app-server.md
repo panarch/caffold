@@ -33,9 +33,37 @@ The adapter should own:
 - request/response matching
 - event stream handling
 - app-server error normalization
-- mapping app-server thread IDs to Caffold task IDs
+- thread-oriented APIs for listing, reading, starting, steering, interrupting,
+  and resolving approvals
 
 The rest of Caffold should not depend directly on app-server protocol details.
+
+## Task Storage Boundary
+
+The first Tasks surface is thread-backed. Codex app-server is the source of
+truth for:
+
+- thread identity
+- thread cwd
+- prompt and assistant transcript
+- reasoning summaries/content
+- command executions and output
+- file changes
+- turn status and history
+
+Caffold derives project membership from `thread.cwd` and prefix-filters threads
+against the registered project root because app-server cwd filtering is exact
+match only. Caffold keeps pending approvals and SSE notifications as ephemeral
+in-memory state in this slice. Pending approval cards may disappear after a
+Caffold backend restart until app-server re-emits the request.
+
+Local task metadata/event storage is deferred and optional. If added later, it
+should augment Codex threads with Caffold-only annotations rather than become
+the required primary lookup path.
+
+The first Tasks surface runs in the registered project root/current project
+context. Worktree creation, cleanup, and checkout UX are separate lifecycle
+features.
 
 ## Process Ownership
 
@@ -70,6 +98,7 @@ The app-server path is better suited for:
 
 - Exact app-server startup mode and transport to use first
 - How to represent partial failures and reconnects in the UI
-- How much of the app-server event stream should be snapshotted
 - Whether thread history pagination is enough for long task timelines
+- Whether optional Caffold annotations are useful after thread-backed tasks are
+  stable
 - How to surface protocol changes without leaking internals through the app

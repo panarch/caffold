@@ -14,6 +14,9 @@ display-only because they can be renamed.
 
 - `/projects/:projectId/files`
 - `/projects/:projectId/files/*path`
+- `/projects/:projectId/tasks`
+- `/projects/:projectId/tasks/new`
+- `/projects/:projectId/tasks/:threadId`
 - `/projects/:projectId/diff`
 - `/projects/:projectId/diff/*path`
 - `/projects/:projectId/compare?base=...&head=...`
@@ -83,7 +86,13 @@ Back and close controls use deterministic parent routes:
 - PR file -> PR files
 - PR files -> PR detail
 - PR detail -> PR list
+- task detail -> task list
+- new task -> task list
+- task list -> project files
 - review workspace close -> project files
+
+Task detail routes use Codex app-server `threadId` values directly. Caffold does
+not mint a separate durable task ID in the first thread-backed slice.
 
 Browser back/forward should produce the same state transitions as the visible
 controls.

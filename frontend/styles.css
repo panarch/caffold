@@ -5,6 +5,7 @@
 @import "./pages/components/header-actions/codex-status.css";
 @import "./components/pagination.css";
 @import "./pages/files/page.css";
+@import "./pages/tasks/page.css";
 @import "./pages/(review-workspace)/(git)/layout.css";
 @import "./pages/(review-workspace)/(git)/diff/page.css";
 @import "./pages/(review-workspace)/(git)/diff/components/changes-tree.css";

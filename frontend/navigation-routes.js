@@ -29,6 +29,36 @@ const ROUTE_DEFINITIONS = [
     parent: (route) => filesRoute(route.projectId, parentPath(route.path)),
   }),
   routeDefinition({
+    id: "tasks-list",
+    kind: "tasks",
+    pattern: "/projects/[projectId]/tasks",
+    surface: "tasks",
+    target: "list",
+    toRoute: ({ projectId }) => tasksRoute(projectId),
+    matchesRoute: (route) => route?.kind === "tasks" && !route.new && !route.threadId,
+    parent: filesRootRoute,
+  }),
+  routeDefinition({
+    id: "tasks-new",
+    kind: "tasks",
+    pattern: "/projects/[projectId]/tasks/new",
+    surface: "tasks",
+    target: "new",
+    toRoute: ({ projectId }) => tasksRoute(projectId, { new: true }),
+    matchesRoute: (route) => route?.kind === "tasks" && Boolean(route.new),
+    parent: (route) => tasksRoute(route.projectId),
+  }),
+  routeDefinition({
+    id: "tasks-detail",
+    kind: "tasks",
+    pattern: "/projects/[projectId]/tasks/[threadId]",
+    surface: "tasks",
+    target: "detail",
+    toRoute: ({ projectId, threadId }) => tasksRoute(projectId, { threadId }),
+    matchesRoute: (route) => route?.kind === "tasks" && Boolean(route.threadId),
+    parent: (route) => tasksRoute(route.projectId),
+  }),
+  routeDefinition({
     id: "diff-list",
     kind: "diff",
     pattern: "/projects/[projectId]/diff",
@@ -258,15 +288,22 @@ function routeMatchesDefinition(definition, route) {
     return false;
   }
 
+  for (const token of definition.tokens) {
+    if (token.kind !== "param" || token.name === "projectId") {
+      continue;
+    }
+    if (!route[token.name]) {
+      return false;
+    }
+  }
+
+  for (const key of ["threadId", "sha", "number"]) {
+    if (!hasToken(definition, "param", key) && route?.[key]) {
+      return false;
+    }
+  }
+
   if (hasToken(definition, "rest", "path") !== Boolean(cleanPath(route.path))) {
-    return false;
-  }
-
-  if (hasToken(definition, "param", "sha") !== Boolean(route.sha)) {
-    return false;
-  }
-
-  if (hasToken(definition, "param", "number") !== Boolean(route.number)) {
     return false;
   }
 
@@ -441,6 +478,15 @@ function pullsRoute(projectId, options = {}) {
     number: options.number ?? null,
     files: Boolean(options.files),
     path: cleanPath(options.path),
+  };
+}
+
+function tasksRoute(projectId, options = {}) {
+  return {
+    kind: "tasks",
+    projectId,
+    new: Boolean(options.new),
+    threadId: options.threadId ?? "",
   };
 }
 

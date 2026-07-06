@@ -54,15 +54,15 @@ The database stores Caffold-owned state:
 
 - host records
 - projects
-- tasks
 - worktree paths
 - Codex thread IDs
-- task status
 - command/test summaries
 - operation ledger events
 - UI-facing snapshots where useful
 
-It should not duplicate the full Codex transcript or all command output by default.
+Task metadata is optional augmentation. The first Tasks surface reads Codex
+threads directly and should not duplicate the full Codex transcript or all
+command output by default.
 
 ### Git Worktree
 
@@ -72,7 +72,8 @@ The worktree is the source of truth for code changes. Caffold reads from git and
 
 - Codex thread/session: conversation, turns, agent activity
 - git worktree: actual file and code changes
-- GlueSQL/redb: Caffold task metadata and operation events
+- GlueSQL/redb: registered projects and optional Caffold-owned annotations or
+  operation events
 - PWA: view and controller only
 
 ## Process Model

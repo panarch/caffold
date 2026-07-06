@@ -40,6 +40,21 @@ test("parses and serializes project route URLs canonically", () => {
       "/projects/project%20id/files/src%20dir/file%23.md",
     ],
     [
+      "/projects/prj/tasks",
+      { kind: "tasks", projectId: "prj", new: false, threadId: "" },
+      "/projects/prj/tasks",
+    ],
+    [
+      "/projects/prj/tasks/new",
+      { kind: "tasks", projectId: "prj", new: true, threadId: "" },
+      "/projects/prj/tasks/new",
+    ],
+    [
+      "/projects/prj/tasks/task%201",
+      { kind: "tasks", projectId: "prj", new: false, threadId: "task 1" },
+      "/projects/prj/tasks/task%201",
+    ],
+    [
       "/projects/prj/diff/src/lib.rs",
       { kind: "diff", projectId: "prj", path: "src/lib.rs" },
       "/projects/prj/diff/src/lib.rs",
@@ -146,6 +161,9 @@ test("derives deterministic parent routes", () => {
     ["/projects/prj/files/src/lib.rs", "/projects/prj/files/src"],
     ["/projects/prj/files/src", "/projects/prj/files"],
     ["/projects/prj/files", null],
+    ["/projects/prj/tasks/new", "/projects/prj/tasks"],
+    ["/projects/prj/tasks/task1", "/projects/prj/tasks"],
+    ["/projects/prj/tasks", "/projects/prj/files"],
     ["/projects/prj/diff/src/lib.rs", "/projects/prj/diff"],
     ["/projects/prj/diff", "/projects/prj/files"],
     [
@@ -174,6 +192,9 @@ test("exposes route metadata for surface and domain routing", () => {
   const cases = [
     ["/projects/prj/files", "files", null, "files", "list"],
     ["/projects/prj/files/src/lib.rs", "files", null, "files", "path"],
+    ["/projects/prj/tasks", "tasks", null, "tasks", "list"],
+    ["/projects/prj/tasks/new", "tasks", null, "tasks", "new"],
+    ["/projects/prj/tasks/task1", "tasks", null, "tasks", "detail"],
     ["/projects/prj/diff", "review", "git", "diff", "list"],
     ["/projects/prj/diff/src/lib.rs", "review", "git", "diff", "file"],
     ["/projects/prj/compare?base=main&head=feature", "review", "git", "compare", "list"],
@@ -211,6 +232,9 @@ test("derives route metadata from partial route objects", () => {
   const cases = [
     [{ kind: "files", path: "" }, "files", null, "files", "list"],
     [{ kind: "files", path: "src/lib.rs" }, "files", null, "files", "path"],
+    [{ kind: "tasks", new: false, threadId: "" }, "tasks", null, "tasks", "list"],
+    [{ kind: "tasks", new: true, threadId: "" }, "tasks", null, "tasks", "new"],
+    [{ kind: "tasks", new: false, threadId: "task1" }, "tasks", null, "tasks", "detail"],
     [{ kind: "diff", path: "" }, "review", "git", "diff", "list"],
     [{ kind: "diff", path: "src/lib.rs" }, "review", "git", "diff", "file"],
     [{ kind: "compare", path: "" }, "review", "git", "compare", "list"],

@@ -1,4 +1,5 @@
 import { escapeHtml } from "../../../components/dom.js";
+import { renderInlineIcon } from "../../../components/icons.js";
 import { renderGroupButton, renderHeaderNotice } from "./shared.js";
 
 const CODEX_POPOVER_ID = "caffold-codex-actions-popover";
@@ -99,6 +100,16 @@ function renderCodexActions(codexStatus) {
             ? renderHeaderNotice(title)
             : `<div class="header-status-panel">
                 <strong class="header-status-account">${escapeHtml(accountLabel)}</strong>
+                <div class="header-actions-menu header-status-actions">
+                  <button type="button" class="header-menu-item" data-action="open-tasks">
+                    ${renderInlineActionIcon("ListTodo", "Open tasks")}
+                    <span class="header-menu-label">Open Tasks</span>
+                  </button>
+                  <button type="button" class="header-menu-item" data-action="new-task">
+                    ${renderInlineActionIcon("Plus", "New task")}
+                    <span class="header-menu-label">New Task</span>
+                  </button>
+                </div>
                 ${renderStatusRow("Plan", formatCodexPlan(codexStatus))}
                 <div class="header-status-section-title">Remaining usage</div>
                 ${renderUsageRow(codexStatus, "primary")}
@@ -113,6 +124,14 @@ function renderCodexActions(codexStatus) {
         }
       </section>
     </div>
+  `;
+}
+
+function renderInlineActionIcon(name, label) {
+  return `
+    <span class="header-menu-icon">
+      ${renderInlineIcon(name, label, "header-menu-icon-svg")}
+    </span>
   `;
 }
 

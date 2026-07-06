@@ -89,6 +89,8 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/files/components/list.js" => Some(js(include_str!(
             "../frontend/pages/files/components/list.js"
         ))),
+        "pages/tasks/page.css" => Some(css(include_str!("../frontend/pages/tasks/page.css"))),
+        "pages/tasks/page.js" => Some(js(include_str!("../frontend/pages/tasks/page.js"))),
         "pages/(review-workspace)/layout.css" => Some(css(include_str!(
             "../frontend/pages/(review-workspace)/layout.css"
         ))),
@@ -419,6 +421,19 @@ mod tests {
                 .any(|window| window == b"caffold-git-compare-tree")
         );
         assert!(get("components/compare-tree.js").is_none());
+
+        let tasks_page = get("pages/tasks/page.js").expect("tasks page js");
+        assert_eq!(tasks_page.content_type, "text/javascript; charset=utf-8");
+        assert!(tasks_page.body.starts_with(b"import "));
+        assert!(
+            tasks_page
+                .body
+                .windows(b"caffold-tasks-page".len())
+                .any(|window| window == b"caffold-tasks-page")
+        );
+        let tasks_page_css = get("pages/tasks/page.css").expect("tasks page css");
+        assert_eq!(tasks_page_css.content_type, "text/css; charset=utf-8");
+        assert!(tasks_page_css.body.starts_with(b"caffold-tasks-page"));
 
         let diff_page = get("pages/(review-workspace)/(git)/diff/page.js").expect("diff page js");
         assert_eq!(diff_page.content_type, "text/javascript; charset=utf-8");

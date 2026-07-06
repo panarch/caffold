@@ -39,6 +39,8 @@ caffold-app-shell
     scaffold-files-page
       scaffold-file-list
       scaffold-file-viewer
+  tasks surface
+    scaffold-tasks-page
   scaffold-review-workspace
     git
       scaffold-git-review-layout
@@ -79,6 +81,12 @@ loading, files-route path materialization, list/viewer state, file-list scroll
 restoration, delayed loading indicators, and the left file-panel resizer. The
 app root coordinates project context, URL navigation, pathbar, and header
 actions around that surface instead of owning file browser internals.
+
+`tasks/page` owns the project-level Codex task surface: thread-derived
+list/new/detail state, prompt composition, Codex transcript rendering, approval
+cards, SSE subscription, and mobile list/detail switching. The app root only
+routes the current project into the page and handles cross-surface actions such
+as opening the existing Git diff review surface.
 
 `scaffold-project-switcher` owns project record state and project candidate
 state for the current directory. It performs project list/candidate refresh and

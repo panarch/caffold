@@ -15,6 +15,13 @@ caffold-header-actions .header-status-account {
   white-space: nowrap;
 }
 
+caffold-header-actions .header-status-actions {
+  margin: 1px 0 3px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
 caffold-header-actions .header-status-section-title {
   margin-top: 2px;
   color: var(--muted);

@@ -11,6 +11,7 @@ import "./components/pathbar.js";
 import "./components/project-switcher.js";
 import "./components/header-actions.js";
 import "./files/page.js";
+import "./tasks/page.js";
 import "./(review-workspace)/(git)/layout.js";
 import "./(review-workspace)/(github)/layout.js";
 import "./(review-workspace)/layout.js";
@@ -30,6 +31,8 @@ class CaffoldAppShell extends HTMLElement {
     this.render();
     this.filesPage = this.querySelector("caffold-files-page");
     this.filesPage.ensureRendered();
+    this.tasksPage = this.querySelector("caffold-tasks-page");
+    this.tasksPage.ensureRendered();
     this.pathbar = this.querySelector("caffold-pathbar");
     this.projectSwitcher = this.querySelector("caffold-project-switcher");
     this.headerActions = this.querySelector("caffold-header-actions");
@@ -69,6 +72,15 @@ class CaffoldAppShell extends HTMLElement {
     });
     this.addEventListener("caffold:open-github-pulls-workspace", () => {
       this.navigateOrOpenGithubRoute(this.githubLayout.routeForAction("pulls"));
+    });
+    this.addEventListener("caffold:open-tasks", () => {
+      this.navigateToCurrentProjectRoute({ kind: "tasks" });
+    });
+    this.addEventListener("caffold:new-task", () => {
+      this.navigateToCurrentProjectRoute({ kind: "tasks", new: true });
+    });
+    this.addEventListener("caffold:request-tasks-route", (event) => {
+      this.navigateToRoute(event.detail.route);
     });
     this.addEventListener("caffold:close-review-workspace", () => {
       this.navigateToReviewParent({ closeWorkspace: true }) || this.closeReviewWorkspace();
@@ -129,6 +141,7 @@ class CaffoldAppShell extends HTMLElement {
       <caffold-pathbar></caffold-pathbar>
       <main class="app-main" aria-label="File browser">
         <caffold-files-page></caffold-files-page>
+        <caffold-tasks-page hidden></caffold-tasks-page>
       </main>
       <caffold-review-workspace hidden></caffold-review-workspace>
     `;
@@ -258,6 +271,8 @@ class CaffoldAppShell extends HTMLElement {
       const domain = routeDomain(route);
       if (surface === "files") {
         await this.applyFilesRoute(project, route);
+      } else if (surface === "tasks") {
+        await this.applyTasksRoute(project, route);
       } else if (domain === "git") {
         await this.applyGitRoute(project, route);
       } else if (domain === "github") {
@@ -284,6 +299,8 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   async applyFilesRoute(project, route) {
+    this.tasksPage.hidden = true;
+    this.filesPage.hidden = false;
     this.closeReviewWorkspace();
     this.reviewWorkspace.prepareForFileBrowserOpen();
     const fullPath = this.projectPath(project, route.path);
@@ -297,7 +314,22 @@ class CaffoldAppShell extends HTMLElement {
     }
   }
 
+  async applyTasksRoute(project, route) {
+    this.closeReviewWorkspace();
+    this.reviewWorkspace.prepareForFileBrowserOpen();
+    this.filesPage.hidden = true;
+    this.tasksPage.hidden = false;
+    this.pathbar.path = project.relativePath;
+    await this.ensureProjectReviewContext(project);
+    if (!this.isCurrentRoute(route)) {
+      return;
+    }
+    await this.tasksPage.openRoute(route, { project });
+  }
+
   async applyGitRoute(project, route) {
+    this.tasksPage.hidden = true;
+    this.filesPage.hidden = false;
     if (!(await this.ensureProjectReviewContext(project))) {
       return;
     }
@@ -312,6 +344,8 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   async applyGithubRoute(project, route) {
+    this.tasksPage.hidden = true;
+    this.filesPage.hidden = false;
     if (!(await this.ensureProjectReviewContext(project))) {
       return;
     }
@@ -671,7 +705,17 @@ class CaffoldAppShell extends HTMLElement {
       return;
     }
 
+    if (surface === "tasks") {
+      this.closeReviewWorkspace();
+      this.filesPage.hidden = true;
+      this.tasksPage.hidden = false;
+      this.tasksPage.prepareRoute(route);
+      return;
+    }
+
     this.closeReviewWorkspace();
+    this.tasksPage.hidden = true;
+    this.filesPage.hidden = false;
   }
 }
 

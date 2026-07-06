@@ -2,15 +2,16 @@
 
 > Internal planning note. This describes Caffold-owned event history before the schema is implemented.
 
-The operation ledger is an application-level append-only event log.
+The operation ledger is a possible application-level append-only event log.
 
-It is not the database WAL and it is not a complete replay log for all state.
+It is not part of the first thread-backed Tasks slice. It is not the database
+WAL and it is not a complete replay log for all state.
 
 ## Purpose
 
 The ledger exists for:
 
-- task timeline
+- optional task timeline augmentation
 - audit trail
 - debugging
 - reconnect and recovery hints
@@ -26,9 +27,11 @@ Source ownership:
 - Codex owns thread/session originals
 - git owns file changes
 - command runner owns immediate process output while running
-- Caffold owns task metadata and operation events
+- Caffold may own optional annotations, summaries, and operation events
 
-Caffold can store summaries and snapshots when they make the UI more reliable, but full transcript duplication is not the default.
+Caffold can store summaries and snapshots when they make the UI more reliable,
+but Codex threads remain the source of truth for task transcripts and full
+transcript duplication is not the default.
 
 ## Event Types
 

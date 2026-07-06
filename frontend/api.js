@@ -6,6 +6,51 @@ export async function getCodexStatus() {
   return requestJson("/api/codex/status");
 }
 
+export async function getTasks(projectId) {
+  return requestJson("/api/tasks", { projectId });
+}
+
+export async function createTask(task) {
+  return requestJson("/api/tasks", {}, {
+    method: "POST",
+    body: task,
+  });
+}
+
+export async function getTask(threadId, projectId) {
+  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}`, { projectId });
+}
+
+export async function sendTaskPrompt(threadId, prompt) {
+  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}/prompts`, {}, {
+    method: "POST",
+    body: { prompt },
+  });
+}
+
+export async function interruptTask(threadId) {
+  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}/interrupt`, {}, {
+    method: "POST",
+  });
+}
+
+export async function resolveTaskApproval(threadId, approvalId, decision) {
+  return requestJson(
+    `/api/tasks/${encodeURIComponent(threadId)}/approvals/${encodeURIComponent(approvalId)}`,
+    {},
+    {
+      method: "POST",
+      body: { decision },
+    },
+  );
+}
+
+export function taskStreamUrl(threadId, projectId) {
+  const url = new URL(`/api/tasks/${encodeURIComponent(threadId)}/stream`, window.location.origin);
+  url.searchParams.set("projectId", projectId);
+  return `${url.pathname}${url.search}`;
+}
+
 export async function listDirectory(path = "") {
   return requestJson("/api/list", { path });
 }

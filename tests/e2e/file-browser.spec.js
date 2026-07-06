@@ -50,11 +50,13 @@ test.beforeEach(async ({ page }) => {
         ];
         export const History = [["path", { d: "M3 12a9 9 0 1 0 3-6.7" }], ["path", { d: "M3 3v6h6" }], ["path", { d: "M12 7v5l3 2" }]];
         export const Info = [["circle", { cx: "12", cy: "12", r: "10" }], ["path", { d: "M12 16v-4" }], ["path", { d: "M12 8h.01" }]];
+        export const ListTodo = [["rect", { x: "3", y: "5", width: "6", height: "6", rx: "1" }], ["path", { d: "M13 7h8" }], ["path", { d: "M13 15h8" }], ["path", { d: "m4 16 2 2 4-4" }]];
         export const Database = [["ellipse", { cx: "12", cy: "5", rx: "8", ry: "3" }], ["path", { d: "M4 5v10c0 1.7 3.6 3 8 3s8-1.3 8-3V5" }]];
         export const Link = [["path", { d: "M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1" }]];
         export const Lock = [["rect", { x: "5", y: "10", width: "14", height: "10", rx: "2" }], ["path", { d: "M8 10V7a4 4 0 0 1 8 0v3" }]];
         export const PanelTopOpen = [["rect", { x: "3", y: "4", width: "18", height: "16", rx: "2" }], ["path", { d: "M3 9h18" }]];
         export const Pencil = [["path", { d: "M17 3a2.8 2.8 0 0 1 4 4L7 21H3v-4z" }]];
+        export const Plus = [["path", { d: "M12 5v14" }], ["path", { d: "M5 12h14" }]];
         export const Trash2 = [["path", { d: "M3 6h18" }], ["path", { d: "M8 6V4h8v2" }], ["path", { d: "M19 6l-1 15H6L5 6" }]];
         export const X = [["path", { d: "M18 6 6 18" }], ["path", { d: "m6 6 12 12" }]];
         export function createElement(iconNode, attrs = {}) {
@@ -184,6 +186,8 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain("/assets/pages/files/page.js");
   expect(serviceWorker).toContain("/assets/pages/files/components/list.js");
   expect(serviceWorker).not.toContain("/assets/components/file-list.js");
+  expect(serviceWorker).toContain("/assets/pages/tasks/page.js");
+  expect(serviceWorker).toContain("/assets/pages/tasks/page.css");
   expect(serviceWorker).toContain("/assets/pages/(review-workspace)/layout.js");
   expect(serviceWorker).toContain(
     "/assets/pages/(review-workspace)/(git)/layout.js",
@@ -603,9 +607,307 @@ test("groups header review actions into Git, GitHub, and Codex popovers", async 
   await expect(codexPopover.locator(".header-status-panel")).toContainText("1 week");
   await expect(codexPopover.locator(".header-status-panel")).toContainText("69%");
   await expect(codexPopover.locator(".header-status-panel")).toContainText("3 available");
+  await expect(codexPopover.locator('button[data-action="open-tasks"]')).toContainText(
+    "Open Tasks",
+  );
+  await expect(codexPopover.locator('button[data-action="new-task"]')).toContainText(
+    "New Task",
+  );
   await expectHeaderActionsFit(page);
   await expectHeaderPopoverFits(page, "codex");
   await captureReviewScreenshot(page, testInfo, "header-actions-codex-popover");
+});
+
+test("opens Tasks from Codex header and runs a minimal task loop", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.EventSource = class MockEventSource {
+      constructor(url) {
+        this.url = url;
+      }
+
+      addEventListener() {}
+
+      close() {}
+    };
+  });
+
+  const project = await mockRegisteredProject(page);
+  const now = 1_767_000_000_000;
+  let task = null;
+  let events = [];
+  let createTaskRequests = 0;
+  const threadId = "thread_12345678";
+
+  const eventRecord = (id, type, summary, payload = null, offset = 0) => ({
+    id,
+    threadId,
+    projectId: project.id,
+    type,
+    summary,
+    payload,
+    createdMs: now + offset,
+  });
+  const detailResponse = () => ({ task, events, pendingApprovals: [] });
+  const updateTask = (updates) => {
+    task = {
+      ...task,
+      ...updates,
+      updatedMs: now + events.length + 1,
+      lastEventSummary: updates.lastEventSummary ?? task.lastEventSummary,
+    };
+  };
+
+  await page.route(/\/api\/git\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository: { rootPath: "src", branch: "main", dirty: false },
+        files: [],
+      }),
+    }),
+  );
+  await page.route(/\/api\/github\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository: { rootPath: "src", branch: "main", dirty: false },
+        github: null,
+        ghAvailable: true,
+        authenticated: true,
+        issuesAvailable: false,
+        pullsAvailable: false,
+        message: "No GitHub remote detected",
+      }),
+    }),
+  );
+  await page.route(/\/api\/tasks(?:\/.*)?(?:\?|$)/, async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const segments = url.pathname.split("/").filter(Boolean);
+    const method = request.method();
+
+    if (segments.length === 2 && method === "GET") {
+      expect(url.searchParams.get("projectId")).toBe(project.id);
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ tasks: task ? [task] : [] }),
+      });
+    }
+
+    if (segments.length === 2 && method === "POST") {
+      createTaskRequests += 1;
+      const body = request.postDataJSON();
+      expect(body.projectId).toBe(project.id);
+      expect(body.prompt).toBe("Inspect the planner changes");
+      task = {
+        id: threadId,
+        threadId,
+        projectId: project.id,
+        activeTurnId: "turn_1",
+        title: "Inspect the planner changes",
+        preview: "Inspect the planner changes",
+        status: "waiting_for_approval",
+        cwd: "src",
+        relativeCwd: "",
+        createdMs: now,
+        updatedMs: now + 4,
+        recencyMs: now + 4,
+        lastEventSummary: "Command approval requested",
+      };
+      events = [
+        eventRecord("event_1", "prompt_sent", "Prompt sent", { prompt: body.prompt }, 1),
+        eventRecord(
+          "event_2",
+          "thread_started",
+          "Thread started",
+          { threadId: "thread_12345678" },
+          2,
+        ),
+        eventRecord("event_3", "turn_started", "Turn started", { turnId: "turn_1" }, 3),
+        eventRecord(
+          "event_4",
+          "approval_requested",
+          "Command approval requested",
+          {
+            approvalId: "approval_1",
+            kind: "command",
+            method: "item/commandExecution/requestApproval",
+            params: {
+              command: "cargo test",
+              cwd: "src",
+              reason: "Run the test suite",
+              availableDecisions: ["accept", "acceptForSession", "decline", "cancel"],
+            },
+          },
+          4,
+        ),
+      ];
+
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detailResponse()),
+      });
+    }
+
+    if (segments.length === 3 && segments[2] === threadId && method === "GET") {
+      expect(url.searchParams.get("projectId")).toBe(project.id);
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detailResponse()),
+      });
+    }
+
+    if (
+      segments.length === 4 &&
+      segments[2] === threadId &&
+      segments[3] === "prompts" &&
+      method === "POST"
+    ) {
+      const body = request.postDataJSON();
+      expect(body.prompt).toBe("Please tighten the tests");
+      events = [
+        ...events,
+        eventRecord(
+          "event_6",
+          "prompt_sent",
+          "Follow-up prompt sent",
+          { prompt: body.prompt },
+          6,
+        ),
+      ];
+      updateTask({ status: "running", lastEventSummary: "Follow-up prompt sent" });
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detailResponse()),
+      });
+    }
+
+    if (
+      segments.length === 4 &&
+      segments[2] === threadId &&
+      segments[3] === "interrupt" &&
+      method === "POST"
+    ) {
+      events = [
+        ...events,
+        eventRecord("event_7", "turn_interrupted", "Interrupt requested", null, 7),
+      ];
+      updateTask({
+        activeTurnId: null,
+        status: "interrupted",
+        lastEventSummary: "Interrupt requested",
+      });
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detailResponse()),
+      });
+    }
+
+    if (
+      segments.length === 5 &&
+      segments[2] === threadId &&
+      segments[3] === "approvals" &&
+      segments[4] === "approval_1" &&
+      method === "POST"
+    ) {
+      const body = request.postDataJSON();
+      expect(body.decision).toBe("accept");
+      events = [
+        ...events,
+        eventRecord(
+          "event_5",
+          "approval_resolved",
+          "Approval resolved: accept",
+          { approvalId: "approval_1", decision: "accept" },
+          5,
+        ),
+        eventRecord(
+          "event_8",
+          "reasoning",
+          "Reasoning summary",
+          { summary: ["Checked the planner diff.", "Confirmed the fixture coverage path."] },
+          8,
+        ),
+        eventRecord(
+          "event_9",
+          "assistant_message",
+          "Assistant response",
+          { text: "The planner changes are ready to review. I would open the diff next." },
+          9,
+        ),
+      ];
+      updateTask({ status: "running", lastEventSummary: "Approval resolved" });
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detailResponse()),
+      });
+    }
+
+    return route.continue();
+  });
+
+  await page.goto(`/projects/${project.id}/files`);
+  const codexPopover = await openHeaderActionGroup(page, "codex");
+  await codexPopover.locator('button[data-action="open-tasks"]').click();
+  await expect(page).toHaveURL(`/projects/${project.id}/tasks`);
+  await expect(page.locator("caffold-tasks-page")).toHaveAttribute(
+    "data-tasks-view",
+    "list",
+  );
+  await expect(page.locator("caffold-tasks-page")).toContainText("No tasks yet.");
+
+  await page
+    .locator("caffold-tasks-page .tasks-empty")
+    .getByRole("button", { name: "New Task", exact: true })
+    .click();
+  await expect(page).toHaveURL(`/projects/${project.id}/tasks/new`);
+  await expect(page.locator("caffold-tasks-page")).toHaveAttribute(
+    "data-tasks-view",
+    "new",
+  );
+  await page
+    .locator('caffold-tasks-page textarea[name="prompt"]')
+    .fill("Inspect the planner changes");
+  const newTaskFormState = await page.locator("caffold-tasks-page").evaluate((element) => {
+    const form = element.querySelector('form[data-task-form="create"]');
+    return {
+      data: Object.fromEntries(new FormData(form).entries()),
+      projectId: element.projectId,
+      valid: form.checkValidity(),
+    };
+  });
+  expect(newTaskFormState).toEqual({
+    data: {
+      prompt: "Inspect the planner changes",
+    },
+    projectId: project.id,
+    valid: true,
+  });
+  await page.locator("caffold-tasks-page").getByRole("button", { name: "Start Task" }).click();
+
+  await expect.poll(() => createTaskRequests).toBe(1);
+  await expect(page).toHaveURL(`/projects/${project.id}/tasks/${threadId}`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect(tasksPage).toHaveAttribute("data-tasks-view", "detail");
+  await expect(tasksPage).toContainText("Inspect the planner changes");
+  await expect(tasksPage).toContainText("Thread thread_1");
+  await expect(tasksPage).toContainText("Prompt sent");
+  await expect(tasksPage).toContainText("Command Approval");
+  await expect(tasksPage).toContainText("cargo test");
+  await expect(tasksPage).toContainText("Run the test suite");
+
+  await tasksPage.getByRole("button", { name: "Accept", exact: true }).click();
+  await expect(tasksPage).toContainText("Approval resolved: accept");
+  await expect(tasksPage).toContainText("Checked the planner diff.");
+  await expect(tasksPage).toContainText("The planner changes are ready to review.");
+  await expect(tasksPage.locator(".task-approval-card")).toHaveCount(0);
+
+  await tasksPage.locator('textarea[name="prompt"]').fill("Please tighten the tests");
+  await tasksPage.getByRole("button", { name: "Send Prompt" }).click();
+  await expect(tasksPage).toContainText("Follow-up prompt sent");
+
+  await tasksPage.getByRole("button", { name: "Open Diff" }).click();
+  await expect(page).toHaveURL(`/projects/${project.id}/diff`);
 });
 
 test("keeps header action slots stable while status checks resolve", async ({ page }) => {
