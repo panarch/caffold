@@ -519,17 +519,23 @@ class CaffoldTasksPage extends HTMLElement {
 
     const mode = this.conversationScrollMode;
     this.conversationScrollMode = null;
-    if (mode === "bottom" || (mode === "bottom-if-needed" && previousScroll?.atBottom)) {
-      scroller.scrollTop = scroller.scrollHeight;
+    const shouldStickToBottom =
+      mode === "bottom" ||
+      (mode === "bottom-if-needed" && previousScroll?.atBottom) ||
+      (!mode && previousScroll?.atBottom);
+    if (shouldStickToBottom) {
+      scroller.scrollTop = maxScrollTop(scroller);
       return;
     }
     if (mode === "prepend" && previousScroll) {
-      scroller.scrollTop =
-        previousScroll.scrollTop + (scroller.scrollHeight - previousScroll.scrollHeight);
+      scroller.scrollTop = Math.min(
+        previousScroll.scrollTop + (scroller.scrollHeight - previousScroll.scrollHeight),
+        maxScrollTop(scroller),
+      );
       return;
     }
     if (previousScroll) {
-      scroller.scrollTop = Math.min(previousScroll.scrollTop, scroller.scrollHeight);
+      scroller.scrollTop = Math.min(previousScroll.scrollTop, maxScrollTop(scroller));
     }
   }
 
@@ -1331,7 +1337,11 @@ function eventStructureScore(event) {
 }
 
 function isScrolledToBottom(element) {
-  return element.scrollTop + element.clientHeight >= element.scrollHeight - 4;
+  return maxScrollTop(element) - element.scrollTop <= 8;
+}
+
+function maxScrollTop(element) {
+  return Math.max(0, element.scrollHeight - element.clientHeight);
 }
 
 function closestElement(target, selector) {

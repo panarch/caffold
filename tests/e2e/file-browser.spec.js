@@ -1146,6 +1146,163 @@ test("loads older task conversation events by cursor", async ({ page }) => {
     .toBe(true);
 });
 
+test("keeps task conversation scroll anchored during live updates", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__taskEventSources = [];
+    window.EventSource = class MockEventSource {
+      constructor(url) {
+        this.url = url;
+        this.listeners = new Map();
+        window.__taskEventSources.push(this);
+      }
+
+      addEventListener(type, listener) {
+        const listeners = this.listeners.get(type) ?? [];
+        listeners.push(listener);
+        this.listeners.set(type, listeners);
+      }
+
+      emit(type, data) {
+        for (const listener of this.listeners.get(type) ?? []) {
+          listener({ data: JSON.stringify(data) });
+        }
+      }
+
+      close() {
+        this.closed = true;
+      }
+    };
+  });
+
+  const project = await mockRegisteredProject(page);
+  const threadId = "thread_scroll_fixture";
+  const now = 1_767_200_000_000;
+  const task = {
+    id: threadId,
+    threadId,
+    projectId: project.id,
+    activeTurnId: null,
+    title: "Scroll fixture",
+    preview: "Latest answer",
+    status: "running",
+    cwd: "src",
+    relativeCwd: "",
+    createdMs: now,
+    updatedMs: now + 20,
+    recencyMs: now + 20,
+    lastEventSummary: "Latest answer",
+  };
+  const eventRecord = (id, type, summary, payload, offset) => ({
+    id,
+    threadId,
+    projectId: project.id,
+    type,
+    summary,
+    payload,
+    createdMs: now + offset,
+  });
+  const events = Array.from({ length: 18 }, (_, index) =>
+    eventRecord(
+      `event_scroll_${index}`,
+      "assistant_message",
+      "Assistant response",
+      {
+        turnId: `turn_scroll_${index}`,
+        text: `Existing answer block ${index + 1}.\n\n${"Scrollable transcript content. ".repeat(14)}`,
+      },
+      index,
+    ),
+  );
+
+  await page.route(/\/api\/git\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository: { rootPath: "src", branch: "main", dirty: false },
+        files: [],
+      }),
+    }),
+  );
+  await page.route(/\/api\/github\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository: { rootPath: "src", branch: "main", dirty: false },
+        github: null,
+        ghAvailable: true,
+        authenticated: true,
+        issuesAvailable: false,
+        pullsAvailable: false,
+        message: "No GitHub remote detected",
+      }),
+    }),
+  );
+  await page.route(/\/api\/tasks\/thread_scroll_fixture(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        task,
+        events,
+        eventsPage: { nextCursor: null },
+        pendingApprovals: [],
+      }),
+    }),
+  );
+
+  await page.goto(`/projects/${project.id}/tasks/${threadId}`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const scroller = tasksPage.locator(".task-conversation-scroll");
+  await expect(tasksPage).toContainText("Existing answer block 18.");
+  await expect
+    .poll(() => scroller.evaluate((element) => element.scrollHeight > element.clientHeight))
+    .toBe(true);
+  await expect.poll(() => isScrolledToBottom(scroller)).toBe(true);
+
+  await page.evaluate(
+    ({ threadId, projectId, now }) => {
+      window.__taskEventSources[0].emit("task-event", {
+        id: "event_live_bottom",
+        threadId,
+        projectId,
+        type: "assistant_message",
+        summary: "Assistant response",
+        payload: {
+          turnId: "turn_live_bottom",
+          text: `Live answer at the bottom.\n\n${"New live transcript content. ".repeat(16)}`,
+        },
+        createdMs: now + 100,
+      });
+    },
+    { threadId, projectId: project.id, now },
+  );
+  await expect(tasksPage).toContainText("Live answer at the bottom.");
+  await expect.poll(() => isScrolledToBottom(scroller)).toBe(true);
+
+  await scroller.evaluate((element) => {
+    element.scrollTop = 0;
+    element.dispatchEvent(new Event("scroll"));
+  });
+  await page.evaluate(
+    ({ threadId, projectId, now }) => {
+      window.__taskEventSources[0].emit("task-event", {
+        id: "event_live_preserve",
+        threadId,
+        projectId,
+        type: "assistant_message",
+        summary: "Assistant response",
+        payload: {
+          turnId: "turn_live_preserve",
+          text: `Live answer while reading older content.\n\n${"Preserve the reader position. ".repeat(16)}`,
+        },
+        createdMs: now + 101,
+      });
+    },
+    { threadId, projectId: project.id, now },
+  );
+  await expect(tasksPage).toContainText("Live answer while reading older content.");
+  await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeLessThan(16);
+});
+
 test("keeps header action slots stable while status checks resolve", async ({ page }) => {
   const repository = { rootPath: "src", branch: "main", dirty: false };
   let resolveGitStatus;
@@ -4543,6 +4700,13 @@ async function dragHorizontalResizer(page, handle, deltaX) {
 
 async function scrollTop(locator) {
   return locator.evaluate((element) => element.scrollTop);
+}
+
+async function isScrolledToBottom(locator) {
+  return locator.evaluate((element) => {
+    const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+    return maxScrollTop - element.scrollTop <= 8;
+  });
 }
 
 async function expectPreservedScroll(locator, beforeScroll) {
