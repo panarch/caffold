@@ -39,7 +39,8 @@ root path before calling file, git, or GitHub APIs.
 `/projects/[projectId]/log/[sha]/[...path]` or
 `/projects/[projectId]/pulls/[number]/files`. A route entry owns parsing, path
 generation, query parameters, parent-route behavior, and
-surface/domain/mode/target metadata for that URL variant.
+surface/domain/target metadata for that URL variant. `routeMode(route)` returns
+the route kind as the domain-local mode.
 
 The exported helpers remain the public interface:
 
