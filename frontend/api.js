@@ -21,23 +21,23 @@ export async function getTask(threadId, projectId) {
   return requestJson(`/api/tasks/${encodeURIComponent(threadId)}`, { projectId });
 }
 
-export async function sendTaskPrompt(threadId, prompt) {
-  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}/prompts`, {}, {
+export async function sendTaskPrompt(threadId, projectId, prompt) {
+  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}/prompts`, { projectId }, {
     method: "POST",
     body: { prompt },
   });
 }
 
-export async function interruptTask(threadId) {
-  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}/interrupt`, {}, {
+export async function interruptTask(threadId, projectId) {
+  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}/interrupt`, { projectId }, {
     method: "POST",
   });
 }
 
-export async function resolveTaskApproval(threadId, approvalId, decision) {
+export async function resolveTaskApproval(threadId, projectId, approvalId, decision) {
   return requestJson(
     `/api/tasks/${encodeURIComponent(threadId)}/approvals/${encodeURIComponent(approvalId)}`,
-    {},
+    { projectId },
     {
       method: "POST",
       body: { decision },

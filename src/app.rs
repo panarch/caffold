@@ -902,11 +902,12 @@ async fn task_stream(
 async fn task_prompt(
     State(state): State<AppState>,
     AxumPath(thread_id): AxumPath<String>,
+    Query(query): Query<TasksQuery>,
     Json(request): Json<TaskPromptRequest>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
+    let project = state.projects.get_project(&query.project_id)?;
     let prompt = normalize_prompt(&request.prompt)?;
     let client = require_codex_thread_client(&state).await?;
-    let project = project_for_thread_route(&state, &thread_id).await?;
     let thread = client.read_thread(&thread_id, true).await?;
     let thread_value = thread.get("thread").unwrap_or(&thread);
     ensure_thread_belongs_to_project(&project, thread_value)?;
@@ -923,9 +924,10 @@ async fn task_prompt(
 async fn task_interrupt(
     State(state): State<AppState>,
     AxumPath(thread_id): AxumPath<String>,
+    Query(query): Query<TasksQuery>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
+    let project = state.projects.get_project(&query.project_id)?;
     let client = require_codex_thread_client(&state).await?;
-    let project = project_for_thread_route(&state, &thread_id).await?;
     let thread = client.read_thread(&thread_id, true).await?;
     let thread_value = thread.get("thread").unwrap_or(&thread);
     ensure_thread_belongs_to_project(&project, thread_value)?;
@@ -944,8 +946,10 @@ async fn task_interrupt(
 async fn task_approval(
     State(state): State<AppState>,
     AxumPath((thread_id, approval_id)): AxumPath<(String, String)>,
+    Query(query): Query<TasksQuery>,
     Json(request): Json<TaskApprovalRequest>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
+    let project = state.projects.get_project(&query.project_id)?;
     let pending = {
         let approvals = state.pending_approvals.lock().await;
         let Some(pending) = approvals.get(&approval_id).cloned() else {
@@ -960,6 +964,12 @@ async fn task_approval(
         return Err(ApiError::BadRequest {
             code: "approval_task_mismatch",
             message: "approval request belongs to another thread".to_string(),
+        });
+    }
+    if !pending.project_id.is_empty() && pending.project_id != query.project_id {
+        return Err(ApiError::BadRequest {
+            code: "approval_project_mismatch",
+            message: "approval request belongs to another project".to_string(),
         });
     }
 
@@ -988,11 +998,6 @@ async fn task_approval(
     );
     let _ = state.task_events.send(event);
 
-    let project = if pending.project_id.is_empty() {
-        project_for_thread_route(&state, &thread_id).await?
-    } else {
-        state.projects.get_project(&pending.project_id)?
-    };
     Ok(Json(
         read_task_detail(&state, &client, &project, &thread_id).await?,
     ))
@@ -1092,23 +1097,6 @@ async fn validate_thread_belongs_to_project(
     let response = client.read_thread(thread_id, false).await?;
     let thread = response.get("thread").unwrap_or(&response);
     ensure_thread_belongs_to_project(project, thread)
-}
-
-async fn project_for_thread_route(
-    state: &AppState,
-    thread_id: &str,
-) -> Result<ProjectRecord, ApiError> {
-    let client = require_codex_thread_client(state).await?;
-    let response = client.read_thread(thread_id, false).await?;
-    let thread = response.get("thread").unwrap_or(&response);
-    let cwd = thread_cwd(thread).ok_or_else(|| ApiError::BadRequest {
-        code: "thread_project_unknown",
-        message: "thread does not include a cwd".to_string(),
-    })?;
-    project_for_cwd(&state.projects, cwd).ok_or_else(|| ApiError::BadRequest {
-        code: "thread_project_unknown",
-        message: "thread cwd is not inside a registered project".to_string(),
-    })
 }
 
 fn thread_list_response(project: &ProjectRecord, response: &JsonValue) -> Vec<TaskRecord> {

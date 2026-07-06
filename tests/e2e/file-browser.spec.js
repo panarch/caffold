@@ -618,7 +618,7 @@ test("groups header review actions into Git, GitHub, and Codex popovers", async 
   await captureReviewScreenshot(page, testInfo, "header-actions-codex-popover");
 });
 
-test("opens Tasks from Codex header and runs a minimal task loop", async ({ page }) => {
+test("opens Tasks from Codex header and runs a minimal task loop", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     window.EventSource = class MockEventSource {
       constructor(url) {
@@ -716,14 +716,15 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       };
       events = [
         eventRecord("event_1", "prompt_sent", "Prompt sent", { prompt: body.prompt }, 1),
+        eventRecord("event_1_user", "user_message", "User prompt", { text: body.prompt }, 2),
         eventRecord(
           "event_2",
           "thread_started",
           "Thread started",
           { threadId: "thread_12345678" },
-          2,
+          3,
         ),
-        eventRecord("event_3", "turn_started", "Turn started", { turnId: "turn_1" }, 3),
+        eventRecord("event_3", "turn_started", "Turn started", { turnId: "turn_1" }, 4),
         eventRecord(
           "event_4",
           "approval_requested",
@@ -739,7 +740,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
               availableDecisions: ["accept", "acceptForSession", "decline", "cancel"],
             },
           },
-          4,
+          5,
         ),
       ];
 
@@ -763,6 +764,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       segments[3] === "prompts" &&
       method === "POST"
     ) {
+      expect(url.searchParams.get("projectId")).toBe(project.id);
       const body = request.postDataJSON();
       expect(body.prompt).toBe("Please tighten the tests");
       events = [
@@ -788,6 +790,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       segments[3] === "interrupt" &&
       method === "POST"
     ) {
+      expect(url.searchParams.get("projectId")).toBe(project.id);
       events = [
         ...events,
         eventRecord("event_7", "turn_interrupted", "Interrupt requested", null, 7),
@@ -810,6 +813,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       segments[4] === "approval_1" &&
       method === "POST"
     ) {
+      expect(url.searchParams.get("projectId")).toBe(project.id);
       const body = request.postDataJSON();
       expect(body.decision).toBe("accept");
       events = [
@@ -830,10 +834,33 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
         ),
         eventRecord(
           "event_9",
+          "command_execution",
+          "Command completed",
+          {
+            command: "cargo test",
+            cwd: "src",
+            status: "completed",
+            aggregatedOutput: "test result: ok. 12 passed.",
+          },
+          9,
+        ),
+        eventRecord(
+          "event_10",
+          "file_change",
+          "File changes: 2",
+          {
+            status: "completed",
+            changeCount: 2,
+            changes: [{ path: "src/planner.rs" }, { path: "tests/planner.rs" }],
+          },
+          10,
+        ),
+        eventRecord(
+          "event_11",
           "assistant_message",
           "Assistant response",
           { text: "The planner changes are ready to review. I would open the diff next." },
-          9,
+          11,
         ),
       ];
       updateTask({ status: "running", lastEventSummary: "Approval resolved" });
@@ -892,15 +919,38 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(tasksPage).toContainText("Inspect the planner changes");
   await expect(tasksPage).toContainText("Thread thread_1");
   await expect(tasksPage).toContainText("Prompt sent");
+  await expect(tasksPage.locator(".task-conversation")).toBeVisible();
+  await expect(tasksPage.locator('.task-message[data-message-role="user"]')).toContainText(
+    "Inspect the planner changes",
+  );
   await expect(tasksPage).toContainText("Command Approval");
   await expect(tasksPage).toContainText("cargo test");
   await expect(tasksPage).toContainText("Run the test suite");
 
   await tasksPage.getByRole("button", { name: "Accept", exact: true }).click();
   await expect(tasksPage).toContainText("Approval resolved: accept");
-  await expect(tasksPage).toContainText("Checked the planner diff.");
-  await expect(tasksPage).toContainText("The planner changes are ready to review.");
+  await expect(tasksPage.locator(".task-thinking")).toHaveAttribute(
+    "data-thinking-state",
+    "complete",
+  );
+  await expect(tasksPage.locator(".task-thinking details")).not.toHaveAttribute("open", "");
+  await expect(tasksPage.locator(".task-thinking summary")).toContainText("Thinking");
+  await expect(tasksPage.locator(".task-thinking pre")).toHaveText(
+    /Checked the planner diff\./,
+  );
+  await expect(tasksPage.locator(".task-command")).toContainText("test result: ok");
+  await expect(tasksPage.locator(".task-file-change")).toContainText("2 changed files");
+  await expect(tasksPage.locator('.task-message[data-message-role="assistant"]')).toContainText(
+    "The planner changes are ready to review.",
+  );
   await expect(tasksPage.locator(".task-approval-card")).toHaveCount(0);
+  await expect(tasksPage.locator(".task-follow-up-form")).toBeVisible();
+  await expect(tasksPage.locator(".task-conversation-scroll")).toHaveCSS("overflow-y", "auto");
+  await expect(tasksPage).not.toContainText("assistant message");
+  await expect(tasksPage).not.toContainText("user message");
+  await expect(tasksPage).not.toContainText("turn started");
+  await stabilizeDynamicText(page);
+  await captureReviewScreenshot(page, testInfo, "tasks-conversation");
 
   await tasksPage.locator('textarea[name="prompt"]').fill("Please tighten the tests");
   await tasksPage.getByRole("button", { name: "Send Prompt" }).click();

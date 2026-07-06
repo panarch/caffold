@@ -310,7 +310,7 @@ class CaffoldTasksPage extends HTMLElement {
 
     form.prompt.value = "";
     try {
-      const detail = await sendTaskPrompt(this.selectedThreadId, prompt);
+      const detail = await sendTaskPrompt(this.selectedThreadId, this.projectId, prompt);
       this.taskDetail = detail;
       this.events = detail.events ?? [];
       this.followUpDraft = "";
@@ -327,7 +327,7 @@ class CaffoldTasksPage extends HTMLElement {
     }
 
     try {
-      const detail = await interruptTask(this.selectedThreadId);
+      const detail = await interruptTask(this.selectedThreadId, this.projectId);
       this.taskDetail = detail;
       this.events = detail.events ?? [];
       this.render();
@@ -343,7 +343,12 @@ class CaffoldTasksPage extends HTMLElement {
     }
 
     try {
-      const detail = await resolveTaskApproval(this.selectedThreadId, approvalId, decision);
+      const detail = await resolveTaskApproval(
+        this.selectedThreadId,
+        this.projectId,
+        approvalId,
+        decision,
+      );
       this.taskDetail = detail;
       this.events = detail.events ?? [];
       this.render();
@@ -523,13 +528,18 @@ class CaffoldTasksPage extends HTMLElement {
             }
           </div>
         </section>
-        ${approvals.length ? `<section class="task-approvals">${approvals.map(renderApprovalCard).join("")}</section>` : ""}
-        <section class="task-timeline" aria-label="Task timeline">
-          <h3>Timeline</h3>
-          <ol>
-            ${this.events.map(renderTimelineEvent).join("")}
-          </ol>
-        </section>
+        <div class="task-conversation-scroll">
+          <div class="task-conversation-column">
+            ${approvals.length ? `<section class="task-approvals">${approvals.map(renderApprovalCard).join("")}</section>` : ""}
+            <ol class="task-conversation" aria-label="Task conversation">
+              ${this.events
+                .map((event, index) =>
+                  renderConversationEvent(event, task, conversationEventState(this.events, index)),
+                )
+                .join("")}
+            </ol>
+          </div>
+        </div>
         <form class="task-composer task-follow-up-form" data-task-form="follow-up">
           <label>
             <span>Follow-up</span>
@@ -546,25 +556,16 @@ class CaffoldTasksPage extends HTMLElement {
 
 customElements.define("caffold-tasks-page", CaffoldTasksPage);
 
-function renderTimelineEvent(event) {
-  const body = renderEventBody(event);
-  return `
-    <li class="task-event" data-event-type="${escapeHtml(event.type)}">
-      <time>${escapeHtml(formatDate(event.createdMs))}</time>
-      <strong>${escapeHtml(event.summary)}</strong>
-      <span>${escapeHtml(formatEventType(event.type))}</span>
-      ${body}
-    </li>
-  `;
-}
-
-function renderEventBody(event) {
+function renderConversationEvent(event, task, eventState) {
   const payload = event.payload ?? {};
   if (event.type === "prompt_sent" || event.type === "user_message") {
-    return renderTextBody("Prompt", payload.prompt ?? payload.text);
+    if (event.type === "prompt_sent") {
+      return renderStatusEvent(event);
+    }
+    return renderMessageEvent(event, "user", "You", payload.prompt ?? payload.text);
   }
   if (event.type === "assistant_message") {
-    return renderTextBody("Assistant", payload.text);
+    return renderMessageEvent(event, "assistant", "Assistant", payload.text);
   }
   if (event.type === "reasoning") {
     const summary = Array.isArray(payload.summary)
@@ -573,43 +574,105 @@ function renderEventBody(event) {
     const content = Array.isArray(payload.content)
       ? payload.content.filter(Boolean).join("\n\n")
       : "";
-    return renderTextBody("Reasoning", [summary, content].filter(Boolean).join("\n\n"));
+    return renderThinkingEvent(
+      event,
+      [summary, content].filter(Boolean).join("\n\n"),
+      task,
+      eventState,
+    );
   }
   if (event.type === "plan") {
-    return renderTextBody("Plan", payload.text);
+    return renderToolEvent(event, "Plan", payload.text);
   }
   if (event.type === "command_execution") {
-    return renderCommandBody(payload);
+    return renderCommandEvent(event);
   }
   if (event.type === "file_change") {
-    const status = payload.status ? `Status: ${payload.status}` : "";
-    const count =
-      typeof payload.changeCount === "number"
-        ? `Changed files: ${payload.changeCount}`
-        : "";
-    return renderTextBody("Files", [status, count].filter(Boolean).join("\n"));
+    return renderFileChangeEvent(event);
   }
   if (event.type === "task_failed") {
-    return renderTextBody("Error", event.summary);
+    return renderToolEvent(event, "Error", event.summary, "danger");
   }
-  return "";
+  return renderStatusEvent(event);
 }
 
-function renderTextBody(label, text) {
-  const value = `${text ?? ""}`.trim();
-  if (!value) {
-    return "";
-  }
+function conversationEventState(events, index) {
+  const laterEvents = events.slice(index + 1);
+  return {
+    hasLaterAssistantResponse: laterEvents.some((event) => event.type === "assistant_message"),
+  };
+}
 
+function renderStatusEvent(event) {
+  const status = statusTone(event.type);
   return `
-    <div class="task-event-body">
-      <span>${escapeHtml(label)}</span>
-      <pre>${escapeHtml(value)}</pre>
-    </div>
+    <li class="task-event task-event-status" data-event-type="${escapeHtml(event.type)}" data-event-status="${escapeHtml(status)}">
+      <span class="task-status-chip">${escapeHtml(event.summary)}</span>
+      <time>${escapeHtml(formatDate(event.createdMs))}</time>
+    </li>
   `;
 }
 
-function renderCommandBody(payload) {
+function renderMessageEvent(event, role, label, text) {
+  const value = `${text ?? ""}`.trim();
+  if (!value) {
+    return renderStatusEvent(event);
+  }
+
+  return `
+    <li class="task-event task-message" data-event-type="${escapeHtml(event.type)}" data-message-role="${escapeHtml(role)}">
+      <div class="task-message-header">
+        <strong>${escapeHtml(label)}</strong>
+        <time>${escapeHtml(formatDate(event.createdMs))}</time>
+      </div>
+      <pre class="task-message-content">${escapeHtml(value)}</pre>
+    </li>
+  `;
+}
+
+function renderThinkingEvent(event, text, task, eventState) {
+  const value = `${text ?? ""}`.trim();
+  if (!value) {
+    return renderStatusEvent(event);
+  }
+  const isActive =
+    ["running", "waiting_for_approval"].includes(task?.status) &&
+    !eventState?.hasLaterAssistantResponse;
+  const open = isActive ? " open" : "";
+  const state = isActive ? "active" : "complete";
+
+  return `
+    <li class="task-event task-thinking" data-event-type="${escapeHtml(event.type)}" data-thinking-state="${escapeHtml(state)}">
+      <details${open}>
+        <summary>
+          <span>Thinking</span>
+          <time>${escapeHtml(formatDate(event.createdMs))}</time>
+        </summary>
+        <pre>${escapeHtml(value)}</pre>
+      </details>
+    </li>
+  `;
+}
+
+function renderToolEvent(event, label, text, tone = "neutral") {
+  const value = `${text ?? ""}`.trim();
+  if (!value) {
+    return renderStatusEvent(event);
+  }
+
+  return `
+    <li class="task-event task-tool-card" data-event-type="${escapeHtml(event.type)}" data-tool-tone="${escapeHtml(tone)}">
+      <header>
+        <strong>${escapeHtml(label)}</strong>
+        <time>${escapeHtml(formatDate(event.createdMs))}</time>
+      </header>
+      <pre>${escapeHtml(value)}</pre>
+    </li>
+  `;
+}
+
+function renderCommandEvent(event) {
+  const payload = event.payload ?? {};
   const command = `${payload.command ?? ""}`.trim();
   const cwd = `${payload.cwd ?? ""}`.trim();
   const status = `${payload.status ?? ""}`.trim();
@@ -622,7 +685,42 @@ function renderCommandBody(payload) {
   ]
     .filter(Boolean)
     .join("\n");
-  return renderTextBody("Command", details);
+  const open = status && status !== "completed" ? " open" : "";
+  return `
+    <li class="task-event task-command" data-event-type="${escapeHtml(event.type)}" data-command-status="${escapeHtml(status || "unknown")}">
+      <details${open}>
+        <summary>
+          <span>Command</span>
+          ${status ? `<span>${escapeHtml(formatStatus(status))}</span>` : ""}
+          <time>${escapeHtml(formatDate(event.createdMs))}</time>
+        </summary>
+        <pre>${escapeHtml(details || "(command unavailable)")}</pre>
+      </details>
+    </li>
+  `;
+}
+
+function renderFileChangeEvent(event) {
+  const payload = event.payload ?? {};
+  const count =
+    typeof payload.changeCount === "number"
+      ? payload.changeCount
+      : Array.isArray(payload.changes)
+        ? payload.changes.length
+        : 0;
+  const status = payload.status ? `Status: ${formatStatus(payload.status)}` : "";
+  const summary = count === 1 ? "1 changed file" : `${count} changed files`;
+  return `
+    <li class="task-event task-file-change" data-event-type="${escapeHtml(event.type)}">
+      <article>
+        <header>
+          <strong>${escapeHtml(summary)}</strong>
+          <time>${escapeHtml(formatDate(event.createdMs))}</time>
+        </header>
+        ${status ? `<p>${escapeHtml(status)}</p>` : ""}
+      </article>
+    </li>
+  `;
 }
 
 function renderApprovalCard(event) {
@@ -699,10 +797,6 @@ function formatStatus(status) {
   return `${status ?? "unknown"}`.replaceAll("_", " ");
 }
 
-function formatEventType(type) {
-  return `${type ?? ""}`.replaceAll("_", " ");
-}
-
 function formatDecision(decision) {
   return {
     accept: "Accept",
@@ -740,4 +834,14 @@ function formatDate(ms) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function statusTone(type) {
+  if (type === "task_failed" || type === "turn_interrupted") {
+    return "danger";
+  }
+  if (type === "approval_requested") {
+    return "warning";
+  }
+  return "muted";
 }
