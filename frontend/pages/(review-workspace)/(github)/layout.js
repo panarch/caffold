@@ -1,4 +1,5 @@
 import { getGitHubStatus } from "../../../api.js";
+import { routeMode } from "../../../navigation-routes.js";
 import "./(issues)/layout.js";
 import "./(pulls)/layout.js";
 
@@ -350,14 +351,15 @@ class CaffoldGithubReviewLayout extends HTMLElement {
 
   prepareRoute(route) {
     this.ensureRendered();
-    if (route.kind === "issues") {
+    const mode = routeMode(route);
+    if (mode === "issues") {
       this.setMode("issues");
       this.issuesLayout.prepareRoute(route);
       this.emitStateChange();
       return;
     }
 
-    if (route.kind === "pulls") {
+    if (mode === "pulls") {
       this.setMode("pulls");
       this.pullsLayout.prepareRoute(route);
       this.emitStateChange();
@@ -365,7 +367,8 @@ class CaffoldGithubReviewLayout extends HTMLElement {
   }
 
   async openRouteContent(route, options = {}) {
-    if (route.kind === "issues") {
+    const mode = routeMode(route);
+    if (mode === "issues") {
       if (route.number) {
         return await this.openIssue(route.number, { page: route.page });
       }
@@ -376,7 +379,7 @@ class CaffoldGithubReviewLayout extends HTMLElement {
       });
     }
 
-    if (route.kind !== "pulls") {
+    if (mode !== "pulls") {
       return null;
     }
 
@@ -463,11 +466,12 @@ class CaffoldGithubReviewLayout extends HTMLElement {
   }
 
   canReuseRoute(route) {
-    if (route.kind === "issues") {
+    const mode = routeMode(route);
+    if (mode === "issues") {
       return this.canReuseIssuesRoute(route);
     }
 
-    if (route.kind === "pulls") {
+    if (mode === "pulls") {
       return this.canReusePullsRoute(route);
     }
 

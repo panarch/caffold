@@ -1,5 +1,6 @@
 import { getGitStatus } from "../../../api.js";
 import { escapeHtml } from "../../../components/dom.js";
+import { routeMode } from "../../../navigation-routes.js";
 import "./compare/page.js";
 import "./diff/page.js";
 import "./(log)/layout.js";
@@ -374,11 +375,12 @@ class CaffoldGitReviewLayout extends HTMLElement {
 
   prepareRoute(route) {
     this.ensureRendered();
-    if (!route) {
+    const mode = routeMode(route);
+    if (!mode) {
       return;
     }
 
-    if (route.kind === "diff") {
+    if (mode === "diff") {
       this.setMode("diff");
       this.diffPage.setContext({
         path: this.currentPath,
@@ -395,7 +397,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
       return;
     }
 
-    if (route.kind === "compare") {
+    if (mode === "compare") {
       this.setMode("compare");
       this.comparePage.setContext({
         path: this.currentPath,
@@ -414,7 +416,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
       return;
     }
 
-    if (route.kind === "log") {
+    if (mode === "log") {
       this.setMode("log");
       this.logLayout.setContext({
         path: this.currentPath,
@@ -427,7 +429,8 @@ class CaffoldGitReviewLayout extends HTMLElement {
 
   async openRoute(route, options = {}) {
     this.prepareRoute(route);
-    if (route.kind === "diff") {
+    const mode = routeMode(route);
+    if (mode === "diff") {
       this.openDiffWorkspace({ preserveViewer: Boolean(route.path) });
       if (!route.path) {
         this.setSelectedPath("");
@@ -449,7 +452,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
       );
     }
 
-    if (route.kind === "compare") {
+    if (mode === "compare") {
       const routeBaseRef = route.baseRef || null;
       const routeHeadRef = route.headRef || null;
       const compare = await this.openCompareWorkspace({
@@ -472,7 +475,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
       return await this.openCompareDiff(fullPath, file?.status ?? options.status ?? "");
     }
 
-    if (route.kind !== "log") {
+    if (mode !== "log") {
       return null;
     }
 
@@ -571,15 +574,16 @@ class CaffoldGitReviewLayout extends HTMLElement {
   }
 
   canReuseRoute(route) {
-    if (route.kind === "diff") {
+    const mode = routeMode(route);
+    if (mode === "diff") {
       return this.canReuseDiffRoute(route);
     }
 
-    if (route.kind === "compare") {
+    if (mode === "compare") {
       return this.canReuseCompareRoute(route);
     }
 
-    if (route.kind === "log") {
+    if (mode === "log") {
       return this.canReuseLogRoute(route);
     }
 
