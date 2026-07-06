@@ -207,6 +207,57 @@ test("exposes route metadata for surface and domain routing", () => {
   assert.equal(routeTarget({ kind: "unknown" }), null);
 });
 
+test("derives route metadata from partial route objects", () => {
+  const cases = [
+    [{ kind: "files", path: "" }, "files", null, "files", "list"],
+    [{ kind: "files", path: "src/lib.rs" }, "files", null, "files", "path"],
+    [{ kind: "diff", path: "" }, "review", "git", "diff", "list"],
+    [{ kind: "diff", path: "src/lib.rs" }, "review", "git", "diff", "file"],
+    [{ kind: "compare", path: "" }, "review", "git", "compare", "list"],
+    [{ kind: "compare", path: "src/lib.rs" }, "review", "git", "compare", "file"],
+    [{ kind: "log", page: 1, sha: "", path: "" }, "review", "git", "log", "list"],
+    [{ kind: "log", page: 1, sha: "abcdef", path: "" }, "review", "git", "log", "commit"],
+    [{ kind: "log", page: 1, sha: "abcdef", path: "src/lib.rs" }, "review", "git", "log", "file"],
+    [{ kind: "issues", page: 1, number: null }, "review", "github", "issues", "list"],
+    [{ kind: "issues", page: 1, number: 42 }, "review", "github", "issues", "detail"],
+    [
+      { kind: "pulls", page: 1, number: null, files: false, path: "" },
+      "review",
+      "github",
+      "pulls",
+      "list",
+    ],
+    [
+      { kind: "pulls", page: 1, number: 12, files: false, path: "" },
+      "review",
+      "github",
+      "pulls",
+      "detail",
+    ],
+    [
+      { kind: "pulls", page: 1, number: 12, files: true, path: "" },
+      "review",
+      "github",
+      "pulls",
+      "files",
+    ],
+    [
+      { kind: "pulls", page: 1, number: 12, files: true, path: "src/lib.rs" },
+      "review",
+      "github",
+      "pulls",
+      "file",
+    ],
+  ];
+
+  for (const [route, expectedSurface, expectedDomain, expectedMode, expectedTarget] of cases) {
+    assert.equal(routeSurface(route), expectedSurface);
+    assert.equal(routeDomain(route), expectedDomain);
+    assert.equal(routeMode(route), expectedMode);
+    assert.equal(routeTarget(route), expectedTarget);
+  }
+});
+
 test("rejects unknown app routes and keeps malformed segments non-fatal", () => {
   assert.equal(parseRoute("/"), null);
   assert.equal(parseRoute("/api/health"), null);

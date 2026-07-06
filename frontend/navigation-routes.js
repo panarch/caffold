@@ -19,7 +19,6 @@ const ROUTE_DEFINITIONS = [
     pattern: "/projects/[projectId]/files",
     target: "list",
     toRoute: ({ projectId }) => filesRoute(projectId),
-    matchesRoute: (route) => route?.kind === "files" && !cleanPath(route.path),
   }),
   routeDefinition({
     id: "files-path",
@@ -27,7 +26,6 @@ const ROUTE_DEFINITIONS = [
     pattern: "/projects/[projectId]/files/[...path]",
     target: "path",
     toRoute: ({ projectId, path }) => filesRoute(projectId, path),
-    matchesRoute: (route) => route?.kind === "files" && Boolean(cleanPath(route.path)),
     parent: (route) => filesRoute(route.projectId, parentPath(route.path)),
   }),
   routeDefinition({
@@ -37,7 +35,6 @@ const ROUTE_DEFINITIONS = [
     domain: "git",
     target: "list",
     toRoute: ({ projectId }) => diffRoute(projectId),
-    matchesRoute: (route) => route?.kind === "diff" && !cleanPath(route.path),
     parent: filesRootRoute,
   }),
   routeDefinition({
@@ -47,7 +44,6 @@ const ROUTE_DEFINITIONS = [
     domain: "git",
     target: "file",
     toRoute: ({ projectId, path }) => diffRoute(projectId, path),
-    matchesRoute: (route) => route?.kind === "diff" && Boolean(cleanPath(route.path)),
     parent: (route) => diffRoute(route.projectId),
   }),
   routeDefinition({
@@ -58,7 +54,6 @@ const ROUTE_DEFINITIONS = [
     domain: "git",
     target: "list",
     toRoute: ({ projectId }, query) => compareRoute(projectId, query),
-    matchesRoute: (route) => route?.kind === "compare" && !cleanPath(route.path),
     parent: filesRootRoute,
   }),
   routeDefinition({
@@ -69,7 +64,6 @@ const ROUTE_DEFINITIONS = [
     domain: "git",
     target: "file",
     toRoute: ({ projectId, path }, query) => compareRoute(projectId, { ...query, path }),
-    matchesRoute: (route) => route?.kind === "compare" && Boolean(cleanPath(route.path)),
     parent: (route) =>
       compareRoute(route.projectId, {
         baseRef: route.baseRef,
@@ -84,7 +78,6 @@ const ROUTE_DEFINITIONS = [
     domain: "git",
     target: "list",
     toRoute: ({ projectId }, query) => logRoute(projectId, query),
-    matchesRoute: (route) => route?.kind === "log" && !route.sha,
     parent: filesRootRoute,
   }),
   routeDefinition({
@@ -95,7 +88,6 @@ const ROUTE_DEFINITIONS = [
     domain: "git",
     target: "commit",
     toRoute: ({ projectId, sha }, query) => logRoute(projectId, { ...query, sha }),
-    matchesRoute: (route) => route?.kind === "log" && Boolean(route.sha) && !cleanPath(route.path),
     parent: (route) => logRoute(route.projectId, { page: route.page }),
   }),
   routeDefinition({
@@ -106,8 +98,6 @@ const ROUTE_DEFINITIONS = [
     domain: "git",
     target: "file",
     toRoute: ({ projectId, sha, path }, query) => logRoute(projectId, { ...query, sha, path }),
-    matchesRoute: (route) =>
-      route?.kind === "log" && Boolean(route.sha) && Boolean(cleanPath(route.path)),
     parent: (route) => logRoute(route.projectId, { page: route.page, sha: route.sha }),
   }),
   routeDefinition({
@@ -118,7 +108,6 @@ const ROUTE_DEFINITIONS = [
     domain: "github",
     target: "list",
     toRoute: ({ projectId }, query) => issuesRoute(projectId, query),
-    matchesRoute: (route) => route?.kind === "issues" && !route.number,
     parent: filesRootRoute,
   }),
   routeDefinition({
@@ -130,7 +119,6 @@ const ROUTE_DEFINITIONS = [
     target: "detail",
     params: { number: "positiveInteger" },
     toRoute: ({ projectId, number }, query) => issuesRoute(projectId, { ...query, number }),
-    matchesRoute: (route) => route?.kind === "issues" && Boolean(route.number),
     parent: (route) => issuesRoute(route.projectId, { page: route.page }),
   }),
   routeDefinition({
@@ -141,7 +129,6 @@ const ROUTE_DEFINITIONS = [
     domain: "github",
     target: "list",
     toRoute: ({ projectId }, query) => pullsRoute(projectId, query),
-    matchesRoute: (route) => route?.kind === "pulls" && !route.number,
     parent: filesRootRoute,
   }),
   routeDefinition({
@@ -153,7 +140,6 @@ const ROUTE_DEFINITIONS = [
     target: "detail",
     params: { number: "positiveInteger" },
     toRoute: ({ projectId, number }, query) => pullsRoute(projectId, { ...query, number }),
-    matchesRoute: (route) => route?.kind === "pulls" && Boolean(route.number) && !route.files,
     parent: (route) => pullsRoute(route.projectId, { page: route.page }),
   }),
   routeDefinition({
@@ -166,8 +152,6 @@ const ROUTE_DEFINITIONS = [
     params: { number: "positiveInteger" },
     toRoute: ({ projectId, number }, query) =>
       pullsRoute(projectId, { ...query, number, files: true }),
-    matchesRoute: (route) =>
-      route?.kind === "pulls" && Boolean(route.number) && route.files && !cleanPath(route.path),
     parent: (route) => pullsRoute(route.projectId, { page: route.page, number: route.number }),
   }),
   routeDefinition({
@@ -185,11 +169,6 @@ const ROUTE_DEFINITIONS = [
         files: true,
         path,
       }),
-    matchesRoute: (route) =>
-      route?.kind === "pulls" &&
-      Boolean(route.number) &&
-      route.files &&
-      Boolean(cleanPath(route.path)),
     parent: (route) =>
       pullsRoute(route.projectId, {
         page: route.page,
@@ -259,19 +238,50 @@ export function routeTarget(route) {
 }
 
 function routeDefinition(config) {
-  return {
+  const definition = {
     ...config,
     surface: config.surface ?? (config.domain ? "review" : "files"),
     tokens: compilePattern(config.pattern),
     query: config.query ?? [],
     params: config.params ?? {},
   };
+  definition.matchesRoute ??= (route) => routeMatchesDefinition(definition, route);
+  return definition;
 }
 
 function routeDefinitionFor(route) {
-  return (
-    CANONICAL_ROUTE_DEFINITIONS.find((definition) => definition.matchesRoute?.(route)) ?? null
-  );
+  return CANONICAL_ROUTE_DEFINITIONS.find((definition) => definition.matchesRoute(route)) ?? null;
+}
+
+function routeMatchesDefinition(definition, route) {
+  if (route?.kind !== definition.kind) {
+    return false;
+  }
+
+  if (hasToken(definition, "rest", "path") !== Boolean(cleanPath(route.path))) {
+    return false;
+  }
+
+  if (hasToken(definition, "param", "sha") !== Boolean(route.sha)) {
+    return false;
+  }
+
+  if (hasToken(definition, "param", "number") !== Boolean(route.number)) {
+    return false;
+  }
+
+  if (definition.kind === "pulls") {
+    const expectsFilesTarget = definition.target === "files" || definition.target === "file";
+    if (Boolean(route.files) !== expectsFilesTarget) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function hasToken(definition, kind, name) {
+  return definition.tokens.some((token) => token.kind === kind && token.name === name);
 }
 
 function compilePattern(pattern) {

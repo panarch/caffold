@@ -42,6 +42,10 @@ generation, query parameters, parent-route behavior, and
 surface/domain/target metadata for that URL variant. `routeMode(route)` returns
 the route kind as the domain-local mode.
 
+Route object matching is generated from the route kind, URL pattern parameters,
+rest path segments, and target metadata. Add a custom matcher only for a route
+variant that cannot be described by those fields.
+
 The exported helpers remain the public interface:
 
 - `parseRoute(url)`
