@@ -619,7 +619,15 @@ test("groups header review actions into Git, GitHub, and Codex popovers", async 
 });
 
 test("opens Tasks from Codex header and runs a minimal task loop", async ({ page }, testInfo) => {
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.addInitScript(() => {
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: {
+        register: () => Promise.resolve(),
+      },
+    });
     window.EventSource = class MockEventSource {
       constructor(url) {
         this.url = url;
@@ -636,6 +644,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   let task = null;
   let events = [];
   let createTaskRequests = 0;
+  let approvalRequests = 0;
   const threadId = "thread_12345678";
 
   const eventRecord = (id, type, summary, payload = null, offset = 0) => ({
@@ -647,7 +656,12 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     payload,
     createdMs: now + offset,
   });
-  const detailResponse = () => ({ task, events, pendingApprovals: [] });
+  const detailResponse = (overrides = {}) => ({
+    task,
+    events,
+    eventsPage: { nextCursor: null, ...(overrides.eventsPage ?? {}) },
+    pendingApprovals: [],
+  });
   const updateTask = (updates) => {
     task = {
       ...task,
@@ -680,7 +694,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       }),
     }),
   );
-  await page.route(/\/api\/tasks(?:\/.*)?(?:\?|$)/, async (route) => {
+  await page.route("**/api/tasks**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const segments = url.pathname.split("/").filter(Boolean);
@@ -813,6 +827,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       segments[4] === "approval_1" &&
       method === "POST"
     ) {
+      approvalRequests += 1;
       expect(url.searchParams.get("projectId")).toBe(project.id);
       const body = request.postDataJSON();
       expect(body.decision).toBe("accept");
@@ -915,6 +930,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect.poll(() => createTaskRequests).toBe(1);
   await expect(page).toHaveURL(`/projects/${project.id}/tasks/${threadId}`);
   const tasksPage = page.locator("caffold-tasks-page");
+  await expect(tasksPage).toHaveCount(1);
   await expect(tasksPage).toHaveAttribute("data-tasks-view", "detail");
   await expect(tasksPage).toContainText("Inspect the planner changes");
   await expect(tasksPage).toContainText("Thread thread_1");
@@ -926,8 +942,30 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(tasksPage).toContainText("Command Approval");
   await expect(tasksPage).toContainText("cargo test");
   await expect(tasksPage).toContainText("Run the test suite");
+  await expect
+    .poll(() => tasksPage.evaluate((element) => element.selectedThreadId))
+    .toBe(threadId);
+  await expect
+    .poll(() =>
+      tasksPage
+        .locator('.task-approval-card button[data-task-action="approval"][data-decision="accept"]')
+        .evaluate((button) => ({
+          action: button.dataset.taskAction,
+          approvalId: button.dataset.approvalId,
+          decision: button.dataset.decision,
+        })),
+    )
+    .toEqual({ action: "approval", approvalId: "approval_1", decision: "accept" });
 
-  await tasksPage.getByRole("button", { name: "Accept", exact: true }).click();
+  await tasksPage
+    .locator('.task-approval-card button[data-task-action="approval"][data-decision="accept"]')
+    .click();
+  expect(pageErrors).toEqual([]);
+  await expect.poll(() => approvalRequests).toBe(1);
+  await expect(tasksPage).toHaveCount(1);
+  await expect
+    .poll(() => tasksPage.evaluate((element) => element.events.map((event) => event.type)))
+    .toContain("approval_resolved");
   await expect(tasksPage).toContainText("Approval resolved: accept");
   await expect(tasksPage.locator(".task-thinking")).toHaveAttribute(
     "data-thinking-state",
@@ -958,6 +996,102 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
 
   await tasksPage.getByRole("button", { name: "Open Diff" }).click();
   await expect(page).toHaveURL(`/projects/${project.id}/diff`);
+});
+
+test("loads older task conversation events by cursor", async ({ page }) => {
+  const project = await mockRegisteredProject(page);
+  const threadId = "thread_cursor_fixture";
+  const now = 1_767_100_000_000;
+  const task = {
+    id: threadId,
+    threadId,
+    projectId: project.id,
+    activeTurnId: null,
+    title: "Long running thread",
+    preview: "Latest answer",
+    status: "idle",
+    cwd: "src",
+    relativeCwd: "",
+    createdMs: now,
+    updatedMs: now + 10,
+    recencyMs: now + 10,
+    lastEventSummary: "Latest answer",
+  };
+  const eventRecord = (id, type, summary, payload, offset) => ({
+    id,
+    threadId,
+    projectId: project.id,
+    type,
+    summary,
+    payload,
+    createdMs: now + offset,
+  });
+  const latestEvents = Array.from({ length: 12 }, (_, index) =>
+    eventRecord(
+      `event_latest_${index}`,
+      "assistant_message",
+      "Assistant response",
+      {
+        text: `This is the latest answer block ${index + 1}.\n\n${"Latest transcript line. ".repeat(18)}`,
+      },
+      10 + index,
+    ),
+  );
+  const olderEvents = [
+    eventRecord(
+      "event_older",
+      "user_message",
+      "User prompt",
+      { text: "This is the older prompt." },
+      1,
+    ),
+  ];
+
+  await page.route(/\/api\/tasks\/thread_cursor_fixture(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("projectId")).toBe(project.id);
+    const cursor = url.searchParams.get("cursor");
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        task,
+        events: cursor === "older_cursor" ? olderEvents : latestEvents,
+        eventsPage: { nextCursor: cursor === "older_cursor" ? null : "older_cursor" },
+        pendingApprovals: [],
+      }),
+    });
+  });
+
+  await page.goto(`/projects/${project.id}/tasks/${threadId}`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect(tasksPage).toContainText("This is the latest answer block 12.");
+  await expect(tasksPage).not.toContainText("This is the older prompt.");
+  await expect
+    .poll(() =>
+      tasksPage.locator(".task-conversation-scroll").evaluate((element) => {
+        return element.scrollHeight > element.clientHeight;
+      }),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      tasksPage.locator(".task-conversation-scroll").evaluate((element) => {
+        return element.scrollTop + element.clientHeight >= element.scrollHeight - 2;
+      }),
+    )
+    .toBe(true);
+
+  await tasksPage.locator(".task-conversation-scroll").evaluate((element) => {
+    element.scrollTop = 0;
+    element.dispatchEvent(new Event("scroll"));
+  });
+  await expect(tasksPage).toContainText("This is the older prompt.");
+  await expect(tasksPage.locator(".task-load-older")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      tasksPage.locator(".task-conversation-scroll").evaluate((element) => element.scrollTop > 0),
+    )
+    .toBe(true);
 });
 
 test("keeps header action slots stable while status checks resolve", async ({ page }) => {

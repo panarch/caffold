@@ -25,29 +25,36 @@ class CaffoldTasksPage extends HTMLElement {
     this.tasks = [];
     this.taskDetail = null;
     this.events = [];
+    this.eventsPage = { nextCursor: null };
     this.error = null;
     this.loading = false;
+    this.loadingOlderEvents = false;
     this.project = null;
     this.projectId = "";
     this.selectedThreadId = "";
     this.stream = null;
     this.requestId = 0;
+    this.conversationScrollMode = null;
     this.newTaskDraft = { prompt: "" };
     this.followUpDraft = "";
     this.boundIconsReady = () => this.render();
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     warmIcons();
 
-    this.addEventListener("click", (event) => {
-      const action = event.target.closest("[data-task-action]");
-      if (!action) {
-        return;
-      }
+    this.addEventListener(
+      "click",
+      (event) => {
+        const action = closestElement(event.target, "[data-task-action]");
+        if (!action) {
+          return;
+        }
 
-      this.handleAction(action.dataset.taskAction, action);
-    });
+        this.handleAction(action.dataset.taskAction, action);
+      },
+      true,
+    );
     this.addEventListener("input", (event) => {
-      const form = event.target.closest("form[data-task-form]");
+      const form = closestElement(event.target, "form[data-task-form]");
       if (!form) {
         return;
       }
@@ -57,7 +64,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.addEventListener(
       "submit",
       (event) => {
-        const form = event.target.closest("form[data-task-form]");
+        const form = closestElement(event.target, "form[data-task-form]");
         if (!form) {
           return;
         }
@@ -98,9 +105,14 @@ class CaffoldTasksPage extends HTMLElement {
       this.selectedThreadId = route.threadId;
       this.taskDetail =
         this.taskDetail?.task?.threadId === route.threadId ? this.taskDetail : null;
+      this.eventsPage =
+        this.taskDetail?.task?.threadId === route.threadId
+          ? this.eventsPage
+          : { nextCursor: null };
     } else {
       this.view = "list";
       this.selectedThreadId = "";
+      this.eventsPage = { nextCursor: null };
       this.closeStream();
     }
     this.setAttribute("data-tasks-view", this.view);
@@ -179,8 +191,10 @@ class CaffoldTasksPage extends HTMLElement {
       }
       this.taskDetail = detail;
       this.events = detail.events ?? [];
+      this.eventsPage = detail.eventsPage ?? { nextCursor: null };
       this.loading = false;
       this.connectStream(threadId);
+      this.conversationScrollMode = "bottom";
       this.render();
       return detail;
     } catch (error) {
@@ -222,13 +236,19 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
 
+    const requestId = this.requestId;
     try {
       const detail = await getTask(this.selectedThreadId, this.projectId);
+      if (requestId !== this.requestId) {
+        return;
+      }
       if (detail?.task?.threadId !== this.selectedThreadId) {
         return;
       }
       this.taskDetail = detail;
-      this.events = detail.events ?? this.events;
+      this.events = mergeEvents(this.events, detail.events ?? []);
+      this.eventsPage = detail.eventsPage ?? this.eventsPage;
+      this.conversationScrollMode = "bottom-if-needed";
       this.render();
     } catch {
       // SSE already provided the timeline event. Keep the visible state stable.
@@ -290,8 +310,10 @@ class CaffoldTasksPage extends HTMLElement {
       });
       this.taskDetail = detail;
       this.events = detail.events ?? [];
+      this.eventsPage = detail.eventsPage ?? { nextCursor: null };
       this.tasks = upsertTask(this.tasks, detail.task);
       this.newTaskDraft = { prompt: "" };
+      this.conversationScrollMode = "bottom";
       this.requestRoute({ kind: "tasks", threadId: detail.task.threadId });
     } catch (error) {
       this.loading = false;
@@ -309,13 +331,22 @@ class CaffoldTasksPage extends HTMLElement {
     }
 
     form.prompt.value = "";
+    const requestId = ++this.requestId;
     try {
       const detail = await sendTaskPrompt(this.selectedThreadId, this.projectId, prompt);
+      if (requestId !== this.requestId) {
+        return;
+      }
       this.taskDetail = detail;
-      this.events = detail.events ?? [];
+      this.events = mergeEvents(this.events, detail.events ?? []);
+      this.eventsPage = detail.eventsPage ?? this.eventsPage;
       this.followUpDraft = "";
+      this.conversationScrollMode = "bottom";
       this.render();
     } catch (error) {
+      if (requestId !== this.requestId) {
+        return;
+      }
       this.error = error;
       this.render();
     }
@@ -326,12 +357,21 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
 
+    const requestId = ++this.requestId;
     try {
       const detail = await interruptTask(this.selectedThreadId, this.projectId);
+      if (requestId !== this.requestId) {
+        return;
+      }
       this.taskDetail = detail;
-      this.events = detail.events ?? [];
+      this.events = mergeEvents(this.events, detail.events ?? []);
+      this.eventsPage = detail.eventsPage ?? this.eventsPage;
+      this.conversationScrollMode = "bottom-if-needed";
       this.render();
     } catch (error) {
+      if (requestId !== this.requestId) {
+        return;
+      }
       this.error = error;
       this.render();
     }
@@ -342,6 +382,7 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
 
+    const requestId = ++this.requestId;
     try {
       const detail = await resolveTaskApproval(
         this.selectedThreadId,
@@ -349,11 +390,60 @@ class CaffoldTasksPage extends HTMLElement {
         approvalId,
         decision,
       );
+      if (requestId !== this.requestId) {
+        return;
+      }
       this.taskDetail = detail;
-      this.events = detail.events ?? [];
+      this.events = mergeEvents(this.events, detail.events ?? []);
+      this.eventsPage = detail.eventsPage ?? this.eventsPage;
+      this.conversationScrollMode = "bottom-if-needed";
       this.render();
     } catch (error) {
+      if (requestId !== this.requestId) {
+        return;
+      }
       this.error = error;
+      this.render();
+    }
+  }
+
+  async loadOlderEvents() {
+    const cursor = this.eventsPage?.nextCursor;
+    if (!this.selectedThreadId || !cursor || this.loadingOlderEvents) {
+      return;
+    }
+
+    this.loadingOlderEvents = true;
+    this.conversationScrollMode = "preserve";
+    const requestId = ++this.requestId;
+    this.render();
+    try {
+      const detail = await getTask(this.selectedThreadId, this.projectId, cursor);
+      if (requestId !== this.requestId) {
+        return;
+      }
+      if (detail?.task?.threadId !== this.selectedThreadId) {
+        this.loadingOlderEvents = false;
+        this.conversationScrollMode = "preserve";
+        this.render();
+        return;
+      }
+      this.taskDetail = {
+        ...detail,
+        task: this.taskDetail?.task ?? detail.task,
+      };
+      this.events = mergeEvents(detail.events ?? [], this.events);
+      this.eventsPage = detail.eventsPage ?? { nextCursor: null };
+      this.loadingOlderEvents = false;
+      this.conversationScrollMode = "prepend";
+      this.render();
+    } catch (error) {
+      if (requestId !== this.requestId) {
+        return;
+      }
+      this.loadingOlderEvents = false;
+      this.error = error;
+      this.conversationScrollMode = "preserve";
       this.render();
     }
   }
@@ -390,6 +480,7 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   render() {
+    const previousScroll = this.captureConversationScroll();
     this.setAttribute("data-tasks-view", this.view ?? "list");
     this.innerHTML = `
       <section class="tasks-surface" aria-label="Tasks">
@@ -397,6 +488,62 @@ class CaffoldTasksPage extends HTMLElement {
         ${this.renderBody()}
       </section>
     `;
+    this.bindConversationScroll();
+    this.restoreConversationScroll(previousScroll);
+  }
+
+  bindConversationScroll() {
+    const scroller = this.querySelector(".task-conversation-scroll");
+    scroller?.addEventListener("scroll", () => this.handleConversationScroll());
+  }
+
+  captureConversationScroll() {
+    const scroller = this.querySelector(".task-conversation-scroll");
+    if (!scroller) {
+      return null;
+    }
+    return {
+      scrollTop: scroller.scrollTop,
+      scrollHeight: scroller.scrollHeight,
+      clientHeight: scroller.clientHeight,
+      atBottom: isScrolledToBottom(scroller),
+    };
+  }
+
+  restoreConversationScroll(previousScroll) {
+    const scroller = this.querySelector(".task-conversation-scroll");
+    if (!scroller) {
+      this.conversationScrollMode = null;
+      return;
+    }
+
+    const mode = this.conversationScrollMode;
+    this.conversationScrollMode = null;
+    if (mode === "bottom" || (mode === "bottom-if-needed" && previousScroll?.atBottom)) {
+      scroller.scrollTop = scroller.scrollHeight;
+      return;
+    }
+    if (mode === "prepend" && previousScroll) {
+      scroller.scrollTop =
+        previousScroll.scrollTop + (scroller.scrollHeight - previousScroll.scrollHeight);
+      return;
+    }
+    if (previousScroll) {
+      scroller.scrollTop = Math.min(previousScroll.scrollTop, scroller.scrollHeight);
+    }
+  }
+
+  handleConversationScroll() {
+    const scroller = this.querySelector(".task-conversation-scroll");
+    if (
+      !scroller ||
+      this.loadingOlderEvents ||
+      !this.eventsPage?.nextCursor ||
+      scroller.scrollTop > 32
+    ) {
+      return;
+    }
+    this.loadOlderEvents();
   }
 
   renderHeader() {
@@ -531,6 +678,7 @@ class CaffoldTasksPage extends HTMLElement {
         <div class="task-conversation-scroll">
           <div class="task-conversation-column">
             ${approvals.length ? `<section class="task-approvals">${approvals.map(renderApprovalCard).join("")}</section>` : ""}
+            ${this.eventsPage?.nextCursor || this.loadingOlderEvents ? `<div class="task-load-older">${this.loadingOlderEvents ? "Loading older..." : ""}</div>` : ""}
             <ol class="task-conversation" aria-label="Task conversation">
               ${this.events
                 .map((event, index) =>
@@ -776,6 +924,28 @@ function upsertEvent(events, event) {
   existing.push(event);
   existing.sort((left, right) => (left.createdMs ?? 0) - (right.createdMs ?? 0));
   return existing;
+}
+
+function mergeEvents(leftEvents, rightEvents) {
+  const byId = new Map();
+  for (const event of [...leftEvents, ...rightEvents]) {
+    if (event?.id) {
+      byId.set(event.id, event);
+    }
+  }
+  return [...byId.values()].sort(
+    (left, right) =>
+      (left.createdMs ?? 0) - (right.createdMs ?? 0) ||
+      `${left.id ?? ""}`.localeCompare(`${right.id ?? ""}`),
+  );
+}
+
+function isScrolledToBottom(element) {
+  return element.scrollTop + element.clientHeight >= element.scrollHeight - 4;
+}
+
+function closestElement(target, selector) {
+  return target instanceof Element ? target.closest(selector) : null;
 }
 
 function upsertTask(tasks, task) {

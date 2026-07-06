@@ -34,6 +34,8 @@ use crate::{
     static_assets,
 };
 
+const TASK_DETAIL_TURNS_PAGE_SIZE: usize = 8;
+
 #[derive(Debug, Clone)]
 pub struct ServeConfig {
     pub host: IpAddr,
@@ -205,6 +207,13 @@ struct TasksQuery {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct TaskDetailQuery {
+    project_id: String,
+    cursor: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CreateTaskRequest {
     project_id: String,
     prompt: String,
@@ -307,7 +316,14 @@ struct TaskEventRecord {
 struct TaskDetailResponse {
     task: TaskRecord,
     events: Vec<TaskEventRecord>,
+    events_page: TaskEventsPage,
     pending_approvals: Vec<TaskEventRecord>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskEventsPage {
+    next_cursor: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -839,19 +855,26 @@ async fn create_task(
     let thread = client.start_thread(&cwd).await?;
     let _turn = client.start_turn(&thread.thread_id, &cwd, prompt).await?;
     Ok(Json(
-        read_task_detail(&state, &client, &project, &thread.thread_id).await?,
+        read_task_detail(&state, &client, &project, &thread.thread_id, None).await?,
     ))
 }
 
 async fn task_detail(
     State(state): State<AppState>,
     AxumPath(thread_id): AxumPath<String>,
-    Query(query): Query<TasksQuery>,
+    Query(query): Query<TaskDetailQuery>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
     let project = state.projects.get_project(&query.project_id)?;
     let client = require_codex_thread_client(&state).await?;
     Ok(Json(
-        read_task_detail(&state, &client, &project, &thread_id).await?,
+        read_task_detail(
+            &state,
+            &client,
+            &project,
+            &thread_id,
+            query.cursor.as_deref(),
+        )
+        .await?,
     ))
 }
 
@@ -908,7 +931,7 @@ async fn task_prompt(
     let project = state.projects.get_project(&query.project_id)?;
     let prompt = normalize_prompt(&request.prompt)?;
     let client = require_codex_thread_client(&state).await?;
-    let thread = client.read_thread(&thread_id, true).await?;
+    let thread = client.read_thread(&thread_id, false).await?;
     let thread_value = thread.get("thread").unwrap_or(&thread);
     ensure_thread_belongs_to_project(&project, thread_value)?;
     let cwd = thread_value
@@ -917,7 +940,7 @@ async fn task_prompt(
         .unwrap_or(&project.root_path);
     client.start_turn(&thread_id, cwd, prompt).await?;
     Ok(Json(
-        read_task_detail(&state, &client, &project, &thread_id).await?,
+        read_task_detail(&state, &client, &project, &thread_id, None).await?,
     ))
 }
 
@@ -928,10 +951,20 @@ async fn task_interrupt(
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
     let project = state.projects.get_project(&query.project_id)?;
     let client = require_codex_thread_client(&state).await?;
-    let thread = client.read_thread(&thread_id, true).await?;
+    let thread = client.read_thread(&thread_id, false).await?;
     let thread_value = thread.get("thread").unwrap_or(&thread);
     ensure_thread_belongs_to_project(&project, thread_value)?;
-    let Some(turn_id) = active_turn_id(thread_value) else {
+    let turns_response = client
+        .list_thread_turns(&thread_id, None, TASK_DETAIL_TURNS_PAGE_SIZE)
+        .await?;
+    let mut turns = turns_response
+        .get("data")
+        .and_then(JsonValue::as_array)
+        .cloned()
+        .unwrap_or_default();
+    turns.reverse();
+    let thread_value = thread_with_turns(thread_value, turns)?;
+    let Some(turn_id) = active_turn_id(&thread_value) else {
         return Err(ApiError::BadRequest {
             code: "task_turn_missing",
             message: "thread does not have an active turn to interrupt".to_string(),
@@ -939,7 +972,7 @@ async fn task_interrupt(
     };
     client.interrupt_turn(&thread_id, &turn_id).await?;
     Ok(Json(
-        read_task_detail(&state, &client, &project, &thread_id).await?,
+        read_task_detail(&state, &client, &project, &thread_id, None).await?,
     ))
 }
 
@@ -999,7 +1032,7 @@ async fn task_approval(
     let _ = state.task_events.send(event);
 
     Ok(Json(
-        read_task_detail(&state, &client, &project, &thread_id).await?,
+        read_task_detail(&state, &client, &project, &thread_id, None).await?,
     ))
 }
 
@@ -1069,11 +1102,26 @@ async fn read_task_detail(
     client: &CodexThreadClient,
     project: &ProjectRecord,
     thread_id: &str,
+    cursor: Option<&str>,
 ) -> Result<TaskDetailResponse, ApiError> {
-    let response = client.read_thread(thread_id, true).await?;
+    let response = client.read_thread(thread_id, false).await?;
     let thread = response.get("thread").unwrap_or(&response);
     ensure_thread_belongs_to_project(project, thread)?;
-    let mut events = thread_events(project, thread);
+    let turns_response = client
+        .list_thread_turns(thread_id, cursor, TASK_DETAIL_TURNS_PAGE_SIZE)
+        .await?;
+    let mut turns = turns_response
+        .get("data")
+        .and_then(JsonValue::as_array)
+        .cloned()
+        .unwrap_or_default();
+    turns.reverse();
+    let next_cursor = turns_response
+        .get("nextCursor")
+        .and_then(JsonValue::as_str)
+        .map(ToOwned::to_owned);
+    let thread = thread_with_turns(thread, turns)?;
+    let mut events = thread_events(project, &thread);
     let pending_approvals = pending_approval_events(state, thread_id).await;
     events.extend(pending_approvals.iter().cloned());
     events.sort_by(|left, right| {
@@ -1081,12 +1129,24 @@ async fn read_task_detail(
             .cmp(&right.created_ms)
             .then_with(|| left.id.cmp(&right.id))
     });
-    let task = task_record_from_thread(project, thread, &events)?;
+    let task = task_record_from_thread(project, &thread, &events)?;
     Ok(TaskDetailResponse {
         task,
         events,
+        events_page: TaskEventsPage { next_cursor },
         pending_approvals,
     })
+}
+
+fn thread_with_turns(thread: &JsonValue, turns: Vec<JsonValue>) -> Result<JsonValue, ApiError> {
+    let mut thread = thread.clone();
+    let Some(object) = thread.as_object_mut() else {
+        return Err(ApiError::CodexThread(
+            "thread/read response did not include a thread object".to_string(),
+        ));
+    };
+    object.insert("turns".to_string(), JsonValue::Array(turns));
+    Ok(thread)
 }
 
 async fn validate_thread_belongs_to_project(

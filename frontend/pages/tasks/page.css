@@ -222,6 +222,13 @@ caffold-tasks-page .task-approvals {
   list-style: none;
 }
 
+caffold-tasks-page .task-load-older {
+  justify-self: center;
+  min-height: 1.2rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 caffold-tasks-page .task-approval-card {
   margin-bottom: 10px;
   padding: 10px;

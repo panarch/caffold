@@ -209,6 +209,19 @@ impl CodexThreadClient {
             .await
     }
 
+    pub async fn list_thread_turns(
+        &self,
+        thread_id: &str,
+        cursor: Option<&str>,
+        limit: usize,
+    ) -> Result<Value, CodexThreadError> {
+        self.request(
+            "thread/turns/list",
+            thread_turns_list_params(thread_id, cursor, limit),
+        )
+        .await
+    }
+
     pub async fn start_thread(&self, cwd: &str) -> Result<CodexThreadStart, CodexThreadError> {
         let response = self
             .request("thread/start", thread_start_params(cwd))
@@ -647,6 +660,19 @@ fn thread_read_params(thread_id: &str, include_turns: bool) -> Value {
     })
 }
 
+fn thread_turns_list_params(thread_id: &str, cursor: Option<&str>, limit: usize) -> Value {
+    let mut params = json!({
+        "threadId": thread_id,
+        "limit": limit,
+        "sortDirection": "desc",
+        "itemsView": "full"
+    });
+    if let Some(cursor) = cursor.filter(|cursor| !cursor.is_empty()) {
+        params["cursor"] = json!(cursor);
+    }
+    params
+}
+
 fn thread_start_params(cwd: &str) -> Value {
     json!({
         "cwd": cwd,
@@ -731,6 +757,29 @@ mod tests {
             json!({
                 "threadId": "thread_1",
                 "includeTurns": true
+            })
+        );
+    }
+
+    #[test]
+    fn builds_thread_turns_list_request_params() {
+        assert_eq!(
+            thread_turns_list_params("thread_1", None, 8),
+            json!({
+                "threadId": "thread_1",
+                "limit": 8,
+                "sortDirection": "desc",
+                "itemsView": "full"
+            })
+        );
+        assert_eq!(
+            thread_turns_list_params("thread_1", Some("cursor_older"), 8),
+            json!({
+                "threadId": "thread_1",
+                "cursor": "cursor_older",
+                "limit": 8,
+                "sortDirection": "desc",
+                "itemsView": "full"
             })
         );
     }

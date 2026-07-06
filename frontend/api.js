@@ -17,8 +17,8 @@ export async function createTask(task) {
   });
 }
 
-export async function getTask(threadId, projectId) {
-  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}`, { projectId });
+export async function getTask(threadId, projectId, cursor = null) {
+  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}`, { projectId, cursor });
 }
 
 export async function sendTaskPrompt(threadId, projectId, prompt) {
