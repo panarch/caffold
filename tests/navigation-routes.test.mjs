@@ -7,6 +7,7 @@ import {
   routeEquals,
   routeMode,
   routeSurface,
+  routeTarget,
   routeUrl,
 } from "../frontend/navigation-routes.js";
 
@@ -171,24 +172,39 @@ test("derives deterministic parent routes", () => {
 
 test("exposes route metadata for surface and domain routing", () => {
   const cases = [
-    ["/projects/prj/files", "files", null, "files"],
-    ["/projects/prj/diff", "review", "git", "diff"],
-    ["/projects/prj/compare?base=main&head=feature", "review", "git", "compare"],
-    ["/projects/prj/log/abcdef", "review", "git", "log"],
-    ["/projects/prj/issues/42", "review", "github", "issues"],
-    ["/projects/prj/pulls/12/files/src/lib.rs", "review", "github", "pulls"],
+    ["/projects/prj/files", "files", null, "files", "list"],
+    ["/projects/prj/files/src/lib.rs", "files", null, "files", "path"],
+    ["/projects/prj/diff", "review", "git", "diff", "list"],
+    ["/projects/prj/diff/src/lib.rs", "review", "git", "diff", "file"],
+    ["/projects/prj/compare?base=main&head=feature", "review", "git", "compare", "list"],
+    [
+      "/projects/prj/compare/src/lib.rs?base=main&head=feature",
+      "review",
+      "git",
+      "compare",
+      "file",
+    ],
+    ["/projects/prj/log", "review", "git", "log", "list"],
+    ["/projects/prj/log/abcdef", "review", "git", "log", "commit"],
+    ["/projects/prj/log/abcdef/src/lib.rs", "review", "git", "log", "file"],
+    ["/projects/prj/issues/42", "review", "github", "issues", "detail"],
+    ["/projects/prj/pulls/12", "review", "github", "pulls", "detail"],
+    ["/projects/prj/pulls/12/files", "review", "github", "pulls", "files"],
+    ["/projects/prj/pulls/12/files/src/lib.rs", "review", "github", "pulls", "file"],
   ];
 
-  for (const [url, expectedSurface, expectedDomain, expectedMode] of cases) {
+  for (const [url, expectedSurface, expectedDomain, expectedMode, expectedTarget] of cases) {
     const route = parseRoute(url);
     assert.equal(routeSurface(route), expectedSurface);
     assert.equal(routeDomain(route), expectedDomain);
     assert.equal(routeMode(route), expectedMode);
+    assert.equal(routeTarget(route), expectedTarget);
   }
 
   assert.equal(routeSurface(null), "files");
   assert.equal(routeDomain(null), null);
   assert.equal(routeMode({ kind: "unknown" }), null);
+  assert.equal(routeTarget({ kind: "unknown" }), null);
 });
 
 test("rejects unknown app routes and keeps malformed segments non-fatal", () => {
@@ -196,6 +212,8 @@ test("rejects unknown app routes and keeps malformed segments non-fatal", () => 
   assert.equal(parseRoute("/api/health"), null);
   assert.equal(parseRoute("/projects"), null);
   assert.equal(parseRoute("/projects/prj/unknown"), null);
+  assert.equal(parseRoute("/projects/prj/issues/not-a-number"), null);
+  assert.equal(parseRoute("/projects/prj/pulls/not-a-number"), null);
 
   assert.deepEqual(parseRoute("/projects/prj/files/%E0%A4%A"), {
     kind: "files",

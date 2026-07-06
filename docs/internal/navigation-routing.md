@@ -35,9 +35,11 @@ root path before calling file, git, or GitHub APIs.
 ## Route Definitions
 
 `frontend/navigation-routes.js` keeps the route schema in an internal
-`ROUTE_DEFINITIONS` table. Each route definition owns parsing, path generation,
-query parameters, parent-route behavior, and surface/domain/mode metadata for
-one `kind`.
+`ROUTE_DEFINITIONS` table. Each entry is a concrete URL pattern such as
+`/projects/[projectId]/log/[sha]/[...path]` or
+`/projects/[projectId]/pulls/[number]/files`. A route entry owns parsing, path
+generation, query parameters, parent-route behavior, and
+surface/domain/mode/target metadata for that URL variant.
 
 The exported helpers remain the public interface:
 
@@ -45,9 +47,13 @@ The exported helpers remain the public interface:
 - `routeUrl(route)`
 - `parentRoute(route)`
 - `routeEquals(left, right)`
+- `routeSurface(route)`
+- `routeDomain(route)`
+- `routeMode(route)`
+- `routeTarget(route)`
 
-Adding a route should mean adding one route definition plus route helper tests.
-The table is an implementation detail and is not exported.
+Adding a route variant should mean adding one route definition plus route helper
+tests. The table is an implementation detail and is not exported.
 
 ## Project IDs
 

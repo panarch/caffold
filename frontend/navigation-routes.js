@@ -1,248 +1,264 @@
-const PROJECTS_PREFIX = "projects";
+const PAGE_QUERY = [{ name: "page", key: "page", type: "positiveInteger", defaultValue: 1 }];
+const COMPARE_QUERY = [
+  { name: "base", key: "baseRef", defaultValue: "" },
+  { name: "head", key: "headRef", defaultValue: "" },
+];
 
 const ROUTE_DEFINITIONS = [
-  {
+  routeDefinition({
+    id: "project-root",
     kind: "files",
-    area: "files",
+    pattern: "/projects/[projectId]",
     surface: "files",
     mode: "files",
-    parse({ projectId, tail }) {
-      return {
-        kind: "files",
-        projectId,
-        path: decodePathTail(tail),
-      };
-    },
-    path(route, base) {
-      return `${base}/files${encodedTail(route.path)}`;
-    },
-    parent(route) {
-      return route.path
-        ? { kind: "files", projectId: route.projectId, path: parentPath(route.path) }
-        : null;
-    },
-  },
-  {
+    target: "list",
+    canonical: false,
+    toRoute: ({ projectId }) => filesRoute(projectId),
+  }),
+  routeDefinition({
+    id: "files-list",
+    kind: "files",
+    pattern: "/projects/[projectId]/files",
+    surface: "files",
+    mode: "files",
+    target: "list",
+    toRoute: ({ projectId }) => filesRoute(projectId),
+    matchesRoute: (route) => route?.kind === "files" && !cleanPath(route.path),
+  }),
+  routeDefinition({
+    id: "files-path",
+    kind: "files",
+    pattern: "/projects/[projectId]/files/[...path]",
+    surface: "files",
+    mode: "files",
+    target: "path",
+    toRoute: ({ projectId, path }) => filesRoute(projectId, path),
+    matchesRoute: (route) => route?.kind === "files" && Boolean(cleanPath(route.path)),
+    parent: (route) => filesRoute(route.projectId, parentPath(route.path)),
+  }),
+  routeDefinition({
+    id: "diff-list",
     kind: "diff",
-    area: "diff",
+    pattern: "/projects/[projectId]/diff",
     surface: "review",
     domain: "git",
     mode: "diff",
-    parse({ projectId, tail }) {
-      return {
-        kind: "diff",
-        projectId,
-        path: decodePathTail(tail),
-      };
-    },
-    path(route, base) {
-      return `${base}/diff${encodedTail(route.path)}`;
-    },
-    parent(route) {
-      return route.path ? { kind: "diff", projectId: route.projectId, path: "" } : null;
-    },
-  },
-  {
+    target: "list",
+    toRoute: ({ projectId }) => diffRoute(projectId),
+    matchesRoute: (route) => route?.kind === "diff" && !cleanPath(route.path),
+    parent: filesRootRoute,
+  }),
+  routeDefinition({
+    id: "diff-file",
+    kind: "diff",
+    pattern: "/projects/[projectId]/diff/[...path]",
+    surface: "review",
+    domain: "git",
+    mode: "diff",
+    target: "file",
+    toRoute: ({ projectId, path }) => diffRoute(projectId, path),
+    matchesRoute: (route) => route?.kind === "diff" && Boolean(cleanPath(route.path)),
+    parent: (route) => diffRoute(route.projectId),
+  }),
+  routeDefinition({
+    id: "compare-list",
     kind: "compare",
-    area: "compare",
+    pattern: "/projects/[projectId]/compare",
+    query: COMPARE_QUERY,
     surface: "review",
     domain: "git",
     mode: "compare",
-    parse({ projectId, tail, url }) {
-      return {
-        kind: "compare",
-        projectId,
-        baseRef: url.searchParams.get("base") ?? "",
-        headRef: url.searchParams.get("head") ?? "",
-        path: decodePathTail(tail),
-      };
-    },
-    path(route, base) {
-      return `${base}/compare${encodedTail(route.path)}`;
-    },
-    query(route, searchParams) {
-      if (route.baseRef) {
-        searchParams.set("base", route.baseRef);
-      }
-      if (route.headRef) {
-        searchParams.set("head", route.headRef);
-      }
-    },
-    parent(route) {
-      return route.path
-        ? {
-            kind: "compare",
-            projectId: route.projectId,
-            baseRef: route.baseRef,
-            headRef: route.headRef,
-            path: "",
-          }
-        : null;
-    },
-  },
-  {
+    target: "list",
+    toRoute: ({ projectId }, query) => compareRoute(projectId, query),
+    matchesRoute: (route) => route?.kind === "compare" && !cleanPath(route.path),
+    parent: filesRootRoute,
+  }),
+  routeDefinition({
+    id: "compare-file",
+    kind: "compare",
+    pattern: "/projects/[projectId]/compare/[...path]",
+    query: COMPARE_QUERY,
+    surface: "review",
+    domain: "git",
+    mode: "compare",
+    target: "file",
+    toRoute: ({ projectId, path }, query) => compareRoute(projectId, { ...query, path }),
+    matchesRoute: (route) => route?.kind === "compare" && Boolean(cleanPath(route.path)),
+    parent: (route) =>
+      compareRoute(route.projectId, {
+        baseRef: route.baseRef,
+        headRef: route.headRef,
+      }),
+  }),
+  routeDefinition({
+    id: "log-list",
     kind: "log",
-    area: "log",
+    pattern: "/projects/[projectId]/log",
+    query: PAGE_QUERY,
     surface: "review",
     domain: "git",
     mode: "log",
-    parse({ projectId, tail, url }) {
-      const sha = tail[0] ?? "";
-      return {
-        kind: "log",
-        projectId,
-        page: pageParam(url),
-        sha,
-        path: decodePathTail(tail.slice(1)),
-      };
-    },
-    path(route, base) {
-      const commitTail = route.sha
-        ? `/${encodeURIComponent(route.sha)}${encodedTail(route.path)}`
-        : "";
-      return `${base}/log${commitTail}`;
-    },
-    query(route, searchParams) {
-      setPageParam(route, searchParams);
-    },
-    parent(route) {
-      if (route.sha && route.path) {
-        return {
-          kind: "log",
-          projectId: route.projectId,
-          page: route.page,
-          sha: route.sha,
-          path: "",
-        };
-      }
-
-      return route.sha
-        ? { kind: "log", projectId: route.projectId, page: route.page }
-        : null;
-    },
-  },
-  {
+    target: "list",
+    toRoute: ({ projectId }, query) => logRoute(projectId, query),
+    matchesRoute: (route) => route?.kind === "log" && !route.sha,
+    parent: filesRootRoute,
+  }),
+  routeDefinition({
+    id: "log-commit",
+    kind: "log",
+    pattern: "/projects/[projectId]/log/[sha]",
+    query: PAGE_QUERY,
+    surface: "review",
+    domain: "git",
+    mode: "log",
+    target: "commit",
+    toRoute: ({ projectId, sha }, query) => logRoute(projectId, { ...query, sha }),
+    matchesRoute: (route) => route?.kind === "log" && Boolean(route.sha) && !cleanPath(route.path),
+    parent: (route) => logRoute(route.projectId, { page: route.page }),
+  }),
+  routeDefinition({
+    id: "log-file",
+    kind: "log",
+    pattern: "/projects/[projectId]/log/[sha]/[...path]",
+    query: PAGE_QUERY,
+    surface: "review",
+    domain: "git",
+    mode: "log",
+    target: "file",
+    toRoute: ({ projectId, sha, path }, query) => logRoute(projectId, { ...query, sha, path }),
+    matchesRoute: (route) =>
+      route?.kind === "log" && Boolean(route.sha) && Boolean(cleanPath(route.path)),
+    parent: (route) => logRoute(route.projectId, { page: route.page, sha: route.sha }),
+  }),
+  routeDefinition({
+    id: "issues-list",
     kind: "issues",
-    area: "issues",
+    pattern: "/projects/[projectId]/issues",
+    query: PAGE_QUERY,
     surface: "review",
     domain: "github",
     mode: "issues",
-    parse({ projectId, tail, url }) {
-      return {
-        kind: "issues",
-        projectId,
-        page: pageParam(url),
-        number: positiveInteger(tail[0]),
-      };
-    },
-    path(route, base) {
-      const issueTail = route.number ? `/${encodeURIComponent(route.number)}` : "";
-      return `${base}/issues${issueTail}`;
-    },
-    query(route, searchParams) {
-      setPageParam(route, searchParams);
-    },
-    parent(route) {
-      return route.number
-        ? { kind: "issues", projectId: route.projectId, page: route.page }
-        : null;
-    },
-  },
-  {
+    target: "list",
+    toRoute: ({ projectId }, query) => issuesRoute(projectId, query),
+    matchesRoute: (route) => route?.kind === "issues" && !route.number,
+    parent: filesRootRoute,
+  }),
+  routeDefinition({
+    id: "issues-detail",
+    kind: "issues",
+    pattern: "/projects/[projectId]/issues/[number]",
+    query: PAGE_QUERY,
+    surface: "review",
+    domain: "github",
+    mode: "issues",
+    target: "detail",
+    params: { number: "positiveInteger" },
+    toRoute: ({ projectId, number }, query) => issuesRoute(projectId, { ...query, number }),
+    matchesRoute: (route) => route?.kind === "issues" && Boolean(route.number),
+    parent: (route) => issuesRoute(route.projectId, { page: route.page }),
+  }),
+  routeDefinition({
+    id: "pulls-list",
     kind: "pulls",
-    area: "pulls",
+    pattern: "/projects/[projectId]/pulls",
+    query: PAGE_QUERY,
     surface: "review",
     domain: "github",
     mode: "pulls",
-    parse({ projectId, tail, url }) {
-      const number = positiveInteger(tail[0]);
-      const isFilesRoute = tail[1] === "files";
-      return {
-        kind: "pulls",
-        projectId,
-        page: pageParam(url),
+    target: "list",
+    toRoute: ({ projectId }, query) => pullsRoute(projectId, query),
+    matchesRoute: (route) => route?.kind === "pulls" && !route.number,
+    parent: filesRootRoute,
+  }),
+  routeDefinition({
+    id: "pulls-detail",
+    kind: "pulls",
+    pattern: "/projects/[projectId]/pulls/[number]",
+    query: PAGE_QUERY,
+    surface: "review",
+    domain: "github",
+    mode: "pulls",
+    target: "detail",
+    params: { number: "positiveInteger" },
+    toRoute: ({ projectId, number }, query) => pullsRoute(projectId, { ...query, number }),
+    matchesRoute: (route) => route?.kind === "pulls" && Boolean(route.number) && !route.files,
+    parent: (route) => pullsRoute(route.projectId, { page: route.page }),
+  }),
+  routeDefinition({
+    id: "pulls-files",
+    kind: "pulls",
+    pattern: "/projects/[projectId]/pulls/[number]/files",
+    query: PAGE_QUERY,
+    surface: "review",
+    domain: "github",
+    mode: "pulls",
+    target: "files",
+    params: { number: "positiveInteger" },
+    toRoute: ({ projectId, number }, query) =>
+      pullsRoute(projectId, { ...query, number, files: true }),
+    matchesRoute: (route) =>
+      route?.kind === "pulls" && Boolean(route.number) && route.files && !cleanPath(route.path),
+    parent: (route) => pullsRoute(route.projectId, { page: route.page, number: route.number }),
+  }),
+  routeDefinition({
+    id: "pulls-file",
+    kind: "pulls",
+    pattern: "/projects/[projectId]/pulls/[number]/files/[...path]",
+    query: PAGE_QUERY,
+    surface: "review",
+    domain: "github",
+    mode: "pulls",
+    target: "file",
+    params: { number: "positiveInteger" },
+    toRoute: ({ projectId, number, path }, query) =>
+      pullsRoute(projectId, {
+        ...query,
         number,
-        files: Boolean(number && isFilesRoute),
-        path: number && isFilesRoute ? decodePathTail(tail.slice(2)) : "",
-      };
-    },
-    path(route, base) {
-      if (!route.number) {
-        return `${base}/pulls`;
-      }
-
-      const filesTail = route.files ? `/files${encodedTail(route.path)}` : "";
-      return `${base}/pulls/${encodeURIComponent(route.number)}${filesTail}`;
-    },
-    query(route, searchParams) {
-      setPageParam(route, searchParams);
-    },
-    parent(route) {
-      if (route.number && route.files && route.path) {
-        return {
-          kind: "pulls",
-          projectId: route.projectId,
-          page: route.page,
-          number: route.number,
-          files: true,
-          path: "",
-        };
-      }
-
-      if (route.number && route.files) {
-        return {
-          kind: "pulls",
-          projectId: route.projectId,
-          page: route.page,
-          number: route.number,
-        };
-      }
-
-      return route.number
-        ? { kind: "pulls", projectId: route.projectId, page: route.page }
-        : null;
-    },
-  },
+        files: true,
+        path,
+      }),
+    matchesRoute: (route) =>
+      route?.kind === "pulls" &&
+      Boolean(route.number) &&
+      route.files &&
+      Boolean(cleanPath(route.path)),
+    parent: (route) =>
+      pullsRoute(route.projectId, {
+        page: route.page,
+        number: route.number,
+        files: true,
+      }),
+  }),
 ];
 
-const ROUTE_BY_AREA = new Map(
-  ROUTE_DEFINITIONS.map((definition) => [definition.area, definition]),
-);
-const ROUTE_BY_KIND = new Map(
-  ROUTE_DEFINITIONS.map((definition) => [definition.kind, definition]),
+const CANONICAL_ROUTE_DEFINITIONS = ROUTE_DEFINITIONS.filter(
+  (definition) => definition.canonical !== false,
 );
 
 export function parseRoute(url = window.location.href) {
   const parsed = new URL(url, routeOrigin());
-  const segments = rawPathSegments(parsed.pathname);
-  if (safeDecode(segments[0]) !== PROJECTS_PREFIX || !segments[1]) {
-    return null;
+  for (const definition of ROUTE_DEFINITIONS) {
+    const fields = matchPath(definition, parsed.pathname);
+    if (!fields) {
+      continue;
+    }
+
+    return definition.toRoute(fields, parseQuery(definition, parsed));
   }
 
-  const projectId = safeDecode(segments[1]);
-  const area = safeDecode(segments[2] ?? "files");
-  const definition = ROUTE_BY_AREA.get(area);
-  if (!definition) {
-    return null;
-  }
-
-  return definition.parse({
-    projectId,
-    tail: segments.slice(3),
-    url: parsed,
-  });
+  return null;
 }
 
 export function routeUrl(route) {
-  const definition = ROUTE_BY_KIND.get(route?.kind);
+  const definition = routeDefinitionFor(route);
   const url = new URL(routeOrigin());
   if (!definition) {
     url.pathname = "/";
     return `${url.pathname}${url.search}`;
   }
 
-  url.pathname = definition.path(route, projectBase(route.projectId));
-  definition.query?.(route, url.searchParams);
+  url.pathname = buildPath(definition, route);
+  writeQuery(definition, route, url.searchParams);
   return `${url.pathname}${url.search}`;
 }
 
@@ -251,16 +267,7 @@ export function parentRoute(route) {
     return null;
   }
 
-  const parent = ROUTE_BY_KIND.get(route.kind)?.parent(route);
-  if (parent) {
-    return parent;
-  }
-
-  if (route.kind !== "files") {
-    return { kind: "files", projectId: route.projectId, path: "" };
-  }
-
-  return null;
+  return routeDefinitionFor(route)?.parent?.(route) ?? null;
 }
 
 export function routeEquals(left, right) {
@@ -268,29 +275,198 @@ export function routeEquals(left, right) {
 }
 
 export function routeSurface(route) {
-  return ROUTE_BY_KIND.get(route?.kind)?.surface ?? "files";
+  return routeDefinitionFor(route)?.surface ?? "files";
 }
 
 export function routeDomain(route) {
-  return ROUTE_BY_KIND.get(route?.kind)?.domain ?? null;
+  return routeDefinitionFor(route)?.domain ?? null;
 }
 
 export function routeMode(route) {
-  return ROUTE_BY_KIND.get(route?.kind)?.mode ?? null;
+  return routeDefinitionFor(route)?.mode ?? null;
 }
 
-function projectBase(projectId) {
-  return `/${PROJECTS_PREFIX}/${encodeURIComponent(projectId)}`;
+export function routeTarget(route) {
+  return routeDefinitionFor(route)?.target ?? null;
 }
 
-function pageParam(url) {
-  return positiveInteger(url.searchParams.get("page")) ?? 1;
+function routeDefinition(config) {
+  return {
+    ...config,
+    tokens: compilePattern(config.pattern),
+    query: config.query ?? [],
+    params: config.params ?? {},
+  };
 }
 
-function setPageParam(route, searchParams) {
-  if (route.page > 1) {
-    searchParams.set("page", `${route.page}`);
+function routeDefinitionFor(route) {
+  return (
+    CANONICAL_ROUTE_DEFINITIONS.find((definition) => definition.matchesRoute?.(route)) ?? null
+  );
+}
+
+function compilePattern(pattern) {
+  return pattern
+    .split("/")
+    .filter(Boolean)
+    .map((part) => {
+      const restMatch = part.match(/^\[\.\.\.(.+)]$/);
+      if (restMatch) {
+        return { kind: "rest", name: restMatch[1] };
+      }
+
+      const paramMatch = part.match(/^\[(.+)]$/);
+      if (paramMatch) {
+        return { kind: "param", name: paramMatch[1] };
+      }
+
+      return { kind: "literal", value: part };
+    });
+}
+
+function matchPath(definition, pathname) {
+  const segments = rawPathSegments(pathname);
+  const fields = {};
+  let segmentIndex = 0;
+
+  for (const token of definition.tokens) {
+    if (token.kind === "rest") {
+      if (segmentIndex >= segments.length) {
+        return null;
+      }
+
+      fields[token.name] = decodePathTail(segments.slice(segmentIndex));
+      return fields[token.name] ? fields : null;
+    }
+
+    const segment = segments[segmentIndex];
+    if (segment === undefined) {
+      return null;
+    }
+
+    if (token.kind === "literal") {
+      if (safeDecode(segment) !== token.value) {
+        return null;
+      }
+      segmentIndex += 1;
+      continue;
+    }
+
+    const value = decodeParam(definition, token.name, segment);
+    if (value === null) {
+      return null;
+    }
+
+    fields[token.name] = value;
+    segmentIndex += 1;
   }
+
+  return segmentIndex === segments.length ? fields : null;
+}
+
+function buildPath(definition, route) {
+  const parts = [];
+  for (const token of definition.tokens) {
+    if (token.kind === "literal") {
+      parts.push(token.value);
+      continue;
+    }
+
+    if (token.kind === "rest") {
+      const clean = cleanPath(route[token.name]);
+      parts.push(...clean.split("/").filter(Boolean).map((segment) => encodeURIComponent(segment)));
+      continue;
+    }
+
+    parts.push(encodeURIComponent(route[token.name]));
+  }
+
+  return `/${parts.join("/")}`;
+}
+
+function decodeParam(definition, name, segment) {
+  const value = safeDecode(segment);
+  if (definition.params[name] === "positiveInteger") {
+    return positiveInteger(value);
+  }
+
+  return value;
+}
+
+function parseQuery(definition, url) {
+  const values = {};
+  for (const query of definition.query) {
+    const rawValue = url.searchParams.get(query.name);
+    if (query.type === "positiveInteger") {
+      values[query.key] = positiveInteger(rawValue) ?? query.defaultValue;
+    } else {
+      values[query.key] = rawValue ?? query.defaultValue;
+    }
+  }
+  return values;
+}
+
+function writeQuery(definition, route, searchParams) {
+  for (const query of definition.query) {
+    const value = route[query.key] ?? query.defaultValue;
+    if (`${value}` === `${query.defaultValue}` || value === "") {
+      continue;
+    }
+
+    searchParams.set(query.name, `${value}`);
+  }
+}
+
+function filesRoute(projectId, path = "") {
+  return { kind: "files", projectId, path: cleanPath(path) };
+}
+
+function diffRoute(projectId, path = "") {
+  return { kind: "diff", projectId, path: cleanPath(path) };
+}
+
+function compareRoute(projectId, options = {}) {
+  return {
+    kind: "compare",
+    projectId,
+    baseRef: options.baseRef ?? "",
+    headRef: options.headRef ?? "",
+    path: cleanPath(options.path),
+  };
+}
+
+function logRoute(projectId, options = {}) {
+  return {
+    kind: "log",
+    projectId,
+    page: options.page ?? 1,
+    sha: options.sha ?? "",
+    path: cleanPath(options.path),
+  };
+}
+
+function issuesRoute(projectId, options = {}) {
+  return {
+    kind: "issues",
+    projectId,
+    page: options.page ?? 1,
+    number: options.number ?? null,
+  };
+}
+
+function pullsRoute(projectId, options = {}) {
+  return {
+    kind: "pulls",
+    projectId,
+    page: options.page ?? 1,
+    number: options.number ?? null,
+    files: Boolean(options.files),
+    path: cleanPath(options.path),
+  };
+}
+
+function filesRootRoute(route) {
+  return filesRoute(route.projectId);
 }
 
 function routeOrigin() {
@@ -305,15 +481,6 @@ function rawPathSegments(pathname) {
 
 function decodePathTail(segments) {
   return cleanPath(segments.map((segment) => safeDecode(segment)).join("/"));
-}
-
-function encodedTail(path) {
-  const clean = cleanPath(path);
-  if (!clean) {
-    return "";
-  }
-
-  return `/${clean.split("/").map((segment) => encodeURIComponent(segment)).join("/")}`;
 }
 
 function cleanPath(path) {
