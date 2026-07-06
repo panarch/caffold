@@ -299,7 +299,8 @@ caffold-tasks-page .task-message-header {
 caffold-tasks-page .task-message-content,
 caffold-tasks-page .task-thinking pre,
 caffold-tasks-page .task-command pre,
-caffold-tasks-page .task-tool-card pre {
+caffold-tasks-page .task-tool-card pre,
+caffold-tasks-page .task-work-item pre {
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -329,7 +330,8 @@ caffold-tasks-page .task-message[data-message-role="assistant"] .task-message-co
 caffold-tasks-page .task-thinking details,
 caffold-tasks-page .task-command details,
 caffold-tasks-page .task-tool-card,
-caffold-tasks-page .task-file-change article {
+caffold-tasks-page .task-file-change article,
+caffold-tasks-page .task-work-item {
   border: 1px solid var(--border);
   border-radius: 6px;
   background: #fbfdfb;
@@ -342,7 +344,8 @@ caffold-tasks-page .task-thinking[data-thinking-state="complete"] details:not([o
 caffold-tasks-page .task-thinking summary,
 caffold-tasks-page .task-command summary,
 caffold-tasks-page .task-tool-card header,
-caffold-tasks-page .task-file-change header {
+caffold-tasks-page .task-file-change header,
+caffold-tasks-page .task-work-item header {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -381,23 +384,78 @@ caffold-tasks-page .task-command details[open] summary span:first-child::after {
 }
 
 caffold-tasks-page .task-tool-card header,
-caffold-tasks-page .task-file-change header {
+caffold-tasks-page .task-file-change header,
+caffold-tasks-page .task-work-item header {
   cursor: default;
 }
 
 caffold-tasks-page .task-thinking summary time,
 caffold-tasks-page .task-command summary time,
 caffold-tasks-page .task-tool-card header time,
-caffold-tasks-page .task-file-change header time {
+caffold-tasks-page .task-file-change header time,
+caffold-tasks-page .task-work-item header time {
   margin-left: auto;
   font-size: 0.78rem;
 }
 
 caffold-tasks-page .task-thinking pre,
 caffold-tasks-page .task-command pre,
-caffold-tasks-page .task-tool-card pre {
+caffold-tasks-page .task-tool-card pre,
+caffold-tasks-page .task-work-item pre {
   overflow-x: auto;
   padding: 10px;
+}
+
+caffold-tasks-page .task-turn-work {
+  justify-self: start;
+  width: min(100%, 760px);
+}
+
+caffold-tasks-page .task-turn-work details {
+  color: var(--muted);
+}
+
+caffold-tasks-page .task-turn-work summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  cursor: pointer;
+}
+
+caffold-tasks-page .task-turn-work summary::marker {
+  color: var(--muted);
+}
+
+caffold-tasks-page .task-turn-work summary span:last-child {
+  font-size: 0.78rem;
+}
+
+caffold-tasks-page .task-turn-work summary span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+caffold-tasks-page .task-turn-work summary span:first-child::after {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  content: "";
+  transform: rotate(-45deg);
+}
+
+caffold-tasks-page .task-turn-work details[open] summary span:first-child::after {
+  transform: rotate(45deg);
+}
+
+caffold-tasks-page .task-turn-work-body {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+  color: var(--text);
 }
 
 caffold-tasks-page .task-command[data-command-status="failed"] details,

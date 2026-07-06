@@ -240,6 +240,15 @@ impl CodexThreadClient {
         })
     }
 
+    pub async fn resume_thread(
+        &self,
+        thread_id: &str,
+        cwd: &str,
+    ) -> Result<Value, CodexThreadError> {
+        self.request("thread/resume", thread_resume_params(thread_id, cwd))
+            .await
+    }
+
     pub async fn start_turn(
         &self,
         thread_id: &str,
@@ -681,6 +690,16 @@ fn thread_start_params(cwd: &str) -> Value {
     })
 }
 
+fn thread_resume_params(thread_id: &str, cwd: &str) -> Value {
+    json!({
+        "threadId": thread_id,
+        "cwd": cwd,
+        "runtimeWorkspaceRoots": [cwd],
+        "approvalsReviewer": "user",
+        "excludeTurns": true
+    })
+}
+
 fn turn_start_params(thread_id: &str, cwd: &str, prompt: &str) -> Value {
     json!({
         "threadId": thread_id,
@@ -792,6 +811,20 @@ mod tests {
                 "cwd": "/workspace/project",
                 "runtimeWorkspaceRoots": ["/workspace/project"],
                 "approvalsReviewer": "user"
+            })
+        );
+    }
+
+    #[test]
+    fn builds_thread_resume_request_params() {
+        assert_eq!(
+            thread_resume_params("thread_1", "/workspace/project"),
+            json!({
+                "threadId": "thread_1",
+                "cwd": "/workspace/project",
+                "runtimeWorkspaceRoots": ["/workspace/project"],
+                "approvalsReviewer": "user",
+                "excludeTurns": true
             })
         );
     }

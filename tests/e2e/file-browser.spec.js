@@ -730,7 +730,13 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       };
       events = [
         eventRecord("event_1", "prompt_sent", "Prompt sent", { prompt: body.prompt }, 1),
-        eventRecord("event_1_user", "user_message", "User prompt", { text: body.prompt }, 2),
+        eventRecord(
+          "event_1_user",
+          "user_message",
+          "User prompt",
+          { text: body.prompt, turnId: "turn_1" },
+          2,
+        ),
         eventRecord(
           "event_2",
           "thread_started",
@@ -837,14 +843,17 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           "event_5",
           "approval_resolved",
           "Approval resolved: accept",
-          { approvalId: "approval_1", decision: "accept" },
+          { approvalId: "approval_1", decision: "accept", turnId: "turn_1" },
           5,
         ),
         eventRecord(
           "event_8",
           "reasoning",
           "Reasoning summary",
-          { summary: ["Checked the planner diff.", "Confirmed the fixture coverage path."] },
+          {
+            turnId: "turn_1",
+            summary: ["Checked the planner diff.", "Confirmed the fixture coverage path."],
+          },
           8,
         ),
         eventRecord(
@@ -852,6 +861,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           "command_execution",
           "Command completed",
           {
+            turnId: "turn_1",
             command: "cargo test",
             cwd: "src",
             status: "completed",
@@ -864,6 +874,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           "file_change",
           "File changes: 2",
           {
+            turnId: "turn_1",
             status: "completed",
             changeCount: 2,
             changes: [{ path: "src/planner.rs" }, { path: "tests/planner.rs" }],
@@ -871,14 +882,50 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           10,
         ),
         eventRecord(
+          "event_10_repeat",
+          "file_change",
+          "File changes: 1",
+          {
+            turnId: "turn_1",
+            status: "completed",
+            changeCount: 1,
+            changes: [{ path: "src/lib.rs" }],
+          },
+          10,
+        ),
+        eventRecord(
           "event_11",
           "assistant_message",
           "Assistant response",
-          { text: "The planner changes are ready to review. I would open the diff next." },
+          {
+            turnId: "turn_1",
+            text: "The planner changes are ready to review. I would open the diff next.",
+          },
           11,
         ),
+        eventRecord(
+          "event_11_duplicate",
+          "assistant_message",
+          "Assistant response",
+          {
+            turnId: "turn_1",
+            text: "The planner changes are ready to review. I would open the diff next.",
+          },
+          11,
+        ),
+        eventRecord(
+          "event_12",
+          "turn_completed",
+          "Turn completed",
+          { turnId: "turn_1", status: "completed" },
+          12,
+        ),
       ];
-      updateTask({ status: "running", lastEventSummary: "Approval resolved" });
+      updateTask({
+        activeTurnId: null,
+        status: "completed",
+        lastEventSummary: "Turn completed",
+      });
       return route.fulfill({
         contentType: "application/json",
         body: JSON.stringify(detailResponse()),
@@ -934,7 +981,6 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(tasksPage).toHaveAttribute("data-tasks-view", "detail");
   await expect(tasksPage).toContainText("Inspect the planner changes");
   await expect(tasksPage).toContainText("Thread thread_1");
-  await expect(tasksPage).toContainText("Prompt sent");
   await expect(tasksPage.locator(".task-conversation")).toBeVisible();
   await expect(tasksPage.locator('.task-message[data-message-role="user"]')).toContainText(
     "Inspect the planner changes",
@@ -966,21 +1012,27 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect
     .poll(() => tasksPage.evaluate((element) => element.events.map((event) => event.type)))
     .toContain("approval_resolved");
-  await expect(tasksPage).toContainText("Approval resolved: accept");
-  await expect(tasksPage.locator(".task-thinking")).toHaveAttribute(
-    "data-thinking-state",
-    "complete",
-  );
-  await expect(tasksPage.locator(".task-thinking details")).not.toHaveAttribute("open", "");
-  await expect(tasksPage.locator(".task-thinking summary")).toContainText("Thinking");
-  await expect(tasksPage.locator(".task-thinking pre")).toHaveText(
-    /Checked the planner diff\./,
-  );
-  await expect(tasksPage.locator(".task-command")).toContainText("test result: ok");
-  await expect(tasksPage.locator(".task-file-change")).toContainText("2 changed files");
   await expect(tasksPage.locator('.task-message[data-message-role="assistant"]')).toContainText(
     "The planner changes are ready to review.",
   );
+  await expect(tasksPage.locator('.task-message[data-message-role="assistant"]')).toHaveCount(1);
+  await expect(tasksPage.locator(".task-turn-work")).toContainText("Worked for");
+  await expect(tasksPage.locator(".task-turn-work")).toContainText("4 updates");
+  await expect(tasksPage.locator(".task-turn-work details")).not.toHaveAttribute("open", "");
+  await expect(tasksPage.locator(".task-work-item")).toHaveCount(3);
+  await expect(tasksPage.locator(".task-work-item").first()).not.toBeVisible();
+  await tasksPage.locator(".task-turn-work summary").click();
+  await expect(tasksPage.locator('.task-work-item[data-event-type="reasoning"]')).toContainText(
+    "Checked the planner diff.",
+  );
+  await expect(tasksPage.locator('.task-work-item[data-event-type="command_execution"]')).toContainText(
+    "test result: ok",
+  );
+  await expect(tasksPage.locator('.task-work-item[data-event-type="file_change"]')).toContainText(
+    "2 file change updates",
+  );
+  await tasksPage.locator(".task-turn-work summary").click();
+  await expect(tasksPage.locator(".task-turn-work details")).not.toHaveAttribute("open", "");
   await expect(tasksPage.locator(".task-approval-card")).toHaveCount(0);
   await expect(tasksPage.locator(".task-follow-up-form")).toBeVisible();
   await expect(tasksPage.locator(".task-conversation-scroll")).toHaveCSS("overflow-y", "auto");

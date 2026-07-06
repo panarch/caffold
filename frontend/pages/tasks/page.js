@@ -680,11 +680,7 @@ class CaffoldTasksPage extends HTMLElement {
             ${approvals.length ? `<section class="task-approvals">${approvals.map(renderApprovalCard).join("")}</section>` : ""}
             ${this.eventsPage?.nextCursor || this.loadingOlderEvents ? `<div class="task-load-older">${this.loadingOlderEvents ? "Loading older..." : ""}</div>` : ""}
             <ol class="task-conversation" aria-label="Task conversation">
-              ${this.events
-                .map((event, index) =>
-                  renderConversationEvent(event, task, conversationEventState(this.events, index)),
-                )
-                .join("")}
+              ${renderConversation(this.events, task)}
             </ol>
           </div>
         </div>
@@ -703,6 +699,112 @@ class CaffoldTasksPage extends HTMLElement {
 }
 
 customElements.define("caffold-tasks-page", CaffoldTasksPage);
+
+function renderConversation(events, task) {
+  const conversationEvents = dedupeCanonicalEvents(events);
+  const userPrompts = new Set(
+    conversationEvents
+      .filter((event) => event.type === "user_message")
+      .map((event) => `${event.payload?.text ?? event.payload?.prompt ?? ""}`.trim())
+      .filter(Boolean),
+  );
+  return conversationGroups(conversationEvents)
+    .map((group) => {
+      if (group.kind === "turn") {
+        return renderTurnGroup(group, task);
+      }
+      if (!shouldRenderStandaloneEvent(group.event, userPrompts)) {
+        return "";
+      }
+      return renderConversationEvent(group.event, task, { active: false });
+    })
+    .join("");
+}
+
+function conversationGroups(events) {
+  const groups = [];
+  const turns = new Map();
+  for (const event of events) {
+    const turnId = eventTurnId(event);
+    if (!turnId) {
+      groups.push({ kind: "event", event });
+      continue;
+    }
+
+    let group = turns.get(turnId);
+    if (!group) {
+      group = { kind: "turn", turnId, events: [] };
+      turns.set(turnId, group);
+      groups.push(group);
+    }
+    group.events.push(event);
+  }
+  return groups;
+}
+
+function eventTurnId(event) {
+  const payload = event?.payload ?? {};
+  return payload.turnId ?? payload.turn?.id ?? null;
+}
+
+function renderTurnGroup(group, task) {
+  const userEvents = group.events.filter((event) => event.type === "user_message");
+  const assistantEvents = group.events.filter((event) => event.type === "assistant_message");
+  const workEvents = group.events.filter(isWorkEvent);
+  const statusEvents = group.events.filter(isTurnStatusEvent);
+  const terminalEvent = statusEvents.find(isTerminalTurnEvent);
+  const isCurrentTurn = task?.activeTurnId === group.turnId;
+  const isActive =
+    ["running", "waiting_for_approval"].includes(task?.status) &&
+    (isCurrentTurn || (!terminalEvent && assistantEvents.length === 0));
+  const isComplete = Boolean(terminalEvent) || (assistantEvents.length > 0 && !isActive);
+
+  const output = [];
+  output.push(
+    ...userEvents.map((event) =>
+      renderConversationEvent(event, task, { active: false }),
+    ),
+  );
+
+  if (isComplete && assistantEvents.length > 0) {
+    output.push(
+      ...assistantEvents.map((event) =>
+        renderConversationEvent(event, task, { active: false }),
+      ),
+    );
+    if (workEvents.length > 0) {
+      output.push(renderTurnWorkSummary(group, workEvents, terminalEvent));
+    }
+    return output.join("");
+  }
+
+  output.push(
+    ...workEvents.map((event) =>
+      renderConversationEvent(event, task, { active: isActive }),
+    ),
+  );
+  output.push(
+    ...assistantEvents.map((event) =>
+      renderConversationEvent(event, task, { active: false }),
+    ),
+  );
+  return output.join("");
+}
+
+function shouldRenderStandaloneEvent(event, userPrompts) {
+  if (event.type === "prompt_sent") {
+    const prompt = `${event.payload?.prompt ?? event.payload?.text ?? ""}`.trim();
+    return Boolean(prompt && !userPrompts.has(prompt));
+  }
+  return ![
+    "thread_started",
+    "turn_started",
+    "turn_completed",
+    "approval_requested",
+    "approval_resolved",
+    "diff_updated",
+  ].includes(event.type);
+}
 
 function renderConversationEvent(event, task, eventState) {
   const payload = event.payload ?? {};
@@ -744,11 +846,29 @@ function renderConversationEvent(event, task, eventState) {
   return renderStatusEvent(event);
 }
 
-function conversationEventState(events, index) {
-  const laterEvents = events.slice(index + 1);
-  return {
-    hasLaterAssistantResponse: laterEvents.some((event) => event.type === "assistant_message"),
-  };
+function isWorkEvent(event) {
+  return ["reasoning", "plan", "command_execution", "file_change", "task_failed"].includes(
+    event.type,
+  );
+}
+
+function isTurnStatusEvent(event) {
+  return [
+    "turn_started",
+    "turn_completed",
+    "turn_interrupted",
+    "approval_resolved",
+    "diff_updated",
+  ].includes(event.type);
+}
+
+function isTerminalTurnEvent(event) {
+  const status = event.payload?.status ?? event.type;
+  return (
+    event.type === "turn_completed" ||
+    event.type === "turn_interrupted" ||
+    ["completed", "failed", "interrupted"].includes(status)
+  );
 }
 
 function renderStatusEvent(event) {
@@ -784,8 +904,8 @@ function renderThinkingEvent(event, text, task, eventState) {
     return renderStatusEvent(event);
   }
   const isActive =
-    ["running", "waiting_for_approval"].includes(task?.status) &&
-    !eventState?.hasLaterAssistantResponse;
+    eventState?.active ??
+    ["running", "waiting_for_approval"].includes(task?.status);
   const open = isActive ? " open" : "";
   const state = isActive ? "active" : "complete";
 
@@ -799,6 +919,194 @@ function renderThinkingEvent(event, text, task, eventState) {
         <pre>${escapeHtml(value)}</pre>
       </details>
     </li>
+  `;
+}
+
+function renderTurnWorkSummary(group, workEvents, terminalEvent) {
+  const duration = turnDurationLabel(group.events, terminalEvent);
+  const count = workEvents.length;
+  const updateText = count === 1 ? "1 update" : `${count} updates`;
+  const label = duration ? `Worked for ${duration}` : "Work details";
+  return `
+    <li class="task-event task-turn-work" data-turn-id="${escapeHtml(group.turnId)}">
+      <details>
+        <summary>
+          <span>${escapeHtml(label)}</span>
+          <span>${escapeHtml(updateText)}</span>
+        </summary>
+        <div class="task-turn-work-body">
+          ${renderTurnWorkItems(workEvents)}
+        </div>
+      </details>
+    </li>
+  `;
+}
+
+function turnDurationLabel(events, terminalEvent) {
+  const started = events.find((event) => event.type === "turn_started");
+  const startMs = started?.createdMs ?? events[0]?.createdMs;
+  const endMs = terminalEvent?.createdMs ?? events.at(-1)?.createdMs;
+  if (typeof startMs !== "number" || typeof endMs !== "number" || endMs <= startMs) {
+    return "";
+  }
+  return formatDuration(endMs - startMs);
+}
+
+function renderTurnWorkItems(events) {
+  const reasoningEvents = events.filter((event) => event.type === "reasoning");
+  const planEvents = events.filter((event) => event.type === "plan");
+  const commandEvents = events.filter((event) => event.type === "command_execution");
+  const fileChangeEvents = events.filter((event) => event.type === "file_change");
+  const failureEvents = events.filter((event) => event.type === "task_failed");
+  const knownEvents = new Set([
+    ...reasoningEvents,
+    ...planEvents,
+    ...commandEvents,
+    ...fileChangeEvents,
+    ...failureEvents,
+  ]);
+  const unknownEvents = events.filter((event) => !knownEvents.has(event));
+
+  return [
+    renderCombinedReasoningWorkItem(reasoningEvents),
+    ...planEvents.map(renderTurnWorkItem),
+    ...commandEvents.map(renderTurnWorkItem),
+    renderCombinedFileChangeWorkItem(fileChangeEvents),
+    ...failureEvents.map(renderTurnWorkItem),
+    ...unknownEvents.map(renderTurnWorkItem),
+  ]
+    .filter(Boolean)
+    .join("");
+}
+
+function renderCombinedReasoningWorkItem(events) {
+  if (!events.length) {
+    return "";
+  }
+  const text = events
+    .map((event) => {
+      const payload = event.payload ?? {};
+      const summary = Array.isArray(payload.summary)
+        ? payload.summary.filter(Boolean).join("\n\n")
+        : "";
+      const content = Array.isArray(payload.content)
+        ? payload.content.filter(Boolean).join("\n\n")
+        : "";
+      return [summary, content].filter(Boolean).join("\n\n");
+    })
+    .filter(Boolean)
+    .join("\n\n");
+  return renderTurnWorkItemShell(latestEvent(events), "Thinking", text);
+}
+
+function renderCombinedFileChangeWorkItem(events) {
+  if (!events.length) {
+    return "";
+  }
+  if (events.length === 1) {
+    return renderTurnWorkItem(events[0]);
+  }
+
+  const latest = latestEvent(events);
+  const payload = latest.payload ?? {};
+  const latestCount =
+    typeof payload.changeCount === "number"
+      ? payload.changeCount
+      : Array.isArray(payload.changes)
+        ? payload.changes.length
+        : null;
+  const latestSummary =
+    typeof latestCount === "number"
+      ? latestCount === 1
+        ? "Latest: 1 changed file"
+        : `Latest: ${latestCount} changed files`
+      : "";
+  const status = payload.status ? `Latest status: ${formatStatus(payload.status)}` : "";
+  const updateText =
+    events.length === 1
+      ? "1 file change update"
+      : `${events.length} file change updates`;
+
+  return renderTurnWorkItemShell(
+    latest,
+    "File changes",
+    [updateText, latestSummary, status].filter(Boolean).join("\n"),
+  );
+}
+
+function latestEvent(events) {
+  return events.reduce((latest, event) =>
+    (event.createdMs ?? 0) >= (latest.createdMs ?? 0) ? event : latest,
+  );
+}
+
+function renderTurnWorkItem(event) {
+  const payload = event.payload ?? {};
+  const dataType = escapeHtml(event.type);
+  if (event.type === "reasoning") {
+    const summary = Array.isArray(payload.summary)
+      ? payload.summary.filter(Boolean).join("\n\n")
+      : "";
+    const content = Array.isArray(payload.content)
+      ? payload.content.filter(Boolean).join("\n\n")
+      : "";
+    return renderTurnWorkItemShell(event, "Thinking", [summary, content].filter(Boolean).join("\n\n"));
+  }
+  if (event.type === "plan") {
+    return renderTurnWorkItemShell(event, "Plan", payload.text);
+  }
+  if (event.type === "command_execution") {
+    const command = `${payload.command ?? ""}`.trim();
+    const cwd = `${payload.cwd ?? ""}`.trim();
+    const status = `${payload.status ?? ""}`.trim();
+    const output = `${payload.aggregatedOutput ?? ""}`.trim();
+    return renderTurnWorkItemShell(
+      event,
+      "Command",
+      [
+        command ? `$ ${command}` : "",
+        cwd ? `cwd: ${cwd}` : "",
+        status ? `status: ${status}` : "",
+        output,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+  if (event.type === "file_change") {
+    const count =
+      typeof payload.changeCount === "number"
+        ? payload.changeCount
+        : Array.isArray(payload.changes)
+          ? payload.changes.length
+          : 0;
+    const status = payload.status ? `Status: ${formatStatus(payload.status)}` : "";
+    const summary = count === 1 ? "1 changed file" : `${count} changed files`;
+    return renderTurnWorkItemShell(event, "File changes", [summary, status].filter(Boolean).join("\n"));
+  }
+  if (event.type === "task_failed") {
+    return renderTurnWorkItemShell(event, "Error", event.summary, "danger");
+  }
+  return `
+    <article class="task-work-item" data-event-type="${dataType}">
+      <header>
+        <strong>${escapeHtml(event.summary)}</strong>
+        <time>${escapeHtml(formatDate(event.createdMs))}</time>
+      </header>
+    </article>
+  `;
+}
+
+function renderTurnWorkItemShell(event, label, text, tone = "neutral") {
+  const value = `${text ?? ""}`.trim();
+  return `
+    <article class="task-work-item" data-event-type="${escapeHtml(event.type)}" data-tool-tone="${escapeHtml(tone)}">
+      <header>
+        <strong>${escapeHtml(label)}</strong>
+        <time>${escapeHtml(formatDate(event.createdMs))}</time>
+      </header>
+      ${value ? `<pre>${escapeHtml(value)}</pre>` : ""}
+    </article>
   `;
 }
 
@@ -920,24 +1228,106 @@ function pendingApprovals(events) {
 }
 
 function upsertEvent(events, event) {
-  const existing = events.filter((entry) => entry.id !== event.id);
-  existing.push(event);
-  existing.sort((left, right) => (left.createdMs ?? 0) - (right.createdMs ?? 0));
-  return existing;
+  return mergeEvents(events, [event]);
 }
 
 function mergeEvents(leftEvents, rightEvents) {
   const byId = new Map();
   for (const event of [...leftEvents, ...rightEvents]) {
-    if (event?.id) {
-      byId.set(event.id, event);
+    const key = eventIdentityKey(event);
+    if (key) {
+      byId.set(key, event);
     }
   }
-  return [...byId.values()].sort(
+  return dedupeCanonicalEvents([...byId.values()]).sort(
     (left, right) =>
       (left.createdMs ?? 0) - (right.createdMs ?? 0) ||
       `${left.id ?? ""}`.localeCompare(`${right.id ?? ""}`),
   );
+}
+
+function eventIdentityKey(event) {
+  if (!event) {
+    return "";
+  }
+
+  const payload = event.payload ?? {};
+  const threadId = event.threadId ?? payload.threadId ?? "";
+  const itemId = payload.itemId ?? payload.item?.id ?? "";
+  if (itemId) {
+    return ["item", threadId, itemId].join(":");
+  }
+
+  const approvalId = payload.approvalId ?? "";
+  if (approvalId) {
+    return ["approval", threadId, approvalId, event.type].join(":");
+  }
+
+  const turnId = eventTurnId(event);
+  if (turnId && isTurnStatusEvent(event)) {
+    return ["turn", threadId, turnId, event.type, payload.status ?? ""].join(":");
+  }
+
+  if (turnId && ["user_message", "assistant_message"].includes(event.type)) {
+    const text = `${payload.prompt ?? payload.text ?? ""}`.trim();
+    if (text) {
+      return ["message", threadId, turnId, event.type, text].join(":");
+    }
+  }
+
+  return event.id ?? "";
+}
+
+function dedupeCanonicalEvents(events) {
+  const byKey = new Map();
+  for (const event of events) {
+    const key = canonicalEventKey(event) || eventIdentityKey(event);
+    if (!key) {
+      continue;
+    }
+    const existing = byKey.get(key);
+    byKey.set(key, preferStructuredEvent(existing, event));
+  }
+  return [...byKey.values()];
+}
+
+function canonicalEventKey(event) {
+  if (!event || !["user_message", "assistant_message"].includes(event.type)) {
+    return "";
+  }
+
+  const payload = event.payload ?? {};
+  const text = `${payload.prompt ?? payload.text ?? ""}`.trim();
+  if (!text) {
+    return "";
+  }
+
+  const threadId = event.threadId ?? payload.threadId ?? "";
+  const turnId = eventTurnId(event);
+  if (turnId) {
+    return ["message", threadId, turnId, event.type, text].join(":");
+  }
+
+  const createdMs = typeof event.createdMs === "number" ? event.createdMs : 0;
+  const createdBucket = createdMs ? Math.floor(createdMs / 5000) : "";
+  return ["message", threadId, event.type, text, createdBucket].join(":");
+}
+
+function preferStructuredEvent(existing, next) {
+  if (!existing) {
+    return next;
+  }
+  return eventStructureScore(next) >= eventStructureScore(existing) ? next : existing;
+}
+
+function eventStructureScore(event) {
+  const payload = event?.payload ?? {};
+  return [
+    payload.itemId,
+    payload.item?.id,
+    payload.turnId,
+    payload.threadId,
+  ].filter(Boolean).length;
 }
 
 function isScrolledToBottom(element) {
@@ -1004,6 +1394,22 @@ function formatDate(ms) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatDuration(ms) {
+  const seconds = Math.max(1, Math.round(Number(ms) / 1000));
+  if (!Number.isFinite(seconds)) {
+    return "";
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (minutes === 0) {
+    return `${remainingSeconds}s`;
+  }
+  if (remainingSeconds === 0) {
+    return `${minutes}m`;
+  }
+  return `${minutes}m ${remainingSeconds}s`;
 }
 
 function statusTone(type) {

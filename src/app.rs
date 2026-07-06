@@ -938,6 +938,7 @@ async fn task_prompt(
         .get("cwd")
         .and_then(JsonValue::as_str)
         .unwrap_or(&project.root_path);
+    client.resume_thread(&thread_id, cwd).await?;
     client.start_turn(&thread_id, cwd, prompt).await?;
     Ok(Json(
         read_task_detail(&state, &client, &project, &thread_id, None).await?,
