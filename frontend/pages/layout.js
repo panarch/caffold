@@ -1,5 +1,12 @@
 import { getHealth, listDirectory, openProject } from "../api.js";
-import { parentRoute, parseRoute, routeEquals, routeUrl } from "../navigation-routes.js";
+import {
+  parentRoute,
+  parseRoute,
+  routeDomain,
+  routeEquals,
+  routeSurface,
+  routeUrl,
+} from "../navigation-routes.js";
 import "./components/pathbar.js";
 import "./components/project-switcher.js";
 import "./components/header-actions.js";
@@ -247,11 +254,13 @@ class CaffoldAppShell extends HTMLElement {
         return false;
       }
 
-      if (route.kind === "files") {
+      const surface = routeSurface(route);
+      const domain = routeDomain(route);
+      if (surface === "files") {
         await this.applyFilesRoute(project, route);
-      } else if (route.kind === "diff" || route.kind === "compare" || route.kind === "log") {
+      } else if (domain === "git") {
         await this.applyGitRoute(project, route);
-      } else if (route.kind === "issues" || route.kind === "pulls") {
+      } else if (domain === "github") {
         await this.applyGithubRoute(project, route);
       }
 
@@ -653,7 +662,7 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   prepareRoute(route) {
-    const surface = isReviewRoute(route) ? "review" : "files";
+    const surface = routeSurface(route);
     this.dataset.routeSurface = surface;
     delete this.dataset.routePending;
 
@@ -673,15 +682,4 @@ function cleanPath(path) {
     .split("/")
     .filter((segment) => segment && segment !== "." && segment !== "..")
     .join("/");
-}
-
-function isReviewRoute(route) {
-  return Boolean(
-    route &&
-      (route.kind === "diff" ||
-        route.kind === "compare" ||
-        route.kind === "log" ||
-        route.kind === "issues" ||
-        route.kind === "pulls"),
-  );
 }

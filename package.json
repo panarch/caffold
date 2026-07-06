@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:routes": "node --test tests/navigation-routes.test.mjs",
     "test:e2e": "playwright test"
   },
   "devDependencies": {

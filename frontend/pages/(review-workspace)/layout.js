@@ -1,4 +1,5 @@
 import { renderInlineIcon, warmIcons } from "../../components/icons.js";
+import { routeDomain } from "../../navigation-routes.js";
 
 const REVIEW_PANEL_DEFAULT_WIDTH = 320;
 const REVIEW_PANEL_MIN_WIDTH = 180;
@@ -226,13 +227,14 @@ class CaffoldReviewWorkspace extends HTMLElement {
 
   prepareRoute(route) {
     this.ensureRendered();
-    if (isGitRoute(route)) {
+    const domain = routeDomain(route);
+    if (domain === "git") {
       this.gitLayout.prepareRoute(route);
       this.open("git", this.detailsForMode("git"));
       return;
     }
 
-    if (isGithubRoute(route)) {
+    if (domain === "github") {
       this.githubLayout.prepareRoute(route);
       this.open("github", this.detailsForMode("github"));
     }
@@ -559,12 +561,4 @@ function workspaceTitle(mode) {
   }
 
   return "Review";
-}
-
-function isGitRoute(route) {
-  return route?.kind === "diff" || route?.kind === "compare" || route?.kind === "log";
-}
-
-function isGithubRoute(route) {
-  return route?.kind === "issues" || route?.kind === "pulls";
 }

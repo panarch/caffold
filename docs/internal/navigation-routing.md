@@ -32,6 +32,23 @@ Route paths are project-relative. The frontend resolves the project ID through
 the existing project API, then maps the route path onto the project's registered
 root path before calling file, git, or GitHub APIs.
 
+## Route Definitions
+
+`frontend/navigation-routes.js` keeps the route schema in an internal
+`ROUTE_DEFINITIONS` table. Each route definition owns parsing, path generation,
+query parameters, parent-route behavior, and surface/domain/mode metadata for
+one `kind`.
+
+The exported helpers remain the public interface:
+
+- `parseRoute(url)`
+- `routeUrl(route)`
+- `parentRoute(route)`
+- `routeEquals(left, right)`
+
+Adding a route should mean adding one route definition plus route helper tests.
+The table is an implementation detail and is not exported.
+
 ## Project IDs
 
 Project IDs are URL identities, not user-facing names. They should stay opaque
