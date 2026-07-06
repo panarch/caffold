@@ -82,20 +82,24 @@ class CaffoldGithubIssuesLayout extends HTMLElement {
   async setGithubStatus(status) {
     this.githubStatus = status ?? null;
     if (!this.githubStatus) {
+      this.emitStateChange();
       return null;
     }
 
     if (!this.issuesAvailable()) {
       this.issueListRequestId += 1;
       this.issueDetailRequestId += 1;
-      this.listPage.setUnavailable(this.githubStatus);
-      this.detailPage.setEmpty();
+      if (this.view === "detail") {
+        this.detailPage.setError(
+          this.currentIssueNumber(),
+          new Error(this.githubStatus.message ?? "GitHub issues are unavailable."),
+        );
+      } else {
+        this.listPage.setUnavailable(this.githubStatus);
+        this.detailPage.setEmpty();
+      }
       this.emitStateChange();
       return null;
-    }
-
-    if (this.view === "list" && !this.issues) {
-      return await this.loadIssues(this.page);
     }
 
     this.emitStateChange();
@@ -108,7 +112,7 @@ class CaffoldGithubIssuesLayout extends HTMLElement {
     }
 
     const nextPage = normalizePage(page);
-    if (nextPage === this.page) {
+    if (nextPage === this.loadedPage()) {
       return null;
     }
 
@@ -116,12 +120,33 @@ class CaffoldGithubIssuesLayout extends HTMLElement {
     return await this.loadIssues(nextPage);
   }
 
-  async openIssue(number) {
+  prepareRoute(route) {
+    this.ensureRendered();
+    this.page = normalizePage(route?.page ?? this.page);
+    if (route?.number) {
+      this.selectedIssueSummary =
+        this.issues?.issues?.find((issue) => issue.number === route.number) ?? {
+          number: route.number,
+        };
+      this.setView("detail");
+      this.listPage.setSelectedIssue(route.number);
+      this.detailPage.setLoading(route.number);
+    } else {
+      this.selectedIssueSummary = null;
+      this.setView("list");
+      this.listPage.setSelectedIssue(null);
+      this.detailPage.setEmpty();
+    }
+    this.emitStateChange();
+  }
+
+  async openIssue(number, options = {}) {
     const issueNumber = Number.parseInt(`${number ?? ""}`, 10);
     if (!this.repository || !Number.isFinite(issueNumber)) {
       return null;
     }
 
+    this.page = normalizePage(options.page ?? this.page);
     const requestId = ++this.issueDetailRequestId;
     this.selectedIssueSummary =
       this.issues?.issues?.find((issue) => issue.number === issueNumber) ?? {
@@ -131,6 +156,15 @@ class CaffoldGithubIssuesLayout extends HTMLElement {
     this.listPage.setSelectedIssue(issueNumber);
     this.detailPage.setLoading(issueNumber);
     this.emitStateChange();
+
+    if (!this.issuesAvailable()) {
+      this.detailPage.setError(
+        issueNumber,
+        new Error(this.githubStatus?.message ?? "GitHub issues are unavailable."),
+      );
+      this.emitStateChange();
+      return null;
+    }
 
     try {
       const issue = await getGitHubIssue(this.currentPath, issueNumber);
@@ -173,7 +207,11 @@ class CaffoldGithubIssuesLayout extends HTMLElement {
   }
 
   canReuseRoute(page) {
-    return Boolean(this.issues) && normalizePage(page ?? this.page) === this.page;
+    return Boolean(this.issues) && normalizePage(page ?? 1) === this.loadedPage();
+  }
+
+  loadedPage() {
+    return normalizePage(this.issues?.page ?? 1);
   }
 
   issuesSubtitle() {
@@ -273,6 +311,10 @@ class CaffoldGithubIssuesLayout extends HTMLElement {
 
   issuesAvailable() {
     return Boolean(this.githubStatus?.github && this.githubStatus?.issuesAvailable);
+  }
+
+  currentIssueNumber() {
+    return this.selectedIssueSummary?.number ?? null;
   }
 
   emitStateChange() {

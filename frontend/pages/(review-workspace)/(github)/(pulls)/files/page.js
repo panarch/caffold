@@ -78,21 +78,27 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
     this.dataset.detailView = this.detailView;
   }
 
-  setLoading(repository, number = null) {
+  setLoading(repository, number = null, options = {}) {
     this.ensureRendered();
-    this.setView("list");
+    if (!options.preserveView) {
+      this.setView("list");
+    }
     this.tree.setLoading(repository, number);
   }
 
-  setFiles(payload) {
+  setFiles(payload, options = {}) {
     this.ensureRendered();
-    this.setView("list");
+    if (!options.preserveView) {
+      this.setView("list");
+    }
     this.tree.setFiles(payload);
   }
 
-  setError(error, repository = null) {
+  setError(error, repository = null, options = {}) {
     this.ensureRendered();
-    this.setView("list");
+    if (!options.preserveView) {
+      this.setView("list");
+    }
     this.tree.setError(error, repository);
   }
 
@@ -110,10 +116,16 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
     const requestId = ++this.filesRequestId;
     const viewerRequestId = ++this.fileRequestId;
     this.pullNumber = pullNumber;
-    this.setView("list");
+    if (options.preserveViewer) {
+      this.setView("viewer");
+    } else {
+      this.setView("list");
+    }
 
     if (!options.skipReload) {
-      this.setLoading(this.repository, pullNumber);
+      this.setLoading(this.repository, pullNumber, {
+        preserveView: Boolean(options.preserveViewer),
+      });
     }
     if (!options.preserveViewer && viewerRequestId === this.fileRequestId) {
       this.fileViewer.setEmpty();
@@ -131,7 +143,9 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
       }
 
       this.pullFiles = files;
-      this.setFiles(files);
+      this.setFiles(files, {
+        preserveView: Boolean(options.preserveViewer),
+      });
       if (viewerRequestId === this.fileRequestId && !options.preserveViewer) {
         this.fileViewer.setEmpty();
       }
@@ -142,7 +156,9 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
         return null;
       }
 
-      this.setError(error, this.repository);
+      this.setError(error, this.repository, {
+        preserveView: Boolean(options.preserveViewer),
+      });
       if (viewerRequestId === this.fileRequestId) {
         this.fileViewer.setError(`PR #${pullNumber}`, error);
       }
@@ -194,6 +210,27 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
     this.setSelectedPath("");
     this.fileViewer.setEmpty();
     this.restoreScroll();
+    this.emitStateChange();
+  }
+
+  prepareRoute(number, options = {}) {
+    this.ensureRendered();
+    const pullNumber = normalizePullNumber(number);
+    if (!Number.isFinite(pullNumber)) {
+      this.reset();
+      return;
+    }
+
+    this.pullNumber = pullNumber;
+    if (options.path) {
+      this.setSelectedPath(options.path);
+      this.setView("viewer");
+      this.fileViewer.setLoading(options.path);
+    } else {
+      this.setSelectedPath("");
+      this.setView("list");
+      this.fileViewer.setEmpty();
+    }
     this.emitStateChange();
   }
 

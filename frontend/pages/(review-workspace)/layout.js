@@ -209,9 +209,8 @@ class CaffoldReviewWorkspace extends HTMLElement {
   async openGitReviewRoute(route, options = {}) {
     this.ensureRendered();
     this.gitLayout.setContext(options.context);
-    const routePromise = this.gitLayout.openRoute(route, options.routeOptions);
-    this.open("git", this.detailsForMode("git"));
-    const result = await routePromise;
+    this.prepareRoute(route);
+    const result = await this.gitLayout.openRoute(route, options.routeOptions);
     this.refreshDetails();
     return result;
   }
@@ -219,11 +218,24 @@ class CaffoldReviewWorkspace extends HTMLElement {
   async openGithubReviewRoute(route, options = {}) {
     this.ensureRendered();
     this.githubLayout.setContext(options.context);
-    const routePromise = this.githubLayout.openRoute(route, options.routeOptions);
-    this.open("github", this.detailsForMode("github"));
-    const result = await routePromise;
+    this.prepareRoute(route);
+    const result = await this.githubLayout.openRoute(route, options.routeOptions);
     this.refreshDetails();
     return result;
+  }
+
+  prepareRoute(route) {
+    this.ensureRendered();
+    if (isGitRoute(route)) {
+      this.gitLayout.prepareRoute(route);
+      this.open("git", this.detailsForMode("git"));
+      return;
+    }
+
+    if (isGithubRoute(route)) {
+      this.githubLayout.prepareRoute(route);
+      this.open("github", this.detailsForMode("github"));
+    }
   }
 
   prepareForFileBrowserOpen() {
@@ -547,4 +559,12 @@ function workspaceTitle(mode) {
   }
 
   return "Review";
+}
+
+function isGitRoute(route) {
+  return route?.kind === "diff" || route?.kind === "compare" || route?.kind === "log";
+}
+
+function isGithubRoute(route) {
+  return route?.kind === "issues" || route?.kind === "pulls";
 }

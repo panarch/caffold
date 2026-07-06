@@ -94,25 +94,28 @@ class CaffoldGithubPullsLayout extends HTMLElement {
   async setGithubStatus(status) {
     this.githubStatus = status ?? null;
     if (!this.githubStatus) {
+      this.emitStateChange();
       return null;
     }
 
     if (!this.pullsAvailable()) {
       this.pullListRequestId += 1;
       this.pullDetailRequestId += 1;
-      this.listPage.setUnavailable(this.githubStatus);
-      this.detailPage.setEmpty();
-      this.filesPage.setError(
-        new Error(this.githubStatus.message ?? "GitHub pull requests are unavailable."),
-        this.repository,
-      );
-      this.filesPage.clearViewer();
+      const error = new Error(this.githubStatus.message ?? "GitHub pull requests are unavailable.");
+      if (this.view === "detail") {
+        this.detailPage.setError(this.currentPullNumber(), error);
+      } else if (this.view === "files") {
+        this.filesPage.setError(error, this.repository, {
+          preserveView: this.filesPage.detailView === "viewer",
+        });
+      } else {
+        this.listPage.setUnavailable(this.githubStatus);
+        this.detailPage.setEmpty();
+        this.filesPage.setError(error, this.repository);
+        this.filesPage.clearViewer();
+      }
       this.emitStateChange();
       return null;
-    }
-
-    if (this.view === "list" && !this.pulls) {
-      return await this.loadPulls(this.page);
     }
 
     this.emitStateChange();
@@ -125,7 +128,7 @@ class CaffoldGithubPullsLayout extends HTMLElement {
     }
 
     const nextPage = normalizePage(page);
-    if (nextPage === this.page) {
+    if (nextPage === this.loadedPage()) {
       return null;
     }
 
@@ -140,7 +143,14 @@ class CaffoldGithubPullsLayout extends HTMLElement {
     }
 
     if (!this.pullsAvailable()) {
-      this.listPage.setUnavailable(this.githubStatus);
+      this.selectedPullSummary = { number: pullNumber };
+      this.setView("detail");
+      this.listPage.setSelectedPull(pullNumber);
+      this.detailPage.setError(
+        pullNumber,
+        new Error(this.githubStatus?.message ?? "GitHub pull requests are unavailable."),
+      );
+      this.emitStateChange();
       return null;
     }
 
@@ -184,7 +194,15 @@ class CaffoldGithubPullsLayout extends HTMLElement {
     }
 
     if (!this.pullsAvailable()) {
-      this.listPage.setUnavailable(this.githubStatus);
+      this.selectedPullSummary = { number: pullNumber };
+      this.setView("files");
+      this.listPage.setSelectedPull(pullNumber);
+      this.filesPage.setError(
+        new Error(this.githubStatus?.message ?? "GitHub pull requests are unavailable."),
+        this.repository,
+        { preserveView: Boolean(options.preserveViewer) },
+      );
+      this.emitStateChange();
       return null;
     }
 
@@ -222,6 +240,38 @@ class CaffoldGithubPullsLayout extends HTMLElement {
 
   showFilesList() {
     this.filesPage.showList();
+    this.emitStateChange();
+  }
+
+  prepareRoute(route) {
+    this.ensureRendered();
+    this.page = normalizePage(route?.page ?? this.page);
+    if (!route?.number) {
+      this.selectedPullSummary = null;
+      this.setView("list");
+      this.listPage.setSelectedPull(null);
+      this.detailPage.setEmpty();
+      this.filesPage.reset();
+      this.emitStateChange();
+      return;
+    }
+
+    this.selectedPullSummary =
+      this.pulls?.pulls?.find((pull) => pull.number === route.number) ?? {
+        number: route.number,
+      };
+    this.listPage.setSelectedPull(route.number);
+    if (route.files) {
+      this.setView("files");
+      this.detailPage.setEmpty();
+      this.filesPage.prepareRoute(route.number, {
+        path: route.path,
+      });
+    } else {
+      this.setView("detail");
+      this.detailPage.setLoading(route.number);
+      this.filesPage.reset();
+    }
     this.emitStateChange();
   }
 
@@ -316,7 +366,11 @@ class CaffoldGithubPullsLayout extends HTMLElement {
   }
 
   canReuseList(page) {
-    return Boolean(this.pulls) && normalizePage(page ?? this.page) === this.page;
+    return Boolean(this.pulls) && normalizePage(page ?? 1) === this.loadedPage();
+  }
+
+  loadedPage() {
+    return normalizePage(this.pulls?.page ?? 1);
   }
 
   canReuseFiles(number) {

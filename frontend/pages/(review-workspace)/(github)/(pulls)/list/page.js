@@ -45,10 +45,11 @@ class CaffoldGithubPullsListPage extends HTMLElement {
   }
 
   setLoading(status = null, previousPayload = null, page = null) {
+    const payload = previousPayload ?? this.state?.payload ?? null;
     this.state = {
       status: "loading",
       githubStatus: status,
-      payload: this.loadingPayload(previousPayload, page),
+      payload: this.loadingPayload(payload, page),
     };
     this.render();
   }

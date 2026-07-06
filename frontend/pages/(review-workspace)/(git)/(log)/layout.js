@@ -68,7 +68,7 @@ class CaffoldGitLogLayout extends HTMLElement {
     }
 
     const nextPage = normalizePage(page);
-    if (nextPage === this.page) {
+    if (nextPage === this.loadedPage()) {
       return null;
     }
 
@@ -111,6 +111,26 @@ class CaffoldGitLogLayout extends HTMLElement {
     this.detailView = this.commitPage.detailView;
     this.emitStateChange();
     return diff;
+  }
+
+  prepareRoute(route) {
+    this.ensureRendered();
+    this.page = normalizePage(route?.page ?? this.page);
+    if (route?.sha) {
+      this.setView("detail");
+      this.commitPage.prepareRoute({
+        currentPath: this.currentPath,
+        repository: this.repository,
+        sha: route.sha,
+        path: route.path,
+      });
+      this.detailView = this.commitPage.detailView;
+    } else {
+      this.setView("list");
+      this.setDetailView("list");
+      this.commitPage.prepareForList();
+    }
+    this.emitStateChange();
   }
 
   backToList() {
@@ -179,10 +199,14 @@ class CaffoldGitLogLayout extends HTMLElement {
 
   canReuseRoute(page, sha) {
     if (!sha) {
-      return Boolean(this.log) && normalizePage(page ?? this.page) === this.page;
+      return Boolean(this.log) && normalizePage(page ?? 1) === this.loadedPage();
     }
 
     return this.commitPage.canReuse(sha);
+  }
+
+  loadedPage() {
+    return normalizePage(this.log?.page ?? 1);
   }
 
   currentCommitSha() {

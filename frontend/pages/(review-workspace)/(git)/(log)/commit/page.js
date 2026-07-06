@@ -62,6 +62,38 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     this.emitStateChange();
   }
 
+  prepareRoute(options = {}) {
+    this.ensureRendered();
+    const sha = options.sha ?? "";
+    if (!sha) {
+      this.prepareForList();
+      return;
+    }
+
+    this.currentPath = options.currentPath ?? this.currentPath ?? "";
+    this.repository = options.repository ?? this.repository ?? null;
+    this.selectedCommitSummary = {
+      sha,
+      shortSha: sha.slice(0, 7),
+      subject:
+        this.commitPayload?.commit?.sha === sha
+          ? (this.commitPayload.commit.subject ?? "")
+          : "",
+    };
+    this.commitTree.setSelectedPath(options.path ?? "");
+    if (this.repository) {
+      this.commitTree.setLoading(this.repository, this.selectedCommitSummary);
+    }
+    if (options.path) {
+      this.setDetailView("viewer");
+      this.fileViewer.setLoading(`Commit diff ${options.path}`);
+    } else {
+      this.setDetailView("list");
+      this.fileViewer.setEmpty();
+    }
+    this.emitStateChange();
+  }
+
   async openCommit(options = {}) {
     this.ensureRendered();
     const sha = options.sha ?? "";
@@ -94,7 +126,7 @@ class CaffoldGitLogCommitPage extends HTMLElement {
       shortSha: sha.slice(0, 7),
       subject: "",
     };
-    this.setDetailView("list");
+    this.setDetailView(options.preserveViewer ? "viewer" : "list");
     this.commitTree.setSelectedPath("");
     this.commitTree.setLoading(this.repository, this.selectedCommitSummary);
     this.fileViewer.setLoading(`Commit ${sha.slice(0, 7)}`);

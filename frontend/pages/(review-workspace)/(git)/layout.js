@@ -247,7 +247,11 @@ class CaffoldGitReviewLayout extends HTMLElement {
       path: this.currentPath,
       repository: this.repository,
     });
-    this.diffPage.showList();
+    if (options.preserveViewer) {
+      this.diffPage.setView("viewer");
+    } else {
+      this.diffPage.showList();
+    }
     if (!this.gitStatus) {
       this.diffPage.setLoading(this.repository);
     }
@@ -368,7 +372,61 @@ class CaffoldGitReviewLayout extends HTMLElement {
     return diff;
   }
 
+  prepareRoute(route) {
+    this.ensureRendered();
+    if (!route) {
+      return;
+    }
+
+    if (route.kind === "diff") {
+      this.setMode("diff");
+      this.diffPage.setContext({
+        path: this.currentPath,
+        repository: this.repository,
+      });
+      if (route.path) {
+        this.diffPage.setView("viewer");
+      } else {
+        this.diffPage.showList();
+        this.diffPage.setSelectedPath("");
+        this.diffPage.setEmpty();
+      }
+      this.emitStateChange();
+      return;
+    }
+
+    if (route.kind === "compare") {
+      this.setMode("compare");
+      this.comparePage.setContext({
+        path: this.currentPath,
+        repository: this.repository,
+        baseRef: route.baseRef,
+        headRef: route.headRef,
+      });
+      if (route.path) {
+        this.comparePage.setView("viewer");
+      } else {
+        this.comparePage.showList();
+        this.comparePage.setSelectedPath("");
+        this.comparePage.setEmpty();
+      }
+      this.emitStateChange();
+      return;
+    }
+
+    if (route.kind === "log") {
+      this.setMode("log");
+      this.logLayout.setContext({
+        path: this.currentPath,
+        repository: this.repository,
+      });
+      this.logLayout.prepareRoute(route);
+      this.emitStateChange();
+    }
+  }
+
   async openRoute(route, options = {}) {
+    this.prepareRoute(route);
     if (route.kind === "diff") {
       this.openDiffWorkspace({ preserveViewer: Boolean(route.path) });
       if (!route.path) {

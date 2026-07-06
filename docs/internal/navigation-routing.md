@@ -71,6 +71,32 @@ Navigation entry state is reserved for ephemeral UI state such as scroll
 restoration. Durable review state must be recoverable from the URL and current
 backend APIs.
 
+## Route Lifecycle
+
+Every routed surface follows the same lifecycle:
+
+1. Parse the URL into a semantic route.
+2. Prepare the target synchronously with `prepareRoute(route)`.
+3. Load project context, status, and content asynchronously.
+4. Refresh the already-prepared target with the loaded data.
+
+`prepareRoute(route)` must not call APIs. It may only set the active surface,
+domain mode, subview, selected placeholder, shared chrome title/subtitle/back
+state, and mobile detail state implied by the route.
+
+The URL is the source of truth for whether the target is a list, detail, files,
+or file viewer surface. Async loading results may fill that target, but they
+must not be required to decide which target is visible.
+
+This matters most for reload and direct URL entry. A PR file route such as
+`/projects/:projectId/pulls/:number/files/*path` should prepare the PR files
+viewer immediately. It should not show the file browser, PR list, or PR detail
+while GitHub status, PR file lists, or diffs are loading.
+
+GitHub status setters must not implicitly load Issues or Pull Requests lists.
+List loading belongs to list routes only. Detail and file routes must remain
+independently reloadable even when no list cache exists.
+
 ## Server Fallback
 
 The Rust server serves the app shell for known frontend routes under

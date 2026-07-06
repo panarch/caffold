@@ -175,11 +175,15 @@ class CaffoldGithubReviewLayout extends HTMLElement {
     this.setContext({ githubStatus: this.githubStatus });
 
     if (this.mode === "issues") {
-      return await this.issuesLayout.setGithubStatus(this.githubStatus);
+      this.issuesLayout.setGithubStatus(this.githubStatus);
+      this.emitStateChange();
+      return null;
     }
 
     if (this.mode === "pulls") {
-      return await this.pullsLayout.setGithubStatus(this.githubStatus);
+      this.pullsLayout.setGithubStatus(this.githubStatus);
+      this.emitStateChange();
+      return null;
     }
 
     this.emitStateChange();
@@ -258,13 +262,13 @@ class CaffoldGithubReviewLayout extends HTMLElement {
     return issues;
   }
 
-  async openIssue(number) {
+  async openIssue(number, options = {}) {
     if (!this.repository) {
       return null;
     }
 
     this.setMode("issues");
-    const issue = await this.issuesLayout.openIssue(number);
+    const issue = await this.issuesLayout.openIssue(number, options);
     this.emitStateChange();
     return issue;
   }
@@ -337,49 +341,39 @@ class CaffoldGithubReviewLayout extends HTMLElement {
   }
 
   async openRoute(route, options = {}) {
-    this.setRouteMode(route);
-    const status = await this.githubStatusForRoute(route);
+    this.prepareRoute(route);
+    const status = await this.ensureStatus(this.currentPath);
     this.setContext({ githubStatus: status });
     const result = await this.openRouteContent(route, options);
-    return await this.finishGithubReviewRoute(route, options, result);
+    return result;
   }
 
-  setRouteMode(route) {
+  prepareRoute(route) {
+    this.ensureRendered();
     if (route.kind === "issues") {
       this.setMode("issues");
+      this.issuesLayout.prepareRoute(route);
+      this.emitStateChange();
       return;
     }
 
     if (route.kind === "pulls") {
       this.setMode("pulls");
+      this.pullsLayout.prepareRoute(route);
+      this.emitStateChange();
     }
-  }
-
-  async githubStatusForRoute(route) {
-    return route.number
-      ? await this.ensureStatus(this.currentPath)
-      : this.githubStatus;
-  }
-
-  async finishGithubReviewRoute(route, options, result) {
-    if (!route.number && !options.skipReload && !this.githubStatus) {
-      return await this.ensureStatus(this.currentPath);
-    }
-
-    return result;
   }
 
   async openRouteContent(route, options = {}) {
     if (route.kind === "issues") {
-      const issues = await this.openIssuesWorkspace({
+      if (route.number) {
+        return await this.openIssue(route.number, { page: route.page });
+      }
+
+      return await this.openIssuesWorkspace({
         page: route.page,
         skipReload: options.skipReload,
       });
-      if (route.number) {
-        return await this.openIssue(route.number);
-      }
-
-      return issues;
     }
 
     if (route.kind !== "pulls") {
@@ -397,7 +391,7 @@ class CaffoldGithubReviewLayout extends HTMLElement {
       const files = await this.openPullFiles(route.number, {
         page: route.page,
         preserveViewer: Boolean(route.path),
-        skipReload: options.skipReload,
+        skipReload: options.skipReload || this.canReusePullFiles(route.number),
       });
       if (!route.path) {
         this.showPullFilesList();

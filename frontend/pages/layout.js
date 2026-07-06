@@ -1,4 +1,4 @@
-import { getHealth, openProject } from "../api.js";
+import { getHealth, listDirectory, openProject } from "../api.js";
 import { parentRoute, parseRoute, routeEquals, routeUrl } from "../navigation-routes.js";
 import "./components/pathbar.js";
 import "./components/project-switcher.js";
@@ -18,6 +18,7 @@ class CaffoldAppShell extends HTMLElement {
 
     this.initialized = true;
     this.currentRoute = null;
+    this.directoryContextPath = "";
     this.isApplyingRoute = false;
     this.render();
     this.filesPage = this.querySelector("caffold-files-page");
@@ -32,6 +33,7 @@ class CaffoldAppShell extends HTMLElement {
     this.githubLayout = this.reviewWorkspace.querySelector("caffold-github-review-layout");
     this.githubLayout.ensureRendered();
     this.installNavigationHandlers();
+    this.prepareRoute(parseRoute(window.location.href));
 
     this.addEventListener("caffold:navigate", (event) => {
       this.navigateToFileRoute(event.detail.path) || this.loadDirectory(event.detail.path);
@@ -94,7 +96,7 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   get currentPath() {
-    return this.filesPage?.currentPath ?? "";
+    return this.directoryContextPath || this.filesPage?.currentPath || "";
   }
 
   get githubStatus() {
@@ -238,6 +240,7 @@ class CaffoldAppShell extends HTMLElement {
   async applyRoute(route) {
     this.isApplyingRoute = true;
     this.currentRoute = route;
+    this.prepareRoute(route);
     try {
       const project = await this.openProjectForRoute(route.projectId);
       if (!project) {
@@ -286,7 +289,7 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   async applyGitRoute(project, route) {
-    if (!(await this.ensureProjectRootLoaded(project))) {
+    if (!(await this.ensureProjectReviewContext(project))) {
       return;
     }
     if (!this.isCurrentRoute(route)) {
@@ -300,7 +303,7 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   async applyGithubRoute(project, route) {
-    if (!(await this.ensureProjectRootLoaded(project))) {
+    if (!(await this.ensureProjectReviewContext(project))) {
       return;
     }
     if (!this.isCurrentRoute(route)) {
@@ -432,6 +435,7 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   async syncDirectoryContext(directory) {
+    this.directoryContextPath = directory.path;
     this.pathbar.path = directory.path;
     this.updateRepositoryContext(directory);
     await this.refreshProjects(directory.path);
@@ -525,12 +529,21 @@ class CaffoldAppShell extends HTMLElement {
     return cleanPath(this.currentPath) === cleanPath(project?.relativePath ?? "");
   }
 
-  async ensureProjectRootLoaded(project) {
+  async ensureProjectReviewContext(project) {
     if (this.isProjectRootLoaded(project)) {
       return true;
     }
 
-    return await this.loadDirectory(project.relativePath);
+    const directory = await listDirectory(project.relativePath);
+    this.directoryContextPath = directory.path;
+    this.pathbar.path = directory.path;
+    if (directory.git) {
+      this.applyRepositoryContext(directory.path, directory.git);
+    } else {
+      this.clearRepositoryContext();
+    }
+    await this.refreshProjects(directory.path);
+    return true;
   }
 
   canApplyLoadedGitRoute(project, route) {
@@ -638,6 +651,19 @@ class CaffoldAppShell extends HTMLElement {
       githubStatus: this.githubStatus,
     });
   }
+
+  prepareRoute(route) {
+    const surface = isReviewRoute(route) ? "review" : "files";
+    this.dataset.routeSurface = surface;
+    delete this.dataset.routePending;
+
+    if (surface === "review") {
+      this.reviewWorkspace?.prepareRoute(route);
+      return;
+    }
+
+    this.closeReviewWorkspace();
+  }
 }
 
 customElements.define("caffold-app-shell", CaffoldAppShell);
@@ -647,4 +673,15 @@ function cleanPath(path) {
     .split("/")
     .filter((segment) => segment && segment !== "." && segment !== "..")
     .join("/");
+}
+
+function isReviewRoute(route) {
+  return Boolean(
+    route &&
+      (route.kind === "diff" ||
+        route.kind === "compare" ||
+        route.kind === "log" ||
+        route.kind === "issues" ||
+        route.kind === "pulls"),
+  );
 }

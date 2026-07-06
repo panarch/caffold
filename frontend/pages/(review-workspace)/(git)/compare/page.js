@@ -58,8 +58,10 @@ class CaffoldGitComparePage extends HTMLElement {
 
   async openCompare(options = {}) {
     this.setContext(options);
-    this.showList();
-    if (!options.preserveViewer) {
+    if (options.preserveViewer) {
+      this.setView("viewer");
+    } else {
+      this.showList();
       this.setEmpty();
     }
     this.emitStateChange();

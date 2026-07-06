@@ -795,9 +795,27 @@ test("restores project review routes", async ({ page }) => {
   let githubPullRequests = 0;
   let githubPullFilesRequests = 0;
   let listRequests = 0;
+  let delayNextListRequest = false;
+  let resolveDelayedListStarted = null;
+  let releaseDelayedListRequest = null;
+  let delayNextIssueRequest = false;
+  let resolveDelayedIssueStarted = null;
+  let releaseDelayedIssueRequest = null;
+  let delayNextPullFilesRequest = false;
+  let resolveDelayedPullFilesStarted = null;
+  let releaseDelayedPullFilesRequest = null;
 
   await page.route(/\/api\/list(?:\?|$)/, async (route) => {
     listRequests += 1;
+    if (delayNextListRequest) {
+      delayNextListRequest = false;
+      resolveDelayedListStarted?.();
+      resolveDelayedListStarted = null;
+      await new Promise((resolve) => {
+        releaseDelayedListRequest = resolve;
+      });
+      releaseDelayedListRequest = null;
+    }
     await route.continue();
   });
 
@@ -1003,9 +1021,18 @@ test("restores project review routes", async ({ page }) => {
       }),
     });
   });
-  await page.route(/\/api\/github\/issue(?:\?|$)/, (route) => {
+  await page.route(/\/api\/github\/issue(?:\?|$)/, async (route) => {
     const url = new URL(route.request().url());
     expect(url.searchParams.get("number")).toBe("42");
+    if (delayNextIssueRequest) {
+      delayNextIssueRequest = false;
+      resolveDelayedIssueStarted?.();
+      resolveDelayedIssueStarted = null;
+      await new Promise((resolve) => {
+        releaseDelayedIssueRequest = resolve;
+      });
+      releaseDelayedIssueRequest = null;
+    }
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -1124,10 +1151,19 @@ test("restores project review routes", async ({ page }) => {
       }),
     });
   });
-  await page.route(/\/api\/github\/pull-files(?:\?|$)/, (route) => {
+  await page.route(/\/api\/github\/pull-files(?:\?|$)/, async (route) => {
     githubPullFilesRequests += 1;
     const url = new URL(route.request().url());
     expect(url.searchParams.get("number")).toBe("12");
+    if (delayNextPullFilesRequest) {
+      delayNextPullFilesRequest = false;
+      resolveDelayedPullFilesStarted?.();
+      resolveDelayedPullFilesStarted = null;
+      await new Promise((resolve) => {
+        releaseDelayedPullFilesRequest = resolve;
+      });
+      releaseDelayedPullFilesRequest = null;
+    }
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -1178,7 +1214,26 @@ test("restores project review routes", async ({ page }) => {
     });
   });
 
-  await page.goto(`/projects/${project.id}/diff/example.rs`);
+  delayNextListRequest = true;
+  const delayedListStarted = new Promise((resolve) => {
+    resolveDelayedListStarted = resolve;
+  });
+  const directDiffRoute = page.goto(`/projects/${project.id}/diff/example.rs`);
+  await delayedListStarted;
+  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
+    "data-route-surface",
+    "review",
+  );
+  await expect(page.locator("caffold-review-workspace")).toHaveAttribute(
+    "data-workspace-mode",
+    "git",
+  );
+  await expect(page.locator("caffold-git-review-layout")).toHaveAttribute(
+    "data-git-mode",
+    "diff",
+  );
+  releaseDelayedListRequest();
+  await directDiffRoute;
   await expect(page.locator("caffold-review-workspace")).toHaveAttribute(
     "data-workspace-mode",
     "git",
@@ -1299,7 +1354,13 @@ test("restores project review routes", async ({ page }) => {
   await page.getByRole("button", { name: "Back to log" }).click();
   await expect(page).toHaveURL(`/projects/${project.id}/log?page=2`);
 
-  await page.goto(`/projects/${project.id}/issues/42?page=2`);
+  delayNextIssueRequest = true;
+  const delayedIssueStarted = new Promise((resolve) => {
+    resolveDelayedIssueStarted = resolve;
+  });
+  const githubIssuesRequestsBeforeIssueDetailRoute = githubIssuesRequests;
+  const directIssueRoute = page.goto(`/projects/${project.id}/issues/42?page=2`);
+  await delayedIssueStarted;
   await expect(page.locator("caffold-review-workspace")).toHaveAttribute(
     "data-workspace-mode",
     "github",
@@ -1308,19 +1369,34 @@ test("restores project review routes", async ({ page }) => {
     "data-github-mode",
     "issues",
   );
+  await expect(page.locator("caffold-github-issues-layout")).toHaveAttribute(
+    "data-issues-view",
+    "detail",
+  );
+  await expect(page.locator("caffold-github-issues-list-page")).toBeHidden();
+  expect(githubIssuesRequests).toBe(githubIssuesRequestsBeforeIssueDetailRoute);
+  releaseDelayedIssueRequest();
+  await directIssueRoute;
   await expect(page.locator("caffold-github-issue-detail-page")).toContainText("Route issue body");
   const githubIssuesRequestsBeforeBack = githubIssuesRequests;
   await page.getByRole("button", { name: "Back to issues" }).click();
   await expect(page).toHaveURL(`/projects/${project.id}/issues?page=2`);
-  expect(githubIssuesRequests).toBe(githubIssuesRequestsBeforeBack);
   await expect(page.locator('button[data-issue-number="42"]')).toBeVisible();
+  expect(githubIssuesRequests).toBe(githubIssuesRequestsBeforeBack + 1);
   const githubIssuesRequestsBeforeIssueClick = githubIssuesRequests;
   await page.locator('button[data-issue-number="42"]').click();
   await expect(page).toHaveURL(`/projects/${project.id}/issues/42?page=2`);
   await expect(page.locator("caffold-github-issue-detail-page")).toContainText("Route issue body");
   expect(githubIssuesRequests).toBe(githubIssuesRequestsBeforeIssueClick);
 
-  await page.goto(`/projects/${project.id}/pulls/12/files/planner/mod.rs?page=2`);
+  delayNextPullFilesRequest = true;
+  const delayedPullFilesStarted = new Promise((resolve) => {
+    resolveDelayedPullFilesStarted = resolve;
+  });
+  const githubPullsRequestsBeforePrFileRoute = githubPullsRequests;
+  const githubPullRequestsBeforePrFileRoute = githubPullRequests;
+  const directPrFileRoute = page.goto(`/projects/${project.id}/pulls/12/files/planner/mod.rs?page=2`);
+  await delayedPullFilesStarted;
   await expect(page.locator("caffold-review-workspace")).toHaveAttribute(
     "data-workspace-mode",
     "github",
@@ -1329,13 +1405,26 @@ test("restores project review routes", async ({ page }) => {
     "data-pulls-view",
     "files",
   );
+  await expect(page.locator("caffold-github-pull-files-page")).toHaveAttribute(
+    "data-detail-view",
+    "viewer",
+  );
+  await expect(page.locator("caffold-github-pulls-list-page")).toBeHidden();
+  await expect(page.locator("caffold-github-pull-detail-page")).toBeHidden();
+  expect(githubPullsRequests).toBe(githubPullsRequestsBeforePrFileRoute);
+  expect(githubPullRequests).toBe(githubPullRequestsBeforePrFileRoute);
+  releaseDelayedPullFilesRequest();
+  await directPrFileRoute;
   await expect(page.locator("caffold-diff-viewer")).toContainText("new PR route line");
+  expect(githubPullsRequests).toBe(githubPullsRequestsBeforePrFileRoute);
+  expect(githubPullRequests).toBe(githubPullRequestsBeforePrFileRoute);
   await page.goto(`/projects/${project.id}/pulls/12/files?page=2`);
   await expect(page).toHaveURL(`/projects/${project.id}/pulls/12/files?page=2`);
   await expect(page.locator("caffold-github-pull-files-page")).toBeVisible();
   await expect(page.locator(".github-mode-pulls caffold-review-file-viewer")).toContainText(
     "Select a file to inspect it.",
   );
+  await expect(page.locator('button[data-pull-file-path="src/planner/mod.rs"]')).toBeVisible();
   const githubPullFilesRequestsBeforeFileClick = githubPullFilesRequests;
   await page.locator('button[data-pull-file-path="src/planner/mod.rs"]').click();
   await expect(page).toHaveURL(`/projects/${project.id}/pulls/12/files/planner/mod.rs?page=2`);
@@ -1343,14 +1432,16 @@ test("restores project review routes", async ({ page }) => {
   expect(githubPullFilesRequests).toBe(githubPullFilesRequestsBeforeFileClick);
   await page.goBack();
   await expect(page).toHaveURL(`/projects/${project.id}/pulls/12/files?page=2`);
+  const githubPullRequestsBeforePrBack = githubPullRequests;
   await page.getByRole("button", { name: "Back to PR" }).click();
   await expect(page).toHaveURL(`/projects/${project.id}/pulls/12?page=2`);
   await expect(page.locator("caffold-github-pull-detail-page")).toContainText("Route PR body");
-  const githubPullRequestsBeforeBack = githubPullRequests;
+  expect(githubPullRequests).toBe(githubPullRequestsBeforePrBack + 1);
+  const githubPullsRequestsBeforeBack = githubPullsRequests;
   await page.getByRole("button", { name: "Back to pull requests" }).click();
   await expect(page).toHaveURL(`/projects/${project.id}/pulls?page=2`);
-  expect(githubPullRequests).toBe(githubPullRequestsBeforeBack);
   await expect(page.locator('button[data-pull-number="12"]')).toBeVisible();
+  expect(githubPullsRequests).toBe(githubPullsRequestsBeforeBack + 1);
   await page.locator('button[data-pull-number="12"]').click();
   await expect(page).toHaveURL(`/projects/${project.id}/pulls/12?page=2`);
   await expect(page.locator("caffold-github-pull-detail-page")).toContainText("Route PR body");
