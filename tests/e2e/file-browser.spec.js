@@ -862,11 +862,19 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           5,
         ),
         eventRecord(
+          "event_8_progress",
+          "assistant_message",
+          "Assistant response",
+          {
+            text: "I am checking the planner diff before the final answer.",
+          },
+          8,
+        ),
+        eventRecord(
           "event_8",
           "reasoning",
           "Reasoning summary",
           {
-            turnId: "turn_1",
             summary: ["Checked the planner diff.", "Confirmed the fixture coverage path."],
           },
           8,
@@ -876,7 +884,6 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           "command_execution",
           "Command completed",
           {
-            turnId: "turn_1",
             command: "cargo test",
             cwd: "src",
             status: "completed",
@@ -889,7 +896,6 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           "file_change",
           "File changes: 2",
           {
-            turnId: "turn_1",
             status: "completed",
             changeCount: 2,
             changes: [{ path: "src/planner.rs" }, { path: "tests/planner.rs" }],
@@ -901,7 +907,6 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           "file_change",
           "File changes: 1",
           {
-            turnId: "turn_1",
             status: "completed",
             changeCount: 1,
             changes: [{ path: "src/lib.rs" }],
@@ -1080,12 +1085,28 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     "The planner changes are ready to review.",
   );
   await expect(tasksPage.locator('.task-message[data-message-role="assistant"]')).toHaveCount(1);
+  await expect(tasksPage.locator('.task-message[data-message-role="assistant"]')).not.toContainText(
+    "I am checking the planner diff",
+  );
   await expect(tasksPage.locator(".task-turn-work")).toContainText("Worked for");
-  await expect(tasksPage.locator(".task-turn-work")).toContainText("4 updates");
+  await expect(tasksPage.locator(".task-turn-work")).toContainText("5 updates");
   await expect(tasksPage.locator(".task-turn-work details")).not.toHaveAttribute("open", "");
-  await expect(tasksPage.locator(".task-work-item")).toHaveCount(3);
+  await expect
+    .poll(() =>
+      tasksPage.evaluate((element) => {
+        const work = element.querySelector(".task-turn-work");
+        const assistant = element.querySelector('.task-message[data-message-role="assistant"]');
+        const position = work && assistant ? work.compareDocumentPosition(assistant) : 0;
+        return Boolean(position & Node.DOCUMENT_POSITION_FOLLOWING);
+      }),
+    )
+    .toBe(true);
+  await expect(tasksPage.locator(".task-work-item")).toHaveCount(4);
   await expect(tasksPage.locator(".task-work-item").first()).not.toBeVisible();
   await tasksPage.locator(".task-turn-work summary").click();
+  await expect(tasksPage.locator('.task-work-item[data-event-type="assistant_message"]')).toContainText(
+    "I am checking the planner diff",
+  );
   await expect(tasksPage.locator('.task-work-item[data-event-type="reasoning"]')).toContainText(
     "Checked the planner diff.",
   );
@@ -1095,6 +1116,8 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(tasksPage.locator('.task-work-item[data-event-type="file_change"]')).toContainText(
     "2 file change updates",
   );
+  await stabilizeDynamicText(page);
+  await captureReviewScreenshot(page, testInfo, "tasks-work-details");
   await tasksPage.locator(".task-turn-work summary").click();
   await expect(tasksPage.locator(".task-turn-work details")).not.toHaveAttribute("open", "");
   await expect(tasksPage.locator(".task-approval-card")).toHaveCount(0);

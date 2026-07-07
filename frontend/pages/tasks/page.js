@@ -1086,9 +1086,30 @@ function renderConversation(events, task) {
 function conversationGroups(events) {
   const groups = [];
   const turns = new Map();
+  let activeGroup = null;
+
+  const createImplicitTurnGroup = () => {
+    const group = { kind: "turn", turnId: `implicit-${groups.length}`, events: [] };
+    groups.push(group);
+    activeGroup = group;
+    return group;
+  };
+
   for (const event of events) {
     const turnId = eventTurnId(event);
     if (!turnId) {
+      if (event.type === "user_message") {
+        createImplicitTurnGroup().events.push(event);
+        continue;
+      }
+      if (isImplicitTurnEvent(event) && canAcceptTurnContinuation(activeGroup)) {
+        activeGroup.events.push(event);
+        continue;
+      }
+      if (isImplicitTurnEvent(event)) {
+        createImplicitTurnGroup().events.push(event);
+        continue;
+      }
       groups.push({ kind: "event", event });
       continue;
     }
@@ -1100,6 +1121,7 @@ function conversationGroups(events) {
       groups.push(group);
     }
     group.events.push(event);
+    activeGroup = isTerminalTurnEvent(event) ? null : group;
   }
   return groups;
 }
@@ -1129,14 +1151,13 @@ function renderTurnGroup(group, task) {
   );
 
   if (isComplete && assistantEvents.length > 0) {
-    output.push(
-      ...assistantEvents.map((event) =>
-        renderConversationEvent(event, task, { active: false }),
-      ),
-    );
-    if (workEvents.length > 0) {
-      output.push(renderTurnWorkSummary(group, workEvents, terminalEvent));
+    const finalAssistantEvent = assistantEvents.at(-1);
+    const progressAssistantEvents = assistantEvents.slice(0, -1);
+    const hiddenWorkEvents = [...progressAssistantEvents, ...workEvents];
+    if (hiddenWorkEvents.length > 0) {
+      output.push(renderTurnWorkSummary(group, hiddenWorkEvents, terminalEvent));
     }
+    output.push(renderConversationEvent(finalAssistantEvent, task, { active: false }));
     return output.join("");
   }
 
@@ -1174,10 +1195,10 @@ function renderConversationEvent(event, task, eventState) {
     if (event.type === "prompt_sent") {
       return renderStatusEvent(event);
     }
-    return renderMessageEvent(event, "user", "You", payload.prompt ?? payload.text);
+    return renderMessageEvent(event, "user", payload.prompt ?? payload.text);
   }
   if (event.type === "assistant_message") {
-    return renderMessageEvent(event, "assistant", "Assistant", payload.text);
+    return renderMessageEvent(event, "assistant", payload.text);
   }
   if (event.type === "reasoning") {
     const summary = Array.isArray(payload.summary)
@@ -1214,6 +1235,22 @@ function isWorkEvent(event) {
   );
 }
 
+function isTurnContinuationEvent(event) {
+  return isWorkEvent(event) || isTurnStatusEvent(event);
+}
+
+function isImplicitTurnEvent(event) {
+  return event.type === "assistant_message" || isTurnContinuationEvent(event);
+}
+
+function canAcceptTurnContinuation(group) {
+  if (!group || group.kind !== "turn") {
+    return false;
+  }
+  const events = group.events ?? [];
+  return !events.some((event) => isTerminalTurnEvent(event));
+}
+
 function isTurnStatusEvent(event) {
   return [
     "turn_started",
@@ -1225,6 +1262,9 @@ function isTurnStatusEvent(event) {
 }
 
 function isTerminalTurnEvent(event) {
+  if (!isTurnStatusEvent(event)) {
+    return false;
+  }
   const status = event.payload?.status ?? event.type;
   return (
     event.type === "turn_completed" ||
@@ -1243,7 +1283,7 @@ function renderStatusEvent(event) {
   `;
 }
 
-function renderMessageEvent(event, role, label, text) {
+function renderMessageEvent(event, role, text) {
   const value = `${text ?? ""}`.trim();
   if (!value) {
     return renderStatusEvent(event);
@@ -1252,7 +1292,6 @@ function renderMessageEvent(event, role, label, text) {
   return `
     <li class="task-event task-message" data-event-type="${escapeHtml(event.type)}" data-message-role="${escapeHtml(role)}">
       <div class="task-message-header">
-        <strong>${escapeHtml(label)}</strong>
         <time>${escapeHtml(formatDate(event.createdMs))}</time>
       </div>
       <pre class="task-message-content">${escapeHtml(value)}</pre>
@@ -1315,12 +1354,14 @@ function turnDurationLabel(events, terminalEvent) {
 }
 
 function renderTurnWorkItems(events) {
+  const assistantEvents = events.filter((event) => event.type === "assistant_message");
   const reasoningEvents = events.filter((event) => event.type === "reasoning");
   const planEvents = events.filter((event) => event.type === "plan");
   const commandEvents = events.filter((event) => event.type === "command_execution");
   const fileChangeEvents = events.filter((event) => event.type === "file_change");
   const failureEvents = events.filter((event) => event.type === "task_failed");
   const knownEvents = new Set([
+    ...assistantEvents,
     ...reasoningEvents,
     ...planEvents,
     ...commandEvents,
@@ -1330,6 +1371,7 @@ function renderTurnWorkItems(events) {
   const unknownEvents = events.filter((event) => !knownEvents.has(event));
 
   return [
+    ...assistantEvents.map(renderTurnWorkItem),
     renderCombinedReasoningWorkItem(reasoningEvents),
     ...planEvents.map(renderTurnWorkItem),
     ...commandEvents.map(renderTurnWorkItem),
@@ -1391,7 +1433,7 @@ function renderCombinedFileChangeWorkItem(events) {
 
   return renderTurnWorkItemShell(
     latest,
-    "File changes",
+    "Files changed",
     [updateText, latestSummary, status].filter(Boolean).join("\n"),
   );
 }
@@ -1405,6 +1447,9 @@ function latestEvent(events) {
 function renderTurnWorkItem(event) {
   const payload = event.payload ?? {};
   const dataType = escapeHtml(event.type);
+  if (event.type === "assistant_message") {
+    return renderTurnWorkItemShell(event, "Update", payload.text);
+  }
   if (event.type === "reasoning") {
     const summary = Array.isArray(payload.summary)
       ? payload.summary.filter(Boolean).join("\n\n")
@@ -1444,7 +1489,7 @@ function renderTurnWorkItem(event) {
           : 0;
     const status = payload.status ? `Status: ${formatStatus(payload.status)}` : "";
     const summary = count === 1 ? "1 changed file" : `${count} changed files`;
-    return renderTurnWorkItemShell(event, "File changes", [summary, status].filter(Boolean).join("\n"));
+    return renderTurnWorkItemShell(event, "Files changed", [summary, status].filter(Boolean).join("\n"));
   }
   if (event.type === "task_failed") {
     return renderTurnWorkItemShell(event, "Error", event.summary, "danger");
@@ -1532,10 +1577,10 @@ function renderFileChangeEvent(event) {
     <li class="task-event task-file-change" data-event-type="${escapeHtml(event.type)}">
       <article>
         <header>
-          <strong>${escapeHtml(summary)}</strong>
+          <strong>Files changed</strong>
           <time>${escapeHtml(formatDate(event.createdMs))}</time>
         </header>
-        ${status ? `<p>${escapeHtml(status)}</p>` : ""}
+        <p>${escapeHtml(summary)}${status ? ` · ${status}` : ""}</p>
       </article>
     </li>
   `;

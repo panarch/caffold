@@ -212,7 +212,7 @@ caffold-tasks-page .task-conversation-scroll {
 
 caffold-tasks-page .task-conversation-column {
   display: grid;
-  gap: 14px;
+  gap: 18px;
   width: min(100%, 980px);
   margin: 0 auto;
 }
@@ -220,7 +220,7 @@ caffold-tasks-page .task-conversation-column {
 caffold-tasks-page .task-conversation,
 caffold-tasks-page .task-approvals {
   display: grid;
-  gap: 14px;
+  gap: 18px;
   width: 100%;
   margin: 0;
   padding: 0;
@@ -291,14 +291,15 @@ caffold-tasks-page .task-event-status[data-event-status="warning"] .task-status-
 
 caffold-tasks-page .task-message {
   display: grid;
-  gap: 6px;
+  gap: 7px;
 }
 
 caffold-tasks-page .task-message-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 0.78rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.2;
 }
 
 caffold-tasks-page .task-message-content,
@@ -312,24 +313,28 @@ caffold-tasks-page .task-work-item pre {
 }
 
 caffold-tasks-page .task-message-content {
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 caffold-tasks-page .task-message[data-message-role="user"] .task-message-header {
   justify-content: flex-end;
+  padding-right: 8px;
 }
 
 caffold-tasks-page .task-message[data-message-role="user"] .task-message-content {
   justify-self: end;
-  width: min(100%, 760px);
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #f8fbf9;
+  width: fit-content;
+  max-width: min(78%, 760px);
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 18px;
+  background: #eef2ef;
+  box-shadow: inset 0 0 0 1px rgb(103 122 112 / 8%);
 }
 
 caffold-tasks-page .task-message[data-message-role="assistant"] .task-message-content {
-  padding: 2px 0 0 2px;
+  width: min(100%, 850px);
+  padding: 1px 0 0 2px;
 }
 
 caffold-tasks-page .task-thinking details,
@@ -338,7 +343,7 @@ caffold-tasks-page .task-tool-card,
 caffold-tasks-page .task-file-change article,
 caffold-tasks-page .task-work-item {
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 10px;
   background: #fbfdfb;
 }
 
@@ -355,7 +360,7 @@ caffold-tasks-page .task-work-item header {
   align-items: center;
   gap: 8px;
   min-height: 32px;
-  padding: 6px 10px;
+  padding: 7px 11px;
   border-bottom: 1px solid #e2e8e2;
   cursor: pointer;
 }
@@ -413,7 +418,8 @@ caffold-tasks-page .task-work-item pre {
 
 caffold-tasks-page .task-turn-work {
   justify-self: start;
-  width: min(100%, 760px);
+  width: min(100%, 850px);
+  margin-top: 2px;
 }
 
 caffold-tasks-page .task-turn-work details {
@@ -423,8 +429,9 @@ caffold-tasks-page .task-turn-work details {
 caffold-tasks-page .task-turn-work summary {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   min-height: 30px;
+  padding: 0 0 2px;
   cursor: pointer;
 }
 
@@ -458,8 +465,8 @@ caffold-tasks-page .task-turn-work details[open] summary span:first-child::after
 
 caffold-tasks-page .task-turn-work-body {
   display: grid;
-  gap: 8px;
-  padding-top: 8px;
+  gap: 9px;
+  padding-top: 9px;
   color: var(--text);
 }
 
@@ -477,7 +484,7 @@ caffold-tasks-page .task-command[data-command-status="waiting_for_approval"] det
 
 caffold-tasks-page .task-file-change p {
   margin: 0;
-  padding: 8px 10px;
+  padding: 10px 11px;
   font-size: 0.85rem;
 }
 
@@ -724,7 +731,7 @@ caffold-tasks-page [data-status="waiting_for_approval"] {
   }
 
   caffold-tasks-page .task-message[data-message-role="user"] .task-message-content {
-    width: 100%;
+    max-width: min(92%, 760px);
   }
 
   caffold-tasks-page .task-follow-up-form {
