@@ -1303,9 +1303,11 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(tasksPage.locator(".task-follow-up-form .task-model-button")).toContainText(
     "Very high",
   );
-  await tasksPage.locator('textarea[name="prompt"]').fill("Please tighten the tests");
-  await tasksPage.locator('textarea[name="prompt"]').press("Enter");
+  const followUpTextarea = tasksPage.locator('textarea[name="prompt"]');
+  await followUpTextarea.fill("Please tighten the tests");
+  await followUpTextarea.press("Enter");
   await followUpRequested;
+  await expect(followUpTextarea).toBeFocused();
   await expect(
     tasksPage.locator('.task-message[data-message-role="user"]').filter({
       hasText: "Please tighten the tests",
@@ -1314,6 +1316,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(tasksPage).not.toContainText("Follow-up prompt sent");
   releaseFollowUpResponse();
   await expect(tasksPage.locator(".task-detail-summary")).toContainText("running");
+  await expect(followUpTextarea).toBeFocused();
   await expect(
     tasksPage.locator('.task-message[data-message-role="user"]').filter({
       hasText: "Please tighten the tests",

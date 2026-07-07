@@ -645,6 +645,7 @@ class CaffoldTasksPage extends HTMLElement {
 
   render() {
     const previousScroll = this.captureConversationScroll();
+    const previousComposerFocus = this.captureComposerFocus();
     const previousTaskFilePath = this.captureTaskFileBrowserPath();
     this.setAttribute("data-tasks-view", this.view ?? "list");
     this.setAttribute("data-task-detail-view", this.taskDetailView);
@@ -655,10 +656,48 @@ class CaffoldTasksPage extends HTMLElement {
       </section>
     `;
     this.syncComposerTextareas();
+    this.restoreComposerFocus(previousComposerFocus);
     this.bindConversationScroll();
     this.restoreConversationScroll(previousScroll);
     this.updateTaskDetailView();
     this.syncTaskFileBrowser(previousTaskFilePath);
+  }
+
+  captureComposerFocus() {
+    const textarea = closestElement(document.activeElement, "textarea[name='prompt']");
+    if (!textarea || !this.contains(textarea)) {
+      return null;
+    }
+
+    const form = closestElement(textarea, "form[data-task-form]");
+    if (!form) {
+      return null;
+    }
+
+    return {
+      formName: form.dataset.taskForm,
+      selectionStart: textarea.selectionStart,
+      selectionEnd: textarea.selectionEnd,
+    };
+  }
+
+  restoreComposerFocus(previousFocus) {
+    if (!previousFocus?.formName) {
+      return;
+    }
+
+    const textarea = this.querySelector(
+      `form[data-task-form="${CSS.escape(previousFocus.formName)}"] textarea[name="prompt"]`,
+    );
+    if (!textarea) {
+      return;
+    }
+
+    textarea.focus({ preventScroll: true });
+    const textLength = textarea.value.length;
+    const selectionStart = Math.min(previousFocus.selectionStart ?? textLength, textLength);
+    const selectionEnd = Math.min(previousFocus.selectionEnd ?? selectionStart, textLength);
+    textarea.setSelectionRange(selectionStart, selectionEnd);
   }
 
   setTaskDetailView(view) {
