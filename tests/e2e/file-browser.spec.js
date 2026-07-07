@@ -186,8 +186,12 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain("/assets/pages/files/page.js");
   expect(serviceWorker).toContain("/assets/pages/files/components/list.js");
   expect(serviceWorker).not.toContain("/assets/components/file-list.js");
-  expect(serviceWorker).toContain("/assets/pages/tasks/page.js");
-  expect(serviceWorker).toContain("/assets/pages/tasks/page.css");
+  expect(serviceWorker).toContain("/assets/pages/(codex)/layout.js");
+  expect(serviceWorker).toContain("/assets/pages/(codex)/layout.css");
+  expect(serviceWorker).toContain("/assets/pages/(codex)/tasks/page.js");
+  expect(serviceWorker).toContain("/assets/pages/(codex)/tasks/page.css");
+  expect(serviceWorker).not.toContain("/assets/pages/tasks/page.js");
+  expect(serviceWorker).not.toContain("/assets/pages/tasks/page.css");
   expect(serviceWorker).toContain("/assets/pages/(review-workspace)/layout.js");
   expect(serviceWorker).toContain(
     "/assets/pages/(review-workspace)/(git)/layout.js",
@@ -959,6 +963,34 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   const codexPopover = await openHeaderActionGroup(page, "codex");
   await codexPopover.locator('button[data-action="open-tasks"]').click();
   await expect(page).toHaveURL(`/projects/${project.id}/tasks`);
+  const codexWorkspace = page.locator("caffold-codex-workspace");
+  await expect(codexWorkspace).toBeVisible();
+  await expect
+    .poll(() =>
+      codexWorkspace.evaluate((element) => element.parentElement?.tagName.toLowerCase()),
+    )
+    .toBe("caffold-app-shell");
+  const appShellBox = await page.locator("caffold-app-shell").boundingBox();
+  const codexWorkspaceBox = await codexWorkspace.boundingBox();
+  expect(Math.round(codexWorkspaceBox?.y ?? -1)).toBe(Math.round(appShellBox?.y ?? -2));
+  expect(Math.round(codexWorkspaceBox?.height ?? -1)).toBe(
+    Math.round(appShellBox?.height ?? -2),
+  );
+  await expect(page.locator("caffold-files-page")).toBeHidden();
+  const closeCodexButton = codexWorkspace.getByRole("button", {
+    name: "Close Codex workspace",
+  });
+  await expect(closeCodexButton).toBeVisible();
+  await closeCodexButton.click();
+  await expect(page).toHaveURL(`/projects/${project.id}/files`);
+  await expect(codexWorkspace).toBeHidden();
+  await expect(page.locator("caffold-files-page")).toBeVisible();
+
+  const reopenedCodexPopover = await openHeaderActionGroup(page, "codex");
+  await reopenedCodexPopover.locator('button[data-action="open-tasks"]').click();
+  await expect(page).toHaveURL(`/projects/${project.id}/tasks`);
+  await expect(codexWorkspace).toBeVisible();
+  await expect(page.locator("caffold-files-page")).toBeHidden();
   await expect(page.locator("caffold-tasks-page")).toHaveAttribute(
     "data-tasks-view",
     "list",

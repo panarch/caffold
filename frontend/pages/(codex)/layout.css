@@ -1,0 +1,41 @@
+caffold-codex-workspace {
+  --task-header-leading-space: 42px;
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+caffold-codex-workspace .codex-workspace-close {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+caffold-codex-workspace .codex-workspace-close:hover,
+caffold-codex-workspace .codex-workspace-close:focus-visible {
+  border-color: var(--border-strong);
+  outline: none;
+}
+
+caffold-codex-workspace .codex-workspace-close span {
+  font-size: 1.05rem;
+  line-height: 1;
+}

@@ -7,9 +7,9 @@ import {
   resolveTaskApproval,
   sendTaskPrompt,
   taskStreamUrl,
-} from "../../api.js";
-import { escapeHtml } from "../../components/dom.js";
-import { renderInlineIcon, warmIcons } from "../../components/icons.js";
+} from "../../../api.js";
+import { escapeHtml } from "../../../components/dom.js";
+import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
 
 const FALLBACK_REASONING_OPTIONS = [
   { value: "low", label: "Low" },

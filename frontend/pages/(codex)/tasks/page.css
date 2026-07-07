@@ -19,7 +19,7 @@ caffold-tasks-page .tasks-header {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px;
+  padding: 10px 14px 10px calc(14px + var(--task-header-leading-space, 0px));
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }

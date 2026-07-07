@@ -11,7 +11,7 @@ import "./components/pathbar.js";
 import "./components/project-switcher.js";
 import "./components/header-actions.js";
 import "./files/page.js";
-import "./tasks/page.js";
+import "./(codex)/layout.js";
 import "./(review-workspace)/(git)/layout.js";
 import "./(review-workspace)/(github)/layout.js";
 import "./(review-workspace)/layout.js";
@@ -31,8 +31,8 @@ class CaffoldAppShell extends HTMLElement {
     this.render();
     this.filesPage = this.querySelector("caffold-files-page");
     this.filesPage.ensureRendered();
-    this.tasksPage = this.querySelector("caffold-tasks-page");
-    this.tasksPage.ensureRendered();
+    this.codexWorkspace = this.querySelector("caffold-codex-workspace");
+    this.codexWorkspace.ensureRendered();
     this.pathbar = this.querySelector("caffold-pathbar");
     this.projectSwitcher = this.querySelector("caffold-project-switcher");
     this.headerActions = this.querySelector("caffold-header-actions");
@@ -81,6 +81,9 @@ class CaffoldAppShell extends HTMLElement {
     });
     this.addEventListener("caffold:request-tasks-route", (event) => {
       this.navigateToRoute(event.detail.route);
+    });
+    this.addEventListener("caffold:close-codex-workspace", () => {
+      this.navigateToCodexParent() || (this.codexWorkspace.hidden = true);
     });
     this.addEventListener("caffold:close-review-workspace", () => {
       this.navigateToReviewParent({ closeWorkspace: true }) || this.closeReviewWorkspace();
@@ -139,10 +142,10 @@ class CaffoldAppShell extends HTMLElement {
         </div>
       </header>
       <caffold-pathbar></caffold-pathbar>
-      <main class="app-main" aria-label="File browser">
+      <main class="app-main" aria-label="Project workspace">
         <caffold-files-page></caffold-files-page>
-        <caffold-tasks-page hidden></caffold-tasks-page>
       </main>
+      <caffold-codex-workspace hidden></caffold-codex-workspace>
       <caffold-review-workspace hidden></caffold-review-workspace>
     `;
   }
@@ -299,7 +302,7 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   async applyFilesRoute(project, route) {
-    this.tasksPage.hidden = true;
+    this.codexWorkspace.hidden = true;
     this.filesPage.hidden = false;
     this.closeReviewWorkspace();
     this.reviewWorkspace.prepareForFileBrowserOpen();
@@ -318,17 +321,17 @@ class CaffoldAppShell extends HTMLElement {
     this.closeReviewWorkspace();
     this.reviewWorkspace.prepareForFileBrowserOpen();
     this.filesPage.hidden = true;
-    this.tasksPage.hidden = false;
+    this.codexWorkspace.hidden = false;
     this.pathbar.path = project.relativePath;
     await this.ensureProjectReviewContext(project);
     if (!this.isCurrentRoute(route)) {
       return;
     }
-    await this.tasksPage.openRoute(route, { project });
+    await this.codexWorkspace.openRoute(route, { project });
   }
 
   async applyGitRoute(project, route) {
-    this.tasksPage.hidden = true;
+    this.codexWorkspace.hidden = true;
     this.filesPage.hidden = false;
     if (!(await this.ensureProjectReviewContext(project))) {
       return;
@@ -344,7 +347,7 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   async applyGithubRoute(project, route) {
-    this.tasksPage.hidden = true;
+    this.codexWorkspace.hidden = true;
     this.filesPage.hidden = false;
     if (!(await this.ensureProjectReviewContext(project))) {
       return;
@@ -437,6 +440,20 @@ class CaffoldAppShell extends HTMLElement {
       ? { kind: "files", projectId: currentRoute.projectId, path: "" }
       : parentRoute(currentRoute);
     return parent ? this.navigateToRoute(parent) : false;
+  }
+
+  navigateToCodexParent() {
+    const currentRoute = parseRoute(window.location.href) ?? this.currentRoute;
+    const projectId = currentRoute?.projectId ?? this.projectSwitcher.currentProjectId;
+    if (!projectId) {
+      return false;
+    }
+
+    return this.navigateToRoute({
+      kind: "files",
+      projectId,
+      path: "",
+    });
   }
 
   replaceWithCurrentProjectFileRoute() {
@@ -708,13 +725,13 @@ class CaffoldAppShell extends HTMLElement {
     if (surface === "tasks") {
       this.closeReviewWorkspace();
       this.filesPage.hidden = true;
-      this.tasksPage.hidden = false;
-      this.tasksPage.prepareRoute(route);
+      this.codexWorkspace.hidden = false;
+      this.codexWorkspace.prepareRoute(route);
       return;
     }
 
     this.closeReviewWorkspace();
-    this.tasksPage.hidden = true;
+    this.codexWorkspace.hidden = true;
     this.filesPage.hidden = false;
   }
 }

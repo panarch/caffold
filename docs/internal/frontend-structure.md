@@ -39,8 +39,9 @@ caffold-app-shell
     scaffold-files-page
       scaffold-file-list
       scaffold-file-viewer
-  tasks surface
-    scaffold-tasks-page
+  codex workspace
+    scaffold-codex-workspace
+      scaffold-tasks-page
   scaffold-review-workspace
     git
       scaffold-git-review-layout
@@ -82,11 +83,19 @@ restoration, delayed loading indicators, and the left file-panel resizer. The
 app root coordinates project context, URL navigation, pathbar, and header
 actions around that surface instead of owning file browser internals.
 
-`tasks/page` owns the project-level Codex task surface: thread-derived
-list/new/detail state, prompt composition, Codex transcript rendering, approval
-cards, SSE subscription, and mobile list/detail switching. The app root only
-routes the current project into the page and handles cross-surface actions such
-as opening the existing Git diff review surface.
+`(codex)/layout` is the app root's top-level Codex workspace. It renders as an
+app-shell overlay sibling of `app-main` and `(review-workspace)`, so Codex
+tasks do not inherit the file browser pathbar or pane shell. It is separate
+from `(review-workspace)` because Codex is a work/control surface, not only a
+review surface. For now the layout delegates to its Tasks child, but it is the
+future owner for Codex-level workspace lifecycle such as keeping thread UI
+state mounted while moving between conversation and review subviews.
+`(codex)/tasks/page` owns the project-level Codex task surface:
+thread-derived list/new/detail state, prompt composition, Codex transcript
+rendering, approval cards, SSE subscription, and mobile list/detail switching.
+The app root only routes the current project into the Codex workspace and
+handles cross-surface actions such as opening the existing Git diff review
+surface.
 
 `scaffold-project-switcher` owns project record state and project candidate
 state for the current directory. It performs project list/candidate refresh and
@@ -172,6 +181,13 @@ frontend/pages/
     components/
       list.js
       list.css
+
+  (codex)/
+    layout.js
+    layout.css
+    tasks/
+      page.js
+      page.css
 
   (review-workspace)/
     layout.js

@@ -89,8 +89,16 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/files/components/list.js" => Some(js(include_str!(
             "../frontend/pages/files/components/list.js"
         ))),
-        "pages/tasks/page.css" => Some(css(include_str!("../frontend/pages/tasks/page.css"))),
-        "pages/tasks/page.js" => Some(js(include_str!("../frontend/pages/tasks/page.js"))),
+        "pages/(codex)/layout.css" => {
+            Some(css(include_str!("../frontend/pages/(codex)/layout.css")))
+        }
+        "pages/(codex)/layout.js" => Some(js(include_str!("../frontend/pages/(codex)/layout.js"))),
+        "pages/(codex)/tasks/page.css" => Some(css(include_str!(
+            "../frontend/pages/(codex)/tasks/page.css"
+        ))),
+        "pages/(codex)/tasks/page.js" => {
+            Some(js(include_str!("../frontend/pages/(codex)/tasks/page.js")))
+        }
         "pages/(review-workspace)/layout.css" => Some(css(include_str!(
             "../frontend/pages/(review-workspace)/layout.css"
         ))),
@@ -422,7 +430,24 @@ mod tests {
         );
         assert!(get("components/compare-tree.js").is_none());
 
-        let tasks_page = get("pages/tasks/page.js").expect("tasks page js");
+        let codex_layout = get("pages/(codex)/layout.js").expect("codex layout js");
+        assert_eq!(codex_layout.content_type, "text/javascript; charset=utf-8");
+        assert!(codex_layout.body.starts_with(b"import "));
+        assert!(
+            codex_layout
+                .body
+                .windows(b"caffold-codex-workspace".len())
+                .any(|window| window == b"caffold-codex-workspace")
+        );
+        let codex_layout_css = get("pages/(codex)/layout.css").expect("codex layout css");
+        assert_eq!(codex_layout_css.content_type, "text/css; charset=utf-8");
+        assert!(
+            codex_layout_css
+                .body
+                .starts_with(b"caffold-codex-workspace")
+        );
+
+        let tasks_page = get("pages/(codex)/tasks/page.js").expect("tasks page js");
         assert_eq!(tasks_page.content_type, "text/javascript; charset=utf-8");
         assert!(tasks_page.body.starts_with(b"import "));
         assert!(
@@ -431,9 +456,11 @@ mod tests {
                 .windows(b"caffold-tasks-page".len())
                 .any(|window| window == b"caffold-tasks-page")
         );
-        let tasks_page_css = get("pages/tasks/page.css").expect("tasks page css");
+        let tasks_page_css = get("pages/(codex)/tasks/page.css").expect("tasks page css");
         assert_eq!(tasks_page_css.content_type, "text/css; charset=utf-8");
         assert!(tasks_page_css.body.starts_with(b"caffold-tasks-page"));
+        assert!(get("pages/tasks/page.js").is_none());
+        assert!(get("pages/tasks/page.css").is_none());
 
         let diff_page = get("pages/(review-workspace)/(git)/diff/page.js").expect("diff page js");
         assert_eq!(diff_page.content_type, "text/javascript; charset=utf-8");
