@@ -51,6 +51,7 @@ struct AppState {
     codex_threads: Arc<CodexThreadRuntime>,
     pending_approvals: Arc<AsyncMutex<HashMap<String, PendingApproval>>>,
     task_events: broadcast::Sender<TaskEventRecord>,
+    shutdown: broadcast::Sender<()>,
     initial_path: String,
     home_path: Option<String>,
 }
@@ -63,6 +64,15 @@ struct CodexThreadRuntime {
 #[derive(Default)]
 struct CodexThreadRuntimeState {
     client: Option<CodexThreadClient>,
+}
+
+impl CodexThreadRuntime {
+    async fn shutdown(&self) {
+        let client = self.state.lock().await.client.take();
+        if let Some(client) = client {
+            client.shutdown().await;
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -350,14 +360,17 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let data_dir = config.data_dir.unwrap_or(default_data_dir()?);
     let project_store = ProjectStore::redb(data_dir.join("caffold.redb"))?;
     let (task_events, _) = broadcast::channel(256);
+    let (shutdown, _) = broadcast::channel(16);
     let pending_approvals = Arc::new(AsyncMutex::new(HashMap::new()));
+    let codex_threads = Arc::new(CodexThreadRuntime::default());
     let root = fs.root().to_path_buf();
     let app = router_with_state(AppState {
         fs: Arc::new(fs),
         projects: project_store,
-        codex_threads: Arc::new(CodexThreadRuntime::default()),
+        codex_threads: codex_threads.clone(),
         pending_approvals,
         task_events,
+        shutdown: shutdown.clone(),
         initial_path: initial_path.clone(),
         home_path,
     });
@@ -379,21 +392,25 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         }
     );
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    let result = axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal(shutdown))
+        .await;
+    codex_threads.shutdown().await;
+    result?;
 
     Ok(())
 }
 
 pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
     let (task_events, _) = broadcast::channel(256);
+    let (shutdown, _) = broadcast::channel(16);
     Ok(router_with_state(AppState {
         fs: Arc::new(fs),
         projects: ProjectStore::memory()?,
         codex_threads: Arc::new(CodexThreadRuntime::default()),
         pending_approvals: Arc::new(AsyncMutex::new(HashMap::new())),
         task_events,
+        shutdown,
         initial_path: String::new(),
         home_path: None,
     }))
@@ -473,7 +490,7 @@ fn default_github_issues_per_page() -> usize {
     50
 }
 
-async fn shutdown_signal() {
+async fn shutdown_signal(shutdown: broadcast::Sender<()>) {
     let ctrl_c = async {
         let _ = tokio::signal::ctrl_c().await;
     };
@@ -494,6 +511,7 @@ async fn shutdown_signal() {
         _ = ctrl_c => {}
         _ = terminate => {}
     }
+    let _ = shutdown.send(());
 }
 
 async fn index() -> Html<&'static str> {
@@ -889,23 +907,29 @@ async fn task_stream(
     let client = require_codex_thread_client(&state).await?;
     validate_thread_belongs_to_project(&project, &thread_id, &client).await?;
     let receiver = state.task_events.subscribe();
+    let shutdown = state.shutdown.subscribe();
     let stream = stream::unfold(
-        (receiver, thread_id),
-        |(mut receiver, thread_id)| async move {
+        (receiver, shutdown, thread_id),
+        |(mut receiver, mut shutdown, thread_id)| async move {
             loop {
-                match receiver.recv().await {
-                    Ok(event) if event.thread_id == thread_id => {
-                        let payload =
-                            serde_json::to_string(&event).unwrap_or_else(|_| "{}".to_string());
-                        let frame = format!("event: task-event\ndata: {payload}\n\n");
-                        return Some((
-                            Ok::<_, Infallible>(Bytes::from(frame)),
-                            (receiver, thread_id),
-                        ));
+                tokio::select! {
+                    _ = shutdown.recv() => return None,
+                    message = receiver.recv() => {
+                        match message {
+                            Ok(event) if event.thread_id == thread_id => {
+                                let payload = serde_json::to_string(&event)
+                                    .unwrap_or_else(|_| "{}".to_string());
+                                let frame = format!("event: task-event\ndata: {payload}\n\n");
+                                return Some((
+                                    Ok::<_, Infallible>(Bytes::from(frame)),
+                                    (receiver, shutdown, thread_id),
+                                ));
+                            }
+                            Ok(_) => continue,
+                            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(broadcast::error::RecvError::Closed) => return None,
+                        }
                     }
-                    Ok(_) => continue,
-                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                    Err(broadcast::error::RecvError::Closed) => return None,
                 }
             }
         },
@@ -1087,6 +1111,7 @@ async fn require_codex_thread_client(state: &AppState) -> Result<CodexThreadClie
                 client.clone(),
                 state.task_events.clone(),
                 state.pending_approvals.clone(),
+                state.shutdown.subscribe(),
             );
             runtime.client = Some(client.clone());
             Ok(client)
@@ -1365,26 +1390,35 @@ fn spawn_codex_thread_bridge(
     client: CodexThreadClient,
     task_events: broadcast::Sender<TaskEventRecord>,
     pending_approvals: Arc<AsyncMutex<HashMap<String, PendingApproval>>>,
+    mut shutdown: broadcast::Receiver<()>,
 ) {
     tokio::spawn(async move {
         let mut receiver = client.subscribe();
-        while let Ok(event) = receiver.recv().await {
-            match event {
-                CodexRuntimeEvent::Notification { method, params } => {
-                    handle_codex_notification(&task_events, &method, params);
+        loop {
+            tokio::select! {
+                _ = shutdown.recv() => break,
+                event = receiver.recv() => {
+                    let Ok(event) = event else {
+                        break;
+                    };
+                    match event {
+                        CodexRuntimeEvent::Notification { method, params } => {
+                            handle_codex_notification(&task_events, &method, params);
+                        }
+                        CodexRuntimeEvent::ServerRequest { id, method, params } => {
+                            handle_codex_server_request(
+                                &projects,
+                                &task_events,
+                                &pending_approvals,
+                                id,
+                                &method,
+                                params,
+                            )
+                            .await;
+                        }
+                        CodexRuntimeEvent::Error { .. } => {}
+                    }
                 }
-                CodexRuntimeEvent::ServerRequest { id, method, params } => {
-                    handle_codex_server_request(
-                        &projects,
-                        &task_events,
-                        &pending_approvals,
-                        id,
-                        &method,
-                        params,
-                    )
-                    .await;
-                }
-                CodexRuntimeEvent::Error { .. } => {}
             }
         }
     });

@@ -196,6 +196,14 @@ impl CodexThreadClient {
         self.inner.events.subscribe()
     }
 
+    pub async fn shutdown(&self) {
+        fail_pending(&self.inner, CodexThreadError::Closed).await;
+        let _ = self.inner.stdin.lock().await.shutdown().await;
+        let mut child = self.inner._child.lock().await;
+        let _ = child.start_kill();
+        let _ = timeout(SHUTDOWN_TIMEOUT, child.wait()).await;
+    }
+
     pub async fn list_threads(&self, limit: usize) -> Result<Value, CodexThreadError> {
         self.request("thread/list", thread_list_params(limit)).await
     }
