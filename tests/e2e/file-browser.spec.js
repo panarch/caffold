@@ -640,6 +640,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   });
 
   const project = await mockRegisteredProject(page);
+  await mockCodexModels(page);
   const now = 1_767_000_000_000;
   let task = null;
   let events = [];
@@ -721,6 +722,8 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       const body = request.postDataJSON();
       expect(body.projectId).toBe(project.id);
       expect(body.prompt).toBe("Inspect the planner changes");
+      expect(body.model).toBe("gpt-5.5");
+      expect(body.effort).toBe("high");
       task = {
         id: threadId,
         threadId,
@@ -795,6 +798,8 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       expect(url.searchParams.get("projectId")).toBe(project.id);
       const body = request.postDataJSON();
       expect(body.prompt).toBe("Please tighten the tests");
+      expect(body.model).toBe("gpt-5.5");
+      expect(body.effort).toBe("ultra");
       resolveFollowUpRequest();
       await followUpResponseReleased;
       events = [
@@ -964,9 +969,56 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     "data-tasks-view",
     "new",
   );
-  await page
-    .locator('caffold-tasks-page textarea[name="prompt"]')
-    .fill("Inspect the planner changes");
+  const newTaskComposer = page.locator("caffold-tasks-page .task-new-form");
+  await expect(newTaskComposer.locator(".task-model-button")).toContainText("GPT-5.5");
+  await newTaskComposer.locator(".task-model-button").click();
+  const modelPopover = page.locator("caffold-tasks-page .task-model-popover");
+  await expect(modelPopover).toBeVisible();
+  await captureReviewScreenshot(page, testInfo, "tasks-model-popover");
+  await modelPopover.getByRole("button", { name: /High/ }).click();
+  await expect(newTaskComposer.locator(".task-model-button")).toContainText("High");
+  const newPromptTextarea = newTaskComposer.locator('textarea[name="prompt"]');
+  const initialTextareaMetrics = await newPromptTextarea.evaluate((textarea) => {
+    const styles = getComputedStyle(textarea);
+    const lineHeight = Number.parseFloat(styles.lineHeight);
+    const padding =
+      Number.parseFloat(styles.paddingTop) + Number.parseFloat(styles.paddingBottom);
+    return {
+      height: textarea.getBoundingClientRect().height,
+      maxHeight: lineHeight * 10.5 + padding,
+      rows: textarea.getAttribute("rows"),
+    };
+  });
+  expect(initialTextareaMetrics.rows).toBe("2");
+
+  await newPromptTextarea.fill(
+    Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join("\n"),
+  );
+  const expandedTextareaMetrics = await newPromptTextarea.evaluate((textarea) => {
+    const styles = getComputedStyle(textarea);
+    const lineHeight = Number.parseFloat(styles.lineHeight);
+    const padding =
+      Number.parseFloat(styles.paddingTop) + Number.parseFloat(styles.paddingBottom);
+    return {
+      clientHeight: textarea.clientHeight,
+      height: textarea.getBoundingClientRect().height,
+      maxHeight: lineHeight * 10.5 + padding,
+      overflowY: styles.overflowY,
+      scrollHeight: textarea.scrollHeight,
+    };
+  });
+  expect(expandedTextareaMetrics.height).toBeGreaterThan(
+    initialTextareaMetrics.height + 20,
+  );
+  expect(expandedTextareaMetrics.height).toBeLessThanOrEqual(
+    expandedTextareaMetrics.maxHeight + 2,
+  );
+  expect(expandedTextareaMetrics.scrollHeight).toBeGreaterThan(
+    expandedTextareaMetrics.clientHeight,
+  );
+  expect(expandedTextareaMetrics.overflowY).toBe("auto");
+
+  await newPromptTextarea.fill("Inspect the planner changes");
   const newTaskFormState = await page.locator("caffold-tasks-page").evaluate((element) => {
     const form = element.querySelector('form[data-task-form="create"]');
     return {
@@ -977,6 +1029,8 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   });
   expect(newTaskFormState).toEqual({
     data: {
+      effort: "high",
+      model: "gpt-5.5",
       prompt: "Inspect the planner changes",
     },
     projectId: project.id,
@@ -1052,6 +1106,12 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-conversation");
 
+  await tasksPage.locator(".task-follow-up-form .task-model-button").click();
+  await expect(modelPopover).toBeVisible();
+  await modelPopover.getByRole("button", { name: /Very high/ }).click();
+  await expect(tasksPage.locator(".task-follow-up-form .task-model-button")).toContainText(
+    "Very high",
+  );
   await tasksPage.locator('textarea[name="prompt"]').fill("Please tighten the tests");
   await tasksPage.locator('textarea[name="prompt"]').press("Enter");
   await followUpRequested;
@@ -1075,6 +1135,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
 
 test("loads older task conversation events by cursor", async ({ page }) => {
   const project = await mockRegisteredProject(page);
+  await mockCodexModels(page);
   const threadId = "thread_cursor_fixture";
   const now = 1_767_100_000_000;
   const task = {
@@ -1198,6 +1259,7 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
   });
 
   const project = await mockRegisteredProject(page);
+  await mockCodexModels(page);
   const threadId = "thread_scroll_fixture";
   const now = 1_767_200_000_000;
   const task = {
@@ -4524,6 +4586,34 @@ async function mockRegisteredProject(page) {
   });
 
   return project;
+}
+
+async function mockCodexModels(page) {
+  await page.route(/\/api\/codex\/models(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: [
+          {
+            id: "gpt-5.5",
+            model: "gpt-5.5",
+            displayName: "GPT-5.5",
+            description: "Best for deeper coding work",
+            hidden: false,
+            isDefault: true,
+            defaultReasoningEffort: "ultra",
+            supportedReasoningEfforts: [
+              { reasoningEffort: "low", description: "Fastest responses" },
+              { reasoningEffort: "medium", description: "Balanced reasoning" },
+              { reasoningEffort: "high", description: "Deeper reasoning" },
+              { reasoningEffort: "ultra", description: "Most thorough reasoning" },
+            ],
+          },
+        ],
+        nextCursor: null,
+      }),
+    }),
+  );
 }
 
 async function mockProjectCrudApi(page) {

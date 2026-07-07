@@ -6,6 +6,10 @@ export async function getCodexStatus() {
   return requestJson("/api/codex/status");
 }
 
+export async function getCodexModels() {
+  return requestJson("/api/codex/models");
+}
+
 export async function getTasks(projectId) {
   return requestJson("/api/tasks", { projectId });
 }
@@ -21,10 +25,10 @@ export async function getTask(threadId, projectId, cursor = null) {
   return requestJson(`/api/tasks/${encodeURIComponent(threadId)}`, { projectId, cursor });
 }
 
-export async function sendTaskPrompt(threadId, projectId, prompt) {
+export async function sendTaskPrompt(threadId, projectId, prompt, options = {}) {
   return requestJson(`/api/tasks/${encodeURIComponent(threadId)}/prompts`, { projectId }, {
     method: "POST",
-    body: { prompt },
+    body: { prompt, ...options },
   });
 }
 

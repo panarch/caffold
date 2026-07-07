@@ -22,7 +22,9 @@ use tokio::sync::{Mutex as AsyncMutex, broadcast};
 use tracing::info;
 
 use crate::{
-    codex_app_server::{self, CodexRuntimeEvent, CodexStatusResponse, CodexThreadClient},
+    codex_app_server::{
+        self, CodexRuntimeEvent, CodexStatusResponse, CodexThreadClient, CodexTurnOptions,
+    },
     fs::{
         FileResponse, FsError, GitCommitResponse, GitCompareResponse, GitDiffResponse,
         GitLogResponse, GitRefsResponse, GitStatusResponse, GithubIssueResponse,
@@ -228,11 +230,16 @@ struct CreateTaskRequest {
     project_id: String,
     prompt: String,
     cwd: Option<String>,
+    model: Option<String>,
+    effort: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct TaskPromptRequest {
     prompt: String,
+    model: Option<String>,
+    effort: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -446,6 +453,7 @@ fn router_with_state(state: AppState) -> Router {
         .route("/api/github/pull-files", get(github_pull_files))
         .route("/api/github/pull-file", get(github_pull_file))
         .route("/api/codex/status", get(codex_status))
+        .route("/api/codex/models", get(codex_models))
         .route("/api/tasks", get(list_tasks).post(create_task))
         .route("/api/tasks/{thread_id}", get(task_detail))
         .route("/api/tasks/{thread_id}/stream", get(task_stream))
@@ -850,6 +858,15 @@ async fn codex_status() -> Json<CodexStatusResponse> {
     Json(codex_app_server::status().await)
 }
 
+async fn codex_models(State(state): State<AppState>) -> Result<Json<JsonValue>, ApiError> {
+    let client = require_codex_thread_client(&state).await?;
+    client
+        .list_models(100)
+        .await
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
 async fn list_tasks(
     State(state): State<AppState>,
     Query(query): Query<TasksQuery>,
@@ -868,10 +885,13 @@ async fn create_task(
     let project = state.projects.get_project(&request.project_id)?;
     let prompt = normalize_prompt(&request.prompt)?;
     let cwd = project_task_cwd(&project, request.cwd.as_deref())?;
+    let turn_options = codex_turn_options(request.model, request.effort)?;
     let client = require_codex_thread_client(&state).await?;
 
     let thread = client.start_thread(&cwd).await?;
-    let _turn = client.start_turn(&thread.thread_id, &cwd, prompt).await?;
+    let _turn = client
+        .start_turn(&thread.thread_id, &cwd, prompt, turn_options)
+        .await?;
     Ok(Json(
         read_task_detail(&state, &client, &project, &thread.thread_id, None).await?,
     ))
@@ -954,6 +974,7 @@ async fn task_prompt(
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
     let project = state.projects.get_project(&query.project_id)?;
     let prompt = normalize_prompt(&request.prompt)?;
+    let turn_options = codex_turn_options(request.model, request.effort)?;
     let client = require_codex_thread_client(&state).await?;
     let thread = client.read_thread(&thread_id, false).await?;
     let thread_value = thread.get("thread").unwrap_or(&thread);
@@ -963,7 +984,9 @@ async fn task_prompt(
         .and_then(JsonValue::as_str)
         .unwrap_or(&project.root_path);
     client.resume_thread(&thread_id, cwd).await?;
-    client.start_turn(&thread_id, cwd, prompt).await?;
+    client
+        .start_turn(&thread_id, cwd, prompt, turn_options)
+        .await?;
     Ok(Json(
         read_task_detail(&state, &client, &project, &thread_id, None).await?,
     ))
@@ -2014,6 +2037,50 @@ fn normalize_prompt(prompt: &str) -> Result<&str, ApiError> {
         });
     }
     Ok(prompt)
+}
+
+fn codex_turn_options(
+    model: Option<String>,
+    effort: Option<String>,
+) -> Result<CodexTurnOptions, ApiError> {
+    Ok(CodexTurnOptions {
+        model: normalize_codex_model(model)?,
+        effort: normalize_codex_effort(effort)?,
+    })
+}
+
+fn normalize_codex_model(model: Option<String>) -> Result<Option<String>, ApiError> {
+    let Some(model) = model else {
+        return Ok(None);
+    };
+    let model = model.trim();
+    if model.is_empty() {
+        return Ok(None);
+    }
+    if model.len() > 128 || model.chars().any(char::is_control) {
+        return Err(ApiError::BadRequest {
+            code: "invalid_codex_model",
+            message: "Codex model value is not supported".to_string(),
+        });
+    }
+    Ok(Some(model.to_string()))
+}
+
+fn normalize_codex_effort(effort: Option<String>) -> Result<Option<String>, ApiError> {
+    let Some(effort) = effort else {
+        return Ok(None);
+    };
+    let effort = effort.trim();
+    if effort.is_empty() {
+        return Ok(None);
+    }
+    match effort {
+        "minimal" | "low" | "medium" | "high" | "ultra" => Ok(Some(effort.to_string())),
+        _ => Err(ApiError::BadRequest {
+            code: "invalid_codex_effort",
+            message: "Codex reasoning effort is not supported".to_string(),
+        }),
+    }
 }
 
 fn normalize_approval_decision(decision: &str) -> Result<&str, ApiError> {

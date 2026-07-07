@@ -1,5 +1,6 @@
 import {
   createTask,
+  getCodexModels,
   getTask,
   getTasks,
   interruptTask,
@@ -9,6 +10,14 @@ import {
 } from "../../api.js";
 import { escapeHtml } from "../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../components/icons.js";
+
+const FALLBACK_REASONING_OPTIONS = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "ultra", label: "Very high" },
+];
+const FALLBACK_EFFORT = "ultra";
 
 class CaffoldTasksPage extends HTMLElement {
   connectedCallback() {
@@ -37,6 +46,14 @@ class CaffoldTasksPage extends HTMLElement {
     this.conversationScrollMode = null;
     this.newTaskDraft = { prompt: "" };
     this.followUpDraft = "";
+    this.modelOptions = [];
+    this.modelOptionsLoaded = false;
+    this.modelOptionsLoading = false;
+    this.modelOptionsError = null;
+    this.composerSettings = {
+      model: "",
+      effort: "",
+    };
     this.boundIconsReady = () => this.render();
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     warmIcons();
@@ -54,6 +71,11 @@ class CaffoldTasksPage extends HTMLElement {
       true,
     );
     this.addEventListener("input", (event) => {
+      const textarea = closestElement(event.target, "textarea[name='prompt']");
+      if (textarea) {
+        syncComposerTextarea(textarea);
+      }
+
       const form = closestElement(event.target, "form[data-task-form]");
       if (!form) {
         return;
@@ -169,6 +191,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.loading = false;
     this.closeStream();
     this.render();
+    this.loadModelOptions();
     this.querySelector("textarea[name='prompt']")?.focus();
     return null;
   }
@@ -197,6 +220,7 @@ class CaffoldTasksPage extends HTMLElement {
       this.connectStream(threadId);
       this.conversationScrollMode = "bottom";
       this.render();
+      this.loadModelOptions();
       return detail;
     } catch (error) {
       if (requestId !== this.requestId) {
@@ -279,6 +303,16 @@ class CaffoldTasksPage extends HTMLElement {
     }
     if (action === "approval") {
       this.resolveApproval(element.dataset.approvalId, element.dataset.decision);
+      return;
+    }
+    if (action === "select-model") {
+      this.selectModel(element.dataset.model);
+      closePopoverFor(element);
+      return;
+    }
+    if (action === "select-effort") {
+      this.selectEffort(element.dataset.effort);
+      closePopoverFor(element);
     }
   }
 
@@ -332,6 +366,7 @@ class CaffoldTasksPage extends HTMLElement {
       const detail = await createTask({
         projectId: this.projectId,
         prompt,
+        ...this.turnOptions(),
       });
       this.taskDetail = detail;
       this.events = detail.events ?? [];
@@ -368,7 +403,12 @@ class CaffoldTasksPage extends HTMLElement {
     this.render();
 
     try {
-      const detail = await sendTaskPrompt(this.selectedThreadId, this.projectId, prompt);
+      const detail = await sendTaskPrompt(
+        this.selectedThreadId,
+        this.projectId,
+        prompt,
+        this.turnOptions(),
+      );
       if (requestId !== this.requestId) {
         return;
       }
@@ -501,6 +541,80 @@ class CaffoldTasksPage extends HTMLElement {
     );
   }
 
+  async loadModelOptions() {
+    if (this.modelOptionsLoaded || this.modelOptionsLoading) {
+      return;
+    }
+
+    this.modelOptionsLoading = true;
+    this.modelOptionsError = null;
+    this.render();
+    try {
+      const response = await getCodexModels();
+      this.modelOptions = normalizeModelOptions(response);
+      this.modelOptionsLoaded = true;
+      this.applyDefaultModelSelection();
+    } catch (error) {
+      this.modelOptionsError = error;
+      this.modelOptionsLoaded = true;
+    } finally {
+      this.modelOptionsLoading = false;
+      this.render();
+    }
+  }
+
+  applyDefaultModelSelection() {
+    if (!this.modelOptions.length) {
+      return;
+    }
+    const selected = this.selectedModelOption();
+    const model = selected ?? this.modelOptions.find((option) => option.isDefault) ?? this.modelOptions[0];
+    if (!this.composerSettings.model) {
+      this.composerSettings.model = model.model;
+    }
+    if (!this.composerSettings.effort) {
+      this.composerSettings.effort =
+        model.defaultReasoningEffort || model.supportedReasoningEfforts[0]?.value || "";
+    }
+  }
+
+  selectModel(modelValue) {
+    this.composerSettings.model = `${modelValue ?? ""}`;
+    const model = this.selectedModelOption();
+    const supported = this.reasoningOptionsForModel(model).map((option) => option.value);
+    if (this.composerSettings.effort && !supported.includes(this.composerSettings.effort)) {
+      this.composerSettings.effort =
+        model?.defaultReasoningEffort ?? supported[0] ?? FALLBACK_EFFORT;
+    }
+    this.render();
+  }
+
+  selectEffort(effort) {
+    this.composerSettings.effort = `${effort ?? ""}`;
+    this.render();
+  }
+
+  selectedModelOption() {
+    return this.modelOptions.find((option) => option.model === this.composerSettings.model) ?? null;
+  }
+
+  selectedEffort() {
+    return this.composerSettings.effort || this.selectedModelOption()?.defaultReasoningEffort || FALLBACK_EFFORT;
+  }
+
+  turnOptions() {
+    return {
+      model: this.composerSettings.model || undefined,
+      effort: this.selectedEffort() || undefined,
+    };
+  }
+
+  reasoningOptionsForModel(model) {
+    return model?.supportedReasoningEfforts?.length
+      ? model.supportedReasoningEfforts
+      : FALLBACK_REASONING_OPTIONS;
+  }
+
   captureDraft(form) {
     const formData = new FormData(form);
     if (form.dataset.taskForm === "create") {
@@ -523,8 +637,15 @@ class CaffoldTasksPage extends HTMLElement {
         ${this.renderBody()}
       </section>
     `;
+    this.syncComposerTextareas();
     this.bindConversationScroll();
     this.restoreConversationScroll(previousScroll);
+  }
+
+  syncComposerTextareas() {
+    this.querySelectorAll("textarea[name='prompt']").forEach((textarea) =>
+      syncComposerTextarea(textarea),
+    );
   }
 
   bindConversationScroll() {
@@ -672,17 +793,97 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   renderNewTask() {
+    return this.renderTaskComposer({
+      formName: "create",
+      className: "task-new-form",
+      prompt: this.newTaskDraft.prompt,
+      placeholder: "Ask Codex to work in this project",
+      ariaLabel: "New task prompt",
+      submitLabel: "Start task",
+      cancel: true,
+    });
+  }
+
+  renderTaskComposer({
+    formName,
+    className,
+    prompt,
+    placeholder,
+    ariaLabel,
+    submitLabel,
+    cancel = false,
+  }) {
+    const model = this.selectedModelOption();
+    const effort = this.selectedEffort();
     return `
-      <form class="task-composer task-new-form" data-task-form="create">
-        <label>
-          <span>Prompt</span>
-          <textarea name="prompt" rows="9" required placeholder="Tell Codex what to do in this project">${escapeHtml(this.newTaskDraft.prompt)}</textarea>
-        </label>
-        <div class="task-form-actions">
-          <button type="button" class="task-secondary-button" data-task-action="open-list">Cancel</button>
-          <button type="submit" class="task-primary-button">Start Task</button>
+      <form class="task-composer ${escapeHtml(className)}" data-task-form="${escapeHtml(formName)}">
+        <div class="task-composer-panel">
+          <textarea
+            name="prompt"
+            required
+            rows="2"
+            data-max-rows="10.5"
+            aria-label="${escapeHtml(ariaLabel)}"
+            placeholder="${escapeHtml(placeholder)}"
+          >${escapeHtml(prompt ?? "")}</textarea>
+          <input type="hidden" name="model" value="${escapeHtml(model?.model ?? "")}">
+          <input type="hidden" name="effort" value="${escapeHtml(effort)}">
+          <div class="task-composer-toolbar">
+            <div class="task-composer-tools">
+              ${
+                cancel
+                  ? `<button type="button" class="task-toolbar-button" data-task-action="open-list">Cancel</button>`
+                  : ""
+              }
+              ${this.renderModelPicker(formName)}
+            </div>
+            <button type="submit" class="task-send-button" aria-label="${escapeHtml(submitLabel)}" title="${escapeHtml(submitLabel)}">
+              <span class="task-send-arrow" aria-hidden="true">&uarr;</span>
+            </button>
+          </div>
         </div>
       </form>
+    `;
+  }
+
+  renderModelPicker(formName) {
+    const popoverId = `task-model-picker-${formName}`;
+    const model = this.selectedModelOption();
+    const modelLabel = model?.displayName ?? (this.modelOptionsLoading ? "Loading model" : "Model");
+    const effort = this.selectedEffort();
+    const effortLabel = reasoningLabel(effort);
+    const modelRows = this.modelOptions.length
+      ? this.modelOptions.map((option) => renderModelOption(option, this.composerSettings.model)).join("")
+      : renderModelFallback(this.modelOptionsLoading, this.modelOptionsError);
+    const reasoningRows = this.reasoningOptionsForModel(model)
+      .map((option) => renderReasoningOption(option, effort))
+      .join("");
+
+    return `
+      <div class="task-model-picker">
+        <button
+          type="button"
+          class="task-model-button"
+          popovertarget="${escapeHtml(popoverId)}"
+          aria-label="Choose model and reasoning"
+        >
+          ${renderInlineIcon("Circle", "Model", "task-model-icon")}
+          <span>${escapeHtml(modelLabel)}</span>
+          <span>${escapeHtml(effortLabel)}</span>
+          <span class="task-model-caret" aria-hidden="true">&#8964;</span>
+        </button>
+        <div id="${escapeHtml(popoverId)}" class="task-model-popover" popover>
+          <section>
+            <p>Reasoning level</p>
+            ${reasoningRows}
+          </section>
+          <hr>
+          <section>
+            <p>Model</p>
+            ${modelRows}
+          </section>
+        </div>
+      </div>
     `;
   }
 
@@ -725,21 +926,141 @@ class CaffoldTasksPage extends HTMLElement {
             </ol>
           </div>
         </div>
-        <form class="task-composer task-follow-up-form" data-task-form="follow-up">
-          <label>
-            <span>Follow-up</span>
-            <textarea name="prompt" rows="4" required placeholder="Send another prompt to this task">${escapeHtml(this.followUpDraft)}</textarea>
-          </label>
-          <div class="task-form-actions">
-            <button type="submit" class="task-primary-button">Send Prompt</button>
-          </div>
-        </form>
+        ${this.renderTaskComposer({
+          formName: "follow-up",
+          className: "task-follow-up-form",
+          prompt: this.followUpDraft,
+          placeholder: "Send another prompt to this task",
+          ariaLabel: "Follow-up prompt",
+          submitLabel: "Send prompt",
+        })}
       </div>
     `;
   }
 }
 
 customElements.define("caffold-tasks-page", CaffoldTasksPage);
+
+function normalizeModelOptions(response) {
+  const models = Array.isArray(response?.data) ? response.data : [];
+  return models
+    .map((model) => {
+      const modelValue = `${model?.model ?? model?.id ?? ""}`.trim();
+      if (!modelValue) {
+        return null;
+      }
+      return {
+        model: modelValue,
+        displayName: `${model?.displayName ?? modelValue}`.trim(),
+        description: `${model?.description ?? ""}`.trim(),
+        isDefault: Boolean(model?.isDefault),
+        defaultReasoningEffort: `${model?.defaultReasoningEffort ?? ""}`.trim(),
+        supportedReasoningEfforts: normalizeReasoningOptions(
+          model?.supportedReasoningEfforts,
+        ),
+      };
+    })
+    .filter(Boolean);
+}
+
+function normalizeReasoningOptions(options) {
+  if (!Array.isArray(options) || options.length === 0) {
+    return [];
+  }
+  return options
+    .map((option) => {
+      const value = `${option?.reasoningEffort ?? option ?? ""}`.trim();
+      if (!value) {
+        return null;
+      }
+      return {
+        value,
+        label: reasoningLabel(value),
+        description: `${option?.description ?? ""}`.trim(),
+      };
+    })
+    .filter(Boolean);
+}
+
+function reasoningLabel(value) {
+  switch (value) {
+    case "minimal":
+      return "Minimal";
+    case "low":
+      return "Low";
+    case "medium":
+      return "Medium";
+    case "high":
+      return "High";
+    case "ultra":
+      return "Very high";
+    default:
+      return value ? titleCase(value) : "Reasoning";
+  }
+}
+
+function titleCase(value) {
+  return `${value}`
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
+function renderReasoningOption(option, selectedEffort) {
+  const selected = option.value === selectedEffort;
+  return `
+    <button
+      type="button"
+      class="task-model-option"
+      data-task-action="select-effort"
+      data-effort="${escapeHtml(option.value)}"
+      aria-pressed="${selected ? "true" : "false"}"
+    >
+      <span>
+        <strong>${escapeHtml(option.label)}</strong>
+        ${option.description ? `<small>${escapeHtml(option.description)}</small>` : ""}
+      </span>
+      ${selected ? renderInlineIcon("Check", "Selected", "task-model-check") : ""}
+    </button>
+  `;
+}
+
+function renderModelOption(option, selectedModel) {
+  const selected = option.model === selectedModel;
+  return `
+    <button
+      type="button"
+      class="task-model-option"
+      data-task-action="select-model"
+      data-model="${escapeHtml(option.model)}"
+      aria-pressed="${selected ? "true" : "false"}"
+    >
+      <span>
+        <strong>${escapeHtml(option.displayName)}</strong>
+        ${option.description ? `<small>${escapeHtml(option.description)}</small>` : ""}
+      </span>
+      ${selected ? renderInlineIcon("Check", "Selected", "task-model-check") : ""}
+    </button>
+  `;
+}
+
+function renderModelFallback(loading, error) {
+  if (loading) {
+    return `<p class="task-model-note">Loading models...</p>`;
+  }
+  if (error) {
+    return `<p class="task-model-note">Model list unavailable. The default Codex model will be used.</p>`;
+  }
+  return `<p class="task-model-note">Open this menu after Codex is connected.</p>`;
+}
+
+function closePopoverFor(element) {
+  const popover = closestElement(element, "[popover]");
+  if (popover && "hidePopover" in popover) {
+    popover.hidePopover();
+  }
+}
 
 function renderConversation(events, task) {
   const conversationEvents = dedupeCanonicalEvents(events);
@@ -1421,6 +1742,21 @@ function maxScrollTop(element) {
 
 function closestElement(target, selector) {
   return target instanceof Element ? target.closest(selector) : null;
+}
+
+function syncComposerTextarea(textarea) {
+  const styles = getComputedStyle(textarea);
+  const lineHeight = Number.parseFloat(styles.lineHeight) || 22;
+  const padding =
+    (Number.parseFloat(styles.paddingTop) || 0) +
+    (Number.parseFloat(styles.paddingBottom) || 0);
+  const maxRows = Number.parseFloat(textarea.dataset.maxRows ?? "10.5") || 10.5;
+  const maxHeight = lineHeight * maxRows + padding;
+
+  textarea.style.height = "auto";
+  const nextHeight = Math.min(textarea.scrollHeight, maxHeight);
+  textarea.style.height = `${nextHeight}px`;
+  textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
 }
 
 function upsertTask(tasks, task) {

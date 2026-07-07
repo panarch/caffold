@@ -110,6 +110,12 @@ pub struct CodexThreadStart {
     pub response: Value,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CodexTurnOptions {
+    pub model: Option<String>,
+    pub effort: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CodexTurnStart {
@@ -262,9 +268,13 @@ impl CodexThreadClient {
         thread_id: &str,
         cwd: &str,
         prompt: &str,
+        options: CodexTurnOptions,
     ) -> Result<CodexTurnStart, CodexThreadError> {
         let response = self
-            .request("turn/start", turn_start_params(thread_id, cwd, prompt))
+            .request(
+                "turn/start",
+                turn_start_params(thread_id, cwd, prompt, options),
+            )
             .await?;
         let turn_id = response
             .pointer("/turn/id")
@@ -293,6 +303,10 @@ impl CodexThreadClient {
     ) -> Result<(), CodexThreadError> {
         self.write_message(server_response_message(request_id, result))
             .await
+    }
+
+    pub async fn list_models(&self, limit: usize) -> Result<Value, CodexThreadError> {
+        self.request("model/list", model_list_params(limit)).await
     }
 
     async fn request(&self, method: &str, params: Value) -> Result<Value, CodexThreadError> {
@@ -690,6 +704,13 @@ fn thread_turns_list_params(thread_id: &str, cursor: Option<&str>, limit: usize)
     params
 }
 
+fn model_list_params(limit: usize) -> Value {
+    json!({
+        "limit": limit,
+        "includeHidden": false
+    })
+}
+
 fn thread_start_params(cwd: &str) -> Value {
     json!({
         "cwd": cwd,
@@ -708,8 +729,8 @@ fn thread_resume_params(thread_id: &str, cwd: &str) -> Value {
     })
 }
 
-fn turn_start_params(thread_id: &str, cwd: &str, prompt: &str) -> Value {
-    json!({
+fn turn_start_params(thread_id: &str, cwd: &str, prompt: &str, options: CodexTurnOptions) -> Value {
+    let mut params = json!({
         "threadId": thread_id,
         "cwd": cwd,
         "runtimeWorkspaceRoots": [cwd],
@@ -719,7 +740,14 @@ fn turn_start_params(thread_id: &str, cwd: &str, prompt: &str) -> Value {
             "text": prompt,
             "text_elements": []
         }]
-    })
+    });
+    if let Some(model) = options.model.filter(|model| !model.is_empty()) {
+        params["model"] = json!(model);
+    }
+    if let Some(effort) = options.effort.filter(|effort| !effort.is_empty()) {
+        params["effort"] = json!(effort);
+    }
+    params
 }
 
 fn turn_interrupt_params(thread_id: &str, turn_id: &str) -> Value {
@@ -840,7 +868,12 @@ mod tests {
     #[test]
     fn builds_turn_start_request_params() {
         assert_eq!(
-            turn_start_params("thread_1", "/workspace/project", "Inspect the diff"),
+            turn_start_params(
+                "thread_1",
+                "/workspace/project",
+                "Inspect the diff",
+                CodexTurnOptions::default(),
+            ),
             json!({
                 "threadId": "thread_1",
                 "cwd": "/workspace/project",
@@ -851,6 +884,45 @@ mod tests {
                     "text": "Inspect the diff",
                     "text_elements": []
                 }]
+            })
+        );
+    }
+
+    #[test]
+    fn builds_turn_start_request_params_with_model_options() {
+        assert_eq!(
+            turn_start_params(
+                "thread_1",
+                "/workspace/project",
+                "Inspect the diff",
+                CodexTurnOptions {
+                    model: Some("gpt-5.5".to_string()),
+                    effort: Some("ultra".to_string()),
+                },
+            ),
+            json!({
+                "threadId": "thread_1",
+                "cwd": "/workspace/project",
+                "runtimeWorkspaceRoots": ["/workspace/project"],
+                "approvalsReviewer": "user",
+                "model": "gpt-5.5",
+                "effort": "ultra",
+                "input": [{
+                    "type": "text",
+                    "text": "Inspect the diff",
+                    "text_elements": []
+                }]
+            })
+        );
+    }
+
+    #[test]
+    fn builds_model_list_request_params() {
+        assert_eq!(
+            model_list_params(100),
+            json!({
+                "limit": 100,
+                "includeHidden": false
             })
         );
     }

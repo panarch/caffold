@@ -192,10 +192,15 @@ caffold-tasks-page .task-detail-summary p {
 }
 
 caffold-tasks-page .task-approvals,
-caffold-tasks-page .task-composer,
 caffold-tasks-page .tasks-empty {
   margin: 0 auto;
   width: min(100%, 960px);
+  padding: 14px;
+}
+
+caffold-tasks-page .task-composer {
+  margin: 0 auto;
+  width: min(100%, 980px);
   padding: 14px;
 }
 
@@ -476,11 +481,6 @@ caffold-tasks-page .task-file-change p {
   font-size: 0.85rem;
 }
 
-caffold-tasks-page .task-composer {
-  display: grid;
-  gap: 10px;
-}
-
 caffold-tasks-page .task-follow-up-form {
   width: 100%;
   max-width: none;
@@ -489,32 +489,206 @@ caffold-tasks-page .task-follow-up-form {
   background: var(--surface);
 }
 
-caffold-tasks-page .task-follow-up-form label,
-caffold-tasks-page .task-follow-up-form .task-form-actions {
+caffold-tasks-page .task-follow-up-form .task-composer-panel {
   width: min(100%, 980px);
   margin: 0 auto;
 }
 
-caffold-tasks-page .task-composer label {
+caffold-tasks-page .task-composer-panel {
   display: grid;
-  gap: 5px;
+  grid-template-rows: auto auto;
+  overflow: visible;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: 0 10px 32px rgb(31 42 36 / 8%);
 }
 
-caffold-tasks-page .task-composer label span {
-  color: var(--muted);
-  font-size: 0.8rem;
-}
-
-caffold-tasks-page .task-composer input,
 caffold-tasks-page .task-composer textarea {
   width: 100%;
   min-width: 0;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: var(--surface);
+  min-height: calc(2lh + 24px);
+  max-height: calc(10.5lh + 24px);
+  padding: 14px 18px 10px;
+  border: 0;
+  background: transparent;
   color: var(--text);
-  resize: vertical;
+  outline: none;
+  line-height: 1.35;
+  overflow-y: hidden;
+  resize: none;
+}
+
+caffold-tasks-page .task-composer textarea::placeholder {
+  color: #8d938f;
+}
+
+caffold-tasks-page .task-composer-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 8px 10px 10px 14px;
+}
+
+caffold-tasks-page .task-composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+caffold-tasks-page .task-toolbar-button,
+caffold-tasks-page .task-model-button {
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+caffold-tasks-page .task-model-button {
+  color: var(--text);
+}
+
+caffold-tasks-page .task-toolbar-button:hover,
+caffold-tasks-page .task-toolbar-button:focus-visible,
+caffold-tasks-page .task-model-button:hover,
+caffold-tasks-page .task-model-button:focus-visible {
+  background: #eef4ef;
+  outline: none;
+}
+
+caffold-tasks-page .task-model-icon {
+  width: 1rem;
+  height: 1rem;
+  color: var(--muted);
+  stroke-width: 2;
+}
+
+caffold-tasks-page .task-model-caret {
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+caffold-tasks-page .task-send-button {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 999px;
+  background: #16211b;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+caffold-tasks-page .task-send-button:hover,
+caffold-tasks-page .task-send-button:focus-visible {
+  background: #0b1711;
+  outline: none;
+}
+
+caffold-tasks-page .task-send-arrow {
+  display: block;
+  font-size: 1.45rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+caffold-tasks-page .task-model-popover {
+  position: fixed;
+  inset: auto auto 76px max(10px, calc((100vw - 980px) / 2 + 14px));
+  width: min(360px, calc(100vw - 32px));
+  max-height: min(520px, calc(100vh - 120px));
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 18px 56px rgb(31 42 36 / 18%);
+  color: var(--text);
+}
+
+caffold-tasks-page .task-model-popover::backdrop {
+  background: transparent;
+}
+
+caffold-tasks-page .task-model-popover section {
+  display: grid;
+  gap: 4px;
+}
+
+caffold-tasks-page .task-model-popover p {
+  margin: 0;
+  padding: 6px 8px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+caffold-tasks-page .task-model-popover hr {
+  height: 1px;
+  margin: 8px;
+  border: 0;
+  background: #e3e8e3;
+}
+
+caffold-tasks-page .task-model-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+caffold-tasks-page .task-model-option:hover,
+caffold-tasks-page .task-model-option:focus-visible,
+caffold-tasks-page .task-model-option[aria-pressed="true"] {
+  background: #eef4ef;
+  outline: none;
+}
+
+caffold-tasks-page .task-model-option span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+caffold-tasks-page .task-model-option small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+caffold-tasks-page .task-model-check {
+  width: 1rem;
+  height: 1rem;
+  color: var(--accent);
+  stroke-width: 2.4;
+}
+
+caffold-tasks-page .task-model-note {
+  color: var(--muted);
 }
 
 caffold-tasks-page [data-status="failed"],
@@ -555,5 +729,22 @@ caffold-tasks-page [data-status="waiting_for_approval"] {
 
   caffold-tasks-page .task-follow-up-form {
     padding: 8px 10px 10px;
+  }
+
+  caffold-tasks-page .task-composer {
+    padding: 10px;
+  }
+
+  caffold-tasks-page .task-composer-panel {
+    border-radius: 16px;
+  }
+
+  caffold-tasks-page .task-composer textarea {
+    padding: 13px 14px 8px;
+  }
+
+  caffold-tasks-page .task-model-popover {
+    inset: auto 10px 70px 10px;
+    width: auto;
   }
 }
