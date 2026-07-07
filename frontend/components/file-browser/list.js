@@ -1,6 +1,6 @@
-import { listDirectory } from "../../../api.js";
-import { entryKindLabel, escapeHtml } from "../../../components/dom.js";
-import { renderEntryIcon, warmIcons } from "../../../components/icons.js";
+import { listDirectory } from "../../api.js";
+import { entryKindLabel, escapeHtml } from "../dom.js";
+import { renderEntryIcon, warmIcons } from "../icons.js";
 
 const TREE_LOADING_DELAY_MS = 180;
 

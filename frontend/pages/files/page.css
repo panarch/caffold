@@ -1,116 +1,11 @@
-@import "./components/list.css";
-@import "../../components/file-viewer.css";
-
 caffold-files-page {
-  --left-panel-width: 20rem;
-  display: grid;
-  grid-template-columns: var(--left-panel-width) 6px minmax(0, 1fr);
+  display: block;
   min-width: 0;
   min-height: 0;
   height: 100%;
   overflow: hidden;
 }
 
-caffold-files-page > caffold-file-list {
-  grid-column: 1;
-}
-
-caffold-files-page > caffold-file-viewer {
-  grid-column: 3;
-  min-width: 0;
-}
-
-caffold-files-page.is-resizing-left-panel {
-  cursor: col-resize;
-  user-select: none;
-}
-
-caffold-files-page > .panel-resizer {
-  grid-column: 2;
-  min-width: 0;
-  border-right: 1px solid var(--border);
-  border-left: 1px solid var(--border);
-  background: var(--surface-muted);
-  cursor: col-resize;
-  touch-action: none;
-}
-
-caffold-files-page > .panel-resizer:hover,
-caffold-files-page > .panel-resizer:focus-visible,
-caffold-files-page.is-resizing-left-panel > .panel-resizer {
-  background: #d9e6df;
-  outline: none;
-}
-
-@media (max-width: 860px) {
-  caffold-files-page {
-    position: relative;
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr);
-  }
-
-  caffold-files-page[data-browser-view="viewer"] {
-    position: fixed;
-    inset: 0;
-    z-index: 10;
-    width: 100vw;
-    height: 100vh;
-    height: 100dvh;
-    background: var(--surface);
-  }
-
-  caffold-files-page > caffold-file-list,
-  caffold-files-page > caffold-file-viewer {
-    grid-column: 1;
-    grid-row: 1;
-  }
-
-  caffold-files-page[data-browser-view="list"] > caffold-file-viewer,
-  caffold-files-page[data-browser-view="viewer"] > caffold-file-list {
-    display: none;
-  }
-
-  caffold-files-page[data-browser-view="viewer"] > caffold-file-viewer {
-    grid-row: 1;
-  }
-
-  caffold-files-page[data-browser-view="viewer"] > caffold-file-viewer .viewer-panel > header {
-    padding: 4px 8px;
-  }
-
-  caffold-files-page[data-browser-view="viewer"] > caffold-file-viewer .viewer-title-row {
-    grid-template-columns: 28px minmax(0, 1fr) auto;
-    gap: 6px;
-  }
-
-  caffold-files-page[data-browser-view="viewer"] > caffold-file-viewer .viewer-info-button,
-  caffold-files-page[data-browser-view="viewer"] > caffold-file-viewer .viewer-close-button {
-    display: grid;
-    place-items: center;
-    width: 28px;
-    height: 28px;
-    padding: 0;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
-    color: var(--accent);
-    cursor: pointer;
-  }
-
-  caffold-files-page[data-browser-view="viewer"] > caffold-file-viewer .viewer-close-button:hover,
-  caffold-files-page[data-browser-view="viewer"] > caffold-file-viewer .viewer-close-button:focus-visible {
-    border-color: #abcbbf;
-    background: #f7fbf8;
-    outline: none;
-  }
-
-  caffold-files-page[data-browser-view="viewer"] > caffold-file-viewer .viewer-close-icon {
-    width: 1rem;
-    height: 1rem;
-    stroke-width: 2;
-  }
-
-  caffold-files-page > .panel-resizer {
-    display: none;
-  }
+caffold-files-page > caffold-file-browser {
+  height: 100%;
 }

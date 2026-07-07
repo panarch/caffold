@@ -1,0 +1,116 @@
+@import "./file-browser/list.css";
+@import "./file-viewer.css";
+
+caffold-file-browser {
+  --left-panel-width: 20rem;
+  display: grid;
+  grid-template-columns: var(--left-panel-width) 6px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+caffold-file-browser > caffold-file-list {
+  grid-column: 1;
+}
+
+caffold-file-browser > caffold-file-viewer {
+  grid-column: 3;
+  min-width: 0;
+}
+
+caffold-file-browser.is-resizing-left-panel {
+  cursor: col-resize;
+  user-select: none;
+}
+
+caffold-file-browser > .panel-resizer {
+  grid-column: 2;
+  min-width: 0;
+  border-right: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  background: var(--surface-muted);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+caffold-file-browser > .panel-resizer:hover,
+caffold-file-browser > .panel-resizer:focus-visible,
+caffold-file-browser.is-resizing-left-panel > .panel-resizer {
+  background: #d9e6df;
+  outline: none;
+}
+
+@media (max-width: 860px) {
+  caffold-file-browser {
+    position: relative;
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  caffold-file-browser[data-browser-view="viewer"] {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    background: var(--surface);
+  }
+
+  caffold-file-browser > caffold-file-list,
+  caffold-file-browser > caffold-file-viewer {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  caffold-file-browser[data-browser-view="list"] > caffold-file-viewer,
+  caffold-file-browser[data-browser-view="viewer"] > caffold-file-list {
+    display: none;
+  }
+
+  caffold-file-browser[data-browser-view="viewer"] > caffold-file-viewer {
+    grid-row: 1;
+  }
+
+  caffold-file-browser[data-browser-view="viewer"] > caffold-file-viewer .viewer-panel > header {
+    padding: 4px 8px;
+  }
+
+  caffold-file-browser[data-browser-view="viewer"] > caffold-file-viewer .viewer-title-row {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    gap: 6px;
+  }
+
+  caffold-file-browser[data-browser-view="viewer"] > caffold-file-viewer .viewer-info-button,
+  caffold-file-browser[data-browser-view="viewer"] > caffold-file-viewer .viewer-close-button {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--accent);
+    cursor: pointer;
+  }
+
+  caffold-file-browser[data-browser-view="viewer"] > caffold-file-viewer .viewer-close-button:hover,
+  caffold-file-browser[data-browser-view="viewer"] > caffold-file-viewer .viewer-close-button:focus-visible {
+    border-color: #abcbbf;
+    background: #f7fbf8;
+    outline: none;
+  }
+
+  caffold-file-browser[data-browser-view="viewer"] > caffold-file-viewer .viewer-close-icon {
+    width: 1rem;
+    height: 1rem;
+    stroke-width: 2;
+  }
+
+  caffold-file-browser > .panel-resizer {
+    display: none;
+  }
+}

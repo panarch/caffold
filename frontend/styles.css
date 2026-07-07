@@ -4,6 +4,7 @@
 @import "./pages/components/header-actions.css";
 @import "./pages/components/header-actions/codex-status.css";
 @import "./components/pagination.css";
+@import "./components/file-browser.css";
 @import "./pages/files/page.css";
 @import "./pages/(codex)/layout.css";
 @import "./pages/(codex)/tasks/page.css";

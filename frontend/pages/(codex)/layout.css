@@ -3,12 +3,17 @@ caffold-codex-workspace {
   position: absolute;
   inset: 0;
   z-index: 15;
-  display: block;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   height: 100%;
   overflow: hidden;
   background: var(--surface);
+}
+
+caffold-codex-workspace > caffold-tasks-page {
+  min-height: 0;
 }
 
 caffold-codex-workspace .codex-workspace-close {

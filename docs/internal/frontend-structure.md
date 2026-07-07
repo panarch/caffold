@@ -37,11 +37,15 @@ caffold-app-shell
   scaffold-pathbar
   file browsing surface
     scaffold-files-page
-      scaffold-file-list
-      scaffold-file-viewer
+      scaffold-file-browser
+        scaffold-file-list
+        scaffold-file-viewer
   codex workspace
     scaffold-codex-workspace
       scaffold-tasks-page
+        scaffold-file-browser
+          scaffold-file-list
+          scaffold-file-viewer
   scaffold-review-workspace
     git
       scaffold-git-review-layout
@@ -77,11 +81,14 @@ caffold-app-shell
 parenthesized grouping rule because wrapping the root app shell would only
 repeat the root hierarchy.
 
-`files/page` owns the file browser surface: directory loading, file preview
-loading, files-route path materialization, list/viewer state, file-list scroll
-restoration, delayed loading indicators, and the left file-panel resizer. The
-app root coordinates project context, URL navigation, pathbar, and header
-actions around that surface instead of owning file browser internals.
+`files/page` is the app root's route-level file browsing page. It renders
+`scaffold-file-browser` and delegates the file browser API that app-shell uses.
+`components/file-browser` owns the reusable file browser surface: directory
+loading, file preview loading, files-route path materialization, list/viewer
+state, file-list scroll restoration, delayed loading indicators, mobile
+list/viewer switching, and the left file-panel resizer. The app root
+coordinates project context, URL navigation, pathbar, and header actions around
+that surface instead of owning file browser internals.
 
 `(codex)/layout` is the app root's top-level Codex workspace. It renders as an
 app-shell overlay sibling of `app-main` and `(review-workspace)`, so Codex
@@ -93,6 +100,12 @@ state mounted while moving between conversation and review subviews.
 `(codex)/tasks/page` owns the project-level Codex task surface:
 thread-derived list/new/detail state, prompt composition, Codex transcript
 rendering, approval cards, SSE subscription, and mobile list/detail switching.
+It may mount the reusable `scaffold-file-browser` as a full task-detail subview
+that switches with the conversation subview while keeping both mounted. Files
+mode hides the task list/detail chrome and gives the file browser the full
+Codex workspace body, with its own back control returning to the conversation.
+In that mode the file browser handles directory/file selection locally and does
+not emit route-changing file browser events to the app root.
 The app root only routes the current project into the Codex workspace and
 handles cross-surface actions such as opening the existing Git diff review
 surface.
@@ -178,9 +191,6 @@ frontend/pages/
   files/
     page.js
     page.css
-    components/
-      list.js
-      list.css
 
   (codex)/
     layout.js
@@ -246,6 +256,9 @@ frontend/pages/
 
 Keep reusable building blocks in `frontend/components`:
 
+- `file-browser.js`
+- `file-browser.css`
+- `file-browser/list.*`
 - `pagination.*`
 - `code-viewer.*`
 - `diff-viewer.*`
@@ -255,12 +268,14 @@ Keep reusable building blocks in `frontend/components`:
 
 Page-specific helper components can live under that page's `components/`
 directory when moving them to shared `frontend/components` would hide the
-ownership boundary. For example, the file browser list belongs only to
-`files/page`, the Git log list belongs only to `(git)/(log)/list/page`,
-the commit changes tree belongs only to
+ownership boundary. For example, the Git log list belongs only to
+`(git)/(log)/list/page`, the commit changes tree belongs only to
 `(git)/(log)/commit/page`, and the PR files tree belongs only to
 `(github)/(pulls)/files/page`. GitHub-only helpers shared by GitHub pages,
-such as the Markdown renderer, belong under `(github)/components`.
+such as the Markdown renderer, belong under `(github)/components`. The file
+browser is different: it is now a reusable surface used by `files/page` and
+future Codex workspace integrations, so it lives under `frontend/components`
+with its list implementation in `frontend/components/file-browser/`.
 Layout-specific helper components follow the same rule. App chrome such as the
 pathbar, project switcher, and header actions belongs to `frontend/pages/layout`.
 

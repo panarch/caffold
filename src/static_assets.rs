@@ -81,14 +81,20 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/components/header-actions/shared.js" => Some(js(include_str!(
             "../frontend/pages/components/header-actions/shared.js"
         ))),
+        "components/file-browser.css" => {
+            Some(css(include_str!("../frontend/components/file-browser.css")))
+        }
+        "components/file-browser.js" => {
+            Some(js(include_str!("../frontend/components/file-browser.js")))
+        }
+        "components/file-browser/list.css" => Some(css(include_str!(
+            "../frontend/components/file-browser/list.css"
+        ))),
+        "components/file-browser/list.js" => Some(js(include_str!(
+            "../frontend/components/file-browser/list.js"
+        ))),
         "pages/files/page.css" => Some(css(include_str!("../frontend/pages/files/page.css"))),
         "pages/files/page.js" => Some(js(include_str!("../frontend/pages/files/page.js"))),
-        "pages/files/components/list.css" => Some(css(include_str!(
-            "../frontend/pages/files/components/list.css"
-        ))),
-        "pages/files/components/list.js" => Some(js(include_str!(
-            "../frontend/pages/files/components/list.js"
-        ))),
         "pages/(codex)/layout.css" => {
             Some(css(include_str!("../frontend/pages/(codex)/layout.css")))
         }
@@ -643,8 +649,30 @@ mod tests {
                 .any(|window| window == b"caffold-files-page")
         );
 
+        let file_browser_component =
+            get("components/file-browser.js").expect("file browser component js asset");
+        assert_eq!(
+            file_browser_component.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(file_browser_component.body.starts_with(b"import "));
+        assert!(
+            file_browser_component
+                .body
+                .windows(b"caffold-file-browser".len())
+                .any(|window| window == b"caffold-file-browser")
+        );
+        let file_browser_css =
+            get("components/file-browser.css").expect("file browser component css asset");
+        assert_eq!(file_browser_css.content_type, "text/css; charset=utf-8");
+        assert!(
+            file_browser_css
+                .body
+                .starts_with(b"@import \"./file-browser/list.css\"")
+        );
+
         let file_list_component =
-            get("pages/files/components/list.js").expect("file list component js asset");
+            get("components/file-browser/list.js").expect("file list component js asset");
         assert_eq!(
             file_list_component.content_type,
             "text/javascript; charset=utf-8"
@@ -656,6 +684,8 @@ mod tests {
                 .windows(b"caffold-file-list".len())
                 .any(|window| window == b"caffold-file-list")
         );
+        assert!(get("pages/files/components/list.js").is_none());
+        assert!(get("pages/files/components/list.css").is_none());
         let log_layout =
             get("pages/(review-workspace)/(git)/(log)/layout.js").expect("git log layout js asset");
         assert_eq!(log_layout.content_type, "text/javascript; charset=utf-8");

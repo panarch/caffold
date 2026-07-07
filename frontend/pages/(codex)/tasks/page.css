@@ -14,6 +14,10 @@ caffold-tasks-page .tasks-surface {
   min-height: 0;
 }
 
+caffold-tasks-page[data-task-detail-view="files"] .tasks-surface {
+  grid-template-rows: minmax(0, 1fr);
+}
+
 caffold-tasks-page .tasks-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -22,6 +26,10 @@ caffold-tasks-page .tasks-header {
   padding: 10px 14px 10px calc(14px + var(--task-header-leading-space, 0px));
   border-bottom: 1px solid var(--border);
   background: var(--surface);
+}
+
+caffold-tasks-page[data-task-detail-view="files"] .tasks-header {
+  display: none;
 }
 
 caffold-tasks-page .tasks-header h1,
@@ -171,7 +179,7 @@ caffold-tasks-page .task-row time {
 
 caffold-tasks-page .task-detail {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
   height: 100%;
   overflow: hidden;
@@ -186,9 +194,72 @@ caffold-tasks-page .task-detail-summary {
   border-bottom: 1px solid var(--border);
 }
 
+caffold-tasks-page .task-detail[data-task-detail-view="files"] {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+caffold-tasks-page .task-detail[data-task-detail-view="files"] .task-detail-summary {
+  display: none;
+}
+
 caffold-tasks-page .task-detail-summary p {
   display: flex;
   gap: 10px;
+}
+
+caffold-tasks-page .task-conversation-pane,
+caffold-tasks-page .task-files-view {
+  min-height: 0;
+  overflow: hidden;
+}
+
+caffold-tasks-page .task-conversation-pane {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+caffold-tasks-page .task-files-view {
+  display: none;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  background: var(--surface);
+}
+
+caffold-tasks-page .task-detail[data-task-detail-view="files"] .task-conversation-pane {
+  display: none;
+}
+
+caffold-tasks-page .task-detail[data-task-detail-view="files"] .task-files-view {
+  display: grid;
+}
+
+caffold-tasks-page .task-files-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px 10px calc(14px + var(--task-header-leading-space, 0px));
+  border-bottom: 1px solid var(--border);
+}
+
+caffold-tasks-page .task-files-header h3,
+caffold-tasks-page .task-files-header p {
+  margin: 0;
+}
+
+caffold-tasks-page .task-files-header h3 {
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+caffold-tasks-page .task-files-header p {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+caffold-tasks-page .task-files-view caffold-file-browser {
+  min-height: 0;
+  height: 100%;
 }
 
 caffold-tasks-page .task-approvals,

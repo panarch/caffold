@@ -183,8 +183,12 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).not.toContain("/assets/components/pathbar.js");
   expect(serviceWorker).not.toContain("/assets/components/project-switcher.js");
   expect(serviceWorker).not.toContain("/assets/components/header-actions.js");
+  expect(serviceWorker).toContain("/assets/components/file-browser.js");
+  expect(serviceWorker).toContain("/assets/components/file-browser.css");
+  expect(serviceWorker).toContain("/assets/components/file-browser/list.js");
+  expect(serviceWorker).toContain("/assets/components/file-browser/list.css");
   expect(serviceWorker).toContain("/assets/pages/files/page.js");
-  expect(serviceWorker).toContain("/assets/pages/files/components/list.js");
+  expect(serviceWorker).not.toContain("/assets/pages/files/components/list.js");
   expect(serviceWorker).not.toContain("/assets/components/file-list.js");
   expect(serviceWorker).toContain("/assets/pages/(codex)/layout.js");
   expect(serviceWorker).toContain("/assets/pages/(codex)/layout.css");
@@ -1160,6 +1164,138 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(tasksPage).not.toContainText("turn started");
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-conversation");
+  await tasksPage
+    .locator(".task-conversation-pane")
+    .evaluate((element) => element.setAttribute("data-persist-probe", "kept"));
+
+  await tasksPage.locator('button[data-task-action="toggle-files"]').click();
+  await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
+    "data-task-detail-view",
+    "files",
+  );
+  const taskFilesView = tasksPage.locator(".task-files-view");
+  await expect(taskFilesView).toBeVisible();
+  await expect(tasksPage.locator(".tasks-header")).toBeHidden();
+  await expect(tasksPage.locator(".task-detail-summary")).toBeHidden();
+  const taskFilesLayout = await page.evaluate(() => {
+    const codex = document.querySelector("caffold-codex-workspace");
+    const appHeader = document.querySelector("caffold-app-shell .app-header");
+    const pathbar = document.querySelector("caffold-pathbar");
+    const filesHeader = document.querySelector(".task-files-header");
+    const filesView = document.querySelector(".task-files-view");
+    const filesTitle = document.querySelector(".task-files-header h3");
+    const browser = document.querySelector(".task-files-view caffold-file-browser");
+    const fileList = document.querySelector(".task-files-view caffold-file-list");
+
+    const coveredByCodex = (element) => {
+      const rect = element.getBoundingClientRect();
+      const topElement = document.elementFromPoint(
+        rect.left + rect.width / 2,
+        rect.top + rect.height / 2,
+      );
+      return {
+        inCodex: Boolean(topElement?.closest("caffold-codex-workspace")),
+        inSelf: topElement === element || element.contains(topElement),
+      };
+    };
+
+    const codexRect = codex.getBoundingClientRect();
+    const filesHeaderRect = filesHeader.getBoundingClientRect();
+    const filesViewRect = filesView.getBoundingClientRect();
+    const browserRect = browser.getBoundingClientRect();
+    const fileListRect = fileList.getBoundingClientRect();
+
+    return {
+      viewportWidth: window.innerWidth,
+      appHeaderCoveredByCodex:
+        coveredByCodex(appHeader).inCodex && !coveredByCodex(appHeader).inSelf,
+      pathbarCoveredByCodex:
+        coveredByCodex(pathbar).inCodex && !coveredByCodex(pathbar).inSelf,
+      filesHeaderTop: filesHeaderRect.top,
+      codexTop: codexRect.top,
+      filesViewBottom: filesViewRect.bottom,
+      codexBottom: codexRect.bottom,
+      browserHeight: browserRect.height,
+      fileListWidth: fileListRect.width,
+      titleFits: filesTitle.clientWidth >= filesTitle.scrollWidth,
+    };
+  });
+  expect(taskFilesLayout.appHeaderCoveredByCodex).toBe(true);
+  expect(taskFilesLayout.pathbarCoveredByCodex).toBe(true);
+  expect(taskFilesLayout.filesHeaderTop).toBeLessThanOrEqual(taskFilesLayout.codexTop + 1);
+  expect(taskFilesLayout.filesViewBottom).toBeGreaterThanOrEqual(taskFilesLayout.codexBottom - 1);
+  expect(taskFilesLayout.browserHeight).toBeGreaterThan(400);
+  if (taskFilesLayout.viewportWidth >= 861) {
+    expect(taskFilesLayout.fileListWidth).toBeGreaterThanOrEqual(300);
+  }
+  expect(taskFilesLayout.titleFits).toBe(true);
+  const filesTitleLeft = await taskFilesView
+    .locator(".task-files-header h3")
+    .evaluate((element) => element.getBoundingClientRect().left);
+  const codexCloseRight = await page
+    .locator("caffold-codex-workspace .codex-workspace-close")
+    .evaluate((element) => element.getBoundingClientRect().right);
+  expect(filesTitleLeft).toBeGreaterThan(codexCloseRight);
+  await expect(tasksPage.locator(".task-conversation-pane")).toBeHidden();
+  await expect(tasksPage.locator(".task-conversation-pane")).toHaveAttribute(
+    "data-persist-probe",
+    "kept",
+  );
+  await expect(taskFilesView.locator("caffold-file-browser")).toHaveAttribute(
+    "data-browser-view",
+    "list",
+  );
+  await expect(taskFilesView.locator('button[data-entry-path="src/alpha.rs"]')).toBeVisible();
+  await stabilizeDynamicText(page);
+  await captureReviewScreenshot(page, testInfo, "tasks-file-browser-list");
+  await page.locator("caffold-codex-workspace .codex-workspace-close").click();
+  await expect(page).toHaveURL(`/projects/${project.id}/tasks/${threadId}`);
+  await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
+    "data-task-detail-view",
+    "conversation",
+  );
+  await expect(tasksPage.locator(".task-conversation-pane")).toBeVisible();
+  await expect(page.locator("caffold-codex-workspace")).toBeVisible();
+  await expect(
+    codexWorkspace.getByRole("button", { name: "Close Codex workspace" }),
+  ).toBeVisible();
+
+  await tasksPage.locator('button[data-task-action="toggle-files"]').click();
+  await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
+    "data-task-detail-view",
+    "files",
+  );
+  await expect(taskFilesView.locator('button[data-entry-path="src/alpha.rs"]')).toBeVisible();
+  await taskFilesView.locator('button[data-entry-path="src/alpha.rs"]').click();
+  await expect(page).toHaveURL(`/projects/${project.id}/tasks/${threadId}`);
+  await expect(taskFilesView.locator("caffold-file-viewer")).toContainText(
+    "alpha.rs",
+  );
+  await expect(taskFilesView.locator("caffold-file-viewer")).toContainText(
+    "pub const ALPHA",
+  );
+  await expect(page.locator("caffold-files-page")).toBeHidden();
+  await stabilizeDynamicText(page);
+  await captureReviewScreenshot(page, testInfo, "tasks-file-browser");
+  if (testInfo.project.name === "phone") {
+    await taskFilesView.getByRole("button", { name: "Back to files" }).click();
+  }
+  await page.locator("caffold-codex-workspace .codex-workspace-close").click();
+  await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
+    "data-task-detail-view",
+    "conversation",
+  );
+  await expect(taskFilesView).toBeHidden();
+  await expect(tasksPage.locator(".task-conversation-pane")).toBeVisible();
+  await expect(tasksPage.locator(".tasks-header")).toBeVisible();
+  await expect(tasksPage.locator(".task-detail-summary")).toBeVisible();
+  await expect(tasksPage.locator(".task-conversation-pane")).toHaveAttribute(
+    "data-persist-probe",
+    "kept",
+  );
+  await expect(
+    codexWorkspace.getByRole("button", { name: "Close Codex workspace" }),
+  ).toBeVisible();
 
   await tasksPage.locator(".task-follow-up-form .task-model-button").click();
   await expect(modelPopover).toBeVisible();
@@ -1217,17 +1353,19 @@ test("loads older task conversation events by cursor", async ({ page }) => {
     payload,
     createdMs: now + offset,
   });
-  const latestEvents = Array.from({ length: 12 }, (_, index) =>
-    eventRecord(
+  const latestEvents = Array.from({ length: 12 }, (_, index) => {
+    const isUserPrompt = index % 2 === 0;
+    const blockNumber = index + 1;
+    return eventRecord(
       `event_latest_${index}`,
-      "assistant_message",
-      "Assistant response",
+      isUserPrompt ? "user_message" : "assistant_message",
+      isUserPrompt ? "User prompt" : "Assistant response",
       {
-        text: `This is the latest answer block ${index + 1}.\n\n${"Latest transcript line. ".repeat(18)}`,
+        text: `${isUserPrompt ? "This is the latest prompt block" : "This is the latest answer block"} ${blockNumber}.\n\n${"Latest transcript line. ".repeat(18)}`,
       },
       10 + index,
-    ),
-  );
+    );
+  });
   const olderEvents = [
     eventRecord(
       "event_older",
@@ -2806,10 +2944,10 @@ test("uses a single-pane file viewer on phone", async ({ page }, testInfo) => {
     `,
   });
 
-  const filesPage = page.locator("caffold-files-page");
+  const fileBrowser = page.locator("caffold-file-browser");
   const fileList = page.locator("caffold-file-list .file-list");
   const fileTarget = page.locator(`button[data-entry-path="${LONG_ROOT_FILE}"]`);
-  await expect(filesPage).toHaveAttribute("data-browser-view", "list");
+  await expect(fileBrowser).toHaveAttribute("data-browser-view", "list");
   await expect(page.locator("caffold-file-list")).toBeVisible();
   await expect(page.locator("caffold-file-viewer")).toBeHidden();
 
@@ -2818,7 +2956,7 @@ test("uses a single-pane file viewer on phone", async ({ page }, testInfo) => {
   expect(beforeFileScroll).toBeGreaterThan(0);
 
   await fileTarget.click();
-  await expect(filesPage).toHaveAttribute("data-browser-view", "viewer");
+  await expect(fileBrowser).toHaveAttribute("data-browser-view", "viewer");
   await expect(page.locator("caffold-file-list")).toBeHidden();
   await expect(page.locator("caffold-file-viewer")).toBeVisible();
   await expect(page.locator("caffold-file-viewer")).toContainText(LONG_ROOT_FILE);
@@ -2829,7 +2967,7 @@ test("uses a single-pane file viewer on phone", async ({ page }, testInfo) => {
   await captureReviewScreenshot(page, testInfo, "mobile-file-viewer-single-pane");
 
   await page.getByRole("button", { name: "Back to files" }).click();
-  await expect(filesPage).toHaveAttribute("data-browser-view", "list");
+  await expect(fileBrowser).toHaveAttribute("data-browser-view", "list");
   await expect(page.locator("caffold-file-list")).toBeVisible();
   await expect(page.locator("caffold-file-viewer")).toBeHidden();
   await expect(fileTarget).toHaveAttribute("aria-current", "true");
@@ -4925,11 +5063,11 @@ async function expectCodeViewerGutterSeparated(page) {
 
 async function expectMobileBrowserViewerOverlay(page) {
   const metrics = await page.evaluate(() => {
-    const filesPage = document.querySelector("caffold-files-page");
+    const fileBrowser = document.querySelector("caffold-file-browser");
     const header = document.querySelector("caffold-app-shell .app-header");
     const pathbar = document.querySelector("caffold-pathbar");
-    const rect = filesPage.getBoundingClientRect();
-    const style = window.getComputedStyle(filesPage);
+    const rect = fileBrowser.getBoundingClientRect();
+    const style = window.getComputedStyle(fileBrowser);
 
     return {
       bottom: rect.bottom,

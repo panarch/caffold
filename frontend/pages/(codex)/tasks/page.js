@@ -9,6 +9,7 @@ import {
   taskStreamUrl,
 } from "../../../api.js";
 import { escapeHtml } from "../../../components/dom.js";
+import "../../../components/file-browser.js";
 import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
 
 const FALLBACK_REASONING_OPTIONS = [
@@ -54,6 +55,7 @@ class CaffoldTasksPage extends HTMLElement {
       model: "",
       effort: "",
     };
+    this.taskDetailView = "conversation";
     this.boundIconsReady = () => this.render();
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     warmIcons();
@@ -107,8 +109,12 @@ class CaffoldTasksPage extends HTMLElement {
 
   setProject(project) {
     this.ensureRendered();
+    const nextProjectId = project?.id ?? "";
+    if (nextProjectId !== this.projectId) {
+      this.taskDetailView = "conversation";
+    }
     this.project = project ?? null;
-    this.projectId = project?.id ?? "";
+    this.projectId = nextProjectId;
   }
 
   prepareRoute(route) {
@@ -121,9 +127,13 @@ class CaffoldTasksPage extends HTMLElement {
         this.newTaskDraft = { prompt: "" };
       }
       this.view = "new";
+      this.taskDetailView = "conversation";
       this.selectedThreadId = "";
       this.closeStream();
     } else if (route?.threadId) {
+      if (this.selectedThreadId !== route.threadId) {
+        this.taskDetailView = "conversation";
+      }
       this.view = "detail";
       this.selectedThreadId = route.threadId;
       this.taskDetail =
@@ -134,6 +144,7 @@ class CaffoldTasksPage extends HTMLElement {
           : { nextCursor: null };
     } else {
       this.view = "list";
+      this.taskDetailView = "conversation";
       this.selectedThreadId = "";
       this.eventsPage = { nextCursor: null };
       this.closeStream();
@@ -295,6 +306,10 @@ class CaffoldTasksPage extends HTMLElement {
     }
     if (action === "open-diff") {
       this.dispatchEvent(new CustomEvent("caffold:open-diff-workspace", { bubbles: true }));
+      return;
+    }
+    if (action === "toggle-files") {
+      this.setTaskDetailView(this.taskDetailView === "files" ? "conversation" : "files");
       return;
     }
     if (action === "interrupt") {
@@ -630,7 +645,9 @@ class CaffoldTasksPage extends HTMLElement {
 
   render() {
     const previousScroll = this.captureConversationScroll();
+    const previousTaskFilePath = this.captureTaskFileBrowserPath();
     this.setAttribute("data-tasks-view", this.view ?? "list");
+    this.setAttribute("data-task-detail-view", this.taskDetailView);
     this.innerHTML = `
       <section class="tasks-surface" aria-label="Tasks">
         ${this.renderHeader()}
@@ -640,6 +657,78 @@ class CaffoldTasksPage extends HTMLElement {
     this.syncComposerTextareas();
     this.bindConversationScroll();
     this.restoreConversationScroll(previousScroll);
+    this.updateTaskDetailView();
+    this.syncTaskFileBrowser(previousTaskFilePath);
+  }
+
+  setTaskDetailView(view) {
+    const nextView = view === "files" ? "files" : "conversation";
+    if (this.taskDetailView === nextView) {
+      return;
+    }
+
+    this.taskDetailView = nextView;
+    this.updateTaskDetailView();
+    this.syncTaskFileBrowser();
+    this.dispatchTaskDetailViewChange();
+  }
+
+  closeActiveSubview() {
+    if (this.taskDetailView !== "files") {
+      return false;
+    }
+
+    this.setTaskDetailView("conversation");
+    return true;
+  }
+
+  updateTaskDetailView() {
+    this.setAttribute("data-task-detail-view", this.taskDetailView);
+    const detail = this.querySelector(".task-detail");
+    if (!detail) {
+      return;
+    }
+
+    detail.dataset.taskDetailView = this.taskDetailView;
+    const filesButton = detail.querySelector('button[data-task-action="toggle-files"]');
+    if (filesButton) {
+      filesButton.setAttribute(
+        "aria-pressed",
+        this.taskDetailView === "files" ? "true" : "false",
+      );
+    }
+  }
+
+  dispatchTaskDetailViewChange() {
+    this.dispatchEvent(
+      new CustomEvent("caffold:task-detail-view-change", {
+        bubbles: true,
+        detail: { view: this.taskDetailView },
+      }),
+    );
+  }
+
+  captureTaskFileBrowserPath() {
+    const browser = this.querySelector(".task-files-view caffold-file-browser");
+    return browser?.currentPath ?? "";
+  }
+
+  syncTaskFileBrowser(previousPath = "") {
+    if (this.taskDetailView !== "files") {
+      return;
+    }
+
+    const browser = this.querySelector(".task-files-view caffold-file-browser");
+    const targetPath = previousPath || this.project?.relativePath || "";
+    if (!browser) {
+      return;
+    }
+
+    browser.ensureRendered();
+    browser.setStorageKey(null);
+    if (!browser.hasLoadedDirectory(targetPath)) {
+      browser.loadDirectory(targetPath, { allowFailure: true });
+    }
   }
 
   syncComposerTextareas() {
@@ -895,7 +984,7 @@ class CaffoldTasksPage extends HTMLElement {
     const approvals = pendingApprovals(this.events);
 
     return `
-      <div class="task-detail">
+      <div class="task-detail" data-task-detail-view="${escapeHtml(this.taskDetailView)}">
         <section class="task-detail-summary">
           <div>
             <h2>${escapeHtml(task.title)}</h2>
@@ -906,6 +995,15 @@ class CaffoldTasksPage extends HTMLElement {
             </p>
           </div>
           <div class="task-detail-actions">
+            <button
+              type="button"
+              class="task-secondary-button"
+              data-task-action="toggle-files"
+              aria-pressed="${this.taskDetailView === "files" ? "true" : "false"}"
+            >
+              ${renderInlineIcon("Folder", "Files", "task-action-icon")}
+              <span>Files</span>
+            </button>
             <button type="button" class="task-secondary-button" data-task-action="open-diff">
               ${renderInlineIcon("FileDiff", "Open diff", "task-action-icon")}
               <span>Open Diff</span>
@@ -917,24 +1015,41 @@ class CaffoldTasksPage extends HTMLElement {
             }
           </div>
         </section>
-        <div class="task-conversation-scroll">
-          <div class="task-conversation-column">
-            ${approvals.length ? `<section class="task-approvals">${approvals.map(renderApprovalCard).join("")}</section>` : ""}
-            ${this.eventsPage?.nextCursor || this.loadingOlderEvents ? `<div class="task-load-older">${this.loadingOlderEvents ? "Loading older..." : ""}</div>` : ""}
-            <ol class="task-conversation" aria-label="Task conversation">
-              ${renderConversation(this.events, task)}
-            </ol>
+        <section class="task-conversation-pane" aria-label="Task conversation">
+          <div class="task-conversation-scroll">
+            <div class="task-conversation-column">
+              ${approvals.length ? `<section class="task-approvals">${approvals.map(renderApprovalCard).join("")}</section>` : ""}
+              ${this.eventsPage?.nextCursor || this.loadingOlderEvents ? `<div class="task-load-older">${this.loadingOlderEvents ? "Loading older..." : ""}</div>` : ""}
+              <ol class="task-conversation" aria-label="Task conversation">
+                ${renderConversation(this.events, task)}
+              </ol>
+            </div>
           </div>
-        </div>
-        ${this.renderTaskComposer({
-          formName: "follow-up",
-          className: "task-follow-up-form",
-          prompt: this.followUpDraft,
-          placeholder: "Send another prompt to this task",
-          ariaLabel: "Follow-up prompt",
-          submitLabel: "Send prompt",
-        })}
+          ${this.renderTaskComposer({
+            formName: "follow-up",
+            className: "task-follow-up-form",
+            prompt: this.followUpDraft,
+            placeholder: "Send another prompt to this task",
+            ariaLabel: "Follow-up prompt",
+            submitLabel: "Send prompt",
+          })}
+        </section>
+        ${this.renderTaskFilesView()}
       </div>
+    `;
+  }
+
+  renderTaskFilesView() {
+    return `
+      <section class="task-files-view" aria-label="Task files">
+        <header class="task-files-header">
+          <div>
+            <h3>Files</h3>
+            <p>${escapeHtml(this.project?.name ?? "Project")}</p>
+          </div>
+        </header>
+        <caffold-file-browser></caffold-file-browser>
+      </section>
     `;
   }
 }

@@ -22,7 +22,13 @@ class CaffoldCodexWorkspace extends HTMLElement {
       </button>
       <caffold-tasks-page></caffold-tasks-page>
     `;
-    this.querySelector(".codex-workspace-close").addEventListener("click", () => {
+    this.closeButton = this.querySelector(".codex-workspace-close");
+    this.closeButton.addEventListener("click", () => {
+      if (this.tasksPage?.closeActiveSubview?.()) {
+        this.updateCloseButton();
+        return;
+      }
+
       this.dispatchEvent(
         new CustomEvent("caffold:close-codex-workspace", {
           bubbles: true,
@@ -31,16 +37,32 @@ class CaffoldCodexWorkspace extends HTMLElement {
     });
     this.tasksPage = this.querySelector("caffold-tasks-page");
     this.tasksPage.ensureRendered();
+    this.addEventListener("caffold:task-detail-view-change", () => this.updateCloseButton());
+    this.updateCloseButton();
   }
 
   prepareRoute(route) {
     this.ensureRendered();
     this.tasksPage.prepareRoute(route);
+    this.updateCloseButton();
   }
 
   async openRoute(route, options = {}) {
     this.ensureRendered();
-    return await this.tasksPage.openRoute(route, options);
+    const result = await this.tasksPage.openRoute(route, options);
+    this.updateCloseButton();
+    return result;
+  }
+
+  updateCloseButton() {
+    if (!this.closeButton) {
+      return;
+    }
+
+    const isFileSubview = this.tasksPage?.taskDetailView === "files";
+    const label = isFileSubview ? "Back to task" : "Close Codex workspace";
+    this.closeButton.setAttribute("aria-label", label);
+    this.closeButton.setAttribute("title", label);
   }
 }
 
