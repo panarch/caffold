@@ -357,6 +357,16 @@ class CaffoldTasksPage extends HTMLElement {
 
     form.prompt.value = "";
     const requestId = ++this.requestId;
+    const optimisticEvent = optimisticUserMessageEvent(
+      this.selectedThreadId,
+      prompt,
+      requestId,
+    );
+    this.events = mergeEvents(this.events, [optimisticEvent]);
+    this.followUpDraft = "";
+    this.conversationScrollMode = "bottom";
+    this.render();
+
     try {
       const detail = await sendTaskPrompt(this.selectedThreadId, this.projectId, prompt);
       if (requestId !== this.requestId) {
@@ -1277,6 +1287,21 @@ function mergeEvents(leftEvents, rightEvents) {
   );
 }
 
+function optimisticUserMessageEvent(threadId, prompt, requestId) {
+  const createdMs = Date.now();
+  return {
+    id: `local:user:${threadId}:${requestId}:${createdMs}`,
+    threadId,
+    type: "user_message",
+    summary: "User prompt",
+    payload: {
+      text: prompt,
+      optimistic: true,
+    },
+    createdMs,
+  };
+}
+
 function eventIdentityKey(event) {
   if (!event) {
     return "";
@@ -1311,7 +1336,7 @@ function eventIdentityKey(event) {
 
 function dedupeCanonicalEvents(events) {
   const byKey = new Map();
-  for (const event of events) {
+  for (const event of removeSupersededOptimisticEvents(events)) {
     const key = canonicalEventKey(event) || eventIdentityKey(event);
     if (!key) {
       continue;
@@ -1322,9 +1347,34 @@ function dedupeCanonicalEvents(events) {
   return [...byKey.values()];
 }
 
+function removeSupersededOptimisticEvents(events) {
+  const confirmedUserMessages = new Set();
+  for (const event of events) {
+    if (event?.type !== "user_message" || event.payload?.optimistic) {
+      continue;
+    }
+    const text = `${event.payload?.prompt ?? event.payload?.text ?? ""}`.trim();
+    if (text) {
+      confirmedUserMessages.add([event.threadId ?? "", text].join(":"));
+    }
+  }
+
+  return events.filter((event) => {
+    if (event?.type !== "user_message" || !event.payload?.optimistic) {
+      return true;
+    }
+    const text = `${event.payload?.prompt ?? event.payload?.text ?? ""}`.trim();
+    return !confirmedUserMessages.has([event.threadId ?? "", text].join(":"));
+  });
+}
+
 function canonicalEventKey(event) {
   if (!event || !["user_message", "assistant_message"].includes(event.type)) {
     return "";
+  }
+
+  if (event.payload?.optimistic) {
+    return event.id ?? "";
   }
 
   const payload = event.payload ?? {};

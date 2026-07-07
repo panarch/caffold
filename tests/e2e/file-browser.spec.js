@@ -645,6 +645,14 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   let events = [];
   let createTaskRequests = 0;
   let approvalRequests = 0;
+  let resolveFollowUpRequest;
+  let releaseFollowUpResponse;
+  const followUpRequested = new Promise((resolve) => {
+    resolveFollowUpRequest = resolve;
+  });
+  const followUpResponseReleased = new Promise((resolve) => {
+    releaseFollowUpResponse = resolve;
+  });
   const threadId = "thread_12345678";
 
   const eventRecord = (id, type, summary, payload = null, offset = 0) => ({
@@ -787,6 +795,8 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       expect(url.searchParams.get("projectId")).toBe(project.id);
       const body = request.postDataJSON();
       expect(body.prompt).toBe("Please tighten the tests");
+      resolveFollowUpRequest();
+      await followUpResponseReleased;
       events = [
         ...events,
         eventRecord(
@@ -1044,7 +1054,20 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
 
   await tasksPage.locator('textarea[name="prompt"]').fill("Please tighten the tests");
   await tasksPage.locator('textarea[name="prompt"]').press("Enter");
-  await expect(tasksPage).toContainText("Follow-up prompt sent");
+  await followUpRequested;
+  await expect(
+    tasksPage.locator('.task-message[data-message-role="user"]').filter({
+      hasText: "Please tighten the tests",
+    }),
+  ).toBeVisible();
+  await expect(tasksPage).not.toContainText("Follow-up prompt sent");
+  releaseFollowUpResponse();
+  await expect(tasksPage.locator(".task-detail-summary")).toContainText("running");
+  await expect(
+    tasksPage.locator('.task-message[data-message-role="user"]').filter({
+      hasText: "Please tighten the tests",
+    }),
+  ).toHaveCount(1);
 
   await tasksPage.getByRole("button", { name: "Open Diff" }).click();
   await expect(page).toHaveURL(`/projects/${project.id}/diff`);
