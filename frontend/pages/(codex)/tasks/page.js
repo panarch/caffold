@@ -55,6 +55,7 @@ class CaffoldTasksPage extends HTMLElement {
       model: "",
       effort: "",
     };
+    this.openModelPickerForm = "";
     this.taskDetailView = "conversation";
     this.boundIconsReady = () => this.render();
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
@@ -65,6 +66,9 @@ class CaffoldTasksPage extends HTMLElement {
       (event) => {
         const action = closestElement(event.target, "[data-task-action]");
         if (!action) {
+          if (!closestElement(event.target, ".task-model-picker")) {
+            window.setTimeout(() => this.closeModelPicker(), 0);
+          }
           return;
         }
 
@@ -200,6 +204,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.view = "new";
     this.error = null;
     this.loading = false;
+    this.openModelPickerForm = "";
     this.closeStream();
     this.render();
     this.loadModelOptions();
@@ -292,6 +297,13 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   handleAction(action, element) {
+    if (
+      !action?.startsWith("select-") &&
+      action !== "toggle-model-picker" &&
+      action !== "close-model-picker"
+    ) {
+      this.closeModelPicker();
+    }
     if (action === "open-list") {
       this.requestRoute({ kind: "tasks" });
       return;
@@ -320,14 +332,22 @@ class CaffoldTasksPage extends HTMLElement {
       this.resolveApproval(element.dataset.approvalId, element.dataset.decision);
       return;
     }
+    if (action === "toggle-model-picker") {
+      this.toggleModelPicker(element.dataset.formName);
+      return;
+    }
+    if (action === "close-model-picker") {
+      this.closeModelPicker();
+      return;
+    }
     if (action === "select-model") {
+      this.openModelPickerForm = "";
       this.selectModel(element.dataset.model);
-      closePopoverFor(element);
       return;
     }
     if (action === "select-effort") {
+      this.openModelPickerForm = "";
       this.selectEffort(element.dataset.effort);
-      closePopoverFor(element);
     }
   }
 
@@ -609,6 +629,23 @@ class CaffoldTasksPage extends HTMLElement {
     this.render();
   }
 
+  toggleModelPicker(formName) {
+    const nextFormName = `${formName ?? ""}`;
+    this.openModelPickerForm = this.openModelPickerForm === nextFormName ? "" : nextFormName;
+    if (this.openModelPickerForm) {
+      this.loadModelOptions();
+    }
+    this.render();
+  }
+
+  closeModelPicker() {
+    if (!this.openModelPickerForm) {
+      return;
+    }
+    this.openModelPickerForm = "";
+    this.render();
+  }
+
   selectedModelOption() {
     return this.modelOptions.find((option) => option.model === this.composerSettings.model) ?? null;
   }
@@ -853,16 +890,20 @@ class CaffoldTasksPage extends HTMLElement {
         </div>
         <div class="tasks-header-actions">
           ${
-            this.view !== "list"
+            this.view === "detail"
               ? `<button type="button" class="task-icon-button" data-task-action="open-list" title="Open tasks">
                   ${renderInlineIcon("ListTodo", "Open tasks", "task-action-icon")}
                 </button>`
               : ""
           }
-          <button type="button" class="task-primary-button" data-task-action="open-new">
-            ${renderInlineIcon("Plus", "New task", "task-action-icon")}
-            <span>New Task</span>
-          </button>
+          ${
+            this.view !== "new"
+              ? `<button type="button" class="task-primary-button" data-task-action="open-new">
+                  ${renderInlineIcon("Plus", "New task", "task-action-icon")}
+                  <span>New Task</span>
+                </button>`
+              : ""
+          }
         </div>
       </header>
     `;
@@ -975,11 +1016,11 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   renderModelPicker(formName) {
-    const popoverId = `task-model-picker-${formName}`;
     const model = this.selectedModelOption();
     const modelLabel = model?.displayName ?? (this.modelOptionsLoading ? "Loading model" : "Model");
     const effort = this.selectedEffort();
     const effortLabel = reasoningLabel(effort);
+    const open = this.openModelPickerForm === formName;
     const modelRows = this.modelOptions.length
       ? this.modelOptions.map((option) => renderModelOption(option, this.composerSettings.model)).join("")
       : renderModelFallback(this.modelOptionsLoading, this.modelOptionsError);
@@ -988,11 +1029,13 @@ class CaffoldTasksPage extends HTMLElement {
       .join("");
 
     return `
-      <div class="task-model-picker">
+      <div class="task-model-picker${open ? " is-open" : ""}">
         <button
           type="button"
           class="task-model-button"
-          popovertarget="${escapeHtml(popoverId)}"
+          data-task-action="toggle-model-picker"
+          data-form-name="${escapeHtml(formName)}"
+          aria-expanded="${open ? "true" : "false"}"
           aria-label="Choose model and reasoning"
         >
           ${renderInlineIcon("Circle", "Model", "task-model-icon")}
@@ -1000,17 +1043,27 @@ class CaffoldTasksPage extends HTMLElement {
           <span>${escapeHtml(effortLabel)}</span>
           <span class="task-model-caret" aria-hidden="true">&#8964;</span>
         </button>
-        <div id="${escapeHtml(popoverId)}" class="task-model-popover" popover>
-          <section>
-            <p>Reasoning level</p>
-            ${reasoningRows}
-          </section>
-          <hr>
-          <section>
-            <p>Model</p>
-            ${modelRows}
-          </section>
-        </div>
+        ${
+          open
+            ? `<button
+                type="button"
+                class="task-model-backdrop"
+                data-task-action="close-model-picker"
+                aria-label="Close model picker"
+              ></button>
+              <div class="task-model-popover" role="menu" aria-label="Model and reasoning options">
+                <section>
+                  <p>Reasoning level</p>
+                  ${reasoningRows}
+                </section>
+                <hr>
+                <section>
+                  <p>Model</p>
+                  ${modelRows}
+                </section>
+              </div>`
+            : ""
+        }
       </div>
     `;
   }
@@ -1207,13 +1260,6 @@ function renderModelFallback(loading, error) {
     return `<p class="task-model-note">Model list unavailable. The default Codex model will be used.</p>`;
   }
   return `<p class="task-model-note">Open this menu after Codex is connected.</p>`;
-}
-
-function closePopoverFor(element) {
-  const popover = closestElement(element, "[popover]");
-  if (popover && "hidePopover" in popover) {
-    popover.hidePopover();
-  }
 }
 
 function renderConversation(events, task) {

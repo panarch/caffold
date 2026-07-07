@@ -1010,11 +1010,99 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     "data-tasks-view",
     "new",
   );
+  await expect(
+    page.locator('caffold-tasks-page .tasks-header [data-task-action="open-new"]'),
+  ).toHaveCount(0);
+  await expect(
+    page.locator('caffold-tasks-page .tasks-header [data-task-action="open-list"]'),
+  ).toHaveCount(0);
+  await expect(page.locator("caffold-tasks-page .tasks-header h1")).toHaveText(
+    "New Task",
+  );
+  const newTaskHeaderMetrics = await page.evaluate(() => {
+    const closeButton = document
+      .querySelector("caffold-codex-workspace .codex-workspace-close")
+      .getBoundingClientRect();
+    const title = document
+      .querySelector("caffold-tasks-page .tasks-header h1")
+      .getBoundingClientRect();
+    return {
+      closeRight: closeButton.right,
+      titleLeft: title.left,
+    };
+  });
+  expect(newTaskHeaderMetrics.titleLeft).toBeGreaterThanOrEqual(
+    newTaskHeaderMetrics.closeRight + 8,
+  );
   const newTaskComposer = page.locator("caffold-tasks-page .task-new-form");
   await expect(newTaskComposer.locator(".task-model-button")).toContainText("GPT-5.5");
   await newTaskComposer.locator(".task-model-button").click();
   const modelPopover = page.locator("caffold-tasks-page .task-model-popover");
   await expect(modelPopover).toBeVisible();
+  const modelPopoverMetrics = await newTaskComposer.evaluate((form) => {
+    const button = form.querySelector(".task-model-button").getBoundingClientRect();
+    const panel = form.querySelector(".task-composer-panel").getBoundingClientRect();
+    const popover = form.querySelector(".task-model-popover").getBoundingClientRect();
+    const firstDescription = form.querySelector(".task-model-option small");
+    const descriptionStyle = firstDescription
+      ? window.getComputedStyle(firstDescription)
+      : null;
+    return {
+      buttonBottom: button.bottom,
+      buttonLeft: button.left,
+      panelBottom: panel.bottom,
+      panelLeft: panel.left,
+      panelRight: panel.right,
+      backdropVisible: Boolean(
+        form.querySelector(".task-model-backdrop") &&
+          window.getComputedStyle(form.querySelector(".task-model-backdrop")).display !==
+            "none",
+      ),
+      popoverBottom: popover.bottom,
+      popoverLeft: popover.left,
+      popoverRight: popover.right,
+      popoverTop: popover.top,
+      viewportHeight: window.innerHeight,
+      viewportWidth: window.innerWidth,
+      descriptionWhiteSpace: descriptionStyle?.whiteSpace ?? "",
+    };
+  });
+  expect(modelPopoverMetrics.popoverLeft).toBeGreaterThanOrEqual(9);
+  expect(modelPopoverMetrics.popoverRight).toBeLessThanOrEqual(
+    modelPopoverMetrics.viewportWidth - 9,
+  );
+  expect(modelPopoverMetrics.popoverTop).toBeGreaterThanOrEqual(9);
+  expect(modelPopoverMetrics.popoverBottom).toBeLessThanOrEqual(
+    modelPopoverMetrics.viewportHeight - 9,
+  );
+  expect(modelPopoverMetrics.descriptionWhiteSpace).not.toBe("nowrap");
+  if (testInfo.project.name !== "phone") {
+    expect(modelPopoverMetrics.backdropVisible).toBe(false);
+    expect(
+      Math.abs(modelPopoverMetrics.popoverLeft - modelPopoverMetrics.buttonLeft),
+    ).toBeLessThanOrEqual(2);
+    expect(modelPopoverMetrics.popoverTop).toBeGreaterThanOrEqual(
+      modelPopoverMetrics.buttonBottom + 6,
+    );
+    expect(
+      modelPopoverMetrics.popoverTop - modelPopoverMetrics.buttonBottom,
+    ).toBeLessThanOrEqual(14);
+  } else {
+    expect(modelPopoverMetrics.backdropVisible).toBe(true);
+    expect(modelPopoverMetrics.popoverLeft).toBeGreaterThanOrEqual(9);
+    expect(modelPopoverMetrics.popoverRight).toBeLessThanOrEqual(
+      modelPopoverMetrics.viewportWidth - 9,
+    );
+    expect(
+      modelPopoverMetrics.viewportHeight - modelPopoverMetrics.popoverBottom,
+    ).toBeLessThanOrEqual(14);
+    await newTaskComposer.locator(".task-model-backdrop").click({
+      position: { x: 8, y: 8 },
+    });
+    await expect(modelPopover).toBeHidden();
+    await newTaskComposer.locator(".task-model-button").click();
+    await expect(modelPopover).toBeVisible();
+  }
   await captureReviewScreenshot(page, testInfo, "tasks-model-popover");
   await modelPopover.getByRole("button", { name: /High/ }).click();
   await expect(newTaskComposer.locator(".task-model-button")).toContainText("High");
