@@ -61,6 +61,7 @@ class CaffoldTasksPage extends HTMLElement {
 
       this.captureDraft(form);
     });
+    this.addEventListener("keydown", (event) => this.handlePromptKeydown(event));
     this.addEventListener(
       "submit",
       (event) => {
@@ -289,6 +290,30 @@ class CaffoldTasksPage extends HTMLElement {
     if (formName === "follow-up") {
       await this.sendFollowUpFromForm(form);
     }
+  }
+
+  handlePromptKeydown(event) {
+    if (
+      event.key !== "Enter" ||
+      event.shiftKey ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.altKey
+    ) {
+      return;
+    }
+    if (event.isComposing) {
+      return;
+    }
+
+    const textarea = closestElement(event.target, "textarea[name='prompt']");
+    const form = closestElement(textarea, "form[data-task-form]");
+    if (!textarea || !form || !textarea.value.trim()) {
+      return;
+    }
+
+    event.preventDefault();
+    form.requestSubmit();
   }
 
   async createTaskFromForm(form) {

@@ -972,7 +972,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     projectId: project.id,
     valid: true,
   });
-  await page.locator("caffold-tasks-page").getByRole("button", { name: "Start Task" }).click();
+  await page.locator('caffold-tasks-page textarea[name="prompt"]').press("Enter");
 
   await expect.poll(() => createTaskRequests).toBe(1);
   await expect(page).toHaveURL(`/projects/${project.id}/tasks/${threadId}`);
@@ -1043,7 +1043,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await captureReviewScreenshot(page, testInfo, "tasks-conversation");
 
   await tasksPage.locator('textarea[name="prompt"]').fill("Please tighten the tests");
-  await tasksPage.getByRole("button", { name: "Send Prompt" }).click();
+  await tasksPage.locator('textarea[name="prompt"]').press("Enter");
   await expect(tasksPage).toContainText("Follow-up prompt sent");
 
   await tasksPage.getByRole("button", { name: "Open Diff" }).click();
