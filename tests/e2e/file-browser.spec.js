@@ -618,12 +618,166 @@ test("groups header review actions into Git, GitHub, and Codex popovers", async 
   await expect(codexPopover.locator('button[data-action="open-tasks"]')).toContainText(
     "Open Tasks",
   );
+  await expect(codexPopover.locator('button[data-action="open-all-tasks"]')).toContainText(
+    "All Tasks",
+  );
   await expect(codexPopover.locator('button[data-action="new-task"]')).toContainText(
     "New Task",
   );
   await expectHeaderActionsFit(page);
   await expectHeaderPopoverFits(page, "codex");
   await captureReviewScreenshot(page, testInfo, "header-actions-codex-popover");
+});
+
+test("opens global Tasks without a registered project", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.EventSource = class MockEventSource {
+      constructor(url) {
+        this.url = url;
+      }
+
+      addEventListener() {}
+
+      close() {}
+    };
+  });
+  await mockCodexModels(page);
+  await page.route(/\/api\/projects(?:\?|$)/, (route) => {
+    if (route.request().method() !== "GET") {
+      return route.continue();
+    }
+
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ projects: [] }),
+    });
+  });
+  await page.route(/\/api\/project-candidate(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ candidate: null }),
+    }),
+  );
+
+  const threadId = "thread_global_fixture";
+  let createdTaskRequest = null;
+  const task = {
+    id: threadId,
+    threadId,
+    projectId: null,
+    activeTurnId: null,
+    title: "Global task",
+    preview: "Hello without a registered project",
+    status: "completed",
+    cwd: "tests/fixtures/home",
+    relativeCwd: "tests/fixtures/home",
+    createdMs: 1_767_200_000_000,
+    updatedMs: 1_767_200_000_000,
+    recencyMs: 1_767_200_000_000,
+    lastEventSummary: "Assistant response",
+  };
+  const detail = {
+    task,
+    events: [
+      {
+        id: "event_prompt",
+        threadId,
+        projectId: "",
+        type: "user_message",
+        summary: "User prompt",
+        payload: { text: "Say hello globally" },
+        createdMs: task.createdMs,
+      },
+      {
+        id: "event_answer",
+        threadId,
+        projectId: "",
+        type: "assistant_message",
+        summary: "Assistant response",
+        payload: { text: "Hello from a global Codex thread." },
+        createdMs: task.createdMs + 1,
+      },
+    ],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  };
+  const taskListQueries = [];
+
+  await page.route("**/api/tasks**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const segments = url.pathname.split("/").filter(Boolean);
+    const method = request.method();
+
+    if (segments.length === 2 && method === "GET") {
+      taskListQueries.push({
+        projectId: url.searchParams.get("projectId"),
+        cwd: url.searchParams.get("cwd"),
+      });
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ tasks: [] }),
+      });
+    }
+
+    if (segments.length === 2 && method === "POST") {
+      createdTaskRequest = request.postDataJSON();
+      expect(createdTaskRequest.projectId).toBeUndefined();
+      expect(createdTaskRequest.cwd).toBe(".");
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detail),
+      });
+    }
+
+    if (segments.length === 3 && segments[2] === threadId && method === "GET") {
+      expect(url.searchParams.get("projectId")).toBe(null);
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detail),
+      });
+    }
+
+    return route.continue();
+  });
+
+  await page.goto("/");
+  const codexPopover = await openHeaderActionGroup(page, "codex");
+  await codexPopover.locator('button[data-action="open-all-tasks"]').click();
+  await expect(page).toHaveURL("/tasks");
+  await expect
+    .poll(() => taskListQueries.at(-1))
+    .toEqual({ projectId: null, cwd: null });
+  await page
+    .locator("caffold-codex-workspace")
+    .getByRole("button", { name: "Close Codex workspace" })
+    .click();
+  await expect(page).toHaveURL("/");
+
+  const scopedCodexPopover = await openHeaderActionGroup(page, "codex");
+  await scopedCodexPopover.locator('button[data-action="open-tasks"]').click();
+  await expect(page).toHaveURL("/tasks?cwd=.");
+  await expect
+    .poll(() => taskListQueries.at(-1))
+    .toEqual({ projectId: null, cwd: "." });
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect(tasksPage.locator(".tasks-header")).toContainText("Threads in ~");
+  await expect(tasksPage).toContainText("No tasks yet.");
+
+  await tasksPage
+    .locator(".tasks-empty")
+    .getByRole("button", { name: "New Task", exact: true })
+    .click();
+  await expect(page).toHaveURL("/tasks/new?cwd=.");
+  await tasksPage.locator('textarea[name="prompt"]').fill("Say hello globally");
+  await tasksPage.locator('textarea[name="prompt"]').press("Enter");
+
+  await expect.poll(() => createdTaskRequest?.prompt).toBe("Say hello globally");
+  await expect(page).toHaveURL(`/tasks/${threadId}?cwd=.`);
+  await expect(tasksPage).toContainText("Hello from a global Codex thread.");
+  const openDiff = tasksPage.getByRole("button", { name: "Open Diff" });
+  await expect(openDiff).toBeDisabled();
+  await expect(tasksPage).toContainText("Register project to review diff.");
 });
 
 test("opens Tasks from Codex header and runs a minimal task loop", async ({ page }, testInfo) => {
@@ -718,7 +872,8 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     const method = request.method();
 
     if (segments.length === 2 && method === "GET") {
-      expect(url.searchParams.get("projectId")).toBe(project.id);
+      expect(url.searchParams.get("projectId")).toBe(null);
+      expect(url.searchParams.get("cwd")).toBe(project.relativePath);
       return route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({ tasks: task ? [task] : [] }),
@@ -728,7 +883,8 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     if (segments.length === 2 && method === "POST") {
       createTaskRequests += 1;
       const body = request.postDataJSON();
-      expect(body.projectId).toBe(project.id);
+      expect(body.projectId).toBeUndefined();
+      expect(body.cwd).toBe(project.relativePath);
       expect(body.prompt).toBe("Inspect the planner changes");
       expect(body.model).toBe("gpt-5.5");
       expect(body.effort).toBe("high");
@@ -790,7 +946,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     }
 
     if (segments.length === 3 && segments[2] === threadId && method === "GET") {
-      expect(url.searchParams.get("projectId")).toBe(project.id);
+      expect(url.searchParams.get("projectId")).toBe(null);
       return route.fulfill({
         contentType: "application/json",
         body: JSON.stringify(detailResponse()),
@@ -803,7 +959,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       segments[3] === "prompts" &&
       method === "POST"
     ) {
-      expect(url.searchParams.get("projectId")).toBe(project.id);
+      expect(url.searchParams.get("projectId")).toBe(null);
       const body = request.postDataJSON();
       expect(body.prompt).toBe("Please tighten the tests");
       expect(body.model).toBe("gpt-5.5");
@@ -833,7 +989,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       segments[3] === "interrupt" &&
       method === "POST"
     ) {
-      expect(url.searchParams.get("projectId")).toBe(project.id);
+      expect(url.searchParams.get("projectId")).toBe(null);
       events = [
         ...events,
         eventRecord("event_7", "turn_interrupted", "Interrupt requested", null, 7),
@@ -857,7 +1013,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       method === "POST"
     ) {
       approvalRequests += 1;
-      expect(url.searchParams.get("projectId")).toBe(project.id);
+      expect(url.searchParams.get("projectId")).toBe(null);
       const body = request.postDataJSON();
       expect(body.decision).toBe("accept");
       events = [
@@ -966,7 +1122,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await page.goto(`/projects/${project.id}/files`);
   const codexPopover = await openHeaderActionGroup(page, "codex");
   await codexPopover.locator('button[data-action="open-tasks"]').click();
-  await expect(page).toHaveURL(`/projects/${project.id}/tasks`);
+  await expect(page).toHaveURL(`/tasks?cwd=${encodeURIComponent(project.relativePath)}`);
   const codexWorkspace = page.locator("caffold-codex-workspace");
   await expect(codexWorkspace).toBeVisible();
   await expect
@@ -992,7 +1148,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
 
   const reopenedCodexPopover = await openHeaderActionGroup(page, "codex");
   await reopenedCodexPopover.locator('button[data-action="open-tasks"]').click();
-  await expect(page).toHaveURL(`/projects/${project.id}/tasks`);
+  await expect(page).toHaveURL(`/tasks?cwd=${encodeURIComponent(project.relativePath)}`);
   await expect(codexWorkspace).toBeVisible();
   await expect(page.locator("caffold-files-page")).toBeHidden();
   await expect(page.locator("caffold-tasks-page")).toHaveAttribute(
@@ -1005,7 +1161,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     .locator("caffold-tasks-page .tasks-empty")
     .getByRole("button", { name: "New Task", exact: true })
     .click();
-  await expect(page).toHaveURL(`/projects/${project.id}/tasks/new`);
+  await expect(page).toHaveURL(`/tasks/new?cwd=${encodeURIComponent(project.relativePath)}`);
   await expect(page.locator("caffold-tasks-page")).toHaveAttribute(
     "data-tasks-view",
     "new",
@@ -1162,13 +1318,13 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       model: "gpt-5.5",
       prompt: "Inspect the planner changes",
     },
-    projectId: project.id,
+    projectId: "",
     valid: true,
   });
   await page.locator('caffold-tasks-page textarea[name="prompt"]').press("Enter");
 
   await expect.poll(() => createTaskRequests).toBe(1);
-  await expect(page).toHaveURL(`/projects/${project.id}/tasks/${threadId}`);
+  await expect(page).toHaveURL(`/tasks/${threadId}?cwd=${encodeURIComponent(project.relativePath)}`);
   const tasksPage = page.locator("caffold-tasks-page");
   await expect(tasksPage).toHaveCount(1);
   await expect(tasksPage).toHaveAttribute("data-tasks-view", "detail");
@@ -1337,7 +1493,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-file-browser-list");
   await page.locator("caffold-codex-workspace .codex-workspace-close").click();
-  await expect(page).toHaveURL(`/projects/${project.id}/tasks/${threadId}`);
+  await expect(page).toHaveURL(`/tasks/${threadId}?cwd=${encodeURIComponent(project.relativePath)}`);
   await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
     "data-task-detail-view",
     "conversation",
@@ -1355,7 +1511,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   );
   await expect(taskFilesView.locator('button[data-entry-path="src/alpha.rs"]')).toBeVisible();
   await taskFilesView.locator('button[data-entry-path="src/alpha.rs"]').click();
-  await expect(page).toHaveURL(`/projects/${project.id}/tasks/${threadId}`);
+  await expect(page).toHaveURL(`/tasks/${threadId}?cwd=${encodeURIComponent(project.relativePath)}`);
   await expect(taskFilesView.locator("caffold-file-viewer")).toContainText(
     "alpha.rs",
   );
@@ -1403,7 +1559,14 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   ).toBeVisible();
   await expect(tasksPage).not.toContainText("Follow-up prompt sent");
   releaseFollowUpResponse();
-  await expect(tasksPage.locator(".task-detail-summary")).toContainText("running");
+  const runningStatus = tasksPage.locator(
+    '.task-detail-summary .task-status-chip[data-status="running"]',
+  );
+  await expect(
+    runningStatus,
+  ).toBeVisible();
+  await expect(runningStatus.locator(".task-status-spinner")).toBeVisible();
+  await expect(runningStatus.locator(".task-status-label")).toHaveCount(0);
   await expect(followUpTextarea).toBeFocused();
   await expect(
     tasksPage.locator('.task-message[data-message-role="user"]').filter({
@@ -1427,7 +1590,7 @@ test("loads older task conversation events by cursor", async ({ page }) => {
     activeTurnId: null,
     title: "Long running thread",
     preview: "Latest answer",
-    status: "idle",
+    status: "notLoaded",
     cwd: "src",
     relativeCwd: "",
     createdMs: now,
@@ -1467,6 +1630,15 @@ test("loads older task conversation events by cursor", async ({ page }) => {
     ),
   ];
 
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("projectId")).toBe(project.id);
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [task] }),
+    });
+  });
+
   await page.route(/\/api\/tasks\/thread_cursor_fixture(?:\?|$)/, (route) => {
     const url = new URL(route.request().url());
     expect(url.searchParams.get("projectId")).toBe(project.id);
@@ -1482,8 +1654,13 @@ test("loads older task conversation events by cursor", async ({ page }) => {
     });
   });
 
-  await page.goto(`/projects/${project.id}/tasks/${threadId}`);
+  await page.goto(`/projects/${project.id}/tasks`);
   const tasksPage = page.locator("caffold-tasks-page");
+  const taskRow = tasksPage.locator(".task-row", { hasText: "Long running thread" });
+  await expect(taskRow.locator(".task-row-time")).toBeVisible();
+  await expect(taskRow).not.toContainText("notLoaded");
+  await taskRow.click();
+  await expect(tasksPage.locator(".task-detail-summary")).not.toContainText("notLoaded");
   await expect(tasksPage).toContainText("This is the latest answer block 12.");
   await expect(tasksPage).not.toContainText("This is the older prompt.");
   await expect

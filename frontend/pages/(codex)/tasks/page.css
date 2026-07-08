@@ -58,7 +58,7 @@ caffold-tasks-page .task-tool-card header,
 caffold-tasks-page .task-file-change header,
 caffold-tasks-page .task-file-change p,
 caffold-tasks-page .task-row-summary,
-caffold-tasks-page .task-row time {
+caffold-tasks-page .task-row-time {
   color: var(--muted);
 }
 
@@ -133,8 +133,8 @@ caffold-tasks-page .task-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
-    "title status"
-    "summary time";
+    "title meta"
+    "summary summary";
   width: 100%;
   min-width: 0;
   padding: 10px 12px;
@@ -161,11 +161,6 @@ caffold-tasks-page .task-row-title {
   white-space: nowrap;
 }
 
-caffold-tasks-page .task-row-status {
-  grid-area: status;
-  color: var(--accent);
-}
-
 caffold-tasks-page .task-row-summary {
   grid-area: summary;
   overflow: hidden;
@@ -173,8 +168,13 @@ caffold-tasks-page .task-row-summary {
   white-space: nowrap;
 }
 
-caffold-tasks-page .task-row time {
-  grid-area: time;
+caffold-tasks-page .task-row-meta {
+  grid-area: meta;
+  justify-self: end;
+}
+
+caffold-tasks-page .task-row-time {
+  color: var(--muted);
 }
 
 caffold-tasks-page .task-detail {
@@ -204,7 +204,29 @@ caffold-tasks-page .task-detail[data-task-detail-view="files"] .task-detail-summ
 
 caffold-tasks-page .task-detail-summary p {
   display: flex;
+  align-items: center;
   gap: 10px;
+}
+
+caffold-tasks-page .task-detail-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+caffold-tasks-page .task-detail-status-slot {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+caffold-tasks-page .task-diff-disabled {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: right;
 }
 
 caffold-tasks-page .task-conversation-pane,
@@ -348,10 +370,59 @@ caffold-tasks-page .task-event-status {
 }
 
 caffold-tasks-page .task-status-chip {
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: center;
+  gap: 5px;
   padding: 2px 8px;
   border: 1px solid #d9e2d9;
   border-radius: 999px;
   background: #f8fbf9;
+  white-space: nowrap;
+}
+
+caffold-tasks-page .task-detail-status {
+  width: 1.35rem;
+  height: 1.35rem;
+  justify-content: center;
+  padding: 0;
+}
+
+caffold-tasks-page .task-status-icon {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+caffold-tasks-page .task-status-spinner {
+  width: 0.78rem;
+  height: 0.78rem;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  animation: task-status-spin 800ms linear infinite;
+}
+
+caffold-tasks-page .task-status-chip[data-status="running"] {
+  color: var(--accent);
+}
+
+caffold-tasks-page .task-status-chip[data-status="waiting_for_approval"] {
+  border-color: #dfc58f;
+  background: #fff8e7;
+  color: #7f5600;
+}
+
+caffold-tasks-page .task-status-chip[data-status="failed"],
+caffold-tasks-page .task-status-chip[data-status="interrupted"] {
+  border-color: #e6b5b0;
+  background: #fff2f0;
+  color: #9f2f25;
+}
+
+@keyframes task-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 caffold-tasks-page .task-event-status[data-event-status="warning"] .task-status-chip {

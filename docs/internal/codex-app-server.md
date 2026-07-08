@@ -51,18 +51,22 @@ truth for:
 - file changes
 - turn status and history
 
-Caffold derives project membership from `thread.cwd` and prefix-filters threads
-against the registered project root because app-server cwd filtering is exact
-match only. Caffold keeps pending approvals and SSE notifications as ephemeral
-in-memory state in this slice. Pending approval cards may disappear after a
-Caffold backend restart until app-server re-emits the request.
+Caffold derives project membership from `thread.cwd`. Project-scoped task
+routes prefix-filter threads against the registered project root. Global
+current-directory task routes use exact `cwd` filtering so opening Tasks from a
+directory does not automatically show unrelated subdirectory or sibling threads.
+Caffold keeps pending approvals and SSE notifications as ephemeral in-memory
+state in this slice. Pending approval cards may disappear after a Caffold
+backend restart until app-server re-emits the request.
 
 Local task metadata/event storage is deferred and optional. If added later, it
 should augment Codex threads with Caffold-only annotations rather than become
 the required primary lookup path.
 
-The first Tasks surface runs in the registered project root/current project
-context. Worktree creation, cleanup, and checkout UX are separate lifecycle
+The first Tasks surface can run without a registered project. A registered
+project supplies optional filtering, cwd defaults, and Git diff review
+integration; otherwise the current Caffold root/path context is used as the
+thread cwd. Worktree creation, cleanup, and checkout UX are separate lifecycle
 features.
 
 ## Process Ownership

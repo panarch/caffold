@@ -97,18 +97,19 @@ from `(review-workspace)` because Codex is a work/control surface, not only a
 review surface. For now the layout delegates to its Tasks child, but it is the
 future owner for Codex-level workspace lifecycle such as keeping thread UI
 state mounted while moving between conversation and review subviews.
-`(codex)/tasks/page` owns the project-level Codex task surface:
-thread-derived list/new/detail state, prompt composition, Codex transcript
-rendering, approval cards, SSE subscription, and mobile list/detail switching.
-It may mount the reusable `scaffold-file-browser` as a full task-detail subview
-that switches with the conversation subview while keeping both mounted. Files
-mode hides the task list/detail chrome and gives the file browser the full
-Codex workspace body, with its own back control returning to the conversation.
-In that mode the file browser handles directory/file selection locally and does
-not emit route-changing file browser events to the app root.
-The app root only routes the current project into the Codex workspace and
-handles cross-surface actions such as opening the existing Git diff review
-surface.
+`(codex)/tasks/page` owns the Codex task surface: thread-derived
+list/new/detail state, prompt composition, Codex transcript rendering, approval
+cards, SSE subscription, and mobile list/detail switching. Tasks are global by
+default; a registered project is optional context used for filtering, default
+cwd selection, and opening the existing Git diff review surface. It may mount
+the reusable `scaffold-file-browser` as a full task-detail subview that
+switches with the conversation subview while keeping both mounted. Files mode
+hides the task list/detail chrome and gives the file browser the full Codex
+workspace body, with its own back control returning to the conversation. In
+that mode the file browser handles directory/file selection locally and does
+not emit route-changing file browser events to the app root. The app root only
+routes optional project context into the Codex workspace and handles
+cross-surface actions such as opening the existing Git diff review surface.
 
 `scaffold-project-switcher` owns project record state and project candidate
 state for the current directory. It performs project list/candidate refresh and

@@ -41,6 +41,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.loadingOlderEvents = false;
     this.project = null;
     this.projectId = "";
+    this.cwdPath = "";
     this.selectedThreadId = "";
     this.stream = null;
     this.requestId = 0;
@@ -124,7 +125,7 @@ class CaffoldTasksPage extends HTMLElement {
   prepareRoute(route) {
     this.ensureRendered();
     const previousView = this.view;
-    this.projectId = route?.projectId ?? this.projectId;
+    this.projectId = route?.projectId ?? "";
     this.error = null;
     if (route?.new) {
       if (previousView !== "new") {
@@ -159,6 +160,7 @@ class CaffoldTasksPage extends HTMLElement {
 
   async openRoute(route, options = {}) {
     this.setProject(options.project ?? this.project);
+    this.cwdPath = Object.hasOwn(route ?? {}, "cwd") ? (route.cwd ?? "") : (options.cwdPath ?? "");
     this.prepareRoute(route);
     if (route?.new) {
       return this.openNew();
@@ -170,10 +172,6 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   async openList() {
-    if (!this.projectId) {
-      return null;
-    }
-
     const requestId = ++this.requestId;
     this.loading = true;
     this.error = null;
@@ -181,7 +179,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.render();
 
     try {
-      const response = await getTasks(this.projectId);
+      const response = await getTasks(this.projectId, this.projectId ? "" : this.cwdPath);
       if (requestId !== this.requestId) {
         return null;
       }
@@ -317,7 +315,7 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
     if (action === "open-diff") {
-      this.dispatchEvent(new CustomEvent("caffold:open-diff-workspace", { bubbles: true }));
+      this.openTaskDiff();
       return;
     }
     if (action === "toggle-files") {
@@ -389,7 +387,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.captureDraft(form);
     const formData = new FormData(form);
     const prompt = `${formData.get("prompt") ?? ""}`.trim();
-    if (!prompt || !this.projectId) {
+    if (!prompt) {
       return;
     }
 
@@ -399,7 +397,8 @@ class CaffoldTasksPage extends HTMLElement {
 
     try {
       const detail = await createTask({
-        projectId: this.projectId,
+        ...(this.projectId ? { projectId: this.projectId } : {}),
+        ...(this.cwdPath ? { cwd: this.cwdPath } : {}),
         prompt,
         ...this.turnOptions(),
       });
@@ -558,22 +557,46 @@ class CaffoldTasksPage extends HTMLElement {
     }
   }
 
-  requestRoute(route) {
-    if (!this.projectId) {
-      return;
-    }
-
+  requestRoute(route, options = {}) {
+    const includeContext = options.includeContext ?? true;
+    const context =
+      includeContext && !this.projectId && this.cwdPath
+        ? {
+            cwd: this.cwdPath,
+          }
+        : {};
     this.dispatchEvent(
       new CustomEvent("caffold:request-tasks-route", {
         bubbles: true,
         detail: {
           route: {
-            projectId: this.projectId,
+            ...(this.projectId ? { projectId: this.projectId } : {}),
+            ...context,
             ...route,
           },
         },
       }),
     );
+  }
+
+  openTaskDiff() {
+    const projectId = this.taskProjectId();
+    if (!projectId) {
+      return;
+    }
+
+    this.dispatchEvent(
+      new CustomEvent("caffold:request-git-route", {
+        bubbles: true,
+        detail: {
+          route: { kind: "diff", projectId, path: "" },
+        },
+      }),
+    );
+  }
+
+  taskProjectId() {
+    return this.taskDetail?.task?.projectId || this.projectId || "";
   }
 
   async loadModelOptions() {
@@ -795,7 +818,7 @@ class CaffoldTasksPage extends HTMLElement {
     }
 
     const browser = this.querySelector(".task-files-view caffold-file-browser");
-    const targetPath = previousPath || this.project?.relativePath || "";
+    const targetPath = previousPath || this.project?.relativePath || this.cwdPath || "";
     if (!browser) {
       return;
     }
@@ -880,7 +903,7 @@ class CaffoldTasksPage extends HTMLElement {
         : this.view === "detail"
           ? "Task"
           : "Tasks";
-    const subtitle = this.project?.name ?? "Project";
+    const subtitle = this.project?.name ?? this.globalTasksSubtitle();
 
     return `
       <header class="tasks-header">
@@ -907,6 +930,14 @@ class CaffoldTasksPage extends HTMLElement {
         </div>
       </header>
     `;
+  }
+
+  globalTasksSubtitle() {
+    return this.cwdPath ? `Threads in ${this.displayCwdPath()}` : "All Codex threads";
+  }
+
+  displayCwdPath() {
+    return this.cwdPath === "." ? "~" : this.cwdPath;
   }
 
   renderBody() {
@@ -949,13 +980,13 @@ class CaffoldTasksPage extends HTMLElement {
     const threadId = task.threadId ?? task.id;
     const selected = threadId === this.selectedThreadId ? ` aria-current="true"` : "";
     const summary = task.lastEventSummary || task.preview || task.relativeCwd || task.cwd;
+    const meta = renderTaskRowMeta(task);
     return `
       <li>
         <button type="button" class="task-row" data-task-action="open-task" data-thread-id="${escapeHtml(threadId)}"${selected}>
           <span class="task-row-title">${escapeHtml(task.title)}</span>
-          <span class="task-row-status" data-status="${escapeHtml(task.status)}">${escapeHtml(formatStatus(task.status))}</span>
+          ${meta}
           <span class="task-row-summary">${escapeHtml(summary || "No preview")}</span>
-          <time>${escapeHtml(formatDate(task.recencyMs ?? task.updatedMs))}</time>
         </button>
       </li>
     `;
@@ -966,7 +997,9 @@ class CaffoldTasksPage extends HTMLElement {
       formName: "create",
       className: "task-new-form",
       prompt: this.newTaskDraft.prompt,
-      placeholder: "Ask Codex to work in this project",
+      placeholder: this.projectId
+        ? "Ask Codex to work in this project"
+        : "Ask Codex to work from the current directory",
       ariaLabel: "New task prompt",
       submitLabel: "Start task",
       cancel: true,
@@ -1074,6 +1107,8 @@ class CaffoldTasksPage extends HTMLElement {
       return `<p class="surface-message">${this.loading ? "Loading task..." : "Select a task."}</p>`;
     }
     const approvals = pendingApprovals(this.events);
+    const status = renderTaskStatusChip(task.status, "task-detail-status", { label: false });
+    const canOpenDiff = Boolean(this.taskProjectId());
 
     return `
       <div class="task-detail" data-task-detail-view="${escapeHtml(this.taskDetailView)}">
@@ -1081,29 +1116,42 @@ class CaffoldTasksPage extends HTMLElement {
           <div>
             <h2>${escapeHtml(task.title)}</h2>
             <p>
-              <span data-status="${escapeHtml(task.status)}">${escapeHtml(formatStatus(task.status))}</span>
               <span>Thread ${escapeHtml(shortId(task.threadId ?? task.id))}</span>
               ${task.relativeCwd ? `<span>${escapeHtml(task.relativeCwd)}</span>` : ""}
             </p>
           </div>
-          <div class="task-detail-actions">
-            <button
-              type="button"
-              class="task-secondary-button"
-              data-task-action="toggle-files"
-              aria-pressed="${this.taskDetailView === "files" ? "true" : "false"}"
-            >
-              ${renderInlineIcon("Folder", "Files", "task-action-icon")}
-              <span>Files</span>
-            </button>
-            <button type="button" class="task-secondary-button" data-task-action="open-diff">
-              ${renderInlineIcon("FileDiff", "Open diff", "task-action-icon")}
-              <span>Open Diff</span>
-            </button>
+          <div class="task-detail-right">
+            <div class="task-detail-actions">
+              <button
+                type="button"
+                class="task-secondary-button"
+                data-task-action="toggle-files"
+                aria-pressed="${this.taskDetailView === "files" ? "true" : "false"}"
+              >
+                ${renderInlineIcon("Folder", "Files", "task-action-icon")}
+                <span>Files</span>
+              </button>
+              <button
+                type="button"
+                class="task-secondary-button"
+                data-task-action="open-diff"
+                ${canOpenDiff ? "" : "disabled"}
+                title="${canOpenDiff ? "Open project diff" : "Register project to review diff"}"
+              >
+                ${renderInlineIcon("FileDiff", "Open diff", "task-action-icon")}
+                <span>Open Diff</span>
+              </button>
+              ${
+                task.activeTurnId
+                  ? `<button type="button" class="task-secondary-button" data-task-action="interrupt">Interrupt</button>`
+                  : ""
+              }
+            </div>
+            ${status ? `<div class="task-detail-status-slot">${status}</div>` : ""}
             ${
-              task.activeTurnId
-                ? `<button type="button" class="task-secondary-button" data-task-action="interrupt">Interrupt</button>`
-                : ""
+              canOpenDiff
+                ? ""
+                : `<p class="task-diff-disabled">Register project to review diff.</p>`
             }
           </div>
         </section>
@@ -1137,7 +1185,7 @@ class CaffoldTasksPage extends HTMLElement {
         <header class="task-files-header">
           <div>
             <h3>Files</h3>
-            <p>${escapeHtml(this.project?.name ?? "Project")}</p>
+            <p>${escapeHtml(this.project?.name ?? "Current directory")}</p>
           </div>
         </header>
         <caffold-file-browser></caffold-file-browser>
@@ -2019,8 +2067,105 @@ function parseJson(value) {
   }
 }
 
+function renderTaskRowMeta(task) {
+  const status = taskStatusView(task.status);
+  if (status) {
+    return renderTaskStatusChip(task.status, "task-row-meta");
+  }
+
+  const ms = task.recencyMs ?? task.updatedMs;
+  const date = new Date(Number(ms));
+  const dateTime = Number.isNaN(date.getTime()) ? "" : date.toISOString();
+  return `
+    <time class="task-row-meta task-row-time" datetime="${escapeHtml(dateTime)}">
+      ${escapeHtml(formatRelativeAge(ms))}
+    </time>
+  `;
+}
+
+function renderTaskStatusChip(status, className = "", options = {}) {
+  const view = taskStatusView(status);
+  if (!view) {
+    return "";
+  }
+  const showLabel = options.label !== false;
+
+  const classes = ["task-status-chip", className].filter(Boolean).join(" ");
+  const icon = view.status === "running"
+    ? `<span class="task-status-spinner" aria-hidden="true"></span><span class="sr-only">${escapeHtml(view.label)}</span>`
+    : renderInlineIcon(view.icon, view.label, "task-status-icon");
+  return `
+    <span
+      class="${escapeHtml(classes)}"
+      data-status="${escapeHtml(view.status)}"
+      title="${escapeHtml(view.label)}"
+      aria-label="${escapeHtml(view.label)}"
+    >
+      ${icon}
+      ${showLabel ? `<span class="task-status-label">${escapeHtml(view.label)}</span>` : ""}
+    </span>
+  `;
+}
+
+function taskStatusView(status) {
+  const normalized = normalizeTaskStatus(status);
+  return {
+    running: { status: "running", label: "running", icon: "" },
+    waiting_for_approval: {
+      status: "waiting_for_approval",
+      label: "approval",
+      icon: "CircleAlert",
+    },
+    failed: { status: "failed", label: "failed", icon: "TriangleAlert" },
+    interrupted: { status: "interrupted", label: "interrupted", icon: "CircleSlash" },
+    completed: { status: "completed", label: "completed", icon: "CircleCheck" },
+  }[normalized] ?? null;
+}
+
+function normalizeTaskStatus(status) {
+  return `${status ?? ""}`.trim();
+}
+
 function formatStatus(status) {
-  return `${status ?? "unknown"}`.replaceAll("_", " ");
+  const normalized = normalizeTaskStatus(status);
+  if (normalized === "notLoaded") {
+    return "ready";
+  }
+  return `${normalized || "unknown"}`.replaceAll("_", " ");
+}
+
+function formatRelativeAge(ms, now = Date.now()) {
+  const value = Number(ms);
+  if (!Number.isFinite(value)) {
+    return "";
+  }
+
+  const seconds = Math.max(0, Math.floor((now - value) / 1000));
+  if (seconds < 60) {
+    return "now";
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes}m`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours}h`;
+  }
+
+  const days = Math.floor(hours / 24);
+  if (days < 30) {
+    return `${days}d`;
+  }
+
+  const months = Math.floor(days / 30);
+  if (months < 12) {
+    return `${months}mo`;
+  }
+
+  return `${Math.floor(months / 12)}y`;
 }
 
 function formatDecision(decision) {

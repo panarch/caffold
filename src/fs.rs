@@ -529,6 +529,17 @@ impl RootedFs {
         Ok(relative_path_string(relative))
     }
 
+    pub fn absolute_directory_path(&self, requested_path: &str) -> Result<PathBuf, FsError> {
+        let resolved = self.resolve_existing(requested_path)?;
+        if !resolved.absolute.is_dir() {
+            return Err(FsError::NotDirectory {
+                path: requested_path.to_string(),
+            });
+        }
+
+        Ok(resolved.absolute)
+    }
+
     pub fn list(&self, requested_path: &str) -> Result<ListResponse, FsError> {
         let resolved = self.resolve_existing(requested_path)?;
         let metadata = fs::metadata(&resolved.absolute).map_err(|source| FsError::Io {

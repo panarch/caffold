@@ -3,6 +3,7 @@ const COMPARE_QUERY = [
   { name: "base", key: "baseRef", defaultValue: "" },
   { name: "head", key: "headRef", defaultValue: "" },
 ];
+const TASKS_QUERY = [{ name: "cwd", key: "cwd", defaultValue: "" }];
 
 const ROUTE_DEFINITIONS = [
   routeDefinition({
@@ -27,6 +28,41 @@ const ROUTE_DEFINITIONS = [
     target: "path",
     toRoute: ({ projectId, path }) => filesRoute(projectId, path),
     parent: (route) => filesRoute(route.projectId, parentPath(route.path)),
+  }),
+  routeDefinition({
+    id: "global-tasks-list",
+    kind: "tasks",
+    pattern: "/tasks",
+    query: TASKS_QUERY,
+    surface: "tasks",
+    target: "list",
+    toRoute: (_, query) => tasksRoute(null, query),
+    matchesRoute: (route) =>
+      route?.kind === "tasks" && !route.projectId && !route.new && !route.threadId,
+    parent: () => null,
+  }),
+  routeDefinition({
+    id: "global-tasks-new",
+    kind: "tasks",
+    pattern: "/tasks/new",
+    query: TASKS_QUERY,
+    surface: "tasks",
+    target: "new",
+    toRoute: (_, query) => tasksRoute(null, { ...query, new: true }),
+    matchesRoute: (route) => route?.kind === "tasks" && !route.projectId && Boolean(route.new),
+    parent: (route) => tasksRoute(null, { cwd: route.cwd }),
+  }),
+  routeDefinition({
+    id: "global-tasks-detail",
+    kind: "tasks",
+    pattern: "/tasks/[threadId]",
+    query: TASKS_QUERY,
+    surface: "tasks",
+    target: "detail",
+    toRoute: ({ threadId }, query) => tasksRoute(null, { ...query, threadId }),
+    matchesRoute: (route) =>
+      route?.kind === "tasks" && !route.projectId && Boolean(route.threadId),
+    parent: (route) => tasksRoute(null, { cwd: route.cwd }),
   }),
   routeDefinition({
     id: "tasks-list",
@@ -484,10 +520,15 @@ function pullsRoute(projectId, options = {}) {
 function tasksRoute(projectId, options = {}) {
   return {
     kind: "tasks",
-    projectId,
+    projectId: projectId ?? "",
     new: Boolean(options.new),
     threadId: options.threadId ?? "",
+    cwd: taskCwd(options.cwd),
   };
+}
+
+function taskCwd(path) {
+  return path === "." ? "." : cleanPath(path);
 }
 
 function filesRootRoute(route) {

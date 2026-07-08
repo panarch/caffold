@@ -105,6 +105,10 @@ function renderCodexActions(codexStatus) {
                     ${renderInlineActionIcon("ListTodo", "Open tasks")}
                     <span class="header-menu-label">Open Tasks</span>
                   </button>
+                  <button type="button" class="header-menu-item" data-action="open-all-tasks">
+                    ${renderInlineActionIcon("ListTodo", "All tasks")}
+                    <span class="header-menu-label">All Tasks</span>
+                  </button>
                   <button type="button" class="header-menu-item" data-action="new-task">
                     ${renderInlineActionIcon("Plus", "New task")}
                     <span class="header-menu-label">New Task</span>

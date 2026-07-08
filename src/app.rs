@@ -4,6 +4,7 @@ use std::{
     net::IpAddr,
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 
 use axum::{
@@ -37,6 +38,7 @@ use crate::{
 };
 
 const TASK_DETAIL_TURNS_PAGE_SIZE: usize = 8;
+const LIST_DIRECTORY_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone)]
 pub struct ServeConfig {
@@ -214,20 +216,21 @@ struct RenameProjectRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TasksQuery {
-    project_id: String,
+    project_id: Option<String>,
+    cwd: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TaskDetailQuery {
-    project_id: String,
+    project_id: Option<String>,
     cursor: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateTaskRequest {
-    project_id: String,
+    project_id: Option<String>,
     prompt: String,
     cwd: Option<String>,
     model: Option<String>,
@@ -302,7 +305,7 @@ struct TaskListResponse {
 struct TaskRecord {
     id: String,
     thread_id: String,
-    project_id: String,
+    project_id: Option<String>,
     title: String,
     preview: String,
     status: String,
@@ -465,6 +468,8 @@ fn router_with_state(state: AppState) -> Router {
         )
         .route("/service-worker.js", get(service_worker))
         .route("/assets/{*path}", get(asset))
+        .route("/tasks", get(index))
+        .route("/tasks/{*path}", get(index))
         .route("/projects", get(index))
         .route("/projects/{*path}", get(index))
         .with_state(state)
@@ -575,7 +580,22 @@ async fn list(
     State(state): State<AppState>,
     Query(query): Query<PathQuery>,
 ) -> Result<Json<ListResponse>, ApiError> {
-    state.fs.list(&query.path).map(Json).map_err(ApiError::from)
+    let fs = state.fs.clone();
+    let requested_path = query.path;
+    let timeout_path = requested_path.clone();
+    let list = tokio::task::spawn_blocking(move || fs.list(&requested_path));
+
+    match tokio::time::timeout(LIST_DIRECTORY_TIMEOUT, list).await {
+        Ok(Ok(Ok(response))) => Ok(Json(response)),
+        Ok(Ok(Err(error))) => Err(ApiError::from(error)),
+        Ok(Err(error)) => Err(ApiError::Internal(format!(
+            "directory listing task failed: {error}"
+        ))),
+        Err(_) => Err(ApiError::Timeout {
+            code: "directory_list_timeout",
+            message: format!("directory listing timed out: {timeout_path}"),
+        }),
+    }
 }
 
 async fn file(
@@ -871,10 +891,16 @@ async fn list_tasks(
     State(state): State<AppState>,
     Query(query): Query<TasksQuery>,
 ) -> Result<Json<TaskListResponse>, ApiError> {
-    let project = state.projects.get_project(&query.project_id)?;
+    let project = task_project_context(&state, query.project_id.as_deref())?;
+    let cwd_filter = task_filter_cwd(&state, project.as_ref(), query.cwd.as_deref())?;
     let client = require_codex_thread_client(&state).await?;
     let response = client.list_threads(100).await?;
-    let tasks = thread_list_response(&project, &response);
+    let tasks = thread_list_response(
+        project.as_ref(),
+        cwd_filter.as_deref(),
+        &state.projects,
+        &response,
+    );
     Ok(Json(TaskListResponse { tasks }))
 }
 
@@ -882,9 +908,9 @@ async fn create_task(
     State(state): State<AppState>,
     Json(request): Json<CreateTaskRequest>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
-    let project = state.projects.get_project(&request.project_id)?;
+    let project = task_project_context(&state, request.project_id.as_deref())?;
     let prompt = normalize_prompt(&request.prompt)?;
-    let cwd = project_task_cwd(&project, request.cwd.as_deref())?;
+    let cwd = task_cwd(&state, project.as_ref(), request.cwd.as_deref())?;
     let turn_options = codex_turn_options(request.model, request.effort)?;
     let client = require_codex_thread_client(&state).await?;
 
@@ -893,7 +919,7 @@ async fn create_task(
         .start_turn(&thread.thread_id, &cwd, prompt, turn_options)
         .await?;
     Ok(Json(
-        read_task_detail(&state, &client, &project, &thread.thread_id, None).await?,
+        read_task_detail(&state, &client, project.as_ref(), &thread.thread_id, None).await?,
     ))
 }
 
@@ -902,13 +928,13 @@ async fn task_detail(
     AxumPath(thread_id): AxumPath<String>,
     Query(query): Query<TaskDetailQuery>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
-    let project = state.projects.get_project(&query.project_id)?;
+    let project = task_project_context(&state, query.project_id.as_deref())?;
     let client = require_codex_thread_client(&state).await?;
     Ok(Json(
         read_task_detail(
             &state,
             &client,
-            &project,
+            project.as_ref(),
             &thread_id,
             query.cursor.as_deref(),
         )
@@ -921,11 +947,11 @@ async fn task_stream(
     AxumPath(thread_id): AxumPath<String>,
     Query(query): Query<TasksQuery>,
 ) -> Result<Response, ApiError> {
-    let project = state.projects.get_project(&query.project_id)?;
+    let project = task_project_context(&state, query.project_id.as_deref())?;
     // Validate route ownership once before subscribing. The stream itself is
     // ephemeral and only forwards live app-server events.
     let client = require_codex_thread_client(&state).await?;
-    validate_thread_belongs_to_project(&project, &thread_id, &client).await?;
+    validate_thread_belongs_to_project(project.as_ref(), &thread_id, &client).await?;
     let receiver = state.task_events.subscribe();
     let shutdown = state.shutdown.subscribe();
     let stream = stream::unfold(
@@ -972,23 +998,24 @@ async fn task_prompt(
     Query(query): Query<TasksQuery>,
     Json(request): Json<TaskPromptRequest>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
-    let project = state.projects.get_project(&query.project_id)?;
+    let project = task_project_context(&state, query.project_id.as_deref())?;
     let prompt = normalize_prompt(&request.prompt)?;
     let turn_options = codex_turn_options(request.model, request.effort)?;
     let client = require_codex_thread_client(&state).await?;
     let thread = client.read_thread(&thread_id, false).await?;
     let thread_value = thread.get("thread").unwrap_or(&thread);
-    ensure_thread_belongs_to_project(&project, thread_value)?;
+    ensure_thread_belongs_to_project(project.as_ref(), thread_value)?;
     let cwd = thread_value
         .get("cwd")
         .and_then(JsonValue::as_str)
-        .unwrap_or(&project.root_path);
-    client.resume_thread(&thread_id, cwd).await?;
+        .map(ToOwned::to_owned)
+        .unwrap_or(task_cwd(&state, project.as_ref(), None)?);
+    client.resume_thread(&thread_id, &cwd).await?;
     client
-        .start_turn(&thread_id, cwd, prompt, turn_options)
+        .start_turn(&thread_id, &cwd, prompt, turn_options)
         .await?;
     Ok(Json(
-        read_task_detail(&state, &client, &project, &thread_id, None).await?,
+        read_task_detail(&state, &client, project.as_ref(), &thread_id, None).await?,
     ))
 }
 
@@ -997,11 +1024,11 @@ async fn task_interrupt(
     AxumPath(thread_id): AxumPath<String>,
     Query(query): Query<TasksQuery>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
-    let project = state.projects.get_project(&query.project_id)?;
+    let project = task_project_context(&state, query.project_id.as_deref())?;
     let client = require_codex_thread_client(&state).await?;
     let thread = client.read_thread(&thread_id, false).await?;
     let thread_value = thread.get("thread").unwrap_or(&thread);
-    ensure_thread_belongs_to_project(&project, thread_value)?;
+    ensure_thread_belongs_to_project(project.as_ref(), thread_value)?;
     let turns_response = client
         .list_thread_turns(&thread_id, None, TASK_DETAIL_TURNS_PAGE_SIZE)
         .await?;
@@ -1020,7 +1047,7 @@ async fn task_interrupt(
     };
     client.interrupt_turn(&thread_id, &turn_id).await?;
     Ok(Json(
-        read_task_detail(&state, &client, &project, &thread_id, None).await?,
+        read_task_detail(&state, &client, project.as_ref(), &thread_id, None).await?,
     ))
 }
 
@@ -1030,7 +1057,7 @@ async fn task_approval(
     Query(query): Query<TasksQuery>,
     Json(request): Json<TaskApprovalRequest>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
-    let project = state.projects.get_project(&query.project_id)?;
+    let project = task_project_context(&state, query.project_id.as_deref())?;
     let pending = {
         let approvals = state.pending_approvals.lock().await;
         let Some(pending) = approvals.get(&approval_id).cloned() else {
@@ -1047,7 +1074,10 @@ async fn task_approval(
             message: "approval request belongs to another thread".to_string(),
         });
     }
-    if !pending.project_id.is_empty() && pending.project_id != query.project_id {
+    if let Some(project) = project.as_ref()
+        && !pending.project_id.is_empty()
+        && pending.project_id != project.id
+    {
         return Err(ApiError::BadRequest {
             code: "approval_project_mismatch",
             message: "approval request belongs to another project".to_string(),
@@ -1080,7 +1110,7 @@ async fn task_approval(
     let _ = state.task_events.send(event);
 
     Ok(Json(
-        read_task_detail(&state, &client, &project, &thread_id, None).await?,
+        read_task_detail(&state, &client, project.as_ref(), &thread_id, None).await?,
     ))
 }
 
@@ -1149,13 +1179,15 @@ async fn require_codex_thread_client(state: &AppState) -> Result<CodexThreadClie
 async fn read_task_detail(
     state: &AppState,
     client: &CodexThreadClient,
-    project: &ProjectRecord,
+    requested_project: Option<&ProjectRecord>,
     thread_id: &str,
     cursor: Option<&str>,
 ) -> Result<TaskDetailResponse, ApiError> {
     let response = client.read_thread(thread_id, false).await?;
     let thread = response.get("thread").unwrap_or(&response);
-    ensure_thread_belongs_to_project(project, thread)?;
+    ensure_thread_belongs_to_project(requested_project, thread)?;
+    let associated_project =
+        associated_project_for_thread(&state.projects, requested_project, thread);
     let turns_response = client
         .list_thread_turns(thread_id, cursor, TASK_DETAIL_TURNS_PAGE_SIZE)
         .await?;
@@ -1170,7 +1202,7 @@ async fn read_task_detail(
         .and_then(JsonValue::as_str)
         .map(ToOwned::to_owned);
     let thread = thread_with_turns(thread, turns)?;
-    let mut events = thread_events(project, &thread);
+    let mut events = thread_events(associated_project.as_ref(), &thread);
     let pending_approvals = pending_approval_events(state, thread_id).await;
     events.extend(pending_approvals.iter().cloned());
     events.sort_by(|left, right| {
@@ -1178,7 +1210,7 @@ async fn read_task_detail(
             .cmp(&right.created_ms)
             .then_with(|| left.id.cmp(&right.id))
     });
-    let task = task_record_from_thread(project, &thread, &events)?;
+    let task = task_record_from_thread(associated_project.as_ref(), &thread, &events)?;
     Ok(TaskDetailResponse {
         task,
         events,
@@ -1199,7 +1231,7 @@ fn thread_with_turns(thread: &JsonValue, turns: Vec<JsonValue>) -> Result<JsonVa
 }
 
 async fn validate_thread_belongs_to_project(
-    project: &ProjectRecord,
+    project: Option<&ProjectRecord>,
     thread_id: &str,
     client: &CodexThreadClient,
 ) -> Result<(), ApiError> {
@@ -1208,14 +1240,34 @@ async fn validate_thread_belongs_to_project(
     ensure_thread_belongs_to_project(project, thread)
 }
 
-fn thread_list_response(project: &ProjectRecord, response: &JsonValue) -> Vec<TaskRecord> {
+fn thread_list_response(
+    project: Option<&ProjectRecord>,
+    cwd_filter: Option<&str>,
+    projects: &ProjectStore,
+    response: &JsonValue,
+) -> Vec<TaskRecord> {
     let mut tasks = response
         .get("data")
         .and_then(JsonValue::as_array)
         .into_iter()
         .flatten()
-        .filter(|thread| thread_belongs_to_project(project, thread))
-        .filter_map(|thread| task_record_from_thread(project, thread, &[]).ok())
+        .filter_map(|thread| {
+            if let Some(cwd_filter) = cwd_filter
+                && !thread_cwd_is_exact(thread, cwd_filter)
+            {
+                return None;
+            }
+
+            if let Some(project) = project {
+                if !thread_belongs_to_project(project, thread) {
+                    return None;
+                }
+                return task_record_from_thread(Some(project), thread, &[]).ok();
+            }
+
+            let associated_project = associated_project_for_thread(projects, None, thread);
+            task_record_from_thread(associated_project.as_ref(), thread, &[]).ok()
+        })
         .collect::<Vec<_>>();
     tasks.sort_by(|left, right| {
         right
@@ -1228,7 +1280,7 @@ fn thread_list_response(project: &ProjectRecord, response: &JsonValue) -> Vec<Ta
 }
 
 fn task_record_from_thread(
-    project: &ProjectRecord,
+    project: Option<&ProjectRecord>,
     thread: &JsonValue,
     events: &[TaskEventRecord],
 ) -> Result<TaskRecord, ApiError> {
@@ -1236,7 +1288,10 @@ fn task_record_from_thread(
         code: "thread_id_missing",
         message: "Codex thread did not include an id".to_string(),
     })?;
-    let cwd = thread_cwd(thread).unwrap_or(&project.root_path).to_string();
+    let cwd = thread_cwd(thread)
+        .or_else(|| project.map(|project| project.root_path.as_str()))
+        .unwrap_or("")
+        .to_string();
     let title = non_empty_string(thread.get("name").and_then(JsonValue::as_str))
         .or_else(|| non_empty_string(thread.get("preview").and_then(JsonValue::as_str)))
         .unwrap_or_else(|| format!("Thread {}", short_thread_id(thread_id)));
@@ -1263,11 +1318,13 @@ fn task_record_from_thread(
     Ok(TaskRecord {
         id: thread_id.to_string(),
         thread_id: thread_id.to_string(),
-        project_id: project.id.clone(),
+        project_id: project.map(|project| project.id.clone()),
         title,
         preview,
         status,
-        relative_cwd: relative_cwd(project, &cwd),
+        relative_cwd: project
+            .map(|project| relative_cwd(project, &cwd))
+            .unwrap_or_else(|| cwd.clone()),
         cwd,
         created_ms: seconds_to_ms(thread.get("createdAt").and_then(JsonValue::as_f64)),
         updated_ms: seconds_to_ms(thread.get("updatedAt").and_then(JsonValue::as_f64)),
@@ -1280,10 +1337,11 @@ fn task_record_from_thread(
     })
 }
 
-fn thread_events(project: &ProjectRecord, thread: &JsonValue) -> Vec<TaskEventRecord> {
+fn thread_events(project: Option<&ProjectRecord>, thread: &JsonValue) -> Vec<TaskEventRecord> {
     let Some(thread_id) = thread_id(thread) else {
         return Vec::new();
     };
+    let project_id = project.map(|project| project.id.as_str()).unwrap_or("");
     let mut events = Vec::new();
     let created_ms = seconds_to_ms(thread.get("createdAt").and_then(JsonValue::as_f64));
     for turn in thread
@@ -1300,7 +1358,7 @@ fn thread_events(project: &ProjectRecord, thread: &JsonValue) -> Vec<TaskEventRe
             .unwrap_or(created_ms);
         events.push(task_event_record(
             thread_id,
-            &project.id,
+            project_id,
             &format!("{turn_id}:started"),
             "turn_started",
             "Turn started",
@@ -1319,7 +1377,7 @@ fn thread_events(project: &ProjectRecord, thread: &JsonValue) -> Vec<TaskEventRe
                 "item": item
             });
             if let Some(event) =
-                task_event_from_thread_item(thread_id, &project.id, started_ms, &params)
+                task_event_from_thread_item(thread_id, project_id, started_ms, &params)
             {
                 events.push(event);
             }
@@ -1341,7 +1399,7 @@ fn thread_events(project: &ProjectRecord, thread: &JsonValue) -> Vec<TaskEventRe
             };
             events.push(task_event_record(
                 thread_id,
-                &project.id,
+                project_id,
                 &format!("{turn_id}:completed"),
                 "turn_completed",
                 summary,
@@ -1878,10 +1936,24 @@ fn approval_id_from_request(request_id: &JsonValue, params: &JsonValue) -> Strin
         })
 }
 
+fn task_project_context(
+    state: &AppState,
+    project_id: Option<&str>,
+) -> Result<Option<ProjectRecord>, ApiError> {
+    project_id
+        .filter(|project_id| !project_id.is_empty())
+        .map(|project_id| state.projects.get_project(project_id))
+        .transpose()
+        .map_err(ApiError::from)
+}
+
 fn ensure_thread_belongs_to_project(
-    project: &ProjectRecord,
+    project: Option<&ProjectRecord>,
     thread: &JsonValue,
 ) -> Result<(), ApiError> {
+    let Some(project) = project else {
+        return Ok(());
+    };
     if thread_belongs_to_project(project, thread) {
         return Ok(());
     }
@@ -1897,6 +1969,12 @@ fn thread_belongs_to_project(project: &ProjectRecord, thread: &JsonValue) -> boo
         .unwrap_or(false)
 }
 
+fn thread_cwd_is_exact(thread: &JsonValue, cwd: &str) -> bool {
+    thread_cwd(thread)
+        .map(|thread_cwd| Path::new(thread_cwd) == Path::new(cwd))
+        .unwrap_or(false)
+}
+
 fn project_for_cwd(projects: &ProjectStore, cwd: &str) -> Option<ProjectRecord> {
     let cwd = Path::new(cwd);
     let mut candidates = projects
@@ -1907,6 +1985,16 @@ fn project_for_cwd(projects: &ProjectStore, cwd: &str) -> Option<ProjectRecord> 
         .collect::<Vec<_>>();
     candidates.sort_by_key(|project| project.root_path.len());
     candidates.pop()
+}
+
+fn associated_project_for_thread(
+    projects: &ProjectStore,
+    requested_project: Option<&ProjectRecord>,
+    thread: &JsonValue,
+) -> Option<ProjectRecord> {
+    requested_project
+        .cloned()
+        .or_else(|| thread_cwd(thread).and_then(|cwd| project_for_cwd(projects, cwd)))
 }
 
 fn project_id_for_approval(projects: &ProjectStore, params: &JsonValue) -> Option<String> {
@@ -2011,6 +2099,31 @@ fn project_task_cwd(project: &ProjectRecord, relative: Option<&str>) -> Result<S
     Ok(cwd.display().to_string())
 }
 
+fn task_cwd(
+    state: &AppState,
+    project: Option<&ProjectRecord>,
+    relative: Option<&str>,
+) -> Result<String, ApiError> {
+    if let Some(project) = project {
+        return project_task_cwd(project, relative);
+    }
+
+    let logical_path = normalize_project_relative_path(relative.unwrap_or(&state.initial_path))?;
+    let cwd = state.fs.absolute_directory_path(&logical_path)?;
+    Ok(cwd.display().to_string())
+}
+
+fn task_filter_cwd(
+    state: &AppState,
+    project: Option<&ProjectRecord>,
+    relative: Option<&str>,
+) -> Result<Option<String>, ApiError> {
+    relative
+        .filter(|path| !path.is_empty())
+        .map(|path| task_cwd(state, project, Some(path)))
+        .transpose()
+}
+
 fn normalize_project_relative_path(path: &str) -> Result<String, ApiError> {
     let mut parts = Vec::new();
     for segment in path.split('/') {
@@ -2098,6 +2211,8 @@ enum ApiError {
     Fs(FsError),
     Project(ProjectStoreError),
     CodexThread(String),
+    Internal(String),
+    Timeout { code: &'static str, message: String },
     BadRequest { code: &'static str, message: String },
 }
 
@@ -2230,6 +2345,10 @@ impl IntoResponse for ApiError {
             ApiError::CodexThread(message) => {
                 (StatusCode::BAD_GATEWAY, "codex_app_server_error", message)
             }
+            ApiError::Internal(message) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", message)
+            }
+            ApiError::Timeout { code, message } => (StatusCode::GATEWAY_TIMEOUT, code, message),
             ApiError::BadRequest { code, message } => (StatusCode::BAD_REQUEST, code, message),
         };
 
@@ -2310,7 +2429,8 @@ mod tests {
             ]
         });
 
-        let tasks = thread_list_response(&project, &response);
+        let projects = ProjectStore::memory().unwrap();
+        let tasks = thread_list_response(Some(&project), None, &projects, &response);
         assert_eq!(
             tasks
                 .iter()
@@ -2320,6 +2440,95 @@ mod tests {
         );
         assert_eq!(tasks[0].status, "running");
         assert_eq!(tasks[0].relative_cwd, "src");
+    }
+
+    #[test]
+    fn thread_list_response_all_threads_marks_matching_projects_optionally() {
+        let temp = tempfile::tempdir().unwrap();
+        let project_root = temp.path().join("project");
+        std::fs::create_dir(&project_root).unwrap();
+        let projects = ProjectStore::memory().unwrap();
+        let project = projects
+            .create_project("project", &project_root.display().to_string())
+            .unwrap();
+        let response = json!({
+            "data": [
+                {
+                    "id": "thread_project",
+                    "preview": "Project thread",
+                    "cwd": temp.path().join("project/src").display().to_string(),
+                    "createdAt": 1.0,
+                    "updatedAt": 2.0,
+                    "status": { "type": "idle" }
+                },
+                {
+                    "id": "thread_global",
+                    "preview": "Global thread",
+                    "cwd": temp.path().join("outside").display().to_string(),
+                    "createdAt": 3.0,
+                    "updatedAt": 4.0,
+                    "status": { "type": "idle" }
+                }
+            ]
+        });
+
+        let tasks = thread_list_response(None, None, &projects, &response);
+
+        assert_eq!(tasks.len(), 2);
+        let project_task = tasks
+            .iter()
+            .find(|task| task.thread_id == "thread_project")
+            .unwrap();
+        let global_task = tasks
+            .iter()
+            .find(|task| task.thread_id == "thread_global")
+            .unwrap();
+        assert_eq!(
+            project_task.project_id.as_deref(),
+            Some(project.id.as_str())
+        );
+        assert_eq!(project_task.relative_cwd, "src");
+        assert_eq!(global_task.project_id, None);
+        assert!(global_task.relative_cwd.ends_with("outside"));
+    }
+
+    #[test]
+    fn thread_list_response_exact_cwd_filter_does_not_include_subdirectories() {
+        let temp = tempfile::tempdir().unwrap();
+        let project_root = temp.path().join("project");
+        let src_root = project_root.join("src");
+        std::fs::create_dir_all(&src_root).unwrap();
+        let projects = ProjectStore::memory().unwrap();
+        let project = projects
+            .create_project("project", &project_root.display().to_string())
+            .unwrap();
+        let cwd_filter = project_root.display().to_string();
+        let response = json!({
+            "data": [
+                {
+                    "id": "thread_project_root",
+                    "preview": "Root thread",
+                    "cwd": project_root.display().to_string(),
+                    "createdAt": 1.0,
+                    "updatedAt": 2.0,
+                    "status": { "type": "idle" }
+                },
+                {
+                    "id": "thread_src",
+                    "preview": "Src thread",
+                    "cwd": src_root.display().to_string(),
+                    "createdAt": 3.0,
+                    "updatedAt": 4.0,
+                    "status": { "type": "idle" }
+                }
+            ]
+        });
+
+        let tasks = thread_list_response(None, Some(&cwd_filter), &projects, &response);
+
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].thread_id, "thread_project_root");
+        assert_eq!(tasks[0].project_id.as_deref(), Some(project.id.as_str()));
     }
 
     #[test]
@@ -2381,7 +2590,7 @@ mod tests {
             ]
         });
 
-        let events = thread_events(&project, &thread);
+        let events = thread_events(Some(&project), &thread);
         let event_types = events
             .iter()
             .map(|event| event.event_type.as_str())
@@ -2451,7 +2660,7 @@ mod tests {
             ]
         });
 
-        let events = thread_events(&project, &thread);
+        let events = thread_events(Some(&project), &thread);
         let reasoning = events
             .iter()
             .find(|event| event.event_type == "reasoning")
@@ -2540,7 +2749,7 @@ mod tests {
             1,
         )];
 
-        let task = task_record_from_thread(&project, &thread, &events).unwrap();
+        let task = task_record_from_thread(Some(&project), &thread, &events).unwrap();
         assert_eq!(task.status, "waiting_for_approval");
     }
 

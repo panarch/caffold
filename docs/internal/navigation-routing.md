@@ -12,6 +12,10 @@ encode mobile, foldable, or desktop layout state.
 Registered projects are addressed by stable project ID. Project names remain
 display-only because they can be renamed.
 
+- `/tasks`
+- `/tasks?cwd=...`
+- `/tasks/new?cwd=...`
+- `/tasks/:threadId?cwd=...`
 - `/projects/:projectId/files`
 - `/projects/:projectId/files/*path`
 - `/projects/:projectId/tasks`
@@ -31,9 +35,18 @@ display-only because they can be renamed.
 - `/projects/:projectId/pulls/:number/files?page=...`
 - `/projects/:projectId/pulls/:number/files/*path?page=...`
 
-Route paths are project-relative. The frontend resolves the project ID through
-the existing project API, then maps the route path onto the project's registered
-root path before calling file, git, or GitHub APIs.
+Route paths under `/projects/:projectId` are project-relative. The frontend
+resolves the project ID through the existing project API, then maps the route
+path onto the project's registered root path before calling file, git, or
+GitHub APIs.
+
+Codex Tasks use Codex app-server threads as the source of truth and do not
+require a registered project. `/tasks` is the explicit all-threads route.
+Header `Open Tasks` enters `/tasks?cwd=...`, which filters to threads whose
+`cwd` exactly matches the current browser directory; header `All Tasks` enters
+plain `/tasks`. Project-scoped task routes remain as filters/context routes:
+they restrict the thread list to threads whose `cwd` is under the project root
+and provide a project-root default cwd for new turns.
 
 ## Route Definitions
 
@@ -88,7 +101,8 @@ Back and close controls use deterministic parent routes:
 - PR detail -> PR list
 - task detail -> task list
 - new task -> task list
-- task list -> project files
+- global task list -> `/`
+- project task list -> project files
 - review workspace close -> project files
 
 Task detail routes use Codex app-server `threadId` values directly. Caffold does
@@ -137,8 +151,8 @@ independently reloadable even when no list cache exists.
 ## Server Fallback
 
 The Rust server serves the app shell for known frontend routes under
-`/projects`. API and asset routes stay explicit and should continue returning
-their real errors when a path is missing.
+`/projects` and `/tasks`. API and asset routes stay explicit and should
+continue returning their real errors when a path is missing.
 
 ## Test Contract
 

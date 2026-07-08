@@ -74,10 +74,25 @@ class CaffoldAppShell extends HTMLElement {
       this.navigateOrOpenGithubRoute(this.githubLayout.routeForAction("pulls"));
     });
     this.addEventListener("caffold:open-tasks", () => {
-      this.navigateToCurrentProjectRoute({ kind: "tasks" });
+      this.navigateToRoute({
+        kind: "tasks",
+        projectId: "",
+        new: false,
+        threadId: "",
+        cwd: this.currentPath || ".",
+      });
+    });
+    this.addEventListener("caffold:open-all-tasks", () => {
+      this.navigateToRoute({ kind: "tasks", projectId: "", new: false, threadId: "" });
     });
     this.addEventListener("caffold:new-task", () => {
-      this.navigateToCurrentProjectRoute({ kind: "tasks", new: true });
+      this.navigateToRoute({
+        kind: "tasks",
+        projectId: "",
+        new: true,
+        threadId: "",
+        cwd: this.currentPath || ".",
+      });
     });
     this.addEventListener("caffold:request-tasks-route", (event) => {
       this.navigateToRoute(event.detail.route);
@@ -266,11 +281,11 @@ class CaffoldAppShell extends HTMLElement {
     this.prepareRoute(route);
     try {
       const project = await this.openProjectForRoute(route.projectId);
-      if (!project) {
+      const surface = routeSurface(route);
+      if (!project && surface !== "tasks") {
         return false;
       }
 
-      const surface = routeSurface(route);
       const domain = routeDomain(route);
       if (surface === "files") {
         await this.applyFilesRoute(project, route);
@@ -322,12 +337,17 @@ class CaffoldAppShell extends HTMLElement {
     this.reviewWorkspace.prepareForFileBrowserOpen();
     this.filesPage.hidden = true;
     this.codexWorkspace.hidden = false;
-    this.pathbar.path = project.relativePath;
-    await this.ensureProjectReviewContext(project);
+    if (project) {
+      this.pathbar.path = project.relativePath;
+      await this.ensureProjectReviewContext(project);
+    }
     if (!this.isCurrentRoute(route)) {
       return;
     }
-    await this.codexWorkspace.openRoute(route, { project });
+    await this.codexWorkspace.openRoute(route, {
+      project,
+      cwdPath: project?.relativePath ?? this.currentPath,
+    });
   }
 
   async applyGitRoute(project, route) {
@@ -391,18 +411,24 @@ class CaffoldAppShell extends HTMLElement {
 
   navigateOrOpenGitRoute(route, options = {}) {
     const { fallbackRoute, ...openOptions } = options;
-    const navigationRoute = this.projectRouteForReviewRoute(route);
+    const navigationRoute = route?.projectId ? route : this.projectRouteForReviewRoute(route);
     return (
-      (navigationRoute && this.navigateToCurrentProjectRoute(navigationRoute)) ||
+      (navigationRoute &&
+        (navigationRoute.projectId
+          ? this.navigateToRoute(navigationRoute)
+          : this.navigateToCurrentProjectRoute(navigationRoute))) ||
       this.openGitRoute(fallbackRoute ?? route, openOptions)
     );
   }
 
   navigateOrOpenGithubRoute(route, options = {}) {
     const { fallbackRoute, ...openOptions } = options;
-    const navigationRoute = this.projectRouteForReviewRoute(route);
+    const navigationRoute = route?.projectId ? route : this.projectRouteForReviewRoute(route);
     return (
-      (navigationRoute && this.navigateToCurrentProjectRoute(navigationRoute)) ||
+      (navigationRoute &&
+        (navigationRoute.projectId
+          ? this.navigateToRoute(navigationRoute)
+          : this.navigateToCurrentProjectRoute(navigationRoute))) ||
       this.openGithubRoute(fallbackRoute ?? route, openOptions)
     );
   }
@@ -446,7 +472,7 @@ class CaffoldAppShell extends HTMLElement {
     const currentRoute = parseRoute(window.location.href) ?? this.currentRoute;
     const projectId = currentRoute?.projectId ?? this.projectSwitcher.currentProjectId;
     if (!projectId) {
-      return false;
+      return this.navigateToHomeEntrypoint();
     }
 
     return this.navigateToRoute({
@@ -454,6 +480,20 @@ class CaffoldAppShell extends HTMLElement {
       projectId,
       path: "",
     });
+  }
+
+  navigateToHomeEntrypoint() {
+    this.currentRoute = null;
+    this.codexWorkspace.hidden = true;
+    this.filesPage.hidden = false;
+    this.closeReviewWorkspace();
+    if (this.usesNavigationApi) {
+      window.navigation.navigate("/", { history: "push" });
+    } else {
+      window.history.pushState({}, "", "/");
+    }
+    this.loadDirectory(this.currentPath || "");
+    return true;
   }
 
   replaceWithCurrentProjectFileRoute() {

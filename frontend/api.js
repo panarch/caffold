@@ -10,8 +10,8 @@ export async function getCodexModels() {
   return requestJson("/api/codex/models");
 }
 
-export async function getTasks(projectId) {
-  return requestJson("/api/tasks", { projectId });
+export async function getTasks(projectId, cwd = "") {
+  return requestJson("/api/tasks", optionalProjectParams(projectId, cwd ? { cwd } : {}));
 }
 
 export async function createTask(task) {
@@ -22,26 +22,37 @@ export async function createTask(task) {
 }
 
 export async function getTask(threadId, projectId, cursor = null) {
-  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}`, { projectId, cursor });
+  return requestJson(
+    `/api/tasks/${encodeURIComponent(threadId)}`,
+    optionalProjectParams(projectId, { cursor }),
+  );
 }
 
 export async function sendTaskPrompt(threadId, projectId, prompt, options = {}) {
-  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}/prompts`, { projectId }, {
-    method: "POST",
-    body: { prompt, ...options },
-  });
+  return requestJson(
+    `/api/tasks/${encodeURIComponent(threadId)}/prompts`,
+    optionalProjectParams(projectId),
+    {
+      method: "POST",
+      body: { prompt, ...options },
+    },
+  );
 }
 
 export async function interruptTask(threadId, projectId) {
-  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}/interrupt`, { projectId }, {
-    method: "POST",
-  });
+  return requestJson(
+    `/api/tasks/${encodeURIComponent(threadId)}/interrupt`,
+    optionalProjectParams(projectId),
+    {
+      method: "POST",
+    },
+  );
 }
 
 export async function resolveTaskApproval(threadId, projectId, approvalId, decision) {
   return requestJson(
     `/api/tasks/${encodeURIComponent(threadId)}/approvals/${encodeURIComponent(approvalId)}`,
-    { projectId },
+    optionalProjectParams(projectId),
     {
       method: "POST",
       body: { decision },
@@ -51,12 +62,21 @@ export async function resolveTaskApproval(threadId, projectId, approvalId, decis
 
 export function taskStreamUrl(threadId, projectId) {
   const url = new URL(`/api/tasks/${encodeURIComponent(threadId)}/stream`, window.location.origin);
-  url.searchParams.set("projectId", projectId);
+  if (projectId) {
+    url.searchParams.set("projectId", projectId);
+  }
   return `${url.pathname}${url.search}`;
 }
 
+function optionalProjectParams(projectId, params = {}) {
+  return {
+    ...params,
+    ...(projectId ? { projectId } : {}),
+  };
+}
+
 export async function listDirectory(path = "") {
-  return requestJson("/api/list", { path });
+  return requestJson("/api/list", { path }, { timeoutMs: 7000 });
 }
 
 export async function readFile(path) {
@@ -175,6 +195,14 @@ async function requestJson(endpoint, params = {}, options = {}) {
   const fetchOptions = {
     method: options.method ?? "GET",
   };
+  const controller = options.timeoutMs ? new AbortController() : null;
+  const timeoutId = controller
+    ? window.setTimeout(() => controller.abort(), options.timeoutMs)
+    : null;
+
+  if (controller) {
+    fetchOptions.signal = controller.signal;
+  }
 
   if (options.body !== undefined) {
     fetchOptions.headers = {
@@ -183,7 +211,24 @@ async function requestJson(endpoint, params = {}, options = {}) {
     fetchOptions.body = JSON.stringify(options.body);
   }
 
-  const response = await fetch(url, fetchOptions);
+  let response;
+  try {
+    response = await fetch(url, fetchOptions);
+  } catch (error) {
+    if (controller?.signal.aborted) {
+      const timeoutError = new Error("Request timed out.");
+      timeoutError.code = "request_timeout";
+      timeoutError.status = 0;
+      throw timeoutError;
+    }
+
+    throw error;
+  } finally {
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+    }
+  }
+
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
