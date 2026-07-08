@@ -1,13 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Caffold logo">
-  <rect width="256" height="256" rx="48" fill="#f7faf7"/>
-  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <defs>
+    <filter id="caffold-mark-shadow" x="-24%" y="-24%" width="148%" height="148%">
+      <feDropShadow dx="0" dy="6" stdDeviation="2.4" flood-color="#16221b" flood-opacity="0.36"/>
+      <feDropShadow dx="0" dy="2" stdDeviation="0.8" flood-color="#16221b" flood-opacity="0.22"/>
+      <feDropShadow dx="0" dy="-1.5" stdDeviation="0.8" flood-color="#ffffff" flood-opacity="0.88"/>
+    </filter>
+  </defs>
+
+  <rect width="256" height="256" fill="#f7faf7"/>
+
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#caffold-mark-shadow)">
     <path d="M68 58v140M188 58v140" stroke="#1f2a24" stroke-width="14"/>
     <path d="M50 86h156M50 128h156M50 170h156" stroke="#1f2a24" stroke-width="12"/>
     <path d="M68 86l60 42M68 170l60-42" stroke="#0b7a5f" stroke-width="10"/>
     <path d="M188 86l-60 42M188 170l-60-42" stroke="#697a70" stroke-width="10"/>
     <path d="M86 198h84" stroke="#697a70" stroke-width="10"/>
   </g>
-  <g fill="#f7faf7" stroke="#1f2a24" stroke-width="8">
+  <g fill="#f7faf7" stroke="#1f2a24" stroke-width="8" filter="url(#caffold-mark-shadow)">
     <circle cx="68" cy="58" r="8"/>
     <circle cx="188" cy="58" r="8"/>
     <circle cx="68" cy="198" r="8"/>
