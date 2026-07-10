@@ -123,8 +123,7 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let status = makeStatusItem("Checking server...")
         menu.addItem(status)
         statusMenuItem = status
-        menu.addItem(actionItem("Server Name...", action: #selector(changeServerName), key: "n"))
-        menu.addItem(actionItem("Server Settings...", action: #selector(showServerSettings)))
+        menu.addItem(actionItem("Server Settings...", action: #selector(showServerSettings), key: ","))
 
         let restart = actionItem("Restart Server", action: #selector(restartServer))
         restart.isEnabled = false
@@ -564,49 +563,11 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }.resume()
     }
 
-    private func promptForServerName(currentName: String) {
-        NSApp.activate(ignoringOtherApps: true)
-        let field = NSTextField(string: currentName)
-        field.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
-        field.placeholderString = "Caffold - Mac Studio"
-
-        let alert = NSAlert()
-        alert.messageText = "Server Name"
-        alert.informativeText = "This name is used when installing Caffold as a web app."
-        alert.accessoryView = field
-        alert.addButton(withTitle: "Save")
-        alert.addButton(withTitle: "Cancel")
-
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else {
-            presentError("Server name cannot be empty", detail: "Enter a name and try again.")
-            return
-        }
-
-        setStatus("Updating server name...")
-        saveServerName(name) { [weak self] result in
-            guard let self else { return }
-            switch result {
-            case let .success(settings):
-                self.refreshSystemStatus()
-                self.presentInformation(
-                    "Server name updated",
-                    detail: "New web app installations use \"\(settings.name)\". Existing installations may need to be reinstalled."
-                )
-            case let .failure(error):
-                self.setStatus("Server name update failed")
-                self.presentError("Server name could not be updated", detail: error.localizedDescription)
-            }
-        }
-    }
-
     private func promptForServerSettings(currentName: String) {
         NSApp.activate(ignoringOtherApps: true)
         let form = ServerSettingsView(name: currentName, preferences: preferences)
         let alert = NSAlert()
         alert.messageText = "Server Settings"
-        alert.informativeText = "Network changes restart an app-managed server or start one on a new port."
         alert.accessoryView = form
         alert.addButton(withTitle: "Apply")
         alert.addButton(withTitle: "Cancel")
@@ -823,23 +784,6 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSWorkspace.shared.open(logDirectory)
     }
 
-    @objc private func changeServerName() {
-        setStatus("Loading server name...")
-        loadServerSettings { [weak self] result in
-            guard let self else { return }
-            switch result {
-            case let .success(settings):
-                self.promptForServerName(currentName: settings.name)
-            case let .failure(error):
-                self.setStatus("Server name is unavailable")
-                self.presentError(
-                    "Server name could not be loaded",
-                    detail: error.localizedDescription
-                )
-            }
-        }
-    }
-
     @objc private func showServerSettings() {
         setStatus("Loading server settings...")
         loadServerSettings { [weak self] result in
@@ -915,7 +859,7 @@ private final class ServerSettingsView: NSView {
             target: nil,
             action: nil
         )
-        super.init(frame: NSRect(x: 0, y: 0, width: 390, height: 126))
+        super.init(frame: NSRect(x: 0, y: 0, width: 360, height: 292))
 
         nameField.placeholderString = "Caffold - Mac Studio"
         bindModeControl.addItems(withTitles: ["Local only (127.0.0.1)", "LAN (0.0.0.0)"])
@@ -929,17 +873,41 @@ private final class ServerSettingsView: NSView {
         portFormatter.allowsFloats = false
         portField.formatter = portFormatter
 
+        let nameHelp = Self.helpLabel(
+            "Used as the name for new web app installations. Existing installations keep their current name until reinstalled."
+        )
+        let networkHelp = Self.helpLabel(
+            "Changing Listen or Port may restart the managed server."
+        )
         let grid = NSGridView(views: [
+            [Self.sectionLabel("Identity"), NSView()],
             [NSTextField(labelWithString: "Name"), nameField],
+            [NSTextField(labelWithString: ""), nameHelp],
+            [Self.sectionLabel("Network"), NSView()],
             [NSTextField(labelWithString: "Listen"), bindModeControl],
             [NSTextField(labelWithString: "Port"), portField],
+            [NSTextField(labelWithString: ""), networkHelp],
+            [Self.sectionLabel("Remote Access"), NSView()],
             [NSTextField(labelWithString: ""), autoStartTailscaleControl],
         ])
         grid.translatesAutoresizingMaskIntoConstraints = false
         grid.columnSpacing = 12
-        grid.rowSpacing = 8
+        grid.rowSpacing = 4
+        grid.column(at: 0).width = 72
         grid.column(at: 0).xPlacement = .trailing
         grid.column(at: 1).xPlacement = .fill
+        for rowIndex in [0, 3, 7] {
+            grid.mergeCells(
+                inHorizontalRange: NSRange(location: 0, length: 2),
+                verticalRange: NSRange(location: rowIndex, length: 1)
+            )
+            grid.cell(atColumnIndex: 0, rowIndex: rowIndex).xPlacement = .leading
+            grid.row(at: rowIndex).bottomPadding = 2
+        }
+        grid.row(at: 3).topPadding = 6
+        grid.row(at: 7).topPadding = 6
+        grid.row(at: 2).height = 56
+        grid.row(at: 6).height = 36
         addSubview(grid)
 
         NSLayoutConstraint.activate([
@@ -947,8 +915,23 @@ private final class ServerSettingsView: NSView {
             grid.trailingAnchor.constraint(equalTo: trailingAnchor),
             grid.topAnchor.constraint(equalTo: topAnchor),
             grid.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
-            nameField.widthAnchor.constraint(greaterThanOrEqualToConstant: 260),
         ])
+    }
+
+    private static func sectionLabel(_ title: String) -> NSTextField {
+        let label = NSTextField(labelWithString: title)
+        label.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
+        return label
+    }
+
+    private static func helpLabel(_ text: String) -> NSTextField {
+        let label = NSTextField(wrappingLabelWithString: text)
+        label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        label.textColor = .secondaryLabelColor
+        label.maximumNumberOfLines = 0
+        label.preferredMaxLayoutWidth = 264
+        label.setContentCompressionResistancePriority(.required, for: .vertical)
+        return label
     }
 
     @available(*, unavailable)

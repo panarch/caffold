@@ -32,13 +32,11 @@ Missing optional dependencies do not prevent the server from starting. The menu 
 - Caffold listens on `http://127.0.0.1:5178`.
 - When Tailscale is available, the app configures tailnet-only Tailscale Serve on HTTPS port 443.
 - The default browser opens after the local health check succeeds.
-- The menu bar icon reopens Caffold, changes the installed PWA name, exposes logs, retries Tailscale Serve, and quits the server.
+- The menu bar icon reopens Caffold, configures the server, exposes logs, retries Tailscale Serve, and quits the server.
 - Data is stored in `~/Library/Application Support/Caffold/data`.
 - Logs are stored in `~/Library/Logs/Caffold/caffold.log`.
 
-Use `Server Name...` before installing the PWA to distinguish multiple Caffold servers. Existing PWA installations may need to be reinstalled after a name change.
-
-`Server Settings...` controls the bind mode, port, and automatic Tailscale Serve startup. Local-only binding is the default. LAN binding is an explicit opt-in and is not required for Tailscale Serve.
+`Server Settings...` controls the installed PWA name, bind mode, port, and automatic Tailscale Serve startup. Use a distinct name before installing the PWA to distinguish multiple Caffold servers; existing installations may need to be reinstalled after a name change. Local-only binding is the default. LAN binding is an explicit opt-in and is not required for Tailscale Serve.
 
 The menu reports stable status rows for Codex, Git, GitHub CLI, Tailscale connectivity, and the Caffold Serve URL. Missing integrations disable only their related features; the file browser and server remain available.
 
