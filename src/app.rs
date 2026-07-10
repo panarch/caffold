@@ -733,7 +733,11 @@ async fn project_candidate(
     Query(query): Query<PathQuery>,
 ) -> Result<Json<ProjectCandidateResponse>, ApiError> {
     let candidate = match state.fs.project_candidate_for_path(&query.path)? {
-        Some(project_root) => Some(project_candidate_response(&state.projects, project_root)?),
+        Some(project_root) => Some(project_candidate_response(
+            &state.fs,
+            &state.projects,
+            project_root,
+        )?),
         None => None,
     };
 
@@ -1206,20 +1210,30 @@ async fn task_approval(
 }
 
 fn project_candidate_response(
+    fs: &RootedFs,
     store: &ProjectStore,
     project_root: ProjectRoot,
-) -> Result<ProjectCandidate, ProjectStoreError> {
-    let registered = store.find_by_root_path(&project_root.root_path)?;
+) -> Result<ProjectCandidate, ApiError> {
+    let registered = store
+        .find_by_root_path(&project_root.root_path)?
+        .or(project_for_path(store, &project_root.root_path)?);
+
+    if let Some(project) = registered {
+        return Ok(ProjectCandidate {
+            name: project.name,
+            relative_path: fs.logical_path_for_absolute(Path::new(&project.root_path))?,
+            root_path: project.root_path,
+            already_registered: true,
+            project_id: Some(project.id),
+        });
+    }
 
     Ok(ProjectCandidate {
-        name: registered
-            .as_ref()
-            .map(|project| project.name.clone())
-            .unwrap_or(project_root.name),
+        name: project_root.name,
         root_path: project_root.root_path,
         relative_path: project_root.relative_path,
-        already_registered: registered.is_some(),
-        project_id: registered.map(|project| project.id),
+        already_registered: false,
+        project_id: None,
     })
 }
 
@@ -2067,15 +2081,21 @@ fn thread_cwd_is_exact(thread: &JsonValue, cwd: &str) -> bool {
 }
 
 fn project_for_cwd(projects: &ProjectStore, cwd: &str) -> Option<ProjectRecord> {
-    let cwd = Path::new(cwd);
+    project_for_path(projects, cwd).ok().flatten()
+}
+
+fn project_for_path(
+    projects: &ProjectStore,
+    path: &str,
+) -> Result<Option<ProjectRecord>, ProjectStoreError> {
+    let path = Path::new(path);
     let mut candidates = projects
-        .list_projects()
-        .ok()?
+        .list_projects()?
         .into_iter()
-        .filter(|project| path_is_inside(cwd, Path::new(&project.root_path)))
+        .filter(|project| path_is_inside(path, Path::new(&project.root_path)))
         .collect::<Vec<_>>();
     candidates.sort_by_key(|project| project.root_path.len());
-    candidates.pop()
+    Ok(candidates.pop())
 }
 
 fn associated_project_for_thread(
@@ -2480,6 +2500,29 @@ mod tests {
             .create_project("project", &project_root.display().to_string())
             .unwrap();
         (project, temp)
+    }
+
+    #[test]
+    fn project_candidate_keeps_registered_non_git_parent() {
+        let temp = tempfile::tempdir().unwrap();
+        let project_root = temp.path().join("notes");
+        let nested = project_root.join("archive");
+        std::fs::create_dir_all(&nested).unwrap();
+        let project_root = project_root.canonicalize().unwrap();
+        let fs = RootedFs::new(temp.path()).unwrap();
+        let projects = ProjectStore::memory().unwrap();
+        let project = projects
+            .create_project("Notes", &project_root.display().to_string())
+            .unwrap();
+        let nested_root = fs.project_root_for_path("notes/archive").unwrap();
+
+        let candidate = project_candidate_response(&fs, &projects, nested_root).unwrap();
+
+        assert!(candidate.already_registered);
+        assert_eq!(candidate.project_id.as_deref(), Some(project.id.as_str()));
+        assert_eq!(candidate.name, "Notes");
+        assert_eq!(candidate.relative_path, "notes");
+        assert_eq!(candidate.root_path, project_root.display().to_string());
     }
 
     #[test]

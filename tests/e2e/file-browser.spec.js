@@ -428,6 +428,11 @@ test("manages project records from the header switcher", async ({ page }, testIn
   await page.goto("/");
   const switcher = page.locator("caffold-project-switcher");
 
+  await expect(switcher.locator(".project-switcher-button")).toContainText("Register");
+  await openProjectPopover(switcher);
+  await expect(switcher.locator(".project-candidate")).toContainText("home");
+  await page.keyboard.press("Escape");
+
   await page.locator('button[data-entry-path="src"]').click();
   await expect(switcher.locator(".project-switcher-button")).toContainText("Register");
 
@@ -5118,6 +5123,7 @@ async function mockCodexModels(page) {
 async function mockProjectCrudApi(page) {
   let projects = [];
   let nextProjectId = 1;
+  const homeRootPath = resolve("tests/fixtures/home");
   const rootPath = resolve("tests/fixtures/home/src");
   const relativePath = "src";
 
@@ -5132,15 +5138,16 @@ async function mockProjectCrudApi(page) {
 
   const projectCandidate = (path) => {
     const isProjectPath = path === relativePath || path.startsWith(`${relativePath}/`);
-    if (!isProjectPath) {
-      return null;
-    }
-
-    const registeredProject = projects.find((project) => project.rootPath === rootPath);
+    const candidateRootPath = isProjectPath ? rootPath : resolve(homeRootPath, path);
+    const candidateRelativePath = isProjectPath ? relativePath : path;
+    const candidateName = isProjectPath ? "src" : path.split("/").filter(Boolean).pop() || "home";
+    const registeredProject = projects.find(
+      (project) => project.rootPath === candidateRootPath,
+    );
     return {
-      name: registeredProject?.name ?? "src",
-      rootPath,
-      relativePath,
+      name: registeredProject?.name ?? candidateName,
+      rootPath: candidateRootPath,
+      relativePath: candidateRelativePath,
       alreadyRegistered: Boolean(registeredProject),
       projectId: registeredProject?.id ?? null,
     };

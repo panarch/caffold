@@ -1293,21 +1293,18 @@ impl RootedFs {
         &self,
         requested_path: &str,
     ) -> Result<Option<ProjectRoot>, FsError> {
-        let search_path = self.git_search_path(requested_path)?;
-        git::repository_for(&search_path)
-            .filter(|repository| repository.root.starts_with(&self.root))
-            .map(|repository| self.project_root_for_repository(&repository))
-            .transpose()
+        self.project_root_for_path(requested_path).map(Some)
     }
 
     pub fn project_root_for_path(&self, requested_path: &str) -> Result<ProjectRoot, FsError> {
-        let search_path = self.git_search_path(requested_path)?;
-        let repository =
-            git::repository_for(&search_path).ok_or_else(|| FsError::GitRepositoryNotFound {
-                path: requested_path.to_string(),
-            })?;
+        let directory = self.directory_for_request(requested_path)?;
+        if let Some(repository) = git::repository_for(&directory)
+            .filter(|repository| repository.root.starts_with(&self.root))
+        {
+            return self.project_root_for_repository(&repository);
+        }
 
-        self.project_root_for_repository(&repository)
+        self.project_root_for_directory(&directory)
     }
 
     fn resolve_existing(&self, requested_path: &str) -> Result<ResolvedPath, FsError> {
@@ -1466,8 +1463,33 @@ impl RootedFs {
         })
     }
 
+    fn project_root_for_directory(&self, directory: &Path) -> Result<ProjectRoot, FsError> {
+        if !directory.starts_with(&self.root) {
+            return Err(FsError::PathEscapesRoot);
+        }
+
+        let relative_path = self.logical_path_for_absolute(directory)?;
+        let name = directory
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| {
+                if relative_path.is_empty() {
+                    directory.display().to_string()
+                } else {
+                    relative_path.clone()
+                }
+            });
+
+        Ok(ProjectRoot {
+            name,
+            root_path: directory.display().to_string(),
+            relative_path,
+        })
+    }
+
     fn repository_for_request(&self, requested_path: &str) -> Result<git::Repository, FsError> {
-        let git_path = self.git_search_path(requested_path)?;
+        let git_path = self.directory_for_request(requested_path)?;
 
         let repository =
             git::repository_for(&git_path).ok_or_else(|| FsError::GitRepositoryNotFound {
@@ -1481,7 +1503,7 @@ impl RootedFs {
         Ok(repository)
     }
 
-    fn git_search_path(&self, requested_path: &str) -> Result<PathBuf, FsError> {
+    fn directory_for_request(&self, requested_path: &str) -> Result<PathBuf, FsError> {
         let resolved = if Path::new(requested_path).is_absolute() {
             let candidate = PathBuf::from(requested_path);
             let absolute = candidate.canonicalize().map_err(|source| FsError::Io {
@@ -1951,6 +1973,26 @@ mod tests {
             project.root_path,
             repo_path.canonicalize().unwrap().display().to_string()
         );
+    }
+
+    #[test]
+    fn uses_current_directory_as_project_root_outside_git() {
+        let temp = tempfile::tempdir().unwrap();
+        let notes_path = temp.path().join("notes");
+        fs::create_dir(&notes_path).unwrap();
+        fs::write(notes_path.join("draft.md"), "draft\n").unwrap();
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+        let project = rooted.project_root_for_path("notes/draft.md").unwrap();
+        let candidate = rooted.project_candidate_for_path("notes").unwrap().unwrap();
+
+        assert_eq!(project.name, "notes");
+        assert_eq!(project.relative_path, "notes");
+        assert_eq!(
+            project.root_path,
+            notes_path.canonicalize().unwrap().display().to_string()
+        );
+        assert_eq!(candidate, project);
     }
 
     #[test]
