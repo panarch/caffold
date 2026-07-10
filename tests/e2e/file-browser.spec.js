@@ -3306,6 +3306,8 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
       contentType: "application/json",
       body: JSON.stringify({
         repository,
+        additions: 6540,
+        deletions: 19618,
         files: [
           {
             path: "src/example.rs",
@@ -3412,9 +3414,16 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   await expect(page.locator("caffold-git-diff-page")).toContainText("example.rs");
   await expect(page.locator("caffold-git-diff-page")).toContainText("deleted.rs");
   await expect(page.locator("caffold-git-diff-page")).toContainText("new-file.rs");
+  await expect(
+    page.locator("caffold-git-diff-changes-tree .change-line-stats .is-addition"),
+  ).toHaveText("+6,540");
+  await expect(
+    page.locator("caffold-git-diff-changes-tree .change-line-stats .is-deletion"),
+  ).toHaveText("-19,618");
   await expect(page.locator('button[data-change-path="src/new-file.rs"] .change-status-code')).toHaveText(
     "A",
   );
+  await captureReviewScreenshot(page, testInfo, "diff-changes-summary");
   if (testInfo.project.name !== "phone") {
     const resizeHandle = workspace.locator(".git-mode-diff .review-panel-resizer");
     await expect(resizeHandle).toBeVisible();
@@ -3579,6 +3588,8 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
         repository,
         baseRef,
         headRef,
+        additions: files.length === 0 ? 0 : baseRef === "origin/release" ? 7 : 5,
+        deletions: files.length === 0 ? 0 : baseRef === "origin/release" ? 3 : 2,
         files,
       }),
     });
@@ -3646,6 +3657,12 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
   await expect(page.locator("caffold-git-compare-page")).toContainText("planner");
   await expect(page.locator("caffold-git-compare-page")).toContainText("function.rs");
   await expect(page.locator("caffold-git-compare-page")).toContainText("new.rs");
+  await expect(
+    page.locator("caffold-git-compare-tree .compare-line-stats .is-addition"),
+  ).toHaveText("+5");
+  await expect(
+    page.locator("caffold-git-compare-tree .compare-line-stats .is-deletion"),
+  ).toHaveText("-2");
 
   await workspace.locator('select[data-compare-ref="base"]').selectOption("main");
   await workspace.locator('select[data-compare-ref="head"]').selectOption("main");
@@ -4534,6 +4551,8 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
       body: JSON.stringify({
         repository,
         commit,
+        additions: 12,
+        deletions: 4,
         files: [
           {
             path: "src/planner/function.rs",
@@ -4646,6 +4665,8 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
   await expect(workspace.locator(".review-workspace-subtitle")).toContainText("abcdef1");
   const commitTree = page.locator("caffold-commit-changes-tree");
   await expect(commitTree).toContainText("2 files");
+  await expect(commitTree.locator(".commit-line-stats .is-addition")).toHaveText("+12");
+  await expect(commitTree.locator(".commit-line-stats .is-deletion")).toHaveText("-4");
   await expect(commitTree).not.toContainText("Update planner function");
   await expect(commitTree).toContainText("planner");
   await expect(commitTree).toContainText("function.rs");

@@ -126,7 +126,7 @@ class CaffoldCommitChangesTree extends HTMLElement {
     const files = payload.files ?? [];
     this.innerHTML = `
       <section class="commit-tree-panel">
-        ${this.renderHeader(payload.repository, payload.commit, files.length)}
+        ${this.renderHeader(payload.repository, payload.commit, files.length, payload)}
         ${
           files.length === 0
             ? `<p class="surface-message">No files changed.</p>`
@@ -136,7 +136,7 @@ class CaffoldCommitChangesTree extends HTMLElement {
     `;
   }
 
-  renderHeader(_repository, _commit, count) {
+  renderHeader(_repository, _commit, count, stats = null) {
     const countLabel = count === null || count === undefined ? "" : `${count} files`;
 
     return `
@@ -145,6 +145,7 @@ class CaffoldCommitChangesTree extends HTMLElement {
           <h2>Commit</h2>
           <span class="commit-file-count">${escapeHtml(countLabel)}</span>
         </div>
+        ${renderDiffStats(stats)}
       </header>
     `;
   }
@@ -268,6 +269,23 @@ class CaffoldCommitChangesTree extends HTMLElement {
 }
 
 customElements.define("caffold-commit-changes-tree", CaffoldCommitChangesTree);
+
+function renderDiffStats(payload) {
+  if (!Number.isFinite(payload?.additions) || !Number.isFinite(payload?.deletions)) {
+    return "";
+  }
+
+  const additions = new Intl.NumberFormat("en-US").format(payload.additions);
+  const deletions = new Intl.NumberFormat("en-US").format(payload.deletions);
+  return `
+    <span class="commit-line-stats" aria-label="${escapeHtml(
+      `${additions} additions and ${deletions} deletions`,
+    )}">
+      <span class="is-addition">+${escapeHtml(additions)}</span>
+      <span class="is-deletion">-${escapeHtml(deletions)}</span>
+    </span>
+  `;
+}
 
 function buildCommitTree(files) {
   const root = { kind: "root", children: new Map() };

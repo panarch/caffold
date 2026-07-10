@@ -143,6 +143,7 @@ class CaffoldGitCompareTree extends HTMLElement {
           <h2>Files</h2>
           <span class="compare-file-count">${escapeHtml(countLabel)}</span>
         </div>
+        ${renderDiffStats(payload)}
       </header>
     `;
   }
@@ -265,6 +266,23 @@ class CaffoldGitCompareTree extends HTMLElement {
 }
 
 customElements.define("caffold-git-compare-tree", CaffoldGitCompareTree);
+
+function renderDiffStats(payload) {
+  if (!Number.isFinite(payload?.additions) || !Number.isFinite(payload?.deletions)) {
+    return "";
+  }
+
+  const additions = new Intl.NumberFormat("en-US").format(payload.additions);
+  const deletions = new Intl.NumberFormat("en-US").format(payload.deletions);
+  return `
+    <span class="compare-line-stats" aria-label="${escapeHtml(
+      `${additions} additions and ${deletions} deletions`,
+    )}">
+      <span class="is-addition">+${escapeHtml(additions)}</span>
+      <span class="is-deletion">-${escapeHtml(deletions)}</span>
+    </span>
+  `;
+}
 
 function buildCompareTree(files) {
   const root = { kind: "root", children: new Map() };

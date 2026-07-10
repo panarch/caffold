@@ -56,6 +56,30 @@ caffold-git-diff-changes-tree .change-count {
   white-space: nowrap;
 }
 
+caffold-git-diff-changes-tree .changes-tree-meta-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+caffold-git-diff-changes-tree .change-line-stats {
+  display: inline-grid;
+  grid-auto-flow: column;
+  gap: 6px;
+  justify-self: end;
+  white-space: nowrap;
+}
+
+caffold-git-diff-changes-tree .change-line-stats .is-addition {
+  color: #167c5c;
+}
+
+caffold-git-diff-changes-tree .change-line-stats .is-deletion {
+  color: var(--danger);
+}
+
 caffold-git-diff-changes-tree .changes-branch {
   display: block;
   min-width: 0;

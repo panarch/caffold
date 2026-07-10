@@ -17,6 +17,7 @@ caffold-git-compare-tree .compare-tree-panel > header {
   box-sizing: border-box;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
   align-content: center;
   height: var(--review-header-height, 42px);
   min-height: 0;
@@ -50,6 +51,24 @@ caffold-git-compare-tree .compare-file-count {
   font-size: 0.74rem;
   line-height: 1.1;
   white-space: nowrap;
+}
+
+caffold-git-compare-tree .compare-line-stats {
+  display: inline-grid;
+  grid-auto-flow: column;
+  gap: 6px;
+  justify-self: end;
+  font-size: 0.74rem;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+caffold-git-compare-tree .compare-line-stats .is-addition {
+  color: #167c5c;
+}
+
+caffold-git-compare-tree .compare-line-stats .is-deletion {
+  color: var(--danger);
 }
 
 caffold-git-compare-tree .compare-tree-list {

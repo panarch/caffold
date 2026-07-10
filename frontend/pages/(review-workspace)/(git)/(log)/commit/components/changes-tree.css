@@ -17,6 +17,7 @@ caffold-commit-changes-tree .commit-tree-panel > header {
   box-sizing: border-box;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
   align-content: center;
   height: var(--review-header-height, 42px);
   min-height: 0;
@@ -50,6 +51,24 @@ caffold-commit-changes-tree .commit-file-count {
   font-size: 0.74rem;
   line-height: 1.1;
   white-space: nowrap;
+}
+
+caffold-commit-changes-tree .commit-line-stats {
+  display: inline-grid;
+  grid-auto-flow: column;
+  gap: 6px;
+  justify-self: end;
+  font-size: 0.74rem;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+caffold-commit-changes-tree .commit-line-stats .is-addition {
+  color: #167c5c;
+}
+
+caffold-commit-changes-tree .commit-line-stats .is-deletion {
+  color: var(--danger);
 }
 
 caffold-commit-changes-tree .commit-tree-list {

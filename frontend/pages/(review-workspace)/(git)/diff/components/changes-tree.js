@@ -130,7 +130,7 @@ class CaffoldGitDiffChangesTree extends HTMLElement {
     const files = this.state.gitStatus.files;
     this.innerHTML = `
       <section class="changes-tree-panel">
-        ${this.renderHeader(this.state.gitStatus.repository, files.length)}
+        ${this.renderHeader(this.state.gitStatus.repository, files.length, this.state.gitStatus)}
         ${
           files.length === 0
             ? `<p class="surface-message">No changes.</p>`
@@ -140,7 +140,7 @@ class CaffoldGitDiffChangesTree extends HTMLElement {
     `;
   }
 
-  renderHeader(repository, count) {
+  renderHeader(repository, count, stats = null) {
     const branch = repository?.branch ?? "HEAD";
     const countLabel = count === null || count === undefined ? "" : `${count} changes`;
 
@@ -150,13 +150,16 @@ class CaffoldGitDiffChangesTree extends HTMLElement {
           <h2>Changes</h2>
           <span class="change-count">${escapeHtml(countLabel)}</span>
         </div>
-        ${
-          repository
-            ? `<span class="changes-branch${repository.dirty ? " is-dirty" : ""}">
-                ${escapeHtml(branch)}${repository.dirty ? " *" : ""}
-              </span>`
-            : ""
-        }
+        <div class="changes-tree-meta-row">
+          ${
+            repository
+              ? `<span class="changes-branch${repository.dirty ? " is-dirty" : ""}">
+                  ${escapeHtml(branch)}${repository.dirty ? " *" : ""}
+                </span>`
+              : "<span></span>"
+          }
+          ${renderDiffStats(stats)}
+        </div>
       </header>
     `;
   }
@@ -296,6 +299,23 @@ class CaffoldGitDiffChangesTree extends HTMLElement {
 }
 
 customElements.define("caffold-git-diff-changes-tree", CaffoldGitDiffChangesTree);
+
+function renderDiffStats(payload) {
+  if (!Number.isFinite(payload?.additions) || !Number.isFinite(payload?.deletions)) {
+    return "";
+  }
+
+  const additions = new Intl.NumberFormat("en-US").format(payload.additions);
+  const deletions = new Intl.NumberFormat("en-US").format(payload.deletions);
+  return `
+    <span class="change-line-stats" aria-label="${escapeHtml(
+      `${additions} additions and ${deletions} deletions`,
+    )}">
+      <span class="is-addition">+${escapeHtml(additions)}</span>
+      <span class="is-deletion">-${escapeHtml(deletions)}</span>
+    </span>
+  `;
+}
 
 function buildChangeTree(files) {
   const sections = new Map(

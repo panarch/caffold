@@ -90,6 +90,8 @@ pub struct ImageResponse {
 pub struct GitStatusResponse {
     pub repository: DirectoryGitInfo,
     pub files: Vec<GitChangedFile>,
+    pub additions: u64,
+    pub deletions: u64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -111,6 +113,8 @@ pub struct GitCommitResponse {
     pub repository: DirectoryGitInfo,
     pub commit: GitCommitSummary,
     pub files: Vec<GitCommitFile>,
+    pub additions: u64,
+    pub deletions: u64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -120,6 +124,8 @@ pub struct GitCompareResponse {
     pub base_ref: String,
     pub head_ref: String,
     pub files: Vec<GitCompareFile>,
+    pub additions: u64,
+    pub deletions: u64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -732,11 +738,18 @@ impl RootedFs {
     pub fn git_status(&self, requested_path: &str) -> Result<GitStatusResponse, FsError> {
         let repository = self.repository_for_request(requested_path)?;
         let repository_info = self.git_info_for_repository(&repository)?;
-        let files = git::status_entries(&repository)
-            .ok_or_else(|| FsError::GitCommandFailed {
+        let entries =
+            git::status_entries(&repository).ok_or_else(|| FsError::GitCommandFailed {
                 action: "read status",
                 path: requested_path.to_string(),
-            })?
+            })?;
+        let stats = git::working_tree_stats(&repository, &entries).ok_or_else(|| {
+            FsError::GitCommandFailed {
+                action: "read status stats",
+                path: requested_path.to_string(),
+            }
+        })?;
+        let files = entries
             .into_iter()
             .map(|entry| {
                 let category = git_change_category(&entry);
@@ -755,6 +768,8 @@ impl RootedFs {
         Ok(GitStatusResponse {
             repository: repository_info,
             files,
+            additions: stats.additions,
+            deletions: stats.deletions,
         })
     }
 
@@ -829,11 +844,19 @@ impl RootedFs {
                 status: file.status,
             })
             .collect();
+        let stats = git::commit_stats(&repository, commit_sha).ok_or_else(|| {
+            FsError::GitCommandFailed {
+                action: "read commit stats",
+                path: commit_sha.to_string(),
+            }
+        })?;
 
         Ok(GitCommitResponse {
             repository: repository_info,
             commit,
             files,
+            additions: stats.additions,
+            deletions: stats.deletions,
         })
     }
 
@@ -894,12 +917,19 @@ impl RootedFs {
                 status: file.status,
             })
             .collect();
+        let stats =
+            git::compare_stats(&repository, &refs).ok_or_else(|| FsError::GitCommandFailed {
+                action: "read compare stats",
+                path: format!("{}...{}", refs.base, refs.head),
+            })?;
 
         Ok(GitCompareResponse {
             repository: repository_info,
             base_ref: refs.base,
             head_ref: refs.head,
             files,
+            additions: stats.additions,
+            deletions: stats.deletions,
         })
     }
 
@@ -2048,6 +2078,8 @@ mod tests {
         assert_eq!(commit.files[0].path, "repo/sample.txt");
         assert_eq!(commit.files[0].repo_relative_path, "sample.txt");
         assert_eq!(commit.files[0].status, "M");
+        assert_eq!(commit.additions, 1);
+        assert_eq!(commit.deletions, 1);
 
         let diff = rooted
             .git_commit_diff("repo", &log.commits[0].sha, "repo/sample.txt")
@@ -2096,6 +2128,8 @@ mod tests {
         assert_eq!(compare.base_ref, "origin/main");
         assert_eq!(compare.head_ref, "feature/review");
         assert_eq!(compare.files.len(), 2);
+        assert_eq!(compare.additions, 2);
+        assert_eq!(compare.deletions, 1);
         assert!(compare.files.iter().any(|file| {
             file.path == "repo/sample.txt"
                 && file.repo_relative_path == "sample.txt"

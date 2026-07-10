@@ -1,6 +1,7 @@
 use std::{
     collections::HashSet,
-    io::Write,
+    fs::File,
+    io::{Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
@@ -19,6 +20,12 @@ pub struct StatusEntry {
     pub staged: bool,
     pub unstaged: bool,
     pub untracked: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DiffStats {
+    pub additions: u64,
+    pub deletions: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,6 +94,41 @@ pub fn status_entries(repository: &Repository) -> Option<Vec<StatusEntry>> {
     )?;
 
     Some(parse_status_entries(&output))
+}
+
+pub fn working_tree_stats(repository: &Repository, entries: &[StatusEntry]) -> Option<DiffStats> {
+    let has_head = run_git_bytes(&repository.root, &["rev-parse", "--verify", "HEAD"]).is_some();
+    let output = if has_head {
+        run_git_bytes(
+            &repository.root,
+            &["diff", "--numstat", "--find-renames", "HEAD", "--"],
+        )?
+    } else {
+        run_git_bytes(
+            &repository.root,
+            &["diff", "--cached", "--numstat", "--find-renames", "--"],
+        )?
+    };
+    let mut stats = parse_diff_stats(&output);
+
+    if !has_head {
+        let unstaged = run_git_bytes(
+            &repository.root,
+            &["diff", "--numstat", "--find-renames", "--"],
+        )?;
+        let unstaged = parse_diff_stats(&unstaged);
+        stats.additions = stats.additions.saturating_add(unstaged.additions);
+        stats.deletions = stats.deletions.saturating_add(unstaged.deletions);
+    }
+
+    for entry in entries.iter().filter(|entry| entry.untracked) {
+        let path = repository.root.join(&entry.repo_relative_path);
+        stats.additions = stats
+            .additions
+            .saturating_add(text_file_line_count(&path).unwrap_or(0));
+    }
+
+    Some(stats)
 }
 
 pub fn ignored_paths(
@@ -204,6 +246,20 @@ pub fn commit_files(repository: &Repository, commit_sha: &str) -> Option<Vec<Com
     Some(parse_commit_files(&output))
 }
 
+pub fn commit_stats(repository: &Repository, commit_sha: &str) -> Option<DiffStats> {
+    let commit_sha = normalize_commit_sha(commit_sha)?;
+    let args = vec![
+        "show".to_string(),
+        "--format=".to_string(),
+        "--numstat".to_string(),
+        "--find-renames".to_string(),
+        "--first-parent".to_string(),
+        commit_sha.to_string(),
+    ];
+
+    Some(parse_diff_stats(&run_git_owned(&repository.root, &args)?))
+}
+
 pub fn commit_diff(
     repository: &Repository,
     commit_sha: &str,
@@ -284,6 +340,18 @@ pub fn compare_files(repository: &Repository, refs: &CompareRefs) -> Option<Vec<
 
     let output = run_git_owned(&repository.root, &args)?;
     Some(parse_commit_files(&output))
+}
+
+pub fn compare_stats(repository: &Repository, refs: &CompareRefs) -> Option<DiffStats> {
+    let range = compare_range(refs);
+    let args = vec![
+        "diff".to_string(),
+        "--numstat".to_string(),
+        "--find-renames".to_string(),
+        range,
+    ];
+
+    Some(parse_diff_stats(&run_git_owned(&repository.root, &args)?))
 }
 
 pub fn compare_diff(
@@ -483,6 +551,51 @@ fn parse_status_entries(output: &[u8]) -> Vec<StatusEntry> {
     entries
 }
 
+fn parse_diff_stats(output: &[u8]) -> DiffStats {
+    String::from_utf8_lossy(output)
+        .lines()
+        .fold(DiffStats::default(), |mut stats, line| {
+            let mut fields = line.splitn(3, '\t');
+            let additions = fields.next().and_then(|value| value.parse::<u64>().ok());
+            let deletions = fields.next().and_then(|value| value.parse::<u64>().ok());
+            if let (Some(additions), Some(deletions)) = (additions, deletions) {
+                stats.additions = stats.additions.saturating_add(additions);
+                stats.deletions = stats.deletions.saturating_add(deletions);
+            }
+            stats
+        })
+}
+
+fn text_file_line_count(path: &Path) -> Option<u64> {
+    let metadata = path.symlink_metadata().ok()?;
+    if !metadata.file_type().is_file() {
+        return Some(0);
+    }
+
+    let mut file = File::open(path).ok()?;
+    let mut buffer = [0; 8192];
+    let mut lines = 0_u64;
+    let mut has_bytes = false;
+    let mut ends_with_newline = false;
+
+    loop {
+        let read = file.read(&mut buffer).ok()?;
+        if read == 0 {
+            break;
+        }
+
+        let chunk = &buffer[..read];
+        if chunk.contains(&0) {
+            return Some(0);
+        }
+        has_bytes = true;
+        ends_with_newline = chunk.last() == Some(&b'\n');
+        lines = lines.saturating_add(chunk.iter().filter(|byte| **byte == b'\n').count() as u64);
+    }
+
+    Some(lines.saturating_add(u64::from(has_bytes && !ends_with_newline)))
+}
+
 fn parse_log_entries(output: &[u8]) -> Vec<LogEntry> {
     String::from_utf8_lossy(output)
         .split('\x1e')
@@ -644,6 +757,53 @@ mod tests {
     }
 
     #[test]
+    fn parses_text_numstat_and_skips_binary_entries() {
+        let stats =
+            parse_diff_stats(b"12\t3\tsrc/main.rs\n-\t-\tassets/image.png\n4\t0\tREADME.md\n");
+
+        assert_eq!(
+            stats,
+            DiffStats {
+                additions: 16,
+                deletions: 3,
+            }
+        );
+    }
+
+    #[test]
+    fn counts_working_tree_changes_and_untracked_text_lines() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        git(temp.path(), &["init"]);
+        fs::write(temp.path().join("tracked.txt"), "old\nkeep\n").unwrap();
+        git(temp.path(), &["add", "tracked.txt"]);
+        commit(temp.path(), "Add tracked file");
+
+        fs::write(
+            temp.path().join("tracked.txt"),
+            "new\nkeep\nadded tracked line\n",
+        )
+        .unwrap();
+        fs::write(temp.path().join("untracked.txt"), "first\nsecond").unwrap();
+        fs::write(temp.path().join("binary.dat"), b"before\0after\n").unwrap();
+
+        let repository = repository_for(temp.path()).unwrap();
+        let entries = status_entries(&repository).unwrap();
+        let stats = working_tree_stats(&repository, &entries).unwrap();
+
+        assert_eq!(
+            stats,
+            DiffStats {
+                additions: 4,
+                deletions: 1,
+            }
+        );
+    }
+
+    #[test]
     fn detects_ignored_paths() {
         if !git_is_available() {
             return;
@@ -711,6 +871,13 @@ mod tests {
                 status: "M".to_string(),
             }]
         );
+        assert_eq!(
+            commit_stats(&repository, &log[0].sha),
+            Some(DiffStats {
+                additions: 1,
+                deletions: 1,
+            })
+        );
 
         let diff = commit_diff(&repository, &log[0].sha, "sample.txt").unwrap();
         assert!(diff.contains("-old"));
@@ -756,6 +923,13 @@ mod tests {
                     status: "M".to_string(),
                 },
             ]
+        );
+        assert_eq!(
+            compare_stats(&repository, &refs),
+            Some(DiffStats {
+                additions: 2,
+                deletions: 1,
+            })
         );
 
         let diff = compare_diff(&repository, &refs, "sample.txt").unwrap();
