@@ -168,6 +168,7 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         githubStatusMenuItem = githubStatus
 
         menu.addItem(.separator())
+        menu.addItem(actionItem("About Caffold Server", action: #selector(showAbout)))
         menu.addItem(actionItem("Show Logs", action: #selector(showLogs), key: "l"))
         menu.addItem(actionItem("Quit", action: #selector(quit), key: "q"))
 
@@ -871,6 +872,11 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func openTailnetURL() {
         guard let url = lastTailscaleStatus?.tailnetURL else { return }
         NSWorkspace.shared.open(url)
+    }
+
+    @objc private func showAbout() {
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.orderFrontStandardAboutPanel(nil)
     }
 
     @objc private func quit() {
