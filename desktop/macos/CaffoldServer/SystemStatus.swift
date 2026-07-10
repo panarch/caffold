@@ -127,13 +127,29 @@ func probeTailscaleStatus(
     }
 
     runCommand(executable: tailscale, arguments: ["status", "--json"]) { statusResult in
+        guard case let .success(statusCommand) = statusResult else {
+            completion(TailscaleStatus(
+                title: "Tailscale · Status unavailable",
+                connected: false,
+                serveEnabled: false,
+                tailnetURL: nil
+            ))
+            return
+        }
         guard
-            case let .success(statusCommand) = statusResult,
             statusCommand.status == 0,
             let statusData = statusCommand.output.data(using: .utf8),
-            let nodeStatus = try? JSONDecoder().decode(TailscaleNodeResponse.self, from: statusData),
-            nodeStatus.backendState == "Running"
+            let nodeStatus = try? JSONDecoder().decode(TailscaleNodeResponse.self, from: statusData)
         else {
+            completion(TailscaleStatus(
+                title: "Tailscale · Status unavailable",
+                connected: false,
+                serveEnabled: false,
+                tailnetURL: nil
+            ))
+            return
+        }
+        guard nodeStatus.backendState == "Running" else {
             completion(TailscaleStatus(
                 title: "Tailscale · Disconnected",
                 connected: false,

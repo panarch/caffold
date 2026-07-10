@@ -68,6 +68,9 @@ func caffoldEnvironment() -> [String: String] {
     let inherited = environment["PATH"] ?? ""
     environment["PATH"] = (paths + [inherited]).joined(separator: ":")
     environment["HOME"] = home
+    if environment["TERM"]?.isEmpty != false {
+        environment["TERM"] = "dumb"
+    }
     return environment
 }
 
