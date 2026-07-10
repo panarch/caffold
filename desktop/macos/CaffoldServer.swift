@@ -27,6 +27,7 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var serverRunning = false
     private var restartAfterTermination = false
     private var configureTailscaleAfterRestart = false
+    private var serverNameAfterStart: String?
 
     private var localURL: URL {
         URL(string: "http://127.0.0.1:\(preferences.port)/")!
@@ -435,16 +436,7 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         checkHealth { [weak self] isRunning in
             guard let self else { return }
             if isRunning {
-                self.serverRunning = true
-                self.setStatus(self.serverStatusTitle())
-                self.updateServerControls()
-                if self.preferences.autoStartTailscaleServe || self.configureTailscaleAfterRestart {
-                    self.configureTailscaleAfterRestart = false
-                    self.configureTailscaleServe()
-                } else {
-                    self.refreshSystemStatus()
-                }
-                self.openCaffold()
+                self.serverDidBecomeReady()
                 return
             }
 
@@ -463,8 +455,44 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    private func serverDidBecomeReady() {
+        serverRunning = true
+        setStatus(serverStatusTitle())
+        updateServerControls()
+
+        guard let name = serverNameAfterStart else {
+            finishServerStartup()
+            return
+        }
+        serverNameAfterStart = nil
+        saveServerName(name) { [weak self] result in
+            guard let self else { return }
+            if case let .failure(error) = result {
+                self.presentError(
+                    "Server name could not be applied",
+                    detail: error.localizedDescription
+                )
+            }
+            self.finishServerStartup()
+        }
+    }
+
+    private func finishServerStartup() {
+        if preferences.autoStartTailscaleServe || configureTailscaleAfterRestart {
+            configureTailscaleAfterRestart = false
+            configureTailscaleServe()
+        } else {
+            refreshSystemStatus()
+        }
+        openCaffold()
+    }
+
     private func checkHealth(completion: @escaping (Bool) -> Void) {
-        var request = URLRequest(url: healthURL)
+        checkHealth(at: healthURL, completion: completion)
+    }
+
+    private func checkHealth(at url: URL, completion: @escaping (Bool) -> Void) {
+        var request = URLRequest(url: url)
         request.timeoutInterval = 0.8
         URLSession.shared.dataTask(with: request) { _, response, _ in
             let statusCode = (response as? HTTPURLResponse)?.statusCode
@@ -577,7 +605,7 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let form = ServerSettingsView(name: currentName, preferences: preferences)
         let alert = NSAlert()
         alert.messageText = "Server Settings"
-        alert.informativeText = "Network changes restart the server managed by this app."
+        alert.informativeText = "Network changes restart an app-managed server or start one on a new port."
         alert.accessoryView = form
         alert.addButton(withTitle: "Apply")
         alert.addButton(withTitle: "Cancel")
@@ -602,9 +630,16 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
             || nextPreferences.port != preferences.port
 
         if runtimeChanged, serverRunning, !ownsServer {
-            presentError(
-                "Server settings cannot be applied",
-                detail: "Caffold Server is connected to an externally managed process. Stop that process before changing its address or port."
+            guard nextPreferences.port != preferences.port else {
+                presentError(
+                    "Server settings cannot be applied",
+                    detail: "An external server already uses port \(preferences.port). Choose a different port before changing its bind mode."
+                )
+                return
+            }
+            startOwnedServerFromExternal(
+                name: name,
+                preferences: nextPreferences
             )
             return
         }
@@ -637,6 +672,34 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     detail: error.localizedDescription
                 )
             }
+        }
+    }
+
+    private func startOwnedServerFromExternal(
+        name: String,
+        preferences nextPreferences: ServerRuntimePreferences
+    ) {
+        let nextHealthURL = URL(
+            string: "http://127.0.0.1:\(nextPreferences.port)/api/health"
+        )!
+        setStatus("Checking port \(nextPreferences.port)...")
+        checkHealth(at: nextHealthURL) { [weak self] isRunning in
+            guard let self else { return }
+            guard !isRunning else {
+                self.setStatus(self.serverStatusTitle(external: true))
+                self.presentError(
+                    "Port \(nextPreferences.port) is already in use",
+                    detail: "Another Caffold server is already running on that port. Choose a different port."
+                )
+                return
+            }
+
+            self.configureTailscaleAfterRestart = self.lastTailscaleStatus?.serveEnabled == true
+            self.preferences = nextPreferences
+            self.preferences.save()
+            self.serverNameAfterStart = name
+            self.serverRunning = false
+            self.startServer()
         }
     }
 

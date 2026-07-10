@@ -42,6 +42,6 @@ Use `Server Name...` before installing the PWA to distinguish multiple Caffold s
 
 The menu reports stable status rows for Codex, Git, GitHub CLI, Tailscale connectivity, and the Caffold Serve URL. Missing integrations disable only their related features; the file browser and server remain available.
 
-The app only restarts a server process that it started. When it connects to an existing Caffold process, network settings cannot be applied until that external process is stopped.
+The app only restarts a server process that it started. When it connects to an existing Caffold process, choosing a different port starts a separate app-managed server and leaves the external process untouched. Changing only the bind mode on the occupied port remains blocked.
 
 The private `.notes/bin/caffold-5178` helper remains separate. It manages the local development/validation service and is not part of the distributed application.
