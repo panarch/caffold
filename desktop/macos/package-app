@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
+DIST_DIR="${REPO_DIR}/target/caffold-server"
+SWIFT_SOURCES=(
+  "${SCRIPT_DIR}/CaffoldServer.swift"
+  "${SCRIPT_DIR}/CaffoldServer/Runtime.swift"
+  "${SCRIPT_DIR}/CaffoldServer/SystemStatus.swift"
+)
+APP_DIR="${DIST_DIR}/Caffold Server.app"
+CONTENTS_DIR="${APP_DIR}/Contents"
+MACOS_DIR="${CONTENTS_DIR}/MacOS"
+RESOURCES_DIR="${CONTENTS_DIR}/Resources"
+ARCH="$(uname -m)"
+ARCHIVE="${DIST_DIR}/Caffold-Server-macos-${ARCH}.zip"
+VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' "${REPO_DIR}/Cargo.toml" | head -n 1)"
+BUILD_NUMBER="$(git -C "${REPO_DIR}" rev-list --count HEAD)"
+
+require_macos() {
+  if [[ "$(uname -s)" != "Darwin" ]]; then
+    echo "Caffold Server packaging requires macOS." >&2
+    exit 1
+  fi
+}
+
+build_release() {
+  (cd "${REPO_DIR}" && cargo build --release)
+}
+
+prepare_bundle() {
+  rm -rf -- "${APP_DIR}"
+  mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
+
+  cp "${REPO_DIR}/target/release/caffold" "${RESOURCES_DIR}/caffold"
+  chmod 755 "${RESOURCES_DIR}/caffold"
+
+  xcrun swiftc \
+    -O \
+    -module-cache-path "${DIST_DIR}/swift-module-cache" \
+    -framework AppKit \
+    -o "${MACOS_DIR}/CaffoldServer" \
+    "${SWIFT_SOURCES[@]}"
+
+  install_info_plist
+  build_icon
+  install_readme
+
+  codesign --force --deep --sign - "${APP_DIR}"
+}
+
+install_info_plist() {
+  cp "${SCRIPT_DIR}/Info.plist" "${CONTENTS_DIR}/Info.plist"
+  /usr/libexec/PlistBuddy \
+    -c "Set :CFBundleShortVersionString ${VERSION}" \
+    -c "Set :CFBundleVersion ${BUILD_NUMBER}" \
+    "${CONTENTS_DIR}/Info.plist"
+}
+
+build_icon() {
+  local generator="${DIST_DIR}/IconGenerator"
+  local source_1024="${DIST_DIR}/CaffoldServer-1024.png"
+  local source_512="${DIST_DIR}/CaffoldServer-512.png"
+
+  xcrun swiftc \
+    -O \
+    -module-cache-path "${DIST_DIR}/swift-module-cache" \
+    -framework AppKit \
+    -o "${generator}" \
+    "${SCRIPT_DIR}/IconGenerator.swift"
+  "${generator}" "${source_1024}"
+  sips -z 512 512 "${source_1024}" --out "${source_512}" >/dev/null
+  sips -s format icns "${source_512}" --out "${RESOURCES_DIR}/CaffoldServer.icns" >/dev/null
+  rm -f -- "${generator}" "${source_1024}" "${source_512}"
+}
+
+install_readme() {
+  cp "${SCRIPT_DIR}/README.md" "${RESOURCES_DIR}/README.md"
+}
+
+package_archive() {
+  rm -f -- "${ARCHIVE}"
+  ditto -c -k --sequesterRsrc --keepParent "${APP_DIR}" "${ARCHIVE}"
+}
+
+verify_bundle() {
+  test -x "${MACOS_DIR}/CaffoldServer"
+  test -x "${RESOURCES_DIR}/caffold"
+  test -f "${RESOURCES_DIR}/CaffoldServer.icns"
+  test -f "${CONTENTS_DIR}/Info.plist"
+  codesign --verify --deep --strict "${APP_DIR}"
+  plutil -lint "${CONTENTS_DIR}/Info.plist" >/dev/null
+}
+
+build() {
+  require_macos
+  mkdir -p "${DIST_DIR}"
+  build_release
+  prepare_bundle
+  verify_bundle
+
+  echo "app:     ${APP_DIR}"
+  echo "version: ${VERSION} (${BUILD_NUMBER})"
+  echo "arch:    ${ARCH}"
+}
+
+archive() {
+  build
+  package_archive
+  echo "archive: ${ARCHIVE}"
+}
+
+status() {
+  if [[ -d "${APP_DIR}" ]]; then
+    echo "app:     ${APP_DIR}"
+  else
+    echo "app:     not built"
+  fi
+
+  if [[ -f "${ARCHIVE}" ]]; then
+    echo "archive: ${ARCHIVE}"
+  else
+    echo "archive: not built"
+  fi
+}
+
+usage() {
+  cat <<'EOF'
+usage: desktop/macos/package-app {build|archive|status}
+
+Commands:
+  build   build the release binary and Caffold Server.app
+  archive build the app and an optional zip archive
+  status  print the current bundle and archive paths
+EOF
+}
+
+case "${1:-build}" in
+  build)
+    build
+    ;;
+  archive)
+    archive
+    ;;
+  status)
+    status
+    ;;
+  -h|--help|help)
+    usage
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac

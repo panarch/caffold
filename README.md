@@ -54,6 +54,20 @@ For deterministic local testing, a bounded root can be supplied:
 cargo run -- serve --root tests/fixtures/home
 ```
 
+## Caffold Server for macOS
+
+`Caffold Server` packages the Rust backend as a portable macOS menu bar app while the browser/PWA remains the primary interface.
+
+Build the application bundle with:
+
+```sh
+desktop/macos/package-app build
+```
+
+The app is written to `target/caffold-server/Caffold Server.app`. Its menu reports Codex, Git, GitHub CLI, and Tailscale status and controls the server name, bind mode, port, restart behavior, and tailnet-only Tailscale Serve access. Missing integrations disable only their related features.
+
+See [Caffold Server for macOS](desktop/macos/README.md) for installation, runtime dependencies, storage paths, and packaging details.
+
 ## Test
 
 Run Rust checks:

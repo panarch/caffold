@@ -137,7 +137,10 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
 
   const svgResponse = await request.get("/assets/icons/caffold.svg");
   expect(svgResponse.headers()["content-type"]).toContain("image/svg+xml");
-  expect(await svgResponse.text()).toContain('rx="48"');
+  const appIcon = await svgResponse.text();
+  expect(appIcon).toContain('filter id="caffold-mark-shadow"');
+  expect(appIcon).toContain('<rect width="256" height="256" fill="#f7faf7"/>');
+  expect(appIcon).not.toContain('rx="48"');
 
   const markResponse = await request.get("/assets/icons/caffold-mark.svg");
   expect(markResponse.headers()["content-type"]).toContain("image/svg+xml");

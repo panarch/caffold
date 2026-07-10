@@ -34,6 +34,7 @@ use crate::{
         RootedFs,
     },
     project_store::{ProjectRecord, ProjectStore, ProjectStoreError},
+    server_settings::{ServerSettings, ServerSettingsError, ServerSettingsStore},
     static_assets,
 };
 
@@ -52,6 +53,7 @@ pub struct ServeConfig {
 struct AppState {
     fs: Arc<RootedFs>,
     projects: ProjectStore,
+    server_settings: Arc<ServerSettingsStore>,
     codex_threads: Arc<CodexThreadRuntime>,
     pending_approvals: Arc<AsyncMutex<HashMap<String, PendingApproval>>>,
     task_events: broadcast::Sender<TaskEventRecord>,
@@ -214,6 +216,11 @@ struct RenameProjectRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct UpdateServerSettingsRequest {
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TasksQuery {
     project_id: Option<String>,
@@ -254,6 +261,7 @@ struct TaskApprovalRequest {
 #[serde(rename_all = "camelCase")]
 struct HealthResponse {
     status: &'static str,
+    server_name: String,
     root: String,
     initial_path: String,
     home_path: Option<String>,
@@ -369,6 +377,9 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     };
     let data_dir = config.data_dir.unwrap_or(default_data_dir()?);
     let project_store = ProjectStore::redb(data_dir.join("caffold.redb"))?;
+    let server_settings = Arc::new(ServerSettingsStore::persistent(
+        data_dir.join("server.json"),
+    )?);
     let (task_events, _) = broadcast::channel(256);
     let (shutdown, _) = broadcast::channel(16);
     let pending_approvals = Arc::new(AsyncMutex::new(HashMap::new()));
@@ -377,6 +388,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let app = router_with_state(AppState {
         fs: Arc::new(fs),
         projects: project_store,
+        server_settings,
         codex_threads: codex_threads.clone(),
         pending_approvals,
         task_events,
@@ -417,6 +429,7 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
     Ok(router_with_state(AppState {
         fs: Arc::new(fs),
         projects: ProjectStore::memory()?,
+        server_settings: Arc::new(ServerSettingsStore::memory()),
         codex_threads: Arc::new(CodexThreadRuntime::default()),
         pending_approvals: Arc::new(AsyncMutex::new(HashMap::new())),
         task_events,
@@ -430,6 +443,10 @@ fn router_with_state(state: AppState) -> Router {
     Router::new()
         .route("/", get(index))
         .route("/api/health", get(health))
+        .route(
+            "/api/server/settings",
+            get(get_server_settings).patch(update_server_settings),
+        )
         .route("/api/list", get(list))
         .route("/api/file", get(file))
         .route("/api/image", get(image))
@@ -467,6 +484,7 @@ fn router_with_state(state: AppState) -> Router {
             post(task_approval),
         )
         .route("/service-worker.js", get(service_worker))
+        .route("/assets/manifest.webmanifest", get(manifest))
         .route("/assets/{*path}", get(asset))
         .route("/tasks", get(index))
         .route("/tasks/{*path}", get(index))
@@ -527,8 +545,43 @@ async fn shutdown_signal(shutdown: broadcast::Sender<()>) {
     let _ = shutdown.send(());
 }
 
-async fn index() -> Html<&'static str> {
-    Html(static_assets::INDEX)
+async fn index(State(state): State<AppState>) -> Response {
+    let name = state.server_settings.get().name;
+    let body = render_index(&name);
+    let mut response = Html(body).into_response();
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    response
+}
+
+async fn manifest(State(state): State<AppState>) -> Result<Response, ApiError> {
+    let name = state.server_settings.get().name;
+    let body = render_manifest(&name)?;
+    let mut response = Response::new(Body::from(body));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/manifest+json; charset=utf-8"),
+    );
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    Ok(response)
+}
+
+fn render_index(name: &str) -> String {
+    static_assets::INDEX.replace("{{CAFFOLD_SERVER_NAME}}", &escape_html(name))
+}
+
+fn render_manifest(name: &str) -> Result<Vec<u8>, ApiError> {
+    let asset = static_assets::get("manifest.webmanifest")
+        .ok_or_else(|| ApiError::Internal("PWA manifest asset is unavailable".to_string()))?;
+    let mut manifest: JsonValue = serde_json::from_slice(asset.body)
+        .map_err(|error| ApiError::Internal(format!("PWA manifest is invalid: {error}")))?;
+    manifest["name"] = JsonValue::String(name.to_string());
+    manifest["short_name"] = JsonValue::String(name.to_string());
+    serde_json::to_vec_pretty(&manifest)
+        .map_err(|error| ApiError::Internal(format!("PWA manifest failed to encode: {error}")))
 }
 
 async fn service_worker() -> Response {
@@ -569,11 +622,49 @@ async fn asset(AxumPath(path): AxumPath<String>) -> Response {
 async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok",
+        server_name: state.server_settings.get().name,
         root: state.fs.root().display().to_string(),
         initial_path: state.initial_path,
         home_path: state.home_path,
         max_file_bytes: MAX_FILE_BYTES,
     })
+}
+
+async fn get_server_settings(State(state): State<AppState>) -> Json<ServerSettings> {
+    Json(state.server_settings.get())
+}
+
+async fn update_server_settings(
+    State(state): State<AppState>,
+    Json(request): Json<UpdateServerSettingsRequest>,
+) -> Result<Json<ServerSettings>, ApiError> {
+    state
+        .server_settings
+        .update_name(&request.name)
+        .map(Json)
+        .map_err(server_settings_error)
+}
+
+fn server_settings_error(error: ServerSettingsError) -> ApiError {
+    match error {
+        ServerSettingsError::EmptyName | ServerSettingsError::NameTooLong => ApiError::BadRequest {
+            code: "invalid_server_name",
+            message: error.to_string(),
+        },
+        ServerSettingsError::Read(_)
+        | ServerSettingsError::Parse(_)
+        | ServerSettingsError::Write(_)
+        | ServerSettingsError::Encode(_) => ApiError::Internal(error.to_string()),
+    }
+}
+
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
 }
 
 async fn list(
@@ -2365,6 +2456,20 @@ impl IntoResponse for ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn server_name_is_applied_to_install_metadata() {
+        let index = render_index("Caffold & Mac Studio");
+        assert!(index.contains("<title>Caffold &amp; Mac Studio</title>"));
+        assert!(index.contains("content=\"Caffold &amp; Mac Studio\""));
+        assert!(!index.contains("{{CAFFOLD_SERVER_NAME}}"));
+
+        let manifest: JsonValue =
+            serde_json::from_slice(&render_manifest("Caffold Studio").unwrap()).unwrap();
+        assert_eq!(manifest["name"], "Caffold Studio");
+        assert_eq!(manifest["short_name"], "Caffold Studio");
+        assert_eq!(manifest["id"], "/");
+    }
 
     fn task_test_project() -> (ProjectRecord, tempfile::TempDir) {
         let temp = tempfile::tempdir().unwrap();
