@@ -7,6 +7,29 @@ struct TailscaleStatus {
     let tailnetURL: URL?
 }
 
+enum IntegrationState {
+    case checking
+    case ready
+    case attention
+    case unavailable
+}
+
+struct IntegrationDetail {
+    let label: String
+    let value: String
+}
+
+struct IntegrationStatus {
+    let name: String
+    let state: IntegrationState
+    let status: String
+    let details: [IntegrationDetail]
+
+    static func checking(_ name: String) -> Self {
+        Self(name: name, state: .checking, status: "Checking...", details: [])
+    }
+}
+
 private struct CodexStatusResponse: Decodable {
     struct Account: Decodable {
         let email: String?
@@ -18,6 +41,19 @@ private struct CodexStatusResponse: Decodable {
     let appServerAvailable: Bool
     let message: String?
     let account: Account?
+}
+
+private struct GithubStatusResponse: Decodable {
+    struct Account: Decodable {
+        let state: String
+        let error: String?
+        let active: Bool
+        let host: String
+        let login: String
+        let gitProtocol: String?
+    }
+
+    let hosts: [String: [Account]]
 }
 
 private struct TailscaleNodeResponse: Decodable {
@@ -38,55 +74,92 @@ private struct TailscaleNodeResponse: Decodable {
     }
 }
 
-func probeGitStatus(completion: @escaping (String) -> Void) {
+func probeGitStatus(completion: @escaping (IntegrationStatus) -> Void) {
     guard let git = caffoldExecutable(named: "git") else {
-        completion("Git · Not installed")
+        completion(IntegrationStatus(
+            name: "Git",
+            state: .unavailable,
+            status: "Not installed",
+            details: []
+        ))
         return
     }
     runCommand(executable: git, arguments: ["--version"]) { result in
         switch result {
         case let .success(command) where command.status == 0:
             let version = command.output.replacingOccurrences(of: "git version ", with: "")
-            completion("Git · Ready · \(version)")
+            completion(IntegrationStatus(
+                name: "Git",
+                state: .ready,
+                status: "Ready",
+                details: [IntegrationDetail(label: "Version", value: version)]
+            ))
         case .success, .failure:
-            completion("Git · Unavailable")
+            completion(IntegrationStatus(
+                name: "Git",
+                state: .unavailable,
+                status: "Unavailable",
+                details: []
+            ))
         }
     }
 }
 
-func probeGithubStatus(completion: @escaping (String) -> Void) {
+func probeGithubStatus(completion: @escaping (IntegrationStatus) -> Void) {
     guard let gh = caffoldExecutable(named: "gh") else {
-        completion("GitHub CLI · Not installed")
+        completion(IntegrationStatus(
+            name: "GitHub CLI",
+            state: .unavailable,
+            status: "Not installed",
+            details: []
+        ))
         return
     }
     runCommand(
         executable: gh,
-        arguments: ["auth", "status", "--hostname", "github.com"]
+        arguments: ["auth", "status", "--hostname", "github.com", "--json", "hosts"]
     ) { result in
-        switch result {
-        case let .success(command) where command.status == 0:
-            completion("GitHub CLI · Ready")
-        case let .success(command):
-            let output = command.output.lowercased()
-            if output.contains("not logged") || output.contains("token") || output.contains("login") {
-                completion("GitHub CLI · Sign-in required")
-            } else {
-                completion("GitHub CLI · Unavailable")
-            }
-        case .failure:
-            completion("GitHub CLI · Unavailable")
+        guard
+            case let .success(command) = result,
+            let data = command.output.data(using: .utf8),
+            let response = try? JSONDecoder().decode(GithubStatusResponse.self, from: data),
+            let account = response.hosts["github.com"]?.first(where: \.active)
+                ?? response.hosts["github.com"]?.first
+        else {
+            completion(IntegrationStatus(
+                name: "GitHub CLI",
+                state: .unavailable,
+                status: "Unavailable",
+                details: []
+            ))
+            return
         }
+
+        let ready = account.state == "success"
+        let error = account.error?.lowercased() ?? ""
+        let needsAuthentication = error.contains("auth")
+            || error.contains("login")
+            || error.contains("token")
+        completion(IntegrationStatus(
+            name: "GitHub CLI",
+            state: ready ? .ready : needsAuthentication ? .attention : .unavailable,
+            status: ready ? "Ready" : needsAuthentication ? "Sign-in required" : "Unavailable",
+            details: [
+                IntegrationDetail(label: "Account", value: account.login),
+                IntegrationDetail(label: "Host", value: account.host),
+            ]
+        ))
     }
 }
 
 func probeCodexStatus(
     url: URL,
-    completion: @escaping (String) -> Void
+    completion: @escaping (IntegrationStatus) -> Void
 ) {
     var request = URLRequest(url: url)
     request.timeoutInterval = 4
     URLSession.shared.dataTask(with: request) { data, response, _ in
-        let title: String
+        let statusResult: IntegrationStatus
         if
             let response = response as? HTTPURLResponse,
             response.statusCode == 200,
@@ -94,20 +167,48 @@ func probeCodexStatus(
             let status = try? JSONDecoder().decode(CodexStatusResponse.self, from: data)
         {
             if !status.codexCliAvailable {
-                title = "Codex · Not installed"
+                statusResult = IntegrationStatus(
+                    name: "Codex",
+                    state: .unavailable,
+                    status: "Not installed",
+                    details: []
+                )
             } else if status.available, status.appServerAvailable {
-                let account = status.account?.email ?? status.account?.planType
-                title = account.map { "Codex · Ready · \($0)" } ?? "Codex · Ready"
+                let details = [
+                    status.account?.email.map { IntegrationDetail(label: "Account", value: $0) },
+                    status.account?.planType.map { IntegrationDetail(label: "Plan", value: $0) },
+                ].compactMap { $0 }
+                statusResult = IntegrationStatus(
+                    name: "Codex",
+                    state: .ready,
+                    status: "Ready",
+                    details: details
+                )
             } else if status.message?.lowercased().contains("auth") == true {
-                title = "Codex · Sign-in required"
+                statusResult = IntegrationStatus(
+                    name: "Codex",
+                    state: .attention,
+                    status: "Sign-in required",
+                    details: []
+                )
             } else {
-                title = "Codex · Unavailable"
+                statusResult = IntegrationStatus(
+                    name: "Codex",
+                    state: .unavailable,
+                    status: "Unavailable",
+                    details: []
+                )
             }
         } else {
-            title = "Codex · Server unavailable"
+            statusResult = IntegrationStatus(
+                name: "Codex",
+                state: .unavailable,
+                status: "Server unavailable",
+                details: []
+            )
         }
         DispatchQueue.main.async {
-            completion(title)
+            completion(statusResult)
         }
     }.resume()
 }

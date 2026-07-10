@@ -154,23 +154,21 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(sectionItem("Integrations"))
 
-        let codexStatus = makeStatusItem("Codex · Checking...")
+        let codexStatus = makeIntegrationItem("Codex")
         menu.addItem(codexStatus)
         codexStatusMenuItem = codexStatus
 
-        let gitStatus = makeStatusItem("Git · Checking...")
+        let gitStatus = makeIntegrationItem("Git")
         menu.addItem(gitStatus)
         gitStatusMenuItem = gitStatus
 
-        let githubStatus = makeStatusItem("GitHub CLI · Checking...")
+        let githubStatus = makeIntegrationItem("GitHub CLI")
         menu.addItem(githubStatus)
         githubStatusMenuItem = githubStatus
 
-        menu.addItem(actionItem("Refresh Status", action: #selector(refreshStatus)))
-
         menu.addItem(.separator())
         menu.addItem(actionItem("Show Logs", action: #selector(showLogs), key: "l"))
-        menu.addItem(actionItem("Quit Caffold Server", action: #selector(quit), key: "q"))
+        menu.addItem(actionItem("Quit", action: #selector(quit), key: "q"))
 
         item.menu = menu
         statusItem = item
@@ -201,6 +199,12 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.target = self
         item.indentationLevel = 1
+        return item
+    }
+
+    private func makeIntegrationItem(_ name: String) -> NSMenuItem {
+        let item = NSMenuItem(title: name, action: nil, keyEquivalent: "")
+        applyIntegrationStatus(.checking(name), to: item)
         return item
     }
 
@@ -264,9 +268,9 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func refreshSystemStatus() {
-        codexStatusMenuItem?.title = "Codex · Checking..."
-        gitStatusMenuItem?.title = "Git · Checking..."
-        githubStatusMenuItem?.title = "GitHub CLI · Checking..."
+        applyIntegrationStatus(.checking("Codex"), to: codexStatusMenuItem)
+        applyIntegrationStatus(.checking("Git"), to: gitStatusMenuItem)
+        applyIntegrationStatus(.checking("GitHub CLI"), to: githubStatusMenuItem)
         tailscaleStatusMenuItem?.title = "Tailscale · Checking..."
         tailscaleToggleMenuItem?.isEnabled = false
         tailnetURLMenuItem?.isEnabled = false
@@ -284,14 +288,14 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.updateServerControls()
         }
 
-        probeCodexStatus(url: codexStatusURL) { [weak self] title in
-            self?.codexStatusMenuItem?.title = title
+        probeCodexStatus(url: codexStatusURL) { [weak self] status in
+            self?.applyIntegrationStatus(status, to: self?.codexStatusMenuItem)
         }
-        probeGitStatus { [weak self] title in
-            self?.gitStatusMenuItem?.title = title
+        probeGitStatus { [weak self] status in
+            self?.applyIntegrationStatus(status, to: self?.gitStatusMenuItem)
         }
-        probeGithubStatus { [weak self] title in
-            self?.githubStatusMenuItem?.title = title
+        probeGithubStatus { [weak self] status in
+            self?.applyIntegrationStatus(status, to: self?.githubStatusMenuItem)
         }
         probeTailscaleStatus(localTarget: tailscaleTarget) { [weak self] status in
             self?.applyTailscaleStatus(status)
@@ -306,6 +310,58 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ? "Turn Off Tailscale Serve"
             : "Turn On Tailscale Serve"
         tailscaleToggleMenuItem?.isEnabled = status.connected
+    }
+
+    private func applyIntegrationStatus(
+        _ status: IntegrationStatus,
+        to item: NSMenuItem?
+    ) {
+        guard let item else { return }
+        item.title = status.name
+        item.image = integrationStatusImage(status.state)
+        item.isEnabled = true
+
+        let submenu = NSMenu()
+        let statusDetail = NSMenuItem(
+            title: "Status · \(status.status)",
+            action: nil,
+            keyEquivalent: ""
+        )
+        statusDetail.isEnabled = false
+        submenu.addItem(statusDetail)
+        if !status.details.isEmpty {
+            submenu.addItem(.separator())
+        }
+        for entry in status.details {
+            let detail = NSMenuItem(
+                title: "\(entry.label) · \(entry.value)",
+                action: nil,
+                keyEquivalent: ""
+            )
+            detail.isEnabled = false
+            submenu.addItem(detail)
+        }
+        item.submenu = submenu
+    }
+
+    private func integrationStatusImage(_ state: IntegrationState) -> NSImage? {
+        let symbol: String
+        switch state {
+        case .checking:
+            symbol = "arrow.clockwise.circle"
+        case .ready:
+            symbol = "checkmark.circle.fill"
+        case .attention:
+            symbol = "exclamationmark.triangle.fill"
+        case .unavailable:
+            symbol = "xmark.circle.fill"
+        }
+        let image = NSImage(
+            systemSymbolName: symbol,
+            accessibilityDescription: "Integration status: \(state)"
+        )
+        image?.isTemplate = true
+        return image
     }
 
     private func startServer() {
@@ -739,10 +795,6 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func restartServer() {
         restartServerProcess()
-    }
-
-    @objc private func refreshStatus() {
-        refreshSystemStatus()
     }
 
     @objc private func toggleTailscaleServe() {
