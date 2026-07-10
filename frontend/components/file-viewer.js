@@ -284,8 +284,10 @@ customElements.define(
 );
 
 function diffSubtitle(diff) {
-  return [diffStatusLabel(diff.status), diffKindLabel(diff.kind)]
-    .filter(Boolean)
+  const labels = [diffStatusLabel(diff.status), diffKindLabel(diff.kind)].filter(Boolean);
+
+  return labels
+    .filter((label, index) => labels.indexOf(label) === index)
     .join(" · ");
 }
 
@@ -301,7 +303,7 @@ function diffKindLabel(kind) {
   const labels = {
     staged: "Staged",
     unstaged: "Unstaged",
-    untracked: "Untracked",
+    untracked: "Added",
   };
 
   return labels[kind] ?? kind;

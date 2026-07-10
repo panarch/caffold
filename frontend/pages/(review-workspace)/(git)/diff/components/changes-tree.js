@@ -4,7 +4,6 @@ import { renderEntryIcon, warmIcons } from "../../../../../components/icons.js";
 const SECTIONS = [
   ["unstaged", "Unstaged"],
   ["staged", "Staged"],
-  ["untracked", "Untracked"],
 ];
 
 class CaffoldGitDiffChangesTree extends HTMLElement {
@@ -221,6 +220,7 @@ class CaffoldGitDiffChangesTree extends HTMLElement {
   renderFile(file, depth) {
     const name = file.repoRelativePath.split("/").filter(Boolean).pop() ?? file.repoRelativePath;
     const kind = file.untracked ? "untracked" : file.category;
+    const status = displayStatus(file);
     const selected = file.path === this.selectedPath;
     const entry = {
       name,
@@ -238,12 +238,12 @@ class CaffoldGitDiffChangesTree extends HTMLElement {
           style="--tree-depth: ${depth}"
           data-change-path="${escapeHtml(file.path)}"
           data-change-kind="${escapeHtml(kind)}"
-          data-change-status="${escapeHtml(file.status)}"
+          data-change-status="${escapeHtml(status)}"
           aria-current="${selected ? "true" : "false"}"
           aria-label="${escapeHtml(`Show diff for ${file.repoRelativePath}`)}"
           title="${escapeHtml(file.repoRelativePath)}"
         >
-          <span class="change-status-code">${escapeHtml(file.status)}</span>
+          <span class="change-status-code">${escapeHtml(status)}</span>
           <span class="change-node-label">
             ${renderEntryIcon(entry)}
             <span class="change-name">${escapeHtml(name)}</span>
@@ -304,7 +304,8 @@ function buildChangeTree(files) {
   const directoryKeys = [];
 
   for (const file of files) {
-    const section = sections.get(file.category);
+    const category = displayCategory(file);
+    const section = sections.get(category);
     if (!section) {
       continue;
     }
@@ -319,7 +320,7 @@ function buildChangeTree(files) {
 
     for (const part of parts.slice(0, -1)) {
       directoryPath = directoryPath ? `${directoryPath}/${part}` : part;
-      const key = `${file.category}:${directoryPath}`;
+      const key = `${category}:${directoryPath}`;
       let directory = children.get(key);
 
       if (!directory) {
@@ -336,7 +337,7 @@ function buildChangeTree(files) {
       children = directory.children;
     }
 
-    children.set(`${file.category}:file:${file.repoRelativePath}`, {
+    children.set(`${category}:file:${file.repoRelativePath}`, {
       kind: "file",
       name: parts[parts.length - 1],
       file,
@@ -344,6 +345,14 @@ function buildChangeTree(files) {
   }
 
   return { sections, directoryKeys };
+}
+
+function displayCategory(file) {
+  return file.untracked ? "unstaged" : file.category;
+}
+
+function displayStatus(file) {
+  return file.untracked ? "A" : file.status;
 }
 
 function sortedNodes(children) {

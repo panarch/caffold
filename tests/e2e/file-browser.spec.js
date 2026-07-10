@@ -3317,6 +3317,15 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
             unstaged: true,
             untracked: false,
           },
+          {
+            path: "src/new-file.rs",
+            repoRelativePath: "new-file.rs",
+            status: "??",
+            category: "untracked",
+            staged: false,
+            unstaged: false,
+            untracked: true,
+          },
         ],
       }),
     }),
@@ -3325,6 +3334,7 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   await page.route(/\/api\/git\/diff(?:\?|$)/, (route) => {
     const url = new URL(route.request().url());
     const file = url.searchParams.get("file");
+    const kind = url.searchParams.get("kind");
 
     return route.fulfill({
       contentType: "application/json",
@@ -3332,19 +3342,31 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
         repository,
         path: file,
         repoRelativePath: file.replace(/^src\//, ""),
-        kind: "unstaged",
-        diff: [
-          `diff --git a/${file.replace(/^src\//, "")} b/${file.replace(/^src\//, "")}`,
-          "index 1111111..2222222 100644",
-          `--- a/${file.replace(/^src\//, "")}`,
-          `+++ b/${file.replace(/^src\//, "")}`,
-          "@@ -10,4 +10,5 @@ pub fn sample()",
-          longContextLine,
-          "-old line",
-          "+new line",
-          "+another line",
-          " trailing line",
-        ].join("\n"),
+        kind,
+        diff:
+          kind === "untracked"
+            ? [
+                "diff --git a/new-file.rs b/new-file.rs",
+                "new file mode 100644",
+                "index 0000000..1111111",
+                "--- /dev/null",
+                "+++ b/new-file.rs",
+                "@@ -0,0 +1,2 @@",
+                "+pub fn new_file() {}",
+                "+// new file line",
+              ].join("\n")
+            : [
+                `diff --git a/${file.replace(/^src\//, "")} b/${file.replace(/^src\//, "")}`,
+                "index 1111111..2222222 100644",
+                `--- a/${file.replace(/^src\//, "")}`,
+                `+++ b/${file.replace(/^src\//, "")}`,
+                "@@ -10,4 +10,5 @@ pub fn sample()",
+                longContextLine,
+                "-old line",
+                "+new line",
+                "+another line",
+                " trailing line",
+              ].join("\n"),
       }),
     });
   });
@@ -3355,19 +3377,19 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   const gitButton = headerActionGroupButton(page, "git");
   await expect(gitButton).toBeVisible();
   await expect(page.locator("caffold-pathbar .header-action-button")).toHaveCount(0);
-  await expect(gitButton.locator(".header-action-badge")).toHaveText("2");
+  await expect(gitButton.locator(".header-action-badge")).toHaveText("3");
   await expect(gitButton.locator("img.header-action-brand-icon")).toBeVisible();
   await expect(gitButton.locator("img.header-action-brand-icon")).toHaveAttribute(
     "src",
     "/assets/brand/git-logomark-light.svg",
   );
   await expect(gitButton).not.toContainText("master");
-  await expect(gitButton).toHaveAttribute("title", "Git actions, 2 changed files");
+  await expect(gitButton).toHaveAttribute("title", "Git actions, 3 changed files");
 
   const gitPopover = await openHeaderActionGroup(page, "git");
   const diffMenuItem = gitPopover.locator('button[data-action="open-diff-workspace"]');
   await expect(diffMenuItem.locator(".header-menu-label")).toHaveText("Diff");
-  await expect(diffMenuItem.locator(".header-menu-metric")).toHaveText("2");
+  await expect(diffMenuItem.locator(".header-menu-metric")).toHaveText("3");
   await diffMenuItem.click();
   const workspace = page.locator("caffold-review-workspace");
   await expect(workspace).toBeVisible();
@@ -3378,8 +3400,13 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   );
   await expect(workspace.getByRole("button", { name: "Close review workspace" })).toBeVisible();
   await expect(page.locator("caffold-git-diff-page")).toContainText("Unstaged");
+  await expect(page.locator("caffold-git-diff-page")).not.toContainText("Untracked");
   await expect(page.locator("caffold-git-diff-page")).toContainText("example.rs");
   await expect(page.locator("caffold-git-diff-page")).toContainText("deleted.rs");
+  await expect(page.locator("caffold-git-diff-page")).toContainText("new-file.rs");
+  await expect(page.locator('button[data-change-path="src/new-file.rs"] .change-status-code')).toHaveText(
+    "A",
+  );
   if (testInfo.project.name !== "phone") {
     const resizeHandle = workspace.locator(".git-mode-diff .review-panel-resizer");
     await expect(resizeHandle).toBeVisible();
@@ -3468,6 +3495,14 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
       "aria-current",
       "false",
     );
+  }
+
+  await page.locator('button[data-change-path="src/new-file.rs"]').click();
+  await expect(page.locator(".git-mode-diff .viewer-subtitle")).toHaveText("Added");
+  await expect(page.locator("caffold-diff-viewer")).toContainText("pub fn new_file");
+  if (testInfo.project.name === "phone") {
+    await page.getByRole("button", { name: "Back to changes" }).click();
+    await expect(workspace).toHaveAttribute("data-mobile-detail", "false");
   }
 
   await workspace.getByRole("button", { name: "Close review workspace" }).click();
