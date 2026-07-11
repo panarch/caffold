@@ -14,6 +14,12 @@ pub struct Repository {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepositoryMetadataPaths {
+    pub git_dir: PathBuf,
+    pub common_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StatusEntry {
     pub repo_relative_path: String,
     pub status: String,
@@ -85,6 +91,26 @@ pub fn repository_for(path: &Path) -> Option<Repository> {
 
 pub fn has_git_marker(path: &Path) -> bool {
     path.join(".git").exists()
+}
+
+pub fn repository_metadata_paths(repository: &Repository) -> Option<RepositoryMetadataPaths> {
+    let git_dir = PathBuf::from(run_git(
+        &repository.root,
+        &["rev-parse", "--absolute-git-dir"],
+    )?)
+    .canonicalize()
+    .ok()?;
+    let common_dir = PathBuf::from(run_git(
+        &repository.root,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    )?)
+    .canonicalize()
+    .ok()?;
+
+    Some(RepositoryMetadataPaths {
+        git_dir,
+        common_dir,
+    })
 }
 
 pub fn status_entries(repository: &Repository) -> Option<Vec<StatusEntry>> {
@@ -729,6 +755,39 @@ mod tests {
         assert_eq!(repository.root, temp.path().canonicalize().unwrap());
         assert!(repository.branch.is_some());
         assert!(repository.dirty);
+    }
+
+    #[test]
+    fn resolves_linked_worktree_git_and_common_directories() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let repository_root = temp.path().join("repository");
+        let linked_root = temp.path().join("linked");
+        fs::create_dir(&repository_root).unwrap();
+        git(&repository_root, &["init"]);
+        fs::write(repository_root.join("tracked.txt"), "tracked\n").unwrap();
+        git(&repository_root, &["add", "tracked.txt"]);
+        commit(&repository_root, "Initial commit");
+        let linked = linked_root.to_string_lossy().into_owned();
+        git(
+            &repository_root,
+            &["worktree", "add", "-b", "linked", &linked],
+        );
+
+        let repository = repository_for(&linked_root).unwrap();
+        let metadata = repository_metadata_paths(&repository).unwrap();
+        let common_dir = repository_root.join(".git").canonicalize().unwrap();
+
+        assert_eq!(metadata.common_dir, common_dir);
+        assert_ne!(metadata.git_dir, metadata.common_dir);
+        assert!(
+            metadata
+                .git_dir
+                .starts_with(metadata.common_dir.join("worktrees"))
+        );
     }
 
     #[test]

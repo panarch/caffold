@@ -93,6 +93,7 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "components/file-browser/list.js" => Some(js(include_str!(
             "../frontend/components/file-browser/list.js"
         ))),
+        "watch.js" => Some(js(include_str!("../frontend/watch.js"))),
         "pages/files/page.css" => Some(css(include_str!("../frontend/pages/files/page.css"))),
         "pages/files/page.js" => Some(js(include_str!("../frontend/pages/files/page.js"))),
         "pages/(codex)/layout.css" => {
@@ -686,6 +687,12 @@ mod tests {
         );
         assert!(get("pages/files/components/list.js").is_none());
         assert!(get("pages/files/components/list.css").is_none());
+        let watch_module = get("watch.js").expect("watch js asset");
+        assert_eq!(
+            watch_module.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(watch_module.body.starts_with(b"import "));
         let log_layout =
             get("pages/(review-workspace)/(git)/(log)/layout.js").expect("git log layout js asset");
         assert_eq!(log_layout.content_type, "text/javascript; charset=utf-8");

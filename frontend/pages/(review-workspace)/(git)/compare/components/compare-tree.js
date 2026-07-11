@@ -45,9 +45,25 @@ class CaffoldGitCompareTree extends HTMLElement {
 
   setCompare(comparePayload) {
     const tree = buildCompareTree(comparePayload.files ?? []);
-    this.expandedKeys = new Set(tree.directoryKeys);
+    this.knownDirectoryKeys = new Set(tree.directoryKeys);
+    this.expandedKeys = new Set(this.knownDirectoryKeys);
     this.state = { status: "ready", comparePayload, tree };
     this.render();
+  }
+
+  updateCompare(comparePayload) {
+    const scroll = this.captureListScroll();
+    const tree = buildCompareTree(comparePayload.files ?? []);
+    const nextKeys = new Set(tree.directoryKeys);
+    const previousKeys = this.knownDirectoryKeys ?? new Set();
+    this.expandedKeys = new Set([
+      ...Array.from(this.expandedKeys ?? []).filter((key) => nextKeys.has(key)),
+      ...Array.from(nextKeys).filter((key) => !previousKeys.has(key)),
+    ]);
+    this.knownDirectoryKeys = nextKeys;
+    this.state = { status: "ready", comparePayload, tree };
+    this.render();
+    this.restoreListScroll(scroll);
   }
 
   setError(error, repository = null) {
@@ -85,8 +101,29 @@ class CaffoldGitCompareTree extends HTMLElement {
   reset() {
     this.selectedPath = "";
     this.expandedKeys = new Set();
+    this.knownDirectoryKeys = new Set();
     this.state = { status: "idle" };
     this.render();
+  }
+
+  captureListScroll() {
+    const scroller = this.querySelector(".compare-tree-list");
+    return scroller
+      ? { top: scroller.scrollTop, left: scroller.scrollLeft }
+      : null;
+  }
+
+  restoreListScroll(scroll) {
+    if (!scroll) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      const scroller = this.querySelector(".compare-tree-list");
+      if (scroller) {
+        scroller.scrollTop = scroll.top;
+        scroller.scrollLeft = scroll.left;
+      }
+    });
   }
 
   render() {

@@ -163,7 +163,7 @@ class CaffoldGitLogLayout extends HTMLElement {
     }
   }
 
-  async loadLog(page = this.page) {
+  async loadLog(page = this.page, options = {}) {
     if (!this.repository) {
       return null;
     }
@@ -181,7 +181,11 @@ class CaffoldGitLogLayout extends HTMLElement {
       this.page = log.page ?? nextPage;
       this.repository = log.repository;
       this.log = log;
-      this.list.setLog(log);
+      if (options.preserveState) {
+        this.list.updateLog(log);
+      } else {
+        this.list.setLog(log);
+      }
       this.emitStateChange();
       return log;
     } catch (error) {
@@ -195,6 +199,13 @@ class CaffoldGitLogLayout extends HTMLElement {
     } finally {
       window.clearTimeout(loadingTimer);
     }
+  }
+
+  async refresh() {
+    if (this.view === "detail") {
+      return await this.commitPage.refresh();
+    }
+    return await this.loadLog(this.page, { preserveState: true });
   }
 
   canReuseRoute(page, sha) {

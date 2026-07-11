@@ -5,10 +5,12 @@ const HIGHLIGHT_IMPORT = "https://esm.sh/highlight.js@11.11.1/lib/common";
 let highlighterPromise;
 
 class CaffoldCodeViewer extends HTMLElement {
-  setFile(file) {
+  setFile(file, options = {}) {
+    const scroll = options.scroll ?? (options.preserveScroll ? this.captureScroll() : null);
     this.file = file;
     this.renderPlain();
-    this.renderHighlighted();
+    this.restoreScroll(scroll);
+    this.renderHighlighted(scroll);
   }
 
   renderPlain() {
@@ -23,7 +25,7 @@ class CaffoldCodeViewer extends HTMLElement {
     `;
   }
 
-  async renderHighlighted() {
+  async renderHighlighted(scroll = null) {
     const renderToken = Symbol("highlight");
     this.renderToken = renderToken;
 
@@ -42,8 +44,31 @@ class CaffoldCodeViewer extends HTMLElement {
           ${renderCodeLines(highlighted, this.file.content)}
         </section>
       `;
+      this.restoreScroll(scroll);
     } catch {
       // CDN import is an enhancement. The plain renderer above remains valid.
+    }
+  }
+
+  captureScroll() {
+    const scroller = this.querySelector(".code-lines");
+    return scroller
+      ? { top: scroller.scrollTop, left: scroller.scrollLeft }
+      : null;
+  }
+
+  getScrollState() {
+    return this.captureScroll();
+  }
+
+  restoreScroll(scroll) {
+    if (!scroll) {
+      return;
+    }
+    const scroller = this.querySelector(".code-lines");
+    if (scroller) {
+      scroller.scrollTop = scroll.top;
+      scroller.scrollLeft = scroll.left;
     }
   }
 }

@@ -157,6 +157,10 @@ caffold-review-workspace.is-resizing-review-panel {
 }
 
 @media (max-width: 860px) {
+  caffold-review-workspace[data-mobile-detail="true"] caffold-review-file-viewer .viewer-refresh-button {
+    display: grid;
+  }
+
   caffold-review-workspace[data-mobile-detail="true"] .review-workspace-panel {
     grid-template-rows: minmax(0, 1fr);
   }

@@ -9,9 +9,33 @@ class CaffoldDiffViewer extends HTMLElement {
     }
   }
 
-  setDiff(diff) {
+  setDiff(diff, options = {}) {
+    const scroll = options.scroll ?? (options.preserveScroll ? this.captureScroll() : null);
     this.diff = diff;
     this.render();
+    this.restoreScroll(scroll);
+  }
+
+  captureScroll() {
+    const scroller = this.querySelector(".diff-lines");
+    return scroller
+      ? { top: scroller.scrollTop, left: scroller.scrollLeft }
+      : null;
+  }
+
+  getScrollState() {
+    return this.captureScroll();
+  }
+
+  restoreScroll(scroll) {
+    if (!scroll) {
+      return;
+    }
+    const scroller = this.querySelector(".diff-lines");
+    if (scroller) {
+      scroller.scrollTop = scroll.top;
+      scroller.scrollLeft = scroll.left;
+    }
   }
 
   render() {

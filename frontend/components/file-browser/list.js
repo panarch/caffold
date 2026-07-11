@@ -1,12 +1,20 @@
 import { listDirectory } from "../../api.js";
 import { entryKindLabel, escapeHtml } from "../dom.js";
-import { renderEntryIcon, warmIcons } from "../icons.js";
+import { renderEntryIcon, renderInlineIcon, warmIcons } from "../icons.js";
 
 const TREE_LOADING_DELAY_MS = 180;
 
 class CaffoldFileList extends HTMLElement {
   connectedCallback() {
     this.addEventListener("click", (event) => {
+      const refreshButton = event.target.closest('button[data-action="refresh-files"]');
+      if (refreshButton) {
+        this.dispatchEvent(
+          new CustomEvent("caffold:refresh-file-list", { bubbles: true }),
+        );
+        return;
+      }
+
       const button = event.target.closest("button[data-entry-path]");
       if (!button || button.disabled) {
         return;
@@ -60,6 +68,42 @@ class CaffoldFileList extends HTMLElement {
     this.render();
   }
 
+  updateDirectories(directories) {
+    if (!directories.length || this.state?.status !== "ready") {
+      return;
+    }
+    const scroll = this.captureListScroll();
+    const currentPath = this.state.directory.path;
+    const current = directories.find((directory) => directory.path === currentPath);
+    if (current) {
+      this.prepareTreeState(current);
+      this.state = { status: "ready", directory: current };
+    }
+    if (this.treeState) {
+      for (const directory of directories) {
+        this.treeState.cache.set(directory.path, directory);
+      }
+    }
+    this.render();
+    this.restoreListScroll(scroll);
+  }
+
+  cachedDirectoryPaths() {
+    if (this.treeState) {
+      return Array.from(this.treeState.cache.keys());
+    }
+    return this.state?.status === "ready" ? [this.state.directory.path] : [];
+  }
+
+  hasCachedDirectory(path) {
+    return this.cachedDirectoryPaths().includes(path);
+  }
+
+  setRefreshState(state) {
+    this.refreshState = state;
+    this.patchRefreshButton();
+  }
+
   setError(error) {
     this.resetTreeState();
     this.state = { status: "error", error };
@@ -104,7 +148,10 @@ class CaffoldFileList extends HTMLElement {
         <header>
           <div class="file-list-title-row">
             <h2>Files</h2>
-            <span class="entry-count">${directory.entries.length} entries</span>
+            <div class="file-list-actions">
+              <span class="entry-count">${directory.entries.length} entries</span>
+              ${this.renderRefreshButton()}
+            </div>
           </div>
           ${this.renderGitSummary(directory.git)}
         </header>
@@ -114,6 +161,61 @@ class CaffoldFileList extends HTMLElement {
         </ol>
       </section>
     `;
+  }
+
+  renderRefreshButton() {
+    const refreshing = this.refreshState === "refreshing";
+    const unavailable = this.refreshState === "unavailable";
+    const title = unavailable
+      ? "Live updates unavailable. Refresh manually."
+      : "Refresh files";
+    return `
+      <button
+        type="button"
+        class="file-refresh-button${refreshing ? " is-refreshing" : ""}${unavailable ? " is-unavailable" : ""}"
+        data-action="refresh-files"
+        aria-label="${escapeHtml(title)}"
+        title="${escapeHtml(title)}"
+      >
+        ${renderInlineIcon("RefreshCw", "Refresh files", "file-refresh-icon")}
+      </button>
+    `;
+  }
+
+  patchRefreshButton() {
+    const button = this.querySelector(".file-refresh-button");
+    if (!button) {
+      return;
+    }
+    const refreshing = this.refreshState === "refreshing";
+    const unavailable = this.refreshState === "unavailable";
+    const title = unavailable
+      ? "Live updates unavailable. Refresh manually."
+      : "Refresh files";
+    button.classList.toggle("is-refreshing", refreshing);
+    button.classList.toggle("is-unavailable", unavailable);
+    button.setAttribute("aria-label", title);
+    button.title = title;
+  }
+
+  captureListScroll() {
+    const scroller = this.querySelector(".file-list");
+    return scroller
+      ? { top: scroller.scrollTop, left: scroller.scrollLeft }
+      : null;
+  }
+
+  restoreListScroll(scroll) {
+    if (!scroll) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      const scroller = this.querySelector(".file-list");
+      if (scroller) {
+        scroller.scrollTop = scroll.top;
+        scroller.scrollLeft = scroll.left;
+      }
+    });
   }
 
   renderFlatEntries(directory) {

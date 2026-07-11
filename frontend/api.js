@@ -89,6 +89,12 @@ export function imageUrl(path) {
   return url.toString();
 }
 
+export function watchUrl(path = "") {
+  const url = new URL("/api/watch", window.location.origin);
+  url.searchParams.set("path", path);
+  return `${url.pathname}${url.search}`;
+}
+
 export async function getGitStatus(path = "") {
   return requestJson("/api/git/status", { path });
 }

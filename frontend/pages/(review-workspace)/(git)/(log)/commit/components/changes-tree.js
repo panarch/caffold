@@ -47,9 +47,36 @@ class CaffoldCommitChangesTree extends HTMLElement {
 
   setCommit(commitPayload) {
     const tree = buildCommitTree(commitPayload.files ?? []);
-    this.expandedKeys = new Set(tree.directoryKeys);
+    this.knownDirectoryKeys = new Set(tree.directoryKeys);
+    this.expandedKeys = new Set(this.knownDirectoryKeys);
     this.state = { status: "ready", commitPayload, tree };
     this.render();
+  }
+
+  updateCommit(commitPayload) {
+    const scroller = this.querySelector(".commit-tree-list");
+    const scroll = scroller
+      ? { top: scroller.scrollTop, left: scroller.scrollLeft }
+      : null;
+    const tree = buildCommitTree(commitPayload.files ?? []);
+    const nextKeys = new Set(tree.directoryKeys);
+    const previousKeys = this.knownDirectoryKeys ?? new Set();
+    this.expandedKeys = new Set([
+      ...Array.from(this.expandedKeys ?? []).filter((key) => nextKeys.has(key)),
+      ...Array.from(nextKeys).filter((key) => !previousKeys.has(key)),
+    ]);
+    this.knownDirectoryKeys = nextKeys;
+    this.state = { status: "ready", commitPayload, tree };
+    this.render();
+    if (scroll) {
+      requestAnimationFrame(() => {
+        const nextScroller = this.querySelector(".commit-tree-list");
+        if (nextScroller) {
+          nextScroller.scrollTop = scroll.top;
+          nextScroller.scrollLeft = scroll.left;
+        }
+      });
+    }
   }
 
   setError(error, repository = null, commit = null) {
@@ -87,6 +114,7 @@ class CaffoldCommitChangesTree extends HTMLElement {
   reset() {
     this.selectedPath = "";
     this.expandedKeys = new Set();
+    this.knownDirectoryKeys = new Set();
     this.state = { status: "idle" };
     this.render();
   }

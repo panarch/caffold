@@ -32,6 +32,11 @@ class CaffoldReviewWorkspace extends HTMLElement {
         return;
       }
 
+      if (button.dataset.action === "refresh-git-review") {
+        this.gitLayout.refresh();
+        return;
+      }
+
       if (button.dataset.action !== "close-review-workspace") {
         return;
       }

@@ -1,5 +1,7 @@
 import { getGitStatus } from "../../../api.js";
 import { escapeHtml } from "../../../components/dom.js";
+import { renderInlineIcon } from "../../../components/icons.js";
+import { createRefreshCoordinator, subscribeToWatch } from "../../../watch.js";
 import { routeMode } from "../../../navigation-routes.js";
 import "./compare/page.js";
 import "./diff/page.js";
@@ -8,6 +10,14 @@ import "./(log)/layout.js";
 class CaffoldGitReviewLayout extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
+    if (this.watchScopePath) {
+      this.subscribeWatchScope(this.watchScopePath);
+    }
+  }
+
+  disconnectedCallback() {
+    this.watchUnsubscribe?.();
+    this.watchUnsubscribe = null;
   }
 
   ensureRendered() {
@@ -41,6 +51,12 @@ class CaffoldGitReviewLayout extends HTMLElement {
     this.repository ??= null;
     this.gitStatus ??= null;
     this.gitStatusRequestId ??= 0;
+    this.pendingRefresh ??= { status: false, refs: false };
+    this.watchUnavailable ??= false;
+    this.refreshCoordinator = createRefreshCoordinator(
+      () => this.performPendingRefresh(),
+      (state) => this.setRefreshState(state),
+    );
     this.diffPage.addEventListener("caffold:git-diff-state-change", () => {
       this.emitStateChange();
     });
@@ -131,6 +147,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
     this.diffPage.reset();
     this.comparePage.reset();
     this.logLayout.reset();
+    this.setWatchScope(null);
     this.updateVisibleMode();
     this.emitStateChange();
   }
@@ -149,6 +166,8 @@ class CaffoldGitReviewLayout extends HTMLElement {
     this.comparePage.setContext({ path: this.currentPath, repository: this.repository });
     this.logLayout.setContext({ path: this.currentPath, repository: this.repository });
 
+    this.setWatchScope(this.repository?.rootPath ?? null);
+
     if (contextChanged) {
       this.gitStatus = null;
       this.gitStatusRequestId += 1;
@@ -163,7 +182,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
     return await this.loadStatus(path ?? this.currentPath);
   }
 
-  setGitStatus(status) {
+  setGitStatus(status, options = {}) {
     this.ensureRendered();
     this.gitStatus = status ?? null;
     if (status?.repository) {
@@ -180,7 +199,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
         path: this.currentPath,
         repository: status.repository,
       });
-      this.diffPage.setStatus(status);
+      this.diffPage.setStatus(status, options);
     } else if (this.repository) {
       this.diffPage.setLoading(this.repository);
     }
@@ -223,6 +242,105 @@ class CaffoldGitReviewLayout extends HTMLElement {
       this.setGitStatusError(error);
       return null;
     }
+  }
+
+  async refreshStatus() {
+    if (!this.repository) {
+      return null;
+    }
+    const requestId = ++this.gitStatusRequestId;
+    try {
+      const status = await getGitStatus(this.currentPath ?? "");
+      if (requestId !== this.gitStatusRequestId) {
+        return null;
+      }
+      this.setGitStatus(status, { preserveState: true });
+      if (this.mode === "diff") {
+        await this.diffPage.refreshSelectedDiff(status);
+      }
+      return status;
+    } catch {
+      return null;
+    }
+  }
+
+  setWatchScope(path) {
+    const nextPath = path ?? null;
+    if (this.watchScopePath === nextPath && this.watchUnsubscribe) {
+      return;
+    }
+    this.watchScopePath = nextPath;
+    this.watchUnsubscribe?.();
+    this.watchUnsubscribe = null;
+    this.watchUnavailable = false;
+    this.setRefreshState("idle");
+    if (nextPath && this.isConnected) {
+      this.subscribeWatchScope(nextPath);
+    }
+  }
+
+  subscribeWatchScope(path) {
+    if (this.watchUnsubscribe) {
+      return;
+    }
+    this.watchUnsubscribe = subscribeToWatch(path, {
+      onReady: ({ recovered }) => {
+        this.watchUnavailable = false;
+        this.setRefreshState("idle");
+        if (recovered) {
+          this.requestRefresh({ status: true, refs: true });
+        }
+      },
+      onChange: (change) => {
+        this.requestRefresh({
+          status: Boolean(change.gitStatusChanged || change.overflow),
+          refs: Boolean(change.gitRefsChanged || change.overflow),
+        });
+      },
+      onRecover: () => this.requestRefresh({ status: true, refs: true }),
+      onError: () => {
+        this.watchUnavailable = true;
+        this.setRefreshState("unavailable");
+      },
+    });
+  }
+
+  refresh() {
+    return this.requestRefresh({
+      status: true,
+      refs: this.mode === "compare" || this.mode === "log",
+    });
+  }
+
+  requestRefresh(options = {}) {
+    this.pendingRefresh.status ||= Boolean(options.status);
+    this.pendingRefresh.refs ||= Boolean(options.refs);
+    if (!this.pendingRefresh.status && !this.pendingRefresh.refs) {
+      return Promise.resolve();
+    }
+    return this.refreshCoordinator.request();
+  }
+
+  async performPendingRefresh() {
+    const pending = this.pendingRefresh;
+    this.pendingRefresh = { status: false, refs: false };
+    if (pending.status) {
+      await this.refreshStatus();
+    }
+    if (pending.refs && this.mode === "compare") {
+      await this.comparePage.refresh();
+    } else if (pending.refs && this.mode === "log") {
+      await this.logLayout.refresh();
+    }
+  }
+
+  setRefreshState(state) {
+    this.refreshState = state === "refreshing"
+      ? "refreshing"
+      : this.watchUnavailable
+        ? "unavailable"
+        : "idle";
+    this.emitStateChange();
   }
 
   async ensureStatus(path) {
@@ -709,6 +827,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
         title: "Diff",
         subtitle: this.workspaceSubtitle("Working tree"),
         backVisible: false,
+        controlsHtml: this.renderRefreshControls(),
       };
     }
 
@@ -727,6 +846,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
         subtitle: this.logLayout.commitSubtitle(),
         backVisible: true,
         backLabel: "Back to log",
+        controlsHtml: this.renderRefreshControls(),
       };
     }
 
@@ -735,6 +855,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
         title: "Log",
         subtitle: this.workspaceSubtitle("History"),
         backVisible: false,
+        controlsHtml: this.renderRefreshControls(),
       };
     }
 
@@ -759,32 +880,56 @@ class CaffoldGitReviewLayout extends HTMLElement {
 
   renderCompareControls() {
     const refs = this.comparePage.refsPayload?.refs ?? [];
-    if (refs.length === 0) {
-      return "";
-    }
-
     return `
-      <div class="review-compare-ref-controls" aria-label="Compare refs">
-        <label for="caffold-compare-base-ref">Base</label>
-        <select
-          id="caffold-compare-base-ref"
-          data-compare-ref="base"
-          aria-label="Base ref"
-          title="${escapeHtml(this.comparePage.baseRef ?? "")}"
-        >
-          ${renderRefOptions(refs, this.comparePage.baseRef)}
-        </select>
-        <span class="review-compare-ref-separator" aria-hidden="true">...</span>
-        <label for="caffold-compare-head-ref">Head</label>
-        <select
-          id="caffold-compare-head-ref"
-          data-compare-ref="head"
-          aria-label="Head ref"
-          title="${escapeHtml(this.comparePage.headRef ?? "")}"
-        >
-          ${renderRefOptions(refs, this.comparePage.headRef)}
-        </select>
+      <div class="git-review-controls">
+        ${refs.length > 0 ? `
+          <div class="review-compare-ref-controls" aria-label="Compare refs">
+            <label for="caffold-compare-base-ref">Base</label>
+            <select
+              id="caffold-compare-base-ref"
+              data-compare-ref="base"
+              aria-label="Base ref"
+              title="${escapeHtml(this.comparePage.baseRef ?? "")}"
+            >
+              ${renderRefOptions(refs, this.comparePage.baseRef)}
+            </select>
+            <span class="review-compare-ref-separator" aria-hidden="true">...</span>
+            <label for="caffold-compare-head-ref">Head</label>
+            <select
+              id="caffold-compare-head-ref"
+              data-compare-ref="head"
+              aria-label="Head ref"
+              title="${escapeHtml(this.comparePage.headRef ?? "")}"
+            >
+              ${renderRefOptions(refs, this.comparePage.headRef)}
+            </select>
+          </div>
+        ` : ""}
+        ${this.renderRefreshButton()}
       </div>
+    `;
+  }
+
+  renderRefreshControls() {
+    return `<div class="git-review-controls">${this.renderRefreshButton()}</div>`;
+  }
+
+  renderRefreshButton() {
+    const refreshing = this.refreshState === "refreshing";
+    const unavailable = this.refreshState === "unavailable";
+    const title = unavailable
+      ? "Live updates unavailable. Refresh manually."
+      : `Refresh ${this.mode ?? "Git"}`;
+    return `
+      <button
+        type="button"
+        class="git-review-refresh${refreshing ? " is-refreshing" : ""}${unavailable ? " is-unavailable" : ""}"
+        data-action="refresh-git-review"
+        aria-label="${escapeHtml(title)}"
+        title="${escapeHtml(title)}"
+      >
+        ${renderInlineIcon("RefreshCw", "Refresh Git review", "git-review-refresh-icon")}
+      </button>
     `;
   }
 

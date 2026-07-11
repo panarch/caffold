@@ -25,7 +25,7 @@ class CaffoldGitDiffPage extends HTMLElement {
         tabindex="0"
         data-resize-target="diff"
       ></div>
-      <caffold-review-file-viewer></caffold-review-file-viewer>
+      <caffold-review-file-viewer refresh-action="refresh-git-review"></caffold-review-file-viewer>
     `;
     this.changesTree = this.querySelector("caffold-git-diff-changes-tree");
     this.viewer = this.querySelector("caffold-review-file-viewer");
@@ -57,10 +57,14 @@ class CaffoldGitDiffPage extends HTMLElement {
     this.changesTree.setLoading(repository);
   }
 
-  setStatus(gitStatus) {
+  setStatus(gitStatus, options = {}) {
     this.ensureRendered();
     this.setContext({ repository: gitStatus?.repository });
-    this.changesTree.setStatus(gitStatus);
+    if (options.preserveState) {
+      this.changesTree.updateStatus(gitStatus);
+    } else {
+      this.changesTree.setStatus(gitStatus);
+    }
   }
 
   setError(error, repository = null) {
@@ -117,6 +121,40 @@ class CaffoldGitDiffPage extends HTMLElement {
       return null;
     } finally {
       window.clearTimeout(loadingTimer);
+    }
+  }
+
+  async refreshSelectedDiff(gitStatus) {
+    this.ensureRendered();
+    const path = this.changesTree.selectedPath ?? "";
+    if (!path) {
+      return null;
+    }
+    const file = gitStatus?.files?.find((entry) => entry.path === path);
+    if (!file) {
+      this.changesTree.setSelectedPath("");
+      if (window.matchMedia("(max-width: 860px)").matches) {
+        this.showList();
+      } else {
+        this.viewer.setNotice("This file no longer has uncommitted changes.");
+      }
+      return null;
+    }
+
+    const requestId = ++this.diffRequestId;
+    try {
+      const kind = file.untracked ? "untracked" : file.category ?? "unstaged";
+      const diff = await getGitDiff(this.currentPath ?? "", path, kind);
+      if (requestId !== this.diffRequestId || path !== this.changesTree.selectedPath) {
+        return null;
+      }
+      this.viewer.setDiff({ ...diff, status: file.status ?? "" }, { preserveScroll: true });
+      return diff;
+    } catch (error) {
+      if (requestId === this.diffRequestId) {
+        this.viewer.setError(path, error);
+      }
+      return null;
     }
   }
 

@@ -13,6 +13,13 @@ class CaffoldFileViewer extends HTMLElement {
     if (!this.initialized) {
       this.initialized = true;
       this.addEventListener("click", (event) => {
+        const refreshButton = event.target.closest('button[data-action="refresh-file"]');
+        if (refreshButton) {
+          this.dispatchEvent(
+            new CustomEvent("caffold:refresh-file-viewer", { bubbles: true }),
+          );
+          return;
+        }
         const button = event.target.closest('button[data-action="close-browser-viewer"]');
         if (!button) {
           return;
@@ -48,9 +55,10 @@ class CaffoldFileViewer extends HTMLElement {
     this.render();
   }
 
-  setFile(file) {
+  setFile(file, options = {}) {
+    const scroll = options.preserveScroll ? this.captureContentScroll() : null;
     this.state = { status: "file", file };
-    this.render();
+    this.render({ ...options, scroll });
   }
 
   setImage(image) {
@@ -58,14 +66,30 @@ class CaffoldFileViewer extends HTMLElement {
     this.render();
   }
 
-  setDiff(diff) {
+  setRefreshState(state) {
+    this.refreshState = state;
+    this.patchRefreshButton();
+  }
+
+  setDiff(diff, options = {}) {
+    const scroll = options.preserveScroll ? this.captureContentScroll() : null;
     this.state = { status: "diff", diff };
+    this.render({ ...options, scroll });
+  }
+
+  setNotice(message) {
+    this.state = { status: "notice", message };
     this.render();
   }
 
   setError(path, error) {
     this.state = { status: "error", path, error };
     this.render();
+  }
+
+  captureContentScroll() {
+    const viewer = this.querySelector("caffold-code-viewer, caffold-diff-viewer");
+    return viewer?.getScrollState?.() ?? null;
   }
 
   setCloseLabel(label) {
@@ -82,7 +106,7 @@ class CaffoldFileViewer extends HTMLElement {
     }
   }
 
-  render() {
+  render(options = {}) {
     if (!this.state || this.state.status === "empty") {
       this.innerHTML = `
         <section class="viewer-panel empty-panel">
@@ -112,8 +136,17 @@ class CaffoldFileViewer extends HTMLElement {
       return;
     }
 
+    if (this.state.status === "notice") {
+      this.innerHTML = `
+        <section class="viewer-panel empty-panel">
+          <p>${escapeHtml(this.state.message)}</p>
+        </section>
+      `;
+      return;
+    }
+
     if (this.state.status === "diff") {
-      this.renderDiff();
+      this.renderDiff(options);
       return;
     }
 
@@ -140,7 +173,7 @@ class CaffoldFileViewer extends HTMLElement {
       </section>
     `;
 
-    this.querySelector("caffold-code-viewer").setFile(file);
+    this.querySelector("caffold-code-viewer").setFile(file, options);
   }
 
   renderImage() {
@@ -166,7 +199,7 @@ class CaffoldFileViewer extends HTMLElement {
         <div class="image-stage">
           <img
             class="image-preview"
-            src="${escapeHtml(imageUrl(image.path))}"
+            src="${escapeHtml(imageUrlWithRevision(image.path, image.revision))}"
             alt="${escapeHtml(image.name)}"
           >
         </div>
@@ -178,7 +211,7 @@ class CaffoldFileViewer extends HTMLElement {
     });
   }
 
-  renderDiff() {
+  renderDiff(options = {}) {
     const { diff } = this.state;
 
     this.innerHTML = `
@@ -194,7 +227,7 @@ class CaffoldFileViewer extends HTMLElement {
       </section>
     `;
 
-    this.querySelector("caffold-diff-viewer").setDiff(diff);
+    this.querySelector("caffold-diff-viewer").setDiff(diff, options);
   }
 
   renderHeader(title, metadata, options = {}) {
@@ -214,15 +247,18 @@ class CaffoldFileViewer extends HTMLElement {
                 : ""
             }
           </div>
-          <button
-            type="button"
-            class="viewer-info-button"
-            popovertarget="${popoverId}"
-            aria-label="${escapeHtml(`Show details for ${title}`)}"
-            title="Show details"
-          >
-            ${renderInlineIcon("Info", "Details", "viewer-info-icon")}
-          </button>
+          <div class="viewer-actions">
+            ${this.renderRefreshButton()}
+            <button
+              type="button"
+              class="viewer-info-button"
+              popovertarget="${popoverId}"
+              aria-label="${escapeHtml(`Show details for ${title}`)}"
+              title="Show details"
+            >
+              ${renderInlineIcon("Info", "Details", "viewer-info-icon")}
+            </button>
+          </div>
         </div>
         <div
           id="${popoverId}"
@@ -255,6 +291,7 @@ class CaffoldFileViewer extends HTMLElement {
           <div class="viewer-title-block">
             <h2 title="${escapeHtml(title)}">${escapeHtml(title)}</h2>
           </div>
+          <div class="viewer-actions">${this.renderRefreshButton()}</div>
         </div>
       </header>
     `;
@@ -275,6 +312,47 @@ class CaffoldFileViewer extends HTMLElement {
       </button>
     `;
   }
+
+  renderRefreshButton() {
+    const action = this.tagName === "CAFFOLD-FILE-VIEWER"
+      ? "refresh-file"
+      : this.getAttribute("refresh-action");
+    if (!action) {
+      return "";
+    }
+    const refreshing = this.refreshState === "refreshing";
+    const unavailable = this.refreshState === "unavailable";
+    const title = unavailable
+      ? "Live updates unavailable. Refresh manually."
+      : "Refresh file";
+    return `
+      <button
+        type="button"
+        class="viewer-refresh-button${refreshing ? " is-refreshing" : ""}${unavailable ? " is-unavailable" : ""}"
+        data-action="${escapeHtml(action)}"
+        aria-label="${escapeHtml(title)}"
+        title="${escapeHtml(title)}"
+      >
+        ${renderInlineIcon("RefreshCw", "Refresh file", "viewer-refresh-icon")}
+      </button>
+    `;
+  }
+
+  patchRefreshButton() {
+    const button = this.querySelector(".viewer-refresh-button");
+    if (!button) {
+      return;
+    }
+    const refreshing = this.refreshState === "refreshing";
+    const unavailable = this.refreshState === "unavailable";
+    const title = unavailable
+      ? "Live updates unavailable. Refresh manually."
+      : "Refresh file";
+    button.classList.toggle("is-refreshing", refreshing);
+    button.classList.toggle("is-unavailable", unavailable);
+    button.setAttribute("aria-label", title);
+    button.title = title;
+  }
 }
 
 customElements.define("caffold-file-viewer", CaffoldFileViewer);
@@ -289,6 +367,14 @@ function diffSubtitle(diff) {
   return labels
     .filter((label, index) => labels.indexOf(label) === index)
     .join(" · ");
+}
+
+function imageUrlWithRevision(path, revision) {
+  const url = new URL(imageUrl(path));
+  if (revision !== undefined && revision !== null) {
+    url.searchParams.set("revision", `${revision}`);
+  }
+  return url.toString();
 }
 
 function diffKindLabel(kind) {

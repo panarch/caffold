@@ -89,6 +89,9 @@ state, file-list scroll restoration, delayed loading indicators, mobile
 list/viewer switching, and the left file-panel resizer. The app root
 coordinates project context, URL navigation, pathbar, and header actions around
 that surface instead of owning file browser internals.
+The file browser also owns its live-update subscription and refreshes only its
+loaded directory cache and selected file. `watch.js` shares the SSE
+subscription with other consumers of the same filesystem scope.
 
 `(codex)/layout` is the app root's top-level Codex workspace. It renders as an
 app-shell overlay sibling of `app-main` and `(review-workspace)`, so Codex
@@ -148,6 +151,9 @@ Compare controls, Diff, Compare, and Log list/detail state. It also translates
 Git-domain open, close, and back events from child pages into Git route intents,
 and derives Git workspace chrome metadata such as branch, dirty marker, and
 changed-file count from its own repository/status state.
+It keeps the repository watch subscription active while repository context is
+available, so header status and the selected review detail stay current even
+when another top-level surface is visible.
 `(github)/layout` owns GitHub status loading, GitHub submode switching, and
 delegates issue and pull request internals to their nested layouts. It
 translates GitHub-domain open, close, and back events from child pages into

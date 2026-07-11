@@ -23,12 +23,56 @@ caffold-git-review-layout .git-mode-log {
   height: 100%;
 }
 
+caffold-review-workspace[data-workspace-mode="git"] .git-review-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  width: 100%;
+}
+
+caffold-review-workspace[data-workspace-mode="git"] .git-review-refresh {
+  display: grid;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+caffold-review-workspace[data-workspace-mode="git"] .git-review-refresh:hover,
+caffold-review-workspace[data-workspace-mode="git"] .git-review-refresh:focus-visible {
+  border-color: #abcbbf;
+  background: var(--accent-soft);
+  outline: none;
+}
+
+caffold-review-workspace[data-workspace-mode="git"] .git-review-refresh.is-unavailable {
+  color: #8a5200;
+}
+
+caffold-review-workspace[data-workspace-mode="git"] .git-review-refresh.is-refreshing .git-review-refresh-icon {
+  animation: caffold-refresh-spin 0.8s linear infinite;
+}
+
+caffold-review-workspace[data-workspace-mode="git"] .git-review-refresh-icon {
+  width: 16px;
+  height: 16px;
+}
+
 caffold-review-workspace[data-workspace-mode="git"] .review-compare-ref-controls {
   display: flex;
   gap: 6px;
   align-items: center;
   min-width: 0;
-  width: 100%;
+  flex: 1 1 auto;
+  width: auto;
   max-width: 100%;
 }
 

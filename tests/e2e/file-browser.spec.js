@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { execFileSync } from "node:child_process";
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const LAST_DIRECTORY_KEY = `caffold:last-directory-path:${resolve("tests/fixtures/home")}`;
@@ -57,6 +59,7 @@ test.beforeEach(async ({ page }) => {
         export const PanelTopOpen = [["rect", { x: "3", y: "4", width: "18", height: "16", rx: "2" }], ["path", { d: "M3 9h18" }]];
         export const Pencil = [["path", { d: "M17 3a2.8 2.8 0 0 1 4 4L7 21H3v-4z" }]];
         export const Plus = [["path", { d: "M12 5v14" }], ["path", { d: "M5 12h14" }]];
+        export const RefreshCw = [["path", { d: "M20 6v5h-5" }], ["path", { d: "M4 18v-5h5" }], ["path", { d: "M18.4 9A7 7 0 0 0 6 6.6L4 9" }], ["path", { d: "M5.6 15A7 7 0 0 0 18 17.4l2-2.4" }]];
         export const Trash2 = [["path", { d: "M3 6h18" }], ["path", { d: "M8 6V4h8v2" }], ["path", { d: "M19 6l-1 15H6L5 6" }]];
         export const X = [["path", { d: "M18 6 6 18" }], ["path", { d: "m6 6 12 12" }]];
         export function createElement(iconNode, attrs = {}) {
@@ -190,6 +193,7 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain("/assets/components/file-browser.css");
   expect(serviceWorker).toContain("/assets/components/file-browser/list.js");
   expect(serviceWorker).toContain("/assets/components/file-browser/list.css");
+  expect(serviceWorker).toContain("/assets/watch.js");
   expect(serviceWorker).toContain("/assets/pages/files/page.js");
   expect(serviceWorker).not.toContain("/assets/pages/files/components/list.js");
   expect(serviceWorker).not.toContain("/assets/components/file-list.js");
@@ -389,6 +393,7 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
   );
   await expect(page.locator('button[data-entry-path="src/planner/mod.rs"]')).toHaveCount(0);
   await expect(page.locator("caffold-file-list .entry-icon-svg").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Refresh files" })).toBeVisible();
 
   await page.locator('button[data-entry-path="src/example.rs"]').click();
   await expect(page.getByText("Loading file...")).toHaveCount(0);
@@ -396,6 +401,7 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
   await expect(page.locator("caffold-code-viewer")).toContainText("pub fn sample");
   await expect(page.locator("caffold-code-viewer")).not.toContainText("Highlighted");
   await expect(page.locator(".line-number").first()).toHaveText("1");
+  await expect(page.getByRole("button", { name: "Refresh file", exact: true })).toBeVisible();
   await expectGlobalScrollLocked(page);
   await expectPanelScrollContainers(page);
   await page.getByRole("button", { name: "Show details for example.rs" }).click();
@@ -419,6 +425,136 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
 
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "file-browser");
+});
+
+test("refreshes Files and Git after external filesystem changes", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Native watcher smoke runs once on desktop.");
+
+  const suffix = `${process.pid}-${Date.now()}`;
+  const repositoryRelativePath = `src/ignored-output/live-repository-${suffix}`;
+  const repositoryPath = resolve("tests/fixtures/home", repositoryRelativePath);
+  const firstName = `live-${suffix}.txt`;
+  const renamedName = `live-${suffix}-renamed.txt`;
+  const firstLogicalPath = `${repositoryRelativePath}/${firstName}`;
+  const renamedLogicalPath = `${repositoryRelativePath}/${renamedName}`;
+  const firstPath = resolve(repositoryPath, firstName);
+  const renamedPath = resolve(repositoryPath, renamedName);
+
+  await rm(repositoryPath, { recursive: true, force: true });
+  await mkdir(resolve(repositoryPath, "nested"), { recursive: true });
+  await writeFile(resolve(repositoryPath, "nested/fixture.txt"), "nested fixture\n");
+  execFileSync("git", ["init", "--quiet", repositoryPath]);
+  const project = await mockRegisteredProject(page, {
+    id: `prj_live_${suffix}`,
+    name: "Live repository",
+    rootPath: repositoryPath,
+    relativePath: repositoryRelativePath,
+  });
+
+  try {
+    await page.goto(`/projects/${project.id}/files`);
+    await page.waitForTimeout(500);
+
+    const nestedPath = `${repositoryRelativePath}/nested`;
+    const nestedFixturePath = `${nestedPath}/fixture.txt`;
+    await page.locator(`button[data-entry-path="${nestedPath}"]`).click();
+    await expect(page.locator(`button[data-entry-path="${nestedFixturePath}"]`)).toBeVisible();
+    const resizeHandle = page.locator("caffold-file-browser > .panel-resizer");
+    await dragHorizontalResizer(page, resizeHandle, 72);
+    const resizedPanelWidth = await elementWidth(page, "caffold-file-list");
+    const headerActions = page.locator("caffold-header-actions");
+    await headerActions.evaluate((element) => {
+      element.dataset.liveRefreshProbe = "kept";
+    });
+
+    const initialContent = Array.from(
+      { length: 80 },
+      (_, index) => `first live line ${index + 1} ${"wide-content-".repeat(16)}`,
+    ).join("\n");
+    await writeFile(firstPath, `${initialContent}\n`);
+    const firstEntry = page.locator(`button[data-entry-path="${firstLogicalPath}"]`);
+    await expect(firstEntry).toBeVisible();
+    await expect(headerActions).toHaveAttribute(
+      "data-live-refresh-probe",
+      "kept",
+    );
+    await expect(page.locator(`button[data-entry-path="${nestedFixturePath}"]`)).toBeVisible();
+    expect(await elementWidth(page, "caffold-file-list")).toBeCloseTo(resizedPanelWidth, 0);
+    await firstEntry.click();
+    await expect(page.locator("caffold-code-viewer")).toContainText("first live line 80");
+
+    const codeScroller = page.locator("caffold-code-viewer .code-lines");
+    const beforeScroll = await codeScroller.evaluate((element) => {
+      element.scrollTop = 180;
+      element.scrollLeft = 240;
+      return { top: element.scrollTop, left: element.scrollLeft };
+    });
+    expect(beforeScroll.top).toBeGreaterThan(0);
+    expect(beforeScroll.left).toBeGreaterThan(0);
+
+    await writeFile(firstPath, `${initialContent}\nsecond live line\n`);
+    await expect(page.locator("caffold-code-viewer")).toContainText("second live line");
+    const afterScroll = await codeScroller.evaluate((element) => ({
+      top: element.scrollTop,
+      left: element.scrollLeft,
+    }));
+    expect(afterScroll.top).toBeGreaterThanOrEqual(beforeScroll.top - 2);
+    expect(afterScroll.left).toBeGreaterThanOrEqual(beforeScroll.left - 2);
+
+    await rename(firstPath, renamedPath);
+    await expect(page.locator(`button[data-entry-path="${renamedLogicalPath}"]`)).toBeVisible();
+    await expect(page.locator("caffold-file-viewer")).toContainText("path was not found");
+
+    const renamedEntry = page.locator(`button[data-entry-path="${renamedLogicalPath}"]`);
+    await renamedEntry.click();
+    await expect(page.locator("caffold-code-viewer")).toContainText("second live line");
+
+    const gitPopover = await openHeaderActionGroup(page, "git");
+    await gitPopover.locator('button[data-action="open-diff-workspace"]').click();
+    const diffEntry = page.locator(`button[data-change-path="${renamedLogicalPath}"]`);
+    await expect(diffEntry).toBeVisible();
+    await diffEntry.click();
+    await expect(page.locator("caffold-diff-viewer")).toContainText("second live line");
+    const workspace = page.locator("caffold-review-workspace");
+    await workspace.evaluate((element) => {
+      element.dataset.liveRefreshProbe = "kept";
+    });
+
+    await writeFile(renamedPath, "first live line\nsecond live line\nthird live line\n");
+    await expect(page.locator("caffold-diff-viewer")).toContainText("third live line");
+    await expect(workspace).toHaveAttribute("data-live-refresh-probe", "kept");
+
+    await rm(renamedPath, { force: true });
+    await expect(diffEntry).toHaveCount(0);
+    await expect(page.locator(".git-mode-diff caffold-review-file-viewer")).toContainText(
+      "This file no longer has uncommitted changes.",
+    );
+  } finally {
+    await page.goto("/");
+    await page.waitForTimeout(100);
+    await rm(repositoryPath, { recursive: true, force: true });
+  }
+});
+
+test("keeps manual Files refresh available when live updates fail", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Watcher fallback visual runs once on desktop.");
+  let listRequests = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/list") {
+      listRequests += 1;
+    }
+  });
+  await page.route(/\/api\/watch(?:\?|$)/, (route) => route.abort("failed"));
+
+  await page.goto("/");
+  const refresh = page.getByRole("button", {
+    name: "Live updates unavailable. Refresh manually.",
+  });
+  await expect(refresh).toBeVisible();
+  const beforeRefresh = listRequests;
+  await refresh.click();
+  await expect.poll(() => listRequests).toBeGreaterThan(beforeRefresh);
+  await captureReviewScreenshot(page, testInfo, "files-live-updates-unavailable");
 });
 
 test("manages project records from the header switcher", async ({ page }, testInfo) => {
@@ -798,12 +934,21 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
         register: () => Promise.resolve(),
       },
     });
+    window.__caffoldMockEventSources = [];
     window.EventSource = class MockEventSource {
       constructor(url) {
         this.url = url;
+        this.listeners = new Map();
+        window.__caffoldMockEventSources.push(this);
       }
 
-      addEventListener() {}
+      addEventListener(type, listener) {
+        this.listeners.set(type, listener);
+      }
+
+      emit(type, payload) {
+        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
+      }
 
       close() {}
     };
@@ -1498,6 +1643,43 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     "list",
   );
   await expect(taskFilesView.locator('button[data-entry-path="src/alpha.rs"]')).toBeVisible();
+  const embeddedLiveName = `task-live-${testInfo.project.name}.txt`;
+  const embeddedLivePath = resolve("tests/fixtures/home/src", embeddedLiveName);
+  try {
+    await writeFile(embeddedLivePath, "Codex Files live update\n");
+    await page.evaluate((logicalPath) => {
+      const source = window.__caffoldMockEventSources.find((candidate) =>
+        candidate.url.startsWith("/api/watch?"),
+      );
+      source?.emit("change", {
+        revision: 2,
+        paths: [logicalPath],
+        gitStatusChanged: true,
+        gitRefsChanged: false,
+        overflow: false,
+      });
+    }, `src/${embeddedLiveName}`);
+    await expect(
+      taskFilesView.locator(`button[data-entry-path="src/${embeddedLiveName}"]`),
+    ).toBeVisible();
+  } finally {
+    await rm(embeddedLivePath, { force: true });
+    await page.evaluate((logicalPath) => {
+      const source = window.__caffoldMockEventSources.find((candidate) =>
+        candidate.url.startsWith("/api/watch?"),
+      );
+      source?.emit("change", {
+        revision: 3,
+        paths: [logicalPath],
+        gitStatusChanged: true,
+        gitRefsChanged: false,
+        overflow: false,
+      });
+    }, `src/${embeddedLiveName}`);
+    await expect(
+      taskFilesView.locator(`button[data-entry-path="src/${embeddedLiveName}"]`),
+    ).toHaveCount(0);
+  }
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-file-browser-list");
   await page.locator("caffold-codex-workspace .codex-workspace-close").click();
@@ -1523,9 +1705,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(taskFilesView.locator("caffold-file-viewer")).toContainText(
     "alpha.rs",
   );
-  await expect(taskFilesView.locator("caffold-file-viewer")).toContainText(
-    "pub const ALPHA",
-  );
+    await expect(taskFilesView.locator("caffold-file-viewer")).toContainText("pub const ALPHA");
   await expect(page.locator("caffold-files-page")).toBeHidden();
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-file-browser");
@@ -1814,7 +1994,10 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
 
   await page.evaluate(
     ({ threadId, projectId, now }) => {
-      window.__taskEventSources[0].emit("task-event", {
+      const taskSource = window.__taskEventSources.find((source) =>
+        source.url.includes(`/api/tasks/${threadId}/stream`),
+      );
+      taskSource.emit("task-event", {
         id: "event_live_bottom",
         threadId,
         projectId,
@@ -1838,7 +2021,10 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
   });
   await page.evaluate(
     ({ threadId, projectId, now }) => {
-      window.__taskEventSources[0].emit("task-event", {
+      const taskSource = window.__taskEventSources.find((source) =>
+        source.url.includes(`/api/tasks/${threadId}/stream`),
+      );
+      taskSource.emit("task-event", {
         id: "event_live_preserve",
         threadId,
         projectId,
@@ -3114,13 +3300,42 @@ test("previews image files in the viewer", async ({ page }, testInfo) => {
 
   const preview = page.locator("caffold-file-viewer img.image-preview");
   await expect(preview).toBeVisible();
-  await expect(preview).toHaveAttribute("src", /\/api\/image\?path=preview-image\.svg$/);
+  await expect(preview).toHaveAttribute(
+    "src",
+    /\/api\/image\?path=preview-image\.svg&revision=\d+$/,
+  );
   await expect(
     preview.evaluate((image) => image.complete && image.naturalWidth > 0),
   ).resolves.toBe(true);
   await page.keyboard.press("Escape");
   await expect(details).toBeHidden();
   await captureReviewScreenshot(page, testInfo, "image-file-viewer");
+});
+
+test("invalidates the browser cache when an open image changes", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Native image refresh smoke runs once.");
+  const name = `live-image-${process.pid}.svg`;
+  const path = resolve("tests/fixtures/home", name);
+  const svg = (fill) =>
+    `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" fill="${fill}"/></svg>`;
+
+  await rm(path, { force: true });
+  try {
+    await page.goto("/");
+    await page.waitForTimeout(500);
+    await writeFile(path, svg("#0b7a5f"));
+    const entry = page.locator(`button[data-entry-path="${name}"]`);
+    await expect(entry).toBeVisible();
+    await entry.click();
+    const image = page.locator("caffold-file-viewer .image-preview");
+    await expect(image).toBeVisible();
+    const firstSource = await image.getAttribute("src");
+
+    await writeFile(path, svg("#1f2a24"));
+    await expect.poll(() => image.getAttribute("src")).not.toBe(firstSource);
+  } finally {
+    await rm(path, { force: true });
+  }
 });
 
 test("keeps the toggled tree row anchored while expanding", async ({ page }) => {
@@ -3300,9 +3515,19 @@ test("keeps list scroll positions when selecting files and changes", async ({ pa
 test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   const longContextLine = ` context line ${"long-diff-token-".repeat(36)}`;
   const repository = { rootPath: "src", branch: "main", dirty: true };
+  let delayNextStatus = false;
+  let resolveStatusStarted;
+  let releaseStatus;
 
-  await page.route(/\/api\/git\/status(?:\?|$)/, (route) =>
-    route.fulfill({
+  await page.route(/\/api\/git\/status(?:\?|$)/, async (route) => {
+    if (delayNextStatus) {
+      delayNextStatus = false;
+      resolveStatusStarted?.();
+      await new Promise((resolve) => {
+        releaseStatus = resolve;
+      });
+    }
+    return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
         repository,
@@ -3338,8 +3563,8 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
           },
         ],
       }),
-    }),
-  );
+    });
+  });
 
   await page.route(/\/api\/git\/diff(?:\?|$)/, (route) => {
     const url = new URL(route.request().url());
@@ -3408,6 +3633,17 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
     "data-git-mode",
     "diff",
   );
+  await expect(workspace.getByRole("button", { name: "Refresh diff" })).toBeVisible();
+  const statusStarted = new Promise((resolve) => {
+    resolveStatusStarted = resolve;
+  });
+  delayNextStatus = true;
+  const refreshDiff = workspace.getByRole("button", { name: "Refresh diff" });
+  await refreshDiff.click();
+  await statusStarted;
+  await expect(refreshDiff).toHaveClass(/is-refreshing/);
+  releaseStatus();
+  await expect(refreshDiff).not.toHaveClass(/is-refreshing/);
   await expect(workspace.getByRole("button", { name: "Close review workspace" })).toBeVisible();
   await expect(page.locator("caffold-git-diff-page")).toContainText("Unstaged");
   await expect(page.locator("caffold-git-diff-page")).not.toContainText("Untracked");
@@ -3639,6 +3875,7 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
     "compare",
   );
   await expect(workspace.locator(".review-workspace-title h2")).toHaveText("Compare");
+  await expect(workspace.getByRole("button", { name: "Refresh compare" })).toBeVisible();
   await expect(workspace.locator(".review-workspace-subtitle")).toContainText(
     "2 files",
   );
@@ -4611,6 +4848,7 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
     "data-git-mode",
     "log",
   );
+  await expect(workspace.getByRole("button", { name: "Refresh log" })).toBeVisible();
   await expect(logView).toHaveAttribute("data-log-view", "list");
   await expect(backButton).toBeHidden();
   await expect(page.locator("caffold-git-log-list-page")).toContainText("Update planner function");
@@ -5062,7 +5300,7 @@ async function expectHeaderGroupOpenVisualState(page, group) {
   expect(metrics.buttonToArrowGap).toBeLessThanOrEqual(3);
 }
 
-async function mockRegisteredProject(page) {
+async function mockRegisteredProject(page, overrides = {}) {
   const project = {
     id: "prj_route_fixture",
     name: "src",
@@ -5071,6 +5309,7 @@ async function mockRegisteredProject(page) {
     createdMs: 1,
     updatedMs: 1,
     lastOpenedMs: 1,
+    ...overrides,
   };
 
   await page.route(`/api/projects/${project.id}/open`, (route) =>

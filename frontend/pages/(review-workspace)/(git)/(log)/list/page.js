@@ -58,6 +58,28 @@ class CaffoldGitLogListPage extends HTMLElement {
     this.render();
   }
 
+  updateLog(log) {
+    const scroller = this.querySelector(".log-list");
+    const scroll = scroller
+      ? { top: scroller.scrollTop, left: scroller.scrollLeft }
+      : null;
+    const shas = new Set((log.commits ?? []).map((commit) => commit.sha));
+    this.expandedShas = new Set(
+      Array.from(this.expandedShas ?? []).filter((sha) => shas.has(sha)),
+    );
+    this.state = { status: "ready", log };
+    this.render();
+    if (scroll) {
+      requestAnimationFrame(() => {
+        const nextScroller = this.querySelector(".log-list");
+        if (nextScroller) {
+          nextScroller.scrollTop = scroll.top;
+          nextScroller.scrollLeft = scroll.left;
+        }
+      });
+    }
+  }
+
   setError(error, repository = null) {
     this.state = { status: "error", error, repository };
     this.render();

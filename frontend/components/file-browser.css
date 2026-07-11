@@ -114,3 +114,9 @@ caffold-file-browser.is-resizing-left-panel > .panel-resizer {
     display: none;
   }
 }
+
+@keyframes caffold-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -8,3 +8,4 @@ mod git;
 mod github;
 mod server_settings;
 mod static_assets;
+mod watch;

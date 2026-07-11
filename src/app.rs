@@ -36,6 +36,7 @@ use crate::{
     project_store::{ProjectRecord, ProjectStore, ProjectStoreError},
     server_settings::{ServerSettings, ServerSettingsError, ServerSettingsStore},
     static_assets,
+    watch::{WatchChange, WatchError, WatchHub, WatchMessage},
 };
 
 const TASK_DETAIL_TURNS_PAGE_SIZE: usize = 8;
@@ -57,6 +58,7 @@ struct AppState {
     codex_threads: Arc<CodexThreadRuntime>,
     pending_approvals: Arc<AsyncMutex<HashMap<String, PendingApproval>>>,
     task_events: broadcast::Sender<TaskEventRecord>,
+    watch_hub: WatchHub,
     shutdown: broadcast::Sender<()>,
     initial_path: String,
     home_path: Option<String>,
@@ -384,14 +386,17 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let (shutdown, _) = broadcast::channel(16);
     let pending_approvals = Arc::new(AsyncMutex::new(HashMap::new()));
     let codex_threads = Arc::new(CodexThreadRuntime::default());
+    let fs = Arc::new(fs);
     let root = fs.root().to_path_buf();
+    let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
     let app = router_with_state(AppState {
-        fs: Arc::new(fs),
+        fs,
         projects: project_store,
         server_settings,
         codex_threads: codex_threads.clone(),
         pending_approvals,
         task_events,
+        watch_hub,
         shutdown: shutdown.clone(),
         initial_path: initial_path.clone(),
         home_path,
@@ -426,13 +431,16 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
 pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
     let (task_events, _) = broadcast::channel(256);
     let (shutdown, _) = broadcast::channel(16);
+    let fs = Arc::new(fs);
+    let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
     Ok(router_with_state(AppState {
-        fs: Arc::new(fs),
+        fs,
         projects: ProjectStore::memory()?,
         server_settings: Arc::new(ServerSettingsStore::memory()),
         codex_threads: Arc::new(CodexThreadRuntime::default()),
         pending_approvals: Arc::new(AsyncMutex::new(HashMap::new())),
         task_events,
+        watch_hub,
         shutdown,
         initial_path: String::new(),
         home_path: None,
@@ -450,6 +458,7 @@ fn router_with_state(state: AppState) -> Router {
         .route("/api/list", get(list))
         .route("/api/file", get(file))
         .route("/api/image", get(image))
+        .route("/api/watch", get(watch_stream))
         .route("/api/projects", get(list_projects).post(create_project))
         .route(
             "/api/projects/{id}",
@@ -713,6 +722,95 @@ async fn image(
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
 
     Ok((headers, image.bytes).into_response())
+}
+
+async fn watch_stream(
+    State(state): State<AppState>,
+    Query(query): Query<PathQuery>,
+) -> Result<Response, ApiError> {
+    let subscription = state.watch_hub.subscribe(&query.path)?;
+    let shutdown = state.shutdown.subscribe();
+    let heartbeat = tokio::time::interval_at(
+        tokio::time::Instant::now() + Duration::from_secs(15),
+        Duration::from_secs(15),
+    );
+    let stream = stream::unfold(
+        (false, false, subscription, shutdown, heartbeat, 1_u64),
+        |(ready_sent, terminate, mut subscription, mut shutdown, mut heartbeat, mut revision)| async move {
+            if terminate {
+                return None;
+            }
+            if !ready_sent {
+                revision = subscription.ready.revision;
+                let payload =
+                    serde_json::to_string(&subscription.ready).unwrap_or_else(|_| "{}".to_string());
+                let frame = format!("event: ready\ndata: {payload}\n\n");
+                return Some((
+                    Ok::<_, Infallible>(Bytes::from(frame)),
+                    (true, false, subscription, shutdown, heartbeat, revision),
+                ));
+            }
+
+            tokio::select! {
+                    _ = shutdown.recv() => None,
+                    _ = heartbeat.tick() => {
+                        Some((
+                            Ok::<_, Infallible>(Bytes::from_static(b": heartbeat\n\n")),
+                            (true, false, subscription, shutdown, heartbeat, revision),
+                        ))
+                    }
+                    message = subscription.recv() => match message {
+                        Ok(WatchMessage::Change(change)) => {
+                            revision = change.revision;
+                            let payload = serde_json::to_string(&change)
+                                .unwrap_or_else(|_| "{}".to_string());
+                            let frame = format!("event: change\ndata: {payload}\n\n");
+                            Some((
+                                Ok::<_, Infallible>(Bytes::from(frame)),
+                                (true, false, subscription, shutdown, heartbeat, revision),
+                            ))
+                        }
+                        Ok(WatchMessage::Error(message)) => {
+                            let payload = json!({ "message": message }).to_string();
+                            let frame = format!("event: watch-error\ndata: {payload}\n\n");
+                            Some((
+                                Ok::<_, Infallible>(Bytes::from(frame)),
+                                (true, true, subscription, shutdown, heartbeat, revision),
+                            ))
+                        }
+                        Err(broadcast::error::RecvError::Lagged(_)) => {
+                            revision = revision.saturating_add(1);
+                            let repository = subscription.ready.repository_root_path.is_some();
+                            let change = WatchChange {
+                                revision,
+                                paths: Vec::new(),
+                                git_status_changed: repository,
+                                git_refs_changed: repository,
+                                overflow: true,
+                            };
+                            let payload = serde_json::to_string(&change)
+                                .unwrap_or_else(|_| "{}".to_string());
+                            let frame = format!("event: change\ndata: {payload}\n\n");
+                            Some((
+                                Ok::<_, Infallible>(Bytes::from(frame)),
+                                (true, false, subscription, shutdown, heartbeat, revision),
+                            ))
+                        }
+                        Err(broadcast::error::RecvError::Closed) => None,
+                    }
+            }
+        },
+    );
+
+    let mut response = Response::new(Body::from_stream(stream));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/event-stream; charset=utf-8"),
+    );
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    Ok(response)
 }
 
 async fn list_projects(
@@ -2322,6 +2420,7 @@ enum ApiError {
     Fs(FsError),
     Project(ProjectStoreError),
     CodexThread(String),
+    Watch(String),
     Internal(String),
     Timeout { code: &'static str, message: String },
     BadRequest { code: &'static str, message: String },
@@ -2342,6 +2441,15 @@ impl From<ProjectStoreError> for ApiError {
 impl From<codex_app_server::CodexThreadError> for ApiError {
     fn from(error: codex_app_server::CodexThreadError) -> Self {
         Self::CodexThread(error.to_string())
+    }
+}
+
+impl From<WatchError> for ApiError {
+    fn from(error: WatchError) -> Self {
+        match error {
+            WatchError::Fs(error) => Self::Fs(error),
+            WatchError::Unavailable(message) => Self::Watch(message),
+        }
     }
 }
 
@@ -2456,6 +2564,11 @@ impl IntoResponse for ApiError {
             ApiError::CodexThread(message) => {
                 (StatusCode::BAD_GATEWAY, "codex_app_server_error", message)
             }
+            ApiError::Watch(message) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "watch_unavailable",
+                message,
+            ),
             ApiError::Internal(message) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", message)
             }

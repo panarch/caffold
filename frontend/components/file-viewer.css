@@ -47,6 +47,13 @@ caffold-review-file-viewer .viewer-panel > header {
   min-width: 0;
 }
 
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-actions {
+  display: grid;
+  grid-auto-flow: column;
+  gap: 6px;
+  align-items: center;
+}
+
 :is(caffold-file-viewer, caffold-review-file-viewer) h2 {
   margin: 0;
   min-width: 0;
@@ -73,7 +80,8 @@ caffold-review-file-viewer h2 {
   white-space: nowrap;
 }
 
-:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-info-button {
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-info-button,
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-refresh-button {
   display: grid;
   place-items: center;
   width: 32px;
@@ -86,9 +94,28 @@ caffold-review-file-viewer h2 {
   cursor: pointer;
 }
 
-:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-info-button:hover {
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-info-button:hover,
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-refresh-button:hover,
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-refresh-button:focus-visible {
   border-color: var(--accent-soft);
   background: var(--accent-soft);
+}
+
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-refresh-button.is-unavailable {
+  color: #8a5200;
+}
+
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-refresh-button.is-refreshing .viewer-refresh-icon {
+  animation: caffold-refresh-spin 0.8s linear infinite;
+}
+
+:is(caffold-file-viewer, caffold-review-file-viewer) .viewer-refresh-icon {
+  width: 18px;
+  height: 18px;
+}
+
+caffold-review-file-viewer .viewer-refresh-button {
+  display: none;
 }
 
 :is(caffold-file-viewer, caffold-review-file-viewer) .viewer-info-button:not(:has(svg))::before {

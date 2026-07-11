@@ -25,7 +25,7 @@ class CaffoldGitLogCommitPage extends HTMLElement {
         tabindex="0"
         data-resize-target="log"
       ></div>
-      <caffold-review-file-viewer></caffold-review-file-viewer>
+      <caffold-review-file-viewer refresh-action="refresh-git-review"></caffold-review-file-viewer>
     `;
     this.commitTree = this.querySelector("caffold-commit-changes-tree");
     this.fileViewer = this.querySelector("caffold-review-file-viewer");
@@ -193,6 +193,64 @@ class CaffoldGitLogCommitPage extends HTMLElement {
       return null;
     } finally {
       window.clearTimeout(loadingTimer);
+    }
+  }
+
+  async refresh() {
+    const sha = this.currentCommitSha();
+    if (!sha || !this.repository) {
+      return null;
+    }
+    const requestId = ++this.commitRequestId;
+    try {
+      const commit = await getGitCommit(this.currentPath, sha);
+      if (requestId !== this.commitRequestId) {
+        return null;
+      }
+      this.commitPayload = commit;
+      this.selectedCommitSummary = commit.commit;
+      this.commitTree.updateCommit(commit);
+      await this.refreshSelectedDiff();
+      this.emitStateChange();
+      return commit;
+    } catch (error) {
+      if (requestId === this.commitRequestId) {
+        this.commitTree.setError(error, this.repository, this.selectedCommitSummary);
+        this.emitStateChange();
+      }
+      return null;
+    }
+  }
+
+  async refreshSelectedDiff() {
+    const path = this.commitTree.selectedPath ?? "";
+    const sha = this.currentCommitSha();
+    if (!path || !sha) {
+      return null;
+    }
+    const file = this.findFile(path);
+    if (!file) {
+      this.commitTree.setSelectedPath("");
+      if (window.matchMedia("(max-width: 860px)").matches) {
+        this.showFileList();
+      } else {
+        this.fileViewer.setNotice("This file is no longer part of the commit.");
+      }
+      return null;
+    }
+    const requestId = ++this.fileRequestId;
+    try {
+      const diff = await getGitCommitDiff(this.currentPath, sha, path);
+      if (requestId !== this.fileRequestId || path !== this.commitTree.selectedPath) {
+        return null;
+      }
+      this.fileViewer.setDiff({ ...diff, status: file.status ?? "" }, { preserveScroll: true });
+      return diff;
+    } catch (error) {
+      if (requestId === this.fileRequestId) {
+        this.fileViewer.setError(path, error);
+      }
+      return null;
     }
   }
 

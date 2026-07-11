@@ -52,9 +52,25 @@ class CaffoldGitDiffChangesTree extends HTMLElement {
 
   setStatus(gitStatus) {
     const tree = buildChangeTree(gitStatus.files);
-    this.expandedKeys = new Set(tree.directoryKeys);
+    this.knownDirectoryKeys = new Set(tree.directoryKeys);
+    this.expandedKeys = new Set(this.knownDirectoryKeys);
     this.state = { status: "ready", gitStatus, tree };
     this.render();
+  }
+
+  updateStatus(gitStatus) {
+    const scroll = this.captureListScroll();
+    const tree = buildChangeTree(gitStatus.files);
+    const nextKeys = new Set(tree.directoryKeys);
+    const previousKeys = this.knownDirectoryKeys ?? new Set();
+    this.expandedKeys = new Set([
+      ...Array.from(this.expandedKeys ?? []).filter((key) => nextKeys.has(key)),
+      ...Array.from(nextKeys).filter((key) => !previousKeys.has(key)),
+    ]);
+    this.knownDirectoryKeys = nextKeys;
+    this.state = { status: "ready", gitStatus, tree };
+    this.render();
+    this.restoreListScroll(scroll);
   }
 
   setError(error, repository = null) {
@@ -89,9 +105,30 @@ class CaffoldGitDiffChangesTree extends HTMLElement {
     }
   }
 
+  captureListScroll() {
+    const scroller = this.querySelector(".changes-tree-list");
+    return scroller
+      ? { top: scroller.scrollTop, left: scroller.scrollLeft }
+      : null;
+  }
+
+  restoreListScroll(scroll) {
+    if (!scroll) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      const scroller = this.querySelector(".changes-tree-list");
+      if (scroller) {
+        scroller.scrollTop = scroll.top;
+        scroller.scrollLeft = scroll.left;
+      }
+    });
+  }
+
   reset() {
     this.selectedPath = "";
     this.expandedKeys = new Set();
+    this.knownDirectoryKeys = new Set();
     this.state = { status: "idle" };
     this.render();
   }

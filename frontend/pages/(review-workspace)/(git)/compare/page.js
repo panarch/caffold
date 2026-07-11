@@ -25,7 +25,7 @@ class CaffoldGitComparePage extends HTMLElement {
         tabindex="0"
         data-resize-target="compare"
       ></div>
-      <caffold-review-file-viewer></caffold-review-file-viewer>
+      <caffold-review-file-viewer refresh-action="refresh-git-review"></caffold-review-file-viewer>
     `;
     this.compareTree = this.querySelector("caffold-git-compare-tree");
     this.viewer = this.querySelector("caffold-review-file-viewer");
@@ -220,6 +220,84 @@ class CaffoldGitComparePage extends HTMLElement {
       return null;
     } finally {
       window.clearTimeout(loadingTimer);
+    }
+  }
+
+  async refresh() {
+    if (!this.repository) {
+      return null;
+    }
+    const refsRequestId = ++this.refsRequestId;
+    const compareRequestId = ++this.compareRequestId;
+    this.pendingCompare = null;
+
+    try {
+      const refs = await getGitRefs(this.currentPath ?? "");
+      if (refsRequestId !== this.refsRequestId) {
+        return null;
+      }
+      const baseRef = chooseCompareRef(this.baseRef, refs.defaultBaseRef, refs.refs);
+      const headRef = chooseCompareRef(this.headRef, refs.defaultHeadRef, refs.refs);
+      const compare = await getGitCompare(this.currentPath ?? "", baseRef, headRef);
+      if (compareRequestId !== this.compareRequestId) {
+        return null;
+      }
+
+      this.refsPayload = refs;
+      this.baseRef = compare.baseRef;
+      this.headRef = compare.headRef;
+      this.compare = compare;
+      this.repository = compare.repository;
+      this.compareTree.updateCompare(compare);
+      await this.refreshSelectedDiff();
+      this.emitStateChange();
+      return compare;
+    } catch (error) {
+      if (
+        refsRequestId === this.refsRequestId &&
+        compareRequestId === this.compareRequestId
+      ) {
+        this.compareTree.setError(error, this.repository);
+        this.emitStateChange();
+      }
+      return null;
+    }
+  }
+
+  async refreshSelectedDiff() {
+    const path = this.compareTree.selectedPath ?? "";
+    if (!path || !this.compare) {
+      return null;
+    }
+    const file = this.fileForPath(path);
+    if (!file) {
+      this.compareTree.setSelectedPath("");
+      if (window.matchMedia("(max-width: 860px)").matches) {
+        this.showList();
+      } else {
+        this.viewer.setNotice("This file is no longer part of the comparison.");
+      }
+      return null;
+    }
+
+    const requestId = ++this.diffRequestId;
+    try {
+      const diff = await getGitCompareDiff(
+        this.currentPath ?? "",
+        this.compare.baseRef,
+        this.compare.headRef,
+        path,
+      );
+      if (requestId !== this.diffRequestId || path !== this.compareTree.selectedPath) {
+        return null;
+      }
+      this.viewer.setDiff({ ...diff, status: file.status ?? "" }, { preserveScroll: true });
+      return diff;
+    } catch (error) {
+      if (requestId === this.diffRequestId) {
+        this.viewer.setError(path, error);
+      }
+      return null;
     }
   }
 

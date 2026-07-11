@@ -4,6 +4,7 @@ import {
   imageTypeLabel,
   isPreviewableImagePath,
 } from "./dom.js";
+import { createRefreshCoordinator, subscribeToWatch } from "../watch.js";
 import "./file-browser/list.js";
 import "./file-viewer.js";
 
@@ -16,6 +17,14 @@ const LEFT_PANEL_MAX_RATIO = 0.7;
 class CaffoldFileBrowser extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
+    if (this.watchScopePath) {
+      this.subscribeWatchScope(this.watchScopePath);
+    }
+  }
+
+  disconnectedCallback() {
+    this.watchUnsubscribe?.();
+    this.watchUnsubscribe = null;
   }
 
   ensureRendered() {
@@ -34,6 +43,10 @@ class CaffoldFileBrowser extends HTMLElement {
     this.storageKey ??= null;
     this.loadedDirectoryPath ??= null;
     this.lastError = null;
+    this.selectedFilePath ??= "";
+    this.imageRevision ??= 0;
+    this.pendingRefresh = createPendingRefresh();
+    this.watchUnavailable = false;
 
     this.innerHTML = `
       <caffold-file-list></caffold-file-list>
@@ -50,6 +63,10 @@ class CaffoldFileBrowser extends HTMLElement {
     this.panelResizer = this.querySelector(".panel-resizer");
     this.fileViewer = this.querySelector("caffold-file-viewer");
     this.fileViewer.setCloseLabel("Back to files");
+    this.refreshCoordinator = createRefreshCoordinator(
+      () => this.performPendingRefresh(),
+      (state) => this.setRefreshState(state),
+    );
     this.setBrowserView(this.browserView);
     this.applyLeftPanelWidth(this.leftPanelWidth);
 
@@ -76,6 +93,14 @@ class CaffoldFileBrowser extends HTMLElement {
     });
     this.addEventListener("caffold:close-file-viewer", (event) => {
       this.handleCloseFileViewerEvent(event);
+    });
+    this.addEventListener("caffold:refresh-file-list", (event) => {
+      event.stopPropagation();
+      this.requestRefresh({ allDirectories: true });
+    });
+    this.addEventListener("caffold:refresh-file-viewer", (event) => {
+      event.stopPropagation();
+      this.requestRefresh({ file: true });
     });
   }
 
@@ -130,6 +155,7 @@ class CaffoldFileBrowser extends HTMLElement {
       this.currentPath = directory.path;
       this.loadedDirectoryPath = directory.path;
       this.fileList.setDirectory(directory);
+      this.setWatchScope(directory.git?.rootPath ?? directory.path);
       this.storeDirectoryPath(directory.path);
       return directory;
     } catch (error) {
@@ -210,6 +236,7 @@ class CaffoldFileBrowser extends HTMLElement {
     const requestId = ++this.fileRequestId;
     this.lastError = null;
     this.fileList.setSelectedPath(path);
+    this.selectedFilePath = path;
     this.rememberScroller("files", this.fileList, ".file-list");
     this.setBrowserView("viewer");
 
@@ -220,6 +247,7 @@ class CaffoldFileBrowser extends HTMLElement {
         imageType: imageTypeLabel(path),
         size: entry?.size,
         modifiedMs: entry?.modifiedMs,
+        revision: this.imageRevision,
       });
       return true;
     }
@@ -258,6 +286,7 @@ class CaffoldFileBrowser extends HTMLElement {
       this.fileRequestId += 1;
     }
     this.fileList.setSelectedPath("");
+    this.selectedFilePath = "";
     if (options.resetViewer) {
       this.fileViewer.setEmpty();
     }
@@ -278,6 +307,152 @@ class CaffoldFileBrowser extends HTMLElement {
     this.loadedDirectoryPath = null;
     this.fileList.setError(error);
     this.fileViewer.setError("", error);
+  }
+
+  setWatchScope(path) {
+    const nextPath = path ?? "";
+    if (this.watchScopePath === nextPath && this.watchUnsubscribe) {
+      return;
+    }
+    this.watchScopePath = nextPath;
+    this.watchUnsubscribe?.();
+    this.watchUnsubscribe = null;
+    this.watchUnavailable = false;
+    this.setRefreshState("idle");
+    if (this.isConnected) {
+      this.subscribeWatchScope(nextPath);
+    }
+  }
+
+  subscribeWatchScope(path) {
+    if (this.watchUnsubscribe) {
+      return;
+    }
+    this.watchUnsubscribe = subscribeToWatch(path, {
+      onReady: ({ recovered }) => {
+        this.watchUnavailable = false;
+        this.setRefreshState("idle");
+        if (recovered) {
+          this.requestRefresh({ allDirectories: true, file: true });
+        }
+      },
+      onChange: (change) => this.handleWatchChange(change),
+      onRecover: () => this.requestRefresh({ allDirectories: true, file: true }),
+      onError: () => {
+        this.watchUnavailable = true;
+        this.setRefreshState("unavailable");
+      },
+    });
+  }
+
+  handleWatchChange(change) {
+    const paths = Array.isArray(change.paths) ? change.paths : [];
+    const selectedChanged = Boolean(
+      this.selectedFilePath &&
+      (change.overflow || paths.includes(this.selectedFilePath)),
+    );
+    this.requestRefresh({
+      paths,
+      allDirectories: Boolean(change.overflow),
+      file: selectedChanged,
+      revision: change.revision,
+    });
+  }
+
+  requestRefresh(options = {}) {
+    this.pendingRefresh.allDirectories ||= Boolean(options.allDirectories);
+    this.pendingRefresh.file ||= Boolean(options.file);
+    this.pendingRefresh.revision = options.revision ?? this.pendingRefresh.revision;
+    for (const path of options.paths ?? []) {
+      this.pendingRefresh.paths.add(path);
+    }
+    return this.refreshCoordinator.request();
+  }
+
+  async performPendingRefresh() {
+    const pending = this.pendingRefresh;
+    this.pendingRefresh = createPendingRefresh();
+    await this.refreshDirectories(pending);
+    if (pending.file && this.selectedFilePath) {
+      await this.refreshSelectedFile(pending.revision);
+    }
+  }
+
+  async refreshDirectories(pending) {
+    const cachedPaths = this.fileList.cachedDirectoryPaths();
+    const targets = new Set();
+    if (pending.allDirectories) {
+      cachedPaths.forEach((path) => targets.add(path));
+    } else {
+      for (const changedPath of pending.paths) {
+        const parent = parentPath(changedPath);
+        if (cachedPaths.includes(parent)) {
+          targets.add(parent);
+        }
+        if (cachedPaths.includes(changedPath)) {
+          targets.add(changedPath);
+        }
+      }
+    }
+    if (targets.size === 0) {
+      return;
+    }
+
+    const directories = [];
+    const paths = Array.from(targets);
+    for (let index = 0; index < paths.length; index += 4) {
+      const batch = paths.slice(index, index + 4);
+      const results = await Promise.allSettled(batch.map((path) => listDirectory(path)));
+      results.forEach((result, offset) => {
+        if (result.status === "fulfilled") {
+          directories.push(result.value);
+        } else if (batch[offset] === this.loadedDirectoryPath) {
+          this.fileList.setError(result.reason);
+        }
+      });
+    }
+    this.fileList.updateDirectories(directories);
+  }
+
+  async refreshSelectedFile(revision = null) {
+    const path = this.selectedFilePath;
+    if (!path) {
+      return;
+    }
+    try {
+      if (isPreviewableImagePath(path)) {
+        const entry = this.entryForPath(path);
+        this.imageRevision = revision ?? this.imageRevision + 1;
+        this.fileViewer.setImage({
+          path,
+          name: fileNameFromPath(path),
+          imageType: imageTypeLabel(path),
+          size: entry?.size,
+          modifiedMs: entry?.modifiedMs,
+          revision: this.imageRevision,
+        });
+        return;
+      }
+      const file = await readFile(path);
+      if (path !== this.selectedFilePath) {
+        return;
+      }
+      this.fileViewer.setFile(file, { preserveScroll: true });
+    } catch (error) {
+      if (path === this.selectedFilePath) {
+        this.fileViewer.setError(path, error);
+      }
+    }
+  }
+
+  setRefreshState(state) {
+    const nextState = state === "refreshing"
+      ? "refreshing"
+      : this.watchUnavailable
+        ? "unavailable"
+        : "idle";
+    this.fileList.setRefreshState(nextState);
+    this.fileViewer.setRefreshState(nextState);
   }
 
   hasLoadedDirectory(path) {
@@ -484,4 +659,13 @@ function parentPath(path) {
   const parts = cleanPath(path).split("/").filter(Boolean);
   parts.pop();
   return parts.join("/");
+}
+
+function createPendingRefresh() {
+  return {
+    allDirectories: false,
+    file: false,
+    paths: new Set(),
+    revision: null,
+  };
 }

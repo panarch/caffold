@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test:routes": "node --test tests/navigation-routes.test.mjs",
+    "test:watch": "node --test tests/watch.test.mjs",
     "test:e2e": "playwright test"
   },
   "devDependencies": {
