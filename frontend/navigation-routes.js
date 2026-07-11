@@ -7,6 +7,15 @@ const TASKS_QUERY = [{ name: "cwd", key: "cwd", defaultValue: "" }];
 
 const ROUTE_DEFINITIONS = [
   routeDefinition({
+    id: "settings",
+    kind: "settings",
+    pattern: "/settings",
+    surface: "settings",
+    target: "page",
+    toRoute: () => ({ kind: "settings" }),
+    parent: () => null,
+  }),
+  routeDefinition({
     id: "project-root",
     kind: "files",
     pattern: "/projects/[projectId]",

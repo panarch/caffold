@@ -1,0 +1,94 @@
+caffold-app-menu {
+  display: grid;
+  min-width: 0;
+}
+
+caffold-app-menu .app-menu-button {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 30px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+caffold-app-menu .app-menu-button:hover,
+caffold-app-menu .app-menu-button:focus-visible,
+caffold-app-menu .app-menu-button:has(+ .app-menu-popover:popover-open) {
+  background: var(--surface-muted);
+  outline: none;
+}
+
+caffold-app-menu .app-menu-mark {
+  display: block;
+  width: 26px;
+  height: 26px;
+}
+
+caffold-app-menu .app-menu-name {
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+caffold-app-menu .app-menu-popover {
+  position: fixed;
+  inset: 42px auto auto 12px;
+  width: min(14rem, calc(100vw - 24px));
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 4px;
+  box-shadow: 0 12px 28px rgb(24 32 27 / 18%);
+}
+
+caffold-app-menu .app-menu-popover button {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  padding: 5px 8px;
+  text-align: left;
+}
+
+caffold-app-menu .app-menu-popover button:hover,
+caffold-app-menu .app-menu-popover button:focus-visible {
+  background: var(--accent-soft);
+  color: #0d5f47;
+  outline: none;
+}
+
+caffold-app-menu .app-menu-item-icon {
+  width: 16px;
+  height: 16px;
+}
+
+@media (max-width: 520px) {
+  caffold-app-menu .app-menu-button {
+    grid-template-columns: auto;
+    padding-inline: 2px;
+  }
+
+  caffold-app-menu .app-menu-name {
+    display: none;
+  }
+
+  caffold-app-menu .app-menu-popover {
+    inset-inline: 10px;
+    width: auto;
+  }
+}

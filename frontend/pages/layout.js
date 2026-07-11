@@ -8,9 +8,11 @@ import {
   routeUrl,
 } from "../navigation-routes.js";
 import "./components/pathbar.js";
+import "./components/app-menu.js";
 import "./components/project-switcher.js";
 import "./components/header-actions.js";
 import "./files/page.js";
+import "./settings/page.js";
 import "./(codex)/layout.js";
 import "./(review-workspace)/(git)/layout.js";
 import "./(review-workspace)/(github)/layout.js";
@@ -31,6 +33,7 @@ class CaffoldAppShell extends HTMLElement {
     this.render();
     this.filesPage = this.querySelector("caffold-files-page");
     this.filesPage.ensureRendered();
+    this.settingsPage = this.querySelector("caffold-settings-page");
     this.codexWorkspace = this.querySelector("caffold-codex-workspace");
     this.codexWorkspace.ensureRendered();
     this.pathbar = this.querySelector("caffold-pathbar");
@@ -94,6 +97,22 @@ class CaffoldAppShell extends HTMLElement {
         cwd: this.currentPath || ".",
       });
     });
+    this.addEventListener("caffold:open-settings", () => {
+      if (this.currentRoute?.kind !== "settings") {
+        this.settingsReturnRoute = this.currentRoute;
+      }
+      this.navigateToRoute({ kind: "settings" });
+    });
+    this.addEventListener("caffold:close-settings", () => {
+      const returnRoute = this.settingsReturnRoute;
+      this.settingsReturnRoute = null;
+      if (returnRoute) {
+        this.navigateToRoute(returnRoute);
+        return;
+      }
+
+      window.location.assign("/");
+    });
     this.addEventListener("caffold:request-tasks-route", (event) => {
       this.navigateToRoute(event.detail.route);
     });
@@ -148,10 +167,7 @@ class CaffoldAppShell extends HTMLElement {
     this.innerHTML = `
       <header class="app-header">
         <div class="app-context">
-          <div class="brand" aria-label="Caffold">
-            <img class="brand-mark" src="/assets/icons/caffold-mark.svg" alt="" />
-            <strong class="brand-name">Caffold</strong>
-          </div>
+          <caffold-app-menu></caffold-app-menu>
           <caffold-project-switcher></caffold-project-switcher>
           <caffold-header-actions></caffold-header-actions>
         </div>
@@ -159,6 +175,7 @@ class CaffoldAppShell extends HTMLElement {
       <caffold-pathbar></caffold-pathbar>
       <main class="app-main" aria-label="Project workspace">
         <caffold-files-page></caffold-files-page>
+        <caffold-settings-page hidden></caffold-settings-page>
       </main>
       <caffold-codex-workspace hidden></caffold-codex-workspace>
       <caffold-review-workspace hidden></caffold-review-workspace>
@@ -282,7 +299,7 @@ class CaffoldAppShell extends HTMLElement {
     try {
       const project = await this.openProjectForRoute(route.projectId);
       const surface = routeSurface(route);
-      if (!project && surface !== "tasks") {
+      if (!project && surface !== "tasks" && surface !== "settings") {
         return false;
       }
 
@@ -291,6 +308,8 @@ class CaffoldAppShell extends HTMLElement {
         await this.applyFilesRoute(project, route);
       } else if (surface === "tasks") {
         await this.applyTasksRoute(project, route);
+      } else if (surface === "settings") {
+        this.settingsPage.prepareRoute();
       } else if (domain === "git") {
         await this.applyGitRoute(project, route);
       } else if (domain === "github") {
@@ -756,6 +775,8 @@ class CaffoldAppShell extends HTMLElement {
     const surface = routeSurface(route);
     this.dataset.routeSurface = surface;
     delete this.dataset.routePending;
+    this.pathbar.hidden = surface === "settings";
+    this.settingsPage.hidden = surface !== "settings";
 
     if (surface === "review") {
       this.reviewWorkspace?.prepareRoute(route);
@@ -767,6 +788,13 @@ class CaffoldAppShell extends HTMLElement {
       this.filesPage.hidden = true;
       this.codexWorkspace.hidden = false;
       this.codexWorkspace.prepareRoute(route);
+      return;
+    }
+
+    if (surface === "settings") {
+      this.closeReviewWorkspace();
+      this.codexWorkspace.hidden = true;
+      this.filesPage.hidden = true;
       return;
     }
 

@@ -1,3 +1,4 @@
+import "./settings.js";
 import "./pages/layout.js";
 
 if ("serviceWorker" in navigator) {

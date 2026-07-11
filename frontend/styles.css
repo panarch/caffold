@@ -1,4 +1,5 @@
 @import "./pages/layout.css";
+@import "./pages/components/app-menu.css";
 @import "./pages/components/pathbar.css";
 @import "./pages/components/project-switcher.css";
 @import "./pages/components/header-actions.css";
@@ -6,6 +7,7 @@
 @import "./components/pagination.css";
 @import "./components/file-browser.css";
 @import "./pages/files/page.css";
+@import "./pages/settings/page.css";
 @import "./pages/(codex)/layout.css";
 @import "./pages/(codex)/tasks/page.css";
 @import "./pages/(review-workspace)/(git)/layout.css";
@@ -44,8 +46,59 @@
   --code-gutter: #f0f4f1;
   --code-text: #17201b;
   --line-gutter-width: 4rem;
+  --file-tree-font-size: 15px;
+  --file-tree-row-height: 30px;
+  --file-tree-icon-slot-size: 24px;
+  --file-tree-icon-size: 18px;
+  --file-tree-indent: 14px;
+  --file-tree-column-gap: 8px;
+  --file-tree-padding-y: 4px;
+  --file-tree-padding-left: 7px;
+  --file-tree-padding-right: 10px;
   --font-mono: ui-monospace, monospace;
   --font-sans: system-ui, sans-serif;
+}
+
+:root[data-file-tree-size="compact"] {
+  --file-tree-font-size: 13px;
+  --file-tree-row-height: 24px;
+  --file-tree-icon-slot-size: 20px;
+  --file-tree-icon-size: 15px;
+  --file-tree-indent: 12px;
+  --file-tree-column-gap: 6px;
+  --file-tree-padding-y: 2px;
+  --file-tree-padding-left: 6px;
+  --file-tree-padding-right: 8px;
+}
+
+:root[data-file-tree-size="default"] {
+  --file-tree-font-size: 15px;
+}
+
+:root[data-file-tree-size="large"] {
+  --file-tree-font-size: 17px;
+  --file-tree-row-height: 36px;
+  --file-tree-icon-slot-size: 28px;
+  --file-tree-icon-size: 20px;
+  --file-tree-indent: 16px;
+  --file-tree-column-gap: 9px;
+  --file-tree-padding-y: 5px;
+  --file-tree-padding-left: 8px;
+  --file-tree-padding-right: 12px;
+}
+
+@media (pointer: fine) {
+  :root[data-file-tree-size="auto"] {
+    --file-tree-font-size: 13px;
+    --file-tree-row-height: 24px;
+    --file-tree-icon-slot-size: 20px;
+    --file-tree-icon-size: 15px;
+    --file-tree-indent: 12px;
+    --file-tree-column-gap: 6px;
+    --file-tree-padding-y: 2px;
+    --file-tree-padding-left: 6px;
+    --file-tree-padding-right: 8px;
+  }
 }
 
 html {

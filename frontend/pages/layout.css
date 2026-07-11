@@ -25,25 +25,6 @@ caffold-app-shell .app-context {
   min-width: 0;
 }
 
-caffold-app-shell .brand {
-  display: grid;
-  grid-template-columns: auto auto;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-}
-
-caffold-app-shell .brand-mark {
-  display: block;
-  width: 26px;
-  height: 26px;
-}
-
-caffold-app-shell .brand-name {
-  font-size: 0.95rem;
-  line-height: 1.2;
-}
-
 caffold-app-shell .app-main {
   min-height: 0;
   min-width: 0;
@@ -61,11 +42,4 @@ caffold-app-shell .app-main {
     padding: 6px 10px;
   }
 
-  caffold-app-shell .brand {
-    grid-template-columns: auto;
-  }
-
-  caffold-app-shell .brand-name {
-    display: none;
-  }
 }

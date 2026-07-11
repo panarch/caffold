@@ -1,4 +1,4 @@
-const CACHE_NAME = "caffold-shell-v37";
+const CACHE_NAME = "caffold-shell-v38";
 
 const APP_SHELL_ASSETS = [
   "/",
@@ -7,6 +7,7 @@ const APP_SHELL_ASSETS = [
   "/assets/app.js",
   "/assets/api.js",
   "/assets/navigation-routes.js",
+  "/assets/settings.js",
   "/assets/icons/caffold.svg",
   "/assets/icons/caffold-mark.svg",
   "/assets/icons/icon-192.png",
@@ -22,6 +23,8 @@ const APP_SHELL_ASSETS = [
   "/assets/brand/codex-template@2x.png",
   "/assets/pages/layout.css",
   "/assets/pages/layout.js",
+  "/assets/pages/components/app-menu.css",
+  "/assets/pages/components/app-menu.js",
   "/assets/pages/components/pathbar.css",
   "/assets/pages/components/pathbar.js",
   "/assets/pages/components/project-switcher.css",
@@ -40,6 +43,8 @@ const APP_SHELL_ASSETS = [
   "/assets/watch.js",
   "/assets/pages/files/page.css",
   "/assets/pages/files/page.js",
+  "/assets/pages/settings/page.css",
+  "/assets/pages/settings/page.js",
   "/assets/pages/(codex)/layout.css",
   "/assets/pages/(codex)/layout.js",
   "/assets/pages/(codex)/tasks/page.css",
@@ -130,6 +135,7 @@ self.addEventListener("fetch", (event) => {
 
   if (
     url.pathname === "/" ||
+    url.pathname === "/settings" ||
     url.pathname === "/tasks" ||
     url.pathname.startsWith("/tasks/") ||
     url.pathname === "/projects" ||

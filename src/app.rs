@@ -495,6 +495,7 @@ fn router_with_state(state: AppState) -> Router {
         .route("/service-worker.js", get(service_worker))
         .route("/assets/manifest.webmanifest", get(manifest))
         .route("/assets/{*path}", get(asset))
+        .route("/settings", get(index))
         .route("/tasks", get(index))
         .route("/tasks/{*path}", get(index))
         .route("/projects", get(index))

@@ -29,6 +29,7 @@ The current runtime hierarchy is:
 ```text
 caffold-app-shell
   app header
+    scaffold-app-menu
     scaffold-project-switcher
     scaffold-header-actions
       scaffold-git-header-action
@@ -40,6 +41,8 @@ caffold-app-shell
       scaffold-file-browser
         scaffold-file-list
         scaffold-file-viewer
+  settings surface
+    scaffold-settings-page
   codex workspace
     scaffold-codex-workspace
       scaffold-tasks-page
@@ -80,6 +83,11 @@ caffold-app-shell
 `<caffold-app-shell>` directly. `frontend/pages` is the one exception to the
 parenthesized grouping rule because wrapping the root app shell would only
 repeat the root hierarchy.
+
+`settings.js` owns browser-local preferences and applies their CSS variables
+before the app shell renders. `settings/page` is a global app surface opened
+from `scaffold-app-menu`; it does not require a project and persists device-
+specific UI preferences in `localStorage` rather than the server database.
 
 `files/page` is the app root's route-level file browsing page. It renders
 `scaffold-file-browser` and delegates the file browser API that app-shell uses.

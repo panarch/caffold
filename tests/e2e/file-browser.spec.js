@@ -60,6 +60,7 @@ test.beforeEach(async ({ page }) => {
         export const Pencil = [["path", { d: "M17 3a2.8 2.8 0 0 1 4 4L7 21H3v-4z" }]];
         export const Plus = [["path", { d: "M12 5v14" }], ["path", { d: "M5 12h14" }]];
         export const RefreshCw = [["path", { d: "M20 6v5h-5" }], ["path", { d: "M4 18v-5h5" }], ["path", { d: "M18.4 9A7 7 0 0 0 6 6.6L4 9" }], ["path", { d: "M5.6 15A7 7 0 0 0 18 17.4l2-2.4" }]];
+        export const Settings = [["path", { d: "M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" }], ["path", { d: "M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.09.38.3.73.6 1 .3.27.68.4 1.1.4H21v4h-.09a1.7 1.7 0 0 0-1.51.6Z" }]];
         export const Trash2 = [["path", { d: "M3 6h18" }], ["path", { d: "M8 6V4h8v2" }], ["path", { d: "M19 6l-1 15H6L5 6" }]];
         export const X = [["path", { d: "M18 6 6 18" }], ["path", { d: "m6 6 12 12" }]];
         export function createElement(iconNode, attrs = {}) {
@@ -183,6 +184,9 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain("/assets/brand/codex-template@2x.png");
   expect(serviceWorker).toContain("/assets/pages/layout.js");
   expect(serviceWorker).toContain("/assets/pages/layout.css");
+  expect(serviceWorker).toContain("/assets/settings.js");
+  expect(serviceWorker).toContain("/assets/pages/components/app-menu.js");
+  expect(serviceWorker).toContain("/assets/pages/settings/page.js");
   expect(serviceWorker).toContain("/assets/pages/components/pathbar.js");
   expect(serviceWorker).toContain("/assets/pages/components/project-switcher.js");
   expect(serviceWorker).toContain("/assets/pages/components/header-actions.js");
@@ -308,6 +312,63 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
     return registration.scope;
   });
   expect(serviceWorkerScope).toBe("http://127.0.0.1:18765/");
+});
+
+test("opens browser-local settings and persists file tree size", async ({ page }, testInfo) => {
+  await page.goto("/");
+
+  const appMenu = page.locator("caffold-app-menu");
+  await appMenu.locator(".app-menu-button").click();
+  const popover = appMenu.locator(".app-menu-popover");
+  await expect(popover).toBeVisible();
+  await expect(popover).toContainText("Settings");
+  await captureReviewScreenshot(page, testInfo, "app-menu-popover");
+  await popover.locator('button[data-action="open-settings"]').click();
+
+  await expect(page).toHaveURL("/settings");
+  const settingsPage = page.locator("caffold-settings-page");
+  await expect(settingsPage).toBeVisible();
+  await expect(page.locator("caffold-pathbar")).toBeHidden();
+  await expect(page.locator("caffold-files-page")).toBeHidden();
+
+  const compact = settingsPage.locator('button[data-value="compact"]');
+  const previewRow = settingsPage.locator(".settings-preview-row").first();
+  const previewIcon = previewRow.locator(".settings-preview-icon");
+  await settingsPage.locator('button[data-value="default"]').click();
+  await expect(previewRow).toHaveCSS("min-height", "30px");
+  await expect(previewIcon).toHaveCSS("width", "18px");
+  await compact.click();
+  await expect(compact).toHaveAttribute("aria-checked", "true");
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.dataset.fileTreeSize),
+    )
+    .toBe("compact");
+  await expect(settingsPage.locator(".settings-tree-preview")).toHaveCSS("font-size", "13px");
+  await expect(previewRow).toHaveCSS("min-height", "24px");
+  await expect(previewIcon).toHaveCSS("width", "15px");
+
+  await captureReviewScreenshot(page, testInfo, "settings-appearance");
+  await page.reload();
+  await expect(page).toHaveURL("/settings");
+  await expect(settingsPage.locator('button[data-value="compact"]')).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await settingsPage.locator('button[data-action="close-settings"]').click();
+  await expect(page).toHaveURL("/");
+  await expect(page.locator("caffold-file-list .file-entry").first()).toHaveCSS(
+    "font-size",
+    "13px",
+  );
+  await expect(page.locator("caffold-file-list .file-entry").first()).toHaveCSS(
+    "min-height",
+    "24px",
+  );
+  await expect(page.locator("caffold-file-list .entry-icon-svg").first()).toHaveCSS(
+    "width",
+    "15px",
+  );
 });
 
 test("delays file list loading feedback", async ({ page }) => {
@@ -5103,9 +5164,9 @@ function mockCodexStatus(overrides = {}) {
 }
 
 async function expectHeaderBrand(page) {
-  const brand = page.locator("caffold-app-shell .brand");
-  const mark = brand.locator(".brand-mark");
-  const name = brand.locator(".brand-name");
+  const brand = page.locator("caffold-app-menu .app-menu-button");
+  const mark = brand.locator(".app-menu-mark");
+  const name = brand.locator(".app-menu-name");
 
   await expect(mark).toBeVisible();
   await expect(mark).toHaveAttribute("src", "/assets/icons/caffold-mark.svg");
@@ -5163,7 +5224,7 @@ async function expectHeaderActionsFit(page) {
       };
     };
     const header = document.querySelector("caffold-app-shell .app-header");
-    const brand = document.querySelector("caffold-app-shell .brand");
+    const brand = document.querySelector("caffold-app-menu .app-menu-button");
     const project = document.querySelector("caffold-project-switcher .project-switcher-button");
     const git = document.querySelector('caffold-header-actions button[data-action-group="git"]');
     const github = document.querySelector(

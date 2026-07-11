@@ -25,7 +25,7 @@ caffold-file-list .file-list-panel > header {
 caffold-file-list h2 {
   margin: 0;
   overflow: hidden;
-  font-size: 0.95rem;
+  font-size: 15px;
   font-weight: 600;
   line-height: 1.15;
   text-overflow: ellipsis;
@@ -34,7 +34,7 @@ caffold-file-list h2 {
 
 caffold-file-list .file-list-panel > header span {
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 13px;
 }
 
 caffold-file-list .file-list-title-row {
@@ -96,7 +96,7 @@ caffold-file-list .git-summary {
   min-width: 0;
   overflow: hidden;
   color: var(--accent);
-  font-size: 0.78rem;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -121,16 +121,16 @@ caffold-file-list .file-list > li {
 }
 
 caffold-file-list .repo-tree {
-  --tree-indent: 14px;
+  --tree-indent: var(--file-tree-indent);
 }
 
 caffold-file-list .file-entry {
   display: grid;
-  grid-template-columns: 1.75rem max-content;
-  gap: 8px;
+  grid-template-columns: var(--file-tree-icon-slot-size) max-content;
+  gap: var(--file-tree-column-gap);
   width: max-content;
   min-width: 100%;
-  min-height: 30px;
+  min-height: var(--file-tree-row-height);
   align-items: center;
   border: 0;
   border-left: 3px solid transparent;
@@ -138,13 +138,17 @@ caffold-file-list .file-entry {
   background: transparent;
   color: var(--text);
   cursor: pointer;
-  padding: 4px 10px 4px 7px;
+  font-size: var(--file-tree-font-size);
+  padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
+    var(--file-tree-padding-y) var(--file-tree-padding-left);
   text-align: left;
 }
 
 caffold-file-list .tree-entry {
-  grid-template-columns: 1.75rem max-content;
-  padding-left: calc(7px + var(--tree-depth, 0) * var(--tree-indent));
+  grid-template-columns: var(--file-tree-icon-slot-size) max-content;
+  padding-left: calc(
+    var(--file-tree-padding-left) + var(--tree-depth, 0) * var(--tree-indent)
+  );
 }
 
 caffold-file-list .file-entry:hover,
@@ -189,16 +193,16 @@ caffold-file-list .entry-kind {
 
 caffold-file-list .entry-icon {
   display: inline-grid;
-  width: 1.5rem;
-  height: 1.5rem;
+  width: var(--file-tree-icon-slot-size);
+  height: var(--file-tree-icon-slot-size);
   place-items: center;
   justify-self: center;
 }
 
 caffold-file-list .entry-icon-svg {
   display: block;
-  width: 1.125rem;
-  height: 1.125rem;
+  width: var(--file-tree-icon-size);
+  height: var(--file-tree-icon-size);
   stroke-width: 1.9;
 }
 
@@ -212,11 +216,15 @@ caffold-file-list .entry-name {
 caffold-file-list .tree-status {
   width: max-content;
   min-width: 100%;
-  min-height: 26px;
-  padding: 5px 10px 5px
-    calc(10px + 1.75rem + 8px + var(--tree-depth, 0) * var(--tree-indent));
+  min-height: var(--file-tree-row-height);
+  padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
+    var(--file-tree-padding-y)
+    calc(
+      3px + var(--file-tree-padding-left) + var(--file-tree-icon-slot-size) +
+        var(--file-tree-column-gap) + var(--tree-depth, 0) * var(--tree-indent)
+    );
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: var(--file-tree-font-size);
 }
 
 caffold-file-list .tree-status.is-error {

@@ -19,6 +19,7 @@ globalThis.window = {
 
 test("parses and serializes project route URLs canonically", () => {
   const cases = [
+    ["/settings", { kind: "settings" }, "/settings"],
     [
       "/projects/prj/files",
       { kind: "files", projectId: "prj", path: "" },
@@ -199,6 +200,7 @@ test("omits default page and empty compare query parameters", () => {
 
 test("derives deterministic parent routes", () => {
   const cases = [
+    ["/settings", null],
     ["/projects/prj/files/src/lib.rs", "/projects/prj/files/src"],
     ["/projects/prj/files/src", "/projects/prj/files"],
     ["/projects/prj/files", null],
@@ -236,6 +238,7 @@ test("derives deterministic parent routes", () => {
 
 test("exposes route metadata for surface and domain routing", () => {
   const cases = [
+    ["/settings", "settings", null, "settings", "page"],
     ["/projects/prj/files", "files", null, "files", "list"],
     ["/projects/prj/files/src/lib.rs", "files", null, "files", "path"],
     ["/projects/prj/tasks", "tasks", null, "tasks", "list"],
@@ -279,6 +282,7 @@ test("exposes route metadata for surface and domain routing", () => {
 
 test("derives route metadata from partial route objects", () => {
   const cases = [
+    [{ kind: "settings" }, "settings", null, "settings", "page"],
     [{ kind: "files", path: "" }, "files", null, "files", "list"],
     [{ kind: "files", path: "src/lib.rs" }, "files", null, "files", "path"],
     [{ kind: "tasks", new: false, threadId: "" }, "tasks", null, "tasks", "list"],

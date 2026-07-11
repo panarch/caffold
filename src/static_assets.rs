@@ -13,6 +13,7 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "app.js" => Some(js(include_str!("../frontend/app.js"))),
         "api.js" => Some(js(include_str!("../frontend/api.js"))),
         "navigation-routes.js" => Some(js(include_str!("../frontend/navigation-routes.js"))),
+        "settings.js" => Some(js(include_str!("../frontend/settings.js"))),
         "icons/caffold.svg" => Some(svg(include_str!("../frontend/assets/icons/caffold.svg"))),
         "icons/caffold-mark.svg" => Some(svg(include_str!(
             "../frontend/assets/icons/caffold-mark.svg"
@@ -48,6 +49,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         ))),
         "pages/layout.css" => Some(css(include_str!("../frontend/pages/layout.css"))),
         "pages/layout.js" => Some(js(include_str!("../frontend/pages/layout.js"))),
+        "pages/components/app-menu.css" => Some(css(include_str!(
+            "../frontend/pages/components/app-menu.css"
+        ))),
+        "pages/components/app-menu.js" => {
+            Some(js(include_str!("../frontend/pages/components/app-menu.js")))
+        }
         "pages/components/pathbar.css" => Some(css(include_str!(
             "../frontend/pages/components/pathbar.css"
         ))),
@@ -96,6 +103,8 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "watch.js" => Some(js(include_str!("../frontend/watch.js"))),
         "pages/files/page.css" => Some(css(include_str!("../frontend/pages/files/page.css"))),
         "pages/files/page.js" => Some(js(include_str!("../frontend/pages/files/page.js"))),
+        "pages/settings/page.css" => Some(css(include_str!("../frontend/pages/settings/page.css"))),
+        "pages/settings/page.js" => Some(js(include_str!("../frontend/pages/settings/page.js"))),
         "pages/(codex)/layout.css" => {
             Some(css(include_str!("../frontend/pages/(codex)/layout.css")))
         }
@@ -382,6 +391,21 @@ mod tests {
         assert!(get("components/pathbar.css").is_none());
         assert!(get("components/project-switcher.js").is_none());
         assert!(get("components/project-switcher.css").is_none());
+
+        let app_menu = get("pages/components/app-menu.js").expect("app menu js asset");
+        assert_eq!(app_menu.content_type, "text/javascript; charset=utf-8");
+        assert!(app_menu.body.starts_with(b"import "));
+
+        let settings_module = get("settings.js").expect("settings module asset");
+        assert_eq!(
+            settings_module.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(settings_module.body.starts_with(b"const STORAGE_KEY"));
+
+        let settings_page = get("pages/settings/page.js").expect("settings page js asset");
+        assert_eq!(settings_page.content_type, "text/javascript; charset=utf-8");
+        assert!(settings_page.body.starts_with(b"import "));
 
         let app_shell_layout = get("pages/layout.js").expect("app shell layout js asset");
         assert_eq!(
@@ -688,10 +712,7 @@ mod tests {
         assert!(get("pages/files/components/list.js").is_none());
         assert!(get("pages/files/components/list.css").is_none());
         let watch_module = get("watch.js").expect("watch js asset");
-        assert_eq!(
-            watch_module.content_type,
-            "text/javascript; charset=utf-8"
-        );
+        assert_eq!(watch_module.content_type, "text/javascript; charset=utf-8");
         assert!(watch_module.body.starts_with(b"import "));
         let log_layout =
             get("pages/(review-workspace)/(git)/(log)/layout.js").expect("git log layout js asset");
