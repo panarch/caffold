@@ -46,6 +46,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.stream = null;
     this.requestId = 0;
     this.conversationScrollMode = null;
+    this.conversationScrollByThread = new Map();
     this.newTaskDraft = { prompt: "" };
     this.followUpDraft = "";
     this.modelOptions = [];
@@ -122,8 +123,20 @@ class CaffoldTasksPage extends HTMLElement {
     this.projectId = nextProjectId;
   }
 
-  prepareRoute(route) {
+  prepareRoute(route, options = {}) {
     this.ensureRendered();
+    if (
+      options.preserveLoadedTask &&
+      route?.threadId &&
+      this.selectedThreadId === route.threadId &&
+      this.taskDetail?.task?.threadId === route.threadId
+    ) {
+      this.view = "detail";
+      this.error = null;
+      this.setAttribute("data-tasks-view", this.view);
+      return;
+    }
+
     const previousView = this.view;
     this.projectId = route?.projectId ?? "";
     this.error = null;
@@ -161,11 +174,19 @@ class CaffoldTasksPage extends HTMLElement {
   async openRoute(route, options = {}) {
     this.setProject(options.project ?? this.project);
     this.cwdPath = route?.cwd ?? "";
-    this.prepareRoute(route);
+    this.prepareRoute(route, options);
     if (route?.new) {
       return this.openNew();
     }
     if (route?.threadId) {
+      if (
+        options.preserveLoadedTask &&
+        this.taskDetail?.task?.threadId === route.threadId
+      ) {
+        this.loading = false;
+        this.loadModelOptions();
+        return this.taskDetail;
+      }
       return await this.openTask(route.threadId);
     }
     return await this.openList();
@@ -581,7 +602,8 @@ class CaffoldTasksPage extends HTMLElement {
 
   openTaskDiff() {
     const projectId = this.taskProjectId();
-    if (!projectId) {
+    const returnRoute = this.currentTaskRoute();
+    if (!projectId || !returnRoute) {
       return;
     }
 
@@ -590,9 +612,24 @@ class CaffoldTasksPage extends HTMLElement {
         bubbles: true,
         detail: {
           route: { kind: "diff", projectId, path: "" },
+          options: { returnRoute },
         },
       }),
     );
+  }
+
+  currentTaskRoute() {
+    if (!this.selectedThreadId) {
+      return null;
+    }
+
+    return {
+      kind: "tasks",
+      projectId: this.projectId,
+      new: false,
+      threadId: this.selectedThreadId,
+      cwd: this.projectId ? "" : this.cwdPath,
+    };
   }
 
   taskProjectId() {
@@ -704,7 +741,8 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   render() {
-    const previousScroll = this.captureConversationScroll();
+    const previousScroll =
+      this.rememberConversationScroll() ?? this.conversationScrollSnapshot();
     const previousComposerFocus = this.captureComposerFocus();
     const previousTaskFilePath = this.captureTaskFileBrowserPath();
     this.setAttribute("data-tasks-view", this.view ?? "list");
@@ -766,9 +804,17 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
 
+    if (nextView === "files") {
+      this.rememberConversationScroll();
+    }
     this.taskDetailView = nextView;
     this.updateTaskDetailView();
     this.syncTaskFileBrowser();
+    if (nextView === "conversation") {
+      window.requestAnimationFrame(() => {
+        this.restoreConversationScroll(this.conversationScrollSnapshot());
+      });
+    }
     this.dispatchTaskDetailViewChange();
   }
 
@@ -843,7 +889,7 @@ class CaffoldTasksPage extends HTMLElement {
 
   captureConversationScroll() {
     const scroller = this.querySelector(".task-conversation-scroll");
-    if (!scroller) {
+    if (!scroller || scroller.clientHeight === 0) {
       return null;
     }
     return {
@@ -852,6 +898,21 @@ class CaffoldTasksPage extends HTMLElement {
       clientHeight: scroller.clientHeight,
       atBottom: isScrolledToBottom(scroller),
     };
+  }
+
+  rememberConversationScroll() {
+    const snapshot = this.captureConversationScroll();
+    if (snapshot && this.selectedThreadId) {
+      this.conversationScrollByThread.set(this.selectedThreadId, snapshot);
+    }
+    return snapshot;
+  }
+
+  conversationScrollSnapshot() {
+    if (!this.selectedThreadId) {
+      return null;
+    }
+    return this.conversationScrollByThread.get(this.selectedThreadId) ?? null;
   }
 
   restoreConversationScroll(previousScroll) {
@@ -885,6 +946,7 @@ class CaffoldTasksPage extends HTMLElement {
 
   handleConversationScroll() {
     const scroller = this.querySelector(".task-conversation-scroll");
+    this.rememberConversationScroll();
     if (
       !scroller ||
       this.loadingOlderEvents ||

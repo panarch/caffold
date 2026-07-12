@@ -1084,6 +1084,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   let task = null;
   let events = [];
   let createTaskRequests = 0;
+  let taskDetailReadRequests = 0;
   let approvalRequests = 0;
   let resolveFollowUpRequest;
   let releaseFollowUpResponse;
@@ -1094,6 +1095,14 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     releaseFollowUpResponse = resolve;
   });
   const threadId = "thread_12345678";
+  const completedAssistantResponse = [
+    "The planner changes are ready to review. I would open the diff next.",
+    ...Array.from(
+      { length: 36 },
+      (_, index) =>
+        `Review note ${index + 1}: verified planner behavior and fixture coverage.`,
+    ),
+  ].join("\n");
 
   const eventRecord = (id, type, summary, payload = null, offset = 0) => ({
     id,
@@ -1224,6 +1233,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
 
     if (segments.length === 3 && segments[2] === threadId && method === "GET") {
       expect(url.searchParams.get("projectId")).toBe(null);
+      taskDetailReadRequests += 1;
       return route.fulfill({
         contentType: "application/json",
         body: JSON.stringify(detailResponse()),
@@ -1360,7 +1370,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           "Assistant response",
           {
             turnId: "turn_1",
-            text: "The planner changes are ready to review. I would open the diff next.",
+            text: completedAssistantResponse,
           },
           11,
         ),
@@ -1370,7 +1380,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           "Assistant response",
           {
             turnId: "turn_1",
-            text: "The planner changes are ready to review. I would open the diff next.",
+            text: completedAssistantResponse,
           },
           11,
         ),
@@ -1685,6 +1695,13 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(tasksPage).not.toContainText("turn started");
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-conversation");
+  const conversationScroller = tasksPage.locator(".task-conversation-scroll");
+  const conversationBeforeFiles = await conversationScroller.evaluate((element) => {
+    const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+    element.scrollTop = Math.floor(maxScrollTop / 2);
+    return { maxScrollTop, scrollTop: element.scrollTop };
+  });
+  expect(conversationBeforeFiles.maxScrollTop).toBeGreaterThan(0);
   await tasksPage
     .locator(".task-conversation-pane")
     .evaluate((element) => element.setAttribute("data-persist-probe", "kept"));
@@ -1849,6 +1866,14 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     "data-persist-probe",
     "kept",
   );
+  await expect
+    .poll(async () =>
+      Math.abs(
+        (await conversationScroller.evaluate((element) => element.scrollTop)) -
+          conversationBeforeFiles.scrollTop,
+      ),
+    )
+    .toBeLessThanOrEqual(2);
   await expect(
     codexWorkspace.getByRole("button", { name: "Close Codex workspace" }),
   ).toBeVisible();
@@ -1886,8 +1911,67 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     }),
   ).toHaveCount(1);
 
+  await tasksPage
+    .locator(".task-conversation-pane")
+    .evaluate((element) => element.setAttribute("data-review-persist-probe", "kept"));
+  await followUpTextarea.fill("Keep this draft while reviewing");
+  const conversationBeforeDiff = await conversationScroller.evaluate((element) => {
+    const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+    element.scrollTop = Math.floor(maxScrollTop / 2);
+    return { maxScrollTop, scrollTop: element.scrollTop };
+  });
+  expect(conversationBeforeDiff.maxScrollTop).toBeGreaterThan(0);
+  const taskDetailReadsBeforeDiff = taskDetailReadRequests;
   await tasksPage.getByRole("button", { name: "Open Diff" }).click();
   await expect(page).toHaveURL(`/projects/${project.id}/diff`);
+  await expect(page.locator("caffold-review-workspace")).toBeVisible();
+  await expect(codexWorkspace).toBeHidden();
+
+  await page.goBack();
+  await expect(page).toHaveURL(
+    `/tasks/${threadId}?cwd=${encodeURIComponent(project.relativePath)}`,
+  );
+  await expect(codexWorkspace).toBeVisible();
+  await expect(tasksPage.locator(".task-conversation-pane")).toHaveAttribute(
+    "data-review-persist-probe",
+    "kept",
+  );
+  await expect(followUpTextarea).toHaveValue("Keep this draft while reviewing");
+  await expect(tasksPage.locator(".task-follow-up-form .task-model-button")).toContainText(
+    "Very high",
+  );
+  await expect
+    .poll(async () =>
+      Math.abs(
+        (await conversationScroller.evaluate((element) => element.scrollTop)) -
+          conversationBeforeDiff.scrollTop,
+      ),
+    )
+    .toBeLessThanOrEqual(2);
+  expect(taskDetailReadRequests).toBe(taskDetailReadsBeforeDiff);
+
+  await page.goForward();
+  await expect(page).toHaveURL(`/projects/${project.id}/diff`);
+  await page.getByRole("button", { name: "Close review workspace" }).click();
+  await expect(page).toHaveURL(
+    `/tasks/${threadId}?cwd=${encodeURIComponent(project.relativePath)}`,
+  );
+  await expect(codexWorkspace).toBeVisible();
+  await expect(page.locator("caffold-review-workspace")).toBeHidden();
+  await expect(tasksPage.locator(".task-conversation-pane")).toHaveAttribute(
+    "data-review-persist-probe",
+    "kept",
+  );
+  await expect(followUpTextarea).toHaveValue("Keep this draft while reviewing");
+  await expect
+    .poll(async () =>
+      Math.abs(
+        (await conversationScroller.evaluate((element) => element.scrollTop)) -
+          conversationBeforeDiff.scrollTop,
+      ),
+    )
+    .toBeLessThanOrEqual(2);
+  expect(taskDetailReadRequests).toBe(taskDetailReadsBeforeDiff);
 });
 
 test("loads older task conversation events by cursor", async ({ page }) => {

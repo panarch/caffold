@@ -30,6 +30,8 @@ class CaffoldAppShell extends HTMLElement {
     this.currentRoute = null;
     this.directoryContextPath = "";
     this.isApplyingRoute = false;
+    this.taskReviewReturnRoute = null;
+    this.pendingTaskResumeRoute = null;
     this.render();
     this.filesPage = this.querySelector("caffold-files-page");
     this.filesPage.ensureRendered();
@@ -62,18 +64,23 @@ class CaffoldAppShell extends HTMLElement {
       this.closeFileViewer(event);
     });
     this.addEventListener("caffold:open-diff-workspace", () => {
+      this.clearTaskReviewReturnRoute();
       this.navigateOrOpenGitRoute(this.gitLayout.routeForAction("diff"));
     });
     this.addEventListener("caffold:open-log-workspace", () => {
+      this.clearTaskReviewReturnRoute();
       this.navigateOrOpenGitRoute(this.gitLayout.routeForAction("log"));
     });
     this.addEventListener("caffold:open-compare-workspace", () => {
+      this.clearTaskReviewReturnRoute();
       this.navigateOrOpenGitRoute(this.gitLayout.routeForAction("compare"));
     });
     this.addEventListener("caffold:open-github-issues-workspace", () => {
+      this.clearTaskReviewReturnRoute();
       this.navigateOrOpenGithubRoute(this.githubLayout.routeForAction("issues"));
     });
     this.addEventListener("caffold:open-github-pulls-workspace", () => {
+      this.clearTaskReviewReturnRoute();
       this.navigateOrOpenGithubRoute(this.githubLayout.routeForAction("pulls"));
     });
     this.addEventListener("caffold:open-tasks", () => {
@@ -132,6 +139,9 @@ class CaffoldAppShell extends HTMLElement {
       this.navigateToReviewParent();
     });
     this.addEventListener("caffold:request-git-route", (event) => {
+      if (event.detail.options?.returnRoute) {
+        this.taskReviewReturnRoute = event.detail.options.returnRoute;
+      }
       this.navigateOrOpenGitRoute(event.detail.route, event.detail.options);
     });
     this.addEventListener("caffold:change-compare-refs", (event) => {
@@ -342,6 +352,7 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   async applyFilesRoute(project, route) {
+    this.clearTaskReviewReturnRoute();
     this.codexWorkspace.hidden = true;
     this.filesPage.hidden = false;
     this.closeReviewWorkspace();
@@ -369,7 +380,8 @@ class CaffoldAppShell extends HTMLElement {
     if (!this.isCurrentRoute(route)) {
       return;
     }
-    await this.codexWorkspace.openRoute(route, { project });
+    const preserveLoadedTask = this.shouldPreserveLoadedTask(route);
+    await this.codexWorkspace.openRoute(route, { project, preserveLoadedTask });
   }
 
   async applyGitRoute(project, route) {
@@ -484,13 +496,49 @@ class CaffoldAppShell extends HTMLElement {
       return false;
     }
 
+    if (options.closeWorkspace && this.taskReviewReturnRoute) {
+      const returnRoute = this.taskReviewReturnRoute;
+      this.taskReviewReturnRoute = null;
+      this.pendingTaskResumeRoute = returnRoute;
+      return this.navigateToRoute(returnRoute);
+    }
+
     const parent = options.closeWorkspace
       ? { kind: "files", projectId: currentRoute.projectId, path: "" }
       : parentRoute(currentRoute);
     return parent ? this.navigateToRoute(parent) : false;
   }
 
+  shouldPreserveLoadedTask(route) {
+    if (this.pendingTaskResumeRoute && routeEquals(this.pendingTaskResumeRoute, route)) {
+      this.pendingTaskResumeRoute = null;
+      return true;
+    }
+
+    if (this.canPreserveLoadedTask(route)) {
+      return true;
+    }
+
+    if (this.taskReviewReturnRoute) {
+      this.clearTaskReviewReturnRoute();
+    }
+    return false;
+  }
+
+  canPreserveLoadedTask(route) {
+    return Boolean(
+      (this.pendingTaskResumeRoute && routeEquals(this.pendingTaskResumeRoute, route)) ||
+        (this.taskReviewReturnRoute && routeEquals(this.taskReviewReturnRoute, route)),
+    );
+  }
+
+  clearTaskReviewReturnRoute() {
+    this.taskReviewReturnRoute = null;
+    this.pendingTaskResumeRoute = null;
+  }
+
   navigateToCodexParent() {
+    this.clearTaskReviewReturnRoute();
     const currentRoute = parseRoute(window.location.href) ?? this.currentRoute;
     const projectId = currentRoute?.projectId ?? this.projectSwitcher.currentProjectId;
     if (!projectId) {
@@ -790,7 +838,9 @@ class CaffoldAppShell extends HTMLElement {
       this.closeReviewWorkspace();
       this.filesPage.hidden = true;
       this.codexWorkspace.hidden = false;
-      this.codexWorkspace.prepareRoute(route);
+      this.codexWorkspace.prepareRoute(route, {
+        preserveLoadedTask: this.canPreserveLoadedTask(route),
+      });
       return;
     }
 

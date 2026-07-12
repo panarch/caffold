@@ -41,9 +41,9 @@ class CaffoldCodexWorkspace extends HTMLElement {
     this.updateCloseButton();
   }
 
-  prepareRoute(route) {
+  prepareRoute(route, options = {}) {
     this.ensureRendered();
-    this.tasksPage.prepareRoute(route);
+    this.tasksPage.prepareRoute(route, options);
     this.updateCloseButton();
   }
 
