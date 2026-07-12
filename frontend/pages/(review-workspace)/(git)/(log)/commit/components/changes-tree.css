@@ -72,7 +72,7 @@ caffold-commit-changes-tree .commit-line-stats .is-deletion {
 }
 
 caffold-commit-changes-tree .commit-tree-list {
-  --tree-indent: 12px;
+  --tree-indent: var(--file-tree-indent);
   display: block;
   min-height: 0;
   margin: 0;
@@ -89,11 +89,11 @@ caffold-commit-changes-tree .commit-tree-list > li {
 
 caffold-commit-changes-tree .commit-entry {
   display: grid;
-  grid-template-columns: 1.35rem max-content;
-  gap: 4px;
+  grid-template-columns: var(--file-tree-icon-slot-size) max-content;
+  gap: var(--file-tree-column-gap);
   width: max-content;
   min-width: 100%;
-  min-height: 30px;
+  min-height: var(--file-tree-row-height);
   align-items: center;
   border: 0;
   border-left: 3px solid transparent;
@@ -101,7 +101,9 @@ caffold-commit-changes-tree .commit-entry {
   background: transparent;
   color: var(--text);
   cursor: pointer;
-  padding: 4px 10px 4px 6px;
+  font-size: var(--file-tree-font-size);
+  padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
+    var(--file-tree-padding-y) var(--file-tree-padding-left);
   text-align: left;
 }
 
@@ -120,15 +122,15 @@ caffold-commit-changes-tree .commit-file[aria-current="true"] {
 caffold-commit-changes-tree .commit-status-code {
   align-self: center;
   color: #764600;
-  font-size: 0.78rem;
+  font-size: var(--file-tree-font-size);
   justify-self: start;
   white-space: pre;
 }
 
 caffold-commit-changes-tree .commit-node-label {
   display: grid;
-  grid-template-columns: 1.5rem max-content;
-  gap: 6px;
+  grid-template-columns: var(--file-tree-icon-slot-size) max-content;
+  gap: var(--file-tree-column-gap);
   align-items: center;
   min-width: 0;
   margin-left: calc(var(--tree-depth, 0) * var(--tree-indent));
@@ -136,16 +138,16 @@ caffold-commit-changes-tree .commit-node-label {
 
 caffold-commit-changes-tree .entry-icon {
   display: inline-grid;
-  width: 1.5rem;
-  height: 1.5rem;
+  width: var(--file-tree-icon-slot-size);
+  height: var(--file-tree-icon-slot-size);
   place-items: center;
   justify-self: center;
 }
 
 caffold-commit-changes-tree .entry-icon-svg {
   display: block;
-  width: 1.125rem;
-  height: 1.125rem;
+  width: var(--file-tree-icon-size);
+  height: var(--file-tree-icon-size);
   stroke-width: 1.9;
 }
 

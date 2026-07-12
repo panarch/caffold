@@ -3769,6 +3769,10 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   await expect(page.locator('button[data-change-path="src/new-file.rs"] .change-status-code')).toHaveText(
     "A",
   );
+  await expectFileTreeDensity(
+    page,
+    page.locator('button[data-change-path="src/new-file.rs"]'),
+  );
   await captureReviewScreenshot(page, testInfo, "diff-changes-summary");
   if (testInfo.project.name !== "phone") {
     const resizeHandle = workspace.locator(".git-mode-diff .review-panel-resizer");
@@ -4059,6 +4063,10 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
   await expect(workspace.locator('select[data-compare-ref="base"]')).toHaveValue("origin/release");
   await expect(workspace.locator('select[data-compare-ref="head"]')).toHaveValue(headRef);
   await expect(page.locator("caffold-git-compare-page")).toContainText("release.rs");
+  await expectFileTreeDensity(
+    page,
+    page.locator('button[data-compare-path="src/runtime/release.rs"]'),
+  );
 
   await page.locator('button[data-compare-path="src/runtime/release.rs"]').click();
   await expect(page.locator('button[data-compare-path="src/runtime/release.rs"]')).toHaveAttribute(
@@ -4756,6 +4764,10 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
   );
   await expect(page.locator("caffold-github-pull-files-tree")).toContainText("2 files");
   await expect(page.locator('button[data-pull-file-path="src/planner/mod.rs"]')).toBeVisible();
+  await expectFileTreeDensity(
+    page,
+    page.locator('button[data-pull-file-path="src/planner/mod.rs"]'),
+  );
   await expect(page.locator(".github-mode-pulls caffold-review-file-viewer")).toContainText(
     "Select a file to inspect it.",
   );
@@ -5020,6 +5032,7 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
   await expect(commitTree).toContainText("function.rs");
   const commitFileButton = page.locator('button[data-commit-path="src/planner/function.rs"]');
   await expect(commitFileButton).toHaveAttribute("aria-current", "false");
+  await expectFileTreeDensity(page, commitFileButton);
   await expect(page.locator(".git-mode-log caffold-review-file-viewer")).toContainText(
     "Select a file to inspect it.",
   );
@@ -5253,6 +5266,46 @@ async function openHeaderActionGroup(page, group) {
 async function clickHeaderAction(page, group, action) {
   const popover = await openHeaderActionGroup(page, group);
   await popover.locator(`button[data-action="${action}"]`).click();
+}
+
+async function expectFileTreeDensity(page, entry) {
+  const metrics = await entry.evaluate((element) => {
+    const rootStyle = getComputedStyle(document.documentElement);
+    const entryStyle = getComputedStyle(element);
+    const iconStyle = getComputedStyle(element.querySelector(".entry-icon-svg"));
+    const status = element.querySelector('[class*="status-code"]');
+
+    return {
+      expected: {
+        fontSize: rootStyle.getPropertyValue("--file-tree-font-size").trim(),
+        rowHeight: rootStyle.getPropertyValue("--file-tree-row-height").trim(),
+        iconSize: rootStyle.getPropertyValue("--file-tree-icon-size").trim(),
+        gap: rootStyle.getPropertyValue("--file-tree-column-gap").trim(),
+        paddingTop: rootStyle.getPropertyValue("--file-tree-padding-y").trim(),
+        paddingRight: rootStyle.getPropertyValue("--file-tree-padding-right").trim(),
+        paddingLeft: rootStyle.getPropertyValue("--file-tree-padding-left").trim(),
+      },
+      actual: {
+        fontSize: entryStyle.fontSize,
+        rowHeight: entryStyle.minHeight,
+        iconSize: iconStyle.width,
+        gap: entryStyle.columnGap,
+        paddingTop: entryStyle.paddingTop,
+        paddingRight: entryStyle.paddingRight,
+        paddingLeft: entryStyle.paddingLeft,
+        statusFontSize: status ? getComputedStyle(status).fontSize : null,
+      },
+    };
+  });
+
+  expect(metrics.actual.fontSize).toBe(metrics.expected.fontSize);
+  expect(metrics.actual.rowHeight).toBe(metrics.expected.rowHeight);
+  expect(metrics.actual.iconSize).toBe(metrics.expected.iconSize);
+  expect(metrics.actual.gap).toBe(metrics.expected.gap);
+  expect(metrics.actual.paddingTop).toBe(metrics.expected.paddingTop);
+  expect(metrics.actual.paddingRight).toBe(metrics.expected.paddingRight);
+  expect(metrics.actual.paddingLeft).toBe(metrics.expected.paddingLeft);
+  expect(metrics.actual.statusFontSize).toBe(metrics.expected.fontSize);
 }
 
 async function expectHeaderActionsFit(page) {
