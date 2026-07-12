@@ -86,7 +86,13 @@ class CaffoldAppShell extends HTMLElement {
       });
     });
     this.addEventListener("caffold:open-all-tasks", () => {
-      this.navigateToRoute({ kind: "tasks", projectId: "", new: false, threadId: "" });
+      this.navigateToRoute({
+        kind: "tasks",
+        projectId: "",
+        new: false,
+        threadId: "",
+        cwd: "",
+      });
     });
     this.addEventListener("caffold:new-task", () => {
       this.navigateToRoute({
@@ -363,10 +369,7 @@ class CaffoldAppShell extends HTMLElement {
     if (!this.isCurrentRoute(route)) {
       return;
     }
-    await this.codexWorkspace.openRoute(route, {
-      project,
-      cwdPath: project?.relativePath ?? this.currentPath,
-    });
+    await this.codexWorkspace.openRoute(route, { project });
   }
 
   async applyGitRoute(project, route) {

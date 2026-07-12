@@ -996,18 +996,6 @@ test("opens global Tasks without a registered project", async ({ page }) => {
   });
 
   await page.goto("/");
-  const codexPopover = await openHeaderActionGroup(page, "codex");
-  await codexPopover.locator('button[data-action="open-all-tasks"]').click();
-  await expect(page).toHaveURL("/tasks");
-  await expect
-    .poll(() => taskListQueries.at(-1))
-    .toEqual({ projectId: null, cwd: null });
-  await page
-    .locator("caffold-codex-workspace")
-    .getByRole("button", { name: "Close Codex workspace" })
-    .click();
-  await expect(page).toHaveURL("/");
-
   const scopedCodexPopover = await openHeaderActionGroup(page, "codex");
   await scopedCodexPopover.locator('button[data-action="open-tasks"]').click();
   await expect(page).toHaveURL("/tasks?cwd=.");
@@ -1017,6 +1005,32 @@ test("opens global Tasks without a registered project", async ({ page }) => {
   const tasksPage = page.locator("caffold-tasks-page");
   await expect(tasksPage.locator(".tasks-header")).toContainText("Threads in ~");
   await expect(tasksPage).toContainText("No tasks yet.");
+  await page
+    .locator("caffold-codex-workspace")
+    .getByRole("button", { name: "Close Codex workspace" })
+    .click();
+  await expect(page).toHaveURL("/");
+
+  const allTasksCodexPopover = await openHeaderActionGroup(page, "codex");
+  await allTasksCodexPopover.locator('button[data-action="open-all-tasks"]').click();
+  await expect(page).toHaveURL("/tasks");
+  await expect
+    .poll(() => taskListQueries.at(-1))
+    .toEqual({ projectId: null, cwd: null });
+  await expect(tasksPage.locator(".tasks-header")).toContainText("All Codex threads");
+  await expect(tasksPage).toContainText("No tasks yet.");
+  await page
+    .locator("caffold-codex-workspace")
+    .getByRole("button", { name: "Close Codex workspace" })
+    .click();
+  await expect(page).toHaveURL("/");
+
+  const reopenedScopedCodexPopover = await openHeaderActionGroup(page, "codex");
+  await reopenedScopedCodexPopover.locator('button[data-action="open-tasks"]').click();
+  await expect(page).toHaveURL("/tasks?cwd=.");
+  await expect
+    .poll(() => taskListQueries.at(-1))
+    .toEqual({ projectId: null, cwd: "." });
 
   await tasksPage
     .locator(".tasks-empty")

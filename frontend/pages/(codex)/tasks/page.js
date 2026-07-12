@@ -160,7 +160,7 @@ class CaffoldTasksPage extends HTMLElement {
 
   async openRoute(route, options = {}) {
     this.setProject(options.project ?? this.project);
-    this.cwdPath = Object.hasOwn(route ?? {}, "cwd") ? (route.cwd ?? "") : (options.cwdPath ?? "");
+    this.cwdPath = route?.cwd ?? "";
     this.prepareRoute(route);
     if (route?.new) {
       return this.openNew();
