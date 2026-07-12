@@ -37,7 +37,7 @@ caffold-code-viewer .code-lines {
   overscroll-behavior: contain;
   background: var(--code-bg);
   font-family: var(--font-mono);
-  font-size: 0.82rem;
+  font-size: var(--code-viewer-font-size);
   line-height: 1.55;
 }
 
@@ -121,10 +121,6 @@ caffold-code-viewer .hljs-class .hljs-title {
 }
 
 @media (max-width: 520px) {
-  caffold-code-viewer .code-lines {
-    font-size: 0.76rem;
-  }
-
   caffold-code-viewer .line-number {
     padding: 0 8px;
   }

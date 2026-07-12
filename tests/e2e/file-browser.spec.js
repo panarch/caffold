@@ -314,7 +314,7 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorkerScope).toBe("http://127.0.0.1:18765/");
 });
 
-test("opens browser-local settings and persists file tree size", async ({ page }, testInfo) => {
+test("opens browser-local settings and persists viewer sizes", async ({ page }, testInfo) => {
   await page.goto("/");
 
   const appMenu = page.locator("caffold-app-menu");
@@ -331,10 +331,14 @@ test("opens browser-local settings and persists file tree size", async ({ page }
   await expect(page.locator("caffold-pathbar")).toBeHidden();
   await expect(page.locator("caffold-files-page")).toBeHidden();
 
-  const compact = settingsPage.locator('button[data-value="compact"]');
+  const compact = settingsPage.locator(
+    'button[data-action="set-file-tree-size"][data-value="compact"]',
+  );
   const previewRow = settingsPage.locator(".settings-preview-row").first();
   const previewIcon = previewRow.locator(".settings-preview-icon");
-  await settingsPage.locator('button[data-value="default"]').click();
+  await settingsPage
+    .locator('button[data-action="set-file-tree-size"][data-value="default"]')
+    .click();
   await expect(previewRow).toHaveCSS("min-height", "30px");
   await expect(previewIcon).toHaveCSS("width", "18px");
   await compact.click();
@@ -348,13 +352,33 @@ test("opens browser-local settings and persists file tree size", async ({ page }
   await expect(previewRow).toHaveCSS("min-height", "24px");
   await expect(previewIcon).toHaveCSS("width", "15px");
 
+  const codePreview = settingsPage.locator(".settings-code-preview");
+  const largeCode = settingsPage.locator(
+    'button[data-action="set-code-size"][data-value="large"]',
+  );
+  await expect(codePreview).toHaveCSS("font-size", "13px");
+  await settingsPage
+    .locator('button[data-action="set-code-size"][data-value="default"]')
+    .click();
+  await expect(codePreview).toHaveCSS("font-size", "15px");
+  await largeCode.click();
+  await expect(largeCode).toHaveAttribute("aria-checked", "true");
+  await expect(codePreview).toHaveCSS("font-size", "17px");
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.dataset.codeSize))
+    .toBe("large");
+
   await captureReviewScreenshot(page, testInfo, "settings-appearance");
   await page.reload();
   await expect(page).toHaveURL("/settings");
-  await expect(settingsPage.locator('button[data-value="compact"]')).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
+  await expect(
+    settingsPage.locator(
+      'button[data-action="set-file-tree-size"][data-value="compact"]',
+    ),
+  ).toHaveAttribute("aria-checked", "true");
+  await expect(
+    settingsPage.locator('button[data-action="set-code-size"][data-value="large"]'),
+  ).toHaveAttribute("aria-checked", "true");
   await settingsPage.locator('button[data-action="close-settings"]').click();
   await expect(page).toHaveURL("/");
   await expect(page.locator("caffold-file-list .file-entry").first()).toHaveCSS(
@@ -368,6 +392,31 @@ test("opens browser-local settings and persists file tree size", async ({ page }
   await expect(page.locator("caffold-file-list .entry-icon-svg").first()).toHaveCSS(
     "width",
     "15px",
+  );
+  await page.locator('button[data-entry-path="src"]').click();
+  await page.locator('button[data-entry-path="src/example.rs"]').click();
+  await expect(page.locator("caffold-code-viewer .code-lines")).toHaveCSS(
+    "font-size",
+    "17px",
+  );
+  const codeLineHeight = await page
+    .locator("caffold-code-viewer .code-lines")
+    .evaluate((element) => Number.parseFloat(getComputedStyle(element).lineHeight));
+  expect(codeLineHeight).toBeGreaterThan(25);
+  expect(codeLineHeight).toBeLessThan(30);
+
+  await page.locator("caffold-file-viewer").evaluate((viewer) => {
+    viewer.setDiff({
+      path: "src/example.rs",
+      repoRelativePath: "src/example.rs",
+      kind: "Working tree",
+      repository: { rootPath: "src" },
+      diff: "@@ -1 +1 @@\n-old line\n+new line",
+    });
+  });
+  await expect(page.locator("caffold-diff-viewer .diff-lines")).toHaveCSS(
+    "font-size",
+    "17px",
   );
 });
 

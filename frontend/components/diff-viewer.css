@@ -31,7 +31,7 @@ caffold-diff-viewer .diff-lines {
   overscroll-behavior: contain;
   background: var(--code-bg);
   font-family: var(--font-mono);
-  font-size: 0.82rem;
+  font-size: var(--code-viewer-font-size);
   line-height: 1.55;
 }
 
@@ -138,6 +138,5 @@ caffold-diff-viewer .diff-row-empty {
     --diff-old-width: 2.75rem;
     --diff-new-width: 2.75rem;
     --diff-prefix-width: 1.25rem;
-    font-size: 0.76rem;
   }
 }

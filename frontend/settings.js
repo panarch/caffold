@@ -23,8 +23,27 @@ export const FILE_TREE_SIZES = Object.freeze([
   },
 ]);
 
+export const CODE_SIZES = Object.freeze([
+  {
+    value: "compact",
+    label: "Compact",
+    description: "13 px text",
+  },
+  {
+    value: "default",
+    label: "Default",
+    description: "15 px text",
+  },
+  {
+    value: "large",
+    label: "Large",
+    description: "17 px text",
+  },
+]);
+
 const DEFAULT_SETTINGS = Object.freeze({
   fileTreeSize: "auto",
+  codeSize: "compact",
 });
 
 export function getSettings() {
@@ -43,6 +62,47 @@ export function setFileTreeSize(value) {
     fileTreeSize,
   };
 
+  persistAndApply(settings);
+  return settings;
+}
+
+export function setCodeSize(value) {
+  const codeSize = validCodeSize(value) ? value : DEFAULT_SETTINGS.codeSize;
+  const settings = {
+    ...getSettings(),
+    codeSize,
+  };
+
+  persistAndApply(settings);
+  return settings;
+}
+
+export function applySettings(settings = getSettings()) {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  document.documentElement.dataset.fileTreeSize = settings.fileTreeSize;
+  document.documentElement.dataset.codeSize = settings.codeSize;
+}
+
+function normalizeSettings(value) {
+  const fileTreeSize = value?.fileTreeSize ?? value?.fileTreeTextSize;
+  return {
+    fileTreeSize: validFileTreeSize(fileTreeSize) ? fileTreeSize : DEFAULT_SETTINGS.fileTreeSize,
+    codeSize: validCodeSize(value?.codeSize) ? value.codeSize : DEFAULT_SETTINGS.codeSize,
+  };
+}
+
+function validFileTreeSize(value) {
+  return FILE_TREE_SIZES.some((option) => option.value === value);
+}
+
+function validCodeSize(value) {
+  return CODE_SIZES.some((option) => option.value === value);
+}
+
+function persistAndApply(settings) {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   } catch {
@@ -55,26 +115,6 @@ export function setFileTreeSize(value) {
       detail: { settings },
     }),
   );
-  return settings;
-}
-
-export function applySettings(settings = getSettings()) {
-  if (typeof document === "undefined") {
-    return;
-  }
-
-  document.documentElement.dataset.fileTreeSize = settings.fileTreeSize;
-}
-
-function normalizeSettings(value) {
-  const fileTreeSize = value?.fileTreeSize ?? value?.fileTreeTextSize;
-  return {
-    fileTreeSize: validFileTreeSize(fileTreeSize) ? fileTreeSize : DEFAULT_SETTINGS.fileTreeSize,
-  };
-}
-
-function validFileTreeSize(value) {
-  return FILE_TREE_SIZES.some((option) => option.value === value);
 }
 
 applySettings();

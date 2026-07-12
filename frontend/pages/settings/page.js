@@ -1,7 +1,9 @@
 import { renderInlineIcon, warmIcons } from "../../components/icons.js";
 import {
+  CODE_SIZES,
   FILE_TREE_SIZES,
   getSettings,
+  setCodeSize,
   setFileTreeSize,
 } from "../../settings.js";
 
@@ -48,25 +50,22 @@ class CaffoldSettingsPage extends HTMLElement {
 
     if (button.dataset.action === "set-file-tree-size") {
       setFileTreeSize(button.dataset.value);
+      return;
+    }
+
+    if (button.dataset.action === "set-code-size") {
+      setCodeSize(button.dataset.value);
     }
   }
 
   render() {
     const settings = getSettings();
-    const options = FILE_TREE_SIZES.map(
-      (option) => `
-        <button
-          type="button"
-          role="radio"
-          aria-checked="${option.value === settings.fileTreeSize}"
-          data-action="set-file-tree-size"
-          data-value="${option.value}"
-        >
-          <strong>${option.label}</strong>
-          <span>${option.description}</span>
-        </button>
-      `,
-    ).join("");
+    const fileTreeOptions = renderOptions(
+      FILE_TREE_SIZES,
+      settings.fileTreeSize,
+      "set-file-tree-size",
+    );
+    const codeOptions = renderOptions(CODE_SIZES, settings.codeSize, "set-code-size");
 
     this.innerHTML = `
       <header class="settings-header">
@@ -94,8 +93,8 @@ class CaffoldSettingsPage extends HTMLElement {
               <strong>File tree size</strong>
               <span>Adjusts text, row height, icons, and indentation in every Files tree.</span>
             </div>
-            <div class="settings-segmented-control" role="radiogroup" aria-label="File tree size">
-              ${options}
+            <div class="settings-segmented-control settings-segmented-control-four" role="radiogroup" aria-label="File tree size">
+              ${fileTreeOptions}
             </div>
           </div>
           <div class="settings-tree-preview" aria-label="File tree preview">
@@ -108,10 +107,44 @@ class CaffoldSettingsPage extends HTMLElement {
               <span>settings.js</span>
             </div>
           </div>
+          <div class="settings-field">
+            <div class="settings-field-copy">
+              <strong>Code size</strong>
+              <span>Adjusts source and diff text while keeping code line spacing independent.</span>
+            </div>
+            <div class="settings-segmented-control settings-segmented-control-three" role="radiogroup" aria-label="Code size">
+              ${codeOptions}
+            </div>
+          </div>
+          <div class="settings-code-preview" aria-label="Code preview">
+            <span class="settings-code-preview-line-number">12</span>
+            <code><span>const</span> size = "readable";</code>
+            <span class="settings-code-preview-line-number">13</span>
+            <code>render(size);</code>
+          </div>
         </section>
       </div>
     `;
   }
+}
+
+function renderOptions(options, selectedValue, action) {
+  return options
+    .map(
+      (option) => `
+        <button
+          type="button"
+          role="radio"
+          aria-checked="${option.value === selectedValue}"
+          data-action="${action}"
+          data-value="${option.value}"
+        >
+          <strong>${option.label}</strong>
+          <span>${option.description}</span>
+        </button>
+      `,
+    )
+    .join("");
 }
 
 customElements.define("caffold-settings-page", CaffoldSettingsPage);

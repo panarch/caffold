@@ -107,11 +107,18 @@ caffold-settings-page .settings-field-copy span {
 
 caffold-settings-page .settings-segmented-control {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 5px;
   background: var(--surface-muted);
+}
+
+caffold-settings-page .settings-segmented-control-four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+caffold-settings-page .settings-segmented-control-three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 caffold-settings-page .settings-segmented-control button {
@@ -191,6 +198,41 @@ caffold-settings-page .settings-preview-icon {
   color: var(--muted);
 }
 
+caffold-settings-page .settings-code-preview {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  width: min(100%, 448px);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--code-bg);
+  color: var(--code-text);
+  font-size: var(--code-viewer-font-size);
+  line-height: 1.55;
+}
+
+caffold-settings-page .settings-code-preview-line-number {
+  border-right: 1px solid var(--border);
+  background: var(--code-gutter);
+  color: #78867d;
+  padding: 0 8px;
+  text-align: right;
+  user-select: none;
+}
+
+caffold-settings-page .settings-code-preview code {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 12px;
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+caffold-settings-page .settings-code-preview code span {
+  color: #005ea8;
+}
+
 @media (max-width: 700px) {
   caffold-settings-page .settings-scroll {
     padding: 20px 16px 36px;
@@ -211,15 +253,15 @@ caffold-settings-page .settings-preview-icon {
     padding-inline: 10px;
   }
 
-  caffold-settings-page .settings-segmented-control {
+  caffold-settings-page .settings-segmented-control-four {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  caffold-settings-page .settings-segmented-control button:nth-child(2) {
+  caffold-settings-page .settings-segmented-control-four button:nth-child(2) {
     border-right: 0;
   }
 
-  caffold-settings-page .settings-segmented-control button:nth-child(-n + 2) {
+  caffold-settings-page .settings-segmented-control-four button:nth-child(-n + 2) {
     border-bottom: 1px solid var(--border);
   }
 }
