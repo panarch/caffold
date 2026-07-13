@@ -323,7 +323,20 @@ async fn run_scope(
             continue;
         }
 
-        match normalize_batch(&config, pending) {
+        let batch_config = config.clone();
+        let normalized =
+            tokio::task::spawn_blocking(move || normalize_batch(&batch_config, pending)).await;
+        let normalized = match normalized {
+            Ok(normalized) => normalized,
+            Err(error) => {
+                let _ = sender.send(WatchMessage::Error(format!(
+                    "filesystem change processing failed: {error}"
+                )));
+                continue;
+            }
+        };
+
+        match normalized {
             Ok(Some(mut change)) => {
                 revision = revision.saturating_add(1);
                 change.revision = revision;
@@ -379,6 +392,7 @@ fn normalize_batch(
                 paths.insert(logical_path);
             } else {
                 overflow = true;
+                git_status_changed |= config.repository.is_some();
             }
 
             if let Some(repository) = config.repository.as_ref()
@@ -387,8 +401,13 @@ fn normalize_batch(
                 let relative = slash_path(relative);
                 if relative.is_empty() {
                     git_status_changed = true;
-                } else {
+                } else if repo_relative_paths.len() < MAX_BATCH_PATHS
+                    || repo_relative_paths.contains(&relative)
+                {
                     repo_relative_paths.insert(relative);
+                } else {
+                    overflow = true;
+                    git_status_changed = true;
                 }
             }
         }
@@ -566,6 +585,27 @@ mod tests {
         assert_eq!(change.paths, vec!["ignored.log"]);
         assert!(!change.git_status_changed);
         assert!(!change.git_refs_changed);
+    }
+
+    #[test]
+    fn overflowing_ignored_paths_conservatively_invalidates_git_status() {
+        let root = TempDir::new().unwrap();
+        let repository = repository(root.path());
+        fs::write(root.path().join(".gitignore"), "ignored-*\n").unwrap();
+        let config = config(root.path(), Some(repository));
+        let events = (0..MAX_BATCH_PATHS + 1)
+            .map(|index| {
+                event(
+                    EventKind::Modify(ModifyKind::Any),
+                    root.path().join(format!("ignored-{index}.log")),
+                )
+            })
+            .collect();
+
+        let change = normalize_batch(&config, events).unwrap().unwrap();
+
+        assert!(change.overflow);
+        assert!(change.git_status_changed);
     }
 
     #[test]

@@ -444,8 +444,6 @@ caffold-tasks-page .task-message-header {
   line-height: 1.2;
 }
 
-caffold-tasks-page .task-message-content,
-caffold-tasks-page .task-thinking pre,
 caffold-tasks-page .task-command pre,
 caffold-tasks-page .task-tool-card pre,
 caffold-tasks-page .task-work-item pre {
@@ -550,7 +548,7 @@ caffold-tasks-page .task-work-item header time {
   font-size: 0.78rem;
 }
 
-caffold-tasks-page .task-thinking pre,
+caffold-tasks-page .task-thinking-content,
 caffold-tasks-page .task-command pre,
 caffold-tasks-page .task-tool-card pre,
 caffold-tasks-page .task-work-item pre {

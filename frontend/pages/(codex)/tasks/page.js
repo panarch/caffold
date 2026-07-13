@@ -11,6 +11,7 @@ import {
 import { escapeHtml } from "../../../components/dom.js";
 import "../../../components/file-browser.js";
 import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
+import "./components/markdown.js";
 
 const FALLBACK_REASONING_OPTIONS = [
   { value: "low", label: "Low" },
@@ -77,6 +78,9 @@ class CaffoldTasksPage extends HTMLElement {
         this.handleAction(action.dataset.taskAction, action);
       },
       true,
+    );
+    this.addEventListener("caffold:task-markdown-rendered", (event) =>
+      this.handleTaskMarkdownRendered(event),
     );
     this.addEventListener("input", (event) => {
       const textarea = closestElement(event.target, "textarea[name='prompt']");
@@ -958,6 +962,29 @@ class CaffoldTasksPage extends HTMLElement {
     this.loadOlderEvents();
   }
 
+  handleTaskMarkdownRendered(event) {
+    const scroller = this.querySelector(".task-conversation-scroll");
+    if (!scroller || !event.detail) {
+      return;
+    }
+
+    if (event.detail.atBottom) {
+      scroller.scrollTop = maxScrollTop(scroller);
+    } else if (
+      event.detail.aboveViewport &&
+      Number.isFinite(event.detail.scrollHeight) &&
+      Number.isFinite(event.detail.nextScrollHeight) &&
+      Number.isFinite(event.detail.scrollTop)
+    ) {
+      scroller.scrollTop = Math.min(
+        event.detail.scrollTop +
+          (event.detail.nextScrollHeight - event.detail.scrollHeight),
+        maxScrollTop(scroller),
+      );
+    }
+    this.rememberConversationScroll();
+  }
+
   renderHeader() {
     const title =
       this.view === "new"
@@ -1604,7 +1631,9 @@ function renderMessageEvent(event, role, text) {
       <div class="task-message-header">
         <time>${escapeHtml(formatDate(event.createdMs))}</time>
       </div>
-      <pre class="task-message-content">${escapeHtml(value)}</pre>
+      <div class="task-message-content">
+        <caffold-task-markdown>${escapeHtml(value)}</caffold-task-markdown>
+      </div>
     </li>
   `;
 }
@@ -1627,7 +1656,9 @@ function renderThinkingEvent(event, text, task, eventState) {
           <span>Thinking</span>
           <time>${escapeHtml(formatDate(event.createdMs))}</time>
         </summary>
-        <pre>${escapeHtml(value)}</pre>
+        <div class="task-thinking-content">
+          <caffold-task-markdown>${escapeHtml(value)}</caffold-task-markdown>
+        </div>
       </details>
     </li>
   `;

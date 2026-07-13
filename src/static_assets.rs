@@ -115,6 +115,9 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(codex)/tasks/page.js" => {
             Some(js(include_str!("../frontend/pages/(codex)/tasks/page.js")))
         }
+        "pages/(codex)/tasks/components/markdown.js" => Some(js(include_str!(
+            "../frontend/pages/(codex)/tasks/components/markdown.js"
+        ))),
         "pages/(review-workspace)/layout.css" => Some(css(include_str!(
             "../frontend/pages/(review-workspace)/layout.css"
         ))),
@@ -490,6 +493,18 @@ mod tests {
         let tasks_page_css = get("pages/(codex)/tasks/page.css").expect("tasks page css");
         assert_eq!(tasks_page_css.content_type, "text/css; charset=utf-8");
         assert!(tasks_page_css.body.starts_with(b"caffold-tasks-page"));
+        let tasks_markdown =
+            get("pages/(codex)/tasks/components/markdown.js").expect("tasks markdown component js");
+        assert_eq!(
+            tasks_markdown.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(
+            tasks_markdown
+                .body
+                .windows(b"caffold-task-markdown".len())
+                .any(|window| window == b"caffold-task-markdown")
+        );
         assert!(get("pages/tasks/page.js").is_none());
         assert!(get("pages/tasks/page.css").is_none());
 

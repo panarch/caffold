@@ -4,6 +4,7 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    thread,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -535,9 +536,11 @@ fn run_git_with_stdin_allowing_status(
         .spawn()
         .ok()?;
 
-    child.stdin.as_mut()?.write_all(input).ok()?;
-
+    let mut stdin = child.stdin.take()?;
+    let input = input.to_vec();
+    let writer = thread::spawn(move || stdin.write_all(&input));
     let output = child.wait_with_output().ok()?;
+    writer.join().ok()?.ok()?;
     let status_code = output.status.code()?;
     if !allowed_codes.contains(&status_code) {
         return None;
@@ -888,6 +891,26 @@ mod tests {
         assert!(ignored.contains("ignored.log"));
         assert!(ignored.contains("build"));
         assert!(!ignored.contains("visible.log"));
+    }
+
+    #[test]
+    fn detects_large_ignored_path_batches_without_blocking_on_git_output() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        git(temp.path(), &["init"]);
+        fs::write(temp.path().join(".gitignore"), "ignored-*\n").unwrap();
+        let paths = (0..5_000)
+            .map(|index| format!("ignored-{index:04}.log"))
+            .collect::<Vec<_>>();
+
+        let repository = repository_for(temp.path()).unwrap();
+        let ignored = ignored_paths(&repository, paths.iter().cloned());
+
+        assert_eq!(ignored.len(), paths.len());
+        assert!(paths.iter().all(|path| ignored.contains(path)));
     }
 
     #[test]

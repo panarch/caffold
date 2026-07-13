@@ -18,6 +18,50 @@ test.beforeEach(async ({ page }) => {
   );
 
   await page.route("https://esm.sh/**", (route) => {
+    if (route.request().url() === "https://esm.sh/marked@15.0.12") {
+      return route.fulfill({
+        contentType: "text/javascript",
+        body: `
+          const escapeHtml = (value) => value
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;");
+          const inline = (value) => value
+            .replace(/\\*\\*(.+?)\\*\\*/g, "<strong>$1</strong>")
+            .replace(/\\x60([^\\x60]+)\\x60/g, "<code>$1</code>")
+            .replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href="$2">$1</a>');
+          export const marked = {
+            parse(source) {
+              const escaped = escapeHtml(source);
+              const blocks = escaped.split(/\\n{2,}/);
+              return blocks.map((block) => {
+                if (block.startsWith("\\x60\\x60\\x60")) {
+                  const lines = block.split("\\n");
+                  return '<pre><code>' + lines.slice(1, -1).join("\\n") + '</code></pre>';
+                }
+                const heading = block.match(/^(#{1,6}) (.+)$/);
+                if (heading) {
+                  const level = heading[1].length;
+                  return '<h' + level + '>' + inline(heading[2]) + '</h' + level + '>';
+                }
+                const lines = block.split("\\n");
+                if (lines.every((line) => line.startsWith("- "))) {
+                  return '<ul>' + lines.map((line) => '<li>' + inline(line.slice(2)) + '</li>').join("") + '</ul>';
+                }
+                if (lines.length >= 2 && lines[0].startsWith("|") && lines[1].includes("---")) {
+                  const cells = (line) => line.split("|").slice(1, -1).map((cell) => cell.trim());
+                  const header = cells(lines[0]);
+                  const rows = lines.slice(2).map(cells);
+                  return '<table><thead><tr>' + header.map((cell) => '<th>' + inline(cell) + '</th>').join("") + '</tr></thead><tbody>' + rows.map((row) => '<tr>' + row.map((cell) => '<td>' + inline(cell) + '</td>').join("") + '</tr>').join("") + '</tbody></table>';
+                }
+                return '<p>' + inline(lines.join(" ")) + '</p>';
+              }).join("");
+            },
+          };
+        `,
+      });
+    }
+
     if (route.request().url() !== "https://esm.sh/lucide@1.22.0") {
       return route.abort();
     }
@@ -205,6 +249,9 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain("/assets/pages/(codex)/layout.css");
   expect(serviceWorker).toContain("/assets/pages/(codex)/tasks/page.js");
   expect(serviceWorker).toContain("/assets/pages/(codex)/tasks/page.css");
+  expect(serviceWorker).toContain(
+    "/assets/pages/(codex)/tasks/components/markdown.js",
+  );
   expect(serviceWorker).not.toContain("/assets/pages/tasks/page.js");
   expect(serviceWorker).not.toContain("/assets/pages/tasks/page.css");
   expect(serviceWorker).toContain("/assets/pages/(review-workspace)/layout.js");
@@ -1096,7 +1143,27 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   });
   const threadId = "thread_12345678";
   const completedAssistantResponse = [
-    "The planner changes are ready to review. I would open the diff next.",
+    "## Review ready",
+    "",
+    "The planner changes are **ready** to review. Open `Diff` next.",
+    "",
+    "- Verified planner behavior",
+    "- Confirmed fixture coverage",
+    "",
+    "```text",
+    "cargo test",
+    "```",
+    "",
+    "한국어와 English가 함께 있는 결과입니다. [Planner notes](https://example.com/planner)",
+    "",
+    "| Check | Result |",
+    "| --- | --- |",
+    "| Planner | Pass |",
+    "",
+    `Long token: ${"planner".repeat(24)}`,
+    "",
+    "Malformed **marker stays readable.",
+    "",
     ...Array.from(
       { length: 36 },
       (_, index) =>
@@ -1651,6 +1718,39 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(tasksPage.locator('.task-message[data-message-role="assistant"]')).toContainText(
     "The planner changes are ready to review.",
   );
+  const assistantMarkdown = tasksPage.locator(
+    '.task-message[data-message-role="assistant"] caffold-task-markdown',
+  );
+  await expect(assistantMarkdown).toHaveAttribute("data-render-state", "markdown");
+  await expect(assistantMarkdown.locator("h2")).toHaveText("Review ready");
+  await expect(assistantMarkdown.locator("strong")).toHaveText("ready");
+  await expect(assistantMarkdown.locator("li")).toHaveCount(2);
+  await expect(assistantMarkdown.locator("pre code")).toHaveText("cargo test");
+  await expect(assistantMarkdown.getByRole("link", { name: "Planner notes" })).toHaveAttribute(
+    "href",
+    "https://example.com/planner",
+  );
+  await expect(assistantMarkdown.locator("table")).toContainText("Planner");
+  await expect(assistantMarkdown).toContainText("Malformed **marker stays readable.");
+  await expect
+    .poll(() =>
+      assistantMarkdown.evaluate((element) => {
+        const body = element.shadowRoot.querySelector(".markdown-body");
+        return body.scrollWidth <= body.clientWidth;
+      }),
+    )
+    .toBe(true);
+  await tasksPage.evaluate(() => {
+    const probe = document.createElement("caffold-task-markdown");
+    probe.hidden = true;
+    probe.textContent = "[unsafe](javascript:alert(1))";
+    document.body.append(probe);
+  });
+  await expect(page.locator("caffold-task-markdown").last()).toHaveAttribute(
+    "data-render-state",
+    "markdown",
+  );
+  await expect(page.locator("caffold-task-markdown").last().locator("a")).toHaveCount(0);
   await expect(tasksPage.locator('.task-message[data-message-role="assistant"]')).toHaveCount(1);
   await expect(tasksPage.locator('.task-message[data-message-role="assistant"]')).not.toContainText(
     "I am checking the planner diff",
