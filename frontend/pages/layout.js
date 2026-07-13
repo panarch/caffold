@@ -31,6 +31,7 @@ class CaffoldAppShell extends HTMLElement {
     this.directoryContextPath = "";
     this.isApplyingRoute = false;
     this.taskReviewReturnRoute = null;
+    this.taskReviewRelatedPaths = [];
     this.pendingTaskResumeRoute = null;
     this.render();
     this.filesPage = this.querySelector("caffold-files-page");
@@ -141,6 +142,9 @@ class CaffoldAppShell extends HTMLElement {
     this.addEventListener("caffold:request-git-route", (event) => {
       if (event.detail.options?.returnRoute) {
         this.taskReviewReturnRoute = event.detail.options.returnRoute;
+        this.taskReviewRelatedPaths = (event.detail.options.taskRelatedPaths ?? [])
+          .map(cleanPath)
+          .filter(Boolean);
       }
       this.navigateOrOpenGitRoute(event.detail.route, event.detail.options);
     });
@@ -397,6 +401,9 @@ class CaffoldAppShell extends HTMLElement {
     await this.openGitRoute(route, {
       resolvePath: (path) => this.projectPath(project, path),
       skipReload: this.canApplyLoadedGitRoute(project, route),
+      taskRelatedPaths: this.taskReviewRelatedPaths
+        .map((path) => this.repositoryRelativeProjectPath(project, path))
+        .filter(Boolean),
     });
   }
 
@@ -499,6 +506,7 @@ class CaffoldAppShell extends HTMLElement {
     if (options.closeWorkspace && this.taskReviewReturnRoute) {
       const returnRoute = this.taskReviewReturnRoute;
       this.taskReviewReturnRoute = null;
+      this.taskReviewRelatedPaths = [];
       this.pendingTaskResumeRoute = returnRoute;
       return this.navigateToRoute(returnRoute);
     }
@@ -534,6 +542,7 @@ class CaffoldAppShell extends HTMLElement {
 
   clearTaskReviewReturnRoute() {
     this.taskReviewReturnRoute = null;
+    this.taskReviewRelatedPaths = [];
     this.pendingTaskResumeRoute = null;
   }
 
@@ -650,6 +659,7 @@ class CaffoldAppShell extends HTMLElement {
         resolvePath: options.resolvePath,
         skipReload: options.skipReload,
         status: options.status,
+        taskRelatedPaths: options.taskRelatedPaths,
       },
     });
     this.syncHeaderReviewContext();
@@ -672,6 +682,21 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     return rootPath ? `${rootPath}/${relativePath}` : relativePath;
+  }
+
+  repositoryRelativeProjectPath(project, path) {
+    const fullPath = this.projectPath(project, path);
+    const repositoryRoot = cleanPath(this.gitRepository?.rootPath);
+    if (!repositoryRoot) {
+      return fullPath;
+    }
+    if (fullPath === repositoryRoot) {
+      return "";
+    }
+    if (!fullPath.startsWith(`${repositoryRoot}/`)) {
+      return "";
+    }
+    return fullPath.slice(repositoryRoot.length + 1);
   }
 
   projectRelativePath(path) {

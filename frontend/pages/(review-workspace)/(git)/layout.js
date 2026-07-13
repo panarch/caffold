@@ -548,6 +548,9 @@ class CaffoldGitReviewLayout extends HTMLElement {
   async openRoute(route, options = {}) {
     this.prepareRoute(route);
     const mode = routeMode(route);
+    this.diffPage.setTaskRelatedPaths(
+      mode === "diff" ? options.taskRelatedPaths ?? [] : [],
+    );
     if (mode === "diff") {
       this.openDiffWorkspace({ preserveViewer: Boolean(route.path) });
       if (!route.path) {

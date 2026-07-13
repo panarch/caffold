@@ -611,12 +611,17 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
 
+    const taskRelatedPaths = latestTaskRelatedProjectPaths(
+      this.events,
+      this.taskDetail?.task,
+    );
+
     this.dispatchEvent(
       new CustomEvent("caffold:request-git-route", {
         bubbles: true,
         detail: {
-          route: { kind: "diff", projectId, path: "" },
-          options: { returnRoute },
+          route: { kind: "diff", projectId, path: taskRelatedPaths[0] ?? "" },
+          options: { returnRoute, taskRelatedPaths },
         },
       }),
     );
@@ -1748,9 +1753,6 @@ function renderCombinedFileChangeWorkItem(events) {
   if (!events.length) {
     return "";
   }
-  if (events.length === 1) {
-    return renderTurnWorkItem(events[0]);
-  }
 
   const latest = latestEvent(events);
   const payload = latest.payload ?? {};
@@ -1772,10 +1774,10 @@ function renderCombinedFileChangeWorkItem(events) {
       ? "1 file change update"
       : `${events.length} file change updates`;
 
-  return renderTurnWorkItemShell(
+  return renderFileChangeWorkItemShell(
     latest,
-    "Files changed",
     [updateText, latestSummary, status].filter(Boolean).join("\n"),
+    fileChangePaths(events),
   );
 }
 
@@ -1830,7 +1832,11 @@ function renderTurnWorkItem(event) {
           : 0;
     const status = payload.status ? `Status: ${formatStatus(payload.status)}` : "";
     const summary = count === 1 ? "1 changed file" : `${count} changed files`;
-    return renderTurnWorkItemShell(event, "Files changed", [summary, status].filter(Boolean).join("\n"));
+    return renderFileChangeWorkItemShell(
+      event,
+      [summary, status].filter(Boolean).join("\n"),
+      fileChangePaths([event]),
+    );
   }
   if (event.type === "task_failed") {
     return renderTurnWorkItemShell(event, "Error", event.summary, "danger");
@@ -1854,6 +1860,20 @@ function renderTurnWorkItemShell(event, label, text, tone = "neutral") {
         <time>${escapeHtml(formatDate(event.createdMs))}</time>
       </header>
       ${value ? `<pre>${escapeHtml(value)}</pre>` : ""}
+    </article>
+  `;
+}
+
+function renderFileChangeWorkItemShell(event, text, paths) {
+  const value = `${text ?? ""}`.trim();
+  return `
+    <article class="task-work-item" data-event-type="file_change" data-tool-tone="neutral">
+      <header>
+        <strong>Files changed</strong>
+        <time>${escapeHtml(formatDate(event.createdMs))}</time>
+      </header>
+      ${value ? `<pre>${escapeHtml(value)}</pre>` : ""}
+      ${renderChangedFilePaths(paths)}
     </article>
   `;
 }
@@ -1922,9 +1942,102 @@ function renderFileChangeEvent(event) {
           <time>${escapeHtml(formatDate(event.createdMs))}</time>
         </header>
         <p>${escapeHtml(summary)}${status ? ` · ${status}` : ""}</p>
+        ${renderChangedFilePaths(fileChangePaths([event]))}
       </article>
     </li>
   `;
+}
+
+function renderChangedFilePaths(paths) {
+  if (!paths.length) {
+    return "";
+  }
+
+  return `
+    <ul class="task-changed-files" aria-label="Changed files">
+      ${paths.map((path) => `<li><code>${escapeHtml(path)}</code></li>`).join("")}
+    </ul>
+  `;
+}
+
+function latestTaskRelatedProjectPaths(events, task) {
+  const groups = conversationGroups(dedupeCanonicalEvents(events));
+  for (let index = groups.length - 1; index >= 0; index -= 1) {
+    const group = groups[index];
+    if (group.kind !== "turn") {
+      continue;
+    }
+
+    const paths = uniquePaths(
+      fileChangePaths(group.events)
+        .map((path) => taskFileProjectPath(path, task))
+        .filter(Boolean),
+    );
+    if (paths.length) {
+      return paths;
+    }
+  }
+  return [];
+}
+
+function fileChangePaths(events) {
+  return uniquePaths(
+    events.flatMap((event) => {
+      if (event?.type !== "file_change" || !Array.isArray(event.payload?.changes)) {
+        return [];
+      }
+      return event.payload.changes
+        .map((change) => normalizeTaskPath(typeof change === "string" ? change : change?.path))
+        .filter(Boolean);
+    }),
+  );
+}
+
+function taskFileProjectPath(path, task) {
+  const rawPath = normalizeTaskPath(path);
+  if (!rawPath) {
+    return "";
+  }
+
+  const cwd = normalizeTaskPath(task?.cwd);
+  const relativeCwd = cleanRelativeTaskPath(task?.relativeCwd);
+  let relativePath = rawPath;
+
+  if (cwd && (rawPath === cwd || rawPath.startsWith(`${cwd}/`))) {
+    relativePath = rawPath.slice(cwd.length).replace(/^\/+/, "");
+  } else {
+    relativePath = rawPath.replace(/^\/+/, "");
+  }
+
+  if (
+    relativeCwd &&
+    relativePath !== relativeCwd &&
+    !relativePath.startsWith(`${relativeCwd}/`)
+  ) {
+    relativePath = `${relativeCwd}/${relativePath}`;
+  }
+
+  return cleanRelativeTaskPath(relativePath);
+}
+
+function normalizeTaskPath(path) {
+  return `${path ?? ""}`
+    .trim()
+    .replaceAll("\\", "/")
+    .replace(/\/+/g, "/")
+    .replace(/^\.\//, "")
+    .replace(/\/$/, "");
+}
+
+function cleanRelativeTaskPath(path) {
+  return normalizeTaskPath(path)
+    .split("/")
+    .filter((segment) => segment && segment !== "." && segment !== "..")
+    .join("/");
+}
+
+function uniquePaths(paths) {
+  return [...new Set(paths)];
 }
 
 function renderApprovalCard(event) {

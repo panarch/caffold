@@ -1199,11 +1199,71 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        repository: { rootPath: "src", branch: "main", dirty: false },
-        files: [],
+        repository: { rootPath: "src", branch: "main", dirty: true },
+        files: [
+          {
+            path: "src/planner.rs",
+            repoRelativePath: "planner.rs",
+            status: " M",
+            category: "unstaged",
+            staged: false,
+            unstaged: true,
+            untracked: false,
+          },
+          {
+            path: "src/tests/planner.rs",
+            repoRelativePath: "tests/planner.rs",
+            status: " M",
+            category: "unstaged",
+            staged: false,
+            unstaged: true,
+            untracked: false,
+          },
+          {
+            path: "src/lib.rs",
+            repoRelativePath: "lib.rs",
+            status: " M",
+            category: "unstaged",
+            staged: false,
+            unstaged: true,
+            untracked: false,
+          },
+          {
+            path: "src/unrelated.rs",
+            repoRelativePath: "unrelated.rs",
+            status: " M",
+            category: "unstaged",
+            staged: false,
+            unstaged: true,
+            untracked: false,
+          },
+        ],
       }),
     }),
   );
+  await page.route(/\/api\/git\/diff(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    const file = url.searchParams.get("file");
+    const relativePath = file.replace(/^src\//, "");
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository: { rootPath: "src", branch: "main", dirty: true },
+        path: file,
+        repoRelativePath: relativePath,
+        kind: url.searchParams.get("kind"),
+        diff: [
+          `diff --git a/${relativePath} b/${relativePath}`,
+          "index 1111111..2222222 100644",
+          `--- a/${relativePath}`,
+          `+++ b/${relativePath}`,
+          "@@ -1 +1 @@",
+          "-old planner behavior",
+          "+new planner behavior",
+        ].join("\n"),
+      }),
+    });
+  });
   await page.route(/\/api\/github\/status(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -1783,6 +1843,15 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(tasksPage.locator('.task-work-item[data-event-type="file_change"]')).toContainText(
     "2 file change updates",
   );
+  await expect(tasksPage.locator('.task-work-item[data-event-type="file_change"]')).toContainText(
+    "src/planner.rs",
+  );
+  await expect(tasksPage.locator('.task-work-item[data-event-type="file_change"]')).toContainText(
+    "tests/planner.rs",
+  );
+  await expect(tasksPage.locator('.task-work-item[data-event-type="file_change"]')).toContainText(
+    "src/lib.rs",
+  );
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-work-details");
   await tasksPage.locator(".task-turn-work summary").click();
@@ -2023,9 +2092,27 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   expect(conversationBeforeDiff.maxScrollTop).toBeGreaterThan(0);
   const taskDetailReadsBeforeDiff = taskDetailReadRequests;
   await tasksPage.getByRole("button", { name: "Open Diff" }).click();
-  await expect(page).toHaveURL(`/projects/${project.id}/diff`);
+  await expect(page).toHaveURL(`/projects/${project.id}/diff/planner.rs`);
   await expect(page.locator("caffold-review-workspace")).toBeVisible();
   await expect(codexWorkspace).toBeHidden();
+  const taskDiffTree = page.locator("caffold-git-diff-changes-tree");
+  await expect(taskDiffTree.locator("button[data-change-path]")).toHaveCount(4);
+  await expect(taskDiffTree.locator('button[data-task-related="true"]')).toHaveCount(3);
+  await expect(
+    taskDiffTree.locator('button[data-repo-relative-path="unrelated.rs"]'),
+  ).not.toHaveAttribute("data-task-related", "true");
+  await expect(
+    taskDiffTree.locator('button[data-repo-relative-path="planner.rs"]'),
+  ).toHaveAttribute("aria-current", "true");
+  const taskDiffViewer = page.locator(
+    "caffold-git-diff-page caffold-review-file-viewer",
+  );
+  await expect(taskDiffViewer).toContainText("planner.rs");
+  await expect(taskDiffViewer).toContainText(
+    "new planner behavior",
+  );
+  await stabilizeDynamicText(page);
+  await captureReviewScreenshot(page, testInfo, "tasks-related-diff");
 
   await page.goBack();
   await expect(page).toHaveURL(
@@ -2051,8 +2138,15 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   expect(taskDetailReadRequests).toBe(taskDetailReadsBeforeDiff);
 
   await page.goForward();
-  await expect(page).toHaveURL(`/projects/${project.id}/diff`);
-  await page.getByRole("button", { name: "Close review workspace" }).click();
+  await expect(page).toHaveURL(`/projects/${project.id}/diff/planner.rs`);
+  const closeReviewWorkspace = page.getByRole("button", {
+    name: "Close review workspace",
+  });
+  if (!(await closeReviewWorkspace.isVisible())) {
+    await page.getByRole("button", { name: "Back to changes" }).click();
+    await expect(closeReviewWorkspace).toBeVisible();
+  }
+  await closeReviewWorkspace.click();
   await expect(page).toHaveURL(
     `/tasks/${threadId}?cwd=${encodeURIComponent(project.relativePath)}`,
   );

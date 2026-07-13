@@ -171,11 +171,29 @@ caffold-git-diff-changes-tree .change-node-label {
 }
 
 caffold-git-diff-changes-tree .entry-icon {
+  position: relative;
   display: inline-grid;
   width: var(--file-tree-icon-slot-size);
   height: var(--file-tree-icon-slot-size);
   place-items: center;
   justify-self: center;
+}
+
+caffold-git-diff-changes-tree .change-file[data-task-related="true"] .entry-icon {
+  color: var(--accent);
+}
+
+caffold-git-diff-changes-tree .change-file[data-task-related="true"] .entry-icon::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  box-sizing: border-box;
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--surface);
+  border-radius: 50%;
+  background: var(--accent);
+  content: "";
 }
 
 caffold-git-diff-changes-tree .entry-icon-svg {

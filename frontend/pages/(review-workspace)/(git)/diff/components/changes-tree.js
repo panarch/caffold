@@ -88,6 +88,35 @@ class CaffoldGitDiffChangesTree extends HTMLElement {
     this.patchSelectedPath();
   }
 
+  setTaskRelatedPaths(paths) {
+    const nextPaths = new Set(
+      (paths ?? []).map(normalizeRepoPath).filter(Boolean),
+    );
+    if (setsEqual(this.taskRelatedPaths, nextPaths)) {
+      return;
+    }
+
+    this.taskRelatedPaths = nextPaths;
+    this.patchTaskRelatedPaths();
+  }
+
+  patchTaskRelatedPaths() {
+    for (const button of this.querySelectorAll("button[data-repo-relative-path]")) {
+      const path = normalizeRepoPath(button.dataset.repoRelativePath);
+      const related = this.taskRelatedPaths.has(path);
+      if (related) {
+        button.dataset.taskRelated = "true";
+      } else {
+        delete button.dataset.taskRelated;
+      }
+      button.setAttribute(
+        "aria-label",
+        `${related ? "Task-related change. " : ""}Show diff for ${path}`,
+      );
+      button.title = related ? `Task-related change · ${path}` : path;
+    }
+  }
+
   patchSelectedPath() {
     for (const button of this.querySelectorAll('button[data-change-path][aria-current="true"]')) {
       button.setAttribute("aria-current", "false");
@@ -127,6 +156,7 @@ class CaffoldGitDiffChangesTree extends HTMLElement {
 
   reset() {
     this.selectedPath = "";
+    this.taskRelatedPaths = new Set();
     this.expandedKeys = new Set();
     this.knownDirectoryKeys = new Set();
     this.state = { status: "idle" };
@@ -262,6 +292,8 @@ class CaffoldGitDiffChangesTree extends HTMLElement {
     const kind = file.untracked ? "untracked" : file.category;
     const status = displayStatus(file);
     const selected = file.path === this.selectedPath;
+    const repoRelativePath = normalizeRepoPath(file.repoRelativePath);
+    const taskRelated = this.taskRelatedPaths.has(repoRelativePath);
     const entry = {
       name,
       path: file.path,
@@ -279,9 +311,11 @@ class CaffoldGitDiffChangesTree extends HTMLElement {
           data-change-path="${escapeHtml(file.path)}"
           data-change-kind="${escapeHtml(kind)}"
           data-change-status="${escapeHtml(status)}"
+          data-repo-relative-path="${escapeHtml(repoRelativePath)}"
+          ${taskRelated ? 'data-task-related="true"' : ""}
           aria-current="${selected ? "true" : "false"}"
-          aria-label="${escapeHtml(`Show diff for ${file.repoRelativePath}`)}"
-          title="${escapeHtml(file.repoRelativePath)}"
+          aria-label="${escapeHtml(`${taskRelated ? "Task-related change. " : ""}Show diff for ${repoRelativePath}`)}"
+          title="${escapeHtml(taskRelated ? `Task-related change · ${repoRelativePath}` : repoRelativePath)}"
         >
           <span class="change-status-code">${escapeHtml(status)}</span>
           <span class="change-node-label">
@@ -336,6 +370,21 @@ class CaffoldGitDiffChangesTree extends HTMLElement {
 }
 
 customElements.define("caffold-git-diff-changes-tree", CaffoldGitDiffChangesTree);
+
+function normalizeRepoPath(path) {
+  return `${path ?? ""}`
+    .replaceAll("\\", "/")
+    .split("/")
+    .filter((segment) => segment && segment !== "." && segment !== "..")
+    .join("/");
+}
+
+function setsEqual(left, right) {
+  if ((left?.size ?? 0) !== right.size) {
+    return false;
+  }
+  return [...right].every((value) => left?.has(value));
+}
 
 function renderDiffStats(payload) {
   if (!Number.isFinite(payload?.additions) || !Number.isFinite(payload?.deletions)) {

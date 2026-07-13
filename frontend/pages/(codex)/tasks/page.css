@@ -556,6 +556,22 @@ caffold-tasks-page .task-work-item pre {
   padding: 10px;
 }
 
+caffold-tasks-page .task-changed-files {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 8px 11px 10px;
+  border-top: 1px solid #e2e8e2;
+  list-style: none;
+}
+
+caffold-tasks-page .task-changed-files code {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
 caffold-tasks-page .task-turn-work {
   justify-self: start;
   width: min(100%, 850px);

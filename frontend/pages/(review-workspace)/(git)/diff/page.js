@@ -80,6 +80,11 @@ class CaffoldGitDiffPage extends HTMLElement {
     this.changesTree.setSelectedPath(path);
   }
 
+  setTaskRelatedPaths(paths) {
+    this.ensureRendered();
+    this.changesTree.setTaskRelatedPaths(paths);
+  }
+
   setEmpty() {
     this.ensureRendered();
     this.diffRequestId += 1;
