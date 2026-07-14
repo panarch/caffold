@@ -392,6 +392,47 @@ caffold-tasks-page .task-load-older {
   font-size: 0.78rem;
 }
 
+caffold-tasks-page .task-stream-state {
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 3px 8px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+caffold-tasks-page .task-stream-state[data-stream-state="error"] {
+  color: #8a5b00;
+}
+
+caffold-tasks-page .task-stream-state button {
+  min-height: 26px;
+  padding: 2px 7px;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+caffold-tasks-page .task-stream-icon,
+caffold-tasks-page .task-stream-spinner {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+}
+
+caffold-tasks-page .task-stream-spinner {
+  box-sizing: border-box;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: task-status-spin 800ms linear infinite;
+}
+
 caffold-tasks-page .task-approval-card {
   margin-bottom: 10px;
   padding: 10px;
@@ -487,6 +528,13 @@ caffold-tasks-page .task-status-chip[data-status="interrupted"] {
 @keyframes task-status-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  caffold-tasks-page .task-status-spinner,
+  caffold-tasks-page .task-stream-spinner {
+    animation: none;
   }
 }
 

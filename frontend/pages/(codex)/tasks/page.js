@@ -20,6 +20,7 @@ const FALLBACK_REASONING_OPTIONS = [
   { value: "ultra", label: "Very high" },
 ];
 const FALLBACK_EFFORT = "ultra";
+const STREAM_ERROR_DELAY_MS = 8_000;
 
 class CaffoldTasksPage extends HTMLElement {
   connectedCallback() {
@@ -45,6 +46,10 @@ class CaffoldTasksPage extends HTMLElement {
     this.cwdPath = "";
     this.selectedThreadId = "";
     this.stream = null;
+    this.streamState = "idle";
+    this.streamGeneration = 0;
+    this.streamErrorTimer = null;
+    this.taskRefresh = null;
     this.requestId = 0;
     this.conversationScrollMode = null;
     this.conversationScrollByThread = new Map();
@@ -155,6 +160,7 @@ class CaffoldTasksPage extends HTMLElement {
     } else if (route?.threadId) {
       if (this.selectedThreadId !== route.threadId) {
         this.taskDetailView = "conversation";
+        this.closeStream();
       }
       this.view = "detail";
       this.selectedThreadId = route.threadId;
@@ -275,38 +281,155 @@ class CaffoldTasksPage extends HTMLElement {
   connectStream(threadId) {
     this.closeStream();
     if (!("EventSource" in window)) {
+      this.setStreamState("error");
       return;
     }
 
-    this.stream = new EventSource(taskStreamUrl(threadId, this.projectId));
-    this.stream.addEventListener("task-event", (event) => {
+    const generation = this.streamGeneration;
+    let opened = false;
+    let needsSync = false;
+    let stream;
+    try {
+      stream = new EventSource(taskStreamUrl(threadId, this.projectId));
+    } catch {
+      this.setStreamState("error");
+      return;
+    }
+
+    this.stream = stream;
+    this.streamState = "connecting";
+    stream.addEventListener("open", () => {
+      if (!this.isCurrentStream(stream, threadId, generation)) {
+        return;
+      }
+      window.clearTimeout(this.streamErrorTimer);
+      this.streamErrorTimer = null;
+      const shouldSync = opened || needsSync;
+      opened = true;
+      needsSync = false;
+      this.setStreamState("connected");
+      if (shouldSync) {
+        this.requestSelectedTaskRefresh(threadId, generation);
+      }
+    });
+    stream.addEventListener("error", () => {
+      if (!this.isCurrentStream(stream, threadId, generation)) {
+        return;
+      }
+      needsSync = true;
+      window.clearTimeout(this.streamErrorTimer);
+      if (stream.readyState === 2) {
+        this.streamErrorTimer = null;
+        this.setStreamState("error");
+        return;
+      }
+      this.setStreamState("reconnecting");
+      this.streamErrorTimer = window.setTimeout(() => {
+        if (
+          this.isCurrentStream(stream, threadId, generation) &&
+          this.streamState === "reconnecting"
+        ) {
+          this.streamErrorTimer = null;
+          this.setStreamState("error");
+        }
+      }, STREAM_ERROR_DELAY_MS);
+    });
+    stream.addEventListener("task-event", (event) => {
       const entry = parseJson(event.data);
-      if (!entry || entry.threadId !== this.selectedThreadId) {
+      if (
+        !this.isCurrentStream(stream, threadId, generation) ||
+        !entry ||
+        entry.threadId !== this.selectedThreadId
+      ) {
         return;
       }
       this.events = upsertEvent(this.events, entry);
-      this.refreshSelectedTask();
+      this.conversationScrollMode = "bottom-if-needed";
       this.render();
+      this.requestSelectedTaskRefresh(threadId, generation);
     });
   }
 
   closeStream() {
+    this.streamGeneration += 1;
+    window.clearTimeout(this.streamErrorTimer);
+    this.streamErrorTimer = null;
     this.stream?.close();
     this.stream = null;
+    this.streamState = "idle";
+    this.taskRefresh = null;
   }
 
-  async refreshSelectedTask() {
-    if (!this.selectedThreadId) {
+  isCurrentStream(stream, threadId, generation) {
+    return (
+      this.stream === stream &&
+      this.streamGeneration === generation &&
+      this.selectedThreadId === threadId
+    );
+  }
+
+  setStreamState(state) {
+    if (this.streamState === state) {
       return;
     }
+    const wasVisible = isVisibleStreamState(this.streamState);
+    this.streamState = state;
+    if (this.view === "detail" && (wasVisible || isVisibleStreamState(state))) {
+      this.render();
+    }
+  }
 
-    const requestId = this.requestId;
-    try {
-      const detail = await getTask(this.selectedThreadId, this.projectId);
-      if (requestId !== this.requestId) {
+  requestSelectedTaskRefresh(
+    threadId = this.selectedThreadId,
+    generation = this.streamGeneration,
+  ) {
+    if (!threadId || threadId !== this.selectedThreadId) {
+      return Promise.resolve(null);
+    }
+
+    if (
+      this.taskRefresh?.threadId === threadId &&
+      this.taskRefresh?.generation === generation
+    ) {
+      this.taskRefresh.dirty = true;
+      return this.taskRefresh.promise;
+    }
+
+    const refresh = {
+      threadId,
+      generation,
+      dirty: false,
+      promise: null,
+    };
+    refresh.promise = this.refreshSelectedTask(threadId, generation).finally(() => {
+      if (this.taskRefresh !== refresh) {
         return;
       }
-      if (detail?.task?.threadId !== this.selectedThreadId) {
+      const shouldRefreshAgain =
+        refresh.dirty &&
+        this.streamGeneration === generation &&
+        this.selectedThreadId === threadId;
+      this.taskRefresh = null;
+      if (shouldRefreshAgain) {
+        this.requestSelectedTaskRefresh(threadId, generation);
+      }
+    });
+    this.taskRefresh = refresh;
+    return refresh.promise;
+  }
+
+  async refreshSelectedTask(threadId, generation) {
+    const requestId = this.requestId;
+    try {
+      const detail = await getTask(threadId, this.projectId);
+      if (
+        requestId !== this.requestId ||
+        generation !== this.streamGeneration ||
+        threadId !== this.selectedThreadId
+      ) {
+        return;
+      }
+      if (detail?.task?.threadId !== threadId) {
         return;
       }
       this.taskDetail = detail;
@@ -337,6 +460,13 @@ class CaffoldTasksPage extends HTMLElement {
     }
     if (action === "open-task") {
       this.requestRoute({ kind: "tasks", threadId: element.dataset.threadId });
+      return;
+    }
+    if (action === "retry-stream") {
+      if (this.selectedThreadId) {
+        this.connectStream(this.selectedThreadId);
+        this.render();
+      }
       return;
     }
     if (action === "open-diff") {
@@ -1293,6 +1423,7 @@ class CaffoldTasksPage extends HTMLElement {
         <section class="task-conversation-pane" aria-label="Task conversation">
           <div class="task-conversation-scroll">
             <div class="task-conversation-column">
+              ${this.renderStreamState()}
               ${approvals.length ? `<section class="task-approvals">${approvals.map(renderApprovalCard).join("")}</section>` : ""}
               ${this.eventsPage?.nextCursor || this.loadingOlderEvents ? `<div class="task-load-older">${this.loadingOlderEvents ? "Loading older..." : ""}</div>` : ""}
               <ol class="task-conversation" aria-label="Task conversation">
@@ -1314,6 +1445,27 @@ class CaffoldTasksPage extends HTMLElement {
     `;
   }
 
+  renderStreamState() {
+    if (this.streamState === "reconnecting") {
+      return `
+        <div class="task-stream-state" data-stream-state="reconnecting" role="status">
+          <span class="task-stream-spinner" aria-hidden="true"></span>
+          <span>Reconnecting live updates...</span>
+        </div>
+      `;
+    }
+    if (this.streamState === "error") {
+      return `
+        <div class="task-stream-state" data-stream-state="error" role="status">
+          ${renderInlineIcon("TriangleAlert", "Live updates unavailable", "task-stream-icon")}
+          <span>Live updates unavailable.</span>
+          <button type="button" data-task-action="retry-stream">Retry</button>
+        </div>
+      `;
+    }
+    return "";
+  }
+
   renderTaskFilesView() {
     return `
       <section class="task-files-view" aria-label="Task files">
@@ -1330,6 +1482,10 @@ class CaffoldTasksPage extends HTMLElement {
 }
 
 customElements.define("caffold-tasks-page", CaffoldTasksPage);
+
+function isVisibleStreamState(state) {
+  return state === "reconnecting" || state === "error";
+}
 
 function normalizeModelOptions(response) {
   const models = Array.isArray(response?.data) ? response.data : [];

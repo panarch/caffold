@@ -1115,6 +1115,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       constructor(url) {
         this.url = url;
         this.listeners = new Map();
+        this.readyState = 0;
         window.__caffoldMockEventSources.push(this);
       }
 
@@ -1126,7 +1127,19 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
         this.listeners.get(type)?.({ data: JSON.stringify(payload) });
       }
 
-      close() {}
+      emitOpen() {
+        this.readyState = 1;
+        this.listeners.get("open")?.({});
+      }
+
+      emitError(closed = false) {
+        this.readyState = closed ? 2 : 0;
+        this.listeners.get("error")?.({});
+      }
+
+      close() {
+        this.readyState = 2;
+      }
     };
   });
 
@@ -2326,13 +2339,14 @@ test("loads older task conversation events by cursor", async ({ page }) => {
     .toBe(true);
 });
 
-test("keeps task conversation scroll anchored during live updates", async ({ page }) => {
+test("keeps task conversation scroll anchored during live updates", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     window.__taskEventSources = [];
     window.EventSource = class MockEventSource {
       constructor(url) {
         this.url = url;
         this.listeners = new Map();
+        this.readyState = 0;
         window.__taskEventSources.push(this);
       }
 
@@ -2348,8 +2362,23 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
         }
       }
 
+      emitOpen() {
+        this.readyState = 1;
+        for (const listener of this.listeners.get("open") ?? []) {
+          listener({});
+        }
+      }
+
+      emitError(closed = false) {
+        this.readyState = closed ? 2 : 0;
+        for (const listener of this.listeners.get("error") ?? []) {
+          listener({});
+        }
+      }
+
       close() {
         this.closed = true;
+        this.readyState = 2;
       }
     };
   });
@@ -2394,6 +2423,9 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
       index,
     ),
   );
+  let taskDetailReadRequests = 0;
+  let holdTaskRefreshes = false;
+  const heldTaskRefreshes = [];
 
   await page.route(/\/api\/git\/status(?:\?|$)/, (route) =>
     route.fulfill({
@@ -2418,8 +2450,12 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
       }),
     }),
   );
-  await page.route(/\/api\/tasks\/thread_scroll_fixture(?:\?|$)/, (route) =>
-    route.fulfill({
+  await page.route(/\/api\/tasks\/thread_scroll_fixture(?:\?|$)/, async (route) => {
+    taskDetailReadRequests += 1;
+    if (holdTaskRefreshes) {
+      await new Promise((resolve) => heldTaskRefreshes.push(resolve));
+    }
+    return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
         task,
@@ -2427,8 +2463,8 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
         eventsPage: { nextCursor: null },
         pendingApprovals: [],
       }),
-    }),
-  );
+    });
+  });
 
   await page.goto(`/projects/${project.id}/tasks/${threadId}`);
   const tasksPage = page.locator("caffold-tasks-page");
@@ -2438,6 +2474,13 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     .poll(() => scroller.evaluate((element) => element.scrollHeight > element.clientHeight))
     .toBe(true);
   await expect.poll(() => isScrolledToBottom(scroller)).toBe(true);
+  await page.evaluate((threadId) => {
+    const taskSource = window.__taskEventSources.find((source) =>
+      source.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    taskSource.emitOpen();
+  }, threadId);
+  await expect(tasksPage.locator(".task-stream-state")).toHaveCount(0);
 
   await page.evaluate(
     ({ threadId, projectId, now }) => {
@@ -2488,6 +2531,93 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
   );
   await expect(tasksPage).toContainText("Live answer while reading older content.");
   await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeLessThan(16);
+  await expect
+    .poll(() => tasksPage.evaluate((element) => element.taskRefresh === null))
+    .toBe(true);
+
+  const readsBeforeBurst = taskDetailReadRequests;
+  holdTaskRefreshes = true;
+  await page.evaluate(
+    ({ threadId, projectId, now }) => {
+      const taskSource = window.__taskEventSources.find((source) =>
+        source.url.includes(`/api/tasks/${threadId}/stream`),
+      );
+      for (let index = 0; index < 3; index += 1) {
+        taskSource.emit("task-event", {
+          id: `event_burst_${index}`,
+          threadId,
+          projectId,
+          type: "assistant_message",
+          summary: "Assistant response",
+          payload: {
+            turnId: "turn_burst",
+            text: `Burst update ${index + 1}`,
+          },
+          createdMs: now + 200 + index,
+        });
+      }
+    },
+    { threadId, projectId: project.id, now },
+  );
+  await expect(tasksPage).toContainText("Burst update 3");
+  await expect.poll(() => taskDetailReadRequests).toBe(readsBeforeBurst + 1);
+  await page.waitForTimeout(100);
+  expect(taskDetailReadRequests).toBe(readsBeforeBurst + 1);
+
+  heldTaskRefreshes.shift()?.();
+  await expect.poll(() => taskDetailReadRequests).toBe(readsBeforeBurst + 2);
+  await page.waitForTimeout(100);
+  expect(taskDetailReadRequests).toBe(readsBeforeBurst + 2);
+  heldTaskRefreshes.shift()?.();
+  holdTaskRefreshes = false;
+  await expect
+    .poll(() => tasksPage.evaluate((element) => element.taskRefresh === null))
+    .toBe(true);
+
+  await page.evaluate((threadId) => {
+    const taskSource = window.__taskEventSources.find((source) =>
+      source.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    taskSource.emitError();
+  }, threadId);
+  await expect(
+    tasksPage.locator('.task-stream-state[data-stream-state="reconnecting"]'),
+  ).toContainText("Reconnecting live updates...");
+  await stabilizeDynamicText(page);
+  await captureReviewScreenshot(page, testInfo, "tasks-live-reconnecting");
+
+  const readsBeforeReconnect = taskDetailReadRequests;
+  await page.evaluate((threadId) => {
+    const taskSource = window.__taskEventSources.find((source) =>
+      source.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    taskSource.emitOpen();
+  }, threadId);
+  await expect(tasksPage.locator(".task-stream-state")).toHaveCount(0);
+  await expect.poll(() => taskDetailReadRequests).toBe(readsBeforeReconnect + 1);
+
+  const sourcesBeforeRetry = await page.evaluate(() => window.__taskEventSources.length);
+  await page.evaluate((threadId) => {
+    const taskSource = window.__taskEventSources.find((source) =>
+      source.url.includes(`/api/tasks/${threadId}/stream`) && !source.closed,
+    );
+    taskSource.emitError(true);
+  }, threadId);
+  const streamError = tasksPage.locator(
+    '.task-stream-state[data-stream-state="error"]',
+  );
+  await expect(streamError).toContainText("Live updates unavailable.");
+  await streamError.getByRole("button", { name: "Retry" }).click();
+  await expect(tasksPage.locator(".task-stream-state")).toHaveCount(0);
+  await expect
+    .poll(() => page.evaluate(() => window.__taskEventSources.length))
+    .toBe(sourcesBeforeRetry + 1);
+  await page.evaluate((threadId) => {
+    const sources = window.__taskEventSources.filter((source) =>
+      source.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    sources.at(-1).emitOpen();
+  }, threadId);
 });
 
 test("keeps header action slots stable while status checks resolve", async ({ page }) => {
