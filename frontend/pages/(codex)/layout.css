@@ -44,3 +44,14 @@ caffold-codex-workspace .codex-workspace-close span {
   font-size: 1.05rem;
   line-height: 1;
 }
+
+@media (max-width: 520px) {
+  caffold-codex-workspace {
+    --task-header-leading-space: 40px;
+  }
+
+  caffold-codex-workspace .codex-workspace-close {
+    top: 8px;
+    left: 8px;
+  }
+}

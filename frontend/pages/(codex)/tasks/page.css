@@ -186,12 +186,17 @@ caffold-tasks-page .task-detail {
 }
 
 caffold-tasks-page .task-detail-summary {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
   border-bottom: 1px solid var(--border);
+}
+
+caffold-tasks-page .task-detail-heading {
+  min-width: 0;
 }
 
 caffold-tasks-page .task-detail[data-task-detail-view="files"] {
@@ -216,10 +221,70 @@ caffold-tasks-page .task-detail-right {
   min-width: 0;
 }
 
-caffold-tasks-page .task-detail-status-slot {
+caffold-tasks-page .task-detail-info-button {
   display: grid;
   place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
   flex: 0 0 auto;
+}
+
+caffold-tasks-page .task-detail-info-button:hover,
+caffold-tasks-page .task-detail-info-button:focus-visible {
+  outline: none;
+}
+
+caffold-tasks-page .task-detail-info-button .task-status-chip {
+  pointer-events: none;
+}
+
+caffold-tasks-page .task-detail-popover {
+  position: fixed;
+  inset: 112px 12px auto auto;
+  width: fit-content;
+  max-width: min(34rem, calc(100vw - 24px));
+  max-height: min(60vh, 420px);
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 14px 34px rgb(20 36 29 / 18%);
+}
+
+caffold-tasks-page .task-detail-popover::backdrop {
+  background: transparent;
+}
+
+caffold-tasks-page .task-detail-popover dl {
+  display: grid;
+  grid-template-columns: max-content minmax(12rem, 1fr);
+  gap: 9px 14px;
+  margin: 0;
+}
+
+caffold-tasks-page .task-detail-popover dl div {
+  display: contents;
+}
+
+caffold-tasks-page .task-detail-popover dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+caffold-tasks-page .task-detail-popover dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.8rem;
 }
 
 caffold-tasks-page .task-diff-disabled {
@@ -955,5 +1020,96 @@ caffold-tasks-page [data-status="waiting_for_approval"] {
     z-index: 10;
     border-radius: 18px;
     box-shadow: 0 -12px 48px rgb(31 42 36 / 18%);
+  }
+}
+
+@media (max-width: 520px) {
+  caffold-tasks-page .tasks-header {
+    min-height: 48px;
+    gap: 6px;
+    padding: 7px 8px 7px calc(8px + var(--task-header-leading-space, 0px));
+  }
+
+  caffold-tasks-page .tasks-header > div:first-child,
+  caffold-tasks-page .task-detail-heading {
+    min-width: 0;
+  }
+
+  caffold-tasks-page .tasks-header h1 {
+    font-size: 0.92rem;
+  }
+
+  caffold-tasks-page .tasks-header p {
+    overflow: hidden;
+    font-size: 0.72rem;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  caffold-tasks-page .tasks-header-actions,
+  caffold-tasks-page .task-detail-actions,
+  caffold-tasks-page .task-detail-right {
+    gap: 4px;
+  }
+
+  caffold-tasks-page .tasks-header .task-primary-button,
+  caffold-tasks-page .task-detail-actions .task-secondary-button,
+  caffold-tasks-page .task-detail-info-button {
+    width: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+  }
+
+  caffold-tasks-page .task-action-label {
+    display: none;
+  }
+
+  caffold-tasks-page .task-detail-summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    min-height: 48px;
+    gap: 6px;
+    padding: 7px 8px;
+  }
+
+  caffold-tasks-page .task-detail-summary h2 {
+    font-size: 0.88rem;
+  }
+
+  caffold-tasks-page .task-detail-meta,
+  caffold-tasks-page .task-diff-disabled {
+    display: none;
+  }
+
+  caffold-tasks-page .task-detail-info-button {
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+  }
+
+  caffold-tasks-page .task-detail-info-button:hover,
+  caffold-tasks-page .task-detail-info-button:focus-visible {
+    border-color: var(--border-strong);
+  }
+
+  caffold-tasks-page .task-detail-popover {
+    inset: 102px 8px auto 8px;
+    width: auto;
+  }
+
+  caffold-tasks-page .task-detail-popover dl {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+
+  caffold-tasks-page .task-detail-popover dl div {
+    display: grid;
+    gap: 2px;
+  }
+
+  caffold-tasks-page .task-detail-popover dl div + div {
+    margin-top: 8px;
   }
 }

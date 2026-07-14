@@ -1017,7 +1017,7 @@ class CaffoldTasksPage extends HTMLElement {
             this.view !== "new"
               ? `<button type="button" class="task-primary-button" data-task-action="open-new">
                   ${renderInlineIcon("Plus", "New task", "task-action-icon")}
-                  <span>New Task</span>
+                  <span class="task-action-label">New Task</span>
                 </button>`
               : ""
           }
@@ -1202,14 +1202,15 @@ class CaffoldTasksPage extends HTMLElement {
     }
     const approvals = pendingApprovals(this.events);
     const status = renderTaskStatusChip(task.status, "task-detail-status", { label: false });
+    const statusLabel = formatStatus(task.status);
     const canOpenDiff = Boolean(this.taskProjectId());
 
     return `
       <div class="task-detail" data-task-detail-view="${escapeHtml(this.taskDetailView)}">
         <section class="task-detail-summary">
-          <div>
+          <div class="task-detail-heading">
             <h2>${escapeHtml(task.title)}</h2>
-            <p>
+            <p class="task-detail-meta">
               <span>Thread ${escapeHtml(shortId(task.threadId ?? task.id))}</span>
               ${task.relativeCwd ? `<span>${escapeHtml(task.relativeCwd)}</span>` : ""}
             </p>
@@ -1223,7 +1224,7 @@ class CaffoldTasksPage extends HTMLElement {
                 aria-pressed="${this.taskDetailView === "files" ? "true" : "false"}"
               >
                 ${renderInlineIcon("Folder", "Files", "task-action-icon")}
-                <span>Files</span>
+                <span class="task-action-label">Files</span>
               </button>
               <button
                 type="button"
@@ -1233,20 +1234,60 @@ class CaffoldTasksPage extends HTMLElement {
                 title="${canOpenDiff ? "Open project diff" : "Register project to review diff"}"
               >
                 ${renderInlineIcon("FileDiff", "Open diff", "task-action-icon")}
-                <span>Open Diff</span>
+                <span class="task-action-label">Open Diff</span>
               </button>
               ${
                 task.activeTurnId
-                  ? `<button type="button" class="task-secondary-button" data-task-action="interrupt">Interrupt</button>`
+                  ? `<button type="button" class="task-secondary-button" data-task-action="interrupt">
+                      ${renderInlineIcon("Square", "Interrupt", "task-action-icon")}
+                      <span class="task-action-label">Interrupt</span>
+                    </button>`
                   : ""
               }
             </div>
-            ${status ? `<div class="task-detail-status-slot">${status}</div>` : ""}
+            <button
+              type="button"
+              class="task-detail-info-button"
+              popovertarget="task-detail-info"
+              aria-label="Task details, ${escapeHtml(statusLabel)}"
+              title="Task details"
+            >
+              ${status || renderInlineIcon("Info", "Task details", "task-action-icon")}
+            </button>
             ${
               canOpenDiff
                 ? ""
                 : `<p class="task-diff-disabled">Register project to review diff.</p>`
             }
+          </div>
+          <div
+            id="task-detail-info"
+            class="task-detail-popover"
+            popover="auto"
+            aria-label="Task details"
+          >
+            <dl>
+              <div>
+                <dt>Status</dt>
+                <dd>${escapeHtml(statusLabel)}</dd>
+              </div>
+              <div>
+                <dt>Thread</dt>
+                <dd>${escapeHtml(task.threadId ?? task.id)}</dd>
+              </div>
+              <div>
+                <dt>Working directory</dt>
+                <dd>${escapeHtml(task.relativeCwd || task.cwd || this.displayCwdPath())}</dd>
+              </div>
+              ${
+                canOpenDiff
+                  ? ""
+                  : `<div>
+                      <dt>Diff review</dt>
+                      <dd>Register project to review diff.</dd>
+                    </div>`
+              }
+            </dl>
           </div>
         </section>
         <section class="task-conversation-pane" aria-label="Task conversation">

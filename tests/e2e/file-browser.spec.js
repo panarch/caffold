@@ -79,7 +79,10 @@ test.beforeEach(async ({ page }) => {
         export const FileQuestion = File;
         export const FileTerminal = FileCode;
         export const FileText = [["path", { d: "M6 3h12v18H6z" }], ["path", { d: "M9 8h6" }], ["path", { d: "M9 12h6" }]];
+        export const CircleAlert = [["circle", { cx: "12", cy: "12", r: "10" }], ["path", { d: "M12 8v4" }], ["path", { d: "M12 16h.01" }]];
+        export const CircleCheck = [["circle", { cx: "12", cy: "12", r: "10" }], ["path", { d: "m8 12 2.5 2.5L16 9" }]];
         export const CircleDot = [["circle", { cx: "12", cy: "12", r: "10" }], ["circle", { cx: "12", cy: "12", r: "2" }]];
+        export const CircleSlash = [["circle", { cx: "12", cy: "12", r: "10" }], ["path", { d: "m5 5 14 14" }]];
         export const ChevronFirst = [["path", { d: "m17 18-6-6 6-6" }], ["path", { d: "M7 6v12" }]];
         export const ChevronLast = [["path", { d: "m7 18 6-6-6-6" }], ["path", { d: "M17 6v12" }]];
         export const ChevronLeft = [["path", { d: "m15 18-6-6 6-6" }]];
@@ -105,6 +108,8 @@ test.beforeEach(async ({ page }) => {
         export const Plus = [["path", { d: "M12 5v14" }], ["path", { d: "M5 12h14" }]];
         export const RefreshCw = [["path", { d: "M20 6v5h-5" }], ["path", { d: "M4 18v-5h5" }], ["path", { d: "M18.4 9A7 7 0 0 0 6 6.6L4 9" }], ["path", { d: "M5.6 15A7 7 0 0 0 18 17.4l2-2.4" }]];
         export const Settings = [["path", { d: "M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" }], ["path", { d: "M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.09.38.3.73.6 1 .3.27.68.4 1.1.4H21v4h-.09a1.7 1.7 0 0 0-1.51.6Z" }]];
+        export const Square = [["rect", { x: "5", y: "5", width: "14", height: "14", rx: "1" }]];
+        export const TriangleAlert = [["path", { d: "M10.3 2.9 1.8 17a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 2.9a2 2 0 0 0-3.4 0Z" }], ["path", { d: "M12 9v4" }], ["path", { d: "M12 17h.01" }]];
         export const Trash2 = [["path", { d: "M3 6h18" }], ["path", { d: "M8 6V4h8v2" }], ["path", { d: "M19 6l-1 15H6L5 6" }]];
         export const X = [["path", { d: "M18 6 6 18" }], ["path", { d: "m6 6 12 12" }]];
         export function createElement(iconNode, attrs = {}) {
@@ -1862,6 +1867,46 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(tasksPage).not.toContainText("assistant message");
   await expect(tasksPage).not.toContainText("user message");
   await expect(tasksPage).not.toContainText("turn started");
+  const taskDetailsButton = tasksPage.getByRole("button", { name: /Task details/ });
+  await expect(taskDetailsButton).toBeVisible();
+  await taskDetailsButton.click();
+  const taskDetailsPopover = tasksPage.locator(".task-detail-popover");
+  await expect(taskDetailsPopover).toBeVisible();
+  await expect(taskDetailsPopover).toContainText("completed");
+  await expect(taskDetailsPopover).toContainText(threadId);
+  await expect(taskDetailsPopover).toContainText("src");
+  if (testInfo.project.name === "phone") {
+    const mobileHeaderMetrics = await tasksPage.evaluate((element) => {
+      const header = element.querySelector(".tasks-header").getBoundingClientRect();
+      const summary = element.querySelector(".task-detail-summary").getBoundingClientRect();
+      const actions = [...element.querySelectorAll(".task-detail-actions button")].map(
+        (button) => button.getBoundingClientRect(),
+      );
+      const details = element
+        .querySelector(".task-detail-info-button")
+        .getBoundingClientRect();
+      return {
+        headerHeight: header.height,
+        summaryHeight: summary.height,
+        overflow: element.scrollWidth > element.clientWidth,
+        actionSizes: [...actions, details].map((box) => ({
+          height: box.height,
+          width: box.width,
+        })),
+      };
+    });
+    expect(mobileHeaderMetrics.headerHeight).toBeLessThanOrEqual(50);
+    expect(mobileHeaderMetrics.summaryHeight).toBeLessThanOrEqual(50);
+    expect(mobileHeaderMetrics.overflow).toBe(false);
+    for (const size of mobileHeaderMetrics.actionSizes) {
+      expect(Math.round(size.width)).toBe(32);
+      expect(Math.round(size.height)).toBe(32);
+    }
+    await stabilizeDynamicText(page);
+    await captureReviewScreenshot(page, testInfo, "tasks-mobile-header-details");
+  }
+  await taskDetailsButton.click();
+  await expect(taskDetailsPopover).toBeHidden();
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-conversation");
   const conversationScroller = tasksPage.locator(".task-conversation-scroll");
