@@ -14,7 +14,8 @@ caffold-tasks-page .tasks-surface {
   min-height: 0;
 }
 
-caffold-tasks-page[data-task-detail-view="files"] .tasks-surface {
+caffold-tasks-page[data-task-detail-view="files"] .tasks-surface,
+caffold-tasks-page[data-task-detail-view="diff"] .tasks-surface {
   grid-template-rows: minmax(0, 1fr);
 }
 
@@ -28,7 +29,8 @@ caffold-tasks-page .tasks-header {
   background: var(--surface);
 }
 
-caffold-tasks-page[data-task-detail-view="files"] .tasks-header {
+caffold-tasks-page[data-task-detail-view="files"] .tasks-header,
+caffold-tasks-page[data-task-detail-view="diff"] .tasks-header {
   display: none;
 }
 
@@ -134,6 +136,7 @@ caffold-tasks-page .task-row {
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
     "title meta"
+    "context meta"
     "summary summary";
   width: 100%;
   min-width: 0;
@@ -164,6 +167,15 @@ caffold-tasks-page .task-row-title {
 caffold-tasks-page .task-row-summary {
   grid-area: summary;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+caffold-tasks-page .task-row-context {
+  grid-area: context;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.78rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -199,11 +211,13 @@ caffold-tasks-page .task-detail-heading {
   min-width: 0;
 }
 
-caffold-tasks-page .task-detail[data-task-detail-view="files"] {
+caffold-tasks-page .task-detail[data-task-detail-view="files"],
+caffold-tasks-page .task-detail[data-task-detail-view="diff"] {
   grid-template-rows: minmax(0, 1fr);
 }
 
-caffold-tasks-page .task-detail[data-task-detail-view="files"] .task-detail-summary {
+caffold-tasks-page .task-detail[data-task-detail-view="files"] .task-detail-summary,
+caffold-tasks-page .task-detail[data-task-detail-view="diff"] .task-detail-summary {
   display: none;
 }
 
@@ -295,7 +309,8 @@ caffold-tasks-page .task-diff-disabled {
 }
 
 caffold-tasks-page .task-conversation-pane,
-caffold-tasks-page .task-files-view {
+caffold-tasks-page .task-files-view,
+caffold-tasks-page .task-diff-view {
   min-height: 0;
   overflow: hidden;
 }
@@ -312,11 +327,23 @@ caffold-tasks-page .task-files-view {
   background: var(--surface);
 }
 
-caffold-tasks-page .task-detail[data-task-detail-view="files"] .task-conversation-pane {
+caffold-tasks-page .task-diff-view {
+  display: none;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  background: var(--surface);
+}
+
+caffold-tasks-page .task-detail[data-task-detail-view="files"] .task-conversation-pane,
+caffold-tasks-page .task-detail[data-task-detail-view="diff"] .task-conversation-pane {
   display: none;
 }
 
 caffold-tasks-page .task-detail[data-task-detail-view="files"] .task-files-view {
+  display: grid;
+}
+
+caffold-tasks-page .task-detail[data-task-detail-view="diff"] .task-diff-view {
   display: grid;
 }
 
@@ -327,6 +354,41 @@ caffold-tasks-page .task-files-header {
   gap: 12px;
   padding: 10px 14px 10px calc(14px + var(--task-header-leading-space, 0px));
   border-bottom: 1px solid var(--border);
+}
+
+caffold-tasks-page .task-diff-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px 10px calc(14px + var(--task-header-leading-space, 0px));
+  border-bottom: 1px solid var(--border);
+}
+
+caffold-tasks-page .task-diff-header h3,
+caffold-tasks-page .task-diff-header p {
+  margin: 0;
+}
+
+caffold-tasks-page .task-diff-header h3 {
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+caffold-tasks-page .task-diff-header p {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+caffold-tasks-page .task-diff-header .task-icon-button.is-unavailable {
+  color: #8a5a00;
+}
+
+caffold-tasks-page .task-diff-header .task-icon-button.is-refreshing .task-refresh-icon {
+  animation: task-refresh-spin 0.8s linear infinite;
 }
 
 caffold-tasks-page .task-files-header h3,
@@ -347,6 +409,17 @@ caffold-tasks-page .task-files-header p {
 caffold-tasks-page .task-files-view caffold-file-browser {
   min-height: 0;
   height: 100%;
+}
+
+caffold-tasks-page .task-diff-view caffold-git-diff-browser {
+  min-height: 0;
+  height: 100%;
+}
+
+@keyframes task-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 caffold-tasks-page .task-approvals,

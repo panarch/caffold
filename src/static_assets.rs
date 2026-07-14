@@ -136,13 +136,17 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(review-workspace)/(git)/diff/page.js" => Some(js(include_str!(
             "../frontend/pages/(review-workspace)/(git)/diff/page.js"
         ))),
-        "pages/(review-workspace)/(git)/diff/components/changes-tree.css" => {
-            Some(css(include_str!(
-                "../frontend/pages/(review-workspace)/(git)/diff/components/changes-tree.css"
-            )))
-        }
-        "pages/(review-workspace)/(git)/diff/components/changes-tree.js" => Some(js(include_str!(
-            "../frontend/pages/(review-workspace)/(git)/diff/components/changes-tree.js"
+        "components/git-diff-browser.css" => Some(css(include_str!(
+            "../frontend/components/git-diff-browser.css"
+        ))),
+        "components/git-diff-browser.js" => Some(js(include_str!(
+            "../frontend/components/git-diff-browser.js"
+        ))),
+        "components/git-diff-browser/changes-tree.css" => Some(css(include_str!(
+            "../frontend/components/git-diff-browser/changes-tree.css"
+        ))),
+        "components/git-diff-browser/changes-tree.js" => Some(js(include_str!(
+            "../frontend/components/git-diff-browser/changes-tree.js"
         ))),
         "pages/(review-workspace)/(git)/compare/page.css" => Some(css(include_str!(
             "../frontend/pages/(review-workspace)/(git)/compare/page.css"
@@ -517,9 +521,16 @@ mod tests {
                 .windows(b"caffold-git-diff-page".len())
                 .any(|window| window == b"caffold-git-diff-page")
         );
+        let diff_browser = get("components/git-diff-browser.js").expect("git diff browser js");
+        assert_eq!(diff_browser.content_type, "text/javascript; charset=utf-8");
+        assert!(
+            diff_browser
+                .body
+                .windows(b"caffold-git-diff-browser".len())
+                .any(|window| window == b"caffold-git-diff-browser")
+        );
         let diff_changes_tree =
-            get("pages/(review-workspace)/(git)/diff/components/changes-tree.js")
-                .expect("diff changes tree js");
+            get("components/git-diff-browser/changes-tree.js").expect("diff changes tree js");
         assert_eq!(
             diff_changes_tree.content_type,
             "text/javascript; charset=utf-8"
@@ -532,6 +543,7 @@ mod tests {
         );
         assert!(get("pages/(review-workspace)/(git)/working-tree/page.js").is_none());
         assert!(get("components/changes-tree.js").is_none());
+        assert!(get("pages/(review-workspace)/(git)/diff/components/changes-tree.js").is_none());
 
         let github_review_layout =
             get("pages/(review-workspace)/(github)/layout.js").expect("github review layout js");

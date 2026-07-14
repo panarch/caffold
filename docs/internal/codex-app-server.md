@@ -51,10 +51,21 @@ truth for:
 - file changes
 - turn status and history
 
-Caffold derives project membership from `thread.cwd`. Project-scoped task
-routes prefix-filter threads against the registered project root. Global
-current-directory task routes use exact `cwd` filtering so opening Tasks from a
-directory does not automatically show unrelated subdirectory or sibling threads.
+Caffold derives project and Git worktree context from `thread.cwd` on every
+response. When the requested cwd is inside a Git repository, current-directory
+Tasks use the backend-only common Git directory as their list-filter identity.
+Threads from the main checkout and sibling linked worktrees therefore appear
+together. Each Task still retains its own canonical worktree root for Files and
+Diff. Outside Git, current-directory Tasks use canonical cwd exact matching.
+Project-scoped routes keep their registered project boundary, and unfiltered All
+Tasks remains available.
+
+The derived worktree context contains only RootedFs-relative paths plus live
+branch, HEAD, linked-worktree, and relative-cwd information. Caffold does not
+persist that context in redb or Codex metadata. A Task can open Files at the
+derived worktree root and review its working-tree Diff without a registered
+Project. Worktree creation, deletion, checkout, rename, prune, and cleanup remain
+outside this Tasks slice.
 Caffold keeps pending approvals and SSE notifications as ephemeral in-memory
 state in this slice. Pending approval cards may disappear after a Caffold
 backend restart until app-server re-emits the request.
@@ -64,10 +75,8 @@ should augment Codex threads with Caffold-only annotations rather than become
 the required primary lookup path.
 
 The first Tasks surface can run without a registered project. A registered
-project supplies optional filtering, cwd defaults, and Git diff review
-integration; otherwise the current Caffold root/path context is used as the
-thread cwd. Worktree creation, cleanup, and checkout UX are separate lifecycle
-features.
+project supplies optional filtering and cwd defaults; otherwise the current
+Caffold root/path context is used as the thread cwd.
 
 ## Process Ownership
 

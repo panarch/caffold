@@ -12,7 +12,8 @@
 @import "./pages/(codex)/tasks/page.css";
 @import "./pages/(review-workspace)/(git)/layout.css";
 @import "./pages/(review-workspace)/(git)/diff/page.css";
-@import "./pages/(review-workspace)/(git)/diff/components/changes-tree.css";
+@import "./components/git-diff-browser.css";
+@import "./components/git-diff-browser/changes-tree.css";
 @import "./pages/(review-workspace)/(git)/(log)/layout.css";
 @import "./pages/(review-workspace)/(git)/compare/page.css";
 @import "./pages/(review-workspace)/(git)/compare/components/compare-tree.css";

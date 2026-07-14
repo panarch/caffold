@@ -33,6 +33,7 @@ use crate::{
         GithubPullsResponse, GithubStatusResponse, ListResponse, MAX_FILE_BYTES, ProjectRoot,
         RootedFs,
     },
+    git,
     project_store::{ProjectRecord, ProjectStore, ProjectStoreError},
     server_settings::{ServerSettings, ServerSettingsError, ServerSettingsStore},
     static_assets,
@@ -320,12 +321,40 @@ struct TaskRecord {
     preview: String,
     status: String,
     cwd: String,
+    cwd_path: Option<String>,
     relative_cwd: String,
+    worktree: Option<TaskWorktreeContext>,
     created_ms: u64,
     updated_ms: u64,
     recency_ms: Option<u64>,
     active_turn_id: Option<String>,
     last_event_summary: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct TaskWorktreeContext {
+    root_path: String,
+    branch: Option<String>,
+    head_sha: String,
+    relative_cwd: String,
+    linked: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResolvedTaskCwd {
+    canonical_cwd: PathBuf,
+    logical_cwd: Option<String>,
+    worktree: Option<TaskWorktreeContext>,
+    worktree_root: Option<PathBuf>,
+    repository_common_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum TaskCwdFilter {
+    Exact(PathBuf),
+    Worktree(PathBuf),
+    Repository(PathBuf),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1090,8 +1119,9 @@ async fn list_tasks(
     let client = require_codex_thread_client(&state).await?;
     let response = client.list_threads(100).await?;
     let tasks = thread_list_response(
+        &state.fs,
         project.as_ref(),
-        cwd_filter.as_deref(),
+        cwd_filter.as_ref(),
         &state.projects,
         &response,
     );
@@ -1414,7 +1444,13 @@ async fn read_task_detail(
             .cmp(&right.created_ms)
             .then_with(|| left.id.cmp(&right.id))
     });
-    let task = task_record_from_thread(associated_project.as_ref(), &thread, &events)?;
+    let resolved_cwd = resolve_thread_cwd(&state.fs, &thread);
+    let task = task_record_from_thread(
+        associated_project.as_ref(),
+        &thread,
+        &events,
+        resolved_cwd.as_ref(),
+    )?;
     Ok(TaskDetailResponse {
         task,
         events,
@@ -1445,19 +1481,27 @@ async fn validate_thread_belongs_to_project(
 }
 
 fn thread_list_response(
+    fs: &RootedFs,
     project: Option<&ProjectRecord>,
-    cwd_filter: Option<&str>,
+    cwd_filter: Option<&TaskCwdFilter>,
     projects: &ProjectStore,
     response: &JsonValue,
 ) -> Vec<TaskRecord> {
+    let mut resolved_cwds = HashMap::<String, Option<ResolvedTaskCwd>>::new();
     let mut tasks = response
         .get("data")
         .and_then(JsonValue::as_array)
         .into_iter()
         .flatten()
         .filter_map(|thread| {
+            let resolved_cwd = thread_cwd(thread).and_then(|cwd| {
+                resolved_cwds
+                    .entry(cwd.to_string())
+                    .or_insert_with(|| resolve_task_cwd(fs, cwd))
+                    .clone()
+            });
             if let Some(cwd_filter) = cwd_filter
-                && !thread_cwd_is_exact(thread, cwd_filter)
+                && !task_cwd_matches_filter(resolved_cwd.as_ref(), cwd_filter)
             {
                 return None;
             }
@@ -1466,11 +1510,18 @@ fn thread_list_response(
                 if !thread_belongs_to_project(project, thread) {
                     return None;
                 }
-                return task_record_from_thread(Some(project), thread, &[]).ok();
+                return task_record_from_thread(Some(project), thread, &[], resolved_cwd.as_ref())
+                    .ok();
             }
 
             let associated_project = associated_project_for_thread(projects, None, thread);
-            task_record_from_thread(associated_project.as_ref(), thread, &[]).ok()
+            task_record_from_thread(
+                associated_project.as_ref(),
+                thread,
+                &[],
+                resolved_cwd.as_ref(),
+            )
+            .ok()
         })
         .collect::<Vec<_>>();
     tasks.sort_by(|left, right| {
@@ -1487,6 +1538,7 @@ fn task_record_from_thread(
     project: Option<&ProjectRecord>,
     thread: &JsonValue,
     events: &[TaskEventRecord],
+    resolved_cwd: Option<&ResolvedTaskCwd>,
 ) -> Result<TaskRecord, ApiError> {
     let thread_id = thread_id(thread).ok_or_else(|| ApiError::BadRequest {
         code: "thread_id_missing",
@@ -1526,9 +1578,15 @@ fn task_record_from_thread(
         title,
         preview,
         status,
+        cwd_path: resolved_cwd.and_then(|resolved| resolved.logical_cwd.clone()),
         relative_cwd: project
             .map(|project| relative_cwd(project, &cwd))
-            .unwrap_or_else(|| cwd.clone()),
+            .unwrap_or_else(|| {
+                resolved_cwd
+                    .and_then(|resolved| resolved.logical_cwd.clone())
+                    .unwrap_or_else(|| cwd.clone())
+            }),
+        worktree: resolved_cwd.and_then(|resolved| resolved.worktree.clone()),
         cwd,
         created_ms: seconds_to_ms(thread.get("createdAt").and_then(JsonValue::as_f64)),
         updated_ms: seconds_to_ms(thread.get("updatedAt").and_then(JsonValue::as_f64)),
@@ -2173,10 +2231,66 @@ fn thread_belongs_to_project(project: &ProjectRecord, thread: &JsonValue) -> boo
         .unwrap_or(false)
 }
 
-fn thread_cwd_is_exact(thread: &JsonValue, cwd: &str) -> bool {
-    thread_cwd(thread)
-        .map(|thread_cwd| Path::new(thread_cwd) == Path::new(cwd))
-        .unwrap_or(false)
+fn resolve_thread_cwd(fs: &RootedFs, thread: &JsonValue) -> Option<ResolvedTaskCwd> {
+    thread_cwd(thread).and_then(|cwd| resolve_task_cwd(fs, cwd))
+}
+
+fn resolve_task_cwd(fs: &RootedFs, cwd: &str) -> Option<ResolvedTaskCwd> {
+    let canonical_cwd = Path::new(cwd).canonicalize().ok()?;
+    if !canonical_cwd.is_dir() {
+        return None;
+    }
+    let logical_cwd = fs.logical_path_for_absolute(&canonical_cwd).ok();
+    let Some(repository) = git::repository_for(&canonical_cwd) else {
+        return Some(ResolvedTaskCwd {
+            canonical_cwd,
+            logical_cwd,
+            worktree: None,
+            worktree_root: None,
+            repository_common_dir: None,
+        });
+    };
+    let root_path = fs.logical_path_for_absolute(&repository.root).ok()?;
+    let metadata = git::repository_metadata_paths(&repository);
+    let linked = metadata
+        .as_ref()
+        .is_some_and(|paths| paths.git_dir != paths.common_dir);
+    let head_sha = git::head_sha(&repository).unwrap_or_default();
+    let branch = repository
+        .branch
+        .filter(|branch| !branch.starts_with("HEAD "));
+    let relative_cwd = canonical_cwd
+        .strip_prefix(&repository.root)
+        .ok()
+        .map(relative_path_string)
+        .unwrap_or_default();
+
+    Some(ResolvedTaskCwd {
+        canonical_cwd,
+        logical_cwd,
+        worktree: Some(TaskWorktreeContext {
+            root_path,
+            branch,
+            head_sha,
+            relative_cwd,
+            linked,
+        }),
+        worktree_root: Some(repository.root),
+        repository_common_dir: metadata.map(|paths| paths.common_dir),
+    })
+}
+
+fn task_cwd_matches_filter(resolved_cwd: Option<&ResolvedTaskCwd>, filter: &TaskCwdFilter) -> bool {
+    let Some(resolved_cwd) = resolved_cwd else {
+        return false;
+    };
+    match filter {
+        TaskCwdFilter::Exact(cwd) => resolved_cwd.canonical_cwd == *cwd,
+        TaskCwdFilter::Worktree(root) => resolved_cwd.worktree_root.as_ref() == Some(root),
+        TaskCwdFilter::Repository(common_dir) => {
+            resolved_cwd.repository_common_dir.as_ref() == Some(common_dir)
+        }
+    }
 }
 
 fn project_for_cwd(projects: &ProjectStore, cwd: &str) -> Option<ProjectRecord> {
@@ -2327,11 +2441,35 @@ fn task_filter_cwd(
     state: &AppState,
     project: Option<&ProjectRecord>,
     relative: Option<&str>,
-) -> Result<Option<String>, ApiError> {
+) -> Result<Option<TaskCwdFilter>, ApiError> {
     relative
         .filter(|path| !path.is_empty())
-        .map(|path| task_cwd(state, project, Some(path)))
+        .map(|path| {
+            let cwd = task_cwd(state, project, Some(path))?;
+            let resolved =
+                resolve_task_cwd(&state.fs, &cwd).ok_or_else(|| ApiError::BadRequest {
+                    code: "invalid_task_cwd",
+                    message: "task cwd is unavailable".to_string(),
+                })?;
+            Ok(
+                match (resolved.repository_common_dir, resolved.worktree_root) {
+                    (Some(common_dir), _) => TaskCwdFilter::Repository(common_dir),
+                    (None, Some(root)) => TaskCwdFilter::Worktree(root),
+                    (None, None) => TaskCwdFilter::Exact(resolved.canonical_cwd),
+                },
+            )
+        })
         .transpose()
+}
+
+fn relative_path_string(path: &Path) -> String {
+    path.components()
+        .filter_map(|component| match component {
+            std::path::Component::Normal(value) => value.to_str(),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 fn normalize_project_relative_path(path: &str) -> Result<String, ApiError> {
@@ -2658,6 +2796,7 @@ mod tests {
     #[test]
     fn thread_list_response_filters_project_threads_and_sorts_by_recency() {
         let (project, temp) = task_test_project();
+        let fs = RootedFs::new(temp.path()).unwrap();
         let response = json!({
             "data": [
                 {
@@ -2692,7 +2831,7 @@ mod tests {
         });
 
         let projects = ProjectStore::memory().unwrap();
-        let tasks = thread_list_response(Some(&project), None, &projects, &response);
+        let tasks = thread_list_response(&fs, Some(&project), None, &projects, &response);
         assert_eq!(
             tasks
                 .iter()
@@ -2707,6 +2846,7 @@ mod tests {
     #[test]
     fn thread_list_response_all_threads_marks_matching_projects_optionally() {
         let temp = tempfile::tempdir().unwrap();
+        let fs = RootedFs::new(temp.path()).unwrap();
         let project_root = temp.path().join("project");
         std::fs::create_dir(&project_root).unwrap();
         let projects = ProjectStore::memory().unwrap();
@@ -2734,7 +2874,7 @@ mod tests {
             ]
         });
 
-        let tasks = thread_list_response(None, None, &projects, &response);
+        let tasks = thread_list_response(&fs, None, None, &projects, &response);
 
         assert_eq!(tasks.len(), 2);
         let project_task = tasks
@@ -2757,6 +2897,7 @@ mod tests {
     #[test]
     fn thread_list_response_exact_cwd_filter_does_not_include_subdirectories() {
         let temp = tempfile::tempdir().unwrap();
+        let fs = RootedFs::new(temp.path()).unwrap();
         let project_root = temp.path().join("project");
         let src_root = project_root.join("src");
         std::fs::create_dir_all(&src_root).unwrap();
@@ -2764,7 +2905,7 @@ mod tests {
         let project = projects
             .create_project("project", &project_root.display().to_string())
             .unwrap();
-        let cwd_filter = project_root.display().to_string();
+        let cwd_filter = TaskCwdFilter::Exact(project_root.canonicalize().unwrap());
         let response = json!({
             "data": [
                 {
@@ -2786,7 +2927,7 @@ mod tests {
             ]
         });
 
-        let tasks = thread_list_response(None, Some(&cwd_filter), &projects, &response);
+        let tasks = thread_list_response(&fs, None, Some(&cwd_filter), &projects, &response);
 
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].thread_id, "thread_project_root");
@@ -3011,8 +3152,122 @@ mod tests {
             1,
         )];
 
-        let task = task_record_from_thread(Some(&project), &thread, &events).unwrap();
+        let task = task_record_from_thread(Some(&project), &thread, &events, None).unwrap();
         assert_eq!(task.status, "waiting_for_approval");
+    }
+
+    #[test]
+    fn task_repository_filter_includes_linked_worktrees() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let main_root = temp.path().join("main");
+        let linked_root = temp.path().join("linked");
+        std::fs::create_dir(&main_root).unwrap();
+        git(&main_root, &["init", "-b", "main"]);
+        std::fs::create_dir(main_root.join("src")).unwrap();
+        std::fs::write(main_root.join("src/lib.rs"), "pub fn value() -> u8 { 1 }\n").unwrap();
+        git(&main_root, &["add", "."]);
+        git_commit(&main_root, "Initial commit");
+        git(
+            &main_root,
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "feature/review",
+                linked_root.to_str().unwrap(),
+            ],
+        );
+        std::fs::create_dir(linked_root.join("nested")).unwrap();
+
+        let fs = RootedFs::new(temp.path()).unwrap();
+        let main = resolve_task_cwd(&fs, main_root.to_str().unwrap()).unwrap();
+        let main_src = resolve_task_cwd(&fs, main_root.join("src").to_str().unwrap()).unwrap();
+        let linked = resolve_task_cwd(&fs, linked_root.join("nested").to_str().unwrap()).unwrap();
+
+        assert_eq!(main.worktree_root, main_src.worktree_root);
+        assert_ne!(main.worktree_root, linked.worktree_root);
+        assert_eq!(main.repository_common_dir, main_src.repository_common_dir);
+        assert_eq!(main.repository_common_dir, linked.repository_common_dir);
+        let main_context = main_src.worktree.as_ref().unwrap();
+        assert_eq!(main_context.root_path, "main");
+        assert_eq!(main_context.branch.as_deref(), Some("main"));
+        assert_eq!(main_context.relative_cwd, "src");
+        assert!(!main_context.linked);
+        assert!(!main_context.head_sha.is_empty());
+        let linked_context = linked.worktree.as_ref().unwrap();
+        assert_eq!(linked_context.root_path, "linked");
+        assert_eq!(linked_context.branch.as_deref(), Some("feature/review"));
+        assert_eq!(linked_context.relative_cwd, "nested");
+        assert!(linked_context.linked);
+
+        let response = json!({
+            "data": [
+                {
+                    "id": "thread_main_root",
+                    "cwd": main_root.display().to_string(),
+                    "createdAt": 1.0,
+                    "updatedAt": 1.0,
+                    "status": { "type": "idle" }
+                },
+                {
+                    "id": "thread_main_src",
+                    "cwd": main_root.join("src").display().to_string(),
+                    "createdAt": 2.0,
+                    "updatedAt": 2.0,
+                    "status": { "type": "idle" }
+                },
+                {
+                    "id": "thread_linked",
+                    "cwd": linked_root.join("nested").display().to_string(),
+                    "createdAt": 3.0,
+                    "updatedAt": 3.0,
+                    "status": { "type": "idle" }
+                }
+            ]
+        });
+        let projects = ProjectStore::memory().unwrap();
+        let filter = TaskCwdFilter::Repository(main.repository_common_dir.unwrap());
+        let filtered = thread_list_response(&fs, None, Some(&filter), &projects, &response);
+        assert_eq!(
+            filtered
+                .iter()
+                .map(|task| task.thread_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["thread_linked", "thread_main_src", "thread_main_root"]
+        );
+        let all = thread_list_response(&fs, None, None, &projects, &response);
+        assert_eq!(all.len(), 3);
+
+        git(&linked_root, &["checkout", "--detach", "HEAD"]);
+        let detached = resolve_task_cwd(&fs, linked_root.to_str().unwrap()).unwrap();
+        let detached_context = detached.worktree.unwrap();
+        assert_eq!(detached_context.branch, None);
+        assert!(!detached_context.head_sha.is_empty());
+    }
+
+    #[test]
+    fn task_worktree_context_is_optional_outside_git_or_rooted_fs() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        let plain = root.join("plain");
+        let outside = temp.path().join("outside");
+        std::fs::create_dir_all(&plain).unwrap();
+        std::fs::create_dir(&outside).unwrap();
+        let fs = RootedFs::new(&root).unwrap();
+
+        let resolved_plain = resolve_task_cwd(&fs, plain.to_str().unwrap()).unwrap();
+        assert_eq!(resolved_plain.logical_cwd.as_deref(), Some("plain"));
+        assert_eq!(resolved_plain.worktree, None);
+        assert!(resolve_task_cwd(&fs, outside.to_str().unwrap()).is_some());
+
+        if git_is_available() {
+            git(&outside, &["init", "-b", "main"]);
+            assert!(resolve_task_cwd(&fs, outside.to_str().unwrap()).is_none());
+        }
     }
 
     #[tokio::test]
@@ -3054,5 +3309,44 @@ mod tests {
         assert_eq!(event.thread_id, "thread_1");
         assert_eq!(event.event_type, "approval_requested");
         assert_eq!(event.project_id, project.id);
+    }
+
+    fn git_is_available() -> bool {
+        std::process::Command::new("git")
+            .arg("--version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+
+    fn git(path: &Path, args: &[&str]) {
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "git failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn git_commit(path: &Path, message: &str) {
+        git(
+            path,
+            &[
+                "-c",
+                "user.name=Caffold Test",
+                "-c",
+                "user.email=caffold@example.test",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-m",
+                message,
+            ],
+        );
     }
 }

@@ -59,8 +59,10 @@ class CaffoldCodexWorkspace extends HTMLElement {
       return;
     }
 
-    const isFileSubview = this.tasksPage?.taskDetailView === "files";
-    const label = isFileSubview ? "Back to task" : "Close Codex workspace";
+    const isTaskSubview =
+      this.tasksPage?.taskDetailView &&
+      this.tasksPage.taskDetailView !== "conversation";
+    const label = isTaskSubview ? "Back to task" : "Close Codex workspace";
     this.closeButton.setAttribute("aria-label", label);
     this.closeButton.setAttribute("title", label);
   }

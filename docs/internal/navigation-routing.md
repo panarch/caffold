@@ -42,11 +42,12 @@ GitHub APIs.
 
 Codex Tasks use Codex app-server threads as the source of truth and do not
 require a registered project. `/tasks` is the explicit all-threads route.
-Header `Open Tasks` enters `/tasks?cwd=...`, which filters to threads whose
-`cwd` exactly matches the current browser directory; header `All Tasks` enters
-plain `/tasks`. Project-scoped task routes remain as filters/context routes:
-they restrict the thread list to threads whose `cwd` is under the project root
-and provide a project-root default cwd for new turns.
+Header `Open Tasks` enters `/tasks?cwd=...`. Inside Git, the backend resolves the
+cwd to its common Git directory and includes threads from every worktree of that
+repository; outside Git it uses canonical cwd exact matching. Header `All Tasks`
+enters plain `/tasks`. Project-scoped task routes remain as filters/context
+routes: they restrict the thread list to threads whose `cwd` is under the project
+root and provide a project-root default cwd for new turns.
 
 ## Route Definitions
 

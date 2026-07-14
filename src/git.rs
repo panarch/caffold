@@ -114,6 +114,10 @@ pub fn repository_metadata_paths(repository: &Repository) -> Option<RepositoryMe
     })
 }
 
+pub fn head_sha(repository: &Repository) -> Option<String> {
+    run_git(&repository.root, &["rev-parse", "HEAD"]).filter(|head| !head.is_empty())
+}
+
 pub fn status_entries(repository: &Repository) -> Option<Vec<StatusEntry>> {
     let output = run_git_bytes(
         &repository.root,

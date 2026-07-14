@@ -267,6 +267,12 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
     "/assets/pages/(review-workspace)/(git)/diff/page.js",
   );
   expect(serviceWorker).toContain(
+    "/assets/components/git-diff-browser.js",
+  );
+  expect(serviceWorker).toContain(
+    "/assets/components/git-diff-browser/changes-tree.js",
+  );
+  expect(serviceWorker).not.toContain(
     "/assets/pages/(review-workspace)/(git)/diff/components/changes-tree.js",
   );
   expect(serviceWorker).toContain(
@@ -694,7 +700,12 @@ test("refreshes Files and Git after external filesystem changes", async ({ page 
   } finally {
     await page.goto("/");
     await page.waitForTimeout(100);
-    await rm(repositoryPath, { recursive: true, force: true });
+    await rm(repositoryPath, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 100,
+    });
   }
 });
 
@@ -976,7 +987,9 @@ test("opens global Tasks without a registered project", async ({ page }) => {
     preview: "Hello without a registered project",
     status: "completed",
     cwd: "tests/fixtures/home",
+    cwdPath: "tests/fixtures/home",
     relativeCwd: "tests/fixtures/home",
+    worktree: null,
     createdMs: 1_767_200_000_000,
     updatedMs: 1_767_200_000_000,
     recencyMs: 1_767_200_000_000,
@@ -1046,6 +1059,57 @@ test("opens global Tasks without a registered project", async ({ page }) => {
 
     return route.continue();
   });
+  await page.route(/\/api\/git\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository: {
+          rootPath: ".",
+          branch: "main",
+          dirty: true,
+        },
+        additions: 1,
+        deletions: 0,
+        files: [
+          {
+            path: "README.md",
+            repoRelativePath: "README.md",
+            status: "??",
+            category: "untracked",
+            staged: false,
+            unstaged: false,
+            untracked: true,
+          },
+        ],
+      }),
+    }),
+  );
+  await page.route(/\/api\/git\/diff(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("path")).toBe(".");
+    expect(url.searchParams.get("file")).toBe("README.md");
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository: {
+          rootPath: ".",
+          branch: "main",
+          dirty: true,
+        },
+        path: "README.md",
+        repoRelativePath: "README.md",
+        kind: "untracked",
+        diff: [
+          "diff --git a/README.md b/README.md",
+          "new file mode 100644",
+          "--- /dev/null",
+          "+++ b/README.md",
+          "@@ -0,0 +1 @@",
+          "+Global worktree review",
+        ].join("\n"),
+      }),
+    });
+  });
 
   await page.goto("/");
   const scopedCodexPopover = await openHeaderActionGroup(page, "codex");
@@ -1097,7 +1161,54 @@ test("opens global Tasks without a registered project", async ({ page }) => {
   await expect(tasksPage).toContainText("Hello from a global Codex thread.");
   const openDiff = tasksPage.getByRole("button", { name: "Open Diff" });
   await expect(openDiff).toBeDisabled();
-  await expect(tasksPage).toContainText("Register project to review diff.");
+  await expect(tasksPage).toContainText("Diff is unavailable outside a Git worktree.");
+
+  Object.assign(task, {
+    worktree: {
+      rootPath: ".",
+      branch: "main",
+      headSha: "0123456789abcdef",
+      relativeCwd: "",
+      linked: false,
+    },
+  });
+  await page.reload();
+  await expect(tasksPage.locator(".task-detail-meta")).toContainText("main");
+
+  await tasksPage.locator('button[data-task-action="toggle-files"]').click();
+  await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
+    "data-task-detail-view",
+    "files",
+  );
+  const taskFiles = tasksPage.locator(".task-files-view");
+  await expect(
+    taskFiles.locator('button[data-entry-path="README.md"]'),
+  ).toBeVisible();
+  await page.locator("caffold-codex-workspace .codex-workspace-close").click();
+  await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
+    "data-task-detail-view",
+    "conversation",
+  );
+
+  await tasksPage.getByRole("button", { name: "Open Diff" }).click();
+  await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
+    "data-task-detail-view",
+    "diff",
+  );
+  const taskDiff = tasksPage.locator(".task-diff-view");
+  const readmeChange = taskDiff.locator(
+    'caffold-git-diff-changes-tree button[data-repo-relative-path="README.md"]',
+  );
+  await expect(readmeChange).toBeVisible();
+  await readmeChange.click();
+  await expect(taskDiff.locator("caffold-review-file-viewer")).toContainText(
+    "Global worktree review",
+  );
+  await page.locator("caffold-codex-workspace .codex-workspace-close").click();
+  await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
+    "data-task-detail-view",
+    "conversation",
+  );
 });
 
 test("opens Tasks from Codex header and runs a minimal task loop", async ({ page }, testInfo) => {
@@ -1151,6 +1262,8 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   let createTaskRequests = 0;
   let taskDetailReadRequests = 0;
   let approvalRequests = 0;
+  let gitStatusRequests = 0;
+  let includeTaskDiffLiveFile = false;
   let resolveFollowUpRequest;
   let releaseFollowUpResponse;
   const followUpRequested = new Promise((resolve) => {
@@ -1213,11 +1326,14 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     };
   };
 
-  await page.route(/\/api\/git\/status(?:\?|$)/, (route) =>
-    route.fulfill({
+  await page.route(/\/api\/git\/status(?:\?|$)/, (route) => {
+    gitStatusRequests += 1;
+    return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
         repository: { rootPath: "src", branch: "main", dirty: true },
+        additions: includeTaskDiffLiveFile ? 6 : 5,
+        deletions: 4,
         files: [
           {
             path: "src/planner.rs",
@@ -1255,10 +1371,23 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
             unstaged: true,
             untracked: false,
           },
+          ...(includeTaskDiffLiveFile
+            ? [
+                {
+                  path: "src/live-update.rs",
+                  repoRelativePath: "live-update.rs",
+                  status: "??",
+                  category: "untracked",
+                  staged: false,
+                  unstaged: false,
+                  untracked: true,
+                },
+              ]
+            : []),
         ],
       }),
-    }),
-  );
+    });
+  });
   await page.route(/\/api\/git\/diff(?:\?|$)/, (route) => {
     const url = new URL(route.request().url());
     const file = url.searchParams.get("file");
@@ -1328,7 +1457,15 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
         preview: "Inspect the planner changes",
         status: "waiting_for_approval",
         cwd: "src",
+        cwdPath: "src",
         relativeCwd: "",
+        worktree: {
+          rootPath: "src",
+          branch: "main",
+          headSha: "0123456789abcdef0123456789abcdef01234567",
+          relativeCwd: "",
+          linked: false,
+        },
         createdMs: now,
         updatedMs: now + 4,
         recencyMs: now + 4,
@@ -1762,6 +1899,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(tasksPage).toHaveAttribute("data-tasks-view", "detail");
   await expect(tasksPage).toContainText("Inspect the planner changes");
   await expect(tasksPage).toContainText("Thread thread_1");
+  await expect(tasksPage.locator(".task-detail-meta")).toContainText("main · src");
   await expect(tasksPage.locator(".task-conversation")).toBeVisible();
   await expect(tasksPage.locator('.task-message[data-message-role="user"]')).toContainText(
     "Inspect the planner changes",
@@ -1888,6 +2026,9 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(taskDetailsPopover).toContainText("completed");
   await expect(taskDetailsPopover).toContainText(threadId);
   await expect(taskDetailsPopover).toContainText("src");
+  await expect(taskDetailsPopover).toContainText("Worktree");
+  await expect(taskDetailsPopover).toContainText("Branch");
+  await expect(taskDetailsPopover).toContainText("main");
   if (testInfo.project.name === "phone") {
     const mobileHeaderMetrics = await tasksPage.evaluate((element) => {
       const header = element.querySelector(".tasks-header").getBoundingClientRect();
@@ -2150,33 +2291,69 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   expect(conversationBeforeDiff.maxScrollTop).toBeGreaterThan(0);
   const taskDetailReadsBeforeDiff = taskDetailReadRequests;
   await tasksPage.getByRole("button", { name: "Open Diff" }).click();
-  await expect(page).toHaveURL(`/projects/${project.id}/diff/planner.rs`);
-  await expect(page.locator("caffold-review-workspace")).toBeVisible();
-  await expect(codexWorkspace).toBeHidden();
-  const taskDiffTree = page.locator("caffold-git-diff-changes-tree");
+  await expect(page).toHaveURL(
+    `/tasks/${threadId}?cwd=${encodeURIComponent(project.relativePath)}`,
+  );
+  await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
+    "data-task-detail-view",
+    "diff",
+  );
+  await expect(codexWorkspace).toBeVisible();
+  await expect(page.locator("caffold-review-workspace")).toBeHidden();
+  const taskDiffView = tasksPage.locator(".task-diff-view");
+  await expect(taskDiffView).toBeVisible();
+  await expect(tasksPage.locator(".task-conversation-pane")).toBeHidden();
+  const taskDiffTree = taskDiffView.locator("caffold-git-diff-changes-tree");
   await expect(taskDiffTree.locator("button[data-change-path]")).toHaveCount(4);
   await expect(taskDiffTree.locator('button[data-task-related="true"]')).toHaveCount(3);
   await expect(
     taskDiffTree.locator('button[data-repo-relative-path="unrelated.rs"]'),
   ).not.toHaveAttribute("data-task-related", "true");
+  await taskDiffTree.locator('button[data-repo-relative-path="planner.rs"]').click();
   await expect(
     taskDiffTree.locator('button[data-repo-relative-path="planner.rs"]'),
   ).toHaveAttribute("aria-current", "true");
-  const taskDiffViewer = page.locator(
-    "caffold-git-diff-page caffold-review-file-viewer",
-  );
+  const taskDiffViewer = taskDiffView.locator("caffold-review-file-viewer");
   await expect(taskDiffViewer).toContainText("planner.rs");
   await expect(taskDiffViewer).toContainText(
     "new planner behavior",
   );
+  const statusRequestsBeforeWatchChange = gitStatusRequests;
+  includeTaskDiffLiveFile = true;
+  await page.evaluate(() => {
+    const source = window.__caffoldMockEventSources.find((candidate) =>
+      candidate.url.startsWith("/api/watch?"),
+    );
+    source?.emit("change", {
+      revision: 4,
+      paths: ["src/live-update.rs"],
+      gitStatusChanged: true,
+      gitRefsChanged: false,
+      overflow: false,
+    });
+  });
+  await expect.poll(() => gitStatusRequests).toBeGreaterThan(statusRequestsBeforeWatchChange);
+  const liveUpdateChange = taskDiffTree.locator(
+    'button[data-repo-relative-path="live-update.rs"]',
+  );
+  await expect(liveUpdateChange).toHaveCount(1);
+  if (testInfo.project.name === "phone") {
+    await expect(liveUpdateChange).toBeHidden();
+  } else {
+    await expect(liveUpdateChange).toBeVisible();
+  }
+  await expect(
+    taskDiffTree.locator('button[data-repo-relative-path="planner.rs"]'),
+  ).toHaveAttribute("aria-current", "true");
+  await expect(taskDiffViewer).toContainText("new planner behavior");
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-related-diff");
 
-  await page.goBack();
-  await expect(page).toHaveURL(
-    `/tasks/${threadId}?cwd=${encodeURIComponent(project.relativePath)}`,
+  await page.locator("caffold-codex-workspace .codex-workspace-close").click();
+  await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
+    "data-task-detail-view",
+    "conversation",
   );
-  await expect(codexWorkspace).toBeVisible();
   await expect(tasksPage.locator(".task-conversation-pane")).toHaveAttribute(
     "data-review-persist-probe",
     "kept",
@@ -2185,36 +2362,6 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(tasksPage.locator(".task-follow-up-form .task-model-button")).toContainText(
     "Very high",
   );
-  await expect
-    .poll(async () =>
-      Math.abs(
-        (await conversationScroller.evaluate((element) => element.scrollTop)) -
-          conversationBeforeDiff.scrollTop,
-      ),
-    )
-    .toBeLessThanOrEqual(2);
-  expect(taskDetailReadRequests).toBe(taskDetailReadsBeforeDiff);
-
-  await page.goForward();
-  await expect(page).toHaveURL(`/projects/${project.id}/diff/planner.rs`);
-  const closeReviewWorkspace = page.getByRole("button", {
-    name: "Close review workspace",
-  });
-  if (!(await closeReviewWorkspace.isVisible())) {
-    await page.getByRole("button", { name: "Back to changes" }).click();
-    await expect(closeReviewWorkspace).toBeVisible();
-  }
-  await closeReviewWorkspace.click();
-  await expect(page).toHaveURL(
-    `/tasks/${threadId}?cwd=${encodeURIComponent(project.relativePath)}`,
-  );
-  await expect(codexWorkspace).toBeVisible();
-  await expect(page.locator("caffold-review-workspace")).toBeHidden();
-  await expect(tasksPage.locator(".task-conversation-pane")).toHaveAttribute(
-    "data-review-persist-probe",
-    "kept",
-  );
-  await expect(followUpTextarea).toHaveValue("Keep this draft while reviewing");
   await expect
     .poll(async () =>
       Math.abs(
@@ -4242,16 +4389,16 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   );
   await captureReviewScreenshot(page, testInfo, "diff-changes-summary");
   if (testInfo.project.name !== "phone") {
-    const resizeHandle = workspace.locator(".git-mode-diff .review-panel-resizer");
+    const resizeHandle = workspace.locator(".git-mode-diff .git-diff-panel-resizer");
     await expect(resizeHandle).toBeVisible();
     const beforeReviewWidth = await elementWidth(
       page,
-      "caffold-git-diff-page > caffold-git-diff-changes-tree",
+      "caffold-git-diff-page caffold-git-diff-browser > caffold-git-diff-changes-tree",
     );
     await dragHorizontalResizer(page, resizeHandle, 96);
     const afterReviewWidth = await elementWidth(
       page,
-      "caffold-git-diff-page > caffold-git-diff-changes-tree",
+      "caffold-git-diff-page caffold-git-diff-browser > caffold-git-diff-changes-tree",
     );
     expect(afterReviewWidth).toBeGreaterThan(beforeReviewWidth + 48);
   }

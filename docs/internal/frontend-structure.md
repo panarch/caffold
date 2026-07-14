@@ -49,12 +49,17 @@ caffold-app-shell
         scaffold-file-browser
           scaffold-file-list
           scaffold-file-viewer
+        scaffold-git-diff-browser
+          scaffold-git-diff-changes-tree
+          scaffold-review-file-viewer
   scaffold-review-workspace
     git
       scaffold-git-review-layout
         diff
           scaffold-git-diff-page
-          scaffold-review-file-viewer
+            scaffold-git-diff-browser
+              scaffold-git-diff-changes-tree
+              scaffold-review-file-viewer
         compare
           scaffold-git-compare-page
           scaffold-review-file-viewer
@@ -111,16 +116,18 @@ state mounted while moving between conversation and review subviews.
 `(codex)/tasks/page` owns the Codex task surface: thread-derived
 list/new/detail state, prompt composition, Codex transcript rendering, approval
 cards, SSE subscription, and mobile list/detail switching. Tasks are global by
-default; a registered project is optional context used for filtering, default
-cwd selection, and opening the existing Git diff review surface. It may mount
-the reusable `scaffold-file-browser` as a full task-detail subview that
-switches with the conversation subview while keeping both mounted. Files mode
-hides the task list/detail chrome and gives the file browser the full Codex
-workspace body, with its own back control returning to the conversation. In
-that mode the file browser handles directory/file selection locally and does
-not emit route-changing file browser events to the app root. The app root only
-routes optional project context into the Codex workspace and handles
-cross-surface actions such as opening the existing Git diff review surface.
+default; a registered project is optional context used for filtering and default
+cwd selection. Live worktree context is derived from each thread cwd rather than
+stored by the frontend or Project layer.
+
+Task detail mounts both `scaffold-file-browser` and
+`scaffold-git-diff-browser` as full subviews. Files opens the derived worktree
+root, falling back to the thread cwd outside Git. Diff uses the same reusable
+tree/viewer implementation as the Git review route and is available whenever a
+live worktree context exists, regardless of Project registration. Switching
+conversation/Files/Diff changes visibility without rebuilding the conversation
+DOM, so draft and scroll state remain local to the mounted Tasks page. The app
+root only routes optional project context into the Codex workspace.
 
 `scaffold-project-switcher` owns project record state and project candidate
 state for the current directory. It performs project list/candidate refresh and

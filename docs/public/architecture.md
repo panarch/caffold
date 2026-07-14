@@ -35,8 +35,8 @@ The PWA is the review and control surface. It should be usable from desktop and 
 The backend owns:
 
 - host instance lifecycle
-- project and task registry
-- worktree creation and lookup
+- registered project lookup and optional Caffold-owned annotations
+- live file, git, and worktree-context lookup
 - Codex app-server child process lifecycle
 - JSON-RPC adapter
 - git status, diff, log, and file APIs
@@ -50,12 +50,11 @@ Codex app-server owns Codex thread, turn, approval, and event stream behavior. C
 
 ### GlueSQL + redb
 
-The database stores Caffold-owned state:
+The database stores Caffold-owned state where it adds value:
 
 - host records
 - projects
-- worktree paths
-- Codex thread IDs
+- optional task/thread annotations
 - command/test summaries
 - operation ledger events
 - UI-facing snapshots where useful
@@ -80,4 +79,9 @@ The worktree is the source of truth for code changes. Caffold reads from git and
 
 The initial model is one Caffold backend instance per host. That backend manages one Codex app-server process for the host unless implementation evidence later suggests a different process model.
 
-Tasks are normally bound to one worktree and one Codex thread.
+Codex threads are the Tasks source of truth. Caffold derives an optional
+worktree context live from each thread cwd and does not require a stored
+Project/worktree binding. Open Tasks groups the main checkout and linked
+worktrees by their shared Git repository while each Task keeps its actual
+worktree root for Files and Diff. Worktree lifecycle operations remain outside
+the current Tasks surface.
