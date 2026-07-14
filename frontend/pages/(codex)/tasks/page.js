@@ -11,6 +11,7 @@ import {
 } from "../../../api.js";
 import { escapeHtml } from "../../../components/dom.js";
 import "../../../components/file-browser.js";
+import "../../../components/git-compare-browser.js";
 import "../../../components/git-diff-browser.js";
 import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
 import { createRefreshCoordinator, subscribeToWatch } from "../../../watch.js";
@@ -68,6 +69,7 @@ class CaffoldTasksPage extends HTMLElement {
     };
     this.openModelPickerForm = "";
     this.taskDetailView = "conversation";
+    this.taskDiffMode = "working";
     this.taskDiffStatus = null;
     this.taskDiffError = null;
     this.taskDiffRequestId = 0;
@@ -77,6 +79,10 @@ class CaffoldTasksPage extends HTMLElement {
     this.taskDiffRefreshState = "idle";
     this.taskDiffRefreshCoordinator = createRefreshCoordinator(
       () => this.refreshTaskDiff(),
+      (state) => this.setTaskDiffRefreshState(state),
+    );
+    this.taskCompareRefreshCoordinator = createRefreshCoordinator(
+      () => this.refreshTaskCompare(),
       (state) => this.setTaskDiffRefreshState(state),
     );
     this.boundIconsReady = () => this.render();
@@ -109,8 +115,27 @@ class CaffoldTasksPage extends HTMLElement {
       event.stopPropagation();
       browser.openDiff(event.detail.path, event.detail.kind, event.detail.status);
     });
+    this.addEventListener("caffold:open-compare-diff", (event) => {
+      const browser = closestElement(event.target, "caffold-git-compare-browser");
+      if (!browser || !this.querySelector(".task-diff-view")?.contains(browser)) {
+        return;
+      }
+      event.stopPropagation();
+      browser.openDiff(event.detail.path, event.detail.status);
+    });
+    this.addEventListener("caffold:git-compare-state-change", (event) => {
+      const browser = closestElement(event.target, "caffold-git-compare-browser");
+      if (!browser || !this.querySelector(".task-diff-view")?.contains(browser)) {
+        return;
+      }
+      event.stopPropagation();
+      this.patchTaskDiffHeader();
+    });
     this.addEventListener("caffold:close-file-viewer", (event) => {
-      const browser = closestElement(event.target, "caffold-git-diff-browser");
+      const browser = closestElement(
+        event.target,
+        "caffold-git-diff-browser, caffold-git-compare-browser",
+      );
       if (!browser || !this.querySelector(".task-diff-view")?.contains(browser)) {
         return;
       }
@@ -123,7 +148,14 @@ class CaffoldTasksPage extends HTMLElement {
         return;
       }
       event.stopPropagation();
-      this.requestTaskDiffRefresh();
+      this.requestTaskReviewRefresh();
+    });
+    this.addEventListener("change", (event) => {
+      const select = closestElement(event.target, "select[data-task-compare-base]");
+      if (!select) {
+        return;
+      }
+      this.changeTaskCompareBase(select.value);
     });
     this.addEventListener("input", (event) => {
       const textarea = closestElement(event.target, "textarea[name='prompt']");
@@ -201,6 +233,7 @@ class CaffoldTasksPage extends HTMLElement {
     } else if (route?.threadId) {
       if (this.selectedThreadId !== route.threadId) {
         this.taskDetailView = "conversation";
+        this.taskDiffMode = "working";
         this.unsubscribeTaskDiffWatch();
         this.taskDiffRequestId += 1;
         this.taskDiffStatus = null;
@@ -524,7 +557,11 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
     if (action === "refresh-diff") {
-      this.requestTaskDiffRefresh();
+      this.requestTaskReviewRefresh();
+      return;
+    }
+    if (action === "select-diff-mode") {
+      this.setTaskDiffMode(element.dataset.diffMode);
       return;
     }
     if (action === "interrupt") {
@@ -901,6 +938,7 @@ class CaffoldTasksPage extends HTMLElement {
     const previousComposerFocus = this.captureComposerFocus();
     const previousTaskFilePath = this.captureTaskFileBrowserPath();
     const previousTaskDiffPath = this.captureTaskDiffPath();
+    const previousTaskCompareState = this.captureTaskCompareState();
     this.setAttribute("data-tasks-view", this.view ?? "list");
     this.setAttribute("data-task-detail-view", this.taskDetailView);
     this.innerHTML = `
@@ -916,6 +954,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.updateTaskDetailView();
     this.syncTaskFileBrowser(previousTaskFilePath);
     this.syncTaskDiffBrowser(previousTaskDiffPath);
+    this.syncTaskCompareBrowser(previousTaskCompareState);
   }
 
   captureComposerFocus() {
@@ -968,6 +1007,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.updateTaskDetailView();
     this.syncTaskFileBrowser();
     this.syncTaskDiffBrowser();
+    this.syncTaskCompareBrowser();
     if (nextView === "conversation") {
       window.requestAnimationFrame(() => {
         this.restoreConversationScroll(this.conversationScrollSnapshot());
@@ -1006,6 +1046,22 @@ class CaffoldTasksPage extends HTMLElement {
         "aria-pressed",
         this.taskDetailView === "diff" ? "true" : "false",
       );
+    }
+    this.patchTaskDiffHeader();
+  }
+
+  setTaskDiffMode(mode) {
+    const nextMode = mode === "branch" ? "branch" : "working";
+    if (this.taskDiffMode === nextMode) {
+      return;
+    }
+
+    this.taskDiffMode = nextMode;
+    this.patchTaskDiffHeader();
+    if (nextMode === "branch") {
+      this.syncTaskCompareBrowser();
+    } else {
+      this.syncTaskDiffBrowser();
     }
   }
 
@@ -1052,8 +1108,17 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   captureTaskDiffPath() {
-    const browser = this.querySelector(".task-diff-view caffold-git-diff-browser");
+    const browser = this.querySelector(
+      '.task-diff-panel[data-task-diff-panel="working"] caffold-git-diff-browser',
+    );
     return browser?.changesTree?.selectedPath ?? "";
+  }
+
+  captureTaskCompareState() {
+    const browser = this.querySelector(
+      '.task-diff-panel[data-task-diff-panel="branch"] caffold-git-compare-browser',
+    );
+    return browser?.stateSnapshot() ?? null;
   }
 
   syncTaskDiffBrowser(previousPath = "") {
@@ -1063,7 +1128,9 @@ class CaffoldTasksPage extends HTMLElement {
     }
 
     const rootPath = this.taskDetail?.task?.worktree?.rootPath ?? "";
-    const browser = this.querySelector(".task-diff-view caffold-git-diff-browser");
+    const browser = this.querySelector(
+      '.task-diff-panel[data-task-diff-panel="working"] caffold-git-diff-browser',
+    );
     if (!rootPath || !browser) {
       this.unsubscribeTaskDiffWatch();
       return;
@@ -1097,8 +1164,61 @@ class CaffoldTasksPage extends HTMLElement {
     this.subscribeTaskDiffWatch(rootPath);
   }
 
+  syncTaskCompareBrowser(previousState = null) {
+    if (this.taskDetailView !== "diff" || this.taskDiffMode !== "branch") {
+      return;
+    }
+
+    const task = this.taskDetail?.task;
+    const rootPath = task?.worktree?.rootPath ?? "";
+    const browser = this.querySelector(
+      '.task-diff-panel[data-task-diff-panel="branch"] caffold-git-compare-browser',
+    );
+    if (!rootPath || !browser) {
+      return;
+    }
+
+    browser.ensureRendered();
+    if (previousState?.currentPath === rootPath) {
+      browser.restoreState(previousState);
+      return;
+    }
+
+    const headRef = this.taskCompareHeadRef();
+    const repository = this.taskDiffStatus?.repository ?? {
+      rootPath,
+      branch: task.worktree.branch ?? null,
+    };
+    browser.openCompare({
+      path: rootPath,
+      repository,
+      headRef,
+      preserveViewer: false,
+    });
+  }
+
+  taskCompareHeadRef() {
+    return this.taskDetail?.task?.worktree?.branch || "HEAD";
+  }
+
+  async changeTaskCompareBase(baseRef) {
+    const browser = this.querySelector(
+      '.task-diff-panel[data-task-diff-panel="branch"] caffold-git-compare-browser',
+    );
+    if (!browser || !baseRef) {
+      return;
+    }
+    await browser.changeRefs(baseRef, this.taskCompareHeadRef());
+  }
+
   requestTaskDiffRefresh() {
     return this.taskDiffRefreshCoordinator.request();
+  }
+
+  requestTaskReviewRefresh() {
+    return this.taskDiffMode === "branch"
+      ? this.taskCompareRefreshCoordinator.request()
+      : this.requestTaskDiffRefresh();
   }
 
   async refreshTaskDiff() {
@@ -1119,7 +1239,9 @@ class CaffoldTasksPage extends HTMLElement {
 
       this.taskDiffStatus = status;
       this.taskDiffError = null;
-      const browser = this.querySelector(".task-diff-view caffold-git-diff-browser");
+      const browser = this.querySelector(
+        '.task-diff-panel[data-task-diff-panel="working"] caffold-git-diff-browser',
+      );
       if (browser) {
         browser.setContext({ path: rootPath, repository: status.repository });
         browser.setStatus(status, { preserveState: true });
@@ -1128,15 +1250,37 @@ class CaffoldTasksPage extends HTMLElement {
         );
         await browser.refreshSelectedDiff(status);
       }
+      if (this.taskDiffMode === "branch") {
+        this.syncTaskCompareBrowser();
+      }
       return status;
     } catch (error) {
       if (requestId !== this.taskDiffRequestId) {
         return null;
       }
       this.taskDiffError = error;
-      this.querySelector(".task-diff-view caffold-git-diff-browser")?.setError(error);
+      this.querySelector(
+        '.task-diff-panel[data-task-diff-panel="working"] caffold-git-diff-browser',
+      )?.setError(error);
       throw error;
     }
+  }
+
+  async refreshTaskCompare() {
+    if (this.taskDetailView !== "diff" || this.taskDiffMode !== "branch") {
+      return null;
+    }
+    const browser = this.querySelector(
+      '.task-diff-panel[data-task-diff-panel="branch"] caffold-git-compare-browser',
+    );
+    if (!browser) {
+      return null;
+    }
+    if (!browser.refsPayload) {
+      this.syncTaskCompareBrowser();
+      return null;
+    }
+    return await browser.refresh();
   }
 
   subscribeTaskDiffWatch(rootPath) {
@@ -1156,6 +1300,9 @@ class CaffoldTasksPage extends HTMLElement {
       onChange: (change) => {
         if (change.gitStatusChanged || change.overflow) {
           this.requestTaskDiffRefresh();
+        }
+        if ((change.gitRefsChanged || change.overflow) && this.taskDiffMode === "branch") {
+          this.taskCompareRefreshCoordinator.request();
         }
       },
       onError: () => {
@@ -1178,8 +1325,9 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   patchTaskDiffRefreshState() {
+    const panel = this.taskDiffMode === "branch" ? "branch" : "working";
     const viewer = this.querySelector(
-      ".task-diff-view caffold-git-diff-browser caffold-review-file-viewer",
+      `.task-diff-panel[data-task-diff-panel="${panel}"] caffold-review-file-viewer`,
     );
     viewer?.setRefreshState(
       this.taskDiffWatchUnavailable
@@ -1194,10 +1342,74 @@ class CaffoldTasksPage extends HTMLElement {
       button.classList.toggle("is-unavailable", this.taskDiffWatchUnavailable);
       const label = this.taskDiffWatchUnavailable
         ? "Live updates unavailable. Refresh manually."
-        : "Refresh task diff";
+        : this.taskReviewRefreshLabel();
       button.setAttribute("aria-label", label);
       button.title = label;
     }
+  }
+
+  patchTaskDiffHeader() {
+    const view = this.querySelector(".task-diff-view");
+    if (!view) {
+      return;
+    }
+    view.dataset.taskDiffMode = this.taskDiffMode;
+    for (const button of view.querySelectorAll("button[data-diff-mode]")) {
+      button.setAttribute(
+        "aria-pressed",
+        button.dataset.diffMode === this.taskDiffMode ? "true" : "false",
+      );
+    }
+    const subtitle = view.querySelector(".task-diff-subtitle");
+    if (subtitle) {
+      subtitle.textContent = this.taskDiffSubtitle();
+    }
+    const compareBrowser = view.querySelector("caffold-git-compare-browser");
+    const baseSelect = view.querySelector("select[data-task-compare-base]");
+    if (baseSelect) {
+      const refs = compareBrowser?.refsPayload?.refs ?? [];
+      baseSelect.innerHTML = refs.length
+        ? renderTaskCompareRefOptions(refs, compareBrowser.baseRef)
+        : `<option value="">Loading refs...</option>`;
+      baseSelect.disabled = refs.length === 0;
+      if (compareBrowser?.baseRef) {
+        baseSelect.value = compareBrowser.baseRef;
+      }
+    }
+    const head = view.querySelector("[data-task-compare-head]");
+    if (head) {
+      head.textContent = this.taskCompareHeadRef();
+      head.title = this.taskCompareHeadRef();
+    }
+    this.patchTaskDiffRefreshState();
+  }
+
+  taskDiffSubtitle() {
+    if (this.taskDiffMode === "branch") {
+      const browser = this.querySelector(
+        '.task-diff-panel[data-task-diff-panel="branch"] caffold-git-compare-browser',
+      );
+      const compare = browser?.compare;
+      if (!compare) {
+        return `${this.taskCompareHeadRef()} · Loading comparison`;
+      }
+      const count = compare.files?.length ?? 0;
+      return `${compare.baseRef}...${compare.headRef} · ${count} ${count === 1 ? "file" : "files"} · +${compare.additions} -${compare.deletions}`;
+    }
+
+    const task = this.taskDetail?.task;
+    const status = this.taskDiffStatus;
+    const count = status?.files?.length ?? 0;
+    const stats = status
+      ? `${count} ${count === 1 ? "file" : "files"} · +${status.additions} -${status.deletions}`
+      : "Loading changes";
+    return `${taskWorktreeRef(task)} · ${stats}`;
+  }
+
+  taskReviewRefreshLabel() {
+    return this.taskDiffMode === "branch"
+      ? "Refresh branch comparison"
+      : "Refresh task diff";
   }
 
   syncComposerTextareas() {
@@ -1691,30 +1903,65 @@ class CaffoldTasksPage extends HTMLElement {
     if (!task?.worktree) {
       return "";
     }
-    const status = this.taskDiffStatus;
-    const fileCount = status?.files?.length ?? 0;
-    const stats = status ? `${fileCount} ${fileCount === 1 ? "file" : "files"} · +${status.additions} -${status.deletions}` : "Loading changes";
     const refreshLabel = this.taskDiffWatchUnavailable
       ? "Live updates unavailable. Refresh manually."
-      : "Refresh task diff";
+      : this.taskReviewRefreshLabel();
     return `
-      <section class="task-diff-view" aria-label="Task worktree diff">
+      <section
+        class="task-diff-view"
+        data-task-diff-mode="${escapeHtml(this.taskDiffMode)}"
+        aria-label="Task worktree review"
+      >
         <header class="task-diff-header">
-          <div>
+          <div class="task-diff-heading">
             <h3>Diff</h3>
-            <p>${escapeHtml(`${taskWorktreeRef(task)} · ${stats}`)}</p>
+            <p class="task-diff-subtitle">${escapeHtml(this.taskDiffSubtitle())}</p>
           </div>
-          <button
-            type="button"
-            class="task-icon-button${this.taskDiffRefreshState === "refreshing" ? " is-refreshing" : ""}${this.taskDiffWatchUnavailable ? " is-unavailable" : ""}"
-            data-task-action="refresh-diff"
-            aria-label="${escapeHtml(refreshLabel)}"
-            title="${escapeHtml(refreshLabel)}"
-          >
-            ${renderInlineIcon("RefreshCw", "Refresh task diff", "task-refresh-icon")}
-          </button>
+          <div class="task-diff-controls">
+            <div class="task-diff-mode-switch" role="group" aria-label="Diff mode">
+              <button
+                type="button"
+                data-task-action="select-diff-mode"
+                data-diff-mode="working"
+                aria-pressed="${this.taskDiffMode === "working"}"
+              >Working Tree</button>
+              <button
+                type="button"
+                data-task-action="select-diff-mode"
+                data-diff-mode="branch"
+                aria-pressed="${this.taskDiffMode === "branch"}"
+              >Branch</button>
+            </div>
+            <div class="task-compare-controls" aria-label="Branch comparison">
+              <label>
+                <span>Base</span>
+                <select data-task-compare-base disabled>
+                  <option value="">Loading refs...</option>
+                </select>
+              </label>
+              <span class="task-compare-separator" aria-hidden="true">...</span>
+              <span class="task-compare-head-label">Head</span>
+              <span class="task-compare-head" data-task-compare-head title="${escapeHtml(this.taskCompareHeadRef())}">
+                ${escapeHtml(this.taskCompareHeadRef())}
+              </span>
+            </div>
+            <button
+              type="button"
+              class="task-icon-button${this.taskDiffRefreshState === "refreshing" ? " is-refreshing" : ""}${this.taskDiffWatchUnavailable ? " is-unavailable" : ""}"
+              data-task-action="refresh-diff"
+              aria-label="${escapeHtml(refreshLabel)}"
+              title="${escapeHtml(refreshLabel)}"
+            >
+              ${renderInlineIcon("RefreshCw", refreshLabel, "task-refresh-icon")}
+            </button>
+          </div>
         </header>
-        <caffold-git-diff-browser></caffold-git-diff-browser>
+        <div class="task-diff-panel" data-task-diff-panel="working">
+          <caffold-git-diff-browser></caffold-git-diff-browser>
+        </div>
+        <div class="task-diff-panel" data-task-diff-panel="branch">
+          <caffold-git-compare-browser></caffold-git-compare-browser>
+        </div>
       </section>
     `;
   }
@@ -2481,6 +2728,19 @@ function taskWorktreeLabel(task) {
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+function renderTaskCompareRefOptions(refs, selectedRef) {
+  return refs
+    .map((ref) => {
+      const name = `${ref?.name ?? ""}`;
+      if (!name) {
+        return "";
+      }
+      const selected = name === selectedRef ? " selected" : "";
+      return `<option value="${escapeHtml(name)}"${selected}>${escapeHtml(name)}</option>`;
+    })
+    .join("");
 }
 
 function normalizeTaskPath(path) {

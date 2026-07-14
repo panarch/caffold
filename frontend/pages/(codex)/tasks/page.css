@@ -330,6 +330,7 @@ caffold-tasks-page .task-files-view {
 caffold-tasks-page .task-diff-view {
   display: none;
   grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   height: 100%;
   background: var(--surface);
 }
@@ -363,6 +364,88 @@ caffold-tasks-page .task-diff-header {
   gap: 12px;
   padding: 10px 14px 10px calc(14px + var(--task-header-leading-space, 0px));
   border-bottom: 1px solid var(--border);
+}
+
+caffold-tasks-page .task-diff-heading {
+  min-width: 0;
+}
+
+caffold-tasks-page .task-diff-controls,
+caffold-tasks-page .task-compare-controls,
+caffold-tasks-page .task-compare-controls label {
+  display: flex;
+  align-items: center;
+}
+
+caffold-tasks-page .task-diff-controls {
+  min-width: 0;
+  gap: 8px;
+}
+
+caffold-tasks-page .task-diff-mode-switch {
+  display: inline-grid;
+  grid-template-columns: repeat(2, max-content);
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-muted);
+}
+
+caffold-tasks-page .task-diff-mode-switch button {
+  min-height: 28px;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+caffold-tasks-page .task-diff-mode-switch button[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+caffold-tasks-page .task-compare-controls {
+  display: none;
+  min-width: 0;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+caffold-tasks-page .task-diff-view[data-task-diff-mode="branch"] .task-compare-controls {
+  display: flex;
+}
+
+caffold-tasks-page .task-compare-controls label {
+  min-width: 0;
+  gap: 5px;
+}
+
+caffold-tasks-page .task-compare-controls select {
+  width: min(28vw, 250px);
+  min-width: 120px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+caffold-tasks-page .task-compare-separator {
+  font-weight: 700;
+}
+
+caffold-tasks-page .task-compare-head {
+  max-width: 220px;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 caffold-tasks-page .task-diff-header h3,
@@ -411,9 +494,79 @@ caffold-tasks-page .task-files-view caffold-file-browser {
   height: 100%;
 }
 
-caffold-tasks-page .task-diff-view caffold-git-diff-browser {
+caffold-tasks-page .task-diff-panel {
+  display: none;
+  grid-row: 2;
+  grid-column: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+caffold-tasks-page .task-diff-view[data-task-diff-mode="working"]
+  .task-diff-panel[data-task-diff-panel="working"],
+caffold-tasks-page .task-diff-view[data-task-diff-mode="branch"]
+  .task-diff-panel[data-task-diff-panel="branch"] {
+  display: block;
+}
+
+caffold-tasks-page .task-diff-panel > caffold-git-diff-browser,
+caffold-tasks-page .task-diff-panel > caffold-git-compare-browser {
+  display: grid;
+  width: 100%;
   min-height: 0;
   height: 100%;
+}
+
+@media (max-width: 860px) {
+  caffold-tasks-page .task-diff-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  caffold-tasks-page .task-diff-controls {
+    justify-content: space-between;
+  }
+
+  caffold-tasks-page .task-compare-controls {
+    flex: 1;
+  }
+
+  caffold-tasks-page .task-compare-controls select {
+    width: min(38vw, 220px);
+  }
+
+  caffold-tasks-page .task-compare-head-label {
+    display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  caffold-tasks-page .task-diff-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  caffold-tasks-page .task-diff-mode-switch {
+    justify-self: start;
+  }
+
+  caffold-tasks-page .task-compare-controls {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+
+  caffold-tasks-page .task-compare-controls label {
+    flex: 1;
+  }
+
+  caffold-tasks-page .task-compare-controls select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  caffold-tasks-page .task-compare-head {
+    max-width: 34vw;
+  }
 }
 
 @keyframes task-refresh-spin {

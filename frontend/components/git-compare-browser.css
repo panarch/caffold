@@ -1,0 +1,65 @@
+caffold-git-compare-browser {
+  display: grid;
+  grid-template-columns: var(--git-compare-panel-width, 320px) 6px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+caffold-git-compare-browser.is-resizing-panel {
+  cursor: col-resize;
+  user-select: none;
+}
+
+caffold-git-compare-browser > .git-compare-panel-resizer {
+  grid-column: 2;
+  min-width: 0;
+  border-right: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  background: var(--surface-muted);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+caffold-git-compare-browser > .git-compare-panel-resizer:hover,
+caffold-git-compare-browser > .git-compare-panel-resizer:focus-visible,
+caffold-git-compare-browser.is-resizing-panel > .git-compare-panel-resizer {
+  background: #d9e6df;
+  outline: none;
+}
+
+caffold-git-compare-browser > caffold-git-compare-tree {
+  grid-column: 1;
+}
+
+caffold-git-compare-browser > caffold-review-file-viewer {
+  grid-column: 3;
+}
+
+@media (max-width: 860px) {
+  caffold-git-compare-browser {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  caffold-git-compare-browser > caffold-git-compare-tree,
+  caffold-git-compare-browser > caffold-review-file-viewer {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  caffold-git-compare-browser > caffold-git-compare-tree {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  caffold-git-compare-browser[data-detail-view="list"] > caffold-review-file-viewer,
+  caffold-git-compare-browser[data-detail-view="viewer"] > caffold-git-compare-tree {
+    display: none;
+  }
+
+  caffold-git-compare-browser > .git-compare-panel-resizer {
+    display: none;
+  }
+}

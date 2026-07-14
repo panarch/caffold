@@ -291,6 +291,12 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
     "/assets/pages/(review-workspace)/(git)/(log)/commit/components/changes-tree.js",
   );
   expect(serviceWorker).toContain(
+    "/assets/components/git-compare-browser.js",
+  );
+  expect(serviceWorker).toContain(
+    "/assets/components/git-compare-browser/compare-tree.js",
+  );
+  expect(serviceWorker).not.toContain(
     "/assets/pages/(review-workspace)/(git)/compare/components/compare-tree.js",
   );
   expect(serviceWorker).not.toContain(
@@ -1201,9 +1207,11 @@ test("opens global Tasks without a registered project", async ({ page }) => {
   );
   await expect(readmeChange).toBeVisible();
   await readmeChange.click();
-  await expect(taskDiff.locator("caffold-review-file-viewer")).toContainText(
-    "Global worktree review",
-  );
+  await expect(
+    taskDiff.locator(
+      '.task-diff-panel[data-task-diff-panel="working"] caffold-review-file-viewer',
+    ),
+  ).toContainText("Global worktree review");
   await page.locator("caffold-codex-workspace .codex-workspace-close").click();
   await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
     "data-task-detail-view",
@@ -1263,6 +1271,9 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   let taskDetailReadRequests = 0;
   let approvalRequests = 0;
   let gitStatusRequests = 0;
+  let gitRefsRequests = 0;
+  let gitCompareRequests = 0;
+  let gitCompareDiffRequests = 0;
   let includeTaskDiffLiveFile = false;
   let resolveFollowUpRequest;
   let releaseFollowUpResponse;
@@ -1407,6 +1418,75 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           "@@ -1 +1 @@",
           "-old planner behavior",
           "+new planner behavior",
+        ].join("\n"),
+      }),
+    });
+  });
+  await page.route(/\/api\/git\/refs(?:\?|$)/, (route) => {
+    gitRefsRequests += 1;
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("path")).toBe("src");
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository: { rootPath: "src", branch: "main", dirty: true },
+        refs: [
+          { name: "main", kind: "local" },
+          { name: "origin/main", kind: "remote" },
+          { name: "origin/release", kind: "remote" },
+        ],
+        currentRef: "main",
+        defaultBaseRef: "origin/main",
+        defaultHeadRef: "main",
+      }),
+    });
+  });
+  await page.route(/\/api\/git\/compare(?:\?|$)/, (route) => {
+    gitCompareRequests += 1;
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("path")).toBe("src");
+    expect(url.searchParams.get("head")).toBe("main");
+    const baseRef = url.searchParams.get("base");
+    const path = baseRef === "origin/release" ? "src/release.rs" : "src/planner.rs";
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository: { rootPath: "src", branch: "main", dirty: true },
+        baseRef,
+        headRef: "main",
+        additions: baseRef === "origin/release" ? 7 : 3,
+        deletions: baseRef === "origin/release" ? 2 : 1,
+        files: [
+          {
+            path,
+            repoRelativePath: path.replace(/^src\//, ""),
+            status: baseRef === "origin/release" ? "A" : "M",
+          },
+        ],
+      }),
+    });
+  });
+  await page.route(/\/api\/git\/compare-diff(?:\?|$)/, (route) => {
+    gitCompareDiffRequests += 1;
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("path")).toBe("src");
+    expect(url.searchParams.get("head")).toBe("main");
+    const file = url.searchParams.get("file");
+    const relativePath = file.replace(/^src\//, "");
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository: { rootPath: "src", branch: "main", dirty: true },
+        path: file,
+        repoRelativePath: relativePath,
+        kind: `${url.searchParams.get("base")}...main`,
+        diff: [
+          `diff --git a/${relativePath} b/${relativePath}`,
+          `--- a/${relativePath}`,
+          `+++ b/${relativePath}`,
+          "@@ -1 +1 @@",
+          "-old branch behavior",
+          "+new branch behavior",
         ].join("\n"),
       }),
     });
@@ -2313,7 +2393,9 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(
     taskDiffTree.locator('button[data-repo-relative-path="planner.rs"]'),
   ).toHaveAttribute("aria-current", "true");
-  const taskDiffViewer = taskDiffView.locator("caffold-review-file-viewer");
+  const taskDiffViewer = taskDiffView.locator(
+    '.task-diff-panel[data-task-diff-panel="working"] caffold-review-file-viewer',
+  );
   await expect(taskDiffViewer).toContainText("planner.rs");
   await expect(taskDiffViewer).toContainText(
     "new planner behavior",
@@ -2348,6 +2430,39 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(taskDiffViewer).toContainText("new planner behavior");
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-related-diff");
+
+  const refsBeforeBranch = gitRefsRequests;
+  const compareBeforeBranch = gitCompareRequests;
+  await taskDiffView.getByRole("button", { name: "Branch" }).click();
+  await expect(taskDiffView).toHaveAttribute("data-task-diff-mode", "branch");
+  await expect.poll(() => gitRefsRequests).toBeGreaterThan(refsBeforeBranch);
+  await expect.poll(() => gitCompareRequests).toBeGreaterThan(compareBeforeBranch);
+  await expect(taskDiffView.locator("select[data-task-compare-base]")).toHaveValue(
+    "origin/main",
+  );
+  await expect(taskDiffView.locator("[data-task-compare-head]")).toHaveText("main");
+  const taskCompareTree = taskDiffView.locator("caffold-git-compare-tree");
+  const taskCompareFile = taskCompareTree.locator(
+    'button[data-compare-path="src/planner.rs"]',
+  );
+  await expect(taskCompareFile).toBeVisible();
+  await taskCompareFile.click();
+  await expect.poll(() => gitCompareDiffRequests).toBeGreaterThan(0);
+  const taskCompareViewer = taskDiffView.locator(
+    '.task-diff-panel[data-task-diff-panel="branch"] caffold-review-file-viewer',
+  );
+  await expect(taskCompareViewer).toContainText("new branch behavior");
+  await taskDiffView.locator("select[data-task-compare-base]").selectOption("origin/release");
+  await expect(taskCompareTree.locator('button[data-compare-path="src/release.rs"]')).toBeVisible();
+  await stabilizeDynamicText(page);
+  await captureReviewScreenshot(page, testInfo, "tasks-branch-compare");
+
+  await taskDiffView.getByRole("button", { name: "Working Tree" }).click();
+  await expect(taskDiffView).toHaveAttribute("data-task-diff-mode", "working");
+  await expect(
+    taskDiffTree.locator('button[data-repo-relative-path="planner.rs"]'),
+  ).toHaveAttribute("aria-current", "true");
+  await expect(taskDiffViewer).toContainText("new planner behavior");
 
   await page.locator("caffold-codex-workspace .codex-workspace-close").click();
   await expect(tasksPage.locator(".task-detail")).toHaveAttribute(

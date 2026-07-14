@@ -52,6 +52,9 @@ caffold-app-shell
         scaffold-git-diff-browser
           scaffold-git-diff-changes-tree
           scaffold-review-file-viewer
+        scaffold-git-compare-browser
+          scaffold-git-compare-tree
+          scaffold-review-file-viewer
   scaffold-review-workspace
     git
       scaffold-git-review-layout
@@ -62,7 +65,9 @@ caffold-app-shell
               scaffold-review-file-viewer
         compare
           scaffold-git-compare-page
-          scaffold-review-file-viewer
+            scaffold-git-compare-browser
+              scaffold-git-compare-tree
+              scaffold-review-file-viewer
         log
           scaffold-git-log-layout
             scaffold-git-log-list-page

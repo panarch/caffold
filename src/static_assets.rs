@@ -154,16 +154,18 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(review-workspace)/(git)/compare/page.js" => Some(js(include_str!(
             "../frontend/pages/(review-workspace)/(git)/compare/page.js"
         ))),
-        "pages/(review-workspace)/(git)/compare/components/compare-tree.css" => {
-            Some(css(include_str!(
-                "../frontend/pages/(review-workspace)/(git)/compare/components/compare-tree.css"
-            )))
-        }
-        "pages/(review-workspace)/(git)/compare/components/compare-tree.js" => {
-            Some(js(include_str!(
-                "../frontend/pages/(review-workspace)/(git)/compare/components/compare-tree.js"
-            )))
-        }
+        "components/git-compare-browser.css" => Some(css(include_str!(
+            "../frontend/components/git-compare-browser.css"
+        ))),
+        "components/git-compare-browser.js" => Some(js(include_str!(
+            "../frontend/components/git-compare-browser.js"
+        ))),
+        "components/git-compare-browser/compare-tree.css" => Some(css(include_str!(
+            "../frontend/components/git-compare-browser/compare-tree.css"
+        ))),
+        "components/git-compare-browser/compare-tree.js" => Some(js(include_str!(
+            "../frontend/components/git-compare-browser/compare-tree.js"
+        ))),
         "pages/(review-workspace)/(git)/(log)/layout.css" => Some(css(include_str!(
             "../frontend/pages/(review-workspace)/(git)/(log)/layout.css"
         ))),
@@ -457,8 +459,19 @@ mod tests {
                 .windows(b"caffold-git-compare-page".len())
                 .any(|window| window == b"caffold-git-compare-page")
         );
-        let compare_tree = get("pages/(review-workspace)/(git)/compare/components/compare-tree.js")
-            .expect("compare tree js");
+        let compare_browser = get("components/git-compare-browser.js").expect("compare browser js");
+        assert_eq!(
+            compare_browser.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(
+            compare_browser
+                .body
+                .windows(b"caffold-git-compare-browser".len())
+                .any(|window| window == b"caffold-git-compare-browser")
+        );
+        let compare_tree =
+            get("components/git-compare-browser/compare-tree.js").expect("compare tree js");
         assert_eq!(compare_tree.content_type, "text/javascript; charset=utf-8");
         assert!(
             compare_tree
@@ -466,7 +479,7 @@ mod tests {
                 .windows(b"caffold-git-compare-tree".len())
                 .any(|window| window == b"caffold-git-compare-tree")
         );
-        assert!(get("components/compare-tree.js").is_none());
+        assert!(get("pages/(review-workspace)/(git)/compare/components/compare-tree.js").is_none());
 
         let codex_layout = get("pages/(codex)/layout.js").expect("codex layout js");
         assert_eq!(codex_layout.content_type, "text/javascript; charset=utf-8");

@@ -1,5 +1,5 @@
-import { escapeHtml } from "../../../../../components/dom.js";
-import { renderEntryIcon, warmIcons } from "../../../../../components/icons.js";
+import { escapeHtml } from "../dom.js";
+import { renderEntryIcon, warmIcons } from "../icons.js";
 
 class CaffoldGitCompareTree extends HTMLElement {
   connectedCallback() {
