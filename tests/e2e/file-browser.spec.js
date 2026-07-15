@@ -1125,7 +1125,7 @@ test("opens global Tasks without a registered project", async ({ page }) => {
     .poll(() => taskListQueries.at(-1))
     .toEqual({ projectId: null, cwd: "." });
   const tasksPage = page.locator("caffold-tasks-page");
-  await expect(tasksPage.locator(".tasks-header")).toContainText("Threads in ~");
+  await expect(tasksPage.locator(".tasks-header")).toContainText("Tasks in ~");
   await expect(tasksPage).toContainText("No tasks yet.");
   await page
     .locator("caffold-codex-workspace")
@@ -1139,7 +1139,7 @@ test("opens global Tasks without a registered project", async ({ page }) => {
   await expect
     .poll(() => taskListQueries.at(-1))
     .toEqual({ projectId: null, cwd: null });
-  await expect(tasksPage.locator(".tasks-header")).toContainText("All Codex threads");
+  await expect(tasksPage.locator(".tasks-header")).toContainText("All Tasks");
   await expect(tasksPage).toContainText("No tasks yet.");
   await page
     .locator("caffold-codex-workspace")
@@ -1219,7 +1219,7 @@ test("opens global Tasks without a registered project", async ({ page }) => {
   );
 });
 
-test("uses a worktree-grouped Tasks master-detail layout", async ({ page }, testInfo) => {
+test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     window.EventSource = class MockEventSource {
       constructor(url) {
@@ -1253,6 +1253,7 @@ test("uses a worktree-grouped Tasks master-detail layout", async ({ page }, test
   });
   const mainWorktree = {
     rootPath: "src",
+    repositoryRootPath: "src",
     branch: "main",
     headSha: "1111111111111111111111111111111111111111",
     relativeCwd: "",
@@ -1282,6 +1283,7 @@ test("uses a worktree-grouped Tasks master-detail layout", async ({ page }, test
       activeTurnId: "turn_feature",
       worktree: {
         rootPath: "worktrees/feature",
+        repositoryRootPath: "src",
         branch: "feature/long-worktree-branch-name",
         headSha: "2222222222222222222222222222222222222222",
         relativeCwd: "",
@@ -1337,20 +1339,33 @@ test("uses a worktree-grouped Tasks master-detail layout", async ({ page }, test
   const listPane = tasksPage.locator(".tasks-list-pane");
   const detailPane = tasksPage.locator(".tasks-detail-pane");
   const resizer = tasksPage.locator(".tasks-master-resizer");
-  const groups = tasksPage.locator(".task-worktree-group");
+  const rows = tasksPage.locator(".task-row");
 
-  await expect(groups).toHaveCount(3);
-  await expect(groups.nth(0).locator(".task-worktree-header")).toContainText(
-    "feature/long-worktree-branch-name · feature",
+  await expect(tasksPage.locator(".task-repository-group")).toHaveCount(0);
+  await expect(rows).toHaveCount(4);
+  await expect(rows.nth(0)).toContainText("Feature worktree task");
+  await expect(rows.nth(1)).toContainText("Main root task");
+  await expect(rows.nth(2)).toContainText("Main core task");
+  await expect(rows.nth(3)).toContainText("Documentation directory task");
+  await expect(tasksPage.locator(".task-row-summary")).toHaveCount(0);
+  await expect(
+    tasksPage.locator('.task-row[data-thread-id="thread_feature"] .task-row-worktree'),
+  ).toHaveAttribute("title", /feature\/long-worktree-branch-name/);
+  await expect(
+    tasksPage.locator('.task-row[data-thread-id="thread_main_root"] .task-row-worktree'),
+  ).toHaveCount(0);
+  await expect(
+    tasksPage.locator('.task-row[data-thread-id="thread_feature"] .task-status-spinner'),
+  ).toBeVisible();
+  await expect(
+    tasksPage.locator('.task-row[data-thread-id="thread_main_root"] .task-row-time'),
+  ).toBeVisible();
+  await expect(tasksPage.locator('.task-row .task-status-label')).toHaveCount(0);
+  const rowHeights = await rows.evaluateAll((elements) =>
+    elements.map((element) => Math.round(element.getBoundingClientRect().height)),
   );
-  await expect(groups.nth(1).locator(".task-worktree-header")).toContainText(
-    "main · src",
-  );
-  await expect(groups.nth(2).locator(".task-worktree-header")).toContainText("docs");
-  await expect(groups.nth(0).locator(":scope > .task-list")).toBeVisible();
-  await expect(groups.nth(1).locator(":scope > .task-list")).toBeVisible();
-  await expect(groups.nth(1).locator(".task-row")).toHaveCount(2);
-  await expect(groups.nth(2).locator(":scope > .task-list")).toBeHidden();
+  expect(new Set(rowHeights).size).toBe(1);
+  expect(rowHeights[0]).toBeLessThanOrEqual(44);
 
   if (testInfo.project.name === "desktop") {
     await expect(listPane).toBeVisible();
@@ -1393,18 +1408,16 @@ test("uses a worktree-grouped Tasks master-detail layout", async ({ page }, test
     await resizer.press("ArrowRight");
     await expect(resizer).toHaveAttribute("aria-valuenow", "296");
 
-    await groups.nth(0).locator(".task-worktree-header").click();
-    await expect(groups.nth(0).locator(":scope > .task-list")).toBeHidden();
     const listScrollBeforeSelection = await tasksPage.evaluate(() => {
       const scroller = document.querySelector("caffold-tasks-page .task-list-scroll");
       scroller.style.height = "90px";
       scroller.scrollTop = 40;
+      scroller.querySelector(":scope > .task-list").dataset.domProbe = "preserved";
       const row = document.querySelector(
         'caffold-tasks-page .task-row[data-thread-id="thread_main_core"]',
       );
       row.dataset.domProbe = "preserved";
       row.closest("li").dataset.domProbe = "preserved";
-      row.closest(".task-worktree-group").dataset.domProbe = "preserved";
       return scroller.scrollTop;
     });
     expect(listScrollBeforeSelection).toBeGreaterThan(0);
@@ -1419,14 +1432,16 @@ test("uses a worktree-grouped Tasks master-detail layout", async ({ page }, test
     await expect(
       tasksPage.locator('.task-row[data-thread-id="thread_main_root"]'),
     ).toHaveAttribute("aria-current", "true");
-    await expect(groups.nth(1)).toHaveAttribute("data-dom-probe", "preserved");
+    await expect(tasksPage.locator(".task-list-scroll > .task-list")).toHaveAttribute(
+      "data-dom-probe",
+      "preserved",
+    );
     await expect(
       tasksPage.locator('li[data-thread-id="thread_main_core"]'),
     ).toHaveAttribute("data-dom-probe", "preserved");
     await expect(
       tasksPage.locator('.task-row[data-thread-id="thread_main_core"]'),
     ).toHaveAttribute("data-dom-probe", "preserved");
-    await expect(groups.nth(0).locator(":scope > .task-list")).toBeHidden();
     await expect
       .poll(() =>
         tasksPage.locator(".task-list-scroll").evaluate((element) => element.scrollTop),
@@ -1442,13 +1457,12 @@ test("uses a worktree-grouped Tasks master-detail layout", async ({ page }, test
     await expect(listPane).toBeVisible();
     await expect(detailPane.locator(".task-new-form")).toBeVisible();
     await expect(resizer).toHaveAttribute("aria-valuenow", "296");
-    await expect(groups.nth(0).locator(":scope > .task-list")).toBeHidden();
     await captureReviewScreenshot(page, testInfo, "tasks-master-detail-new");
   } else {
     await expect(listPane).toBeVisible();
     await expect(detailPane).toBeHidden();
     await expect(resizer).toBeHidden();
-    await groups.nth(1).locator('.task-row[data-thread-id="thread_main_root"]').click();
+    await tasksPage.locator('.task-row[data-thread-id="thread_main_root"]').click();
     await expect(page).toHaveURL(`/projects/${project.id}/tasks/thread_main_root`);
     await expect(listPane).toBeHidden();
     await expect(detailPane).toBeVisible();
@@ -1459,6 +1473,107 @@ test("uses a worktree-grouped Tasks master-detail layout", async ({ page }, test
     await expect(listPane).toBeVisible();
     await expect(detailPane).toBeHidden();
   }
+});
+
+test("groups All Tasks by repository without worktree accordions", async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    window.EventSource = class MockEventSource {
+      addEventListener() {}
+
+      close() {}
+    };
+  });
+  await mockRegisteredProject(page);
+  await mockCodexModels(page);
+  const now = 1_767_300_000_000;
+  const task = (threadId, title, worktree, updatedMs) => ({
+    id: threadId,
+    threadId,
+    projectId: null,
+    activeTurnId: null,
+    title,
+    preview: `${title} preview`,
+    status: "completed",
+    cwd: worktree?.rootPath ?? "notes",
+    cwdPath: worktree?.rootPath ?? "notes",
+    relativeCwd: "",
+    worktree,
+    createdMs: now,
+    updatedMs,
+    recencyMs: updatedMs,
+    lastEventSummary: `${title} summary`,
+  });
+  const tasks = [
+    task(
+      "thread_gluesql_feature",
+      "Feature review",
+      {
+        rootPath: "worktrees/feature/gluesql",
+        repositoryRootPath: "Workspace/rust/gluesql",
+        branch: "feature/review",
+        headSha: "2222222222222222222222222222222222222222",
+        relativeCwd: "",
+        linked: true,
+      },
+      now + 400,
+    ),
+    task(
+      "thread_gluesql_main",
+      "Main review",
+      {
+        rootPath: "Workspace/rust/gluesql",
+        repositoryRootPath: "Workspace/rust/gluesql",
+        branch: "main",
+        headSha: "1111111111111111111111111111111111111111",
+        relativeCwd: "",
+        linked: false,
+      },
+      now + 300,
+    ),
+    task(
+      "thread_caffold",
+      "Caffold review",
+      {
+        rootPath: "Workspace/rust/codger",
+        repositoryRootPath: "Workspace/rust/codger",
+        branch: "main",
+        headSha: "3333333333333333333333333333333333333333",
+        relativeCwd: "",
+        linked: false,
+      },
+      now + 200,
+    ),
+    task("thread_notes", "Notes task", null, now + 100),
+  ];
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks }),
+    }),
+  );
+
+  await page.goto("/tasks");
+  const tasksPage = page.locator("caffold-tasks-page");
+  const groups = tasksPage.locator(".task-repository-group");
+  await expect(tasksPage.locator(".tasks-header")).toContainText("All Tasks");
+  await expect(groups).toHaveCount(3);
+  await expect(groups.nth(0).locator(".task-repository-header")).toContainText("gluesql");
+  await expect(groups.nth(0).locator(".task-repository-count")).toHaveText("2");
+  await expect(groups.nth(0).locator(".task-row")).toHaveCount(2);
+  await expect(groups.nth(1).locator(".task-repository-header")).toContainText("codger");
+  await expect(groups.nth(2).locator(".task-repository-header")).toContainText("notes");
+  await expect(tasksPage.locator('[data-task-action="toggle-task-group"]')).toHaveCount(0);
+  await expect(
+    groups.nth(0).locator('.task-row[data-thread-id="thread_gluesql_feature"] .task-row-worktree'),
+  ).toHaveAttribute("title", /feature\/review/);
+  await expect(
+    groups.nth(0).locator('.task-row[data-thread-id="thread_gluesql_feature"] .task-row-time'),
+  ).toBeVisible();
+  await expect(tasksPage.locator('.task-row .task-status-label')).toHaveCount(0);
+  await expect(tasksPage.locator(".task-row-summary")).toHaveCount(0);
+  await stabilizeDynamicText(page);
+  await captureReviewScreenshot(page, testInfo, "tasks-all-repository-groups");
 });
 
 test("opens Tasks from Codex header and runs a minimal task loop", async ({ page }, testInfo) => {
@@ -2403,17 +2518,12 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           separator.dispatchEvent(
             new KeyboardEvent("keydown", { bubbles: true, key: "End" }),
           );
-          const groupHeader = element.querySelector(".task-worktree-header");
-          if (groupHeader?.getAttribute("aria-expanded") === "true") {
-            groupHeader.click();
-          }
           const listScroll = element.querySelector(".task-list-scroll");
           const listRegion = element.querySelector(".tasks-list-region");
           listScroll.style.height = "90px";
           listRegion.style.minHeight = "240px";
           listScroll.scrollTop = 40;
           return {
-            groupExpanded: groupHeader?.getAttribute("aria-expanded"),
             listWidth: Math.round(
               element.querySelector(".tasks-list-pane").getBoundingClientRect().width,
             ),
@@ -2596,10 +2706,6 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           .evaluate((element) => Math.round(element.getBoundingClientRect().width)),
       )
       .toBe(taskMasterStateBeforeTools.listWidth);
-    await expect(tasksPage.locator(".task-worktree-header").first()).toHaveAttribute(
-      "aria-expanded",
-      taskMasterStateBeforeTools.groupExpanded,
-    );
     await expect
       .poll(() =>
         tasksPage.locator(".task-list-scroll").evaluate((element) => element.scrollTop),
@@ -2795,10 +2901,6 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           .evaluate((element) => Math.round(element.getBoundingClientRect().width)),
       )
       .toBe(taskMasterStateBeforeTools.listWidth);
-    await expect(tasksPage.locator(".task-worktree-header").first()).toHaveAttribute(
-      "aria-expanded",
-      taskMasterStateBeforeTools.groupExpanded,
-    );
     await expect
       .poll(() =>
         tasksPage.locator(".task-list-scroll").evaluate((element) => element.scrollTop),

@@ -335,6 +335,7 @@ struct TaskRecord {
 #[serde(rename_all = "camelCase")]
 struct TaskWorktreeContext {
     root_path: String,
+    repository_root_path: String,
     branch: Option<String>,
     head_sha: String,
     relative_cwd: String,
@@ -2252,6 +2253,21 @@ fn resolve_task_cwd(fs: &RootedFs, cwd: &str) -> Option<ResolvedTaskCwd> {
     };
     let root_path = fs.logical_path_for_absolute(&repository.root).ok()?;
     let metadata = git::repository_metadata_paths(&repository);
+    let repository_root_path = metadata
+        .as_ref()
+        .and_then(|paths| {
+            if paths
+                .common_dir
+                .file_name()
+                .is_some_and(|name| name == ".git")
+            {
+                paths.common_dir.parent()
+            } else {
+                None
+            }
+        })
+        .and_then(|root| fs.logical_path_for_absolute(root).ok())
+        .unwrap_or_else(|| root_path.clone());
     let linked = metadata
         .as_ref()
         .is_some_and(|paths| paths.git_dir != paths.common_dir);
@@ -2270,6 +2286,7 @@ fn resolve_task_cwd(fs: &RootedFs, cwd: &str) -> Option<ResolvedTaskCwd> {
         logical_cwd,
         worktree: Some(TaskWorktreeContext {
             root_path,
+            repository_root_path,
             branch,
             head_sha,
             relative_cwd,
@@ -3194,12 +3211,14 @@ mod tests {
         assert_eq!(main.repository_common_dir, linked.repository_common_dir);
         let main_context = main_src.worktree.as_ref().unwrap();
         assert_eq!(main_context.root_path, "main");
+        assert_eq!(main_context.repository_root_path, "main");
         assert_eq!(main_context.branch.as_deref(), Some("main"));
         assert_eq!(main_context.relative_cwd, "src");
         assert!(!main_context.linked);
         assert!(!main_context.head_sha.is_empty());
         let linked_context = linked.worktree.as_ref().unwrap();
         assert_eq!(linked_context.root_path, "linked");
+        assert_eq!(linked_context.repository_root_path, "main");
         assert_eq!(linked_context.branch.as_deref(), Some("feature/review"));
         assert_eq!(linked_context.relative_cwd, "nested");
         assert!(linked_context.linked);

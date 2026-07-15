@@ -52,7 +52,6 @@ class CaffoldTasksPage extends HTMLElement {
     this.taskListContext = "";
     this.taskListDirty = true;
     this.taskListWidth = TASK_LIST_DEFAULT_WIDTH;
-    this.taskGroupExpansion = new Map();
     this.taskDetail = null;
     this.events = [];
     this.eventsPage = { nextCursor: null };
@@ -264,7 +263,6 @@ class CaffoldTasksPage extends HTMLElement {
     this.taskListLoaded = false;
     this.taskListError = null;
     this.tasks = [];
-    this.taskGroupExpansion.clear();
     this.markTaskListDirty();
   }
 
@@ -626,10 +624,6 @@ class CaffoldTasksPage extends HTMLElement {
     }
     if (action === "open-task") {
       this.requestRoute({ kind: "tasks", threadId: element.dataset.threadId });
-      return;
-    }
-    if (action === "toggle-task-group") {
-      this.toggleTaskGroup(element.dataset.groupKey, element);
       return;
     }
     if (action === "retry-stream") {
@@ -1827,7 +1821,7 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   globalTasksSubtitle() {
-    return this.cwdPath ? `Threads in ${this.displayCwdPath()}` : "All Codex threads";
+    return this.cwdPath ? `Tasks in ${this.displayCwdPath()}` : "All Tasks";
   }
 
   displayCwdPath() {
@@ -1871,91 +1865,69 @@ class CaffoldTasksPage extends HTMLElement {
       `;
     }
 
-    const groups = groupTasksByWorktree(this.tasks);
+    const tasks = sortTasksByRecency(this.tasks);
+    if (!this.usesRepositoryGroups()) {
+      return `
+        <div class="task-list-scroll">
+          <ol class="task-list">
+            ${tasks.map((task) => this.renderTaskRow(task)).join("")}
+          </ol>
+        </div>
+      `;
+    }
+
+    const groups = groupTasksByRepository(tasks);
     return `
       <div class="task-list-scroll">
-        <ol class="task-worktree-groups">
-          ${groups.map((group) => this.renderTaskGroup(group)).join("")}
+        <ol class="task-repository-groups">
+          ${groups.map((group) => this.renderTaskRepositoryGroup(group)).join("")}
         </ol>
       </div>
     `;
   }
 
-  renderTaskGroup(group) {
-    const expanded = this.isTaskGroupExpanded(group);
+  usesRepositoryGroups() {
+    return !this.projectId && !cleanLogicalPath(this.cwdPath);
+  }
+
+  renderTaskRepositoryGroup(group) {
     return `
-      <li class="task-worktree-group" data-task-group-key="${escapeHtml(group.key)}">
-        ${this.renderTaskGroupHeader(group, expanded)}
-        <ol class="task-list"${expanded ? "" : " hidden"}>
+      <li class="task-repository-group" data-task-repository-key="${escapeHtml(group.key)}">
+        <div class="task-repository-header" title="${escapeHtml(group.rootPath)}">
+          <span class="task-repository-label">${escapeHtml(group.label)}</span>
+          <span class="task-repository-count">${group.tasks.length}</span>
+        </div>
+        <ol class="task-list">
           ${group.tasks.map((task) => this.renderTaskRow(task, group.key)).join("")}
         </ol>
       </li>
     `;
   }
 
-  renderTaskGroupHeader(group, expanded = this.isTaskGroupExpanded(group)) {
-    const activeTask = group.tasks.find((task) => isActiveTaskStatus(task.status));
-    const status = activeTask
-      ? renderTaskStatusChip(activeTask.status, "task-group-status", { label: false })
-      : "";
-    return `
-      <button
-        type="button"
-        class="task-worktree-header"
-        data-task-action="toggle-task-group"
-        data-group-key="${escapeHtml(group.key)}"
-        aria-expanded="${expanded}"
-        title="${escapeHtml(group.fullLabel)}"
-      >
-        ${renderInlineIcon("ChevronRight", "", "task-worktree-caret")}
-        <span class="task-worktree-label">${escapeHtml(group.label)}</span>
-        <span class="task-worktree-count">${group.tasks.length}</span>
-        ${status}
-      </button>
-    `;
-  }
-
-  renderTaskRow(task, groupKey = taskGroupKey(task)) {
+  renderTaskRow(task, repositoryKey = this.taskListPartitionKey(task)) {
     const threadId = task.threadId ?? task.id;
     const selected = threadId === this.selectedThreadId ? ` aria-current="true"` : "";
-    const summary = task.lastEventSummary || task.preview || task.relativeCwd || task.cwd;
     const meta = renderTaskRowMeta(task);
+    const worktree = task?.worktree?.linked
+      ? `<span class="task-row-worktree" title="${escapeHtml(taskWorktreeLabel(task))}">
+          ${renderInlineIcon("GitBranch", "Linked worktree", "task-row-worktree-icon")}
+        </span>`
+      : "";
     return `
-      <li data-thread-id="${escapeHtml(threadId)}" data-task-group-key="${escapeHtml(groupKey)}">
-        <button type="button" class="task-row" data-task-action="open-task" data-thread-id="${escapeHtml(threadId)}"${selected}>
+      <li data-thread-id="${escapeHtml(threadId)}" data-task-list-key="${escapeHtml(repositoryKey)}">
+        <button type="button" class="task-row" data-task-action="open-task" data-thread-id="${escapeHtml(threadId)}" title="${escapeHtml(task.title)}"${selected}>
           <span class="task-row-title">${escapeHtml(task.title)}</span>
-          ${meta}
-          <span class="task-row-summary">${escapeHtml(summary || "No preview")}</span>
+          <span class="task-row-indicators">
+            ${worktree}
+            ${meta}
+          </span>
         </button>
       </li>
     `;
   }
 
-  isTaskGroupExpanded(group) {
-    if (this.taskGroupExpansion.has(group.key)) {
-      return this.taskGroupExpansion.get(group.key);
-    }
-    if (group.tasks.some((task) => taskThreadId(task) === this.selectedThreadId)) {
-      return true;
-    }
-    if (group.tasks.some((task) => isActiveTaskStatus(task.status))) {
-      return true;
-    }
-    const contextPath = this.cwdPath || this.project?.relativePath || "";
-    return taskGroupContainsPath(group, contextPath);
-  }
-
-  toggleTaskGroup(groupKey, button) {
-    if (!groupKey || !button) {
-      return;
-    }
-    const expanded = button.getAttribute("aria-expanded") !== "true";
-    this.taskGroupExpansion.set(groupKey, expanded);
-    button.setAttribute("aria-expanded", `${expanded}`);
-    const list = button.parentElement?.querySelector(":scope > .task-list");
-    if (list) {
-      list.hidden = !expanded;
-    }
+  taskListPartitionKey(task) {
+    return this.usesRepositoryGroups() ? taskRepositoryKey(task) : "flat";
   }
 
   syncTaskListSelection() {
@@ -1984,59 +1956,52 @@ class CaffoldTasksPage extends HTMLElement {
     this.tasks = this.tasks.map((candidate, candidateIndex) =>
       candidateIndex === index ? task : candidate,
     );
-    const previousGroupKey = taskGroupKey(previous);
-    const nextGroupKey = taskGroupKey(task);
+    const previousListKey = this.taskListPartitionKey(previous);
+    const nextListKey = this.taskListPartitionKey(task);
     const row = this.querySelector(
       `.tasks-list-region li[data-thread-id="${CSS.escape(threadId)}"]`,
     );
-    if (!row || previousGroupKey !== nextGroupKey) {
+    if (!row || previousListKey !== nextListKey) {
       this.markTaskListDirty();
       return;
     }
 
     const template = document.createElement("template");
-    template.innerHTML = this.renderTaskRow(task, nextGroupKey).trim();
+    template.innerHTML = this.renderTaskRow(task, nextListKey).trim();
     const nextRow = template.content.firstElementChild;
     if (nextRow) {
       row.replaceWith(nextRow);
-      this.patchTaskGroupHeader(nextGroupKey);
       this.syncTaskListSelection();
       this.reorderTaskListDom();
     }
   }
 
-  patchTaskGroupHeader(groupKey) {
-    const group = groupTasksByWorktree(this.tasks).find(
-      (candidate) => candidate.key === groupKey,
-    );
-    const groupElement = this.querySelector(
-      `.task-worktree-group[data-task-group-key="${CSS.escape(groupKey)}"]`,
-    );
-    const header = groupElement?.querySelector(":scope > .task-worktree-header");
-    const list = groupElement?.querySelector(":scope > .task-list");
-    if (!group || !header || !list) {
+  reorderTaskListDom() {
+    const tasks = sortTasksByRecency(this.tasks);
+    if (!this.usesRepositoryGroups()) {
+      const taskList = this.querySelector(".task-list-scroll > .task-list");
+      if (!taskList) {
+        return;
+      }
+      for (const task of tasks) {
+        const row = taskList.querySelector(
+          `:scope > [data-thread-id="${CSS.escape(taskThreadId(task))}"]`,
+        );
+        if (row) {
+          taskList.append(row);
+        }
+      }
       return;
     }
 
-    const expanded = this.isTaskGroupExpanded(group);
-    const template = document.createElement("template");
-    template.innerHTML = this.renderTaskGroupHeader(group, expanded).trim();
-    const nextHeader = template.content.firstElementChild;
-    if (nextHeader) {
-      header.replaceWith(nextHeader);
-      list.hidden = !expanded;
-    }
-  }
-
-  reorderTaskListDom() {
-    const groups = groupTasksByWorktree(this.tasks);
-    const groupList = this.querySelector(".task-worktree-groups");
+    const groups = groupTasksByRepository(tasks);
+    const groupList = this.querySelector(".task-repository-groups");
     if (!groupList) {
       return;
     }
     for (const group of groups) {
       const groupElement = groupList.querySelector(
-        `:scope > [data-task-group-key="${CSS.escape(group.key)}"]`,
+        `:scope > [data-task-repository-key="${CSS.escape(group.key)}"]`,
       );
       if (!groupElement) {
         continue;
@@ -3163,40 +3128,45 @@ function taskUpdatedMs(task) {
   return Number.isFinite(value) ? value : 0;
 }
 
-function taskGroupKey(task) {
-  if (task?.worktree?.rootPath) {
-    return `worktree:${cleanLogicalPath(task.worktree.rootPath)}`;
-  }
-  return `cwd:${cleanLogicalPath(task?.cwdPath ?? task?.cwd ?? task?.relativeCwd)}`;
+function taskRepositoryPath(task) {
+  return cleanLogicalPath(
+    task?.worktree?.repositoryRootPath ??
+      task?.worktree?.rootPath ??
+      task?.cwdPath ??
+      task?.cwd ??
+      task?.relativeCwd,
+  );
 }
 
-function taskGroupLabel(task) {
-  if (task?.worktree) {
-    return [taskWorktreeRef(task), taskWorktreeRootName(task)].filter(Boolean).join(" · ");
-  }
-  const cwd = cleanLogicalPath(task?.cwdPath ?? task?.cwd ?? task?.relativeCwd);
-  return cwd || "Directory";
+function taskRepositoryKey(task) {
+  const prefix = task?.worktree ? "repository" : "cwd";
+  return `${prefix}:${taskRepositoryPath(task)}`;
 }
 
-function groupTasksByWorktree(tasks) {
+function taskRepositoryLabel(task) {
+  const path = taskRepositoryPath(task);
+  return path.split("/").filter(Boolean).at(-1) ?? "Directory";
+}
+
+function sortTasksByRecency(tasks) {
+  return [...tasks].sort((left, right) => taskUpdatedMs(right) - taskUpdatedMs(left));
+}
+
+function groupTasksByRepository(tasks) {
   const groupsByKey = new Map();
   for (const task of tasks) {
-    const key = taskGroupKey(task);
+    const key = taskRepositoryKey(task);
     const existing = groupsByKey.get(key);
     if (existing) {
       existing.tasks.push(task);
       existing.updatedMs = Math.max(existing.updatedMs, taskUpdatedMs(task));
       continue;
     }
-    const rootPath = cleanLogicalPath(
-      task?.worktree?.rootPath ?? task?.cwdPath ?? task?.cwd ?? task?.relativeCwd,
-    );
+    const rootPath = taskRepositoryPath(task);
     groupsByKey.set(key, {
       key,
-      label: taskGroupLabel(task),
-      fullLabel: task?.worktree ? [taskWorktreeRef(task), rootPath].filter(Boolean).join(" · ") : rootPath,
+      label: taskRepositoryLabel(task),
       rootPath,
-      worktree: Boolean(task?.worktree),
       updatedMs: taskUpdatedMs(task),
       tasks: [task],
     });
@@ -3205,26 +3175,9 @@ function groupTasksByWorktree(tasks) {
   return [...groupsByKey.values()]
     .map((group) => ({
       ...group,
-      tasks: [...group.tasks].sort(
-        (left, right) => taskUpdatedMs(right) - taskUpdatedMs(left),
-      ),
+      tasks: sortTasksByRecency(group.tasks),
     }))
     .sort((left, right) => right.updatedMs - left.updatedMs);
-}
-
-function taskGroupContainsPath(group, cwdPath) {
-  const cwd = cleanLogicalPath(cwdPath);
-  if (!cwd || !group.rootPath) {
-    return false;
-  }
-  return group.worktree
-    ? cwd === group.rootPath || cwd.startsWith(`${group.rootPath}/`)
-    : cwd === group.rootPath;
-}
-
-function isActiveTaskStatus(status) {
-  const normalized = normalizeTaskStatus(status);
-  return normalized === "running" || normalized === "waiting_for_approval";
 }
 
 function taskWorktreeRootName(task) {
@@ -3513,9 +3466,9 @@ function parseJson(value) {
 }
 
 function renderTaskRowMeta(task) {
-  const status = taskStatusView(task.status);
-  if (status) {
-    return renderTaskStatusChip(task.status, "task-row-meta");
+  const status = normalizeTaskStatus(task.status);
+  if (status && status !== "completed" && taskStatusView(status)) {
+    return renderTaskStatusChip(status, "task-row-meta", { label: false });
   }
 
   const ms = task.recencyMs ?? task.updatedMs;
