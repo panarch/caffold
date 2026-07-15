@@ -8,11 +8,8 @@ Caffold UI should be dense, review-oriented, and useful on mobile. It should not
 
 Shows:
 
-- projects
 - tasks
-- host
-- worktree
-- thread
+- repository and worktree context derived from each thread cwd
 - status
 - recent event
 - changed file count
@@ -42,7 +39,7 @@ MVP approval UI should support:
 - accept for session
 - decline
 - cancel
-- ledger recording
+- visible approval result in the thread-backed conversation
 
 File-change approval is a different concept. It can start as review annotation or task status, not as a permission mechanism.
 
@@ -100,7 +97,7 @@ MVP behavior:
 - output display
 - exit code
 - start/end timestamps
-- ledger event
+- thread-backed task context
 - test presets
 
 Full PTY, tmux, or Zellij integration is an escape hatch for later.

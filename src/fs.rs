@@ -425,14 +425,6 @@ pub struct GitDiffResponse {
     pub diff: String,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct ProjectRoot {
-    pub name: String,
-    pub root_path: String,
-    pub relative_path: String,
-}
-
 #[derive(Debug, Error)]
 pub enum FsError {
     #[error("root path is not accessible: {path}")]
@@ -1319,24 +1311,6 @@ impl RootedFs {
         })
     }
 
-    pub fn project_candidate_for_path(
-        &self,
-        requested_path: &str,
-    ) -> Result<Option<ProjectRoot>, FsError> {
-        self.project_root_for_path(requested_path).map(Some)
-    }
-
-    pub fn project_root_for_path(&self, requested_path: &str) -> Result<ProjectRoot, FsError> {
-        let directory = self.directory_for_request(requested_path)?;
-        if let Some(repository) = git::repository_for(&directory)
-            .filter(|repository| repository.root.starts_with(&self.root))
-        {
-            return self.project_root_for_repository(&repository);
-        }
-
-        self.project_root_for_directory(&directory)
-    }
-
     fn resolve_existing(&self, requested_path: &str) -> Result<ResolvedPath, FsError> {
         let logical = normalize_relative_path(requested_path)?;
         let candidate = self.root.join(&logical);
@@ -1467,54 +1441,6 @@ impl RootedFs {
             root_path: relative_path_string(root_path),
             branch: repository.branch.clone(),
             dirty: repository.dirty,
-        })
-    }
-
-    fn project_root_for_repository(
-        &self,
-        repository: &git::Repository,
-    ) -> Result<ProjectRoot, FsError> {
-        if !repository.root.starts_with(&self.root) {
-            return Err(FsError::PathEscapesRoot);
-        }
-
-        let relative_path = self.logical_path_for_absolute(&repository.root)?;
-        let name = repository
-            .root
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .filter(|name| !name.is_empty())
-            .unwrap_or_else(|| relative_path.clone());
-
-        Ok(ProjectRoot {
-            name,
-            root_path: repository.root.display().to_string(),
-            relative_path,
-        })
-    }
-
-    fn project_root_for_directory(&self, directory: &Path) -> Result<ProjectRoot, FsError> {
-        if !directory.starts_with(&self.root) {
-            return Err(FsError::PathEscapesRoot);
-        }
-
-        let relative_path = self.logical_path_for_absolute(directory)?;
-        let name = directory
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .filter(|name| !name.is_empty())
-            .unwrap_or_else(|| {
-                if relative_path.is_empty() {
-                    directory.display().to_string()
-                } else {
-                    relative_path.clone()
-                }
-            });
-
-        Ok(ProjectRoot {
-            name,
-            root_path: directory.display().to_string(),
-            relative_path,
         })
     }
 
@@ -1978,51 +1904,6 @@ mod tests {
         assert!(ignored_file.git_ignored);
         assert!(ignored_dir.git_ignored);
         assert!(!visible_file.git_ignored);
-    }
-
-    #[test]
-    fn finds_project_root_for_path_inside_repo() {
-        if !git_is_available() {
-            return;
-        }
-
-        let temp = tempfile::tempdir().unwrap();
-        let repo_path = temp.path().join("repo");
-        let src_path = repo_path.join("src");
-        fs::create_dir(&repo_path).unwrap();
-        fs::create_dir(&src_path).unwrap();
-        git(&repo_path, &["init"]);
-        fs::write(src_path.join("main.rs"), "fn main() {}\n").unwrap();
-
-        let rooted = RootedFs::new(temp.path()).unwrap();
-        let project = rooted.project_root_for_path("repo/src/main.rs").unwrap();
-
-        assert_eq!(project.name, "repo");
-        assert_eq!(project.relative_path, "repo");
-        assert_eq!(
-            project.root_path,
-            repo_path.canonicalize().unwrap().display().to_string()
-        );
-    }
-
-    #[test]
-    fn uses_current_directory_as_project_root_outside_git() {
-        let temp = tempfile::tempdir().unwrap();
-        let notes_path = temp.path().join("notes");
-        fs::create_dir(&notes_path).unwrap();
-        fs::write(notes_path.join("draft.md"), "draft\n").unwrap();
-
-        let rooted = RootedFs::new(temp.path()).unwrap();
-        let project = rooted.project_root_for_path("notes/draft.md").unwrap();
-        let candidate = rooted.project_candidate_for_path("notes").unwrap().unwrap();
-
-        assert_eq!(project.name, "notes");
-        assert_eq!(project.relative_path, "notes");
-        assert_eq!(
-            project.root_path,
-            notes_path.canonicalize().unwrap().display().to_string()
-        );
-        assert_eq!(candidate, project);
     }
 
     #[test]

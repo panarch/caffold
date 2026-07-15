@@ -71,8 +71,8 @@ Each event should be structured.
 Common fields:
 
 - event_id
-- task_id
-- project_id
+- thread_id
+- repository_root, when available
 - host_id
 - timestamp
 - event_type

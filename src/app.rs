@@ -13,7 +13,7 @@ use axum::{
     extract::{Path as AxumPath, Query, State},
     http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header},
     response::{Html, IntoResponse, Response},
-    routing::{get, patch, post},
+    routing::{get, post},
 };
 use futures_util::stream;
 use serde::{Deserialize, Serialize};
@@ -30,11 +30,9 @@ use crate::{
         FileResponse, FsError, GitCommitResponse, GitCompareResponse, GitDiffResponse,
         GitLogResponse, GitRefsResponse, GitStatusResponse, GithubIssueResponse,
         GithubIssuesResponse, GithubPullFileResponse, GithubPullFilesResponse, GithubPullResponse,
-        GithubPullsResponse, GithubStatusResponse, ListResponse, MAX_FILE_BYTES, ProjectRoot,
-        RootedFs,
+        GithubPullsResponse, GithubStatusResponse, ListResponse, MAX_FILE_BYTES, RootedFs,
     },
     git,
-    project_store::{ProjectRecord, ProjectStore, ProjectStoreError},
     server_settings::{ServerSettings, ServerSettingsError, ServerSettingsStore},
     static_assets,
     watch::{WatchChange, WatchError, WatchHub, WatchMessage},
@@ -54,7 +52,6 @@ pub struct ServeConfig {
 #[derive(Clone)]
 struct AppState {
     fs: Arc<RootedFs>,
-    projects: ProjectStore,
     server_settings: Arc<ServerSettingsStore>,
     codex_threads: Arc<CodexThreadRuntime>,
     pending_approvals: Arc<AsyncMutex<HashMap<String, PendingApproval>>>,
@@ -87,7 +84,6 @@ impl CodexThreadRuntime {
 #[derive(Debug, Clone)]
 struct PendingApproval {
     thread_id: String,
-    project_id: String,
     request_id: JsonValue,
     method: String,
     params: JsonValue,
@@ -207,18 +203,6 @@ struct GithubPullFileQuery {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CreateProjectRequest {
-    root_path: String,
-    name: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RenameProjectRequest {
-    name: String,
-}
-
-#[derive(Debug, Deserialize)]
 struct UpdateServerSettingsRequest {
     name: String,
 }
@@ -226,21 +210,18 @@ struct UpdateServerSettingsRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TasksQuery {
-    project_id: Option<String>,
     cwd: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TaskDetailQuery {
-    project_id: Option<String>,
     cursor: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateTaskRequest {
-    project_id: Option<String>,
     prompt: String,
     cwd: Option<String>,
     model: Option<String>,
@@ -273,40 +254,6 @@ struct HealthResponse {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ProjectListResponse {
-    projects: Vec<ProjectResponse>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ProjectResponse {
-    id: String,
-    name: String,
-    root_path: String,
-    relative_path: String,
-    created_ms: u64,
-    updated_ms: u64,
-    last_opened_ms: Option<u64>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ProjectCandidateResponse {
-    candidate: Option<ProjectCandidate>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ProjectCandidate {
-    name: String,
-    root_path: String,
-    relative_path: String,
-    already_registered: bool,
-    project_id: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 struct TaskListResponse {
     tasks: Vec<TaskRecord>,
 }
@@ -316,7 +263,6 @@ struct TaskListResponse {
 struct TaskRecord {
     id: String,
     thread_id: String,
-    project_id: Option<String>,
     title: String,
     preview: String,
     status: String,
@@ -363,7 +309,6 @@ enum TaskCwdFilter {
 struct TaskEventRecord {
     id: String,
     thread_id: String,
-    project_id: String,
     #[serde(rename = "type")]
     event_type: String,
     summary: String,
@@ -408,7 +353,6 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         }
     };
     let data_dir = config.data_dir.unwrap_or(default_data_dir()?);
-    let project_store = ProjectStore::redb(data_dir.join("caffold.redb"))?;
     let server_settings = Arc::new(ServerSettingsStore::persistent(
         data_dir.join("server.json"),
     )?);
@@ -421,7 +365,6 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
     let app = router_with_state(AppState {
         fs,
-        projects: project_store,
         server_settings,
         codex_threads: codex_threads.clone(),
         pending_approvals,
@@ -465,7 +408,6 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
     let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
     Ok(router_with_state(AppState {
         fs,
-        projects: ProjectStore::memory()?,
         server_settings: Arc::new(ServerSettingsStore::memory()),
         codex_threads: Arc::new(CodexThreadRuntime::default()),
         pending_approvals: Arc::new(AsyncMutex::new(HashMap::new())),
@@ -489,13 +431,6 @@ fn router_with_state(state: AppState) -> Router {
         .route("/api/file", get(file))
         .route("/api/image", get(image))
         .route("/api/watch", get(watch_stream))
-        .route("/api/projects", get(list_projects).post(create_project))
-        .route(
-            "/api/projects/{id}",
-            patch(rename_project).delete(delete_project),
-        )
-        .route("/api/projects/{id}/open", post(open_project))
-        .route("/api/project-candidate", get(project_candidate))
         .route("/api/git/status", get(git_status))
         .route("/api/git/diff", get(git_diff))
         .route("/api/git/log", get(git_log))
@@ -533,8 +468,6 @@ fn router_with_state(state: AppState) -> Router {
         .route("/git/{*path}", get(index))
         .route("/github", get(index))
         .route("/github/{*path}", get(index))
-        .route("/projects", get(index))
-        .route("/projects/{*path}", get(index))
         .with_state(state)
 }
 
@@ -849,78 +782,6 @@ async fn watch_stream(
     Ok(response)
 }
 
-async fn list_projects(
-    State(state): State<AppState>,
-) -> Result<Json<ProjectListResponse>, ApiError> {
-    let projects = state
-        .projects
-        .list_projects()?
-        .into_iter()
-        .map(|project| project_response(&state.fs, project))
-        .collect::<Result<Vec<_>, _>>()?;
-
-    Ok(Json(ProjectListResponse { projects }))
-}
-
-async fn project_candidate(
-    State(state): State<AppState>,
-    Query(query): Query<PathQuery>,
-) -> Result<Json<ProjectCandidateResponse>, ApiError> {
-    let candidate = match state.fs.project_candidate_for_path(&query.path)? {
-        Some(project_root) => Some(project_candidate_response(
-            &state.fs,
-            &state.projects,
-            project_root,
-        )?),
-        None => None,
-    };
-
-    Ok(Json(ProjectCandidateResponse { candidate }))
-}
-
-async fn create_project(
-    State(state): State<AppState>,
-    Json(request): Json<CreateProjectRequest>,
-) -> Result<Json<ProjectResponse>, ApiError> {
-    let project_root = state.fs.project_root_for_path(&request.root_path)?;
-    let name = request
-        .name
-        .as_deref()
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
-        .unwrap_or(&project_root.name);
-    let project = state
-        .projects
-        .create_project(name, &project_root.root_path)?;
-
-    Ok(Json(project_response(&state.fs, project)?))
-}
-
-async fn rename_project(
-    State(state): State<AppState>,
-    AxumPath(id): AxumPath<String>,
-    Json(request): Json<RenameProjectRequest>,
-) -> Result<Json<ProjectResponse>, ApiError> {
-    let project = state.projects.rename_project(&id, &request.name)?;
-    Ok(Json(project_response(&state.fs, project)?))
-}
-
-async fn delete_project(
-    State(state): State<AppState>,
-    AxumPath(id): AxumPath<String>,
-) -> Result<StatusCode, ApiError> {
-    state.projects.delete_project(&id)?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
-async fn open_project(
-    State(state): State<AppState>,
-    AxumPath(id): AxumPath<String>,
-) -> Result<Json<ProjectResponse>, ApiError> {
-    let project = state.projects.open_project(&id)?;
-    Ok(Json(project_response(&state.fs, project)?))
-}
-
 async fn git_status(
     State(state): State<AppState>,
     Query(query): Query<PathQuery>,
@@ -1120,17 +981,10 @@ async fn list_tasks(
     State(state): State<AppState>,
     Query(query): Query<TasksQuery>,
 ) -> Result<Json<TaskListResponse>, ApiError> {
-    let project = task_project_context(&state, query.project_id.as_deref())?;
-    let cwd_filter = task_filter_cwd(&state, project.as_ref(), query.cwd.as_deref())?;
+    let cwd_filter = task_filter_cwd(&state, query.cwd.as_deref())?;
     let client = require_codex_thread_client(&state).await?;
     let response = client.list_threads(100).await?;
-    let tasks = thread_list_response(
-        &state.fs,
-        project.as_ref(),
-        cwd_filter.as_ref(),
-        &state.projects,
-        &response,
-    );
+    let tasks = thread_list_response(&state.fs, cwd_filter.as_ref(), &response);
     Ok(Json(TaskListResponse { tasks }))
 }
 
@@ -1138,9 +992,8 @@ async fn create_task(
     State(state): State<AppState>,
     Json(request): Json<CreateTaskRequest>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
-    let project = task_project_context(&state, request.project_id.as_deref())?;
     let prompt = normalize_prompt(&request.prompt)?;
-    let cwd = task_cwd(&state, project.as_ref(), request.cwd.as_deref())?;
+    let cwd = task_cwd(&state, request.cwd.as_deref())?;
     let turn_options = codex_turn_options(request.model, request.effort)?;
     let client = require_codex_thread_client(&state).await?;
 
@@ -1149,7 +1002,7 @@ async fn create_task(
         .start_turn(&thread.thread_id, &cwd, prompt, turn_options)
         .await?;
     Ok(Json(
-        read_task_detail(&state, &client, project.as_ref(), &thread.thread_id, None).await?,
+        read_task_detail(&state, &client, &thread.thread_id, None).await?,
     ))
 }
 
@@ -1158,30 +1011,19 @@ async fn task_detail(
     AxumPath(thread_id): AxumPath<String>,
     Query(query): Query<TaskDetailQuery>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
-    let project = task_project_context(&state, query.project_id.as_deref())?;
     let client = require_codex_thread_client(&state).await?;
     Ok(Json(
-        read_task_detail(
-            &state,
-            &client,
-            project.as_ref(),
-            &thread_id,
-            query.cursor.as_deref(),
-        )
-        .await?,
+        read_task_detail(&state, &client, &thread_id, query.cursor.as_deref()).await?,
     ))
 }
 
 async fn task_stream(
     State(state): State<AppState>,
     AxumPath(thread_id): AxumPath<String>,
-    Query(query): Query<TasksQuery>,
+    Query(_query): Query<TasksQuery>,
 ) -> Result<Response, ApiError> {
-    let project = task_project_context(&state, query.project_id.as_deref())?;
-    // Validate route ownership once before subscribing. The stream itself is
-    // ephemeral and only forwards live app-server events.
     let client = require_codex_thread_client(&state).await?;
-    validate_thread_belongs_to_project(project.as_ref(), &thread_id, &client).await?;
+    client.read_thread(&thread_id, false).await?;
     let receiver = state.task_events.subscribe();
     let shutdown = state.shutdown.subscribe();
     let stream = stream::unfold(
@@ -1225,40 +1067,36 @@ async fn task_stream(
 async fn task_prompt(
     State(state): State<AppState>,
     AxumPath(thread_id): AxumPath<String>,
-    Query(query): Query<TasksQuery>,
+    Query(_query): Query<TasksQuery>,
     Json(request): Json<TaskPromptRequest>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
-    let project = task_project_context(&state, query.project_id.as_deref())?;
     let prompt = normalize_prompt(&request.prompt)?;
     let turn_options = codex_turn_options(request.model, request.effort)?;
     let client = require_codex_thread_client(&state).await?;
     let thread = client.read_thread(&thread_id, false).await?;
     let thread_value = thread.get("thread").unwrap_or(&thread);
-    ensure_thread_belongs_to_project(project.as_ref(), thread_value)?;
     let cwd = thread_value
         .get("cwd")
         .and_then(JsonValue::as_str)
         .map(ToOwned::to_owned)
-        .unwrap_or(task_cwd(&state, project.as_ref(), None)?);
+        .unwrap_or(task_cwd(&state, None)?);
     client.resume_thread(&thread_id, &cwd).await?;
     client
         .start_turn(&thread_id, &cwd, prompt, turn_options)
         .await?;
     Ok(Json(
-        read_task_detail(&state, &client, project.as_ref(), &thread_id, None).await?,
+        read_task_detail(&state, &client, &thread_id, None).await?,
     ))
 }
 
 async fn task_interrupt(
     State(state): State<AppState>,
     AxumPath(thread_id): AxumPath<String>,
-    Query(query): Query<TasksQuery>,
+    Query(_query): Query<TasksQuery>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
-    let project = task_project_context(&state, query.project_id.as_deref())?;
     let client = require_codex_thread_client(&state).await?;
     let thread = client.read_thread(&thread_id, false).await?;
     let thread_value = thread.get("thread").unwrap_or(&thread);
-    ensure_thread_belongs_to_project(project.as_ref(), thread_value)?;
     let turns_response = client
         .list_thread_turns(&thread_id, None, TASK_DETAIL_TURNS_PAGE_SIZE)
         .await?;
@@ -1277,17 +1115,16 @@ async fn task_interrupt(
     };
     client.interrupt_turn(&thread_id, &turn_id).await?;
     Ok(Json(
-        read_task_detail(&state, &client, project.as_ref(), &thread_id, None).await?,
+        read_task_detail(&state, &client, &thread_id, None).await?,
     ))
 }
 
 async fn task_approval(
     State(state): State<AppState>,
     AxumPath((thread_id, approval_id)): AxumPath<(String, String)>,
-    Query(query): Query<TasksQuery>,
+    Query(_query): Query<TasksQuery>,
     Json(request): Json<TaskApprovalRequest>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
-    let project = task_project_context(&state, query.project_id.as_deref())?;
     let pending = {
         let approvals = state.pending_approvals.lock().await;
         let Some(pending) = approvals.get(&approval_id).cloned() else {
@@ -1304,16 +1141,6 @@ async fn task_approval(
             message: "approval request belongs to another thread".to_string(),
         });
     }
-    if let Some(project) = project.as_ref()
-        && !pending.project_id.is_empty()
-        && pending.project_id != project.id
-    {
-        return Err(ApiError::BadRequest {
-            code: "approval_project_mismatch",
-            message: "approval request belongs to another project".to_string(),
-        });
-    }
-
     let client = require_codex_thread_client(&state).await?;
     let decision = normalize_approval_decision(&request.decision)?;
     client
@@ -1326,7 +1153,6 @@ async fn task_approval(
 
     let event = task_event_record(
         &pending.thread_id,
-        &pending.project_id,
         &format!("approval_resolved:{approval_id}"),
         "approval_resolved",
         &format!("Approval resolved: {decision}"),
@@ -1340,48 +1166,8 @@ async fn task_approval(
     let _ = state.task_events.send(event);
 
     Ok(Json(
-        read_task_detail(&state, &client, project.as_ref(), &thread_id, None).await?,
+        read_task_detail(&state, &client, &thread_id, None).await?,
     ))
-}
-
-fn project_candidate_response(
-    fs: &RootedFs,
-    store: &ProjectStore,
-    project_root: ProjectRoot,
-) -> Result<ProjectCandidate, ApiError> {
-    let registered = store
-        .find_by_root_path(&project_root.root_path)?
-        .or(project_for_path(store, &project_root.root_path)?);
-
-    if let Some(project) = registered {
-        return Ok(ProjectCandidate {
-            name: project.name,
-            relative_path: fs.logical_path_for_absolute(Path::new(&project.root_path))?,
-            root_path: project.root_path,
-            already_registered: true,
-            project_id: Some(project.id),
-        });
-    }
-
-    Ok(ProjectCandidate {
-        name: project_root.name,
-        root_path: project_root.root_path,
-        relative_path: project_root.relative_path,
-        already_registered: false,
-        project_id: None,
-    })
-}
-
-fn project_response(fs: &RootedFs, project: ProjectRecord) -> Result<ProjectResponse, FsError> {
-    Ok(ProjectResponse {
-        id: project.id,
-        name: project.name,
-        relative_path: fs.logical_path_for_absolute(std::path::Path::new(&project.root_path))?,
-        root_path: project.root_path,
-        created_ms: project.created_ms,
-        updated_ms: project.updated_ms,
-        last_opened_ms: project.last_opened_ms,
-    })
 }
 
 async fn require_codex_thread_client(state: &AppState) -> Result<CodexThreadClient, ApiError> {
@@ -1400,7 +1186,6 @@ async fn require_codex_thread_client(state: &AppState) -> Result<CodexThreadClie
     match CodexThreadClient::start().await {
         Ok(client) => {
             spawn_codex_thread_bridge(
-                state.projects.clone(),
                 client.clone(),
                 state.task_events.clone(),
                 state.pending_approvals.clone(),
@@ -1419,15 +1204,11 @@ async fn require_codex_thread_client(state: &AppState) -> Result<CodexThreadClie
 async fn read_task_detail(
     state: &AppState,
     client: &CodexThreadClient,
-    requested_project: Option<&ProjectRecord>,
     thread_id: &str,
     cursor: Option<&str>,
 ) -> Result<TaskDetailResponse, ApiError> {
     let response = client.read_thread(thread_id, false).await?;
     let thread = response.get("thread").unwrap_or(&response);
-    ensure_thread_belongs_to_project(requested_project, thread)?;
-    let associated_project =
-        associated_project_for_thread(&state.projects, requested_project, thread);
     let turns_response = client
         .list_thread_turns(thread_id, cursor, TASK_DETAIL_TURNS_PAGE_SIZE)
         .await?;
@@ -1442,7 +1223,7 @@ async fn read_task_detail(
         .and_then(JsonValue::as_str)
         .map(ToOwned::to_owned);
     let thread = thread_with_turns(thread, turns)?;
-    let mut events = thread_events(associated_project.as_ref(), &thread);
+    let mut events = thread_events(&thread);
     let pending_approvals = pending_approval_events(state, thread_id).await;
     events.extend(pending_approvals.iter().cloned());
     events.sort_by(|left, right| {
@@ -1451,12 +1232,7 @@ async fn read_task_detail(
             .then_with(|| left.id.cmp(&right.id))
     });
     let resolved_cwd = resolve_thread_cwd(&state.fs, &thread);
-    let task = task_record_from_thread(
-        associated_project.as_ref(),
-        &thread,
-        &events,
-        resolved_cwd.as_ref(),
-    )?;
+    let task = task_record_from_thread(&thread, &events, resolved_cwd.as_ref())?;
     Ok(TaskDetailResponse {
         task,
         events,
@@ -1476,21 +1252,9 @@ fn thread_with_turns(thread: &JsonValue, turns: Vec<JsonValue>) -> Result<JsonVa
     Ok(thread)
 }
 
-async fn validate_thread_belongs_to_project(
-    project: Option<&ProjectRecord>,
-    thread_id: &str,
-    client: &CodexThreadClient,
-) -> Result<(), ApiError> {
-    let response = client.read_thread(thread_id, false).await?;
-    let thread = response.get("thread").unwrap_or(&response);
-    ensure_thread_belongs_to_project(project, thread)
-}
-
 fn thread_list_response(
     fs: &RootedFs,
-    project: Option<&ProjectRecord>,
     cwd_filter: Option<&TaskCwdFilter>,
-    projects: &ProjectStore,
     response: &JsonValue,
 ) -> Vec<TaskRecord> {
     let mut resolved_cwds = HashMap::<String, Option<ResolvedTaskCwd>>::new();
@@ -1512,22 +1276,7 @@ fn thread_list_response(
                 return None;
             }
 
-            if let Some(project) = project {
-                if !thread_belongs_to_project(project, thread) {
-                    return None;
-                }
-                return task_record_from_thread(Some(project), thread, &[], resolved_cwd.as_ref())
-                    .ok();
-            }
-
-            let associated_project = associated_project_for_thread(projects, None, thread);
-            task_record_from_thread(
-                associated_project.as_ref(),
-                thread,
-                &[],
-                resolved_cwd.as_ref(),
-            )
-            .ok()
+            task_record_from_thread(thread, &[], resolved_cwd.as_ref()).ok()
         })
         .collect::<Vec<_>>();
     tasks.sort_by(|left, right| {
@@ -1541,7 +1290,6 @@ fn thread_list_response(
 }
 
 fn task_record_from_thread(
-    project: Option<&ProjectRecord>,
     thread: &JsonValue,
     events: &[TaskEventRecord],
     resolved_cwd: Option<&ResolvedTaskCwd>,
@@ -1550,10 +1298,7 @@ fn task_record_from_thread(
         code: "thread_id_missing",
         message: "Codex thread did not include an id".to_string(),
     })?;
-    let cwd = thread_cwd(thread)
-        .or_else(|| project.map(|project| project.root_path.as_str()))
-        .unwrap_or("")
-        .to_string();
+    let cwd = thread_cwd(thread).unwrap_or("").to_string();
     let title = non_empty_string(thread.get("name").and_then(JsonValue::as_str))
         .or_else(|| non_empty_string(thread.get("preview").and_then(JsonValue::as_str)))
         .unwrap_or_else(|| format!("Thread {}", short_thread_id(thread_id)));
@@ -1580,18 +1325,13 @@ fn task_record_from_thread(
     Ok(TaskRecord {
         id: thread_id.to_string(),
         thread_id: thread_id.to_string(),
-        project_id: project.map(|project| project.id.clone()),
         title,
         preview,
         status,
         cwd_path: resolved_cwd.and_then(|resolved| resolved.logical_cwd.clone()),
-        relative_cwd: project
-            .map(|project| relative_cwd(project, &cwd))
-            .unwrap_or_else(|| {
-                resolved_cwd
-                    .and_then(|resolved| resolved.logical_cwd.clone())
-                    .unwrap_or_else(|| cwd.clone())
-            }),
+        relative_cwd: resolved_cwd
+            .and_then(|resolved| resolved.logical_cwd.clone())
+            .unwrap_or_else(|| cwd.clone()),
         worktree: resolved_cwd.and_then(|resolved| resolved.worktree.clone()),
         cwd,
         created_ms: seconds_to_ms(thread.get("createdAt").and_then(JsonValue::as_f64)),
@@ -1605,11 +1345,10 @@ fn task_record_from_thread(
     })
 }
 
-fn thread_events(project: Option<&ProjectRecord>, thread: &JsonValue) -> Vec<TaskEventRecord> {
+fn thread_events(thread: &JsonValue) -> Vec<TaskEventRecord> {
     let Some(thread_id) = thread_id(thread) else {
         return Vec::new();
     };
-    let project_id = project.map(|project| project.id.as_str()).unwrap_or("");
     let mut events = Vec::new();
     let created_ms = seconds_to_ms(thread.get("createdAt").and_then(JsonValue::as_f64));
     for turn in thread
@@ -1626,7 +1365,6 @@ fn thread_events(project: Option<&ProjectRecord>, thread: &JsonValue) -> Vec<Tas
             .unwrap_or(created_ms);
         events.push(task_event_record(
             thread_id,
-            project_id,
             &format!("{turn_id}:started"),
             "turn_started",
             "Turn started",
@@ -1644,9 +1382,7 @@ fn thread_events(project: Option<&ProjectRecord>, thread: &JsonValue) -> Vec<Tas
                 "turnId": turn_id,
                 "item": item
             });
-            if let Some(event) =
-                task_event_from_thread_item(thread_id, project_id, started_ms, &params)
-            {
+            if let Some(event) = task_event_from_thread_item(thread_id, started_ms, &params) {
                 events.push(event);
             }
         }
@@ -1667,7 +1403,6 @@ fn thread_events(project: Option<&ProjectRecord>, thread: &JsonValue) -> Vec<Tas
             };
             events.push(task_event_record(
                 thread_id,
-                project_id,
                 &format!("{turn_id}:completed"),
                 "turn_completed",
                 summary,
@@ -1694,7 +1429,6 @@ async fn pending_approval_events(state: &AppState, thread_id: &str) -> Vec<TaskE
             };
             task_event_record(
                 &pending.thread_id,
-                &pending.project_id,
                 &format!("approval_requested:{approval_id}"),
                 "approval_requested",
                 if kind == "command" {
@@ -1716,7 +1450,6 @@ async fn pending_approval_events(state: &AppState, thread_id: &str) -> Vec<TaskE
 
 fn task_event_record(
     thread_id: &str,
-    project_id: &str,
     event_id: &str,
     event_type: &str,
     summary: &str,
@@ -1726,7 +1459,6 @@ fn task_event_record(
     TaskEventRecord {
         id: format!("{thread_id}:{event_id}"),
         thread_id: thread_id.to_string(),
-        project_id: project_id.to_string(),
         event_type: event_type.to_string(),
         summary: summary.to_string(),
         payload,
@@ -1735,7 +1467,6 @@ fn task_event_record(
 }
 
 fn spawn_codex_thread_bridge(
-    projects: ProjectStore,
     client: CodexThreadClient,
     task_events: broadcast::Sender<TaskEventRecord>,
     pending_approvals: Arc<AsyncMutex<HashMap<String, PendingApproval>>>,
@@ -1756,7 +1487,6 @@ fn spawn_codex_thread_bridge(
                         }
                         CodexRuntimeEvent::ServerRequest { id, method, params } => {
                             handle_codex_server_request(
-                                &projects,
                                 &task_events,
                                 &pending_approvals,
                                 id,
@@ -1783,14 +1513,12 @@ fn handle_codex_notification(
     };
     match method {
         "item/completed" => {
-            if let Some(event) = task_event_from_thread_item(&thread_id, "", now_ms(), &params) {
+            if let Some(event) = task_event_from_thread_item(&thread_id, now_ms(), &params) {
                 let _ = task_events.send(event);
             }
         }
         "rawResponseItem/completed" => {
-            if let Some(event) =
-                task_event_from_raw_response_item(&thread_id, "", now_ms(), &params)
-            {
+            if let Some(event) = task_event_from_raw_response_item(&thread_id, now_ms(), &params) {
                 let _ = task_events.send(event);
             }
         }
@@ -1813,7 +1541,6 @@ fn handle_codex_notification(
             };
             let event = task_event_record(
                 &thread_id,
-                "",
                 &event_id_from_params("turn_completed", &params),
                 "turn_completed",
                 summary,
@@ -1825,7 +1552,6 @@ fn handle_codex_notification(
         "turn/diff/updated" => {
             let event = task_event_record(
                 &thread_id,
-                "",
                 "diff_updated",
                 "diff_updated",
                 "Diff updated",
@@ -1840,7 +1566,6 @@ fn handle_codex_notification(
 
 fn task_event_from_thread_item(
     thread_id: &str,
-    project_id: &str,
     created_ms: u64,
     params: &JsonValue,
 ) -> Option<TaskEventRecord> {
@@ -1952,7 +1677,6 @@ fn task_event_from_thread_item(
     };
     Some(task_event_record(
         thread_id,
-        project_id,
         item_id.unwrap_or(event_type),
         event_type,
         &summary,
@@ -1963,7 +1687,6 @@ fn task_event_from_thread_item(
 
 fn task_event_from_raw_response_item(
     thread_id: &str,
-    project_id: &str,
     created_ms: u64,
     params: &JsonValue,
 ) -> Option<TaskEventRecord> {
@@ -2015,7 +1738,6 @@ fn task_event_from_raw_response_item(
     };
     Some(task_event_record(
         thread_id,
-        project_id,
         item_id.unwrap_or(event_type),
         event_type,
         &summary,
@@ -2122,7 +1844,6 @@ fn command_execution_summary(item: &JsonValue) -> String {
 }
 
 async fn handle_codex_server_request(
-    projects: &ProjectStore,
     task_events: &broadcast::Sender<TaskEventRecord>,
     pending_approvals: &Arc<AsyncMutex<HashMap<String, PendingApproval>>>,
     request_id: JsonValue,
@@ -2138,12 +1859,10 @@ async fn handle_codex_server_request(
         return;
     };
     let approval_id = approval_id_from_request(&request_id, &params);
-    let project_id = project_id_for_approval(projects, &params).unwrap_or_default();
     pending_approvals.lock().await.insert(
         approval_id.clone(),
         PendingApproval {
             thread_id: thread_id.to_string(),
-            project_id: project_id.clone(),
             request_id: request_id.clone(),
             method: method.to_string(),
             params: params.clone(),
@@ -2162,7 +1881,6 @@ async fn handle_codex_server_request(
     };
     let event = task_event_record(
         thread_id,
-        &project_id,
         &format!("approval_requested:{approval_id}"),
         "approval_requested",
         summary,
@@ -2202,39 +1920,6 @@ fn approval_id_from_request(request_id: &JsonValue, params: &JsonValue) -> Strin
             JsonValue::Number(value) => value.to_string(),
             _ => request_id.to_string(),
         })
-}
-
-fn task_project_context(
-    state: &AppState,
-    project_id: Option<&str>,
-) -> Result<Option<ProjectRecord>, ApiError> {
-    project_id
-        .filter(|project_id| !project_id.is_empty())
-        .map(|project_id| state.projects.get_project(project_id))
-        .transpose()
-        .map_err(ApiError::from)
-}
-
-fn ensure_thread_belongs_to_project(
-    project: Option<&ProjectRecord>,
-    thread: &JsonValue,
-) -> Result<(), ApiError> {
-    let Some(project) = project else {
-        return Ok(());
-    };
-    if thread_belongs_to_project(project, thread) {
-        return Ok(());
-    }
-    Err(ApiError::BadRequest {
-        code: "thread_project_mismatch",
-        message: "thread cwd is not inside the requested project".to_string(),
-    })
-}
-
-fn thread_belongs_to_project(project: &ProjectRecord, thread: &JsonValue) -> bool {
-    thread_cwd(thread)
-        .map(|cwd| path_is_inside(Path::new(cwd), Path::new(&project.root_path)))
-        .unwrap_or(false)
 }
 
 fn resolve_thread_cwd(fs: &RootedFs, thread: &JsonValue) -> Option<ResolvedTaskCwd> {
@@ -2315,46 +2000,6 @@ fn task_cwd_matches_filter(resolved_cwd: Option<&ResolvedTaskCwd>, filter: &Task
     }
 }
 
-fn project_for_cwd(projects: &ProjectStore, cwd: &str) -> Option<ProjectRecord> {
-    project_for_path(projects, cwd).ok().flatten()
-}
-
-fn project_for_path(
-    projects: &ProjectStore,
-    path: &str,
-) -> Result<Option<ProjectRecord>, ProjectStoreError> {
-    let path = Path::new(path);
-    let mut candidates = projects
-        .list_projects()?
-        .into_iter()
-        .filter(|project| path_is_inside(path, Path::new(&project.root_path)))
-        .collect::<Vec<_>>();
-    candidates.sort_by_key(|project| project.root_path.len());
-    Ok(candidates.pop())
-}
-
-fn associated_project_for_thread(
-    projects: &ProjectStore,
-    requested_project: Option<&ProjectRecord>,
-    thread: &JsonValue,
-) -> Option<ProjectRecord> {
-    requested_project
-        .cloned()
-        .or_else(|| thread_cwd(thread).and_then(|cwd| project_for_cwd(projects, cwd)))
-}
-
-fn project_id_for_approval(projects: &ProjectStore, params: &JsonValue) -> Option<String> {
-    let cwd = params
-        .get("cwd")
-        .and_then(JsonValue::as_str)
-        .or_else(|| params.get("grantRoot").and_then(JsonValue::as_str))?;
-    project_for_cwd(projects, cwd).map(|project| project.id)
-}
-
-fn path_is_inside(path: &Path, root: &Path) -> bool {
-    path == root || path.starts_with(root)
-}
-
 fn thread_id(thread: &JsonValue) -> Option<&str> {
     thread.get("id").and_then(JsonValue::as_str)
 }
@@ -2393,15 +2038,6 @@ fn active_turn_id(thread: &JsonValue) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-fn relative_cwd(project: &ProjectRecord, cwd: &str) -> String {
-    Path::new(cwd)
-        .strip_prefix(Path::new(&project.root_path))
-        .ok()
-        .and_then(|path| path.to_str())
-        .map(|path| path.trim_start_matches('/').to_string())
-        .unwrap_or_default()
-}
-
 fn seconds_to_ms(value: Option<f64>) -> u64 {
     value.map(seconds_to_ms_value).unwrap_or(0)
 }
@@ -2434,40 +2070,20 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-fn project_task_cwd(project: &ProjectRecord, relative: Option<&str>) -> Result<String, ApiError> {
-    let relative = normalize_project_relative_path(relative.unwrap_or(""))?;
-    let root = PathBuf::from(&project.root_path);
-    let cwd = if relative.is_empty() {
-        root
-    } else {
-        root.join(relative)
-    };
-    Ok(cwd.display().to_string())
-}
-
-fn task_cwd(
-    state: &AppState,
-    project: Option<&ProjectRecord>,
-    relative: Option<&str>,
-) -> Result<String, ApiError> {
-    if let Some(project) = project {
-        return project_task_cwd(project, relative);
-    }
-
-    let logical_path = normalize_project_relative_path(relative.unwrap_or(&state.initial_path))?;
+fn task_cwd(state: &AppState, relative: Option<&str>) -> Result<String, ApiError> {
+    let logical_path = normalize_logical_path(relative.unwrap_or(&state.initial_path))?;
     let cwd = state.fs.absolute_directory_path(&logical_path)?;
     Ok(cwd.display().to_string())
 }
 
 fn task_filter_cwd(
     state: &AppState,
-    project: Option<&ProjectRecord>,
     relative: Option<&str>,
 ) -> Result<Option<TaskCwdFilter>, ApiError> {
     relative
         .filter(|path| !path.is_empty())
         .map(|path| {
-            let cwd = task_cwd(state, project, Some(path))?;
+            let cwd = task_cwd(state, Some(path))?;
             let resolved =
                 resolve_task_cwd(&state.fs, &cwd).ok_or_else(|| ApiError::BadRequest {
                     code: "invalid_task_cwd",
@@ -2494,7 +2110,7 @@ fn relative_path_string(path: &Path) -> String {
         .join("/")
 }
 
-fn normalize_project_relative_path(path: &str) -> Result<String, ApiError> {
+fn normalize_logical_path(path: &str) -> Result<String, ApiError> {
     let mut parts = Vec::new();
     for segment in path.split('/') {
         if segment.is_empty() || segment == "." {
@@ -2503,7 +2119,7 @@ fn normalize_project_relative_path(path: &str) -> Result<String, ApiError> {
         if segment == ".." {
             return Err(ApiError::BadRequest {
                 code: "invalid_task_cwd",
-                message: "task cwd must stay inside the project".to_string(),
+                message: "task cwd must stay inside the server root".to_string(),
             });
         }
         parts.push(segment);
@@ -2579,7 +2195,6 @@ fn normalize_approval_decision(decision: &str) -> Result<&str, ApiError> {
 #[derive(Debug)]
 enum ApiError {
     Fs(FsError),
-    Project(ProjectStoreError),
     CodexThread(String),
     Watch(String),
     Internal(String),
@@ -2590,12 +2205,6 @@ enum ApiError {
 impl From<FsError> for ApiError {
     fn from(error: FsError) -> Self {
         Self::Fs(error)
-    }
-}
-
-impl From<ProjectStoreError> for ApiError {
-    fn from(error: ProjectStoreError) -> Self {
-        Self::Project(error)
     }
 }
 
@@ -2702,26 +2311,6 @@ impl IntoResponse for ApiError {
                 "filesystem_error",
                 format!("filesystem error while trying to {action}: {path}"),
             ),
-            ApiError::Project(ProjectStoreError::NotFound(id)) => (
-                StatusCode::NOT_FOUND,
-                "project_not_found",
-                format!("project was not found: {id}"),
-            ),
-            ApiError::Project(ProjectStoreError::EmptyName) => (
-                StatusCode::BAD_REQUEST,
-                "empty_project_name",
-                "project name cannot be empty".to_string(),
-            ),
-            ApiError::Project(ProjectStoreError::UnexpectedPayload)
-            | ApiError::Project(ProjectStoreError::InvalidRow(_))
-            | ApiError::Project(ProjectStoreError::Poisoned)
-            | ApiError::Project(ProjectStoreError::IdCollision)
-            | ApiError::Project(ProjectStoreError::Glue(_))
-            | ApiError::Project(ProjectStoreError::Io(_)) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "project_store_error",
-                "project store failed".to_string(),
-            ),
             ApiError::CodexThread(message) => {
                 (StatusCode::BAD_GATEWAY, "codex_app_server_error", message)
             }
@@ -2765,66 +2354,19 @@ mod tests {
         assert_eq!(manifest["id"], "/");
     }
 
-    fn task_test_project() -> (ProjectRecord, tempfile::TempDir) {
+    #[test]
+    fn thread_list_response_filters_cwd_and_sorts_by_recency() {
         let temp = tempfile::tempdir().unwrap();
         let project_root = temp.path().join("project");
-        std::fs::create_dir(&project_root).unwrap();
-        let projects = ProjectStore::memory().unwrap();
-        let project = projects
-            .create_project("project", &project_root.display().to_string())
-            .unwrap();
-        (project, temp)
-    }
-
-    #[test]
-    fn project_candidate_keeps_registered_non_git_parent() {
-        let temp = tempfile::tempdir().unwrap();
-        let project_root = temp.path().join("notes");
-        let nested = project_root.join("archive");
-        std::fs::create_dir_all(&nested).unwrap();
-        let project_root = project_root.canonicalize().unwrap();
+        std::fs::create_dir_all(project_root.join("src")).unwrap();
         let fs = RootedFs::new(temp.path()).unwrap();
-        let projects = ProjectStore::memory().unwrap();
-        let project = projects
-            .create_project("Notes", &project_root.display().to_string())
-            .unwrap();
-        let nested_root = fs.project_root_for_path("notes/archive").unwrap();
-
-        let candidate = project_candidate_response(&fs, &projects, nested_root).unwrap();
-
-        assert!(candidate.already_registered);
-        assert_eq!(candidate.project_id.as_deref(), Some(project.id.as_str()));
-        assert_eq!(candidate.name, "Notes");
-        assert_eq!(candidate.relative_path, "notes");
-        assert_eq!(candidate.root_path, project_root.display().to_string());
-    }
-
-    #[test]
-    fn thread_cwd_prefix_filter_includes_subdirectories_and_rejects_outside_roots() {
-        let (project, temp) = task_test_project();
-        let subdir_thread = json!({
-            "id": "thread_subdir",
-            "cwd": temp.path().join("project/src").display().to_string()
-        });
-        let outside_thread = json!({
-            "id": "thread_outside",
-            "cwd": temp.path().join("other").display().to_string()
-        });
-
-        assert!(thread_belongs_to_project(&project, &subdir_thread));
-        assert!(!thread_belongs_to_project(&project, &outside_thread));
-    }
-
-    #[test]
-    fn thread_list_response_filters_project_threads_and_sorts_by_recency() {
-        let (project, temp) = task_test_project();
-        let fs = RootedFs::new(temp.path()).unwrap();
+        let cwd_filter = TaskCwdFilter::Exact(project_root.canonicalize().unwrap());
         let response = json!({
             "data": [
                 {
                     "id": "thread_old",
                     "preview": "Old thread",
-                    "cwd": temp.path().join("project").display().to_string(),
+                    "cwd": project_root.display().to_string(),
                     "createdAt": 1.0,
                     "updatedAt": 2.0,
                     "recencyAt": 3.0,
@@ -2833,7 +2375,7 @@ mod tests {
                 {
                     "id": "thread_new",
                     "preview": "New thread",
-                    "cwd": temp.path().join("project/src").display().to_string(),
+                    "cwd": project_root.join("src").display().to_string(),
                     "createdAt": 4.0,
                     "updatedAt": 5.0,
                     "recencyAt": 6.0,
@@ -2852,34 +2394,23 @@ mod tests {
             ]
         });
 
-        let projects = ProjectStore::memory().unwrap();
-        let tasks = thread_list_response(&fs, Some(&project), None, &projects, &response);
-        assert_eq!(
-            tasks
-                .iter()
-                .map(|task| task.thread_id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["thread_new", "thread_old"]
-        );
-        assert_eq!(tasks[0].status, "running");
-        assert_eq!(tasks[0].relative_cwd, "src");
+        let tasks = thread_list_response(&fs, Some(&cwd_filter), &response);
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].thread_id, "thread_old");
     }
 
     #[test]
-    fn thread_list_response_all_threads_marks_matching_projects_optionally() {
+    fn thread_list_response_all_threads_keeps_unregistered_directories() {
         let temp = tempfile::tempdir().unwrap();
         let fs = RootedFs::new(temp.path()).unwrap();
         let project_root = temp.path().join("project");
-        std::fs::create_dir(&project_root).unwrap();
-        let projects = ProjectStore::memory().unwrap();
-        let project = projects
-            .create_project("project", &project_root.display().to_string())
-            .unwrap();
+        std::fs::create_dir_all(project_root.join("src")).unwrap();
+        std::fs::create_dir(temp.path().join("outside")).unwrap();
         let response = json!({
             "data": [
                 {
                     "id": "thread_project",
-                    "preview": "Project thread",
+                    "preview": "Repository thread",
                     "cwd": temp.path().join("project/src").display().to_string(),
                     "createdAt": 1.0,
                     "updatedAt": 2.0,
@@ -2896,24 +2427,12 @@ mod tests {
             ]
         });
 
-        let tasks = thread_list_response(&fs, None, None, &projects, &response);
+        let tasks = thread_list_response(&fs, None, &response);
 
         assert_eq!(tasks.len(), 2);
-        let project_task = tasks
-            .iter()
-            .find(|task| task.thread_id == "thread_project")
-            .unwrap();
-        let global_task = tasks
-            .iter()
-            .find(|task| task.thread_id == "thread_global")
-            .unwrap();
-        assert_eq!(
-            project_task.project_id.as_deref(),
-            Some(project.id.as_str())
-        );
-        assert_eq!(project_task.relative_cwd, "src");
-        assert_eq!(global_task.project_id, None);
-        assert!(global_task.relative_cwd.ends_with("outside"));
+        assert_eq!(tasks[0].thread_id, "thread_global");
+        assert_eq!(tasks[1].thread_id, "thread_project");
+        assert_eq!(tasks[1].relative_cwd, "project/src");
     }
 
     #[test]
@@ -2923,10 +2442,6 @@ mod tests {
         let project_root = temp.path().join("project");
         let src_root = project_root.join("src");
         std::fs::create_dir_all(&src_root).unwrap();
-        let projects = ProjectStore::memory().unwrap();
-        let project = projects
-            .create_project("project", &project_root.display().to_string())
-            .unwrap();
         let cwd_filter = TaskCwdFilter::Exact(project_root.canonicalize().unwrap());
         let response = json!({
             "data": [
@@ -2949,16 +2464,15 @@ mod tests {
             ]
         });
 
-        let tasks = thread_list_response(&fs, None, Some(&cwd_filter), &projects, &response);
+        let tasks = thread_list_response(&fs, Some(&cwd_filter), &response);
 
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].thread_id, "thread_project_root");
-        assert_eq!(tasks[0].project_id.as_deref(), Some(project.id.as_str()));
     }
 
     #[test]
     fn thread_read_turns_normalize_transcript_items_into_timeline_events() {
-        let (project, temp) = task_test_project();
+        let temp = tempfile::tempdir().unwrap();
         let thread = json!({
             "id": "thread_1",
             "name": "Readable thread",
@@ -3015,7 +2529,7 @@ mod tests {
             ]
         });
 
-        let events = thread_events(Some(&project), &thread);
+        let events = thread_events(&thread);
         let event_types = events
             .iter()
             .map(|event| event.event_type.as_str())
@@ -3061,7 +2575,7 @@ mod tests {
 
     #[test]
     fn reasoning_content_without_summary_is_preserved() {
-        let (project, temp) = task_test_project();
+        let temp = tempfile::tempdir().unwrap();
         let thread = json!({
             "id": "thread_1",
             "preview": "Inspect the diff",
@@ -3085,7 +2599,7 @@ mod tests {
             ]
         });
 
-        let events = thread_events(Some(&project), &thread);
+        let events = thread_events(&thread);
         let reasoning = events
             .iter()
             .find(|event| event.event_type == "reasoning")
@@ -3102,7 +2616,6 @@ mod tests {
     fn raw_response_items_normalize_assistant_messages() {
         let event = task_event_from_raw_response_item(
             "thread_1",
-            "project_1",
             1,
             &json!({
                 "threadId": "thread_1",
@@ -3129,7 +2642,6 @@ mod tests {
     fn raw_response_reasoning_content_without_summary_is_preserved() {
         let event = task_event_from_raw_response_item(
             "thread_1",
-            "project_1",
             1,
             &json!({
                 "threadId": "thread_1",
@@ -3155,7 +2667,7 @@ mod tests {
 
     #[test]
     fn pending_approval_events_mark_task_as_waiting_for_approval() {
-        let (project, temp) = task_test_project();
+        let temp = tempfile::tempdir().unwrap();
         let thread = json!({
             "id": "thread_1",
             "preview": "Needs approval",
@@ -3166,7 +2678,6 @@ mod tests {
         });
         let events = vec![task_event_record(
             "thread_1",
-            &project.id,
             "approval_requested:1",
             "approval_requested",
             "Command approval requested",
@@ -3174,7 +2685,7 @@ mod tests {
             1,
         )];
 
-        let task = task_record_from_thread(Some(&project), &thread, &events, None).unwrap();
+        let task = task_record_from_thread(&thread, &events, None).unwrap();
         assert_eq!(task.status, "waiting_for_approval");
     }
 
@@ -3253,9 +2764,8 @@ mod tests {
                 }
             ]
         });
-        let projects = ProjectStore::memory().unwrap();
         let filter = TaskCwdFilter::Repository(main.repository_common_dir.unwrap());
-        let filtered = thread_list_response(&fs, None, Some(&filter), &projects, &response);
+        let filtered = thread_list_response(&fs, Some(&filter), &response);
         assert_eq!(
             filtered
                 .iter()
@@ -3263,7 +2773,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["thread_linked", "thread_main_src", "thread_main_root"]
         );
-        let all = thread_list_response(&fs, None, None, &projects, &response);
+        let all = thread_list_response(&fs, None, &response);
         assert_eq!(all.len(), 3);
 
         git(&linked_root, &["checkout", "--detach", "HEAD"]);
@@ -3299,15 +2809,10 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let project_root = temp.path().join("project");
         std::fs::create_dir(&project_root).unwrap();
-        let projects = ProjectStore::memory().unwrap();
-        let project = projects
-            .create_project("project", &project_root.display().to_string())
-            .unwrap();
         let (sender, mut receiver) = broadcast::channel(4);
         let pending = Arc::new(AsyncMutex::new(HashMap::new()));
 
         handle_codex_server_request(
-            &projects,
             &sender,
             &pending,
             json!(11),
@@ -3325,14 +2830,12 @@ mod tests {
         let approvals = pending.lock().await;
         let approval = approvals.get("11").unwrap();
         assert_eq!(approval.thread_id, "thread_1");
-        assert_eq!(approval.project_id, project.id);
         assert_eq!(approval.params["command"], "cargo test");
         drop(approvals);
 
         let event = receiver.recv().await.unwrap();
         assert_eq!(event.thread_id, "thread_1");
         assert_eq!(event.event_type, "approval_requested");
-        assert_eq!(event.project_id, project.id);
     }
 
     fn git_is_available() -> bool {

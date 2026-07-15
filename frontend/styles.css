@@ -1,7 +1,6 @@
 @import "./pages/layout.css";
 @import "./pages/components/app-menu.css";
 @import "./pages/components/pathbar.css";
-@import "./pages/components/project-switcher.css";
 @import "./pages/components/header-actions.css";
 @import "./pages/components/header-actions/codex-status.css";
 @import "./components/pagination.css";

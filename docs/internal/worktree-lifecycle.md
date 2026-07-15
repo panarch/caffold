@@ -20,7 +20,7 @@ Names should be human-readable and recoverable.
 
 The exact naming scheme is still open, but it should include enough context to identify:
 
-- project
+- repository
 - task intent
 - branch or base
 - creation time or stable task ID

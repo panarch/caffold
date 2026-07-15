@@ -71,7 +71,6 @@ class CaffoldCodexWorkspace extends HTMLElement {
       this.tasksPage.taskDetailView !== "conversation";
     const isGlobalTasksHome = Boolean(
       this.route?.kind === "tasks" &&
-        !this.route.projectId &&
         !this.route.new &&
         !this.route.threadId,
     );

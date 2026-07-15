@@ -1,4 +1,4 @@
-import { getHealth, listDirectory, openProject } from "../api.js";
+import { getHealth, listDirectory } from "../api.js";
 import {
   parentRoute,
   parseRoute,
@@ -9,7 +9,6 @@ import {
 } from "../navigation-routes.js";
 import "./components/pathbar.js";
 import "./components/app-menu.js";
-import "./components/project-switcher.js";
 import "./components/header-actions.js";
 import "./files/page.js";
 import "./settings/page.js";
@@ -41,7 +40,6 @@ class CaffoldAppShell extends HTMLElement {
     this.codexWorkspace = this.querySelector("caffold-codex-workspace");
     this.codexWorkspace.ensureRendered();
     this.pathbar = this.querySelector("caffold-pathbar");
-    this.projectSwitcher = this.querySelector("caffold-project-switcher");
     this.headerActions = this.querySelector("caffold-header-actions");
     this.reviewWorkspace = this.querySelector("caffold-review-workspace");
     this.reviewWorkspace.ensureRendered();
@@ -54,7 +52,7 @@ class CaffoldAppShell extends HTMLElement {
     this.prepareRoute(
       initialRoute ??
         (window.location.pathname === "/"
-          ? { kind: "tasks", projectId: "", new: false, threadId: "", cwd: "" }
+          ? { kind: "tasks", new: false, threadId: "", cwd: "" }
           : null),
     );
 
@@ -94,7 +92,6 @@ class CaffoldAppShell extends HTMLElement {
     this.addEventListener("caffold:open-tasks", () => {
       this.navigateToRoute({
         kind: "tasks",
-        projectId: "",
         new: false,
         threadId: "",
         cwd: this.currentPath || ".",
@@ -103,7 +100,6 @@ class CaffoldAppShell extends HTMLElement {
     this.addEventListener("caffold:open-all-tasks", () => {
       this.navigateToRoute({
         kind: "tasks",
-        projectId: "",
         new: false,
         threadId: "",
         cwd: "",
@@ -112,7 +108,6 @@ class CaffoldAppShell extends HTMLElement {
     this.addEventListener("caffold:new-task", () => {
       this.navigateToRoute({
         kind: "tasks",
-        projectId: "",
         new: true,
         threadId: "",
         cwd: this.currentPath || ".",
@@ -172,9 +167,6 @@ class CaffoldAppShell extends HTMLElement {
     this.addEventListener("caffold:github-review-state-change", () => {
       this.syncHeaderReviewContext();
     });
-    this.addEventListener("caffold:project-selected", (event) => {
-      this.openProjectRoute(event.detail.project);
-    });
     this.bootstrap();
   }
 
@@ -195,12 +187,11 @@ class CaffoldAppShell extends HTMLElement {
       <header class="app-header">
         <div class="app-context">
           <caffold-app-menu></caffold-app-menu>
-          <caffold-project-switcher></caffold-project-switcher>
           <caffold-header-actions></caffold-header-actions>
         </div>
       </header>
       <caffold-pathbar></caffold-pathbar>
-      <main class="app-main" aria-label="Project workspace">
+      <main class="app-main" aria-label="Workspace">
         <caffold-files-page></caffold-files-page>
         <caffold-settings-page hidden></caffold-settings-page>
       </main>
@@ -273,7 +264,7 @@ class CaffoldAppShell extends HTMLElement {
       }
 
       this.navigateToRoute(
-        { kind: "tasks", projectId: "", new: false, threadId: "", cwd: "" },
+        { kind: "tasks", new: false, threadId: "", cwd: "" },
         { replace: true },
       );
     } catch (error) {
@@ -329,23 +320,18 @@ class CaffoldAppShell extends HTMLElement {
     }
     this.prepareRoute(route);
     try {
-      const project = await this.openProjectForRoute(route.projectId);
       const surface = routeSurface(route);
-      if (route.projectId && !project && surface !== "tasks" && surface !== "settings") {
-        return false;
-      }
-
       const domain = routeDomain(route);
       if (surface === "files") {
-        await this.applyFilesRoute(project, route);
+        await this.applyFilesRoute(route);
       } else if (surface === "tasks") {
-        await this.applyTasksRoute(project, route);
+        await this.applyTasksRoute(route);
       } else if (surface === "settings") {
         this.settingsPage.prepareRoute();
       } else if (domain === "git") {
-        await this.applyGitRoute(project, route);
+        await this.applyGitRoute(route);
       } else if (domain === "github") {
-        await this.applyGithubRoute(project, route);
+        await this.applyGithubRoute(route);
       }
 
       return true;
@@ -357,23 +343,13 @@ class CaffoldAppShell extends HTMLElement {
     }
   }
 
-  async openProjectForRoute(projectId) {
-    if (!projectId) {
-      return null;
-    }
-
-    const project = await openProject(projectId);
-    this.projectSwitcher.setCurrentProject(project);
-    return project;
-  }
-
-  async applyFilesRoute(project, route) {
+  async applyFilesRoute(route) {
     this.clearTaskReviewReturnRoute();
     this.codexWorkspace.hidden = true;
     this.filesPage.hidden = false;
     this.closeReviewWorkspace();
     this.reviewWorkspace.prepareForFileBrowserOpen();
-    const rootPath = project?.relativePath ?? route.cwd;
+    const rootPath = route.cwd;
     const fullPath = joinLogicalPath(rootPath, route.path);
     this.pathbar.path = fullPath;
     if (!route.path && this.filesPage.showLoadedList(fullPath)) {
@@ -389,31 +365,27 @@ class CaffoldAppShell extends HTMLElement {
     }
   }
 
-  async applyTasksRoute(project, route) {
+  async applyTasksRoute(route) {
     this.closeReviewWorkspace();
     this.reviewWorkspace.prepareForFileBrowserOpen();
     this.filesPage.hidden = true;
     this.codexWorkspace.hidden = false;
-    if (project) {
-      this.pathbar.path = project.relativePath;
-      await this.ensureProjectReviewContext(project);
-    }
+    this.pathbar.path = route.cwd || this.preferredContextPath();
     if (!this.isCurrentRoute(route)) {
       return;
     }
     const preserveLoadedTask = this.shouldPreserveLoadedTask(route);
     await this.codexWorkspace.openRoute(route, {
-      project,
       preserveLoadedTask,
       defaultCwdPath:
         this.currentPath || this.filesPage.loadStoredDirectoryPath() || this.initialPath,
     });
   }
 
-  async applyGitRoute(project, route) {
+  async applyGitRoute(route) {
     this.codexWorkspace.hidden = true;
     this.filesPage.hidden = false;
-    if (!(await this.ensureReviewContext(project, route.cwd))) {
+    if (!(await this.ensureReviewContext(route.cwd))) {
       return;
     }
     route = this.canonicalReviewRoute(route);
@@ -423,24 +395,18 @@ class CaffoldAppShell extends HTMLElement {
 
     await this.openGitRoute(route, {
       resolvePath: (path) =>
-        project
-          ? this.projectPath(project, path)
-          : joinLogicalPath(this.gitRepository?.rootPath ?? route.cwd, path),
-      skipReload: this.canApplyLoadedGitRoute(project, route),
+        joinLogicalPath(this.gitRepository?.rootPath ?? route.cwd, path),
+      skipReload: this.canApplyLoadedGitRoute(route),
       taskRelatedPaths: this.taskReviewRelatedPaths
-        .map((path) =>
-          project
-            ? this.repositoryRelativeProjectPath(project, path)
-            : this.repositoryRelativePath(path),
-        )
+        .map((path) => this.repositoryRelativePath(path))
         .filter(Boolean),
     });
   }
 
-  async applyGithubRoute(project, route) {
+  async applyGithubRoute(route) {
     this.codexWorkspace.hidden = true;
     this.filesPage.hidden = false;
-    if (!(await this.ensureReviewContext(project, route.cwd))) {
+    if (!(await this.ensureReviewContext(route.cwd))) {
       return;
     }
     route = this.canonicalReviewRoute(route);
@@ -450,66 +416,35 @@ class CaffoldAppShell extends HTMLElement {
 
     await this.openGithubRoute(route, {
       resolvePath: (path) =>
-        project
-          ? this.projectPath(project, path)
-          : joinLogicalPath(this.gitRepository?.rootPath ?? route.cwd, path),
-      skipReload: this.canApplyLoadedGithubRoute(project, route),
+        joinLogicalPath(this.gitRepository?.rootPath ?? route.cwd, path),
+      skipReload: this.canApplyLoadedGithubRoute(route),
     });
   }
 
   navigateToDirectoryRoute(path) {
-    if (this.currentRoute?.projectId) {
-      return this.navigateToFileRoute(path);
-    }
-
     return this.navigateToRoute({
       kind: "files",
-      projectId: "",
       cwd: cleanPath(path),
       path: "",
     });
   }
 
   navigateToFileRoute(path) {
-    if (!this.currentRoute?.projectId) {
-      const cwd = cleanPath(this.filesPage?.currentPath || this.preferredContextPath());
-      const relativePath = relativeLogicalPath(cwd, path);
-      if (relativePath === null) {
-        return false;
-      }
-
-      return this.navigateToRoute({
-        kind: "files",
-        projectId: "",
-        cwd,
-        path: relativePath,
-      });
-    }
-
-    const routePath = this.projectRelativePath(path);
-    if (routePath === null) {
+    const cwd = cleanPath(this.filesPage?.currentPath || this.preferredContextPath());
+    const relativePath = relativeLogicalPath(cwd, path);
+    if (relativePath === null) {
       return false;
     }
 
-    return this.navigateToCurrentProjectRoute({
+    return this.navigateToRoute({
       kind: "files",
-      path: routePath,
+      cwd,
+      path: relativePath,
     });
   }
 
   isCurrentRoute(route) {
     return Boolean(this.currentRoute && routeEquals(this.currentRoute, route));
-  }
-
-  navigateToCurrentProjectRoute(route) {
-    if (!this.projectSwitcher.currentProjectId) {
-      return false;
-    }
-
-    return this.navigateToRoute({
-      ...route,
-      projectId: this.projectSwitcher.currentProjectId,
-    });
   }
 
   navigateOrOpenGitRoute(route, options = {}) {
@@ -532,49 +467,24 @@ class CaffoldAppShell extends HTMLElement {
     if (!route) {
       return null;
     }
-    if (route.projectId) {
-      return route;
-    }
-    if (this.currentRoute?.projectId) {
-      const projectRoute = this.projectRouteForReviewRoute(route);
-      return projectRoute
-        ? { ...projectRoute, projectId: this.currentRoute.projectId }
-        : null;
-    }
 
     const cwd = cleanPath(this.gitRepository?.rootPath || this.preferredReviewContextPath());
     if (!cwd) {
       return null;
     }
     const path = route.path ? this.repositoryRelativePath(route.path) : "";
-    return { ...route, projectId: "", cwd, path };
-  }
-
-  projectRouteForReviewRoute(route) {
-    if (!route) {
-      return null;
-    }
-
-    if (!Object.prototype.hasOwnProperty.call(route, "path") || !route.path) {
-      return route;
-    }
-
-    const path = this.projectRelativePath(route.path);
-    if (path === null) {
-      return null;
-    }
-
-    return {
-      ...route,
-      path,
-    };
+    return { ...route, cwd, path };
   }
 
   navigateToReviewParent(options = {}) {
     const currentRoute = parseRoute(window.location.href) ?? this.currentRoute;
     if (!currentRoute) {
       if (options.closeWorkspace) {
-        return this.navigateToCurrentProjectRoute({ kind: "files", path: "" });
+        return this.navigateToRoute({
+          kind: "files",
+          cwd: cleanPath(this.preferredReviewContextPath()),
+          path: "",
+        });
       }
       return false;
     }
@@ -588,14 +498,11 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     const parent = options.closeWorkspace
-      ? currentRoute.projectId
-        ? { kind: "files", projectId: currentRoute.projectId, path: "" }
-        : {
-            kind: "files",
-            projectId: "",
-            cwd: cleanPath(currentRoute.cwd || this.preferredReviewContextPath()),
-            path: "",
-          }
+      ? {
+          kind: "files",
+          cwd: cleanPath(currentRoute.cwd || this.preferredReviewContextPath()),
+          path: "",
+        }
       : parentRoute(currentRoute);
     return parent ? this.navigateToRoute(parent) : false;
   }
@@ -643,23 +550,9 @@ class CaffoldAppShell extends HTMLElement {
   navigateToHomeEntrypoint() {
     return this.navigateToRoute({
       kind: "tasks",
-      projectId: "",
       new: false,
       threadId: "",
       cwd: "",
-    });
-  }
-
-  replaceWithCurrentProjectFileRoute() {
-    const routePath = this.projectRelativePath(this.currentPath);
-    if (!this.projectSwitcher.currentProjectId || routePath === null) {
-      return;
-    }
-
-    this.replaceRoute({
-      kind: "files",
-      projectId: this.projectSwitcher.currentProjectId,
-      path: routePath,
     });
   }
 
@@ -684,7 +577,6 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     this.clearRepositoryContext();
-    this.projectSwitcher.clearContext({ error: this.filesPage.lastError });
     return false;
   }
 
@@ -692,7 +584,6 @@ class CaffoldAppShell extends HTMLElement {
     this.directoryContextPath = directory.path;
     this.pathbar.path = directory.path;
     this.updateRepositoryContext(directory);
-    await this.refreshProjects(directory.path);
   }
 
   async openFile(path, entry = null) {
@@ -741,92 +632,13 @@ class CaffoldAppShell extends HTMLElement {
     return await routePromise;
   }
 
-  async refreshProjects(path = this.currentPath) {
-    return await this.projectSwitcher.refresh(path);
-  }
-
-  currentProject() {
-    return this.projectSwitcher.currentProject();
-  }
-
-  projectPath(project, path = "") {
-    const rootPath = cleanPath(project?.relativePath ?? "");
-    const relativePath = cleanPath(path);
-    if (!relativePath) {
-      return rootPath;
-    }
-
-    return rootPath ? `${rootPath}/${relativePath}` : relativePath;
-  }
-
-  repositoryRelativeProjectPath(project, path) {
-    const fullPath = this.projectPath(project, path);
-    const repositoryRoot = cleanPath(this.gitRepository?.rootPath);
-    if (!repositoryRoot) {
-      return fullPath;
-    }
-    if (fullPath === repositoryRoot) {
-      return "";
-    }
-    if (!fullPath.startsWith(`${repositoryRoot}/`)) {
-      return "";
-    }
-    return fullPath.slice(repositoryRoot.length + 1);
-  }
-
   repositoryRelativePath(path) {
     const clean = cleanPath(path);
     const relative = relativeLogicalPath(this.gitRepository?.rootPath, clean);
     return relative === null ? clean : relative;
   }
 
-  projectRelativePath(path) {
-    const project = this.currentProject();
-    if (!project) {
-      return null;
-    }
-
-    const rootPath = cleanPath(project.relativePath ?? "");
-    const fullPath = cleanPath(path ?? "");
-    if (!rootPath) {
-      return fullPath;
-    }
-    if (fullPath === rootPath) {
-      return "";
-    }
-    if (fullPath.startsWith(`${rootPath}/`)) {
-      return fullPath.slice(rootPath.length + 1);
-    }
-
-    return null;
-  }
-
-  isProjectRootLoaded(project) {
-    return cleanPath(this.currentPath) === cleanPath(project?.relativePath ?? "");
-  }
-
-  async ensureProjectReviewContext(project) {
-    if (this.isProjectRootLoaded(project)) {
-      return true;
-    }
-
-    const directory = await listDirectory(project.relativePath);
-    this.directoryContextPath = directory.path;
-    this.pathbar.path = directory.path;
-    if (directory.git) {
-      this.applyRepositoryContext(directory.path, directory.git);
-    } else {
-      this.clearRepositoryContext();
-    }
-    await this.refreshProjects(directory.path);
-    return true;
-  }
-
-  async ensureReviewContext(project, cwd) {
-    if (project) {
-      return await this.ensureProjectReviewContext(project);
-    }
-
+  async ensureReviewContext(cwd) {
     const targetPath = cleanPath(cwd || this.preferredReviewContextPath());
     if (!targetPath) {
       return false;
@@ -849,14 +661,10 @@ class CaffoldAppShell extends HTMLElement {
     this.directoryContextPath = repositoryPath;
     this.pathbar.path = repositoryPath;
     this.applyRepositoryContext(repositoryPath, directory.git);
-    await this.refreshProjects(repositoryPath);
     return true;
   }
 
   canonicalReviewRoute(route) {
-    if (route.projectId) {
-      return route;
-    }
     const cwd = cleanPath(this.gitRepository?.rootPath || route.cwd);
     if (cwd === cleanPath(route.cwd)) {
       return route;
@@ -868,11 +676,9 @@ class CaffoldAppShell extends HTMLElement {
     return canonicalRoute;
   }
 
-  canApplyLoadedGitRoute(project, route) {
+  canApplyLoadedGitRoute(route) {
     if (
-      !(project
-        ? this.isProjectRootLoaded(project)
-        : cleanPath(this.gitRepository?.rootPath) === cleanPath(route.cwd)) ||
+      cleanPath(this.gitRepository?.rootPath) !== cleanPath(route.cwd) ||
       !this.reviewWorkspace.isActive("git") ||
       !this.gitRepository
     ) {
@@ -882,11 +688,9 @@ class CaffoldAppShell extends HTMLElement {
     return this.gitLayout.canReuseRoute(route);
   }
 
-  canApplyLoadedGithubRoute(project, route) {
+  canApplyLoadedGithubRoute(route) {
     if (
-      !(project
-        ? this.isProjectRootLoaded(project)
-        : cleanPath(this.gitRepository?.rootPath) === cleanPath(route.cwd)) ||
+      cleanPath(this.gitRepository?.rootPath) !== cleanPath(route.cwd) ||
       !this.reviewWorkspace.isActive("github") ||
       !this.gitRepository
     ) {
@@ -894,18 +698,6 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     return this.githubLayout.canReuseRoute(route);
-  }
-
-  async openProjectRoute(project) {
-    if (!project?.id) {
-      return;
-    }
-
-    this.navigateToRoute({
-      kind: "files",
-      projectId: project.id,
-      path: "",
-    }) || (await this.loadDirectory(project.relativePath));
   }
 
   updateRepositoryContext(directory) {
@@ -979,7 +771,7 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   routeWithResolvedContext(route) {
-    if (!route || route.projectId || routeSurface(route) === "tasks" || route.kind === "settings") {
+    if (!route || routeSurface(route) === "tasks" || route.kind === "settings") {
       return route;
     }
     if (cleanPath(route.cwd)) {

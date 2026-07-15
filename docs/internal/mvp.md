@@ -12,13 +12,12 @@ The MVP must include:
 
 - `caffold serve` or equivalent host process
 - browser/PWA access to the host
-- task, project, worktree, and Codex thread mapping
+- Codex thread-backed Tasks with cwd-derived repository/worktree context
 - Codex app-server process management
 - backend-to-app-server JSON-RPC adapter
 - Codex thread start and lookup
 - Codex turn start, interrupt, and follow-up prompt support
 - approval UI for command approvals
-- operation ledger
 - changed files view
 - unified diff viewer
 - file browser and file viewer
@@ -52,14 +51,14 @@ The MVP should exclude:
 - screenshot or preview panels
 - central multi-host dashboard
 - automatic worktree deletion
-- complete replay from the operation ledger
+- Caffold-owned duplication of Codex thread history
 - duplication of all Codex transcript data
 
 ## Acceptance Scenarios
 
 The MVP is useful when these flows work:
 
-1. Create a task from the web UI, bind it to a project and worktree, start a Codex thread, and see its current state.
+1. Create a task from the web UI in a selected cwd, start a Codex thread, and see its live repository/worktree context.
 2. Review changed files and diffs from a mobile or foldable screen without opening an editor.
 3. Approve or deny a command request remotely and see the decision recorded.
 4. Run a test preset, inspect the result, and keep that result attached to the task.

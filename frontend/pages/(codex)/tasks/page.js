@@ -58,8 +58,6 @@ class CaffoldTasksPage extends HTMLElement {
     this.error = null;
     this.loading = false;
     this.loadingOlderEvents = false;
-    this.project = null;
-    this.projectId = "";
     this.cwdPath = "";
     this.defaultCwdPath = "";
     this.newTaskBrowsing = false;
@@ -240,21 +238,8 @@ class CaffoldTasksPage extends HTMLElement {
     window.removeEventListener("resize", this.boundTaskListResize);
   }
 
-  setProject(project) {
-    this.ensureRendered();
-    const nextProjectId = project?.id ?? "";
-    if (nextProjectId !== this.projectId) {
-      this.taskDetailView = "conversation";
-      this.unsubscribeTaskDiffWatch();
-    }
-    this.project = project ?? null;
-    this.projectId = nextProjectId;
-  }
-
   syncTaskListContext() {
-    const context = this.projectId
-      ? `project:${this.projectId}`
-      : `cwd:${cleanLogicalPath(this.cwdPath)}`;
+    const context = `cwd:${cleanLogicalPath(this.cwdPath)}`;
     if (context === this.taskListContext) {
       return;
     }
@@ -282,7 +267,6 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
 
-    this.projectId = route?.projectId ?? "";
     this.error = null;
     if (route?.new) {
       this.view = "new";
@@ -323,7 +307,6 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   async openRoute(route, options = {}) {
-    this.setProject(options.project ?? this.project);
     this.cwdPath = route?.cwd ?? "";
     this.defaultCwdPath = options.defaultCwdPath ?? this.defaultCwdPath;
     this.syncTaskListContext();
@@ -381,7 +364,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.loadTaskList();
 
     try {
-      const detail = await getTask(threadId, this.projectId);
+      const detail = await getTask(threadId, null, this.cwdPath);
       if (requestId !== this.requestId) {
         return null;
       }
@@ -419,7 +402,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.renderTaskListRegion();
 
     try {
-      const response = await getTasks(this.projectId, this.projectId ? "" : this.cwdPath);
+      const response = await getTasks(this.cwdPath);
       if (requestId !== this.taskListRequestId || context !== this.taskListContext) {
         return null;
       }
@@ -454,7 +437,7 @@ class CaffoldTasksPage extends HTMLElement {
     let needsSync = false;
     let stream;
     try {
-      stream = new EventSource(taskStreamUrl(threadId, this.projectId));
+      stream = new EventSource(taskStreamUrl(threadId, this.cwdPath));
     } catch {
       this.setStreamState("error");
       return;
@@ -585,7 +568,7 @@ class CaffoldTasksPage extends HTMLElement {
   async refreshSelectedTask(threadId, generation) {
     const requestId = this.requestId;
     try {
-      const detail = await getTask(threadId, this.projectId);
+      const detail = await getTask(threadId, null, this.cwdPath);
       if (
         requestId !== this.requestId ||
         generation !== this.streamGeneration ||
@@ -751,7 +734,6 @@ class CaffoldTasksPage extends HTMLElement {
 
     try {
       const detail = await createTask({
-        ...(this.projectId ? { projectId: this.projectId } : {}),
         ...(this.activeCwdPath() ? { cwd: this.activeCwdPath() } : {}),
         prompt,
         ...this.turnOptions(),
@@ -793,9 +775,9 @@ class CaffoldTasksPage extends HTMLElement {
     try {
       const detail = await sendTaskPrompt(
         this.selectedThreadId,
-        this.projectId,
         prompt,
         this.turnOptions(),
+        this.cwdPath,
       );
       if (requestId !== this.requestId) {
         return;
@@ -822,7 +804,7 @@ class CaffoldTasksPage extends HTMLElement {
 
     const requestId = ++this.requestId;
     try {
-      const detail = await interruptTask(this.selectedThreadId, this.projectId);
+      const detail = await interruptTask(this.selectedThreadId, this.cwdPath);
       if (requestId !== this.requestId) {
         return;
       }
@@ -849,9 +831,9 @@ class CaffoldTasksPage extends HTMLElement {
     try {
       const detail = await resolveTaskApproval(
         this.selectedThreadId,
-        this.projectId,
         approvalId,
         decision,
+        this.cwdPath,
       );
       if (requestId !== this.requestId) {
         return;
@@ -881,7 +863,7 @@ class CaffoldTasksPage extends HTMLElement {
     const requestId = ++this.requestId;
     this.render();
     try {
-      const detail = await getTask(this.selectedThreadId, this.projectId, cursor);
+      const detail = await getTask(this.selectedThreadId, cursor, this.cwdPath);
       if (requestId !== this.requestId) {
         return;
       }
@@ -913,18 +895,12 @@ class CaffoldTasksPage extends HTMLElement {
 
   requestRoute(route, options = {}) {
     const includeContext = options.includeContext ?? true;
-    const context =
-      includeContext && !this.projectId && this.cwdPath
-        ? {
-            cwd: this.cwdPath,
-          }
-        : {};
+    const context = includeContext && this.cwdPath ? { cwd: this.cwdPath } : {};
     this.dispatchEvent(
       new CustomEvent("caffold:request-tasks-route", {
         bubbles: true,
         detail: {
           route: {
-            ...(this.projectId ? { projectId: this.projectId } : {}),
             ...context,
             ...route,
           },
@@ -1108,7 +1084,6 @@ class CaffoldTasksPage extends HTMLElement {
     }
     const key = [
       this.view,
-      this.project?.name ?? "",
       this.cwdPath,
       this.taskDetailView,
     ].join("\u0000");
@@ -1403,9 +1378,7 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   activeCwdPath() {
-    return cleanLogicalPath(
-      this.project?.relativePath || this.cwdPath || this.defaultCwdPath || ".",
-    );
+    return cleanLogicalPath(this.cwdPath || this.defaultCwdPath || ".");
   }
 
   selectedTaskContextPath() {
@@ -1436,7 +1409,6 @@ class CaffoldTasksPage extends HTMLElement {
     return (
       this.taskDetail?.task?.worktree?.rootPath ||
       this.taskDetail?.task?.cwdPath ||
-      this.project?.relativePath ||
       this.cwdPath ||
       ""
     );
@@ -1859,7 +1831,7 @@ class CaffoldTasksPage extends HTMLElement {
         : this.view === "detail"
           ? "Task"
           : "Tasks";
-    const subtitle = this.project?.name ?? this.globalTasksSubtitle();
+    const subtitle = this.globalTasksSubtitle();
 
     return `
       <header class="tasks-header">
@@ -1952,7 +1924,7 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   usesRepositoryGroups() {
-    return !this.projectId && !cleanLogicalPath(this.cwdPath);
+    return !cleanLogicalPath(this.cwdPath);
   }
 
   renderTaskRepositoryGroup(group) {
@@ -2089,9 +2061,7 @@ class CaffoldTasksPage extends HTMLElement {
       formName: "create",
       className: "task-new-form",
       prompt: this.newTaskDraft.prompt,
-      placeholder: this.projectId
-        ? "Ask Codex to work in this project"
-        : "Ask Codex to work from the current directory",
+      placeholder: "Ask Codex to work from the current directory",
       ariaLabel: "New task prompt",
       submitLabel: "Start task",
       cancel: options.cancel ?? true,
@@ -2396,7 +2366,7 @@ class CaffoldTasksPage extends HTMLElement {
     const task = this.taskDetail?.task;
     const label = task?.worktree
       ? `${taskWorktreeRootName(task)} · ${taskWorktreeRef(task)}`
-      : task?.cwdPath || this.project?.name || "Current directory";
+      : task?.cwdPath || "Current directory";
     return `
       <section class="task-files-view" aria-label="Task files">
         <header class="task-files-header">

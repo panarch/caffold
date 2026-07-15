@@ -30,7 +30,6 @@ The current runtime hierarchy is:
 caffold-app-shell
   app header
     scaffold-app-menu
-    scaffold-project-switcher
     scaffold-header-actions
       scaffold-git-header-action
       scaffold-github-header-action
@@ -96,7 +95,7 @@ repeat the root hierarchy.
 
 `settings.js` owns browser-local preferences and applies their CSS variables
 before the app shell renders. `settings/page` is a global app surface opened
-from `scaffold-app-menu`; it does not require a project and persists device-
+from `scaffold-app-menu`; it persists device-
 specific UI preferences in `localStorage` rather than the server database.
 
 `files/page` is the app root's route-level file browsing page. It renders
@@ -105,7 +104,7 @@ specific UI preferences in `localStorage` rather than the server database.
 loading, file preview loading, files-route path materialization, list/viewer
 state, file-list scroll restoration, delayed loading indicators, mobile
 list/viewer switching, and the left file-panel resizer. The app root
-coordinates project context, URL navigation, pathbar, and header actions around
+coordinates cwd context, URL navigation, pathbar, and header actions around
 that surface instead of owning file browser internals.
 The file browser also owns its live-update subscription and refreshes only its
 loaded directory cache and selected file. `watch.js` shares the SSE
@@ -121,29 +120,24 @@ state mounted while moving between conversation and review subviews.
 `(codex)/tasks/page` owns the Codex task surface: thread-derived
 list/new/detail state, prompt composition, Codex transcript rendering, approval
 cards, SSE subscription, and mobile list/detail switching. Tasks are global by
-default; a registered project is optional context used for filtering and default
-cwd selection. Live worktree context is derived from each thread cwd rather than
-stored by the frontend or Project layer.
+default and may be filtered by cwd. Live repository and worktree context is
+derived from each thread cwd rather than stored by the frontend.
 
 Task detail mounts both `scaffold-file-browser` and
 `scaffold-git-diff-browser` as full subviews. Files opens the derived worktree
 root, falling back to the thread cwd outside Git. Diff uses the same reusable
 tree/viewer implementation as the Git review route and is available whenever a
-live worktree context exists, regardless of Project registration. Switching
+live worktree context exists. Switching
 conversation/Files/Diff changes visibility without rebuilding the conversation
 DOM, so draft and scroll state remain local to the mounted Tasks page. The app
-root only routes optional project context into the Codex workspace.
+root only routes cwd context into the Codex workspace.
 
-`scaffold-project-switcher` owns project record state and project candidate
-state for the current directory. It performs project list/candidate refresh and
-project CRUD requests, then emits selected project records upward. The app root
-keeps only project-aware URL execution and project-relative path mapping.
 When a loaded directory enters or leaves a Git repository, the app root decides
 the current repository context and reloads the active review route if needed.
 The review workspace applies or clears that repository context across review
 domains and asks the active domain for the route to reload. The Git and GitHub
 layouts own their own status refresh requests. Git and GitHub review route entry
-stays domain-specific: the app root prepares project-aware path options and
+stays domain-specific: the app root prepares cwd-based path options and
 file-browser cleanup callbacks, the review workspace decides active-domain
 cleanup and chrome lifecycle, and the Git/GitHub layouts own their own route
 execution semantics.
@@ -179,7 +173,7 @@ delegates issue and pull request internals to their nested layouts. It
 translates GitHub-domain open, close, and back events from child pages into
 GitHub route intents. For example,
 `(github)/(issues)/layout` owns issue list loading, pagination state, issue
-detail loading, and selected issue state; `app-shell` keeps project-aware URL
+detail loading, and selected issue state; `app-shell` keeps cwd-based URL
 execution and top-level workspace coordination.
 Likewise, `(github)/(pulls)/layout` owns pull request list/detail/files mode
 switching, PR pagination, and selected PR summary state. Its `files/page` owns
@@ -204,8 +198,6 @@ frontend/pages/
   components/
     pathbar.js
     pathbar.css
-    project-switcher.js
-    project-switcher.css
     header-actions.js
     header-actions.css
     header-actions/
@@ -304,7 +296,7 @@ browser is different: it is now a reusable surface used by `files/page` and
 future Codex workspace integrations, so it lives under `frontend/components`
 with its list implementation in `frontend/components/file-browser/`.
 Layout-specific helper components follow the same rule. App chrome such as the
-pathbar, project switcher, and header actions belongs to `frontend/pages/layout`.
+pathbar and header actions belongs to `frontend/pages/layout`.
 
 ## Naming Rules
 

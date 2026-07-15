@@ -16,14 +16,11 @@ This roadmap is ordered by product risk and workflow value, not by implementatio
 
 - Rust backend starts
 - web UI is served
-- project/task registry exists
-- GlueSQL/redb storage initialized
-- operation ledger can append and read events
-- placeholder task list and task detail screens exist
+- Codex thread-backed task list and detail screens exist
+- cwd-based Files context works without a local registry
 
 ## Phase 2: Git Review Surface
 
-- register or create worktree
 - read git status
 - list changed files
 - show unified diff
@@ -47,7 +44,7 @@ This roadmap is ordered by product risk and workflow value, not by implementatio
 - accept, accept for session, decline, cancel
 - command runner
 - test presets
-- command/test ledger events
+- command and test results in the task conversation
 
 ## Phase 5: Mobile Review Polish
 

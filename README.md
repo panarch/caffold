@@ -28,7 +28,7 @@ The intended shape is:
 - a browser/PWA frontend served by that backend
 - Codex app-server managed as a child process
 - JSON-RPC integration between the backend and Codex app-server
-- GlueSQL with redb for Caffold-owned metadata and event history
+- Codex threads as the source of truth for task history
 - git worktrees as the source of truth for code changes
 - Tailscale or another trusted private network for remote access
 
@@ -107,4 +107,4 @@ Internal planning notes:
 
 ## Status
 
-This repository has an initial read-only web file browser slice. The broader Codex-connected review and control surface remains under active design and implementation.
+This repository has a Codex-first task workspace plus read-only Files, Git, and GitHub review surfaces. The broader review and control workflow remains under active design and implementation.

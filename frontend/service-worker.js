@@ -1,4 +1,4 @@
-const CACHE_NAME = "caffold-shell-v47";
+const CACHE_NAME = "caffold-shell-v48";
 
 const APP_SHELL_ASSETS = [
   "/",
@@ -27,8 +27,6 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/components/app-menu.js",
   "/assets/pages/components/pathbar.css",
   "/assets/pages/components/pathbar.js",
-  "/assets/pages/components/project-switcher.css",
-  "/assets/pages/components/project-switcher.js",
   "/assets/pages/components/header-actions.css",
   "/assets/pages/components/header-actions.js",
   "/assets/pages/components/header-actions/codex-status.css",
@@ -147,9 +145,7 @@ self.addEventListener("fetch", (event) => {
     url.pathname === "/git" ||
     url.pathname.startsWith("/git/") ||
     url.pathname === "/github" ||
-    url.pathname.startsWith("/github/") ||
-    url.pathname === "/projects" ||
-    url.pathname.startsWith("/projects/")
+    url.pathname.startsWith("/github/")
   ) {
     event.respondWith(networkFirst(request, "/"));
     return;

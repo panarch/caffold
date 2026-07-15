@@ -10,8 +10,8 @@ export async function getCodexModels() {
   return requestJson("/api/codex/models");
 }
 
-export async function getTasks(projectId, cwd = "") {
-  return requestJson("/api/tasks", optionalProjectParams(projectId, cwd ? { cwd } : {}));
+export async function getTasks(cwd = "") {
+  return requestJson("/api/tasks", cwd ? { cwd } : {});
 }
 
 export async function createTask(task) {
@@ -21,17 +21,14 @@ export async function createTask(task) {
   });
 }
 
-export async function getTask(threadId, projectId, cursor = null) {
-  return requestJson(
-    `/api/tasks/${encodeURIComponent(threadId)}`,
-    optionalProjectParams(projectId, { cursor }),
-  );
+export async function getTask(threadId, cursor = null, cwd = "") {
+  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}`, { cursor, cwd });
 }
 
-export async function sendTaskPrompt(threadId, projectId, prompt, options = {}) {
+export async function sendTaskPrompt(threadId, prompt, options = {}, cwd = "") {
   return requestJson(
     `/api/tasks/${encodeURIComponent(threadId)}/prompts`,
-    optionalProjectParams(projectId),
+    cwd ? { cwd } : {},
     {
       method: "POST",
       body: { prompt, ...options },
@@ -39,20 +36,20 @@ export async function sendTaskPrompt(threadId, projectId, prompt, options = {}) 
   );
 }
 
-export async function interruptTask(threadId, projectId) {
+export async function interruptTask(threadId, cwd = "") {
   return requestJson(
     `/api/tasks/${encodeURIComponent(threadId)}/interrupt`,
-    optionalProjectParams(projectId),
+    cwd ? { cwd } : {},
     {
       method: "POST",
     },
   );
 }
 
-export async function resolveTaskApproval(threadId, projectId, approvalId, decision) {
+export async function resolveTaskApproval(threadId, approvalId, decision, cwd = "") {
   return requestJson(
     `/api/tasks/${encodeURIComponent(threadId)}/approvals/${encodeURIComponent(approvalId)}`,
-    optionalProjectParams(projectId),
+    cwd ? { cwd } : {},
     {
       method: "POST",
       body: { decision },
@@ -60,19 +57,12 @@ export async function resolveTaskApproval(threadId, projectId, approvalId, decis
   );
 }
 
-export function taskStreamUrl(threadId, projectId) {
+export function taskStreamUrl(threadId, cwd = "") {
   const url = new URL(`/api/tasks/${encodeURIComponent(threadId)}/stream`, window.location.origin);
-  if (projectId) {
-    url.searchParams.set("projectId", projectId);
+  if (cwd) {
+    url.searchParams.set("cwd", cwd);
   }
   return `${url.pathname}${url.search}`;
-}
-
-function optionalProjectParams(projectId, params = {}) {
-  return {
-    ...params,
-    ...(projectId ? { projectId } : {}),
-  };
 }
 
 export async function listDirectory(path = "") {
@@ -153,41 +143,6 @@ export async function getGitHubPullFiles(path = "", number) {
 
 export async function getGitHubPullFile(path = "", number, file) {
   return requestJson("/api/github/pull-file", { path, number, file });
-}
-
-export async function listProjects() {
-  return requestJson("/api/projects");
-}
-
-export async function getProjectCandidate(path = "") {
-  return requestJson("/api/project-candidate", { path });
-}
-
-export async function createProject(project) {
-  return requestJson("/api/projects", {}, {
-    method: "POST",
-    body: project,
-  });
-}
-
-export async function renameProject(id, name) {
-  return requestJson(`/api/projects/${encodeURIComponent(id)}`, {}, {
-    method: "PATCH",
-    body: { name },
-  });
-}
-
-export async function deleteProject(id) {
-  return requestJson(`/api/projects/${encodeURIComponent(id)}`, {}, {
-    method: "DELETE",
-    expectJson: false,
-  });
-}
-
-export async function openProject(id) {
-  return requestJson(`/api/projects/${encodeURIComponent(id)}/open`, {}, {
-    method: "POST",
-  });
 }
 
 async function requestJson(endpoint, params = {}, options = {}) {

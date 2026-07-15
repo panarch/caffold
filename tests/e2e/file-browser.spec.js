@@ -238,7 +238,7 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain("/assets/pages/components/app-menu.js");
   expect(serviceWorker).toContain("/assets/pages/settings/page.js");
   expect(serviceWorker).toContain("/assets/pages/components/pathbar.js");
-  expect(serviceWorker).toContain("/assets/pages/components/project-switcher.js");
+  expect(serviceWorker).not.toContain("project-switcher");
   expect(serviceWorker).toContain("/assets/pages/components/header-actions.js");
   expect(serviceWorker).not.toContain("/assets/components/pathbar.js");
   expect(serviceWorker).not.toContain("/assets/components/project-switcher.js");
@@ -516,27 +516,6 @@ test("delays file list loading feedback", async ({ page }) => {
   await expect(page.locator("caffold-file-list")).toContainText("src");
 });
 
-test("keeps the file list visible while project metadata refresh is slow", async ({ page }) => {
-  let releaseProjectResponses;
-  const projectResponsesReleased = new Promise((resolve) => {
-    releaseProjectResponses = resolve;
-  });
-
-  await page.route(/\/api\/(?:projects|project-candidate)(?:\?|$)/, async (route) => {
-    await projectResponsesReleased;
-    await route.continue();
-  });
-
-  await page.goto(FILES_HOME_URL);
-  await expect(page.locator("caffold-file-list")).toContainText("src");
-
-  await page.waitForTimeout(240);
-  await expect(page.getByText("Loading files...")).toHaveCount(0);
-  await expect(page.locator("caffold-file-list")).toContainText("src");
-
-  releaseProjectResponses();
-});
-
 test("browses directories and opens a source file", async ({ page }, testInfo) => {
   await page.goto(FILES_HOME_URL);
 
@@ -620,15 +599,8 @@ test("refreshes Files and Git after external filesystem changes", async ({ page 
   await mkdir(resolve(repositoryPath, "nested"), { recursive: true });
   await writeFile(resolve(repositoryPath, "nested/fixture.txt"), "nested fixture\n");
   execFileSync("git", ["init", "--quiet", repositoryPath]);
-  const project = await mockRegisteredProject(page, {
-    id: `prj_live_${suffix}`,
-    name: "Live repository",
-    rootPath: repositoryPath,
-    relativePath: repositoryRelativePath,
-  });
-
   try {
-    await page.goto(`/projects/${project.id}/files`);
+    await page.goto(`/files?cwd=${encodeURIComponent(repositoryRelativePath)}`);
     await page.waitForTimeout(500);
 
     const nestedPath = `${repositoryRelativePath}/nested`;
@@ -736,53 +708,6 @@ test("keeps manual Files refresh available when live updates fail", async ({ pag
   await refresh.click();
   await expect.poll(() => listRequests).toBeGreaterThan(beforeRefresh);
   await captureReviewScreenshot(page, testInfo, "files-live-updates-unavailable");
-});
-
-test("manages project records from the header switcher", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Project switcher CRUD is covered on desktop.");
-  await mockProjectCrudApi(page);
-
-  await page.goto(FILES_HOME_URL);
-  const switcher = page.locator("caffold-project-switcher");
-
-  await expect(switcher.locator(".project-switcher-button")).toContainText("Register");
-  await openProjectPopover(switcher);
-  await expect(switcher.locator(".project-candidate")).toContainText("home");
-  await page.keyboard.press("Escape");
-
-  await page.locator('button[data-entry-path="src"]').click();
-  await expect(switcher.locator(".project-switcher-button")).toContainText("Register");
-
-  await openProjectPopover(switcher);
-  await expect(switcher.locator(".project-candidate")).toContainText("src");
-  await switcher.locator(".project-candidate button").click();
-  await expect(switcher.locator(".project-switcher-button")).toContainText("src");
-  await expect(switcher.locator(".project-popover")).toBeHidden();
-
-  await openProjectPopover(switcher);
-  await switcher.getByRole("button", { name: "Rename src" }).click();
-  await switcher.locator('input[name="name"]').fill("Fixture Repo");
-  await switcher.getByRole("button", { name: "Save" }).click();
-  await expect(switcher.locator(".project-switcher-button")).toContainText("Fixture Repo");
-  await page.keyboard.press("Escape");
-
-  await page.locator('caffold-pathbar button[data-path=""]').click();
-  await expect(page.locator("caffold-pathbar")).not.toContainText("src");
-  await openProjectPopover(switcher);
-  await switcher.locator(".project-open").filter({ hasText: "Fixture Repo" }).click();
-  await expect(page.locator("caffold-pathbar")).toContainText("src");
-  await expect(switcher.locator(".project-popover")).toBeHidden();
-
-  await page.reload();
-  await openProjectPopover(switcher);
-  const projectRow = switcher.locator(".project-row").filter({ hasText: "Fixture Repo" });
-  await expect(projectRow).toBeVisible();
-
-  page.once("dialog", (dialog) => dialog.accept());
-  await projectRow.getByRole("button", { name: "Delete Fixture Repo" }).click();
-  await expect(switcher.locator(".project-row").filter({ hasText: "Fixture Repo" })).toHaveCount(
-    0,
-  );
 });
 
 test("groups header review actions into Git, GitHub, and Codex popovers", async ({ page }, testInfo) => {
@@ -954,7 +879,7 @@ test("groups header review actions into Git, GitHub, and Codex popovers", async 
   await captureReviewScreenshot(page, testInfo, "header-actions-codex-popover");
 });
 
-test("opens global Tasks without a registered project", async ({ page }) => {
+test("opens global Tasks without local registry state", async ({ page }) => {
   await page.addInitScript(() => {
     window.EventSource = class MockEventSource {
       constructor(url) {
@@ -967,32 +892,15 @@ test("opens global Tasks without a registered project", async ({ page }) => {
     };
   });
   await mockCodexModels(page);
-  await page.route(/\/api\/projects(?:\?|$)/, (route) => {
-    if (route.request().method() !== "GET") {
-      return route.continue();
-    }
-
-    return route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ projects: [] }),
-    });
-  });
-  await page.route(/\/api\/project-candidate(?:\?|$)/, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ candidate: null }),
-    }),
-  );
 
   const threadId = "thread_global_fixture";
   let createdTaskRequest = null;
   const task = {
     id: threadId,
     threadId,
-    projectId: null,
     activeTurnId: null,
     title: "Global task",
-    preview: "Hello without a registered project",
+    preview: "Hello from a cwd-backed task",
     status: "completed",
     cwd: "tests/fixtures/home",
     cwdPath: "tests/fixtures/home",
@@ -1009,7 +917,6 @@ test("opens global Tasks without a registered project", async ({ page }) => {
       {
         id: "event_prompt",
         threadId,
-        projectId: "",
         type: "user_message",
         summary: "User prompt",
         payload: { text: "Say hello globally" },
@@ -1018,7 +925,6 @@ test("opens global Tasks without a registered project", async ({ page }) => {
       {
         id: "event_answer",
         threadId,
-        projectId: "",
         type: "assistant_message",
         summary: "Assistant response",
         payload: { text: "Hello from a global Codex thread." },
@@ -1037,10 +943,7 @@ test("opens global Tasks without a registered project", async ({ page }) => {
     const method = request.method();
 
     if (segments.length === 2 && method === "GET") {
-      taskListQueries.push({
-        projectId: url.searchParams.get("projectId"),
-        cwd: url.searchParams.get("cwd"),
-      });
+      taskListQueries.push({ cwd: url.searchParams.get("cwd") });
       return route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({ tasks: [] }),
@@ -1049,7 +952,6 @@ test("opens global Tasks without a registered project", async ({ page }) => {
 
     if (segments.length === 2 && method === "POST") {
       createdTaskRequest = request.postDataJSON();
-      expect(createdTaskRequest.projectId).toBeUndefined();
       expect(createdTaskRequest.cwd).toBe("src");
       return route.fulfill({
         contentType: "application/json",
@@ -1058,7 +960,6 @@ test("opens global Tasks without a registered project", async ({ page }) => {
     }
 
     if (segments.length === 3 && segments[2] === threadId && method === "GET") {
-      expect(url.searchParams.get("projectId")).toBe(null);
       return route.fulfill({
         contentType: "application/json",
         body: JSON.stringify(detail),
@@ -1125,7 +1026,7 @@ test("opens global Tasks without a registered project", async ({ page }) => {
   await expect(tasksPage.locator(".tasks-header")).toContainText("All Tasks");
   await expect
     .poll(() => taskListQueries.at(-1))
-    .toEqual({ projectId: null, cwd: null });
+    .toEqual({ cwd: null });
   await expect(
     page.locator("caffold-codex-workspace .codex-workspace-close"),
   ).toBeHidden();
@@ -1134,7 +1035,7 @@ test("opens global Tasks without a registered project", async ({ page }) => {
   await expect(page).toHaveURL("/tasks?cwd=.");
   await expect
     .poll(() => taskListQueries.at(-1))
-    .toEqual({ projectId: null, cwd: "." });
+    .toEqual({ cwd: "." });
   await expect(tasksPage.locator(".tasks-header")).toContainText("Tasks in ~");
   await expect(tasksPage).toContainText("No tasks yet.");
 
@@ -1142,7 +1043,7 @@ test("opens global Tasks without a registered project", async ({ page }) => {
   await expect(page).toHaveURL("/tasks");
   await expect
     .poll(() => taskListQueries.at(-1))
-    .toEqual({ projectId: null, cwd: null });
+    .toEqual({ cwd: null });
   await expect(tasksPage.locator(".tasks-header")).toContainText("All Tasks");
   await expect(tasksPage).toContainText("No tasks yet.");
 
@@ -1150,7 +1051,7 @@ test("opens global Tasks without a registered project", async ({ page }) => {
   await expect(page).toHaveURL("/tasks?cwd=.");
   await expect
     .poll(() => taskListQueries.at(-1))
-    .toEqual({ projectId: null, cwd: "." });
+    .toEqual({ cwd: "." });
 
   await tasksPage
     .locator(".tasks-empty")
@@ -1239,12 +1140,10 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
       close() {}
     };
   });
-  const project = await mockRegisteredProject(page);
   await mockCodexModels(page);
   const now = 1_767_300_000_000;
   const taskRecord = (overrides) => ({
     id: overrides.threadId,
-    projectId: project.id,
     activeTurnId: null,
     title: overrides.title,
     preview: `${overrides.title} preview`,
@@ -1309,7 +1208,7 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
     const url = new URL(route.request().url());
-    expect(url.searchParams.get("projectId")).toBe(project.id);
+    expect(url.searchParams.get("cwd")).toBe("src");
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ tasks }),
@@ -1320,7 +1219,7 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
     const threadId = url.pathname.split("/").at(-1);
     const task = tasks.find((candidate) => candidate.threadId === threadId);
     expect(task).toBeTruthy();
-    expect(url.searchParams.get("projectId")).toBe(project.id);
+    expect(url.searchParams.get("cwd")).toBe("src");
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -1329,7 +1228,6 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
           {
             id: `event_${threadId}`,
             threadId,
-            projectId: project.id,
             type: "assistant_message",
             summary: "Assistant response",
             payload: { text: `${task.title} detail response` },
@@ -1342,7 +1240,7 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
     });
   });
 
-  await page.goto(`/projects/${project.id}/tasks`);
+  await page.goto("/tasks?cwd=src");
   const tasksPage = page.locator("caffold-tasks-page");
   const listPane = tasksPage.locator(".tasks-list-pane");
   const detailPane = tasksPage.locator(".tasks-detail-pane");
@@ -1435,7 +1333,7 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
         .querySelector('caffold-tasks-page .task-row[data-thread-id="thread_main_root"]')
         .click(),
     );
-    await expect(page).toHaveURL(`/projects/${project.id}/tasks/thread_main_root`);
+    await expect(page).toHaveURL("/tasks/thread_main_root?cwd=src");
     await expect(listPane).toBeVisible();
     await expect(detailPane).toContainText("Main root task detail response");
     await expect(
@@ -1462,7 +1360,7 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
     await captureReviewScreenshot(page, testInfo, "tasks-master-detail-selected");
 
     await tasksPage.locator('[data-task-action="open-new"]').first().click();
-    await expect(page).toHaveURL(`/projects/${project.id}/tasks/new`);
+    await expect(page).toHaveURL("/tasks/new?cwd=src");
     await expect(listPane).toBeVisible();
     await expect(detailPane.locator(".task-new-form")).toBeVisible();
     await expect(resizer).toHaveAttribute("aria-valuenow", "296");
@@ -1472,13 +1370,13 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
     await expect(detailPane).toBeHidden();
     await expect(resizer).toBeHidden();
     await tasksPage.locator('.task-row[data-thread-id="thread_main_root"]').click();
-    await expect(page).toHaveURL(`/projects/${project.id}/tasks/thread_main_root`);
+    await expect(page).toHaveURL("/tasks/thread_main_root?cwd=src");
     await expect(listPane).toBeHidden();
     await expect(detailPane).toBeVisible();
     await expect(detailPane).toContainText("Main root task detail response");
     await captureReviewScreenshot(page, testInfo, "tasks-single-pane-detail");
     await tasksPage.locator('[data-task-action="open-list"]').click();
-    await expect(page).toHaveURL(`/projects/${project.id}/tasks`);
+    await expect(page).toHaveURL("/tasks?cwd=src");
     await expect(listPane).toBeVisible();
     await expect(detailPane).toBeHidden();
   }
@@ -1492,13 +1390,11 @@ test("groups All Tasks by repository without worktree accordions", async ({ page
       close() {}
     };
   });
-  await mockRegisteredProject(page);
   await mockCodexModels(page);
   const now = 1_767_300_000_000;
   const task = (threadId, title, worktree, updatedMs) => ({
     id: threadId,
     threadId,
-    projectId: null,
     activeTurnId: null,
     title,
     preview: `${title} preview`,
@@ -1628,7 +1524,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     };
   });
 
-  const project = await mockRegisteredProject(page);
+  const contextPath = "src";
   await mockCodexModels(page);
   const now = 1_767_000_000_000;
   let task = null;
@@ -1682,7 +1578,6 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   const eventRecord = (id, type, summary, payload = null, offset = 0) => ({
     id,
     threadId,
-    projectId: project.id,
     type,
     summary,
     payload,
@@ -1878,8 +1773,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     const method = request.method();
 
     if (segments.length === 2 && method === "GET") {
-      expect(url.searchParams.get("projectId")).toBe(null);
-      expect(url.searchParams.get("cwd")).toBe(project.relativePath);
+      expect(url.searchParams.get("cwd")).toBe(contextPath);
       return route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({ tasks: task ? [task] : [] }),
@@ -1889,15 +1783,13 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     if (segments.length === 2 && method === "POST") {
       createTaskRequests += 1;
       const body = request.postDataJSON();
-      expect(body.projectId).toBeUndefined();
-      expect(body.cwd).toBe(project.relativePath);
+      expect(body.cwd).toBe(contextPath);
       expect(body.prompt).toBe("Inspect the planner changes");
       expect(body.model).toBe("gpt-5.5");
       expect(body.effort).toBe("high");
       task = {
         id: threadId,
         threadId,
-        projectId: project.id,
         activeTurnId: "turn_1",
         title: "Inspect the planner changes",
         preview: "Inspect the planner changes",
@@ -1960,7 +1852,6 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     }
 
     if (segments.length === 3 && segments[2] === threadId && method === "GET") {
-      expect(url.searchParams.get("projectId")).toBe(null);
       taskDetailReadRequests += 1;
       return route.fulfill({
         contentType: "application/json",
@@ -1974,7 +1865,6 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       segments[3] === "prompts" &&
       method === "POST"
     ) {
-      expect(url.searchParams.get("projectId")).toBe(null);
       const body = request.postDataJSON();
       expect(body.prompt).toBe("Please tighten the tests");
       expect(body.model).toBe("gpt-5.5");
@@ -2004,7 +1894,6 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       segments[3] === "interrupt" &&
       method === "POST"
     ) {
-      expect(url.searchParams.get("projectId")).toBe(null);
       events = [
         ...events,
         eventRecord("event_7", "turn_interrupted", "Interrupt requested", null, 7),
@@ -2028,7 +1917,6 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       method === "POST"
     ) {
       approvalRequests += 1;
-      expect(url.searchParams.get("projectId")).toBe(null);
       const body = request.postDataJSON();
       expect(body.decision).toBe("accept");
       events = [
@@ -2134,10 +2022,10 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     return route.continue();
   });
 
-  await page.goto(`/projects/${project.id}/files`);
+  await page.goto(`/files?cwd=${encodeURIComponent(contextPath)}`);
   const codexPopover = await openHeaderActionGroup(page, "codex");
   await codexPopover.locator('button[data-action="open-tasks"]').click();
-  await expect(page).toHaveURL(`/tasks?cwd=${encodeURIComponent(project.relativePath)}`);
+  await expect(page).toHaveURL(`/tasks?cwd=${encodeURIComponent(contextPath)}`);
   const codexWorkspace = page.locator("caffold-codex-workspace");
   await expect(codexWorkspace).toBeVisible();
   await expect
@@ -2165,7 +2053,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     .locator("caffold-tasks-page .tasks-empty")
     .getByRole("button", { name: "New Task", exact: true })
     .click();
-  await expect(page).toHaveURL(`/tasks/new?cwd=${encodeURIComponent(project.relativePath)}`);
+  await expect(page).toHaveURL(`/tasks/new?cwd=${encodeURIComponent(contextPath)}`);
   await expect(page.locator("caffold-tasks-page")).toHaveAttribute(
     "data-tasks-view",
     "new",
@@ -2312,7 +2200,6 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     const form = element.querySelector('form[data-task-form="create"]');
     return {
       data: Object.fromEntries(new FormData(form).entries()),
-      projectId: element.projectId,
       valid: form.checkValidity(),
     };
   });
@@ -2322,13 +2209,12 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       model: "gpt-5.5",
       prompt: "Inspect the planner changes",
     },
-    projectId: "",
     valid: true,
   });
   await page.locator('caffold-tasks-page textarea[name="prompt"]').press("Enter");
 
   await expect.poll(() => createTaskRequests).toBe(1);
-  await expect(page).toHaveURL(`/tasks/${threadId}?cwd=${encodeURIComponent(project.relativePath)}`);
+  await expect(page).toHaveURL(`/tasks/${threadId}?cwd=${encodeURIComponent(contextPath)}`);
   const tasksPage = page.locator("caffold-tasks-page");
   await expect(tasksPage).toHaveCount(1);
   await expect(tasksPage).toHaveAttribute("data-tasks-view", "detail");
@@ -2656,7 +2542,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-file-browser-list");
   await page.locator("caffold-codex-workspace .codex-workspace-close").click();
-  await expect(page).toHaveURL(`/tasks/${threadId}?cwd=${encodeURIComponent(project.relativePath)}`);
+  await expect(page).toHaveURL(`/tasks/${threadId}?cwd=${encodeURIComponent(contextPath)}`);
   await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
     "data-task-detail-view",
     "conversation",
@@ -2674,7 +2560,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   );
   await expect(taskFilesView.locator('button[data-entry-path="src/alpha.rs"]')).toBeVisible();
   await taskFilesView.locator('button[data-entry-path="src/alpha.rs"]').click();
-  await expect(page).toHaveURL(`/tasks/${threadId}?cwd=${encodeURIComponent(project.relativePath)}`);
+  await expect(page).toHaveURL(`/tasks/${threadId}?cwd=${encodeURIComponent(contextPath)}`);
   await expect(taskFilesView.locator("caffold-file-viewer")).toContainText(
     "alpha.rs",
   );
@@ -2772,7 +2658,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   const taskDetailReadsBeforeDiff = taskDetailReadRequests;
   await tasksPage.getByRole("button", { name: "Open Diff" }).click();
   await expect(page).toHaveURL(
-    `/tasks/${threadId}?cwd=${encodeURIComponent(project.relativePath)}`,
+    `/tasks/${threadId}?cwd=${encodeURIComponent(contextPath)}`,
   );
   await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
     "data-task-detail-view",
@@ -2917,14 +2803,12 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
 });
 
 test("loads older task conversation events by cursor", async ({ page }) => {
-  const project = await mockRegisteredProject(page);
   await mockCodexModels(page);
   const threadId = "thread_cursor_fixture";
   const now = 1_767_100_000_000;
   const task = {
     id: threadId,
     threadId,
-    projectId: project.id,
     activeTurnId: null,
     title: "Long running thread",
     preview: "Latest answer",
@@ -2939,7 +2823,6 @@ test("loads older task conversation events by cursor", async ({ page }) => {
   const eventRecord = (id, type, summary, payload, offset) => ({
     id,
     threadId,
-    projectId: project.id,
     type,
     summary,
     payload,
@@ -2970,7 +2853,7 @@ test("loads older task conversation events by cursor", async ({ page }) => {
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
     const url = new URL(route.request().url());
-    expect(url.searchParams.get("projectId")).toBe(project.id);
+    expect(url.searchParams.get("cwd")).toBe("src");
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ tasks: [task] }),
@@ -2979,7 +2862,7 @@ test("loads older task conversation events by cursor", async ({ page }) => {
 
   await page.route(/\/api\/tasks\/thread_cursor_fixture(?:\?|$)/, (route) => {
     const url = new URL(route.request().url());
-    expect(url.searchParams.get("projectId")).toBe(project.id);
+    expect(url.searchParams.get("cwd")).toBe("src");
     const cursor = url.searchParams.get("cursor");
     return route.fulfill({
       contentType: "application/json",
@@ -2992,7 +2875,7 @@ test("loads older task conversation events by cursor", async ({ page }) => {
     });
   });
 
-  await page.goto(`/projects/${project.id}/tasks`);
+  await page.goto("/tasks?cwd=src");
   const tasksPage = page.locator("caffold-tasks-page");
   const taskRow = tasksPage.locator(".task-row", { hasText: "Long running thread" });
   await expect(taskRow.locator(".task-row-time")).toBeVisible();
@@ -3073,14 +2956,12 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     };
   });
 
-  const project = await mockRegisteredProject(page);
   await mockCodexModels(page);
   const threadId = "thread_scroll_fixture";
   const now = 1_767_200_000_000;
   const task = {
     id: threadId,
     threadId,
-    projectId: project.id,
     activeTurnId: null,
     title: "Scroll fixture",
     preview: "Latest answer",
@@ -3095,7 +2976,6 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
   const eventRecord = (id, type, summary, payload, offset) => ({
     id,
     threadId,
-    projectId: project.id,
     type,
     summary,
     payload,
@@ -3156,7 +3036,7 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     });
   });
 
-  await page.goto(`/projects/${project.id}/tasks/${threadId}`);
+  await page.goto(`/tasks/${threadId}?cwd=src`);
   const tasksPage = page.locator("caffold-tasks-page");
   const scroller = tasksPage.locator(".task-conversation-scroll");
   await expect(tasksPage).toContainText("Existing answer block 18.");
@@ -3173,14 +3053,13 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
   await expect(tasksPage.locator(".task-stream-state")).toHaveCount(0);
 
   await page.evaluate(
-    ({ threadId, projectId, now }) => {
+    ({ threadId, now }) => {
       const taskSource = window.__taskEventSources.find((source) =>
         source.url.includes(`/api/tasks/${threadId}/stream`),
       );
       taskSource.emit("task-event", {
         id: "event_live_bottom",
         threadId,
-        projectId,
         type: "assistant_message",
         summary: "Assistant response",
         payload: {
@@ -3190,7 +3069,7 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
         createdMs: now + 100,
       });
     },
-    { threadId, projectId: project.id, now },
+    { threadId, now },
   );
   await expect(tasksPage).toContainText("Live answer at the bottom.");
   await expect.poll(() => isScrolledToBottom(scroller)).toBe(true);
@@ -3200,14 +3079,13 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     element.dispatchEvent(new Event("scroll"));
   });
   await page.evaluate(
-    ({ threadId, projectId, now }) => {
+    ({ threadId, now }) => {
       const taskSource = window.__taskEventSources.find((source) =>
         source.url.includes(`/api/tasks/${threadId}/stream`),
       );
       taskSource.emit("task-event", {
         id: "event_live_preserve",
         threadId,
-        projectId,
         type: "assistant_message",
         summary: "Assistant response",
         payload: {
@@ -3217,7 +3095,7 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
         createdMs: now + 101,
       });
     },
-    { threadId, projectId: project.id, now },
+    { threadId, now },
   );
   await expect(tasksPage).toContainText("Live answer while reading older content.");
   await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeLessThan(16);
@@ -3228,7 +3106,7 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
   const readsBeforeBurst = taskDetailReadRequests;
   holdTaskRefreshes = true;
   await page.evaluate(
-    ({ threadId, projectId, now }) => {
+    ({ threadId, now }) => {
       const taskSource = window.__taskEventSources.find((source) =>
         source.url.includes(`/api/tasks/${threadId}/stream`),
       );
@@ -3236,7 +3114,6 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
         taskSource.emit("task-event", {
           id: `event_burst_${index}`,
           threadId,
-          projectId,
           type: "assistant_message",
           summary: "Assistant response",
           payload: {
@@ -3247,7 +3124,7 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
         });
       }
     },
-    { threadId, projectId: project.id, now },
+    { threadId, now },
   );
   await expect(tasksPage).toContainText("Burst update 3");
   await expect.poll(() => taskDetailReadRequests).toBe(readsBeforeBurst + 1);
@@ -3392,8 +3269,7 @@ test("keeps header action slots stable while status checks resolve", async ({ pa
   await expectHeaderActionsFit(page);
 });
 
-test("restores project file routes and browser navigation", async ({ page }, testInfo) => {
-  const project = await mockRegisteredProject(page);
+test("preserves file route state and header DOM", async ({ page }, testInfo) => {
   let gitStatusRequests = 0;
   let listRequests = 0;
 
@@ -3406,23 +3282,23 @@ test("restores project file routes and browser navigation", async ({ page }, tes
     await route.continue();
   });
 
-  await page.goto(`/projects/${project.id}/files/example.rs`);
-  await expect(page).toHaveURL(`/projects/${project.id}/files/example.rs`);
+  await page.goto("/files?cwd=src&file=example.rs");
+  await expect(page).toHaveURL("/files?cwd=src&file=example.rs");
   await expect(page.locator("caffold-pathbar")).toContainText("src");
   await expect(page.locator("caffold-file-viewer")).toContainText("example.rs");
   await expect(page.locator("caffold-code-viewer")).toContainText("pub fn sample");
 
   await page.reload();
-  await expect(page).toHaveURL(`/projects/${project.id}/files/example.rs`);
+  await expect(page).toHaveURL("/files?cwd=src&file=example.rs");
   await expect(page.locator("caffold-file-viewer")).toContainText("example.rs");
 
   if (testInfo.project.name === "phone") {
     await page.getByRole("button", { name: "Back to files" }).click();
-    await expect(page).toHaveURL(`/projects/${project.id}/files`);
+    await expect(page).toHaveURL("/files?cwd=src");
     await expect(page.locator("caffold-file-list")).toBeVisible();
   }
 
-  await page.goto(`/projects/${project.id}/files`);
+  await page.goto("/files?cwd=src");
   await expect(page.locator("caffold-file-list")).toBeVisible();
   const gitGroupButton = headerActionGroupButton(page, "git");
   await expect(gitGroupButton.locator(".header-action-badge")).toHaveText(/\d+/);
@@ -3439,7 +3315,7 @@ test("restores project file routes and browser navigation", async ({ page }, tes
   const listRequestsBeforeFileClick = listRequests;
   const gitStatusRequestsBeforeFileClick = gitStatusRequests;
   await page.locator('button[data-entry-path="src/example.rs"]').click();
-  await expect(page).toHaveURL(`/projects/${project.id}/files/example.rs`);
+  await expect(page).toHaveURL("/files?cwd=src&file=example.rs");
   await expect(page.locator("caffold-file-viewer")).toContainText("example.rs");
   expect(listRequests).toBe(listRequestsBeforeFileClick);
   expect(gitStatusRequests).toBe(gitStatusRequestsBeforeFileClick);
@@ -3459,15 +3335,15 @@ test("restores project file routes and browser navigation", async ({ page }, tes
     headerActionsSnapshot.gitGroupButtonHtml,
   );
   await page.goBack();
-  await expect(page).toHaveURL(`/projects/${project.id}/files`);
+  await expect(page).toHaveURL("/files?cwd=src");
   await expect(page.locator("caffold-file-list")).toBeVisible();
 
-  await page.goto(`/projects/${project.id}/files/planner`);
-  await expect(page).toHaveURL(`/projects/${project.id}/files/planner`);
+  await page.goto("/files?cwd=src%2Fplanner");
+  await expect(page).toHaveURL("/files?cwd=src%2Fplanner");
   await expect(page.locator('button[data-entry-path="src/planner/mod.rs"]')).toBeVisible();
 
   await page.goBack();
-  await expect(page).toHaveURL(`/projects/${project.id}/files`);
+  await expect(page).toHaveURL("/files?cwd=src");
   await expect(page.locator('button[data-entry-path="src/example.rs"]')).toBeVisible();
 });
 
@@ -3497,8 +3373,7 @@ test("restores standalone file routes and browser navigation", async ({ page }, 
   await expect(page.locator("caffold-file-list")).toBeVisible();
 });
 
-test("restores project review routes", async ({ page }) => {
-  const project = await mockRegisteredProject(page);
+test("restores standalone review routes", async ({ page }) => {
   const repository = { rootPath: "src", branch: "feature/review", dirty: true };
   const commit = {
     sha: "abcdef1234567890abcdef1234567890abcdef12",
@@ -3946,7 +3821,7 @@ test("restores project review routes", async ({ page }) => {
   const delayedListStarted = new Promise((resolve) => {
     resolveDelayedListStarted = resolve;
   });
-  const directDiffRoute = page.goto(`/projects/${project.id}/diff/example.rs`);
+  const directDiffRoute = page.goto("/git/diff?cwd=src&file=example.rs");
   await delayedListStarted;
   await expect(page.locator("caffold-app-shell")).toHaveAttribute(
     "data-route-surface",
@@ -3971,20 +3846,20 @@ test("restores project review routes", async ({ page }) => {
     "diff",
   );
   await expect(page.locator("caffold-diff-viewer")).toContainText("new route line");
-  await page.goto(`/projects/${project.id}/diff`);
+  await page.goto("/git/diff?cwd=src");
   await expect(page.locator('button[data-change-path="src/example.rs"]')).toBeVisible();
   const gitStatusRequestsBeforeDiffClick = gitStatusRequests;
   await page.locator('button[data-change-path="src/example.rs"]').click();
-  await expect(page).toHaveURL(`/projects/${project.id}/diff/example.rs`);
+  await expect(page).toHaveURL("/git/diff?cwd=src&file=example.rs");
   await expect(page.locator("caffold-diff-viewer")).toContainText("new route line");
   expect(gitStatusRequests).toBe(gitStatusRequestsBeforeDiffClick);
   const gitStatusRequestsBeforeDiffBack = gitStatusRequests;
   await page.goBack();
-  await expect(page).toHaveURL(`/projects/${project.id}/diff`);
+  await expect(page).toHaveURL("/git/diff?cwd=src");
   expect(gitStatusRequests).toBe(gitStatusRequestsBeforeDiffBack);
 
   await page.goto(
-    `/projects/${project.id}/compare/example.rs?base=origin%2Fmain&head=feature%2Freview`,
+    "/git/compare?cwd=src&base=origin%2Fmain&head=feature%2Freview&file=example.rs",
   );
   await expect(page.locator("caffold-review-workspace")).toHaveAttribute(
     "data-workspace-mode",
@@ -3997,7 +3872,7 @@ test("restores project review routes", async ({ page }) => {
   await expect(page.locator('select[data-compare-ref="base"]')).toHaveValue("origin/main");
   await expect(page.locator('select[data-compare-ref="head"]')).toHaveValue("feature/review");
   await expect(page.locator("caffold-diff-viewer")).toContainText("new compare route line");
-  await page.goto(`/projects/${project.id}/compare?base=origin%2Fmain&head=feature%2Freview`);
+  await page.goto("/git/compare?cwd=src&base=origin%2Fmain&head=feature%2Freview");
   await expect(page.locator('button[data-compare-path="src/example.rs"]')).toBeVisible();
   const compareHeaderActionsSnapshot = await page
     .locator("caffold-header-actions")
@@ -4016,7 +3891,7 @@ test("restores project review routes", async ({ page }) => {
   const listRequestsBeforeCompareRefChange = listRequests;
   const gitStatusRequestsBeforeCompareRefChange = gitStatusRequests;
   await page.locator('select[data-compare-ref="head"]').selectOption("main");
-  await expect(page).toHaveURL(`/projects/${project.id}/compare?base=origin%2Fmain&head=main`);
+  await expect(page).toHaveURL("/git/compare?cwd=src&base=origin%2Fmain&head=main");
   await expect(page.locator("caffold-git-compare-page")).toContainText("0 files");
   expect(listRequests).toBe(listRequestsBeforeCompareRefChange);
   expect(gitStatusRequests).toBe(gitStatusRequestsBeforeCompareRefChange);
@@ -4040,24 +3915,24 @@ test("restores project review routes", async ({ page }) => {
 
   await page.locator('select[data-compare-ref="head"]').selectOption("feature/review");
   await expect(page).toHaveURL(
-    `/projects/${project.id}/compare?base=origin%2Fmain&head=feature%2Freview`,
+    "/git/compare?cwd=src&base=origin%2Fmain&head=feature%2Freview",
   );
   await expect(page.locator('button[data-compare-path="src/example.rs"]')).toBeVisible();
   const gitCompareRequestsBeforeClick = gitCompareRequests;
   await page.locator('button[data-compare-path="src/example.rs"]').click();
   await expect(page).toHaveURL(
-    `/projects/${project.id}/compare/example.rs?base=origin%2Fmain&head=feature%2Freview`,
+    "/git/compare?cwd=src&base=origin%2Fmain&head=feature%2Freview&file=example.rs",
   );
   await expect(page.locator("caffold-diff-viewer")).toContainText("new compare route line");
   expect(gitCompareRequests).toBe(gitCompareRequestsBeforeClick);
   const gitCompareRequestsBeforeBack = gitCompareRequests;
   await page.goBack();
   await expect(page).toHaveURL(
-    `/projects/${project.id}/compare?base=origin%2Fmain&head=feature%2Freview`,
+    "/git/compare?cwd=src&base=origin%2Fmain&head=feature%2Freview",
   );
   expect(gitCompareRequests).toBe(gitCompareRequestsBeforeBack);
 
-  await page.goto(`/projects/${project.id}/log/${commit.sha}/planner/mod.rs?page=2`);
+  await page.goto(`/git/log?cwd=src&page=2&sha=${commit.sha}&file=planner%2Fmod.rs`);
   await expect(page.locator("caffold-review-workspace")).toHaveAttribute(
     "data-workspace-mode",
     "git",
@@ -4068,26 +3943,26 @@ test("restores project review routes", async ({ page }) => {
   );
   await expect(page.locator(".review-workspace-title h2")).toHaveText("Commit");
   await expect(page.locator("caffold-diff-viewer")).toContainText("new commit route line");
-  await page.goto(`/projects/${project.id}/log/${commit.sha}?page=2`);
+  await page.goto(`/git/log?cwd=src&page=2&sha=${commit.sha}`);
   await expect(page.locator('button[data-commit-path="src/planner/mod.rs"]')).toBeVisible();
   const gitCommitRequestsBeforeClick = gitCommitRequests;
   await page.locator('button[data-commit-path="src/planner/mod.rs"]').click();
-  await expect(page).toHaveURL(`/projects/${project.id}/log/${commit.sha}/planner/mod.rs?page=2`);
+  await expect(page).toHaveURL(`/git/log?cwd=src&page=2&sha=${commit.sha}&file=planner%2Fmod.rs`);
   await expect(page.locator("caffold-diff-viewer")).toContainText("new commit route line");
   expect(gitCommitRequests).toBe(gitCommitRequestsBeforeClick);
   const gitCommitRequestsBeforeBack = gitCommitRequests;
   await page.goBack();
-  await expect(page).toHaveURL(`/projects/${project.id}/log/${commit.sha}?page=2`);
+  await expect(page).toHaveURL(`/git/log?cwd=src&page=2&sha=${commit.sha}`);
   expect(gitCommitRequests).toBe(gitCommitRequestsBeforeBack);
   await page.getByRole("button", { name: "Back to log" }).click();
-  await expect(page).toHaveURL(`/projects/${project.id}/log?page=2`);
+  await expect(page).toHaveURL("/git/log?cwd=src&page=2");
 
   delayNextIssueRequest = true;
   const delayedIssueStarted = new Promise((resolve) => {
     resolveDelayedIssueStarted = resolve;
   });
   const githubIssuesRequestsBeforeIssueDetailRoute = githubIssuesRequests;
-  const directIssueRoute = page.goto(`/projects/${project.id}/issues/42?page=2`);
+  const directIssueRoute = page.goto("/github/issues/42?cwd=src&page=2");
   await delayedIssueStarted;
   await expect(page.locator("caffold-review-workspace")).toHaveAttribute(
     "data-workspace-mode",
@@ -4108,12 +3983,12 @@ test("restores project review routes", async ({ page }) => {
   await expect(page.locator("caffold-github-issue-detail-page")).toContainText("Route issue body");
   const githubIssuesRequestsBeforeBack = githubIssuesRequests;
   await page.getByRole("button", { name: "Back to issues" }).click();
-  await expect(page).toHaveURL(`/projects/${project.id}/issues?page=2`);
+  await expect(page).toHaveURL("/github/issues?cwd=src&page=2");
   await expect(page.locator('button[data-issue-number="42"]')).toBeVisible();
   expect(githubIssuesRequests).toBe(githubIssuesRequestsBeforeBack + 1);
   const githubIssuesRequestsBeforeIssueClick = githubIssuesRequests;
   await page.locator('button[data-issue-number="42"]').click();
-  await expect(page).toHaveURL(`/projects/${project.id}/issues/42?page=2`);
+  await expect(page).toHaveURL("/github/issues/42?cwd=src&page=2");
   await expect(page.locator("caffold-github-issue-detail-page")).toContainText("Route issue body");
   expect(githubIssuesRequests).toBe(githubIssuesRequestsBeforeIssueClick);
 
@@ -4123,7 +3998,9 @@ test("restores project review routes", async ({ page }) => {
   });
   const githubPullsRequestsBeforePrFileRoute = githubPullsRequests;
   const githubPullRequestsBeforePrFileRoute = githubPullRequests;
-  const directPrFileRoute = page.goto(`/projects/${project.id}/pulls/12/files/planner/mod.rs?page=2`);
+  const directPrFileRoute = page.goto(
+    "/github/pulls/12/files?cwd=src&page=2&file=planner%2Fmod.rs",
+  );
   await delayedPullFilesStarted;
   await expect(page.locator("caffold-review-workspace")).toHaveAttribute(
     "data-workspace-mode",
@@ -4146,8 +4023,8 @@ test("restores project review routes", async ({ page }) => {
   await expect(page.locator("caffold-diff-viewer")).toContainText("new PR route line");
   expect(githubPullsRequests).toBe(githubPullsRequestsBeforePrFileRoute);
   expect(githubPullRequests).toBe(githubPullRequestsBeforePrFileRoute);
-  await page.goto(`/projects/${project.id}/pulls/12/files?page=2`);
-  await expect(page).toHaveURL(`/projects/${project.id}/pulls/12/files?page=2`);
+  await page.goto("/github/pulls/12/files?cwd=src&page=2");
+  await expect(page).toHaveURL("/github/pulls/12/files?cwd=src&page=2");
   await expect(page.locator("caffold-github-pull-files-page")).toBeVisible();
   await expect(page.locator(".github-mode-pulls caffold-review-file-viewer")).toContainText(
     "Select a file to inspect it.",
@@ -4155,23 +4032,25 @@ test("restores project review routes", async ({ page }) => {
   await expect(page.locator('button[data-pull-file-path="src/planner/mod.rs"]')).toBeVisible();
   const githubPullFilesRequestsBeforeFileClick = githubPullFilesRequests;
   await page.locator('button[data-pull-file-path="src/planner/mod.rs"]').click();
-  await expect(page).toHaveURL(`/projects/${project.id}/pulls/12/files/planner/mod.rs?page=2`);
+  await expect(page).toHaveURL(
+    "/github/pulls/12/files?cwd=src&page=2&file=planner%2Fmod.rs",
+  );
   await expect(page.locator("caffold-diff-viewer")).toContainText("new PR route line");
   expect(githubPullFilesRequests).toBe(githubPullFilesRequestsBeforeFileClick);
   await page.goBack();
-  await expect(page).toHaveURL(`/projects/${project.id}/pulls/12/files?page=2`);
+  await expect(page).toHaveURL("/github/pulls/12/files?cwd=src&page=2");
   const githubPullRequestsBeforePrBack = githubPullRequests;
   await page.getByRole("button", { name: "Back to PR" }).click();
-  await expect(page).toHaveURL(`/projects/${project.id}/pulls/12?page=2`);
+  await expect(page).toHaveURL("/github/pulls/12?cwd=src&page=2");
   await expect(page.locator("caffold-github-pull-detail-page")).toContainText("Route PR body");
   expect(githubPullRequests).toBe(githubPullRequestsBeforePrBack + 1);
   const githubPullsRequestsBeforeBack = githubPullsRequests;
   await page.getByRole("button", { name: "Back to pull requests" }).click();
-  await expect(page).toHaveURL(`/projects/${project.id}/pulls?page=2`);
+  await expect(page).toHaveURL("/github/pulls?cwd=src&page=2");
   await expect(page.locator('button[data-pull-number="12"]')).toBeVisible();
   expect(githubPullsRequests).toBe(githubPullsRequestsBeforeBack + 1);
   await page.locator('button[data-pull-number="12"]').click();
-  await expect(page).toHaveURL(`/projects/${project.id}/pulls/12?page=2`);
+  await expect(page).toHaveURL("/github/pulls/12?cwd=src&page=2");
   await expect(page.locator("caffold-github-pull-detail-page")).toContainText("Route PR body");
 
   await page.goto("/git/diff?cwd=src&file=example.rs");
@@ -5606,7 +5485,6 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
 });
 
 test("opens GitHub pull requests from the header", async ({ page }, testInfo) => {
-  const project = await mockRegisteredProject(page);
   const repository = { rootPath: "src", branch: "feature/pr-review", dirty: false };
   const github = {
     owner: "example",
@@ -5865,7 +5743,7 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
 
   await page.goto(FILES_HOME_URL);
   await page.locator('button[data-entry-path="src"]').click();
-  await expect(page.locator("caffold-project-switcher")).toContainText(project.name);
+  await expect(page.locator("caffold-pathbar")).toContainText("src");
 
   const githubPopover = await openHeaderActionGroup(page, "github");
   const pullsButton = githubPopover.locator('button[data-action="open-github-pulls-workspace"]');
@@ -6384,15 +6262,6 @@ async function captureReviewScreenshot(page, testInfo, name) {
   });
 }
 
-async function openProjectPopover(switcher) {
-  const popover = switcher.locator(".project-popover");
-  if (!(await popover.isVisible())) {
-    await switcher.locator(".project-switcher-button").click();
-  }
-
-  await expect(popover).toBeVisible();
-}
-
 function headerActionGroupButton(page, group) {
   return page.locator(`caffold-header-actions button[data-action-group="${group}"]`);
 }
@@ -6543,7 +6412,6 @@ async function expectHeaderActionsFit(page) {
     };
     const header = document.querySelector("caffold-app-shell .app-header");
     const brand = document.querySelector("caffold-app-menu .app-menu-button");
-    const project = document.querySelector("caffold-project-switcher .project-switcher-button");
     const git = document.querySelector('caffold-header-actions button[data-action-group="git"]');
     const github = document.querySelector(
       'caffold-header-actions button[data-action-group="github"]',
@@ -6560,7 +6428,6 @@ async function expectHeaderActionsFit(page) {
         scrollWidth: header?.scrollWidth ?? 0,
       },
       brand: box(brand),
-      project: box(project),
       git: box(git),
       github: box(github),
       codex: box(codex),
@@ -6569,8 +6436,7 @@ async function expectHeaderActionsFit(page) {
   });
 
   expect(metrics.header.scrollWidth).toBeLessThanOrEqual(metrics.header.clientWidth + 1);
-  expect(metrics.brand.right).toBeLessThanOrEqual(metrics.project.left);
-  expect(metrics.project.right).toBeLessThanOrEqual(metrics.git.left);
+  expect(metrics.brand.right).toBeLessThanOrEqual(metrics.git.left);
   expect(metrics.git.right).toBeLessThanOrEqual(metrics.github.left);
   expect(metrics.github.right).toBeLessThanOrEqual(metrics.codex.left);
   expect(metrics.codex.right).toBeLessThanOrEqual(metrics.viewportWidth + 1);
@@ -6679,58 +6545,6 @@ async function expectHeaderGroupOpenVisualState(page, group) {
   expect(metrics.buttonToArrowGap).toBeLessThanOrEqual(3);
 }
 
-async function mockRegisteredProject(page, overrides = {}) {
-  const project = {
-    id: "prj_route_fixture",
-    name: "src",
-    rootPath: resolve("tests/fixtures/home/src"),
-    relativePath: "src",
-    createdMs: 1,
-    updatedMs: 1,
-    lastOpenedMs: 1,
-    ...overrides,
-  };
-
-  await page.route(`/api/projects/${project.id}/open`, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify(project),
-    }),
-  );
-  await page.route(/\/api\/projects(?:\?|$)/, (route) => {
-    if (route.request().method() !== "GET") {
-      return route.continue();
-    }
-
-    return route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ projects: [project] }),
-    });
-  });
-  await page.route(/\/api\/project-candidate(?:\?|$)/, (route) => {
-    const url = new URL(route.request().url());
-    const path = url.searchParams.get("path") ?? "";
-    const inProject = path === project.relativePath || path.startsWith(`${project.relativePath}/`);
-
-    return route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        candidate: inProject
-          ? {
-              name: project.name,
-              rootPath: project.rootPath,
-              relativePath: project.relativePath,
-              alreadyRegistered: true,
-              projectId: project.id,
-            }
-          : null,
-      }),
-    });
-  });
-
-  return project;
-}
-
 async function mockCodexModels(page) {
   await page.route(/\/api\/codex\/models(?:\?|$)/, (route) =>
     route.fulfill({
@@ -6757,138 +6571,6 @@ async function mockCodexModels(page) {
       }),
     }),
   );
-}
-
-async function mockProjectCrudApi(page) {
-  let projects = [];
-  let nextProjectId = 1;
-  const homeRootPath = resolve("tests/fixtures/home");
-  const rootPath = resolve("tests/fixtures/home/src");
-  const relativePath = "src";
-
-  const projectResponse = (project) => ({
-    ...project,
-    rootPath,
-    relativePath,
-    createdMs: project.createdMs ?? 1,
-    updatedMs: project.updatedMs ?? 1,
-    lastOpenedMs: project.lastOpenedMs ?? null,
-  });
-
-  const projectCandidate = (path) => {
-    const isProjectPath = path === relativePath || path.startsWith(`${relativePath}/`);
-    const candidateRootPath = isProjectPath ? rootPath : resolve(homeRootPath, path);
-    const candidateRelativePath = isProjectPath ? relativePath : path;
-    const candidateName = isProjectPath ? "src" : path.split("/").filter(Boolean).pop() || "home";
-    const registeredProject = projects.find(
-      (project) => project.rootPath === candidateRootPath,
-    );
-    return {
-      name: registeredProject?.name ?? candidateName,
-      rootPath: candidateRootPath,
-      relativePath: candidateRelativePath,
-      alreadyRegistered: Boolean(registeredProject),
-      projectId: registeredProject?.id ?? null,
-    };
-  };
-
-  await page.route(/\/api\/project-candidate(?:\?|$)/, (route) => {
-    const url = new URL(route.request().url());
-    const path = url.searchParams.get("path") ?? "";
-    return route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ candidate: projectCandidate(path) }),
-    });
-  });
-
-  await page.route(/\/api\/projects(?:\/[^/]+(?:\/open)?|)(?:\?|$)/, async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    const segments = url.pathname.split("/").filter(Boolean);
-    const projectId = segments[2] ? decodeURIComponent(segments[2]) : null;
-    const method = request.method();
-
-    if (url.pathname === "/api/projects" && method === "GET") {
-      return route.fulfill({
-        contentType: "application/json",
-        body: JSON.stringify({ projects: projects.map(projectResponse) }),
-      });
-    }
-
-    if (url.pathname === "/api/projects" && method === "POST") {
-      const body = request.postDataJSON();
-      const name = body.name?.trim() || "src";
-      const project = projectResponse({
-        id: `test_project_${nextProjectId}`,
-        name,
-        rootPath,
-        relativePath,
-        createdMs: nextProjectId,
-        updatedMs: nextProjectId,
-      });
-      nextProjectId += 1;
-      projects = [project, ...projects];
-      return route.fulfill({
-        contentType: "application/json",
-        body: JSON.stringify(project),
-      });
-    }
-
-    if (segments.length === 4 && segments[3] === "open" && projectId && method === "POST") {
-      const project = projects.find((candidate) => candidate.id === projectId);
-      if (!project) {
-        return route.fulfill({
-          status: 404,
-          contentType: "application/json",
-          body: JSON.stringify({ error: { message: "Project not found" } }),
-        });
-      }
-
-      const openedProject = projectResponse({
-        ...project,
-        lastOpenedMs: Date.now(),
-      });
-      projects = projects.map((candidate) =>
-        candidate.id === openedProject.id ? openedProject : candidate,
-      );
-      return route.fulfill({
-        contentType: "application/json",
-        body: JSON.stringify(openedProject),
-      });
-    }
-
-    if (segments.length === 3 && projectId && method === "PATCH") {
-      const body = request.postDataJSON();
-      const project = projects.find((candidate) => candidate.id === projectId);
-      if (!project) {
-        return route.fulfill({
-          status: 404,
-          contentType: "application/json",
-          body: JSON.stringify({ error: { message: "Project not found" } }),
-        });
-      }
-
-      const renamedProject = projectResponse({
-        ...project,
-        name: body.name?.trim() || project.name,
-        updatedMs: Date.now(),
-      });
-      projects = projects.map((candidate) =>
-        candidate.id === renamedProject.id ? renamedProject : candidate,
-      );
-      return route.fulfill({
-        contentType: "application/json",
-        body: JSON.stringify(renamedProject),
-      });
-    }
-
-    if (segments.length === 3 && projectId && method === "DELETE") {
-      projects = projects.filter((project) => project.id !== projectId);
-      return route.fulfill({ status: 204, body: "" });
-    }
-
-    return route.continue();
-  });
 }
 
 async function expectGlobalScrollLocked(page) {

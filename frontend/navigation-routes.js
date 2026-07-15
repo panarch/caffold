@@ -109,7 +109,7 @@ const ROUTE_DEFINITIONS = [
     id: "standalone-issues-detail",
     kind: "issues",
     pattern: "/github/issues/[number]",
-    query: CWD_QUERY,
+    query: STANDALONE_PAGE_QUERY,
     domain: "github",
     target: "detail",
     params: { number: "positiveInteger" },
@@ -130,7 +130,7 @@ const ROUTE_DEFINITIONS = [
     id: "standalone-pulls-detail",
     kind: "pulls",
     pattern: "/github/pulls/[number]",
-    query: CWD_QUERY,
+    query: STANDALONE_PAGE_QUERY,
     domain: "github",
     target: "detail",
     params: { number: "positiveInteger" },
@@ -162,38 +162,14 @@ const ROUTE_DEFINITIONS = [
           }),
   }),
   routeDefinition({
-    id: "project-root",
-    kind: "files",
-    pattern: "/projects/[projectId]",
-    target: "list",
-    canonical: false,
-    toRoute: ({ projectId }) => filesRoute(projectId),
-  }),
-  routeDefinition({
-    id: "files-list",
-    kind: "files",
-    pattern: "/projects/[projectId]/files",
-    target: "list",
-    toRoute: ({ projectId }) => filesRoute(projectId),
-  }),
-  routeDefinition({
-    id: "files-path",
-    kind: "files",
-    pattern: "/projects/[projectId]/files/[...path]",
-    target: "path",
-    toRoute: ({ projectId, path }) => filesRoute(projectId, path),
-    parent: (route) => filesRoute(route.projectId, parentPath(route.path)),
-  }),
-  routeDefinition({
     id: "global-tasks-list",
     kind: "tasks",
     pattern: "/tasks",
     query: TASKS_QUERY,
     surface: "tasks",
     target: "list",
-    toRoute: (_, query) => tasksRoute(null, query),
-    matchesRoute: (route) =>
-      route?.kind === "tasks" && !route.projectId && !route.new && !route.threadId,
+    toRoute: (_, query) => tasksRoute(query),
+    matchesRoute: (route) => route?.kind === "tasks" && !route.new && !route.threadId,
     parent: () => null,
   }),
   routeDefinition({
@@ -203,9 +179,9 @@ const ROUTE_DEFINITIONS = [
     query: TASKS_QUERY,
     surface: "tasks",
     target: "new",
-    toRoute: (_, query) => tasksRoute(null, { ...query, new: true }),
-    matchesRoute: (route) => route?.kind === "tasks" && !route.projectId && Boolean(route.new),
-    parent: (route) => tasksRoute(null, { cwd: route.cwd }),
+    toRoute: (_, query) => tasksRoute({ ...query, new: true }),
+    matchesRoute: (route) => route?.kind === "tasks" && Boolean(route.new),
+    parent: (route) => tasksRoute({ cwd: route.cwd }),
   }),
   routeDefinition({
     id: "global-tasks-detail",
@@ -214,188 +190,9 @@ const ROUTE_DEFINITIONS = [
     query: TASKS_QUERY,
     surface: "tasks",
     target: "detail",
-    toRoute: ({ threadId }, query) => tasksRoute(null, { ...query, threadId }),
-    matchesRoute: (route) =>
-      route?.kind === "tasks" && !route.projectId && Boolean(route.threadId),
-    parent: (route) => tasksRoute(null, { cwd: route.cwd }),
-  }),
-  routeDefinition({
-    id: "tasks-list",
-    kind: "tasks",
-    pattern: "/projects/[projectId]/tasks",
-    surface: "tasks",
-    target: "list",
-    toRoute: ({ projectId }) => tasksRoute(projectId),
-    matchesRoute: (route) => route?.kind === "tasks" && !route.new && !route.threadId,
-    parent: filesRootRoute,
-  }),
-  routeDefinition({
-    id: "tasks-new",
-    kind: "tasks",
-    pattern: "/projects/[projectId]/tasks/new",
-    surface: "tasks",
-    target: "new",
-    toRoute: ({ projectId }) => tasksRoute(projectId, { new: true }),
-    matchesRoute: (route) => route?.kind === "tasks" && Boolean(route.new),
-    parent: (route) => tasksRoute(route.projectId),
-  }),
-  routeDefinition({
-    id: "tasks-detail",
-    kind: "tasks",
-    pattern: "/projects/[projectId]/tasks/[threadId]",
-    surface: "tasks",
-    target: "detail",
-    toRoute: ({ projectId, threadId }) => tasksRoute(projectId, { threadId }),
+    toRoute: ({ threadId }, query) => tasksRoute({ ...query, threadId }),
     matchesRoute: (route) => route?.kind === "tasks" && Boolean(route.threadId),
-    parent: (route) => tasksRoute(route.projectId),
-  }),
-  routeDefinition({
-    id: "diff-list",
-    kind: "diff",
-    pattern: "/projects/[projectId]/diff",
-    domain: "git",
-    target: "list",
-    toRoute: ({ projectId }) => diffRoute(projectId),
-    parent: filesRootRoute,
-  }),
-  routeDefinition({
-    id: "diff-file",
-    kind: "diff",
-    pattern: "/projects/[projectId]/diff/[...path]",
-    domain: "git",
-    target: "file",
-    toRoute: ({ projectId, path }) => diffRoute(projectId, path),
-    parent: (route) => diffRoute(route.projectId),
-  }),
-  routeDefinition({
-    id: "compare-list",
-    kind: "compare",
-    pattern: "/projects/[projectId]/compare",
-    query: COMPARE_QUERY,
-    domain: "git",
-    target: "list",
-    toRoute: ({ projectId }, query) => compareRoute(projectId, query),
-    parent: filesRootRoute,
-  }),
-  routeDefinition({
-    id: "compare-file",
-    kind: "compare",
-    pattern: "/projects/[projectId]/compare/[...path]",
-    query: COMPARE_QUERY,
-    domain: "git",
-    target: "file",
-    toRoute: ({ projectId, path }, query) => compareRoute(projectId, { ...query, path }),
-    parent: (route) =>
-      compareRoute(route.projectId, {
-        baseRef: route.baseRef,
-        headRef: route.headRef,
-      }),
-  }),
-  routeDefinition({
-    id: "log-list",
-    kind: "log",
-    pattern: "/projects/[projectId]/log",
-    query: PAGE_QUERY,
-    domain: "git",
-    target: "list",
-    toRoute: ({ projectId }, query) => logRoute(projectId, query),
-    parent: filesRootRoute,
-  }),
-  routeDefinition({
-    id: "log-commit",
-    kind: "log",
-    pattern: "/projects/[projectId]/log/[sha]",
-    query: PAGE_QUERY,
-    domain: "git",
-    target: "commit",
-    toRoute: ({ projectId, sha }, query) => logRoute(projectId, { ...query, sha }),
-    parent: (route) => logRoute(route.projectId, { page: route.page }),
-  }),
-  routeDefinition({
-    id: "log-file",
-    kind: "log",
-    pattern: "/projects/[projectId]/log/[sha]/[...path]",
-    query: PAGE_QUERY,
-    domain: "git",
-    target: "file",
-    toRoute: ({ projectId, sha, path }, query) => logRoute(projectId, { ...query, sha, path }),
-    parent: (route) => logRoute(route.projectId, { page: route.page, sha: route.sha }),
-  }),
-  routeDefinition({
-    id: "issues-list",
-    kind: "issues",
-    pattern: "/projects/[projectId]/issues",
-    query: PAGE_QUERY,
-    domain: "github",
-    target: "list",
-    toRoute: ({ projectId }, query) => issuesRoute(projectId, query),
-    parent: filesRootRoute,
-  }),
-  routeDefinition({
-    id: "issues-detail",
-    kind: "issues",
-    pattern: "/projects/[projectId]/issues/[number]",
-    query: PAGE_QUERY,
-    domain: "github",
-    target: "detail",
-    params: { number: "positiveInteger" },
-    toRoute: ({ projectId, number }, query) => issuesRoute(projectId, { ...query, number }),
-    parent: (route) => issuesRoute(route.projectId, { page: route.page }),
-  }),
-  routeDefinition({
-    id: "pulls-list",
-    kind: "pulls",
-    pattern: "/projects/[projectId]/pulls",
-    query: PAGE_QUERY,
-    domain: "github",
-    target: "list",
-    toRoute: ({ projectId }, query) => pullsRoute(projectId, query),
-    parent: filesRootRoute,
-  }),
-  routeDefinition({
-    id: "pulls-detail",
-    kind: "pulls",
-    pattern: "/projects/[projectId]/pulls/[number]",
-    query: PAGE_QUERY,
-    domain: "github",
-    target: "detail",
-    params: { number: "positiveInteger" },
-    toRoute: ({ projectId, number }, query) => pullsRoute(projectId, { ...query, number }),
-    parent: (route) => pullsRoute(route.projectId, { page: route.page }),
-  }),
-  routeDefinition({
-    id: "pulls-files",
-    kind: "pulls",
-    pattern: "/projects/[projectId]/pulls/[number]/files",
-    query: PAGE_QUERY,
-    domain: "github",
-    target: "files",
-    params: { number: "positiveInteger" },
-    toRoute: ({ projectId, number }, query) =>
-      pullsRoute(projectId, { ...query, number, files: true }),
-    parent: (route) => pullsRoute(route.projectId, { page: route.page, number: route.number }),
-  }),
-  routeDefinition({
-    id: "pulls-file",
-    kind: "pulls",
-    pattern: "/projects/[projectId]/pulls/[number]/files/[...path]",
-    query: PAGE_QUERY,
-    domain: "github",
-    target: "file",
-    params: { number: "positiveInteger" },
-    toRoute: ({ projectId, number, path }, query) =>
-      pullsRoute(projectId, {
-        ...query,
-        number,
-        files: true,
-        path,
-      }),
-    parent: (route) =>
-      pullsRoute(route.projectId, {
-        page: route.page,
-        number: route.number,
-        files: true,
-      }),
+    parent: (route) => tasksRoute({ cwd: route.cwd }),
   }),
 ];
 
@@ -480,12 +277,8 @@ function routeMatchesDefinition(definition, route) {
     return false;
   }
 
-  if (hasToken(definition, "param", "projectId") !== Boolean(route.projectId)) {
-    return false;
-  }
-
   for (const token of definition.tokens) {
-    if (token.kind !== "param" || token.name === "projectId") {
+    if (token.kind !== "param") {
       continue;
     }
     if (!route[token.name]) {
@@ -636,58 +429,9 @@ function writeQuery(definition, route, searchParams) {
   }
 }
 
-function filesRoute(projectId, path = "") {
-  return { kind: "files", projectId, path: cleanPath(path) };
-}
-
-function diffRoute(projectId, path = "") {
-  return { kind: "diff", projectId, path: cleanPath(path) };
-}
-
-function compareRoute(projectId, options = {}) {
-  return {
-    kind: "compare",
-    projectId,
-    baseRef: options.baseRef ?? "",
-    headRef: options.headRef ?? "",
-    path: cleanPath(options.path),
-  };
-}
-
-function logRoute(projectId, options = {}) {
-  return {
-    kind: "log",
-    projectId,
-    page: options.page ?? 1,
-    sha: options.sha ?? "",
-    path: cleanPath(options.path),
-  };
-}
-
-function issuesRoute(projectId, options = {}) {
-  return {
-    kind: "issues",
-    projectId,
-    page: options.page ?? 1,
-    number: options.number ?? null,
-  };
-}
-
-function pullsRoute(projectId, options = {}) {
-  return {
-    kind: "pulls",
-    projectId,
-    page: options.page ?? 1,
-    number: options.number ?? null,
-    files: Boolean(options.files),
-    path: cleanPath(options.path),
-  };
-}
-
-function tasksRoute(projectId, options = {}) {
+function tasksRoute(options = {}) {
   return {
     kind: "tasks",
-    projectId: projectId ?? "",
     new: Boolean(options.new),
     threadId: options.threadId ?? "",
     cwd: taskCwd(options.cwd),
@@ -697,7 +441,6 @@ function tasksRoute(projectId, options = {}) {
 function standaloneFilesRoute(options = {}) {
   return {
     kind: "files",
-    projectId: "",
     cwd: taskCwd(options.cwd),
     path: cleanPath(options.path),
   };
@@ -706,7 +449,6 @@ function standaloneFilesRoute(options = {}) {
 function standaloneDiffRoute(options = {}) {
   return {
     kind: "diff",
-    projectId: "",
     cwd: taskCwd(options.cwd),
     path: cleanPath(options.path),
   };
@@ -715,7 +457,6 @@ function standaloneDiffRoute(options = {}) {
 function standaloneCompareRoute(options = {}) {
   return {
     kind: "compare",
-    projectId: "",
     cwd: taskCwd(options.cwd),
     baseRef: options.baseRef ?? "",
     headRef: options.headRef ?? "",
@@ -726,7 +467,6 @@ function standaloneCompareRoute(options = {}) {
 function standaloneLogRoute(options = {}) {
   return {
     kind: "log",
-    projectId: "",
     cwd: taskCwd(options.cwd),
     page: options.page ?? 1,
     sha: options.sha ?? "",
@@ -737,7 +477,6 @@ function standaloneLogRoute(options = {}) {
 function standaloneIssuesRoute(options = {}) {
   return {
     kind: "issues",
-    projectId: "",
     cwd: taskCwd(options.cwd),
     page: options.page ?? 1,
     number: options.number ?? null,
@@ -747,7 +486,6 @@ function standaloneIssuesRoute(options = {}) {
 function standalonePullsRoute(options = {}) {
   return {
     kind: "pulls",
-    projectId: "",
     cwd: taskCwd(options.cwd),
     page: options.page ?? 1,
     number: options.number ?? null,
@@ -758,10 +496,6 @@ function standalonePullsRoute(options = {}) {
 
 function taskCwd(path) {
   return path === "." ? "." : cleanPath(path);
-}
-
-function filesRootRoute(route) {
-  return filesRoute(route.projectId);
 }
 
 function routeOrigin() {
@@ -783,12 +517,6 @@ function cleanPath(path) {
     .split("/")
     .filter((segment) => segment && segment !== "." && segment !== "..")
     .join("/");
-}
-
-function parentPath(path) {
-  const parts = cleanPath(path).split("/").filter(Boolean);
-  parts.pop();
-  return parts.join("/");
 }
 
 function positiveInteger(value) {

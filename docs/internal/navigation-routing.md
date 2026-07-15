@@ -21,9 +21,6 @@ encode mobile, foldable, or desktop layout state.
 
 ## Route Shape
 
-Registered projects are addressed by stable project ID. Project names remain
-display-only because they can be renamed.
-
 - `/tasks`
 - `/tasks?cwd=...`
 - `/tasks/new?cwd=...`
@@ -37,58 +34,29 @@ display-only because they can be renamed.
 - `/github/pulls?cwd=...&page=...`
 - `/github/pulls/:number?cwd=...`
 - `/github/pulls/:number/files?cwd=...&file=...`
-- `/projects/:projectId/files`
-- `/projects/:projectId/files/*path`
-- `/projects/:projectId/tasks`
-- `/projects/:projectId/tasks/new`
-- `/projects/:projectId/tasks/:threadId`
-- `/projects/:projectId/diff`
-- `/projects/:projectId/diff/*path`
-- `/projects/:projectId/compare?base=...&head=...`
-- `/projects/:projectId/compare/*path?base=...&head=...`
-- `/projects/:projectId/log?page=...`
-- `/projects/:projectId/log/:sha`
-- `/projects/:projectId/log/:sha/*path`
-- `/projects/:projectId/issues?page=...`
-- `/projects/:projectId/issues/:number`
-- `/projects/:projectId/pulls?page=...`
-- `/projects/:projectId/pulls/:number?page=...`
-- `/projects/:projectId/pulls/:number/files?page=...`
-- `/projects/:projectId/pulls/:number/files/*path?page=...`
 
-Route paths under `/projects/:projectId` are project-relative. The frontend
-resolves the project ID through the existing project API, then maps the route
-path onto the project's registered root path before calling file, git, or
-GitHub APIs.
-
-Standalone Files, Git, and GitHub routes use a RootedFs logical `cwd` query
-instead of a project ID. File and review paths in those routes are relative to
-that context. Git and GitHub routes canonicalize `cwd` to the live repository
-root before replacing the current history entry, so reload and copied URLs use
-one stable repository context.
+Files, Git, and GitHub routes use a RootedFs logical `cwd` query. File and
+review paths are relative to that context. Git and GitHub routes canonicalize
+`cwd` to the live repository root before replacing the current history entry,
+so reload and copied URLs use one stable repository context.
 
 When a standalone route omits `cwd`, the app fills it before route preparation
 using this precedence: the selected Task worktree/thread context, the current
 Files directory, then the server initial path. Review routes prefer the current
-live repository root when one is already loaded. Project-scoped routes retain
-their existing project-relative interpretation during this compatibility
-phase.
+live repository root when one is already loaded.
 
 Codex Tasks use Codex app-server threads as the source of truth and do not
-require a registered project. `/tasks` is the explicit all-threads route.
+require a local project registry. `/tasks` is the explicit all-threads route.
 Header `Open Tasks` enters `/tasks?cwd=...`. Inside Git, the backend resolves the
 cwd to its common Git directory and includes threads from every worktree of that
 repository; outside Git it uses canonical cwd exact matching. Header `All Tasks`
-enters plain `/tasks`. Project-scoped task routes remain as filters/context
-routes: they restrict the thread list to threads whose `cwd` is under the project
-root and provide a project-root default cwd for new turns.
+enters plain `/tasks`.
 
 ## Route Definitions
 
 `frontend/navigation-routes.js` keeps the route schema in an internal
 `ROUTE_DEFINITIONS` table. Each entry is a concrete URL pattern such as
-`/projects/[projectId]/log/[sha]/[...path]` or
-`/projects/[projectId]/pulls/[number]/files`. A route entry owns parsing, path
+`/git/log` or `/github/pulls/[number]/files`. A route entry owns parsing, path
 generation, query parameters, parent-route behavior, and
 surface/domain/target metadata for that URL variant. `routeMode(route)` returns
 the route kind as the domain-local mode.
@@ -111,16 +79,6 @@ The exported helpers remain the public interface:
 Adding a route variant should mean adding one route definition plus route helper
 tests. The table is an implementation detail and is not exported.
 
-## Project IDs
-
-Project IDs are URL identities, not user-facing names. They should stay opaque
-and stable even when a project is renamed.
-
-Project IDs use short opaque lowercase hex values. Eight hex digits are enough
-for this local single-user project registry when paired with collision retries.
-Avoid making names globally unique just to use them in URLs; duplicate project
-names can remain a display concern.
-
 ## Parent Routes
 
 Back and close controls use deterministic parent routes:
@@ -137,9 +95,7 @@ Back and close controls use deterministic parent routes:
 - task detail -> task list
 - new task -> task list
 - global task list -> `/`
-- project task list -> project files
 - standalone review workspace close -> standalone files at the same cwd
-- project review workspace close -> project files
 
 Task detail routes use Codex app-server `threadId` values directly. Caffold does
 not mint a separate durable task ID in the first thread-backed slice.
@@ -164,7 +120,7 @@ Every routed surface follows the same lifecycle:
 
 1. Parse the URL into a semantic route.
 2. Prepare the target synchronously with `prepareRoute(route)`.
-3. Load project context, status, and content asynchronously.
+3. Load cwd context, status, and content asynchronously.
 4. Refresh the already-prepared target with the loaded data.
 
 `prepareRoute(route)` must not call APIs. It may only set the active surface,
@@ -176,7 +132,7 @@ or file viewer surface. Async loading results may fill that target, but they
 must not be required to decide which target is visible.
 
 This matters most for reload and direct URL entry. A PR file route such as
-`/projects/:projectId/pulls/:number/files/*path` should prepare the PR files
+`/github/pulls/:number/files?cwd=...&file=...` should prepare the PR files
 viewer immediately. It should not show the file browser, PR list, or PR detail
 while GitHub status, PR file lists, or diffs are loading.
 
@@ -187,7 +143,7 @@ independently reloadable even when no list cache exists.
 ## Server Fallback
 
 The Rust server serves the app shell for known frontend routes under `/files`,
-`/git`, `/github`, `/projects`, and `/tasks`. API and asset routes stay explicit
+`/git`, `/github`, and `/tasks`. API and asset routes stay explicit
 and should continue returning their real errors when a path is missing.
 
 ## Test Contract

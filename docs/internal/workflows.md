@@ -6,11 +6,10 @@ Caffold workflows should be described from the reviewer's point of view. The rev
 
 ## Task Creation
 
-1. Select a project.
-2. Create a task with a title and prompt.
-3. Choose or create a worktree.
-4. Start or attach a Codex thread.
-5. Record task creation, worktree binding, and thread binding in the operation ledger.
+1. Open All Tasks or a cwd-filtered task list.
+2. Choose the cwd and send a prompt.
+3. Start a Codex thread in that cwd.
+4. Derive repository and worktree context from the thread cwd.
 
 ## Agent Turn
 
@@ -19,7 +18,7 @@ Caffold workflows should be described from the reviewer's point of view. The rev
 3. App-server emits turn and agent events.
 4. Backend streams task state to the UI.
 5. Approvals are presented to the user when required.
-6. Completion, interruption, or failure is recorded in the ledger.
+6. Completion, interruption, or failure remains visible in Codex thread history.
 
 ## Review Loop
 
@@ -47,11 +46,10 @@ When a user returns after time away, Caffold should show:
 
 - task title and status
 - host
-- project
 - worktree path
 - branch and base
 - Codex thread ID
-- recent ledger events
+- recent thread events
 - latest changed file summary
 - latest test or command summary
 
