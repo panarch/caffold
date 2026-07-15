@@ -1200,8 +1200,9 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
     }),
     taskRecord({
       threadId: "thread_docs",
-      title: "Documentation directory task",
+      title: "Documentation directory task with an intentionally long title",
       cwd: "docs",
+      status: "waiting_for_approval",
       updatedMs: now + 100,
     }),
   ];
@@ -1252,7 +1253,9 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
   await expect(rows.nth(0)).toContainText("Feature worktree task");
   await expect(rows.nth(1)).toContainText("Main root task");
   await expect(rows.nth(2)).toContainText("Main core task");
-  await expect(rows.nth(3)).toContainText("Documentation directory task");
+  await expect(rows.nth(3)).toContainText(
+    "Documentation directory task with an intentionally long title",
+  );
   await expect(tasksPage.locator(".task-row-summary")).toHaveCount(0);
   await expect(
     tasksPage.locator('.task-row[data-thread-id="thread_feature"] .task-row-worktree'),
@@ -1266,14 +1269,47 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
   await expect(
     tasksPage.locator('.task-row[data-thread-id="thread_main_root"] .task-row-time'),
   ).toBeVisible();
+  await expect(
+    tasksPage.locator(
+      '.task-row[data-thread-id="thread_docs"] [data-status="waiting_for_approval"]',
+    ),
+  ).toBeVisible();
   await expect(tasksPage.locator('.task-row .task-status-label')).toHaveCount(0);
-  const rowHeights = await rows.evaluateAll((elements) =>
-    elements.map((element) => Math.round(element.getBoundingClientRect().height)),
+  const rowLayout = await rows.evaluateAll((elements) =>
+    elements.map((element) => {
+      const title = element.querySelector(".task-row-title");
+      const indicators = element.querySelector(".task-row-indicators");
+      return {
+        height: Math.round(element.getBoundingClientRect().height),
+        titleWidth: Math.round(title.getBoundingClientRect().width),
+        indicatorWidth: Math.round(indicators.getBoundingClientRect().width),
+        hasHorizontalOverflow: element.scrollWidth > element.clientWidth,
+      };
+    }),
   );
+  const rowHeights = rowLayout.map(({ height }) => height);
   expect(new Set(rowHeights).size).toBe(1);
   expect(rowHeights[0]).toBeLessThanOrEqual(44);
+  expect(new Set(rowLayout.map(({ titleWidth }) => titleWidth)).size).toBe(1);
+  expect(new Set(rowLayout.map(({ indicatorWidth }) => indicatorWidth))).toEqual(
+    new Set([56]),
+  );
+  expect(rowLayout.every(({ hasHorizontalOverflow }) => !hasHorizontalOverflow)).toBe(true);
+  const longTitleLayout = await tasksPage
+    .locator('.task-row[data-thread-id="thread_docs"] .task-row-title')
+    .evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        isTruncated: element.scrollWidth > element.clientWidth,
+        textOverflow: style.textOverflow,
+        whiteSpace: style.whiteSpace,
+      };
+    });
+  expect(longTitleLayout.textOverflow).toBe("ellipsis");
+  expect(longTitleLayout.whiteSpace).toBe("nowrap");
 
   if (testInfo.project.name === "desktop") {
+    expect(longTitleLayout.isTruncated).toBe(true);
     await expect(listPane).toBeVisible();
     await expect(detailPane).toBeVisible();
     await expect(resizer).toBeVisible();
@@ -1477,6 +1513,17 @@ test("groups All Tasks by repository without worktree accordions", async ({ page
   ).toBeVisible();
   await expect(tasksPage.locator('.task-row .task-status-label')).toHaveCount(0);
   await expect(tasksPage.locator(".task-row-summary")).toHaveCount(0);
+  if (testInfo.project.name === "phone") {
+    const newTaskButton = tasksPage.locator(
+      '.tasks-header [data-task-action="open-new"]',
+    );
+    await expect(newTaskButton).toContainText("New Task");
+    await expect
+      .poll(() =>
+        newTaskButton.evaluate((element) => element.getBoundingClientRect().width > 32),
+      )
+      .toBe(true);
+  }
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-all-repository-groups");
 });

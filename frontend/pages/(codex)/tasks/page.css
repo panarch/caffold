@@ -237,13 +237,16 @@ caffold-tasks-page .task-repository-label {
 }
 
 caffold-tasks-page .task-repository-count {
+  min-width: 3ch;
   color: var(--muted);
   font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 caffold-tasks-page .task-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 56px;
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -277,6 +280,7 @@ caffold-tasks-page .task-row-indicators {
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
+  width: 56px;
   min-width: 0;
 }
 
@@ -295,6 +299,7 @@ caffold-tasks-page .task-row-meta.task-status-chip {
 
 caffold-tasks-page .task-row-time {
   color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 caffold-tasks-page .task-row-worktree {
@@ -1621,6 +1626,15 @@ caffold-tasks-page [data-status="waiting_for_approval"] {
     min-width: 32px;
     min-height: 32px;
     padding: 0;
+  }
+
+  caffold-tasks-page .tasks-header .task-primary-button {
+    width: auto;
+    padding: 0 9px;
+  }
+
+  caffold-tasks-page .tasks-header .task-primary-button .task-action-label {
+    display: inline;
   }
 
   caffold-tasks-page .task-action-label {
