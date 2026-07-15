@@ -14,9 +14,82 @@ caffold-tasks-page .tasks-surface {
   min-height: 0;
 }
 
+caffold-tasks-page .tasks-header-region,
+caffold-tasks-page .tasks-master-detail,
+caffold-tasks-page .tasks-list-pane,
+caffold-tasks-page .tasks-list-region,
+caffold-tasks-page .tasks-detail-pane,
+caffold-tasks-page .tasks-detail-region {
+  min-width: 0;
+  min-height: 0;
+}
+
+caffold-tasks-page .tasks-master-detail {
+  display: grid;
+  grid-template-columns: var(--tasks-list-width, 380px) 6px minmax(520px, 1fr);
+  height: 100%;
+  overflow: hidden;
+}
+
+caffold-tasks-page .tasks-list-pane,
+caffold-tasks-page .tasks-detail-pane,
+caffold-tasks-page .tasks-list-region,
+caffold-tasks-page .tasks-detail-region {
+  height: 100%;
+  overflow: hidden;
+}
+
+caffold-tasks-page .tasks-list-pane {
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+
+caffold-tasks-page .tasks-master-resizer {
+  position: relative;
+  z-index: 1;
+  width: 6px;
+  min-height: 0;
+  margin-left: -1px;
+  border-left: 1px solid transparent;
+  border-right: 1px solid transparent;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+caffold-tasks-page .tasks-master-resizer::after {
+  position: absolute;
+  inset: 0 2px;
+  background: var(--border);
+  content: "";
+}
+
+caffold-tasks-page .tasks-master-resizer:hover::after,
+caffold-tasks-page .tasks-master-resizer:focus-visible::after,
+caffold-tasks-page.is-resizing-task-list .tasks-master-resizer::after {
+  background: var(--accent);
+}
+
+caffold-tasks-page .tasks-master-resizer:focus-visible {
+  outline: none;
+}
+
 caffold-tasks-page[data-task-detail-view="files"] .tasks-surface,
 caffold-tasks-page[data-task-detail-view="diff"] .tasks-surface {
   grid-template-rows: minmax(0, 1fr);
+}
+
+caffold-tasks-page[data-task-detail-view="files"] .tasks-header-region,
+caffold-tasks-page[data-task-detail-view="diff"] .tasks-header-region,
+caffold-tasks-page[data-task-detail-view="files"] .tasks-list-pane,
+caffold-tasks-page[data-task-detail-view="diff"] .tasks-list-pane,
+caffold-tasks-page[data-task-detail-view="files"] .tasks-master-resizer,
+caffold-tasks-page[data-task-detail-view="diff"] .tasks-master-resizer {
+  display: none;
+}
+
+caffold-tasks-page[data-task-detail-view="files"] .tasks-master-detail,
+caffold-tasks-page[data-task-detail-view="diff"] .tasks-master-detail {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 caffold-tasks-page .tasks-header {
@@ -126,9 +199,75 @@ caffold-tasks-page .task-action-icon {
 caffold-tasks-page .task-list {
   min-height: 0;
   margin: 0;
-  padding: 8px;
-  overflow: auto;
+  padding: 0;
   list-style: none;
+}
+
+caffold-tasks-page .task-list-scroll {
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+caffold-tasks-page .task-worktree-groups {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+caffold-tasks-page .task-worktree-group + .task-worktree-group {
+  border-top: 1px solid var(--border);
+}
+
+caffold-tasks-page .task-worktree-header {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 0;
+  background: var(--surface-muted);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+caffold-tasks-page .task-worktree-header:hover,
+caffold-tasks-page .task-worktree-header:focus-visible {
+  background: var(--accent-soft);
+  outline: none;
+}
+
+caffold-tasks-page .task-worktree-caret {
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+  transition: transform 120ms ease;
+}
+
+caffold-tasks-page .task-worktree-header[aria-expanded="true"] .task-worktree-caret {
+  transform: rotate(90deg);
+}
+
+caffold-tasks-page .task-worktree-label {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+caffold-tasks-page .task-worktree-count {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+caffold-tasks-page .task-group-status {
+  width: 18px;
+  height: 18px;
+  justify-content: center;
+  padding: 0;
 }
 
 caffold-tasks-page .task-row {
@@ -136,11 +275,11 @@ caffold-tasks-page .task-row {
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
     "title meta"
-    "context meta"
     "summary summary";
   width: 100%;
   min-width: 0;
-  padding: 10px 12px;
+  min-height: 62px;
+  padding: 9px 12px;
   border: 0;
   border-bottom: 1px solid #e2e8e2;
   background: transparent;
@@ -171,15 +310,6 @@ caffold-tasks-page .task-row-summary {
   white-space: nowrap;
 }
 
-caffold-tasks-page .task-row-context {
-  grid-area: context;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 0.78rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 caffold-tasks-page .task-row-meta {
   grid-area: meta;
   justify-self: end;
@@ -187,6 +317,26 @@ caffold-tasks-page .task-row-meta {
 
 caffold-tasks-page .task-row-time {
   color: var(--muted);
+}
+
+caffold-tasks-page .tasks-neutral-state {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  height: 100%;
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
+}
+
+caffold-tasks-page .tasks-neutral-state p {
+  margin: 0;
+}
+
+caffold-tasks-page .tasks-neutral-icon {
+  width: 24px;
+  height: 24px;
 }
 
 caffold-tasks-page .task-detail {
@@ -1219,6 +1369,37 @@ caffold-tasks-page [data-status="interrupted"] {
 
 caffold-tasks-page [data-status="waiting_for_approval"] {
   color: #956000;
+}
+
+@media (min-width: 960px) {
+  caffold-tasks-page .tasks-header [data-task-action="open-list"] {
+    display: none;
+  }
+}
+
+@media (max-width: 959px) {
+  caffold-tasks-page .tasks-master-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  caffold-tasks-page .tasks-master-resizer {
+    display: none;
+  }
+
+  caffold-tasks-page .tasks-list-pane {
+    border-right: 0;
+  }
+
+  caffold-tasks-page[data-tasks-view="list"] .tasks-detail-pane,
+  caffold-tasks-page[data-tasks-view="new"] .tasks-list-pane,
+  caffold-tasks-page[data-tasks-view="detail"] .tasks-list-pane {
+    display: none;
+  }
+
+  caffold-tasks-page[data-task-detail-view="files"] .tasks-detail-pane,
+  caffold-tasks-page[data-task-detail-view="diff"] .tasks-detail-pane {
+    display: block;
+  }
 }
 
 @media (max-width: 860px) {

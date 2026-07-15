@@ -25,10 +25,16 @@ const FALLBACK_REASONING_OPTIONS = [
 ];
 const FALLBACK_EFFORT = "ultra";
 const STREAM_ERROR_DELAY_MS = 8_000;
+const TASK_LIST_DEFAULT_WIDTH = 380;
+const TASK_LIST_MIN_WIDTH = 280;
+const TASK_LIST_MAX_WIDTH = 520;
+const TASK_DETAIL_MIN_WIDTH = 520;
+const TASK_LIST_RESIZER_WIDTH = 6;
 
 class CaffoldTasksPage extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
+    this.attachGlobalListeners();
   }
 
   ensureRendered() {
@@ -39,6 +45,14 @@ class CaffoldTasksPage extends HTMLElement {
     this.rendered = true;
     this.view = "list";
     this.tasks = [];
+    this.taskListLoading = false;
+    this.taskListLoaded = false;
+    this.taskListError = null;
+    this.taskListRequestId = 0;
+    this.taskListContext = "";
+    this.taskListDirty = true;
+    this.taskListWidth = TASK_LIST_DEFAULT_WIDTH;
+    this.taskGroupExpansion = new Map();
     this.taskDetail = null;
     this.events = [];
     this.eventsPage = { nextCursor: null };
@@ -86,7 +100,9 @@ class CaffoldTasksPage extends HTMLElement {
       (state) => this.setTaskDiffRefreshState(state),
     );
     this.boundIconsReady = () => this.render();
-    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
+    this.boundTaskListResize = () => this.clampTaskListWidth();
+    this.boundTaskListPointerMove = (event) => this.resizeTaskList(event);
+    this.boundTaskListPointerUp = () => this.stopTaskListResize();
     warmIcons();
 
     this.addEventListener(
@@ -104,6 +120,12 @@ class CaffoldTasksPage extends HTMLElement {
       },
       true,
     );
+    this.addEventListener("pointerdown", (event) => {
+      const separator = closestElement(event.target, ".tasks-master-resizer");
+      if (separator) {
+        this.startTaskListResize(event, separator);
+      }
+    });
     this.addEventListener("caffold:task-markdown-rendered", (event) =>
       this.handleTaskMarkdownRendered(event),
     );
@@ -170,7 +192,12 @@ class CaffoldTasksPage extends HTMLElement {
 
       this.captureDraft(form);
     });
-    this.addEventListener("keydown", (event) => this.handlePromptKeydown(event));
+    this.addEventListener("keydown", (event) => {
+      if (this.handleTaskListResizeKeydown(event)) {
+        return;
+      }
+      this.handlePromptKeydown(event);
+    });
     this.addEventListener(
       "submit",
       (event) => {
@@ -188,9 +215,28 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   disconnectedCallback() {
-    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
+    this.detachGlobalListeners();
+    this.stopTaskListResize();
     this.closeStream();
     this.unsubscribeTaskDiffWatch();
+  }
+
+  attachGlobalListeners() {
+    if (this.globalListenersAttached) {
+      return;
+    }
+    this.globalListenersAttached = true;
+    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
+    window.addEventListener("resize", this.boundTaskListResize);
+  }
+
+  detachGlobalListeners() {
+    if (!this.globalListenersAttached) {
+      return;
+    }
+    this.globalListenersAttached = false;
+    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
+    window.removeEventListener("resize", this.boundTaskListResize);
   }
 
   setProject(project) {
@@ -202,6 +248,24 @@ class CaffoldTasksPage extends HTMLElement {
     }
     this.project = project ?? null;
     this.projectId = nextProjectId;
+  }
+
+  syncTaskListContext() {
+    const context = this.projectId
+      ? `project:${this.projectId}`
+      : `cwd:${cleanLogicalPath(this.cwdPath)}`;
+    if (context === this.taskListContext) {
+      return;
+    }
+
+    this.taskListContext = context;
+    this.taskListRequestId += 1;
+    this.taskListLoading = false;
+    this.taskListLoaded = false;
+    this.taskListError = null;
+    this.tasks = [];
+    this.taskGroupExpansion.clear();
+    this.markTaskListDirty();
   }
 
   prepareRoute(route, options = {}) {
@@ -263,6 +327,7 @@ class CaffoldTasksPage extends HTMLElement {
   async openRoute(route, options = {}) {
     this.setProject(options.project ?? this.project);
     this.cwdPath = route?.cwd ?? "";
+    this.syncTaskListContext();
     this.prepareRoute(route, options);
     if (route?.new) {
       return this.openNew();
@@ -282,30 +347,12 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   async openList() {
-    const requestId = ++this.requestId;
-    this.loading = true;
+    this.requestId += 1;
+    this.loading = false;
     this.error = null;
     this.view = "list";
     this.render();
-
-    try {
-      const response = await getTasks(this.projectId, this.projectId ? "" : this.cwdPath);
-      if (requestId !== this.requestId) {
-        return null;
-      }
-      this.tasks = response.tasks ?? [];
-      this.loading = false;
-      this.render();
-      return response;
-    } catch (error) {
-      if (requestId !== this.requestId) {
-        return null;
-      }
-      this.loading = false;
-      this.error = error;
-      this.render();
-      return null;
-    }
+    return await this.loadTaskList({ force: true });
   }
 
   openNew() {
@@ -315,6 +362,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.openModelPickerForm = "";
     this.closeStream();
     this.render();
+    this.loadTaskList();
     this.loadModelOptions();
     this.querySelector("textarea[name='prompt']")?.focus();
     return null;
@@ -331,6 +379,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.loading = true;
     this.error = null;
     this.render();
+    this.loadTaskList();
 
     try {
       const detail = await getTask(threadId, this.projectId);
@@ -341,6 +390,7 @@ class CaffoldTasksPage extends HTMLElement {
       this.events = detail.events ?? [];
       this.eventsPage = detail.eventsPage ?? { nextCursor: null };
       this.loading = false;
+      this.patchTaskListTask(detail.task);
       this.connectStream(threadId);
       this.conversationScrollMode = "bottom";
       this.render();
@@ -353,6 +403,42 @@ class CaffoldTasksPage extends HTMLElement {
       this.loading = false;
       this.error = error;
       this.render();
+      return null;
+    }
+  }
+
+  async loadTaskList({ force = false } = {}) {
+    if (this.taskListLoaded && !force) {
+      return { tasks: this.tasks };
+    }
+
+    const requestId = ++this.taskListRequestId;
+    const context = this.taskListContext;
+    this.taskListLoading = true;
+    this.taskListError = null;
+    this.markTaskListDirty();
+    this.renderTaskListRegion();
+
+    try {
+      const response = await getTasks(this.projectId, this.projectId ? "" : this.cwdPath);
+      if (requestId !== this.taskListRequestId || context !== this.taskListContext) {
+        return null;
+      }
+      this.tasks = response.tasks ?? [];
+      this.taskListLoading = false;
+      this.taskListLoaded = true;
+      this.markTaskListDirty();
+      this.renderTaskListRegion();
+      this.syncTaskListSelection();
+      return response;
+    } catch (error) {
+      if (requestId !== this.taskListRequestId || context !== this.taskListContext) {
+        return null;
+      }
+      this.taskListLoading = false;
+      this.taskListError = error;
+      this.markTaskListDirty();
+      this.renderTaskListRegion();
       return null;
     }
   }
@@ -514,6 +600,7 @@ class CaffoldTasksPage extends HTMLElement {
       this.taskDetail = detail;
       this.events = mergeEvents(this.events, detail.events ?? []);
       this.eventsPage = detail.eventsPage ?? this.eventsPage;
+      this.patchTaskListTask(detail.task);
       this.conversationScrollMode = "bottom-if-needed";
       this.render();
     } catch {
@@ -539,6 +626,10 @@ class CaffoldTasksPage extends HTMLElement {
     }
     if (action === "open-task") {
       this.requestRoute({ kind: "tasks", threadId: element.dataset.threadId });
+      return;
+    }
+    if (action === "toggle-task-group") {
+      this.toggleTaskGroup(element.dataset.groupKey, element);
       return;
     }
     if (action === "retry-stream") {
@@ -941,12 +1032,10 @@ class CaffoldTasksPage extends HTMLElement {
     const previousTaskCompareState = this.captureTaskCompareState();
     this.setAttribute("data-tasks-view", this.view ?? "list");
     this.setAttribute("data-task-detail-view", this.taskDetailView);
-    this.innerHTML = `
-      <section class="tasks-surface" aria-label="Tasks">
-        ${this.renderHeader()}
-        ${this.renderBody()}
-      </section>
-    `;
+    this.ensureTaskShell();
+    this.renderHeaderRegion();
+    this.renderTaskListRegion();
+    this.renderTaskContentRegion();
     this.syncComposerTextareas();
     this.restoreComposerFocus(previousComposerFocus);
     this.bindConversationScroll();
@@ -955,6 +1044,190 @@ class CaffoldTasksPage extends HTMLElement {
     this.syncTaskFileBrowser(previousTaskFilePath);
     this.syncTaskDiffBrowser(previousTaskDiffPath);
     this.syncTaskCompareBrowser(previousTaskCompareState);
+    this.applyTaskListWidth();
+    this.syncTaskListSelection();
+  }
+
+  ensureTaskShell() {
+    if (this.querySelector(":scope > .tasks-surface")) {
+      return;
+    }
+
+    this.innerHTML = `
+      <section class="tasks-surface" aria-label="Tasks">
+        <div class="tasks-header-region"></div>
+        <div class="tasks-master-detail">
+          <aside class="tasks-list-pane" aria-label="Tasks list">
+            <div class="tasks-list-region"></div>
+          </aside>
+          <div
+            class="tasks-master-resizer"
+            role="separator"
+            tabindex="0"
+            aria-label="Resize tasks list"
+            aria-orientation="vertical"
+            aria-valuemin="${TASK_LIST_MIN_WIDTH}"
+            aria-valuemax="${TASK_LIST_MAX_WIDTH}"
+            aria-valuenow="${this.taskListWidth}"
+          ></div>
+          <main class="tasks-detail-pane" aria-label="Task content">
+            <div class="tasks-detail-region"></div>
+          </main>
+        </div>
+      </section>
+    `;
+  }
+
+  renderHeaderRegion() {
+    const region = this.querySelector(".tasks-header-region");
+    if (!region) {
+      return;
+    }
+    const key = [
+      this.view,
+      this.project?.name ?? "",
+      this.cwdPath,
+      this.taskDetailView,
+    ].join("\u0000");
+    if (region.dataset.renderKey === key) {
+      return;
+    }
+    region.dataset.renderKey = key;
+    region.innerHTML = this.renderHeader();
+  }
+
+  markTaskListDirty() {
+    this.taskListDirty = true;
+  }
+
+  renderTaskListRegion() {
+    const region = this.querySelector(".tasks-list-region");
+    if (!region || !this.taskListDirty) {
+      return;
+    }
+    const scrollTop = region.querySelector(".task-list-scroll")?.scrollTop ?? 0;
+    region.innerHTML = this.renderTaskList();
+    const scroller = region.querySelector(".task-list-scroll");
+    if (scroller) {
+      scroller.scrollTop = scrollTop;
+    }
+    this.taskListDirty = false;
+  }
+
+  renderTaskContentRegion() {
+    const region = this.querySelector(".tasks-detail-region");
+    if (!region) {
+      return;
+    }
+
+    const currentDetail = region.querySelector(":scope > .task-detail");
+    const threadId = this.taskDetail?.task?.threadId ?? this.taskDetail?.task?.id ?? "";
+    if (
+      this.view === "detail" &&
+      currentDetail?.dataset.threadId === threadId &&
+      threadId
+    ) {
+      const template = document.createElement("template");
+      template.innerHTML = this.renderTaskDetail().trim();
+      const nextDetail = template.content.firstElementChild;
+      const nextSummary = nextDetail?.querySelector(":scope > .task-detail-summary");
+      const nextConversation = nextDetail?.querySelector(":scope > .task-conversation-pane");
+      const currentSummary = currentDetail.querySelector(":scope > .task-detail-summary");
+      const currentConversation = currentDetail.querySelector(
+        ":scope > .task-conversation-pane",
+      );
+      if (nextSummary && currentSummary) {
+        currentSummary.replaceWith(nextSummary);
+      }
+      if (nextConversation && currentConversation) {
+        currentConversation.replaceWith(nextConversation);
+      }
+      currentDetail.dataset.taskDetailView = this.taskDetailView;
+      return;
+    }
+
+    region.innerHTML = this.renderBody();
+  }
+
+  startTaskListResize(event, separator) {
+    if (event.button !== 0 || !window.matchMedia("(min-width: 960px)").matches) {
+      return;
+    }
+    event.preventDefault();
+    this.taskListResizeStart = {
+      pointerX: event.clientX,
+      width: this.taskListWidth,
+    };
+    this.classList.add("is-resizing-task-list");
+    separator.setPointerCapture?.(event.pointerId);
+    window.addEventListener("pointermove", this.boundTaskListPointerMove);
+    window.addEventListener("pointerup", this.boundTaskListPointerUp, { once: true });
+    window.addEventListener("pointercancel", this.boundTaskListPointerUp, { once: true });
+  }
+
+  resizeTaskList(event) {
+    if (!this.taskListResizeStart) {
+      return;
+    }
+    const width =
+      this.taskListResizeStart.width + event.clientX - this.taskListResizeStart.pointerX;
+    this.setTaskListWidth(width);
+  }
+
+  stopTaskListResize() {
+    this.taskListResizeStart = null;
+    this.classList.remove("is-resizing-task-list");
+    window.removeEventListener("pointermove", this.boundTaskListPointerMove);
+    window.removeEventListener("pointerup", this.boundTaskListPointerUp);
+    window.removeEventListener("pointercancel", this.boundTaskListPointerUp);
+  }
+
+  handleTaskListResizeKeydown(event) {
+    const separator = closestElement(event.target, ".tasks-master-resizer");
+    if (!separator || !window.matchMedia("(min-width: 960px)").matches) {
+      return false;
+    }
+    let width = this.taskListWidth;
+    if (event.key === "ArrowLeft") {
+      width -= event.shiftKey ? 48 : 16;
+    } else if (event.key === "ArrowRight") {
+      width += event.shiftKey ? 48 : 16;
+    } else if (event.key === "Home") {
+      width = TASK_LIST_MIN_WIDTH;
+    } else if (event.key === "End") {
+      width = this.taskListMaximumWidth();
+    } else {
+      return false;
+    }
+    event.preventDefault();
+    this.setTaskListWidth(width);
+    return true;
+  }
+
+  taskListMaximumWidth() {
+    const shellWidth = this.querySelector(".tasks-master-detail")?.clientWidth ?? 0;
+    const available = shellWidth - TASK_LIST_RESIZER_WIDTH - TASK_DETAIL_MIN_WIDTH;
+    return Math.max(TASK_LIST_MIN_WIDTH, Math.min(TASK_LIST_MAX_WIDTH, available));
+  }
+
+  setTaskListWidth(width) {
+    const maximum = this.taskListMaximumWidth();
+    this.taskListWidth = Math.max(TASK_LIST_MIN_WIDTH, Math.min(maximum, width));
+    this.applyTaskListWidth();
+  }
+
+  clampTaskListWidth() {
+    this.setTaskListWidth(this.taskListWidth);
+  }
+
+  applyTaskListWidth() {
+    this.style.setProperty("--tasks-list-width", `${this.taskListWidth}px`);
+    const separator = this.querySelector(".tasks-master-resizer");
+    if (!separator) {
+      return;
+    }
+    separator.setAttribute("aria-valuemax", `${this.taskListMaximumWidth()}`);
+    separator.setAttribute("aria-valuenow", `${Math.round(this.taskListWidth)}`);
   }
 
   captureComposerFocus() {
@@ -1574,12 +1847,20 @@ class CaffoldTasksPage extends HTMLElement {
     if (this.view === "detail") {
       return this.renderTaskDetail();
     }
-    return this.renderTaskList();
+    return `
+      <div class="tasks-neutral-state">
+        ${renderInlineIcon("ListTodo", "Tasks", "tasks-neutral-icon")}
+        <p>Select a task to inspect it.</p>
+      </div>
+    `;
   }
 
   renderTaskList() {
-    if (this.loading) {
+    if (this.taskListLoading && !this.tasks.length) {
       return `<p class="surface-message">Loading tasks...</p>`;
+    }
+    if (this.taskListError && !this.tasks.length) {
+      return `<p class="surface-message">${escapeHtml(this.taskListError.message)}</p>`;
     }
     if (!this.tasks.length) {
       return `
@@ -1590,29 +1871,187 @@ class CaffoldTasksPage extends HTMLElement {
       `;
     }
 
+    const groups = groupTasksByWorktree(this.tasks);
     return `
-      <ol class="task-list">
-        ${this.tasks.map((task) => this.renderTaskRow(task)).join("")}
-      </ol>
+      <div class="task-list-scroll">
+        <ol class="task-worktree-groups">
+          ${groups.map((group) => this.renderTaskGroup(group)).join("")}
+        </ol>
+      </div>
     `;
   }
 
-  renderTaskRow(task) {
+  renderTaskGroup(group) {
+    const expanded = this.isTaskGroupExpanded(group);
+    return `
+      <li class="task-worktree-group" data-task-group-key="${escapeHtml(group.key)}">
+        ${this.renderTaskGroupHeader(group, expanded)}
+        <ol class="task-list"${expanded ? "" : " hidden"}>
+          ${group.tasks.map((task) => this.renderTaskRow(task, group.key)).join("")}
+        </ol>
+      </li>
+    `;
+  }
+
+  renderTaskGroupHeader(group, expanded = this.isTaskGroupExpanded(group)) {
+    const activeTask = group.tasks.find((task) => isActiveTaskStatus(task.status));
+    const status = activeTask
+      ? renderTaskStatusChip(activeTask.status, "task-group-status", { label: false })
+      : "";
+    return `
+      <button
+        type="button"
+        class="task-worktree-header"
+        data-task-action="toggle-task-group"
+        data-group-key="${escapeHtml(group.key)}"
+        aria-expanded="${expanded}"
+        title="${escapeHtml(group.fullLabel)}"
+      >
+        ${renderInlineIcon("ChevronRight", "", "task-worktree-caret")}
+        <span class="task-worktree-label">${escapeHtml(group.label)}</span>
+        <span class="task-worktree-count">${group.tasks.length}</span>
+        ${status}
+      </button>
+    `;
+  }
+
+  renderTaskRow(task, groupKey = taskGroupKey(task)) {
     const threadId = task.threadId ?? task.id;
     const selected = threadId === this.selectedThreadId ? ` aria-current="true"` : "";
     const summary = task.lastEventSummary || task.preview || task.relativeCwd || task.cwd;
     const meta = renderTaskRowMeta(task);
-    const context = taskWorktreeLabel(task);
     return `
-      <li>
+      <li data-thread-id="${escapeHtml(threadId)}" data-task-group-key="${escapeHtml(groupKey)}">
         <button type="button" class="task-row" data-task-action="open-task" data-thread-id="${escapeHtml(threadId)}"${selected}>
           <span class="task-row-title">${escapeHtml(task.title)}</span>
           ${meta}
-          ${context ? `<span class="task-row-context">${escapeHtml(context)}</span>` : ""}
           <span class="task-row-summary">${escapeHtml(summary || "No preview")}</span>
         </button>
       </li>
     `;
+  }
+
+  isTaskGroupExpanded(group) {
+    if (this.taskGroupExpansion.has(group.key)) {
+      return this.taskGroupExpansion.get(group.key);
+    }
+    if (group.tasks.some((task) => taskThreadId(task) === this.selectedThreadId)) {
+      return true;
+    }
+    if (group.tasks.some((task) => isActiveTaskStatus(task.status))) {
+      return true;
+    }
+    const contextPath = this.cwdPath || this.project?.relativePath || "";
+    return taskGroupContainsPath(group, contextPath);
+  }
+
+  toggleTaskGroup(groupKey, button) {
+    if (!groupKey || !button) {
+      return;
+    }
+    const expanded = button.getAttribute("aria-expanded") !== "true";
+    this.taskGroupExpansion.set(groupKey, expanded);
+    button.setAttribute("aria-expanded", `${expanded}`);
+    const list = button.parentElement?.querySelector(":scope > .task-list");
+    if (list) {
+      list.hidden = !expanded;
+    }
+  }
+
+  syncTaskListSelection() {
+    for (const row of this.querySelectorAll(".task-row[data-thread-id]")) {
+      if (row.dataset.threadId === this.selectedThreadId) {
+        row.setAttribute("aria-current", "true");
+      } else {
+        row.removeAttribute("aria-current");
+      }
+    }
+  }
+
+  patchTaskListTask(task) {
+    if (!task || !this.taskListLoaded) {
+      return;
+    }
+    const threadId = taskThreadId(task);
+    const index = this.tasks.findIndex((candidate) => taskThreadId(candidate) === threadId);
+    if (index < 0) {
+      this.tasks = [...this.tasks, task];
+      this.markTaskListDirty();
+      return;
+    }
+
+    const previous = this.tasks[index];
+    this.tasks = this.tasks.map((candidate, candidateIndex) =>
+      candidateIndex === index ? task : candidate,
+    );
+    const previousGroupKey = taskGroupKey(previous);
+    const nextGroupKey = taskGroupKey(task);
+    const row = this.querySelector(
+      `.tasks-list-region li[data-thread-id="${CSS.escape(threadId)}"]`,
+    );
+    if (!row || previousGroupKey !== nextGroupKey) {
+      this.markTaskListDirty();
+      return;
+    }
+
+    const template = document.createElement("template");
+    template.innerHTML = this.renderTaskRow(task, nextGroupKey).trim();
+    const nextRow = template.content.firstElementChild;
+    if (nextRow) {
+      row.replaceWith(nextRow);
+      this.patchTaskGroupHeader(nextGroupKey);
+      this.syncTaskListSelection();
+      this.reorderTaskListDom();
+    }
+  }
+
+  patchTaskGroupHeader(groupKey) {
+    const group = groupTasksByWorktree(this.tasks).find(
+      (candidate) => candidate.key === groupKey,
+    );
+    const groupElement = this.querySelector(
+      `.task-worktree-group[data-task-group-key="${CSS.escape(groupKey)}"]`,
+    );
+    const header = groupElement?.querySelector(":scope > .task-worktree-header");
+    const list = groupElement?.querySelector(":scope > .task-list");
+    if (!group || !header || !list) {
+      return;
+    }
+
+    const expanded = this.isTaskGroupExpanded(group);
+    const template = document.createElement("template");
+    template.innerHTML = this.renderTaskGroupHeader(group, expanded).trim();
+    const nextHeader = template.content.firstElementChild;
+    if (nextHeader) {
+      header.replaceWith(nextHeader);
+      list.hidden = !expanded;
+    }
+  }
+
+  reorderTaskListDom() {
+    const groups = groupTasksByWorktree(this.tasks);
+    const groupList = this.querySelector(".task-worktree-groups");
+    if (!groupList) {
+      return;
+    }
+    for (const group of groups) {
+      const groupElement = groupList.querySelector(
+        `:scope > [data-task-group-key="${CSS.escape(group.key)}"]`,
+      );
+      if (!groupElement) {
+        continue;
+      }
+      const taskList = groupElement.querySelector(":scope > .task-list");
+      for (const task of group.tasks) {
+        const row = taskList?.querySelector(
+          `:scope > [data-thread-id="${CSS.escape(taskThreadId(task))}"]`,
+        );
+        if (row) {
+          taskList.append(row);
+        }
+      }
+      groupList.append(groupElement);
+    }
   }
 
   renderNewTask() {
@@ -1736,7 +2175,7 @@ class CaffoldTasksPage extends HTMLElement {
     const worktreeLabel = taskWorktreeLabel(task);
 
     return `
-      <div class="task-detail" data-task-detail-view="${escapeHtml(this.taskDetailView)}">
+      <div class="task-detail" data-thread-id="${escapeHtml(task.threadId ?? task.id)}" data-task-detail-view="${escapeHtml(this.taskDetailView)}">
         <section class="task-detail-summary">
           <div class="task-detail-heading">
             <h2>${escapeHtml(task.title)}</h2>
@@ -2709,6 +3148,83 @@ function taskWorktreeRef(task) {
     return branch;
   }
   return shortId(task?.worktree?.headSha ?? "");
+}
+
+function cleanLogicalPath(path) {
+  return cleanRelativeTaskPath(path);
+}
+
+function taskThreadId(task) {
+  return `${task?.threadId ?? task?.id ?? ""}`;
+}
+
+function taskUpdatedMs(task) {
+  const value = Number(task?.recencyMs ?? task?.updatedMs ?? task?.createdMs ?? 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function taskGroupKey(task) {
+  if (task?.worktree?.rootPath) {
+    return `worktree:${cleanLogicalPath(task.worktree.rootPath)}`;
+  }
+  return `cwd:${cleanLogicalPath(task?.cwdPath ?? task?.cwd ?? task?.relativeCwd)}`;
+}
+
+function taskGroupLabel(task) {
+  if (task?.worktree) {
+    return [taskWorktreeRef(task), taskWorktreeRootName(task)].filter(Boolean).join(" · ");
+  }
+  const cwd = cleanLogicalPath(task?.cwdPath ?? task?.cwd ?? task?.relativeCwd);
+  return cwd || "Directory";
+}
+
+function groupTasksByWorktree(tasks) {
+  const groupsByKey = new Map();
+  for (const task of tasks) {
+    const key = taskGroupKey(task);
+    const existing = groupsByKey.get(key);
+    if (existing) {
+      existing.tasks.push(task);
+      existing.updatedMs = Math.max(existing.updatedMs, taskUpdatedMs(task));
+      continue;
+    }
+    const rootPath = cleanLogicalPath(
+      task?.worktree?.rootPath ?? task?.cwdPath ?? task?.cwd ?? task?.relativeCwd,
+    );
+    groupsByKey.set(key, {
+      key,
+      label: taskGroupLabel(task),
+      fullLabel: task?.worktree ? [taskWorktreeRef(task), rootPath].filter(Boolean).join(" · ") : rootPath,
+      rootPath,
+      worktree: Boolean(task?.worktree),
+      updatedMs: taskUpdatedMs(task),
+      tasks: [task],
+    });
+  }
+
+  return [...groupsByKey.values()]
+    .map((group) => ({
+      ...group,
+      tasks: [...group.tasks].sort(
+        (left, right) => taskUpdatedMs(right) - taskUpdatedMs(left),
+      ),
+    }))
+    .sort((left, right) => right.updatedMs - left.updatedMs);
+}
+
+function taskGroupContainsPath(group, cwdPath) {
+  const cwd = cleanLogicalPath(cwdPath);
+  if (!cwd || !group.rootPath) {
+    return false;
+  }
+  return group.worktree
+    ? cwd === group.rootPath || cwd.startsWith(`${group.rootPath}/`)
+    : cwd === group.rootPath;
+}
+
+function isActiveTaskStatus(status) {
+  const normalized = normalizeTaskStatus(status);
+  return normalized === "running" || normalized === "waiting_for_approval";
 }
 
 function taskWorktreeRootName(task) {
