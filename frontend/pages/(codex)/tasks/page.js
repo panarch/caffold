@@ -61,6 +61,8 @@ class CaffoldTasksPage extends HTMLElement {
     this.project = null;
     this.projectId = "";
     this.cwdPath = "";
+    this.defaultCwdPath = "";
+    this.newTaskBrowsing = false;
     this.selectedThreadId = "";
     this.stream = null;
     this.streamState = "idle";
@@ -280,19 +282,16 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
 
-    const previousView = this.view;
     this.projectId = route?.projectId ?? "";
     this.error = null;
     if (route?.new) {
-      if (previousView !== "new") {
-        this.newTaskDraft = { prompt: "" };
-      }
       this.view = "new";
       this.taskDetailView = "conversation";
       this.unsubscribeTaskDiffWatch();
       this.selectedThreadId = "";
       this.closeStream();
     } else if (route?.threadId) {
+      this.newTaskBrowsing = false;
       if (this.selectedThreadId !== route.threadId) {
         this.taskDetailView = "conversation";
         this.taskDiffMode = "working";
@@ -311,6 +310,7 @@ class CaffoldTasksPage extends HTMLElement {
           ? this.eventsPage
           : { nextCursor: null };
     } else {
+      this.newTaskBrowsing = false;
       this.view = "list";
       this.taskDetailView = "conversation";
       this.unsubscribeTaskDiffWatch();
@@ -325,6 +325,7 @@ class CaffoldTasksPage extends HTMLElement {
   async openRoute(route, options = {}) {
     this.setProject(options.project ?? this.project);
     this.cwdPath = route?.cwd ?? "";
+    this.defaultCwdPath = options.defaultCwdPath ?? this.defaultCwdPath;
     this.syncTaskListContext();
     this.prepareRoute(route, options);
     if (route?.new) {
@@ -626,6 +627,32 @@ class CaffoldTasksPage extends HTMLElement {
       this.requestRoute({ kind: "tasks", threadId: element.dataset.threadId });
       return;
     }
+    if (action === "browse-new-task-cwd") {
+      this.newTaskBrowsing = true;
+      if (this.view !== "new") {
+        this.requestRoute({ kind: "tasks", new: true });
+      } else {
+        this.render();
+      }
+      return;
+    }
+    if (action === "cancel-new-task-cwd") {
+      this.newTaskBrowsing = false;
+      this.render();
+      return;
+    }
+    if (action === "choose-new-task-cwd") {
+      const browser = this.querySelector(
+        ".task-new-cwd-browser caffold-file-browser",
+      );
+      const cwd = cleanLogicalPath(browser?.currentPath ?? this.activeCwdPath());
+      this.newTaskBrowsing = false;
+      this.requestRoute(
+        { kind: "tasks", new: true, cwd },
+        { includeContext: false },
+      );
+      return;
+    }
     if (action === "retry-stream") {
       if (this.selectedThreadId) {
         this.connectStream(this.selectedThreadId);
@@ -725,7 +752,7 @@ class CaffoldTasksPage extends HTMLElement {
     try {
       const detail = await createTask({
         ...(this.projectId ? { projectId: this.projectId } : {}),
-        ...(this.cwdPath ? { cwd: this.cwdPath } : {}),
+        ...(this.activeCwdPath() ? { cwd: this.activeCwdPath() } : {}),
         prompt,
         ...this.turnOptions(),
       });
@@ -1022,6 +1049,7 @@ class CaffoldTasksPage extends HTMLElement {
       this.rememberConversationScroll() ?? this.conversationScrollSnapshot();
     const previousComposerFocus = this.captureComposerFocus();
     const previousTaskFilePath = this.captureTaskFileBrowserPath();
+    const previousNewTaskCwdPath = this.captureNewTaskCwdBrowserPath();
     const previousTaskDiffPath = this.captureTaskDiffPath();
     const previousTaskCompareState = this.captureTaskCompareState();
     this.setAttribute("data-tasks-view", this.view ?? "list");
@@ -1036,6 +1064,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.restoreConversationScroll(previousScroll);
     this.updateTaskDetailView();
     this.syncTaskFileBrowser(previousTaskFilePath);
+    this.syncNewTaskCwdBrowser(previousNewTaskCwdPath);
     this.syncTaskDiffBrowser(previousTaskDiffPath);
     this.syncTaskCompareBrowser(previousTaskCompareState);
     this.applyTaskListWidth();
@@ -1344,6 +1373,39 @@ class CaffoldTasksPage extends HTMLElement {
   captureTaskFileBrowserPath() {
     const browser = this.querySelector(".task-files-view caffold-file-browser");
     return browser?.currentPath ?? "";
+  }
+
+  captureNewTaskCwdBrowserPath() {
+    const browser = this.querySelector(
+      ".task-new-cwd-browser caffold-file-browser",
+    );
+    return browser?.currentPath ?? "";
+  }
+
+  syncNewTaskCwdBrowser(previousPath = "") {
+    if (this.view !== "new" || !this.newTaskBrowsing) {
+      return;
+    }
+
+    const browser = this.querySelector(
+      ".task-new-cwd-browser caffold-file-browser",
+    );
+    const targetPath = previousPath || this.activeCwdPath();
+    if (!browser) {
+      return;
+    }
+
+    browser.ensureRendered();
+    browser.setStorageKey(null);
+    if (!browser.hasLoadedDirectory(targetPath)) {
+      browser.loadDirectory(targetPath, { allowFailure: true });
+    }
+  }
+
+  activeCwdPath() {
+    return cleanLogicalPath(
+      this.project?.relativePath || this.cwdPath || this.defaultCwdPath || ".",
+    );
   }
 
   syncTaskFileBrowser(previousPath = "") {
@@ -1832,21 +1894,18 @@ class CaffoldTasksPage extends HTMLElement {
     if (this.loading && !this.taskDetail && this.view === "detail") {
       return `<p class="surface-message">Loading task...</p>`;
     }
-    if (this.error) {
+    if (this.error && this.view !== "new") {
       return `<p class="surface-message">${escapeHtml(this.error.message)}</p>`;
     }
     if (this.view === "new") {
-      return this.renderNewTask();
+      return this.newTaskBrowsing
+        ? this.renderNewTaskCwdBrowser()
+        : this.renderNewTaskWorkspace();
     }
     if (this.view === "detail") {
       return this.renderTaskDetail();
     }
-    return `
-      <div class="tasks-neutral-state">
-        ${renderInlineIcon("ListTodo", "Tasks", "tasks-neutral-icon")}
-        <p>Select a task to inspect it.</p>
-      </div>
-    `;
+    return this.renderNewTaskWorkspace({ home: true });
   }
 
   renderTaskList() {
@@ -2019,7 +2078,7 @@ class CaffoldTasksPage extends HTMLElement {
     }
   }
 
-  renderNewTask() {
+  renderNewTask(options = {}) {
     return this.renderTaskComposer({
       formName: "create",
       className: "task-new-form",
@@ -2029,8 +2088,42 @@ class CaffoldTasksPage extends HTMLElement {
         : "Ask Codex to work from the current directory",
       ariaLabel: "New task prompt",
       submitLabel: "Start task",
-      cancel: true,
+      cancel: options.cancel ?? true,
     });
+  }
+
+  renderNewTaskWorkspace(options = {}) {
+    return `
+      <section class="task-new-workspace${options.home ? " is-home" : ""}">
+        ${
+          this.error
+            ? `<div class="task-new-error" role="alert">
+                ${renderInlineIcon("TriangleAlert", "Codex unavailable", "task-new-error-icon")}
+                <span>${escapeHtml(this.error.message)}</span>
+              </div>`
+            : ""
+        }
+        ${this.renderNewTask({ cancel: !options.home })}
+      </section>
+    `;
+  }
+
+  renderNewTaskCwdBrowser() {
+    return `
+      <section class="task-new-cwd-browser" aria-label="Choose task directory">
+        <header>
+          <div>
+            <h2>Browse Files</h2>
+            <p>${escapeHtml(this.activeCwdPath())}</p>
+          </div>
+          <div>
+            <button type="button" class="task-toolbar-button" data-task-action="cancel-new-task-cwd">Cancel</button>
+            <button type="button" class="task-primary-button" data-task-action="choose-new-task-cwd">Use This Folder</button>
+          </div>
+        </header>
+        <caffold-file-browser></caffold-file-browser>
+      </section>
+    `;
   }
 
   renderTaskComposer({
@@ -2047,6 +2140,15 @@ class CaffoldTasksPage extends HTMLElement {
     return `
       <form class="task-composer ${escapeHtml(className)}" data-task-form="${escapeHtml(formName)}">
         <div class="task-composer-panel">
+          ${
+            formName === "create"
+              ? `<div class="task-composer-context">
+                  ${renderInlineIcon("Folder", "Working directory", "task-composer-context-icon")}
+                  <span title="${escapeHtml(this.activeCwdPath())}">${escapeHtml(this.activeCwdPath())}</span>
+                  <button type="button" data-task-action="browse-new-task-cwd">Browse Files</button>
+                </div>`
+              : ""
+          }
           <textarea
             name="prompt"
             required

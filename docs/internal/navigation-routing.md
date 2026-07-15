@@ -1,5 +1,17 @@
 # Navigation Routing
 
+## Default entrypoint
+
+`/` is an entrypoint alias, not a durable application surface. On startup the
+app replaces it with `/tasks` so browser history starts at the Codex-first Tasks
+home. The wide Tasks home keeps the task navigator visible and renders the New
+Task composer as its default detail surface. Narrow viewports keep the list as
+the first surface and open the composer through `/tasks/new`.
+
+Codex availability does not decide the top-level surface. Connection failures
+remain visible inside Tasks, where the user can retry or browse local files;
+they must not cause a transient or automatic switch to Files.
+
 > Internal planning note. This document describes the first URL routing layer for
 > Caffold's browser UI.
 

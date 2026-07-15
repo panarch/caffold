@@ -43,12 +43,14 @@ class CaffoldCodexWorkspace extends HTMLElement {
 
   prepareRoute(route, options = {}) {
     this.ensureRendered();
+    this.route = route;
     this.tasksPage.prepareRoute(route, options);
     this.updateCloseButton();
   }
 
   async openRoute(route, options = {}) {
     this.ensureRendered();
+    this.route = route;
     const result = await this.tasksPage.openRoute(route, options);
     this.updateCloseButton();
     return result;
@@ -62,6 +64,13 @@ class CaffoldCodexWorkspace extends HTMLElement {
     const isTaskSubview =
       this.tasksPage?.taskDetailView &&
       this.tasksPage.taskDetailView !== "conversation";
+    const isGlobalTasksHome = Boolean(
+      this.route?.kind === "tasks" &&
+        !this.route.projectId &&
+        !this.route.new &&
+        !this.route.threadId,
+    );
+    this.closeButton.hidden = isGlobalTasksHome;
     const label = isTaskSubview ? "Back to task" : "Close Codex workspace";
     this.closeButton.setAttribute("aria-label", label);
     this.closeButton.setAttribute("title", label);

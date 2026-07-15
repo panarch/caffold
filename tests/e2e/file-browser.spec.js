@@ -1048,7 +1048,7 @@ test("opens global Tasks without a registered project", async ({ page }) => {
     if (segments.length === 2 && method === "POST") {
       createdTaskRequest = request.postDataJSON();
       expect(createdTaskRequest.projectId).toBeUndefined();
-      expect(createdTaskRequest.cwd).toBe(".");
+      expect(createdTaskRequest.cwd).toBe("src");
       return route.fulfill({
         contentType: "application/json",
         body: JSON.stringify(detail),
@@ -1118,37 +1118,33 @@ test("opens global Tasks without a registered project", async ({ page }) => {
   });
 
   await page.goto("/");
-  const scopedCodexPopover = await openHeaderActionGroup(page, "codex");
-  await scopedCodexPopover.locator('button[data-action="open-tasks"]').click();
+  await expect(page).toHaveURL("/tasks");
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect(tasksPage.locator(".tasks-header")).toContainText("All Tasks");
+  await expect
+    .poll(() => taskListQueries.at(-1))
+    .toEqual({ projectId: null, cwd: null });
+  await expect(
+    page.locator("caffold-codex-workspace .codex-workspace-close"),
+  ).toBeHidden();
+
+  await page.goto("/tasks?cwd=.");
   await expect(page).toHaveURL("/tasks?cwd=.");
   await expect
     .poll(() => taskListQueries.at(-1))
     .toEqual({ projectId: null, cwd: "." });
-  const tasksPage = page.locator("caffold-tasks-page");
   await expect(tasksPage.locator(".tasks-header")).toContainText("Tasks in ~");
   await expect(tasksPage).toContainText("No tasks yet.");
-  await page
-    .locator("caffold-codex-workspace")
-    .getByRole("button", { name: "Close Codex workspace" })
-    .click();
-  await expect(page).toHaveURL("/");
 
-  const allTasksCodexPopover = await openHeaderActionGroup(page, "codex");
-  await allTasksCodexPopover.locator('button[data-action="open-all-tasks"]').click();
+  await page.goto("/tasks");
   await expect(page).toHaveURL("/tasks");
   await expect
     .poll(() => taskListQueries.at(-1))
     .toEqual({ projectId: null, cwd: null });
   await expect(tasksPage.locator(".tasks-header")).toContainText("All Tasks");
   await expect(tasksPage).toContainText("No tasks yet.");
-  await page
-    .locator("caffold-codex-workspace")
-    .getByRole("button", { name: "Close Codex workspace" })
-    .click();
-  await expect(page).toHaveURL("/");
 
-  const reopenedScopedCodexPopover = await openHeaderActionGroup(page, "codex");
-  await reopenedScopedCodexPopover.locator('button[data-action="open-tasks"]').click();
+  await page.goto("/tasks?cwd=.");
   await expect(page).toHaveURL("/tasks?cwd=.");
   await expect
     .poll(() => taskListQueries.at(-1))
@@ -1160,10 +1156,20 @@ test("opens global Tasks without a registered project", async ({ page }) => {
     .click();
   await expect(page).toHaveURL("/tasks/new?cwd=.");
   await tasksPage.locator('textarea[name="prompt"]').fill("Say hello globally");
+  await tasksPage.getByRole("button", { name: "Browse Files" }).click();
+  const cwdBrowser = tasksPage.locator(".task-new-cwd-browser caffold-file-browser");
+  await expect(cwdBrowser).toBeVisible();
+  await cwdBrowser.locator('button[data-entry-path="src"]').click();
+  await tasksPage.getByRole("button", { name: "Use This Folder" }).click();
+  await expect(page).toHaveURL("/tasks/new?cwd=src");
+  await expect(tasksPage.locator('textarea[name="prompt"]')).toHaveValue(
+    "Say hello globally",
+  );
+  await expect(tasksPage.locator(".task-composer-context")).toContainText("src");
   await tasksPage.locator('textarea[name="prompt"]').press("Enter");
 
   await expect.poll(() => createdTaskRequest?.prompt).toBe("Say hello globally");
-  await expect(page).toHaveURL(`/tasks/${threadId}?cwd=.`);
+  await expect(page).toHaveURL(`/tasks/${threadId}?cwd=src`);
   await expect(tasksPage).toContainText("Hello from a global Codex thread.");
   const openDiff = tasksPage.getByRole("button", { name: "Open Diff" });
   await expect(openDiff).toBeDisabled();
@@ -1371,7 +1377,8 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
     await expect(listPane).toBeVisible();
     await expect(detailPane).toBeVisible();
     await expect(resizer).toBeVisible();
-    await expect(tasksPage.locator(".tasks-neutral-state")).toBeVisible();
+    await expect(tasksPage.locator('textarea[name="prompt"]')).toBeVisible();
+    await expect(tasksPage.locator(".task-composer-context")).toContainText("src");
     const initialLayout = await tasksPage.evaluate((element) => {
       const list = element.querySelector(".tasks-list-pane").getBoundingClientRect();
       const separator = element
@@ -1387,7 +1394,7 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
     expect(Math.round(initialLayout.listWidth)).toBe(380);
     expect(Math.round(initialLayout.separatorWidth)).toBe(6);
     await stabilizeDynamicText(page);
-    await captureReviewScreenshot(page, testInfo, "tasks-master-detail-neutral");
+    await captureReviewScreenshot(page, testInfo, "tasks-master-detail-home-composer");
 
     const separatorBox = await resizer.boundingBox();
     expect(separatorBox).not.toBeNull();

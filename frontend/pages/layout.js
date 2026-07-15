@@ -33,6 +33,7 @@ class CaffoldAppShell extends HTMLElement {
     this.taskReviewReturnRoute = null;
     this.taskReviewRelatedPaths = [];
     this.pendingTaskResumeRoute = null;
+    this.initialPath = "";
     this.render();
     this.filesPage = this.querySelector("caffold-files-page");
     this.filesPage.ensureRendered();
@@ -49,7 +50,13 @@ class CaffoldAppShell extends HTMLElement {
     this.githubLayout = this.reviewWorkspace.querySelector("caffold-github-review-layout");
     this.githubLayout.ensureRendered();
     this.installNavigationHandlers();
-    this.prepareRoute(parseRoute(window.location.href));
+    const initialRoute = parseRoute(window.location.href);
+    this.prepareRoute(
+      initialRoute ??
+        (window.location.pathname === "/"
+          ? { kind: "tasks", projectId: "", new: false, threadId: "", cwd: "" }
+          : null),
+    );
 
     this.addEventListener("caffold:navigate", (event) => {
       this.navigateToFileRoute(event.detail.path) || this.loadDirectory(event.detail.path);
@@ -258,16 +265,17 @@ class CaffoldAppShell extends HTMLElement {
       const health = await getHealth();
       this.filesPage.setStorageKey(`${LAST_DIRECTORY_KEY_PREFIX}:${health.root}`);
       this.pathbar.homePath = health.homePath ?? null;
+      this.initialPath = health.initialPath ?? "";
       const initialRoute = parseRoute(window.location.href);
       if (initialRoute) {
         await this.applyRoute(initialRoute);
         return;
       }
 
-      const fallbackPath = health.initialPath ?? "";
-      const initialPath = this.filesPage.loadStoredDirectoryPath() ?? fallbackPath;
-      await this.loadDirectory(initialPath, { fallbackPath });
-      this.replaceWithCurrentProjectFileRoute();
+      this.navigateToRoute(
+        { kind: "tasks", projectId: "", new: false, threadId: "", cwd: "" },
+        { replace: true },
+      );
     } catch (error) {
       this.filesPage.setError(error);
     }
@@ -385,7 +393,12 @@ class CaffoldAppShell extends HTMLElement {
       return;
     }
     const preserveLoadedTask = this.shouldPreserveLoadedTask(route);
-    await this.codexWorkspace.openRoute(route, { project, preserveLoadedTask });
+    await this.codexWorkspace.openRoute(route, {
+      project,
+      preserveLoadedTask,
+      defaultCwdPath:
+        this.currentPath || this.filesPage.loadStoredDirectoryPath() || this.initialPath,
+    });
   }
 
   async applyGitRoute(project, route) {
@@ -549,30 +562,22 @@ class CaffoldAppShell extends HTMLElement {
   navigateToCodexParent() {
     this.clearTaskReviewReturnRoute();
     const currentRoute = parseRoute(window.location.href) ?? this.currentRoute;
-    const projectId = currentRoute?.projectId ?? this.projectSwitcher.currentProjectId;
-    if (!projectId) {
-      return this.navigateToHomeEntrypoint();
+    const parent = parentRoute(currentRoute);
+    if (parent) {
+      return this.navigateToRoute(parent);
     }
 
-    return this.navigateToRoute({
-      kind: "files",
-      projectId,
-      path: "",
-    });
+    return false;
   }
 
   navigateToHomeEntrypoint() {
-    this.currentRoute = null;
-    this.codexWorkspace.hidden = true;
-    this.filesPage.hidden = false;
-    this.closeReviewWorkspace();
-    if (this.usesNavigationApi) {
-      window.navigation.navigate("/", { history: "push" });
-    } else {
-      window.history.pushState({}, "", "/");
-    }
-    this.loadDirectory(this.currentPath || "");
-    return true;
+    return this.navigateToRoute({
+      kind: "tasks",
+      projectId: "",
+      new: false,
+      threadId: "",
+      cwd: "",
+    });
   }
 
   replaceWithCurrentProjectFileRoute() {
