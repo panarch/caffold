@@ -280,6 +280,18 @@ class CaffoldFileBrowser extends HTMLElement {
     this.restoreScroller("files", this.fileList, ".file-list");
   }
 
+  showLoadedList(path) {
+    if (
+      !this.selectedFilePath ||
+      cleanPath(this.loadedDirectoryPath) !== cleanPath(path)
+    ) {
+      return false;
+    }
+
+    this.showList();
+    return true;
+  }
+
   clearSelectedFile(options = {}) {
     this.ensureRendered();
     if (options.cancelFileRequest !== false) {

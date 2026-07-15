@@ -97,6 +97,85 @@ test("parses and serializes project route URLs canonically", () => {
       "/projects/prj/tasks/task%201",
     ],
     [
+      "/files?cwd=Workspace%2Frust%2Fgluesql&file=core%2Fsrc%2Flib.rs",
+      {
+        kind: "files",
+        projectId: "",
+        cwd: "Workspace/rust/gluesql",
+        path: "core/src/lib.rs",
+      },
+      "/files?cwd=Workspace%2Frust%2Fgluesql&file=core%2Fsrc%2Flib.rs",
+    ],
+    [
+      "/git/diff?cwd=Workspace%2Frust%2Fgluesql&file=core%2Fsrc%2Flib.rs",
+      {
+        kind: "diff",
+        projectId: "",
+        cwd: "Workspace/rust/gluesql",
+        path: "core/src/lib.rs",
+      },
+      "/git/diff?cwd=Workspace%2Frust%2Fgluesql&file=core%2Fsrc%2Flib.rs",
+    ],
+    [
+      "/git/compare?cwd=Workspace%2Frust%2Fgluesql&base=origin%2Fmain&head=feature%2Fx&file=src%2Flib.rs",
+      {
+        kind: "compare",
+        projectId: "",
+        cwd: "Workspace/rust/gluesql",
+        baseRef: "origin/main",
+        headRef: "feature/x",
+        path: "src/lib.rs",
+      },
+      "/git/compare?cwd=Workspace%2Frust%2Fgluesql&base=origin%2Fmain&head=feature%2Fx&file=src%2Flib.rs",
+    ],
+    [
+      "/git/log?cwd=Workspace%2Frust%2Fgluesql&page=2&sha=abcdef&file=src%2Flib.rs",
+      {
+        kind: "log",
+        projectId: "",
+        cwd: "Workspace/rust/gluesql",
+        page: 2,
+        sha: "abcdef",
+        path: "src/lib.rs",
+      },
+      "/git/log?cwd=Workspace%2Frust%2Fgluesql&page=2&sha=abcdef&file=src%2Flib.rs",
+    ],
+    [
+      "/github/issues?cwd=Workspace%2Frust%2Fgluesql&page=2",
+      {
+        kind: "issues",
+        projectId: "",
+        cwd: "Workspace/rust/gluesql",
+        page: 2,
+        number: null,
+      },
+      "/github/issues?cwd=Workspace%2Frust%2Fgluesql&page=2",
+    ],
+    [
+      "/github/issues/42?cwd=Workspace%2Frust%2Fgluesql",
+      {
+        kind: "issues",
+        projectId: "",
+        cwd: "Workspace/rust/gluesql",
+        page: 1,
+        number: 42,
+      },
+      "/github/issues/42?cwd=Workspace%2Frust%2Fgluesql",
+    ],
+    [
+      "/github/pulls/12/files?cwd=Workspace%2Frust%2Fgluesql&page=2&file=src%2Flib.rs",
+      {
+        kind: "pulls",
+        projectId: "",
+        cwd: "Workspace/rust/gluesql",
+        page: 2,
+        number: 12,
+        files: true,
+        path: "src/lib.rs",
+      },
+      "/github/pulls/12/files?cwd=Workspace%2Frust%2Fgluesql&page=2&file=src%2Flib.rs",
+    ],
+    [
       "/projects/prj/diff/src/lib.rs",
       { kind: "diff", projectId: "prj", path: "src/lib.rs" },
       "/projects/prj/diff/src/lib.rs",
@@ -212,6 +291,38 @@ test("derives deterministic parent routes", () => {
     ["/tasks/new?cwd=src", "/tasks?cwd=src"],
     ["/tasks/task1?cwd=src", "/tasks?cwd=src"],
     ["/tasks", null],
+    [
+      "/files?cwd=Workspace%2Frust%2Fgluesql&file=src%2Flib.rs",
+      "/files?cwd=Workspace%2Frust%2Fgluesql",
+    ],
+    [
+      "/git/diff?cwd=Workspace%2Frust%2Fgluesql&file=src%2Flib.rs",
+      "/git/diff?cwd=Workspace%2Frust%2Fgluesql",
+    ],
+    [
+      "/git/diff?cwd=Workspace%2Frust%2Fgluesql",
+      "/files?cwd=Workspace%2Frust%2Fgluesql",
+    ],
+    [
+      "/git/compare?cwd=repo&base=main&head=feature&file=src%2Flib.rs",
+      "/git/compare?cwd=repo&base=main&head=feature",
+    ],
+    ["/git/compare?cwd=repo&base=main&head=feature", "/files?cwd=repo"],
+    [
+      "/git/log?cwd=repo&page=2&sha=abcdef&file=src%2Flib.rs",
+      "/git/log?cwd=repo&page=2&sha=abcdef",
+    ],
+    ["/git/log?cwd=repo&page=2&sha=abcdef", "/git/log?cwd=repo&page=2"],
+    ["/git/log?cwd=repo&page=2", "/files?cwd=repo"],
+    ["/github/issues/42?cwd=repo", "/github/issues?cwd=repo"],
+    ["/github/issues?cwd=repo&page=2", "/files?cwd=repo"],
+    [
+      "/github/pulls/12/files?cwd=repo&page=2&file=src%2Flib.rs",
+      "/github/pulls/12/files?cwd=repo&page=2",
+    ],
+    ["/github/pulls/12/files?cwd=repo&page=2", "/github/pulls/12?cwd=repo"],
+    ["/github/pulls/12?cwd=repo", "/github/pulls?cwd=repo"],
+    ["/github/pulls?cwd=repo&page=2", "/files?cwd=repo"],
     ["/projects/prj/diff/src/lib.rs", "/projects/prj/diff"],
     ["/projects/prj/diff", "/projects/prj/files"],
     [
@@ -247,6 +358,25 @@ test("exposes route metadata for surface and domain routing", () => {
     ["/tasks", "tasks", null, "tasks", "list"],
     ["/tasks/new", "tasks", null, "tasks", "new"],
     ["/tasks/task1", "tasks", null, "tasks", "detail"],
+    ["/files?cwd=repo", "files", null, "files", "list"],
+    ["/files?cwd=repo&file=src%2Flib.rs", "files", null, "files", "path"],
+    ["/git/diff?cwd=repo", "review", "git", "diff", "list"],
+    ["/git/diff?cwd=repo&file=src%2Flib.rs", "review", "git", "diff", "file"],
+    ["/git/compare?cwd=repo", "review", "git", "compare", "list"],
+    ["/git/log?cwd=repo", "review", "git", "log", "list"],
+    ["/git/log?cwd=repo&sha=abcdef", "review", "git", "log", "commit"],
+    ["/github/issues?cwd=repo", "review", "github", "issues", "list"],
+    ["/github/issues/42?cwd=repo", "review", "github", "issues", "detail"],
+    ["/github/pulls?cwd=repo", "review", "github", "pulls", "list"],
+    ["/github/pulls/12?cwd=repo", "review", "github", "pulls", "detail"],
+    ["/github/pulls/12/files?cwd=repo", "review", "github", "pulls", "files"],
+    [
+      "/github/pulls/12/files?cwd=repo&file=src%2Flib.rs",
+      "review",
+      "github",
+      "pulls",
+      "file",
+    ],
     ["/projects/prj/diff", "review", "git", "diff", "list"],
     ["/projects/prj/diff/src/lib.rs", "review", "git", "diff", "file"],
     ["/projects/prj/compare?base=main&head=feature", "review", "git", "compare", "list"],
@@ -342,6 +472,8 @@ test("rejects unknown app routes and keeps malformed segments non-fatal", () => 
   assert.equal(parseRoute("/projects/prj/unknown"), null);
   assert.equal(parseRoute("/projects/prj/issues/not-a-number"), null);
   assert.equal(parseRoute("/projects/prj/pulls/not-a-number"), null);
+  assert.equal(parseRoute("/github/issues/not-a-number"), null);
+  assert.equal(parseRoute("/github/pulls/not-a-number"), null);
 
   assert.deepEqual(parseRoute("/projects/prj/files/%E0%A4%A"), {
     kind: "files",

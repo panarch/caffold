@@ -56,6 +56,11 @@ class CaffoldCodexWorkspace extends HTMLElement {
     return result;
   }
 
+  selectedTaskContextPath() {
+    this.ensureRendered();
+    return this.tasksPage.selectedTaskContextPath();
+  }
+
   updateCloseButton() {
     if (!this.closeButton) {
       return;

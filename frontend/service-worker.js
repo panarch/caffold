@@ -1,4 +1,4 @@
-const CACHE_NAME = "caffold-shell-v46";
+const CACHE_NAME = "caffold-shell-v47";
 
 const APP_SHELL_ASSETS = [
   "/",
@@ -143,6 +143,11 @@ self.addEventListener("fetch", (event) => {
     url.pathname === "/settings" ||
     url.pathname === "/tasks" ||
     url.pathname.startsWith("/tasks/") ||
+    url.pathname === "/files" ||
+    url.pathname === "/git" ||
+    url.pathname.startsWith("/git/") ||
+    url.pathname === "/github" ||
+    url.pathname.startsWith("/github/") ||
     url.pathname === "/projects" ||
     url.pathname.startsWith("/projects/")
   ) {

@@ -4,6 +4,25 @@ const COMPARE_QUERY = [
   { name: "head", key: "headRef", defaultValue: "" },
 ];
 const TASKS_QUERY = [{ name: "cwd", key: "cwd", defaultValue: "" }];
+const CWD_QUERY = [{ name: "cwd", key: "cwd", defaultValue: "" }];
+const FILE_QUERY = [...CWD_QUERY, { name: "file", key: "path", defaultValue: "" }];
+const STANDALONE_COMPARE_QUERY = [
+  ...CWD_QUERY,
+  ...COMPARE_QUERY,
+  { name: "file", key: "path", defaultValue: "" },
+];
+const STANDALONE_LOG_QUERY = [
+  ...CWD_QUERY,
+  ...PAGE_QUERY,
+  { name: "sha", key: "sha", defaultValue: "" },
+  { name: "file", key: "path", defaultValue: "" },
+];
+const STANDALONE_PAGE_QUERY = [...CWD_QUERY, ...PAGE_QUERY];
+const STANDALONE_PULL_FILES_QUERY = [
+  ...CWD_QUERY,
+  ...PAGE_QUERY,
+  { name: "file", key: "path", defaultValue: "" },
+];
 
 const ROUTE_DEFINITIONS = [
   routeDefinition({
@@ -14,6 +33,133 @@ const ROUTE_DEFINITIONS = [
     target: "page",
     toRoute: () => ({ kind: "settings" }),
     parent: () => null,
+  }),
+  routeDefinition({
+    id: "standalone-files",
+    kind: "files",
+    pattern: "/files",
+    query: FILE_QUERY,
+    target: (route) => (cleanPath(route.path) ? "path" : "list"),
+    toRoute: (_, query) => standaloneFilesRoute(query),
+    parent: (route) => (route.path ? standaloneFilesRoute({ cwd: route.cwd }) : null),
+  }),
+  routeDefinition({
+    id: "standalone-diff",
+    kind: "diff",
+    pattern: "/git/diff",
+    query: FILE_QUERY,
+    domain: "git",
+    target: (route) => (cleanPath(route.path) ? "file" : "list"),
+    toRoute: (_, query) => standaloneDiffRoute(query),
+    parent: (route) =>
+      route.path
+        ? standaloneDiffRoute({ cwd: route.cwd })
+        : standaloneFilesRoute({ cwd: route.cwd }),
+  }),
+  routeDefinition({
+    id: "standalone-compare",
+    kind: "compare",
+    pattern: "/git/compare",
+    query: STANDALONE_COMPARE_QUERY,
+    domain: "git",
+    target: (route) => (cleanPath(route.path) ? "file" : "list"),
+    toRoute: (_, query) => standaloneCompareRoute(query),
+    parent: (route) =>
+      route.path
+        ? standaloneCompareRoute({
+            cwd: route.cwd,
+            baseRef: route.baseRef,
+            headRef: route.headRef,
+          })
+        : standaloneFilesRoute({ cwd: route.cwd }),
+  }),
+  routeDefinition({
+    id: "standalone-log",
+    kind: "log",
+    pattern: "/git/log",
+    query: STANDALONE_LOG_QUERY,
+    domain: "git",
+    target: (route) => (route.path ? "file" : route.sha ? "commit" : "list"),
+    toRoute: (_, query) => standaloneLogRoute(query),
+    parent: (route) => {
+      if (route.path) {
+        return standaloneLogRoute({
+          cwd: route.cwd,
+          page: route.page,
+          sha: route.sha,
+        });
+      }
+      if (route.sha) {
+        return standaloneLogRoute({ cwd: route.cwd, page: route.page });
+      }
+      return standaloneFilesRoute({ cwd: route.cwd });
+    },
+  }),
+  routeDefinition({
+    id: "standalone-issues-list",
+    kind: "issues",
+    pattern: "/github/issues",
+    query: STANDALONE_PAGE_QUERY,
+    domain: "github",
+    target: "list",
+    toRoute: (_, query) => standaloneIssuesRoute(query),
+    parent: (route) => standaloneFilesRoute({ cwd: route.cwd }),
+  }),
+  routeDefinition({
+    id: "standalone-issues-detail",
+    kind: "issues",
+    pattern: "/github/issues/[number]",
+    query: CWD_QUERY,
+    domain: "github",
+    target: "detail",
+    params: { number: "positiveInteger" },
+    toRoute: ({ number }, query) => standaloneIssuesRoute({ ...query, number }),
+    parent: (route) => standaloneIssuesRoute({ cwd: route.cwd, page: route.page }),
+  }),
+  routeDefinition({
+    id: "standalone-pulls-list",
+    kind: "pulls",
+    pattern: "/github/pulls",
+    query: STANDALONE_PAGE_QUERY,
+    domain: "github",
+    target: "list",
+    toRoute: (_, query) => standalonePullsRoute(query),
+    parent: (route) => standaloneFilesRoute({ cwd: route.cwd }),
+  }),
+  routeDefinition({
+    id: "standalone-pulls-detail",
+    kind: "pulls",
+    pattern: "/github/pulls/[number]",
+    query: CWD_QUERY,
+    domain: "github",
+    target: "detail",
+    params: { number: "positiveInteger" },
+    toRoute: ({ number }, query) => standalonePullsRoute({ ...query, number }),
+    parent: (route) => standalonePullsRoute({ cwd: route.cwd, page: route.page }),
+  }),
+  routeDefinition({
+    id: "standalone-pulls-files",
+    kind: "pulls",
+    pattern: "/github/pulls/[number]/files",
+    query: STANDALONE_PULL_FILES_QUERY,
+    domain: "github",
+    target: (route) => (cleanPath(route.path) ? "file" : "files"),
+    params: { number: "positiveInteger" },
+    toRoute: ({ number }, query) =>
+      standalonePullsRoute({ ...query, number, files: true }),
+    parent: (route) =>
+      route.path
+        ? standalonePullsRoute({
+            cwd: route.cwd,
+            page: route.page,
+            number: route.number,
+            files: true,
+          })
+        : standalonePullsRoute({
+            cwd: route.cwd,
+            page: route.page,
+            number: route.number,
+          }),
   }),
   routeDefinition({
     id: "project-root",
@@ -309,7 +455,8 @@ export function routeMode(route) {
 }
 
 export function routeTarget(route) {
-  return routeDefinitionFor(route)?.target ?? null;
+  const target = routeDefinitionFor(route)?.target;
+  return typeof target === "function" ? target(route) : (target ?? null);
 }
 
 function routeDefinition(config) {
@@ -333,6 +480,10 @@ function routeMatchesDefinition(definition, route) {
     return false;
   }
 
+  if (hasToken(definition, "param", "projectId") !== Boolean(route.projectId)) {
+    return false;
+  }
+
   for (const token of definition.tokens) {
     if (token.kind !== "param" || token.name === "projectId") {
       continue;
@@ -343,17 +494,24 @@ function routeMatchesDefinition(definition, route) {
   }
 
   for (const key of ["threadId", "sha", "number"]) {
-    if (!hasToken(definition, "param", key) && route?.[key]) {
+    const queryOwnsKey = definition.query.some((query) => query.key === key);
+    if (!hasToken(definition, "param", key) && !queryOwnsKey && route?.[key]) {
       return false;
     }
   }
 
-  if (hasToken(definition, "rest", "path") !== Boolean(cleanPath(route.path))) {
+  const pathIsQuery = definition.query.some((query) => query.key === "path");
+  if (
+    !pathIsQuery &&
+    hasToken(definition, "rest", "path") !== Boolean(cleanPath(route.path))
+  ) {
     return false;
   }
 
   if (definition.kind === "pulls") {
-    const expectsFilesTarget = definition.target === "files" || definition.target === "file";
+    const target =
+      typeof definition.target === "function" ? definition.target(route) : definition.target;
+    const expectsFilesTarget = target === "files" || target === "file";
     if (Boolean(route.files) !== expectsFilesTarget) {
       return false;
     }
@@ -533,6 +691,68 @@ function tasksRoute(projectId, options = {}) {
     new: Boolean(options.new),
     threadId: options.threadId ?? "",
     cwd: taskCwd(options.cwd),
+  };
+}
+
+function standaloneFilesRoute(options = {}) {
+  return {
+    kind: "files",
+    projectId: "",
+    cwd: taskCwd(options.cwd),
+    path: cleanPath(options.path),
+  };
+}
+
+function standaloneDiffRoute(options = {}) {
+  return {
+    kind: "diff",
+    projectId: "",
+    cwd: taskCwd(options.cwd),
+    path: cleanPath(options.path),
+  };
+}
+
+function standaloneCompareRoute(options = {}) {
+  return {
+    kind: "compare",
+    projectId: "",
+    cwd: taskCwd(options.cwd),
+    baseRef: options.baseRef ?? "",
+    headRef: options.headRef ?? "",
+    path: cleanPath(options.path),
+  };
+}
+
+function standaloneLogRoute(options = {}) {
+  return {
+    kind: "log",
+    projectId: "",
+    cwd: taskCwd(options.cwd),
+    page: options.page ?? 1,
+    sha: options.sha ?? "",
+    path: cleanPath(options.path),
+  };
+}
+
+function standaloneIssuesRoute(options = {}) {
+  return {
+    kind: "issues",
+    projectId: "",
+    cwd: taskCwd(options.cwd),
+    page: options.page ?? 1,
+    number: options.number ?? null,
+  };
+}
+
+function standalonePullsRoute(options = {}) {
+  return {
+    kind: "pulls",
+    projectId: "",
+    cwd: taskCwd(options.cwd),
+    page: options.page ?? 1,
+    number: options.number ?? null,
+    files: Boolean(options.files),
+    path: cleanPath(options.path),
   };
 }
 

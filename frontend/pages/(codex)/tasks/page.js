@@ -1408,6 +1408,12 @@ class CaffoldTasksPage extends HTMLElement {
     );
   }
 
+  selectedTaskContextPath() {
+    return cleanLogicalPath(
+      this.taskDetail?.task?.worktree?.rootPath || this.taskDetail?.task?.cwdPath || "",
+    );
+  }
+
   syncTaskFileBrowser(previousPath = "") {
     if (this.taskDetailView !== "files") {
       return;

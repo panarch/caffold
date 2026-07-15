@@ -46,6 +46,11 @@ class CaffoldFilesPage extends HTMLElement {
     this.fileBrowser.showList();
   }
 
+  showLoadedList(path) {
+    this.ensureRendered();
+    return this.fileBrowser.showLoadedList(path);
+  }
+
   clearSelectedFile(options = {}) {
     this.ensureRendered();
     this.fileBrowser.clearSelectedFile(options);

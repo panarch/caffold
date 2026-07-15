@@ -28,6 +28,15 @@ display-only because they can be renamed.
 - `/tasks?cwd=...`
 - `/tasks/new?cwd=...`
 - `/tasks/:threadId?cwd=...`
+- `/files?cwd=...&file=...`
+- `/git/diff?cwd=...&file=...`
+- `/git/compare?cwd=...&base=...&head=...&file=...`
+- `/git/log?cwd=...&page=...&sha=...&file=...`
+- `/github/issues?cwd=...&page=...`
+- `/github/issues/:number?cwd=...`
+- `/github/pulls?cwd=...&page=...`
+- `/github/pulls/:number?cwd=...`
+- `/github/pulls/:number/files?cwd=...&file=...`
 - `/projects/:projectId/files`
 - `/projects/:projectId/files/*path`
 - `/projects/:projectId/tasks`
@@ -51,6 +60,19 @@ Route paths under `/projects/:projectId` are project-relative. The frontend
 resolves the project ID through the existing project API, then maps the route
 path onto the project's registered root path before calling file, git, or
 GitHub APIs.
+
+Standalone Files, Git, and GitHub routes use a RootedFs logical `cwd` query
+instead of a project ID. File and review paths in those routes are relative to
+that context. Git and GitHub routes canonicalize `cwd` to the live repository
+root before replacing the current history entry, so reload and copied URLs use
+one stable repository context.
+
+When a standalone route omits `cwd`, the app fills it before route preparation
+using this precedence: the selected Task worktree/thread context, the current
+Files directory, then the server initial path. Review routes prefer the current
+live repository root when one is already loaded. Project-scoped routes retain
+their existing project-relative interpretation during this compatibility
+phase.
 
 Codex Tasks use Codex app-server threads as the source of truth and do not
 require a registered project. `/tasks` is the explicit all-threads route.
@@ -116,7 +138,8 @@ Back and close controls use deterministic parent routes:
 - new task -> task list
 - global task list -> `/`
 - project task list -> project files
-- review workspace close -> project files
+- standalone review workspace close -> standalone files at the same cwd
+- project review workspace close -> project files
 
 Task detail routes use Codex app-server `threadId` values directly. Caffold does
 not mint a separate durable task ID in the first thread-backed slice.
@@ -163,9 +186,9 @@ independently reloadable even when no list cache exists.
 
 ## Server Fallback
 
-The Rust server serves the app shell for known frontend routes under
-`/projects` and `/tasks`. API and asset routes stay explicit and should
-continue returning their real errors when a path is missing.
+The Rust server serves the app shell for known frontend routes under `/files`,
+`/git`, `/github`, `/projects`, and `/tasks`. API and asset routes stay explicit
+and should continue returning their real errors when a path is missing.
 
 ## Test Contract
 

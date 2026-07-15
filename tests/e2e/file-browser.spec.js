@@ -4,6 +4,7 @@ import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const LAST_DIRECTORY_KEY = `caffold:last-directory-path:${resolve("tests/fixtures/home")}`;
+const FILES_HOME_URL = "/files?cwd=.";
 const LONG_ROOT_FILE =
   "this-is-a-very-long-file-name-used-to-test-horizontal-scrolling-in-the-files-pane.md";
 const LONG_CHANGE_FILE =
@@ -379,7 +380,7 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
 });
 
 test("opens browser-local settings and persists viewer sizes", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
 
   const appMenu = page.locator("caffold-app-menu");
   await appMenu.locator(".app-menu-button").click();
@@ -444,7 +445,8 @@ test("opens browser-local settings and persists viewer sizes", async ({ page }, 
     settingsPage.locator('button[data-action="set-code-size"][data-value="large"]'),
   ).toHaveAttribute("aria-checked", "true");
   await settingsPage.locator('button[data-action="close-settings"]').click();
-  await expect(page).toHaveURL("/");
+  await expect(page).toHaveURL("/tasks");
+  await page.goto(FILES_HOME_URL);
   await expect(page.locator("caffold-file-list .file-entry").first()).toHaveCSS(
     "font-size",
     "13px",
@@ -500,7 +502,7 @@ test("delays file list loading feedback", async ({ page }) => {
     await route.continue();
   });
 
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
   await listRequested;
 
   await expect(page.getByText("Loading files...")).toHaveCount(0);
@@ -525,7 +527,7 @@ test("keeps the file list visible while project metadata refresh is slow", async
     await route.continue();
   });
 
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
   await expect(page.locator("caffold-file-list")).toContainText("src");
 
   await page.waitForTimeout(240);
@@ -536,7 +538,7 @@ test("keeps the file list visible while project metadata refresh is slow", async
 });
 
 test("browses directories and opens a source file", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
 
   await expect(page.getByText("Loading files...")).toHaveCount(0);
   await expect(page.locator("caffold-file-list")).toContainText(".caffold-hidden");
@@ -704,7 +706,7 @@ test("refreshes Files and Git after external filesystem changes", async ({ page 
       "This file no longer has uncommitted changes.",
     );
   } finally {
-    await page.goto("/");
+    await page.goto(FILES_HOME_URL);
     await page.waitForTimeout(100);
     await rm(repositoryPath, {
       recursive: true,
@@ -725,7 +727,7 @@ test("keeps manual Files refresh available when live updates fail", async ({ pag
   });
   await page.route(/\/api\/watch(?:\?|$)/, (route) => route.abort("failed"));
 
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
   const refresh = page.getByRole("button", {
     name: "Live updates unavailable. Refresh manually.",
   });
@@ -740,7 +742,7 @@ test("manages project records from the header switcher", async ({ page }, testIn
   test.skip(testInfo.project.name !== "desktop", "Project switcher CRUD is covered on desktop.");
   await mockProjectCrudApi(page);
 
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
   const switcher = page.locator("caffold-project-switcher");
 
   await expect(switcher.locator(".project-switcher-button")).toContainText("Register");
@@ -827,7 +829,7 @@ test("groups header review actions into Git, GitHub, and Codex popovers", async 
 
   const openSourceDirectoryWithGitCount = async (count) => {
     gitFileCount = count;
-    await page.goto("/");
+    await page.goto(FILES_HOME_URL);
     const expectedTitle = `Git actions, ${count} changed ${count === 1 ? "file" : "files"}`;
     const gitButton = headerActionGroupButton(page, "git");
     const entryPoint = await page
@@ -2150,20 +2152,9 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     Math.round(appShellBox?.height ?? -2),
   );
   await expect(page.locator("caffold-files-page")).toBeHidden();
-  const closeCodexButton = codexWorkspace.getByRole("button", {
-    name: "Close Codex workspace",
-  });
-  await expect(closeCodexButton).toBeVisible();
-  await closeCodexButton.click();
-  await expect(page).toHaveURL(`/projects/${project.id}/files`);
-  await expect(codexWorkspace).toBeHidden();
-  await expect(page.locator("caffold-files-page")).toBeVisible();
-
-  const reopenedCodexPopover = await openHeaderActionGroup(page, "codex");
-  await reopenedCodexPopover.locator('button[data-action="open-tasks"]').click();
-  await expect(page).toHaveURL(`/tasks?cwd=${encodeURIComponent(project.relativePath)}`);
-  await expect(codexWorkspace).toBeVisible();
-  await expect(page.locator("caffold-files-page")).toBeHidden();
+  await expect(
+    codexWorkspace.getByRole("button", { name: "Close Codex workspace" }),
+  ).toHaveCount(0);
   await expect(page.locator("caffold-tasks-page")).toHaveAttribute(
     "data-tasks-view",
     "list",
@@ -3345,7 +3336,7 @@ test("keeps header action slots stable while status checks resolve", async ({ pa
     });
   });
 
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
   const sourceDirectory = page.locator('button[data-entry-path="src"]');
   await expect(sourceDirectory).toBeVisible();
   await sourceDirectory.click();
@@ -3478,6 +3469,32 @@ test("restores project file routes and browser navigation", async ({ page }, tes
   await page.goBack();
   await expect(page).toHaveURL(`/projects/${project.id}/files`);
   await expect(page.locator('button[data-entry-path="src/example.rs"]')).toBeVisible();
+});
+
+test("restores standalone file routes and browser navigation", async ({ page }, testInfo) => {
+  await page.goto("/files?cwd=src&file=example.rs");
+  await expect(page).toHaveURL("/files?cwd=src&file=example.rs");
+  await expect(page.locator("caffold-pathbar")).toContainText("src");
+  await expect(page.locator("caffold-file-viewer")).toContainText("example.rs");
+  await expect(page.locator("caffold-code-viewer")).toContainText("pub fn sample");
+
+  await page.reload();
+  await expect(page).toHaveURL("/files?cwd=src&file=example.rs");
+  await expect(page.locator("caffold-file-viewer")).toContainText("example.rs");
+
+  if (testInfo.project.name === "phone") {
+    await page.getByRole("button", { name: "Back to files" }).click();
+    await expect(page).toHaveURL("/files?cwd=src");
+    await expect(page.locator("caffold-file-list")).toBeVisible();
+    return;
+  }
+
+  await page.goto("/files?cwd=src");
+  await page.locator('button[data-entry-path="src/example.rs"]').click();
+  await expect(page).toHaveURL("/files?cwd=src&file=example.rs");
+  await page.goBack();
+  await expect(page).toHaveURL("/files?cwd=src");
+  await expect(page.locator("caffold-file-list")).toBeVisible();
 });
 
 test("restores project review routes", async ({ page }) => {
@@ -4156,6 +4173,39 @@ test("restores project review routes", async ({ page }) => {
   await page.locator('button[data-pull-number="12"]').click();
   await expect(page).toHaveURL(`/projects/${project.id}/pulls/12?page=2`);
   await expect(page.locator("caffold-github-pull-detail-page")).toContainText("Route PR body");
+
+  await page.goto("/git/diff?cwd=src&file=example.rs");
+  await expect(page).toHaveURL("/git/diff?cwd=src&file=example.rs");
+  await expect(page.locator("caffold-diff-viewer")).toContainText("new route line");
+
+  await page.goto(
+    "/git/compare?cwd=src&base=origin%2Fmain&head=feature%2Freview&file=example.rs",
+  );
+  await expect(page.locator('select[data-compare-ref="base"]')).toHaveValue("origin/main");
+  await expect(page.locator('select[data-compare-ref="head"]')).toHaveValue("feature/review");
+  await expect(page.locator("caffold-diff-viewer")).toContainText("new compare route line");
+
+  await page.goto(
+    `/git/log?cwd=src&page=2&sha=${commit.sha}&file=planner%2Fmod.rs`,
+  );
+  await expect(page.locator(".review-workspace-title h2")).toHaveText("Commit");
+  await expect(page.locator("caffold-diff-viewer")).toContainText("new commit route line");
+
+  await page.goto("/github/issues/42?cwd=src");
+  await expect(page.locator("caffold-github-issues-layout")).toHaveAttribute(
+    "data-issues-view",
+    "detail",
+  );
+  await expect(page.locator("caffold-github-issue-detail-page")).toContainText(
+    "Route issue body",
+  );
+
+  await page.goto("/github/pulls/12/files?cwd=src&page=2&file=planner%2Fmod.rs");
+  await expect(page.locator("caffold-github-pull-files-page")).toHaveAttribute(
+    "data-detail-view",
+    "viewer",
+  );
+  await expect(page.locator("caffold-diff-viewer")).toContainText("new PR route line");
 });
 
 test("reloads active review modes when the directory context changes", async ({ page }) => {
@@ -4486,7 +4536,7 @@ test("reloads active review modes when the directory context changes", async ({ 
     await expect.poll(() => calls.at(-1) ?? "").toBe(path);
   };
 
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
 
   await loadDirectory("src");
   await expectLastPath(gitStatusPaths, "src");
@@ -4564,7 +4614,7 @@ test("reloads active review modes when the directory context changes", async ({ 
 });
 
 test("previews image files in the viewer", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
 
   await page.locator('button[data-entry-path="preview-image.svg"]').click();
   await expect(page.locator("caffold-file-viewer")).toContainText("preview-image.svg");
@@ -4597,7 +4647,7 @@ test("invalidates the browser cache when an open image changes", async ({ page }
 
   await rm(path, { force: true });
   try {
-    await page.goto("/");
+    await page.goto(FILES_HOME_URL);
     await page.waitForTimeout(500);
     await writeFile(path, svg("#0b7a5f"));
     const entry = page.locator(`button[data-entry-path="${name}"]`);
@@ -4615,7 +4665,7 @@ test("invalidates the browser cache when an open image changes", async ({ page }
 });
 
 test("keeps the toggled tree row anchored while expanding", async ({ page }) => {
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
   await page.addStyleTag({
     content: `
       caffold-file-list .file-list {
@@ -4645,7 +4695,7 @@ test("keeps the toggled tree row anchored while expanding", async ({ page }) => 
 test("resizes the left file panel", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "phone", "The phone layout stacks panels vertically.");
 
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
   const handle = page.locator(".panel-resizer");
   await expect(handle).toBeVisible();
 
@@ -4658,7 +4708,7 @@ test("resizes the left file panel", async ({ page }, testInfo) => {
 });
 
 test("scrolls long names horizontally in Files and Changes", async ({ page }) => {
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
 
   await expect(page.locator(`button[data-entry-path="${LONG_ROOT_FILE}"]`)).toBeVisible();
   await expectHorizontalScroller(page, ".file-list");
@@ -4692,7 +4742,7 @@ test("scrolls long source lines horizontally in the code viewer", async ({ page 
     });
   });
 
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
   await page.locator('button[data-entry-path="README.md"]').click();
   await expect(page.locator("caffold-code-viewer")).toContainText("long-source-token");
   await expectHorizontalScroller(page, "caffold-code-viewer .code-lines");
@@ -4702,7 +4752,7 @@ test("scrolls long source lines horizontally in the code viewer", async ({ page 
 test("uses a single-pane file viewer on phone", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "phone", "Only the phone layout switches browser panes.");
 
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
   await page.addStyleTag({
     content: `
       caffold-file-list .file-list {
@@ -4742,7 +4792,7 @@ test("uses a single-pane file viewer on phone", async ({ page }, testInfo) => {
 });
 
 test("keeps list scroll positions when selecting files and changes", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
   await page.addStyleTag({
     content: `
       caffold-file-list .file-list,
@@ -4882,7 +4932,7 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
     });
   });
 
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
   await page.locator('button[data-entry-path="src"]').click();
 
   const gitButton = headerActionGroupButton(page, "git");
@@ -5138,7 +5188,7 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
     });
   });
 
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
   await page.locator('button[data-entry-path="src"]').click();
 
   const gitPopover = await openHeaderActionGroup(page, "git");
@@ -5396,7 +5446,7 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
     });
   });
 
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
   await page.locator('button[data-entry-path="src"]').click();
 
   const githubPopover = await openHeaderActionGroup(page, "github");
@@ -5813,7 +5863,7 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
     });
   });
 
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
   await page.locator('button[data-entry-path="src"]').click();
   await expect(page.locator("caffold-project-switcher")).toContainText(project.name);
 
@@ -5947,7 +5997,7 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
   const pullFilesRequestsBeforeFileClick = pullFilesRequests;
   await page.locator('button[data-pull-file-path="src/planner/mod.rs"]').click();
   await expect(page).toHaveURL(
-    `/projects/${project.id}/pulls/12/files/planner/mod.rs`,
+    "/github/pulls/12/files?cwd=src&file=planner%2Fmod.rs",
   );
   await expect(page.locator("caffold-diff-viewer")).toContainText("new PR review line");
   expect(listRequests).toBe(listRequestsBeforeFileClick);
@@ -5973,25 +6023,25 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
 
   if (testInfo.project.name === "phone") {
     await page.getByRole("button", { name: "Back to PR files" }).click();
-    await expect(page).toHaveURL(`/projects/${project.id}/pulls/12/files`);
+    await expect(page).toHaveURL("/github/pulls/12/files?cwd=src");
     await expect(page.locator("caffold-github-pull-files-page")).toBeVisible();
     await expect(page.locator(".github-mode-pulls caffold-review-file-viewer")).toBeHidden();
     await page.locator('button[data-pull-file-path="src/planner/mod.rs"]').click();
     await expect(page).toHaveURL(
-      `/projects/${project.id}/pulls/12/files/planner/mod.rs`,
+      "/github/pulls/12/files?cwd=src&file=planner%2Fmod.rs",
     );
     await page.getByRole("button", { name: "Back to PR files" }).click();
-    await expect(page).toHaveURL(`/projects/${project.id}/pulls/12/files`);
+    await expect(page).toHaveURL("/github/pulls/12/files?cwd=src");
   }
   await workspace.getByRole("button", { name: "Back to PR" }).click();
-  await expect(page).toHaveURL(`/projects/${project.id}/pulls/12`);
+  await expect(page).toHaveURL("/github/pulls/12?cwd=src");
   await expect(pullViewer).toBeVisible();
   if (testInfo.project.name === "phone") {
     await pullViewer.getByRole("button", { name: "Back to pull requests" }).click();
   } else {
     await workspace.getByRole("button", { name: "Back to pull requests" }).click();
   }
-  await expect(page).toHaveURL(`/projects/${project.id}/pulls`);
+  await expect(page).toHaveURL("/github/pulls?cwd=src");
   await expect(page.locator("caffold-github-pulls-list-page")).toBeVisible();
 
   const pullPagination = page.locator("caffold-github-pulls-list-page caffold-pagination");
@@ -6119,7 +6169,7 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
     });
   });
 
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
   await page.locator('button[data-entry-path="src"]').click();
 
   const gitPopover = await openHeaderActionGroup(page, "git");
@@ -6279,7 +6329,7 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
 });
 
 test("restores the last opened directory after reload", async ({ page }) => {
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
   await page.locator('button[data-entry-path="src"]').click();
   await expect(page.locator("caffold-pathbar")).toContainText("src");
   await expect(page.locator("caffold-file-list .git-summary")).toBeVisible();
@@ -6300,7 +6350,7 @@ test("falls back when the stored directory no longer opens", async ({ page }) =>
     [LAST_DIRECTORY_KEY],
   );
 
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
   await expect(page.locator("caffold-file-list")).toContainText("src");
   await expect(page.locator(".parent-entry")).toHaveCount(0);
   await expect(page.evaluate((key) => localStorage.getItem(key), LAST_DIRECTORY_KEY)).resolves.toBe(
@@ -6309,7 +6359,7 @@ test("falls back when the stored directory no longer opens", async ({ page }) =>
 });
 
 test("extends the line-number gutter for short files", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await page.goto(FILES_HOME_URL);
 
   await page.locator('button[data-entry-path="README.md"]').click();
   await expect(page.locator("caffold-file-viewer")).toContainText("README.md");
