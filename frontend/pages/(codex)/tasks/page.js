@@ -110,7 +110,11 @@ class CaffoldTasksPage extends HTMLElement {
       () => this.refreshTaskCompare(),
       (state) => this.setTaskDiffRefreshState(state),
     );
-    this.boundIconsReady = () => this.render();
+    this.boundIconsReady = () => {
+      this.querySelector(".tasks-header-region")?.removeAttribute("data-render-key");
+      this.markTaskListDirty();
+      this.render();
+    };
     this.boundTaskListResize = () => this.clampTaskListWidth();
     this.boundTaskListPointerMove = (event) => this.resizeTaskList(event);
     this.boundTaskListPointerUp = () => this.stopTaskListResize();

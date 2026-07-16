@@ -1663,6 +1663,9 @@ test("groups All Tasks by repository without worktree accordions", async ({ page
   const tasksPage = page.locator("caffold-tasks-page");
   const groups = tasksPage.locator(".task-repository-group");
   await expect(tasksPage.locator(".tasks-header")).toContainText("All Tasks");
+  await expect(
+    tasksPage.locator('.tasks-header [data-task-action="open-settings"] svg'),
+  ).toBeVisible();
   await expect(groups).toHaveCount(3);
   await expect(groups.nth(0).locator(".task-repository-header")).toContainText("gluesql");
   await expect(groups.nth(0).locator(".task-repository-count")).toHaveText("2");
