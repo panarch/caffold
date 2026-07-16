@@ -2302,6 +2302,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           "assistant_message",
           "Assistant response",
           {
+            phase: "commentary",
             text: "I am checking the planner diff before the final answer.",
           },
           8,
@@ -2355,6 +2356,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           "Assistant response",
           {
             turnId: "turn_1",
+            phase: "final",
             text: completedAssistantResponse,
           },
           11,
@@ -2365,6 +2367,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           "Assistant response",
           {
             turnId: "turn_1",
+            phase: "final",
             text: completedAssistantResponse,
           },
           11,
@@ -2666,6 +2669,11 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   );
   await expect(page.locator("caffold-task-markdown").last().locator("a")).toHaveCount(0);
   await expect(tasksPage.locator('.task-message[data-message-role="assistant"]')).toHaveCount(1);
+  await expect(
+    tasksPage.locator(
+      '.task-message[data-message-role="assistant"][data-message-phase="final"]',
+    ),
+  ).toHaveCount(1);
   await expect(tasksPage.locator('.task-message[data-message-role="assistant"]')).not.toContainText(
     "I am checking the planner diff",
   );

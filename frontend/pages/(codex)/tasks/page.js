@@ -3137,7 +3137,12 @@ function renderTurnGroup(group, task, options = {}) {
     if (hiddenWorkEvents.length > 0) {
       output.push(renderTurnWorkSummary(group, hiddenWorkEvents, terminalEvent));
     }
-    output.push(renderConversationEvent(finalAssistantEvent, task, { active: false }));
+    output.push(
+      renderConversationEvent(finalAssistantEvent, task, {
+        active: false,
+        messagePhase: "final",
+      }),
+    );
     return output.join("");
   }
 
@@ -3247,7 +3252,9 @@ function renderConversationEvent(event, task, eventState) {
     return renderMessageEvent(event, "user", payload.prompt ?? payload.text);
   }
   if (event.type === "assistant_message") {
-    return renderMessageEvent(event, "assistant", payload.text);
+    return renderMessageEvent(event, "assistant", payload.text, {
+      phase: eventState?.messagePhase ?? assistantMessagePhase(payload.phase),
+    });
   }
   if (event.type === "reasoning") {
     const summary = Array.isArray(payload.summary)
@@ -3332,14 +3339,17 @@ function renderStatusEvent(event) {
   `;
 }
 
-function renderMessageEvent(event, role, text) {
+function renderMessageEvent(event, role, text, options = {}) {
   const value = `${text ?? ""}`.trim();
   if (!value) {
     return renderStatusEvent(event);
   }
+  const phaseAttribute = options.phase
+    ? ` data-message-phase="${escapeHtml(options.phase)}"`
+    : "";
 
   return `
-    <li class="task-event task-message" data-event-type="${escapeHtml(event.type)}" data-message-role="${escapeHtml(role)}">
+    <li class="task-event task-message" data-event-type="${escapeHtml(event.type)}" data-message-role="${escapeHtml(role)}"${phaseAttribute}>
       <div class="task-message-header">
         <time>${escapeHtml(formatDate(event.createdMs))}</time>
       </div>
@@ -3348,6 +3358,16 @@ function renderMessageEvent(event, role, text) {
       </div>
     </li>
   `;
+}
+
+function assistantMessagePhase(phase) {
+  if (["final", "final_answer"].includes(phase)) {
+    return "final";
+  }
+  if (phase === "commentary") {
+    return "progress";
+  }
+  return null;
 }
 
 function renderThinkingEvent(event, text, task, eventState) {

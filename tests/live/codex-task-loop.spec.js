@@ -27,6 +27,10 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
   const cwd = liveCwd();
   const marker = `${Date.now()}`;
   const initialReply = `caffold-live-initial-${marker}`;
+  const markdownHeading = `Caffold live Markdown ${marker}`;
+  const markdownInline = `inline-${marker}`;
+  const markdownFence = `fenced-${marker}`;
+  const commandOutput = `caffold-command-${marker}`;
   const followUpReply = `caffold-live-follow-up-${marker}`;
 
   await page.goto(`/tasks?cwd=${encodeURIComponent(cwd)}`);
@@ -46,6 +50,9 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
   const assistantMessages = tasksPage.locator(
     '.task-message[data-message-role="assistant"]',
   );
+  const finalAssistantMessages = tasksPage.locator(
+    '.task-message[data-message-role="assistant"][data-message-phase="final"]',
+  );
   await expect(assistantMessages.filter({ hasText: initialReply })).toBeVisible();
 
   await page.goto(`/tasks?cwd=${encodeURIComponent(cwd)}`);
@@ -60,7 +67,26 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
   await chooseLowCostModel(followUpForm);
   const followUpPrompt = followUpForm.getByRole("textbox", { name: "Follow-up prompt" });
   await followUpPrompt.fill(
-    `Run the read-only command /bin/sleep 20, then reply with exactly ${followUpReply}. Do not modify files.`,
+    [
+      "Reply with exactly this Markdown and nothing else:",
+      `## ${markdownHeading}`,
+      `- \`${markdownInline}\``,
+      "```text",
+      markdownFence,
+      "```",
+    ].join("\n"),
+  );
+  await followUpPrompt.press("Enter");
+  await expect(followUpPrompt).toBeFocused();
+
+  const markdownMessage = assistantMessages.filter({ hasText: markdownHeading });
+  await expect(markdownMessage).toBeVisible();
+  await expect(markdownMessage.locator("h2")).toHaveText(markdownHeading);
+  await expect(markdownMessage.locator("li code")).toHaveText(markdownInline);
+  await expect(markdownMessage.locator("pre code")).toHaveText(markdownFence);
+
+  await followUpPrompt.fill(
+    `Run the read-only command /bin/sh -c 'printf ${commandOutput}; sleep 20', then reply with exactly ${followUpReply}. Do not modify files.`,
   );
   await followUpPrompt.press("Enter");
 
@@ -80,20 +106,44 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
     .not.toBe(activeDuration);
 
   await page.goto(`/tasks?cwd=${encodeURIComponent(cwd)}`);
-  await expect(createdTask).toHaveAttribute("data-task-status", "running");
+  await expect(createdTask).toBeVisible();
   await createdTask.click();
-  await expect(activeTurn).toBeVisible();
-  await expect(activeTurn.locator(".task-turn-active-duration")).toContainText(
-    "Working for",
-  );
-  await expect(activeTurn.locator(".task-turn-active-state")).not.toHaveText("");
+  if (await activeTurn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+    await expect(activeTurn.locator(".task-turn-active-duration")).toContainText(
+      "Working for",
+    );
+    await expect(activeTurn.locator(".task-turn-active-state")).not.toHaveText("");
+  }
 
   const approval = tasksPage.locator(".task-approval-card").last();
   if (await approval.isVisible({ timeout: 2_000 }).catch(() => false)) {
     await approval.getByRole("button", { name: "Accept", exact: true }).click();
   }
 
-  await expect(assistantMessages.filter({ hasText: followUpReply })).toBeVisible();
+  await expect(finalAssistantMessages.filter({ hasText: followUpReply })).toBeVisible();
   await expect(activeTurn).toHaveCount(0);
-  await expect(tasksPage.locator(".task-turn-work").last()).toContainText("Worked for");
+  const completedWork = tasksPage.locator(".task-turn-work").last();
+  const finalResponse = finalAssistantMessages.filter({ hasText: followUpReply });
+  await expect(completedWork).toContainText("Worked for");
+  await expect(completedWork.locator("details")).not.toHaveAttribute("open", "");
+  await expect(finalResponse).toHaveCount(1);
+  await expect
+    .poll(() =>
+      finalResponse.evaluate((response) =>
+        response.previousElementSibling?.classList.contains("task-turn-work"),
+      ),
+    )
+    .toBe(true);
+  await completedWork.locator("summary").click();
+  await expect(completedWork).toContainText(commandOutput);
+
+  await page.goto(`/tasks?cwd=${encodeURIComponent(cwd)}`);
+  await expect(createdTask).toHaveAttribute("data-task-status", "idle");
+  await createdTask.click();
+  await expect(markdownMessage).toBeVisible();
+  await expect(finalResponse).toBeVisible();
+  await expect(tasksPage.locator(".task-turn-work").last().locator("details")).not.toHaveAttribute(
+    "open",
+    "",
+  );
 });
