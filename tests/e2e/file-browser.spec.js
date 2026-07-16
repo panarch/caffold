@@ -1867,6 +1867,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   let task = null;
   let events = [];
   let createTaskRequests = 0;
+  let followUpRequests = 0;
   let taskDetailReadRequests = 0;
   let approvalRequests = 0;
   let gitStatusRequests = 0;
@@ -1874,6 +1875,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   let gitCompareRequests = 0;
   let gitCompareDiffRequests = 0;
   let includeTaskDiffLiveFile = false;
+  let omitCompletedCommandFromDetail = false;
   let resolveFollowUpRequest;
   let releaseFollowUpResponse;
   const followUpRequested = new Promise((resolve) => {
@@ -1922,7 +1924,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   });
   const detailResponse = (overrides = {}) => ({
     task,
-    events,
+    events: overrides.events ?? events,
     eventsPage: { nextCursor: null, ...(overrides.eventsPage ?? {}) },
     pendingApprovals: [],
   });
@@ -2192,7 +2194,13 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       taskDetailReadRequests += 1;
       return route.fulfill({
         contentType: "application/json",
-        body: JSON.stringify(detailResponse()),
+        body: JSON.stringify(
+          detailResponse({
+            events: omitCompletedCommandFromDetail
+              ? events.filter((event) => event.type !== "command_execution")
+              : events,
+          }),
+        ),
       });
     }
 
@@ -2203,6 +2211,14 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       method === "POST"
     ) {
       const body = request.postDataJSON();
+      followUpRequests += 1;
+      if (body.prompt === "Prompt that fails") {
+        return route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Prompt request failed" }),
+        });
+      }
       expect(body.prompt).toBe("Please tighten the tests");
       expect(body.model).toBe("gpt-5.5");
       expect(body.effort).toBe("ultra");
@@ -2298,14 +2314,14 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           5,
         ),
         eventRecord(
-          "event_8_progress",
+          "item-9",
           "assistant_message",
           "Assistant response",
           {
             phase: "commentary",
             text: "I am checking the planner diff before the final answer.",
           },
-          8,
+          11,
         ),
         eventRecord(
           "event_8",
@@ -2326,10 +2342,25 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           9,
         ),
         eventRecord(
+          "event_9_command_live",
+          "command_execution",
+          "Command started",
+          {
+            turnId: "turn_1",
+            itemId: "command_1",
+            command: "cargo test",
+            cwd: "src",
+            status: "inProgress",
+          },
+          9,
+        ),
+        eventRecord(
           "event_9_command",
           "command_execution",
           "Command completed",
           {
+            turnId: "turn_1",
+            itemId: "command_1",
             command: "cargo test",
             cwd: "src",
             status: "completed",
@@ -2349,6 +2380,19 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           10,
         ),
         eventRecord(
+          "event_9_command_completed",
+          "command_execution",
+          "Command completed",
+          {
+            turnId: "turn_1",
+            itemId: "command_1",
+            command: "cargo test",
+            cwd: "src",
+            status: "completed",
+          },
+          11,
+        ),
+        eventRecord(
           "event_10_repeat",
           "file_change",
           "File changes: 1",
@@ -2360,7 +2404,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           10,
         ),
         eventRecord(
-          "event_11",
+          "item-10",
           "assistant_message",
           "Assistant response",
           {
@@ -2743,6 +2787,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   const completedCommand = tasksPage.locator(
     '.task-work-item[data-event-type="command_execution"]',
   );
+  await expect(tasksPage.locator(".task-turn-work").last()).toContainText("Command");
   await expect(completedCommand.locator("details")).not.toHaveAttribute("open", "");
   await completedCommand.locator("summary").click();
   await expect(completedCommand).toContainText("cargo test");
@@ -3069,6 +3114,13 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await followUpTextarea.press("Enter");
   await followUpRequested;
   await expect(followUpTextarea).toBeFocused();
+  await expect(tasksPage.locator(".task-follow-up-form")).toHaveAttribute(
+    "aria-busy",
+    "true",
+  );
+  await followUpTextarea.fill("Keep this next draft while the request runs");
+  await followUpTextarea.press("Enter");
+  await expect.poll(() => followUpRequests).toBe(1);
   await expect(
     tasksPage.locator('.task-message[data-message-role="user"]').filter({
       hasText: "Please tighten the tests",
@@ -3076,6 +3128,13 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   ).toBeVisible();
   await expect(tasksPage).not.toContainText("Follow-up prompt sent");
   releaseFollowUpResponse();
+  await expect(tasksPage.locator(".task-follow-up-form")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
+  await expect(followUpTextarea).toHaveValue(
+    "Keep this next draft while the request runs",
+  );
   const runningStatus = tasksPage.locator(
     '.task-detail-summary .task-status-chip[data-status="running"]',
   );
@@ -3267,6 +3326,33 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     )
     .toBeLessThanOrEqual(2);
   expect(taskDetailReadRequests).toBe(taskDetailReadsBeforeDiff);
+
+  await followUpTextarea.fill("Prompt that fails");
+  await followUpTextarea.press("Enter");
+  await expect.poll(() => followUpRequests).toBe(2);
+  await expect(tasksPage.locator(".task-follow-up-form")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
+  await expect(followUpTextarea).toBeFocused();
+  await expect(followUpTextarea).toHaveValue("Prompt that fails");
+  await expect(
+    tasksPage.locator('.task-message[data-message-role="user"]').filter({
+      hasText: "Prompt that fails",
+    }),
+  ).toHaveCount(0);
+
+  omitCompletedCommandFromDetail = true;
+  const openTaskListButton = tasksPage.locator('[data-task-action="open-list"]');
+  if (await openTaskListButton.isVisible()) {
+    await openTaskListButton.click();
+  }
+  await tasksPage.locator(`.task-row[data-thread-id="${threadId}"]`).click();
+  await expect(followUpTextarea).toHaveValue("Prompt that fails");
+  await tasksPage.locator(".task-turn-work > details > summary").click();
+  await expect(
+    tasksPage.locator('.task-work-item[data-event-type="command_execution"]'),
+  ).toContainText("test result: ok");
 });
 
 test("loads older task conversation events by cursor", async ({ page }) => {

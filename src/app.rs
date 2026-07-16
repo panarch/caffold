@@ -3,7 +3,7 @@ use std::{
     convert::Infallible,
     net::IpAddr,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -57,6 +57,7 @@ struct AppState {
     codex_threads: Arc<CodexThreadRuntime>,
     pending_approvals: Arc<AsyncMutex<HashMap<String, PendingApproval>>>,
     task_events: broadcast::Sender<TaskEventRecord>,
+    live_task_events: LiveTaskEventCache,
     task_activity: TaskActivityMonitor,
     watch_hub: WatchHub,
     shutdown: broadcast::Sender<()>,
@@ -319,6 +320,61 @@ struct TaskEventRecord {
     created_ms: u64,
 }
 
+#[derive(Clone, Default)]
+struct LiveTaskEventCache {
+    events: Arc<Mutex<HashMap<String, Vec<TaskEventRecord>>>>,
+}
+
+const LIVE_TASK_EVENT_LIMIT_PER_THREAD: usize = 256;
+const LIVE_TASK_THREAD_LIMIT: usize = 128;
+
+impl LiveTaskEventCache {
+    fn observe(&self, events: &[TaskEventRecord]) {
+        for event in events {
+            self.record(event.clone());
+        }
+    }
+
+    fn record(&self, event: TaskEventRecord) {
+        let Ok(mut events) = self.events.lock() else {
+            return;
+        };
+        let thread_id = event.thread_id.clone();
+        if !events.contains_key(&thread_id) && events.len() >= LIVE_TASK_THREAD_LIMIT {
+            let oldest_thread = events
+                .iter()
+                .min_by_key(|(_, items)| {
+                    items
+                        .iter()
+                        .map(|item| item.created_ms)
+                        .max()
+                        .unwrap_or_default()
+                })
+                .map(|(thread_id, _)| thread_id.clone());
+            if let Some(oldest_thread) = oldest_thread {
+                events.remove(&oldest_thread);
+            }
+        }
+        let thread_events = events.entry(thread_id).or_default();
+        if let Some(existing) = thread_events.iter_mut().find(|item| item.id == event.id) {
+            *existing = merge_task_event_record(existing.clone(), event);
+            return;
+        }
+        thread_events.push(event);
+        if thread_events.len() > LIVE_TASK_EVENT_LIMIT_PER_THREAD {
+            thread_events.remove(0);
+        }
+    }
+
+    fn for_thread(&self, thread_id: &str) -> Vec<TaskEventRecord> {
+        self.events
+            .lock()
+            .ok()
+            .and_then(|events| events.get(thread_id).cloned())
+            .unwrap_or_default()
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TaskDetailResponse {
@@ -373,6 +429,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         codex_threads: codex_threads.clone(),
         pending_approvals,
         task_events,
+        live_task_events: LiveTaskEventCache::default(),
         task_activity,
         watch_hub,
         shutdown: shutdown.clone(),
@@ -418,6 +475,7 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         codex_threads: Arc::new(CodexThreadRuntime::default()),
         pending_approvals: Arc::new(AsyncMutex::new(HashMap::new())),
         task_events,
+        live_task_events: LiveTaskEventCache::default(),
         task_activity,
         watch_hub,
         shutdown,
@@ -1087,11 +1145,26 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
     let receiver = state.task_events.subscribe();
     let shutdown = state.shutdown.subscribe();
     let activity = thread_id.is_none().then(|| state.task_activity.clone());
+    let live_task_events = state.live_task_events.clone();
     let mut activity_reconcile = tokio::time::interval(Duration::from_secs(1));
     activity_reconcile.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let stream = stream::unfold(
-        (receiver, shutdown, thread_id, activity, activity_reconcile),
-        |(mut receiver, mut shutdown, thread_id, activity, mut activity_reconcile)| async move {
+        (
+            receiver,
+            shutdown,
+            thread_id,
+            activity,
+            activity_reconcile,
+            live_task_events,
+        ),
+        |(
+            mut receiver,
+            mut shutdown,
+            thread_id,
+            activity,
+            mut activity_reconcile,
+            live_task_events,
+        )| async move {
             loop {
                 tokio::select! {
                     _ = shutdown.recv() => return None,
@@ -1102,12 +1175,20 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
                     message = receiver.recv() => {
                         match message {
                             Ok(event) if thread_id.as_ref().is_none_or(|id| id == &event.thread_id) => {
+                                live_task_events.record(event.clone());
                                 let payload = serde_json::to_string(&event)
                                     .unwrap_or_else(|_| "{}".to_string());
                                 let frame = format!("event: task-event\ndata: {payload}\n\n");
                                 return Some((
                                     Ok::<_, Infallible>(Bytes::from(frame)),
-                                    (receiver, shutdown, thread_id, activity, activity_reconcile),
+                                    (
+                                        receiver,
+                                        shutdown,
+                                        thread_id,
+                                        activity,
+                                        activity_reconcile,
+                                        live_task_events,
+                                    ),
                                 ));
                             }
                             Ok(_) => continue,
@@ -1292,6 +1373,8 @@ async fn read_task_detail(
     let thread = thread_with_turns(thread, turns)?;
     state.task_activity.observe_thread(&thread);
     let mut events = thread_events(&thread);
+    state.live_task_events.observe(&events);
+    events = merge_task_event_records(events, state.live_task_events.for_thread(thread_id));
     let pending_approvals = pending_approval_events(state, thread_id).await;
     events.extend(pending_approvals.iter().cloned());
     events.sort_by(|left, right| {
@@ -1313,6 +1396,42 @@ async fn read_task_detail(
         events_page: TaskEventsPage { next_cursor },
         pending_approvals,
     })
+}
+
+fn merge_task_event_records(
+    left: Vec<TaskEventRecord>,
+    right: Vec<TaskEventRecord>,
+) -> Vec<TaskEventRecord> {
+    let mut events = HashMap::<String, TaskEventRecord>::new();
+    for event in left.into_iter().chain(right) {
+        events
+            .entry(event.id.clone())
+            .and_modify(|existing| {
+                *existing = merge_task_event_record(existing.clone(), event.clone());
+            })
+            .or_insert(event);
+    }
+    events.into_values().collect()
+}
+
+fn merge_task_event_record(
+    existing: TaskEventRecord,
+    incoming: TaskEventRecord,
+) -> TaskEventRecord {
+    let (mut latest, earlier) = if incoming.created_ms >= existing.created_ms {
+        (incoming, existing)
+    } else {
+        (existing, incoming)
+    };
+    latest.payload = match (earlier.payload, latest.payload.take()) {
+        (Some(JsonValue::Object(mut earlier)), Some(JsonValue::Object(latest))) => {
+            earlier.extend(latest);
+            Some(JsonValue::Object(earlier))
+        }
+        (Some(earlier), None) => Some(earlier),
+        (_, latest) => latest,
+    };
+    latest
 }
 
 fn thread_with_turns(thread: &JsonValue, turns: Vec<JsonValue>) -> Result<JsonValue, ApiError> {
@@ -1602,6 +1721,15 @@ fn task_event_record(
     }
 }
 
+fn turn_item_event_id(turn_id: Option<&str>, item_id: Option<&str>, fallback: &str) -> String {
+    match (turn_id, item_id) {
+        (Some(turn_id), Some(item_id)) => format!("{turn_id}:{item_id}"),
+        (Some(turn_id), None) => format!("{turn_id}:{fallback}"),
+        (None, Some(item_id)) => item_id.to_string(),
+        (None, None) => fallback.to_string(),
+    }
+}
+
 fn spawn_codex_thread_bridge(
     client: CodexThreadClient,
     task_events: broadcast::Sender<TaskEventRecord>,
@@ -1850,9 +1978,10 @@ fn task_event_from_item_activity(
             }
         }
     };
+    let event_id = turn_item_event_id(turn_id, Some(item_id), "work_status");
     Some(task_event_record(
         thread_id,
-        item_id,
+        &event_id,
         "work_status",
         summary,
         Some(json!({
@@ -1978,9 +2107,10 @@ fn task_event_from_thread_item(
         }
         _ => return None,
     };
+    let event_id = turn_item_event_id(turn_id, item_id, event_type);
     Some(task_event_record(
         thread_id,
-        item_id.unwrap_or(event_type),
+        &event_id,
         event_type,
         &summary,
         Some(payload),
@@ -2039,9 +2169,10 @@ fn task_event_from_raw_response_item(
         }
         _ => return None,
     };
+    let event_id = turn_item_event_id(turn_id, item_id, event_type);
     Some(task_event_record(
         thread_id,
-        item_id.unwrap_or(event_type),
+        &event_id,
         event_type,
         &summary,
         Some(payload),
@@ -3007,6 +3138,142 @@ mod tests {
             assistant.payload.as_ref().unwrap()["text"],
             "The change is ready to review."
         );
+    }
+
+    #[test]
+    fn transcript_item_ids_are_scoped_to_their_turn() {
+        let thread = json!({
+            "id": "thread_1",
+            "createdAt": 1.0,
+            "turns": [
+                {
+                    "id": "turn_1",
+                    "startedAt": 1.0,
+                    "items": [{
+                        "type": "agentMessage",
+                        "id": "item-1",
+                        "text": "First answer",
+                        "phase": "final_answer"
+                    }]
+                },
+                {
+                    "id": "turn_2",
+                    "startedAt": 2.0,
+                    "items": [{
+                        "type": "agentMessage",
+                        "id": "item-1",
+                        "text": "Second answer",
+                        "phase": "final_answer"
+                    }]
+                }
+            ]
+        });
+
+        let answer_ids = thread_events(&thread)
+            .into_iter()
+            .filter(|event| event.event_type == "assistant_message")
+            .map(|event| event.id)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            answer_ids,
+            vec!["thread_1:turn_1:item-1", "thread_1:turn_2:item-1"]
+        );
+    }
+
+    #[test]
+    fn live_task_event_cache_preserves_latest_transient_item_state() {
+        let cache = LiveTaskEventCache::default();
+        let started = task_event_record(
+            "thread_1",
+            "turn_1:command_1",
+            "command_execution",
+            "Command started",
+            Some(json!({
+                "status": "inProgress",
+                "aggregatedOutput": "test result: ok"
+            })),
+            10,
+        );
+        let completed = task_event_record(
+            "thread_1",
+            "turn_1:command_1",
+            "command_execution",
+            "Command completed",
+            Some(json!({ "status": "completed" })),
+            20,
+        );
+
+        cache.record(started.clone());
+        cache.record(completed.clone());
+        cache.record(task_event_record(
+            "thread_2",
+            "turn_2:command_1",
+            "command_execution",
+            "Other command",
+            None,
+            30,
+        ));
+
+        let merged = merge_task_event_records(Vec::new(), cache.for_thread("thread_1"));
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].summary, completed.summary);
+        assert_eq!(merged[0].payload.as_ref().unwrap()["status"], "completed");
+        assert_eq!(
+            merged[0].payload.as_ref().unwrap()["aggregatedOutput"],
+            "test result: ok"
+        );
+
+        cache.record(started);
+        let merged = cache.for_thread("thread_1");
+        assert_eq!(merged[0].summary, completed.summary);
+        assert_eq!(merged[0].payload.as_ref().unwrap()["status"], "completed");
+    }
+
+    #[test]
+    fn live_task_event_cache_preserves_items_omitted_from_later_thread_reads() {
+        let cache = LiveTaskEventCache::default();
+        let command = task_event_record(
+            "thread_1",
+            "turn_1:command_1",
+            "command_execution",
+            "Command completed",
+            Some(json!({
+                "command": "printf caffold-command",
+                "status": "completed"
+            })),
+            20,
+        );
+
+        cache.observe(std::slice::from_ref(&command));
+        let later_thread_read = Vec::new();
+        let merged = merge_task_event_records(later_thread_read, cache.for_thread("thread_1"));
+
+        assert_eq!(merged, vec![command]);
+    }
+
+    #[test]
+    fn live_task_event_cache_evicts_the_oldest_thread() {
+        let cache = LiveTaskEventCache::default();
+        for index in 0..=LIVE_TASK_THREAD_LIMIT {
+            cache.record(task_event_record(
+                &format!("thread_{index}"),
+                "event_1",
+                "assistant_message",
+                "Answer",
+                None,
+                index as u64,
+            ));
+        }
+
+        assert!(cache.for_thread("thread_0").is_empty());
+        assert_eq!(
+            cache
+                .for_thread(&format!("thread_{LIVE_TASK_THREAD_LIMIT}"))
+                .len(),
+            1
+        );
+        assert_eq!(cache.events.lock().unwrap().len(), LIVE_TASK_THREAD_LIMIT);
     }
 
     #[test]

@@ -1545,6 +1545,11 @@ caffold-tasks-page .task-composer textarea::placeholder {
   color: #8d938f;
 }
 
+caffold-tasks-page .task-composer[aria-busy="true"] .task-send-button {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 caffold-tasks-page .task-composer-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

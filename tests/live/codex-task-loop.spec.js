@@ -86,7 +86,7 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
   await expect(markdownMessage.locator("pre code")).toHaveText(markdownFence);
 
   await followUpPrompt.fill(
-    `Run the read-only command /bin/sh -c 'printf ${commandOutput}; sleep 20', then reply with exactly ${followUpReply}. Do not modify files.`,
+    `You must use the command execution tool to run this exact read-only command: /bin/sh -c 'printf ${commandOutput}; sleep 20'. Do not skip or simulate the tool call. After the command finishes, reply with exactly ${followUpReply}. Do not modify files.`,
   );
   await followUpPrompt.press("Enter");
 
@@ -104,6 +104,10 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
   await expect
     .poll(() => activeTurn.locator(".task-turn-active-duration").textContent())
     .not.toBe(activeDuration);
+  await expect(tasksPage.locator(".task-work-command").last()).toContainText(
+    commandOutput,
+    { timeout: 60_000 },
+  );
 
   await page.goto(`/tasks?cwd=${encodeURIComponent(cwd)}`);
   await expect(createdTask).toBeVisible();
@@ -124,8 +128,9 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
   await expect(activeTurn).toHaveCount(0);
   const completedWork = tasksPage.locator(".task-turn-work").last();
   const finalResponse = finalAssistantMessages.filter({ hasText: followUpReply });
+  const completedWorkDetails = completedWork.locator(":scope > details");
   await expect(completedWork).toContainText("Worked for");
-  await expect(completedWork.locator("details")).not.toHaveAttribute("open", "");
+  await expect(completedWorkDetails).not.toHaveAttribute("open", "");
   await expect(finalResponse).toHaveCount(1);
   await expect
     .poll(() =>
@@ -134,7 +139,7 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
       ),
     )
     .toBe(true);
-  await completedWork.locator("summary").click();
+  await completedWorkDetails.locator(":scope > summary").click();
   await expect(completedWork).toContainText(commandOutput);
 
   await page.goto(`/tasks?cwd=${encodeURIComponent(cwd)}`);
@@ -142,8 +147,7 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
   await createdTask.click();
   await expect(markdownMessage).toBeVisible();
   await expect(finalResponse).toBeVisible();
-  await expect(tasksPage.locator(".task-turn-work").last().locator("details")).not.toHaveAttribute(
-    "open",
-    "",
-  );
+  await expect(
+    tasksPage.locator(".task-turn-work").last().locator(":scope > details"),
+  ).not.toHaveAttribute("open", "");
 });

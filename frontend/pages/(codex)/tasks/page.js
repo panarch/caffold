@@ -65,6 +65,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.taskGithubStatusState = "idle";
     this.taskGithubStatusRequestId = 0;
     this.events = [];
+    this.eventsByThread = new Map();
     this.eventsPage = { nextCursor: null };
     this.error = null;
     this.loading = false;
@@ -84,6 +85,8 @@ class CaffoldTasksPage extends HTMLElement {
     this.conversationScrollByThread = new Map();
     this.newTaskDraft = { prompt: "" };
     this.followUpDraft = "";
+    this.followUpDraftByThread = new Map();
+    this.followUpRequest = null;
     this.modelOptions = [];
     this.modelOptionsLoaded = false;
     this.modelOptionsLoading = false;
@@ -313,6 +316,7 @@ class CaffoldTasksPage extends HTMLElement {
 
   prepareRoute(route, options = {}) {
     this.ensureRendered();
+    this.rememberSelectedThreadEvents();
     if (
       options.preserveLoadedTask &&
       route?.threadId &&
@@ -346,6 +350,7 @@ class CaffoldTasksPage extends HTMLElement {
       }
       this.view = "detail";
       this.selectedThreadId = route.threadId;
+      this.followUpDraft = this.followUpDraftByThread.get(route.threadId) ?? "";
       this.taskDetail =
         this.taskDetail?.task?.threadId === route.threadId ? this.taskDetail : null;
       this.eventsPage =
@@ -430,7 +435,11 @@ class CaffoldTasksPage extends HTMLElement {
         return null;
       }
       this.taskDetail = detail;
-      this.events = detail.events ?? [];
+      this.events = mergeEvents(
+        this.eventsByThread.get(threadId) ?? [],
+        detail.events ?? [],
+      );
+      this.eventsByThread.set(threadId, this.events);
       this.eventsPage = detail.eventsPage ?? { nextCursor: null };
       this.loading = false;
       this.markTaskSeen(detail.task);
@@ -450,6 +459,20 @@ class CaffoldTasksPage extends HTMLElement {
       this.render();
       return null;
     }
+  }
+
+  rememberSelectedThreadEvents() {
+    if (!this.selectedThreadId || this.events.length === 0) {
+      return;
+    }
+
+    this.eventsByThread.set(
+      this.selectedThreadId,
+      mergeEvents(
+        this.eventsByThread.get(this.selectedThreadId) ?? [],
+        this.events,
+      ),
+    );
   }
 
   async loadTaskList({ force = false } = {}) {
@@ -1033,6 +1056,10 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   async sendFollowUpFromForm(form) {
+    if (this.followUpRequest?.threadId === this.selectedThreadId) {
+      return;
+    }
+
     this.captureDraft(form);
     const formData = new FormData(form);
     const prompt = `${formData.get("prompt") ?? ""}`.trim();
@@ -1040,8 +1067,11 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
 
-    form.prompt.value = "";
     const requestId = ++this.requestId;
+    const threadId = this.selectedThreadId;
+    const followUpRequest = { requestId, threadId };
+    this.followUpRequest = followUpRequest;
+    form.prompt.value = "";
     const optimisticEvent = optimisticUserMessageEvent(
       this.selectedThreadId,
       prompt,
@@ -1058,12 +1088,13 @@ class CaffoldTasksPage extends HTMLElement {
       this.patchTaskListTask(runningTask);
     }
     this.followUpDraft = "";
+    this.followUpDraftByThread.set(threadId, "");
     this.conversationScrollMode = "bottom";
     this.render();
 
     try {
       const detail = await sendTaskPrompt(
-        this.selectedThreadId,
+        threadId,
         prompt,
         this.turnOptions(),
         this.cwdPath,
@@ -1075,18 +1106,29 @@ class CaffoldTasksPage extends HTMLElement {
       this.events = mergeEvents(this.events, detail.events ?? []);
       this.eventsPage = detail.eventsPage ?? this.eventsPage;
       this.patchTaskListTask(detail.task);
-      this.conversationScrollMode = "bottom";
-      this.render();
+      this.conversationScrollMode = "bottom-if-needed";
     } catch (error) {
       if (requestId !== this.requestId) {
         return;
       }
+      this.events = this.events.filter((event) => event.id !== optimisticEvent.id);
       if (previousTask) {
         this.taskDetail = { ...this.taskDetail, task: previousTask };
         this.patchTaskListTask(previousTask);
       }
+      if (!this.followUpDraft) {
+        this.followUpDraft = prompt;
+        this.followUpDraftByThread.set(threadId, prompt);
+      }
       this.error = error;
-      this.render();
+      this.conversationScrollMode = "preserve";
+    } finally {
+      if (this.followUpRequest === followUpRequest) {
+        this.followUpRequest = null;
+      }
+      if (requestId === this.requestId && threadId === this.selectedThreadId) {
+        this.render();
+      }
     }
   }
 
@@ -1312,6 +1354,9 @@ class CaffoldTasksPage extends HTMLElement {
     }
     if (form.dataset.taskForm === "follow-up") {
       this.followUpDraft = `${formData.get("prompt") ?? ""}`;
+      if (this.selectedThreadId) {
+        this.followUpDraftByThread.set(this.selectedThreadId, this.followUpDraft);
+      }
     }
   }
 
@@ -2487,8 +2532,11 @@ class CaffoldTasksPage extends HTMLElement {
   }) {
     const model = this.selectedModelOption();
     const effort = this.selectedEffort();
+    const submitting =
+      formName === "follow-up" &&
+      this.followUpRequest?.threadId === this.selectedThreadId;
     return `
-      <form class="task-composer ${escapeHtml(className)}" data-task-form="${escapeHtml(formName)}">
+      <form class="task-composer ${escapeHtml(className)}" data-task-form="${escapeHtml(formName)}" aria-busy="${submitting ? "true" : "false"}">
         <div class="task-composer-panel">
           ${
             formName === "create"
@@ -2518,7 +2566,7 @@ class CaffoldTasksPage extends HTMLElement {
               }
               ${this.renderModelPicker(formName)}
             </div>
-            <button type="submit" class="task-send-button" aria-label="${escapeHtml(submitLabel)}" title="${escapeHtml(submitLabel)}">
+            <button type="submit" class="task-send-button" aria-label="${escapeHtml(submitLabel)}" title="${escapeHtml(submitLabel)}"${submitting ? " disabled" : ""}>
               <span class="task-send-arrow" aria-hidden="true">&uarr;</span>
             </button>
           </div>
@@ -3132,8 +3180,11 @@ function renderTurnGroup(group, task, options = {}) {
   }
 
   if (isComplete && assistantEvents.length > 0) {
-    const finalAssistantEvent = assistantEvents.at(-1);
-    const progressAssistantEvents = assistantEvents.slice(0, -1);
+    const finalAssistantEvent =
+      assistantEvents.findLast(isFinalAssistantEvent) ?? assistantEvents.at(-1);
+    const progressAssistantEvents = assistantEvents.filter(
+      (event) => event !== finalAssistantEvent,
+    );
     const hiddenWorkEvents = [...progressAssistantEvents, ...workEvents];
     if (hiddenWorkEvents.length > 0) {
       output.push(renderTurnWorkSummary(group, hiddenWorkEvents, terminalEvent));
@@ -3394,6 +3445,10 @@ function assistantMessagePhase(phase) {
     return "progress";
   }
   return null;
+}
+
+function isFinalAssistantEvent(event) {
+  return assistantMessagePhase(event?.payload?.phase ?? event?.payload?.item?.phase) === "final";
 }
 
 function renderThinkingEvent(event, text, task, eventState) {
@@ -3970,7 +4025,7 @@ function mergeEvents(leftEvents, rightEvents) {
   for (const event of [...leftEvents, ...rightEvents]) {
     const key = eventIdentityKey(event);
     if (key) {
-      byId.set(key, event);
+      byId.set(key, mergeEventRecord(byId.get(key), event));
     }
   }
   return dedupeCanonicalEvents([...byId.values()]).sort(
@@ -3978,6 +4033,22 @@ function mergeEvents(leftEvents, rightEvents) {
       (left.createdMs ?? 0) - (right.createdMs ?? 0) ||
       `${left.id ?? ""}`.localeCompare(`${right.id ?? ""}`),
   );
+}
+
+function mergeEventRecord(existing, incoming) {
+  if (!existing) {
+    return incoming;
+  }
+  const existingPayload = existing.payload ?? {};
+  const incomingPayload = incoming.payload ?? {};
+  const payload = { ...existingPayload, ...incomingPayload };
+  if (existingPayload.item || incomingPayload.item) {
+    payload.item = {
+      ...(existingPayload.item ?? {}),
+      ...(incomingPayload.item ?? {}),
+    };
+  }
+  return { ...existing, ...incoming, payload };
 }
 
 function optimisticUserMessageEvent(threadId, prompt, requestId) {
@@ -4092,7 +4163,7 @@ function eventIdentityKey(event) {
   const threadId = event.threadId ?? payload.threadId ?? "";
   const itemId = payload.itemId ?? payload.item?.id ?? "";
   if (itemId) {
-    return ["item", threadId, itemId].join(":");
+    return ["item", threadId, eventTurnId(event) ?? "", itemId].join(":");
   }
 
   const approvalId = payload.approvalId ?? "";
