@@ -2364,7 +2364,9 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
             command: "cargo test",
             cwd: "src",
             status: "completed",
-            aggregatedOutput: "test result: ok. 12 passed.",
+            aggregatedOutput:
+              "test result: ok. 12 passed.\n" +
+              "command-output-with-an-intentionally-long-unbroken-token-".repeat(18),
           },
           9,
         ),
@@ -2796,6 +2798,23 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(completedCommand).toContainText(
     "test result: ok",
   );
+  const completedCommandOutput = completedCommand.locator("pre");
+  await expect
+    .poll(() =>
+      completedCommandOutput.evaluate(
+        (element) => element.scrollWidth > element.clientWidth,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      tasksPage.evaluate(
+        (element) =>
+          document.documentElement.scrollWidth <= document.documentElement.clientWidth &&
+          element.scrollWidth <= element.clientWidth,
+      ),
+    )
+    .toBe(true);
   const workItemOrder = await tasksPage.locator(".task-work-item").evaluateAll((items) =>
     items.map((item) => item.getAttribute("data-event-type")),
   );

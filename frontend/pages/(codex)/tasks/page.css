@@ -232,8 +232,8 @@ caffold-tasks-page .task-icon-button:focus-visible {
 }
 
 caffold-tasks-page .task-action-icon {
-  width: 1rem;
-  height: 1rem;
+  width: 16px;
+  height: 16px;
   stroke-width: 2;
 }
 
@@ -668,7 +668,7 @@ caffold-tasks-page .task-detail-popover {
   position: fixed;
   inset: 112px 12px auto auto;
   width: fit-content;
-  max-width: min(34rem, calc(100vw - 24px));
+  max-width: min(544px, calc(100vw - 24px));
   max-height: min(60vh, 420px);
   margin: 0;
   padding: 12px;
@@ -687,7 +687,7 @@ caffold-tasks-page .task-detail-popover::backdrop {
 
 caffold-tasks-page .task-detail-popover dl {
   display: grid;
-  grid-template-columns: max-content minmax(12rem, 1fr);
+  grid-template-columns: max-content minmax(192px, 1fr);
   gap: 9px 14px;
   margin: 0;
 }
@@ -999,6 +999,7 @@ caffold-tasks-page .task-conversation-column {
   display: grid;
   gap: 20px;
   width: min(100%, 980px);
+  min-width: 0;
   margin: 0 auto;
 }
 
@@ -1007,6 +1008,7 @@ caffold-tasks-page .task-approvals {
   display: grid;
   gap: 22px;
   width: 100%;
+  min-width: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1125,20 +1127,20 @@ caffold-tasks-page .task-status-chip {
 }
 
 caffold-tasks-page .task-detail-status {
-  width: 1.35rem;
-  height: 1.35rem;
+  width: 22px;
+  height: 22px;
   justify-content: center;
   padding: 0;
 }
 
 caffold-tasks-page .task-status-icon {
-  width: 0.8rem;
-  height: 0.8rem;
+  width: 13px;
+  height: 13px;
 }
 
 caffold-tasks-page .task-status-spinner {
-  width: 0.78rem;
-  height: 0.78rem;
+  width: 13px;
+  height: 13px;
   border: 2px solid currentColor;
   border-right-color: transparent;
   border-radius: 999px;
@@ -1185,6 +1187,20 @@ caffold-tasks-page .task-message {
   display: grid;
   gap: 5px;
   width: 100%;
+  min-width: 0;
+}
+
+caffold-tasks-page .task-message-content,
+caffold-tasks-page .task-turn-work,
+caffold-tasks-page .task-turn-work-body,
+caffold-tasks-page .task-work-item,
+caffold-tasks-page .task-thinking details,
+caffold-tasks-page .task-command details,
+caffold-tasks-page .task-work-command details,
+caffold-tasks-page .task-tool-card,
+caffold-tasks-page .task-file-change article {
+  min-width: 0;
+  max-width: 100%;
 }
 
 caffold-tasks-page .task-message-header {
@@ -1250,6 +1266,7 @@ caffold-tasks-page .task-work-item header {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   min-height: 32px;
   padding: 7px 11px;
   border-bottom: 1px solid #e2e8e2;
@@ -1268,6 +1285,7 @@ caffold-tasks-page .task-work-command summary strong:first-child {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  min-width: 0;
 }
 
 caffold-tasks-page .task-thinking summary span:first-child::after,
@@ -1329,11 +1347,15 @@ caffold-tasks-page .task-work-command-body > span {
 }
 
 caffold-tasks-page .task-work-command-body > pre {
+  max-width: 100%;
   overflow-x: auto;
+  overscroll-behavior-inline: contain;
   padding: 9px 10px;
   border: 1px solid #e2e8e2;
   border-radius: 6px;
   background: var(--code-bg);
+  white-space: pre;
+  overflow-wrap: normal;
 }
 
 caffold-tasks-page .task-changed-files {
@@ -1592,7 +1614,7 @@ caffold-tasks-page .task-model-button {
 }
 
 caffold-tasks-page .task-model-button {
-  max-width: min(100%, 24rem);
+  max-width: min(100%, 384px);
   color: var(--text);
 }
 
@@ -1653,8 +1675,8 @@ caffold-tasks-page .task-model-popover {
   z-index: 10;
   top: calc(100% + 8px);
   left: 0;
-  width: min(31rem, calc(100vw - 32px));
-  max-height: min(38rem, calc(100vh - 180px));
+  width: min(496px, calc(100vw - 32px));
+  max-height: min(608px, calc(100vh - 180px));
   margin: 0;
   padding: 12px;
   overflow: auto;
@@ -1831,7 +1853,7 @@ caffold-tasks-page [data-status="waiting_for_approval"] {
     top: auto;
     inset: auto 10px 10px;
     width: auto;
-    max-height: min(34rem, calc(100vh - 24px));
+    max-height: min(544px, calc(100vh - 24px));
   }
 
   caffold-tasks-page .task-follow-up-form .task-model-popover {
@@ -1869,12 +1891,12 @@ caffold-tasks-page [data-status="waiting_for_approval"] {
   }
 
   caffold-tasks-page .tasks-header h1 {
-    font-size: 0.92rem;
+    font-size: 15px;
   }
 
   caffold-tasks-page .tasks-header p {
     overflow: hidden;
-    font-size: 0.72rem;
+    font-size: 12px;
     line-height: 1.1;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1902,6 +1924,10 @@ caffold-tasks-page [data-status="waiting_for_approval"] {
 
   caffold-tasks-page .tasks-header .task-primary-button .task-action-label {
     display: inline;
+  }
+
+  caffold-tasks-page .task-follow-up-form {
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
   }
 
   caffold-tasks-page .task-action-label {
