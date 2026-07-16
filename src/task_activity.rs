@@ -12,6 +12,7 @@ use serde_json::Value as JsonValue;
 const READ_CHUNK_BYTES: usize = 64 * 1024;
 const TASK_STARTED_MARKER: &[u8] = br#""type":"task_started""#;
 const TASK_COMPLETE_MARKER: &[u8] = br#""type":"task_complete""#;
+type ActivityChangeCallback = dyn Fn(String, bool) + Send + Sync;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RolloutActivity {
@@ -29,25 +30,28 @@ struct ObservedThreads {
 pub(crate) struct TaskActivityMonitor {
     observed: Arc<Mutex<ObservedThreads>>,
     watcher: Arc<Mutex<Option<RecommendedWatcher>>>,
+    on_change: Arc<ActivityChangeCallback>,
 }
 
 impl TaskActivityMonitor {
     pub(crate) fn new(on_change: impl Fn(String, bool) + Send + Sync + 'static) -> Self {
         let observed = Arc::new(Mutex::new(ObservedThreads::default()));
         let callback_observed = observed.clone();
-        let on_change = Arc::new(on_change);
+        let on_change: Arc<ActivityChangeCallback> = Arc::new(on_change);
+        let callback_on_change = on_change.clone();
         let callback = move |event: notify::Result<notify::Event>| {
             let Ok(event) = event else {
                 return;
             };
             for path in event.paths {
-                refresh_observed_path(&callback_observed, &on_change, &path);
+                refresh_observed_path(&callback_observed, &callback_on_change, &path);
             }
         };
         let watcher = notify::recommended_watcher(callback).ok();
         Self {
             observed,
             watcher: Arc::new(Mutex::new(watcher)),
+            on_change,
         }
     }
 
@@ -105,11 +109,31 @@ impl TaskActivityMonitor {
             .and_then(|observed| observed.activity_by_thread.get(thread_id).copied())
             == Some(RolloutActivity::Running)
     }
+
+    pub(crate) fn reconcile_running(&self) {
+        let running_paths = {
+            let Ok(observed) = self.observed.lock() else {
+                return;
+            };
+            observed
+                .thread_by_path
+                .iter()
+                .filter(|(_, thread_id)| {
+                    observed.activity_by_thread.get(*thread_id) == Some(&RolloutActivity::Running)
+                })
+                .map(|(path, _)| path.clone())
+                .collect::<Vec<_>>()
+        };
+
+        for path in running_paths {
+            refresh_observed_path(&self.observed, &self.on_change, &path);
+        }
+    }
 }
 
 fn refresh_observed_path(
     observed: &Mutex<ObservedThreads>,
-    on_change: &Arc<impl Fn(String, bool) + Send + Sync + 'static>,
+    on_change: &Arc<ActivityChangeCallback>,
     path: &Path,
 ) {
     let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
@@ -223,6 +247,38 @@ mod tests {
         assert_eq!(
             latest_rollout_activity(&path),
             Some(RolloutActivity::Running)
+        );
+    }
+
+    #[test]
+    fn reconciles_a_missed_completion_for_a_running_rollout() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("rollout.jsonl");
+        std::fs::write(&path, "{\"payload\":{\"type\":\"task_started\"}}\n").unwrap();
+        let changes = Arc::new(Mutex::new(Vec::new()));
+        let callback_changes = changes.clone();
+        let monitor = TaskActivityMonitor::new(move |thread_id, running| {
+            callback_changes.lock().unwrap().push((thread_id, running));
+        });
+        monitor.observe_thread(&serde_json::json!({
+            "id": "thread-1",
+            "path": path.to_string_lossy(),
+        }));
+        assert!(monitor.is_running("thread-1"));
+
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap();
+        writeln!(file, "{{\"payload\":{{\"type\":\"task_complete\"}}}}").unwrap();
+        monitor.reconcile_running();
+
+        assert!(!monitor.is_running("thread-1"));
+        assert!(
+            changes
+                .lock()
+                .unwrap()
+                .contains(&("thread-1".to_string(), false))
         );
     }
 }

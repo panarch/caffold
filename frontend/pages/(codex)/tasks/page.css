@@ -322,6 +322,21 @@ caffold-tasks-page .task-row-meta.task-status-chip {
   background: #edf3ef;
 }
 
+caffold-tasks-page .task-unseen-complete {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+}
+
+caffold-tasks-page .task-unseen-complete::before {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  content: "";
+}
+
 caffold-tasks-page .task-row-time {
   color: var(--muted);
   font-variant-numeric: tabular-nums;

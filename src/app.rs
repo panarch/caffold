@@ -1085,12 +1085,19 @@ async fn task_list_stream(State(state): State<AppState>) -> Result<Response, Api
 fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
     let receiver = state.task_events.subscribe();
     let shutdown = state.shutdown.subscribe();
+    let activity = thread_id.is_none().then(|| state.task_activity.clone());
+    let mut activity_reconcile = tokio::time::interval(Duration::from_secs(1));
+    activity_reconcile.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let stream = stream::unfold(
-        (receiver, shutdown, thread_id),
-        |(mut receiver, mut shutdown, thread_id)| async move {
+        (receiver, shutdown, thread_id, activity, activity_reconcile),
+        |(mut receiver, mut shutdown, thread_id, activity, mut activity_reconcile)| async move {
             loop {
                 tokio::select! {
                     _ = shutdown.recv() => return None,
+                    _ = activity_reconcile.tick(), if activity.is_some() => {
+                        activity.as_ref().unwrap().reconcile_running();
+                        continue;
+                    }
                     message = receiver.recv() => {
                         match message {
                             Ok(event) if thread_id.as_ref().is_none_or(|id| id == &event.thread_id) => {
@@ -1099,7 +1106,7 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
                                 let frame = format!("event: task-event\ndata: {payload}\n\n");
                                 return Some((
                                     Ok::<_, Infallible>(Bytes::from(frame)),
-                                    (receiver, shutdown, thread_id),
+                                    (receiver, shutdown, thread_id, activity, activity_reconcile),
                                 ));
                             }
                             Ok(_) => continue,

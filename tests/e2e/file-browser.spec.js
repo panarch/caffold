@@ -1646,6 +1646,17 @@ test("groups All Tasks by repository without worktree accordions", async ({ page
       body: JSON.stringify({ tasks }),
     }),
   );
+  await page.route(/\/api\/tasks\/thread_gluesql_feature(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        task: tasks[0],
+        events: [],
+        eventsPage: { nextCursor: null },
+        pendingApprovals: [],
+      }),
+    }),
+  );
 
   await page.goto("/tasks");
   const tasksPage = page.locator("caffold-tasks-page");
@@ -1690,6 +1701,18 @@ test("groups All Tasks by repository without worktree accordions", async ({ page
   });
   await expect(featureTask).toHaveAttribute("data-task-status", "idle");
   await expect(featureTask.locator(".task-status-spinner")).toHaveCount(0);
+  await expect(featureTask.locator(".task-unseen-complete")).toBeVisible();
+  await expect(featureTask.locator(".task-row-time")).toHaveCount(0);
+  await captureReviewScreenshot(page, testInfo, "tasks-completed-unseen");
+  await featureTask.click();
+  await expect(page).toHaveURL(/\/tasks\/thread_gluesql_feature$/);
+  await expect(featureTask.locator(".task-unseen-complete")).toHaveCount(0);
+  await page.goto("/tasks");
+  await expect(
+    tasksPage.locator(
+      '.task-row[data-thread-id="thread_gluesql_feature"] .task-unseen-complete',
+    ),
+  ).toHaveCount(0);
   await expect(tasksPage.locator('.task-row .task-status-label')).toHaveCount(0);
   await expect(tasksPage.locator(".task-row-summary")).toHaveCount(0);
   const treeLayout = await groups.nth(0).evaluate((group) => {

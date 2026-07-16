@@ -32,6 +32,7 @@ const TASK_LIST_MIN_WIDTH = 280;
 const TASK_LIST_MAX_WIDTH = 520;
 const TASK_DETAIL_MIN_WIDTH = 520;
 const TASK_LIST_RESIZER_WIDTH = 6;
+const TASK_SEEN_STORAGE_KEY = "caffold.tasks.seen-versions.v1";
 
 class CaffoldTasksPage extends HTMLElement {
   connectedCallback() {
@@ -57,6 +58,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.taskListStreamContext = "";
     this.taskListStreamNeedsSync = false;
     this.taskListWidth = TASK_LIST_DEFAULT_WIDTH;
+    this.taskSeenState = readTaskSeenState();
     this.taskDetail = null;
     this.taskGithubStatus = null;
     this.taskGithubStatusPath = "";
@@ -392,6 +394,7 @@ class CaffoldTasksPage extends HTMLElement {
       this.events = detail.events ?? [];
       this.eventsPage = detail.eventsPage ?? { nextCursor: null };
       this.loading = false;
+      this.markTaskSeen(detail.task);
       this.patchTaskListTask(detail.task);
       this.connectStream(threadId);
       this.conversationScrollMode = "bottom";
@@ -428,6 +431,7 @@ class CaffoldTasksPage extends HTMLElement {
         return null;
       }
       this.tasks = response.tasks ?? [];
+      this.initializeTaskSeenState(this.tasks);
       this.taskListLoading = false;
       this.taskListLoaded = true;
       this.markTaskListDirty();
@@ -707,6 +711,7 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
     if (action === "open-task") {
+      this.markTaskSeenByThreadId(element.dataset.threadId);
       this.requestRoute({ kind: "tasks", threadId: element.dataset.threadId });
       return;
     }
@@ -2209,7 +2214,7 @@ class CaffoldTasksPage extends HTMLElement {
     const selected = threadId === this.selectedThreadId ? ` aria-current="true"` : "";
     const status = taskStatusView(task.status)?.status ?? "idle";
     const busy = status === "running" ? ` aria-busy="true"` : "";
-    const meta = renderTaskRowMeta(task);
+    const meta = renderTaskRowMeta(task, this.isTaskCompletionUnseen(task));
     const worktree = task?.worktree?.linked
       ? `<span class="task-row-worktree" title="${escapeHtml(taskWorktreeLabel(task))}">
           ${renderInlineIcon("GitBranch", "Linked worktree", "task-row-worktree-icon")}
@@ -2242,11 +2247,81 @@ class CaffoldTasksPage extends HTMLElement {
     }
   }
 
+  initializeTaskSeenState(tasks) {
+    let changed = false;
+    if (!this.taskSeenState.initialized) {
+      for (const task of tasks) {
+        changed = rememberTaskVersion(this.taskSeenState, task) || changed;
+      }
+      this.taskSeenState.initialized = true;
+      changed = true;
+    } else {
+      for (const task of tasks) {
+        const threadId = taskThreadId(task);
+        if (
+          this.isTaskCurrentlyViewed(threadId) ||
+          (!hasSeenTaskVersion(this.taskSeenState, threadId) &&
+            !isTaskCompletionStatus(task.status))
+        ) {
+          changed = rememberTaskVersion(this.taskSeenState, task) || changed;
+        }
+      }
+    }
+    if (changed) {
+      writeTaskSeenState(this.taskSeenState);
+    }
+  }
+
+  isTaskCompletionUnseen(task) {
+    const threadId = taskThreadId(task);
+    const version = taskUpdatedMs(task);
+    if (
+      !this.taskSeenState.initialized ||
+      !threadId ||
+      this.isTaskCurrentlyViewed(threadId) ||
+      !version ||
+      !isTaskCompletionStatus(task.status)
+    ) {
+      return false;
+    }
+    const seenVersion = Number(this.taskSeenState.versions[threadId]);
+    return !Number.isFinite(seenVersion) || version > seenVersion;
+  }
+
+  markTaskSeenByThreadId(threadId) {
+    const task = this.tasks.find((candidate) => taskThreadId(candidate) === threadId);
+    if (!task || !this.markTaskSeen(task)) {
+      return;
+    }
+    this.patchTaskListTask(task);
+  }
+
+  isTaskCurrentlyViewed(threadId) {
+    return (
+      threadId === this.selectedThreadId &&
+      this.view === "detail" &&
+      this.taskDetailView === "conversation" &&
+      this.getClientRects().length > 0
+    );
+  }
+
+  markTaskSeen(task) {
+    if (!task || !rememberTaskVersion(this.taskSeenState, task)) {
+      return false;
+    }
+    this.taskSeenState.initialized = true;
+    writeTaskSeenState(this.taskSeenState);
+    return true;
+  }
+
   patchTaskListTask(task) {
     if (!task || !this.taskListLoaded) {
       return;
     }
     const threadId = taskThreadId(task);
+    if (this.isTaskCurrentlyViewed(threadId)) {
+      this.markTaskSeen(task);
+    }
     const index = this.tasks.findIndex((candidate) => taskThreadId(candidate) === threadId);
     if (index < 0) {
       this.tasks = [...this.tasks, task];
@@ -3935,10 +4010,19 @@ function parseJson(value) {
   }
 }
 
-function renderTaskRowMeta(task) {
+function renderTaskRowMeta(task, unseen = false) {
   const status = normalizeTaskStatus(task.status);
   if (status && status !== "completed" && taskStatusView(status)) {
     return renderTaskStatusChip(status, "task-row-meta", { label: false });
+  }
+  if (unseen) {
+    return `
+      <span
+        class="task-row-meta task-unseen-complete"
+        title="Completed - not viewed"
+        aria-label="Completed - not viewed"
+      ></span>
+    `;
   }
 
   const ms = task.recencyMs ?? task.updatedMs;
@@ -3992,6 +4076,56 @@ function taskStatusView(status) {
 
 function normalizeTaskStatus(status) {
   return `${status ?? ""}`.trim();
+}
+
+function isTaskCompletionStatus(status) {
+  return ["", "completed", "idle", "notLoaded"].includes(normalizeTaskStatus(status));
+}
+
+function readTaskSeenState() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(TASK_SEEN_STORAGE_KEY) ?? "null");
+    if (parsed && typeof parsed === "object" && parsed.versions) {
+      return {
+        initialized: Boolean(parsed.initialized),
+        versions: { ...parsed.versions },
+      };
+    }
+  } catch {
+    // Treat unavailable or invalid local storage as a fresh local view state.
+  }
+  return { initialized: false, versions: {} };
+}
+
+function writeTaskSeenState(state) {
+  try {
+    const versions = Object.fromEntries(
+      Object.entries(state.versions)
+        .sort((left, right) => Number(right[1]) - Number(left[1]))
+        .slice(0, 1_000),
+    );
+    state.versions = versions;
+    localStorage.setItem(
+      TASK_SEEN_STORAGE_KEY,
+      JSON.stringify({ initialized: true, versions }),
+    );
+  } catch {
+    // The indicator remains session-local when storage is unavailable.
+  }
+}
+
+function hasSeenTaskVersion(state, threadId) {
+  return Object.hasOwn(state.versions, threadId);
+}
+
+function rememberTaskVersion(state, task) {
+  const threadId = taskThreadId(task);
+  const version = taskUpdatedMs(task);
+  if (!threadId || !version || Number(state.versions[threadId]) >= version) {
+    return false;
+  }
+  state.versions[threadId] = version;
+  return true;
 }
 
 function formatStatus(status) {
