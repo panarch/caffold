@@ -2,10 +2,12 @@ import { renderInlineIcon, warmIcons } from "../../components/icons.js";
 import {
   CODE_SIZES,
   FILE_TREE_SIZES,
+  TASK_DETAIL_SIZES,
   TASK_LIST_SIZES,
   getSettings,
   setCodeSize,
   setFileTreeSize,
+  setTaskDetailSize,
   setTaskListSize,
 } from "../../settings.js";
 
@@ -62,6 +64,11 @@ class CaffoldSettingsPage extends HTMLElement {
 
     if (button.dataset.action === "set-task-list-size") {
       setTaskListSize(button.dataset.value);
+      return;
+    }
+
+    if (button.dataset.action === "set-task-detail-size") {
+      setTaskDetailSize(button.dataset.value);
     }
   }
 
@@ -77,6 +84,11 @@ class CaffoldSettingsPage extends HTMLElement {
       TASK_LIST_SIZES,
       settings.taskListSize,
       "set-task-list-size",
+    );
+    const taskDetailOptions = renderOptions(
+      TASK_DETAIL_SIZES,
+      settings.taskDetailSize,
+      "set-task-detail-size",
     );
 
     this.innerHTML = `
@@ -152,6 +164,29 @@ class CaffoldSettingsPage extends HTMLElement {
             <div class="settings-task-preview-row">
               <span>Review task navigation</span>
               <time>now</time>
+            </div>
+          </div>
+          <div class="settings-field">
+            <div class="settings-field-copy">
+              <strong>Task detail size</strong>
+              <span>Adjusts conversation, work summaries, and composer text without changing code size.</span>
+            </div>
+            <div class="settings-segmented-control settings-segmented-control-three" role="radiogroup" aria-label="Task detail size">
+              ${taskDetailOptions}
+            </div>
+          </div>
+          <div class="settings-task-detail-preview" aria-label="Task detail preview">
+            <div class="settings-task-detail-message" data-message-role="user">
+              <time>10:42</time>
+              <p>Keep the review focused.</p>
+            </div>
+            <details class="settings-task-detail-work">
+              <summary>Worked for 18s <span>3 updates</span></summary>
+            </details>
+            <div class="settings-task-detail-message" data-message-role="assistant">
+              <time>10:43</time>
+              <h3>Review complete</h3>
+              <p>The changed behavior is covered by a focused test.</p>
             </div>
           </div>
         </section>

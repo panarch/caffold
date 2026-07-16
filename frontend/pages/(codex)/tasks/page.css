@@ -114,13 +114,55 @@ caffold-tasks-page .task-detail-summary p {
   margin: 0;
 }
 
-caffold-tasks-page .tasks-header h1,
-caffold-tasks-page .task-detail-summary h2 {
+caffold-tasks-page .tasks-header h1 {
   overflow: hidden;
   font-size: 1rem;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+caffold-tasks-page .task-detail-summary h2 {
+  overflow: hidden;
+  font-size: var(--task-detail-heading-size);
+  line-height: var(--task-detail-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+caffold-tasks-page .task-detail-meta {
+  font-size: var(--task-detail-meta-size);
+  line-height: 16px;
+}
+
+caffold-tasks-page .task-conversation-pane,
+caffold-tasks-page .task-composer {
+  font-size: var(--task-detail-font-size);
+  line-height: var(--task-detail-line-height);
+}
+
+caffold-tasks-page .task-message-content,
+caffold-tasks-page .task-thinking-content,
+caffold-tasks-page .task-file-change p,
+caffold-tasks-page .task-turn-work-body {
+  font-size: var(--task-detail-font-size);
+  line-height: var(--task-detail-line-height);
+}
+
+caffold-tasks-page .task-message-header,
+caffold-tasks-page .task-status-chip,
+caffold-tasks-page .task-stream-state,
+caffold-tasks-page .task-turn-active,
+caffold-tasks-page .task-turn-work summary,
+caffold-tasks-page .task-thinking summary,
+caffold-tasks-page .task-command summary,
+caffold-tasks-page .task-tool-card header,
+caffold-tasks-page .task-file-change header,
+caffold-tasks-page .task-work-item header,
+caffold-tasks-page .task-composer-context,
+caffold-tasks-page .task-model-note {
+  font-size: var(--task-detail-meta-size);
+  line-height: 16px;
 }
 
 caffold-tasks-page .tasks-header p,
@@ -656,14 +698,16 @@ caffold-tasks-page .task-detail-popover dl div {
 
 caffold-tasks-page .task-detail-popover dt {
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: var(--task-detail-meta-size);
+  line-height: 16px;
 }
 
 caffold-tasks-page .task-detail-popover dd {
   min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
-  font-size: 0.8rem;
+  font-size: var(--task-detail-font-size);
+  line-height: var(--task-detail-line-height);
 }
 
 caffold-tasks-page .task-conversation-pane,
@@ -971,9 +1015,10 @@ caffold-tasks-page .task-approvals {
 
 caffold-tasks-page .task-load-older {
   justify-self: center;
-  min-height: 1.2rem;
+  min-height: 19px;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: var(--task-detail-meta-size);
+  line-height: 16px;
 }
 
 caffold-tasks-page .task-stream-state {
@@ -984,7 +1029,6 @@ caffold-tasks-page .task-stream-state {
   min-height: 28px;
   padding: 3px 8px;
   color: var(--muted);
-  font-size: 0.76rem;
 }
 
 caffold-tasks-page .task-stream-state[data-stream-state="error"] {
@@ -1056,7 +1100,8 @@ caffold-tasks-page .task-event-status {
   justify-content: center;
   gap: 8px;
   padding: 2px 0;
-  font-size: 0.78rem;
+  font-size: var(--task-detail-meta-size);
+  line-height: 16px;
 }
 
 caffold-tasks-page .task-status-chip {
@@ -1137,20 +1182,16 @@ caffold-tasks-page .task-message-header {
   display: flex;
   align-items: center;
   color: var(--muted);
-  font-size: 0.72rem;
-  line-height: 1.2;
 }
 
 caffold-tasks-page .task-command pre,
 caffold-tasks-page .task-tool-card pre,
 caffold-tasks-page .task-work-item pre {
   margin: 0;
+  font-size: var(--code-viewer-font-size);
+  line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-
-caffold-tasks-page .task-message-content {
-  line-height: 1.5;
 }
 
 caffold-tasks-page .task-message[data-message-role="user"] .task-message-header {
@@ -1242,7 +1283,7 @@ caffold-tasks-page .task-tool-card header time,
 caffold-tasks-page .task-file-change header time,
 caffold-tasks-page .task-work-item header time {
   margin-left: auto;
-  font-size: 0.78rem;
+  font-size: var(--task-detail-meta-size);
 }
 
 caffold-tasks-page .task-thinking-content,
@@ -1266,7 +1307,7 @@ caffold-tasks-page .task-changed-files code {
   display: block;
   overflow-wrap: anywhere;
   color: var(--text);
-  font-size: 0.82rem;
+  font-size: var(--code-viewer-font-size);
 }
 
 caffold-tasks-page .task-turn-work {
@@ -1284,7 +1325,6 @@ caffold-tasks-page .task-turn-active {
   width: min(100%, 850px);
   min-height: 30px;
   color: var(--muted);
-  font-size: 0.82rem;
 }
 
 caffold-tasks-page .task-turn-active .task-status-spinner {
@@ -1330,7 +1370,7 @@ caffold-tasks-page .task-turn-work summary::marker {
 }
 
 caffold-tasks-page .task-turn-work summary span:last-child {
-  font-size: 0.78rem;
+  font-size: var(--task-detail-meta-size);
 }
 
 caffold-tasks-page .task-turn-work summary span:first-child {
@@ -1375,7 +1415,6 @@ caffold-tasks-page .task-command[data-command-status="waiting_for_approval"] det
 caffold-tasks-page .task-file-change p {
   margin: 0;
   padding: 10px 11px;
-  font-size: 0.85rem;
 }
 
 caffold-tasks-page .task-follow-up-form {
@@ -1411,7 +1450,6 @@ caffold-tasks-page .task-composer-context {
   margin: 8px 10px 0;
   padding: 0 6px;
   color: var(--muted);
-  font-size: 0.76rem;
 }
 
 caffold-tasks-page .task-composer-context > span {
@@ -1445,14 +1483,15 @@ caffold-tasks-page .task-composer-context-icon {
 caffold-tasks-page .task-composer textarea {
   width: 100%;
   min-width: 0;
-  min-height: calc(2lh + 24px);
-  max-height: calc(10.5lh + 24px);
+  min-height: var(--task-detail-composer-min-height);
+  max-height: var(--task-detail-composer-max-height);
   padding: 14px 18px 10px;
   border: 0;
   background: transparent;
   color: var(--text);
   outline: none;
-  line-height: 1.35;
+  font-size: var(--task-detail-font-size);
+  line-height: var(--task-detail-line-height);
   overflow-y: hidden;
   resize: none;
 }
@@ -1522,16 +1561,16 @@ caffold-tasks-page .task-model-button:focus-visible {
 }
 
 caffold-tasks-page .task-model-icon {
-  width: 1rem;
-  height: 1rem;
+  width: 16px;
+  height: 16px;
   color: var(--muted);
   stroke-width: 2;
 }
 
 caffold-tasks-page .task-model-caret {
   color: var(--muted);
-  font-size: 0.95rem;
-  line-height: 1;
+  font-size: 15px;
+  line-height: 15px;
 }
 
 caffold-tasks-page .task-send-button {
@@ -1554,7 +1593,7 @@ caffold-tasks-page .task-send-button:focus-visible {
 
 caffold-tasks-page .task-send-arrow {
   display: block;
-  font-size: 1.45rem;
+  font-size: 23px;
   font-weight: 500;
   line-height: 1;
 }
@@ -1590,7 +1629,7 @@ caffold-tasks-page .task-model-popover p {
   margin: 0;
   padding: 6px 8px;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: var(--task-detail-meta-size);
 }
 
 caffold-tasks-page .task-model-popover hr {
@@ -1631,14 +1670,14 @@ caffold-tasks-page .task-model-option span {
 
 caffold-tasks-page .task-model-option small {
   color: var(--muted);
-  font-size: 0.78rem;
-  line-height: 1.25;
+  font-size: var(--task-detail-meta-size);
+  line-height: 16px;
   overflow-wrap: anywhere;
 }
 
 caffold-tasks-page .task-model-check {
-  width: 1rem;
-  height: 1rem;
+  width: 16px;
+  height: 16px;
   color: var(--accent);
   stroke-width: 2.4;
 }
@@ -1828,7 +1867,7 @@ caffold-tasks-page [data-status="waiting_for_approval"] {
   }
 
   caffold-tasks-page .task-detail-summary h2 {
-    font-size: 0.88rem;
+    font-size: var(--task-detail-heading-size);
   }
 
   caffold-tasks-page .task-detail-summary .task-detail-meta {

@@ -62,6 +62,12 @@
   --task-group-font-size: 12px;
   --task-group-row-height: 28px;
   --task-list-icon-size: 15px;
+  --task-detail-font-size: 15px;
+  --task-detail-meta-size: 12px;
+  --task-detail-heading-size: 16px;
+  --task-detail-line-height: 22px;
+  --task-detail-composer-min-height: 68px;
+  --task-detail-composer-max-height: 255px;
   --font-mono: ui-monospace, monospace;
   --font-sans: system-ui, sans-serif;
 }
@@ -128,6 +134,33 @@
   --task-group-font-size: 14px;
   --task-group-row-height: 32px;
   --task-list-icon-size: 17px;
+}
+
+:root[data-task-detail-size="compact"] {
+  --task-detail-font-size: 13px;
+  --task-detail-meta-size: 11px;
+  --task-detail-heading-size: 14px;
+  --task-detail-line-height: 19px;
+  --task-detail-composer-min-height: 62px;
+  --task-detail-composer-max-height: 224px;
+}
+
+:root[data-task-detail-size="default"] {
+  --task-detail-font-size: 15px;
+  --task-detail-meta-size: 12px;
+  --task-detail-heading-size: 16px;
+  --task-detail-line-height: 22px;
+  --task-detail-composer-min-height: 68px;
+  --task-detail-composer-max-height: 255px;
+}
+
+:root[data-task-detail-size="large"] {
+  --task-detail-font-size: 17px;
+  --task-detail-meta-size: 14px;
+  --task-detail-heading-size: 18px;
+  --task-detail-line-height: 25px;
+  --task-detail-composer-min-height: 74px;
+  --task-detail-composer-max-height: 287px;
 }
 
 @media (pointer: fine) {

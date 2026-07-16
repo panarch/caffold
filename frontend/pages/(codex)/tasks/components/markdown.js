@@ -57,7 +57,7 @@ class CaffoldTaskMarkdown extends HTMLElement {
           min-width: 0;
           color: inherit;
           font: inherit;
-          line-height: 1.55;
+          line-height: inherit;
         }
 
         .markdown-body {
@@ -133,6 +133,8 @@ class CaffoldTaskMarkdown extends HTMLElement {
           border: 1px solid var(--border);
           border-radius: 6px;
           background: var(--code-bg);
+          font-size: var(--code-viewer-font-size);
+          line-height: 1.55;
           white-space: pre;
           overscroll-behavior-x: contain;
         }

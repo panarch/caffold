@@ -59,10 +59,29 @@ export const TASK_LIST_SIZES = Object.freeze([
   },
 ]);
 
+export const TASK_DETAIL_SIZES = Object.freeze([
+  {
+    value: "compact",
+    label: "Compact",
+    description: "13 px text",
+  },
+  {
+    value: "default",
+    label: "Default",
+    description: "15 px text",
+  },
+  {
+    value: "large",
+    label: "Large",
+    description: "17 px text",
+  },
+]);
+
 const DEFAULT_SETTINGS = Object.freeze({
   fileTreeSize: "auto",
   codeSize: "compact",
   taskListSize: "default",
+  taskDetailSize: "default",
 });
 
 export function getSettings() {
@@ -107,6 +126,19 @@ export function setTaskListSize(value) {
   return settings;
 }
 
+export function setTaskDetailSize(value) {
+  const taskDetailSize = validTaskDetailSize(value)
+    ? value
+    : DEFAULT_SETTINGS.taskDetailSize;
+  const settings = {
+    ...getSettings(),
+    taskDetailSize,
+  };
+
+  persistAndApply(settings);
+  return settings;
+}
+
 export function applySettings(settings = getSettings()) {
   if (typeof document === "undefined") {
     return;
@@ -115,6 +147,7 @@ export function applySettings(settings = getSettings()) {
   document.documentElement.dataset.fileTreeSize = settings.fileTreeSize;
   document.documentElement.dataset.codeSize = settings.codeSize;
   document.documentElement.dataset.taskListSize = settings.taskListSize;
+  document.documentElement.dataset.taskDetailSize = settings.taskDetailSize;
 }
 
 function normalizeSettings(value) {
@@ -125,6 +158,9 @@ function normalizeSettings(value) {
     taskListSize: validTaskListSize(value?.taskListSize)
       ? value.taskListSize
       : DEFAULT_SETTINGS.taskListSize,
+    taskDetailSize: validTaskDetailSize(value?.taskDetailSize)
+      ? value.taskDetailSize
+      : DEFAULT_SETTINGS.taskDetailSize,
   };
 }
 
@@ -138,6 +174,10 @@ function validCodeSize(value) {
 
 function validTaskListSize(value) {
   return TASK_LIST_SIZES.some((option) => option.value === value);
+}
+
+function validTaskDetailSize(value) {
+  return TASK_DETAIL_SIZES.some((option) => option.value === value);
 }
 
 function persistAndApply(settings) {

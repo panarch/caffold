@@ -453,6 +453,26 @@ test("opens browser-local settings and persists viewer sizes", async ({ page }, 
   await expect(taskPreviewRow).toHaveCSS("min-height", "30px");
   await expect(taskPreviewGroup).toHaveCSS("min-height", "24px");
 
+  const taskDetailPreview = settingsPage.locator(".settings-task-detail-preview");
+  const taskDetailMessage = taskDetailPreview.locator(
+    '.settings-task-detail-message[data-message-role="assistant"] p',
+  );
+  const taskDetailMeta = taskDetailPreview.locator("time").first();
+  const largeTaskDetail = settingsPage.locator(
+    'button[data-action="set-task-detail-size"][data-value="large"]',
+  );
+  await expect(taskDetailPreview).toHaveCSS("font-size", "15px");
+  await expect(taskDetailMessage).toHaveCSS("line-height", "22px");
+  await expect(taskDetailMeta).toHaveCSS("font-size", "12px");
+  await largeTaskDetail.click();
+  await expect(largeTaskDetail).toHaveAttribute("aria-checked", "true");
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.dataset.taskDetailSize))
+    .toBe("large");
+  await expect(taskDetailPreview).toHaveCSS("font-size", "17px");
+  await expect(taskDetailMessage).toHaveCSS("line-height", "25px");
+  await expect(taskDetailMeta).toHaveCSS("font-size", "14px");
+
   await captureReviewScreenshot(page, testInfo, "settings-appearance");
   await page.reload();
   await expect(page).toHaveURL("/settings");
@@ -467,6 +487,11 @@ test("opens browser-local settings and persists viewer sizes", async ({ page }, 
   await expect(
     settingsPage.locator(
       'button[data-action="set-task-list-size"][data-value="compact"]',
+    ),
+  ).toHaveAttribute("aria-checked", "true");
+  await expect(
+    settingsPage.locator(
+      'button[data-action="set-task-detail-size"][data-value="large"]',
     ),
   ).toHaveAttribute("aria-checked", "true");
   await settingsPage.locator('button[data-action="close-settings"]').click();
@@ -2566,9 +2591,17 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(tasksPage).toContainText("Thread thread_1");
   await expect(tasksPage.locator(".task-detail-meta")).toContainText("main · src");
   await expect(tasksPage.locator(".task-conversation")).toBeVisible();
+  await expect(tasksPage.locator(".task-detail-summary h2")).toHaveCSS(
+    "font-size",
+    "16px",
+  );
+  await expect(tasksPage.locator(".task-detail-meta")).toHaveCSS("font-size", "12px");
   await expect(tasksPage.locator('.task-message[data-message-role="user"]')).toContainText(
     "Inspect the planner changes",
   );
+  await expect(
+    tasksPage.locator('.task-message[data-message-role="user"] .task-message-content'),
+  ).toHaveCSS("font-size", "15px");
   await expect(tasksPage).toContainText("Command Approval");
   await expect(tasksPage).toContainText("cargo test");
   await expect(tasksPage).toContainText("Run the test suite");
