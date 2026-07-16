@@ -1512,6 +1512,39 @@ fn handle_codex_notification(
         return;
     };
     match method {
+        "turn/started" => {
+            let event = task_event_record(
+                &thread_id,
+                &event_id_from_params("turn_started", &params),
+                "turn_started",
+                "Turn started",
+                Some(params),
+                now_ms(),
+            );
+            let _ = task_events.send(event);
+        }
+        "thread/status/changed" => {
+            let status = normalized_thread_status(params.get("status"));
+            let summary = match status.as_str() {
+                "running" => "Thread running",
+                "failed" => "Thread failed",
+                "idle" | "notLoaded" => "Thread idle",
+                _ => "Thread status changed",
+            };
+            let event = task_event_record(
+                &thread_id,
+                &event_id_from_params("thread_status_changed", &params),
+                "thread_status_changed",
+                summary,
+                Some(json!({
+                    "threadId": thread_id,
+                    "status": status,
+                    "notification": params,
+                })),
+                now_ms(),
+            );
+            let _ = task_events.send(event);
+        }
         "item/completed" => {
             if let Some(event) = task_event_from_thread_item(&thread_id, now_ms(), &params) {
                 let _ = task_events.send(event);
@@ -2009,8 +2042,11 @@ fn thread_cwd(thread: &JsonValue) -> Option<&str> {
 }
 
 fn thread_status(thread: &JsonValue) -> String {
-    match thread
-        .get("status")
+    normalized_thread_status(thread.get("status"))
+}
+
+fn normalized_thread_status(status: Option<&JsonValue>) -> String {
+    match status
         .and_then(|status| status.get("type"))
         .and_then(JsonValue::as_str)
     {
@@ -2802,6 +2838,37 @@ mod tests {
             git(&outside, &["init", "-b", "main"]);
             assert!(resolve_task_cwd(&fs, outside.to_str().unwrap()).is_none());
         }
+    }
+
+    #[test]
+    fn codex_notifications_publish_live_task_status() {
+        let (sender, mut receiver) = broadcast::channel(4);
+
+        handle_codex_notification(
+            &sender,
+            "turn/started",
+            json!({
+                "threadId": "thread_1",
+                "turn": { "id": "turn_1", "status": "inProgress" }
+            }),
+        );
+        let started = receiver.try_recv().unwrap();
+        assert_eq!(started.thread_id, "thread_1");
+        assert_eq!(started.event_type, "turn_started");
+        assert_eq!(started.payload.unwrap()["turn"]["id"], "turn_1");
+
+        handle_codex_notification(
+            &sender,
+            "thread/status/changed",
+            json!({
+                "threadId": "thread_1",
+                "status": { "type": "active", "activeFlags": [] }
+            }),
+        );
+        let status = receiver.try_recv().unwrap();
+        assert_eq!(status.thread_id, "thread_1");
+        assert_eq!(status.event_type, "thread_status_changed");
+        assert_eq!(status.payload.unwrap()["status"], "running");
     }
 
     #[tokio::test]

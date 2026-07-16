@@ -162,6 +162,12 @@ class CaffoldAppShell extends HTMLElement {
       this.syncHeaderReviewContext();
     });
     this.addEventListener("caffold:request-github-route", (event) => {
+      if (event.detail.options?.returnRoute) {
+        this.taskReviewReturnRoute = event.detail.options.returnRoute;
+        this.taskReviewRelatedPaths = (event.detail.options.taskRelatedPaths ?? [])
+          .map(cleanPath)
+          .filter(Boolean);
+      }
       this.navigateOrOpenGithubRoute(event.detail.route, event.detail.options);
     });
     this.addEventListener("caffold:github-review-state-change", () => {
@@ -468,11 +474,18 @@ class CaffoldAppShell extends HTMLElement {
       return null;
     }
 
-    const cwd = cleanPath(this.gitRepository?.rootPath || this.preferredReviewContextPath());
+    const explicitCwd = cleanContextPath(route.cwd);
+    const cwd =
+      explicitCwd ||
+      cleanContextPath(this.gitRepository?.rootPath || this.preferredReviewContextPath());
     if (!cwd) {
       return null;
     }
-    const path = route.path ? this.repositoryRelativePath(route.path) : "";
+    const path = route.path
+      ? explicitCwd
+        ? cleanPath(route.path)
+        : this.repositoryRelativePath(route.path)
+      : "";
     return { ...route, cwd, path };
   }
 
@@ -639,11 +652,11 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   async ensureReviewContext(cwd) {
-    const targetPath = cleanPath(cwd || this.preferredReviewContextPath());
+    const targetPath = cleanContextPath(cwd || this.preferredReviewContextPath());
     if (!targetPath) {
       return false;
     }
-    if (cleanPath(this.gitRepository?.rootPath) === targetPath) {
+    if (cleanContextPath(this.gitRepository?.rootPath) === targetPath) {
       this.directoryContextPath = targetPath;
       this.pathbar.path = targetPath;
       return true;
@@ -657,7 +670,7 @@ class CaffoldAppShell extends HTMLElement {
       return false;
     }
 
-    const repositoryPath = cleanPath(directory.git.rootPath || directory.path);
+    const repositoryPath = cleanContextPath(directory.git.rootPath || directory.path);
     this.directoryContextPath = repositoryPath;
     this.pathbar.path = repositoryPath;
     this.applyRepositoryContext(repositoryPath, directory.git);
@@ -665,8 +678,8 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   canonicalReviewRoute(route) {
-    const cwd = cleanPath(this.gitRepository?.rootPath || route.cwd);
-    if (cwd === cleanPath(route.cwd)) {
+    const cwd = cleanContextPath(this.gitRepository?.rootPath || route.cwd);
+    if (cwd === cleanContextPath(route.cwd)) {
       return route;
     }
 
@@ -678,7 +691,7 @@ class CaffoldAppShell extends HTMLElement {
 
   canApplyLoadedGitRoute(route) {
     if (
-      cleanPath(this.gitRepository?.rootPath) !== cleanPath(route.cwd) ||
+      cleanContextPath(this.gitRepository?.rootPath) !== cleanContextPath(route.cwd) ||
       !this.reviewWorkspace.isActive("git") ||
       !this.gitRepository
     ) {
@@ -690,7 +703,7 @@ class CaffoldAppShell extends HTMLElement {
 
   canApplyLoadedGithubRoute(route) {
     if (
-      cleanPath(this.gitRepository?.rootPath) !== cleanPath(route.cwd) ||
+      cleanContextPath(this.gitRepository?.rootPath) !== cleanContextPath(route.cwd) ||
       !this.reviewWorkspace.isActive("github") ||
       !this.gitRepository
     ) {
@@ -774,7 +787,7 @@ class CaffoldAppShell extends HTMLElement {
     if (!route || routeSurface(route) === "tasks" || route.kind === "settings") {
       return route;
     }
-    if (cleanPath(route.cwd)) {
+    if (cleanContextPath(route.cwd)) {
       return route;
     }
 
@@ -796,7 +809,7 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   preferredReviewContextPath() {
-    return cleanPath(
+    return cleanContextPath(
       this.codexWorkspace?.selectedTaskContextPath?.() ||
         this.gitRepository?.rootPath ||
         this.filesPage?.currentPath ||
@@ -847,6 +860,11 @@ function cleanPath(path) {
     .split("/")
     .filter((segment) => segment && segment !== "." && segment !== "..")
     .join("/");
+}
+
+function cleanContextPath(path) {
+  const value = `${path ?? ""}`.trim();
+  return value === "." ? value : cleanPath(value);
 }
 
 function joinLogicalPath(rootPath, relativePath = "") {

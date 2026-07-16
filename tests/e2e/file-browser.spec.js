@@ -433,6 +433,26 @@ test("opens browser-local settings and persists viewer sizes", async ({ page }, 
     .poll(() => page.evaluate(() => document.documentElement.dataset.codeSize))
     .toBe("large");
 
+  const taskPreview = settingsPage.locator(".settings-task-preview");
+  const taskPreviewGroup = taskPreview.locator(".settings-task-preview-group");
+  const taskPreviewRow = taskPreview.locator(".settings-task-preview-row");
+  const compactTasks = settingsPage.locator(
+    'button[data-action="set-task-list-size"][data-value="compact"]',
+  );
+  await settingsPage
+    .locator('button[data-action="set-task-list-size"][data-value="default"]')
+    .click();
+  await expect(taskPreviewRow).toHaveCSS("min-height", "36px");
+  await expect(taskPreviewGroup).toHaveCSS("min-height", "28px");
+  await compactTasks.click();
+  await expect(compactTasks).toHaveAttribute("aria-checked", "true");
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.dataset.taskListSize))
+    .toBe("compact");
+  await expect(taskPreview).toHaveCSS("font-size", "13px");
+  await expect(taskPreviewRow).toHaveCSS("min-height", "30px");
+  await expect(taskPreviewGroup).toHaveCSS("min-height", "24px");
+
   await captureReviewScreenshot(page, testInfo, "settings-appearance");
   await page.reload();
   await expect(page).toHaveURL("/settings");
@@ -443,6 +463,11 @@ test("opens browser-local settings and persists viewer sizes", async ({ page }, 
   ).toHaveAttribute("aria-checked", "true");
   await expect(
     settingsPage.locator('button[data-action="set-code-size"][data-value="large"]'),
+  ).toHaveAttribute("aria-checked", "true");
+  await expect(
+    settingsPage.locator(
+      'button[data-action="set-task-list-size"][data-value="compact"]',
+    ),
   ).toHaveAttribute("aria-checked", "true");
   await settingsPage.locator('button[data-action="close-settings"]').click();
   await expect(page).toHaveURL("/tasks");
@@ -879,7 +904,7 @@ test("groups header review actions into Git, GitHub, and Codex popovers", async 
   await captureReviewScreenshot(page, testInfo, "header-actions-codex-popover");
 });
 
-test("opens global Tasks without local registry state", async ({ page }) => {
+test("opens global Tasks without local registry state", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     window.EventSource = class MockEventSource {
       constructor(url) {
@@ -968,6 +993,44 @@ test("opens global Tasks without local registry state", async ({ page }) => {
 
     return route.continue();
   });
+  await page.route(/\/api\/list(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("path") !== ".") {
+      return route.continue();
+    }
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        root: "tests/fixtures/home",
+        path: ".",
+        git: { rootPath: ".", branch: "main", dirty: true },
+        entries: [
+          {
+            name: "src",
+            path: "src",
+            kind: "directory",
+            isSymlink: false,
+            supported: true,
+            gitIgnored: false,
+            size: null,
+            modifiedMs: null,
+            git: null,
+          },
+          {
+            name: "README.md",
+            path: "README.md",
+            kind: "file",
+            isSymlink: false,
+            supported: true,
+            gitIgnored: false,
+            size: 24,
+            modifiedMs: null,
+            git: null,
+          },
+        ],
+      }),
+    });
+  });
   await page.route(/\/api\/git\/status(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -1016,6 +1079,41 @@ test("opens global Tasks without local registry state", async ({ page }) => {
           "@@ -0,0 +1 @@",
           "+Global worktree review",
         ].join("\n"),
+      }),
+    });
+  });
+  await page.route(/\/api\/github\/status(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("path")).toBe(".");
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository: { rootPath: ".", branch: "main", dirty: true },
+        github: { owner: "example", name: "caffold" },
+        ghAvailable: true,
+        authenticated: true,
+        issuesAvailable: true,
+        pullsAvailable: true,
+        message: null,
+      }),
+    });
+  });
+  await page.route(/\/api\/github\/issues(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("path")).toBe(".");
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository: { rootPath: ".", branch: "main", dirty: true },
+        github: { owner: "example", name: "caffold" },
+        state: "open",
+        issues: [],
+        page: 1,
+        perPage: 50,
+        totalIssues: 0,
+        totalPages: 1,
+        hasPrevious: false,
+        hasNext: false,
       }),
     });
   });
@@ -1076,7 +1174,9 @@ test("opens global Tasks without local registry state", async ({ page }) => {
   await expect(tasksPage).toContainText("Hello from a global Codex thread.");
   const openDiff = tasksPage.getByRole("button", { name: "Open Diff" });
   await expect(openDiff).toBeDisabled();
-  await expect(tasksPage).toContainText("Diff is unavailable outside a Git worktree.");
+  await expect(tasksPage.getByRole("button", { name: "Git unavailable" })).toBeDisabled();
+  await expect(tasksPage.getByRole("button", { name: "GitHub unavailable" })).toBeDisabled();
+  await expect(tasksPage).toContainText("Unavailable outside a Git worktree.");
 
   Object.assign(task, {
     worktree: {
@@ -1089,6 +1189,39 @@ test("opens global Tasks without local registry state", async ({ page }) => {
   });
   await page.reload();
   await expect(tasksPage.locator(".task-detail-meta")).toContainText("main");
+  await expect(tasksPage.locator(".task-review-menu")).toHaveCount(2);
+
+  await tasksPage
+    .locator('.task-review-menu summary[aria-label="Open Git workspace"]')
+    .click();
+  await captureReviewScreenshot(page, testInfo, "tasks-global-git-menu");
+  await tasksPage
+    .locator('button[data-task-action="open-git-tool"][data-review-kind="diff"]')
+    .click();
+  await expect(page).toHaveURL("/git/diff?cwd=.");
+  await expect(page.locator("caffold-review-workspace")).toHaveAttribute(
+    "data-workspace-mode",
+    "git",
+  );
+  await page.getByRole("button", { name: "Close review workspace" }).click();
+  await expect(page).toHaveURL(`/tasks/${threadId}?cwd=src`);
+  await expect(tasksPage).toContainText("Hello from a global Codex thread.");
+
+  await tasksPage
+    .locator('.task-review-menu summary[aria-label="Open GitHub workspace"]')
+    .click();
+  await captureReviewScreenshot(page, testInfo, "tasks-global-github-menu");
+  await tasksPage
+    .locator('button[data-task-action="open-github-tool"][data-review-kind="issues"]')
+    .click();
+  await expect(page).toHaveURL("/github/issues?cwd=.");
+  await expect(page.locator("caffold-review-workspace")).toHaveAttribute(
+    "data-workspace-mode",
+    "github",
+  );
+  await page.getByRole("button", { name: "Close review workspace" }).click();
+  await expect(page).toHaveURL(`/tasks/${threadId}?cwd=src`);
+  await expect(tasksPage).toContainText("Hello from a global Codex thread.");
 
   await tasksPage.locator('button[data-task-action="toggle-files"]').click();
   await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
@@ -1266,6 +1399,12 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
   await expect(
     tasksPage.locator('.task-row[data-thread-id="thread_feature"] .task-status-spinner'),
   ).toBeVisible();
+  await expect(
+    tasksPage.locator('.task-row[data-thread-id="thread_feature"]'),
+  ).toHaveAttribute("data-task-status", "running");
+  await expect(
+    tasksPage.locator('.task-row[data-thread-id="thread_feature"]'),
+  ).toHaveAttribute("aria-busy", "true");
   await expect(
     tasksPage.locator('.task-row[data-thread-id="thread_main_root"] .task-row-time'),
   ).toBeVisible();
@@ -1445,19 +1584,23 @@ test("groups All Tasks by repository without worktree accordions", async ({ page
     lastEventSummary: `${title} summary`,
   });
   const tasks = [
-    task(
-      "thread_gluesql_feature",
-      "Feature review",
-      {
-        rootPath: "worktrees/feature/gluesql",
-        repositoryRootPath: "Workspace/rust/gluesql",
-        branch: "feature/review",
-        headSha: "2222222222222222222222222222222222222222",
-        relativeCwd: "",
-        linked: true,
-      },
-      now + 400,
-    ),
+    {
+      ...task(
+        "thread_gluesql_feature",
+        "Feature review",
+        {
+          rootPath: "worktrees/feature/gluesql",
+          repositoryRootPath: "Workspace/rust/gluesql",
+          branch: "feature/review",
+          headSha: "2222222222222222222222222222222222222222",
+          relativeCwd: "",
+          linked: true,
+        },
+        now + 400,
+      ),
+      status: "running",
+      activeTurnId: "turn_feature",
+    },
     task(
       "thread_gluesql_main",
       "Main review",
@@ -1509,7 +1652,10 @@ test("groups All Tasks by repository without worktree accordions", async ({ page
     groups.nth(0).locator('.task-row[data-thread-id="thread_gluesql_feature"] .task-row-worktree'),
   ).toHaveAttribute("title", /feature\/review/);
   await expect(
-    groups.nth(0).locator('.task-row[data-thread-id="thread_gluesql_feature"] .task-row-time'),
+    groups.nth(0).locator('.task-row[data-thread-id="thread_gluesql_feature"]'),
+  ).toHaveAttribute("data-task-status", "running");
+  await expect(
+    groups.nth(0).locator('.task-row[data-thread-id="thread_gluesql_feature"] .task-status-spinner'),
   ).toBeVisible();
   await expect(tasksPage.locator('.task-row .task-status-label')).toHaveCount(0);
   await expect(tasksPage.locator(".task-row-summary")).toHaveCount(0);
@@ -2401,9 +2547,11 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     const mobileHeaderMetrics = await tasksPage.evaluate((element) => {
       const header = element.querySelector(".tasks-header").getBoundingClientRect();
       const summary = element.querySelector(".task-detail-summary").getBoundingClientRect();
-      const actions = [...element.querySelectorAll(".task-detail-actions button")].map(
-        (button) => button.getBoundingClientRect(),
-      );
+      const actions = [
+        ...element.querySelectorAll(
+          ".task-detail-actions > button, .task-detail-actions > details > summary",
+        ),
+      ].map((control) => control.getBoundingClientRect());
       const details = element
         .querySelector(".task-detail-info-button")
         .getBoundingClientRect();
@@ -2685,6 +2833,15 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   ).toBeVisible();
   await expect(runningStatus.locator(".task-status-spinner")).toBeVisible();
   await expect(runningStatus.locator(".task-status-label")).toHaveCount(0);
+  const runningTaskRow = tasksPage.locator(
+    `.task-row[data-thread-id="${threadId}"]`,
+  );
+  await expect(runningTaskRow).toHaveAttribute("data-task-status", "running");
+  await expect(runningTaskRow).toHaveAttribute("aria-busy", "true");
+  await expect(runningTaskRow.locator(".task-status-spinner")).toHaveCount(1);
+  if (testInfo.project.name === "desktop") {
+    await expect(runningTaskRow.locator(".task-status-spinner")).toBeVisible();
+  }
   await expect(followUpTextarea).toBeFocused();
   await expect(
     tasksPage.locator('.task-message[data-message-role="user"]').filter({

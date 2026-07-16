@@ -41,9 +41,28 @@ export const CODE_SIZES = Object.freeze([
   },
 ]);
 
+export const TASK_LIST_SIZES = Object.freeze([
+  {
+    value: "compact",
+    label: "Compact",
+    description: "30 px rows",
+  },
+  {
+    value: "default",
+    label: "Default",
+    description: "36 px rows",
+  },
+  {
+    value: "large",
+    label: "Large",
+    description: "42 px rows",
+  },
+]);
+
 const DEFAULT_SETTINGS = Object.freeze({
   fileTreeSize: "auto",
   codeSize: "compact",
+  taskListSize: "default",
 });
 
 export function getSettings() {
@@ -77,6 +96,17 @@ export function setCodeSize(value) {
   return settings;
 }
 
+export function setTaskListSize(value) {
+  const taskListSize = validTaskListSize(value) ? value : DEFAULT_SETTINGS.taskListSize;
+  const settings = {
+    ...getSettings(),
+    taskListSize,
+  };
+
+  persistAndApply(settings);
+  return settings;
+}
+
 export function applySettings(settings = getSettings()) {
   if (typeof document === "undefined") {
     return;
@@ -84,6 +114,7 @@ export function applySettings(settings = getSettings()) {
 
   document.documentElement.dataset.fileTreeSize = settings.fileTreeSize;
   document.documentElement.dataset.codeSize = settings.codeSize;
+  document.documentElement.dataset.taskListSize = settings.taskListSize;
 }
 
 function normalizeSettings(value) {
@@ -91,6 +122,9 @@ function normalizeSettings(value) {
   return {
     fileTreeSize: validFileTreeSize(fileTreeSize) ? fileTreeSize : DEFAULT_SETTINGS.fileTreeSize,
     codeSize: validCodeSize(value?.codeSize) ? value.codeSize : DEFAULT_SETTINGS.codeSize,
+    taskListSize: validTaskListSize(value?.taskListSize)
+      ? value.taskListSize
+      : DEFAULT_SETTINGS.taskListSize,
   };
 }
 
@@ -100,6 +134,10 @@ function validFileTreeSize(value) {
 
 function validCodeSize(value) {
   return CODE_SIZES.some((option) => option.value === value);
+}
+
+function validTaskListSize(value) {
+  return TASK_LIST_SIZES.some((option) => option.value === value);
 }
 
 function persistAndApply(settings) {

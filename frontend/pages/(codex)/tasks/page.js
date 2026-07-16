@@ -1,6 +1,7 @@
 import {
   createTask,
   getCodexModels,
+  getGitHubStatus,
   getGitStatus,
   getTask,
   getTasks,
@@ -53,6 +54,10 @@ class CaffoldTasksPage extends HTMLElement {
     this.taskListDirty = true;
     this.taskListWidth = TASK_LIST_DEFAULT_WIDTH;
     this.taskDetail = null;
+    this.taskGithubStatus = null;
+    this.taskGithubStatusPath = "";
+    this.taskGithubStatusState = "idle";
+    this.taskGithubStatusRequestId = 0;
     this.events = [];
     this.eventsPage = { nextCursor: null };
     this.error = null;
@@ -107,6 +112,12 @@ class CaffoldTasksPage extends HTMLElement {
     this.addEventListener(
       "click",
       (event) => {
+        const reviewMenu = closestElement(event.target, ".task-review-menu");
+        for (const menu of this.querySelectorAll(".task-review-menu[open]")) {
+          if (menu !== reviewMenu) {
+            menu.removeAttribute("open");
+          }
+        }
         const action = closestElement(event.target, "[data-task-action]");
         if (!action) {
           if (!closestElement(event.target, ".task-model-picker")) {
@@ -283,6 +294,7 @@ class CaffoldTasksPage extends HTMLElement {
         this.taskDiffRequestId += 1;
         this.taskDiffStatus = null;
         this.taskDiffError = null;
+        this.resetTaskGithubStatus();
         this.closeStream();
       }
       this.view = "detail";
@@ -320,6 +332,7 @@ class CaffoldTasksPage extends HTMLElement {
         this.taskDetail?.task?.threadId === route.threadId
       ) {
         this.loading = false;
+        this.loadTaskGithubStatus(this.taskDetail.task);
         this.loadModelOptions();
         return this.taskDetail;
       }
@@ -376,6 +389,7 @@ class CaffoldTasksPage extends HTMLElement {
       this.connectStream(threadId);
       this.conversationScrollMode = "bottom";
       this.render();
+      this.loadTaskGithubStatus(detail.task);
       this.loadModelOptions();
       return detail;
     } catch (error) {
@@ -491,10 +505,21 @@ class CaffoldTasksPage extends HTMLElement {
         return;
       }
       this.events = upsertEvent(this.events, entry);
+      this.applyLiveTaskEvent(entry);
       this.conversationScrollMode = "bottom-if-needed";
       this.render();
       this.requestSelectedTaskRefresh(threadId, generation);
     });
+  }
+
+  applyLiveTaskEvent(event) {
+    const task = this.taskDetail?.task;
+    const nextTask = taskWithLiveEventState(task, event);
+    if (!nextTask || nextTask === task) {
+      return;
+    }
+    this.taskDetail = { ...this.taskDetail, task: nextTask };
+    this.patchTaskListTask(nextTask);
   }
 
   closeStream() {
@@ -583,6 +608,7 @@ class CaffoldTasksPage extends HTMLElement {
       this.events = mergeEvents(this.events, detail.events ?? []);
       this.eventsPage = detail.eventsPage ?? this.eventsPage;
       this.patchTaskListTask(detail.task);
+      this.loadTaskGithubStatus(detail.task);
       this.conversationScrollMode = "bottom-if-needed";
       this.render();
     } catch {
@@ -604,6 +630,19 @@ class CaffoldTasksPage extends HTMLElement {
     }
     if (action === "open-new") {
       this.requestRoute({ kind: "tasks", new: true });
+      return;
+    }
+    if (action === "open-settings") {
+      this.dispatchEvent(
+        new CustomEvent("caffold:open-settings", {
+          bubbles: true,
+          composed: true,
+        }),
+      );
+      return;
+    }
+    if (action === "open-git-tool" || action === "open-github-tool") {
+      this.openTaskReviewRoute(action, element);
       return;
     }
     if (action === "open-task") {
@@ -684,6 +723,148 @@ class CaffoldTasksPage extends HTMLElement {
       this.openModelPickerForm = "";
       this.selectEffort(element.dataset.effort);
     }
+  }
+
+  resetTaskGithubStatus() {
+    this.taskGithubStatusRequestId += 1;
+    this.taskGithubStatus = null;
+    this.taskGithubStatusPath = "";
+    this.taskGithubStatusState = "idle";
+  }
+
+  async loadTaskGithubStatus(task) {
+    const rootPath = taskWorktreeRootPath(task);
+    if (!rootPath) {
+      this.resetTaskGithubStatus();
+      this.patchTaskDetailSummary();
+      return null;
+    }
+    if (
+      this.taskGithubStatusPath === rootPath &&
+      ["loading", "ready", "error"].includes(this.taskGithubStatusState)
+    ) {
+      return this.taskGithubStatus;
+    }
+
+    const requestId = ++this.taskGithubStatusRequestId;
+    this.taskGithubStatusPath = rootPath;
+    this.taskGithubStatusState = "loading";
+    this.taskGithubStatus = null;
+    this.patchTaskDetailSummary();
+    try {
+      const status = await getGitHubStatus(rootPath);
+      if (
+        requestId !== this.taskGithubStatusRequestId ||
+        rootPath !== taskWorktreeRootPath(this.taskDetail?.task)
+      ) {
+        return null;
+      }
+      this.taskGithubStatus = status;
+      this.taskGithubStatusState = "ready";
+      this.patchTaskDetailSummary();
+      return status;
+    } catch (error) {
+      if (
+        requestId !== this.taskGithubStatusRequestId ||
+        rootPath !== taskWorktreeRootPath(this.taskDetail?.task)
+      ) {
+        return null;
+      }
+      this.taskGithubStatus = { message: error.message };
+      this.taskGithubStatusState = "error";
+      this.patchTaskDetailSummary();
+      return null;
+    }
+  }
+
+  patchTaskDetailSummary() {
+    const task = this.taskDetail?.task;
+    if (!task) {
+      return;
+    }
+    const current = this.querySelector(
+      `.task-detail[data-thread-id="${CSS.escape(taskThreadId(task))}"] > .task-detail-summary`,
+    );
+    if (!current) {
+      return;
+    }
+    const template = document.createElement("template");
+    template.innerHTML = this.renderTaskDetailSummary(task).trim();
+    const next = template.content.firstElementChild;
+    if (next) {
+      current.replaceWith(next);
+    }
+  }
+
+  taskGithubMenuState(rootPath) {
+    if (
+      this.taskGithubStatusPath !== rootPath ||
+      ["idle", "loading"].includes(this.taskGithubStatusState)
+    ) {
+      return {
+        enabled: false,
+        loading: true,
+        issues: false,
+        pulls: false,
+        message: "Checking GitHub availability",
+      };
+    }
+
+    const status = this.taskGithubStatus;
+    const issues = Boolean(status?.issuesAvailable);
+    const pulls = Boolean(status?.pullsAvailable);
+    return {
+      enabled: Boolean(status?.github) && (issues || pulls),
+      loading: false,
+      issues,
+      pulls,
+      message:
+        status?.message ||
+        (status?.github
+          ? "GitHub CLI authentication is required"
+          : "No GitHub remote detected"),
+    };
+  }
+
+  openTaskReviewRoute(action, element) {
+    const task = this.taskDetail?.task;
+    const cwd = taskWorktreeRootPath(task);
+    const kind = element.dataset.reviewKind;
+    if (!cwd || !kind) {
+      return;
+    }
+
+    const returnRoute = {
+      kind: "tasks",
+      threadId: taskThreadId(task),
+      cwd: cleanLogicalPath(this.cwdPath),
+    };
+    const options = {
+      returnRoute,
+      taskRelatedPaths: [task?.worktree?.rootPath, task?.cwdPath || task?.cwd].filter(Boolean),
+    };
+    const route =
+      kind === "diff"
+        ? { kind, cwd, path: "" }
+        : kind === "compare"
+          ? { kind, cwd, baseRef: "", headRef: "", path: "" }
+          : kind === "log"
+            ? { kind, cwd, page: 1, sha: "", path: "" }
+            : kind === "issues"
+              ? { kind, cwd, page: 1, number: null }
+              : { kind: "pulls", cwd, page: 1, number: null, files: false, path: "" };
+    const eventName =
+      action === "open-git-tool"
+        ? "caffold:request-git-route"
+        : "caffold:request-github-route";
+    element.closest("details")?.removeAttribute("open");
+    this.dispatchEvent(
+      new CustomEvent(eventName, {
+        bubbles: true,
+        composed: true,
+        detail: { route, options },
+      }),
+    );
   }
 
   async handleForm(formName, form) {
@@ -767,7 +948,16 @@ class CaffoldTasksPage extends HTMLElement {
       prompt,
       requestId,
     );
+    const previousTask = this.taskDetail?.task ?? null;
+    const runningTask = taskWithStatus(previousTask, "running", {
+      updatedMs: optimisticEvent.createdMs,
+      recencyMs: optimisticEvent.createdMs,
+    });
     this.events = mergeEvents(this.events, [optimisticEvent]);
+    if (runningTask) {
+      this.taskDetail = { ...this.taskDetail, task: runningTask };
+      this.patchTaskListTask(runningTask);
+    }
     this.followUpDraft = "";
     this.conversationScrollMode = "bottom";
     this.render();
@@ -785,12 +975,16 @@ class CaffoldTasksPage extends HTMLElement {
       this.taskDetail = detail;
       this.events = mergeEvents(this.events, detail.events ?? []);
       this.eventsPage = detail.eventsPage ?? this.eventsPage;
-      this.followUpDraft = "";
+      this.patchTaskListTask(detail.task);
       this.conversationScrollMode = "bottom";
       this.render();
     } catch (error) {
       if (requestId !== this.requestId) {
         return;
+      }
+      if (previousTask) {
+        this.taskDetail = { ...this.taskDetail, task: previousTask };
+        this.patchTaskListTask(previousTask);
       }
       this.error = error;
       this.render();
@@ -811,6 +1005,7 @@ class CaffoldTasksPage extends HTMLElement {
       this.taskDetail = detail;
       this.events = mergeEvents(this.events, detail.events ?? []);
       this.eventsPage = detail.eventsPage ?? this.eventsPage;
+      this.patchTaskListTask(detail.task);
       this.conversationScrollMode = "bottom-if-needed";
       this.render();
     } catch (error) {
@@ -841,6 +1036,7 @@ class CaffoldTasksPage extends HTMLElement {
       this.taskDetail = detail;
       this.events = mergeEvents(this.events, detail.events ?? []);
       this.eventsPage = detail.eventsPage ?? this.eventsPage;
+      this.patchTaskListTask(detail.task);
       this.conversationScrollMode = "bottom-if-needed";
       this.render();
     } catch (error) {
@@ -1138,7 +1334,7 @@ class CaffoldTasksPage extends HTMLElement {
         currentSummary.replaceWith(nextSummary);
       }
       if (nextConversation && currentConversation) {
-        currentConversation.replaceWith(nextConversation);
+        currentConversation.replaceChildren(...nextConversation.childNodes);
       }
       currentDetail.dataset.taskDetailView = this.taskDetailView;
       return;
@@ -1840,6 +2036,9 @@ class CaffoldTasksPage extends HTMLElement {
           <p>${escapeHtml(subtitle)}</p>
         </div>
         <div class="tasks-header-actions">
+          <button type="button" class="task-icon-button" data-task-action="open-settings" title="Settings">
+            ${renderInlineIcon("Settings", "Settings", "task-action-icon")}
+          </button>
           ${
             this.view === "detail"
               ? `<button type="button" class="task-icon-button" data-task-action="open-list" title="Open tasks">
@@ -1928,9 +2127,12 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   renderTaskRepositoryGroup(group) {
+    const icon = group.repository ? "FolderGit2" : "Folder";
+    const iconLabel = group.repository ? "Git repository" : "Directory";
     return `
       <li class="task-repository-group" data-task-repository-key="${escapeHtml(group.key)}">
         <div class="task-repository-header" title="${escapeHtml(group.rootPath)}">
+          ${renderInlineIcon(icon, iconLabel, "task-repository-icon")}
           <span class="task-repository-label">${escapeHtml(group.label)}</span>
           <span class="task-repository-count">${group.tasks.length}</span>
         </div>
@@ -1944,6 +2146,8 @@ class CaffoldTasksPage extends HTMLElement {
   renderTaskRow(task, repositoryKey = this.taskListPartitionKey(task)) {
     const threadId = task.threadId ?? task.id;
     const selected = threadId === this.selectedThreadId ? ` aria-current="true"` : "";
+    const status = taskStatusView(task.status)?.status ?? "idle";
+    const busy = status === "running" ? ` aria-busy="true"` : "";
     const meta = renderTaskRowMeta(task);
     const worktree = task?.worktree?.linked
       ? `<span class="task-row-worktree" title="${escapeHtml(taskWorktreeLabel(task))}">
@@ -1952,7 +2156,7 @@ class CaffoldTasksPage extends HTMLElement {
       : "";
     return `
       <li data-thread-id="${escapeHtml(threadId)}" data-task-list-key="${escapeHtml(repositoryKey)}">
-        <button type="button" class="task-row" data-task-action="open-task" data-thread-id="${escapeHtml(threadId)}" title="${escapeHtml(task.title)}"${selected}>
+        <button type="button" class="task-row" data-task-action="open-task" data-thread-id="${escapeHtml(threadId)}" data-task-status="${escapeHtml(status)}" title="${escapeHtml(task.title)}"${selected}${busy}>
           <span class="task-row-title">${escapeHtml(task.title)}</span>
           <span class="task-row-indicators">
             ${worktree}
@@ -2212,14 +2416,43 @@ class CaffoldTasksPage extends HTMLElement {
       return `<p class="surface-message">${this.loading ? "Loading task..." : "Select a task."}</p>`;
     }
     const approvals = pendingApprovals(this.events);
+    return `
+      <div class="task-detail" data-thread-id="${escapeHtml(task.threadId ?? task.id)}" data-task-detail-view="${escapeHtml(this.taskDetailView)}">
+        ${this.renderTaskDetailSummary(task)}
+        <section class="task-conversation-pane" aria-label="Task conversation">
+          <div class="task-conversation-scroll">
+            <div class="task-conversation-column">
+              ${this.renderStreamState()}
+              ${approvals.length ? `<section class="task-approvals">${approvals.map(renderApprovalCard).join("")}</section>` : ""}
+              ${this.eventsPage?.nextCursor || this.loadingOlderEvents ? `<div class="task-load-older">${this.loadingOlderEvents ? "Loading older..." : ""}</div>` : ""}
+              <ol class="task-conversation" aria-label="Task conversation">
+                ${renderConversation(this.events, task)}
+              </ol>
+            </div>
+          </div>
+          ${this.renderTaskComposer({
+            formName: "follow-up",
+            className: "task-follow-up-form",
+            prompt: this.followUpDraft,
+            placeholder: "Send another prompt to this task",
+            ariaLabel: "Follow-up prompt",
+            submitLabel: "Send prompt",
+          })}
+        </section>
+        ${this.renderTaskFilesView()}
+        ${this.renderTaskDiffView()}
+      </div>
+    `;
+  }
+
+  renderTaskDetailSummary(task) {
     const status = renderTaskStatusChip(task.status, "task-detail-status", { label: false });
     const statusLabel = formatStatus(task.status);
     const canOpenDiff = Boolean(task.worktree);
     const worktreeLabel = taskWorktreeLabel(task);
 
     return `
-      <div class="task-detail" data-thread-id="${escapeHtml(task.threadId ?? task.id)}" data-task-detail-view="${escapeHtml(this.taskDetailView)}">
-        <section class="task-detail-summary">
+      <section class="task-detail-summary">
           <div class="task-detail-heading">
             <h2>${escapeHtml(task.title)}</h2>
             <p class="task-detail-meta">
@@ -2249,6 +2482,7 @@ class CaffoldTasksPage extends HTMLElement {
                 ${renderInlineIcon("FileDiff", "Open diff", "task-action-icon")}
                 <span class="task-action-label">Open Diff</span>
               </button>
+              ${this.renderTaskReviewMenus(task)}
               ${
                 task.activeTurnId
                   ? `<button type="button" class="task-secondary-button" data-task-action="interrupt">
@@ -2267,11 +2501,6 @@ class CaffoldTasksPage extends HTMLElement {
             >
               ${status || renderInlineIcon("Info", "Task details", "task-action-icon")}
             </button>
-            ${
-              canOpenDiff
-                ? ""
-                : `<p class="task-diff-disabled">Diff is unavailable outside a Git worktree.</p>`
-            }
           </div>
           <div
             id="task-detail-info"
@@ -2315,29 +2544,52 @@ class CaffoldTasksPage extends HTMLElement {
             </dl>
           </div>
         </section>
-        <section class="task-conversation-pane" aria-label="Task conversation">
-          <div class="task-conversation-scroll">
-            <div class="task-conversation-column">
-              ${this.renderStreamState()}
-              ${approvals.length ? `<section class="task-approvals">${approvals.map(renderApprovalCard).join("")}</section>` : ""}
-              ${this.eventsPage?.nextCursor || this.loadingOlderEvents ? `<div class="task-load-older">${this.loadingOlderEvents ? "Loading older..." : ""}</div>` : ""}
-              <ol class="task-conversation" aria-label="Task conversation">
-                ${renderConversation(this.events, task)}
-              </ol>
-            </div>
-          </div>
-          ${this.renderTaskComposer({
-            formName: "follow-up",
-            className: "task-follow-up-form",
-            prompt: this.followUpDraft,
-            placeholder: "Send another prompt to this task",
-            ariaLabel: "Follow-up prompt",
-            submitLabel: "Send prompt",
-          })}
-        </section>
-        ${this.renderTaskFilesView()}
-        ${this.renderTaskDiffView()}
-      </div>
+    `;
+  }
+
+  renderTaskReviewMenus(task) {
+    const rootPath = taskWorktreeRootPath(task);
+    if (!rootPath) {
+      return `
+        <button type="button" class="task-brand-button" disabled title="Git and GitHub are unavailable outside a Git worktree">
+          <img src="/assets/brand/git-logomark-light.svg" alt="">
+          <span class="sr-only">Git unavailable</span>
+        </button>
+        <button type="button" class="task-brand-button" disabled title="Git and GitHub are unavailable outside a Git worktree">
+          <img src="/assets/brand/github-invertocat-light.svg" alt="">
+          <span class="sr-only">GitHub unavailable</span>
+        </button>
+      `;
+    }
+
+    const github = this.taskGithubMenuState(rootPath);
+    return `
+      <details class="task-review-menu">
+        <summary class="task-brand-button" title="Open Git workspace" aria-label="Open Git workspace">
+          <img src="/assets/brand/git-logomark-light.svg" alt="">
+        </summary>
+        <div class="task-review-menu-popover" role="menu" aria-label="Git workspace">
+          <button type="button" role="menuitem" data-task-action="open-git-tool" data-review-kind="diff">Working Tree</button>
+          <button type="button" role="menuitem" data-task-action="open-git-tool" data-review-kind="compare">Compare</button>
+          <button type="button" role="menuitem" data-task-action="open-git-tool" data-review-kind="log">Log</button>
+        </div>
+      </details>
+      ${
+        github.enabled
+          ? `<details class="task-review-menu">
+              <summary class="task-brand-button" title="Open GitHub workspace" aria-label="Open GitHub workspace">
+                <img src="/assets/brand/github-invertocat-light.svg" alt="">
+              </summary>
+              <div class="task-review-menu-popover" role="menu" aria-label="GitHub workspace">
+                <button type="button" role="menuitem" data-task-action="open-github-tool" data-review-kind="pulls" ${github.pulls ? "" : "disabled"}>Pull Requests</button>
+                <button type="button" role="menuitem" data-task-action="open-github-tool" data-review-kind="issues" ${github.issues ? "" : "disabled"}>Issues</button>
+              </div>
+            </details>`
+          : `<button type="button" class="task-brand-button${github.loading ? " is-loading" : ""}" disabled title="${escapeHtml(github.message)}">
+              <img src="/assets/brand/github-invertocat-light.svg" alt="">
+              <span class="sr-only">${escapeHtml(github.message)}</span>
+            </button>`
+      }
     `;
   }
 
@@ -2690,6 +2942,7 @@ function shouldRenderStandaloneEvent(event, userPrompts) {
     "thread_started",
     "turn_started",
     "turn_completed",
+    "thread_status_changed",
     "approval_requested",
     "approval_resolved",
     "diff_updated",
@@ -3197,6 +3450,11 @@ function cleanLogicalPath(path) {
   return cleanRelativeTaskPath(path);
 }
 
+function taskWorktreeRootPath(task) {
+  const path = `${task?.worktree?.rootPath ?? ""}`.trim();
+  return path === "." ? path : cleanLogicalPath(path);
+}
+
 function taskThreadId(task) {
   return `${task?.threadId ?? task?.id ?? ""}`;
 }
@@ -3245,6 +3503,7 @@ function groupTasksByRepository(tasks) {
       key,
       label: taskRepositoryLabel(task),
       rootPath,
+      repository: Boolean(task?.worktree),
       updatedMs: taskUpdatedMs(task),
       tasks: [task],
     });
@@ -3390,6 +3649,78 @@ function optimisticUserMessageEvent(threadId, prompt, requestId) {
     },
     createdMs,
   };
+}
+
+function taskWithLiveEventState(task, event) {
+  if (!task || !event) {
+    return task;
+  }
+
+  const payload = event.payload ?? {};
+  const createdMs = Number(event.createdMs) || Date.now();
+  if (event.type === "turn_started") {
+    return taskWithStatus(task, "running", {
+      activeTurnId: payload.turnId ?? payload.turn?.id ?? task.activeTurnId,
+      updatedMs: createdMs,
+      recencyMs: createdMs,
+    });
+  }
+  if (event.type === "approval_requested") {
+    return taskWithStatus(task, "waiting_for_approval", {
+      updatedMs: createdMs,
+      recencyMs: createdMs,
+    });
+  }
+  if (event.type === "approval_resolved") {
+    return taskWithStatus(task, "running", {
+      updatedMs: createdMs,
+      recencyMs: createdMs,
+    });
+  }
+  if (event.type === "turn_completed") {
+    const status = normalizeTurnStatus(payload.turn?.status ?? payload.status);
+    return taskWithStatus(task, status, {
+      activeTurnId: null,
+      updatedMs: createdMs,
+      recencyMs: createdMs,
+    });
+  }
+  if (event.type === "thread_status_changed") {
+    const status = normalizeThreadStatus(payload.status ?? payload.notification?.status);
+    return taskWithStatus(task, status, {
+      ...(status === "running" ? {} : { activeTurnId: null }),
+      updatedMs: createdMs,
+      recencyMs: createdMs,
+    });
+  }
+  return task;
+}
+
+function taskWithStatus(task, status, updates = {}) {
+  if (!task || !status) {
+    return task;
+  }
+  return { ...task, ...updates, status };
+}
+
+function normalizeTurnStatus(status) {
+  return {
+    failed: "failed",
+    interrupted: "interrupted",
+    completed: "completed",
+  }[`${status ?? ""}`] ?? "running";
+}
+
+function normalizeThreadStatus(status) {
+  const type = typeof status === "object" ? status?.type : status;
+  return {
+    active: "running",
+    running: "running",
+    systemError: "failed",
+    failed: "failed",
+    idle: "idle",
+    notLoaded: "notLoaded",
+  }[`${type ?? ""}`] ?? "unknown";
 }
 
 function eventIdentityKey(event) {

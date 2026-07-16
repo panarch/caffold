@@ -2,9 +2,11 @@ import { renderInlineIcon, warmIcons } from "../../components/icons.js";
 import {
   CODE_SIZES,
   FILE_TREE_SIZES,
+  TASK_LIST_SIZES,
   getSettings,
   setCodeSize,
   setFileTreeSize,
+  setTaskListSize,
 } from "../../settings.js";
 
 class CaffoldSettingsPage extends HTMLElement {
@@ -55,6 +57,11 @@ class CaffoldSettingsPage extends HTMLElement {
 
     if (button.dataset.action === "set-code-size") {
       setCodeSize(button.dataset.value);
+      return;
+    }
+
+    if (button.dataset.action === "set-task-list-size") {
+      setTaskListSize(button.dataset.value);
     }
   }
 
@@ -66,6 +73,11 @@ class CaffoldSettingsPage extends HTMLElement {
       "set-file-tree-size",
     );
     const codeOptions = renderOptions(CODE_SIZES, settings.codeSize, "set-code-size");
+    const taskListOptions = renderOptions(
+      TASK_LIST_SIZES,
+      settings.taskListSize,
+      "set-task-list-size",
+    );
 
     this.innerHTML = `
       <header class="settings-header">
@@ -121,6 +133,26 @@ class CaffoldSettingsPage extends HTMLElement {
             <code><span>const</span> size = "readable";</code>
             <span class="settings-code-preview-line-number">13</span>
             <code>render(size);</code>
+          </div>
+          <div class="settings-field">
+            <div class="settings-field-copy">
+              <strong>Task navigator size</strong>
+              <span>Adjusts repository context and task row density in the Tasks navigator.</span>
+            </div>
+            <div class="settings-segmented-control settings-segmented-control-three" role="radiogroup" aria-label="Task navigator size">
+              ${taskListOptions}
+            </div>
+          </div>
+          <div class="settings-task-preview" aria-label="Task navigator preview">
+            <div class="settings-task-preview-group">
+              ${renderInlineIcon("FolderGit2", "Git repository", "settings-task-preview-icon")}
+              <span>caffold</span>
+              <span>2</span>
+            </div>
+            <div class="settings-task-preview-row">
+              <span>Review task navigation</span>
+              <time>now</time>
+            </div>
           </div>
         </section>
       </div>

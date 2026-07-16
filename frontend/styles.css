@@ -57,6 +57,11 @@
   --file-tree-padding-left: 7px;
   --file-tree-padding-right: 10px;
   --code-viewer-font-size: 13px;
+  --task-list-font-size: 14px;
+  --task-list-row-height: 36px;
+  --task-group-font-size: 12px;
+  --task-group-row-height: 28px;
+  --task-list-icon-size: 15px;
   --font-mono: ui-monospace, monospace;
   --font-sans: system-ui, sans-serif;
 }
@@ -99,6 +104,30 @@
 
 :root[data-code-size="large"] {
   --code-viewer-font-size: 17px;
+}
+
+:root[data-task-list-size="compact"] {
+  --task-list-font-size: 13px;
+  --task-list-row-height: 30px;
+  --task-group-font-size: 11px;
+  --task-group-row-height: 24px;
+  --task-list-icon-size: 14px;
+}
+
+:root[data-task-list-size="default"] {
+  --task-list-font-size: 14px;
+  --task-list-row-height: 36px;
+  --task-group-font-size: 12px;
+  --task-group-row-height: 28px;
+  --task-list-icon-size: 15px;
+}
+
+:root[data-task-list-size="large"] {
+  --task-list-font-size: 16px;
+  --task-list-row-height: 42px;
+  --task-group-font-size: 14px;
+  --task-group-row-height: 32px;
+  --task-list-icon-size: 17px;
 }
 
 @media (pointer: fine) {

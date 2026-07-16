@@ -233,6 +233,60 @@ caffold-settings-page .settings-code-preview code span {
   color: #005ea8;
 }
 
+caffold-settings-page .settings-task-preview {
+  display: grid;
+  width: min(100%, 448px);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  font-size: var(--task-list-font-size);
+}
+
+caffold-settings-page .settings-task-preview-group,
+caffold-settings-page .settings-task-preview-row {
+  display: grid;
+  align-items: center;
+  min-width: 0;
+}
+
+caffold-settings-page .settings-task-preview-group {
+  grid-template-columns: var(--task-list-icon-size) minmax(0, 1fr) auto;
+  gap: 7px;
+  min-height: var(--task-group-row-height);
+  background: #f3f6f3;
+  color: var(--muted);
+  font-size: var(--task-group-font-size);
+  padding: 0 9px;
+}
+
+caffold-settings-page .settings-task-preview-icon {
+  width: var(--task-list-icon-size);
+  height: var(--task-list-icon-size);
+}
+
+caffold-settings-page .settings-task-preview-group > span:nth-child(2),
+caffold-settings-page .settings-task-preview-row > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+caffold-settings-page .settings-task-preview-row {
+  grid-template-columns: minmax(0, 1fr) 4ch;
+  min-height: var(--task-list-row-height);
+  margin-left: 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  padding: 0 9px 0 11px;
+}
+
+caffold-settings-page .settings-task-preview-row time {
+  color: var(--muted);
+  font-size: 0.85em;
+  text-align: right;
+}
+
 @media (max-width: 700px) {
   caffold-settings-page .settings-scroll {
     padding: 20px 16px 36px;
