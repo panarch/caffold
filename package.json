@@ -6,7 +6,8 @@
   "scripts": {
     "test:routes": "node --test tests/navigation-routes.test.mjs",
     "test:watch": "node --test tests/watch.test.mjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:codex-live": "playwright test --config=playwright.live.config.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.53.0"
