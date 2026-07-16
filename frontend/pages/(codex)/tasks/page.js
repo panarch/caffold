@@ -2593,10 +2593,9 @@ class CaffoldTasksPage extends HTMLElement {
           <div class="task-conversation-scroll">
             <div class="task-conversation-column">
               ${this.renderStreamState()}
-              ${approvals.length ? `<section class="task-approvals">${approvals.map(renderApprovalCard).join("")}</section>` : ""}
               ${this.eventsPage?.nextCursor || this.loadingOlderEvents ? `<div class="task-load-older">${this.loadingOlderEvents ? "Loading older..." : ""}</div>` : ""}
               <ol class="task-conversation" aria-label="Task conversation">
-                ${renderConversation(this.events, task)}
+                ${renderConversation(this.events, task, approvals)}
               </ol>
             </div>
           </div>
@@ -2991,7 +2990,7 @@ function renderModelFallback(loading, error) {
   return `<p class="task-model-note">Open this menu after Codex is connected.</p>`;
 }
 
-function renderConversation(events, task) {
+function renderConversation(events, task, approvals = []) {
   const conversationEvents = dedupeCanonicalEvents(events);
   const groups = conversationGroups(conversationEvents);
   const activeGroupIndex = activeTurnGroupIndex(groups, task);
@@ -3006,6 +3005,7 @@ function renderConversation(events, task) {
       if (group.kind === "turn") {
         return renderTurnGroup(group, task, {
           forceActive: index === activeGroupIndex,
+          approvals: index === activeGroupIndex ? approvals : [],
         });
       }
       if (!shouldRenderStandaloneEvent(group.event, userPrompts)) {
@@ -3021,7 +3021,7 @@ function renderConversation(events, task) {
         events: [],
       },
       task,
-    )}`;
+    )}${renderApprovalFlow(approvals)}`;
   }
   return output;
 }
@@ -3128,6 +3128,7 @@ function renderTurnGroup(group, task, options = {}) {
 
   if (isActive) {
     output.push(renderActiveTurnStatus(group, task));
+    output.push(renderApprovalFlow(options.approvals ?? []));
   }
 
   if (isComplete && assistantEvents.length > 0) {
@@ -3208,7 +3209,7 @@ function activeTurnStateLabel(events, task) {
     return "Thinking";
   }
   if (event.type === "work_status") {
-    return event.summary || "Working";
+    return activeWorkItemLabel(event.payload?.itemType);
   }
   if (event.type === "reasoning") {
     return "Thinking";
@@ -3217,13 +3218,38 @@ function activeTurnStateLabel(events, task) {
     return "Updating plan";
   }
   if (event.type === "command_execution") {
-    const command = `${event.payload?.command ?? ""}`.trim();
-    return command ? `Running ${command}` : "Running command";
+    return "Running command";
   }
   if (event.type === "file_change") {
     return "Editing files";
   }
-  return "Preparing response";
+  return "Thinking";
+}
+
+function activeWorkItemLabel(itemType) {
+  if (itemType === "plan") {
+    return "Updating plan";
+  }
+  if (["commandExecution", "mcpToolCall", "dynamicToolCall"].includes(itemType)) {
+    return "Running command";
+  }
+  if (itemType === "fileChange") {
+    return "Editing files";
+  }
+  return "Thinking";
+}
+
+function renderApprovalFlow(approvals) {
+  if (!approvals.length) {
+    return "";
+  }
+  return `
+    <li class="task-event task-approval-flow">
+      <section class="task-approvals" aria-label="Pending approvals">
+        ${approvals.map(renderApprovalCard).join("")}
+      </section>
+    </li>
+  `;
 }
 
 function shouldRenderStandaloneEvent(event, userPrompts) {
@@ -3446,7 +3472,7 @@ function renderTurnWorkItems(events) {
   return [
     ...assistantEvents.map(renderTurnWorkItem),
     renderCombinedReasoningWorkItem(reasoningEvents),
-    ...planEvents.map(renderTurnWorkItem),
+    renderLatestPlanWorkItem(planEvents),
     ...commandEvents.map(renderTurnWorkItem),
     renderCombinedFileChangeWorkItem(fileChangeEvents),
     ...failureEvents.map(renderTurnWorkItem),
@@ -3454,6 +3480,10 @@ function renderTurnWorkItems(events) {
   ]
     .filter(Boolean)
     .join("");
+}
+
+function renderLatestPlanWorkItem(events) {
+  return events.length ? renderTurnWorkItem(latestEvent(events)) : "";
 }
 
 function renderCombinedReasoningWorkItem(events) {
@@ -3537,18 +3567,23 @@ function renderTurnWorkItem(event) {
     const cwd = `${payload.cwd ?? ""}`.trim();
     const status = `${payload.status ?? ""}`.trim();
     const output = `${payload.aggregatedOutput ?? ""}`.trim();
-    return renderTurnWorkItemShell(
-      event,
-      "Command",
-      [
-        command ? `$ ${command}` : "",
-        cwd ? `cwd: ${cwd}` : "",
-        status ? `status: ${status}` : "",
-        output,
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
+    const open = status && status !== "completed" ? " open" : "";
+    return `
+      <article class="task-work-item task-work-command" data-event-type="command_execution" data-command-status="${escapeHtml(status || "unknown")}">
+        <details${open}>
+          <summary>
+            <strong>Command</strong>
+            ${status ? `<span>${escapeHtml(formatStatus(status))}</span>` : ""}
+            <time>${escapeHtml(formatDate(event.createdMs))}</time>
+          </summary>
+          <div class="task-work-command-body">
+            ${command ? `<code>$ ${escapeHtml(command)}</code>` : ""}
+            ${cwd ? `<span>cwd: ${escapeHtml(cwd)}</span>` : ""}
+            ${output ? `<pre>${escapeHtml(output)}</pre>` : ""}
+          </div>
+        </details>
+      </article>
+    `;
   }
   if (event.type === "file_change") {
     const count =
