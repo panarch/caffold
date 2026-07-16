@@ -79,7 +79,7 @@ class CaffoldTaskMarkdown extends HTMLElement {
         blockquote,
         pre,
         .markdown-table-scroll {
-          margin: 0 0 0.8em;
+          margin: 0 0 10px;
         }
 
         h1,
@@ -88,48 +88,48 @@ class CaffoldTaskMarkdown extends HTMLElement {
         h4,
         h5,
         h6 {
-          margin: 1.15em 0 0.55em;
+          margin: 20px 0 8px;
           font-weight: 600;
-          line-height: 1.3;
+          line-height: calc(var(--task-detail-line-height) + 1px);
         }
 
         h1 {
-          font-size: 1.28em;
+          font-size: calc(var(--task-detail-font-size) + 4px);
         }
 
         h2 {
-          font-size: 1.16em;
+          font-size: calc(var(--task-detail-font-size) + 3px);
         }
 
         h3 {
-          font-size: 1.08em;
+          font-size: calc(var(--task-detail-font-size) + 2px);
         }
 
         h4,
         h5,
         h6 {
-          font-size: 1em;
+          font-size: calc(var(--task-detail-font-size) + 1px);
         }
 
         a {
           color: var(--accent);
-          text-underline-offset: 0.15em;
+          text-underline-offset: 2px;
         }
 
         code {
-          padding: 0.08em 0.3em;
+          padding: 1px 4px;
           border: 1px solid var(--border);
           border-radius: 4px;
           background: var(--code-gutter);
           color: var(--code-text);
           font-family: var(--font-mono);
-          font-size: 0.9em;
+          font-size: calc(var(--task-detail-font-size) - 1px);
         }
 
         pre {
           max-width: 100%;
           overflow: auto;
-          padding: 0.75em 0.85em;
+          padding: 11px 12px;
           border: 1px solid var(--border);
           border-radius: 6px;
           background: var(--code-bg);
@@ -147,18 +147,18 @@ class CaffoldTaskMarkdown extends HTMLElement {
         }
 
         blockquote {
-          padding-left: 0.85em;
+          padding-left: 12px;
           border-left: 3px solid var(--border);
           color: var(--muted);
         }
 
         ul,
         ol {
-          padding-left: 1.6em;
+          padding-left: 24px;
         }
 
         li + li {
-          margin-top: 0.2em;
+          margin-top: 3px;
         }
 
         .markdown-table-scroll {
@@ -176,7 +176,7 @@ class CaffoldTaskMarkdown extends HTMLElement {
 
         th,
         td {
-          padding: 0.28em 0.45em;
+          padding: 4px 7px;
           border: 1px solid var(--border);
           overflow-wrap: normal;
           text-align: left;
@@ -186,20 +186,24 @@ class CaffoldTaskMarkdown extends HTMLElement {
 
         hr {
           height: 1px;
-          margin: 1em 0;
+          margin: 16px 0;
           border: 0;
           background: var(--border);
         }
 
         input[type="checkbox"] {
-          margin: 0 0.35em 0 0;
+          margin: 0 5px 0 0;
           vertical-align: middle;
         }
 
         .markdown-fallback {
           margin: 0;
+          padding: 0;
+          border: 0;
+          background: transparent;
           overflow-wrap: anywhere;
           font: inherit;
+          line-height: inherit;
           white-space: pre-wrap;
         }
       </style>

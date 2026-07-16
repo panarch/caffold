@@ -2657,6 +2657,30 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       }),
     )
     .toBe(true);
+  await expect
+    .poll(() =>
+      tasksPage.evaluate(() => {
+        const probe = document.createElement("caffold-task-markdown");
+        probe.textContent = "Fallback content";
+        document.body.append(probe);
+        const fallback = probe.shadowRoot.querySelector(".markdown-fallback");
+        const style = getComputedStyle(fallback);
+        const result = {
+          backgroundColor: style.backgroundColor,
+          borderWidth: style.borderWidth,
+          margin: style.margin,
+          padding: style.padding,
+        };
+        probe.remove();
+        return result;
+      }),
+    )
+    .toEqual({
+      backgroundColor: "rgba(0, 0, 0, 0)",
+      borderWidth: "0px",
+      margin: "0px",
+      padding: "0px",
+    });
   await tasksPage.evaluate(() => {
     const probe = document.createElement("caffold-task-markdown");
     probe.hidden = true;
