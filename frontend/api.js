@@ -65,6 +65,14 @@ export function taskStreamUrl(threadId, cwd = "") {
   return `${url.pathname}${url.search}`;
 }
 
+export function taskListStreamUrl(cwd = "") {
+  const url = new URL("/api/tasks/stream", window.location.origin);
+  if (cwd) {
+    url.searchParams.set("cwd", cwd);
+  }
+  return `${url.pathname}${url.search}`;
+}
+
 export async function listDirectory(path = "") {
   return requestJson("/api/list", { path }, { timeoutMs: 7000 });
 }

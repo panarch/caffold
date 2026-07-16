@@ -1560,7 +1560,21 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
 test("groups All Tasks by repository without worktree accordions", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     window.EventSource = class MockEventSource {
-      addEventListener() {}
+      constructor(url) {
+        this.url = url;
+        this.listeners = new Map();
+        if (url.includes("/api/tasks/stream")) {
+          window.__taskListEventSource = this;
+        }
+      }
+
+      addEventListener(type, listener) {
+        this.listeners.set(type, listener);
+      }
+
+      emit(type, payload) {
+        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
+      }
 
       close() {}
     };
@@ -1584,23 +1598,19 @@ test("groups All Tasks by repository without worktree accordions", async ({ page
     lastEventSummary: `${title} summary`,
   });
   const tasks = [
-    {
-      ...task(
-        "thread_gluesql_feature",
-        "Feature review",
-        {
-          rootPath: "worktrees/feature/gluesql",
-          repositoryRootPath: "Workspace/rust/gluesql",
-          branch: "feature/review",
-          headSha: "2222222222222222222222222222222222222222",
-          relativeCwd: "",
-          linked: true,
-        },
-        now + 400,
-      ),
-      status: "running",
-      activeTurnId: "turn_feature",
-    },
+    task(
+      "thread_gluesql_feature",
+      "Feature review",
+      {
+        rootPath: "worktrees/feature/gluesql",
+        repositoryRootPath: "Workspace/rust/gluesql",
+        branch: "feature/review",
+        headSha: "2222222222222222222222222222222222222222",
+        relativeCwd: "",
+        linked: true,
+      },
+      now + 400,
+    ),
     task(
       "thread_gluesql_main",
       "Main review",
@@ -1651,12 +1661,35 @@ test("groups All Tasks by repository without worktree accordions", async ({ page
   await expect(
     groups.nth(0).locator('.task-row[data-thread-id="thread_gluesql_feature"] .task-row-worktree'),
   ).toHaveAttribute("title", /feature\/review/);
+  const featureTask = groups.nth(0).locator(
+    '.task-row[data-thread-id="thread_gluesql_feature"]',
+  );
+  await expect(featureTask).toHaveAttribute("data-task-status", "completed");
+  await expect(featureTask.locator(".task-status-spinner")).toHaveCount(0);
+  await page.evaluate(() => {
+    window.__taskListEventSource.emit("task-event", {
+      id: "live-running",
+      threadId: "thread_gluesql_feature",
+      type: "thread_status_changed",
+      payload: { status: "running" },
+      createdMs: Date.now(),
+    });
+  });
   await expect(
-    groups.nth(0).locator('.task-row[data-thread-id="thread_gluesql_feature"]'),
+    featureTask,
   ).toHaveAttribute("data-task-status", "running");
-  await expect(
-    groups.nth(0).locator('.task-row[data-thread-id="thread_gluesql_feature"] .task-status-spinner'),
-  ).toBeVisible();
+  await expect(featureTask.locator(".task-status-spinner")).toBeVisible();
+  await page.evaluate(() => {
+    window.__taskListEventSource.emit("task-event", {
+      id: "live-idle",
+      threadId: "thread_gluesql_feature",
+      type: "thread_status_changed",
+      payload: { status: "idle" },
+      createdMs: Date.now(),
+    });
+  });
+  await expect(featureTask).toHaveAttribute("data-task-status", "idle");
+  await expect(featureTask.locator(".task-status-spinner")).toHaveCount(0);
   await expect(tasksPage.locator('.task-row .task-status-label')).toHaveCount(0);
   await expect(tasksPage.locator(".task-row-summary")).toHaveCount(0);
   if (testInfo.project.name === "phone") {

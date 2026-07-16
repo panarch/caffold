@@ -8,6 +8,7 @@ import {
   interruptTask,
   resolveTaskApproval,
   sendTaskPrompt,
+  taskListStreamUrl,
   taskStreamUrl,
 } from "../../../api.js";
 import { escapeHtml } from "../../../components/dom.js";
@@ -52,6 +53,9 @@ class CaffoldTasksPage extends HTMLElement {
     this.taskListRequestId = 0;
     this.taskListContext = "";
     this.taskListDirty = true;
+    this.taskListStream = null;
+    this.taskListStreamContext = "";
+    this.taskListStreamNeedsSync = false;
     this.taskListWidth = TASK_LIST_DEFAULT_WIDTH;
     this.taskDetail = null;
     this.taskGithubStatus = null;
@@ -228,6 +232,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.detachGlobalListeners();
     this.stopTaskListResize();
     this.closeStream();
+    this.closeTaskListStream();
     this.unsubscribeTaskDiffWatch();
   }
 
@@ -256,6 +261,7 @@ class CaffoldTasksPage extends HTMLElement {
     }
 
     this.taskListContext = context;
+    this.closeTaskListStream();
     this.taskListRequestId += 1;
     this.taskListLoading = false;
     this.taskListLoaded = false;
@@ -322,6 +328,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.cwdPath = route?.cwd ?? "";
     this.defaultCwdPath = options.defaultCwdPath ?? this.defaultCwdPath;
     this.syncTaskListContext();
+    this.connectTaskListStream();
     this.prepareRoute(route, options);
     if (route?.new) {
       return this.openNew();
@@ -510,6 +517,60 @@ class CaffoldTasksPage extends HTMLElement {
       this.render();
       this.requestSelectedTaskRefresh(threadId, generation);
     });
+  }
+
+  connectTaskListStream() {
+    if (!("EventSource" in window)) {
+      return;
+    }
+    const context = this.taskListContext;
+    if (this.taskListStream && this.taskListStreamContext === context) {
+      return;
+    }
+    this.closeTaskListStream();
+
+    let stream;
+    try {
+      stream = new EventSource(taskListStreamUrl(this.cwdPath));
+    } catch {
+      return;
+    }
+    this.taskListStream = stream;
+    this.taskListStreamContext = context;
+    stream.addEventListener("open", () => {
+      if (this.taskListStream !== stream || this.taskListStreamContext !== context) {
+        return;
+      }
+      if (this.taskListStreamNeedsSync) {
+        this.taskListStreamNeedsSync = false;
+        this.loadTaskList({ force: true });
+      }
+    });
+    stream.addEventListener("error", () => {
+      if (this.taskListStream === stream) {
+        this.taskListStreamNeedsSync = true;
+      }
+    });
+    stream.addEventListener("task-event", (event) => {
+      if (this.taskListStream !== stream || this.taskListStreamContext !== context) {
+        return;
+      }
+      const entry = parseJson(event.data);
+      const task = this.tasks.find(
+        (candidate) => taskThreadId(candidate) === entry?.threadId,
+      );
+      const nextTask = taskWithLiveEventState(task, entry);
+      if (nextTask && nextTask !== task) {
+        this.patchTaskListTask(nextTask);
+      }
+    });
+  }
+
+  closeTaskListStream() {
+    this.taskListStream?.close();
+    this.taskListStream = null;
+    this.taskListStreamContext = "";
+    this.taskListStreamNeedsSync = false;
   }
 
   applyLiveTaskEvent(event) {

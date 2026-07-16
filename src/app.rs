@@ -35,6 +35,7 @@ use crate::{
     git,
     server_settings::{ServerSettings, ServerSettingsError, ServerSettingsStore},
     static_assets,
+    task_activity::TaskActivityMonitor,
     watch::{WatchChange, WatchError, WatchHub, WatchMessage},
 };
 
@@ -56,6 +57,7 @@ struct AppState {
     codex_threads: Arc<CodexThreadRuntime>,
     pending_approvals: Arc<AsyncMutex<HashMap<String, PendingApproval>>>,
     task_events: broadcast::Sender<TaskEventRecord>,
+    task_activity: TaskActivityMonitor,
     watch_hub: WatchHub,
     shutdown: broadcast::Sender<()>,
     initial_path: String,
@@ -357,6 +359,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         data_dir.join("server.json"),
     )?);
     let (task_events, _) = broadcast::channel(256);
+    let task_activity = task_activity_monitor(task_events.clone());
     let (shutdown, _) = broadcast::channel(16);
     let pending_approvals = Arc::new(AsyncMutex::new(HashMap::new()));
     let codex_threads = Arc::new(CodexThreadRuntime::default());
@@ -369,6 +372,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         codex_threads: codex_threads.clone(),
         pending_approvals,
         task_events,
+        task_activity,
         watch_hub,
         shutdown: shutdown.clone(),
         initial_path: initial_path.clone(),
@@ -403,6 +407,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
 
 pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
     let (task_events, _) = broadcast::channel(256);
+    let task_activity = task_activity_monitor(task_events.clone());
     let (shutdown, _) = broadcast::channel(16);
     let fs = Arc::new(fs);
     let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
@@ -412,6 +417,7 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         codex_threads: Arc::new(CodexThreadRuntime::default()),
         pending_approvals: Arc::new(AsyncMutex::new(HashMap::new())),
         task_events,
+        task_activity,
         watch_hub,
         shutdown,
         initial_path: String::new(),
@@ -449,6 +455,7 @@ fn router_with_state(state: AppState) -> Router {
         .route("/api/codex/status", get(codex_status))
         .route("/api/codex/models", get(codex_models))
         .route("/api/tasks", get(list_tasks).post(create_task))
+        .route("/api/tasks/stream", get(task_list_stream))
         .route("/api/tasks/{thread_id}", get(task_detail))
         .route("/api/tasks/{thread_id}/stream", get(task_stream))
         .route("/api/tasks/{thread_id}/prompts", post(task_prompt))
@@ -984,7 +991,13 @@ async fn list_tasks(
     let cwd_filter = task_filter_cwd(&state, query.cwd.as_deref())?;
     let client = require_codex_thread_client(&state).await?;
     let response = client.list_threads(100).await?;
-    let tasks = thread_list_response(&state.fs, cwd_filter.as_ref(), &response);
+    state.task_activity.observe_threads(&response);
+    let tasks = thread_list_response(
+        &state.fs,
+        cwd_filter.as_ref(),
+        &response,
+        Some(&state.task_activity),
+    );
     Ok(Json(TaskListResponse { tasks }))
 }
 
@@ -1062,6 +1075,52 @@ async fn task_stream(
         .headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
     Ok(response)
+}
+
+async fn task_list_stream(State(state): State<AppState>) -> Result<Response, ApiError> {
+    require_codex_thread_client(&state).await?;
+    Ok(task_event_stream(state, None))
+}
+
+fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
+    let receiver = state.task_events.subscribe();
+    let shutdown = state.shutdown.subscribe();
+    let stream = stream::unfold(
+        (receiver, shutdown, thread_id),
+        |(mut receiver, mut shutdown, thread_id)| async move {
+            loop {
+                tokio::select! {
+                    _ = shutdown.recv() => return None,
+                    message = receiver.recv() => {
+                        match message {
+                            Ok(event) if thread_id.as_ref().is_none_or(|id| id == &event.thread_id) => {
+                                let payload = serde_json::to_string(&event)
+                                    .unwrap_or_else(|_| "{}".to_string());
+                                let frame = format!("event: task-event\ndata: {payload}\n\n");
+                                return Some((
+                                    Ok::<_, Infallible>(Bytes::from(frame)),
+                                    (receiver, shutdown, thread_id),
+                                ));
+                            }
+                            Ok(_) => continue,
+                            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(broadcast::error::RecvError::Closed) => return None,
+                        }
+                    }
+                }
+            }
+        },
+    );
+
+    let mut response = Response::new(Body::from_stream(stream));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/event-stream; charset=utf-8"),
+    );
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    response
 }
 
 async fn task_prompt(
@@ -1223,6 +1282,7 @@ async fn read_task_detail(
         .and_then(JsonValue::as_str)
         .map(ToOwned::to_owned);
     let thread = thread_with_turns(thread, turns)?;
+    state.task_activity.observe_thread(&thread);
     let mut events = thread_events(&thread);
     let pending_approvals = pending_approval_events(state, thread_id).await;
     events.extend(pending_approvals.iter().cloned());
@@ -1232,7 +1292,12 @@ async fn read_task_detail(
             .then_with(|| left.id.cmp(&right.id))
     });
     let resolved_cwd = resolve_thread_cwd(&state.fs, &thread);
-    let task = task_record_from_thread(&thread, &events, resolved_cwd.as_ref())?;
+    let task = task_record_from_thread(
+        &thread,
+        &events,
+        resolved_cwd.as_ref(),
+        state.task_activity.is_running(thread_id),
+    )?;
     Ok(TaskDetailResponse {
         task,
         events,
@@ -1256,6 +1321,7 @@ fn thread_list_response(
     fs: &RootedFs,
     cwd_filter: Option<&TaskCwdFilter>,
     response: &JsonValue,
+    activity: Option<&TaskActivityMonitor>,
 ) -> Vec<TaskRecord> {
     let mut resolved_cwds = HashMap::<String, Option<ResolvedTaskCwd>>::new();
     let mut tasks = response
@@ -1276,7 +1342,10 @@ fn thread_list_response(
                 return None;
             }
 
-            task_record_from_thread(thread, &[], resolved_cwd.as_ref()).ok()
+            let running = thread_id(thread).is_some_and(|thread_id| {
+                activity.is_some_and(|activity| activity.is_running(thread_id))
+            });
+            task_record_from_thread(thread, &[], resolved_cwd.as_ref(), running).ok()
         })
         .collect::<Vec<_>>();
     tasks.sort_by(|left, right| {
@@ -1293,6 +1362,7 @@ fn task_record_from_thread(
     thread: &JsonValue,
     events: &[TaskEventRecord],
     resolved_cwd: Option<&ResolvedTaskCwd>,
+    rollout_running: bool,
 ) -> Result<TaskRecord, ApiError> {
     let thread_id = thread_id(thread).ok_or_else(|| ApiError::BadRequest {
         code: "thread_id_missing",
@@ -1313,7 +1383,7 @@ fn task_record_from_thread(
         .any(|event| event.event_type == "approval_requested");
     let status = if has_pending_approval {
         "waiting_for_approval".to_string()
-    } else if active_turn_id.is_some() {
+    } else if active_turn_id.is_some() || rollout_running {
         "running".to_string()
     } else {
         thread_status(thread)
@@ -1342,6 +1412,25 @@ fn task_record_from_thread(
             .map(seconds_to_ms_value),
         active_turn_id,
         last_event_summary,
+    })
+}
+
+fn task_activity_monitor(task_events: broadcast::Sender<TaskEventRecord>) -> TaskActivityMonitor {
+    TaskActivityMonitor::new(move |thread_id, running| {
+        let status = if running { "running" } else { "idle" };
+        let event = task_event_record(
+            &thread_id,
+            &format!("rollout_status:{}", now_ms()),
+            "thread_status_changed",
+            if running {
+                "Thread running"
+            } else {
+                "Thread idle"
+            },
+            Some(json!({ "threadId": thread_id, "status": status })),
+            now_ms(),
+        );
+        let _ = task_events.send(event);
     })
 }
 
@@ -2430,7 +2519,7 @@ mod tests {
             ]
         });
 
-        let tasks = thread_list_response(&fs, Some(&cwd_filter), &response);
+        let tasks = thread_list_response(&fs, Some(&cwd_filter), &response, None);
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].thread_id, "thread_old");
     }
@@ -2463,12 +2552,42 @@ mod tests {
             ]
         });
 
-        let tasks = thread_list_response(&fs, None, &response);
+        let tasks = thread_list_response(&fs, None, &response, None);
 
         assert_eq!(tasks.len(), 2);
         assert_eq!(tasks[0].thread_id, "thread_global");
         assert_eq!(tasks[1].thread_id, "thread_project");
         assert_eq!(tasks[1].relative_cwd, "project/src");
+    }
+
+    #[test]
+    fn thread_list_response_uses_rollout_activity_for_cross_process_running_state() {
+        let temp = tempfile::tempdir().unwrap();
+        let fs = RootedFs::new(temp.path()).unwrap();
+        let project_root = temp.path().join("project");
+        let rollout_path = temp.path().join("rollout.jsonl");
+        std::fs::create_dir(&project_root).unwrap();
+        std::fs::write(&rollout_path, "{\"payload\":{\"type\":\"task_started\"}}\n").unwrap();
+        let response = json!({
+            "data": [{
+                "id": "thread_running_elsewhere",
+                "preview": "Running in Codex desktop",
+                "cwd": project_root.display().to_string(),
+                "path": rollout_path.display().to_string(),
+                "createdAt": 1.0,
+                "updatedAt": 2.0,
+                "status": { "type": "notLoaded" }
+            }]
+        });
+        let (events, _) = broadcast::channel(4);
+        let activity = task_activity_monitor(events);
+        activity.observe_threads(&response);
+
+        let tasks = thread_list_response(&fs, None, &response, Some(&activity));
+
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].status, "running");
+        assert_eq!(tasks[0].active_turn_id, None);
     }
 
     #[test]
@@ -2500,7 +2619,7 @@ mod tests {
             ]
         });
 
-        let tasks = thread_list_response(&fs, Some(&cwd_filter), &response);
+        let tasks = thread_list_response(&fs, Some(&cwd_filter), &response, None);
 
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].thread_id, "thread_project_root");
@@ -2721,7 +2840,7 @@ mod tests {
             1,
         )];
 
-        let task = task_record_from_thread(&thread, &events, None).unwrap();
+        let task = task_record_from_thread(&thread, &events, None, false).unwrap();
         assert_eq!(task.status, "waiting_for_approval");
     }
 
@@ -2801,7 +2920,7 @@ mod tests {
             ]
         });
         let filter = TaskCwdFilter::Repository(main.repository_common_dir.unwrap());
-        let filtered = thread_list_response(&fs, Some(&filter), &response);
+        let filtered = thread_list_response(&fs, Some(&filter), &response, None);
         assert_eq!(
             filtered
                 .iter()
@@ -2809,7 +2928,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["thread_linked", "thread_main_src", "thread_main_root"]
         );
-        let all = thread_list_response(&fs, None, &response);
+        let all = thread_list_response(&fs, None, &response, None);
         assert_eq!(all.len(), 3);
 
         git(&linked_root, &["checkout", "--detach", "HEAD"]);
