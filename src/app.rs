@@ -35,7 +35,7 @@ use crate::{
     git,
     server_settings::{ServerSettings, ServerSettingsError, ServerSettingsStore},
     static_assets,
-    task_activity::TaskActivityMonitor,
+    task_activity::{TaskActivity, TaskActivityMonitor},
     watch::{WatchChange, WatchError, WatchHub, WatchMessage},
 };
 
@@ -276,6 +276,7 @@ struct TaskRecord {
     updated_ms: u64,
     recency_ms: Option<u64>,
     active_turn_id: Option<String>,
+    active_turn_started_ms: Option<u64>,
     last_event_summary: Option<String>,
 }
 
@@ -1299,11 +1300,12 @@ async fn read_task_detail(
             .then_with(|| left.id.cmp(&right.id))
     });
     let resolved_cwd = resolve_thread_cwd(&state.fs, &thread);
+    let rollout_activity = state.task_activity.activity(thread_id);
     let task = task_record_from_thread(
         &thread,
         &events,
         resolved_cwd.as_ref(),
-        state.task_activity.is_running(thread_id),
+        rollout_activity.as_ref(),
     )?;
     Ok(TaskDetailResponse {
         task,
@@ -1349,10 +1351,15 @@ fn thread_list_response(
                 return None;
             }
 
-            let running = thread_id(thread).is_some_and(|thread_id| {
-                activity.is_some_and(|activity| activity.is_running(thread_id))
-            });
-            task_record_from_thread(thread, &[], resolved_cwd.as_ref(), running).ok()
+            let rollout_activity = thread_id(thread)
+                .and_then(|thread_id| activity.and_then(|activity| activity.activity(thread_id)));
+            task_record_from_thread(
+                thread,
+                &[],
+                resolved_cwd.as_ref(),
+                rollout_activity.as_ref(),
+            )
+            .ok()
         })
         .collect::<Vec<_>>();
     tasks.sort_by(|left, right| {
@@ -1369,7 +1376,7 @@ fn task_record_from_thread(
     thread: &JsonValue,
     events: &[TaskEventRecord],
     resolved_cwd: Option<&ResolvedTaskCwd>,
-    rollout_running: bool,
+    rollout_activity: Option<&TaskActivity>,
 ) -> Result<TaskRecord, ApiError> {
     let thread_id = thread_id(thread).ok_or_else(|| ApiError::BadRequest {
         code: "thread_id_missing",
@@ -1384,13 +1391,27 @@ fn task_record_from_thread(
         .and_then(JsonValue::as_str)
         .unwrap_or("")
         .to_string();
-    let active_turn_id = active_turn_id(thread);
+    let thread_active_turn_id = active_turn_id(thread);
+    let active_turn_id = thread_active_turn_id.clone().or_else(|| {
+        rollout_activity
+            .filter(|activity| activity.is_running())
+            .and_then(TaskActivity::turn_id)
+            .map(ToOwned::to_owned)
+    });
+    let active_turn_started_ms = thread_active_turn_id
+        .as_deref()
+        .and_then(|turn_id| turn_started_ms(thread, turn_id))
+        .or_else(|| {
+            rollout_activity
+                .filter(|activity| activity.is_running())
+                .and_then(TaskActivity::started_ms)
+        });
     let has_pending_approval = events
         .iter()
         .any(|event| event.event_type == "approval_requested");
     let status = if has_pending_approval {
         "waiting_for_approval".to_string()
-    } else if active_turn_id.is_some() || rollout_running {
+    } else if active_turn_id.is_some() || rollout_activity.is_some_and(TaskActivity::is_running) {
         "running".to_string()
     } else {
         thread_status(thread)
@@ -1418,23 +1439,33 @@ fn task_record_from_thread(
             .and_then(JsonValue::as_f64)
             .map(seconds_to_ms_value),
         active_turn_id,
+        active_turn_started_ms,
         last_event_summary,
     })
 }
 
 fn task_activity_monitor(task_events: broadcast::Sender<TaskEventRecord>) -> TaskActivityMonitor {
-    TaskActivityMonitor::new(move |thread_id, running| {
-        let status = if running { "running" } else { "idle" };
+    TaskActivityMonitor::new(move |thread_id, activity| {
+        let status = if activity.is_running() {
+            "running"
+        } else {
+            "idle"
+        };
         let event = task_event_record(
             &thread_id,
             &format!("rollout_status:{}", now_ms()),
             "thread_status_changed",
-            if running {
+            if activity.is_running() {
                 "Thread running"
             } else {
                 "Thread idle"
             },
-            Some(json!({ "threadId": thread_id, "status": status })),
+            Some(json!({
+                "threadId": thread_id,
+                "status": status,
+                "activeTurnId": activity.turn_id(),
+                "activeTurnStartedMs": activity.started_ms()
+            })),
             now_ms(),
         );
         let _ = task_events.send(event);
@@ -1609,13 +1640,19 @@ fn handle_codex_notification(
     };
     match method {
         "turn/started" => {
+            let started_ms = params
+                .pointer("/turn/startedAt")
+                .and_then(JsonValue::as_f64)
+                .map(seconds_to_ms_value)
+                .filter(|value| *value > 0)
+                .unwrap_or_else(now_ms);
             let event = task_event_record(
                 &thread_id,
                 &event_id_from_params("turn_started", &params),
                 "turn_started",
                 "Turn started",
                 Some(params),
-                now_ms(),
+                started_ms,
             );
             let _ = task_events.send(event);
         }
@@ -1641,8 +1678,19 @@ fn handle_codex_notification(
             );
             let _ = task_events.send(event);
         }
+        "item/started" => {
+            let created_ms = notification_ms(&params, "startedAtMs").unwrap_or_else(now_ms);
+            if let Some(event) =
+                task_event_from_item_lifecycle(&thread_id, created_ms, &params, "started")
+            {
+                let _ = task_events.send(event);
+            }
+        }
         "item/completed" => {
-            if let Some(event) = task_event_from_thread_item(&thread_id, now_ms(), &params) {
+            let created_ms = notification_ms(&params, "completedAtMs").unwrap_or_else(now_ms);
+            if let Some(event) =
+                task_event_from_item_lifecycle(&thread_id, created_ms, &params, "completed")
+            {
                 let _ = task_events.send(event);
             }
         }
@@ -1668,13 +1716,19 @@ fn handle_codex_notification(
                 "completed" => "Turn completed",
                 _ => "Turn updated",
             };
+            let completed_ms = params
+                .pointer("/turn/completedAt")
+                .and_then(JsonValue::as_f64)
+                .map(seconds_to_ms_value)
+                .filter(|value| *value > 0)
+                .unwrap_or_else(now_ms);
             let event = task_event_record(
                 &thread_id,
                 &event_id_from_params("turn_completed", &params),
                 "turn_completed",
                 summary,
                 Some(params),
-                now_ms(),
+                completed_ms,
             );
             let _ = task_events.send(event);
         }
@@ -1691,6 +1745,117 @@ fn handle_codex_notification(
         }
         _ => {}
     }
+}
+
+fn task_event_from_item_lifecycle(
+    thread_id: &str,
+    created_ms: u64,
+    params: &JsonValue,
+    lifecycle: &str,
+) -> Option<TaskEventRecord> {
+    let event = task_event_from_thread_item(thread_id, created_ms, params)
+        .or_else(|| task_event_from_item_activity(thread_id, created_ms, params, lifecycle))?;
+    Some(with_item_lifecycle(event, lifecycle))
+}
+
+fn with_item_lifecycle(mut event: TaskEventRecord, lifecycle: &str) -> TaskEventRecord {
+    if let Some(JsonValue::Object(payload)) = event.payload.as_mut() {
+        payload.insert("lifecycle".to_string(), json!(lifecycle));
+    }
+    event
+}
+
+fn task_event_from_item_activity(
+    thread_id: &str,
+    created_ms: u64,
+    params: &JsonValue,
+    lifecycle: &str,
+) -> Option<TaskEventRecord> {
+    let item = params.get("item")?;
+    let item_type = item.get("type").and_then(JsonValue::as_str)?;
+    let item_id = item.get("id").and_then(JsonValue::as_str)?;
+    let turn_id = params.get("turnId").and_then(JsonValue::as_str);
+    let started = lifecycle == "started";
+    let summary = match item_type {
+        "reasoning" => {
+            if started {
+                "Thinking"
+            } else {
+                "Thought"
+            }
+        }
+        "agentMessage" => {
+            if started {
+                "Preparing response"
+            } else {
+                "Response ready"
+            }
+        }
+        "plan" => {
+            if started {
+                "Updating plan"
+            } else {
+                "Plan updated"
+            }
+        }
+        "mcpToolCall" | "dynamicToolCall" => {
+            if started {
+                "Calling tool"
+            } else {
+                "Tool completed"
+            }
+        }
+        "collabAgentToolCall" => {
+            if started {
+                "Working with agent"
+            } else {
+                "Agent work completed"
+            }
+        }
+        "webSearch" => {
+            if started {
+                "Searching the web"
+            } else {
+                "Web search completed"
+            }
+        }
+        "imageView" => {
+            if started {
+                "Viewing image"
+            } else {
+                "Image viewed"
+            }
+        }
+        "sleep" => {
+            if started {
+                "Waiting"
+            } else {
+                "Wait completed"
+            }
+        }
+        _ => {
+            if started {
+                "Working"
+            } else {
+                "Work completed"
+            }
+        }
+    };
+    Some(task_event_record(
+        thread_id,
+        item_id,
+        "work_status",
+        summary,
+        Some(json!({
+            "threadId": thread_id,
+            "turnId": turn_id,
+            "itemId": item_id,
+            "itemType": item_type,
+            "lifecycle": lifecycle,
+            "item": item,
+        })),
+        created_ms,
+    ))
 }
 
 fn task_event_from_thread_item(
@@ -2061,6 +2226,15 @@ fn resolve_task_cwd(fs: &RootedFs, cwd: &str) -> Option<ResolvedTaskCwd> {
         return None;
     }
     let logical_cwd = fs.logical_path_for_absolute(&canonical_cwd).ok();
+    if !has_git_ancestor(&canonical_cwd) {
+        return Some(ResolvedTaskCwd {
+            canonical_cwd,
+            logical_cwd,
+            worktree: None,
+            worktree_root: None,
+            repository_common_dir: None,
+        });
+    }
     let Some(repository) = git::repository_for(&canonical_cwd) else {
         return Some(ResolvedTaskCwd {
             canonical_cwd,
@@ -2114,6 +2288,10 @@ fn resolve_task_cwd(fs: &RootedFs, cwd: &str) -> Option<ResolvedTaskCwd> {
         worktree_root: Some(repository.root),
         repository_common_dir: metadata.map(|paths| paths.common_dir),
     })
+}
+
+fn has_git_ancestor(path: &Path) -> bool {
+    path.ancestors().any(git::has_git_marker)
 }
 
 fn task_cwd_matches_filter(resolved_cwd: Option<&ResolvedTaskCwd>, filter: &TaskCwdFilter) -> bool {
@@ -2170,6 +2348,18 @@ fn active_turn_id(thread: &JsonValue) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+fn turn_started_ms(thread: &JsonValue, turn_id: &str) -> Option<u64> {
+    thread
+        .get("turns")
+        .and_then(JsonValue::as_array)?
+        .iter()
+        .find(|turn| turn.get("id").and_then(JsonValue::as_str) == Some(turn_id))?
+        .get("startedAt")
+        .and_then(JsonValue::as_f64)
+        .map(seconds_to_ms_value)
+        .filter(|value| *value > 0)
+}
+
 fn seconds_to_ms(value: Option<f64>) -> u64 {
     value.map(seconds_to_ms_value).unwrap_or(0)
 }
@@ -2180,6 +2370,20 @@ fn seconds_to_ms_value(value: f64) -> u64 {
     } else {
         0
     }
+}
+
+fn notification_ms(params: &JsonValue, key: &str) -> Option<u64> {
+    params
+        .get(key)
+        .and_then(JsonValue::as_u64)
+        .or_else(|| {
+            params
+                .get(key)
+                .and_then(JsonValue::as_f64)
+                .filter(|value| value.is_finite() && *value > 0.0)
+                .map(|value| value as u64)
+        })
+        .filter(|value| *value > 0)
 }
 
 fn event_id_from_params(prefix: &str, params: &JsonValue) -> String {
@@ -2574,7 +2778,14 @@ mod tests {
         let project_root = temp.path().join("project");
         let rollout_path = temp.path().join("rollout.jsonl");
         std::fs::create_dir(&project_root).unwrap();
-        std::fs::write(&rollout_path, "{\"payload\":{\"type\":\"task_started\"}}\n").unwrap();
+        std::fs::write(
+            &rollout_path,
+            concat!(
+                "{\"payload\":{\"type\":\"task_started\",",
+                "\"turn_id\":\"turn_elsewhere\",\"started_at\":1750000000}}\n"
+            ),
+        )
+        .unwrap();
         let response = json!({
             "data": [{
                 "id": "thread_running_elsewhere",
@@ -2594,7 +2805,8 @@ mod tests {
 
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].status, "running");
-        assert_eq!(tasks[0].active_turn_id, None);
+        assert_eq!(tasks[0].active_turn_id.as_deref(), Some("turn_elsewhere"));
+        assert_eq!(tasks[0].active_turn_started_ms, Some(1_750_000_000_000));
     }
 
     #[test]
@@ -2847,7 +3059,7 @@ mod tests {
             1,
         )];
 
-        let task = task_record_from_thread(&thread, &events, None, false).unwrap();
+        let task = task_record_from_thread(&thread, &events, None, None).unwrap();
         assert_eq!(task.status, "waiting_for_approval");
     }
 
@@ -2955,6 +3167,7 @@ mod tests {
         std::fs::create_dir(&outside).unwrap();
         let fs = RootedFs::new(&root).unwrap();
 
+        assert!(!has_git_ancestor(&plain));
         let resolved_plain = resolve_task_cwd(&fs, plain.to_str().unwrap()).unwrap();
         assert_eq!(resolved_plain.logical_cwd.as_deref(), Some("plain"));
         assert_eq!(resolved_plain.worktree, None);
@@ -2968,20 +3181,96 @@ mod tests {
 
     #[test]
     fn codex_notifications_publish_live_task_status() {
-        let (sender, mut receiver) = broadcast::channel(4);
+        let (sender, mut receiver) = broadcast::channel(8);
 
         handle_codex_notification(
             &sender,
             "turn/started",
             json!({
                 "threadId": "thread_1",
-                "turn": { "id": "turn_1", "status": "inProgress" }
+                "turn": {
+                    "id": "turn_1",
+                    "status": "inProgress",
+                    "startedAt": 1_750_000_000.25
+                }
             }),
         );
         let started = receiver.try_recv().unwrap();
         assert_eq!(started.thread_id, "thread_1");
         assert_eq!(started.event_type, "turn_started");
+        assert_eq!(started.created_ms, 1_750_000_000_250);
         assert_eq!(started.payload.unwrap()["turn"]["id"], "turn_1");
+
+        handle_codex_notification(
+            &sender,
+            "item/started",
+            json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "startedAtMs": 1_750_000_001_000_u64,
+                "item": {
+                    "id": "command_1",
+                    "type": "commandExecution",
+                    "command": "cargo test",
+                    "cwd": "/tmp/project",
+                    "status": "inProgress"
+                }
+            }),
+        );
+        let command_started = receiver.try_recv().unwrap();
+        assert_eq!(command_started.event_type, "command_execution");
+        assert_eq!(command_started.created_ms, 1_750_000_001_000);
+        assert_eq!(
+            command_started.payload.as_ref().unwrap()["lifecycle"],
+            "started"
+        );
+
+        handle_codex_notification(
+            &sender,
+            "item/started",
+            json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "startedAtMs": 1_750_000_002_000_u64,
+                "item": {
+                    "id": "reasoning_1",
+                    "type": "reasoning",
+                    "summary": [],
+                    "content": []
+                }
+            }),
+        );
+        let reasoning_started = receiver.try_recv().unwrap();
+        assert_eq!(reasoning_started.event_type, "work_status");
+        assert_eq!(reasoning_started.summary, "Thinking");
+        assert_eq!(
+            reasoning_started.payload.as_ref().unwrap()["lifecycle"],
+            "started"
+        );
+
+        handle_codex_notification(
+            &sender,
+            "item/completed",
+            json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "completedAtMs": 1_750_000_003_000_u64,
+                "item": {
+                    "id": "reasoning_1",
+                    "type": "reasoning",
+                    "summary": ["Checked the current behavior."],
+                    "content": []
+                }
+            }),
+        );
+        let reasoning_completed = receiver.try_recv().unwrap();
+        assert_eq!(reasoning_started.id, reasoning_completed.id);
+        assert_eq!(reasoning_completed.event_type, "reasoning");
+        assert_eq!(reasoning_completed.created_ms, 1_750_000_003_000);
+        assert_eq!(
+            reasoning_completed.payload.as_ref().unwrap()["lifecycle"],
+            "completed"
+        );
 
         handle_codex_notification(
             &sender,
@@ -2995,6 +3284,22 @@ mod tests {
         assert_eq!(status.thread_id, "thread_1");
         assert_eq!(status.event_type, "thread_status_changed");
         assert_eq!(status.payload.unwrap()["status"], "running");
+
+        handle_codex_notification(
+            &sender,
+            "turn/completed",
+            json!({
+                "threadId": "thread_1",
+                "turn": {
+                    "id": "turn_1",
+                    "status": "completed",
+                    "completedAt": 1_750_000_004.5
+                }
+            }),
+        );
+        let completed = receiver.try_recv().unwrap();
+        assert_eq!(completed.event_type, "turn_completed");
+        assert_eq!(completed.created_ms, 1_750_000_004_500);
     }
 
     #[tokio::test]

@@ -16,12 +16,14 @@ use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::{Child, ChildStdin, ChildStdout, Command},
     sync::{Mutex as AsyncMutex, broadcast, oneshot},
-    time::{Instant, timeout},
+    time::{Instant, sleep, timeout},
 };
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 const THREAD_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(500);
+const ROLLOUT_READ_RETRY_DELAY: Duration = Duration::from_millis(200);
+const ROLLOUT_READ_MAX_ATTEMPTS: usize = 10;
 
 const INITIALIZE_ID: u64 = 1;
 const ACCOUNT_ID: u64 = 2;
@@ -211,7 +213,8 @@ impl CodexThreadClient {
     }
 
     pub async fn list_threads(&self, limit: usize) -> Result<Value, CodexThreadError> {
-        self.request("thread/list", thread_list_params(limit)).await
+        self.request_with_rollout_retry("thread/list", thread_list_params(limit))
+            .await
     }
 
     pub async fn read_thread(
@@ -219,7 +222,7 @@ impl CodexThreadClient {
         thread_id: &str,
         include_turns: bool,
     ) -> Result<Value, CodexThreadError> {
-        self.request("thread/read", thread_read_params(thread_id, include_turns))
+        self.request_with_rollout_retry("thread/read", thread_read_params(thread_id, include_turns))
             .await
     }
 
@@ -337,6 +340,26 @@ impl CodexThreadClient {
         }
     }
 
+    async fn request_with_rollout_retry(
+        &self,
+        method: &str,
+        params: Value,
+    ) -> Result<Value, CodexThreadError> {
+        for attempt in 1..=ROLLOUT_READ_MAX_ATTEMPTS {
+            match self.request(method, params.clone()).await {
+                Err(error)
+                    if attempt < ROLLOUT_READ_MAX_ATTEMPTS
+                        && is_transient_rollout_read_error(&error) =>
+                {
+                    sleep(ROLLOUT_READ_RETRY_DELAY).await;
+                }
+                result => return result,
+            }
+        }
+
+        unreachable!("rollout read retry loop always returns")
+    }
+
     async fn notify(&self, method: &str, params: Value) -> Result<(), CodexThreadError> {
         self.write_message(json!({
             "jsonrpc": "2.0",
@@ -361,6 +384,16 @@ impl CodexThreadClient {
             .await
             .map_err(|error| CodexThreadError::Protocol(error.to_string()))
     }
+}
+
+fn is_transient_rollout_read_error(error: &CodexThreadError) -> bool {
+    matches!(
+        error,
+        CodexThreadError::Protocol(message)
+            if message.contains("failed to read session metadata")
+                && message.contains("rollout")
+                && message.contains("is empty")
+    )
 }
 
 async fn read_thread_server_loop(
@@ -793,6 +826,19 @@ enum AppServerReadError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recognizes_empty_rollout_as_transient_read_error() {
+        assert!(is_transient_rollout_read_error(
+            &CodexThreadError::Protocol(
+                "failed to read thread: thread-store internal error: failed to read session metadata /tmp/rollout.jsonl: rollout at /tmp/rollout.jsonl is empty"
+                    .to_string(),
+            ),
+        ));
+        assert!(!is_transient_rollout_read_error(
+            &CodexThreadError::Protocol("thread not found".to_string()),
+        ));
+    }
 
     #[test]
     fn builds_thread_list_request_params() {

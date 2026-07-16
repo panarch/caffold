@@ -77,6 +77,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.streamState = "idle";
     this.streamGeneration = 0;
     this.streamErrorTimer = null;
+    this.activeTurnClockTimer = null;
     this.taskRefresh = null;
     this.requestId = 0;
     this.conversationScrollMode = null;
@@ -236,6 +237,40 @@ class CaffoldTasksPage extends HTMLElement {
     this.closeStream();
     this.closeTaskListStream();
     this.unsubscribeTaskDiffWatch();
+    this.stopActiveTurnClock();
+  }
+
+  syncActiveTurnClock() {
+    const activeTurn = this.querySelector("[data-active-turn-started-ms]");
+    if (!activeTurn) {
+      this.stopActiveTurnClock();
+      return;
+    }
+
+    this.updateActiveTurnClock();
+    if (this.activeTurnClockTimer) {
+      return;
+    }
+    this.activeTurnClockTimer = window.setInterval(
+      () => this.updateActiveTurnClock(),
+      1_000,
+    );
+  }
+
+  updateActiveTurnClock() {
+    const activeTurn = this.querySelector("[data-active-turn-started-ms]");
+    const duration = activeTurn?.querySelector(".task-turn-active-duration");
+    const startedMs = Number(activeTurn?.dataset.activeTurnStartedMs);
+    if (!activeTurn || !duration || !Number.isFinite(startedMs)) {
+      this.stopActiveTurnClock();
+      return;
+    }
+    duration.textContent = `Working for ${formatDuration(Date.now() - startedMs)}`;
+  }
+
+  stopActiveTurnClock() {
+    window.clearInterval(this.activeTurnClockTimer);
+    this.activeTurnClockTimer = null;
   }
 
   attachGlobalListeners() {
@@ -458,8 +493,6 @@ class CaffoldTasksPage extends HTMLElement {
     }
 
     const generation = this.streamGeneration;
-    let opened = false;
-    let needsSync = false;
     let stream;
     try {
       stream = new EventSource(taskStreamUrl(threadId, this.cwdPath));
@@ -476,19 +509,15 @@ class CaffoldTasksPage extends HTMLElement {
       }
       window.clearTimeout(this.streamErrorTimer);
       this.streamErrorTimer = null;
-      const shouldSync = opened || needsSync;
-      opened = true;
-      needsSync = false;
       this.setStreamState("connected");
-      if (shouldSync) {
-        this.requestSelectedTaskRefresh(threadId, generation);
-      }
+      // A fast turn can finish after the route response but before EventSource opens.
+      // Always synchronize once on open so those non-replayed events are not lost.
+      this.requestSelectedTaskRefresh(threadId, generation);
     });
     stream.addEventListener("error", () => {
       if (!this.isCurrentStream(stream, threadId, generation)) {
         return;
       }
-      needsSync = true;
       window.clearTimeout(this.streamErrorTimer);
       if (stream.readyState === 2) {
         this.streamErrorTimer = null;
@@ -1307,6 +1336,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.syncTaskCompareBrowser(previousTaskCompareState);
     this.applyTaskListWidth();
     this.syncTaskListSelection();
+    this.syncActiveTurnClock();
   }
 
   ensureTaskShell() {
@@ -2959,16 +2989,20 @@ function renderModelFallback(loading, error) {
 
 function renderConversation(events, task) {
   const conversationEvents = dedupeCanonicalEvents(events);
+  const groups = conversationGroups(conversationEvents);
+  const activeGroupIndex = activeTurnGroupIndex(groups, task);
   const userPrompts = new Set(
     conversationEvents
       .filter((event) => event.type === "user_message")
       .map((event) => `${event.payload?.text ?? event.payload?.prompt ?? ""}`.trim())
       .filter(Boolean),
   );
-  return conversationGroups(conversationEvents)
-    .map((group) => {
+  const output = groups
+    .map((group, index) => {
       if (group.kind === "turn") {
-        return renderTurnGroup(group, task);
+        return renderTurnGroup(group, task, {
+          forceActive: index === activeGroupIndex,
+        });
       }
       if (!shouldRenderStandaloneEvent(group.event, userPrompts)) {
         return "";
@@ -2976,6 +3010,50 @@ function renderConversation(events, task) {
       return renderConversationEvent(group.event, task, { active: false });
     })
     .join("");
+  if (isTaskActivelyWorking(task) && activeGroupIndex < 0) {
+    return `${output}${renderActiveTurnStatus(
+      {
+        turnId: task?.activeTurnId ?? "active-turn",
+        events: [],
+      },
+      task,
+    )}`;
+  }
+  return output;
+}
+
+function activeTurnGroupIndex(groups, task) {
+  if (!isTaskActivelyWorking(task)) {
+    return -1;
+  }
+  const exactIndex = groups.findIndex(
+    (group) => group.kind === "turn" && group.turnId === task?.activeTurnId,
+  );
+  if (exactIndex >= 0) {
+    return exactIndex;
+  }
+
+  const startedMs = Number(task?.activeTurnStartedMs);
+  if (!Number.isFinite(startedMs) || startedMs <= 0) {
+    return -1;
+  }
+  for (let index = groups.length - 1; index >= 0; index -= 1) {
+    const group = groups[index];
+    if (group.kind !== "turn") {
+      continue;
+    }
+    const hasCurrentEvent = group.events.some(
+      (event) => Number(event.createdMs) >= startedMs - 2_000,
+    );
+    if (hasCurrentEvent) {
+      return index;
+    }
+  }
+  return groups.findLastIndex((group) => group.kind === "turn");
+}
+
+function isTaskActivelyWorking(task) {
+  return ["running", "waiting_for_approval"].includes(task?.status);
 }
 
 function conversationGroups(events) {
@@ -3026,7 +3104,7 @@ function eventTurnId(event) {
   return payload.turnId ?? payload.turn?.id ?? null;
 }
 
-function renderTurnGroup(group, task) {
+function renderTurnGroup(group, task, options = {}) {
   const userEvents = group.events.filter((event) => event.type === "user_message");
   const assistantEvents = group.events.filter((event) => event.type === "assistant_message");
   const workEvents = group.events.filter(isWorkEvent);
@@ -3034,8 +3112,7 @@ function renderTurnGroup(group, task) {
   const terminalEvent = statusEvents.find(isTerminalTurnEvent);
   const isCurrentTurn = task?.activeTurnId === group.turnId;
   const isActive =
-    ["running", "waiting_for_approval"].includes(task?.status) &&
-    (isCurrentTurn || (!terminalEvent && assistantEvents.length === 0));
+    isTaskActivelyWorking(task) && (options.forceActive || isCurrentTurn);
   const isComplete = Boolean(terminalEvent) || (assistantEvents.length > 0 && !isActive);
 
   const output = [];
@@ -3044,6 +3121,10 @@ function renderTurnGroup(group, task) {
       renderConversationEvent(event, task, { active: false }),
     ),
   );
+
+  if (isActive) {
+    output.push(renderActiveTurnStatus(group, task));
+  }
 
   if (isComplete && assistantEvents.length > 0) {
     const finalAssistantEvent = assistantEvents.at(-1);
@@ -3069,6 +3150,73 @@ function renderTurnGroup(group, task) {
   return output.join("");
 }
 
+function renderActiveTurnStatus(group, task) {
+  const startedMs = activeTurnStartMs(group.events, task);
+  const state = activeTurnStateLabel(group.events, task);
+  return `
+    <li
+      class="task-event task-turn-active"
+      data-active-turn-started-ms="${escapeHtml(startedMs)}"
+      data-turn-id="${escapeHtml(group.turnId)}"
+    >
+      <span class="task-status-spinner" aria-hidden="true"></span>
+      <span class="task-turn-active-duration">Working for ${escapeHtml(formatDuration(Date.now() - startedMs))}</span>
+      <span class="task-turn-active-state" title="${escapeHtml(state)}" aria-live="polite">${escapeHtml(state)}</span>
+    </li>
+  `;
+}
+
+function activeTurnStartMs(events, task) {
+  const taskStartedMs = Number(task?.activeTurnStartedMs);
+  if (Number.isFinite(taskStartedMs) && taskStartedMs > 0) {
+    return taskStartedMs;
+  }
+  const started = events.find((event) => event.type === "turn_started");
+  const value = Number(started?.createdMs ?? events[0]?.createdMs ?? Date.now());
+  return Number.isFinite(value) && value > 0 ? value : Date.now();
+}
+
+function activeTurnStateLabel(events, task) {
+  if (task?.status === "waiting_for_approval") {
+    return "Waiting for approval";
+  }
+
+  const event =
+    [...events]
+      .reverse()
+      .find((entry) => entry.payload?.lifecycle === "started") ??
+    [...events]
+      .reverse()
+      .find((entry) =>
+        entry.type === "work_status" ||
+        entry.type === "reasoning" ||
+        entry.type === "plan" ||
+        entry.type === "command_execution" ||
+        entry.type === "file_change" ||
+        entry.type === "assistant_message",
+      );
+  if (!event) {
+    return "Thinking";
+  }
+  if (event.type === "work_status") {
+    return event.summary || "Working";
+  }
+  if (event.type === "reasoning") {
+    return "Thinking";
+  }
+  if (event.type === "plan") {
+    return "Updating plan";
+  }
+  if (event.type === "command_execution") {
+    const command = `${event.payload?.command ?? ""}`.trim();
+    return command ? `Running ${command}` : "Running command";
+  }
+  if (event.type === "file_change") {
+    return "Editing files";
+  }
+  return "Preparing response";
+}
+
 function shouldRenderStandaloneEvent(event, userPrompts) {
   if (event.type === "prompt_sent") {
     const prompt = `${event.payload?.prompt ?? event.payload?.text ?? ""}`.trim();
@@ -3082,6 +3230,7 @@ function shouldRenderStandaloneEvent(event, userPrompts) {
     "approval_requested",
     "approval_resolved",
     "diff_updated",
+    "work_status",
   ].includes(event.type);
 }
 
@@ -3132,7 +3281,7 @@ function isWorkEvent(event) {
 }
 
 function isTurnContinuationEvent(event) {
-  return isWorkEvent(event) || isTurnStatusEvent(event);
+  return event.type === "work_status" || isWorkEvent(event) || isTurnStatusEvent(event);
 }
 
 function isImplicitTurnEvent(event) {
@@ -3794,9 +3943,18 @@ function taskWithLiveEventState(task, event) {
 
   const payload = event.payload ?? {};
   const createdMs = Number(event.createdMs) || Date.now();
+  if (payload.lifecycle === "started" && payload.turnId) {
+    return taskWithStatus(task, "running", {
+      activeTurnId: payload.turnId,
+      activeTurnStartedMs: task.activeTurnStartedMs ?? createdMs,
+      updatedMs: createdMs,
+      recencyMs: createdMs,
+    });
+  }
   if (event.type === "turn_started") {
     return taskWithStatus(task, "running", {
       activeTurnId: payload.turnId ?? payload.turn?.id ?? task.activeTurnId,
+      activeTurnStartedMs: createdMs,
       updatedMs: createdMs,
       recencyMs: createdMs,
     });
@@ -3817,6 +3975,7 @@ function taskWithLiveEventState(task, event) {
     const status = normalizeTurnStatus(payload.turn?.status ?? payload.status);
     return taskWithStatus(task, status, {
       activeTurnId: null,
+      activeTurnStartedMs: null,
       updatedMs: createdMs,
       recencyMs: createdMs,
     });
@@ -3824,7 +3983,13 @@ function taskWithLiveEventState(task, event) {
   if (event.type === "thread_status_changed") {
     const status = normalizeThreadStatus(payload.status ?? payload.notification?.status);
     return taskWithStatus(task, status, {
-      ...(status === "running" ? {} : { activeTurnId: null }),
+      ...(status === "running"
+        ? {
+            activeTurnId: payload.activeTurnId ?? task.activeTurnId,
+            activeTurnStartedMs:
+              payload.activeTurnStartedMs ?? task.activeTurnStartedMs ?? createdMs,
+          }
+        : { activeTurnId: null, activeTurnStartedMs: null }),
       updatedMs: createdMs,
       recencyMs: createdMs,
     });

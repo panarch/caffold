@@ -10,20 +10,52 @@ use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde_json::Value as JsonValue;
 
 const READ_CHUNK_BYTES: usize = 64 * 1024;
+const ACTIVITY_LINE_CONTEXT_BYTES: usize = 16 * 1024;
 const TASK_STARTED_MARKER: &[u8] = br#""type":"task_started""#;
 const TASK_COMPLETE_MARKER: &[u8] = br#""type":"task_complete""#;
-type ActivityChangeCallback = dyn Fn(String, bool) + Send + Sync;
+type ActivityChangeCallback = dyn Fn(String, TaskActivity) + Send + Sync;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RolloutActivity {
-    Running,
-    Complete,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TaskActivity {
+    running: bool,
+    started_ms: Option<u64>,
+    turn_id: Option<String>,
+}
+
+impl TaskActivity {
+    fn complete() -> Self {
+        Self {
+            running: false,
+            started_ms: None,
+            turn_id: None,
+        }
+    }
+
+    fn running(started_ms: Option<u64>, turn_id: Option<String>) -> Self {
+        Self {
+            running: true,
+            started_ms,
+            turn_id,
+        }
+    }
+
+    pub(crate) fn is_running(&self) -> bool {
+        self.running
+    }
+
+    pub(crate) fn started_ms(&self) -> Option<u64> {
+        self.started_ms
+    }
+
+    pub(crate) fn turn_id(&self) -> Option<&str> {
+        self.turn_id.as_deref()
+    }
 }
 
 #[derive(Default)]
 struct ObservedThreads {
     thread_by_path: HashMap<PathBuf, String>,
-    activity_by_thread: HashMap<String, RolloutActivity>,
+    activity_by_thread: HashMap<String, TaskActivity>,
 }
 
 #[derive(Clone)]
@@ -34,7 +66,7 @@ pub(crate) struct TaskActivityMonitor {
 }
 
 impl TaskActivityMonitor {
-    pub(crate) fn new(on_change: impl Fn(String, bool) + Send + Sync + 'static) -> Self {
+    pub(crate) fn new(on_change: impl Fn(String, TaskActivity) + Send + Sync + 'static) -> Self {
         let observed = Arc::new(Mutex::new(ObservedThreads::default()));
         let callback_observed = observed.clone();
         let on_change: Arc<ActivityChangeCallback> = Arc::new(on_change);
@@ -102,12 +134,17 @@ impl TaskActivityMonitor {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn is_running(&self, thread_id: &str) -> bool {
+        self.activity(thread_id)
+            .is_some_and(|activity| activity.is_running())
+    }
+
+    pub(crate) fn activity(&self, thread_id: &str) -> Option<TaskActivity> {
         self.observed
             .lock()
             .ok()
-            .and_then(|observed| observed.activity_by_thread.get(thread_id).copied())
-            == Some(RolloutActivity::Running)
+            .and_then(|observed| observed.activity_by_thread.get(thread_id).cloned())
     }
 
     pub(crate) fn reconcile_running(&self) {
@@ -119,7 +156,10 @@ impl TaskActivityMonitor {
                 .thread_by_path
                 .iter()
                 .filter(|(_, thread_id)| {
-                    observed.activity_by_thread.get(*thread_id) == Some(&RolloutActivity::Running)
+                    observed
+                        .activity_by_thread
+                        .get(*thread_id)
+                        .is_some_and(TaskActivity::is_running)
                 })
                 .map(|(path, _)| path.clone())
                 .collect::<Vec<_>>()
@@ -152,21 +192,17 @@ fn refresh_observed_path(
         }
         observed
             .activity_by_thread
-            .insert(thread_id.clone(), activity);
-        Some((thread_id, activity == RolloutActivity::Running))
+            .insert(thread_id.clone(), activity.clone());
+        Some((thread_id, activity))
     };
-    if let Some((thread_id, running)) = changed {
-        on_change(thread_id, running);
+    if let Some((thread_id, activity)) = changed {
+        on_change(thread_id, activity);
     }
 }
 
-fn latest_rollout_activity(path: &Path) -> Option<RolloutActivity> {
+fn latest_rollout_activity(path: &Path) -> Option<TaskActivity> {
     let mut file = File::open(path).ok()?;
     let mut end = file.metadata().ok()?.len();
-    let overlap_len = TASK_STARTED_MARKER
-        .len()
-        .max(TASK_COMPLETE_MARKER.len())
-        .saturating_sub(1);
     let mut right_prefix = Vec::new();
 
     while end > 0 {
@@ -182,20 +218,46 @@ fn latest_rollout_activity(path: &Path) -> Option<RolloutActivity> {
         match (started, complete) {
             (Some(started), Some(complete)) => {
                 return Some(if started > complete {
-                    RolloutActivity::Running
+                    running_activity(&searchable, started)
                 } else {
-                    RolloutActivity::Complete
+                    TaskActivity::complete()
                 });
             }
-            (Some(_), None) => return Some(RolloutActivity::Running),
-            (None, Some(_)) => return Some(RolloutActivity::Complete),
+            (Some(started), None) => return Some(running_activity(&searchable, started)),
+            (None, Some(_)) => return Some(TaskActivity::complete()),
             (None, None) => {}
         }
 
-        right_prefix = chunk.into_iter().take(overlap_len).collect();
+        right_prefix = chunk
+            .into_iter()
+            .take(ACTIVITY_LINE_CONTEXT_BYTES)
+            .collect();
         end = start;
     }
     None
+}
+
+fn running_activity(bytes: &[u8], marker: usize) -> TaskActivity {
+    let line_start = bytes[..marker]
+        .iter()
+        .rposition(|byte| *byte == b'\n')
+        .map_or(0, |index| index + 1);
+    let line_end = bytes[marker..]
+        .iter()
+        .position(|byte| *byte == b'\n')
+        .map_or(bytes.len(), |index| marker + index);
+    let value = serde_json::from_slice::<JsonValue>(&bytes[line_start..line_end]).ok();
+    let started_ms = value
+        .as_ref()
+        .and_then(|value| value.pointer("/payload/started_at"))
+        .and_then(JsonValue::as_u64)
+        .map(|seconds| seconds.saturating_mul(1000));
+    let turn_id = value
+        .as_ref()
+        .and_then(|value| value.pointer("/payload/turn_id"))
+        .and_then(JsonValue::as_str)
+        .map(ToOwned::to_owned);
+    TaskActivity::running(started_ms, turn_id)
 }
 
 fn find_last(haystack: &[u8], needle: &[u8]) -> Option<usize> {
@@ -223,7 +285,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             latest_rollout_activity(&path),
-            Some(RolloutActivity::Complete)
+            Some(TaskActivity::complete())
         );
 
         let mut file = std::fs::OpenOptions::new()
@@ -233,7 +295,7 @@ mod tests {
         writeln!(file, "{{\"payload\":{{\"type\":\"task_started\"}}}}").unwrap();
         assert_eq!(
             latest_rollout_activity(&path),
-            Some(RolloutActivity::Running)
+            Some(TaskActivity::running(None, None))
         );
     }
 
@@ -246,7 +308,31 @@ mod tests {
         file.write_all(&vec![b'x'; READ_CHUNK_BYTES * 3]).unwrap();
         assert_eq!(
             latest_rollout_activity(&path),
-            Some(RolloutActivity::Running)
+            Some(TaskActivity::running(None, None))
+        );
+    }
+
+    #[test]
+    fn reads_active_turn_identity_and_start_time() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("rollout.jsonl");
+        std::fs::write(
+            &path,
+            concat!(
+                "{\"timestamp\":\"2026-07-16T08:26:07.225Z\",",
+                "\"type\":\"event_msg\",\"payload\":{",
+                "\"type\":\"task_started\",",
+                "\"turn_id\":\"turn-live\",\"started_at\":1784190367}}\n"
+            ),
+        )
+        .unwrap();
+
+        assert_eq!(
+            latest_rollout_activity(&path),
+            Some(TaskActivity::running(
+                Some(1_784_190_367_000),
+                Some("turn-live".to_string())
+            ))
         );
     }
 
@@ -257,8 +343,11 @@ mod tests {
         std::fs::write(&path, "{\"payload\":{\"type\":\"task_started\"}}\n").unwrap();
         let changes = Arc::new(Mutex::new(Vec::new()));
         let callback_changes = changes.clone();
-        let monitor = TaskActivityMonitor::new(move |thread_id, running| {
-            callback_changes.lock().unwrap().push((thread_id, running));
+        let monitor = TaskActivityMonitor::new(move |thread_id, activity| {
+            callback_changes
+                .lock()
+                .unwrap()
+                .push((thread_id, activity.is_running()));
         });
         monitor.observe_thread(&serde_json::json!({
             "id": "thread-1",

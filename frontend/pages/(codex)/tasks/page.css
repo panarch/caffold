@@ -1275,6 +1275,43 @@ caffold-tasks-page .task-turn-work {
   margin-top: 2px;
 }
 
+caffold-tasks-page .task-turn-active {
+  display: grid;
+  grid-template-columns: 14px max-content minmax(0, 1fr);
+  align-items: center;
+  justify-self: start;
+  gap: 8px;
+  width: min(100%, 850px);
+  min-height: 30px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+caffold-tasks-page .task-turn-active .task-status-spinner {
+  color: var(--accent);
+}
+
+caffold-tasks-page .task-turn-active-duration {
+  white-space: nowrap;
+}
+
+caffold-tasks-page .task-turn-active-state {
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 620px) {
+  caffold-tasks-page .task-turn-active {
+    grid-template-columns: 14px minmax(0, 1fr);
+  }
+
+  caffold-tasks-page .task-turn-active-state {
+    grid-column: 2;
+  }
+}
+
 caffold-tasks-page .task-turn-work details {
   color: var(--muted);
 }

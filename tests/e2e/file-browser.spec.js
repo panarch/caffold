@@ -1639,6 +1639,7 @@ test("groups All Tasks by repository without worktree accordions", async ({ page
     ),
     task("thread_notes", "Notes task", null, now + 100),
   ];
+  const detailEvents = [];
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
@@ -1651,7 +1652,7 @@ test("groups All Tasks by repository without worktree accordions", async ({ page
       contentType: "application/json",
       body: JSON.stringify({
         task: tasks[0],
-        events: [],
+        events: detailEvents,
         eventsPage: { nextCursor: null },
         pendingApprovals: [],
       }),
@@ -1690,6 +1691,30 @@ test("groups All Tasks by repository without worktree accordions", async ({ page
     featureTask,
   ).toHaveAttribute("data-task-status", "running");
   await expect(featureTask.locator(".task-status-spinner")).toBeVisible();
+  tasks[0] = {
+    ...tasks[0],
+    status: "running",
+    activeTurnId: "turn_elsewhere",
+    activeTurnStartedMs: now + 500,
+  };
+  detailEvents.push(
+    {
+      id: "external-user",
+      threadId: "thread_gluesql_feature",
+      type: "user_message",
+      summary: "User prompt",
+      payload: { text: "Continue this task from Codex desktop" },
+      createdMs: now + 500,
+    },
+    {
+      id: "external-reasoning",
+      threadId: "thread_gluesql_feature",
+      type: "reasoning",
+      summary: "Reasoning",
+      payload: { lifecycle: "started", summary: [], content: [] },
+      createdMs: now + 750,
+    },
+  );
   await page.evaluate(() => {
     window.__taskListEventSource.emit("task-event", {
       id: "live-idle",
@@ -1706,6 +1731,14 @@ test("groups All Tasks by repository without worktree accordions", async ({ page
   await captureReviewScreenshot(page, testInfo, "tasks-completed-unseen");
   await featureTask.click();
   await expect(page).toHaveURL(/\/tasks\/thread_gluesql_feature$/);
+  const externalActiveTurn = tasksPage.locator(
+    '.task-turn-active[data-turn-id="implicit-0"]',
+  );
+  await expect(externalActiveTurn).toBeVisible();
+  await expect(tasksPage.locator(".task-turn-active")).toHaveCount(1);
+  await expect(externalActiveTurn.locator(".task-turn-active-state")).toHaveText(
+    "Thinking",
+  );
   await expect(featureTask.locator(".task-unseen-complete")).toHaveCount(0);
   await page.goto("/tasks");
   await expect(
@@ -2156,8 +2189,40 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           { prompt: body.prompt },
           6,
         ),
+        eventRecord(
+          "event_6_user",
+          "user_message",
+          "User prompt",
+          { text: body.prompt, turnId: "turn_2" },
+          7,
+        ),
+        eventRecord(
+          "event_6_turn",
+          "turn_started",
+          "Turn started",
+          { turnId: "turn_2" },
+          8,
+        ),
+        eventRecord(
+          "command_follow_up",
+          "command_execution",
+          "Command inProgress",
+          {
+            turnId: "turn_2",
+            itemId: "command_follow_up",
+            lifecycle: "started",
+            command: "cargo test --workspace",
+            cwd: "src",
+            status: "inProgress",
+          },
+          9,
+        ),
       ];
-      updateTask({ status: "running", lastEventSummary: "Follow-up prompt sent" });
+      updateTask({
+        activeTurnId: "turn_2",
+        status: "running",
+        lastEventSummary: "Command inProgress",
+      });
       return route.fulfill({
         contentType: "application/json",
         body: JSON.stringify(detailResponse()),
@@ -2916,6 +2981,18 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   ).toBeVisible();
   await expect(runningStatus.locator(".task-status-spinner")).toBeVisible();
   await expect(runningStatus.locator(".task-status-label")).toHaveCount(0);
+  const activeTurn = tasksPage.locator('.task-turn-active[data-turn-id="turn_2"]');
+  await expect(activeTurn).toBeVisible();
+  await expect(activeTurn.locator(".task-turn-active-duration")).toContainText(
+    "Working for",
+  );
+  await expect(activeTurn.locator(".task-turn-active-state")).toHaveText(
+    "Running cargo test --workspace",
+  );
+  const activeDuration = await activeTurn.locator(".task-turn-active-duration").textContent();
+  await expect
+    .poll(() => activeTurn.locator(".task-turn-active-duration").textContent())
+    .not.toBe(activeDuration);
   const runningTaskRow = tasksPage.locator(
     `.task-row[data-thread-id="${threadId}"]`,
   );
@@ -3338,6 +3415,7 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     taskSource.emitOpen();
   }, threadId);
   await expect(tasksPage.locator(".task-stream-state")).toHaveCount(0);
+  await expect.poll(() => taskDetailReadRequests).toBe(2);
 
   await page.evaluate(
     ({ threadId, now }) => {
