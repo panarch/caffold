@@ -1692,6 +1692,33 @@ test("groups All Tasks by repository without worktree accordions", async ({ page
   await expect(featureTask.locator(".task-status-spinner")).toHaveCount(0);
   await expect(tasksPage.locator('.task-row .task-status-label')).toHaveCount(0);
   await expect(tasksPage.locator(".task-row-summary")).toHaveCount(0);
+  const treeLayout = await groups.nth(0).evaluate((group) => {
+    const scroller = group.closest(".task-list-scroll");
+    const header = group.querySelector(".task-repository-header");
+    const headerIcon = header.querySelector(".task-repository-icon");
+    const headerLabel = header.querySelector(".task-repository-label");
+    const row = group.querySelector(".task-row");
+    const rowTitle = row.querySelector(".task-row-title");
+    return {
+      bottomPadding: Number.parseFloat(getComputedStyle(scroller).paddingBottom),
+      headerBackground: getComputedStyle(header).backgroundColor,
+      rowBorderBottom: getComputedStyle(row).borderBottomWidth,
+      rowTitleOffset: Math.round(
+        rowTitle.getBoundingClientRect().left - headerLabel.getBoundingClientRect().left,
+      ),
+      titleIsIndentedPastIcon:
+        rowTitle.getBoundingClientRect().left > headerIcon.getBoundingClientRect().left,
+    };
+  });
+  expect(treeLayout.bottomPadding).toBeGreaterThanOrEqual(20);
+  expect(treeLayout.headerBackground).toBe("rgba(0, 0, 0, 0)");
+  expect(treeLayout.rowBorderBottom).toBe("0px");
+  expect(Math.abs(treeLayout.rowTitleOffset)).toBeLessThanOrEqual(4);
+  expect(treeLayout.titleIsIndentedPastIcon).toBe(true);
+  const secondGroupGap = await groups.nth(1).evaluate((group) =>
+    Number.parseFloat(getComputedStyle(group).marginTop),
+  );
+  expect(secondGroupGap).toBeGreaterThanOrEqual(6);
   if (testInfo.project.name === "phone") {
     const newTaskButton = tasksPage.locator(
       '.tasks-header [data-task-action="open-new"]',

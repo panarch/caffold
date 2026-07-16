@@ -206,17 +206,21 @@ caffold-tasks-page .task-list-scroll {
   height: 100%;
   overflow: auto;
   overscroll-behavior: contain;
+  padding: 5px 0 calc(24px + env(safe-area-inset-bottom));
+  scroll-padding-block: 5px calc(24px + env(safe-area-inset-bottom));
   font-size: var(--task-list-font-size);
 }
 
 caffold-tasks-page .task-repository-groups {
+  --task-repository-indent: calc(9px + var(--task-list-icon-size));
+
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 caffold-tasks-page .task-repository-group + .task-repository-group {
-  border-top: 1px solid var(--border);
+  margin-top: 7px;
 }
 
 caffold-tasks-page .task-repository-header {
@@ -226,7 +230,8 @@ caffold-tasks-page .task-repository-header {
   gap: 7px;
   min-height: var(--task-group-row-height);
   padding: 3px 9px;
-  background: #f3f6f3;
+  border-left: 3px solid transparent;
+  background: transparent;
   color: var(--muted);
   font-size: var(--task-group-font-size);
 }
@@ -254,8 +259,7 @@ caffold-tasks-page .task-repository-count {
 }
 
 caffold-tasks-page .task-repository-group > .task-list {
-  margin-left: 12px;
-  border-left: 1px solid #dfe6e0;
+  margin-left: var(--task-repository-indent);
 }
 
 caffold-tasks-page .task-row {
@@ -267,9 +271,9 @@ caffold-tasks-page .task-row {
   width: 100%;
   min-width: 0;
   min-height: var(--task-list-row-height);
-  padding: 3px 9px 3px 11px;
+  padding: 3px 9px;
   border: 0;
-  border-bottom: 1px solid #e2e8e2;
+  border-left: 3px solid transparent;
   background: transparent;
   color: var(--text);
   text-align: left;
@@ -278,21 +282,15 @@ caffold-tasks-page .task-row {
 
 caffold-tasks-page .task-row:hover,
 caffold-tasks-page .task-row:focus-visible {
-  background: #f4f7f5;
+  border-left-color: #bdd7cc;
+  background: #f1f6f3;
   outline: none;
 }
 
 caffold-tasks-page .task-row[aria-current="true"] {
+  border-left-color: var(--accent);
   background: var(--accent-soft);
   outline: none;
-}
-
-caffold-tasks-page .task-row[aria-current="true"]::before {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 3px;
-  background: var(--accent);
-  content: "";
 }
 
 caffold-tasks-page .task-row-title {

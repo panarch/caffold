@@ -237,6 +237,7 @@ caffold-settings-page .settings-task-preview {
   display: grid;
   width: min(100%, 448px);
   overflow: hidden;
+  padding: 5px 0 8px;
   border: 1px solid var(--border);
   border-radius: 5px;
   background: var(--surface);
@@ -254,7 +255,8 @@ caffold-settings-page .settings-task-preview-group {
   grid-template-columns: var(--task-list-icon-size) minmax(0, 1fr) auto;
   gap: 7px;
   min-height: var(--task-group-row-height);
-  background: #f3f6f3;
+  border-left: 3px solid transparent;
+  background: transparent;
   color: var(--muted);
   font-size: var(--task-group-font-size);
   padding: 0 9px;
@@ -275,10 +277,10 @@ caffold-settings-page .settings-task-preview-row > span {
 caffold-settings-page .settings-task-preview-row {
   grid-template-columns: minmax(0, 1fr) 4ch;
   min-height: var(--task-list-row-height);
-  margin-left: 12px;
+  margin-left: calc(9px + var(--task-list-icon-size));
   border-left: 3px solid var(--accent);
   background: var(--accent-soft);
-  padding: 0 9px 0 11px;
+  padding: 0 9px;
 }
 
 caffold-settings-page .settings-task-preview-row time {
