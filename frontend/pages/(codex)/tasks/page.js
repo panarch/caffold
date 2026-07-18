@@ -3326,7 +3326,10 @@ function renderConversationEvent(event, task, eventState) {
     if (event.type === "prompt_sent") {
       return renderStatusEvent(event);
     }
-    return renderMessageEvent(event, "user", payload.prompt ?? payload.text);
+    const message = userMessagePresentation(payload);
+    return renderMessageEvent(event, "user", message.text, {
+      attachments: message.attachments,
+    });
   }
   if (event.type === "assistant_message") {
     return renderMessageEvent(event, "assistant", payload.text, {
@@ -3418,22 +3421,124 @@ function renderStatusEvent(event) {
 
 function renderMessageEvent(event, role, text, options = {}) {
   const value = `${text ?? ""}`.trim();
-  if (!value) {
+  const attachments = Array.isArray(options.attachments) ? options.attachments : [];
+  if (!value && !attachments.length) {
     return renderStatusEvent(event);
   }
   const phaseAttribute = options.phase
     ? ` data-message-phase="${escapeHtml(options.phase)}"`
     : "";
+  const attachmentsAttribute = attachments.length ? " data-has-attachments" : "";
 
   return `
-    <li class="task-event task-message" data-event-type="${escapeHtml(event.type)}" data-message-role="${escapeHtml(role)}"${phaseAttribute}>
+    <li class="task-event task-message" data-event-type="${escapeHtml(event.type)}" data-message-role="${escapeHtml(role)}"${phaseAttribute}${attachmentsAttribute}>
       <div class="task-message-header">
         <time>${escapeHtml(formatDate(event.createdMs))}</time>
       </div>
-      <div class="task-message-content">
-        <caffold-task-markdown>${escapeHtml(value)}</caffold-task-markdown>
-      </div>
+      ${renderMessageAttachments(attachments)}
+      ${value ? `
+        <div class="task-message-content">
+          <caffold-task-markdown>${escapeHtml(value)}</caffold-task-markdown>
+        </div>
+      ` : ""}
     </li>
+  `;
+}
+
+function userMessagePresentation(payload) {
+  const prompt = `${payload.prompt ?? ""}`.trim();
+  const payloadText = `${payload.text ?? ""}`.trim();
+  const text = prompt || payloadText;
+  const content = Array.isArray(payload.item?.content) ? payload.item.content : [];
+  const imageItems = content.filter((item) => ["image", "localImage"].includes(item?.type));
+
+  if (!imageItems.length) {
+    return { text, attachments: [] };
+  }
+
+  const parsed = parseCodexAttachmentPrompt(text);
+  const names = parsed?.fileNames ?? [];
+  return {
+    text: parsed?.request ?? text,
+    attachments: imageItems.map((item, index) => ({
+      src: taskImageSource(item),
+      name: names[index] ?? `Attached image ${index + 1}`,
+    })),
+  };
+}
+
+function taskImageSource(item) {
+  if (item?.type === "image") {
+    return safeTaskImageSource(item.url);
+  }
+  if (item?.type !== "localImage") {
+    return "";
+  }
+  const path = `${item.path ?? ""}`.trim();
+  if (!path.startsWith("/")) {
+    return "";
+  }
+  return `/api/task-image?${new URLSearchParams({ path })}`;
+}
+
+function safeTaskImageSource(value) {
+  const source = `${value ?? ""}`.trim();
+  return /^data:image\/(?:avif|gif|jpe?g|png|webp);base64,/i.test(source)
+    ? source
+    : "";
+}
+
+function parseCodexAttachmentPrompt(text) {
+  const filesMarker = /^# Files mentioned by the user:\s*$/m;
+  const requestMarker = /^## My request for Codex:\s*$/m;
+  const filesMatch = filesMarker.exec(text);
+  const requestMatch = requestMarker.exec(text);
+  if (!filesMatch || !requestMatch || requestMatch.index <= filesMatch.index) {
+    return null;
+  }
+
+  const fileSection = text.slice(filesMatch.index + filesMatch[0].length, requestMatch.index);
+  const fileNames = Array.from(
+    fileSection.matchAll(/^##\s+(.+?):\s+\/.*$/gm),
+    (match) => match[1].trim(),
+  ).filter((name) => /\.(?:avif|gif|jpe?g|png|webp)$/i.test(name));
+  const request = text
+    .slice(requestMatch.index + requestMatch[0].length)
+    .trim();
+
+  return { fileNames, request };
+}
+
+function renderMessageAttachments(attachments) {
+  if (!attachments.length) {
+    return "";
+  }
+
+  return `
+    <div class="task-message-attachments" aria-label="Attached images">
+      ${attachments
+        .map(
+          (attachment) => `
+            <figure class="task-message-attachment">
+              ${attachment.src ? `
+                <div class="task-message-attachment-preview">
+                  <img src="${escapeHtml(attachment.src)}" alt="${escapeHtml(attachment.name)}" loading="lazy">
+                </div>
+              ` : `
+                <div class="task-message-attachment-preview task-message-attachment-unavailable">
+                  ${renderInlineIcon("ImageOff", "Image preview unavailable", "task-message-attachment-placeholder-icon")}
+                  <span>Preview unavailable</span>
+                </div>
+              `}
+              <figcaption title="${escapeHtml(attachment.name)}">
+                ${renderInlineIcon("FileImage", "Attached image", "task-message-attachment-icon")}
+                <span>${escapeHtml(attachment.name)}</span>
+              </figcaption>
+            </figure>
+          `,
+        )
+        .join("")}
+    </div>
   `;
 }
 

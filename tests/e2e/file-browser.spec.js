@@ -2105,6 +2105,17 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       }),
     }),
   );
+  await page.route(/\/api\/task-image(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("path")).toBe("/tmp/planner-layout.png");
+    return route.fulfill({
+      contentType: "image/png",
+      body: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    });
+  });
   await page.route("**/api/tasks**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -2154,7 +2165,30 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           "event_1_user",
           "user_message",
           "User prompt",
-          { text: body.prompt, turnId: "turn_1" },
+          {
+            prompt: "",
+            text: [
+              "# Files mentioned by the user:",
+              "",
+              "## planner-layout.png: /tmp/planner-layout.png",
+              "",
+              "## My request for Codex:",
+              body.prompt,
+            ].join("\n"),
+            turnId: "turn_1",
+            item: {
+              content: [
+                {
+                  type: "text",
+                  text: body.prompt,
+                },
+                {
+                  type: "localImage",
+                  path: "/tmp/planner-layout.png",
+                },
+              ],
+            },
+          },
           2,
         ),
         eventRecord(
@@ -2656,6 +2690,20 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(tasksPage.locator(".task-detail-meta")).toHaveCSS("font-size", "12px");
   await expect(tasksPage.locator('.task-message[data-message-role="user"]')).toContainText(
     "Inspect the planner changes",
+  );
+  const userAttachment = tasksPage.locator(".task-message-attachment");
+  await expect(userAttachment).toHaveCount(1);
+  await expect(userAttachment.locator("img")).toBeVisible();
+  await expect(userAttachment.locator("img")).toHaveAttribute(
+    "src",
+    /\/api\/task-image\?path=%2Ftmp%2Fplanner-layout\.png$/,
+  );
+  await expect(userAttachment.locator("figcaption")).toContainText("planner-layout.png");
+  await expect(tasksPage.locator('.task-message[data-message-role="user"]')).not.toContainText(
+    "Files mentioned by the user",
+  );
+  await expect(tasksPage.locator('.task-message[data-message-role="user"]')).not.toContainText(
+    "/tmp/planner-layout.png",
   );
   await expect(
     tasksPage.locator('.task-message[data-message-role="user"] .task-message-content'),

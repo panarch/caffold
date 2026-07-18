@@ -223,6 +223,11 @@ struct TaskDetailQuery {
 }
 
 #[derive(Debug, Deserialize)]
+struct TaskImageQuery {
+    path: String,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateTaskRequest {
     prompt: String,
@@ -495,6 +500,7 @@ fn router_with_state(state: AppState) -> Router {
         .route("/api/list", get(list))
         .route("/api/file", get(file))
         .route("/api/image", get(image))
+        .route("/api/task-image", get(task_image))
         .route("/api/watch", get(watch_stream))
         .route("/api/git/status", get(git_status))
         .route("/api/git/diff", get(git_diff))
@@ -757,6 +763,26 @@ async fn image(
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
 
     Ok((headers, image.bytes).into_response())
+}
+
+async fn task_image(
+    State(state): State<AppState>,
+    Query(query): Query<TaskImageQuery>,
+) -> Result<Response, ApiError> {
+    let logical_path = task_image_logical_path(&state.fs, Path::new(&query.path))?;
+    let image = state.fs.read_image(&logical_path)?;
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(image.content_type),
+    );
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+
+    Ok((headers, image.bytes).into_response())
+}
+
+fn task_image_logical_path(fs: &RootedFs, path: &Path) -> Result<String, FsError> {
+    fs.logical_path_for_absolute(path)
 }
 
 async fn watch_stream(
@@ -2844,6 +2870,26 @@ impl IntoResponse for ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn task_images_must_stay_inside_the_browsing_root() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let image_path = root.path().join("attachment.png");
+        let outside_path = outside.path().join("attachment.png");
+        std::fs::write(&image_path, b"png").unwrap();
+        std::fs::write(&outside_path, b"png").unwrap();
+        let fs = RootedFs::new(root.path()).unwrap();
+
+        assert_eq!(
+            task_image_logical_path(&fs, &image_path).unwrap(),
+            "attachment.png"
+        );
+        assert!(matches!(
+            task_image_logical_path(&fs, &outside_path),
+            Err(FsError::PathEscapesRoot)
+        ));
+    }
 
     #[test]
     fn server_name_is_applied_to_install_metadata() {

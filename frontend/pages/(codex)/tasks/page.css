@@ -1225,6 +1225,82 @@ caffold-tasks-page .task-message[data-message-role="user"] .task-message-header 
   padding-right: 10px;
 }
 
+caffold-tasks-page .task-message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  justify-self: end;
+  gap: 10px;
+  width: min(76%, 700px);
+  min-width: 0;
+}
+
+caffold-tasks-page .task-message-attachment {
+  display: grid;
+  gap: 6px;
+  width: min(360px, 100%);
+  min-width: 0;
+  margin: 0;
+}
+
+caffold-tasks-page .task-message-attachment-preview {
+  display: grid;
+  place-items: center;
+  min-height: 96px;
+  max-height: 280px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8faf8;
+}
+
+caffold-tasks-page .task-message-attachment img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 280px;
+  object-fit: contain;
+}
+
+caffold-tasks-page .task-message-attachment-unavailable {
+  align-content: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: var(--task-detail-meta-size);
+}
+
+caffold-tasks-page .task-message-attachment-placeholder-icon {
+  width: 20px;
+  height: 20px;
+}
+
+caffold-tasks-page .task-message-attachment figcaption {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--task-detail-meta-size);
+}
+
+caffold-tasks-page .task-message-attachment figcaption span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+caffold-tasks-page .task-message-attachment-icon {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+
 caffold-tasks-page .task-message[data-message-role="user"] .task-message-content {
   justify-self: end;
   width: fit-content;
@@ -1826,6 +1902,10 @@ caffold-tasks-page [data-status="waiting_for_approval"] {
 
   caffold-tasks-page .task-message[data-message-role="user"] .task-message-content {
     max-width: min(92%, 760px);
+  }
+
+  caffold-tasks-page .task-message-attachments {
+    width: min(92%, 760px);
   }
 
   caffold-tasks-page .task-follow-up-form {
