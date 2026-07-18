@@ -121,10 +121,12 @@ npm run test:codex-live
 The check uses `http://127.0.0.1:5178` and the current repository's logical
 path from the filesystem root by default. Override them with
 `CAFFOLD_LIVE_URL` and `CAFFOLD_LIVE_CWD` when the server uses another root.
-It creates a real Codex thread with the low-cost `gpt-5.4-mini` model, reopens
-that thread from Tasks, and verifies a follow-up turn through the browser UI.
-This test is intentionally separate from `npm run test:e2e` because it
-requires local Codex authentication and creates a persistent Codex thread.
+It creates a real Codex thread with an available low-cost model, reopens that
+thread from Tasks, and verifies a follow-up turn through the browser UI. After
+every assertion passes, the test archives the generated thread. A failed test
+leaves its thread unarchived for diagnosis. This test is intentionally separate
+from `npm run test:e2e` because it requires local Codex authentication and
+consumes model usage.
 
 ## Open Questions
 

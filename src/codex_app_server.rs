@@ -266,6 +266,11 @@ impl CodexThreadClient {
             .await
     }
 
+    pub async fn archive_thread(&self, thread_id: &str) -> Result<Value, CodexThreadError> {
+        self.request("thread/archive", thread_archive_params(thread_id))
+            .await
+    }
+
     pub async fn start_turn(
         &self,
         thread_id: &str,
@@ -725,6 +730,12 @@ fn thread_read_params(thread_id: &str, include_turns: bool) -> Value {
     })
 }
 
+fn thread_archive_params(thread_id: &str) -> Value {
+    json!({
+        "threadId": thread_id
+    })
+}
+
 fn thread_turns_list_params(thread_id: &str, cursor: Option<&str>, limit: usize) -> Value {
     let mut params = json!({
         "threadId": thread_id,
@@ -875,6 +886,16 @@ mod tests {
             json!({
                 "threadId": "thread_1",
                 "includeTurns": true
+            })
+        );
+    }
+
+    #[test]
+    fn builds_thread_archive_request_params() {
+        assert_eq!(
+            thread_archive_params("thread_1"),
+            json!({
+                "threadId": "thread_1"
             })
         );
     }

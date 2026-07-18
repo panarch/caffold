@@ -535,6 +535,7 @@ fn router_with_state(state: AppState) -> Router {
         .route("/api/tasks/stream", get(task_list_stream))
         .route("/api/tasks/{thread_id}", get(task_detail))
         .route("/api/tasks/{thread_id}/stream", get(task_stream))
+        .route("/api/tasks/{thread_id}/archive", post(task_archive))
         .route(
             "/api/tasks/{thread_id}/prompts",
             post(task_prompt).layer(DefaultBodyLimit::max(MAX_TASK_REQUEST_BYTES)),
@@ -1306,6 +1307,15 @@ async fn task_interrupt(
     Ok(Json(
         read_task_detail(&state, &client, &thread_id, None).await?,
     ))
+}
+
+async fn task_archive(
+    State(state): State<AppState>,
+    AxumPath(thread_id): AxumPath<String>,
+) -> Result<StatusCode, ApiError> {
+    let client = require_codex_thread_client(&state).await?;
+    client.archive_thread(&thread_id).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn task_approval(
