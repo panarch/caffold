@@ -1513,8 +1513,7 @@ fn task_record_from_thread(
     let thread_active_turn_id = active_turn_id(thread);
     let completed_rollout_turn_status = rollout_activity
         .filter(|activity| activity.is_running())
-        .and_then(TaskActivity::turn_id)
-        .and_then(|turn_id| terminal_turn_status(thread, turn_id));
+        .and_then(|activity| terminal_turn_status_after_rollout_start(thread, activity));
     let rollout_activity = rollout_activity.filter(|_| completed_rollout_turn_status.is_none());
     let active_turn_id = thread_active_turn_id.clone().or_else(|| {
         rollout_activity
@@ -2500,17 +2499,34 @@ fn turn_started_ms(thread: &JsonValue, turn_id: &str) -> Option<u64> {
         .filter(|value| *value > 0)
 }
 
-fn terminal_turn_status<'a>(thread: &'a JsonValue, turn_id: &str) -> Option<&'a str> {
-    let status = thread
+fn terminal_turn_status_after_rollout_start<'a>(
+    thread: &'a JsonValue,
+    activity: &TaskActivity,
+) -> Option<&'a str> {
+    let turn_id = activity.turn_id()?;
+    let turn = thread
         .get("turns")
         .and_then(JsonValue::as_array)?
         .iter()
-        .find(|turn| turn.get("id").and_then(JsonValue::as_str) == Some(turn_id))?
-        .get("status")
-        .and_then(JsonValue::as_str)?;
-    ["completed", "failed", "interrupted"]
-        .contains(&status)
-        .then_some(status)
+        .find(|turn| turn.get("id").and_then(JsonValue::as_str) == Some(turn_id))?;
+    let status = turn.get("status").and_then(JsonValue::as_str)?;
+    if !["completed", "failed", "interrupted"].contains(&status) {
+        return None;
+    }
+
+    let completed_ms = turn
+        .get("completedAt")
+        .and_then(JsonValue::as_f64)
+        .map(seconds_to_ms_value)
+        .filter(|value| *value > 0)?;
+    if activity
+        .started_ms()
+        .is_some_and(|started_ms| completed_ms < started_ms)
+    {
+        return None;
+    }
+
+    Some(status)
 }
 
 fn seconds_to_ms(value: Option<f64>) -> u64 {
@@ -3000,6 +3016,45 @@ mod tests {
         assert_eq!(task.status, "completed");
         assert_eq!(task.active_turn_id, None);
         assert_eq!(task.active_turn_started_ms, None);
+    }
+
+    #[test]
+    fn terminal_turn_without_completion_time_keeps_rollout_running() {
+        let temp = tempfile::tempdir().unwrap();
+        let rollout_path = temp.path().join("rollout.jsonl");
+        std::fs::write(
+            &rollout_path,
+            concat!(
+                "{\"payload\":{\"type\":\"task_started\",",
+                "\"turn_id\":\"turn_active\",\"started_at\":1750000000}}\n"
+            ),
+        )
+        .unwrap();
+        let thread = json!({
+            "id": "thread_active",
+            "preview": "Running elsewhere",
+            "cwd": temp.path().display().to_string(),
+            "path": rollout_path.display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": 2.0,
+            "status": { "type": "active" },
+            "turns": [{
+                "id": "turn_active",
+                "status": "interrupted",
+                "startedAt": 1_750_000_000.0,
+                "items": []
+            }]
+        });
+        let (events, _) = broadcast::channel(4);
+        let activity = task_activity_monitor(events);
+        activity.observe_thread(&thread);
+
+        let rollout_activity = activity.activity("thread_active");
+        let task = task_record_from_thread(&thread, &[], None, rollout_activity.as_ref()).unwrap();
+
+        assert_eq!(task.status, "running");
+        assert_eq!(task.active_turn_id.as_deref(), Some("turn_active"));
+        assert_eq!(task.active_turn_started_ms, Some(1_750_000_000_000));
     }
 
     #[test]

@@ -2714,7 +2714,7 @@ class CaffoldTasksPage extends HTMLElement {
               class="task-detail-info-button"
               popovertarget="task-detail-info"
               aria-label="Task details, ${escapeHtml(statusLabel)}"
-              title="Task details"
+              title="Status: ${escapeHtml(statusLabel)}"
             >
               ${status || renderInlineIcon("Info", "Task details", "task-action-icon")}
             </button>

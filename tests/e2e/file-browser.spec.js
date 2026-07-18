@@ -2849,6 +2849,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(tasksPage).not.toContainText("turn started");
   const taskDetailsButton = tasksPage.getByRole("button", { name: /Task details/ });
   await expect(taskDetailsButton).toBeVisible();
+  await expect(taskDetailsButton).toHaveAttribute("title", "Status: completed");
   await taskDetailsButton.click();
   const taskDetailsPopover = tasksPage.locator(".task-detail-popover");
   await expect(taskDetailsPopover).toBeVisible();
