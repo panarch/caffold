@@ -271,12 +271,13 @@ impl CodexThreadClient {
         thread_id: &str,
         cwd: &str,
         prompt: &str,
+        image_urls: &[String],
         options: CodexTurnOptions,
     ) -> Result<CodexTurnStart, CodexThreadError> {
         let response = self
             .request(
                 "turn/start",
-                turn_start_params(thread_id, cwd, prompt, options),
+                turn_start_params(thread_id, cwd, prompt, image_urls, options),
             )
             .await?;
         let turn_id = response
@@ -762,17 +763,33 @@ fn thread_resume_params(thread_id: &str, cwd: &str) -> Value {
     })
 }
 
-fn turn_start_params(thread_id: &str, cwd: &str, prompt: &str, options: CodexTurnOptions) -> Value {
+fn turn_start_params(
+    thread_id: &str,
+    cwd: &str,
+    prompt: &str,
+    image_urls: &[String],
+    options: CodexTurnOptions,
+) -> Value {
+    let mut input = Vec::new();
+    if !prompt.is_empty() {
+        input.push(json!({
+            "type": "text",
+            "text": prompt,
+            "text_elements": []
+        }));
+    }
+    input.extend(image_urls.iter().map(|url| {
+        json!({
+            "type": "image",
+            "url": url
+        })
+    }));
     let mut params = json!({
         "threadId": thread_id,
         "cwd": cwd,
         "runtimeWorkspaceRoots": [cwd],
         "approvalsReviewer": "user",
-        "input": [{
-            "type": "text",
-            "text": prompt,
-            "text_elements": []
-        }]
+        "input": input
     });
     if let Some(model) = options.model.filter(|model| !model.is_empty()) {
         params["model"] = json!(model);
@@ -918,6 +935,7 @@ mod tests {
                 "thread_1",
                 "/workspace/project",
                 "Inspect the diff",
+                &[],
                 CodexTurnOptions::default(),
             ),
             json!({
@@ -941,6 +959,7 @@ mod tests {
                 "thread_1",
                 "/workspace/project",
                 "Inspect the diff",
+                &[],
                 CodexTurnOptions {
                     model: Some("gpt-5.5".to_string()),
                     effort: Some("ultra".to_string()),
@@ -959,6 +978,56 @@ mod tests {
                     "text_elements": []
                 }]
             })
+        );
+    }
+
+    #[test]
+    fn builds_turn_start_request_params_with_images() {
+        let images = vec![
+            "data:image/png;base64,aGVsbG8=".to_string(),
+            "data:image/jpeg;base64,d29ybGQ=".to_string(),
+        ];
+        assert_eq!(
+            turn_start_params(
+                "thread_1",
+                "/workspace/project",
+                "Inspect these screenshots",
+                &images,
+                CodexTurnOptions::default(),
+            )["input"],
+            json!([
+                {
+                    "type": "text",
+                    "text": "Inspect these screenshots",
+                    "text_elements": []
+                },
+                {
+                    "type": "image",
+                    "url": "data:image/png;base64,aGVsbG8="
+                },
+                {
+                    "type": "image",
+                    "url": "data:image/jpeg;base64,d29ybGQ="
+                }
+            ])
+        );
+    }
+
+    #[test]
+    fn builds_image_only_turn_start_request_params() {
+        let images = vec!["data:image/png;base64,aGVsbG8=".to_string()];
+        assert_eq!(
+            turn_start_params(
+                "thread_1",
+                "/workspace/project",
+                "",
+                &images,
+                CodexTurnOptions::default(),
+            )["input"],
+            json!([{
+                "type": "image",
+                "url": "data:image/png;base64,aGVsbG8="
+            }])
         );
     }
 

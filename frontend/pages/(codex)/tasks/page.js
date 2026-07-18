@@ -33,6 +33,15 @@ const TASK_LIST_MAX_WIDTH = 520;
 const TASK_DETAIL_MIN_WIDTH = 520;
 const TASK_LIST_RESIZER_WIDTH = 6;
 const TASK_SEEN_STORAGE_KEY = "caffold.tasks.seen-versions.v1";
+const TASK_COMPOSER_MAX_IMAGES = 4;
+const TASK_COMPOSER_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const TASK_COMPOSER_IMAGE_TYPES = new Set([
+  "image/avif",
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
 
 class CaffoldTasksPage extends HTMLElement {
   connectedCallback() {
@@ -84,8 +93,12 @@ class CaffoldTasksPage extends HTMLElement {
     this.conversationScrollMode = null;
     this.conversationScrollByThread = new Map();
     this.newTaskDraft = { prompt: "" };
+    this.newTaskImages = [];
     this.followUpDraft = "";
     this.followUpDraftByThread = new Map();
+    this.followUpImages = [];
+    this.followUpImagesByThread = new Map();
+    this.composerImageErrors = new Map();
     this.followUpRequest = null;
     this.modelOptions = [];
     this.modelOptionsLoaded = false;
@@ -216,6 +229,13 @@ class CaffoldTasksPage extends HTMLElement {
 
       this.captureDraft(form);
     });
+    this.addEventListener(
+      "paste",
+      (event) => {
+        void this.handleComposerPaste(event);
+      },
+      true,
+    );
     this.addEventListener("keydown", (event) => {
       if (this.handleTaskListResizeKeydown(event)) {
         return;
@@ -351,6 +371,7 @@ class CaffoldTasksPage extends HTMLElement {
       this.view = "detail";
       this.selectedThreadId = route.threadId;
       this.followUpDraft = this.followUpDraftByThread.get(route.threadId) ?? "";
+      this.followUpImages = [...(this.followUpImagesByThread.get(route.threadId) ?? [])];
       this.taskDetail =
         this.taskDetail?.task?.threadId === route.threadId ? this.taskDetail : null;
       this.eventsPage =
@@ -762,6 +783,10 @@ class CaffoldTasksPage extends HTMLElement {
       );
       return;
     }
+    if (action === "remove-composer-image") {
+      this.removeComposerImage(element.dataset.formName, element.dataset.imageId);
+      return;
+    }
     if (action === "open-git-tool" || action === "open-github-tool") {
       this.openTaskReviewRoute(action, element);
       return;
@@ -1015,7 +1040,11 @@ class CaffoldTasksPage extends HTMLElement {
 
     const textarea = closestElement(event.target, "textarea[name='prompt']");
     const form = closestElement(textarea, "form[data-task-form]");
-    if (!textarea || !form || !textarea.value.trim()) {
+    if (
+      !textarea ||
+      !form ||
+      (!textarea.value.trim() && !this.composerImages(form.dataset.taskForm).length)
+    ) {
       return;
     }
 
@@ -1027,7 +1056,8 @@ class CaffoldTasksPage extends HTMLElement {
     this.captureDraft(form);
     const formData = new FormData(form);
     const prompt = `${formData.get("prompt") ?? ""}`.trim();
-    if (!prompt) {
+    const images = [...this.newTaskImages];
+    if (!prompt && !images.length) {
       return;
     }
 
@@ -1039,6 +1069,7 @@ class CaffoldTasksPage extends HTMLElement {
       const detail = await createTask({
         ...(this.activeCwdPath() ? { cwd: this.activeCwdPath() } : {}),
         prompt,
+        images: images.map((image) => image.dataUrl),
         ...this.turnOptions(),
       });
       this.taskDetail = detail;
@@ -1046,6 +1077,8 @@ class CaffoldTasksPage extends HTMLElement {
       this.eventsPage = detail.eventsPage ?? { nextCursor: null };
       this.tasks = upsertTask(this.tasks, detail.task);
       this.newTaskDraft = { prompt: "" };
+      this.newTaskImages = [];
+      this.composerImageErrors.delete("create");
       this.conversationScrollMode = "bottom";
       this.requestRoute({ kind: "tasks", threadId: detail.task.threadId });
     } catch (error) {
@@ -1063,7 +1096,8 @@ class CaffoldTasksPage extends HTMLElement {
     this.captureDraft(form);
     const formData = new FormData(form);
     const prompt = `${formData.get("prompt") ?? ""}`.trim();
-    if (!prompt || !this.selectedThreadId) {
+    const images = [...this.followUpImages];
+    if ((!prompt && !images.length) || !this.selectedThreadId) {
       return;
     }
 
@@ -1075,6 +1109,7 @@ class CaffoldTasksPage extends HTMLElement {
     const optimisticEvent = optimisticUserMessageEvent(
       this.selectedThreadId,
       prompt,
+      images,
       requestId,
     );
     const previousTask = this.taskDetail?.task ?? null;
@@ -1089,6 +1124,9 @@ class CaffoldTasksPage extends HTMLElement {
     }
     this.followUpDraft = "";
     this.followUpDraftByThread.set(threadId, "");
+    this.followUpImages = [];
+    this.followUpImagesByThread.set(threadId, []);
+    this.composerImageErrors.delete("follow-up");
     this.conversationScrollMode = "bottom";
     this.render();
 
@@ -1098,6 +1136,7 @@ class CaffoldTasksPage extends HTMLElement {
         prompt,
         this.turnOptions(),
         this.cwdPath,
+        images.map((image) => image.dataUrl),
       );
       if (requestId !== this.requestId) {
         return;
@@ -1119,6 +1158,10 @@ class CaffoldTasksPage extends HTMLElement {
       if (!this.followUpDraft) {
         this.followUpDraft = prompt;
         this.followUpDraftByThread.set(threadId, prompt);
+      }
+      if (!this.followUpImages.length) {
+        this.followUpImages = images;
+        this.followUpImagesByThread.set(threadId, images);
       }
       this.error = error;
       this.conversationScrollMode = "preserve";
@@ -1358,6 +1401,99 @@ class CaffoldTasksPage extends HTMLElement {
         this.followUpDraftByThread.set(this.selectedThreadId, this.followUpDraft);
       }
     }
+  }
+
+  composerImages(formName) {
+    return formName === "create" ? this.newTaskImages : this.followUpImages;
+  }
+
+  setComposerImages(formName, images) {
+    if (formName === "create") {
+      this.newTaskImages = images;
+      return;
+    }
+    this.followUpImages = images;
+    if (this.selectedThreadId) {
+      this.followUpImagesByThread.set(this.selectedThreadId, images);
+    }
+  }
+
+  async handleComposerPaste(event) {
+    const textarea = closestElement(event.target, "textarea[name='prompt']");
+    const form = closestElement(textarea, "form[data-task-form]");
+    if (!textarea || !form) {
+      return;
+    }
+    const imageFiles = Array.from(event.clipboardData?.items ?? [])
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter(Boolean);
+    if (!imageFiles.length) {
+      return;
+    }
+
+    event.preventDefault();
+    this.captureDraft(form);
+    const formName = form.dataset.taskForm;
+    const existing = this.composerImages(formName);
+    const availableSlots = TASK_COMPOSER_MAX_IMAGES - existing.length;
+    if (availableSlots <= 0) {
+      this.composerImageErrors.set(
+        formName,
+        `Attach up to ${TASK_COMPOSER_MAX_IMAGES} images.`,
+      );
+      this.render();
+      return;
+    }
+
+    const accepted = [];
+    let error = imageFiles.length > availableSlots
+      ? `Attach up to ${TASK_COMPOSER_MAX_IMAGES} images.`
+      : "";
+    for (const [index, file] of imageFiles.slice(0, availableSlots).entries()) {
+      if (!TASK_COMPOSER_IMAGE_TYPES.has(file.type)) {
+        error = "Use PNG, JPEG, GIF, WebP, or AVIF images.";
+        continue;
+      }
+      if (file.size > TASK_COMPOSER_MAX_IMAGE_BYTES) {
+        error = "Each image must be 10 MB or smaller.";
+        continue;
+      }
+      let dataUrl;
+      try {
+        dataUrl = await readFileAsDataUrl(file);
+      } catch {
+        error = "Could not read the pasted image.";
+        continue;
+      }
+      accepted.push({
+        id: `clipboard:${Date.now()}:${index}:${Math.random().toString(36).slice(2)}`,
+        name: file.name || `clipboard-image-${existing.length + accepted.length + 1}.${imageExtension(file.type)}`,
+        type: file.type,
+        size: file.size,
+        dataUrl,
+      });
+    }
+
+    this.setComposerImages(formName, [...existing, ...accepted]);
+    if (error) {
+      this.composerImageErrors.set(formName, error);
+    } else {
+      this.composerImageErrors.delete(formName);
+    }
+    this.render();
+  }
+
+  removeComposerImage(formName, imageId) {
+    if (!formName || !imageId) {
+      return;
+    }
+    this.setComposerImages(
+      formName,
+      this.composerImages(formName).filter((image) => image.id !== imageId),
+    );
+    this.composerImageErrors.delete(formName);
+    this.render();
   }
 
   render() {
@@ -2535,6 +2671,8 @@ class CaffoldTasksPage extends HTMLElement {
     const submitting =
       formName === "follow-up" &&
       this.followUpRequest?.threadId === this.selectedThreadId;
+    const images = this.composerImages(formName);
+    const imageError = this.composerImageErrors.get(formName) ?? "";
     return `
       <form class="task-composer ${escapeHtml(className)}" data-task-form="${escapeHtml(formName)}" aria-busy="${submitting ? "true" : "false"}">
         <div class="task-composer-panel">
@@ -2547,14 +2685,15 @@ class CaffoldTasksPage extends HTMLElement {
                 </div>`
               : ""
           }
+          ${this.renderComposerImages(formName, images)}
           <textarea
             name="prompt"
-            required
             rows="2"
             data-max-rows="10.5"
             aria-label="${escapeHtml(ariaLabel)}"
             placeholder="${escapeHtml(placeholder)}"
           >${escapeHtml(prompt ?? "")}</textarea>
+          ${imageError ? `<p class="task-composer-image-error" role="alert">${escapeHtml(imageError)}</p>` : ""}
           <input type="hidden" name="model" value="${escapeHtml(model?.model ?? "")}">
           <input type="hidden" name="effort" value="${escapeHtml(effort)}">
           <div class="task-composer-toolbar">
@@ -2572,6 +2711,33 @@ class CaffoldTasksPage extends HTMLElement {
           </div>
         </div>
       </form>
+    `;
+  }
+
+  renderComposerImages(formName, images) {
+    if (!images.length) {
+      return "";
+    }
+    return `
+      <div class="task-composer-attachments" aria-label="Images to send">
+        ${images
+          .map(
+            (image) => `
+              <figure class="task-composer-attachment" title="${escapeHtml(image.name)}">
+                <img src="${escapeHtml(image.dataUrl)}" alt="${escapeHtml(image.name)}">
+                <button
+                  type="button"
+                  data-task-action="remove-composer-image"
+                  data-form-name="${escapeHtml(formName)}"
+                  data-image-id="${escapeHtml(image.id)}"
+                  aria-label="Remove ${escapeHtml(image.name)}"
+                  title="Remove image"
+                >${renderInlineIcon("X", "Remove image", "task-composer-attachment-remove-icon")}</button>
+              </figure>
+            `,
+          )
+          .join("")}
+      </div>
     `;
   }
 
@@ -3462,7 +3628,7 @@ function userMessagePresentation(payload) {
     text: parsed?.request ?? text,
     attachments: imageItems.map((item, index) => ({
       src: taskImageSource(item),
-      name: names[index] ?? `Attached image ${index + 1}`,
+      name: item.name ?? names[index] ?? `Attached image ${index + 1}`,
     })),
   };
 }
@@ -4156,8 +4322,16 @@ function mergeEventRecord(existing, incoming) {
   return { ...existing, ...incoming, payload };
 }
 
-function optimisticUserMessageEvent(threadId, prompt, requestId) {
+function optimisticUserMessageEvent(threadId, prompt, images, requestId) {
   const createdMs = Date.now();
+  const content = [
+    ...(prompt ? [{ type: "text", text: prompt }] : []),
+    ...images.map((image) => ({
+      type: "image",
+      url: image.dataUrl,
+      name: image.name,
+    })),
+  ];
   return {
     id: `local:user:${threadId}:${requestId}:${createdMs}`,
     threadId,
@@ -4165,6 +4339,7 @@ function optimisticUserMessageEvent(threadId, prompt, requestId) {
     summary: "User prompt",
     payload: {
       text: prompt,
+      item: { content },
       optimistic: true,
     },
     createdMs,
@@ -4310,9 +4485,9 @@ function removeSupersededOptimisticEvents(events) {
     if (event?.type !== "user_message" || event.payload?.optimistic) {
       continue;
     }
-    const text = `${event.payload?.prompt ?? event.payload?.text ?? ""}`.trim();
-    if (text) {
-      confirmedUserMessages.add([event.threadId ?? "", text].join(":"));
+    const fingerprint = userMessageFingerprint(event);
+    if (fingerprint) {
+      confirmedUserMessages.add(fingerprint);
     }
   }
 
@@ -4320,9 +4495,32 @@ function removeSupersededOptimisticEvents(events) {
     if (event?.type !== "user_message" || !event.payload?.optimistic) {
       return true;
     }
-    const text = `${event.payload?.prompt ?? event.payload?.text ?? ""}`.trim();
-    return !confirmedUserMessages.has([event.threadId ?? "", text].join(":"));
+    return !confirmedUserMessages.has(userMessageFingerprint(event));
   });
+}
+
+function userMessageFingerprint(event) {
+  if (event?.type !== "user_message") {
+    return "";
+  }
+  const payload = event.payload ?? {};
+  const text = `${payload.prompt ?? payload.text ?? ""}`.trim();
+  const content = Array.isArray(payload.item?.content) ? payload.item.content : [];
+  const images = content
+    .filter((item) => ["image", "localImage"].includes(item?.type))
+    .map((item) => imageInputFingerprint(item));
+  if (!text && !images.length) {
+    return "";
+  }
+  return JSON.stringify([event.threadId ?? "", text, images]);
+}
+
+function imageInputFingerprint(item) {
+  if (item?.type === "localImage") {
+    return `local:${item.path ?? ""}`;
+  }
+  const value = `${item?.url ?? ""}`;
+  return `data:${value.length}:${value.slice(-64)}`;
 }
 
 function canonicalEventKey(event) {
@@ -4393,6 +4591,27 @@ function syncComposerTextarea(textarea) {
   const nextHeight = Math.min(textarea.scrollHeight, maxHeight);
   textarea.style.height = `${nextHeight}px`;
   textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(`${reader.result ?? ""}`), { once: true });
+    reader.addEventListener("error", () => reject(reader.error ?? new Error("Could not read image")), {
+      once: true,
+    });
+    reader.readAsDataURL(file);
+  });
+}
+
+function imageExtension(type) {
+  return {
+    "image/avif": "avif",
+    "image/gif": "gif",
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+  }[type] ?? "png";
 }
 
 function upsertTask(tasks, task) {

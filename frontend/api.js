@@ -25,13 +25,13 @@ export async function getTask(threadId, cursor = null, cwd = "") {
   return requestJson(`/api/tasks/${encodeURIComponent(threadId)}`, { cursor, cwd });
 }
 
-export async function sendTaskPrompt(threadId, prompt, options = {}, cwd = "") {
+export async function sendTaskPrompt(threadId, prompt, options = {}, cwd = "", images = []) {
   return requestJson(
     `/api/tasks/${encodeURIComponent(threadId)}/prompts`,
     cwd ? { cwd } : {},
     {
       method: "POST",
-      body: { prompt, ...options },
+      body: { prompt, images, ...options },
     },
   );
 }

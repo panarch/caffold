@@ -10,7 +10,7 @@ use std::{
 use axum::{
     Json, Router,
     body::{Body, Bytes},
-    extract::{Path as AxumPath, Query, State},
+    extract::{DefaultBodyLimit, Path as AxumPath, Query, State},
     http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header},
     response::{Html, IntoResponse, Response},
     routing::{get, post},
@@ -30,7 +30,8 @@ use crate::{
         FileResponse, FsError, GitCommitResponse, GitCompareResponse, GitDiffResponse,
         GitLogResponse, GitRefsResponse, GitStatusResponse, GithubIssueResponse,
         GithubIssuesResponse, GithubPullFileResponse, GithubPullFilesResponse, GithubPullResponse,
-        GithubPullsResponse, GithubStatusResponse, ListResponse, MAX_FILE_BYTES, RootedFs,
+        GithubPullsResponse, GithubStatusResponse, ListResponse, MAX_FILE_BYTES, MAX_IMAGE_BYTES,
+        RootedFs,
     },
     git,
     server_settings::{ServerSettings, ServerSettingsError, ServerSettingsStore},
@@ -41,6 +42,8 @@ use crate::{
 
 const TASK_DETAIL_TURNS_PAGE_SIZE: usize = 8;
 const LIST_DIRECTORY_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_TASK_IMAGES: usize = 4;
+const MAX_TASK_REQUEST_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct ServeConfig {
@@ -231,6 +234,8 @@ struct TaskImageQuery {
 #[serde(rename_all = "camelCase")]
 struct CreateTaskRequest {
     prompt: String,
+    #[serde(default)]
+    images: Vec<String>,
     cwd: Option<String>,
     model: Option<String>,
     effort: Option<String>,
@@ -240,6 +245,8 @@ struct CreateTaskRequest {
 #[serde(rename_all = "camelCase")]
 struct TaskPromptRequest {
     prompt: String,
+    #[serde(default)]
+    images: Vec<String>,
     model: Option<String>,
     effort: Option<String>,
 }
@@ -519,11 +526,19 @@ fn router_with_state(state: AppState) -> Router {
         .route("/api/github/pull-file", get(github_pull_file))
         .route("/api/codex/status", get(codex_status))
         .route("/api/codex/models", get(codex_models))
-        .route("/api/tasks", get(list_tasks).post(create_task))
+        .route(
+            "/api/tasks",
+            get(list_tasks)
+                .post(create_task)
+                .layer(DefaultBodyLimit::max(MAX_TASK_REQUEST_BYTES)),
+        )
         .route("/api/tasks/stream", get(task_list_stream))
         .route("/api/tasks/{thread_id}", get(task_detail))
         .route("/api/tasks/{thread_id}/stream", get(task_stream))
-        .route("/api/tasks/{thread_id}/prompts", post(task_prompt))
+        .route(
+            "/api/tasks/{thread_id}/prompts",
+            post(task_prompt).layer(DefaultBodyLimit::max(MAX_TASK_REQUEST_BYTES)),
+        )
         .route("/api/tasks/{thread_id}/interrupt", post(task_interrupt))
         .route(
             "/api/tasks/{thread_id}/approvals/{approval_id}",
@@ -1090,14 +1105,14 @@ async fn create_task(
     State(state): State<AppState>,
     Json(request): Json<CreateTaskRequest>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
-    let prompt = normalize_prompt(&request.prompt)?;
+    let (prompt, images) = normalize_task_input(&request.prompt, request.images)?;
     let cwd = task_cwd(&state, request.cwd.as_deref())?;
     let turn_options = codex_turn_options(request.model, request.effort)?;
     let client = require_codex_thread_client(&state).await?;
 
     let thread = client.start_thread(&cwd).await?;
     let _turn = client
-        .start_turn(&thread.thread_id, &cwd, prompt, turn_options)
+        .start_turn(&thread.thread_id, &cwd, &prompt, &images, turn_options)
         .await?;
     Ok(Json(
         read_task_detail(&state, &client, &thread.thread_id, None).await?,
@@ -1244,7 +1259,7 @@ async fn task_prompt(
     Query(_query): Query<TasksQuery>,
     Json(request): Json<TaskPromptRequest>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
-    let prompt = normalize_prompt(&request.prompt)?;
+    let (prompt, images) = normalize_task_input(&request.prompt, request.images)?;
     let turn_options = codex_turn_options(request.model, request.effort)?;
     let client = require_codex_thread_client(&state).await?;
     let thread = client.read_thread(&thread_id, false).await?;
@@ -1256,7 +1271,7 @@ async fn task_prompt(
         .unwrap_or(task_cwd(&state, None)?);
     client.resume_thread(&thread_id, &cwd).await?;
     client
-        .start_turn(&thread_id, &cwd, prompt, turn_options)
+        .start_turn(&thread_id, &cwd, &prompt, &images, turn_options)
         .await?;
     Ok(Json(
         read_task_detail(&state, &client, &thread_id, None).await?,
@@ -2033,7 +2048,10 @@ fn task_event_from_thread_item(
 
     let (event_type, summary, payload) = match item_type {
         "userMessage" => {
-            let text = user_message_text(item)?;
+            let text = user_message_text(item).unwrap_or_default();
+            if text.is_empty() && !user_message_has_images(item) {
+                return None;
+            }
             (
                 "user_message",
                 "User prompt".to_string(),
@@ -2218,6 +2236,19 @@ fn user_message_text(item: &JsonValue) -> Option<String> {
         .collect::<Vec<_>>()
         .join("\n\n");
     non_empty_string(Some(&text))
+}
+
+fn user_message_has_images(item: &JsonValue) -> bool {
+    item.get("content")
+        .and_then(JsonValue::as_array)
+        .is_some_and(|content| {
+            content.iter().any(|entry| {
+                matches!(
+                    entry.get("type").and_then(JsonValue::as_str),
+                    Some("image" | "localImage")
+                )
+            })
+        })
 }
 
 fn response_content_text(content: Option<&JsonValue>) -> Option<String> {
@@ -2658,15 +2689,77 @@ fn normalize_logical_path(path: &str) -> Result<String, ApiError> {
     Ok(parts.join("/"))
 }
 
-fn normalize_prompt(prompt: &str) -> Result<&str, ApiError> {
-    let prompt = prompt.trim();
-    if prompt.is_empty() {
+fn normalize_task_input(
+    prompt: &str,
+    images: Vec<String>,
+) -> Result<(String, Vec<String>), ApiError> {
+    let prompt = prompt.trim().to_string();
+    if prompt.is_empty() && images.is_empty() {
         return Err(ApiError::BadRequest {
             code: "empty_task_prompt",
-            message: "task prompt cannot be empty".to_string(),
+            message: "task prompt or image cannot be empty".to_string(),
         });
     }
-    Ok(prompt)
+    if images.len() > MAX_TASK_IMAGES {
+        return Err(ApiError::BadRequest {
+            code: "too_many_task_images",
+            message: format!("a task turn can include at most {MAX_TASK_IMAGES} images"),
+        });
+    }
+    for image in &images {
+        validate_task_image_data_url(image)?;
+    }
+    Ok((prompt, images))
+}
+
+fn validate_task_image_data_url(image: &str) -> Result<(), ApiError> {
+    const PREFIXES: [&str; 6] = [
+        "data:image/avif;base64,",
+        "data:image/gif;base64,",
+        "data:image/jpeg;base64,",
+        "data:image/jpg;base64,",
+        "data:image/png;base64,",
+        "data:image/webp;base64,",
+    ];
+    let Some(encoded) = PREFIXES
+        .iter()
+        .find_map(|prefix| image.strip_prefix(prefix))
+    else {
+        return Err(ApiError::BadRequest {
+            code: "invalid_task_image",
+            message: "task images must be base64-encoded raster image data URLs".to_string(),
+        });
+    };
+    if encoded.is_empty()
+        || encoded.len() % 4 != 0
+        || encoded
+            .bytes()
+            .any(|byte| !byte.is_ascii_alphanumeric() && !matches!(byte, b'+' | b'/' | b'='))
+    {
+        return Err(ApiError::BadRequest {
+            code: "invalid_task_image",
+            message: "task image data is not valid base64".to_string(),
+        });
+    }
+    let padding = encoded
+        .bytes()
+        .rev()
+        .take_while(|byte| *byte == b'=')
+        .count();
+    if padding > 2 || encoded[..encoded.len().saturating_sub(padding)].contains('=') {
+        return Err(ApiError::BadRequest {
+            code: "invalid_task_image",
+            message: "task image data is not valid base64".to_string(),
+        });
+    }
+    let decoded_bytes = encoded.len() / 4 * 3 - padding;
+    if decoded_bytes as u64 > MAX_IMAGE_BYTES {
+        return Err(ApiError::BadRequest {
+            code: "task_image_too_large",
+            message: format!("task images must be at most {MAX_IMAGE_BYTES} bytes each"),
+        });
+    }
+    Ok(())
 }
 
 fn codex_turn_options(
@@ -2888,6 +2981,53 @@ mod tests {
         assert!(matches!(
             task_image_logical_path(&fs, &outside_path),
             Err(FsError::PathEscapesRoot)
+        ));
+    }
+
+    #[test]
+    fn task_input_accepts_text_and_raster_images() {
+        let image = "data:image/png;base64,aGVsbG8=".to_string();
+        assert_eq!(
+            normalize_task_input("  inspect this  ", vec![image.clone()]).unwrap(),
+            ("inspect this".to_string(), vec![image])
+        );
+    }
+
+    #[test]
+    fn task_input_accepts_an_image_without_text() {
+        let image = "data:image/webp;base64,aGVsbG8=".to_string();
+        assert_eq!(
+            normalize_task_input("", vec![image.clone()]).unwrap(),
+            (String::new(), vec![image])
+        );
+    }
+
+    #[test]
+    fn task_input_rejects_unsupported_or_malformed_images() {
+        for image in [
+            "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=",
+            "data:image/png;base64,not base64",
+            "data:image/png;base64,a===",
+        ] {
+            assert!(matches!(
+                normalize_task_input("inspect", vec![image.to_string()]),
+                Err(ApiError::BadRequest {
+                    code: "invalid_task_image",
+                    ..
+                })
+            ));
+        }
+    }
+
+    #[test]
+    fn task_input_limits_image_count() {
+        let images = vec!["data:image/png;base64,aGVsbG8=".to_string(); MAX_TASK_IMAGES + 1];
+        assert!(matches!(
+            normalize_task_input("inspect", images),
+            Err(ApiError::BadRequest {
+                code: "too_many_task_images",
+                ..
+            })
         ));
     }
 
@@ -3239,6 +3379,36 @@ mod tests {
             assistant.payload.as_ref().unwrap()["text"],
             "The change is ready to review."
         );
+    }
+
+    #[test]
+    fn image_only_user_messages_are_kept_in_the_transcript() {
+        let thread = json!({
+            "id": "thread_1",
+            "createdAt": 1.0,
+            "turns": [{
+                "id": "turn_1",
+                "status": "completed",
+                "startedAt": 2.0,
+                "completedAt": 3.0,
+                "items": [{
+                    "type": "userMessage",
+                    "id": "item_prompt",
+                    "content": [{
+                        "type": "image",
+                        "url": "data:image/png;base64,aGVsbG8="
+                    }]
+                }]
+            }]
+        });
+
+        let user_message = thread_events(&thread)
+            .into_iter()
+            .find(|event| event.event_type == "user_message")
+            .expect("image-only user message");
+        let payload = user_message.payload.expect("user message payload");
+        assert_eq!(payload["text"], "");
+        assert_eq!(payload["item"]["content"][0]["type"], "image");
     }
 
     #[test]

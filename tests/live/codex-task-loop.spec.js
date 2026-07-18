@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { sep } from "node:path";
 
-const LOW_COST_MODEL = "gpt-5.4-mini";
+const PASTED_IMAGE_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
 function liveCwd() {
   if (process.env.CAFFOLD_LIVE_CWD) {
@@ -13,14 +14,37 @@ function liveCwd() {
 
 async function chooseLowCostModel(taskForm) {
   await taskForm.getByRole("button", { name: "Choose model and reasoning" }).click();
-  const modelOption = taskForm.locator(`[data-model="${LOW_COST_MODEL}"]`);
-  await expect(modelOption).toBeVisible();
+  const modelOptions = taskForm.locator("[data-model]");
+  await expect(modelOptions.first()).toBeVisible();
+  const affordableOptions = modelOptions.filter({
+    hasText: /affordable|cost-efficient|ultra-fast/i,
+  });
+  const modelOption =
+    (await affordableOptions.count()) > 0 ? affordableOptions.first() : modelOptions.last();
   await modelOption.click();
 
   await taskForm.getByRole("button", { name: "Choose model and reasoning" }).click();
   const lowEffort = taskForm.locator('[data-effort="low"]');
   await expect(lowEffort).toBeVisible();
   await lowEffort.click();
+}
+
+async function pasteImage(locator, name) {
+  await locator.evaluate(
+    (textarea, { base64, fileName }) => {
+      const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+      const clipboardData = new DataTransfer();
+      clipboardData.items.add(new File([bytes], fileName, { type: "image/png" }));
+      textarea.dispatchEvent(
+        new ClipboardEvent("paste", {
+          bubbles: true,
+          cancelable: true,
+          clipboardData,
+        }),
+      );
+    },
+    { base64: PASTED_IMAGE_BASE64, fileName: name },
+  );
 }
 
 test("creates and resumes a real Codex task through Caffold", async ({ page }) => {
@@ -39,10 +63,16 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
   await expect(newTaskForm).toBeVisible();
   await chooseLowCostModel(newTaskForm);
 
-  await newTaskForm.getByRole("textbox", { name: "New task prompt" }).fill(
+  const newTaskPrompt = newTaskForm.getByRole("textbox", { name: "New task prompt" });
+  await newTaskPrompt.fill(
     `Reply with exactly ${initialReply}. Do not modify files or run commands.`,
   );
-  await newTaskForm.getByRole("textbox", { name: "New task prompt" }).press("Enter");
+  await pasteImage(newTaskPrompt, `caffold-live-${marker}.png`);
+  await expect(newTaskForm.locator(".task-composer-attachment img")).toHaveAttribute(
+    "src",
+    /^data:image\/png;base64,/,
+  );
+  await newTaskPrompt.press("Enter");
   await expect(page).toHaveURL(/\/tasks\/[^?]+\?cwd=/);
   const threadId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
   expect(threadId).toBeTruthy();
@@ -54,6 +84,11 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
     '.task-message[data-message-role="assistant"][data-message-phase="final"]',
   );
   await expect(assistantMessages.filter({ hasText: initialReply })).toBeVisible();
+  await expect(
+    tasksPage.locator(
+      '.task-message[data-message-role="user"] .task-message-attachment img',
+    ),
+  ).toBeVisible();
 
   await page.goto(`/tasks?cwd=${encodeURIComponent(cwd)}`);
   const createdTask = tasksPage.locator(`.task-row[data-thread-id="${threadId}"]`);
@@ -104,7 +139,7 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
   await expect
     .poll(() => activeTurn.locator(".task-turn-active-duration").textContent())
     .not.toBe(activeDuration);
-  await expect(tasksPage.locator(".task-work-command").last()).toContainText(
+  await expect(tasksPage.locator(".task-command").last()).toContainText(
     commandOutput,
     { timeout: 60_000 },
   );

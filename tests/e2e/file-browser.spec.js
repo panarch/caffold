@@ -9,6 +9,26 @@ const LONG_ROOT_FILE =
   "this-is-a-very-long-file-name-used-to-test-horizontal-scrolling-in-the-files-pane.md";
 const LONG_CHANGE_FILE =
   "src/planner/this-is-a-very-long-change-file-name-used-to-test-horizontal-scrolling-in-the-changes-pane.rs";
+const PASTED_IMAGE_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+
+async function pasteImage(locator, name = "clipboard-image.png") {
+  await locator.evaluate(
+    (textarea, { base64, fileName }) => {
+      const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+      const clipboardData = new DataTransfer();
+      clipboardData.items.add(new File([bytes], fileName, { type: "image/png" }));
+      textarea.dispatchEvent(
+        new ClipboardEvent("paste", {
+          bubbles: true,
+          cancelable: true,
+          clipboardData,
+        }),
+      );
+    },
+    { base64: PASTED_IMAGE_BASE64, fileName: name },
+  );
+}
 
 test.beforeEach(async ({ page }) => {
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
@@ -2137,6 +2157,8 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       expect(body.prompt).toBe("Inspect the planner changes");
       expect(body.model).toBe("gpt-5.5");
       expect(body.effort).toBe("high");
+      expect(body.images).toHaveLength(1);
+      expect(body.images[0]).toMatch(/^data:image\/png;base64,/);
       task = {
         id: threadId,
         threadId,
@@ -2183,8 +2205,14 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
                   text: body.prompt,
                 },
                 {
+                  type: "image",
+                  url: body.images[0],
+                  name: "planner-layout.png",
+                },
+                {
                   type: "localImage",
                   path: "/tmp/planner-layout.png",
+                  name: "server-reference.png",
                 },
               ],
             },
@@ -2256,6 +2284,8 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       expect(body.prompt).toBe("Please tighten the tests");
       expect(body.model).toBe("gpt-5.5");
       expect(body.effort).toBe("ultra");
+      expect(body.images).toHaveLength(1);
+      expect(body.images[0]).toMatch(/^data:image\/png;base64,/);
       resolveFollowUpRequest();
       await followUpResponseReleased;
       events = [
@@ -2271,7 +2301,16 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           "event_6_user",
           "user_message",
           "User prompt",
-          { text: body.prompt, turnId: "turn_2" },
+          {
+            text: body.prompt,
+            turnId: "turn_2",
+            item: {
+              content: [
+                { type: "text", text: body.prompt },
+                { type: "image", url: body.images[0], name: "follow-up.png" },
+              ],
+            },
+          },
           7,
         ),
         eventRecord(
@@ -2657,6 +2696,19 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   expect(expandedTextareaMetrics.overflowY).toBe("auto");
 
   await newPromptTextarea.fill("Inspect the planner changes");
+  await pasteImage(newPromptTextarea, "planner-layout.png");
+  const newTaskAttachment = page.locator(
+    'form[data-task-form="create"] .task-composer-attachment',
+  );
+  await expect(newTaskAttachment).toHaveCount(1);
+  await expect(newTaskAttachment.locator("img")).toHaveAttribute(
+    "src",
+    /^data:image\/png;base64,/,
+  );
+  await newTaskAttachment.getByRole("button", { name: "Remove planner-layout.png" }).click();
+  await expect(newTaskAttachment).toHaveCount(0);
+  await pasteImage(newPromptTextarea, "planner-layout.png");
+  await expect(newTaskAttachment).toHaveCount(1);
   const newTaskFormState = await page.locator("caffold-tasks-page").evaluate((element) => {
     const form = element.querySelector('form[data-task-form="create"]');
     return {
@@ -2691,14 +2743,23 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(tasksPage.locator('.task-message[data-message-role="user"]')).toContainText(
     "Inspect the planner changes",
   );
-  const userAttachment = tasksPage.locator(".task-message-attachment");
-  await expect(userAttachment).toHaveCount(1);
-  await expect(userAttachment.locator("img")).toBeVisible();
-  await expect(userAttachment.locator("img")).toHaveAttribute(
+  const userAttachments = tasksPage.locator(".task-message-attachment");
+  await expect(userAttachments).toHaveCount(2);
+  await expect(userAttachments.nth(0).locator("img")).toHaveAttribute(
+    "src",
+    /^data:image\/png;base64,/,
+  );
+  await expect(userAttachments.nth(0).locator("figcaption")).toContainText(
+    "planner-layout.png",
+  );
+  await expect(userAttachments.nth(1).locator("img")).toBeVisible();
+  await expect(userAttachments.nth(1).locator("img")).toHaveAttribute(
     "src",
     /\/api\/task-image\?path=%2Ftmp%2Fplanner-layout\.png$/,
   );
-  await expect(userAttachment.locator("figcaption")).toContainText("planner-layout.png");
+  await expect(userAttachments.nth(1).locator("figcaption")).toContainText(
+    "server-reference.png",
+  );
   await expect(tasksPage.locator('.task-message[data-message-role="user"]')).not.toContainText(
     "Files mentioned by the user",
   );
@@ -3179,6 +3240,10 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   );
   const followUpTextarea = tasksPage.locator('textarea[name="prompt"]');
   await followUpTextarea.fill("Please tighten the tests");
+  await pasteImage(followUpTextarea, "follow-up.png");
+  await expect(
+    tasksPage.locator('.task-follow-up-form .task-composer-attachment'),
+  ).toHaveCount(1);
   await followUpTextarea.press("Enter");
   await followUpRequested;
   await expect(followUpTextarea).toBeFocused();
@@ -3194,6 +3259,12 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       hasText: "Please tighten the tests",
     }),
   ).toBeVisible();
+  await expect(
+    tasksPage
+      .locator('.task-message[data-message-role="user"]')
+      .filter({ hasText: "Please tighten the tests" })
+      .locator('.task-message-attachment img'),
+  ).toHaveAttribute("src", /^data:image\/png;base64,/);
   await expect(tasksPage).not.toContainText("Follow-up prompt sent");
   releaseFollowUpResponse();
   await expect(tasksPage.locator(".task-follow-up-form")).toHaveAttribute(
