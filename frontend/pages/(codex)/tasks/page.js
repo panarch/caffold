@@ -74,6 +74,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.taskGithubStatusState = "idle";
     this.taskGithubStatusRequestId = 0;
     this.events = [];
+    this.eventsThreadId = "";
     this.eventsByThread = new Map();
     this.eventsPage = { nextCursor: null };
     this.error = null;
@@ -336,7 +337,6 @@ class CaffoldTasksPage extends HTMLElement {
 
   prepareRoute(route, options = {}) {
     this.ensureRendered();
-    this.rememberSelectedThreadEvents();
     if (
       options.preserveLoadedTask &&
       route?.threadId &&
@@ -345,6 +345,7 @@ class CaffoldTasksPage extends HTMLElement {
     ) {
       this.view = "detail";
       this.error = null;
+      this.activateThreadEvents(route.threadId);
       this.setAttribute("data-tasks-view", this.view);
       return;
     }
@@ -355,6 +356,7 @@ class CaffoldTasksPage extends HTMLElement {
       this.taskDetailView = "conversation";
       this.unsubscribeTaskDiffWatch();
       this.selectedThreadId = "";
+      this.activateThreadEvents("");
       this.closeStream();
     } else if (route?.threadId) {
       this.newTaskBrowsing = false;
@@ -370,6 +372,7 @@ class CaffoldTasksPage extends HTMLElement {
       }
       this.view = "detail";
       this.selectedThreadId = route.threadId;
+      this.activateThreadEvents(route.threadId);
       this.followUpDraft = this.followUpDraftByThread.get(route.threadId) ?? "";
       this.followUpImages = [...(this.followUpImagesByThread.get(route.threadId) ?? [])];
       this.taskDetail =
@@ -384,6 +387,7 @@ class CaffoldTasksPage extends HTMLElement {
       this.taskDetailView = "conversation";
       this.unsubscribeTaskDiffWatch();
       this.selectedThreadId = "";
+      this.activateThreadEvents("");
       this.eventsPage = { nextCursor: null };
       this.closeStream();
     }
@@ -456,11 +460,10 @@ class CaffoldTasksPage extends HTMLElement {
         return null;
       }
       this.taskDetail = detail;
-      this.events = mergeEvents(
-        this.eventsByThread.get(threadId) ?? [],
-        detail.events ?? [],
+      this.setThreadEvents(
+        threadId,
+        mergeEvents(this.eventsByThread.get(threadId) ?? [], detail.events ?? []),
       );
-      this.eventsByThread.set(threadId, this.events);
       this.eventsPage = detail.eventsPage ?? { nextCursor: null };
       this.loading = false;
       this.markTaskSeen(detail.task);
@@ -482,18 +485,35 @@ class CaffoldTasksPage extends HTMLElement {
     }
   }
 
-  rememberSelectedThreadEvents() {
-    if (!this.selectedThreadId || this.events.length === 0) {
+  rememberActiveThreadEvents() {
+    if (!this.eventsThreadId || this.events.length === 0) {
       return;
     }
 
     this.eventsByThread.set(
-      this.selectedThreadId,
+      this.eventsThreadId,
       mergeEvents(
-        this.eventsByThread.get(this.selectedThreadId) ?? [],
+        this.eventsByThread.get(this.eventsThreadId) ?? [],
         this.events,
       ),
     );
+  }
+
+  activateThreadEvents(threadId) {
+    if (this.eventsThreadId === threadId) {
+      return;
+    }
+
+    this.rememberActiveThreadEvents();
+    this.eventsThreadId = threadId;
+    this.events = threadId ? [...(this.eventsByThread.get(threadId) ?? [])] : [];
+  }
+
+  setThreadEvents(threadId, events) {
+    const nextEvents = [...events];
+    this.eventsByThread.set(threadId, nextEvents);
+    this.eventsThreadId = threadId;
+    this.events = nextEvents;
   }
 
   async loadTaskList({ force = false } = {}) {
@@ -592,7 +612,7 @@ class CaffoldTasksPage extends HTMLElement {
       ) {
         return;
       }
-      this.events = upsertEvent(this.events, entry);
+      this.setThreadEvents(threadId, upsertEvent(this.events, entry));
       this.applyLiveTaskEvent(entry);
       this.conversationScrollMode = "bottom-if-needed";
       this.render();
@@ -747,7 +767,7 @@ class CaffoldTasksPage extends HTMLElement {
         return;
       }
       this.taskDetail = detail;
-      this.events = mergeEvents(this.events, detail.events ?? []);
+      this.setThreadEvents(threadId, mergeEvents(this.events, detail.events ?? []));
       this.eventsPage = detail.eventsPage ?? this.eventsPage;
       this.patchTaskListTask(detail.task);
       this.loadTaskGithubStatus(detail.task);
@@ -1073,7 +1093,7 @@ class CaffoldTasksPage extends HTMLElement {
         ...this.turnOptions(),
       });
       this.taskDetail = detail;
-      this.events = detail.events ?? [];
+      this.setThreadEvents(detail.task.threadId, detail.events ?? []);
       this.eventsPage = detail.eventsPage ?? { nextCursor: null };
       this.tasks = upsertTask(this.tasks, detail.task);
       this.newTaskDraft = { prompt: "" };
@@ -1117,7 +1137,7 @@ class CaffoldTasksPage extends HTMLElement {
       updatedMs: optimisticEvent.createdMs,
       recencyMs: optimisticEvent.createdMs,
     });
-    this.events = mergeEvents(this.events, [optimisticEvent]);
+    this.setThreadEvents(threadId, mergeEvents(this.events, [optimisticEvent]));
     if (runningTask) {
       this.taskDetail = { ...this.taskDetail, task: runningTask };
       this.patchTaskListTask(runningTask);
@@ -1142,7 +1162,7 @@ class CaffoldTasksPage extends HTMLElement {
         return;
       }
       this.taskDetail = detail;
-      this.events = mergeEvents(this.events, detail.events ?? []);
+      this.setThreadEvents(threadId, mergeEvents(this.events, detail.events ?? []));
       this.eventsPage = detail.eventsPage ?? this.eventsPage;
       this.patchTaskListTask(detail.task);
       this.conversationScrollMode = "bottom-if-needed";
@@ -1150,7 +1170,10 @@ class CaffoldTasksPage extends HTMLElement {
       if (requestId !== this.requestId) {
         return;
       }
-      this.events = this.events.filter((event) => event.id !== optimisticEvent.id);
+      this.setThreadEvents(
+        threadId,
+        this.events.filter((event) => event.id !== optimisticEvent.id),
+      );
       if (previousTask) {
         this.taskDetail = { ...this.taskDetail, task: previousTask };
         this.patchTaskListTask(previousTask);
@@ -1187,7 +1210,10 @@ class CaffoldTasksPage extends HTMLElement {
         return;
       }
       this.taskDetail = detail;
-      this.events = mergeEvents(this.events, detail.events ?? []);
+      this.setThreadEvents(
+        this.selectedThreadId,
+        mergeEvents(this.events, detail.events ?? []),
+      );
       this.eventsPage = detail.eventsPage ?? this.eventsPage;
       this.patchTaskListTask(detail.task);
       this.conversationScrollMode = "bottom-if-needed";
@@ -1218,7 +1244,10 @@ class CaffoldTasksPage extends HTMLElement {
         return;
       }
       this.taskDetail = detail;
-      this.events = mergeEvents(this.events, detail.events ?? []);
+      this.setThreadEvents(
+        this.selectedThreadId,
+        mergeEvents(this.events, detail.events ?? []),
+      );
       this.eventsPage = detail.eventsPage ?? this.eventsPage;
       this.patchTaskListTask(detail.task);
       this.conversationScrollMode = "bottom-if-needed";
@@ -1257,7 +1286,10 @@ class CaffoldTasksPage extends HTMLElement {
         ...detail,
         task: this.taskDetail?.task ?? detail.task,
       };
-      this.events = mergeEvents(detail.events ?? [], this.events);
+      this.setThreadEvents(
+        this.selectedThreadId,
+        mergeEvents(detail.events ?? [], this.events),
+      );
       this.eventsPage = detail.eventsPage ?? { nextCursor: null };
       this.loadingOlderEvents = false;
       this.conversationScrollMode = "prepend";

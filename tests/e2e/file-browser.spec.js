@@ -1579,6 +1579,16 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
     });
     await captureReviewScreenshot(page, testInfo, "tasks-master-detail-selected");
 
+    await tasksPage.locator('.task-row[data-thread-id="thread_main_core"]').click();
+    await expect(page).toHaveURL("/tasks/thread_main_core?cwd=src");
+    await expect(detailPane).toContainText("Main core task detail response");
+    await expect(detailPane).not.toContainText("Main root task detail response");
+
+    await tasksPage.locator('.task-row[data-thread-id="thread_main_root"]').click();
+    await expect(page).toHaveURL("/tasks/thread_main_root?cwd=src");
+    await expect(detailPane).toContainText("Main root task detail response");
+    await expect(detailPane).not.toContainText("Main core task detail response");
+
     await tasksPage.locator('[data-task-action="open-new"]').first().click();
     await expect(page).toHaveURL("/tasks/new?cwd=src");
     await expect(listPane).toBeVisible();
