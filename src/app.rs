@@ -24,7 +24,8 @@ use tracing::info;
 
 use crate::{
     codex_app_server::{
-        self, CodexRuntimeEvent, CodexStatusResponse, CodexThreadClient, CodexTurnOptions,
+        self, CodexNotification, CodexRuntimeEvent, CodexServerRequest, CodexStatusResponse,
+        CodexThreadClient, CodexTurnOptions, ThreadStatus, TurnStatus,
     },
     fs::{
         FileResponse, FsError, GitCommitResponse, GitCompareResponse, GitDiffResponse,
@@ -164,8 +165,23 @@ impl CodexThreadRuntime {
 struct PendingApproval {
     thread_id: String,
     request_id: JsonValue,
-    method: String,
+    kind: ApprovalKind,
     params: JsonValue,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ApprovalKind {
+    Command,
+    FileChange,
+}
+
+impl ApprovalKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Command => "command",
+            Self::FileChange => "file_change",
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -1180,11 +1196,10 @@ async fn codex_status() -> Json<CodexStatusResponse> {
 
 async fn codex_models(State(state): State<AppState>) -> Result<Json<JsonValue>, ApiError> {
     let client = require_codex_thread_client(&state).await?;
-    client
-        .list_models(100)
-        .await
+    let response = client.list_models(100).await.map_err(ApiError::from)?;
+    serde_json::to_value(response)
         .map(Json)
-        .map_err(ApiError::from)
+        .map_err(|error| ApiError::CodexThread(error.to_string()))
 }
 
 async fn list_tasks(
@@ -1194,6 +1209,8 @@ async fn list_tasks(
     let cwd_filter = task_filter_cwd(&state, query.cwd.as_deref())?;
     let client = require_codex_thread_client(&state).await?;
     let response = client.list_threads(100).await?;
+    let response =
+        serde_json::to_value(response).map_err(|error| ApiError::CodexThread(error.to_string()))?;
     state.task_activity.observe_threads(&response);
     let tasks = thread_list_response(
         &state.fs,
@@ -1513,20 +1530,14 @@ async fn task_prompt(
     let cwd = if query.cwd.as_deref().is_some_and(|cwd| !cwd.is_empty()) {
         task_cwd(&state, query.cwd.as_deref())?
     } else {
-        let thread = client.read_thread(&thread_id, false).await?;
-        let thread_value = thread.get("thread").unwrap_or(&thread);
-        thread_value
-            .get("cwd")
-            .and_then(JsonValue::as_str)
-            .map(ToOwned::to_owned)
-            .unwrap_or(task_cwd(&state, None)?)
+        client.read_thread(&thread_id, false).await?.cwd
     };
     let (turn_id, steered) = if let Some(active_turn_id) = request.active_turn_id {
         let steer_result = client
             .steer_turn(&thread_id, &active_turn_id, &prompt, &images)
             .await;
         if let Err(error) = steer_result {
-            if !is_thread_not_found(&error) {
+            if !error.is_thread_unavailable() {
                 return Err(error.into());
             }
             client.resume_thread(&thread_id, &cwd).await?;
@@ -1541,7 +1552,7 @@ async fn task_prompt(
             .await;
         let turn = match start_result {
             Ok(turn) => turn,
-            Err(error) if is_thread_not_found(&error) => {
+            Err(error) if error.is_thread_unavailable() => {
                 client.resume_thread(&thread_id, &cwd).await?;
                 client
                     .start_turn(&thread_id, &cwd, &prompt, &images, turn_options)
@@ -1556,14 +1567,6 @@ async fn task_prompt(
         turn_id,
         steered,
     }))
-}
-
-fn is_thread_not_found(error: &codex_app_server::CodexThreadError) -> bool {
-    matches!(
-        error,
-        codex_app_server::CodexThreadError::Protocol(message)
-            if message.to_ascii_lowercase().contains("thread not found")
-    )
 }
 
 async fn task_interrupt(
@@ -1592,19 +1595,10 @@ async fn recent_active_turn_id(
         .list_thread_turns(thread_id, None, TASK_DETAIL_TURNS_PAGE_SIZE)
         .await?;
     Ok(turns_response
-        .get("data")
-        .and_then(JsonValue::as_array)
-        .and_then(|turns| {
-            turns
-                .iter()
-                .find(|turn| {
-                    turn.get("status")
-                        .and_then(JsonValue::as_str)
-                        .is_some_and(|status| status == "inProgress")
-                })
-                .and_then(|turn| turn.get("id").and_then(JsonValue::as_str))
-        })
-        .map(ToOwned::to_owned))
+        .data
+        .iter()
+        .find(|turn| turn.status == TurnStatus::InProgress)
+        .map(|turn| turn.id.clone()))
 }
 
 async fn task_archive(
@@ -1655,7 +1649,7 @@ async fn task_approval(
         &format!("Approval resolved: {decision}"),
         Some(json!({
             "approvalId": approval_id,
-            "method": pending.method,
+            "kind": pending.kind.as_str(),
             "decision": decision
         })),
         now_ms(),
@@ -1685,6 +1679,7 @@ async fn require_codex_thread_client(state: &AppState) -> Result<CodexThreadClie
             spawn_codex_thread_bridge(
                 client.clone(),
                 state.task_events.clone(),
+                state.live_task_events.clone(),
                 state.pending_approvals.clone(),
                 state.shutdown.subscribe(),
             );
@@ -1704,22 +1699,18 @@ async fn read_task_detail(
     thread_id: &str,
     cursor: Option<&str>,
 ) -> Result<TaskDetailResponse, ApiError> {
-    let response = client.read_thread(thread_id, false).await?;
-    let thread = response.get("thread").unwrap_or(&response);
+    let thread = client.read_thread(thread_id, false).await?.into_value();
     let turns_response = client
         .list_thread_turns(thread_id, cursor, TASK_DETAIL_TURNS_PAGE_SIZE)
         .await?;
     let mut turns = turns_response
-        .get("data")
-        .and_then(JsonValue::as_array)
-        .cloned()
-        .unwrap_or_default();
+        .data
+        .into_iter()
+        .map(|turn| serde_json::to_value(turn).expect("decoded turn serializes"))
+        .collect::<Vec<_>>();
     turns.reverse();
-    let next_cursor = turns_response
-        .get("nextCursor")
-        .and_then(JsonValue::as_str)
-        .map(ToOwned::to_owned);
-    let thread = thread_with_turns(thread, turns)?;
+    let next_cursor = turns_response.next_cursor;
+    let thread = thread_with_turns(&thread, turns)?;
     state.task_activity.observe_thread(&thread);
     let mut events = thread_events(&thread);
     state.live_task_events.observe(&events);
@@ -2031,11 +2022,7 @@ async fn pending_approval_events(state: &AppState, thread_id: &str) -> Vec<TaskE
         .iter()
         .filter(|(_, pending)| pending.thread_id == thread_id)
         .map(|(approval_id, pending)| {
-            let kind = if pending.method == "item/commandExecution/requestApproval" {
-                "command"
-            } else {
-                "file_change"
-            };
+            let kind = pending.kind.as_str();
             task_event_record(
                 &pending.thread_id,
                 &format!("approval_requested:{approval_id}"),
@@ -2048,7 +2035,6 @@ async fn pending_approval_events(state: &AppState, thread_id: &str) -> Vec<TaskE
                 Some(json!({
                     "approvalId": approval_id,
                     "kind": kind,
-                    "method": pending.method,
                     "params": pending.params
                 })),
                 now_ms(),
@@ -2087,6 +2073,7 @@ fn turn_item_event_id(turn_id: Option<&str>, item_id: Option<&str>, fallback: &s
 fn spawn_codex_thread_bridge(
     client: CodexThreadClient,
     task_events: broadcast::Sender<TaskEventRecord>,
+    live_task_events: LiveTaskEventCache,
     pending_approvals: Arc<AsyncMutex<HashMap<String, PendingApproval>>>,
     mut shutdown: broadcast::Receiver<()>,
 ) {
@@ -2100,16 +2087,18 @@ fn spawn_codex_thread_bridge(
                         break;
                     };
                     match event {
-                        CodexRuntimeEvent::Notification { method, params } => {
-                            handle_codex_notification(&task_events, &method, params);
+                        CodexRuntimeEvent::Notification(notification) => {
+                            handle_codex_notification(
+                                &task_events,
+                                &live_task_events,
+                                notification,
+                            );
                         }
-                        CodexRuntimeEvent::ServerRequest { id, method, params } => {
+                        CodexRuntimeEvent::ServerRequest(request) => {
                             handle_codex_server_request(
                                 &task_events,
                                 &pending_approvals,
-                                id,
-                                &method,
-                                params,
+                                request,
                             )
                             .await;
                         }
@@ -2123,20 +2112,17 @@ fn spawn_codex_thread_bridge(
 
 fn handle_codex_notification(
     task_events: &broadcast::Sender<TaskEventRecord>,
-    method: &str,
-    params: JsonValue,
+    live_task_events: &LiveTaskEventCache,
+    notification: CodexNotification,
 ) {
-    let Some(thread_id) = codex_thread_id(method, &params) else {
-        return;
-    };
-    match method {
-        "turn/started" => {
-            let started_ms = params
-                .pointer("/turn/startedAt")
-                .and_then(JsonValue::as_f64)
+    match notification {
+        CodexNotification::TurnStarted { thread_id, turn } => {
+            let started_ms = turn
+                .started_at
                 .map(seconds_to_ms_value)
                 .filter(|value| *value > 0)
                 .unwrap_or_else(now_ms);
+            let params = json!({ "threadId": thread_id, "turn": turn });
             let event = task_event_record(
                 &thread_id,
                 &event_id_from_params("turn_started", &params),
@@ -2145,61 +2131,84 @@ fn handle_codex_notification(
                 Some(params),
                 started_ms,
             );
-            let _ = task_events.send(event);
+            publish_task_event(task_events, live_task_events, event);
         }
-        "thread/status/changed" => {
-            let status = normalized_thread_status(params.get("status"));
-            let summary = match status.as_str() {
+        CodexNotification::ThreadStatusChanged { thread_id, status } => {
+            let task_status = match status {
+                ThreadStatus::Active { .. } => "running",
+                ThreadStatus::Idle | ThreadStatus::NotLoaded => "idle",
+                ThreadStatus::SystemError => "failed",
+            };
+            let summary = match task_status {
                 "running" => "Thread running",
                 "failed" => "Thread failed",
-                "idle" | "notLoaded" => "Thread idle",
-                _ => "Thread status changed",
+                _ => "Thread idle",
             };
             let event = task_event_record(
                 &thread_id,
-                &event_id_from_params("thread_status_changed", &params),
+                "thread_status_changed",
                 "thread_status_changed",
                 summary,
                 Some(json!({
                     "threadId": thread_id,
-                    "status": status,
-                    "notification": params,
+                    "status": task_status,
                 })),
                 now_ms(),
             );
-            let _ = task_events.send(event);
+            publish_task_event(task_events, live_task_events, event);
         }
-        "item/started" => {
-            let created_ms = notification_ms(&params, "startedAtMs").unwrap_or_else(now_ms);
+        CodexNotification::ItemStarted {
+            thread_id,
+            turn_id,
+            item,
+            started_at_ms,
+        } => {
+            let created_ms = if started_at_ms > 0 {
+                started_at_ms
+            } else {
+                now_ms()
+            };
+            let params = json!({ "threadId": thread_id, "turnId": turn_id, "item": item });
             if let Some(event) =
                 task_event_from_item_lifecycle(&thread_id, created_ms, &params, "started")
             {
-                let _ = task_events.send(event);
+                publish_task_event(task_events, live_task_events, event);
             }
         }
-        "item/completed" => {
-            let created_ms = notification_ms(&params, "completedAtMs").unwrap_or_else(now_ms);
+        CodexNotification::ItemCompleted {
+            thread_id,
+            turn_id,
+            item,
+            completed_at_ms,
+        } => {
+            let created_ms = if completed_at_ms > 0 {
+                completed_at_ms
+            } else {
+                now_ms()
+            };
+            let params = json!({ "threadId": thread_id, "turnId": turn_id, "item": item });
             if let Some(event) =
                 task_event_from_item_lifecycle(&thread_id, created_ms, &params, "completed")
             {
-                let _ = task_events.send(event);
+                publish_task_event(task_events, live_task_events, event);
             }
         }
-        "rawResponseItem/completed" => {
+        CodexNotification::RawResponseItemCompleted {
+            thread_id,
+            turn_id,
+            item,
+        } => {
+            let params = json!({ "threadId": thread_id, "turnId": turn_id, "item": item });
             if let Some(event) = task_event_from_raw_response_item(&thread_id, now_ms(), &params) {
-                let _ = task_events.send(event);
+                publish_task_event(task_events, live_task_events, event);
             }
         }
-        "turn/completed" => {
-            let status = params
-                .pointer("/turn/status")
-                .and_then(JsonValue::as_str)
-                .unwrap_or("completed");
-            let task_status = match status {
-                "failed" => "failed",
-                "interrupted" => "interrupted",
-                "completed" => "completed",
-                _ => "running",
+        CodexNotification::TurnCompleted { thread_id, turn } => {
+            let task_status = match turn.status {
+                TurnStatus::Failed => "failed",
+                TurnStatus::Interrupted => "interrupted",
+                TurnStatus::Completed => "completed",
+                TurnStatus::InProgress => "running",
             };
             let summary = match task_status {
                 "failed" => "Turn failed",
@@ -2207,12 +2216,12 @@ fn handle_codex_notification(
                 "completed" => "Turn completed",
                 _ => "Turn updated",
             };
-            let completed_ms = params
-                .pointer("/turn/completedAt")
-                .and_then(JsonValue::as_f64)
+            let completed_ms = turn
+                .completed_at
                 .map(seconds_to_ms_value)
                 .filter(|value| *value > 0)
                 .unwrap_or_else(now_ms);
+            let params = json!({ "threadId": thread_id, "turn": turn });
             let event = task_event_record(
                 &thread_id,
                 &event_id_from_params("turn_completed", &params),
@@ -2221,21 +2230,30 @@ fn handle_codex_notification(
                 Some(params),
                 completed_ms,
             );
-            let _ = task_events.send(event);
+            publish_task_event(task_events, live_task_events, event);
         }
-        "turn/diff/updated" => {
+        CodexNotification::TurnDiffUpdated { thread_id, params } => {
             let event = task_event_record(
                 &thread_id,
                 "diff_updated",
                 "diff_updated",
                 "Diff updated",
-                None,
+                Some(params),
                 now_ms(),
             );
-            let _ = task_events.send(event);
+            publish_task_event(task_events, live_task_events, event);
         }
-        _ => {}
+        CodexNotification::ThreadStarted { .. } | CodexNotification::Unknown { .. } => {}
     }
+}
+
+fn publish_task_event(
+    task_events: &broadcast::Sender<TaskEventRecord>,
+    live_task_events: &LiveTaskEventCache,
+    event: TaskEventRecord,
+) {
+    live_task_events.record(event.clone());
+    let _ = task_events.send(event);
 }
 
 fn task_event_from_item_lifecycle(
@@ -2650,67 +2668,51 @@ fn command_execution_summary(item: &JsonValue) -> String {
 async fn handle_codex_server_request(
     task_events: &broadcast::Sender<TaskEventRecord>,
     pending_approvals: &Arc<AsyncMutex<HashMap<String, PendingApproval>>>,
-    request_id: JsonValue,
-    method: &str,
-    params: JsonValue,
+    request: CodexServerRequest,
 ) {
-    if method != "item/commandExecution/requestApproval"
-        && method != "item/fileChange/requestApproval"
-    {
-        return;
-    }
-    let Some(thread_id) = params.get("threadId").and_then(JsonValue::as_str) else {
-        return;
+    let (request_id, thread_id, params, kind) = match request {
+        CodexServerRequest::CommandExecutionApproval {
+            id,
+            thread_id,
+            params,
+        } => (id, thread_id, params, ApprovalKind::Command),
+        CodexServerRequest::FileChangeApproval {
+            id,
+            thread_id,
+            params,
+        } => (id, thread_id, params, ApprovalKind::FileChange),
+        CodexServerRequest::Unknown { .. } => return,
     };
     let approval_id = approval_id_from_request(&request_id, &params);
     pending_approvals.lock().await.insert(
         approval_id.clone(),
         PendingApproval {
-            thread_id: thread_id.to_string(),
+            thread_id: thread_id.clone(),
             request_id: request_id.clone(),
-            method: method.to_string(),
+            kind,
             params: params.clone(),
         },
     );
 
-    let kind = if method == "item/commandExecution/requestApproval" {
-        "command"
-    } else {
-        "file_change"
-    };
-    let summary = if kind == "command" {
+    let summary = if kind == ApprovalKind::Command {
         "Command approval requested"
     } else {
         "File change approval requested"
     };
     let event = task_event_record(
-        thread_id,
+        &thread_id,
         &format!("approval_requested:{approval_id}"),
         "approval_requested",
         summary,
         Some(json!({
             "approvalId": approval_id,
-            "kind": kind,
-            "method": method,
+            "kind": kind.as_str(),
             "requestId": request_id,
             "params": params
         })),
         now_ms(),
     );
     let _ = task_events.send(event);
-}
-
-fn codex_thread_id(method: &str, params: &JsonValue) -> Option<String> {
-    match method {
-        "thread/started" => params
-            .pointer("/thread/id")
-            .and_then(JsonValue::as_str)
-            .map(ToOwned::to_owned),
-        _ => params
-            .get("threadId")
-            .and_then(JsonValue::as_str)
-            .map(ToOwned::to_owned),
-    }
 }
 
 fn approval_id_from_request(request_id: &JsonValue, params: &JsonValue) -> String {
@@ -2909,20 +2911,6 @@ fn seconds_to_ms_value(value: f64) -> u64 {
     } else {
         0
     }
-}
-
-fn notification_ms(params: &JsonValue, key: &str) -> Option<u64> {
-    params
-        .get(key)
-        .and_then(JsonValue::as_u64)
-        .or_else(|| {
-            params
-                .get(key)
-                .and_then(JsonValue::as_f64)
-                .filter(|value| value.is_finite() && *value > 0.0)
-                .map(|value| value as u64)
-        })
-        .filter(|value| *value > 0)
 }
 
 fn event_id_from_params(prefix: &str, params: &JsonValue) -> String {
@@ -3357,15 +3345,12 @@ mod tests {
     }
 
     #[test]
-    fn recognizes_thread_not_found_protocol_errors() {
-        assert!(is_thread_not_found(
-            &codex_app_server::CodexThreadError::Protocol(
-                "thread not found: 019f-test".to_string(),
-            ),
-        ));
-        assert!(!is_thread_not_found(
-            &codex_app_server::CodexThreadError::Timeout,
-        ));
+    fn recognizes_structured_thread_unavailable_errors() {
+        assert!(
+            codex_app_server::CodexThreadError::ThreadUnavailable("019f-test".to_string())
+                .is_thread_unavailable()
+        );
+        assert!(!codex_app_server::CodexThreadError::Timeout.is_thread_unavailable());
     }
 
     #[test]
@@ -4148,18 +4133,23 @@ mod tests {
     #[test]
     fn codex_notifications_publish_live_task_status() {
         let (sender, mut receiver) = broadcast::channel(8);
+        let live_task_events = LiveTaskEventCache::default();
 
         handle_codex_notification(
             &sender,
-            "turn/started",
-            json!({
-                "threadId": "thread_1",
-                "turn": {
-                    "id": "turn_1",
-                    "status": "inProgress",
-                    "startedAt": 1_750_000_000.25
-                }
-            }),
+            &live_task_events,
+            codex_app_server::decode_notification(
+                "turn/started",
+                json!({
+                    "threadId": "thread_1",
+                    "turn": {
+                        "id": "turn_1",
+                        "status": "inProgress",
+                        "startedAt": 1_750_000_000.25
+                    }
+                }),
+            )
+            .unwrap(),
         );
         let started = receiver.try_recv().unwrap();
         assert_eq!(started.thread_id, "thread_1");
@@ -4169,19 +4159,23 @@ mod tests {
 
         handle_codex_notification(
             &sender,
-            "item/started",
-            json!({
-                "threadId": "thread_1",
-                "turnId": "turn_1",
-                "startedAtMs": 1_750_000_001_000_u64,
-                "item": {
-                    "id": "command_1",
-                    "type": "commandExecution",
-                    "command": "cargo test",
-                    "cwd": "/tmp/project",
-                    "status": "inProgress"
-                }
-            }),
+            &live_task_events,
+            codex_app_server::decode_notification(
+                "item/started",
+                json!({
+                    "threadId": "thread_1",
+                    "turnId": "turn_1",
+                    "startedAtMs": 1_750_000_001_000_u64,
+                    "item": {
+                        "id": "command_1",
+                        "type": "commandExecution",
+                        "command": "cargo test",
+                        "cwd": "/tmp/project",
+                        "status": "inProgress"
+                    }
+                }),
+            )
+            .unwrap(),
         );
         let command_started = receiver.try_recv().unwrap();
         assert_eq!(command_started.event_type, "command_execution");
@@ -4190,21 +4184,31 @@ mod tests {
             command_started.payload.as_ref().unwrap()["lifecycle"],
             "started"
         );
+        let cached_command = live_task_events
+            .for_thread("thread_1")
+            .into_iter()
+            .find(|event| event.id == command_started.id)
+            .expect("notification bridge should cache commands without an SSE consumer");
+        assert_eq!(cached_command.event_type, "command_execution");
 
         handle_codex_notification(
             &sender,
-            "item/started",
-            json!({
-                "threadId": "thread_1",
-                "turnId": "turn_1",
-                "startedAtMs": 1_750_000_002_000_u64,
-                "item": {
-                    "id": "reasoning_1",
-                    "type": "reasoning",
-                    "summary": [],
-                    "content": []
-                }
-            }),
+            &live_task_events,
+            codex_app_server::decode_notification(
+                "item/started",
+                json!({
+                    "threadId": "thread_1",
+                    "turnId": "turn_1",
+                    "startedAtMs": 1_750_000_002_000_u64,
+                    "item": {
+                        "id": "reasoning_1",
+                        "type": "reasoning",
+                        "summary": [],
+                        "content": []
+                    }
+                }),
+            )
+            .unwrap(),
         );
         let reasoning_started = receiver.try_recv().unwrap();
         assert_eq!(reasoning_started.event_type, "work_status");
@@ -4216,18 +4220,22 @@ mod tests {
 
         handle_codex_notification(
             &sender,
-            "item/completed",
-            json!({
-                "threadId": "thread_1",
-                "turnId": "turn_1",
-                "completedAtMs": 1_750_000_003_000_u64,
-                "item": {
-                    "id": "reasoning_1",
-                    "type": "reasoning",
-                    "summary": ["Checked the current behavior."],
-                    "content": []
-                }
-            }),
+            &live_task_events,
+            codex_app_server::decode_notification(
+                "item/completed",
+                json!({
+                    "threadId": "thread_1",
+                    "turnId": "turn_1",
+                    "completedAtMs": 1_750_000_003_000_u64,
+                    "item": {
+                        "id": "reasoning_1",
+                        "type": "reasoning",
+                        "summary": ["Checked the current behavior."],
+                        "content": []
+                    }
+                }),
+            )
+            .unwrap(),
         );
         let reasoning_completed = receiver.try_recv().unwrap();
         assert_eq!(reasoning_started.id, reasoning_completed.id);
@@ -4240,11 +4248,15 @@ mod tests {
 
         handle_codex_notification(
             &sender,
-            "thread/status/changed",
-            json!({
-                "threadId": "thread_1",
-                "status": { "type": "active", "activeFlags": [] }
-            }),
+            &live_task_events,
+            codex_app_server::decode_notification(
+                "thread/status/changed",
+                json!({
+                    "threadId": "thread_1",
+                    "status": { "type": "active", "activeFlags": [] }
+                }),
+            )
+            .unwrap(),
         );
         let status = receiver.try_recv().unwrap();
         assert_eq!(status.thread_id, "thread_1");
@@ -4253,15 +4265,19 @@ mod tests {
 
         handle_codex_notification(
             &sender,
-            "turn/completed",
-            json!({
-                "threadId": "thread_1",
-                "turn": {
-                    "id": "turn_1",
-                    "status": "completed",
-                    "completedAt": 1_750_000_004.5
-                }
-            }),
+            &live_task_events,
+            codex_app_server::decode_notification(
+                "turn/completed",
+                json!({
+                    "threadId": "thread_1",
+                    "turn": {
+                        "id": "turn_1",
+                        "status": "completed",
+                        "completedAt": 1_750_000_004.5
+                    }
+                }),
+            )
+            .unwrap(),
         );
         let completed = receiver.try_recv().unwrap();
         assert_eq!(completed.event_type, "turn_completed");
@@ -4279,15 +4295,18 @@ mod tests {
         handle_codex_server_request(
             &sender,
             &pending,
-            json!(11),
-            "item/commandExecution/requestApproval",
-            json!({
-                "threadId": "thread_1",
-                "command": "cargo test",
-                "cwd": project_root.join("src").display().to_string(),
-                "reason": "Run tests",
-                "availableDecisions": ["accept", "decline"]
-            }),
+            codex_app_server::decode_server_request(
+                json!(11),
+                "item/commandExecution/requestApproval",
+                json!({
+                    "threadId": "thread_1",
+                    "command": "cargo test",
+                    "cwd": project_root.join("src").display().to_string(),
+                    "reason": "Run tests",
+                    "availableDecisions": ["accept", "decline"]
+                }),
+            )
+            .unwrap(),
         )
         .await;
 

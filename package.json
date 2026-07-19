@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:codex-protocol": "node --test tests/codex-protocol.test.mjs",
     "test:routes": "node --test tests/navigation-routes.test.mjs",
     "test:watch": "node --test tests/watch.test.mjs",
     "test:e2e": "playwright test",

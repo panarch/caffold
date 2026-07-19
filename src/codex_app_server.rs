@@ -9,22 +9,36 @@ use std::{
     time::Duration,
 };
 
-use serde::{Deserialize, Serialize};
+mod protocol;
+
+pub use protocol::{
+    CodexNotification, CodexServerRequest, CodexThread, ModelListResponse, ThreadResumeResponse,
+    ThreadStatus, ThreadUnsubscribeResponse, TurnStatus,
+};
+use protocol::{
+    EmptyResponse, INITIALIZE, INITIALIZED, JsonRpcError, MODEL_LIST, SortDirection,
+    THREAD_ARCHIVE, THREAD_LIST, THREAD_READ, THREAD_RESUME, THREAD_START, THREAD_TURNS_LIST,
+    THREAD_UNSUBSCRIBE, TURN_INTERRUPT, TURN_START, TURN_STEER, ThreadListResponse,
+    ThreadReadResponse, ThreadStartResponse, TurnStartResponse, TurnSteerResponse, TurnsPage,
+    decode_response, model_list_params, thread_archive_params, thread_list_params,
+    thread_read_params, thread_resume_params, thread_start_params, thread_turns_list_params,
+    thread_unsubscribe_params, turn_interrupt_params, turn_start_params, turn_steer_params,
+};
+#[cfg(test)]
+pub(crate) use protocol::{decode_notification, decode_server_request};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use tokio::{
     io::Lines,
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-    process::{Child, ChildStdin, ChildStdout, Command},
+    process::{Child, ChildStderr, ChildStdin, ChildStdout, Command},
     sync::{Mutex as AsyncMutex, broadcast, oneshot},
-    time::{Instant, sleep, timeout},
+    time::{Instant, timeout},
 };
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 const THREAD_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(500);
-const ROLLOUT_READ_RETRY_DELAY: Duration = Duration::from_millis(200);
-const ROLLOUT_READ_MAX_ATTEMPTS: usize = 10;
-
 const INITIALIZE_ID: u64 = 1;
 const ACCOUNT_ID: u64 = 2;
 const RATE_LIMITS_ID: u64 = 3;
@@ -83,33 +97,27 @@ pub struct CodexThreadClient {
 struct CodexThreadClientInner {
     stdin: AsyncMutex<ChildStdin>,
     _child: AsyncMutex<Child>,
-    pending: AsyncMutex<HashMap<u64, oneshot::Sender<Result<Value, CodexThreadError>>>>,
+    pending: AsyncMutex<HashMap<u64, PendingRequest>>,
     next_id: AtomicU64,
     events: broadcast::Sender<CodexRuntimeEvent>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase", tag = "kind")]
+struct PendingRequest {
+    method: &'static str,
+    sender: oneshot::Sender<Result<Value, CodexThreadError>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum CodexRuntimeEvent {
-    Notification {
-        method: String,
-        params: Value,
-    },
-    ServerRequest {
-        id: Value,
-        method: String,
-        params: Value,
-    },
-    Error {
-        message: String,
-    },
+    Notification(CodexNotification),
+    ServerRequest(CodexServerRequest),
+    Error { message: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CodexThreadStart {
     pub thread_id: String,
-    pub response: Value,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -122,7 +130,6 @@ pub struct CodexTurnOptions {
 #[serde(rename_all = "camelCase")]
 pub struct CodexTurnStart {
     pub turn_id: String,
-    pub response: Value,
 }
 
 #[derive(Debug, thiserror::Error, Clone)]
@@ -131,12 +138,25 @@ pub enum CodexThreadError {
     MissingCli,
     #[error("Failed to start Codex app-server: {0}")]
     StartFailed(String),
+    #[error("Codex app-server thread is unavailable: {0}")]
+    ThreadUnavailable(String),
+    #[allow(dead_code)]
+    #[error("Codex app-server subscription was lost: {0}")]
+    SubscriptionLost(String),
+    #[error("Codex app-server rejected invalid parameters: {0}")]
+    InvalidParams(String),
     #[error("Codex app-server protocol error: {0}")]
     Protocol(String),
     #[error("Codex app-server request timed out.")]
     Timeout,
     #[error("Codex app-server is unavailable.")]
-    Closed,
+    ProcessUnavailable,
+}
+
+impl CodexThreadError {
+    pub fn is_thread_unavailable(&self) -> bool {
+        matches!(self, Self::ThreadUnavailable(_))
+    }
 }
 
 impl CodexThreadClient {
@@ -146,7 +166,7 @@ impl CodexThreadClient {
             .arg("--stdio")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
             .map_err(|error| {
@@ -165,6 +185,10 @@ impl CodexThreadClient {
             .stdout
             .take()
             .ok_or_else(|| CodexThreadError::Protocol("failed to open stdout".to_string()))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| CodexThreadError::Protocol("failed to open stderr".to_string()))?;
         let (events, _) = broadcast::channel(256);
         let client = Self {
             inner: Arc::new(CodexThreadClientInner {
@@ -180,10 +204,14 @@ impl CodexThreadClient {
             BufReader::new(stdout).lines(),
             client.inner.clone(),
         ));
+        tokio::spawn(read_thread_server_stderr(
+            BufReader::new(stderr).lines(),
+            client.inner.events.clone(),
+        ));
 
         client
-            .request(
-                "initialize",
+            .request_value(
+                INITIALIZE,
                 json!({
                     "clientInfo": {
                         "name": "caffold",
@@ -196,7 +224,7 @@ impl CodexThreadClient {
                 }),
             )
             .await?;
-        client.notify("initialized", json!({})).await?;
+        client.notify(INITIALIZED, json!({})).await?;
         Ok(client)
     }
 
@@ -205,15 +233,15 @@ impl CodexThreadClient {
     }
 
     pub async fn shutdown(&self) {
-        fail_pending(&self.inner, CodexThreadError::Closed).await;
+        fail_pending(&self.inner, CodexThreadError::ProcessUnavailable).await;
         let _ = self.inner.stdin.lock().await.shutdown().await;
         let mut child = self.inner._child.lock().await;
         let _ = child.start_kill();
         let _ = timeout(SHUTDOWN_TIMEOUT, child.wait()).await;
     }
 
-    pub async fn list_threads(&self, limit: usize) -> Result<Value, CodexThreadError> {
-        self.request_with_rollout_retry("thread/list", thread_list_params(limit))
+    pub async fn list_threads(&self, limit: usize) -> Result<ThreadListResponse, CodexThreadError> {
+        self.request_typed(THREAD_LIST, thread_list_params(limit))
             .await
     }
 
@@ -221,9 +249,11 @@ impl CodexThreadClient {
         &self,
         thread_id: &str,
         include_turns: bool,
-    ) -> Result<Value, CodexThreadError> {
-        self.request_with_rollout_retry("thread/read", thread_read_params(thread_id, include_turns))
-            .await
+    ) -> Result<CodexThread, CodexThreadError> {
+        let response: ThreadReadResponse = self
+            .request_typed(THREAD_READ, thread_read_params(thread_id, include_turns))
+            .await?;
+        Ok(response.thread)
     }
 
     pub async fn list_thread_turns(
@@ -231,44 +261,57 @@ impl CodexThreadClient {
         thread_id: &str,
         cursor: Option<&str>,
         limit: usize,
-    ) -> Result<Value, CodexThreadError> {
-        self.request(
-            "thread/turns/list",
-            thread_turns_list_params(thread_id, cursor, limit),
+    ) -> Result<TurnsPage, CodexThreadError> {
+        self.request_typed(
+            THREAD_TURNS_LIST,
+            thread_turns_list_params(thread_id, cursor, limit, SortDirection::Desc),
         )
         .await
     }
 
     pub async fn start_thread(&self, cwd: &str) -> Result<CodexThreadStart, CodexThreadError> {
-        let response = self
-            .request("thread/start", thread_start_params(cwd))
+        let typed: ThreadStartResponse = self
+            .request_typed(THREAD_START, thread_start_params(cwd))
             .await?;
-        let thread_id = response
-            .pointer("/thread/id")
-            .and_then(Value::as_str)
-            .ok_or_else(|| {
-                CodexThreadError::Protocol("thread/start response did not include thread.id".into())
-            })?
-            .to_string();
-
-        Ok(CodexThreadStart {
-            thread_id,
-            response,
-        })
+        let thread_id = typed.thread.id.clone();
+        Ok(CodexThreadStart { thread_id })
     }
 
     pub async fn resume_thread(
         &self,
         thread_id: &str,
         cwd: &str,
-    ) -> Result<Value, CodexThreadError> {
-        self.request("thread/resume", thread_resume_params(thread_id, cwd))
+    ) -> Result<ThreadResumeResponse, CodexThreadError> {
+        self.resume_thread_with_page(thread_id, cwd, false).await
+    }
+
+    pub async fn resume_thread_with_page(
+        &self,
+        thread_id: &str,
+        cwd: &str,
+        initial_turns_page: bool,
+    ) -> Result<ThreadResumeResponse, CodexThreadError> {
+        self.request_typed(
+            THREAD_RESUME,
+            thread_resume_params(thread_id, cwd, initial_turns_page),
+        )
+        .await
+    }
+
+    #[allow(dead_code)]
+    pub async fn unsubscribe_thread(
+        &self,
+        thread_id: &str,
+    ) -> Result<ThreadUnsubscribeResponse, CodexThreadError> {
+        self.request_typed(THREAD_UNSUBSCRIBE, thread_unsubscribe_params(thread_id))
             .await
     }
 
-    pub async fn archive_thread(&self, thread_id: &str) -> Result<Value, CodexThreadError> {
-        self.request("thread/archive", thread_archive_params(thread_id))
-            .await
+    pub async fn archive_thread(&self, thread_id: &str) -> Result<(), CodexThreadError> {
+        let _: EmptyResponse = self
+            .request_typed(THREAD_ARCHIVE, thread_archive_params(thread_id))
+            .await?;
+        Ok(())
     }
 
     pub async fn start_turn(
@@ -279,21 +322,21 @@ impl CodexThreadClient {
         image_urls: &[String],
         options: CodexTurnOptions,
     ) -> Result<CodexTurnStart, CodexThreadError> {
-        let response = self
-            .request(
-                "turn/start",
-                turn_start_params(thread_id, cwd, prompt, image_urls, options),
+        let typed: TurnStartResponse = self
+            .request_typed(
+                TURN_START,
+                turn_start_params(
+                    thread_id,
+                    cwd,
+                    prompt,
+                    image_urls,
+                    options.model.as_deref(),
+                    options.effort.as_deref(),
+                ),
             )
             .await?;
-        let turn_id = response
-            .pointer("/turn/id")
-            .and_then(Value::as_str)
-            .ok_or_else(|| {
-                CodexThreadError::Protocol("turn/start response did not include turn.id".into())
-            })?
-            .to_string();
-
-        Ok(CodexTurnStart { turn_id, response })
+        let turn_id = typed.turn.id.clone();
+        Ok(CodexTurnStart { turn_id })
     }
 
     pub async fn steer_turn(
@@ -302,9 +345,9 @@ impl CodexThreadClient {
         expected_turn_id: &str,
         prompt: &str,
         image_urls: &[String],
-    ) -> Result<Value, CodexThreadError> {
-        self.request(
-            "turn/steer",
+    ) -> Result<TurnSteerResponse, CodexThreadError> {
+        self.request_typed(
+            TURN_STEER,
             turn_steer_params(thread_id, expected_turn_id, prompt, image_urls),
         )
         .await
@@ -314,9 +357,11 @@ impl CodexThreadClient {
         &self,
         thread_id: &str,
         turn_id: &str,
-    ) -> Result<Value, CodexThreadError> {
-        self.request("turn/interrupt", turn_interrupt_params(thread_id, turn_id))
-            .await
+    ) -> Result<(), CodexThreadError> {
+        let _: EmptyResponse = self
+            .request_typed(TURN_INTERRUPT, turn_interrupt_params(thread_id, turn_id))
+            .await?;
+        Ok(())
     }
 
     pub async fn respond_to_server_request(
@@ -328,14 +373,34 @@ impl CodexThreadClient {
             .await
     }
 
-    pub async fn list_models(&self, limit: usize) -> Result<Value, CodexThreadError> {
-        self.request("model/list", model_list_params(limit)).await
+    pub async fn list_models(&self, limit: usize) -> Result<ModelListResponse, CodexThreadError> {
+        self.request_typed(MODEL_LIST, model_list_params(limit))
+            .await
     }
 
-    async fn request(&self, method: &str, params: Value) -> Result<Value, CodexThreadError> {
+    async fn request_typed<T: DeserializeOwned, P: Serialize>(
+        &self,
+        method: &'static str,
+        params: P,
+    ) -> Result<T, CodexThreadError> {
+        let value = serde_json::to_value(params)
+            .map_err(|error| CodexThreadError::Protocol(error.to_string()))?;
+        let response = self.request_value(method, value).await?;
+        decode_response(method, response).map_err(CodexThreadError::Protocol)
+    }
+
+    async fn request_value(
+        &self,
+        method: &'static str,
+        params: Value,
+    ) -> Result<Value, CodexThreadError> {
         let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
         let (sender, receiver) = oneshot::channel();
-        self.inner.pending.lock().await.insert(id, sender);
+        self.inner
+            .pending
+            .lock()
+            .await
+            .insert(id, PendingRequest { method, sender });
 
         let write_result = self
             .write_message(json!({
@@ -352,32 +417,12 @@ impl CodexThreadClient {
 
         match timeout(THREAD_REQUEST_TIMEOUT, receiver).await {
             Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err(CodexThreadError::Closed),
+            Ok(Err(_)) => Err(CodexThreadError::ProcessUnavailable),
             Err(_) => {
                 self.inner.pending.lock().await.remove(&id);
                 Err(CodexThreadError::Timeout)
             }
         }
-    }
-
-    async fn request_with_rollout_retry(
-        &self,
-        method: &str,
-        params: Value,
-    ) -> Result<Value, CodexThreadError> {
-        for attempt in 1..=ROLLOUT_READ_MAX_ATTEMPTS {
-            match self.request(method, params.clone()).await {
-                Err(error)
-                    if attempt < ROLLOUT_READ_MAX_ATTEMPTS
-                        && is_transient_rollout_read_error(&error) =>
-                {
-                    sleep(ROLLOUT_READ_RETRY_DELAY).await;
-                }
-                result => return result,
-            }
-        }
-
-        unreachable!("rollout read retry loop always returns")
     }
 
     async fn notify(&self, method: &str, params: Value) -> Result<(), CodexThreadError> {
@@ -406,16 +451,6 @@ impl CodexThreadClient {
     }
 }
 
-fn is_transient_rollout_read_error(error: &CodexThreadError) -> bool {
-    matches!(
-        error,
-        CodexThreadError::Protocol(message)
-            if message.contains("failed to read session metadata")
-                && message.contains("rollout")
-                && message.contains("is empty")
-    )
-}
-
 async fn read_thread_server_loop(
     mut lines: Lines<BufReader<ChildStdout>>,
     inner: Arc<CodexThreadClientInner>,
@@ -427,7 +462,7 @@ async fn read_thread_server_loop(
                 let _ = inner.events.send(CodexRuntimeEvent::Error {
                     message: "Codex app-server closed stdout.".to_string(),
                 });
-                fail_pending(&inner, CodexThreadError::Closed).await;
+                fail_pending(&inner, CodexThreadError::ProcessUnavailable).await;
                 return;
             }
             Err(error) => {
@@ -448,16 +483,25 @@ async fn read_thread_server_loop(
         if let Some(method) = value.get("method").and_then(Value::as_str) {
             let params = value.get("params").cloned().unwrap_or(Value::Null);
             if let Some(id) = value.get("id") {
-                let _ = inner.events.send(CodexRuntimeEvent::ServerRequest {
-                    id: id.clone(),
-                    method: method.to_string(),
-                    params,
-                });
+                match protocol::decode_server_request(id.clone(), method, params) {
+                    Ok(request) => {
+                        let _ = inner.events.send(CodexRuntimeEvent::ServerRequest(request));
+                    }
+                    Err(message) => {
+                        let _ = inner.events.send(CodexRuntimeEvent::Error { message });
+                    }
+                }
             } else {
-                let _ = inner.events.send(CodexRuntimeEvent::Notification {
-                    method: method.to_string(),
-                    params,
-                });
+                match protocol::decode_notification(method, params) {
+                    Ok(notification) => {
+                        let _ = inner
+                            .events
+                            .send(CodexRuntimeEvent::Notification(notification));
+                    }
+                    Err(message) => {
+                        let _ = inner.events.send(CodexRuntimeEvent::Error { message });
+                    }
+                }
             }
             continue;
         }
@@ -465,28 +509,69 @@ async fn read_thread_server_loop(
         let Some(id) = value.get("id").and_then(Value::as_u64) else {
             continue;
         };
+        let pending = inner.pending.lock().await.remove(&id);
         let result = if let Some(error) = value.get("error") {
-            Err(CodexThreadError::Protocol(
-                error
-                    .get("message")
-                    .and_then(Value::as_str)
-                    .unwrap_or("Codex app-server returned an error.")
-                    .to_string(),
+            Err(classify_json_rpc_error(
+                pending.as_ref().map(|request| request.method),
+                error,
             ))
         } else {
             Ok(value.get("result").cloned().unwrap_or(Value::Null))
         };
 
-        if let Some(sender) = inner.pending.lock().await.remove(&id) {
-            let _ = sender.send(result);
+        if let Some(pending) = pending {
+            let _ = pending.sender.send(result);
+        }
+    }
+}
+
+fn classify_json_rpc_error(method: Option<&str>, value: &Value) -> CodexThreadError {
+    let error = serde_json::from_value::<JsonRpcError>(value.clone()).unwrap_or(JsonRpcError {
+        code: 0,
+        message: "Codex app-server returned an invalid error response.".to_string(),
+        data: Some(value.clone()),
+    });
+    if error.code == -32602 {
+        CodexThreadError::InvalidParams(error.message)
+    } else if error.code == -32600
+        && matches!(
+            method,
+            Some(THREAD_READ | THREAD_RESUME | THREAD_TURNS_LIST)
+        )
+    {
+        CodexThreadError::ThreadUnavailable(error.message)
+    } else {
+        CodexThreadError::Protocol(format!("{} (code {})", error.message, error.code))
+    }
+}
+
+async fn read_thread_server_stderr(
+    mut lines: Lines<BufReader<ChildStderr>>,
+    events: broadcast::Sender<CodexRuntimeEvent>,
+) {
+    loop {
+        match lines.next_line().await {
+            Ok(Some(line)) if !line.trim().is_empty() => {
+                let _ = events.send(CodexRuntimeEvent::Error {
+                    message: format!("Codex app-server stderr: {line}"),
+                });
+            }
+            Ok(Some(_)) => {}
+            Ok(None) => return,
+            Err(error) => {
+                let _ = events.send(CodexRuntimeEvent::Error {
+                    message: format!("Failed to read Codex app-server stderr: {error}"),
+                });
+                return;
+            }
         }
     }
 }
 
 async fn fail_pending(inner: &CodexThreadClientInner, error: CodexThreadError) {
     let pending = std::mem::take(&mut *inner.pending.lock().await);
-    for sender in pending.into_values() {
-        let _ = sender.send(Err(error.clone()));
+    for pending in pending.into_values() {
+        let _ = pending.sender.send(Err(error.clone()));
     }
 }
 
@@ -730,125 +815,6 @@ fn compact_usage(value: &Value) -> Value {
     }
 }
 
-fn thread_list_params(limit: usize) -> Value {
-    json!({
-        "limit": limit,
-        "archived": false
-    })
-}
-
-fn thread_read_params(thread_id: &str, include_turns: bool) -> Value {
-    json!({
-        "threadId": thread_id,
-        "includeTurns": include_turns
-    })
-}
-
-fn thread_archive_params(thread_id: &str) -> Value {
-    json!({
-        "threadId": thread_id
-    })
-}
-
-fn thread_turns_list_params(thread_id: &str, cursor: Option<&str>, limit: usize) -> Value {
-    let mut params = json!({
-        "threadId": thread_id,
-        "limit": limit,
-        "sortDirection": "desc",
-        "itemsView": "full"
-    });
-    if let Some(cursor) = cursor.filter(|cursor| !cursor.is_empty()) {
-        params["cursor"] = json!(cursor);
-    }
-    params
-}
-
-fn model_list_params(limit: usize) -> Value {
-    json!({
-        "limit": limit,
-        "includeHidden": false
-    })
-}
-
-fn thread_start_params(cwd: &str) -> Value {
-    json!({
-        "cwd": cwd,
-        "runtimeWorkspaceRoots": [cwd],
-        "approvalsReviewer": "user"
-    })
-}
-
-fn thread_resume_params(thread_id: &str, cwd: &str) -> Value {
-    json!({
-        "threadId": thread_id,
-        "cwd": cwd,
-        "runtimeWorkspaceRoots": [cwd],
-        "approvalsReviewer": "user",
-        "excludeTurns": true
-    })
-}
-
-fn turn_start_params(
-    thread_id: &str,
-    cwd: &str,
-    prompt: &str,
-    image_urls: &[String],
-    options: CodexTurnOptions,
-) -> Value {
-    let mut params = json!({
-        "threadId": thread_id,
-        "cwd": cwd,
-        "runtimeWorkspaceRoots": [cwd],
-        "approvalsReviewer": "user",
-        "input": turn_input(prompt, image_urls)
-    });
-    if let Some(model) = options.model.filter(|model| !model.is_empty()) {
-        params["model"] = json!(model);
-    }
-    if let Some(effort) = options.effort.filter(|effort| !effort.is_empty()) {
-        params["effort"] = json!(effort);
-    }
-    params
-}
-
-fn turn_steer_params(
-    thread_id: &str,
-    expected_turn_id: &str,
-    prompt: &str,
-    image_urls: &[String],
-) -> Value {
-    json!({
-        "threadId": thread_id,
-        "expectedTurnId": expected_turn_id,
-        "input": turn_input(prompt, image_urls)
-    })
-}
-
-fn turn_input(prompt: &str, image_urls: &[String]) -> Vec<Value> {
-    let mut input = Vec::new();
-    if !prompt.is_empty() {
-        input.push(json!({
-            "type": "text",
-            "text": prompt,
-            "text_elements": []
-        }));
-    }
-    input.extend(image_urls.iter().map(|url| {
-        json!({
-            "type": "image",
-            "url": url
-        })
-    }));
-    input
-}
-
-fn turn_interrupt_params(thread_id: &str, turn_id: &str) -> Value {
-    json!({
-        "threadId": thread_id,
-        "turnId": turn_id
-    })
-}
-
 fn server_response_message(request_id: Value, result: Value) -> Value {
     json!({
         "jsonrpc": "2.0",
@@ -887,245 +853,54 @@ mod tests {
     use super::*;
 
     #[test]
-    fn recognizes_empty_rollout_as_transient_read_error() {
-        assert!(is_transient_rollout_read_error(
-            &CodexThreadError::Protocol(
-                "failed to read thread: thread-store internal error: failed to read session metadata /tmp/rollout.jsonl: rollout at /tmp/rollout.jsonl is empty"
-                    .to_string(),
-            ),
+    fn classifies_invalid_params_by_standard_code() {
+        let error = classify_json_rpc_error(
+            Some(TURN_START),
+            &json!({
+                "code": -32602,
+                "message": "missing field `threadId`"
+            }),
+        );
+
+        assert!(matches!(
+            error,
+            CodexThreadError::InvalidParams(message)
+                if message == "missing field `threadId`"
         ));
-        assert!(!is_transient_rollout_read_error(
-            &CodexThreadError::Protocol("thread not found".to_string()),
+    }
+
+    #[test]
+    fn classifies_unavailable_thread_by_request_method() {
+        let error = classify_json_rpc_error(
+            Some(THREAD_RESUME),
+            &json!({
+                "code": -32600,
+                "message": "no rollout found for thread id example"
+            }),
+        );
+
+        assert!(matches!(
+            error,
+            CodexThreadError::ThreadUnavailable(message)
+                if message == "no rollout found for thread id example"
         ));
     }
 
     #[test]
-    fn builds_thread_list_request_params() {
-        assert_eq!(
-            thread_list_params(100),
-            json!({
-                "limit": 100,
-                "archived": false
-            })
+    fn keeps_non_thread_request_failures_as_protocol_errors() {
+        let error = classify_json_rpc_error(
+            Some(TURN_START),
+            &json!({
+                "code": -32600,
+                "message": "request rejected"
+            }),
         );
-    }
 
-    #[test]
-    fn builds_thread_read_request_params() {
-        assert_eq!(
-            thread_read_params("thread_1", true),
-            json!({
-                "threadId": "thread_1",
-                "includeTurns": true
-            })
-        );
-    }
-
-    #[test]
-    fn builds_thread_archive_request_params() {
-        assert_eq!(
-            thread_archive_params("thread_1"),
-            json!({
-                "threadId": "thread_1"
-            })
-        );
-    }
-
-    #[test]
-    fn builds_thread_turns_list_request_params() {
-        assert_eq!(
-            thread_turns_list_params("thread_1", None, 8),
-            json!({
-                "threadId": "thread_1",
-                "limit": 8,
-                "sortDirection": "desc",
-                "itemsView": "full"
-            })
-        );
-        assert_eq!(
-            thread_turns_list_params("thread_1", Some("cursor_older"), 8),
-            json!({
-                "threadId": "thread_1",
-                "cursor": "cursor_older",
-                "limit": 8,
-                "sortDirection": "desc",
-                "itemsView": "full"
-            })
-        );
-    }
-
-    #[test]
-    fn builds_thread_start_request_params() {
-        assert_eq!(
-            thread_start_params("/workspace/project"),
-            json!({
-                "cwd": "/workspace/project",
-                "runtimeWorkspaceRoots": ["/workspace/project"],
-                "approvalsReviewer": "user"
-            })
-        );
-    }
-
-    #[test]
-    fn builds_thread_resume_request_params() {
-        assert_eq!(
-            thread_resume_params("thread_1", "/workspace/project"),
-            json!({
-                "threadId": "thread_1",
-                "cwd": "/workspace/project",
-                "runtimeWorkspaceRoots": ["/workspace/project"],
-                "approvalsReviewer": "user",
-                "excludeTurns": true
-            })
-        );
-    }
-
-    #[test]
-    fn builds_turn_start_request_params() {
-        assert_eq!(
-            turn_start_params(
-                "thread_1",
-                "/workspace/project",
-                "Inspect the diff",
-                &[],
-                CodexTurnOptions::default(),
-            ),
-            json!({
-                "threadId": "thread_1",
-                "cwd": "/workspace/project",
-                "runtimeWorkspaceRoots": ["/workspace/project"],
-                "approvalsReviewer": "user",
-                "input": [{
-                    "type": "text",
-                    "text": "Inspect the diff",
-                    "text_elements": []
-                }]
-            })
-        );
-    }
-
-    #[test]
-    fn builds_turn_start_request_params_with_model_options() {
-        assert_eq!(
-            turn_start_params(
-                "thread_1",
-                "/workspace/project",
-                "Inspect the diff",
-                &[],
-                CodexTurnOptions {
-                    model: Some("gpt-5.5".to_string()),
-                    effort: Some("ultra".to_string()),
-                },
-            ),
-            json!({
-                "threadId": "thread_1",
-                "cwd": "/workspace/project",
-                "runtimeWorkspaceRoots": ["/workspace/project"],
-                "approvalsReviewer": "user",
-                "model": "gpt-5.5",
-                "effort": "ultra",
-                "input": [{
-                    "type": "text",
-                    "text": "Inspect the diff",
-                    "text_elements": []
-                }]
-            })
-        );
-    }
-
-    #[test]
-    fn builds_turn_start_request_params_with_images() {
-        let images = vec![
-            "data:image/png;base64,aGVsbG8=".to_string(),
-            "data:image/jpeg;base64,d29ybGQ=".to_string(),
-        ];
-        assert_eq!(
-            turn_start_params(
-                "thread_1",
-                "/workspace/project",
-                "Inspect these screenshots",
-                &images,
-                CodexTurnOptions::default(),
-            )["input"],
-            json!([
-                {
-                    "type": "text",
-                    "text": "Inspect these screenshots",
-                    "text_elements": []
-                },
-                {
-                    "type": "image",
-                    "url": "data:image/png;base64,aGVsbG8="
-                },
-                {
-                    "type": "image",
-                    "url": "data:image/jpeg;base64,d29ybGQ="
-                }
-            ])
-        );
-    }
-
-    #[test]
-    fn builds_image_only_turn_start_request_params() {
-        let images = vec!["data:image/png;base64,aGVsbG8=".to_string()];
-        assert_eq!(
-            turn_start_params(
-                "thread_1",
-                "/workspace/project",
-                "",
-                &images,
-                CodexTurnOptions::default(),
-            )["input"],
-            json!([{
-                "type": "image",
-                "url": "data:image/png;base64,aGVsbG8="
-            }])
-        );
-    }
-
-    #[test]
-    fn builds_turn_steer_request_params_with_images() {
-        let images = vec!["data:image/png;base64,aGVsbG8=".to_string()];
-        assert_eq!(
-            turn_steer_params("thread_1", "turn_1", "Use this screenshot too", &images,),
-            json!({
-                "threadId": "thread_1",
-                "expectedTurnId": "turn_1",
-                "input": [
-                    {
-                        "type": "text",
-                        "text": "Use this screenshot too",
-                        "text_elements": []
-                    },
-                    {
-                        "type": "image",
-                        "url": "data:image/png;base64,aGVsbG8="
-                    }
-                ]
-            })
-        );
-    }
-
-    #[test]
-    fn builds_model_list_request_params() {
-        assert_eq!(
-            model_list_params(100),
-            json!({
-                "limit": 100,
-                "includeHidden": false
-            })
-        );
-    }
-
-    #[test]
-    fn builds_turn_interrupt_request_params() {
-        assert_eq!(
-            turn_interrupt_params("thread_1", "turn_1"),
-            json!({
-                "threadId": "thread_1",
-                "turnId": "turn_1"
-            })
-        );
+        assert!(matches!(
+            error,
+            CodexThreadError::Protocol(message)
+                if message == "request rejected (code -32600)"
+        ));
     }
 
     #[test]
