@@ -69,6 +69,31 @@ Caffold keeps pending approvals and SSE notifications as ephemeral in-memory
 state in this slice. Pending approval cards may disappear after a Caffold
 backend restart until app-server re-emits the request.
 
+## Cross-Process Reconciliation
+
+With Caffold's current process topology, its app-server child only delivers
+notifications for work visible to that connection. Codex desktop runs through
+a separate app-server process, so Caffold does not currently receive a direct
+notification when Codex desktop starts or updates a turn. This is a description
+of the current integration, not a protocol guarantee; shared daemon/proxy
+transports and explicit thread subscriptions must be evaluated separately.
+
+Caffold watches the rollout file path reported by Codex for tasks that it has
+observed. The rollout file is only an invalidation signal: Caffold never parses
+it as transcript data. When a selected task's rollout changes, Caffold waits for
+a 600ms quiet period, reads the canonical task through app-server `thread/read`,
+and broadcasts that one result to every Caffold SSE client viewing the task.
+Multiple browsers therefore share one canonical read instead of each issuing a
+separate detail request. Tasks with no active detail subscriber do not trigger
+transcript reads.
+
+The existing lightweight rollout activity scan remains limited to detecting
+running/completed status. Its one-second running-state reconciliation does not
+perform transcript reads. Browser reconnect and visibility resume each request
+one canonical detail sync to recover events that may have been missed while the
+client was disconnected. This design avoids periodic transcript polling while
+keeping Codex app-server as the task source of truth.
+
 Local task metadata/event storage is deferred and optional. If added later, it
 should augment Codex threads with Caffold-only annotations rather than become
 the required primary lookup path.

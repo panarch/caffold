@@ -14,6 +14,7 @@ const ACTIVITY_LINE_CONTEXT_BYTES: usize = 16 * 1024;
 const TASK_STARTED_MARKER: &[u8] = br#""type":"task_started""#;
 const TASK_COMPLETE_MARKER: &[u8] = br#""type":"task_complete""#;
 type ActivityChangeCallback = dyn Fn(String, TaskActivity) + Send + Sync;
+type RolloutChangeCallback = dyn Fn(String) + Send + Sync;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TaskActivity {
@@ -66,17 +67,27 @@ pub(crate) struct TaskActivityMonitor {
 }
 
 impl TaskActivityMonitor {
-    pub(crate) fn new(on_change: impl Fn(String, TaskActivity) + Send + Sync + 'static) -> Self {
+    pub(crate) fn new(
+        on_change: impl Fn(String, TaskActivity) + Send + Sync + 'static,
+        on_rollout_change: impl Fn(String) + Send + Sync + 'static,
+    ) -> Self {
         let observed = Arc::new(Mutex::new(ObservedThreads::default()));
         let callback_observed = observed.clone();
         let on_change: Arc<ActivityChangeCallback> = Arc::new(on_change);
         let callback_on_change = on_change.clone();
+        let on_rollout_change: Arc<RolloutChangeCallback> = Arc::new(on_rollout_change);
+        let callback_on_rollout_change = on_rollout_change.clone();
         let callback = move |event: notify::Result<notify::Event>| {
             let Ok(event) = event else {
                 return;
             };
             for path in event.paths {
-                refresh_observed_path(&callback_observed, &callback_on_change, &path);
+                handle_observed_path_change(
+                    &callback_observed,
+                    &callback_on_change,
+                    &callback_on_rollout_change,
+                    &path,
+                );
             }
         };
         let watcher = notify::recommended_watcher(callback).ok();
@@ -169,6 +180,23 @@ impl TaskActivityMonitor {
             refresh_observed_path(&self.observed, &self.on_change, &path);
         }
     }
+}
+
+fn handle_observed_path_change(
+    observed: &Mutex<ObservedThreads>,
+    on_change: &Arc<ActivityChangeCallback>,
+    on_rollout_change: &Arc<RolloutChangeCallback>,
+    path: &Path,
+) {
+    let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let thread_id = observed
+        .lock()
+        .ok()
+        .and_then(|observed| observed.thread_by_path.get(&path).cloned());
+    if let Some(thread_id) = thread_id {
+        on_rollout_change(thread_id);
+    }
+    refresh_observed_path(observed, on_change, &path);
 }
 
 fn refresh_observed_path(
@@ -343,12 +371,15 @@ mod tests {
         std::fs::write(&path, "{\"payload\":{\"type\":\"task_started\"}}\n").unwrap();
         let changes = Arc::new(Mutex::new(Vec::new()));
         let callback_changes = changes.clone();
-        let monitor = TaskActivityMonitor::new(move |thread_id, activity| {
-            callback_changes
-                .lock()
-                .unwrap()
-                .push((thread_id, activity.is_running()));
-        });
+        let monitor = TaskActivityMonitor::new(
+            move |thread_id, activity| {
+                callback_changes
+                    .lock()
+                    .unwrap()
+                    .push((thread_id, activity.is_running()));
+            },
+            |_| {},
+        );
         monitor.observe_thread(&serde_json::json!({
             "id": "thread-1",
             "path": path.to_string_lossy(),
@@ -368,6 +399,34 @@ mod tests {
                 .lock()
                 .unwrap()
                 .contains(&("thread-1".to_string(), false))
+        );
+    }
+
+    #[test]
+    fn reports_rollout_changes_even_when_activity_is_unchanged() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("rollout.jsonl");
+        std::fs::write(&path, "{\"payload\":{\"type\":\"task_complete\"}}\n").unwrap();
+        let invalidations = Arc::new(Mutex::new(Vec::new()));
+        let callback_invalidations = invalidations.clone();
+        let on_rollout_change: Arc<RolloutChangeCallback> =
+            Arc::new(move |thread_id| callback_invalidations.lock().unwrap().push(thread_id));
+        let monitor = TaskActivityMonitor::new(|_, _| {}, |_| {});
+        monitor.observe_thread(&serde_json::json!({
+            "id": "thread-1",
+            "path": path.to_string_lossy(),
+        }));
+
+        handle_observed_path_change(
+            &monitor.observed,
+            &monitor.on_change,
+            &on_rollout_change,
+            &path,
+        );
+
+        assert_eq!(
+            invalidations.lock().unwrap().as_slice(),
+            &["thread-1".to_string()]
         );
     }
 }

@@ -3328,6 +3328,12 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(followUpTextarea).toHaveValue(
     "Keep this next draft while the request runs",
   );
+  await page.evaluate((detail) => {
+    const source = window.__caffoldMockEventSources.find((candidate) =>
+      candidate.url.includes(`/api/tasks/${detail.task.threadId}/stream`),
+    );
+    source?.emit("task-sync", detail);
+  }, detailResponse());
   const runningStatus = tasksPage.locator(
     '.task-detail-summary .task-status-chip[data-status="running"]',
   );
@@ -3745,9 +3751,8 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     eventsPage: { nextCursor: null },
     pendingApprovals: [],
   };
+  let taskDetailResponse = taskDetail;
   let taskDetailReadRequests = 0;
-  let holdTaskRefreshes = false;
-  const heldTaskRefreshes = [];
 
   await page.route(/\/api\/git\/status(?:\?|$)/, (route) =>
     route.fulfill({
@@ -3774,12 +3779,9 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
   );
   await page.route(/\/api\/tasks\/thread_scroll_fixture(?:\?|$)/, async (route) => {
     taskDetailReadRequests += 1;
-    if (holdTaskRefreshes) {
-      await new Promise((resolve) => heldTaskRefreshes.push(resolve));
-    }
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify(taskDetail),
+      body: JSON.stringify(taskDetailResponse),
     });
   });
 
@@ -3853,7 +3855,6 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     .toBe(true);
 
   const readsBeforeBurst = taskDetailReadRequests;
-  holdTaskRefreshes = true;
   await page.evaluate(
     ({ threadId, now }) => {
       const taskSource = window.__taskEventSources.find((source) =>
@@ -3876,19 +3877,36 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     { threadId, now },
   );
   await expect(tasksPage).toContainText("Burst update 3");
-  await expect.poll(() => taskDetailReadRequests).toBe(readsBeforeBurst + 1);
   await page.waitForTimeout(100);
-  expect(taskDetailReadRequests).toBe(readsBeforeBurst + 1);
+  expect(taskDetailReadRequests).toBe(readsBeforeBurst);
 
-  heldTaskRefreshes.shift()?.();
-  await expect.poll(() => taskDetailReadRequests).toBe(readsBeforeBurst + 2);
-  await page.waitForTimeout(100);
-  expect(taskDetailReadRequests).toBe(readsBeforeBurst + 2);
-  heldTaskRefreshes.shift()?.();
-  holdTaskRefreshes = false;
-  await expect
-    .poll(() => tasksPage.evaluate((element) => element.taskRefresh === null))
-    .toBe(true);
+  const canonicalEvent = eventRecord(
+    "event_external_sync",
+    "assistant_message",
+    "Assistant response",
+    {
+      turnId: "turn_external_sync",
+      text: "Synced from an external Codex process.",
+    },
+    400,
+  );
+  await page.evaluate(({ threadId, taskDetail, canonicalEvent }) => {
+    const taskSource = window.__taskEventSources.find((source) =>
+      source.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    taskSource.emit("task-sync", {
+      ...taskDetail,
+      events: [...taskDetail.events, canonicalEvent],
+    });
+  }, { threadId, taskDetail, canonicalEvent });
+  await expect(tasksPage).toContainText("Synced from an external Codex process.");
+  expect(taskDetailReadRequests).toBe(readsBeforeBurst);
+
+  const readsBeforeVisibility = taskDetailReadRequests;
+  await page.evaluate(() => {
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect.poll(() => taskDetailReadRequests).toBe(readsBeforeVisibility + 1);
 
   await page.evaluate((threadId) => {
     const taskSource = window.__taskEventSources.find((source) =>
@@ -3913,24 +3931,24 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     },
     500,
   );
-  await page.evaluate(({ threadId, taskDetail, reconnectEvent }) => {
+  taskDetailResponse = {
+    ...taskDetail,
+    task: {
+      ...taskDetail.task,
+      status: "idle",
+      activeTurnId: null,
+    },
+    events: [...taskDetail.events, reconnectEvent],
+  };
+  await page.evaluate((threadId) => {
     const taskSource = window.__taskEventSources.find((source) =>
       source.url.includes(`/api/tasks/${threadId}/stream`),
     );
     taskSource.emitOpen();
-    taskSource.emit("task-sync", {
-      ...taskDetail,
-      task: {
-        ...taskDetail.task,
-        status: "idle",
-        activeTurnId: null,
-      },
-      events: [...taskDetail.events, reconnectEvent],
-    });
-  }, { threadId, taskDetail, reconnectEvent });
+  }, threadId);
   await expect(tasksPage.locator(".task-stream-state")).toHaveCount(0);
   await expect(tasksPage).toContainText("Synced after reconnect.");
-  await expect.poll(() => taskDetailReadRequests).toBe(readsBeforeReconnect);
+  await expect.poll(() => taskDetailReadRequests).toBe(readsBeforeReconnect + 1);
 
   const sourcesBeforeRetry = await page.evaluate(() => window.__taskEventSources.length);
   await page.evaluate((threadId) => {

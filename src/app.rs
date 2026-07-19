@@ -19,7 +19,7 @@ use futures_util::stream;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
 use tokio::net::TcpListener;
-use tokio::sync::{Mutex as AsyncMutex, broadcast};
+use tokio::sync::{Mutex as AsyncMutex, broadcast, mpsc};
 use tracing::info;
 
 use crate::{
@@ -44,6 +44,7 @@ const TASK_DETAIL_TURNS_PAGE_SIZE: usize = 8;
 const LIST_DIRECTORY_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_TASK_IMAGES: usize = 4;
 const MAX_TASK_REQUEST_BYTES: usize = 64 * 1024 * 1024;
+const TASK_SYNC_DEBOUNCE: Duration = Duration::from_millis(600);
 
 #[derive(Debug, Clone)]
 pub struct ServeConfig {
@@ -60,12 +61,84 @@ struct AppState {
     codex_threads: Arc<CodexThreadRuntime>,
     pending_approvals: Arc<AsyncMutex<HashMap<String, PendingApproval>>>,
     task_events: broadcast::Sender<TaskEventRecord>,
+    task_sync: TaskSyncCoordinator,
+    task_sync_events: broadcast::Sender<TaskDetailSync>,
     live_task_events: LiveTaskEventCache,
     task_activity: TaskActivityMonitor,
     watch_hub: WatchHub,
     shutdown: broadcast::Sender<()>,
     initial_path: String,
     home_path: Option<String>,
+}
+
+#[derive(Clone)]
+struct TaskSyncCoordinator {
+    subscribers: Arc<Mutex<HashMap<String, usize>>>,
+    requests: mpsc::UnboundedSender<String>,
+    receiver: Arc<AsyncMutex<Option<mpsc::UnboundedReceiver<String>>>>,
+}
+
+impl TaskSyncCoordinator {
+    fn new() -> Self {
+        let (requests, receiver) = mpsc::unbounded_channel();
+        Self {
+            subscribers: Arc::new(Mutex::new(HashMap::new())),
+            requests,
+            receiver: Arc::new(AsyncMutex::new(Some(receiver))),
+        }
+    }
+
+    fn subscribe(&self, thread_id: &str) -> TaskSyncSubscription {
+        if let Ok(mut subscribers) = self.subscribers.lock() {
+            *subscribers.entry(thread_id.to_string()).or_default() += 1;
+        }
+        TaskSyncSubscription {
+            coordinator: self.clone(),
+            thread_id: thread_id.to_string(),
+        }
+    }
+
+    fn invalidate(&self, thread_id: String) {
+        if self.is_subscribed(&thread_id) {
+            let _ = self.requests.send(thread_id);
+        }
+    }
+
+    fn is_subscribed(&self, thread_id: &str) -> bool {
+        self.subscribers
+            .lock()
+            .ok()
+            .and_then(|subscribers| subscribers.get(thread_id).copied())
+            .is_some_and(|count| count > 0)
+    }
+
+    async fn take_receiver(&self) -> Option<mpsc::UnboundedReceiver<String>> {
+        self.receiver.lock().await.take()
+    }
+
+    fn unsubscribe(&self, thread_id: &str) {
+        let Ok(mut subscribers) = self.subscribers.lock() else {
+            return;
+        };
+        let Some(count) = subscribers.get_mut(thread_id) else {
+            return;
+        };
+        *count -= 1;
+        if *count == 0 {
+            subscribers.remove(thread_id);
+        }
+    }
+}
+
+struct TaskSyncSubscription {
+    coordinator: TaskSyncCoordinator,
+    thread_id: String,
+}
+
+impl Drop for TaskSyncSubscription {
+    fn drop(&mut self) {
+        self.coordinator.unsubscribe(&self.thread_id);
+    }
 }
 
 #[derive(Default)]
@@ -399,7 +472,7 @@ impl LiveTaskEventCache {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TaskDetailResponse {
     task: TaskRecord,
@@ -408,10 +481,16 @@ struct TaskDetailResponse {
     pending_approvals: Vec<TaskEventRecord>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TaskEventsPage {
     next_cursor: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct TaskDetailSync {
+    thread_id: String,
+    detail: TaskDetailResponse,
 }
 
 #[derive(Debug, Serialize)]
@@ -440,7 +519,9 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         data_dir.join("server.json"),
     )?);
     let (task_events, _) = broadcast::channel(256);
-    let task_activity = task_activity_monitor(task_events.clone());
+    let task_sync = TaskSyncCoordinator::new();
+    let (task_sync_events, _) = broadcast::channel(64);
+    let task_activity = task_activity_monitor(task_events.clone(), task_sync.clone());
     let (shutdown, _) = broadcast::channel(16);
     let pending_approvals = Arc::new(AsyncMutex::new(HashMap::new()));
     let codex_threads = Arc::new(CodexThreadRuntime::default());
@@ -453,6 +534,8 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         codex_threads: codex_threads.clone(),
         pending_approvals,
         task_events,
+        task_sync,
+        task_sync_events,
         live_task_events: LiveTaskEventCache::default(),
         task_activity,
         watch_hub,
@@ -489,7 +572,9 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
 
 pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
     let (task_events, _) = broadcast::channel(256);
-    let task_activity = task_activity_monitor(task_events.clone());
+    let task_sync = TaskSyncCoordinator::new();
+    let (task_sync_events, _) = broadcast::channel(64);
+    let task_activity = task_activity_monitor(task_events.clone(), task_sync.clone());
     let (shutdown, _) = broadcast::channel(16);
     let fs = Arc::new(fs);
     let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
@@ -499,6 +584,8 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         codex_threads: Arc::new(CodexThreadRuntime::default()),
         pending_approvals: Arc::new(AsyncMutex::new(HashMap::new())),
         task_events,
+        task_sync,
+        task_sync_events,
         live_task_events: LiveTaskEventCache::default(),
         task_activity,
         watch_hub,
@@ -1146,30 +1233,131 @@ async fn task_detail(
     ))
 }
 
+async fn ensure_task_sync_worker(state: &AppState) {
+    let Some(receiver) = state.task_sync.take_receiver().await else {
+        return;
+    };
+    let state = state.clone();
+    tokio::spawn(run_task_sync_worker(state, receiver));
+}
+
+async fn run_task_sync_worker(state: AppState, mut receiver: mpsc::UnboundedReceiver<String>) {
+    let mut pending = HashMap::<String, tokio::time::Instant>::new();
+    let mut shutdown = state.shutdown.subscribe();
+
+    loop {
+        if pending.is_empty() {
+            tokio::select! {
+                _ = shutdown.recv() => return,
+                request = receiver.recv() => {
+                    let Some(thread_id) = request else { return; };
+                    pending.insert(thread_id, tokio::time::Instant::now() + TASK_SYNC_DEBOUNCE);
+                }
+            }
+        } else {
+            let deadline = pending.values().min().copied().unwrap();
+            tokio::select! {
+                _ = shutdown.recv() => return,
+                request = receiver.recv() => {
+                    let Some(thread_id) = request else { return; };
+                    pending.insert(thread_id, tokio::time::Instant::now() + TASK_SYNC_DEBOUNCE);
+                }
+                _ = tokio::time::sleep_until(deadline) => {}
+            }
+        }
+
+        let now = tokio::time::Instant::now();
+        let due = pending
+            .iter()
+            .filter(|(_, deadline)| **deadline <= now)
+            .map(|(thread_id, _)| thread_id.clone())
+            .collect::<Vec<_>>();
+        for thread_id in due {
+            pending.remove(&thread_id);
+            if !state.task_sync.is_subscribed(&thread_id) {
+                continue;
+            }
+            let Ok(client) = require_codex_thread_client(&state).await else {
+                continue;
+            };
+            let Ok(detail) = read_task_detail(&state, &client, &thread_id, None).await else {
+                continue;
+            };
+            let _ = state
+                .task_sync_events
+                .send(TaskDetailSync { thread_id, detail });
+        }
+    }
+}
+
 async fn task_stream(
     State(state): State<AppState>,
     AxumPath(thread_id): AxumPath<String>,
     Query(_query): Query<TasksQuery>,
 ) -> Result<Response, ApiError> {
-    let client = require_codex_thread_client(&state).await?;
+    require_codex_thread_client(&state).await?;
+    let subscription = state.task_sync.subscribe(&thread_id);
+    ensure_task_sync_worker(&state).await;
     let receiver = state.task_events.subscribe();
-    let detail = read_task_detail(&state, &client, &thread_id, None).await?;
-    let detail_payload = serde_json::to_string(&detail)
-        .map_err(|error| ApiError::Internal(format!("task detail failed to encode: {error}")))?;
-    let initial_frame = Bytes::from(format!("event: task-sync\ndata: {detail_payload}\n\n"));
+    let sync_receiver = state.task_sync_events.subscribe();
+    let initial_frame = Bytes::from_static(b": ready\n\n");
     let shutdown = state.shutdown.subscribe();
     let stream = stream::unfold(
-        (Some(initial_frame), receiver, shutdown, thread_id),
-        |(initial_frame, mut receiver, mut shutdown, thread_id)| async move {
+        (
+            Some(initial_frame),
+            receiver,
+            sync_receiver,
+            shutdown,
+            thread_id,
+            subscription,
+        ),
+        |(
+            initial_frame,
+            mut receiver,
+            mut sync_receiver,
+            mut shutdown,
+            thread_id,
+            subscription,
+        )| async move {
             if let Some(frame) = initial_frame {
                 return Some((
                     Ok::<_, Infallible>(frame),
-                    (None, receiver, shutdown, thread_id),
+                    (
+                        None,
+                        receiver,
+                        sync_receiver,
+                        shutdown,
+                        thread_id,
+                        subscription,
+                    ),
                 ));
             }
             loop {
                 tokio::select! {
                     _ = shutdown.recv() => return None,
+                    message = sync_receiver.recv() => {
+                        match message {
+                            Ok(sync) if sync.thread_id == thread_id => {
+                                let payload = serde_json::to_string(&sync.detail)
+                                    .unwrap_or_else(|_| "{}".to_string());
+                                let frame = format!("event: task-sync\ndata: {payload}\n\n");
+                                return Some((
+                                    Ok::<_, Infallible>(Bytes::from(frame)),
+                                    (
+                                        None,
+                                        receiver,
+                                        sync_receiver,
+                                        shutdown,
+                                        thread_id,
+                                        subscription,
+                                    ),
+                                ));
+                            }
+                            Ok(_) => continue,
+                            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(broadcast::error::RecvError::Closed) => return None,
+                        }
+                    }
                     message = receiver.recv() => {
                         match message {
                             Ok(event) if event.thread_id == thread_id => {
@@ -1178,7 +1366,14 @@ async fn task_stream(
                                 let frame = format!("event: task-event\ndata: {payload}\n\n");
                                 return Some((
                                     Ok::<_, Infallible>(Bytes::from(frame)),
-                                    (None, receiver, shutdown, thread_id),
+                                    (
+                                        None,
+                                        receiver,
+                                        sync_receiver,
+                                        shutdown,
+                                        thread_id,
+                                        subscription,
+                                    ),
                                 ));
                             }
                             Ok(_) => continue,
@@ -1209,6 +1404,7 @@ async fn task_list_stream(State(state): State<AppState>) -> Result<Response, Api
 
 fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
     let receiver = state.task_events.subscribe();
+    let sync_receiver = state.task_sync_events.subscribe();
     let shutdown = state.shutdown.subscribe();
     let activity = thread_id.is_none().then(|| state.task_activity.clone());
     let live_task_events = state.live_task_events.clone();
@@ -1217,6 +1413,7 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
     let stream = stream::unfold(
         (
             receiver,
+            sync_receiver,
             shutdown,
             thread_id,
             activity,
@@ -1225,6 +1422,7 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
         ),
         |(
             mut receiver,
+            mut sync_receiver,
             mut shutdown,
             thread_id,
             activity,
@@ -1238,6 +1436,30 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
                         activity.as_ref().unwrap().reconcile_running();
                         continue;
                     }
+                    message = sync_receiver.recv() => {
+                        match message {
+                            Ok(sync) if thread_id.as_ref().is_none_or(|id| id == &sync.thread_id) => {
+                                let payload = serde_json::to_string(&sync.detail)
+                                    .unwrap_or_else(|_| "{}".to_string());
+                                let frame = format!("event: task-sync\ndata: {payload}\n\n");
+                                return Some((
+                                    Ok::<_, Infallible>(Bytes::from(frame)),
+                                    (
+                                        receiver,
+                                        sync_receiver,
+                                        shutdown,
+                                        thread_id,
+                                        activity,
+                                        activity_reconcile,
+                                        live_task_events,
+                                    ),
+                                ));
+                            }
+                            Ok(_) => continue,
+                            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(broadcast::error::RecvError::Closed) => return None,
+                        }
+                    }
                     message = receiver.recv() => {
                         match message {
                             Ok(event) if thread_id.as_ref().is_none_or(|id| id == &event.thread_id) => {
@@ -1249,6 +1471,7 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
                                     Ok::<_, Infallible>(Bytes::from(frame)),
                                     (
                                         receiver,
+                                        sync_receiver,
                                         shutdown,
                                         thread_id,
                                         activity,
@@ -1697,32 +1920,38 @@ fn task_record_from_thread(
     })
 }
 
-fn task_activity_monitor(task_events: broadcast::Sender<TaskEventRecord>) -> TaskActivityMonitor {
-    TaskActivityMonitor::new(move |thread_id, activity| {
-        let status = if activity.is_running() {
-            "running"
-        } else {
-            "idle"
-        };
-        let event = task_event_record(
-            &thread_id,
-            &format!("rollout_status:{}", now_ms()),
-            "thread_status_changed",
-            if activity.is_running() {
-                "Thread running"
+fn task_activity_monitor(
+    task_events: broadcast::Sender<TaskEventRecord>,
+    task_sync: TaskSyncCoordinator,
+) -> TaskActivityMonitor {
+    TaskActivityMonitor::new(
+        move |thread_id, activity| {
+            let status = if activity.is_running() {
+                "running"
             } else {
-                "Thread idle"
-            },
-            Some(json!({
-                "threadId": thread_id,
-                "status": status,
-                "activeTurnId": activity.turn_id(),
-                "activeTurnStartedMs": activity.started_ms()
-            })),
-            now_ms(),
-        );
-        let _ = task_events.send(event);
-    })
+                "idle"
+            };
+            let event = task_event_record(
+                &thread_id,
+                &format!("rollout_status:{}", now_ms()),
+                "thread_status_changed",
+                if activity.is_running() {
+                    "Thread running"
+                } else {
+                    "Thread idle"
+                },
+                Some(json!({
+                    "threadId": thread_id,
+                    "status": status,
+                    "activeTurnId": activity.turn_id(),
+                    "activeTurnStartedMs": activity.started_ms()
+                })),
+                now_ms(),
+            );
+            let _ = task_events.send(event);
+        },
+        move |thread_id| task_sync.invalidate(thread_id),
+    )
 }
 
 fn thread_events(thread: &JsonValue) -> Vec<TaskEventRecord> {
@@ -3048,6 +3277,28 @@ impl IntoResponse for ApiError {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn task_sync_coordinator_only_invalidates_subscribed_threads() {
+        let coordinator = TaskSyncCoordinator::new();
+        let mut receiver = coordinator.take_receiver().await.unwrap();
+
+        coordinator.invalidate("thread-1".to_string());
+        assert!(receiver.try_recv().is_err());
+
+        let first = coordinator.subscribe("thread-1");
+        let second = coordinator.subscribe("thread-1");
+        coordinator.invalidate("thread-1".to_string());
+        assert_eq!(receiver.try_recv().unwrap(), "thread-1");
+
+        drop(first);
+        coordinator.invalidate("thread-1".to_string());
+        assert_eq!(receiver.try_recv().unwrap(), "thread-1");
+
+        drop(second);
+        coordinator.invalidate("thread-1".to_string());
+        assert!(receiver.try_recv().is_err());
+    }
+
     #[test]
     fn task_images_must_stay_inside_the_browsing_root() {
         let root = tempfile::tempdir().unwrap();
@@ -3268,7 +3519,7 @@ mod tests {
             }]
         });
         let (events, _) = broadcast::channel(4);
-        let activity = task_activity_monitor(events);
+        let activity = task_activity_monitor(events, TaskSyncCoordinator::new());
         activity.observe_threads(&response);
 
         let tasks = thread_list_response(&fs, None, &response, Some(&activity));
@@ -3308,7 +3559,7 @@ mod tests {
             }]
         });
         let (events, _) = broadcast::channel(4);
-        let activity = task_activity_monitor(events);
+        let activity = task_activity_monitor(events, TaskSyncCoordinator::new());
         activity.observe_thread(&thread);
 
         let rollout_activity = activity.activity("thread_completed");
@@ -3347,7 +3598,7 @@ mod tests {
             }]
         });
         let (events, _) = broadcast::channel(4);
-        let activity = task_activity_monitor(events);
+        let activity = task_activity_monitor(events, TaskSyncCoordinator::new());
         activity.observe_thread(&thread);
 
         let rollout_activity = activity.activity("thread_active");

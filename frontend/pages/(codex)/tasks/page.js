@@ -133,6 +133,7 @@ class CaffoldTasksPage extends HTMLElement {
       this.render();
     };
     this.boundTaskListResize = () => this.clampTaskListWidth();
+    this.boundVisibilityChange = () => this.handleVisibilityChange();
     this.boundTaskListPointerMove = (event) => this.resizeTaskList(event);
     this.boundTaskListPointerUp = () => this.stopTaskListResize();
     warmIcons();
@@ -308,6 +309,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.globalListenersAttached = true;
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     window.addEventListener("resize", this.boundTaskListResize);
+    document.addEventListener("visibilitychange", this.boundVisibilityChange);
   }
 
   detachGlobalListeners() {
@@ -317,6 +319,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.globalListenersAttached = false;
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
     window.removeEventListener("resize", this.boundTaskListResize);
+    document.removeEventListener("visibilitychange", this.boundVisibilityChange);
   }
 
   syncTaskListContext() {
@@ -578,9 +581,13 @@ class CaffoldTasksPage extends HTMLElement {
       if (!this.isCurrentStream(stream, threadId, generation)) {
         return;
       }
+      const shouldSync = this.streamState === "reconnecting";
       window.clearTimeout(this.streamErrorTimer);
       this.streamErrorTimer = null;
       this.setStreamState("connected");
+      if (shouldSync) {
+        this.requestSelectedTaskRefresh(threadId, generation);
+      }
     });
     stream.addEventListener("error", () => {
       if (!this.isCurrentStream(stream, threadId, generation)) {
@@ -626,7 +633,6 @@ class CaffoldTasksPage extends HTMLElement {
       this.applyLiveTaskEvent(entry);
       this.conversationScrollMode = "bottom-if-needed";
       this.render();
-      this.requestSelectedTaskRefresh(threadId, generation);
     });
   }
 
@@ -691,6 +697,15 @@ class CaffoldTasksPage extends HTMLElement {
         this.patchTaskListTask(nextTask);
       }
     });
+    stream.addEventListener("task-sync", (event) => {
+      if (this.taskListStream !== stream || this.taskListStreamContext !== context) {
+        return;
+      }
+      const detail = parseJson(event.data);
+      if (detail?.task) {
+        this.patchTaskListTask(detail.task);
+      }
+    });
   }
 
   closeTaskListStream() {
@@ -737,6 +752,16 @@ class CaffoldTasksPage extends HTMLElement {
     if (this.view === "detail" && (wasVisible || isVisibleStreamState(state))) {
       this.render();
     }
+  }
+
+  handleVisibilityChange() {
+    if (document.visibilityState !== "visible" || !this.selectedThreadId) {
+      return;
+    }
+    this.requestSelectedTaskRefresh(
+      this.selectedThreadId,
+      this.streamGeneration,
+    );
   }
 
   requestSelectedTaskRefresh(
@@ -1214,7 +1239,6 @@ class CaffoldTasksPage extends HTMLElement {
       }
       if (threadId === this.selectedThreadId) {
         this.conversationScrollMode = "bottom-if-needed";
-        this.requestSelectedTaskRefresh(threadId, this.streamGeneration);
       }
     } catch (error) {
       const threadEvents = this.eventsByThread.get(threadId) ?? [];
