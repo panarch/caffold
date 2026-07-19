@@ -249,6 +249,15 @@ struct TaskPromptRequest {
     images: Vec<String>,
     model: Option<String>,
     effort: Option<String>,
+    active_turn_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskPromptResponse {
+    thread_id: String,
+    turn_id: String,
+    steered: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1272,32 +1281,66 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
 async fn task_prompt(
     State(state): State<AppState>,
     AxumPath(thread_id): AxumPath<String>,
-    Query(_query): Query<TasksQuery>,
+    Query(query): Query<TasksQuery>,
     Json(request): Json<TaskPromptRequest>,
-) -> Result<Json<TaskDetailResponse>, ApiError> {
+) -> Result<Json<TaskPromptResponse>, ApiError> {
     let (prompt, images) = normalize_task_input(&request.prompt, request.images)?;
     let turn_options = codex_turn_options(request.model, request.effort)?;
     let client = require_codex_thread_client(&state).await?;
-    let thread = client.read_thread(&thread_id, false).await?;
-    let thread_value = thread.get("thread").unwrap_or(&thread);
-    let cwd = thread_value
-        .get("cwd")
-        .and_then(JsonValue::as_str)
-        .map(ToOwned::to_owned)
-        .unwrap_or(task_cwd(&state, None)?);
-    client.resume_thread(&thread_id, &cwd).await?;
-    if let Some(active_turn_id) = recent_active_turn_id(&client, &thread_id).await? {
-        client
-            .steer_turn(&thread_id, &active_turn_id, &prompt, &images)
-            .await?;
+    let cwd = if query.cwd.as_deref().is_some_and(|cwd| !cwd.is_empty()) {
+        task_cwd(&state, query.cwd.as_deref())?
     } else {
-        client
-            .start_turn(&thread_id, &cwd, &prompt, &images, turn_options)
-            .await?;
-    }
-    Ok(Json(
-        read_task_detail(&state, &client, &thread_id, None).await?,
-    ))
+        let thread = client.read_thread(&thread_id, false).await?;
+        let thread_value = thread.get("thread").unwrap_or(&thread);
+        thread_value
+            .get("cwd")
+            .and_then(JsonValue::as_str)
+            .map(ToOwned::to_owned)
+            .unwrap_or(task_cwd(&state, None)?)
+    };
+    let (turn_id, steered) = if let Some(active_turn_id) = request.active_turn_id {
+        let steer_result = client
+            .steer_turn(&thread_id, &active_turn_id, &prompt, &images)
+            .await;
+        if let Err(error) = steer_result {
+            if !is_thread_not_found(&error) {
+                return Err(error.into());
+            }
+            client.resume_thread(&thread_id, &cwd).await?;
+            client
+                .steer_turn(&thread_id, &active_turn_id, &prompt, &images)
+                .await?;
+        }
+        (active_turn_id, true)
+    } else {
+        let start_result = client
+            .start_turn(&thread_id, &cwd, &prompt, &images, turn_options.clone())
+            .await;
+        let turn = match start_result {
+            Ok(turn) => turn,
+            Err(error) if is_thread_not_found(&error) => {
+                client.resume_thread(&thread_id, &cwd).await?;
+                client
+                    .start_turn(&thread_id, &cwd, &prompt, &images, turn_options)
+                    .await?
+            }
+            Err(error) => return Err(error.into()),
+        };
+        (turn.turn_id, false)
+    };
+    Ok(Json(TaskPromptResponse {
+        thread_id,
+        turn_id,
+        steered,
+    }))
+}
+
+fn is_thread_not_found(error: &codex_app_server::CodexThreadError) -> bool {
+    matches!(
+        error,
+        codex_app_server::CodexThreadError::Protocol(message)
+            if message.to_ascii_lowercase().contains("thread not found")
+    )
 }
 
 async fn task_interrupt(
@@ -2575,9 +2618,8 @@ fn active_turn_id(thread: &JsonValue) -> Option<String> {
     thread
         .get("turns")
         .and_then(JsonValue::as_array)?
-        .iter()
-        .rev()
-        .find(|turn| {
+        .last()
+        .filter(|turn| {
             turn.get("status")
                 .and_then(JsonValue::as_str)
                 .is_some_and(|status| status == "inProgress")
@@ -3042,6 +3084,37 @@ mod tests {
             normalize_task_input("", vec![image.clone()]).unwrap(),
             (String::new(), vec![image])
         );
+    }
+
+    #[test]
+    fn only_the_latest_turn_can_be_active() {
+        let completed_thread = json!({
+            "turns": [
+                { "id": "stale", "status": "inProgress" },
+                { "id": "latest", "status": "completed" }
+            ]
+        });
+        let running_thread = json!({
+            "turns": [
+                { "id": "completed", "status": "completed" },
+                { "id": "latest", "status": "inProgress" }
+            ]
+        });
+
+        assert_eq!(active_turn_id(&completed_thread), None);
+        assert_eq!(active_turn_id(&running_thread).as_deref(), Some("latest"));
+    }
+
+    #[test]
+    fn recognizes_thread_not_found_protocol_errors() {
+        assert!(is_thread_not_found(
+            &codex_app_server::CodexThreadError::Protocol(
+                "thread not found: 019f-test".to_string(),
+            ),
+        ));
+        assert!(!is_thread_not_found(
+            &codex_app_server::CodexThreadError::Timeout,
+        ));
     }
 
     #[test]

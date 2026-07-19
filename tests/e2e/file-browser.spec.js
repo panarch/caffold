@@ -2325,6 +2325,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       expect(body.prompt).toBe("Please tighten the tests");
       expect(body.model).toBe("gpt-5.5");
       expect(body.effort).toBe("ultra");
+      expect(body.activeTurnId).toBeNull();
       expect(body.images).toHaveLength(1);
       expect(body.images[0]).toMatch(/^data:image\/png;base64,/);
       resolveFollowUpRequest();
@@ -2383,7 +2384,11 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       });
       return route.fulfill({
         contentType: "application/json",
-        body: JSON.stringify(detailResponse()),
+        body: JSON.stringify({
+          threadId,
+          turnId: "turn_2",
+          steered: false,
+        }),
       });
     }
 

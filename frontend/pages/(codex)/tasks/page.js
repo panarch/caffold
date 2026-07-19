@@ -512,6 +512,9 @@ class CaffoldTasksPage extends HTMLElement {
   setThreadEvents(threadId, events) {
     const nextEvents = [...events];
     this.eventsByThread.set(threadId, nextEvents);
+    if (threadId !== this.selectedThreadId) {
+      return;
+    }
     this.eventsThreadId = threadId;
     this.events = nextEvents;
   }
@@ -1168,12 +1171,18 @@ class CaffoldTasksPage extends HTMLElement {
       images,
       requestId,
     );
-    const previousTask = this.taskDetail?.task ?? null;
+    const previousTask =
+      taskThreadId(this.taskDetail?.task) === threadId
+        ? this.taskDetail.task
+        : this.tasks.find((task) => taskThreadId(task) === threadId) ?? null;
     const runningTask = taskWithStatus(previousTask, "running", {
       updatedMs: optimisticEvent.createdMs,
       recencyMs: optimisticEvent.createdMs,
     });
-    this.setThreadEvents(threadId, mergeEvents(this.events, [optimisticEvent]));
+    this.setThreadEvents(
+      threadId,
+      mergeEvents(this.eventsByThread.get(threadId) ?? [], [optimisticEvent]),
+    );
     if (runningTask) {
       this.taskDetail = { ...this.taskDetail, task: runningTask };
       this.patchTaskListTask(runningTask);
@@ -1187,48 +1196,59 @@ class CaffoldTasksPage extends HTMLElement {
     this.render();
 
     try {
-      const detail = await sendTaskPrompt(
+      const response = await sendTaskPrompt(
         threadId,
         prompt,
-        this.turnOptions(),
-        this.cwdPath,
+        {
+          ...this.turnOptions(),
+          activeTurnId:
+            previousTask?.status === "running"
+              ? previousTask.activeTurnId ?? null
+              : null,
+        },
+        previousTask?.cwdPath || this.cwdPath,
         images.map((image) => image.dataUrl),
       );
-      if (requestId !== this.requestId) {
-        return;
+      if (response?.threadId !== threadId) {
+        throw new Error("Codex accepted the prompt for a different task.");
       }
-      this.taskDetail = detail;
-      this.setThreadEvents(threadId, mergeEvents(this.events, detail.events ?? []));
-      this.eventsPage = detail.eventsPage ?? this.eventsPage;
-      this.patchTaskListTask(detail.task);
-      this.conversationScrollMode = "bottom-if-needed";
+      if (threadId === this.selectedThreadId) {
+        this.conversationScrollMode = "bottom-if-needed";
+        this.requestSelectedTaskRefresh(threadId, this.streamGeneration);
+      }
     } catch (error) {
-      if (requestId !== this.requestId) {
-        return;
-      }
+      const threadEvents = this.eventsByThread.get(threadId) ?? [];
       this.setThreadEvents(
         threadId,
-        this.events.filter((event) => event.id !== optimisticEvent.id),
+        threadEvents.filter((event) => event.id !== optimisticEvent.id),
       );
-      if (previousTask) {
+      if (previousTask && threadId === this.selectedThreadId) {
         this.taskDetail = { ...this.taskDetail, task: previousTask };
         this.patchTaskListTask(previousTask);
       }
-      if (!this.followUpDraft) {
+      if (
+        threadId === this.selectedThreadId &&
+        !this.followUpDraft
+      ) {
         this.followUpDraft = prompt;
         this.followUpDraftByThread.set(threadId, prompt);
       }
-      if (!this.followUpImages.length) {
+      if (
+        threadId === this.selectedThreadId &&
+        !this.followUpImages.length
+      ) {
         this.followUpImages = images;
         this.followUpImagesByThread.set(threadId, images);
       }
-      this.error = error;
-      this.conversationScrollMode = "preserve";
+      if (threadId === this.selectedThreadId) {
+        this.error = error;
+        this.conversationScrollMode = "preserve";
+      }
     } finally {
       if (this.followUpRequest === followUpRequest) {
         this.followUpRequest = null;
       }
-      if (requestId === this.requestId && threadId === this.selectedThreadId) {
+      if (threadId === this.selectedThreadId) {
         this.render();
       }
     }
@@ -1439,7 +1459,7 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   selectedEffort() {
-    return this.composerSettings.effort || this.selectedModelOption()?.defaultReasoningEffort || FALLBACK_EFFORT;
+    return this.composerSettings.effort || this.selectedModelOption()?.defaultReasoningEffort || "";
   }
 
   turnOptions() {
