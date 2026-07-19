@@ -1137,12 +1137,21 @@ async fn task_stream(
     Query(_query): Query<TasksQuery>,
 ) -> Result<Response, ApiError> {
     let client = require_codex_thread_client(&state).await?;
-    client.read_thread(&thread_id, false).await?;
     let receiver = state.task_events.subscribe();
+    let detail = read_task_detail(&state, &client, &thread_id, None).await?;
+    let detail_payload = serde_json::to_string(&detail)
+        .map_err(|error| ApiError::Internal(format!("task detail failed to encode: {error}")))?;
+    let initial_frame = Bytes::from(format!("event: task-sync\ndata: {detail_payload}\n\n"));
     let shutdown = state.shutdown.subscribe();
     let stream = stream::unfold(
-        (receiver, shutdown, thread_id),
-        |(mut receiver, mut shutdown, thread_id)| async move {
+        (Some(initial_frame), receiver, shutdown, thread_id),
+        |(initial_frame, mut receiver, mut shutdown, thread_id)| async move {
+            if let Some(frame) = initial_frame {
+                return Some((
+                    Ok::<_, Infallible>(frame),
+                    (None, receiver, shutdown, thread_id),
+                ));
+            }
             loop {
                 tokio::select! {
                     _ = shutdown.recv() => return None,
@@ -1154,7 +1163,7 @@ async fn task_stream(
                                 let frame = format!("event: task-event\ndata: {payload}\n\n");
                                 return Some((
                                     Ok::<_, Infallible>(Bytes::from(frame)),
-                                    (receiver, shutdown, thread_id),
+                                    (None, receiver, shutdown, thread_id),
                                 ));
                             }
                             Ok(_) => continue,
@@ -1271,9 +1280,15 @@ async fn task_prompt(
         .map(ToOwned::to_owned)
         .unwrap_or(task_cwd(&state, None)?);
     client.resume_thread(&thread_id, &cwd).await?;
-    client
-        .start_turn(&thread_id, &cwd, &prompt, &images, turn_options)
-        .await?;
+    if let Some(active_turn_id) = recent_active_turn_id(&client, &thread_id).await? {
+        client
+            .steer_turn(&thread_id, &active_turn_id, &prompt, &images)
+            .await?;
+    } else {
+        client
+            .start_turn(&thread_id, &cwd, &prompt, &images, turn_options)
+            .await?;
+    }
     Ok(Json(
         read_task_detail(&state, &client, &thread_id, None).await?,
     ))
@@ -1285,19 +1300,7 @@ async fn task_interrupt(
     Query(_query): Query<TasksQuery>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
     let client = require_codex_thread_client(&state).await?;
-    let thread = client.read_thread(&thread_id, false).await?;
-    let thread_value = thread.get("thread").unwrap_or(&thread);
-    let turns_response = client
-        .list_thread_turns(&thread_id, None, TASK_DETAIL_TURNS_PAGE_SIZE)
-        .await?;
-    let mut turns = turns_response
-        .get("data")
-        .and_then(JsonValue::as_array)
-        .cloned()
-        .unwrap_or_default();
-    turns.reverse();
-    let thread_value = thread_with_turns(thread_value, turns)?;
-    let Some(turn_id) = active_turn_id(&thread_value) else {
+    let Some(turn_id) = recent_active_turn_id(&client, &thread_id).await? else {
         return Err(ApiError::BadRequest {
             code: "task_turn_missing",
             message: "thread does not have an active turn to interrupt".to_string(),
@@ -1307,6 +1310,29 @@ async fn task_interrupt(
     Ok(Json(
         read_task_detail(&state, &client, &thread_id, None).await?,
     ))
+}
+
+async fn recent_active_turn_id(
+    client: &CodexThreadClient,
+    thread_id: &str,
+) -> Result<Option<String>, ApiError> {
+    let turns_response = client
+        .list_thread_turns(thread_id, None, TASK_DETAIL_TURNS_PAGE_SIZE)
+        .await?;
+    Ok(turns_response
+        .get("data")
+        .and_then(JsonValue::as_array)
+        .and_then(|turns| {
+            turns
+                .iter()
+                .find(|turn| {
+                    turn.get("status")
+                        .and_then(JsonValue::as_str)
+                        .is_some_and(|status| status == "inProgress")
+                })
+                .and_then(|turn| turn.get("id").and_then(JsonValue::as_str))
+        })
+        .map(ToOwned::to_owned))
 }
 
 async fn task_archive(

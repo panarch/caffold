@@ -56,6 +56,8 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
   const markdownFence = `fenced-${marker}`;
   const commandOutput = `caffold-command-${marker}`;
   const followUpReply = `caffold-live-follow-up-${marker}`;
+  const steeredReply = `caffold-live-steered-${marker}`;
+  const completedClickReply = `caffold-live-completed-click-${marker}`;
 
   await page.goto(`/tasks?cwd=${encodeURIComponent(cwd)}`);
   const tasksPage = page.locator("caffold-tasks-page");
@@ -139,6 +141,27 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
   await expect
     .poll(() => activeTurn.locator(".task-turn-active-duration").textContent())
     .not.toBe(activeDuration);
+
+  await followUpPrompt.fill(
+    `Continue the current turn. After the running command finishes, reply with exactly ${steeredReply}. Do not modify files.`,
+  );
+  await pasteImage(followUpPrompt, `caffold-live-steer-${marker}.png`);
+  await expect(followUpForm.locator(".task-composer-attachment img")).toHaveAttribute(
+    "src",
+    /^data:image\/png;base64,/,
+  );
+  await followUpForm.getByRole("button", { name: "Send prompt" }).click();
+  await expect(
+    tasksPage
+      .locator('.task-message[data-message-role="user"]')
+      .filter({ hasText: steeredReply }),
+  ).toBeVisible();
+  await expect(
+    tasksPage
+      .locator('.task-message[data-message-role="user"]')
+      .filter({ hasText: steeredReply })
+      .locator(".task-message-attachment img"),
+  ).toBeVisible();
   await expect(tasksPage.locator(".task-command").last()).toContainText(
     commandOutput,
     { timeout: 60_000 },
@@ -159,10 +182,10 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
     await approval.getByRole("button", { name: "Accept", exact: true }).click();
   }
 
-  await expect(finalAssistantMessages.filter({ hasText: followUpReply })).toBeVisible();
+  await expect(finalAssistantMessages.filter({ hasText: steeredReply })).toBeVisible();
   await expect(activeTurn).toHaveCount(0);
   const completedWork = tasksPage.locator(".task-turn-work").last();
-  const finalResponse = finalAssistantMessages.filter({ hasText: followUpReply });
+  const finalResponse = finalAssistantMessages.filter({ hasText: steeredReply });
   const completedWorkDetails = completedWork.locator(":scope > details");
   await expect(completedWork).toContainText("Worked for");
   await expect(completedWorkDetails).not.toHaveAttribute("open", "");
@@ -185,6 +208,19 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
   await expect(
     tasksPage.locator(".task-turn-work").last().locator(":scope > details"),
   ).not.toHaveAttribute("open", "");
+
+  await expect(followUpForm).toHaveAttribute("data-thread-id", threadId);
+  await followUpPrompt.fill(
+    `Reply with exactly ${completedClickReply}. Do not modify files or run commands.`,
+  );
+  await followUpForm.getByRole("button", { name: "Send prompt" }).click();
+  await expect(
+    tasksPage
+      .locator('.task-message[data-message-role="user"]')
+      .filter({ hasText: completedClickReply }),
+  ).toBeVisible();
+  await expect(finalAssistantMessages.filter({ hasText: completedClickReply })).toBeVisible();
+  await expect(activeTurn).toHaveCount(0);
 
   const archiveResponse = await page.request.post(`/api/tasks/${threadId}/archive`);
   expect(archiveResponse.status()).toBe(204);

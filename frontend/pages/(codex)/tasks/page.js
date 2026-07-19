@@ -578,9 +578,6 @@ class CaffoldTasksPage extends HTMLElement {
       window.clearTimeout(this.streamErrorTimer);
       this.streamErrorTimer = null;
       this.setStreamState("connected");
-      // A fast turn can finish after the route response but before EventSource opens.
-      // Always synchronize once on open so those non-replayed events are not lost.
-      this.requestSelectedTaskRefresh(threadId, generation);
     });
     stream.addEventListener("error", () => {
       if (!this.isCurrentStream(stream, threadId, generation)) {
@@ -603,6 +600,16 @@ class CaffoldTasksPage extends HTMLElement {
         }
       }, STREAM_ERROR_DELAY_MS);
     });
+    stream.addEventListener("task-sync", (event) => {
+      const detail = parseJson(event.data);
+      if (
+        !this.isCurrentStream(stream, threadId, generation) ||
+        detail?.task?.threadId !== threadId
+      ) {
+        return;
+      }
+      this.applyTaskDetailSync(threadId, detail);
+    });
     stream.addEventListener("task-event", (event) => {
       const entry = parseJson(event.data);
       if (
@@ -618,6 +625,22 @@ class CaffoldTasksPage extends HTMLElement {
       this.render();
       this.requestSelectedTaskRefresh(threadId, generation);
     });
+  }
+
+  applyTaskDetailSync(threadId, detail) {
+    if (threadId !== this.selectedThreadId) {
+      return;
+    }
+    this.taskDetail = detail;
+    this.setThreadEvents(
+      threadId,
+      mergeEvents(this.eventsByThread.get(threadId) ?? [], detail.events ?? []),
+    );
+    this.eventsPage = detail.eventsPage ?? this.eventsPage;
+    this.patchTaskListTask(detail.task);
+    this.loadTaskGithubStatus(detail.task);
+    this.conversationScrollMode = "bottom-if-needed";
+    this.render();
   }
 
   connectTaskListStream() {
@@ -804,7 +827,11 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
     if (action === "remove-composer-image") {
-      this.removeComposerImage(element.dataset.formName, element.dataset.imageId);
+      this.removeComposerImage(
+        element.dataset.formName,
+        element.dataset.imageId,
+        element.dataset.threadId,
+      );
       return;
     }
     if (action === "open-git-tool" || action === "open-github-tool") {
@@ -1109,25 +1136,34 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   async sendFollowUpFromForm(form) {
-    if (this.followUpRequest?.threadId === this.selectedThreadId) {
+    const threadId = `${form?.dataset?.threadId ?? ""}`.trim();
+    if (!threadId) {
+      this.error = new Error("Could not identify the task for this prompt.");
+      this.render();
+      return;
+    }
+    if (this.followUpRequest?.threadId === threadId) {
       return;
     }
 
-    this.captureDraft(form);
+    if (this.selectedThreadId !== threadId) {
+      this.selectedThreadId = threadId;
+      this.activateThreadEvents(threadId);
+    }
+    this.captureDraft(form, threadId);
     const formData = new FormData(form);
     const prompt = `${formData.get("prompt") ?? ""}`.trim();
     const images = [...this.followUpImages];
-    if ((!prompt && !images.length) || !this.selectedThreadId) {
+    if (!prompt && !images.length) {
       return;
     }
 
     const requestId = ++this.requestId;
-    const threadId = this.selectedThreadId;
     const followUpRequest = { requestId, threadId };
     this.followUpRequest = followUpRequest;
     form.prompt.value = "";
     const optimisticEvent = optimisticUserMessageEvent(
-      this.selectedThreadId,
+      threadId,
       prompt,
       images,
       requestId,
@@ -1419,7 +1455,7 @@ class CaffoldTasksPage extends HTMLElement {
       : FALLBACK_REASONING_OPTIONS;
   }
 
-  captureDraft(form) {
+  captureDraft(form, threadId = form?.dataset?.threadId) {
     const formData = new FormData(form);
     if (form.dataset.taskForm === "create") {
       this.newTaskDraft = {
@@ -1429,8 +1465,9 @@ class CaffoldTasksPage extends HTMLElement {
     }
     if (form.dataset.taskForm === "follow-up") {
       this.followUpDraft = `${formData.get("prompt") ?? ""}`;
-      if (this.selectedThreadId) {
-        this.followUpDraftByThread.set(this.selectedThreadId, this.followUpDraft);
+      const targetThreadId = `${threadId ?? this.selectedThreadId ?? ""}`.trim();
+      if (targetThreadId) {
+        this.followUpDraftByThread.set(targetThreadId, this.followUpDraft);
       }
     }
   }
@@ -1439,14 +1476,14 @@ class CaffoldTasksPage extends HTMLElement {
     return formName === "create" ? this.newTaskImages : this.followUpImages;
   }
 
-  setComposerImages(formName, images) {
+  setComposerImages(formName, images, threadId = this.selectedThreadId) {
     if (formName === "create") {
       this.newTaskImages = images;
       return;
     }
     this.followUpImages = images;
-    if (this.selectedThreadId) {
-      this.followUpImagesByThread.set(this.selectedThreadId, images);
+    if (threadId) {
+      this.followUpImagesByThread.set(threadId, images);
     }
   }
 
@@ -1467,6 +1504,7 @@ class CaffoldTasksPage extends HTMLElement {
     event.preventDefault();
     this.captureDraft(form);
     const formName = form.dataset.taskForm;
+    const threadId = form.dataset.threadId;
     const existing = this.composerImages(formName);
     const availableSlots = TASK_COMPOSER_MAX_IMAGES - existing.length;
     if (availableSlots <= 0) {
@@ -1507,7 +1545,7 @@ class CaffoldTasksPage extends HTMLElement {
       });
     }
 
-    this.setComposerImages(formName, [...existing, ...accepted]);
+    this.setComposerImages(formName, [...existing, ...accepted], threadId);
     if (error) {
       this.composerImageErrors.set(formName, error);
     } else {
@@ -1516,13 +1554,14 @@ class CaffoldTasksPage extends HTMLElement {
     this.render();
   }
 
-  removeComposerImage(formName, imageId) {
+  removeComposerImage(formName, imageId, threadId = this.selectedThreadId) {
     if (!formName || !imageId) {
       return;
     }
     this.setComposerImages(
       formName,
       this.composerImages(formName).filter((image) => image.id !== imageId),
+      threadId,
     );
     this.composerImageErrors.delete(formName);
     this.render();
@@ -2697,16 +2736,17 @@ class CaffoldTasksPage extends HTMLElement {
     ariaLabel,
     submitLabel,
     cancel = false,
+    threadId = "",
   }) {
     const model = this.selectedModelOption();
     const effort = this.selectedEffort();
     const submitting =
       formName === "follow-up" &&
-      this.followUpRequest?.threadId === this.selectedThreadId;
+      this.followUpRequest?.threadId === threadId;
     const images = this.composerImages(formName);
     const imageError = this.composerImageErrors.get(formName) ?? "";
     return `
-      <form class="task-composer ${escapeHtml(className)}" data-task-form="${escapeHtml(formName)}" aria-busy="${submitting ? "true" : "false"}">
+      <form class="task-composer ${escapeHtml(className)}" data-task-form="${escapeHtml(formName)}"${threadId ? ` data-thread-id="${escapeHtml(threadId)}"` : ""} aria-busy="${submitting ? "true" : "false"}">
         <div class="task-composer-panel">
           ${
             formName === "create"
@@ -2717,7 +2757,7 @@ class CaffoldTasksPage extends HTMLElement {
                 </div>`
               : ""
           }
-          ${this.renderComposerImages(formName, images)}
+          ${this.renderComposerImages(formName, images, threadId)}
           <textarea
             name="prompt"
             rows="2"
@@ -2746,7 +2786,7 @@ class CaffoldTasksPage extends HTMLElement {
     `;
   }
 
-  renderComposerImages(formName, images) {
+  renderComposerImages(formName, images, threadId = "") {
     if (!images.length) {
       return "";
     }
@@ -2761,6 +2801,7 @@ class CaffoldTasksPage extends HTMLElement {
                   type="button"
                   data-task-action="remove-composer-image"
                   data-form-name="${escapeHtml(formName)}"
+                  ${threadId ? `data-thread-id="${escapeHtml(threadId)}"` : ""}
                   data-image-id="${escapeHtml(image.id)}"
                   aria-label="Remove ${escapeHtml(image.name)}"
                   title="Remove image"
@@ -2848,6 +2889,7 @@ class CaffoldTasksPage extends HTMLElement {
           ${this.renderTaskComposer({
             formName: "follow-up",
             className: "task-follow-up-form",
+            threadId: taskThreadId(task),
             prompt: this.followUpDraft,
             placeholder: "Send another prompt to this task",
             ariaLabel: "Follow-up prompt",

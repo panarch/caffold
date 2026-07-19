@@ -3254,9 +3254,17 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(
     tasksPage.locator('.task-follow-up-form .task-composer-attachment'),
   ).toHaveCount(1);
-  await followUpTextarea.press("Enter");
+  await expect(tasksPage.locator(".task-follow-up-form")).toHaveAttribute(
+    "data-thread-id",
+    threadId,
+  );
+  await tasksPage.evaluate((element) => {
+    element.selectedThreadId = "";
+  });
+  await tasksPage
+    .locator('.task-follow-up-form button[type="submit"]')
+    .click();
   await followUpRequested;
-  await expect(followUpTextarea).toBeFocused();
   await expect(tasksPage.locator(".task-follow-up-form")).toHaveAttribute(
     "aria-busy",
     "true",
@@ -3695,6 +3703,12 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
       index,
     ),
   );
+  const taskDetail = {
+    task,
+    events,
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  };
   let taskDetailReadRequests = 0;
   let holdTaskRefreshes = false;
   const heldTaskRefreshes = [];
@@ -3729,12 +3743,7 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     }
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({
-        task,
-        events,
-        eventsPage: { nextCursor: null },
-        pendingApprovals: [],
-      }),
+      body: JSON.stringify(taskDetail),
     });
   });
 
@@ -3746,14 +3755,15 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     .poll(() => scroller.evaluate((element) => element.scrollHeight > element.clientHeight))
     .toBe(true);
   await expect.poll(() => isScrolledToBottom(scroller)).toBe(true);
-  await page.evaluate((threadId) => {
+  await page.evaluate(({ threadId, taskDetail }) => {
     const taskSource = window.__taskEventSources.find((source) =>
       source.url.includes(`/api/tasks/${threadId}/stream`),
     );
     taskSource.emitOpen();
-  }, threadId);
+    taskSource.emit("task-sync", taskDetail);
+  }, { threadId, taskDetail });
   await expect(tasksPage.locator(".task-stream-state")).toHaveCount(0);
-  await expect.poll(() => taskDetailReadRequests).toBe(2);
+  await expect.poll(() => taskDetailReadRequests).toBe(1);
 
   await page.evaluate(
     ({ threadId, now }) => {
@@ -3857,14 +3867,34 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
   await captureReviewScreenshot(page, testInfo, "tasks-live-reconnecting");
 
   const readsBeforeReconnect = taskDetailReadRequests;
-  await page.evaluate((threadId) => {
+  const reconnectEvent = eventRecord(
+    "event_reconnect_sync",
+    "assistant_message",
+    "Assistant response",
+    {
+      turnId: "turn_reconnect_sync",
+      text: "Synced after reconnect.",
+    },
+    500,
+  );
+  await page.evaluate(({ threadId, taskDetail, reconnectEvent }) => {
     const taskSource = window.__taskEventSources.find((source) =>
       source.url.includes(`/api/tasks/${threadId}/stream`),
     );
     taskSource.emitOpen();
-  }, threadId);
+    taskSource.emit("task-sync", {
+      ...taskDetail,
+      task: {
+        ...taskDetail.task,
+        status: "idle",
+        activeTurnId: null,
+      },
+      events: [...taskDetail.events, reconnectEvent],
+    });
+  }, { threadId, taskDetail, reconnectEvent });
   await expect(tasksPage.locator(".task-stream-state")).toHaveCount(0);
-  await expect.poll(() => taskDetailReadRequests).toBe(readsBeforeReconnect + 1);
+  await expect(tasksPage).toContainText("Synced after reconnect.");
+  await expect.poll(() => taskDetailReadRequests).toBe(readsBeforeReconnect);
 
   const sourcesBeforeRetry = await page.evaluate(() => window.__taskEventSources.length);
   await page.evaluate((threadId) => {

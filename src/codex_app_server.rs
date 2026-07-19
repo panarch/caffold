@@ -296,6 +296,20 @@ impl CodexThreadClient {
         Ok(CodexTurnStart { turn_id, response })
     }
 
+    pub async fn steer_turn(
+        &self,
+        thread_id: &str,
+        expected_turn_id: &str,
+        prompt: &str,
+        image_urls: &[String],
+    ) -> Result<Value, CodexThreadError> {
+        self.request(
+            "turn/steer",
+            turn_steer_params(thread_id, expected_turn_id, prompt, image_urls),
+        )
+        .await
+    }
+
     pub async fn interrupt_turn(
         &self,
         thread_id: &str,
@@ -781,6 +795,36 @@ fn turn_start_params(
     image_urls: &[String],
     options: CodexTurnOptions,
 ) -> Value {
+    let mut params = json!({
+        "threadId": thread_id,
+        "cwd": cwd,
+        "runtimeWorkspaceRoots": [cwd],
+        "approvalsReviewer": "user",
+        "input": turn_input(prompt, image_urls)
+    });
+    if let Some(model) = options.model.filter(|model| !model.is_empty()) {
+        params["model"] = json!(model);
+    }
+    if let Some(effort) = options.effort.filter(|effort| !effort.is_empty()) {
+        params["effort"] = json!(effort);
+    }
+    params
+}
+
+fn turn_steer_params(
+    thread_id: &str,
+    expected_turn_id: &str,
+    prompt: &str,
+    image_urls: &[String],
+) -> Value {
+    json!({
+        "threadId": thread_id,
+        "expectedTurnId": expected_turn_id,
+        "input": turn_input(prompt, image_urls)
+    })
+}
+
+fn turn_input(prompt: &str, image_urls: &[String]) -> Vec<Value> {
     let mut input = Vec::new();
     if !prompt.is_empty() {
         input.push(json!({
@@ -795,20 +839,7 @@ fn turn_start_params(
             "url": url
         })
     }));
-    let mut params = json!({
-        "threadId": thread_id,
-        "cwd": cwd,
-        "runtimeWorkspaceRoots": [cwd],
-        "approvalsReviewer": "user",
-        "input": input
-    });
-    if let Some(model) = options.model.filter(|model| !model.is_empty()) {
-        params["model"] = json!(model);
-    }
-    if let Some(effort) = options.effort.filter(|effort| !effort.is_empty()) {
-        params["effort"] = json!(effort);
-    }
-    params
+    input
 }
 
 fn turn_interrupt_params(thread_id: &str, turn_id: &str) -> Value {
@@ -1049,6 +1080,29 @@ mod tests {
                 "type": "image",
                 "url": "data:image/png;base64,aGVsbG8="
             }])
+        );
+    }
+
+    #[test]
+    fn builds_turn_steer_request_params_with_images() {
+        let images = vec!["data:image/png;base64,aGVsbG8=".to_string()];
+        assert_eq!(
+            turn_steer_params("thread_1", "turn_1", "Use this screenshot too", &images,),
+            json!({
+                "threadId": "thread_1",
+                "expectedTurnId": "turn_1",
+                "input": [
+                    {
+                        "type": "text",
+                        "text": "Use this screenshot too",
+                        "text_elements": []
+                    },
+                    {
+                        "type": "image",
+                        "url": "data:image/png;base64,aGVsbG8="
+                    }
+                ]
+            })
         );
     }
 
