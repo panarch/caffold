@@ -31,6 +31,32 @@ caffold-app-shell .app-main {
   overflow: hidden;
 }
 
+caffold-app-shell .app-build {
+  position: fixed;
+  right: 5px;
+  bottom: max(3px, env(safe-area-inset-bottom));
+  z-index: 1000;
+  max-width: calc(100vw - 10px);
+  overflow: hidden;
+  padding: 1px 3px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 82%);
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.62;
+  cursor: help;
+  user-select: text;
+}
+
+caffold-app-shell .app-build[data-status="mismatch"] {
+  background: var(--danger-soft);
+  color: var(--danger);
+  opacity: 1;
+}
+
 @media (max-width: 860px) {
   caffold-app-shell {
     grid-template-rows: auto auto minmax(0, 1fr);

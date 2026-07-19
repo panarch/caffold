@@ -1,4 +1,5 @@
 import { getHealth, listDirectory } from "../api.js";
+import { BUILD_INFO } from "../build-info.js";
 import {
   parentRoute,
   parseRoute,
@@ -203,6 +204,7 @@ class CaffoldAppShell extends HTMLElement {
       </main>
       <caffold-codex-workspace hidden></caffold-codex-workspace>
       <caffold-review-workspace hidden></caffold-review-workspace>
+      <span class="app-build" data-status="checking">build ${BUILD_INFO.label}</span>
     `;
   }
 
@@ -260,6 +262,7 @@ class CaffoldAppShell extends HTMLElement {
   async bootstrap() {
     try {
       const health = await getHealth();
+      this.updateBuildStatus(health);
       this.filesPage.setStorageKey(`${LAST_DIRECTORY_KEY_PREFIX}:${health.root}`);
       this.pathbar.homePath = health.homePath ?? null;
       this.initialPath = health.initialPath ?? "";
@@ -274,8 +277,29 @@ class CaffoldAppShell extends HTMLElement {
         { replace: true },
       );
     } catch (error) {
+      this.updateBuildStatus(null);
       this.filesPage.setError(error);
     }
+  }
+
+  updateBuildStatus(health) {
+    const indicator = this.querySelector(".app-build");
+    if (!indicator) {
+      return;
+    }
+
+    const serverId = health?.buildId;
+    const serverLabel = health?.buildLabel || serverId;
+    const mismatch = Boolean(serverId && serverId !== BUILD_INFO.id);
+    indicator.dataset.status = mismatch ? "mismatch" : serverId ? "current" : "unknown";
+    indicator.textContent = mismatch
+      ? `UI ${BUILD_INFO.label} \u2260 server ${serverLabel}`
+      : `build ${BUILD_INFO.label}`;
+    indicator.title = mismatch
+      ? `Cached UI build: ${BUILD_INFO.id}\nServer build: ${serverId}\nReload to update the UI.`
+      : serverId
+        ? `UI and server build: ${BUILD_INFO.id}`
+        : `UI build: ${BUILD_INFO.id}\nServer build is unavailable.`;
   }
 
   navigateToRoute(route, options = {}) {

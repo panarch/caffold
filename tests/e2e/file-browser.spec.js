@@ -164,6 +164,36 @@ test.beforeEach(async ({ page }) => {
 test("serves PWA manifest and icon assets", async ({ page, request }) => {
   await page.goto("/");
 
+  const buildInfoResponse = await request.get("/assets/build-info.js");
+  expect(buildInfoResponse.headers()["content-type"]).toContain("text/javascript");
+  const buildInfo = await buildInfoResponse.text();
+  const buildId = buildInfo.match(/id: "([^"]+)"/)?.[1];
+  expect(buildId).toBeTruthy();
+
+  const healthResponse = await request.get("/api/health");
+  const health = await healthResponse.json();
+  expect(health.buildId).toBe(buildId);
+  expect(health.buildLabel).toBe(buildId);
+  await expect(page.locator(".app-build")).toHaveText(`build ${buildId}`);
+  await expect(page.locator(".app-build")).toHaveAttribute("data-status", "current");
+  await expect(page.locator(".app-build")).toHaveAttribute(
+    "title",
+    `UI and server build: ${buildId}`,
+  );
+
+  await page.locator("caffold-app-shell").evaluate((shell) => {
+    shell.updateBuildStatus({
+      buildId: "stale-server-build",
+      buildLabel: "stale-server-build",
+    });
+  });
+  await expect(page.locator(".app-build")).toHaveAttribute("data-status", "mismatch");
+  await expect(page.locator(".app-build")).toContainText("stale-server-build");
+  await expect(page.locator(".app-build")).toHaveAttribute(
+    "title",
+    new RegExp(`Cached UI build: ${buildId}.*Server build: stale-server-build`, "s"),
+  );
+
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute(
     "href",
     "/assets/manifest.webmanifest",
@@ -255,6 +285,7 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain("/assets/pages/layout.js");
   expect(serviceWorker).toContain("/assets/pages/layout.css");
   expect(serviceWorker).toContain("/assets/settings.js");
+  expect(serviceWorker).toContain("/assets/build-info.js");
   expect(serviceWorker).toContain("/assets/pages/components/app-menu.js");
   expect(serviceWorker).toContain("/assets/pages/settings/page.js");
   expect(serviceWorker).toContain("/assets/pages/components/pathbar.js");

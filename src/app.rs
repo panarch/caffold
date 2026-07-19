@@ -260,6 +260,9 @@ struct TaskApprovalRequest {
 #[serde(rename_all = "camelCase")]
 struct HealthResponse {
     status: &'static str,
+    build_id: &'static str,
+    build_label: &'static str,
+    build_number: &'static str,
     server_name: String,
     root: String,
     initial_path: String,
@@ -688,6 +691,9 @@ async fn asset(AxumPath(path): AxumPath<String>) -> Response {
 async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok",
+        build_id: env!("CAFFOLD_BUILD_ID"),
+        build_label: env!("CAFFOLD_BUILD_LABEL"),
+        build_number: env!("CAFFOLD_BUILD_NUMBER"),
         server_name: state.server_settings.get().name,
         root: state.fs.root().display().to_string(),
         initial_path: state.initial_path,

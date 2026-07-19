@@ -9,6 +9,10 @@ pub fn get(path: &str) -> Option<StaticAsset> {
     match path {
         "manifest.webmanifest" => Some(manifest(include_str!("../frontend/manifest.webmanifest"))),
         "service-worker.js" => Some(js(include_str!("../frontend/service-worker.js"))),
+        "build-info.js" => Some(js_bytes(include_bytes!(concat!(
+            env!("OUT_DIR"),
+            "/build-info.js"
+        )))),
         "styles.css" => Some(css(include_str!("../frontend/styles.css"))),
         "app.js" => Some(js(include_str!("../frontend/app.js"))),
         "api.js" => Some(js(include_str!("../frontend/api.js"))),
@@ -293,6 +297,13 @@ fn js(body: &'static str) -> StaticAsset {
     }
 }
 
+fn js_bytes(body: &'static [u8]) -> StaticAsset {
+    StaticAsset {
+        content_type: "text/javascript; charset=utf-8",
+        body,
+    }
+}
+
 fn manifest(body: &'static str) -> StaticAsset {
     StaticAsset {
         content_type: "application/manifest+json; charset=utf-8",
@@ -333,6 +344,10 @@ mod tests {
             "text/javascript; charset=utf-8"
         );
         assert!(service_worker.body.starts_with(b"const CACHE_NAME"));
+
+        let build_info = get("build-info.js").expect("build info asset");
+        assert_eq!(build_info.content_type, "text/javascript; charset=utf-8");
+        assert!(build_info.body.starts_with(b"export const BUILD_INFO"));
 
         let svg = get("icons/caffold.svg").expect("svg icon asset");
         assert_eq!(svg.content_type, "image/svg+xml");
