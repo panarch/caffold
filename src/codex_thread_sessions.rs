@@ -3,8 +3,8 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::codex_app_server::{
-    CodexNotification, CodexThread, CodexThreadClient, CodexThreadError, CodexTurn, ThreadStatus,
-    TurnStatus, TurnsPage,
+    CodexNotification, CodexThread, CodexThreadClient, CodexThreadError, CodexTurn, SortDirection,
+    ThreadStatus, TurnStatus, TurnsPage,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,6 +26,7 @@ pub struct ThreadSessionSnapshot {
     pub viewer_leases: usize,
     pub runtime_lease: bool,
     pub generation: u64,
+    pub revision: u64,
     pub last_error: Option<String>,
 }
 
@@ -54,6 +55,9 @@ struct ThreadSessionState {
     runtime_lease: bool,
     client: Option<CodexThreadClient>,
     generation: u64,
+    revision: u64,
+    syncing: bool,
+    sync_dirty: bool,
     last_error: Option<String>,
 }
 
@@ -68,6 +72,9 @@ impl Default for ThreadSessionState {
             runtime_lease: false,
             client: None,
             generation: 0,
+            revision: 0,
+            syncing: false,
+            sync_dirty: false,
             last_error: None,
         }
     }
@@ -142,6 +149,7 @@ impl CodexThreadSessions {
                     active_turn_id(&response.thread, response.initial_turns_page.as_ref());
                 state.thread = Some(response.thread);
                 state.turns_page = response.initial_turns_page;
+                state.revision = state.revision.saturating_add(1);
                 Ok(snapshot(&state))
             }
             Err(error) => {
@@ -168,6 +176,7 @@ impl CodexThreadSessions {
         state.thread = Some(thread);
         state.turns_page = None;
         state.runtime_lease = true;
+        state.revision = state.revision.saturating_add(1);
         state.last_error = None;
     }
 
@@ -216,7 +225,8 @@ impl CodexThreadSessions {
                 };
                 let mut state = entry.state.lock().await;
                 state.active_turn_id = Some(turn_id.clone());
-                merge_turns_page(&mut state.turns_page, page);
+                merge_latest_turns_page(&mut state.turns_page, page);
+                state.revision = state.revision.saturating_add(1);
                 turn_id
             };
             Ok(PromptTarget::Steer { turn_id })
@@ -239,6 +249,7 @@ impl CodexThreadSessions {
                 active_flags: Vec::new(),
             };
         }
+        state.revision = state.revision.saturating_add(1);
     }
 
     pub async fn cancel_runtime(&self, thread_id: &str) {
@@ -277,26 +288,164 @@ impl CodexThreadSessions {
         let entry = self.entry(thread_id).await;
         let mut state = entry.state.lock().await;
         state.active_turn_id = turn_id.clone();
-        merge_turns_page(&mut state.turns_page, page);
+        merge_latest_turns_page(&mut state.turns_page, page);
+        state.revision = state.revision.saturating_add(1);
         Ok(turn_id)
     }
 
-    pub async fn apply_notification(&self, generation: u64, notification: &CodexNotification) {
-        let Some(thread_id) = notification_thread_id(notification) else {
-            return;
-        };
-        let Some(entry) = self.existing_entry(thread_id).await else {
-            return;
-        };
-        let should_unsubscribe = {
+    pub async fn apply_notification(
+        &self,
+        generation: u64,
+        notification: &CodexNotification,
+    ) -> Option<u64> {
+        let thread_id = notification_thread_id(notification)?;
+        let entry = self.existing_entry(thread_id).await?;
+        let (changed, should_unsubscribe, revision) = {
             let mut state = entry.state.lock().await;
             if state.generation != generation {
-                return;
+                return None;
             }
-            apply_notification_state(&mut state, notification)
+            let changed = apply_notification_state(&mut state, notification);
+            if changed {
+                state.revision = state.revision.saturating_add(1);
+            }
+            (
+                changed,
+                state.viewer_leases == 0 && !state.runtime_lease,
+                state.revision,
+            )
         };
-        if should_unsubscribe {
+        if changed && should_unsubscribe {
             self.unsubscribe_if_unused(thread_id, &entry).await;
+        }
+        changed.then_some(revision)
+    }
+
+    pub async fn load_older_turns(
+        &self,
+        client: &CodexThreadClient,
+        generation: u64,
+        thread_id: &str,
+        cursor: &str,
+        limit: usize,
+    ) -> Result<(ThreadSessionSnapshot, TurnsPage), CodexThreadError> {
+        self.ensure_subscribed(client, generation, thread_id)
+            .await?;
+        let page = client
+            .list_thread_turns(thread_id, Some(cursor), limit)
+            .await?;
+        let entry = self.entry(thread_id).await;
+        let mut state = entry.state.lock().await;
+        if state.generation != generation {
+            return Err(CodexThreadError::SubscriptionLost(format!(
+                "Codex thread {thread_id} changed app-server generation while loading history"
+            )));
+        }
+        merge_older_turns_page(&mut state.turns_page, page.clone());
+        state.revision = state.revision.saturating_add(1);
+        Ok((snapshot(&state), page))
+    }
+
+    pub async fn sync_latest(
+        &self,
+        client: &CodexThreadClient,
+        generation: u64,
+        thread_id: &str,
+    ) -> Result<Option<ThreadSessionSnapshot>, CodexThreadError> {
+        self.ensure_subscribed(client, generation, thread_id)
+            .await?;
+        let entry = self.entry(thread_id).await;
+        {
+            let mut state = entry.state.lock().await;
+            if state.syncing {
+                state.sync_dirty = true;
+                return Ok(None);
+            }
+            state.syncing = true;
+            state.sync_dirty = false;
+        }
+
+        loop {
+            let backwards_cursor = entry
+                .state
+                .lock()
+                .await
+                .turns_page
+                .as_ref()
+                .and_then(|page| page.backwards_cursor.clone());
+            let thread = match client.read_thread(thread_id, false).await {
+                Ok(thread) => thread,
+                Err(error) => {
+                    let mut state = entry.state.lock().await;
+                    state.syncing = false;
+                    state.last_error = Some(error.to_string());
+                    return Err(error);
+                }
+            };
+            if let Some(cursor) = backwards_cursor.as_deref() {
+                let mut cursor = Some(cursor.to_string());
+                while let Some(current_cursor) = cursor {
+                    let page = match client
+                        .list_thread_turns_in_direction(
+                            thread_id,
+                            Some(&current_cursor),
+                            8,
+                            SortDirection::Asc,
+                        )
+                        .await
+                    {
+                        Ok(page) => page,
+                        Err(_) => break,
+                    };
+                    cursor = page
+                        .next_cursor
+                        .clone()
+                        .filter(|next_cursor| next_cursor != &current_cursor);
+                    let mut state = entry.state.lock().await;
+                    if state.generation != generation {
+                        state.syncing = false;
+                        return Err(CodexThreadError::SubscriptionLost(format!(
+                            "Codex thread {thread_id} changed app-server generation while synchronizing"
+                        )));
+                    }
+                    merge_incremental_turns_page(&mut state.turns_page, page);
+                }
+            }
+
+            // A reverse-direction cursor is tied to the page direction that produced it.
+            // Refresh the small descending head page to establish the next sync anchor.
+            let page = match client.list_thread_turns(thread_id, None, 8).await {
+                Ok(page) => page,
+                Err(error) => {
+                    let mut state = entry.state.lock().await;
+                    state.syncing = false;
+                    state.last_error = Some(error.to_string());
+                    return Err(error);
+                }
+            };
+
+            let mut state = entry.state.lock().await;
+            if state.generation != generation {
+                state.syncing = false;
+                return Err(CodexThreadError::SubscriptionLost(format!(
+                    "Codex thread {thread_id} changed app-server generation while synchronizing"
+                )));
+            }
+            state.thread = Some(thread);
+            merge_latest_turns_page(&mut state.turns_page, page);
+            state.active_turn_id = state
+                .thread
+                .as_ref()
+                .and_then(|thread| active_turn_id(thread, state.turns_page.as_ref()));
+            state.revision = state.revision.saturating_add(1);
+            state.last_error = None;
+            if state.sync_dirty {
+                state.sync_dirty = false;
+                drop(state);
+                continue;
+            }
+            state.syncing = false;
+            return Ok(Some(snapshot(&state)));
         }
     }
 
@@ -425,6 +574,7 @@ fn snapshot(state: &ThreadSessionState) -> ThreadSessionSnapshot {
         viewer_leases: state.viewer_leases,
         runtime_lease: state.runtime_lease,
         generation: state.generation,
+        revision: state.revision,
         last_error: state.last_error.clone(),
     }
 }
@@ -451,16 +601,49 @@ fn upsert_turn(page: &mut Option<TurnsPage>, turn: CodexTurn) {
     }
 }
 
-fn merge_turns_page(target: &mut Option<TurnsPage>, incoming: TurnsPage) {
+fn merge_latest_turns_page(target: &mut Option<TurnsPage>, incoming: TurnsPage) {
     let next_cursor = incoming.next_cursor.clone();
     let backwards_cursor = incoming.backwards_cursor.clone();
     for turn in incoming.data {
         upsert_turn(target, turn);
     }
     if let Some(target) = target {
-        target.next_cursor = next_cursor;
-        target.backwards_cursor = backwards_cursor;
+        if target.next_cursor.is_none() {
+            target.next_cursor = next_cursor;
+        }
+        target.backwards_cursor = backwards_cursor.or_else(|| target.backwards_cursor.clone());
+        sort_turns_desc(&mut target.data);
     }
+}
+
+fn merge_incremental_turns_page(target: &mut Option<TurnsPage>, incoming: TurnsPage) {
+    for turn in incoming.data {
+        upsert_turn(target, turn);
+    }
+    if let Some(target) = target {
+        sort_turns_desc(&mut target.data);
+    }
+}
+
+fn merge_older_turns_page(target: &mut Option<TurnsPage>, incoming: TurnsPage) {
+    let next_cursor = incoming.next_cursor.clone();
+    for turn in incoming.data {
+        upsert_turn(target, turn);
+    }
+    if let Some(target) = target {
+        target.next_cursor = next_cursor;
+        sort_turns_desc(&mut target.data);
+    }
+}
+
+fn sort_turns_desc(turns: &mut [CodexTurn]) {
+    turns.sort_by(|left, right| {
+        right
+            .started_at
+            .partial_cmp(&left.started_at)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| right.id.cmp(&left.id))
+    });
 }
 
 fn notification_thread_id(notification: &CodexNotification) -> Option<&str> {
@@ -481,11 +664,11 @@ fn apply_notification_state(
     state: &mut ThreadSessionState,
     notification: &CodexNotification,
 ) -> bool {
-    let terminal_notification = match notification {
+    match notification {
         CodexNotification::ThreadStarted { thread } => {
             state.thread = Some(thread.clone());
             state.active_turn_id = active_turn_id(thread, state.turns_page.as_ref());
-            false
+            true
         }
         CodexNotification::ThreadStatusChanged { status, .. } => {
             if let Some(thread) = state.thread.as_mut() {
@@ -496,12 +679,12 @@ fn apply_notification_state(
                 state.active_turn_id = None;
                 state.runtime_lease = false;
             }
-            terminal
+            true
         }
         CodexNotification::TurnStarted { turn, .. } => {
             state.active_turn_id = Some(turn.id.clone());
             upsert_turn(&mut state.turns_page, turn.clone());
-            false
+            true
         }
         CodexNotification::TurnCompleted { turn, .. } => {
             state.active_turn_id = None;
@@ -509,9 +692,12 @@ fn apply_notification_state(
             upsert_turn(&mut state.turns_page, turn.clone());
             true
         }
-        _ => false,
-    };
-    terminal_notification && state.viewer_leases == 0 && !state.runtime_lease
+        CodexNotification::ItemStarted { .. }
+        | CodexNotification::ItemCompleted { .. }
+        | CodexNotification::RawResponseItemCompleted { .. }
+        | CodexNotification::TurnDiffUpdated { .. } => true,
+        CodexNotification::Unknown { .. } => false,
+    }
 }
 
 #[cfg(test)]
@@ -587,13 +773,16 @@ mod tests {
             runtime_lease: true,
             client: None,
             generation: 1,
+            revision: 0,
+            syncing: false,
+            sync_dirty: false,
             last_error: None,
         };
         let mut completed_turn = active_turn;
         completed_turn.status = TurnStatus::Completed;
         completed_turn.completed_at = Some(2.0);
 
-        let should_unsubscribe = apply_notification_state(
+        let changed = apply_notification_state(
             &mut state,
             &CodexNotification::TurnCompleted {
                 thread_id: "thread-1".to_string(),
@@ -601,7 +790,7 @@ mod tests {
             },
         );
 
-        assert!(!should_unsubscribe);
+        assert!(changed);
         assert!(!state.runtime_lease);
         assert_eq!(state.active_turn_id, None);
     }
@@ -622,10 +811,13 @@ mod tests {
             runtime_lease: true,
             client: None,
             generation: 1,
+            revision: 0,
+            syncing: false,
+            sync_dirty: false,
             last_error: None,
         };
 
-        let should_unsubscribe = apply_notification_state(
+        let changed = apply_notification_state(
             &mut state,
             &CodexNotification::ThreadStatusChanged {
                 thread_id: "thread-1".to_string(),
@@ -633,8 +825,84 @@ mod tests {
             },
         );
 
-        assert!(should_unsubscribe);
+        assert!(changed);
         assert!(!state.runtime_lease);
         assert_eq!(state.active_turn_id, None);
+    }
+
+    #[test]
+    fn latest_turn_page_updates_anchor_without_losing_older_history() {
+        let mut existing = Some(TurnsPage {
+            data: vec![
+                turn("turn-2", TurnStatus::InProgress),
+                turn("turn-1", TurnStatus::Completed),
+            ],
+            next_cursor: Some("older".to_string()),
+            backwards_cursor: Some("anchor-2".to_string()),
+        });
+        let mut completed = turn("turn-2", TurnStatus::Completed);
+        completed.completed_at = Some(3.0);
+
+        merge_latest_turns_page(
+            &mut existing,
+            TurnsPage {
+                data: vec![completed],
+                next_cursor: None,
+                backwards_cursor: Some("anchor-3".to_string()),
+            },
+        );
+
+        let page = existing.unwrap();
+        assert_eq!(page.data.len(), 2);
+        assert_eq!(page.data[0].id, "turn-2");
+        assert_eq!(page.data[0].status, TurnStatus::Completed);
+        assert_eq!(page.next_cursor.as_deref(), Some("older"));
+        assert_eq!(page.backwards_cursor.as_deref(), Some("anchor-3"));
+    }
+
+    #[test]
+    fn incremental_turn_page_preserves_history_and_reverse_cursors() {
+        let mut existing = Some(TurnsPage {
+            data: vec![turn("turn-2", TurnStatus::InProgress)],
+            next_cursor: Some("older".to_string()),
+            backwards_cursor: Some("desc-anchor".to_string()),
+        });
+
+        merge_incremental_turns_page(
+            &mut existing,
+            TurnsPage {
+                data: vec![turn("turn-3", TurnStatus::Completed)],
+                next_cursor: Some("continue-ascending".to_string()),
+                backwards_cursor: Some("asc-anchor".to_string()),
+            },
+        );
+
+        let page = existing.unwrap();
+        assert_eq!(page.data.len(), 2);
+        assert_eq!(page.next_cursor.as_deref(), Some("older"));
+        assert_eq!(page.backwards_cursor.as_deref(), Some("desc-anchor"));
+    }
+
+    #[test]
+    fn older_turn_page_advances_only_the_history_cursor() {
+        let mut existing = Some(TurnsPage {
+            data: vec![turn("turn-2", TurnStatus::Completed)],
+            next_cursor: Some("older-2".to_string()),
+            backwards_cursor: Some("anchor".to_string()),
+        });
+
+        merge_older_turns_page(
+            &mut existing,
+            TurnsPage {
+                data: vec![turn("turn-1", TurnStatus::Completed)],
+                next_cursor: None,
+                backwards_cursor: None,
+            },
+        );
+
+        let page = existing.unwrap();
+        assert_eq!(page.data.len(), 2);
+        assert_eq!(page.next_cursor, None);
+        assert_eq!(page.backwards_cursor.as_deref(), Some("anchor"));
     }
 }

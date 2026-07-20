@@ -1769,11 +1769,15 @@ test("groups All Tasks by repository without worktree accordions", async ({ page
   await expect(featureTask.locator(".task-status-spinner")).toHaveCount(0);
   await page.evaluate(() => {
     window.__taskListEventSource.emit("task-event", {
-      id: "live-running",
       threadId: "thread_gluesql_feature",
-      type: "thread_status_changed",
-      payload: { status: "running" },
-      createdMs: Date.now(),
+      revision: 2,
+      event: {
+        id: "live-running",
+        threadId: "thread_gluesql_feature",
+        type: "thread_status_changed",
+        payload: { status: "running" },
+        createdMs: Date.now(),
+      },
     });
   });
   await expect(
@@ -1806,11 +1810,15 @@ test("groups All Tasks by repository without worktree accordions", async ({ page
   );
   await page.evaluate(() => {
     window.__taskListEventSource.emit("task-event", {
-      id: "live-idle",
       threadId: "thread_gluesql_feature",
-      type: "thread_status_changed",
-      payload: { status: "idle" },
-      createdMs: Date.now(),
+      revision: 3,
+      event: {
+        id: "live-idle",
+        threadId: "thread_gluesql_feature",
+        type: "thread_status_changed",
+        payload: { status: "idle" },
+        createdMs: Date.now(),
+      },
     });
   });
   await expect(featureTask).toHaveAttribute("data-task-status", "idle");
@@ -1984,6 +1992,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     createdMs: now + offset,
   });
   const detailResponse = (overrides = {}) => ({
+    revision: overrides.revision ?? 1,
     task,
     events: overrides.events ?? events,
     eventsPage: { nextCursor: null, ...(overrides.eventsPage ?? {}) },
@@ -3332,7 +3341,12 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     const source = window.__caffoldMockEventSources.find((candidate) =>
       candidate.url.includes(`/api/tasks/${detail.task.threadId}/stream`),
     );
-    source?.emit("task-sync", detail);
+    source?.emit("task-sync", {
+      threadId: detail.task.threadId,
+      revision: detail.revision,
+      detail,
+      reason: "test",
+    });
   }, detailResponse());
   const runningStatus = tasksPage.locator(
     '.task-detail-summary .task-status-chip[data-status="running"]',
@@ -3746,6 +3760,7 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     ),
   );
   const taskDetail = {
+    revision: 1,
     task,
     events,
     eventsPage: { nextCursor: null },
@@ -3798,7 +3813,12 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
       source.url.includes(`/api/tasks/${threadId}/stream`),
     );
     taskSource.emitOpen();
-    taskSource.emit("task-sync", taskDetail);
+    taskSource.emit("task-sync", {
+      threadId,
+      revision: taskDetail.revision,
+      detail: taskDetail,
+      reason: "test",
+    });
   }, { threadId, taskDetail });
   await expect(tasksPage.locator(".task-stream-state")).toHaveCount(0);
   await expect.poll(() => taskDetailReadRequests).toBe(1);
@@ -3809,15 +3829,19 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
         source.url.includes(`/api/tasks/${threadId}/stream`),
       );
       taskSource.emit("task-event", {
-        id: "event_live_bottom",
         threadId,
-        type: "assistant_message",
-        summary: "Assistant response",
-        payload: {
-          turnId: "turn_live_bottom",
-          text: `Live answer at the bottom.\n\n${"New live transcript content. ".repeat(16)}`,
+        revision: 2,
+        event: {
+          id: "event_live_bottom",
+          threadId,
+          type: "assistant_message",
+          summary: "Assistant response",
+          payload: {
+            turnId: "turn_live_bottom",
+            text: `Live answer at the bottom.\n\n${"New live transcript content. ".repeat(16)}`,
+          },
+          createdMs: now + 100,
         },
-        createdMs: now + 100,
       });
     },
     { threadId, now },
@@ -3835,15 +3859,19 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
         source.url.includes(`/api/tasks/${threadId}/stream`),
       );
       taskSource.emit("task-event", {
-        id: "event_live_preserve",
         threadId,
-        type: "assistant_message",
-        summary: "Assistant response",
-        payload: {
-          turnId: "turn_live_preserve",
-          text: `Live answer while reading older content.\n\n${"Preserve the reader position. ".repeat(16)}`,
+        revision: 3,
+        event: {
+          id: "event_live_preserve",
+          threadId,
+          type: "assistant_message",
+          summary: "Assistant response",
+          payload: {
+            turnId: "turn_live_preserve",
+            text: `Live answer while reading older content.\n\n${"Preserve the reader position. ".repeat(16)}`,
+          },
+          createdMs: now + 101,
         },
-        createdMs: now + 101,
       });
     },
     { threadId, now },
@@ -3862,15 +3890,19 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
       );
       for (let index = 0; index < 3; index += 1) {
         taskSource.emit("task-event", {
-          id: `event_burst_${index}`,
           threadId,
-          type: "assistant_message",
-          summary: "Assistant response",
-          payload: {
-            turnId: "turn_burst",
-            text: `Burst update ${index + 1}`,
+          revision: 4 + index,
+          event: {
+            id: `event_burst_${index}`,
+            threadId,
+            type: "assistant_message",
+            summary: "Assistant response",
+            payload: {
+              turnId: "turn_burst",
+              text: `Burst update ${index + 1}`,
+            },
+            createdMs: now + 200 + index,
           },
-          createdMs: now + 200 + index,
         });
       }
     },
@@ -3895,12 +3927,61 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
       source.url.includes(`/api/tasks/${threadId}/stream`),
     );
     taskSource.emit("task-sync", {
-      ...taskDetail,
-      events: [...taskDetail.events, canonicalEvent],
+      threadId,
+      revision: 7,
+      reason: "external-update",
+      detail: {
+        ...taskDetail,
+        revision: 7,
+        events: [...taskDetail.events, canonicalEvent],
+      },
     });
   }, { threadId, taskDetail, canonicalEvent });
   await expect(tasksPage).toContainText("Synced from an external Codex process.");
   expect(taskDetailReadRequests).toBe(readsBeforeBurst);
+
+  await page.evaluate(({ threadId, taskDetail }) => {
+    const taskSource = window.__taskEventSources.find((source) =>
+      source.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    taskSource.emit("task-event", {
+      threadId,
+      revision: 6,
+      event: {
+        id: "event_stale_revision",
+        threadId,
+        type: "assistant_message",
+        summary: "Assistant response",
+        payload: { turnId: "turn_stale", text: "Stale event must stay hidden." },
+        createdMs: Date.now(),
+      },
+    });
+    taskSource.emit("task-sync", {
+      threadId,
+      revision: 6,
+      reason: "stale-test",
+      detail: {
+        ...taskDetail,
+        revision: 6,
+        events: [
+          ...taskDetail.events,
+          {
+            id: "snapshot_stale_revision",
+            threadId,
+            type: "assistant_message",
+            summary: "Assistant response",
+            payload: {
+              turnId: "turn_stale_snapshot",
+              text: "Stale snapshot must stay hidden.",
+            },
+            createdMs: Date.now(),
+          },
+        ],
+      },
+    });
+  }, { threadId, taskDetail });
+  await expect(tasksPage).not.toContainText("Stale event must stay hidden.");
+  await expect(tasksPage).not.toContainText("Stale snapshot must stay hidden.");
 
   const readsBeforeVisibility = taskDetailReadRequests;
   await page.evaluate(() => {
@@ -3933,6 +4014,7 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
   );
   taskDetailResponse = {
     ...taskDetail,
+    revision: 8,
     task: {
       ...taskDetail.task,
       status: "idle",

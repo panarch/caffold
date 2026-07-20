@@ -10,6 +10,9 @@ pub const SUPPORTED_CODEX_CLI_VERSION: &str = "0.144.4";
 
 pub(crate) const INITIALIZE: &str = "initialize";
 pub(crate) const INITIALIZED: &str = "initialized";
+pub(crate) const ACCOUNT_READ: &str = "account/read";
+pub(crate) const ACCOUNT_RATE_LIMITS_READ: &str = "account/rateLimits/read";
+pub(crate) const ACCOUNT_USAGE_READ: &str = "account/usage/read";
 pub(crate) const THREAD_LIST: &str = "thread/list";
 pub(crate) const THREAD_READ: &str = "thread/read";
 pub(crate) const THREAD_START: &str = "thread/start";
@@ -22,6 +25,31 @@ pub(crate) const TURN_START: &str = "turn/start";
 pub(crate) const TURN_STEER: &str = "turn/steer";
 pub(crate) const TURN_INTERRUPT: &str = "turn/interrupt";
 pub(crate) const MODEL_LIST: &str = "model/list";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexAppServerInfo {
+    pub user_agent: Option<String>,
+    pub codex_home: Option<String>,
+    pub platform_family: Option<String>,
+    pub platform_os: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexAccount {
+    #[serde(rename = "accountType", alias = "type")]
+    pub account_type: String,
+    pub email: Option<String>,
+    pub plan_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountReadResponse {
+    pub account: Option<CodexAccount>,
+    pub requires_openai_auth: bool,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -218,6 +246,12 @@ pub struct ModelListResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct EmptyResponse {}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountReadParams {
+    pub refresh_token: bool,
+}
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -598,6 +632,12 @@ pub(crate) fn model_list_params(limit: usize) -> ModelListParams {
     }
 }
 
+pub(crate) fn account_read_params() -> AccountReadParams {
+    AccountReadParams {
+        refresh_token: false,
+    }
+}
+
 pub(crate) fn thread_start_params(cwd: &str) -> ThreadStartParams<'_> {
     ThreadStartParams {
         cwd,
@@ -756,6 +796,11 @@ mod tests {
         let images = vec!["data:image/png;base64,aGVsbG8=".to_string()];
         let fixtures = [
             (
+                ACCOUNT_READ,
+                serde_json::to_value(account_read_params()).expect("account read params"),
+                json!({ "refreshToken": false }),
+            ),
+            (
                 THREAD_LIST,
                 serde_json::to_value(thread_list_params(100)).expect("thread list params"),
                 json!({ "limit": 100, "archived": false }),
@@ -858,6 +903,20 @@ mod tests {
             decode_response(THREAD_READ, json!({ "thread": idle_thread.clone() }))
                 .expect("thread read response");
         assert_eq!(read.thread.status, ThreadStatus::Idle);
+
+        let account: AccountReadResponse = decode_response(
+            ACCOUNT_READ,
+            json!({
+                "account": {
+                    "type": "chatgpt",
+                    "email": "developer@example.com",
+                    "planType": "pro"
+                },
+                "requiresOpenaiAuth": true
+            }),
+        )
+        .expect("account read response");
+        assert_eq!(account.account.unwrap().account_type, "chatgpt");
 
         let started: ThreadStartResponse =
             decode_response(THREAD_START, json!({ "thread": idle_thread.clone() }))

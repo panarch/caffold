@@ -25,9 +25,9 @@ use tracing::info;
 use crate::{
     codex_app_server::{
         self, CodexNotification, CodexRuntimeEvent, CodexServerRequest, CodexStatusResponse,
-        CodexThreadClient, CodexTurnOptions, ThreadStatus, TurnStatus,
+        CodexThreadClient, CodexThreadError, CodexTurnOptions, ThreadStatus, TurnStatus,
     },
-    codex_thread_sessions::{CodexThreadSessions, PromptTarget},
+    codex_thread_sessions::{CodexThreadSessions, PromptTarget, ThreadSessionSnapshot},
     fs::{
         FileResponse, FsError, GitCommitResponse, GitCompareResponse, GitDiffResponse,
         GitLogResponse, GitRefsResponse, GitStatusResponse, GithubIssueResponse,
@@ -513,6 +513,7 @@ impl LiveTaskEventCache {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TaskDetailResponse {
+    revision: u64,
     task: TaskRecord,
     events: Vec<TaskEventRecord>,
     events_page: TaskEventsPage,
@@ -525,10 +526,21 @@ struct TaskEventsPage {
     next_cursor: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct TaskDetailSync {
     thread_id: String,
+    revision: u64,
     detail: TaskDetailResponse,
+    reason: &'static str,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskEventEnvelope {
+    thread_id: String,
+    revision: u64,
+    event: TaskEventRecord,
 }
 
 #[derive(Debug, Serialize)]
@@ -1215,8 +1227,12 @@ async fn github_pull_file(
         .map_err(ApiError::from)
 }
 
-async fn codex_status() -> Json<CodexStatusResponse> {
-    Json(codex_app_server::status().await)
+async fn codex_status(State(state): State<AppState>) -> Json<CodexStatusResponse> {
+    let status = match require_codex_thread_connection(&state).await {
+        Ok(connection) => connection.client.status().await,
+        Err(error) => CodexThreadClient::unavailable_status(&error),
+    };
+    Json(status)
 }
 
 async fn codex_models(State(state): State<AppState>) -> Result<Json<JsonValue>, ApiError> {
@@ -1280,7 +1296,7 @@ async fn create_task(
         .record_turn_started(connection.generation, &thread.thread_id, turn.turn)
         .await;
     Ok(Json(
-        read_task_detail(&state, client, &thread.thread_id, None).await?,
+        read_task_detail(&state, &connection, &thread.thread_id, None).await?,
     ))
 }
 
@@ -1295,13 +1311,7 @@ async fn task_detail(
         .acquire_viewer(&connection.client, connection.generation, &thread_id)
         .await?;
     Ok(Json(
-        read_task_detail(
-            &state,
-            &connection.client,
-            &thread_id,
-            query.cursor.as_deref(),
-        )
-        .await?,
+        read_task_detail(&state, &connection, &thread_id, query.cursor.as_deref()).await?,
     ))
 }
 
@@ -1349,15 +1359,25 @@ async fn run_task_sync_worker(state: AppState, mut receiver: mpsc::UnboundedRece
             if !state.task_sync.is_subscribed(&thread_id) {
                 continue;
             }
-            let Ok(client) = require_codex_thread_client(&state).await else {
+            let Ok(connection) = require_codex_thread_connection(&state).await else {
                 continue;
             };
-            let Ok(detail) = read_task_detail(&state, &client, &thread_id, None).await else {
+            let Ok(Some(snapshot)) = state
+                .codex_sessions
+                .sync_latest(&connection.client, connection.generation, &thread_id)
+                .await
+            else {
                 continue;
             };
-            let _ = state
-                .task_sync_events
-                .send(TaskDetailSync { thread_id, detail });
+            let Ok(detail) = task_detail_from_snapshot(&state, snapshot, None).await else {
+                continue;
+            };
+            let _ = state.task_sync_events.send(TaskDetailSync {
+                revision: detail.revision,
+                thread_id,
+                detail,
+                reason: "canonical-sync",
+            });
         }
     }
 }
@@ -1378,6 +1398,7 @@ async fn task_stream(
     let sync_receiver = state.task_sync_events.subscribe();
     let initial_frame = Bytes::from_static(b": ready\n\n");
     let shutdown = state.shutdown.subscribe();
+    let sessions = state.codex_sessions.clone();
     let stream = stream::unfold(
         (
             Some(initial_frame),
@@ -1387,6 +1408,7 @@ async fn task_stream(
             thread_id,
             subscription,
             viewer,
+            sessions,
         ),
         |(
             initial_frame,
@@ -1396,6 +1418,7 @@ async fn task_stream(
             thread_id,
             subscription,
             viewer,
+            sessions,
         )| async move {
             if let Some(frame) = initial_frame {
                 return Some((
@@ -1408,6 +1431,7 @@ async fn task_stream(
                         thread_id,
                         subscription,
                         viewer,
+                        sessions,
                     ),
                 ));
             }
@@ -1417,7 +1441,7 @@ async fn task_stream(
                     message = sync_receiver.recv() => {
                         match message {
                             Ok(sync) if sync.thread_id == thread_id => {
-                                let payload = serde_json::to_string(&sync.detail)
+                                let payload = serde_json::to_string(&sync)
                                     .unwrap_or_else(|_| "{}".to_string());
                                 let frame = format!("event: task-sync\ndata: {payload}\n\n");
                                 return Some((
@@ -1430,6 +1454,7 @@ async fn task_stream(
                                         thread_id,
                                         subscription,
                                         viewer,
+                                        sessions,
                                     ),
                                 ));
                             }
@@ -1441,7 +1466,16 @@ async fn task_stream(
                     message = receiver.recv() => {
                         match message {
                             Ok(event) if event.thread_id == thread_id => {
-                                let payload = serde_json::to_string(&event)
+                                let revision = sessions
+                                    .snapshot(&thread_id)
+                                    .await
+                                    .map(|snapshot| snapshot.revision)
+                                    .unwrap_or_default();
+                                let payload = serde_json::to_string(&TaskEventEnvelope {
+                                    thread_id: thread_id.clone(),
+                                    revision,
+                                    event,
+                                })
                                     .unwrap_or_else(|_| "{}".to_string());
                                 let frame = format!("event: task-event\ndata: {payload}\n\n");
                                 return Some((
@@ -1454,6 +1488,7 @@ async fn task_stream(
                                         thread_id,
                                         subscription,
                                         viewer,
+                                        sessions,
                                     ),
                                 ));
                             }
@@ -1489,6 +1524,7 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
     let shutdown = state.shutdown.subscribe();
     let activity = thread_id.is_none().then(|| state.task_activity.clone());
     let live_task_events = state.live_task_events.clone();
+    let sessions = state.codex_sessions.clone();
     let mut activity_reconcile = tokio::time::interval(Duration::from_secs(1));
     activity_reconcile.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let stream = stream::unfold(
@@ -1500,6 +1536,7 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
             activity,
             activity_reconcile,
             live_task_events,
+            sessions,
         ),
         |(
             mut receiver,
@@ -1509,6 +1546,7 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
             activity,
             mut activity_reconcile,
             live_task_events,
+            sessions,
         )| async move {
             loop {
                 tokio::select! {
@@ -1520,7 +1558,7 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
                     message = sync_receiver.recv() => {
                         match message {
                             Ok(sync) if thread_id.as_ref().is_none_or(|id| id == &sync.thread_id) => {
-                                let payload = serde_json::to_string(&sync.detail)
+                                let payload = serde_json::to_string(&sync)
                                     .unwrap_or_else(|_| "{}".to_string());
                                 let frame = format!("event: task-sync\ndata: {payload}\n\n");
                                 return Some((
@@ -1533,6 +1571,7 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
                                         activity,
                                         activity_reconcile,
                                         live_task_events,
+                                        sessions,
                                     ),
                                 ));
                             }
@@ -1545,7 +1584,16 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
                         match message {
                             Ok(event) if thread_id.as_ref().is_none_or(|id| id == &event.thread_id) => {
                                 live_task_events.record(event.clone());
-                                let payload = serde_json::to_string(&event)
+                                let revision = sessions
+                                    .snapshot(&event.thread_id)
+                                    .await
+                                    .map(|snapshot| snapshot.revision)
+                                    .unwrap_or_default();
+                                let payload = serde_json::to_string(&TaskEventEnvelope {
+                                    thread_id: event.thread_id.clone(),
+                                    revision,
+                                    event,
+                                })
                                     .unwrap_or_else(|_| "{}".to_string());
                                 let frame = format!("event: task-event\ndata: {payload}\n\n");
                                 return Some((
@@ -1558,6 +1606,7 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
                                         activity,
                                         activity_reconcile,
                                         live_task_events,
+                                        sessions,
                                     ),
                                 ));
                             }
@@ -1657,7 +1706,7 @@ async fn task_interrupt(
         .interrupt_turn(&thread_id, &turn_id)
         .await?;
     Ok(Json(
-        read_task_detail(&state, &connection.client, &thread_id, None).await?,
+        read_task_detail(&state, &connection, &thread_id, None).await?,
     ))
 }
 
@@ -1665,8 +1714,8 @@ async fn task_archive(
     State(state): State<AppState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<StatusCode, ApiError> {
-    let client = require_codex_thread_client(&state).await?;
-    client.archive_thread(&thread_id).await?;
+    let connection = require_codex_thread_connection(&state).await?;
+    connection.client.archive_thread(&thread_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1692,9 +1741,10 @@ async fn task_approval(
             message: "approval request belongs to another thread".to_string(),
         });
     }
-    let client = require_codex_thread_client(&state).await?;
+    let connection = require_codex_thread_connection(&state).await?;
     let decision = normalize_approval_decision(&request.decision)?;
-    client
+    connection
+        .client
         .respond_to_server_request(pending.request_id.clone(), json!({ "decision": decision }))
         .await?;
     {
@@ -1717,17 +1767,20 @@ async fn task_approval(
     let _ = state.task_events.send(event);
 
     Ok(Json(
-        read_task_detail(&state, &client, &thread_id, None).await?,
+        read_task_detail(&state, &connection, &thread_id, None).await?,
     ))
 }
 
 async fn require_codex_thread_client(state: &AppState) -> Result<CodexThreadClient, ApiError> {
-    Ok(require_codex_thread_connection(state).await?.client)
+    require_codex_thread_connection(state)
+        .await
+        .map(|connection| connection.client)
+        .map_err(ApiError::from)
 }
 
 async fn require_codex_thread_connection(
     state: &AppState,
-) -> Result<CodexThreadConnection, ApiError> {
+) -> Result<CodexThreadConnection, CodexThreadError> {
     {
         let runtime = state.codex_threads.state.lock().await;
         if let Some(client) = runtime.client.clone() {
@@ -1766,10 +1819,7 @@ async fn require_codex_thread_connection(
                 runtime.client = Some(client.clone());
                 Ok(CodexThreadConnection { client, generation })
             }
-            Err(error) => {
-                let message = error.to_string();
-                Err(ApiError::CodexThread(message))
-            }
+            Err(error) => Err(error),
         }
     }?;
 
@@ -1786,27 +1836,66 @@ async fn require_codex_thread_connection(
 
 async fn read_task_detail(
     state: &AppState,
-    client: &CodexThreadClient,
+    connection: &CodexThreadConnection,
     thread_id: &str,
     cursor: Option<&str>,
 ) -> Result<TaskDetailResponse, ApiError> {
-    let thread = client.read_thread(thread_id, false).await?.into_value();
-    let turns_response = client
-        .list_thread_turns(thread_id, cursor, TASK_DETAIL_TURNS_PAGE_SIZE)
-        .await?;
-    let mut turns = turns_response
-        .data
+    let (snapshot, response_page) = if let Some(cursor) = cursor {
+        let (snapshot, page) = state
+            .codex_sessions
+            .load_older_turns(
+                &connection.client,
+                connection.generation,
+                thread_id,
+                cursor,
+                TASK_DETAIL_TURNS_PAGE_SIZE,
+            )
+            .await?;
+        (snapshot, Some(page))
+    } else {
+        (
+            state
+                .codex_sessions
+                .ensure_subscribed(&connection.client, connection.generation, thread_id)
+                .await?,
+            None,
+        )
+    };
+    task_detail_from_snapshot(state, snapshot, response_page).await
+}
+
+async fn task_detail_from_snapshot(
+    state: &AppState,
+    snapshot: ThreadSessionSnapshot,
+    response_page: Option<crate::codex_app_server::TurnsPage>,
+) -> Result<TaskDetailResponse, ApiError> {
+    let thread_id = snapshot
+        .thread
+        .as_ref()
+        .map(|thread| thread.id.clone())
+        .ok_or_else(|| {
+            ApiError::CodexThread("subscribed thread metadata is missing".to_string())
+        })?;
+    let page = response_page.or_else(|| snapshot.turns_page.clone());
+    let mut turns = page
+        .as_ref()
+        .map(|page| page.data.clone())
+        .unwrap_or_default()
         .into_iter()
         .map(|turn| serde_json::to_value(turn).expect("decoded turn serializes"))
         .collect::<Vec<_>>();
     turns.reverse();
-    let next_cursor = turns_response.next_cursor;
+    let next_cursor = page.and_then(|page| page.next_cursor);
+    let thread = snapshot
+        .thread
+        .expect("thread metadata was checked above")
+        .into_value();
     let thread = thread_with_turns(&thread, turns)?;
     state.task_activity.observe_thread(&thread);
     let mut events = thread_events(&thread);
     state.live_task_events.observe(&events);
-    events = merge_task_event_records(events, state.live_task_events.for_thread(thread_id));
-    let pending_approvals = pending_approval_events(state, thread_id).await;
+    events = merge_task_event_records(events, state.live_task_events.for_thread(&thread_id));
+    let pending_approvals = pending_approval_events(state, &thread_id).await;
     events.extend(pending_approvals.iter().cloned());
     events.sort_by(|left, right| {
         left.created_ms
@@ -1814,7 +1903,7 @@ async fn read_task_detail(
             .then_with(|| left.id.cmp(&right.id))
     });
     let resolved_cwd = resolve_thread_cwd(&state.fs, &thread);
-    let rollout_activity = state.task_activity.activity(thread_id);
+    let rollout_activity = state.task_activity.activity(&thread_id);
     let task = task_record_from_thread(
         &thread,
         &events,
@@ -1822,6 +1911,7 @@ async fn read_task_detail(
         rollout_activity.as_ref(),
     )?;
     Ok(TaskDetailResponse {
+        revision: snapshot.revision,
         task,
         events,
         events_page: TaskEventsPage { next_cursor },
@@ -2206,6 +2296,9 @@ fn spawn_codex_thread_bridge(
                                 request,
                             )
                             .await;
+                        }
+                        CodexRuntimeEvent::Diagnostic { message } => {
+                            eprintln!("{message}");
                         }
                         CodexRuntimeEvent::Error { message } => {
                             break message;

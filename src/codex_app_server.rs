@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     io::ErrorKind,
     process::Stdio,
     sync::{
@@ -11,38 +11,35 @@ use std::{
 
 mod protocol;
 
-pub use protocol::{
-    CodexNotification, CodexServerRequest, CodexThread, CodexTurn, ModelListResponse,
-    ThreadResumeResponse, ThreadStatus, ThreadUnsubscribeResponse, TurnStatus, TurnsPage,
-};
 use protocol::{
-    EmptyResponse, INITIALIZE, INITIALIZED, JsonRpcError, MODEL_LIST, SortDirection,
-    THREAD_ARCHIVE, THREAD_LIST, THREAD_READ, THREAD_RESUME, THREAD_START, THREAD_TURNS_LIST,
-    THREAD_UNSUBSCRIBE, TURN_INTERRUPT, TURN_START, TURN_STEER, ThreadListResponse,
-    ThreadReadResponse, ThreadStartResponse, TurnStartResponse, TurnSteerResponse, decode_response,
-    model_list_params, thread_archive_params, thread_list_params, thread_read_params,
-    thread_resume_params, thread_start_params, thread_turns_list_params, thread_unsubscribe_params,
+    ACCOUNT_RATE_LIMITS_READ, ACCOUNT_READ, ACCOUNT_USAGE_READ, AccountReadResponse, EmptyResponse,
+    INITIALIZE, INITIALIZED, JsonRpcError, MODEL_LIST, THREAD_ARCHIVE, THREAD_LIST, THREAD_READ,
+    THREAD_RESUME, THREAD_START, THREAD_TURNS_LIST, THREAD_UNSUBSCRIBE, TURN_INTERRUPT, TURN_START,
+    TURN_STEER, ThreadListResponse, ThreadReadResponse, ThreadStartResponse, TurnStartResponse,
+    TurnSteerResponse, account_read_params, decode_response, model_list_params,
+    thread_archive_params, thread_list_params, thread_read_params, thread_resume_params,
+    thread_start_params, thread_turns_list_params, thread_unsubscribe_params,
     turn_interrupt_params, turn_start_params, turn_steer_params,
+};
+pub use protocol::{
+    CodexAccount, CodexAppServerInfo, CodexNotification, CodexServerRequest, CodexThread,
+    CodexTurn, ModelListResponse, SortDirection, ThreadResumeResponse, ThreadStatus,
+    ThreadUnsubscribeResponse, TurnStatus, TurnsPage,
 };
 #[cfg(test)]
 pub(crate) use protocol::{TurnItemsView, decode_notification, decode_server_request};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use tokio::{
-    io::Lines,
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-    process::{Child, ChildStderr, ChildStdin, ChildStdout, Command},
+    io::{AsyncRead, Lines},
+    process::{Child, ChildStdin, ChildStdout, Command},
     sync::{Mutex as AsyncMutex, broadcast, oneshot},
-    time::{Instant, timeout},
+    time::timeout,
 };
 
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 const THREAD_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(500);
-const INITIALIZE_ID: u64 = 1;
-const ACCOUNT_ID: u64 = 2;
-const RATE_LIMITS_ID: u64 = 3;
-const USAGE_ID: u64 = 4;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -58,37 +55,6 @@ pub struct CodexStatusResponse {
     pub app_server: Option<CodexAppServerInfo>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct CodexAccount {
-    #[serde(rename = "accountType", alias = "type")]
-    pub account_type: String,
-    pub email: Option<String>,
-    pub plan_type: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct CodexAppServerInfo {
-    pub user_agent: Option<String>,
-    pub codex_home: Option<String>,
-    pub platform_family: Option<String>,
-    pub platform_os: Option<String>,
-}
-
-pub async fn status() -> CodexStatusResponse {
-    match read_app_server_status().await {
-        Ok(responses) => status_from_responses(responses),
-        Err(AppServerReadError::MissingCli) => unavailable(
-            false,
-            false,
-            "Codex CLI is not available on this machine.".to_string(),
-        ),
-        Err(AppServerReadError::StartFailed(message)) => unavailable(true, false, message),
-        Err(AppServerReadError::Protocol(message)) => unavailable(true, false, message),
-    }
-}
-
 #[derive(Clone)]
 pub struct CodexThreadClient {
     inner: Arc<CodexThreadClientInner>,
@@ -100,6 +66,7 @@ struct CodexThreadClientInner {
     pending: AsyncMutex<HashMap<u64, PendingRequest>>,
     next_id: AtomicU64,
     events: broadcast::Sender<CodexRuntimeEvent>,
+    app_server: AsyncMutex<Option<CodexAppServerInfo>>,
 }
 
 struct PendingRequest {
@@ -111,6 +78,7 @@ struct PendingRequest {
 pub enum CodexRuntimeEvent {
     Notification(CodexNotification),
     ServerRequest(CodexServerRequest),
+    Diagnostic { message: String },
     Error { message: String },
 }
 
@@ -200,6 +168,7 @@ impl CodexThreadClient {
                 pending: AsyncMutex::new(HashMap::new()),
                 next_id: AtomicU64::new(100),
                 events,
+                app_server: AsyncMutex::new(None),
             }),
         };
 
@@ -212,7 +181,7 @@ impl CodexThreadClient {
             client.inner.events.clone(),
         ));
 
-        client
+        let app_server = client
             .request_value(
                 INITIALIZE,
                 json!({
@@ -226,7 +195,11 @@ impl CodexThreadClient {
                     "title": "Caffold"
                 }),
             )
-            .await?;
+            .await
+            .and_then(|value| {
+                decode_response(INITIALIZE, value).map_err(CodexThreadError::Protocol)
+            })?;
+        *client.inner.app_server.lock().await = Some(app_server);
         client.notify(INITIALIZED, json!({})).await?;
         Ok(client)
     }
@@ -265,9 +238,20 @@ impl CodexThreadClient {
         cursor: Option<&str>,
         limit: usize,
     ) -> Result<TurnsPage, CodexThreadError> {
+        self.list_thread_turns_in_direction(thread_id, cursor, limit, SortDirection::Desc)
+            .await
+    }
+
+    pub async fn list_thread_turns_in_direction(
+        &self,
+        thread_id: &str,
+        cursor: Option<&str>,
+        limit: usize,
+        sort_direction: SortDirection,
+    ) -> Result<TurnsPage, CodexThreadError> {
         self.request_typed(
             THREAD_TURNS_LIST,
-            thread_turns_list_params(thread_id, cursor, limit, SortDirection::Desc),
+            thread_turns_list_params(thread_id, cursor, limit, sort_direction),
         )
         .await
     }
@@ -375,6 +359,24 @@ impl CodexThreadClient {
     pub async fn list_models(&self, limit: usize) -> Result<ModelListResponse, CodexThreadError> {
         self.request_typed(MODEL_LIST, model_list_params(limit))
             .await
+    }
+
+    pub async fn status(&self) -> CodexStatusResponse {
+        let app_server = self.inner.app_server.lock().await.clone();
+        let (account, rate_limits, usage) = tokio::join!(
+            self.request_typed::<AccountReadResponse, _>(ACCOUNT_READ, account_read_params()),
+            self.request_typed::<Value, _>(ACCOUNT_RATE_LIMITS_READ, EmptyResponse::default()),
+            self.request_typed::<Value, _>(ACCOUNT_USAGE_READ, EmptyResponse::default()),
+        );
+        status_from_results(app_server, account, rate_limits.ok(), usage.ok())
+    }
+
+    pub fn unavailable_status(error: &CodexThreadError) -> CodexStatusResponse {
+        unavailable(
+            !matches!(error, CodexThreadError::MissingCli),
+            false,
+            error.to_string(),
+        )
     }
 
     async fn request_typed<T: DeserializeOwned, P: Serialize>(
@@ -544,21 +546,23 @@ fn classify_json_rpc_error(method: Option<&str>, value: &Value) -> CodexThreadEr
     }
 }
 
-async fn read_thread_server_stderr(
-    mut lines: Lines<BufReader<ChildStderr>>,
+async fn read_thread_server_stderr<R>(
+    mut lines: Lines<BufReader<R>>,
     events: broadcast::Sender<CodexRuntimeEvent>,
-) {
+) where
+    R: AsyncRead + Unpin,
+{
     loop {
         match lines.next_line().await {
             Ok(Some(line)) if !line.trim().is_empty() => {
-                let _ = events.send(CodexRuntimeEvent::Error {
+                let _ = events.send(CodexRuntimeEvent::Diagnostic {
                     message: format!("Codex app-server stderr: {line}"),
                 });
             }
             Ok(Some(_)) => {}
             Ok(None) => return,
             Err(error) => {
-                let _ = events.send(CodexRuntimeEvent::Error {
+                let _ = events.send(CodexRuntimeEvent::Diagnostic {
                     message: format!("Failed to read Codex app-server stderr: {error}"),
                 });
                 return;
@@ -574,176 +578,35 @@ async fn fail_pending(inner: &CodexThreadClientInner, error: CodexThreadError) {
     }
 }
 
-async fn read_app_server_status() -> Result<BTreeMap<u64, Value>, AppServerReadError> {
-    let mut child = Command::new("codex")
-        .arg("app-server")
-        .arg("--stdio")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|error| {
-            if error.kind() == ErrorKind::NotFound {
-                AppServerReadError::MissingCli
-            } else {
-                AppServerReadError::StartFailed(format!(
-                    "Failed to start Codex app-server: {error}"
-                ))
-            }
-        })?;
-
-    let mut stdin = child.stdin.take().ok_or_else(|| {
-        AppServerReadError::Protocol("Failed to open Codex app-server stdin.".to_string())
-    })?;
-    let stdout = child.stdout.take().ok_or_else(|| {
-        AppServerReadError::Protocol("Failed to open Codex app-server stdout.".to_string())
-    })?;
-
-    let messages = json_rpc_messages();
-    stdin
-        .write_all(messages.as_bytes())
-        .await
-        .map_err(|error| {
-            AppServerReadError::Protocol(format!(
-                "Failed to write Codex app-server request: {error}"
-            ))
-        })?;
-    stdin.flush().await.map_err(|error| {
-        AppServerReadError::Protocol(format!("Failed to flush Codex app-server request: {error}"))
-    })?;
-
-    let mut responses = BTreeMap::new();
-    let mut lines = BufReader::new(stdout).lines();
-    let deadline = Instant::now() + REQUEST_TIMEOUT;
-
-    while !has_required_responses(&responses) {
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        if remaining.is_zero() {
-            break;
+fn status_from_results(
+    app_server: Option<CodexAppServerInfo>,
+    account_result: Result<AccountReadResponse, CodexThreadError>,
+    rate_limits: Option<Value>,
+    usage: Option<Value>,
+) -> CodexStatusResponse {
+    let account_result = match account_result {
+        Ok(account_result) => account_result,
+        Err(error) => {
+            return CodexStatusResponse {
+                available: false,
+                codex_cli_available: true,
+                app_server_available: true,
+                message: Some(error.to_string()),
+                account: None,
+                requires_openai_auth: None,
+                rate_limits: rate_limits.as_ref().map(compact_rate_limits),
+                usage: usage.as_ref().map(compact_usage),
+                app_server,
+            };
         }
-
-        let line = match timeout(remaining, lines.next_line()).await {
-            Ok(Ok(Some(line))) => line,
-            Ok(Ok(None)) => break,
-            Ok(Err(error)) => {
-                return Err(AppServerReadError::Protocol(format!(
-                    "Failed to read Codex app-server response: {error}"
-                )));
-            }
-            Err(_) => break,
-        };
-
-        let Ok(value) = serde_json::from_str::<Value>(&line) else {
-            continue;
-        };
-        let Some(id) = value.get("id").and_then(Value::as_u64) else {
-            continue;
-        };
-        responses.insert(id, value);
-    }
-
-    drop(stdin);
-    let _ = child.start_kill();
-    let _ = timeout(SHUTDOWN_TIMEOUT, child.wait()).await;
-
-    Ok(responses)
-}
-
-fn json_rpc_messages() -> String {
-    [
-        json!({
-            "jsonrpc": "2.0",
-            "id": INITIALIZE_ID,
-            "method": "initialize",
-            "params": {
-                "clientInfo": {
-                    "name": "caffold",
-                    "version": env!("CARGO_PKG_VERSION")
-                },
-                "capabilities": {
-                    "experimentalApi": true
-                },
-                "title": "Caffold"
-            }
-        }),
-        json!({
-            "jsonrpc": "2.0",
-            "method": "initialized",
-            "params": {}
-        }),
-        json!({
-            "jsonrpc": "2.0",
-            "id": ACCOUNT_ID,
-            "method": "account/read",
-            "params": {
-                "proactivelyRefreshToken": false
-            }
-        }),
-        json!({
-            "jsonrpc": "2.0",
-            "id": RATE_LIMITS_ID,
-            "method": "account/rateLimits/read",
-            "params": {}
-        }),
-        json!({
-            "jsonrpc": "2.0",
-            "id": USAGE_ID,
-            "method": "account/usage/read",
-            "params": {}
-        }),
-    ]
-    .into_iter()
-    .map(|value| value.to_string())
-    .collect::<Vec<_>>()
-    .join("\n")
-        + "\n"
-}
-
-fn has_required_responses(responses: &BTreeMap<u64, Value>) -> bool {
-    responses.contains_key(&INITIALIZE_ID)
-        && responses.contains_key(&ACCOUNT_ID)
-        && responses.contains_key(&RATE_LIMITS_ID)
-        && responses.contains_key(&USAGE_ID)
-}
-
-fn status_from_responses(responses: BTreeMap<u64, Value>) -> CodexStatusResponse {
-    let app_server = response_result(&responses, INITIALIZE_ID)
-        .and_then(|value| serde_json::from_value::<CodexAppServerInfo>(value.clone()).ok());
-    let account_result = response_result(&responses, ACCOUNT_ID);
-    let account_error = response_error_message(&responses, ACCOUNT_ID);
-    let app_server_available = app_server.is_some()
-        || account_result.is_some()
-        || account_error.is_some()
-        || responses.contains_key(&ACCOUNT_ID);
-
-    let Some(account_result) = account_result else {
-        return CodexStatusResponse {
-            available: false,
-            codex_cli_available: true,
-            app_server_available,
-            message: Some(
-                account_error.unwrap_or_else(|| {
-                    "Codex app-server did not return account status.".to_string()
-                }),
-            ),
-            account: None,
-            requires_openai_auth: None,
-            rate_limits: response_result(&responses, RATE_LIMITS_ID).map(compact_rate_limits),
-            usage: response_result(&responses, USAGE_ID).map(compact_usage),
-            app_server,
-        };
     };
-
-    let account = account_result
-        .get("account")
-        .and_then(|value| serde_json::from_value::<CodexAccount>(value.clone()).ok());
-    let requires_openai_auth = account_result
-        .get("requiresOpenaiAuth")
-        .and_then(Value::as_bool);
+    let AccountReadResponse {
+        account,
+        requires_openai_auth,
+    } = account_result;
 
     let Some(account) = account else {
-        let message = if requires_openai_auth == Some(true) {
+        let message = if requires_openai_auth {
             "Codex authentication is required.".to_string()
         } else {
             "Codex app-server account response was incomplete.".to_string()
@@ -752,12 +615,12 @@ fn status_from_responses(responses: BTreeMap<u64, Value>) -> CodexStatusResponse
         return CodexStatusResponse {
             available: false,
             codex_cli_available: true,
-            app_server_available,
+            app_server_available: true,
             message: Some(message),
             account: None,
-            requires_openai_auth,
-            rate_limits: response_result(&responses, RATE_LIMITS_ID).map(compact_rate_limits),
-            usage: response_result(&responses, USAGE_ID).map(compact_usage),
+            requires_openai_auth: Some(requires_openai_auth),
+            rate_limits: rate_limits.as_ref().map(compact_rate_limits),
+            usage: usage.as_ref().map(compact_usage),
             app_server,
         };
     };
@@ -765,27 +628,14 @@ fn status_from_responses(responses: BTreeMap<u64, Value>) -> CodexStatusResponse
     CodexStatusResponse {
         available: true,
         codex_cli_available: true,
-        app_server_available,
+        app_server_available: true,
         message: None,
         account: Some(account),
-        requires_openai_auth,
-        rate_limits: response_result(&responses, RATE_LIMITS_ID).map(compact_rate_limits),
-        usage: response_result(&responses, USAGE_ID).map(compact_usage),
+        requires_openai_auth: Some(requires_openai_auth),
+        rate_limits: rate_limits.as_ref().map(compact_rate_limits),
+        usage: usage.as_ref().map(compact_usage),
         app_server,
     }
-}
-
-fn response_result(responses: &BTreeMap<u64, Value>, id: u64) -> Option<&Value> {
-    responses.get(&id)?.get("result")
-}
-
-fn response_error_message(responses: &BTreeMap<u64, Value>, id: u64) -> Option<String> {
-    responses
-        .get(&id)?
-        .get("error")?
-        .get("message")?
-        .as_str()
-        .map(ToOwned::to_owned)
 }
 
 fn compact_rate_limits(value: &Value) -> Value {
@@ -840,16 +690,36 @@ fn unavailable(
     }
 }
 
-#[derive(Debug)]
-enum AppServerReadError {
-    MissingCli,
-    StartFailed(String),
-    Protocol(String),
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn treats_app_server_stderr_as_diagnostic_output() {
+        let (mut writer, reader) = tokio::io::duplex(256);
+        let (events, mut receiver) = broadcast::channel(4);
+        let reader = tokio::spawn(read_thread_server_stderr(
+            BufReader::new(reader).lines(),
+            events,
+        ));
+
+        writer
+            .write_all(b"warning: diagnostic only\n")
+            .await
+            .expect("write stderr fixture");
+        writer.shutdown().await.expect("close stderr fixture");
+
+        assert_eq!(
+            timeout(Duration::from_secs(1), receiver.recv())
+                .await
+                .expect("receive diagnostic")
+                .expect("diagnostic channel remains readable"),
+            CodexRuntimeEvent::Diagnostic {
+                message: "Codex app-server stderr: warning: diagnostic only".to_string(),
+            }
+        );
+        reader.await.expect("stderr reader exits cleanly");
+    }
 
     #[test]
     fn classifies_invalid_params_by_standard_code() {
@@ -918,64 +788,40 @@ mod tests {
 
     #[test]
     fn builds_available_status_from_account_response() {
-        let status = status_from_responses(responses([
-            (
-                INITIALIZE_ID,
-                json!({
-                    "id": INITIALIZE_ID,
-                    "result": {
-                        "userAgent": "Codex Desktop/0.142.3",
-                        "codexHome": "/Users/example/.codex",
-                        "platformFamily": "unix",
-                        "platformOs": "macos"
-                    }
+        let status = status_from_results(
+            Some(CodexAppServerInfo {
+                user_agent: Some("Codex Desktop/0.142.3".to_string()),
+                codex_home: Some("/Users/example/.codex".to_string()),
+                platform_family: Some("unix".to_string()),
+                platform_os: Some("macos".to_string()),
+            }),
+            Ok(AccountReadResponse {
+                account: Some(CodexAccount {
+                    account_type: "chatgpt".to_string(),
+                    email: Some("user@example.com".to_string()),
+                    plan_type: Some("pro".to_string()),
                 }),
-            ),
-            (
-                ACCOUNT_ID,
-                json!({
-                    "id": ACCOUNT_ID,
-                    "result": {
-                        "account": {
-                            "type": "chatgpt",
-                            "email": "user@example.com",
-                            "planType": "pro"
-                        },
-                        "requiresOpenaiAuth": true
+                requires_openai_auth: true,
+            }),
+            Some(json!({
+                "rateLimits": {
+                    "primary": {
+                        "usedPercent": 42
                     }
-                }),
-            ),
-            (
-                RATE_LIMITS_ID,
-                json!({
-                    "id": RATE_LIMITS_ID,
-                    "result": {
-                        "rateLimits": {
-                            "primary": {
-                                "usedPercent": 42
-                            }
-                        }
+                }
+            })),
+            Some(json!({
+                "dailyUsageBuckets": [
+                    {
+                        "startDate": "2026-07-02",
+                        "tokens": 777
                     }
-                }),
-            ),
-            (
-                USAGE_ID,
-                json!({
-                    "id": USAGE_ID,
-                    "result": {
-                        "dailyUsageBuckets": [
-                            {
-                                "startDate": "2026-07-02",
-                                "tokens": 777
-                            }
-                        ],
-                        "summary": {
-                            "lifetimeTokens": 123456
-                        }
-                    }
-                }),
-            ),
-        ]));
+                ],
+                "summary": {
+                    "lifetimeTokens": 123456
+                }
+            })),
+        );
 
         assert!(status.available);
         assert!(status.codex_cli_available);
@@ -1017,18 +863,19 @@ mod tests {
 
     #[test]
     fn keeps_account_available_when_usage_details_are_missing() {
-        let status = status_from_responses(responses([(
-            ACCOUNT_ID,
-            json!({
-                "id": ACCOUNT_ID,
-                "result": {
-                    "account": {
-                        "type": "apiKey"
-                    },
-                    "requiresOpenaiAuth": false
-                }
+        let status = status_from_results(
+            None,
+            Ok(AccountReadResponse {
+                account: Some(CodexAccount {
+                    account_type: "apiKey".to_string(),
+                    email: None,
+                    plan_type: None,
+                }),
+                requires_openai_auth: false,
             }),
-        )]));
+            None,
+            None,
+        );
 
         assert!(status.available);
         assert!(status.app_server_available);
@@ -1046,25 +893,42 @@ mod tests {
 
     #[test]
     fn maps_account_error_to_unavailable_status() {
-        let status = status_from_responses(responses([(
-            ACCOUNT_ID,
-            json!({
-                "id": ACCOUNT_ID,
-                "error": {
-                    "code": -32000,
-                    "message": "not authenticated"
-                }
-            }),
-        )]));
+        let status = status_from_results(
+            None,
+            Err(CodexThreadError::Protocol(
+                "not authenticated (code -32000)".to_string(),
+            )),
+            None,
+            None,
+        );
 
         assert!(!status.available);
         assert!(status.codex_cli_available);
         assert!(status.app_server_available);
-        assert_eq!(status.message, Some("not authenticated".to_string()));
+        assert_eq!(
+            status.message,
+            Some("Codex app-server protocol error: not authenticated (code -32000)".to_string())
+        );
         assert_eq!(status.account, None);
     }
 
-    fn responses<const N: usize>(entries: [(u64, Value); N]) -> BTreeMap<u64, Value> {
-        entries.into_iter().collect()
+    #[test]
+    fn maps_missing_account_to_authentication_required() {
+        let status = status_from_results(
+            None,
+            Ok(AccountReadResponse {
+                account: None,
+                requires_openai_auth: true,
+            }),
+            None,
+            None,
+        );
+
+        assert!(!status.available);
+        assert_eq!(
+            status.message,
+            Some("Codex authentication is required.".to_string())
+        );
+        assert_eq!(status.requires_openai_auth, Some(true));
     }
 }

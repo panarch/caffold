@@ -69,6 +69,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.taskListWidth = TASK_LIST_DEFAULT_WIDTH;
     this.taskSeenState = readTaskSeenState();
     this.taskDetail = null;
+    this.taskRevisionByThread = new Map();
     this.taskGithubStatus = null;
     this.taskGithubStatusPath = "";
     this.taskGithubStatusState = "idle";
@@ -463,6 +464,12 @@ class CaffoldTasksPage extends HTMLElement {
       if (requestId !== this.requestId) {
         return null;
       }
+      if (
+        detail?.task?.threadId !== threadId ||
+        !this.acceptTaskRevision(threadId, detail.revision)
+      ) {
+        return null;
+      }
       this.taskDetail = detail;
       this.setThreadEvents(
         threadId,
@@ -611,21 +618,26 @@ class CaffoldTasksPage extends HTMLElement {
       }, STREAM_ERROR_DELAY_MS);
     });
     stream.addEventListener("task-sync", (event) => {
-      const detail = parseJson(event.data);
+      const message = parseJson(event.data);
+      const detail = message?.detail;
       if (
         !this.isCurrentStream(stream, threadId, generation) ||
+        message?.threadId !== threadId ||
         detail?.task?.threadId !== threadId
       ) {
         return;
       }
-      this.applyTaskDetailSync(threadId, detail);
+      this.applyTaskDetailSync(threadId, detail, message.revision);
     });
     stream.addEventListener("task-event", (event) => {
-      const entry = parseJson(event.data);
+      const message = parseJson(event.data);
+      const entry = message?.event;
       if (
         !this.isCurrentStream(stream, threadId, generation) ||
+        message?.threadId !== threadId ||
         !entry ||
-        entry.threadId !== this.selectedThreadId
+        entry.threadId !== this.selectedThreadId ||
+        !this.acceptTaskRevision(threadId, message.revision)
       ) {
         return;
       }
@@ -636,8 +648,11 @@ class CaffoldTasksPage extends HTMLElement {
     });
   }
 
-  applyTaskDetailSync(threadId, detail) {
-    if (threadId !== this.selectedThreadId) {
+  applyTaskDetailSync(threadId, detail, revision) {
+    if (
+      threadId !== this.selectedThreadId ||
+      !this.acceptTaskRevision(threadId, revision ?? detail?.revision)
+    ) {
       return;
     }
     this.taskDetail = detail;
@@ -688,9 +703,17 @@ class CaffoldTasksPage extends HTMLElement {
       if (this.taskListStream !== stream || this.taskListStreamContext !== context) {
         return;
       }
-      const entry = parseJson(event.data);
+      const message = parseJson(event.data);
+      const entry = message?.event;
+      if (
+        !entry ||
+        message?.threadId !== entry.threadId ||
+        !this.acceptTaskRevision(entry.threadId, message.revision)
+      ) {
+        return;
+      }
       const task = this.tasks.find(
-        (candidate) => taskThreadId(candidate) === entry?.threadId,
+        (candidate) => taskThreadId(candidate) === entry.threadId,
       );
       const nextTask = taskWithLiveEventState(task, entry);
       if (nextTask && nextTask !== task) {
@@ -701,11 +724,29 @@ class CaffoldTasksPage extends HTMLElement {
       if (this.taskListStream !== stream || this.taskListStreamContext !== context) {
         return;
       }
-      const detail = parseJson(event.data);
-      if (detail?.task) {
+      const message = parseJson(event.data);
+      const detail = message?.detail;
+      if (
+        detail?.task &&
+        message?.threadId === taskThreadId(detail.task) &&
+        this.acceptTaskRevision(message.threadId, message.revision)
+      ) {
         this.patchTaskListTask(detail.task);
       }
     });
+  }
+
+  acceptTaskRevision(threadId, revision) {
+    const value = Number(revision);
+    if (!threadId || !Number.isFinite(value) || value <= 0) {
+      return true;
+    }
+    const current = this.taskRevisionByThread.get(threadId) ?? 0;
+    if (value < current) {
+      return false;
+    }
+    this.taskRevisionByThread.set(threadId, value);
+    return true;
   }
 
   closeTaskListStream() {
@@ -815,6 +856,9 @@ class CaffoldTasksPage extends HTMLElement {
         return;
       }
       if (detail?.task?.threadId !== threadId) {
+        return;
+      }
+      if (!this.acceptTaskRevision(threadId, detail.revision)) {
         return;
       }
       this.taskDetail = detail;
@@ -1147,6 +1191,7 @@ class CaffoldTasksPage extends HTMLElement {
         images: images.map((image) => image.dataUrl),
         ...this.turnOptions(),
       });
+      this.acceptTaskRevision(detail?.task?.threadId, detail?.revision);
       this.taskDetail = detail;
       this.setThreadEvents(detail.task.threadId, detail.events ?? []);
       this.eventsPage = detail.eventsPage ?? { nextCursor: null };
@@ -1289,6 +1334,9 @@ class CaffoldTasksPage extends HTMLElement {
       if (requestId !== this.requestId) {
         return;
       }
+      if (!this.acceptTaskRevision(this.selectedThreadId, detail.revision)) {
+        return;
+      }
       this.taskDetail = detail;
       this.setThreadEvents(
         this.selectedThreadId,
@@ -1321,6 +1369,9 @@ class CaffoldTasksPage extends HTMLElement {
         this.cwdPath,
       );
       if (requestId !== this.requestId) {
+        return;
+      }
+      if (!this.acceptTaskRevision(this.selectedThreadId, detail.revision)) {
         return;
       }
       this.taskDetail = detail;
@@ -1357,6 +1408,12 @@ class CaffoldTasksPage extends HTMLElement {
         return;
       }
       if (detail?.task?.threadId !== this.selectedThreadId) {
+        this.loadingOlderEvents = false;
+        this.conversationScrollMode = "preserve";
+        this.render();
+        return;
+      }
+      if (!this.acceptTaskRevision(this.selectedThreadId, detail.revision)) {
         this.loadingOlderEvents = false;
         this.conversationScrollMode = "preserve";
         this.render();
