@@ -38,7 +38,7 @@ use crate::{
     git,
     server_settings::{ServerSettings, ServerSettingsError, ServerSettingsStore},
     static_assets,
-    task_activity::{TaskActivity, TaskActivityMonitor},
+    task_rollout::TaskRolloutMonitor,
     watch::{WatchChange, WatchError, WatchHub, WatchMessage},
 };
 
@@ -67,7 +67,7 @@ struct AppState {
     task_sync: TaskSyncCoordinator,
     task_sync_events: broadcast::Sender<TaskDetailSync>,
     live_task_events: LiveTaskEventCache,
-    task_activity: TaskActivityMonitor,
+    task_rollouts: TaskRolloutMonitor,
     watch_hub: WatchHub,
     shutdown: broadcast::Sender<()>,
     initial_path: String,
@@ -571,7 +571,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let (task_events, _) = broadcast::channel(256);
     let task_sync = TaskSyncCoordinator::new();
     let (task_sync_events, _) = broadcast::channel(64);
-    let task_activity = task_activity_monitor(task_events.clone(), task_sync.clone());
+    let task_rollouts = task_rollout_monitor(task_sync.clone());
     let (shutdown, _) = broadcast::channel(16);
     let pending_approvals = Arc::new(AsyncMutex::new(HashMap::new()));
     let codex_threads = Arc::new(CodexThreadRuntime::default());
@@ -589,7 +589,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         task_sync,
         task_sync_events,
         live_task_events: LiveTaskEventCache::default(),
-        task_activity,
+        task_rollouts,
         watch_hub,
         shutdown: shutdown.clone(),
         initial_path: initial_path.clone(),
@@ -626,7 +626,7 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
     let (task_events, _) = broadcast::channel(256);
     let task_sync = TaskSyncCoordinator::new();
     let (task_sync_events, _) = broadcast::channel(64);
-    let task_activity = task_activity_monitor(task_events.clone(), task_sync.clone());
+    let task_rollouts = task_rollout_monitor(task_sync.clone());
     let (shutdown, _) = broadcast::channel(16);
     let fs = Arc::new(fs);
     let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
@@ -640,7 +640,7 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         task_sync,
         task_sync_events,
         live_task_events: LiveTaskEventCache::default(),
-        task_activity,
+        task_rollouts,
         watch_hub,
         shutdown,
         initial_path: String::new(),
@@ -1252,13 +1252,7 @@ async fn list_tasks(
     let response = client.list_threads(100).await?;
     let response =
         serde_json::to_value(response).map_err(|error| ApiError::CodexThread(error.to_string()))?;
-    state.task_activity.observe_threads(&response);
-    let tasks = thread_list_response(
-        &state.fs,
-        cwd_filter.as_ref(),
-        &response,
-        Some(&state.task_activity),
-    );
+    let tasks = thread_list_response(&state.fs, cwd_filter.as_ref(), &response);
     Ok(Json(TaskListResponse { tasks }))
 }
 
@@ -1392,6 +1386,15 @@ async fn task_stream(
         .codex_sessions
         .acquire_viewer(&connection.client, connection.generation, &thread_id)
         .await?;
+    let rollout_path = state
+        .codex_sessions
+        .snapshot(&thread_id)
+        .await
+        .and_then(|snapshot| snapshot.thread)
+        .and_then(|thread| thread.path);
+    let rollout_subscription = state
+        .task_rollouts
+        .subscribe(&thread_id, rollout_path.as_deref());
     let subscription = state.task_sync.subscribe(&thread_id);
     ensure_task_sync_worker(&state).await;
     let receiver = state.task_events.subscribe();
@@ -1407,6 +1410,7 @@ async fn task_stream(
             shutdown,
             thread_id,
             subscription,
+            rollout_subscription,
             viewer,
             sessions,
         ),
@@ -1417,6 +1421,7 @@ async fn task_stream(
             mut shutdown,
             thread_id,
             subscription,
+            rollout_subscription,
             viewer,
             sessions,
         )| async move {
@@ -1430,6 +1435,7 @@ async fn task_stream(
                         shutdown,
                         thread_id,
                         subscription,
+                        rollout_subscription,
                         viewer,
                         sessions,
                     ),
@@ -1453,6 +1459,7 @@ async fn task_stream(
                                         shutdown,
                                         thread_id,
                                         subscription,
+                                        rollout_subscription,
                                         viewer,
                                         sessions,
                                     ),
@@ -1487,6 +1494,7 @@ async fn task_stream(
                                         shutdown,
                                         thread_id,
                                         subscription,
+                                        rollout_subscription,
                                         viewer,
                                         sessions,
                                     ),
@@ -1522,39 +1530,21 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
     let receiver = state.task_events.subscribe();
     let sync_receiver = state.task_sync_events.subscribe();
     let shutdown = state.shutdown.subscribe();
-    let activity = thread_id.is_none().then(|| state.task_activity.clone());
     let live_task_events = state.live_task_events.clone();
     let sessions = state.codex_sessions.clone();
-    let mut activity_reconcile = tokio::time::interval(Duration::from_secs(1));
-    activity_reconcile.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let stream = stream::unfold(
         (
             receiver,
             sync_receiver,
             shutdown,
             thread_id,
-            activity,
-            activity_reconcile,
             live_task_events,
             sessions,
         ),
-        |(
-            mut receiver,
-            mut sync_receiver,
-            mut shutdown,
-            thread_id,
-            activity,
-            mut activity_reconcile,
-            live_task_events,
-            sessions,
-        )| async move {
+        |(mut receiver, mut sync_receiver, mut shutdown, thread_id, live_task_events, sessions)| async move {
             loop {
                 tokio::select! {
                     _ = shutdown.recv() => return None,
-                    _ = activity_reconcile.tick(), if activity.is_some() => {
-                        activity.as_ref().unwrap().reconcile_running();
-                        continue;
-                    }
                     message = sync_receiver.recv() => {
                         match message {
                             Ok(sync) if thread_id.as_ref().is_none_or(|id| id == &sync.thread_id) => {
@@ -1568,8 +1558,6 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
                                         sync_receiver,
                                         shutdown,
                                         thread_id,
-                                        activity,
-                                        activity_reconcile,
                                         live_task_events,
                                         sessions,
                                     ),
@@ -1603,8 +1591,6 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
                                         sync_receiver,
                                         shutdown,
                                         thread_id,
-                                        activity,
-                                        activity_reconcile,
                                         live_task_events,
                                         sessions,
                                     ),
@@ -1891,7 +1877,6 @@ async fn task_detail_from_snapshot(
         .expect("thread metadata was checked above")
         .into_value();
     let thread = thread_with_turns(&thread, turns)?;
-    state.task_activity.observe_thread(&thread);
     let mut events = thread_events(&thread);
     state.live_task_events.observe(&events);
     events = merge_task_event_records(events, state.live_task_events.for_thread(&thread_id));
@@ -1903,13 +1888,7 @@ async fn task_detail_from_snapshot(
             .then_with(|| left.id.cmp(&right.id))
     });
     let resolved_cwd = resolve_thread_cwd(&state.fs, &thread);
-    let rollout_activity = state.task_activity.activity(&thread_id);
-    let task = task_record_from_thread(
-        &thread,
-        &events,
-        resolved_cwd.as_ref(),
-        rollout_activity.as_ref(),
-    )?;
+    let task = task_record_from_thread(&thread, &events, resolved_cwd.as_ref())?;
     Ok(TaskDetailResponse {
         revision: snapshot.revision,
         task,
@@ -1970,7 +1949,6 @@ fn thread_list_response(
     fs: &RootedFs,
     cwd_filter: Option<&TaskCwdFilter>,
     response: &JsonValue,
-    activity: Option<&TaskActivityMonitor>,
 ) -> Vec<TaskRecord> {
     let mut resolved_cwds = HashMap::<String, Option<ResolvedTaskCwd>>::new();
     let mut tasks = response
@@ -1991,15 +1969,7 @@ fn thread_list_response(
                 return None;
             }
 
-            let rollout_activity = thread_id(thread)
-                .and_then(|thread_id| activity.and_then(|activity| activity.activity(thread_id)));
-            task_record_from_thread(
-                thread,
-                &[],
-                resolved_cwd.as_ref(),
-                rollout_activity.as_ref(),
-            )
-            .ok()
+            task_record_from_thread(thread, &[], resolved_cwd.as_ref()).ok()
         })
         .collect::<Vec<_>>();
     tasks.sort_by(|left, right| {
@@ -2016,7 +1986,6 @@ fn task_record_from_thread(
     thread: &JsonValue,
     events: &[TaskEventRecord],
     resolved_cwd: Option<&ResolvedTaskCwd>,
-    rollout_activity: Option<&TaskActivity>,
 ) -> Result<TaskRecord, ApiError> {
     let thread_id = thread_id(thread).ok_or_else(|| ApiError::BadRequest {
         code: "thread_id_missing",
@@ -2031,35 +2000,16 @@ fn task_record_from_thread(
         .and_then(JsonValue::as_str)
         .unwrap_or("")
         .to_string();
-    let thread_active_turn_id = active_turn_id(thread);
-    let completed_rollout_turn_status = rollout_activity
-        .filter(|activity| activity.is_running())
-        .and_then(|activity| terminal_turn_status_after_rollout_start(thread, activity));
-    let rollout_activity = rollout_activity.filter(|_| completed_rollout_turn_status.is_none());
-    let active_turn_id = thread_active_turn_id.clone().or_else(|| {
-        rollout_activity
-            .filter(|activity| activity.is_running())
-            .and_then(TaskActivity::turn_id)
-            .map(ToOwned::to_owned)
-    });
-    let active_turn_started_ms = thread_active_turn_id
+    let active_turn_id = active_turn_id(thread);
+    let active_turn_started_ms = active_turn_id
         .as_deref()
-        .and_then(|turn_id| turn_started_ms(thread, turn_id))
-        .or_else(|| {
-            rollout_activity
-                .filter(|activity| activity.is_running())
-                .and_then(TaskActivity::started_ms)
-        });
+        .and_then(|turn_id| turn_started_ms(thread, turn_id));
     let has_pending_approval = events
         .iter()
         .any(|event| event.event_type == "approval_requested");
     let status = if has_pending_approval {
         "waiting_for_approval".to_string()
     } else if active_turn_id.is_some() {
-        "running".to_string()
-    } else if let Some(status) = completed_rollout_turn_status {
-        status.to_string()
-    } else if rollout_activity.is_some_and(TaskActivity::is_running) {
         "running".to_string()
     } else {
         thread_status(thread)
@@ -2092,38 +2042,8 @@ fn task_record_from_thread(
     })
 }
 
-fn task_activity_monitor(
-    task_events: broadcast::Sender<TaskEventRecord>,
-    task_sync: TaskSyncCoordinator,
-) -> TaskActivityMonitor {
-    TaskActivityMonitor::new(
-        move |thread_id, activity| {
-            let status = if activity.is_running() {
-                "running"
-            } else {
-                "idle"
-            };
-            let event = task_event_record(
-                &thread_id,
-                &format!("rollout_status:{}", now_ms()),
-                "thread_status_changed",
-                if activity.is_running() {
-                    "Thread running"
-                } else {
-                    "Thread idle"
-                },
-                Some(json!({
-                    "threadId": thread_id,
-                    "status": status,
-                    "activeTurnId": activity.turn_id(),
-                    "activeTurnStartedMs": activity.started_ms()
-                })),
-                now_ms(),
-            );
-            let _ = task_events.send(event);
-        },
-        move |thread_id| task_sync.invalidate(thread_id),
-    )
+fn task_rollout_monitor(task_sync: TaskSyncCoordinator) -> TaskRolloutMonitor {
+    TaskRolloutMonitor::new(move |thread_id| task_sync.invalidate(thread_id))
 }
 
 fn thread_events(thread: &JsonValue) -> Vec<TaskEventRecord> {
@@ -3076,36 +2996,6 @@ fn turn_started_ms(thread: &JsonValue, turn_id: &str) -> Option<u64> {
         .filter(|value| *value > 0)
 }
 
-fn terminal_turn_status_after_rollout_start<'a>(
-    thread: &'a JsonValue,
-    activity: &TaskActivity,
-) -> Option<&'a str> {
-    let turn_id = activity.turn_id()?;
-    let turn = thread
-        .get("turns")
-        .and_then(JsonValue::as_array)?
-        .iter()
-        .find(|turn| turn.get("id").and_then(JsonValue::as_str) == Some(turn_id))?;
-    let status = turn.get("status").and_then(JsonValue::as_str)?;
-    if !["completed", "failed", "interrupted"].contains(&status) {
-        return None;
-    }
-
-    let completed_ms = turn
-        .get("completedAt")
-        .and_then(JsonValue::as_f64)
-        .map(seconds_to_ms_value)
-        .filter(|value| *value > 0)?;
-    if activity
-        .started_ms()
-        .is_some_and(|started_ms| completed_ms < started_ms)
-    {
-        return None;
-    }
-
-    Some(status)
-}
-
 fn seconds_to_ms(value: Option<f64>) -> u64 {
     value.map(seconds_to_ms_value).unwrap_or(0)
 }
@@ -3641,7 +3531,7 @@ mod tests {
             ]
         });
 
-        let tasks = thread_list_response(&fs, Some(&cwd_filter), &response, None);
+        let tasks = thread_list_response(&fs, Some(&cwd_filter), &response);
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].thread_id, "thread_old");
     }
@@ -3674,7 +3564,7 @@ mod tests {
             ]
         });
 
-        let tasks = thread_list_response(&fs, None, &response, None);
+        let tasks = thread_list_response(&fs, None, &response);
 
         assert_eq!(tasks.len(), 2);
         assert_eq!(tasks[0].thread_id, "thread_global");
@@ -3683,116 +3573,23 @@ mod tests {
     }
 
     #[test]
-    fn thread_list_response_uses_rollout_activity_for_cross_process_running_state() {
+    fn task_record_uses_canonical_active_turn_state() {
         let temp = tempfile::tempdir().unwrap();
-        let fs = RootedFs::new(temp.path()).unwrap();
-        let project_root = temp.path().join("project");
-        let rollout_path = temp.path().join("rollout.jsonl");
-        std::fs::create_dir(&project_root).unwrap();
-        std::fs::write(
-            &rollout_path,
-            concat!(
-                "{\"payload\":{\"type\":\"task_started\",",
-                "\"turn_id\":\"turn_elsewhere\",\"started_at\":1750000000}}\n"
-            ),
-        )
-        .unwrap();
-        let response = json!({
-            "data": [{
-                "id": "thread_running_elsewhere",
-                "preview": "Running in Codex desktop",
-                "cwd": project_root.display().to_string(),
-                "path": rollout_path.display().to_string(),
-                "createdAt": 1.0,
-                "updatedAt": 2.0,
-                "status": { "type": "notLoaded" }
-            }]
-        });
-        let (events, _) = broadcast::channel(4);
-        let activity = task_activity_monitor(events, TaskSyncCoordinator::new());
-        activity.observe_threads(&response);
-
-        let tasks = thread_list_response(&fs, None, &response, Some(&activity));
-
-        assert_eq!(tasks.len(), 1);
-        assert_eq!(tasks[0].status, "running");
-        assert_eq!(tasks[0].active_turn_id.as_deref(), Some("turn_elsewhere"));
-        assert_eq!(tasks[0].active_turn_started_ms, Some(1_750_000_000_000));
-    }
-
-    #[test]
-    fn completed_turn_overrides_matching_rollout_running_fallback() {
-        let temp = tempfile::tempdir().unwrap();
-        let rollout_path = temp.path().join("rollout.jsonl");
-        std::fs::write(
-            &rollout_path,
-            concat!(
-                "{\"payload\":{\"type\":\"task_started\",",
-                "\"turn_id\":\"turn_completed\",\"started_at\":1750000000}}\n"
-            ),
-        )
-        .unwrap();
-        let thread = json!({
-            "id": "thread_completed",
-            "preview": "Completed elsewhere",
-            "cwd": temp.path().display().to_string(),
-            "path": rollout_path.display().to_string(),
-            "createdAt": 1.0,
-            "updatedAt": 2.0,
-            "status": { "type": "active" },
-            "turns": [{
-                "id": "turn_completed",
-                "status": "completed",
-                "startedAt": 1_750_000_000.0,
-                "completedAt": 1_750_000_030.0,
-                "items": []
-            }]
-        });
-        let (events, _) = broadcast::channel(4);
-        let activity = task_activity_monitor(events, TaskSyncCoordinator::new());
-        activity.observe_thread(&thread);
-
-        let rollout_activity = activity.activity("thread_completed");
-        let task = task_record_from_thread(&thread, &[], None, rollout_activity.as_ref()).unwrap();
-
-        assert_eq!(task.status, "completed");
-        assert_eq!(task.active_turn_id, None);
-        assert_eq!(task.active_turn_started_ms, None);
-    }
-
-    #[test]
-    fn terminal_turn_without_completion_time_keeps_rollout_running() {
-        let temp = tempfile::tempdir().unwrap();
-        let rollout_path = temp.path().join("rollout.jsonl");
-        std::fs::write(
-            &rollout_path,
-            concat!(
-                "{\"payload\":{\"type\":\"task_started\",",
-                "\"turn_id\":\"turn_active\",\"started_at\":1750000000}}\n"
-            ),
-        )
-        .unwrap();
         let thread = json!({
             "id": "thread_active",
-            "preview": "Running elsewhere",
+            "preview": "Running in app-server",
             "cwd": temp.path().display().to_string(),
-            "path": rollout_path.display().to_string(),
             "createdAt": 1.0,
             "updatedAt": 2.0,
             "status": { "type": "active" },
             "turns": [{
                 "id": "turn_active",
-                "status": "interrupted",
+                "status": "inProgress",
                 "startedAt": 1_750_000_000.0,
                 "items": []
             }]
         });
-        let (events, _) = broadcast::channel(4);
-        let activity = task_activity_monitor(events, TaskSyncCoordinator::new());
-        activity.observe_thread(&thread);
-
-        let rollout_activity = activity.activity("thread_active");
-        let task = task_record_from_thread(&thread, &[], None, rollout_activity.as_ref()).unwrap();
+        let task = task_record_from_thread(&thread, &[], None).unwrap();
 
         assert_eq!(task.status, "running");
         assert_eq!(task.active_turn_id.as_deref(), Some("turn_active"));
@@ -3828,7 +3625,7 @@ mod tests {
             ]
         });
 
-        let tasks = thread_list_response(&fs, Some(&cwd_filter), &response, None);
+        let tasks = thread_list_response(&fs, Some(&cwd_filter), &response);
 
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].thread_id, "thread_project_root");
@@ -4215,7 +4012,7 @@ mod tests {
             1,
         )];
 
-        let task = task_record_from_thread(&thread, &events, None, None).unwrap();
+        let task = task_record_from_thread(&thread, &events, None).unwrap();
         assert_eq!(task.status, "waiting_for_approval");
     }
 
@@ -4295,7 +4092,7 @@ mod tests {
             ]
         });
         let filter = TaskCwdFilter::Repository(main.repository_common_dir.unwrap());
-        let filtered = thread_list_response(&fs, Some(&filter), &response, None);
+        let filtered = thread_list_response(&fs, Some(&filter), &response);
         assert_eq!(
             filtered
                 .iter()
@@ -4303,7 +4100,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["thread_linked", "thread_main_src", "thread_main_root"]
         );
-        let all = thread_list_response(&fs, None, &response, None);
+        let all = thread_list_response(&fs, None, &response);
         assert_eq!(all.len(), 3);
 
         git(&linked_root, &["checkout", "--detach", "HEAD"]);

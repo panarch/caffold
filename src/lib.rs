@@ -8,5 +8,5 @@ mod git;
 mod github;
 mod server_settings;
 mod static_assets;
-mod task_activity;
+mod task_rollout;
 mod watch;

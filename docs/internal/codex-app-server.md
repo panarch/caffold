@@ -126,21 +126,25 @@ notification when Codex desktop starts or updates a turn. This is a description
 of the current integration, not a protocol guarantee; shared daemon/proxy
 transports and explicit thread subscriptions must be evaluated separately.
 
-Caffold watches the rollout file path reported by Codex for tasks that it has
-observed. The rollout file is only an invalidation signal: Caffold never parses
-it as transcript data. When a selected task's rollout changes, Caffold waits for
-a 600ms quiet period, reads the canonical task through app-server `thread/read`,
-and broadcasts that one result to every Caffold SSE client viewing the task.
-Multiple browsers therefore share one canonical read instead of each issuing a
-separate detail request. Tasks with no active detail subscriber do not trigger
-transcript reads.
+Caffold watches the rollout path reported by Codex only while a task detail SSE
+viewer is active. The rollout file is an invalidation signal only: Caffold does
+not open it, parse JSONL records, or infer running/completed state from its
+contents. Multiple viewers of the same task share one native file watch, and the
+last viewer closing releases that watch.
 
-The existing lightweight rollout activity scan remains limited to detecting
-running/completed status. Its one-second running-state reconciliation does not
-perform transcript reads. Browser reconnect and visibility resume each request
-one canonical detail sync to recover events that may have been missed while the
-client was disconnected. This design avoids periodic transcript polling while
-keeping Codex app-server as the task source of truth.
+When a watched rollout changes, Caffold waits for the shared 600ms quiet period
+and asks its app-server connection for canonical thread metadata and incremental
+turn history. Concurrent changes coalesce into one active sync plus at most one
+trailing sync. The resulting revisioned snapshot is broadcast to every Caffold
+SSE client viewing that task. Tasks without an active detail subscriber do not
+trigger rollout-driven transcript reads.
+
+Running state comes only from app-server `Thread.status`, `Turn.status`, and
+typed notifications. Browser reconnect and visibility resume each request one
+canonical detail sync to recover events that may have been missed while the
+client was disconnected. If the rollout path is absent or the native watcher is
+unavailable, app-server notifications and explicit synchronization continue to
+work; Caffold does not add a polling fallback.
 
 Local task metadata/event storage is deferred and optional. If added later, it
 should augment Codex threads with Caffold-only annotations rather than become
