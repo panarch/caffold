@@ -1885,6 +1885,19 @@ test("groups All Tasks by repository without worktree accordions", async ({ page
   }
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-all-repository-groups");
+  await page.evaluate(() => {
+    window.__taskListEventSource.emit("task-removed", {
+      threadId: "thread_notes",
+      reason: "archived",
+    });
+  });
+  await expect(
+    tasksPage.locator('.task-row[data-thread-id="thread_notes"]'),
+  ).toHaveCount(0);
+  await expect(groups).toHaveCount(2);
+  await expect(
+    tasksPage.locator('.task-repository-group[data-task-repository-key="directory:notes"]'),
+  ).toHaveCount(0);
 });
 
 test("opens Tasks from Codex header and runs a minimal task loop", async ({ page }, testInfo) => {

@@ -699,6 +699,15 @@ class CaffoldTasksPage extends HTMLElement {
         this.taskListStreamNeedsSync = true;
       }
     });
+    stream.addEventListener("task-removed", (event) => {
+      if (this.taskListStream !== stream || this.taskListStreamContext !== context) {
+        return;
+      }
+      const message = parseJson(event.data);
+      if (message?.threadId) {
+        this.removeTaskListTask(message.threadId);
+      }
+    });
     stream.addEventListener("task-event", (event) => {
       if (this.taskListStream !== stream || this.taskListStreamContext !== context) {
         return;
@@ -2738,6 +2747,23 @@ class CaffoldTasksPage extends HTMLElement {
       this.syncTaskListSelection();
       this.reorderTaskListDom();
     }
+  }
+
+  removeTaskListTask(threadId) {
+    if (!threadId || !this.taskListLoaded) {
+      return;
+    }
+    const tasks = this.tasks.filter(
+      (candidate) => taskThreadId(candidate) !== threadId,
+    );
+    if (tasks.length === this.tasks.length) {
+      return;
+    }
+    this.tasks = tasks;
+    this.taskRevisionByThread.delete(threadId);
+    this.markTaskListDirty();
+    this.renderTaskListRegion();
+    this.syncTaskListSelection();
   }
 
   reorderTaskListDom() {

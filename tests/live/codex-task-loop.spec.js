@@ -283,6 +283,9 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
 
   const archiveResponse = await page.request.post(`/api/tasks/${threadId}/archive`);
   expect(archiveResponse.status()).toBe(204);
+  await expect(
+    tasksPage.locator(`.task-row[data-thread-id="${threadId}"]`),
+  ).toHaveCount(0, { timeout: 5_000 });
   await page.goto(`/tasks?cwd=${encodeURIComponent(cwd)}`);
   await expect(tasksPage.locator(`.task-row[data-thread-id="${threadId}"]`)).toHaveCount(0);
 });

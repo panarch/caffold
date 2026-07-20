@@ -68,6 +68,7 @@ struct AppState {
     task_events: broadcast::Sender<TaskEventRecord>,
     task_sync: TaskSyncCoordinator,
     task_sync_events: broadcast::Sender<TaskDetailSync>,
+    task_list_removals: broadcast::Sender<TaskListRemoval>,
     live_task_events: LiveTaskEventCache,
     task_rollouts: TaskRolloutMonitor,
     watch_hub: WatchHub,
@@ -588,6 +589,13 @@ struct TaskEventEnvelope {
     event: TaskEventRecord,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskListRemoval {
+    thread_id: String,
+    reason: &'static str,
+}
+
 #[derive(Debug, Serialize)]
 struct ErrorResponse {
     error: ErrorBody,
@@ -616,6 +624,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let (task_events, _) = broadcast::channel(256);
     let task_sync = TaskSyncCoordinator::new();
     let (task_sync_events, _) = broadcast::channel(64);
+    let (task_list_removals, _) = broadcast::channel(64);
     let task_rollouts = task_rollout_monitor(task_sync.clone());
     let (shutdown, _) = broadcast::channel(16);
     let pending_approvals = Arc::new(AsyncMutex::new(HashMap::new()));
@@ -633,6 +642,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         task_events,
         task_sync,
         task_sync_events,
+        task_list_removals,
         live_task_events: LiveTaskEventCache::default(),
         task_rollouts,
         watch_hub,
@@ -671,6 +681,7 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
     let (task_events, _) = broadcast::channel(256);
     let task_sync = TaskSyncCoordinator::new();
     let (task_sync_events, _) = broadcast::channel(64);
+    let (task_list_removals, _) = broadcast::channel(64);
     let task_rollouts = task_rollout_monitor(task_sync.clone());
     let (shutdown, _) = broadcast::channel(16);
     let fs = Arc::new(fs);
@@ -684,6 +695,7 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         task_events,
         task_sync,
         task_sync_events,
+        task_list_removals,
         live_task_events: LiveTaskEventCache::default(),
         task_rollouts,
         watch_hub,
@@ -1442,8 +1454,14 @@ async fn run_task_sync_worker(state: AppState, mut receiver: mpsc::UnboundedRece
                 .sync_latest(&connection.client, connection.generation, &thread_id)
                 .await;
             drop(rollout_suppression);
-            let Ok(Some(snapshot)) = snapshot else {
-                continue;
+            let snapshot = match snapshot {
+                Ok(Some(snapshot)) => snapshot,
+                Ok(None) => continue,
+                Err(error) if error.is_thread_unavailable() => {
+                    notify_task_removed(&state, &thread_id, "unavailable");
+                    continue;
+                }
+                Err(_) => continue,
             };
             let Ok(detail) = task_detail_from_snapshot(&state, snapshot, None).await else {
                 continue;
@@ -1622,6 +1640,7 @@ async fn task_list_stream(State(state): State<AppState>) -> Result<Response, Api
 fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
     let receiver = state.task_events.subscribe();
     let sync_receiver = state.task_sync_events.subscribe();
+    let removal_receiver = state.task_list_removals.subscribe();
     let shutdown = state.shutdown.subscribe();
     let live_task_events = state.live_task_events.clone();
     let sessions = state.codex_sessions.clone();
@@ -1629,15 +1648,48 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
         (
             receiver,
             sync_receiver,
+            removal_receiver,
             shutdown,
             thread_id,
             live_task_events,
             sessions,
         ),
-        |(mut receiver, mut sync_receiver, mut shutdown, thread_id, live_task_events, sessions)| async move {
+        |(
+            mut receiver,
+            mut sync_receiver,
+            mut removal_receiver,
+            mut shutdown,
+            thread_id,
+            live_task_events,
+            sessions,
+        )| async move {
             loop {
                 tokio::select! {
                     _ = shutdown.recv() => return None,
+                    message = removal_receiver.recv() => {
+                        match message {
+                            Ok(removal) if thread_id.as_ref().is_none_or(|id| id == &removal.thread_id) => {
+                                let payload = serde_json::to_string(&removal)
+                                    .unwrap_or_else(|_| "{}".to_string());
+                                let frame = format!("event: task-removed\ndata: {payload}\n\n");
+                                return Some((
+                                    Ok::<_, Infallible>(Bytes::from(frame)),
+                                    (
+                                        receiver,
+                                        sync_receiver,
+                                        removal_receiver,
+                                        shutdown,
+                                        thread_id,
+                                        live_task_events,
+                                        sessions,
+                                    ),
+                                ));
+                            }
+                            Ok(_) => continue,
+                            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(broadcast::error::RecvError::Closed) => return None,
+                        }
+                    }
                     message = sync_receiver.recv() => {
                         match message {
                             Ok(sync) if thread_id.as_ref().is_none_or(|id| id == &sync.thread_id) => {
@@ -1649,6 +1701,7 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
                                     (
                                         receiver,
                                         sync_receiver,
+                                        removal_receiver,
                                         shutdown,
                                         thread_id,
                                         live_task_events,
@@ -1682,6 +1735,7 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
                                     (
                                         receiver,
                                         sync_receiver,
+                                        removal_receiver,
                                         shutdown,
                                         thread_id,
                                         live_task_events,
@@ -1795,7 +1849,15 @@ async fn task_archive(
 ) -> Result<StatusCode, ApiError> {
     let connection = require_codex_thread_connection(&state).await?;
     connection.client.archive_thread(&thread_id).await?;
+    notify_task_removed(&state, &thread_id, "archived");
     Ok(StatusCode::NO_CONTENT)
+}
+
+fn notify_task_removed(state: &AppState, thread_id: &str, reason: &'static str) {
+    let _ = state.task_list_removals.send(TaskListRemoval {
+        thread_id: thread_id.to_string(),
+        reason,
+    });
 }
 
 async fn task_approval(
