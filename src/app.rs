@@ -27,7 +27,9 @@ use crate::{
         self, CodexNotification, CodexRuntimeEvent, CodexServerRequest, CodexStatusResponse,
         CodexThreadClient, CodexThreadError, CodexTurnOptions, ThreadStatus, TurnStatus,
     },
-    codex_thread_sessions::{CodexThreadSessions, PromptTarget, ThreadSessionSnapshot},
+    codex_thread_sessions::{
+        CodexThreadSessions, PromptTarget, ThreadSessionSnapshot, ThreadSessionsDiagnostics,
+    },
     fs::{
         FileResponse, FsError, GitCommitResponse, GitCompareResponse, GitDiffResponse,
         GitLogResponse, GitRefsResponse, GitStatusResponse, GithubIssueResponse,
@@ -161,7 +163,29 @@ struct CodexThreadConnection {
     generation: u64,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CodexRuntimeDiagnostics {
+    codex_cli_version: Option<String>,
+    process_generation: u64,
+    process_connected: bool,
+    thread_sessions: ThreadSessionsDiagnostics,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CodexStatusPayload {
+    #[serde(flatten)]
+    status: CodexStatusResponse,
+    diagnostics: CodexRuntimeDiagnostics,
+}
+
 impl CodexThreadRuntime {
+    async fn diagnostics(&self) -> (u64, bool) {
+        let state = self.state.lock().await;
+        (state.generation, state.client.is_some())
+    }
+
     async fn shutdown(&self) {
         let client = self.state.lock().await.client.take();
         if let Some(client) = client {
@@ -1227,12 +1251,43 @@ async fn github_pull_file(
         .map_err(ApiError::from)
 }
 
-async fn codex_status(State(state): State<AppState>) -> Json<CodexStatusResponse> {
-    let status = match require_codex_thread_connection(&state).await {
-        Ok(connection) => connection.client.status().await,
-        Err(error) => CodexThreadClient::unavailable_status(&error),
+async fn codex_status(State(state): State<AppState>) -> Json<CodexStatusPayload> {
+    let (status, process_generation, process_connected) =
+        match require_codex_thread_connection(&state).await {
+            Ok(connection) => (
+                connection.client.status().await,
+                connection.generation,
+                true,
+            ),
+            Err(error) => {
+                let (generation, connected) = state.codex_threads.diagnostics().await;
+                (
+                    CodexThreadClient::unavailable_status(&error),
+                    generation,
+                    connected,
+                )
+            }
+        };
+    let codex_cli_version = status
+        .app_server
+        .as_ref()
+        .and_then(|info| info.user_agent.as_deref())
+        .and_then(codex_version_from_user_agent);
+    let diagnostics = CodexRuntimeDiagnostics {
+        codex_cli_version,
+        process_generation,
+        process_connected,
+        thread_sessions: state.codex_sessions.diagnostics().await,
     };
-    Json(status)
+    Json(CodexStatusPayload {
+        status,
+        diagnostics,
+    })
+}
+
+fn codex_version_from_user_agent(user_agent: &str) -> Option<String> {
+    let version = user_agent.rsplit_once('/')?.1.split_whitespace().next()?;
+    (!version.is_empty()).then(|| version.to_string())
 }
 
 async fn codex_models(State(state): State<AppState>) -> Result<Json<JsonValue>, ApiError> {
@@ -3359,6 +3414,15 @@ impl IntoResponse for ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extracts_codex_version_from_app_server_user_agent() {
+        assert_eq!(
+            codex_version_from_user_agent("Codex Desktop/0.144.4"),
+            Some("0.144.4".to_string())
+        );
+        assert_eq!(codex_version_from_user_agent("Codex Desktop"), None);
+    }
 
     #[tokio::test]
     async fn task_sync_coordinator_only_invalidates_subscribed_threads() {

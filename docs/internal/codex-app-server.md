@@ -86,6 +86,21 @@ an open viewer or runtime lease. It never replays `turn/start`, `turn/steer`, or
 another user request automatically. The next canonical status determines what
 actually completed before the connection was lost.
 
+## Incremental History
+
+The resume response supplies the latest eight full turns. Caffold keeps that
+page in the thread session and does not bootstrap task detail with a separate
+full `thread/read` scan. Older history is prepended with the forward pagination
+cursor. Canonical refresh uses the reverse cursor to merge updates into the
+current anchor turn, then refreshes only the newest eight turns to establish a
+new anchor.
+
+Turn IDs and item IDs are merge identities. A thread permits one canonical sync
+at a time; another invalidation received during that request records a dirty
+bit and causes at most one trailing sync. Browser snapshots and events carry a
+monotonic session revision so stale responses from a previous task selection or
+an older request cannot replace newer detail.
+
 ## Task Storage Boundary
 
 The first Tasks surface is thread-backed. Codex app-server is the source of
@@ -165,6 +180,20 @@ Default assumption:
 If implementation evidence shows that app-server isolation works better per
 repository or per task, this can be revisited. The MVP should not start with
 per-task app-server processes unless required.
+
+## Diagnostics
+
+`GET /api/codex/status` preserves the public status fields and adds a
+`diagnostics` object for development and incident investigation. It reports the
+Codex CLI version derived from the initialized app-server user agent, the child
+process generation and connection state, and aggregate thread-session counts.
+Only sessions with viewers, runtime leases, subscription transitions, or errors
+are included in the detailed active-session list. Each entry exposes its lease
+counts, lifecycle, revision, last canonical sync time, and last protocol error.
+
+The Tasks UI does not use these diagnostics as state. They are observational;
+thread status, turn status, typed notifications, and canonical API responses
+remain the source of truth.
 
 ## CLI Wrapper Boundary
 

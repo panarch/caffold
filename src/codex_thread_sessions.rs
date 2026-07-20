@@ -1,5 +1,10 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
+use serde::Serialize;
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::codex_app_server::{
@@ -7,7 +12,8 @@ use crate::codex_app_server::{
     ThreadStatus, TurnStatus, TurnsPage,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum ThreadSessionLifecycle {
     Unloaded,
     Subscribing,
@@ -27,7 +33,31 @@ pub struct ThreadSessionSnapshot {
     pub runtime_lease: bool,
     pub generation: u64,
     pub revision: u64,
+    pub last_sync_ms: Option<u64>,
     pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadSessionDiagnostics {
+    pub thread_id: String,
+    pub lifecycle: ThreadSessionLifecycle,
+    pub viewer_leases: usize,
+    pub runtime_lease: bool,
+    pub generation: u64,
+    pub revision: u64,
+    pub last_sync_ms: Option<u64>,
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadSessionsDiagnostics {
+    pub tracked_sessions: usize,
+    pub subscribed_sessions: usize,
+    pub viewer_leases: usize,
+    pub runtime_leases: usize,
+    pub active_sessions: Vec<ThreadSessionDiagnostics>,
 }
 
 #[derive(Debug, Clone)]
@@ -58,6 +88,7 @@ struct ThreadSessionState {
     revision: u64,
     syncing: bool,
     sync_dirty: bool,
+    last_sync_ms: Option<u64>,
     last_error: Option<String>,
 }
 
@@ -75,6 +106,7 @@ impl Default for ThreadSessionState {
             revision: 0,
             syncing: false,
             sync_dirty: false,
+            last_sync_ms: None,
             last_error: None,
         }
     }
@@ -150,6 +182,7 @@ impl CodexThreadSessions {
                 state.thread = Some(response.thread);
                 state.turns_page = response.initial_turns_page;
                 state.revision = state.revision.saturating_add(1);
+                state.last_sync_ms = Some(now_unix_ms());
                 Ok(snapshot(&state))
             }
             Err(error) => {
@@ -177,6 +210,7 @@ impl CodexThreadSessions {
         state.turns_page = None;
         state.runtime_lease = true;
         state.revision = state.revision.saturating_add(1);
+        state.last_sync_ms = Some(now_unix_ms());
         state.last_error = None;
     }
 
@@ -250,6 +284,7 @@ impl CodexThreadSessions {
             };
         }
         state.revision = state.revision.saturating_add(1);
+        state.last_sync_ms = Some(now_unix_ms());
     }
 
     pub async fn cancel_runtime(&self, thread_id: &str) {
@@ -343,6 +378,7 @@ impl CodexThreadSessions {
         }
         merge_older_turns_page(&mut state.turns_page, page.clone());
         state.revision = state.revision.saturating_add(1);
+        state.last_sync_ms = Some(now_unix_ms());
         Ok((snapshot(&state), page))
     }
 
@@ -438,6 +474,7 @@ impl CodexThreadSessions {
                 .as_ref()
                 .and_then(|thread| active_turn_id(thread, state.turns_page.as_ref()));
             state.revision = state.revision.saturating_add(1);
+            state.last_sync_ms = Some(now_unix_ms());
             state.last_error = None;
             if state.sync_dirty {
                 state.sync_dirty = false;
@@ -492,6 +529,56 @@ impl CodexThreadSessions {
             }
         }
         failures
+    }
+
+    pub async fn diagnostics(&self) -> ThreadSessionsDiagnostics {
+        let entries = self
+            .entries
+            .lock()
+            .await
+            .iter()
+            .map(|(thread_id, entry)| (thread_id.clone(), entry.clone()))
+            .collect::<Vec<_>>();
+        let mut subscribed_sessions = 0;
+        let mut viewer_leases = 0;
+        let mut runtime_leases = 0;
+        let mut active_sessions = Vec::new();
+
+        for (thread_id, entry) in &entries {
+            let state = entry.state.lock().await;
+            if state.lifecycle == ThreadSessionLifecycle::Subscribed {
+                subscribed_sessions += 1;
+            }
+            viewer_leases += state.viewer_leases;
+            runtime_leases += usize::from(state.runtime_lease);
+            if state.viewer_leases > 0
+                || state.runtime_lease
+                || matches!(
+                    state.lifecycle,
+                    ThreadSessionLifecycle::Subscribing | ThreadSessionLifecycle::Error
+                )
+            {
+                active_sessions.push(ThreadSessionDiagnostics {
+                    thread_id: thread_id.clone(),
+                    lifecycle: state.lifecycle,
+                    viewer_leases: state.viewer_leases,
+                    runtime_lease: state.runtime_lease,
+                    generation: state.generation,
+                    revision: state.revision,
+                    last_sync_ms: state.last_sync_ms,
+                    last_error: state.last_error.clone(),
+                });
+            }
+        }
+        active_sessions.sort_by(|left, right| left.thread_id.cmp(&right.thread_id));
+
+        ThreadSessionsDiagnostics {
+            tracked_sessions: entries.len(),
+            subscribed_sessions,
+            viewer_leases,
+            runtime_leases,
+            active_sessions,
+        }
     }
 
     #[allow(dead_code)]
@@ -575,8 +662,15 @@ fn snapshot(state: &ThreadSessionState) -> ThreadSessionSnapshot {
         runtime_lease: state.runtime_lease,
         generation: state.generation,
         revision: state.revision,
+        last_sync_ms: state.last_sync_ms,
         last_error: state.last_error.clone(),
     }
+}
+
+fn now_unix_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_millis() as u64)
 }
 
 fn active_turn_id(thread: &CodexThread, turns_page: Option<&TurnsPage>) -> Option<String> {
@@ -776,6 +870,7 @@ mod tests {
             revision: 0,
             syncing: false,
             sync_dirty: false,
+            last_sync_ms: None,
             last_error: None,
         };
         let mut completed_turn = active_turn;
@@ -814,6 +909,7 @@ mod tests {
             revision: 0,
             syncing: false,
             sync_dirty: false,
+            last_sync_ms: None,
             last_error: None,
         };
 
@@ -904,5 +1000,31 @@ mod tests {
         assert_eq!(page.data.len(), 2);
         assert_eq!(page.next_cursor, None);
         assert_eq!(page.backwards_cursor.as_deref(), Some("anchor"));
+    }
+
+    #[tokio::test]
+    async fn diagnostics_report_only_leased_or_failed_sessions_as_active() {
+        let sessions = CodexThreadSessions::default();
+        let viewed = sessions.entry("viewed-thread").await;
+        {
+            let mut state = viewed.state.lock().await;
+            state.lifecycle = ThreadSessionLifecycle::Subscribed;
+            state.viewer_leases = 2;
+            state.generation = 3;
+            state.revision = 4;
+            state.last_sync_ms = Some(5);
+        }
+        let idle = sessions.entry("idle-thread").await;
+        idle.state.lock().await.lifecycle = ThreadSessionLifecycle::Unloaded;
+
+        let diagnostics = sessions.diagnostics().await;
+
+        assert_eq!(diagnostics.tracked_sessions, 2);
+        assert_eq!(diagnostics.subscribed_sessions, 1);
+        assert_eq!(diagnostics.viewer_leases, 2);
+        assert_eq!(diagnostics.runtime_leases, 0);
+        assert_eq!(diagnostics.active_sessions.len(), 1);
+        assert_eq!(diagnostics.active_sessions[0].thread_id, "viewed-thread");
+        assert_eq!(diagnostics.active_sessions[0].last_sync_ms, Some(5));
     }
 }

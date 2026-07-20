@@ -871,6 +871,29 @@ mod tests {
                 json!({ "threadId": "thread_1" }),
             ),
             (
+                THREAD_UNSUBSCRIBE,
+                serde_json::to_value(thread_unsubscribe_params("thread_1"))
+                    .expect("thread unsubscribe params"),
+                json!({ "threadId": "thread_1" }),
+            ),
+            (
+                THREAD_TURNS_LIST,
+                serde_json::to_value(thread_turns_list_params(
+                    "thread_1",
+                    Some("cursor_1"),
+                    8,
+                    SortDirection::Asc,
+                ))
+                .expect("thread turns list params"),
+                json!({
+                    "threadId": "thread_1",
+                    "cursor": "cursor_1",
+                    "limit": 8,
+                    "sortDirection": "asc",
+                    "itemsView": "full"
+                }),
+            ),
+            (
                 MODEL_LIST,
                 serde_json::to_value(model_list_params(100)).expect("model list params"),
                 json!({ "limit": 100, "includeHidden": false }),

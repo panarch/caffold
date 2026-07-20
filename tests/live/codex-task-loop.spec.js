@@ -47,6 +47,17 @@ async function pasteImage(locator, name) {
   );
 }
 
+async function threadViewerLeases(page, threadId) {
+  const response = await page.request.get("/api/codex/status");
+  expect(response.ok()).toBeTruthy();
+  const payload = await response.json();
+  return (
+    payload.diagnostics?.threadSessions?.activeSessions?.find(
+      (session) => session.threadId === threadId,
+    )?.viewerLeases ?? 0
+  );
+}
+
 test("creates and resumes a real Codex task through Caffold", async ({ page }) => {
   const cwd = liveCwd();
   const marker = `${Date.now()}`;
@@ -97,6 +108,21 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
   await expect(createdTask).toBeVisible();
   await createdTask.click();
   await expect(assistantMessages.filter({ hasText: initialReply })).toBeVisible();
+
+  const secondPage = await page.context().newPage();
+  await secondPage.goto(`/tasks/${threadId}?cwd=${encodeURIComponent(cwd)}`);
+  await expect(
+    secondPage
+      .locator('caffold-tasks-page .task-message[data-message-role="assistant"]')
+      .filter({ hasText: initialReply }),
+  ).toBeVisible();
+  await expect
+    .poll(() => threadViewerLeases(page, threadId), { timeout: 10_000 })
+    .toBe(2);
+  await secondPage.close();
+  await expect
+    .poll(() => threadViewerLeases(page, threadId), { timeout: 10_000 })
+    .toBe(1);
 
   const followUpForm = tasksPage.locator(
     '.task-follow-up-form[data-task-form="follow-up"]',
