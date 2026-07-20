@@ -49,6 +49,8 @@ const LIST_DIRECTORY_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_TASK_IMAGES: usize = 4;
 const MAX_TASK_REQUEST_BYTES: usize = 64 * 1024 * 1024;
 const TASK_SYNC_DEBOUNCE: Duration = Duration::from_millis(600);
+const TASK_SYNC_MAX_LATENCY: Duration = Duration::from_secs(2);
+const EXTERNAL_TASK_ACTIVITY_LEASE: Duration = Duration::from_secs(120);
 
 #[derive(Debug, Clone)]
 pub struct ServeConfig {
@@ -80,24 +82,48 @@ struct AppState {
 #[derive(Clone)]
 struct TaskSyncCoordinator {
     subscribers: Arc<Mutex<HashMap<String, usize>>>,
+    state: Arc<Mutex<TaskSyncState>>,
     requests: mpsc::UnboundedSender<String>,
     receiver: Arc<AsyncMutex<Option<mpsc::UnboundedReceiver<String>>>>,
 }
 
+#[derive(Default)]
+struct TaskSyncState {
+    external_activity: HashMap<String, ExternalTaskActivity>,
+    latest_turn_ids: HashMap<String, String>,
+}
+
+#[derive(Clone)]
+struct ExternalTaskActivity {
+    started_ms: u64,
+    expires_at: tokio::time::Instant,
+    baseline_turn_id: Option<String>,
+}
+
 #[derive(Clone, Copy)]
 struct PendingTaskSync {
+    first_invalidated_at: tokio::time::Instant,
     deadline: tokio::time::Instant,
 }
 
 impl PendingTaskSync {
     fn new(now: tokio::time::Instant) -> Self {
         Self {
+            first_invalidated_at: now,
             deadline: now + TASK_SYNC_DEBOUNCE,
         }
     }
 
+    fn at(deadline: tokio::time::Instant) -> Self {
+        Self {
+            first_invalidated_at: deadline,
+            deadline,
+        }
+    }
+
     fn invalidate(&mut self, now: tokio::time::Instant) {
-        self.deadline = now + TASK_SYNC_DEBOUNCE;
+        self.deadline =
+            (now + TASK_SYNC_DEBOUNCE).min(self.first_invalidated_at + TASK_SYNC_MAX_LATENCY);
     }
 
     fn deadline(self) -> tokio::time::Instant {
@@ -110,6 +136,7 @@ impl TaskSyncCoordinator {
         let (requests, receiver) = mpsc::unbounded_channel();
         Self {
             subscribers: Arc::new(Mutex::new(HashMap::new())),
+            state: Arc::new(Mutex::new(TaskSyncState::default())),
             requests,
             receiver: Arc::new(AsyncMutex::new(Some(receiver))),
         }
@@ -125,9 +152,69 @@ impl TaskSyncCoordinator {
         }
     }
 
-    fn invalidate(&self, thread_id: String) {
-        if self.is_subscribed(&thread_id) {
-            let _ = self.requests.send(thread_id);
+    fn observe_external_activity(&self, thread_id: String) {
+        if !self.is_subscribed(&thread_id) {
+            return;
+        }
+        if let Ok(mut state) = self.state.lock() {
+            let now = tokio::time::Instant::now();
+            let baseline_turn_id = state.latest_turn_ids.get(&thread_id).cloned();
+            state
+                .external_activity
+                .entry(thread_id.clone())
+                .and_modify(|activity| {
+                    activity.expires_at = now + EXTERNAL_TASK_ACTIVITY_LEASE;
+                })
+                .or_insert(ExternalTaskActivity {
+                    started_ms: now_ms(),
+                    expires_at: now + EXTERNAL_TASK_ACTIVITY_LEASE,
+                    baseline_turn_id,
+                });
+        }
+        let _ = self.requests.send(thread_id);
+    }
+
+    fn external_activity_started_ms(&self, thread_id: &str) -> Option<u64> {
+        let mut state = self.state.lock().ok()?;
+        let activity = state.external_activity.get(thread_id)?.clone();
+        if activity.expires_at <= tokio::time::Instant::now() {
+            state.external_activity.remove(thread_id);
+            return None;
+        }
+        Some(activity.started_ms)
+    }
+
+    fn external_activity_expiry(&self, thread_id: &str) -> Option<tokio::time::Instant> {
+        let mut state = self.state.lock().ok()?;
+        let activity = state.external_activity.get(thread_id)?.clone();
+        if activity.expires_at <= tokio::time::Instant::now() {
+            state.external_activity.remove(thread_id);
+            return None;
+        }
+        Some(activity.expires_at)
+    }
+
+    fn observe_canonical_turn(&self, thread_id: &str, turn_id: Option<&str>, terminal: bool) {
+        let Ok(mut state) = self.state.lock() else {
+            return;
+        };
+        let completed_external_turn =
+            state
+                .external_activity
+                .get(thread_id)
+                .is_some_and(|activity| {
+                    terminal
+                        && activity.baseline_turn_id.is_some()
+                        && turn_id.is_some()
+                        && activity.baseline_turn_id.as_deref() != turn_id
+                });
+        if completed_external_turn {
+            state.external_activity.remove(thread_id);
+        }
+        if let Some(turn_id) = turn_id {
+            state
+                .latest_turn_ids
+                .insert(thread_id.to_string(), turn_id.to_string());
         }
     }
 
@@ -153,6 +240,10 @@ impl TaskSyncCoordinator {
         *count -= 1;
         if *count == 0 {
             subscribers.remove(thread_id);
+            if let Ok(mut state) = self.state.lock() {
+                state.external_activity.remove(thread_id);
+                state.latest_turn_ids.remove(thread_id);
+            }
         }
     }
 }
@@ -1340,7 +1431,15 @@ async fn list_tasks(
     let response = client.list_threads(100).await?;
     let response =
         serde_json::to_value(response).map_err(|error| ApiError::CodexThread(error.to_string()))?;
-    let tasks = thread_list_response(&state.fs, cwd_filter.as_ref(), &response);
+    let mut tasks = thread_list_response(&state.fs, cwd_filter.as_ref(), &response);
+    for task in &mut tasks {
+        apply_external_activity(
+            task,
+            state
+                .task_sync
+                .external_activity_started_ms(&task.thread_id),
+        );
+    }
     Ok(Json(TaskListResponse { tasks }))
 }
 
@@ -1445,6 +1544,16 @@ async fn run_task_sync_worker(state: AppState, mut receiver: mpsc::UnboundedRece
             if !state.task_sync.is_subscribed(&thread_id) {
                 continue;
             }
+            if let Some(snapshot) = state.codex_sessions.snapshot(&thread_id).await
+                && let Ok(detail) = task_detail_from_snapshot(&state, snapshot, None).await
+            {
+                let _ = state.task_sync_events.send(TaskDetailSync {
+                    revision: detail.revision,
+                    thread_id: thread_id.clone(),
+                    detail,
+                    reason: "external-activity",
+                });
+            }
             let Ok(connection) = require_codex_thread_connection(&state).await else {
                 continue;
             };
@@ -1468,10 +1577,13 @@ async fn run_task_sync_worker(state: AppState, mut receiver: mpsc::UnboundedRece
             };
             let _ = state.task_sync_events.send(TaskDetailSync {
                 revision: detail.revision,
-                thread_id,
+                thread_id: thread_id.clone(),
                 detail,
                 reason: "canonical-sync",
             });
+            if let Some(expires_at) = state.task_sync.external_activity_expiry(&thread_id) {
+                pending.insert(thread_id, PendingTaskSync::at(expires_at));
+            }
         }
     }
 }
@@ -2032,6 +2144,12 @@ async fn task_detail_from_snapshot(
         .expect("thread metadata was checked above")
         .into_value();
     let thread = thread_with_turns(&thread, turns)?;
+    let (latest_turn_id, latest_turn_terminal) = latest_turn_state(&thread);
+    state.task_sync.observe_canonical_turn(
+        &thread_id,
+        latest_turn_id.as_deref(),
+        latest_turn_terminal,
+    );
     let mut events = thread_events(&thread);
     state.live_task_events.observe(&events);
     events = merge_task_event_records(events, state.live_task_events.for_thread(&thread_id));
@@ -2043,7 +2161,12 @@ async fn task_detail_from_snapshot(
             .then_with(|| left.id.cmp(&right.id))
     });
     let resolved_cwd = resolve_thread_cwd(&state.fs, &thread);
-    let task = task_record_from_thread(&thread, &events, resolved_cwd.as_ref())?;
+    let task = task_record_from_thread(
+        &thread,
+        &events,
+        resolved_cwd.as_ref(),
+        state.task_sync.external_activity_started_ms(&thread_id),
+    )?;
     Ok(TaskDetailResponse {
         revision: snapshot.revision,
         task,
@@ -2100,6 +2223,25 @@ fn thread_with_turns(thread: &JsonValue, turns: Vec<JsonValue>) -> Result<JsonVa
     Ok(thread)
 }
 
+fn latest_turn_state(thread: &JsonValue) -> (Option<String>, bool) {
+    let Some(turn) = thread
+        .get("turns")
+        .and_then(JsonValue::as_array)
+        .and_then(|turns| turns.last())
+    else {
+        return (None, false);
+    };
+    let turn_id = turn
+        .get("id")
+        .and_then(JsonValue::as_str)
+        .map(str::to_string);
+    let terminal = matches!(
+        turn.get("status").and_then(JsonValue::as_str),
+        Some("completed" | "failed" | "interrupted")
+    );
+    (turn_id, terminal)
+}
+
 fn thread_list_response(
     fs: &RootedFs,
     cwd_filter: Option<&TaskCwdFilter>,
@@ -2124,7 +2266,7 @@ fn thread_list_response(
                 return None;
             }
 
-            task_record_from_thread(thread, &[], resolved_cwd.as_ref()).ok()
+            task_record_from_thread(thread, &[], resolved_cwd.as_ref(), None).ok()
         })
         .collect::<Vec<_>>();
     tasks.sort_by(|left, right| {
@@ -2141,6 +2283,7 @@ fn task_record_from_thread(
     thread: &JsonValue,
     events: &[TaskEventRecord],
     resolved_cwd: Option<&ResolvedTaskCwd>,
+    external_activity_started_ms: Option<u64>,
 ) -> Result<TaskRecord, ApiError> {
     let thread_id = thread_id(thread).ok_or_else(|| ApiError::BadRequest {
         code: "thread_id_missing",
@@ -2158,13 +2301,14 @@ fn task_record_from_thread(
     let active_turn_id = active_turn_id(thread);
     let active_turn_started_ms = active_turn_id
         .as_deref()
-        .and_then(|turn_id| turn_started_ms(thread, turn_id));
+        .and_then(|turn_id| turn_started_ms(thread, turn_id))
+        .or(external_activity_started_ms);
     let has_pending_approval = events
         .iter()
         .any(|event| event.event_type == "approval_requested");
     let status = if has_pending_approval {
         "waiting_for_approval".to_string()
-    } else if active_turn_id.is_some() {
+    } else if active_turn_id.is_some() || external_activity_started_ms.is_some() {
         "running".to_string()
     } else {
         thread_status(thread)
@@ -2197,8 +2341,19 @@ fn task_record_from_thread(
     })
 }
 
+fn apply_external_activity(task: &mut TaskRecord, started_ms: Option<u64>) {
+    let Some(started_ms) = started_ms else {
+        return;
+    };
+    if task.status == "waiting_for_approval" || task.active_turn_id.is_some() {
+        return;
+    }
+    task.status = "running".to_string();
+    task.active_turn_started_ms = Some(started_ms);
+}
+
 fn task_rollout_monitor(task_sync: TaskSyncCoordinator) -> TaskRolloutMonitor {
-    TaskRolloutMonitor::new(move |thread_id| task_sync.invalidate(thread_id))
+    TaskRolloutMonitor::new(move |thread_id| task_sync.observe_external_activity(thread_id))
 }
 
 fn thread_events(thread: &JsonValue) -> Vec<TaskEventRecord> {
@@ -3525,29 +3680,36 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn task_sync_coordinator_only_invalidates_subscribed_threads() {
+    async fn task_sync_coordinator_only_observes_subscribed_threads() {
         let coordinator = TaskSyncCoordinator::new();
         let mut receiver = coordinator.take_receiver().await.unwrap();
 
-        coordinator.invalidate("thread-1".to_string());
+        coordinator.observe_external_activity("thread-1".to_string());
         assert!(receiver.try_recv().is_err());
+        assert_eq!(coordinator.external_activity_started_ms("thread-1"), None);
 
         let first = coordinator.subscribe("thread-1");
         let second = coordinator.subscribe("thread-1");
-        coordinator.invalidate("thread-1".to_string());
+        coordinator.observe_external_activity("thread-1".to_string());
         assert_eq!(receiver.try_recv().unwrap(), "thread-1");
+        assert!(
+            coordinator
+                .external_activity_started_ms("thread-1")
+                .is_some()
+        );
 
         drop(first);
-        coordinator.invalidate("thread-1".to_string());
+        coordinator.observe_external_activity("thread-1".to_string());
         assert_eq!(receiver.try_recv().unwrap(), "thread-1");
 
         drop(second);
-        coordinator.invalidate("thread-1".to_string());
+        coordinator.observe_external_activity("thread-1".to_string());
         assert!(receiver.try_recv().is_err());
+        assert_eq!(coordinator.external_activity_started_ms("thread-1"), None);
     }
 
     #[test]
-    fn continuous_task_invalidations_wait_for_a_quiet_period() {
+    fn continuous_task_invalidations_have_a_maximum_latency() {
         let started_at = tokio::time::Instant::now();
         let mut pending = HashMap::new();
 
@@ -3562,8 +3724,26 @@ mod tests {
 
         assert_eq!(
             pending["thread-1"].deadline(),
-            started_at + Duration::from_millis(2_500)
+            started_at + TASK_SYNC_MAX_LATENCY
         );
+    }
+
+    #[tokio::test]
+    async fn canonical_terminal_turn_clears_external_activity() {
+        let coordinator = TaskSyncCoordinator::new();
+        let _subscription = coordinator.subscribe("thread-1");
+        coordinator.observe_canonical_turn("thread-1", Some("turn-1"), true);
+        coordinator.observe_external_activity("thread-1".to_string());
+
+        coordinator.observe_canonical_turn("thread-1", Some("turn-1"), true);
+        assert!(
+            coordinator
+                .external_activity_started_ms("thread-1")
+                .is_some()
+        );
+
+        coordinator.observe_canonical_turn("thread-1", Some("turn-2"), true);
+        assert_eq!(coordinator.external_activity_started_ms("thread-1"), None);
     }
 
     #[test]
@@ -3773,10 +3953,30 @@ mod tests {
                 "items": []
             }]
         });
-        let task = task_record_from_thread(&thread, &[], None).unwrap();
+        let task = task_record_from_thread(&thread, &[], None, None).unwrap();
 
         assert_eq!(task.status, "running");
         assert_eq!(task.active_turn_id.as_deref(), Some("turn_active"));
+        assert_eq!(task.active_turn_started_ms, Some(1_750_000_000_000));
+    }
+
+    #[test]
+    fn recent_external_rollout_activity_marks_an_idle_snapshot_as_running() {
+        let temp = tempfile::tempdir().unwrap();
+        let thread = json!({
+            "id": "thread_external",
+            "preview": "Running in another Codex process",
+            "cwd": temp.path().display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": 2.0,
+            "status": { "type": "idle" },
+            "turns": []
+        });
+
+        let task = task_record_from_thread(&thread, &[], None, Some(1_750_000_000_000)).unwrap();
+
+        assert_eq!(task.status, "running");
+        assert_eq!(task.active_turn_id, None);
         assert_eq!(task.active_turn_started_ms, Some(1_750_000_000_000));
     }
 
@@ -4196,7 +4396,7 @@ mod tests {
             1,
         )];
 
-        let task = task_record_from_thread(&thread, &events, None).unwrap();
+        let task = task_record_from_thread(&thread, &events, None, None).unwrap();
         assert_eq!(task.status, "waiting_for_approval");
     }
 

@@ -2006,7 +2006,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   });
   const detailResponse = (overrides = {}) => ({
     revision: overrides.revision ?? 1,
-    task,
+    task: overrides.task ?? task,
     events: overrides.events ?? events,
     eventsPage: { nextCursor: null, ...(overrides.eventsPage ?? {}) },
     pendingApprovals: [],
@@ -3360,7 +3360,14 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       detail,
       reason: "test",
     });
-  }, detailResponse());
+  }, detailResponse({
+    revision: 2,
+    task: {
+      ...task,
+      activeTurnId: null,
+      activeTurnStartedMs: now + 7,
+    },
+  }));
   const runningStatus = tasksPage.locator(
     '.task-detail-summary .task-status-chip[data-status="running"]',
   );
