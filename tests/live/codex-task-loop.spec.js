@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { execFile } from "node:child_process";
 import { sep } from "node:path";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 const PASTED_IMAGE_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
@@ -69,6 +73,8 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
   const followUpReply = `caffold-live-follow-up-${marker}`;
   const steeredReply = `caffold-live-steered-${marker}`;
   const completedClickReply = `caffold-live-completed-click-${marker}`;
+  const externalReply = `caffold-live-external-${marker}`;
+  const externalCommandOutput = `caffold-live-external-command-${marker}`;
 
   await page.goto(`/tasks?cwd=${encodeURIComponent(cwd)}`);
   const tasksPage = page.locator("caffold-tasks-page");
@@ -247,6 +253,33 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
   ).toBeVisible();
   await expect(finalAssistantMessages.filter({ hasText: completedClickReply })).toBeVisible();
   await expect(activeTurn).toHaveCount(0);
+
+  const externalRun = execFileAsync(
+    process.env.CAFFOLD_CODEX_BIN ?? "codex",
+    [
+      "exec",
+      "resume",
+      "--all",
+      "--skip-git-repo-check",
+      "--ignore-user-config",
+      "-m",
+      "gpt-5.4-mini",
+      "-c",
+      'model_reasoning_effort="low"',
+      threadId,
+      `You must use the command execution tool to run this exact read-only command: /bin/sh -c 'printf ${externalCommandOutput}; sleep 20'. Do not skip or simulate the tool call. After the command finishes, reply with exactly ${externalReply}. Do not modify files.`,
+    ],
+    {
+      cwd: process.cwd(),
+      timeout: 120_000,
+      maxBuffer: 4 * 1024 * 1024,
+    },
+  );
+
+  await externalRun;
+  await expect(finalAssistantMessages.filter({ hasText: externalReply })).toBeVisible({
+    timeout: 15_000,
+  });
 
   const archiveResponse = await page.request.post(`/api/tasks/${threadId}/archive`);
   expect(archiveResponse.status()).toBe(204);

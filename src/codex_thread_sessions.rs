@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -8,9 +8,12 @@ use serde::Serialize;
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::codex_app_server::{
-    CodexNotification, CodexThread, CodexThreadClient, CodexThreadError, CodexTurn, SortDirection,
-    ThreadStatus, TurnStatus, TurnsPage,
+    CodexNotification, CodexThread, CodexThreadClient, CodexThreadError, CodexTurn, ThreadStatus,
+    TurnStatus, TurnsPage,
 };
+
+const LATEST_TURNS_PAGE_SIZE: usize = 8;
+const LATEST_TURNS_MAX_PAGES: usize = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -402,15 +405,93 @@ impl CodexThreadSessions {
         }
 
         loop {
-            let backwards_cursor = entry
+            let reload_external_subscription = {
+                let _operation = entry.operation.lock().await;
+                let should_reload = {
+                    let state = entry.state.lock().await;
+                    state.generation == generation
+                        && state.lifecycle == ThreadSessionLifecycle::Subscribed
+                        && !state.runtime_lease
+                };
+                if should_reload {
+                    {
+                        let mut state = entry.state.lock().await;
+                        state.lifecycle = ThreadSessionLifecycle::Unsubscribing;
+                    }
+                    if let Err(error) = client.unsubscribe_thread(thread_id).await {
+                        let mut state = entry.state.lock().await;
+                        state.lifecycle = ThreadSessionLifecycle::Error;
+                        state.syncing = false;
+                        state.last_error = Some(error.to_string());
+                        return Err(error);
+                    }
+                    {
+                        let mut state = entry.state.lock().await;
+                        state.lifecycle = ThreadSessionLifecycle::Subscribing;
+                    }
+                    match client.resume_thread_with_page(thread_id, true).await {
+                        Ok(response) => Some(response),
+                        Err(error) => {
+                            let mut state = entry.state.lock().await;
+                            state.lifecycle = ThreadSessionLifecycle::Error;
+                            state.syncing = false;
+                            state.last_error = Some(error.to_string());
+                            return Err(error);
+                        }
+                    }
+                } else {
+                    None
+                }
+            };
+
+            if let Some(response) = reload_external_subscription {
+                let mut state = entry.state.lock().await;
+                if state.generation != generation {
+                    state.syncing = false;
+                    return Err(CodexThreadError::SubscriptionLost(format!(
+                        "Codex thread {thread_id} changed app-server generation while synchronizing"
+                    )));
+                }
+                state.lifecycle = ThreadSessionLifecycle::Subscribed;
+                state.client = Some(client.clone());
+                state.thread = Some(response.thread);
+                if let Some(page) = response.initial_turns_page {
+                    merge_latest_turns_page(&mut state.turns_page, page);
+                }
+                state.active_turn_id = state
+                    .thread
+                    .as_ref()
+                    .and_then(|thread| active_turn_id(thread, state.turns_page.as_ref()));
+                state.revision = state.revision.saturating_add(1);
+                state.last_sync_ms = Some(now_unix_ms());
+                state.last_error = None;
+                if state.sync_dirty {
+                    state.sync_dirty = false;
+                    drop(state);
+                    continue;
+                }
+                state.syncing = false;
+                return Ok(Some(snapshot(&state)));
+            }
+
+            let known_turn_ids = entry
                 .state
                 .lock()
                 .await
                 .turns_page
                 .as_ref()
-                .and_then(|page| page.backwards_cursor.clone());
-            let thread = match client.read_thread(thread_id, false).await {
-                Ok(thread) => thread,
+                .map(|page| {
+                    page.data
+                        .iter()
+                        .map(|turn| turn.id.clone())
+                        .collect::<HashSet<_>>()
+                })
+                .unwrap_or_default();
+            let (thread, head_page) = match tokio::try_join!(
+                client.read_thread(thread_id, false),
+                client.list_thread_turns(thread_id, None, LATEST_TURNS_PAGE_SIZE)
+            ) {
+                Ok(result) => result,
                 Err(error) => {
                     let mut state = entry.state.lock().await;
                     state.syncing = false;
@@ -418,47 +499,24 @@ impl CodexThreadSessions {
                     return Err(error);
                 }
             };
-            if let Some(cursor) = backwards_cursor.as_deref() {
-                let mut cursor = Some(cursor.to_string());
-                while let Some(current_cursor) = cursor {
-                    let page = match client
-                        .list_thread_turns_in_direction(
-                            thread_id,
-                            Some(&current_cursor),
-                            8,
-                            SortDirection::Asc,
-                        )
-                        .await
-                    {
-                        Ok(page) => page,
-                        Err(_) => break,
-                    };
-                    cursor = page
-                        .next_cursor
-                        .clone()
-                        .filter(|next_cursor| next_cursor != &current_cursor);
-                    let mut state = entry.state.lock().await;
-                    if state.generation != generation {
-                        state.syncing = false;
-                        return Err(CodexThreadError::SubscriptionLost(format!(
-                            "Codex thread {thread_id} changed app-server generation while synchronizing"
-                        )));
-                    }
-                    merge_incremental_turns_page(&mut state.turns_page, page);
+            let mut pages = vec![head_page];
+            while should_load_next_latest_page(&known_turn_ids, pages.last().unwrap(), pages.len())
+            {
+                let Some(cursor) = pages.last().and_then(|page| page.next_cursor.clone()) else {
+                    break;
+                };
+                let page = match client
+                    .list_thread_turns(thread_id, Some(&cursor), LATEST_TURNS_PAGE_SIZE)
+                    .await
+                {
+                    Ok(page) => page,
+                    Err(_) => break,
+                };
+                if page.data.is_empty() {
+                    break;
                 }
+                pages.push(page);
             }
-
-            // A reverse-direction cursor is tied to the page direction that produced it.
-            // Refresh the small descending head page to establish the next sync anchor.
-            let page = match client.list_thread_turns(thread_id, None, 8).await {
-                Ok(page) => page,
-                Err(error) => {
-                    let mut state = entry.state.lock().await;
-                    state.syncing = false;
-                    state.last_error = Some(error.to_string());
-                    return Err(error);
-                }
-            };
 
             let mut state = entry.state.lock().await;
             if state.generation != generation {
@@ -468,7 +526,17 @@ impl CodexThreadSessions {
                 )));
             }
             state.thread = Some(thread);
-            merge_latest_turns_page(&mut state.turns_page, page);
+            if latest_pages_overlap(&known_turn_ids, &pages) || known_turn_ids.is_empty() {
+                let mut pages = pages.into_iter();
+                if let Some(head_page) = pages.next() {
+                    merge_latest_turns_page(&mut state.turns_page, head_page);
+                }
+                for page in pages {
+                    merge_incremental_turns_page(&mut state.turns_page, page);
+                }
+            } else {
+                state.turns_page = coalesce_latest_turns_pages(pages);
+            }
             state.active_turn_id = state
                 .thread
                 .as_ref()
@@ -728,6 +796,51 @@ fn merge_older_turns_page(target: &mut Option<TurnsPage>, incoming: TurnsPage) {
         target.next_cursor = next_cursor;
         sort_turns_desc(&mut target.data);
     }
+}
+
+fn should_load_next_latest_page(
+    known_turn_ids: &HashSet<String>,
+    current_page: &TurnsPage,
+    pages_loaded: usize,
+) -> bool {
+    !known_turn_ids.is_empty()
+        && pages_loaded < LATEST_TURNS_MAX_PAGES
+        && current_page.next_cursor.is_some()
+        && !current_page
+            .data
+            .iter()
+            .any(|turn| known_turn_ids.contains(&turn.id))
+}
+
+fn latest_pages_overlap(known_turn_ids: &HashSet<String>, pages: &[TurnsPage]) -> bool {
+    pages.iter().any(|page| {
+        page.data
+            .iter()
+            .any(|turn| known_turn_ids.contains(&turn.id))
+    })
+}
+
+fn coalesce_latest_turns_pages(pages: Vec<TurnsPage>) -> Option<TurnsPage> {
+    let backwards_cursor = pages.first().and_then(|page| page.backwards_cursor.clone());
+    let next_cursor = pages.last().and_then(|page| page.next_cursor.clone());
+    let mut turns = Vec::new();
+    let mut turn_ids = HashSet::new();
+    for page in pages {
+        for turn in page.data {
+            if turn_ids.insert(turn.id.clone()) {
+                turns.push(turn);
+            }
+        }
+    }
+    if turns.is_empty() {
+        return None;
+    }
+    sort_turns_desc(&mut turns);
+    Some(TurnsPage {
+        data: turns,
+        next_cursor,
+        backwards_cursor,
+    })
 }
 
 fn sort_turns_desc(turns: &mut [CodexTurn]) {
@@ -1000,6 +1113,73 @@ mod tests {
         assert_eq!(page.data.len(), 2);
         assert_eq!(page.next_cursor, None);
         assert_eq!(page.backwards_cursor.as_deref(), Some("anchor"));
+    }
+
+    #[test]
+    fn latest_sync_stops_when_the_head_page_overlaps_cached_turns() {
+        let known = HashSet::from(["turn-2".to_string()]);
+        let page = TurnsPage {
+            data: vec![
+                turn("turn-3", TurnStatus::Completed),
+                turn("turn-2", TurnStatus::Completed),
+            ],
+            next_cursor: Some("older".to_string()),
+            backwards_cursor: Some("new-anchor".to_string()),
+        };
+
+        assert!(!should_load_next_latest_page(&known, &page, 1));
+    }
+
+    #[test]
+    fn latest_sync_bounds_gap_recovery_pages() {
+        let known = HashSet::from(["turn-1".to_string()]);
+        let page = TurnsPage {
+            data: vec![turn("turn-9", TurnStatus::Completed)],
+            next_cursor: Some("older".to_string()),
+            backwards_cursor: Some("new-anchor".to_string()),
+        };
+
+        assert!(should_load_next_latest_page(&known, &page, 1));
+        assert!(!should_load_next_latest_page(
+            &known,
+            &page,
+            LATEST_TURNS_MAX_PAGES
+        ));
+    }
+
+    #[test]
+    fn latest_sync_rebases_history_when_the_recovery_window_has_no_overlap() {
+        let mut newest = turn("turn-10", TurnStatus::Completed);
+        newest.started_at = Some(10.0);
+        let mut older = turn("turn-9", TurnStatus::Completed);
+        older.started_at = Some(9.0);
+        let pages = vec![
+            TurnsPage {
+                data: vec![newest],
+                next_cursor: Some("page-2".to_string()),
+                backwards_cursor: Some("new-anchor".to_string()),
+            },
+            TurnsPage {
+                data: vec![older],
+                next_cursor: Some("page-3".to_string()),
+                backwards_cursor: None,
+            },
+        ];
+
+        assert!(!latest_pages_overlap(
+            &HashSet::from(["turn-1".to_string()]),
+            &pages
+        ));
+        let page = coalesce_latest_turns_pages(pages).unwrap();
+        assert_eq!(
+            page.data
+                .iter()
+                .map(|turn| turn.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["turn-10", "turn-9"]
+        );
+        assert_eq!(page.next_cursor.as_deref(), Some("page-3"));
+        assert_eq!(page.backwards_cursor.as_deref(), Some("new-anchor"));
     }
 
     #[tokio::test]

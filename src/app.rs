@@ -83,6 +83,27 @@ struct TaskSyncCoordinator {
     receiver: Arc<AsyncMutex<Option<mpsc::UnboundedReceiver<String>>>>,
 }
 
+#[derive(Clone, Copy)]
+struct PendingTaskSync {
+    deadline: tokio::time::Instant,
+}
+
+impl PendingTaskSync {
+    fn new(now: tokio::time::Instant) -> Self {
+        Self {
+            deadline: now + TASK_SYNC_DEBOUNCE,
+        }
+    }
+
+    fn invalidate(&mut self, now: tokio::time::Instant) {
+        self.deadline = now + TASK_SYNC_DEBOUNCE;
+    }
+
+    fn deadline(self) -> tokio::time::Instant {
+        self.deadline
+    }
+}
+
 impl TaskSyncCoordinator {
     fn new() -> Self {
         let (requests, receiver) = mpsc::unbounded_channel();
@@ -1373,7 +1394,7 @@ async fn ensure_task_sync_worker(state: &AppState) {
 }
 
 async fn run_task_sync_worker(state: AppState, mut receiver: mpsc::UnboundedReceiver<String>) {
-    let mut pending = HashMap::<String, tokio::time::Instant>::new();
+    let mut pending = HashMap::<String, PendingTaskSync>::new();
     let mut shutdown = state.shutdown.subscribe();
 
     loop {
@@ -1382,16 +1403,20 @@ async fn run_task_sync_worker(state: AppState, mut receiver: mpsc::UnboundedRece
                 _ = shutdown.recv() => return,
                 request = receiver.recv() => {
                     let Some(thread_id) = request else { return; };
-                    pending.insert(thread_id, tokio::time::Instant::now() + TASK_SYNC_DEBOUNCE);
+                    schedule_task_sync(&mut pending, thread_id, tokio::time::Instant::now());
                 }
             }
         } else {
-            let deadline = pending.values().min().copied().unwrap();
+            let deadline = pending
+                .values()
+                .map(|pending| pending.deadline())
+                .min()
+                .unwrap();
             tokio::select! {
                 _ = shutdown.recv() => return,
                 request = receiver.recv() => {
                     let Some(thread_id) = request else { return; };
-                    pending.insert(thread_id, tokio::time::Instant::now() + TASK_SYNC_DEBOUNCE);
+                    schedule_task_sync(&mut pending, thread_id, tokio::time::Instant::now());
                 }
                 _ = tokio::time::sleep_until(deadline) => {}
             }
@@ -1400,7 +1425,7 @@ async fn run_task_sync_worker(state: AppState, mut receiver: mpsc::UnboundedRece
         let now = tokio::time::Instant::now();
         let due = pending
             .iter()
-            .filter(|(_, deadline)| **deadline <= now)
+            .filter(|(_, pending)| pending.deadline() <= now)
             .map(|(thread_id, _)| thread_id.clone())
             .collect::<Vec<_>>();
         for thread_id in due {
@@ -1411,11 +1436,13 @@ async fn run_task_sync_worker(state: AppState, mut receiver: mpsc::UnboundedRece
             let Ok(connection) = require_codex_thread_connection(&state).await else {
                 continue;
             };
-            let Ok(Some(snapshot)) = state
+            let rollout_suppression = state.task_rollouts.suppress(&thread_id);
+            let snapshot = state
                 .codex_sessions
                 .sync_latest(&connection.client, connection.generation, &thread_id)
-                .await
-            else {
+                .await;
+            drop(rollout_suppression);
+            let Ok(Some(snapshot)) = snapshot else {
                 continue;
             };
             let Ok(detail) = task_detail_from_snapshot(&state, snapshot, None).await else {
@@ -1429,6 +1456,17 @@ async fn run_task_sync_worker(state: AppState, mut receiver: mpsc::UnboundedRece
             });
         }
     }
+}
+
+fn schedule_task_sync(
+    pending: &mut HashMap<String, PendingTaskSync>,
+    thread_id: String,
+    now: tokio::time::Instant,
+) {
+    pending
+        .entry(thread_id)
+        .and_modify(|pending| pending.invalidate(now))
+        .or_insert_with(|| PendingTaskSync::new(now));
 }
 
 async fn task_stream(
@@ -3444,6 +3482,26 @@ mod tests {
         drop(second);
         coordinator.invalidate("thread-1".to_string());
         assert!(receiver.try_recv().is_err());
+    }
+
+    #[test]
+    fn continuous_task_invalidations_wait_for_a_quiet_period() {
+        let started_at = tokio::time::Instant::now();
+        let mut pending = HashMap::new();
+
+        schedule_task_sync(&mut pending, "thread-1".to_string(), started_at);
+        for offset_ms in [500, 1_000, 1_500, 1_900] {
+            schedule_task_sync(
+                &mut pending,
+                "thread-1".to_string(),
+                started_at + Duration::from_millis(offset_ms),
+            );
+        }
+
+        assert_eq!(
+            pending["thread-1"].deadline(),
+            started_at + Duration::from_millis(2_500)
+        );
     }
 
     #[test]

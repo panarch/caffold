@@ -95,6 +95,15 @@ cursor. Canonical refresh uses the reverse cursor to merge updates into the
 current anchor turn, then refreshes only the newest eight turns to establish a
 new anchor.
 
+Rollout-driven refresh instead starts from the newest eight turns. If that page
+overlaps the cached history, the refresh stops immediately. A missing overlap
+may fetch at most four descending pages to bridge a short gap; routine
+invalidation never walks an unbounded cursor chain. Thread metadata and the
+head page are requested concurrently. If the bounded recovery window still
+does not overlap cached history, Caffold rebases the cache to that continuous
+latest window and retains its older-history cursor instead of joining two
+discontinuous ranges.
+
 Turn IDs and item IDs are merge identities. A thread permits one canonical sync
 at a time; another invalidation received during that request records a dirty
 bit and causes at most one trailing sync. Browser snapshots and events carry a
@@ -147,12 +156,15 @@ not open it, parse JSONL records, or infer running/completed state from its
 contents. Multiple viewers of the same task share one native file watch, and the
 last viewer closing releases that watch.
 
-When a watched rollout changes, Caffold waits for the shared 600ms quiet period
-and asks its app-server connection for canonical thread metadata and incremental
-turn history. Concurrent changes coalesce into one active sync plus at most one
-trailing sync. The resulting revisioned snapshot is broadcast to every Caffold
-SSE client viewing that task. Tasks without an active detail subscriber do not
-trigger rollout-driven transcript reads.
+When a watched rollout changes, Caffold waits for a shared 600ms quiet period
+and then asks its app-server connection for canonical thread metadata and recent
+turn history. Continuous writes reset that deadline, so a separate Codex
+process produces one canonical sync after its write burst rather than repeated
+unsubscribe/resume cycles while the turn is still changing. Concurrent changes
+coalesce into one active sync plus at most one trailing sync. The resulting
+revisioned snapshot is broadcast to every Caffold SSE client viewing that task.
+Tasks without an active detail subscriber do not trigger rollout-driven
+transcript reads.
 
 Running state comes only from app-server `Thread.status`, `Turn.status`, and
 typed notifications. Browser reconnect and visibility resume each request one

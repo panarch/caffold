@@ -1,23 +1,40 @@
 use std::{
     collections::HashMap,
+    fs::Metadata,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
+    thread,
+    time::Duration,
 };
 
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-
 type RolloutInvalidationCallback = dyn Fn(String) + Send + Sync;
+const ROLLOUT_STAT_INTERVAL: Duration = Duration::from_millis(250);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RolloutFileStamp {
+    len: u64,
+    modified: Option<std::time::SystemTime>,
+}
+
+impl From<Metadata> for RolloutFileStamp {
+    fn from(metadata: Metadata) -> Self {
+        Self {
+            len: metadata.len(),
+            modified: metadata.modified().ok(),
+        }
+    }
+}
 
 #[derive(Default)]
 struct RolloutWatchState {
     threads_by_path: HashMap<PathBuf, HashMap<String, usize>>,
-    subscriptions_by_directory: HashMap<PathBuf, usize>,
+    stamps_by_path: HashMap<PathBuf, Option<RolloutFileStamp>>,
+    suppressed_threads: HashMap<String, usize>,
 }
 
 #[derive(Clone)]
 pub(crate) struct TaskRolloutMonitor {
     state: Arc<Mutex<RolloutWatchState>>,
-    watcher: Arc<Mutex<Option<RecommendedWatcher>>>,
     #[cfg(test)]
     on_invalidate: Arc<RolloutInvalidationCallback>,
 }
@@ -26,40 +43,46 @@ pub(crate) struct TaskRolloutSubscription {
     monitor: TaskRolloutMonitor,
     thread_id: String,
     path: PathBuf,
-    directory: PathBuf,
+}
+
+pub(crate) struct TaskRolloutSuppression {
+    monitor: TaskRolloutMonitor,
+    thread_id: String,
 }
 
 impl Drop for TaskRolloutSubscription {
     fn drop(&mut self) {
-        self.monitor
-            .unsubscribe(&self.thread_id, &self.path, &self.directory);
+        self.monitor.unsubscribe(&self.thread_id, &self.path);
+    }
+}
+
+impl Drop for TaskRolloutSuppression {
+    fn drop(&mut self) {
+        self.monitor.unsuppress(&self.thread_id);
     }
 }
 
 impl TaskRolloutMonitor {
     pub(crate) fn new(on_invalidate: impl Fn(String) + Send + Sync + 'static) -> Self {
         let state = Arc::new(Mutex::new(RolloutWatchState::default()));
-        let callback_state = state.clone();
         let on_invalidate: Arc<RolloutInvalidationCallback> = Arc::new(on_invalidate);
+        let callback_state = Arc::downgrade(&state);
         let callback_on_invalidate = on_invalidate.clone();
-        let callback = move |event: notify::Result<notify::Event>| match event {
-            Ok(event) => {
-                for path in event.paths {
-                    invalidate_changed_path(&callback_state, &callback_on_invalidate, &path);
+        thread::Builder::new()
+            .name("caffold-rollout-monitor".to_string())
+            .spawn(move || {
+                loop {
+                    thread::sleep(ROLLOUT_STAT_INTERVAL);
+                    let Some(state) = callback_state.upgrade() else {
+                        return;
+                    };
+                    poll_changed_paths(&state, &callback_on_invalidate);
                 }
-            }
-            Err(error) => eprintln!("Codex rollout watcher error: {error}"),
-        };
-        let watcher = match notify::recommended_watcher(callback) {
-            Ok(watcher) => Some(watcher),
-            Err(error) => {
-                eprintln!("Codex rollout watcher unavailable: {error}");
-                None
-            }
-        };
+            })
+            .expect("start Codex rollout monitor");
+
         Self {
             state,
-            watcher: Arc::new(Mutex::new(watcher)),
             #[cfg(test)]
             on_invalidate,
         }
@@ -74,27 +97,15 @@ impl TaskRolloutMonitor {
         if path.as_os_str().is_empty() {
             return None;
         }
-        let directory = path.parent().map(normalize_path)?;
 
         let mut state = self.state.lock().ok()?;
-        let first_directory_subscription =
-            !state.subscriptions_by_directory.contains_key(&directory);
-        if first_directory_subscription {
-            let mut watcher = self.watcher.lock().ok()?;
-            let watcher = watcher.as_mut()?;
-            if let Err(error) = watcher.watch(&directory, RecursiveMode::NonRecursive) {
-                eprintln!(
-                    "failed to watch Codex rollout directory {}: {error}",
-                    directory.display()
-                );
-                return None;
-            }
+        let first_path_subscription = !state.threads_by_path.contains_key(&path);
+        if first_path_subscription {
+            state
+                .stamps_by_path
+                .insert(path.clone(), rollout_file_stamp(&path));
         }
 
-        *state
-            .subscriptions_by_directory
-            .entry(directory.clone())
-            .or_default() += 1;
         *state
             .threads_by_path
             .entry(path.clone())
@@ -106,44 +117,66 @@ impl TaskRolloutMonitor {
             monitor: self.clone(),
             thread_id: thread_id.to_string(),
             path,
-            directory,
         })
     }
 
-    fn unsubscribe(&self, thread_id: &str, path: &Path, directory: &Path) {
-        let should_unwatch = {
-            let Ok(mut state) = self.state.lock() else {
-                return;
-            };
-            if let Some(threads) = state.threads_by_path.get_mut(path) {
-                if let Some(count) = threads.get_mut(thread_id) {
-                    *count = count.saturating_sub(1);
-                    if *count == 0 {
-                        threads.remove(thread_id);
-                    }
-                }
-                if threads.is_empty() {
-                    state.threads_by_path.remove(path);
-                }
-            }
+    pub(crate) fn suppress(&self, thread_id: &str) -> TaskRolloutSuppression {
+        if let Ok(mut state) = self.state.lock() {
+            *state
+                .suppressed_threads
+                .entry(thread_id.to_string())
+                .or_default() += 1;
+        }
+        TaskRolloutSuppression {
+            monitor: self.clone(),
+            thread_id: thread_id.to_string(),
+        }
+    }
 
-            let Some(count) = state.subscriptions_by_directory.get_mut(directory) else {
-                return;
-            };
+    fn unsuppress(&self, thread_id: &str) {
+        let Ok(mut state) = self.state.lock() else {
+            return;
+        };
+        let mut should_rebaseline = false;
+        if let Some(count) = state.suppressed_threads.get_mut(thread_id) {
             *count = count.saturating_sub(1);
             if *count == 0 {
-                state.subscriptions_by_directory.remove(directory);
-                true
-            } else {
-                false
+                state.suppressed_threads.remove(thread_id);
+                should_rebaseline = true;
             }
-        };
+        }
+        if !should_rebaseline {
+            return;
+        }
 
-        if should_unwatch
-            && let Ok(mut watcher) = self.watcher.lock()
-            && let Some(watcher) = watcher.as_mut()
-        {
-            let _ = watcher.unwatch(directory);
+        let paths = state
+            .threads_by_path
+            .iter()
+            .filter(|(_, threads)| threads.contains_key(thread_id))
+            .map(|(path, _)| path.clone())
+            .collect::<Vec<_>>();
+        for path in paths {
+            state
+                .stamps_by_path
+                .insert(path.clone(), rollout_file_stamp(&path));
+        }
+    }
+
+    fn unsubscribe(&self, thread_id: &str, path: &Path) {
+        let Ok(mut state) = self.state.lock() else {
+            return;
+        };
+        if let Some(threads) = state.threads_by_path.get_mut(path) {
+            if let Some(count) = threads.get_mut(thread_id) {
+                *count = count.saturating_sub(1);
+                if *count == 0 {
+                    threads.remove(thread_id);
+                }
+            }
+            if threads.is_empty() {
+                state.threads_by_path.remove(path);
+                state.stamps_by_path.remove(path);
+            }
         }
     }
 
@@ -163,6 +196,7 @@ impl TaskRolloutMonitor {
     }
 }
 
+#[cfg(test)]
 fn invalidate_changed_path(
     state: &Mutex<RolloutWatchState>,
     on_invalidate: &Arc<RolloutInvalidationCallback>,
@@ -172,12 +206,65 @@ fn invalidate_changed_path(
     let thread_ids = state
         .lock()
         .ok()
-        .and_then(|state| state.threads_by_path.get(&path).cloned())
-        .map(|threads| threads.into_keys().collect::<Vec<_>>())
+        .and_then(|state| {
+            Some(
+                state
+                    .threads_by_path
+                    .get(&path)?
+                    .keys()
+                    .filter(|thread_id| !state.suppressed_threads.contains_key(*thread_id))
+                    .cloned()
+                    .collect::<Vec<_>>(),
+            )
+        })
         .unwrap_or_default();
     for thread_id in thread_ids {
         on_invalidate(thread_id);
     }
+}
+
+fn poll_changed_paths(
+    state: &Mutex<RolloutWatchState>,
+    on_invalidate: &Arc<RolloutInvalidationCallback>,
+) {
+    let paths = state
+        .lock()
+        .map(|state| state.stamps_by_path.keys().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+
+    for path in paths {
+        let next_stamp = rollout_file_stamp(&path);
+        let thread_ids = {
+            let Ok(mut state) = state.lock() else {
+                continue;
+            };
+            let Some(previous_stamp) = state.stamps_by_path.get_mut(&path) else {
+                continue;
+            };
+            if *previous_stamp == next_stamp {
+                continue;
+            }
+            *previous_stamp = next_stamp;
+            state
+                .threads_by_path
+                .get(&path)
+                .map(|threads| {
+                    threads
+                        .keys()
+                        .filter(|thread_id| !state.suppressed_threads.contains_key(*thread_id))
+                        .cloned()
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+        };
+        for thread_id in thread_ids {
+            on_invalidate(thread_id);
+        }
+    }
+}
+
+fn rollout_file_stamp(path: &Path) -> Option<RolloutFileStamp> {
+    std::fs::metadata(path).ok().map(Into::into)
 }
 
 fn normalize_path(path: &Path) -> PathBuf {
@@ -187,6 +274,7 @@ fn normalize_path(path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{fs::OpenOptions, io::Write, sync::mpsc};
 
     #[test]
     fn rollout_changes_only_invalidate_subscribed_threads() {
@@ -226,5 +314,75 @@ mod tests {
         assert_eq!(monitor.subscription_count(&path, "thread-1"), 1);
         drop(second);
         assert_eq!(monitor.subscription_count(&path, "thread-1"), 0);
+    }
+
+    #[test]
+    fn monitor_invalidates_when_an_open_rollout_is_appended() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("rollout.jsonl");
+        std::fs::write(&path, "initial\n").unwrap();
+        let (sender, receiver) = mpsc::channel();
+        let monitor = TaskRolloutMonitor::new(move |thread_id| {
+            let _ = sender.send(thread_id);
+        });
+        let _subscription = monitor.subscribe("thread-1", path.to_str()).unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+
+        let mut file = OpenOptions::new().append(true).open(&path).unwrap();
+        writeln!(file, "external update").unwrap();
+        file.sync_all().unwrap();
+
+        assert_eq!(
+            receiver.recv_timeout(Duration::from_secs(5)).unwrap(),
+            "thread-1"
+        );
+    }
+
+    #[test]
+    fn monitor_invalidates_when_a_rollout_is_rewritten() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("rollout.jsonl");
+        std::fs::write(&path, "initial\n").unwrap();
+        let (sender, receiver) = mpsc::channel();
+        let monitor = TaskRolloutMonitor::new(move |thread_id| {
+            let _ = sender.send(thread_id);
+        });
+        let _subscription = monitor.subscribe("thread-1", path.to_str()).unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+
+        std::fs::write(&path, "external update\n").unwrap();
+
+        assert_eq!(
+            receiver.recv_timeout(Duration::from_secs(5)).unwrap(),
+            "thread-1"
+        );
+    }
+
+    #[test]
+    fn canonical_sync_changes_are_absorbed_without_self_invalidation() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("rollout.jsonl");
+        std::fs::write(&path, "initial\n").unwrap();
+        let (sender, receiver) = mpsc::channel();
+        let monitor = TaskRolloutMonitor::new(move |thread_id| {
+            let _ = sender.send(thread_id);
+        });
+        let _subscription = monitor.subscribe("thread-1", path.to_str()).unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+
+        let suppression = monitor.suppress("thread-1");
+        let mut file = OpenOptions::new().append(true).open(&path).unwrap();
+        writeln!(file, "canonical sync update").unwrap();
+        file.sync_all().unwrap();
+        drop(suppression);
+        std::thread::sleep(Duration::from_millis(500));
+        assert!(receiver.try_recv().is_err());
+
+        writeln!(file, "next external update").unwrap();
+        file.sync_all().unwrap();
+        assert_eq!(
+            receiver.recv_timeout(Duration::from_secs(5)).unwrap(),
+            "thread-1"
+        );
     }
 }
