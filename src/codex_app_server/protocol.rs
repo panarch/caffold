@@ -318,9 +318,12 @@ pub struct InitialTurnsPageParams {
 #[serde(rename_all = "camelCase")]
 pub struct ThreadResumeParams<'a> {
     pub thread_id: &'a str,
-    pub cwd: &'a str,
-    pub runtime_workspace_roots: [&'a str; 1],
-    pub approvals_reviewer: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_workspace_roots: Option<Vec<&'a str>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub approvals_reviewer: Option<&'static str>,
     pub exclude_turns: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub initial_turns_page: Option<InitialTurnsPageParams>,
@@ -551,14 +554,13 @@ fn decode_params<T: DeserializeOwned>(method: &str, params: Value) -> Result<T, 
 
 pub(crate) fn thread_resume_params<'a>(
     thread_id: &'a str,
-    cwd: &'a str,
     initial_turns_page: bool,
 ) -> ThreadResumeParams<'a> {
     ThreadResumeParams {
         thread_id,
-        cwd,
-        runtime_workspace_roots: [cwd],
-        approvals_reviewer: "user",
+        cwd: None,
+        runtime_workspace_roots: None,
+        approvals_reviewer: None,
         exclude_turns: true,
         initial_turns_page: initial_turns_page.then_some(InitialTurnsPageParams {
             limit: 8,
@@ -736,13 +738,9 @@ mod tests {
     #[test]
     fn serializes_resume_with_initial_turns_page() {
         assert_eq!(
-            serde_json::to_value(thread_resume_params("thread_1", "/workspace/project", true))
-                .expect("serialize resume"),
+            serde_json::to_value(thread_resume_params("thread_1", true)).expect("serialize resume"),
             json!({
                 "threadId": "thread_1",
-                "cwd": "/workspace/project",
-                "runtimeWorkspaceRoots": ["/workspace/project"],
-                "approvalsReviewer": "user",
                 "excludeTurns": true,
                 "initialTurnsPage": {
                     "limit": 8,

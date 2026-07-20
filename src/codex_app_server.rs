@@ -12,20 +12,20 @@ use std::{
 mod protocol;
 
 pub use protocol::{
-    CodexNotification, CodexServerRequest, CodexThread, ModelListResponse, ThreadResumeResponse,
-    ThreadStatus, ThreadUnsubscribeResponse, TurnStatus,
+    CodexNotification, CodexServerRequest, CodexThread, CodexTurn, ModelListResponse,
+    ThreadResumeResponse, ThreadStatus, ThreadUnsubscribeResponse, TurnStatus, TurnsPage,
 };
 use protocol::{
     EmptyResponse, INITIALIZE, INITIALIZED, JsonRpcError, MODEL_LIST, SortDirection,
     THREAD_ARCHIVE, THREAD_LIST, THREAD_READ, THREAD_RESUME, THREAD_START, THREAD_TURNS_LIST,
     THREAD_UNSUBSCRIBE, TURN_INTERRUPT, TURN_START, TURN_STEER, ThreadListResponse,
-    ThreadReadResponse, ThreadStartResponse, TurnStartResponse, TurnSteerResponse, TurnsPage,
-    decode_response, model_list_params, thread_archive_params, thread_list_params,
-    thread_read_params, thread_resume_params, thread_start_params, thread_turns_list_params,
-    thread_unsubscribe_params, turn_interrupt_params, turn_start_params, turn_steer_params,
+    ThreadReadResponse, ThreadStartResponse, TurnStartResponse, TurnSteerResponse, decode_response,
+    model_list_params, thread_archive_params, thread_list_params, thread_read_params,
+    thread_resume_params, thread_start_params, thread_turns_list_params, thread_unsubscribe_params,
+    turn_interrupt_params, turn_start_params, turn_steer_params,
 };
 #[cfg(test)]
-pub(crate) use protocol::{decode_notification, decode_server_request};
+pub(crate) use protocol::{TurnItemsView, decode_notification, decode_server_request};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use tokio::{
@@ -118,6 +118,7 @@ pub enum CodexRuntimeEvent {
 #[serde(rename_all = "camelCase")]
 pub struct CodexThreadStart {
     pub thread_id: String,
+    pub thread: CodexThread,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -130,6 +131,7 @@ pub struct CodexTurnOptions {
 #[serde(rename_all = "camelCase")]
 pub struct CodexTurnStart {
     pub turn_id: String,
+    pub turn: CodexTurn,
 }
 
 #[derive(Debug, thiserror::Error, Clone)]
@@ -154,6 +156,7 @@ pub enum CodexThreadError {
 }
 
 impl CodexThreadError {
+    #[allow(dead_code)]
     pub fn is_thread_unavailable(&self) -> bool {
         matches!(self, Self::ThreadUnavailable(_))
     }
@@ -274,31 +277,24 @@ impl CodexThreadClient {
             .request_typed(THREAD_START, thread_start_params(cwd))
             .await?;
         let thread_id = typed.thread.id.clone();
-        Ok(CodexThreadStart { thread_id })
-    }
-
-    pub async fn resume_thread(
-        &self,
-        thread_id: &str,
-        cwd: &str,
-    ) -> Result<ThreadResumeResponse, CodexThreadError> {
-        self.resume_thread_with_page(thread_id, cwd, false).await
+        Ok(CodexThreadStart {
+            thread_id,
+            thread: typed.thread,
+        })
     }
 
     pub async fn resume_thread_with_page(
         &self,
         thread_id: &str,
-        cwd: &str,
         initial_turns_page: bool,
     ) -> Result<ThreadResumeResponse, CodexThreadError> {
         self.request_typed(
             THREAD_RESUME,
-            thread_resume_params(thread_id, cwd, initial_turns_page),
+            thread_resume_params(thread_id, initial_turns_page),
         )
         .await
     }
 
-    #[allow(dead_code)]
     pub async fn unsubscribe_thread(
         &self,
         thread_id: &str,
@@ -336,7 +332,10 @@ impl CodexThreadClient {
             )
             .await?;
         let turn_id = typed.turn.id.clone();
-        Ok(CodexTurnStart { turn_id })
+        Ok(CodexTurnStart {
+            turn_id,
+            turn: typed.turn,
+        })
     }
 
     pub async fn steer_turn(

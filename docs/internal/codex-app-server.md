@@ -61,6 +61,31 @@ methods and fields required by the maintained adapter. An intentional protocol
 upgrade should update the supported version, DTOs, fixtures, and this check in
 one change.
 
+## Thread Subscription Lifecycle
+
+The app-server child process and a thread subscription are separate lifecycles.
+Starting the process does not make every Codex thread a notification source.
+Caffold keeps an ephemeral `CodexThreadSessions` coordinator for that boundary;
+it does not persist a second task ledger.
+
+- The first task detail or SSE viewer resumes the thread with `excludeTurns`
+  and an initial page of the latest eight full turns.
+- Additional browser viewers share the same subscribed session and do not
+  repeat the resume bootstrap.
+- A new thread returned by `thread/start` is registered as already subscribed.
+- A completed thread starts a follow-up with `turn/start`. An active thread is
+  steered only when canonical thread status and an active turn ID agree.
+- The last viewer releases the subscription with `thread/unsubscribe` unless a
+  turn initiated or steered by Caffold still owns a runtime lease.
+- A completed runtime releases its lease and unsubscribes when no viewer
+  remains.
+
+If the app-server child exits, Caffold marks sessions from that process
+generation as disconnected. A replacement process resumes only sessions with
+an open viewer or runtime lease. It never replays `turn/start`, `turn/steer`, or
+another user request automatically. The next canonical status determines what
+actually completed before the connection was lost.
+
 ## Task Storage Boundary
 
 The first Tasks surface is thread-backed. Codex app-server is the source of

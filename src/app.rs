@@ -27,6 +27,7 @@ use crate::{
         self, CodexNotification, CodexRuntimeEvent, CodexServerRequest, CodexStatusResponse,
         CodexThreadClient, CodexTurnOptions, ThreadStatus, TurnStatus,
     },
+    codex_thread_sessions::{CodexThreadSessions, PromptTarget},
     fs::{
         FileResponse, FsError, GitCommitResponse, GitCompareResponse, GitDiffResponse,
         GitLogResponse, GitRefsResponse, GitStatusResponse, GithubIssueResponse,
@@ -60,6 +61,7 @@ struct AppState {
     fs: Arc<RootedFs>,
     server_settings: Arc<ServerSettingsStore>,
     codex_threads: Arc<CodexThreadRuntime>,
+    codex_sessions: CodexThreadSessions,
     pending_approvals: Arc<AsyncMutex<HashMap<String, PendingApproval>>>,
     task_events: broadcast::Sender<TaskEventRecord>,
     task_sync: TaskSyncCoordinator,
@@ -150,11 +152,31 @@ struct CodexThreadRuntime {
 #[derive(Default)]
 struct CodexThreadRuntimeState {
     client: Option<CodexThreadClient>,
+    generation: u64,
+}
+
+#[derive(Clone)]
+struct CodexThreadConnection {
+    client: CodexThreadClient,
+    generation: u64,
 }
 
 impl CodexThreadRuntime {
     async fn shutdown(&self) {
         let client = self.state.lock().await.client.take();
+        if let Some(client) = client {
+            client.shutdown().await;
+        }
+    }
+
+    async fn invalidate(&self, generation: u64) {
+        let client = {
+            let mut state = self.state.lock().await;
+            if state.generation != generation {
+                return;
+            }
+            state.client.take()
+        };
         if let Some(client) = client {
             client.shutdown().await;
         }
@@ -541,6 +563,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let (shutdown, _) = broadcast::channel(16);
     let pending_approvals = Arc::new(AsyncMutex::new(HashMap::new()));
     let codex_threads = Arc::new(CodexThreadRuntime::default());
+    let codex_sessions = CodexThreadSessions::default();
     let fs = Arc::new(fs);
     let root = fs.root().to_path_buf();
     let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
@@ -548,6 +571,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         fs,
         server_settings,
         codex_threads: codex_threads.clone(),
+        codex_sessions,
         pending_approvals,
         task_events,
         task_sync,
@@ -598,6 +622,7 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         fs,
         server_settings: Arc::new(ServerSettingsStore::memory()),
         codex_threads: Arc::new(CodexThreadRuntime::default()),
+        codex_sessions: CodexThreadSessions::default(),
         pending_approvals: Arc::new(AsyncMutex::new(HashMap::new())),
         task_events,
         task_sync,
@@ -1228,14 +1253,34 @@ async fn create_task(
     let (prompt, images) = normalize_task_input(&request.prompt, request.images)?;
     let cwd = task_cwd(&state, request.cwd.as_deref())?;
     let turn_options = codex_turn_options(request.model, request.effort)?;
-    let client = require_codex_thread_client(&state).await?;
+    let connection = require_codex_thread_connection(&state).await?;
+    let client = &connection.client;
 
     let thread = client.start_thread(&cwd).await?;
-    let _turn = client
+    state
+        .codex_sessions
+        .register_started_thread(
+            &connection.client,
+            connection.generation,
+            thread.thread.clone(),
+        )
+        .await;
+    let turn = match client
         .start_turn(&thread.thread_id, &cwd, &prompt, &images, turn_options)
-        .await?;
+        .await
+    {
+        Ok(turn) => turn,
+        Err(error) => {
+            state.codex_sessions.cancel_runtime(&thread.thread_id).await;
+            return Err(error.into());
+        }
+    };
+    state
+        .codex_sessions
+        .record_turn_started(connection.generation, &thread.thread_id, turn.turn)
+        .await;
     Ok(Json(
-        read_task_detail(&state, &client, &thread.thread_id, None).await?,
+        read_task_detail(&state, client, &thread.thread_id, None).await?,
     ))
 }
 
@@ -1244,9 +1289,19 @@ async fn task_detail(
     AxumPath(thread_id): AxumPath<String>,
     Query(query): Query<TaskDetailQuery>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
-    let client = require_codex_thread_client(&state).await?;
+    let connection = require_codex_thread_connection(&state).await?;
+    let _viewer = state
+        .codex_sessions
+        .acquire_viewer(&connection.client, connection.generation, &thread_id)
+        .await?;
     Ok(Json(
-        read_task_detail(&state, &client, &thread_id, query.cursor.as_deref()).await?,
+        read_task_detail(
+            &state,
+            &connection.client,
+            &thread_id,
+            query.cursor.as_deref(),
+        )
+        .await?,
     ))
 }
 
@@ -1312,7 +1367,11 @@ async fn task_stream(
     AxumPath(thread_id): AxumPath<String>,
     Query(_query): Query<TasksQuery>,
 ) -> Result<Response, ApiError> {
-    require_codex_thread_client(&state).await?;
+    let connection = require_codex_thread_connection(&state).await?;
+    let viewer = state
+        .codex_sessions
+        .acquire_viewer(&connection.client, connection.generation, &thread_id)
+        .await?;
     let subscription = state.task_sync.subscribe(&thread_id);
     ensure_task_sync_worker(&state).await;
     let receiver = state.task_events.subscribe();
@@ -1327,6 +1386,7 @@ async fn task_stream(
             shutdown,
             thread_id,
             subscription,
+            viewer,
         ),
         |(
             initial_frame,
@@ -1335,6 +1395,7 @@ async fn task_stream(
             mut shutdown,
             thread_id,
             subscription,
+            viewer,
         )| async move {
             if let Some(frame) = initial_frame {
                 return Some((
@@ -1346,6 +1407,7 @@ async fn task_stream(
                         shutdown,
                         thread_id,
                         subscription,
+                        viewer,
                     ),
                 ));
             }
@@ -1367,6 +1429,7 @@ async fn task_stream(
                                         shutdown,
                                         thread_id,
                                         subscription,
+                                        viewer,
                                     ),
                                 ));
                             }
@@ -1390,6 +1453,7 @@ async fn task_stream(
                                         shutdown,
                                         thread_id,
                                         subscription,
+                                        viewer,
                                     ),
                                 ));
                             }
@@ -1521,47 +1585,50 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
 async fn task_prompt(
     State(state): State<AppState>,
     AxumPath(thread_id): AxumPath<String>,
-    Query(query): Query<TasksQuery>,
+    Query(_query): Query<TasksQuery>,
     Json(request): Json<TaskPromptRequest>,
 ) -> Result<Json<TaskPromptResponse>, ApiError> {
     let (prompt, images) = normalize_task_input(&request.prompt, request.images)?;
     let turn_options = codex_turn_options(request.model, request.effort)?;
-    let client = require_codex_thread_client(&state).await?;
-    let cwd = if query.cwd.as_deref().is_some_and(|cwd| !cwd.is_empty()) {
-        task_cwd(&state, query.cwd.as_deref())?
-    } else {
-        client.read_thread(&thread_id, false).await?.cwd
+    let _requested_active_turn_id = request.active_turn_id;
+    let connection = require_codex_thread_connection(&state).await?;
+    let target = match state
+        .codex_sessions
+        .prepare_prompt(&connection.client, connection.generation, &thread_id)
+        .await
+    {
+        Ok(target) => target,
+        Err(error) => return Err(error.into()),
     };
-    let (turn_id, steered) = if let Some(active_turn_id) = request.active_turn_id {
-        let steer_result = client
-            .steer_turn(&thread_id, &active_turn_id, &prompt, &images)
-            .await;
-        if let Err(error) = steer_result {
-            if !error.is_thread_unavailable() {
-                return Err(error.into());
-            }
-            client.resume_thread(&thread_id, &cwd).await?;
-            client
-                .steer_turn(&thread_id, &active_turn_id, &prompt, &images)
-                .await?;
+    let result: Result<(String, bool, Option<crate::codex_app_server::CodexTurn>), _> = match target
+    {
+        PromptTarget::Steer { turn_id } => connection
+            .client
+            .steer_turn(&thread_id, &turn_id, &prompt, &images)
+            .await
+            .map(|_| (turn_id, true, None)),
+        PromptTarget::Start { cwd } => connection
+            .client
+            .start_turn(&thread_id, &cwd, &prompt, &images, turn_options)
+            .await
+            .map(|started| {
+                let turn_id = started.turn_id.clone();
+                (turn_id, false, Some(started.turn))
+            }),
+    };
+    let (turn_id, steered, started_turn) = match result {
+        Ok(result) => result,
+        Err(error) => {
+            state.codex_sessions.cancel_runtime(&thread_id).await;
+            return Err(error.into());
         }
-        (active_turn_id, true)
-    } else {
-        let start_result = client
-            .start_turn(&thread_id, &cwd, &prompt, &images, turn_options.clone())
-            .await;
-        let turn = match start_result {
-            Ok(turn) => turn,
-            Err(error) if error.is_thread_unavailable() => {
-                client.resume_thread(&thread_id, &cwd).await?;
-                client
-                    .start_turn(&thread_id, &cwd, &prompt, &images, turn_options)
-                    .await?
-            }
-            Err(error) => return Err(error.into()),
-        };
-        (turn.turn_id, false)
     };
+    if let Some(turn) = started_turn {
+        state
+            .codex_sessions
+            .record_turn_started(connection.generation, &thread_id, turn)
+            .await;
+    }
     Ok(Json(TaskPromptResponse {
         thread_id,
         turn_id,
@@ -1574,31 +1641,24 @@ async fn task_interrupt(
     AxumPath(thread_id): AxumPath<String>,
     Query(_query): Query<TasksQuery>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
-    let client = require_codex_thread_client(&state).await?;
-    let Some(turn_id) = recent_active_turn_id(&client, &thread_id).await? else {
+    let connection = require_codex_thread_connection(&state).await?;
+    let Some(turn_id) = state
+        .codex_sessions
+        .active_turn_id(&connection.client, connection.generation, &thread_id)
+        .await?
+    else {
         return Err(ApiError::BadRequest {
             code: "task_turn_missing",
             message: "thread does not have an active turn to interrupt".to_string(),
         });
     };
-    client.interrupt_turn(&thread_id, &turn_id).await?;
-    Ok(Json(
-        read_task_detail(&state, &client, &thread_id, None).await?,
-    ))
-}
-
-async fn recent_active_turn_id(
-    client: &CodexThreadClient,
-    thread_id: &str,
-) -> Result<Option<String>, ApiError> {
-    let turns_response = client
-        .list_thread_turns(thread_id, None, TASK_DETAIL_TURNS_PAGE_SIZE)
+    connection
+        .client
+        .interrupt_turn(&thread_id, &turn_id)
         .await?;
-    Ok(turns_response
-        .data
-        .iter()
-        .find(|turn| turn.status == TurnStatus::InProgress)
-        .map(|turn| turn.id.clone()))
+    Ok(Json(
+        read_task_detail(&state, &connection.client, &thread_id, None).await?,
+    ))
 }
 
 async fn task_archive(
@@ -1662,35 +1722,66 @@ async fn task_approval(
 }
 
 async fn require_codex_thread_client(state: &AppState) -> Result<CodexThreadClient, ApiError> {
+    Ok(require_codex_thread_connection(state).await?.client)
+}
+
+async fn require_codex_thread_connection(
+    state: &AppState,
+) -> Result<CodexThreadConnection, ApiError> {
     {
         let runtime = state.codex_threads.state.lock().await;
         if let Some(client) = runtime.client.clone() {
-            return Ok(client);
+            return Ok(CodexThreadConnection {
+                client,
+                generation: runtime.generation,
+            });
         }
     }
 
-    let mut runtime = state.codex_threads.state.lock().await;
-    if let Some(client) = runtime.client.clone() {
-        return Ok(client);
+    let connection = {
+        let mut runtime = state.codex_threads.state.lock().await;
+        if let Some(client) = runtime.client.clone() {
+            return Ok(CodexThreadConnection {
+                client,
+                generation: runtime.generation,
+            });
+        }
+
+        match CodexThreadClient::start().await {
+            Ok(client) => {
+                runtime.generation += 1;
+                let generation = runtime.generation;
+                spawn_codex_thread_bridge(
+                    client.clone(),
+                    generation,
+                    CodexThreadBridgeContext {
+                        runtime: state.codex_threads.clone(),
+                        sessions: state.codex_sessions.clone(),
+                        task_events: state.task_events.clone(),
+                        live_task_events: state.live_task_events.clone(),
+                        pending_approvals: state.pending_approvals.clone(),
+                    },
+                    state.shutdown.subscribe(),
+                );
+                runtime.client = Some(client.clone());
+                Ok(CodexThreadConnection { client, generation })
+            }
+            Err(error) => {
+                let message = error.to_string();
+                Err(ApiError::CodexThread(message))
+            }
+        }
+    }?;
+
+    for (thread_id, error) in state
+        .codex_sessions
+        .resubscribe_leased(&connection.client, connection.generation)
+        .await
+    {
+        eprintln!("failed to restore Codex thread subscription {thread_id}: {error}");
     }
 
-    match CodexThreadClient::start().await {
-        Ok(client) => {
-            spawn_codex_thread_bridge(
-                client.clone(),
-                state.task_events.clone(),
-                state.live_task_events.clone(),
-                state.pending_approvals.clone(),
-                state.shutdown.subscribe(),
-            );
-            runtime.client = Some(client.clone());
-            Ok(client)
-        }
-        Err(error) => {
-            let message = error.to_string();
-            Err(ApiError::CodexThread(message))
-        }
-    }
+    Ok(connection)
 }
 
 async fn read_task_detail(
@@ -2070,43 +2161,64 @@ fn turn_item_event_id(turn_id: Option<&str>, item_id: Option<&str>, fallback: &s
     }
 }
 
-fn spawn_codex_thread_bridge(
-    client: CodexThreadClient,
+struct CodexThreadBridgeContext {
+    runtime: Arc<CodexThreadRuntime>,
+    sessions: CodexThreadSessions,
     task_events: broadcast::Sender<TaskEventRecord>,
     live_task_events: LiveTaskEventCache,
     pending_approvals: Arc<AsyncMutex<HashMap<String, PendingApproval>>>,
+}
+
+fn spawn_codex_thread_bridge(
+    client: CodexThreadClient,
+    generation: u64,
+    context: CodexThreadBridgeContext,
     mut shutdown: broadcast::Receiver<()>,
 ) {
     tokio::spawn(async move {
         let mut receiver = client.subscribe();
-        loop {
+        let connection_error = loop {
             tokio::select! {
-                _ = shutdown.recv() => break,
+                _ = shutdown.recv() => return,
                 event = receiver.recv() => {
-                    let Ok(event) = event else {
-                        break;
+                    let event = match event {
+                        Ok(event) => event,
+                        Err(error) => {
+                            break format!("Codex app-server event stream closed: {error}");
+                        }
                     };
                     match event {
                         CodexRuntimeEvent::Notification(notification) => {
+                            context
+                                .sessions
+                                .apply_notification(generation, &notification)
+                                .await;
                             handle_codex_notification(
-                                &task_events,
-                                &live_task_events,
+                                &context.task_events,
+                                &context.live_task_events,
                                 notification,
                             );
                         }
                         CodexRuntimeEvent::ServerRequest(request) => {
                             handle_codex_server_request(
-                                &task_events,
-                                &pending_approvals,
+                                &context.task_events,
+                                &context.pending_approvals,
                                 request,
                             )
                             .await;
                         }
-                        CodexRuntimeEvent::Error { .. } => {}
+                        CodexRuntimeEvent::Error { message } => {
+                            break message;
+                        }
                     }
                 }
             }
-        }
+        };
+        context
+            .sessions
+            .connection_lost(generation, connection_error)
+            .await;
+        context.runtime.invalidate(generation).await;
     });
 }
 

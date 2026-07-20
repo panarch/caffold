@@ -456,6 +456,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.error = null;
     this.render();
     this.loadTaskList();
+    this.connectStream(threadId);
 
     try {
       const detail = await getTask(threadId, null, this.cwdPath);
@@ -471,7 +472,6 @@ class CaffoldTasksPage extends HTMLElement {
       this.loading = false;
       this.markTaskSeen(detail.task);
       this.patchTaskListTask(detail.task);
-      this.connectStream(threadId);
       this.conversationScrollMode = "bottom";
       this.render();
       this.loadTaskGithubStatus(detail.task);
