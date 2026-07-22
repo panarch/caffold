@@ -1,6 +1,11 @@
+#[cfg(test)]
+use std::collections::VecDeque;
 use std::{
     collections::HashMap,
+    env,
+    ffi::OsStr,
     io::ErrorKind,
+    path::{Path, PathBuf},
     process::Stdio,
     sync::{
         Arc,
@@ -27,6 +32,8 @@ pub use protocol::{
     ThreadUnsubscribeResponse, TurnStatus, TurnsPage,
 };
 #[cfg(test)]
+use protocol::{THREAD_LOADED_LIST, ThreadLoadedListResponse, thread_loaded_list_params};
+#[cfg(test)]
 pub(crate) use protocol::{TurnItemsView, decode_notification, decode_server_request};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
@@ -38,8 +45,94 @@ use tokio::{
     time::timeout,
 };
 
-const THREAD_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const INTERACTIVE_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const HISTORY_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(500);
+
+fn is_executable_file(path: &Path) -> bool {
+    let Ok(metadata) = path.metadata() else {
+        return false;
+    };
+    if !metadata.is_file() {
+        return false;
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        metadata.permissions().mode() & 0o111 != 0
+    }
+
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+fn find_executable_in_path(command: &OsStr, search_path: Option<&OsStr>) -> Option<PathBuf> {
+    let command_path = Path::new(command);
+    if command_path.components().count() > 1 {
+        return is_executable_file(command_path).then(|| command_path.to_path_buf());
+    }
+
+    search_path.and_then(|search_path| {
+        env::split_paths(search_path)
+            .map(|directory| directory.join(command_path))
+            .find(|candidate| is_executable_file(candidate))
+    })
+}
+
+fn resolve_codex_executable_from(
+    explicit: Option<&OsStr>,
+    search_path: Option<&OsStr>,
+    home: Option<&Path>,
+    platform_paths: &[PathBuf],
+) -> Result<PathBuf, CodexThreadError> {
+    if let Some(explicit) = explicit.filter(|value| !value.is_empty()) {
+        return find_executable_in_path(explicit, search_path).ok_or_else(|| {
+            CodexThreadError::StartFailed(format!(
+                "CAFFOLD_CODEX_BIN does not point to an executable: {}",
+                Path::new(explicit).display()
+            ))
+        });
+    }
+
+    if let Some(path) = find_executable_in_path(OsStr::new("codex"), search_path) {
+        return Ok(path);
+    }
+
+    let fallback_paths = home
+        .into_iter()
+        .map(|home| home.join(".local/bin/codex"))
+        .chain(platform_paths.iter().cloned());
+    fallback_paths
+        .into_iter()
+        .find(|candidate| is_executable_file(candidate))
+        .ok_or(CodexThreadError::MissingCli)
+}
+
+fn resolve_codex_executable() -> Result<PathBuf, CodexThreadError> {
+    let explicit = env::var_os("CAFFOLD_CODEX_BIN");
+    let search_path = env::var_os("PATH");
+    let home = env::var_os("HOME").map(PathBuf::from);
+    resolve_codex_executable_from(
+        explicit.as_deref(),
+        search_path.as_deref(),
+        home.as_deref(),
+        &[
+            PathBuf::from("/opt/homebrew/bin/codex"),
+            PathBuf::from("/usr/local/bin/codex"),
+        ],
+    )
+}
+
+fn request_timeout(method: &str) -> Duration {
+    match method {
+        THREAD_LIST | THREAD_READ | THREAD_RESUME | THREAD_TURNS_LIST => HISTORY_REQUEST_TIMEOUT,
+        _ => INTERACTIVE_REQUEST_TIMEOUT,
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -57,7 +150,56 @@ pub struct CodexStatusResponse {
 
 #[derive(Clone)]
 pub struct CodexThreadClient {
-    inner: Arc<CodexThreadClientInner>,
+    inner: Option<Arc<CodexThreadClientInner>>,
+    #[cfg(test)]
+    mock: Option<Arc<MockCodexThreadClient>>,
+}
+
+#[cfg(test)]
+struct MockCodexThreadClient {
+    responses: AsyncMutex<VecDeque<MockCodexResponse>>,
+    requests: AsyncMutex<Vec<(String, Value)>>,
+    events: broadcast::Sender<CodexRuntimeEvent>,
+}
+
+#[cfg(test)]
+pub(crate) struct MockCodexResponse {
+    method: &'static str,
+    result: Result<Value, CodexThreadError>,
+    delay: Duration,
+}
+
+#[cfg(test)]
+impl MockCodexResponse {
+    pub(crate) fn ok<T: Serialize>(method: &'static str, value: T) -> Self {
+        Self {
+            method,
+            result: serde_json::to_value(value)
+                .map_err(|error| CodexThreadError::Protocol(error.to_string())),
+            delay: Duration::ZERO,
+        }
+    }
+
+    pub(crate) fn error(method: &'static str, error: CodexThreadError) -> Self {
+        Self {
+            method,
+            result: Err(error),
+            delay: Duration::ZERO,
+        }
+    }
+
+    pub(crate) fn delayed_ok<T: Serialize>(
+        method: &'static str,
+        value: T,
+        delay: Duration,
+    ) -> Self {
+        Self {
+            method,
+            result: serde_json::to_value(value)
+                .map_err(|error| CodexThreadError::Protocol(error.to_string())),
+            delay,
+        }
+    }
 }
 
 struct CodexThreadClientInner {
@@ -117,8 +259,12 @@ pub enum CodexThreadError {
     InvalidParams(String),
     #[error("Codex app-server protocol error: {0}")]
     Protocol(String),
-    #[error("Codex app-server request timed out.")]
-    Timeout,
+    #[error("Codex app-server {method} request {request_id} timed out after {timeout_ms}ms.")]
+    RequestTimeout {
+        method: &'static str,
+        request_id: u64,
+        timeout_ms: u64,
+    },
     #[error("Codex app-server is unavailable.")]
     ProcessUnavailable,
 }
@@ -128,11 +274,16 @@ impl CodexThreadError {
     pub fn is_thread_unavailable(&self) -> bool {
         matches!(self, Self::ThreadUnavailable(_))
     }
+
+    pub fn is_connection_failure(&self) -> bool {
+        matches!(self, Self::ProcessUnavailable)
+    }
 }
 
 impl CodexThreadClient {
     pub async fn start() -> Result<Self, CodexThreadError> {
-        let mut child = Command::new("codex")
+        let codex_executable = resolve_codex_executable()?;
+        let mut child = Command::new(codex_executable)
             .arg("app-server")
             .arg("--stdio")
             .stdin(Stdio::piped())
@@ -162,23 +313,27 @@ impl CodexThreadClient {
             .ok_or_else(|| CodexThreadError::Protocol("failed to open stderr".to_string()))?;
         let (events, _) = broadcast::channel(256);
         let client = Self {
-            inner: Arc::new(CodexThreadClientInner {
+            inner: Some(Arc::new(CodexThreadClientInner {
                 stdin: AsyncMutex::new(stdin),
                 _child: AsyncMutex::new(child),
                 pending: AsyncMutex::new(HashMap::new()),
                 next_id: AtomicU64::new(100),
                 events,
                 app_server: AsyncMutex::new(None),
-            }),
+            })),
+            #[cfg(test)]
+            mock: None,
         };
+
+        let inner = client.inner();
 
         tokio::spawn(read_thread_server_loop(
             BufReader::new(stdout).lines(),
-            client.inner.clone(),
+            inner.clone(),
         ));
         tokio::spawn(read_thread_server_stderr(
             BufReader::new(stderr).lines(),
-            client.inner.events.clone(),
+            inner.events.clone(),
         ));
 
         let app_server = client
@@ -199,37 +354,86 @@ impl CodexThreadClient {
             .and_then(|value| {
                 decode_response(INITIALIZE, value).map_err(CodexThreadError::Protocol)
             })?;
-        *client.inner.app_server.lock().await = Some(app_server);
+        *inner.app_server.lock().await = Some(app_server);
         client.notify(INITIALIZED, json!({})).await?;
         Ok(client)
     }
 
+    fn inner(&self) -> &Arc<CodexThreadClientInner> {
+        self.inner
+            .as_ref()
+            .expect("process-backed Codex client is required")
+    }
+
+    #[cfg(test)]
+    pub(crate) fn mock(responses: Vec<MockCodexResponse>) -> Self {
+        let (events, _) = broadcast::channel(32);
+        Self {
+            inner: None,
+            mock: Some(Arc::new(MockCodexThreadClient {
+                responses: AsyncMutex::new(responses.into()),
+                requests: AsyncMutex::new(Vec::new()),
+                events,
+            })),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn mock_requests(&self) -> Vec<(String, Value)> {
+        self.mock
+            .as_ref()
+            .expect("mock Codex client is required")
+            .requests
+            .lock()
+            .await
+            .clone()
+    }
+
     pub fn subscribe(&self) -> broadcast::Receiver<CodexRuntimeEvent> {
-        self.inner.events.subscribe()
+        #[cfg(test)]
+        if let Some(mock) = &self.mock {
+            return mock.events.subscribe();
+        }
+        self.inner().events.subscribe()
     }
 
     pub async fn shutdown(&self) {
-        fail_pending(&self.inner, CodexThreadError::ProcessUnavailable).await;
-        let _ = self.inner.stdin.lock().await.shutdown().await;
-        let mut child = self.inner._child.lock().await;
+        #[cfg(test)]
+        if self.mock.is_some() {
+            return;
+        }
+        let inner = self.inner();
+        fail_pending(inner, CodexThreadError::ProcessUnavailable).await;
+        let _ = inner.stdin.lock().await.shutdown().await;
+        let mut child = inner._child.lock().await;
         let _ = child.start_kill();
         let _ = timeout(SHUTDOWN_TIMEOUT, child.wait()).await;
     }
 
-    pub async fn list_threads(&self, limit: usize) -> Result<ThreadListResponse, CodexThreadError> {
-        self.request_typed(THREAD_LIST, thread_list_params(limit))
+    pub async fn list_threads(
+        &self,
+        cursor: Option<&str>,
+        limit: usize,
+    ) -> Result<ThreadListResponse, CodexThreadError> {
+        self.request_typed(THREAD_LIST, thread_list_params(cursor, limit))
             .await
     }
 
-    pub async fn read_thread(
-        &self,
-        thread_id: &str,
-        include_turns: bool,
-    ) -> Result<CodexThread, CodexThreadError> {
+    pub async fn read_thread(&self, thread_id: &str) -> Result<CodexThread, CodexThreadError> {
         let response: ThreadReadResponse = self
-            .request_typed(THREAD_READ, thread_read_params(thread_id, include_turns))
+            .request_typed(THREAD_READ, thread_read_params(thread_id))
             .await?;
         Ok(response.thread)
+    }
+
+    #[cfg(test)]
+    pub async fn list_loaded_threads(
+        &self,
+        cursor: Option<&str>,
+        limit: usize,
+    ) -> Result<ThreadLoadedListResponse, CodexThreadError> {
+        self.request_typed(THREAD_LOADED_LIST, thread_loaded_list_params(cursor, limit))
+            .await
     }
 
     pub async fn list_thread_turns(
@@ -362,7 +566,7 @@ impl CodexThreadClient {
     }
 
     pub async fn status(&self) -> CodexStatusResponse {
-        let app_server = self.inner.app_server.lock().await.clone();
+        let app_server = self.inner().app_server.lock().await.clone();
         let (account, rate_limits, usage) = tokio::join!(
             self.request_typed::<AccountReadResponse, _>(ACCOUNT_READ, account_read_params()),
             self.request_typed::<Value, _>(ACCOUNT_RATE_LIMITS_READ, EmptyResponse::default()),
@@ -395,9 +599,39 @@ impl CodexThreadClient {
         method: &'static str,
         params: Value,
     ) -> Result<Value, CodexThreadError> {
-        let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
+        #[cfg(test)]
+        if let Some(mock) = &self.mock {
+            mock.requests
+                .lock()
+                .await
+                .push((method.to_string(), params));
+            let response = {
+                let mut responses = mock.responses.lock().await;
+                let index = responses
+                    .iter()
+                    .position(|response| response.method == method)
+                    .ok_or_else(|| {
+                        CodexThreadError::Protocol(format!(
+                            "mock Codex client has no response for {method}"
+                        ))
+                    })?;
+                responses
+                    .remove(index)
+                    .expect("matching mock response index remains valid")
+            };
+            if !response.delay.is_zero() {
+                tokio::time::sleep(response.delay).await;
+            }
+            if let Err(error) = &response.result {
+                self.publish_request_error(method, error);
+            }
+            return response.result;
+        }
+
+        let inner = self.inner();
+        let id = inner.next_id.fetch_add(1, Ordering::Relaxed);
         let (sender, receiver) = oneshot::channel();
-        self.inner
+        inner
             .pending
             .lock()
             .await
@@ -412,18 +646,48 @@ impl CodexThreadClient {
             }))
             .await;
         if let Err(error) = write_result {
-            self.inner.pending.lock().await.remove(&id);
+            inner.pending.lock().await.remove(&id);
+            self.publish_request_error(method, &error);
             return Err(error);
         }
 
-        match timeout(THREAD_REQUEST_TIMEOUT, receiver).await {
+        let request_timeout = request_timeout(method);
+        match timeout(request_timeout, receiver).await {
             Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err(CodexThreadError::ProcessUnavailable),
+            Ok(Err(_)) => {
+                let error = CodexThreadError::ProcessUnavailable;
+                self.publish_request_error(method, &error);
+                Err(error)
+            }
             Err(_) => {
-                self.inner.pending.lock().await.remove(&id);
-                Err(CodexThreadError::Timeout)
+                inner.pending.lock().await.remove(&id);
+                let error = CodexThreadError::RequestTimeout {
+                    method,
+                    request_id: id,
+                    timeout_ms: request_timeout.as_millis() as u64,
+                };
+                self.publish_request_error(method, &error);
+                Err(error)
             }
         }
+    }
+
+    fn publish_request_error(&self, method: &'static str, error: &CodexThreadError) {
+        if !error.is_connection_failure() {
+            return;
+        }
+        let Some(inner) = &self.inner else {
+            #[cfg(test)]
+            if let Some(mock) = &self.mock {
+                let _ = mock.events.send(CodexRuntimeEvent::Error {
+                    message: format!("Codex app-server {method} request {error}"),
+                });
+            }
+            return;
+        };
+        let _ = inner.events.send(CodexRuntimeEvent::Error {
+            message: format!("Codex app-server {method} request {error}"),
+        });
     }
 
     async fn notify(&self, method: &str, params: Value) -> Result<(), CodexThreadError> {
@@ -436,7 +700,7 @@ impl CodexThreadClient {
     }
 
     async fn write_message(&self, value: Value) -> Result<(), CodexThreadError> {
-        let mut stdin = self.inner.stdin.lock().await;
+        let mut stdin = self.inner().stdin.lock().await;
         stdin
             .write_all(value.to_string().as_bytes())
             .await
@@ -534,12 +798,7 @@ fn classify_json_rpc_error(method: Option<&str>, value: &Value) -> CodexThreadEr
     });
     if error.code == -32602 {
         CodexThreadError::InvalidParams(error.message)
-    } else if error.code == -32600
-        && matches!(
-            method,
-            Some(THREAD_READ | THREAD_RESUME | THREAD_TURNS_LIST)
-        )
-    {
+    } else if error.code == -32600 && matches!(method, Some(THREAD_RESUME | THREAD_TURNS_LIST)) {
         CodexThreadError::ThreadUnavailable(error.message)
     } else {
         CodexThreadError::Protocol(format!("{} (code {})", error.message, error.code))
@@ -693,6 +952,250 @@ fn unavailable(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn write_executable(path: &Path) {
+        std::fs::write(path, "#!/bin/sh\n").expect("write executable fixture");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
+                .expect("mark fixture executable");
+        }
+    }
+
+    #[test]
+    fn resolves_explicit_codex_binary_before_all_fallbacks() {
+        let temp = tempfile::tempdir().expect("create temp directory");
+        let explicit = temp.path().join("explicit-codex");
+        let path_directory = temp.path().join("path");
+        std::fs::create_dir(&path_directory).expect("create PATH directory");
+        let path_codex = path_directory.join("codex");
+        write_executable(&explicit);
+        write_executable(&path_codex);
+        let search_path = env::join_paths([&path_directory]).expect("join PATH");
+
+        assert_eq!(
+            resolve_codex_executable_from(
+                Some(explicit.as_os_str()),
+                Some(search_path.as_os_str()),
+                Some(temp.path()),
+                &[],
+            )
+            .expect("resolve explicit executable"),
+            explicit
+        );
+    }
+
+    #[test]
+    fn resolves_codex_from_path_before_standard_install_locations() {
+        let temp = tempfile::tempdir().expect("create temp directory");
+        let path_directory = temp.path().join("path");
+        let home_bin = temp.path().join(".local/bin");
+        std::fs::create_dir(&path_directory).expect("create PATH directory");
+        std::fs::create_dir_all(&home_bin).expect("create home bin directory");
+        let path_codex = path_directory.join("codex");
+        let home_codex = home_bin.join("codex");
+        write_executable(&path_codex);
+        write_executable(&home_codex);
+        let search_path = env::join_paths([&path_directory]).expect("join PATH");
+
+        assert_eq!(
+            resolve_codex_executable_from(
+                None,
+                Some(search_path.as_os_str()),
+                Some(temp.path()),
+                &[],
+            )
+            .expect("resolve PATH executable"),
+            path_codex
+        );
+    }
+
+    #[test]
+    fn resolves_install_script_codex_from_the_user_home() {
+        let temp = tempfile::tempdir().expect("create temp directory");
+        let home_bin = temp.path().join(".local/bin");
+        std::fs::create_dir_all(&home_bin).expect("create home bin directory");
+        let home_codex = home_bin.join("codex");
+        write_executable(&home_codex);
+
+        assert_eq!(
+            resolve_codex_executable_from(None, None, Some(temp.path()), &[])
+                .expect("resolve home executable"),
+            home_codex
+        );
+    }
+
+    #[test]
+    fn rejects_an_invalid_explicit_codex_binary_without_silent_fallback() {
+        let temp = tempfile::tempdir().expect("create temp directory");
+        let fallback = temp.path().join("fallback-codex");
+        write_executable(&fallback);
+        let missing = temp.path().join("missing-codex");
+
+        assert!(matches!(
+            resolve_codex_executable_from(
+                Some(missing.as_os_str()),
+                None,
+                Some(temp.path()),
+                &[fallback],
+            ),
+            Err(CodexThreadError::StartFailed(message))
+                if message.contains("CAFFOLD_CODEX_BIN")
+                    && message.contains("missing-codex")
+        ));
+    }
+
+    #[test]
+    fn reports_missing_cli_after_all_locations_are_exhausted() {
+        let temp = tempfile::tempdir().expect("create temp directory");
+
+        assert!(matches!(
+            resolve_codex_executable_from(None, None, Some(temp.path()), &[]),
+            Err(CodexThreadError::MissingCli)
+        ));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a real Codex task ID and authenticated Codex CLI"]
+    async fn probes_live_thread_state_through_the_official_protocol() {
+        use std::time::Instant;
+
+        let thread_id = std::env::var("CAFFOLD_CODEX_PROBE_THREAD_ID")
+            .expect("set CAFFOLD_CODEX_PROBE_THREAD_ID to a real Codex task ID");
+        let client = CodexThreadClient::start()
+            .await
+            .expect("start Codex app-server");
+
+        let list_started = Instant::now();
+        let listed = client
+            .list_threads(None, 100)
+            .await
+            .expect("list live Codex tasks")
+            .data
+            .into_iter()
+            .find(|thread| thread.id == thread_id);
+        let list_elapsed = list_started.elapsed();
+        let loaded_started = Instant::now();
+        let loaded = client
+            .list_loaded_threads(None, 100)
+            .await
+            .expect("list loaded Codex tasks");
+        let loaded_elapsed = loaded_started.elapsed();
+        let resume_started = Instant::now();
+        let resumed = client
+            .resume_thread_with_page(&thread_id, true)
+            .await
+            .expect("resume live Codex task state");
+        let resume_elapsed = resume_started.elapsed();
+
+        eprintln!(
+            "LIVE_CODEX_PROBE list_ms={} listed_status={:?} loaded_ms={} loaded={} resume_ms={} resume_status={:?} resume_turns={}",
+            list_elapsed.as_millis(),
+            listed.as_ref().map(|thread| &thread.status),
+            loaded_elapsed.as_millis(),
+            loaded.data.iter().any(|loaded_id| loaded_id == &thread_id),
+            resume_elapsed.as_millis(),
+            resumed.thread.status,
+            resumed
+                .initial_turns_page
+                .as_ref()
+                .map_or(0, |page| page.data.len()),
+        );
+        client.shutdown().await;
+    }
+
+    #[test]
+    fn gives_history_requests_enough_time_for_large_rollouts() {
+        for method in [THREAD_LIST, THREAD_READ, THREAD_RESUME, THREAD_TURNS_LIST] {
+            assert_eq!(
+                request_timeout(method),
+                Duration::from_secs(120),
+                "{method} should allow large Codex histories to load"
+            );
+        }
+    }
+
+    #[test]
+    fn keeps_interactive_requests_on_the_short_timeout() {
+        for method in [TURN_START, TURN_STEER, TURN_INTERRUPT, THREAD_ARCHIVE] {
+            assert_eq!(
+                request_timeout(method),
+                Duration::from_secs(30),
+                "{method} should fail promptly when the app-server is unavailable"
+            );
+        }
+    }
+
+    #[test]
+    fn request_timeout_errors_identify_the_rpc_request() {
+        let error = CodexThreadError::RequestTimeout {
+            method: THREAD_RESUME,
+            request_id: 42,
+            timeout_ms: HISTORY_REQUEST_TIMEOUT.as_millis() as u64,
+        };
+
+        assert_eq!(
+            error.to_string(),
+            "Codex app-server thread/resume request 42 timed out after 120000ms."
+        );
+        assert!(!error.is_connection_failure());
+    }
+
+    #[tokio::test]
+    async fn lists_threads_from_the_app_server_state_db() {
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            THREAD_LIST,
+            ThreadListResponse {
+                data: Vec::new(),
+                next_cursor: None,
+                backwards_cursor: None,
+            },
+        )]);
+
+        client.list_threads(None, 100).await.expect("list threads");
+
+        assert_eq!(
+            client.mock_requests().await,
+            vec![(
+                THREAD_LIST.to_string(),
+                json!({
+                    "limit": 100,
+                    "sortKey": "recency_at",
+                    "sortDirection": "desc",
+                    "archived": false,
+                    "useStateDbOnly": true
+                })
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn request_timeouts_do_not_publish_a_connection_error() {
+        let request_error = CodexThreadError::RequestTimeout {
+            method: THREAD_LIST,
+            request_id: 7,
+            timeout_ms: HISTORY_REQUEST_TIMEOUT.as_millis() as u64,
+        };
+        let client =
+            CodexThreadClient::mock(vec![MockCodexResponse::error(THREAD_LIST, request_error)]);
+        let mut events = client.subscribe();
+
+        assert!(matches!(
+            client.list_threads(None, 100).await,
+            Err(CodexThreadError::RequestTimeout {
+                method: THREAD_LIST,
+                request_id: 7,
+                timeout_ms: 120_000,
+            })
+        ));
+        assert!(
+            timeout(Duration::from_millis(100), events.recv())
+                .await
+                .is_err()
+        );
+    }
 
     #[tokio::test]
     async fn treats_app_server_stderr_as_diagnostic_output() {

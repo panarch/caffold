@@ -1,9 +1,10 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use futures_util::{StreamExt, stream};
 use serde::Serialize;
 use tokio::sync::Mutex as AsyncMutex;
 
@@ -12,8 +13,8 @@ use crate::codex_app_server::{
     TurnStatus, TurnsPage,
 };
 
-const LATEST_TURNS_PAGE_SIZE: usize = 8;
-const LATEST_TURNS_MAX_PAGES: usize = 4;
+const INITIAL_TURNS_PAGE_SIZE: usize = 8;
+const VIEWER_HANDOFF_GRACE: Duration = Duration::from_millis(250);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,6 +39,26 @@ pub struct ThreadSessionSnapshot {
     pub revision: u64,
     pub last_sync_ms: Option<u64>,
     pub last_error: Option<String>,
+    pub external_syncing: bool,
+    pub external_sync_started_ms: Option<u64>,
+    pub external_activity_turn_id: Option<String>,
+    pub external_activity_started_ms: Option<u64>,
+}
+
+impl ThreadSessionSnapshot {
+    pub fn is_running(&self) -> bool {
+        self.external_activity_turn_id.is_some()
+            || self.active_turn_id.is_some()
+            || self
+                .thread
+                .as_ref()
+                .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }))
+            || self.turns_page.as_ref().is_some_and(|page| {
+                page.data
+                    .iter()
+                    .any(|turn| turn.status == TurnStatus::InProgress)
+            })
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -85,14 +106,18 @@ struct ThreadSessionState {
     turns_page: Option<TurnsPage>,
     active_turn_id: Option<String>,
     viewer_leases: usize,
+    viewer_epoch: u64,
     runtime_lease: bool,
     client: Option<CodexThreadClient>,
     generation: u64,
     revision: u64,
-    syncing: bool,
-    sync_dirty: bool,
+    status_revision: u64,
     last_sync_ms: Option<u64>,
     last_error: Option<String>,
+    external_syncing: bool,
+    external_sync_started_ms: Option<u64>,
+    external_activity_turn_id: Option<String>,
+    external_activity_started_ms: Option<u64>,
 }
 
 impl Default for ThreadSessionState {
@@ -103,14 +128,18 @@ impl Default for ThreadSessionState {
             turns_page: None,
             active_turn_id: None,
             viewer_leases: 0,
+            viewer_epoch: 0,
             runtime_lease: false,
             client: None,
             generation: 0,
             revision: 0,
-            syncing: false,
-            sync_dirty: false,
+            status_revision: 0,
             last_sync_ms: None,
             last_error: None,
+            external_syncing: false,
+            external_sync_started_ms: None,
+            external_activity_turn_id: None,
+            external_activity_started_ms: None,
         }
     }
 }
@@ -133,23 +162,124 @@ impl Drop for ThreadViewerLease {
 }
 
 impl CodexThreadSessions {
+    pub async fn observe_thread_metadata(&self, mut thread: CodexThread) {
+        let entry = self.entry(&thread.id).await;
+        let mut state = entry.state.lock().await;
+        if let Some(current) = state.thread.as_ref() {
+            thread.turns = current.turns.clone();
+            if state.active_turn_id.is_some() {
+                thread.status = current.status.clone();
+            }
+        }
+        if state.thread.as_ref() == Some(&thread) {
+            return;
+        }
+        state.active_turn_id = active_turn_id(&thread, state.turns_page.as_ref());
+        state.thread = Some(thread);
+        state.revision = state.revision.saturating_add(1);
+        state.status_revision = state.revision;
+    }
+
+    pub async fn record_external_activity_started(
+        &self,
+        thread_id: &str,
+        turn_id: &str,
+        started_at_ms: u64,
+    ) -> ThreadSessionSnapshot {
+        let entry = self.entry(thread_id).await;
+        let mut state = entry.state.lock().await;
+        state.external_activity_turn_id = Some(turn_id.to_string());
+        state.external_activity_started_ms = Some(started_at_ms);
+        state.revision = state.revision.saturating_add(1);
+        snapshot(&state)
+    }
+
+    pub async fn record_external_activity_finished(
+        &self,
+        thread_id: &str,
+        turn_id: &str,
+    ) -> ThreadSessionSnapshot {
+        let entry = self.entry(thread_id).await;
+        let mut state = entry.state.lock().await;
+        if state.external_activity_turn_id.as_deref() == Some(turn_id) {
+            state.external_activity_turn_id = None;
+            state.external_activity_started_ms = None;
+            state.revision = state.revision.saturating_add(1);
+        }
+        snapshot(&state)
+    }
+
+    pub async fn begin_external_sync(&self, thread_id: &str) -> ThreadSessionSnapshot {
+        let entry = self.entry(thread_id).await;
+        let mut state = entry.state.lock().await;
+        state.external_syncing = true;
+        state
+            .external_sync_started_ms
+            .get_or_insert_with(now_unix_ms);
+        state.revision = state.revision.saturating_add(1);
+        snapshot(&state)
+    }
+
+    pub async fn apply_external_read_sync(
+        &self,
+        thread_id: &str,
+        base_revision: u64,
+        thread: CodexThread,
+        latest_turns: TurnsPage,
+    ) -> ThreadSessionSnapshot {
+        let entry = self.entry(thread_id).await;
+        let mut state = entry.state.lock().await;
+        let status_applied =
+            merge_external_snapshot(&mut state, thread, Some(latest_turns), base_revision);
+        state.external_syncing = false;
+        state.external_sync_started_ms = None;
+        state.revision = state.revision.saturating_add(1);
+        if status_applied {
+            state.status_revision = state.revision;
+        }
+        state.last_sync_ms = Some(now_unix_ms());
+        state.last_error = None;
+        snapshot(&state)
+    }
+
+    pub async fn fail_external_sync(&self, thread_id: &str, error: &CodexThreadError) {
+        let entry = self.entry(thread_id).await;
+        let mut state = entry.state.lock().await;
+        state.external_syncing = false;
+        state.external_sync_started_ms = None;
+        state.last_error = Some(error.to_string());
+        state.revision = state.revision.saturating_add(1);
+    }
+
     pub async fn acquire_viewer(
         &self,
         client: &CodexThreadClient,
         generation: u64,
         thread_id: &str,
     ) -> Result<ThreadViewerLease, CodexThreadError> {
-        let entry = self.entry(thread_id).await;
-        entry.state.lock().await.viewer_leases += 1;
+        let viewer = self.reserve_viewer(thread_id).await;
         if let Err(error) = self.ensure_subscribed(client, generation, thread_id).await {
+            let entry = self.entry(thread_id).await;
             let mut state = entry.state.lock().await;
             state.viewer_leases = state.viewer_leases.saturating_sub(1);
+            state.viewer_epoch = state.viewer_epoch.saturating_add(1);
+            std::mem::forget(viewer);
             return Err(error);
         }
-        Ok(ThreadViewerLease {
+        Ok(viewer)
+    }
+
+    pub async fn reserve_viewer(&self, thread_id: &str) -> ThreadViewerLease {
+        let entry = self.entry(thread_id).await;
+        {
+            let mut state = entry.state.lock().await;
+            state.viewer_leases += 1;
+            state.viewer_epoch = state.viewer_epoch.saturating_add(1);
+        }
+        ThreadViewerLease {
             sessions: self.clone(),
             thread_id: thread_id.to_string(),
-        })
+        }
     }
 
     pub async fn ensure_subscribed(
@@ -169,28 +299,91 @@ impl CodexThreadSessions {
             }
         }
 
-        {
+        let base_revision = {
             let mut state = entry.state.lock().await;
             state.lifecycle = ThreadSessionLifecycle::Subscribing;
             state.generation = generation;
             state.last_error = None;
-        }
+            state.revision
+        };
         match client.resume_thread_with_page(thread_id, true).await {
             Ok(response) => {
                 let mut state = entry.state.lock().await;
-                state.lifecycle = ThreadSessionLifecycle::Subscribed;
-                state.client = Some(client.clone());
-                state.active_turn_id =
-                    active_turn_id(&response.thread, response.initial_turns_page.as_ref());
-                state.thread = Some(response.thread);
-                state.turns_page = response.initial_turns_page;
-                state.revision = state.revision.saturating_add(1);
-                state.last_sync_ms = Some(now_unix_ms());
+                if state.generation != generation {
+                    return Err(CodexThreadError::SubscriptionLost(format!(
+                        "Codex thread {thread_id} changed app-server generation while subscribing"
+                    )));
+                }
+                if state.revision == base_revision {
+                    apply_resume_response(&mut state, client, generation, response, false);
+                } else {
+                    apply_stale_refresh_response(&mut state, client, generation, response);
+                }
                 Ok(snapshot(&state))
             }
             Err(error) => {
                 let mut state = entry.state.lock().await;
                 state.lifecycle = ThreadSessionLifecycle::Error;
+                state.last_error = Some(error.to_string());
+                Err(error)
+            }
+        }
+    }
+
+    pub async fn load_metadata(
+        &self,
+        client: &CodexThreadClient,
+        generation: u64,
+        thread_id: &str,
+    ) -> Result<ThreadSessionSnapshot, CodexThreadError> {
+        self.ensure_subscribed(client, generation, thread_id).await
+    }
+
+    #[cfg(test)]
+    pub async fn refresh_subscription(
+        &self,
+        client: &CodexThreadClient,
+        generation: u64,
+        thread_id: &str,
+    ) -> Result<ThreadSessionSnapshot, CodexThreadError> {
+        let entry = self.entry(thread_id).await;
+        let _operation = entry.operation.lock().await;
+        let (preserve_subscription, base_revision) = {
+            let state = entry.state.lock().await;
+            (
+                state.generation == generation
+                    && state.lifecycle == ThreadSessionLifecycle::Subscribed,
+                state.revision,
+            )
+        };
+
+        if !preserve_subscription {
+            let mut state = entry.state.lock().await;
+            state.lifecycle = ThreadSessionLifecycle::Subscribing;
+            state.generation = generation;
+            state.last_error = None;
+        }
+
+        match client.resume_thread_with_page(thread_id, true).await {
+            Ok(response) => {
+                let mut state = entry.state.lock().await;
+                if preserve_subscription && state.generation != generation {
+                    return Err(CodexThreadError::SubscriptionLost(format!(
+                        "Codex thread {thread_id} changed app-server generation while refreshing its subscription"
+                    )));
+                }
+                if state.revision == base_revision {
+                    apply_resume_response(&mut state, client, generation, response, true);
+                } else {
+                    apply_stale_refresh_response(&mut state, client, generation, response);
+                }
+                Ok(snapshot(&state))
+            }
+            Err(error) => {
+                let mut state = entry.state.lock().await;
+                if !preserve_subscription {
+                    state.lifecycle = ThreadSessionLifecycle::Error;
+                }
                 state.last_error = Some(error.to_string());
                 Err(error)
             }
@@ -213,6 +406,7 @@ impl CodexThreadSessions {
         state.turns_page = None;
         state.runtime_lease = true;
         state.revision = state.revision.saturating_add(1);
+        state.status_revision = state.revision;
         state.last_sync_ms = Some(now_unix_ms());
         state.last_error = None;
     }
@@ -224,27 +418,53 @@ impl CodexThreadSessions {
         thread_id: &str,
     ) -> Result<PromptTarget, CodexThreadError> {
         let entry = self.entry(thread_id).await;
-        entry.state.lock().await.runtime_lease = true;
-        let snapshot = match self.ensure_subscribed(client, generation, thread_id).await {
-            Ok(snapshot) => snapshot,
-            Err(error) => {
-                self.cancel_runtime(thread_id).await;
-                return Err(error);
+        let current = {
+            let mut state = entry.state.lock().await;
+            state.runtime_lease = true;
+            if state.generation == generation
+                && state.lifecycle == ThreadSessionLifecycle::Subscribed
+                && state.thread.is_some()
+            {
+                Some(snapshot(&state))
+            } else {
+                None
             }
         };
-        let Some(thread) = snapshot.thread else {
-            self.cancel_runtime(thread_id).await;
-            return Err(CodexThreadError::Protocol(format!(
-                "subscribed thread {thread_id} did not include metadata"
-            )));
+        let current = match current {
+            Some(snapshot) => snapshot,
+            None => match self.resume_for_prompt(client, generation, thread_id).await {
+                Ok(snapshot) => snapshot,
+                Err(error) => {
+                    self.cancel_runtime(thread_id).await;
+                    return Err(error);
+                }
+            },
         };
+
+        if current.generation != generation {
+            self.cancel_runtime(thread_id).await;
+            return Err(CodexThreadError::SubscriptionLost(format!(
+                "Codex thread {thread_id} changed app-server generation before prompt"
+            )));
+        }
+
+        let thread = current.thread.ok_or_else(|| {
+            CodexThreadError::SubscriptionLost(format!(
+                "Codex thread {thread_id} did not return canonical metadata while preparing a prompt"
+            ))
+        })?;
+
         if matches!(thread.status, ThreadStatus::Active { .. }) {
-            let turn_id = if let Some(turn_id) = snapshot.active_turn_id {
+            let turn_id = if let Some(turn_id) = current.active_turn_id {
                 turn_id
             } else {
-                let page = match client.list_thread_turns(thread_id, None, 8).await {
+                let page = match client
+                    .list_thread_turns(thread_id, None, INITIAL_TURNS_PAGE_SIZE)
+                    .await
+                {
                     Ok(page) => page,
                     Err(error) => {
+                        entry.state.lock().await.last_error = Some(error.to_string());
                         self.cancel_runtime(thread_id).await;
                         return Err(error);
                     }
@@ -264,12 +484,56 @@ impl CodexThreadSessions {
                 state.active_turn_id = Some(turn_id.clone());
                 merge_latest_turns_page(&mut state.turns_page, page);
                 state.revision = state.revision.saturating_add(1);
+                state.last_sync_ms = Some(now_unix_ms());
+                state.last_error = None;
                 turn_id
             };
             Ok(PromptTarget::Steer { turn_id })
-        } else {
+        } else if matches!(thread.status, ThreadStatus::Idle) {
             Ok(PromptTarget::Start { cwd: thread.cwd })
+        } else {
+            self.cancel_runtime(thread_id).await;
+            Err(CodexThreadError::SubscriptionLost(format!(
+                "Codex thread {thread_id} is unavailable for a prompt"
+            )))
         }
+    }
+
+    async fn resume_for_prompt(
+        &self,
+        client: &CodexThreadClient,
+        generation: u64,
+        thread_id: &str,
+    ) -> Result<ThreadSessionSnapshot, CodexThreadError> {
+        let entry = self.entry(thread_id).await;
+        let _operation = entry.operation.lock().await;
+        {
+            let state = entry.state.lock().await;
+            if state.generation == generation
+                && state.lifecycle == ThreadSessionLifecycle::Subscribed
+                && state.thread.is_some()
+            {
+                return Ok(snapshot(&state));
+            }
+        }
+        let base_revision = entry.state.lock().await.revision;
+        let response = match client.resume_thread_with_page(thread_id, false).await {
+            Ok(response) => response,
+            Err(error) => {
+                let mut state = entry.state.lock().await;
+                state.lifecycle = ThreadSessionLifecycle::Error;
+                state.last_error = Some(error.to_string());
+                return Err(error);
+            }
+        };
+        let mut state = entry.state.lock().await;
+        if state.generation > generation {
+            return Err(CodexThreadError::SubscriptionLost(format!(
+                "Codex thread {thread_id} changed app-server generation while preparing a prompt"
+            )));
+        }
+        apply_prompt_resume_response(&mut state, client, generation, response, base_revision);
+        Ok(snapshot(&state))
     }
 
     pub async fn record_turn_started(&self, generation: u64, thread_id: &str, turn: CodexTurn) {
@@ -287,6 +551,7 @@ impl CodexThreadSessions {
             };
         }
         state.revision = state.revision.saturating_add(1);
+        state.status_revision = state.revision;
         state.last_sync_ms = Some(now_unix_ms());
     }
 
@@ -346,6 +611,9 @@ impl CodexThreadSessions {
             let changed = apply_notification_state(&mut state, notification);
             if changed {
                 state.revision = state.revision.saturating_add(1);
+                if notification_changes_status(notification) {
+                    state.status_revision = state.revision;
+                }
             }
             (
                 changed,
@@ -373,185 +641,13 @@ impl CodexThreadSessions {
             .list_thread_turns(thread_id, Some(cursor), limit)
             .await?;
         let entry = self.entry(thread_id).await;
-        let mut state = entry.state.lock().await;
+        let state = entry.state.lock().await;
         if state.generation != generation {
             return Err(CodexThreadError::SubscriptionLost(format!(
                 "Codex thread {thread_id} changed app-server generation while loading history"
             )));
         }
-        merge_older_turns_page(&mut state.turns_page, page.clone());
-        state.revision = state.revision.saturating_add(1);
-        state.last_sync_ms = Some(now_unix_ms());
         Ok((snapshot(&state), page))
-    }
-
-    pub async fn sync_latest(
-        &self,
-        client: &CodexThreadClient,
-        generation: u64,
-        thread_id: &str,
-    ) -> Result<Option<ThreadSessionSnapshot>, CodexThreadError> {
-        self.ensure_subscribed(client, generation, thread_id)
-            .await?;
-        let entry = self.entry(thread_id).await;
-        {
-            let mut state = entry.state.lock().await;
-            if state.syncing {
-                state.sync_dirty = true;
-                return Ok(None);
-            }
-            state.syncing = true;
-            state.sync_dirty = false;
-        }
-
-        loop {
-            let reload_external_subscription = {
-                let _operation = entry.operation.lock().await;
-                let should_reload = {
-                    let state = entry.state.lock().await;
-                    state.generation == generation
-                        && state.lifecycle == ThreadSessionLifecycle::Subscribed
-                        && !state.runtime_lease
-                };
-                if should_reload {
-                    {
-                        let mut state = entry.state.lock().await;
-                        state.lifecycle = ThreadSessionLifecycle::Unsubscribing;
-                    }
-                    if let Err(error) = client.unsubscribe_thread(thread_id).await {
-                        let mut state = entry.state.lock().await;
-                        state.lifecycle = ThreadSessionLifecycle::Error;
-                        state.syncing = false;
-                        state.last_error = Some(error.to_string());
-                        return Err(error);
-                    }
-                    {
-                        let mut state = entry.state.lock().await;
-                        state.lifecycle = ThreadSessionLifecycle::Subscribing;
-                    }
-                    match client.resume_thread_with_page(thread_id, true).await {
-                        Ok(response) => Some(response),
-                        Err(error) => {
-                            let mut state = entry.state.lock().await;
-                            state.lifecycle = ThreadSessionLifecycle::Error;
-                            state.syncing = false;
-                            state.last_error = Some(error.to_string());
-                            return Err(error);
-                        }
-                    }
-                } else {
-                    None
-                }
-            };
-
-            if let Some(response) = reload_external_subscription {
-                let mut state = entry.state.lock().await;
-                if state.generation != generation {
-                    state.syncing = false;
-                    return Err(CodexThreadError::SubscriptionLost(format!(
-                        "Codex thread {thread_id} changed app-server generation while synchronizing"
-                    )));
-                }
-                state.lifecycle = ThreadSessionLifecycle::Subscribed;
-                state.client = Some(client.clone());
-                state.thread = Some(response.thread);
-                if let Some(page) = response.initial_turns_page {
-                    merge_latest_turns_page(&mut state.turns_page, page);
-                }
-                state.active_turn_id = state
-                    .thread
-                    .as_ref()
-                    .and_then(|thread| active_turn_id(thread, state.turns_page.as_ref()));
-                state.revision = state.revision.saturating_add(1);
-                state.last_sync_ms = Some(now_unix_ms());
-                state.last_error = None;
-                if state.sync_dirty {
-                    state.sync_dirty = false;
-                    drop(state);
-                    continue;
-                }
-                state.syncing = false;
-                return Ok(Some(snapshot(&state)));
-            }
-
-            let known_turn_ids = entry
-                .state
-                .lock()
-                .await
-                .turns_page
-                .as_ref()
-                .map(|page| {
-                    page.data
-                        .iter()
-                        .map(|turn| turn.id.clone())
-                        .collect::<HashSet<_>>()
-                })
-                .unwrap_or_default();
-            let (thread, head_page) = match tokio::try_join!(
-                client.read_thread(thread_id, false),
-                client.list_thread_turns(thread_id, None, LATEST_TURNS_PAGE_SIZE)
-            ) {
-                Ok(result) => result,
-                Err(error) => {
-                    let mut state = entry.state.lock().await;
-                    state.syncing = false;
-                    state.last_error = Some(error.to_string());
-                    return Err(error);
-                }
-            };
-            let mut pages = vec![head_page];
-            while should_load_next_latest_page(&known_turn_ids, pages.last().unwrap(), pages.len())
-            {
-                let Some(cursor) = pages.last().and_then(|page| page.next_cursor.clone()) else {
-                    break;
-                };
-                let page = match client
-                    .list_thread_turns(thread_id, Some(&cursor), LATEST_TURNS_PAGE_SIZE)
-                    .await
-                {
-                    Ok(page) => page,
-                    Err(_) => break,
-                };
-                if page.data.is_empty() {
-                    break;
-                }
-                pages.push(page);
-            }
-
-            let mut state = entry.state.lock().await;
-            if state.generation != generation {
-                state.syncing = false;
-                return Err(CodexThreadError::SubscriptionLost(format!(
-                    "Codex thread {thread_id} changed app-server generation while synchronizing"
-                )));
-            }
-            state.thread = Some(thread);
-            if latest_pages_overlap(&known_turn_ids, &pages) || known_turn_ids.is_empty() {
-                let mut pages = pages.into_iter();
-                if let Some(head_page) = pages.next() {
-                    merge_latest_turns_page(&mut state.turns_page, head_page);
-                }
-                for page in pages {
-                    merge_incremental_turns_page(&mut state.turns_page, page);
-                }
-            } else {
-                state.turns_page = coalesce_latest_turns_pages(pages);
-            }
-            state.active_turn_id = state
-                .thread
-                .as_ref()
-                .and_then(|thread| active_turn_id(thread, state.turns_page.as_ref()));
-            state.revision = state.revision.saturating_add(1);
-            state.last_sync_ms = Some(now_unix_ms());
-            state.last_error = None;
-            if state.sync_dirty {
-                state.sync_dirty = false;
-                drop(state);
-                continue;
-            }
-            state.syncing = false;
-            return Ok(Some(snapshot(&state)));
-        }
     }
 
     pub async fn connection_lost(&self, generation: u64, message: String) {
@@ -584,19 +680,33 @@ impl CodexThreadSessions {
             .iter()
             .map(|(thread_id, entry)| (thread_id.clone(), entry.clone()))
             .collect::<Vec<_>>();
-        let mut failures = Vec::new();
+        let mut leased_threads = Vec::new();
         for (thread_id, entry) in entries {
             let leased = {
                 let state = entry.state.lock().await;
                 state.viewer_leases > 0 || state.runtime_lease
             };
-            if leased
-                && let Err(error) = self.ensure_subscribed(client, generation, &thread_id).await
-            {
-                failures.push((thread_id, error));
+            if leased {
+                leased_threads.push(thread_id);
             }
         }
-        failures
+
+        stream::iter(leased_threads)
+            .map(|thread_id| {
+                let sessions = self.clone();
+                let client = client.clone();
+                async move {
+                    sessions
+                        .ensure_subscribed(&client, generation, &thread_id)
+                        .await
+                        .err()
+                        .map(|error| (thread_id, error))
+                }
+            })
+            .buffer_unordered(8)
+            .filter_map(async move |failure| failure)
+            .collect()
+            .await
     }
 
     pub async fn diagnostics(&self) -> ThreadSessionsDiagnostics {
@@ -660,18 +770,33 @@ impl CodexThreadSessions {
         let Some(entry) = self.existing_entry(thread_id).await else {
             return;
         };
-        {
+        let viewer_epoch = {
             let mut state = entry.state.lock().await;
             state.viewer_leases = state.viewer_leases.saturating_sub(1);
-        }
-        self.unsubscribe_if_unused(thread_id, &entry).await;
+            state.viewer_epoch = state.viewer_epoch.saturating_add(1);
+            state.viewer_epoch
+        };
+        tokio::time::sleep(VIEWER_HANDOFF_GRACE).await;
+        self.unsubscribe_if_unused_for_epoch(thread_id, &entry, Some(viewer_epoch))
+            .await;
     }
 
     async fn unsubscribe_if_unused(&self, thread_id: &str, entry: &Arc<ThreadSessionEntry>) {
-        let _operation = entry.operation.lock().await;
-        let (client, generation) = {
+        self.unsubscribe_if_unused_for_epoch(thread_id, entry, None)
+            .await;
+    }
+
+    async fn unsubscribe_if_unused_for_epoch(
+        &self,
+        thread_id: &str,
+        entry: &Arc<ThreadSessionEntry>,
+        expected_viewer_epoch: Option<u64>,
+    ) {
+        let (client, generation, unsubscribe_epoch) = {
+            let _operation = entry.operation.lock().await;
             let mut state = entry.state.lock().await;
-            if state.lifecycle != ThreadSessionLifecycle::Subscribed
+            if expected_viewer_epoch.is_some_and(|epoch| state.viewer_epoch != epoch)
+                || state.lifecycle != ThreadSessionLifecycle::Subscribed
                 || state.viewer_leases > 0
                 || state.runtime_lease
             {
@@ -681,12 +806,19 @@ impl CodexThreadSessions {
                 return;
             };
             let generation = state.generation;
+            let unsubscribe_epoch = state.viewer_epoch;
             state.lifecycle = ThreadSessionLifecycle::Unsubscribing;
-            (client, generation)
+            (client, generation, unsubscribe_epoch)
         };
+
         let result = client.unsubscribe_thread(thread_id).await;
         let mut state = entry.state.lock().await;
-        if state.generation != generation {
+        if state.generation != generation
+            || state.viewer_epoch != unsubscribe_epoch
+            || state.lifecycle != ThreadSessionLifecycle::Unsubscribing
+            || state.viewer_leases > 0
+            || state.runtime_lease
+        {
             return;
         }
         match result {
@@ -732,7 +864,94 @@ fn snapshot(state: &ThreadSessionState) -> ThreadSessionSnapshot {
         revision: state.revision,
         last_sync_ms: state.last_sync_ms,
         last_error: state.last_error.clone(),
+        external_syncing: state.external_syncing,
+        external_sync_started_ms: state.external_sync_started_ms,
+        external_activity_turn_id: state.external_activity_turn_id.clone(),
+        external_activity_started_ms: state.external_activity_started_ms,
     }
+}
+
+fn merge_external_resume_response(
+    state: &mut ThreadSessionState,
+    response: crate::codex_app_server::ThreadResumeResponse,
+    base_revision: u64,
+) -> bool {
+    merge_external_snapshot(
+        state,
+        response.thread,
+        response.initial_turns_page,
+        base_revision,
+    )
+}
+
+fn merge_external_snapshot(
+    state: &mut ThreadSessionState,
+    mut incoming_thread: CodexThread,
+    latest_turns: Option<TurnsPage>,
+    base_revision: u64,
+) -> bool {
+    let preserve_newer_status = state.status_revision > base_revision;
+    if let Some(current) = state.thread.take() {
+        let mut turns = current.turns;
+        merge_external_turns(&mut turns, incoming_thread.turns, preserve_newer_status);
+        incoming_thread.turns = turns;
+    }
+    if let Some(page) = latest_turns {
+        merge_external_turns_page(&mut state.turns_page, page, preserve_newer_status);
+    }
+    state.active_turn_id = active_turn_id(&incoming_thread, state.turns_page.as_ref());
+    if state.active_turn_id.is_some() {
+        incoming_thread.status = ThreadStatus::Active {
+            active_flags: Vec::new(),
+        };
+    } else {
+        if matches!(incoming_thread.status, ThreadStatus::Active { .. }) {
+            incoming_thread.status = ThreadStatus::Idle;
+        }
+        state.runtime_lease = false;
+    }
+    state.thread = Some(incoming_thread);
+    !preserve_newer_status
+}
+
+fn merge_external_turns(
+    target: &mut Vec<CodexTurn>,
+    incoming: impl IntoIterator<Item = CodexTurn>,
+    preserve_existing_status: bool,
+) {
+    for turn in incoming {
+        if let Some(existing) = target.iter_mut().find(|existing| existing.id == turn.id) {
+            if !preserve_existing_status
+                || existing.status == TurnStatus::InProgress
+                || turn.status != TurnStatus::InProgress
+            {
+                *existing = turn;
+            }
+        } else {
+            target.push(turn);
+        }
+    }
+    sort_turns_desc(target);
+}
+
+fn merge_external_turns_page(
+    target: &mut Option<TurnsPage>,
+    incoming: TurnsPage,
+    preserve_existing_status: bool,
+) {
+    let page = target.get_or_insert_with(|| TurnsPage {
+        data: Vec::new(),
+        next_cursor: None,
+        backwards_cursor: None,
+    });
+    merge_external_turns(&mut page.data, incoming.data, preserve_existing_status);
+    if page.next_cursor.is_none() {
+        page.next_cursor = incoming.next_cursor;
+    }
+    if page.backwards_cursor.is_none() {
+        page.backwards_cursor = incoming.backwards_cursor;
+    }
+    bound_latest_turns_page(page);
 }
 
 fn now_unix_ms() -> u64 {
@@ -741,12 +960,119 @@ fn now_unix_ms() -> u64 {
         .map_or(0, |duration| duration.as_millis() as u64)
 }
 
+fn apply_resume_response(
+    state: &mut ThreadSessionState,
+    client: &CodexThreadClient,
+    generation: u64,
+    response: crate::codex_app_server::ThreadResumeResponse,
+    merge_history: bool,
+) {
+    let mut thread = response.thread;
+    let active_turn_id = active_turn_id(&thread, response.initial_turns_page.as_ref());
+    if active_turn_id.is_some() {
+        thread.status = ThreadStatus::Active {
+            active_flags: Vec::new(),
+        };
+    } else if !matches!(thread.status, ThreadStatus::Active { .. }) {
+        state.runtime_lease = false;
+    }
+
+    state.lifecycle = ThreadSessionLifecycle::Subscribed;
+    state.client = Some(client.clone());
+    state.generation = generation;
+    state.active_turn_id = active_turn_id;
+    state.thread = Some(thread);
+    if merge_history {
+        if let Some(page) = response.initial_turns_page {
+            merge_latest_turns_page(&mut state.turns_page, page);
+        }
+    } else {
+        state.turns_page = response.initial_turns_page;
+        if let Some(page) = state.turns_page.as_mut() {
+            bound_latest_turns_page(page);
+        }
+    }
+    state.revision = state.revision.saturating_add(1);
+    state.status_revision = state.revision;
+    state.last_sync_ms = Some(now_unix_ms());
+    state.last_error = None;
+}
+
+fn apply_stale_refresh_response(
+    state: &mut ThreadSessionState,
+    client: &CodexThreadClient,
+    generation: u64,
+    response: crate::codex_app_server::ThreadResumeResponse,
+) {
+    let previous_status = state.thread.as_ref().map(|thread| thread.status.clone());
+    let mut thread = response.thread;
+    if let Some(current) = state.thread.take() {
+        let mut turns = current.turns;
+        merge_canonical_turns(&mut turns, thread.turns);
+        thread.turns = turns;
+    }
+    if let Some(incoming) = response.initial_turns_page {
+        merge_stale_turns_page(&mut state.turns_page, incoming);
+    }
+
+    state.active_turn_id = active_turn_id(&thread, state.turns_page.as_ref());
+    if state.active_turn_id.is_some() {
+        thread.status = ThreadStatus::Active {
+            active_flags: Vec::new(),
+        };
+    } else if matches!(thread.status, ThreadStatus::Active { .. }) {
+        thread.status = previous_status
+            .filter(|status| !matches!(status, ThreadStatus::Active { .. }))
+            .unwrap_or(ThreadStatus::Idle);
+        state.runtime_lease = false;
+    } else {
+        state.runtime_lease = false;
+    }
+
+    state.lifecycle = ThreadSessionLifecycle::Subscribed;
+    state.client = Some(client.clone());
+    state.generation = generation;
+    state.thread = Some(thread);
+    state.revision = state.revision.saturating_add(1);
+    state.status_revision = state.revision;
+    state.last_sync_ms = Some(now_unix_ms());
+    state.last_error = None;
+}
+
+fn apply_prompt_resume_response(
+    state: &mut ThreadSessionState,
+    client: &CodexThreadClient,
+    generation: u64,
+    response: crate::codex_app_server::ThreadResumeResponse,
+    base_revision: u64,
+) {
+    let status_applied = merge_external_resume_response(state, response, base_revision);
+    state.lifecycle = ThreadSessionLifecycle::Subscribed;
+    state.client = Some(client.clone());
+    state.generation = generation;
+    state.runtime_lease = true;
+    state.revision = state.revision.saturating_add(1);
+    if status_applied {
+        state.status_revision = state.revision;
+    }
+    state.last_sync_ms = Some(now_unix_ms());
+    state.last_error = None;
+}
+
 fn active_turn_id(thread: &CodexThread, turns_page: Option<&TurnsPage>) -> Option<String> {
-    thread
+    let turns = thread
         .turns
         .iter()
         .chain(turns_page.into_iter().flat_map(|page| page.data.iter()))
-        .find(|turn| turn.status == TurnStatus::InProgress)
+        .collect::<Vec<_>>();
+    turns
+        .iter()
+        .find(|turn| {
+            turn.status == TurnStatus::InProgress
+                && !turns.iter().any(|candidate| {
+                    candidate.id == turn.id && candidate.status != TurnStatus::InProgress
+                })
+        })
         .map(|turn| turn.id.clone())
 }
 
@@ -761,6 +1087,7 @@ fn upsert_turn(page: &mut Option<TurnsPage>, turn: CodexTurn) {
     } else {
         page.data.push(turn);
     }
+    bound_latest_turns_page(page);
 }
 
 fn merge_latest_turns_page(target: &mut Option<TurnsPage>, incoming: TurnsPage) {
@@ -774,73 +1101,44 @@ fn merge_latest_turns_page(target: &mut Option<TurnsPage>, incoming: TurnsPage) 
             target.next_cursor = next_cursor;
         }
         target.backwards_cursor = backwards_cursor.or_else(|| target.backwards_cursor.clone());
-        sort_turns_desc(&mut target.data);
+        bound_latest_turns_page(target);
     }
 }
 
-fn merge_incremental_turns_page(target: &mut Option<TurnsPage>, incoming: TurnsPage) {
-    for turn in incoming.data {
-        upsert_turn(target, turn);
+fn merge_stale_turns_page(target: &mut Option<TurnsPage>, incoming: TurnsPage) {
+    let page = target.get_or_insert_with(|| TurnsPage {
+        data: Vec::new(),
+        next_cursor: None,
+        backwards_cursor: None,
+    });
+    merge_canonical_turns(&mut page.data, incoming.data);
+    if page.next_cursor.is_none() && incoming.next_cursor.is_some() {
+        page.next_cursor = incoming.next_cursor;
     }
-    if let Some(target) = target {
-        sort_turns_desc(&mut target.data);
+    if incoming.backwards_cursor.is_some() {
+        page.backwards_cursor = incoming.backwards_cursor;
     }
+    bound_latest_turns_page(page);
 }
 
-fn merge_older_turns_page(target: &mut Option<TurnsPage>, incoming: TurnsPage) {
-    let next_cursor = incoming.next_cursor.clone();
-    for turn in incoming.data {
-        upsert_turn(target, turn);
-    }
-    if let Some(target) = target {
-        target.next_cursor = next_cursor;
-        sort_turns_desc(&mut target.data);
-    }
+fn bound_latest_turns_page(page: &mut TurnsPage) {
+    sort_turns_desc(&mut page.data);
+    page.data.truncate(INITIAL_TURNS_PAGE_SIZE);
 }
 
-fn should_load_next_latest_page(
-    known_turn_ids: &HashSet<String>,
-    current_page: &TurnsPage,
-    pages_loaded: usize,
-) -> bool {
-    !known_turn_ids.is_empty()
-        && pages_loaded < LATEST_TURNS_MAX_PAGES
-        && current_page.next_cursor.is_some()
-        && !current_page
-            .data
-            .iter()
-            .any(|turn| known_turn_ids.contains(&turn.id))
-}
-
-fn latest_pages_overlap(known_turn_ids: &HashSet<String>, pages: &[TurnsPage]) -> bool {
-    pages.iter().any(|page| {
-        page.data
-            .iter()
-            .any(|turn| known_turn_ids.contains(&turn.id))
-    })
-}
-
-fn coalesce_latest_turns_pages(pages: Vec<TurnsPage>) -> Option<TurnsPage> {
-    let backwards_cursor = pages.first().and_then(|page| page.backwards_cursor.clone());
-    let next_cursor = pages.last().and_then(|page| page.next_cursor.clone());
-    let mut turns = Vec::new();
-    let mut turn_ids = HashSet::new();
-    for page in pages {
-        for turn in page.data {
-            if turn_ids.insert(turn.id.clone()) {
-                turns.push(turn);
+fn merge_canonical_turns(
+    target: &mut Vec<CodexTurn>,
+    incoming: impl IntoIterator<Item = CodexTurn>,
+) {
+    for turn in incoming {
+        if let Some(existing) = target.iter_mut().find(|existing| existing.id == turn.id) {
+            if existing.status == TurnStatus::InProgress || turn.status != TurnStatus::InProgress {
+                *existing = turn;
             }
+        } else {
+            target.push(turn);
         }
     }
-    if turns.is_empty() {
-        return None;
-    }
-    sort_turns_desc(&mut turns);
-    Some(TurnsPage {
-        data: turns,
-        next_cursor,
-        backwards_cursor,
-    })
 }
 
 fn sort_turns_desc(turns: &mut [CodexTurn]) {
@@ -867,6 +1165,16 @@ fn notification_thread_id(notification: &CodexNotification) -> Option<&str> {
     }
 }
 
+fn notification_changes_status(notification: &CodexNotification) -> bool {
+    matches!(
+        notification,
+        CodexNotification::ThreadStarted { .. }
+            | CodexNotification::ThreadStatusChanged { .. }
+            | CodexNotification::TurnStarted { .. }
+            | CodexNotification::TurnCompleted { .. }
+    )
+}
+
 fn apply_notification_state(
     state: &mut ThreadSessionState,
     notification: &CodexNotification,
@@ -890,12 +1198,25 @@ fn apply_notification_state(
         }
         CodexNotification::TurnStarted { turn, .. } => {
             state.active_turn_id = Some(turn.id.clone());
+            state.runtime_lease = true;
+            if let Some(thread) = state.thread.as_mut() {
+                thread.status = ThreadStatus::Active {
+                    active_flags: Vec::new(),
+                };
+            }
             upsert_turn(&mut state.turns_page, turn.clone());
             true
         }
         CodexNotification::TurnCompleted { turn, .. } => {
             state.active_turn_id = None;
             state.runtime_lease = false;
+            if state.external_activity_turn_id.as_deref() == Some(turn.id.as_str()) {
+                state.external_activity_turn_id = None;
+                state.external_activity_started_ms = None;
+            }
+            if let Some(thread) = state.thread.as_mut() {
+                thread.status = ThreadStatus::Idle;
+            }
             upsert_turn(&mut state.turns_page, turn.clone());
             true
         }
@@ -908,303 +1229,5 @@ fn apply_notification_state(
 }
 
 #[cfg(test)]
-mod tests {
-    use std::collections::BTreeMap;
-
-    use super::*;
-
-    fn turn(id: &str, status: TurnStatus) -> CodexTurn {
-        CodexTurn {
-            id: id.to_string(),
-            items: Vec::new(),
-            items_view: crate::codex_app_server::TurnItemsView::Full,
-            status,
-            error: None,
-            started_at: Some(1.0),
-            completed_at: None,
-            duration_ms: None,
-            extra: BTreeMap::new(),
-        }
-    }
-
-    fn thread(status: ThreadStatus, turns: Vec<CodexTurn>) -> CodexThread {
-        CodexThread {
-            id: "thread-1".to_string(),
-            preview: String::new(),
-            status,
-            cwd: "Workspace/rust/codger".to_string(),
-            path: None,
-            name: None,
-            created_at: 1.0,
-            updated_at: 1.0,
-            recency_at: None,
-            turns,
-            extra: BTreeMap::new(),
-        }
-    }
-
-    #[test]
-    fn finds_active_turn_in_initial_page() {
-        let thread = thread(
-            ThreadStatus::Active {
-                active_flags: Vec::new(),
-            },
-            Vec::new(),
-        );
-        let page = TurnsPage {
-            data: vec![turn("turn-1", TurnStatus::InProgress)],
-            next_cursor: Some("older".to_string()),
-            backwards_cursor: None,
-        };
-
-        assert_eq!(
-            active_turn_id(&thread, Some(&page)).as_deref(),
-            Some("turn-1")
-        );
-    }
-
-    #[test]
-    fn completion_releases_runtime_but_keeps_viewer_subscription() {
-        let active_turn = turn("turn-1", TurnStatus::InProgress);
-        let mut state = ThreadSessionState {
-            lifecycle: ThreadSessionLifecycle::Subscribed,
-            thread: Some(thread(
-                ThreadStatus::Active {
-                    active_flags: Vec::new(),
-                },
-                Vec::new(),
-            )),
-            turns_page: None,
-            active_turn_id: Some(active_turn.id.clone()),
-            viewer_leases: 1,
-            runtime_lease: true,
-            client: None,
-            generation: 1,
-            revision: 0,
-            syncing: false,
-            sync_dirty: false,
-            last_sync_ms: None,
-            last_error: None,
-        };
-        let mut completed_turn = active_turn;
-        completed_turn.status = TurnStatus::Completed;
-        completed_turn.completed_at = Some(2.0);
-
-        let changed = apply_notification_state(
-            &mut state,
-            &CodexNotification::TurnCompleted {
-                thread_id: "thread-1".to_string(),
-                turn: completed_turn,
-            },
-        );
-
-        assert!(changed);
-        assert!(!state.runtime_lease);
-        assert_eq!(state.active_turn_id, None);
-    }
-
-    #[test]
-    fn completion_unsubscribes_when_no_viewer_remains() {
-        let mut state = ThreadSessionState {
-            lifecycle: ThreadSessionLifecycle::Subscribed,
-            thread: Some(thread(
-                ThreadStatus::Active {
-                    active_flags: Vec::new(),
-                },
-                Vec::new(),
-            )),
-            turns_page: None,
-            active_turn_id: Some("turn-1".to_string()),
-            viewer_leases: 0,
-            runtime_lease: true,
-            client: None,
-            generation: 1,
-            revision: 0,
-            syncing: false,
-            sync_dirty: false,
-            last_sync_ms: None,
-            last_error: None,
-        };
-
-        let changed = apply_notification_state(
-            &mut state,
-            &CodexNotification::ThreadStatusChanged {
-                thread_id: "thread-1".to_string(),
-                status: ThreadStatus::Idle,
-            },
-        );
-
-        assert!(changed);
-        assert!(!state.runtime_lease);
-        assert_eq!(state.active_turn_id, None);
-    }
-
-    #[test]
-    fn latest_turn_page_updates_anchor_without_losing_older_history() {
-        let mut existing = Some(TurnsPage {
-            data: vec![
-                turn("turn-2", TurnStatus::InProgress),
-                turn("turn-1", TurnStatus::Completed),
-            ],
-            next_cursor: Some("older".to_string()),
-            backwards_cursor: Some("anchor-2".to_string()),
-        });
-        let mut completed = turn("turn-2", TurnStatus::Completed);
-        completed.completed_at = Some(3.0);
-
-        merge_latest_turns_page(
-            &mut existing,
-            TurnsPage {
-                data: vec![completed],
-                next_cursor: None,
-                backwards_cursor: Some("anchor-3".to_string()),
-            },
-        );
-
-        let page = existing.unwrap();
-        assert_eq!(page.data.len(), 2);
-        assert_eq!(page.data[0].id, "turn-2");
-        assert_eq!(page.data[0].status, TurnStatus::Completed);
-        assert_eq!(page.next_cursor.as_deref(), Some("older"));
-        assert_eq!(page.backwards_cursor.as_deref(), Some("anchor-3"));
-    }
-
-    #[test]
-    fn incremental_turn_page_preserves_history_and_reverse_cursors() {
-        let mut existing = Some(TurnsPage {
-            data: vec![turn("turn-2", TurnStatus::InProgress)],
-            next_cursor: Some("older".to_string()),
-            backwards_cursor: Some("desc-anchor".to_string()),
-        });
-
-        merge_incremental_turns_page(
-            &mut existing,
-            TurnsPage {
-                data: vec![turn("turn-3", TurnStatus::Completed)],
-                next_cursor: Some("continue-ascending".to_string()),
-                backwards_cursor: Some("asc-anchor".to_string()),
-            },
-        );
-
-        let page = existing.unwrap();
-        assert_eq!(page.data.len(), 2);
-        assert_eq!(page.next_cursor.as_deref(), Some("older"));
-        assert_eq!(page.backwards_cursor.as_deref(), Some("desc-anchor"));
-    }
-
-    #[test]
-    fn older_turn_page_advances_only_the_history_cursor() {
-        let mut existing = Some(TurnsPage {
-            data: vec![turn("turn-2", TurnStatus::Completed)],
-            next_cursor: Some("older-2".to_string()),
-            backwards_cursor: Some("anchor".to_string()),
-        });
-
-        merge_older_turns_page(
-            &mut existing,
-            TurnsPage {
-                data: vec![turn("turn-1", TurnStatus::Completed)],
-                next_cursor: None,
-                backwards_cursor: None,
-            },
-        );
-
-        let page = existing.unwrap();
-        assert_eq!(page.data.len(), 2);
-        assert_eq!(page.next_cursor, None);
-        assert_eq!(page.backwards_cursor.as_deref(), Some("anchor"));
-    }
-
-    #[test]
-    fn latest_sync_stops_when_the_head_page_overlaps_cached_turns() {
-        let known = HashSet::from(["turn-2".to_string()]);
-        let page = TurnsPage {
-            data: vec![
-                turn("turn-3", TurnStatus::Completed),
-                turn("turn-2", TurnStatus::Completed),
-            ],
-            next_cursor: Some("older".to_string()),
-            backwards_cursor: Some("new-anchor".to_string()),
-        };
-
-        assert!(!should_load_next_latest_page(&known, &page, 1));
-    }
-
-    #[test]
-    fn latest_sync_bounds_gap_recovery_pages() {
-        let known = HashSet::from(["turn-1".to_string()]);
-        let page = TurnsPage {
-            data: vec![turn("turn-9", TurnStatus::Completed)],
-            next_cursor: Some("older".to_string()),
-            backwards_cursor: Some("new-anchor".to_string()),
-        };
-
-        assert!(should_load_next_latest_page(&known, &page, 1));
-        assert!(!should_load_next_latest_page(
-            &known,
-            &page,
-            LATEST_TURNS_MAX_PAGES
-        ));
-    }
-
-    #[test]
-    fn latest_sync_rebases_history_when_the_recovery_window_has_no_overlap() {
-        let mut newest = turn("turn-10", TurnStatus::Completed);
-        newest.started_at = Some(10.0);
-        let mut older = turn("turn-9", TurnStatus::Completed);
-        older.started_at = Some(9.0);
-        let pages = vec![
-            TurnsPage {
-                data: vec![newest],
-                next_cursor: Some("page-2".to_string()),
-                backwards_cursor: Some("new-anchor".to_string()),
-            },
-            TurnsPage {
-                data: vec![older],
-                next_cursor: Some("page-3".to_string()),
-                backwards_cursor: None,
-            },
-        ];
-
-        assert!(!latest_pages_overlap(
-            &HashSet::from(["turn-1".to_string()]),
-            &pages
-        ));
-        let page = coalesce_latest_turns_pages(pages).unwrap();
-        assert_eq!(
-            page.data
-                .iter()
-                .map(|turn| turn.id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["turn-10", "turn-9"]
-        );
-        assert_eq!(page.next_cursor.as_deref(), Some("page-3"));
-        assert_eq!(page.backwards_cursor.as_deref(), Some("new-anchor"));
-    }
-
-    #[tokio::test]
-    async fn diagnostics_report_only_leased_or_failed_sessions_as_active() {
-        let sessions = CodexThreadSessions::default();
-        let viewed = sessions.entry("viewed-thread").await;
-        {
-            let mut state = viewed.state.lock().await;
-            state.lifecycle = ThreadSessionLifecycle::Subscribed;
-            state.viewer_leases = 2;
-            state.generation = 3;
-            state.revision = 4;
-            state.last_sync_ms = Some(5);
-        }
-        let idle = sessions.entry("idle-thread").await;
-        idle.state.lock().await.lifecycle = ThreadSessionLifecycle::Unloaded;
-
-        let diagnostics = sessions.diagnostics().await;
-
-        assert_eq!(diagnostics.tracked_sessions, 2);
-        assert_eq!(diagnostics.subscribed_sessions, 1);
-        assert_eq!(diagnostics.viewer_leases, 2);
-        assert_eq!(diagnostics.runtime_leases, 0);
-        assert_eq!(diagnostics.active_sessions.len(), 1);
-        assert_eq!(diagnostics.active_sessions[0].thread_id, "viewed-thread");
-        assert_eq!(diagnostics.active_sessions[0].last_sync_ms, Some(5));
-    }
-}
+#[path = "codex_thread_sessions/tests.rs"]
+mod tests;

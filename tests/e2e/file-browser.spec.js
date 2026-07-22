@@ -588,6 +588,9 @@ test("opens browser-local settings and persists viewer sizes", async ({ page }, 
 });
 
 test("delays file list loading feedback", async ({ page }) => {
+  const startTime = new Date("2026-01-01T00:00:00Z");
+  await page.clock.install({ time: startTime });
+  await page.clock.pauseAt(startTime);
   let resolveListRequest;
   let releaseListResponse;
   const listRequested = new Promise((resolve) => {
@@ -607,10 +610,10 @@ test("delays file list loading feedback", async ({ page }) => {
   await listRequested;
 
   await expect(page.getByText("Loading files...")).toHaveCount(0);
-  await page.waitForTimeout(120);
+  await page.clock.fastForward(179);
   await expect(page.getByText("Loading files...")).toHaveCount(0);
 
-  await page.waitForTimeout(90);
+  await page.clock.fastForward(1);
   await expect(page.getByText("Loading files...")).toBeVisible();
 
   releaseListResponse();
@@ -980,6 +983,60 @@ test("groups header review actions into Git, GitHub, and Codex popovers", async 
   await captureReviewScreenshot(page, testInfo, "header-actions-codex-popover");
 });
 
+test("loads additional task-list pages only after a cursor request", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.EventSource = class MockEventSource {
+      addEventListener() {}
+      close() {}
+    };
+  });
+  await mockCodexModels(page);
+
+  const task = (threadId, title, updatedMs) => ({
+    id: threadId,
+    threadId,
+    activeTurnId: null,
+    title,
+    preview: `${title} preview`,
+    status: "completed",
+    cwd: "tests/fixtures/home",
+    cwdPath: "tests/fixtures/home",
+    relativeCwd: "tests/fixtures/home",
+    worktree: null,
+    createdMs: updatedMs,
+    updatedMs,
+    recencyMs: updatedMs,
+    lastEventSummary: `${title} summary`,
+  });
+  const cursors = [];
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    cursors.push(cursor);
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(
+        cursor
+          ? { tasks: [task("thread-page-2", "Older paged task", 10)], nextCursor: null }
+          : { tasks: [task("thread-page-1", "Newest paged task", 20)], nextCursor: "page-2" },
+      ),
+    });
+  });
+
+  await page.goto("/tasks");
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect(tasksPage.locator(".task-row")).toHaveCount(1);
+  await expect(tasksPage).toContainText("Newest paged task");
+  await expect(tasksPage).not.toContainText("Older paged task");
+
+  await tasksPage.getByRole("button", { name: "Load more tasks" }).click();
+
+  await expect(tasksPage.locator(".task-row")).toHaveCount(2);
+  await expect(tasksPage).toContainText("Older paged task");
+  await expect(tasksPage.getByRole("button", { name: "Load more tasks" })).toHaveCount(0);
+  expect(cursors).toEqual([null, "page-2"]);
+});
+
 test("opens global Tasks without local registry state", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     window.EventSource = class MockEventSource {
@@ -1335,6 +1392,368 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
     "data-task-detail-view",
     "conversation",
   );
+});
+
+test("keeps a large task usable while conversation history is loading", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: { register: () => Promise.resolve() },
+    });
+    window.__caffoldMockEventSources = [];
+    window.EventSource = class MockEventSource {
+      constructor(url) {
+        this.url = url;
+        this.listeners = new Map();
+        window.__caffoldMockEventSources.push(this);
+      }
+
+      addEventListener(type, listener) {
+        this.listeners.set(type, listener);
+      }
+
+      emit(type, payload) {
+        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
+      }
+
+      close() {}
+    };
+  });
+  await mockCodexModels(page);
+
+  const threadId = "thread_large_history";
+  const now = 1_767_300_000_000;
+  const task = {
+    id: threadId,
+    threadId,
+    activeTurnId: null,
+    title: "Large task history",
+    preview: "Most recent response",
+    status: "completed",
+    cwd: "tests/fixtures/home",
+    cwdPath: "tests/fixtures/home",
+    relativeCwd: "tests/fixtures/home",
+    worktree: null,
+    createdMs: now,
+    updatedMs: now + 1,
+    recencyMs: now + 1,
+    lastEventSummary: "Assistant response",
+  };
+  const pendingDetail = {
+    revision: 1,
+    task,
+    events: [],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+    historyLoading: true,
+  };
+
+  await page.route("**/api/tasks**", (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const segments = url.pathname.split("/").filter(Boolean);
+    if (request.method() === "GET" && segments.length === 2) {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ tasks: [task] }),
+      });
+    }
+    if (
+      request.method() === "GET" &&
+      segments.length === 3 &&
+      segments[2] === threadId
+    ) {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(pendingDetail),
+      });
+    }
+    return route.continue();
+  });
+
+  await page.goto(`/tasks/${threadId}`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect(tasksPage.locator(".task-detail-heading h2")).toContainText(
+    "Large task history",
+  );
+  await expect(tasksPage.getByText("Loading task...")).toHaveCount(0);
+  await expect(tasksPage.getByText("Loading conversation...")).toBeVisible();
+
+  const composer = tasksPage.locator('.task-composer textarea[name="prompt"]');
+  await composer.fill("Keep this draft while history arrives");
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__caffoldMockEventSources.length),
+    )
+    .toBeGreaterThan(0);
+
+  const canonicalDetail = {
+    ...pendingDetail,
+    revision: 2,
+    historyLoading: false,
+    events: [
+      {
+        id: "event_user",
+        threadId,
+        type: "user_message",
+        summary: "User prompt",
+        payload: { text: "Load the recent history" },
+        createdMs: now,
+      },
+      {
+        id: "event_assistant",
+        threadId,
+        type: "assistant_message",
+        summary: "Assistant response",
+        payload: { text: "Recent history is ready." },
+        createdMs: now + 1,
+      },
+    ],
+  };
+  await page.evaluate(({ threadId, canonicalDetail }) => {
+    const source = window.__caffoldMockEventSources.find((candidate) =>
+      candidate.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    source.emit("task-sync", {
+      threadId,
+      revision: canonicalDetail.revision,
+      detail: canonicalDetail,
+      reason: "initial",
+    });
+  }, { threadId, canonicalDetail });
+
+  await expect(tasksPage.getByText("Loading conversation...")).toHaveCount(0);
+  await expect(tasksPage.getByText("Recent history is ready.")).toBeVisible();
+  await expect(composer).toHaveValue("Keep this draft while history arrives");
+});
+
+test("recovers task detail and prompt submission across bootstrap races", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: { register: () => Promise.resolve() },
+    });
+    window.__caffoldMockEventSources = [];
+    window.EventSource = class MockEventSource {
+      constructor(url) {
+        this.url = url;
+        this.listeners = new Map();
+        window.__caffoldMockEventSources.push(this);
+      }
+
+      addEventListener(type, listener) {
+        this.listeners.set(type, listener);
+      }
+
+      emit(type, payload) {
+        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
+      }
+
+      close() {}
+    };
+  });
+  await mockCodexModels(page);
+
+  const now = 1_767_300_100_000;
+  const taskRecord = (threadId, title) => ({
+    id: threadId,
+    threadId,
+    activeTurnId: null,
+    title,
+    preview: `${title} response`,
+    status: "completed",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    worktree: null,
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: `${title} response`,
+  });
+  const detailFor = (task, revision, response) => ({
+    revision,
+    task,
+    events: [
+      {
+        id: `${task.threadId}_assistant`,
+        threadId: task.threadId,
+        type: "assistant_message",
+        summary: "Assistant response",
+        payload: { turnId: `${task.threadId}_turn`, text: response },
+        createdMs: now,
+      },
+    ],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+    historyLoading: false,
+  });
+  const taskBeforeFailure = taskRecord(
+    "thread_sync_before_failure",
+    "Sync before request failure",
+  );
+  const taskAfterFailure = taskRecord(
+    "thread_sync_after_failure",
+    "Sync after request failure",
+  );
+  const detailBeforeFailure = detailFor(
+    taskBeforeFailure,
+    2,
+    "The stream arrived before the failed request.",
+  );
+  const detailAfterFailure = detailFor(
+    taskAfterFailure,
+    2,
+    "The stream recovered the failed request.",
+  );
+
+  let releaseFirstDetail;
+  const firstDetailStarted = new Promise((resolve) => {
+    releaseFirstDetail = { started: resolve, route: null };
+  });
+  const submittedPrompts = [];
+
+  await page.route("**/api/tasks**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const segments = url.pathname.split("/").filter(Boolean);
+    if (request.method() === "GET" && segments.length === 2) {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ tasks: [taskBeforeFailure, taskAfterFailure] }),
+      });
+    }
+    if (
+      request.method() === "GET" &&
+      segments.length === 3 &&
+      segments[2] === taskBeforeFailure.threadId
+    ) {
+      releaseFirstDetail.route = route;
+      releaseFirstDetail.started();
+      await new Promise((resolve) => {
+        releaseFirstDetail.fulfill = resolve;
+      });
+      return route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: {
+            code: "codex_process_unavailable",
+            message: "Codex app-server is unavailable.",
+          },
+        }),
+      });
+    }
+    if (
+      request.method() === "GET" &&
+      segments.length === 3 &&
+      segments[2] === taskAfterFailure.threadId
+    ) {
+      return route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: {
+            code: "codex_process_unavailable",
+            message: "Codex app-server is unavailable.",
+          },
+        }),
+      });
+    }
+    if (
+      request.method() === "POST" &&
+      segments.length === 4 &&
+      segments[3] === "prompts"
+    ) {
+      const body = request.postDataJSON();
+      submittedPrompts.push({ threadId: segments[2], prompt: body.prompt });
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          threadId: segments[2],
+          turnId: `${segments[2]}_follow_up`,
+          steered: false,
+        }),
+      });
+    }
+    return route.continue();
+  });
+
+  const emitTaskSync = async (threadId, detail) => {
+    await expect
+      .poll(() =>
+        page.evaluate(
+          (id) =>
+            window.__caffoldMockEventSources.some((source) =>
+              source.url.includes(`/api/tasks/${id}/stream`),
+            ),
+          threadId,
+        ),
+      )
+      .toBe(true);
+    await page.evaluate(({ threadId, detail }) => {
+      const source = window.__caffoldMockEventSources.find((candidate) =>
+        candidate.url.includes(`/api/tasks/${threadId}/stream`),
+      );
+      source.emit("task-sync", {
+        threadId,
+        revision: detail.revision,
+        detail,
+        reason: "canonical-bootstrap",
+      });
+    }, { threadId, detail });
+  };
+
+  await page.goto(`/tasks/${taskBeforeFailure.threadId}?cwd=src`);
+  await firstDetailStarted;
+  const tasksPage = page.locator("caffold-tasks-page");
+  await emitTaskSync(taskBeforeFailure.threadId, detailBeforeFailure);
+  await expect(tasksPage).toContainText(
+    "The stream arrived before the failed request.",
+  );
+  releaseFirstDetail.fulfill();
+  await expect(tasksPage).not.toContainText("Codex app-server is unavailable.");
+
+  let form = tasksPage.locator(".task-follow-up-form");
+  let prompt = form.locator('textarea[name="prompt"]');
+  await prompt.fill("Submitted after the delayed failure");
+  await form.locator('button[type="submit"]').click();
+  await expect.poll(() => submittedPrompts).toEqual([
+    {
+      threadId: taskBeforeFailure.threadId,
+      prompt: "Submitted after the delayed failure",
+    },
+  ]);
+
+  await page.goto(`/tasks/${taskAfterFailure.threadId}?cwd=src`);
+  await expect(tasksPage).toContainText("Codex app-server is unavailable.");
+  await emitTaskSync(taskAfterFailure.threadId, detailAfterFailure);
+  await expect(tasksPage).toContainText(
+    "The stream recovered the failed request.",
+  );
+  await expect(tasksPage).not.toContainText(
+    "The stream arrived before the failed request.",
+  );
+  await expect(tasksPage).not.toContainText("Codex app-server is unavailable.");
+
+  form = tasksPage.locator(".task-follow-up-form");
+  prompt = form.locator('textarea[name="prompt"]');
+  await prompt.fill("Submitted after stream recovery");
+  await prompt.press("Enter");
+  await expect.poll(() => submittedPrompts).toEqual([
+    {
+      threadId: taskBeforeFailure.threadId,
+      prompt: "Submitted after the delayed failure",
+    },
+    {
+      threadId: taskAfterFailure.threadId,
+      prompt: "Submitted after stream recovery",
+    },
+  ]);
 });
 
 test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) => {
@@ -1960,11 +2379,19 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   let omitCompletedCommandFromDetail = false;
   let resolveFollowUpRequest;
   let releaseFollowUpResponse;
+  let resolveCanonicalFollowUpRequest;
+  let releaseCanonicalFollowUpResponse;
   const followUpRequested = new Promise((resolve) => {
     resolveFollowUpRequest = resolve;
   });
   const followUpResponseReleased = new Promise((resolve) => {
     releaseFollowUpResponse = resolve;
+  });
+  const canonicalFollowUpRequested = new Promise((resolve) => {
+    resolveCanonicalFollowUpRequest = resolve;
+  });
+  const canonicalFollowUpResponseReleased = new Promise((resolve) => {
+    releaseCanonicalFollowUpResponse = resolve;
   });
   const threadId = "thread_12345678";
   const completedAssistantResponse = [
@@ -2342,6 +2769,38 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           status: 500,
           contentType: "application/json",
           body: JSON.stringify({ error: "Prompt request failed" }),
+        });
+      }
+      if (body.prompt === "한글 버튼 제출") {
+        return route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({
+            threadId,
+            turnId: `turn_${followUpRequests}`,
+            steered: body.activeTurnId !== null,
+          }),
+        });
+      }
+      if (body.prompt === "Canonical sync unlocks composer") {
+        resolveCanonicalFollowUpRequest();
+        await canonicalFollowUpResponseReleased;
+        return route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({
+            threadId,
+            turnId: "turn_canonical_ack",
+            steered: false,
+          }),
+        });
+      }
+      if (body.prompt === "Enter after canonical sync") {
+        return route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({
+            threadId,
+            turnId: "turn_after_canonical_ack",
+            steered: false,
+          }),
         });
       }
       expect(body.prompt).toBe("Please tighten the tests");
@@ -3388,6 +3847,43 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect
     .poll(() => activeTurn.locator(".task-turn-active-duration").textContent())
     .not.toBe(activeDuration);
+  const stableActiveTurnStartedMs = await activeTurn.getAttribute(
+    "data-active-turn-started-ms",
+  );
+  for (let revision = 3; revision <= 5; revision += 1) {
+    await page.evaluate((detail) => {
+      const source = window.__caffoldMockEventSources.find((candidate) =>
+        candidate.url.includes(`/api/tasks/${detail.task.threadId}/stream`),
+      );
+      source?.emit("task-sync", {
+        threadId: detail.task.threadId,
+        revision: detail.revision,
+        detail,
+        reason: "canonical-refresh",
+      });
+    }, detailResponse({
+      revision,
+      task: {
+        ...task,
+        activeTurnId: "turn_2",
+        activeTurnStartedMs: Date.now() + revision,
+      },
+    }));
+  }
+  await expect(activeTurn).toHaveAttribute(
+    "data-active-turn-started-ms",
+    stableActiveTurnStartedMs,
+  );
+  await tasksPage.evaluate((element) => {
+    element.stopActiveTurnClock();
+    element.connectedCallback();
+  });
+  const durationAfterReconnect = await activeTurn
+    .locator(".task-turn-active-duration")
+    .textContent();
+  await expect
+    .poll(() => activeTurn.locator(".task-turn-active-duration").textContent())
+    .not.toBe(durationAfterReconnect);
   const runningTaskRow = tasksPage.locator(
     `.task-row[data-thread-id="${threadId}"]`,
   );
@@ -3534,6 +4030,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(tasksPage.locator(".task-follow-up-form .task-model-button")).toContainText(
     "Very high",
   );
+
   if (taskMasterStateBeforeTools) {
     await expect(tasksPage.locator(".tasks-list-pane")).toBeVisible();
     await expect(tasksPage.locator(".tasks-master-resizer")).toBeVisible();
@@ -3560,9 +4057,80 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     .toBeLessThanOrEqual(2);
   expect(taskDetailReadRequests).toBe(taskDetailReadsBeforeDiff);
 
+  await followUpTextarea.fill("한글 버튼 제출");
+  await page.evaluate(() => {
+    Object.defineProperty(HTMLFormElement.prototype, "prompt", {
+      configurable: true,
+      get() {
+        throw new Error("Legacy named form access is unavailable");
+      },
+    });
+  });
+  await tasksPage.locator('.task-follow-up-form button[type="submit"]').click();
+  await expect.poll(() => followUpRequests).toBe(2);
+  await expect(followUpTextarea).toHaveValue("");
+  await expect(tasksPage.locator(".task-follow-up-form")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
+
+  await followUpTextarea.fill("Canonical sync unlocks composer");
+  await tasksPage.locator('.task-follow-up-form button[type="submit"]').click();
+  await canonicalFollowUpRequested;
+  await expect.poll(() => followUpRequests).toBe(3);
+  await expect(tasksPage.locator(".task-follow-up-form")).toHaveAttribute(
+    "aria-busy",
+    "true",
+  );
+
+  const canonicalPromptEvent = eventRecord(
+    "event_canonical_prompt",
+    "user_message",
+    "User prompt",
+    {
+      text: "Canonical sync unlocks composer",
+      turnId: "turn_canonical_ack",
+      item: {
+        content: [{ type: "text", text: "Canonical sync unlocks composer" }],
+      },
+    },
+    30,
+  );
+  events = [...events, canonicalPromptEvent];
+  updateTask({
+    activeTurnId: null,
+    status: "completed",
+    lastEventSummary: "Canonical prompt accepted",
+  });
+  await page.evaluate((detail) => {
+    const source = window.__caffoldMockEventSources.find((candidate) =>
+      candidate.url.includes(`/api/tasks/${detail.task.threadId}/stream`),
+    );
+    source?.emit("task-sync", {
+      threadId: detail.task.threadId,
+      revision: detail.revision,
+      detail,
+      reason: "canonical-prompt-ack",
+    });
+  }, detailResponse({ revision: 20 }));
+  await expect(tasksPage.locator(".task-follow-up-form")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
+
+  await followUpTextarea.fill("Enter after canonical sync");
+  await followUpTextarea.press("Enter");
+  await expect.poll(() => followUpRequests).toBe(4);
+  await expect(followUpTextarea).toHaveValue("");
+  releaseCanonicalFollowUpResponse();
+  await expect(tasksPage.locator(".task-follow-up-form")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
+
   await followUpTextarea.fill("Prompt that fails");
   await followUpTextarea.press("Enter");
-  await expect.poll(() => followUpRequests).toBe(2);
+  await expect.poll(() => followUpRequests).toBe(5);
   await expect(tasksPage.locator(".task-follow-up-form")).toHaveAttribute(
     "aria-busy",
     "false",
@@ -3589,8 +4157,29 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
 });
 
 test("loads older task conversation events by cursor", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__taskEventSources = [];
+    window.EventSource = class MockEventSource {
+      constructor(url) {
+        this.url = url;
+        this.listeners = new Map();
+        window.__taskEventSources.push(this);
+      }
+
+      addEventListener(type, listener) {
+        this.listeners.set(type, listener);
+      }
+
+      emit(type, payload) {
+        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
+      }
+
+      close() {}
+    };
+  });
   await mockCodexModels(page);
   const threadId = "thread_cursor_fixture";
+  const detailCursors = [];
   const now = 1_767_100_000_000;
   const task = {
     id: threadId,
@@ -3650,9 +4239,11 @@ test("loads older task conversation events by cursor", async ({ page }) => {
     const url = new URL(route.request().url());
     expect(url.searchParams.get("cwd")).toBe("src");
     const cursor = url.searchParams.get("cursor");
+    detailCursors.push(cursor);
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
+        revision: cursor === "older_cursor" ? 3 : 1,
         task,
         events: cursor === "older_cursor" ? olderEvents : latestEvents,
         eventsPage: { nextCursor: cursor === "older_cursor" ? null : "older_cursor" },
@@ -3670,6 +4261,31 @@ test("loads older task conversation events by cursor", async ({ page }) => {
   await expect(tasksPage.locator(".task-detail-summary")).not.toContainText("notLoaded");
   await expect(tasksPage).toContainText("This is the latest answer block 12.");
   await expect(tasksPage).not.toContainText("This is the older prompt.");
+  await expect
+    .poll(() => page.evaluate(() => window.__taskEventSources.length))
+    .toBeGreaterThan(0);
+  await page.evaluate(
+    ({ threadId, task }) => {
+      const source = window.__taskEventSources.find((candidate) =>
+        candidate.url.includes(`/api/tasks/${threadId}/stream`),
+      );
+      source.emit("task-sync", {
+        threadId,
+        revision: 2,
+        reason: "session-bootstrap",
+        detail: {
+          revision: 2,
+          task,
+          events: [],
+          eventsPage: { nextCursor: null },
+          pendingApprovals: [],
+          historyLoading: true,
+        },
+      });
+    },
+    { threadId, task },
+  );
+  await expect(tasksPage.locator(".task-load-older")).toHaveCount(1);
   await expect
     .poll(() =>
       tasksPage.locator(".task-conversation-scroll").evaluate((element) => {
@@ -3689,11 +4305,1492 @@ test("loads older task conversation events by cursor", async ({ page }) => {
     element.scrollTop = 0;
     element.dispatchEvent(new Event("scroll"));
   });
+  await expect.poll(() => detailCursors).toContain("older_cursor");
   await expect(tasksPage).toContainText("This is the older prompt.");
   await expect(tasksPage.locator(".task-load-older")).toHaveCount(0);
   await expect
     .poll(() =>
       tasksPage.locator(".task-conversation-scroll").evaluate((element) => element.scrollTop > 0),
+    )
+    .toBe(true);
+});
+
+test("keeps task context and retries after an initial detail timeout", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.EventSource = class MockEventSource {
+      addEventListener() {}
+
+      close() {}
+    };
+  });
+  await mockCodexModels(page);
+  const threadId = "thread_detail_timeout_fixture";
+  const now = 1_767_200_000_000;
+  const task = {
+    id: threadId,
+    threadId,
+    activeTurnId: null,
+    title: "Recover delayed task detail",
+    preview: "Canonical task summary",
+    status: "idle",
+    cwd: "src",
+    relativeCwd: "",
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: "Canonical task summary",
+  };
+  let detailRequests = 0;
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [task] }),
+    }),
+  );
+  await page.route(/\/api\/tasks\/thread_detail_timeout_fixture(?:\?|$)/, (route) => {
+    detailRequests += 1;
+    if (detailRequests === 1) {
+      return route.fulfill({
+        status: 504,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Codex app-server request timed out." }),
+      });
+    }
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        revision: 2,
+        task,
+        events: [
+          {
+            id: "event_recovered",
+            threadId,
+            type: "assistant_message",
+            summary: "Assistant response",
+            payload: { text: "Recovered canonical response." },
+            createdMs: now,
+          },
+        ],
+        eventsPage: { nextCursor: null },
+        pendingApprovals: [],
+      }),
+    });
+  });
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect(tasksPage.locator(".task-detail-load-error")).toContainText(
+    "Task details are temporarily unavailable.",
+  );
+  await expect(tasksPage.locator(".task-detail-load-error")).toContainText(
+    "Codex app-server request timed out.",
+  );
+  await expect(tasksPage).toContainText("Recover delayed task detail");
+
+  await tasksPage.locator('[data-task-action="retry-task-detail"]').click();
+  await expect.poll(() => detailRequests).toBe(2);
+  await expect(tasksPage).toContainText("Recovered canonical response.");
+  await expect(tasksPage.locator(".task-detail-load-error")).toHaveCount(0);
+});
+
+test("keeps the latest conversation when older history times out", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.EventSource = class MockEventSource {
+      addEventListener() {}
+
+      close() {}
+    };
+  });
+  await mockCodexModels(page);
+  const threadId = "thread_history_timeout_fixture";
+  const now = 1_767_300_000_000;
+  const task = {
+    id: threadId,
+    threadId,
+    activeTurnId: null,
+    title: "Preserve latest task history",
+    preview: "Latest canonical response",
+    status: "idle",
+    cwd: "src",
+    relativeCwd: "",
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: "Latest canonical response",
+  };
+  const latestEvents = Array.from({ length: 12 }, (_, index) => ({
+    id: `event_latest_timeout_${index}`,
+    threadId,
+    type: index % 2 === 0 ? "user_message" : "assistant_message",
+    summary: index % 2 === 0 ? "User prompt" : "Assistant response",
+    payload: {
+      text: `${index % 2 === 0 ? "Latest prompt" : "Latest response"} ${index + 1}. ${"Keep this visible. ".repeat(24)}`,
+    },
+    createdMs: now + index,
+  }));
+  let olderRequests = 0;
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [task] }),
+    }),
+  );
+  await page.route(/\/api\/tasks\/thread_history_timeout_fixture(?:\?|$)/, (route) => {
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    if (cursor === "older-timeout-cursor") {
+      olderRequests += 1;
+      if (olderRequests === 1) {
+        return route.fulfill({
+          status: 504,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Codex app-server request timed out." }),
+        });
+      }
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          revision: 2,
+          task,
+          events: [
+            {
+              id: "event_older_recovered",
+              threadId,
+              type: "user_message",
+              summary: "User prompt",
+              payload: { text: "Recovered older prompt." },
+              createdMs: now - 1,
+            },
+          ],
+          eventsPage: { nextCursor: null },
+          pendingApprovals: [],
+        }),
+      });
+    }
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        revision: 1,
+        task,
+        events: latestEvents,
+        eventsPage: { nextCursor: "older-timeout-cursor" },
+        pendingApprovals: [],
+      }),
+    });
+  });
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const conversation = tasksPage.locator(".task-conversation-scroll");
+  const textarea = tasksPage.locator('textarea[name="prompt"]');
+  await expect(tasksPage).toContainText("Latest response 12.");
+  await textarea.fill("Draft survives history timeout");
+
+  await conversation.evaluate((element) => {
+    element.scrollTop = 0;
+    element.dispatchEvent(new Event("scroll"));
+  });
+  await expect.poll(() => olderRequests).toBe(1);
+  await expect(tasksPage.locator(".task-history-error")).toContainText(
+    "Older messages are temporarily unavailable.",
+  );
+  await expect(tasksPage).toContainText("Latest response 12.");
+  await expect(textarea).toHaveValue("Draft survives history timeout");
+
+  await tasksPage.locator('[data-task-action="retry-task-history"]').click();
+  await expect.poll(() => olderRequests).toBe(2);
+  await expect(tasksPage).toContainText("Recovered older prompt.");
+  await expect(tasksPage.locator(".task-history-error")).toHaveCount(0);
+  await expect(textarea).toHaveValue("Draft survives history timeout");
+});
+
+test("submits completed task follow-ups and reloads canonical messages", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.__taskEventSources = [];
+    window.EventSource = class MockEventSource {
+      constructor(url) {
+        this.url = url;
+        this.listeners = new Map();
+        window.__taskEventSources.push(this);
+      }
+
+      addEventListener(type, listener) {
+        this.listeners.set(type, listener);
+      }
+
+      emit(type, payload) {
+        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
+      }
+
+      close() {}
+    };
+  });
+  await mockCodexModels(page);
+
+  const threadId = "thread_completed_follow_up";
+  const now = 1_767_190_000_000;
+  const task = {
+    id: threadId,
+    threadId,
+    activeTurnId: null,
+    title: "Completed follow-up fixture",
+    preview: "Initial canonical answer",
+    status: "completed",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: "Initial canonical answer",
+  };
+  const initialEvent = {
+    id: "event_initial_answer",
+    threadId,
+    type: "assistant_message",
+    summary: "Assistant response",
+    payload: { turnId: "turn_initial", text: "Initial canonical answer" },
+    createdMs: now,
+  };
+  let revision = 1;
+  let canonicalEvents = [initialEvent];
+  const submittedPrompts = [];
+  const submittedBodies = [];
+  let rejectedAttempts = 0;
+  let timedOutAttempts = 0;
+  let blockNextDetailRequest = false;
+  let releaseStaleDetailRequest = null;
+  let markStaleDetailRequestStarted = null;
+  const staleDetailRequestStarted = new Promise((resolve) => {
+    markStaleDetailRequestStarted = resolve;
+  });
+  const detail = () => ({
+    revision,
+    task,
+    events: canonicalEvents,
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  });
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [task] }),
+    }),
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), async (route) => {
+    const response = detail();
+    if (blockNextDetailRequest) {
+      blockNextDetailRequest = false;
+      markStaleDetailRequestStarted();
+      await new Promise((resolve) => {
+        releaseStaleDetailRequest = resolve;
+      });
+    }
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify(response) });
+  });
+  await page.route(new RegExp(`/api/tasks/${threadId}/prompts(?:\\?|$)`), async (route) => {
+    const body = route.request().postDataJSON();
+    submittedPrompts.push(body.prompt);
+    submittedBodies.push(body);
+    if (body.prompt === "Rejected image prompt" && rejectedAttempts++ === 0) {
+      return route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Follow-up rejected by fixture" }),
+      });
+    }
+    if (body.prompt === "Timed out prompt" && timedOutAttempts++ === 0) {
+      return route.fulfill({
+        status: 504,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: {
+            code: "codex_app_server_timeout",
+            message: "Codex app-server request timed out.",
+          },
+        }),
+      });
+    }
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        threadId,
+        turnId: `turn_follow_up_${submittedPrompts.length}`,
+        steered: false,
+      }),
+    });
+  });
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const form = tasksPage.locator(".task-follow-up-form");
+  const prompt = form.locator('textarea[name="prompt"]');
+  const send = form.locator('button[type="submit"]');
+  await expect(tasksPage).toContainText("Initial canonical answer");
+
+  const runningEvent = {
+    id: "event_external_running",
+    threadId,
+    type: "assistant_message",
+    summary: "Assistant update",
+    payload: {
+      turnId: "turn_external_running",
+      text: "External work is still running",
+      status: "inProgress",
+      startedAt: Math.floor(now / 1000),
+    },
+    createdMs: now + 1,
+  };
+  task.status = "running";
+  task.activeTurnId = "turn_external_running";
+  canonicalEvents = [...canonicalEvents, runningEvent];
+  revision += 1;
+  await page.evaluate(({ threadId, detail }) => {
+    const source = window.__taskEventSources.find((candidate) =>
+      candidate.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    source.emit("task-sync", {
+      threadId,
+      revision: detail.revision,
+      detail,
+      reason: "external-canonical-running",
+    });
+  }, { threadId, detail: detail() });
+  await expect(
+    tasksPage.locator('.task-detail-summary .task-status-chip[data-status="running"]'),
+  ).toBeVisible();
+  await expect(tasksPage.locator(".task-turn-active")).toBeVisible();
+
+  const conversation = tasksPage.locator(".task-conversation-scroll");
+  await conversation.evaluate((element) => {
+    element.scrollTop = Math.max(0, element.scrollHeight - element.clientHeight - 40);
+    element.dispatchEvent(new Event("scroll"));
+  });
+  const scrollBeforeSync = await conversation.evaluate((element) => element.scrollTop);
+
+  // Synchronization progress is transport state. It must never replace the
+  // canonical running task/turn state or reset the current conversation.
+  task.status = "syncing";
+  revision += 1;
+  await page.evaluate(({ threadId, detail }) => {
+    const source = window.__taskEventSources.find((candidate) =>
+      candidate.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    source.emit("task-sync", {
+      threadId,
+      revision: detail.revision,
+      detail,
+      reason: "external-sync-start",
+    });
+  }, { threadId, detail: detail() });
+  await expect(
+    tasksPage.locator('.task-detail-summary .task-status-chip[data-status="running"]'),
+  ).toBeVisible();
+  await expect(tasksPage.locator(".task-turn-active")).toBeVisible();
+  await expect(tasksPage).toContainText("External work is still running");
+  await expect
+    .poll(() => conversation.evaluate((element) => element.scrollTop))
+    .toBe(scrollBeforeSync);
+  await expect(send).toBeEnabled();
+
+  blockNextDetailRequest = true;
+  await page.evaluate(() => {
+    document.querySelector("caffold-tasks-page")?.requestSelectedTaskRefresh();
+  });
+  await staleDetailRequestStarted;
+
+  await prompt.fill("Submitted by button");
+  await send.click();
+  await expect.poll(() => submittedPrompts).toEqual(["Submitted by button"]);
+  await expect(tasksPage).toContainText("Submitted by button");
+  releaseStaleDetailRequest();
+  await expect(tasksPage).toContainText("Submitted by button");
+  await expect(form).toHaveAttribute("aria-busy", "false");
+  await expect(prompt).toBeFocused();
+
+  canonicalEvents = [
+    ...canonicalEvents,
+    {
+      id: "event_button_prompt",
+      threadId,
+      type: "user_message",
+      summary: "User prompt",
+      payload: { turnId: "turn_follow_up_1", text: "Submitted by button" },
+      createdMs: now + 1,
+    },
+    {
+      id: "event_button_answer",
+      threadId,
+      type: "assistant_message",
+      summary: "Assistant response",
+      payload: { turnId: "turn_follow_up_1", text: "Button response" },
+      createdMs: now + 2,
+    },
+  ];
+  task.status = "completed";
+  task.activeTurnId = null;
+  revision += 1;
+  await page.evaluate(({ threadId, detail }) => {
+    const source = window.__taskEventSources.find((candidate) =>
+      candidate.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    source.emit("task-sync", {
+      threadId,
+      revision: detail.revision,
+      detail,
+      reason: "canonical-button-response",
+    });
+  }, { threadId, detail: detail() });
+  await expect(form).toHaveAttribute("aria-busy", "false");
+  await expect(tasksPage).toContainText("Button response");
+
+  await prompt.fill("Submitted by Enter");
+  await prompt.press("Enter");
+  await expect.poll(() => submittedPrompts).toEqual([
+    "Submitted by button",
+    "Submitted by Enter",
+  ]);
+  await expect(tasksPage).toContainText("Submitted by Enter");
+
+  canonicalEvents = [
+    ...canonicalEvents,
+    {
+      id: "event_enter_prompt",
+      threadId,
+      type: "user_message",
+      summary: "User prompt",
+      payload: { turnId: "turn_follow_up_2", text: "Submitted by Enter" },
+      createdMs: now + 3,
+    },
+    {
+      id: "event_enter_answer",
+      threadId,
+      type: "assistant_message",
+      summary: "Assistant response",
+      payload: { turnId: "turn_follow_up_2", text: "Latest canonical response" },
+      createdMs: now + 4,
+    },
+  ];
+  revision += 1;
+  await page.reload();
+  await expect(tasksPage).toContainText("Submitted by Enter");
+  await expect(tasksPage).toContainText("Latest canonical response");
+
+  await prompt.fill("Rejected image prompt");
+  await pasteImage(prompt, "retry-after-failure.png");
+  await expect(form.locator(".task-composer-attachment")).toHaveCount(1);
+  await send.click();
+  await expect.poll(() => submittedPrompts.at(-1)).toBe("Rejected image prompt");
+  expect(submittedBodies.at(-1).images).toHaveLength(1);
+  expect(submittedBodies.at(-1).images[0]).toMatch(/^data:image\/png;base64,/);
+  await expect(form).toHaveAttribute("aria-busy", "false");
+  await expect(prompt).toBeFocused();
+  await expect(prompt).toHaveValue("Rejected image prompt");
+  await expect(form.locator(".task-composer-attachment")).toHaveCount(1);
+  await expect(tasksPage).toContainText("Follow-up rejected by fixture");
+  await expect(
+    tasksPage.locator('.task-message[data-message-role="user"]').filter({
+      hasText: "Rejected image prompt",
+    }),
+  ).toHaveCount(0);
+
+  await send.click();
+  await expect.poll(() => submittedPrompts.slice(-2)).toEqual([
+    "Rejected image prompt",
+    "Rejected image prompt",
+  ]);
+  expect(submittedBodies.at(-1).images).toHaveLength(1);
+  await expect(form).toHaveAttribute("aria-busy", "false");
+  await expect(prompt).toHaveValue("");
+  await expect(form.locator(".task-composer-attachment")).toHaveCount(0);
+  await expect(
+    tasksPage.locator('.task-message[data-message-role="user"]').filter({
+      hasText: "Rejected image prompt",
+    }),
+  ).toBeVisible();
+
+  await prompt.fill("Timed out prompt");
+  await send.click();
+  await expect.poll(() => timedOutAttempts).toBe(1);
+  await expect(form).toHaveAttribute("aria-busy", "false");
+  await expect(prompt).toHaveValue("Timed out prompt");
+  await expect(prompt).toBeFocused();
+  await expect(tasksPage).toContainText("Codex app-server request timed out.");
+  await expect(
+    tasksPage.locator('.task-message[data-message-role="user"]').filter({
+      hasText: "Timed out prompt",
+    }),
+  ).toHaveCount(0);
+
+  await prompt.press("Enter");
+  await expect.poll(() => timedOutAttempts).toBe(2);
+  await expect(form).toHaveAttribute("aria-busy", "false");
+  await expect(prompt).toHaveValue("");
+  await expect(
+    tasksPage.locator('.task-message[data-message-role="user"]').filter({
+      hasText: "Timed out prompt",
+    }),
+  ).toBeVisible();
+});
+
+test("unlocks a completed task when canonical item content arrives before the prompt response", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Canonical prompt acknowledgement regression");
+  await page.addInitScript(() => {
+    window.__taskEventSources = [];
+    window.EventSource = class MockEventSource {
+      constructor(url) {
+        this.url = url;
+        this.listeners = new Map();
+        window.__taskEventSources.push(this);
+      }
+
+      addEventListener(type, listener) {
+        this.listeners.set(type, listener);
+      }
+
+      emit(type, payload) {
+        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
+      }
+
+      close() {}
+    };
+  });
+  await mockCodexModels(page);
+
+  const threadId = "thread_canonical_item_ack";
+  const now = 1_767_190_300_000;
+  const task = {
+    id: threadId,
+    threadId,
+    activeTurnId: null,
+    title: "Canonical item acknowledgement",
+    preview: "Initial response",
+    status: "completed",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: "Initial response",
+  };
+  let revision = 1;
+  let canonicalEvents = [
+    {
+      id: "event_initial_response",
+      threadId,
+      type: "assistant_message",
+      summary: "Assistant response",
+      payload: { turnId: "turn_initial", text: "Initial response" },
+      createdMs: now,
+    },
+  ];
+  const submittedPrompts = [];
+  let releaseFirstPrompt;
+  const firstPromptGate = new Promise((resolve) => {
+    releaseFirstPrompt = resolve;
+  });
+  const detail = () => ({
+    revision,
+    task,
+    events: canonicalEvents,
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  });
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [task] }),
+    }),
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(detail()) }),
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}/prompts(?:\\?|$)`), async (route) => {
+    const body = route.request().postDataJSON();
+    submittedPrompts.push(body.prompt);
+    if (submittedPrompts.length === 1) {
+      await firstPromptGate;
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        threadId,
+        turnId: `turn_${submittedPrompts.length}`,
+        steered: false,
+      }),
+    });
+  });
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const form = tasksPage.locator(".task-follow-up-form");
+  const prompt = form.locator('textarea[name="prompt"]');
+  const send = form.locator('button[type="submit"]');
+  await expect(tasksPage).toContainText("Initial response");
+
+  await prompt.fill("Canonical item prompt");
+  await send.click();
+  await expect.poll(() => submittedPrompts).toEqual(["Canonical item prompt"]);
+  await expect(form).toHaveAttribute("aria-busy", "true");
+
+  canonicalEvents = [
+    ...canonicalEvents,
+    {
+      id: "event_canonical_item_prompt",
+      threadId,
+      type: "user_message",
+      summary: "User prompt",
+      payload: {
+        turnId: "turn_1",
+        item: {
+          id: "item_canonical_item_prompt",
+          type: "userMessage",
+          content: [{ type: "input_text", text: "Canonical item prompt" }],
+        },
+      },
+      createdMs: now + 1,
+    },
+  ];
+  task.status = "running";
+  task.activeTurnId = "turn_1";
+  revision += 1;
+  await page.evaluate(({ threadId, detail }) => {
+    const source = window.__taskEventSources.find((candidate) =>
+      candidate.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    source.emit("task-sync", {
+      threadId,
+      revision: detail.revision,
+      detail,
+      reason: "canonical-item-ack",
+    });
+  }, { threadId, detail: detail() });
+
+  await expect(tasksPage).toContainText("Canonical item prompt");
+  await expect(form).toHaveAttribute("aria-busy", "false");
+  await expect(send).toBeEnabled();
+
+  await prompt.fill("Submitted after canonical item acknowledgement");
+  await send.click();
+  await expect.poll(() => submittedPrompts).toEqual([
+    "Canonical item prompt",
+    "Submitted after canonical item acknowledgement",
+  ]);
+
+  releaseFirstPrompt();
+  await expect(form).toHaveAttribute("aria-busy", "false");
+});
+
+test("unlocks canonical follow-ups after switching tasks with a pending response", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Wide task-switch regression");
+  await page.addInitScript(() => {
+    window.EventSource = class MockEventSource {
+      addEventListener() {}
+      close() {}
+    };
+  });
+  await mockCodexModels(page);
+
+  const now = 1_767_190_300_000;
+  const taskA = {
+    id: "thread_pending_a",
+    threadId: "thread_pending_a",
+    activeTurnId: null,
+    title: "Pending response task",
+    preview: "Initial A response",
+    status: "completed",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: "Initial A response",
+  };
+  const taskB = {
+    id: "thread_running_b",
+    threadId: "thread_running_b",
+    activeTurnId: "turn_running_b",
+    title: "Externally running task",
+    preview: "External work is running",
+    status: "running",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    createdMs: now - 100,
+    updatedMs: now + 100,
+    recencyMs: now + 100,
+    lastEventSummary: "External work is running",
+  };
+  const revisions = new Map([
+    [taskA.threadId, 1],
+    [taskB.threadId, 1],
+  ]);
+  const eventsByThread = new Map([
+    [
+      taskA.threadId,
+      [
+        {
+          id: "event_a_initial",
+          threadId: taskA.threadId,
+          type: "assistant_message",
+          summary: "Assistant response",
+          payload: { turnId: "turn_a_initial", text: "Initial A response" },
+          createdMs: now,
+        },
+      ],
+    ],
+    [
+      taskB.threadId,
+      Array.from({ length: 24 }, (_, index) => ({
+        id: `event_b_progress_${index}`,
+        threadId: taskB.threadId,
+        type: "assistant_message",
+        summary: "Assistant update",
+        payload: {
+          turnId: "turn_running_b",
+          text: `External running update ${index + 1}`,
+        },
+        createdMs: now + index,
+      })),
+    ],
+  ]);
+  const taskFor = (threadId) =>
+    threadId === taskA.threadId ? taskA : taskB;
+  const detailFor = (threadId) => ({
+    revision: revisions.get(threadId),
+    task: taskFor(threadId),
+    events: eventsByThread.get(threadId),
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  });
+  const submittedPrompts = [];
+  let releaseFirstPrompt;
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [taskA, taskB] }),
+    }),
+  );
+  await page.route(/\/api\/tasks\/(thread_pending_a|thread_running_b)(?:\?|$)/, (route) => {
+    const threadId = route.request().url().match(/\/api\/tasks\/([^?]+)/)?.[1];
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(detailFor(threadId)),
+    });
+  });
+  await page.route(/\/api\/tasks\/thread_pending_a\/prompts(?:\?|$)/, async (route) => {
+    const body = route.request().postDataJSON();
+    submittedPrompts.push(body.prompt);
+    if (submittedPrompts.length === 1) {
+      await new Promise((resolve) => {
+        releaseFirstPrompt = resolve;
+      });
+    }
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        threadId: taskA.threadId,
+        turnId: `turn_a_follow_up_${submittedPrompts.length}`,
+        steered: false,
+      }),
+    });
+  });
+
+  await page.goto(`/tasks/${taskA.threadId}?cwd=src`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  let form = tasksPage.locator(".task-follow-up-form");
+  let prompt = form.locator('textarea[name="prompt"]');
+  let send = form.locator('button[type="submit"]');
+
+  await prompt.fill("Canonical while response is pending");
+  await send.click();
+  await expect.poll(() => submittedPrompts).toEqual([
+    "Canonical while response is pending",
+  ]);
+  await expect(form).toHaveAttribute("aria-busy", "true");
+
+  eventsByThread.set(taskA.threadId, [
+    ...eventsByThread.get(taskA.threadId),
+    {
+      id: "event_a_canonical_prompt",
+      threadId: taskA.threadId,
+      type: "user_message",
+      summary: "User prompt",
+      payload: {
+        turnId: "turn_a_follow_up_1",
+        text: "Canonical while response is pending",
+      },
+      createdMs: now + 200,
+    },
+    {
+      id: "event_a_canonical_answer",
+      threadId: taskA.threadId,
+      type: "assistant_message",
+      summary: "Assistant response",
+      payload: {
+        turnId: "turn_a_follow_up_1",
+        text: "Canonical A response",
+      },
+      createdMs: now + 201,
+    },
+  ]);
+  revisions.set(taskA.threadId, 2);
+
+  await tasksPage.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
+  await expect(tasksPage).toContainText("External running update 24");
+  await expect(
+    tasksPage.locator('.task-detail-summary .task-status-chip[data-status="running"]'),
+  ).toBeVisible();
+  const conversation = tasksPage.locator(".task-conversation-scroll");
+  await conversation.evaluate((element) => {
+    element.scrollTop = Math.min(180, element.scrollHeight - element.clientHeight);
+  });
+  const savedScrollTop = await conversation.evaluate((element) => element.scrollTop);
+  expect(savedScrollTop).toBeGreaterThan(0);
+
+  await tasksPage.locator(`.task-row[data-thread-id="${taskA.threadId}"]`).click();
+  await expect(tasksPage).toContainText("Canonical A response");
+  form = tasksPage.locator(".task-follow-up-form");
+  prompt = form.locator('textarea[name="prompt"]');
+  send = form.locator('button[type="submit"]');
+  await expect(form).toHaveAttribute("aria-busy", "false");
+  await expect(send).toBeEnabled();
+
+  await prompt.fill("Sent after canonical unlock");
+  await send.click();
+  await expect.poll(() => submittedPrompts).toEqual([
+    "Canonical while response is pending",
+    "Sent after canonical unlock",
+  ]);
+  await expect(form).toHaveAttribute("aria-busy", "false");
+
+  await prompt.fill("Enter after canonical unlock");
+  await prompt.press("Enter");
+  await expect.poll(() => submittedPrompts).toEqual([
+    "Canonical while response is pending",
+    "Sent after canonical unlock",
+    "Enter after canonical unlock",
+  ]);
+
+  await tasksPage.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
+  await expect(
+    tasksPage.locator('.task-detail-summary .task-status-chip[data-status="running"]'),
+  ).toBeVisible();
+  await expect
+    .poll(() => conversation.evaluate((element) => element.scrollTop))
+    .toBe(savedScrollTop);
+
+  releaseFirstPrompt?.();
+});
+
+test("renders normalized Codex user messages instead of raw ambient context", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Codex message normalization regression");
+  await page.addInitScript(() => {
+    window.EventSource = class MockEventSource {
+      addEventListener() {}
+      close() {}
+    };
+  });
+  await mockCodexModels(page);
+
+  const threadId = "thread_normalized_user_message";
+  const now = 1_767_190_400_000;
+  const task = {
+    id: threadId,
+    threadId,
+    activeTurnId: null,
+    title: "Normalized user message",
+    preview: "Only this request should be visible.",
+    status: "completed",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: "Only this request should be visible.",
+  };
+  const rawAmbientPrompt = [
+    "# Files mentioned by the user:",
+    "",
+    "codex-clipboard-example.png: /tmp/codex-clipboard-example.png",
+    "",
+    '<in-app-browser-context source="ambient-ui-state">',
+    "# In app browser:",
+    "- Current URL: http://127.0.0.1:5178/tasks/example",
+    "</in-app-browser-context>",
+    "",
+    "## My request for Codex:",
+    "Only this request should be visible.",
+  ].join("\n");
+  const detail = {
+    revision: 1,
+    task,
+    events: [
+      {
+        id: "event_normalized_user_prompt",
+        threadId,
+        type: "user_message",
+        summary: "User prompt",
+        payload: {
+          turnId: "turn_initial",
+          item: {
+            id: "item_normalized_user_prompt",
+            type: "userMessage",
+            content: [{ type: "input_text", text: rawAmbientPrompt }],
+          },
+        },
+        createdMs: now,
+      },
+    ],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  };
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify({ tasks: [task] }) }),
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(detail) }),
+  );
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect(tasksPage).toContainText("Only this request should be visible.");
+  await expect(tasksPage).not.toContainText("in-app-browser-context");
+  await expect(tasksPage).not.toContainText("Files mentioned by the user");
+});
+
+test("replays canonical task detail when the stream connects after completion", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.__taskEventSources = [];
+    window.EventSource = class MockEventSource {
+      constructor(url) {
+        this.url = url;
+        this.listeners = new Map();
+        window.__taskEventSources.push(this);
+      }
+
+      addEventListener(type, listener) {
+        this.listeners.set(type, listener);
+      }
+
+      emit(type, payload) {
+        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
+      }
+
+      close() {}
+    };
+  });
+  await mockCodexModels(page);
+
+  const threadId = "thread_stream_bootstrap_after_completion";
+  const now = 1_767_190_450_000;
+  const staleTask = {
+    id: threadId,
+    threadId,
+    activeTurnId: "turn_initial",
+    activeTurnStartedMs: now,
+    title: "Stream bootstrap regression",
+    preview: "Waiting for canonical response",
+    status: "running",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: "Working",
+  };
+  const rawAmbientPrompt = [
+    "This block is automatically supplied ambient UI state, not part of the user's request.",
+    "## My request for Codex:",
+    "Show only the canonical request.",
+  ].join("\n");
+  const userEvent = {
+    id: "event_bootstrap_user_prompt",
+    threadId,
+    type: "user_message",
+    summary: "User prompt",
+    payload: {
+      turnId: "turn_initial",
+      item: {
+        id: "item_bootstrap_user_prompt",
+        type: "userMessage",
+        content: [{ type: "input_text", text: rawAmbientPrompt }],
+      },
+    },
+    createdMs: now,
+  };
+  const staleDetail = {
+    revision: 1,
+    task: staleTask,
+    events: [userEvent],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  };
+  const canonicalDetail = {
+    revision: 2,
+    task: {
+      ...staleTask,
+      activeTurnId: null,
+      activeTurnStartedMs: null,
+      status: "completed",
+      preview: "Canonical response arrived before the stream connected.",
+      updatedMs: now + 2,
+      lastEventSummary: "Canonical response arrived before the stream connected.",
+    },
+    events: [
+      userEvent,
+      {
+        id: "event_bootstrap_assistant_response",
+        threadId,
+        type: "assistant_message",
+        summary: "Assistant response",
+        payload: {
+          turnId: "turn_initial",
+          text: "Canonical response arrived before the stream connected.",
+        },
+        createdMs: now + 2,
+      },
+    ],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  };
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [staleTask] }),
+    }),
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(staleDetail) }),
+  );
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect(tasksPage).toContainText("Show only the canonical request.");
+  await expect(tasksPage).not.toContainText("automatically supplied ambient UI state");
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (id) =>
+          window.__taskEventSources.some((source) =>
+            source.url.includes(`/api/tasks/${id}/stream`),
+          ),
+        threadId,
+      ),
+    )
+    .toBe(true);
+  await page.evaluate(({ threadId, detail }) => {
+    const source = window.__taskEventSources.find((candidate) =>
+      candidate.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    source.emit("task-sync", {
+      threadId,
+      revision: detail.revision,
+      detail,
+      reason: "stream-bootstrap",
+    });
+  }, { threadId, detail: canonicalDetail });
+
+  await expect(tasksPage).toContainText(
+    "Canonical response arrived before the stream connected.",
+  );
+  await expect(
+    tasksPage.locator('.task-detail-summary .task-status-chip[data-status="running"]'),
+  ).toHaveCount(0);
+  await expect(tasksPage.locator(".task-detail-loading")).toHaveCount(0);
+});
+
+test("keeps task list and detail revisions independent", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Wide task stream regression");
+  await page.addInitScript(() => {
+    window.__taskEventSources = [];
+    window.EventSource = class MockEventSource {
+      constructor(url) {
+        this.url = url;
+        this.listeners = new Map();
+        window.__taskEventSources.push(this);
+      }
+
+      addEventListener(type, listener) {
+        this.listeners.set(type, listener);
+      }
+
+      emit(type, payload) {
+        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
+      }
+
+      close() {}
+    };
+  });
+  await mockCodexModels(page);
+
+  const threadId = "thread_independent_stream_revisions";
+  const now = 1_767_190_500_000;
+  const task = {
+    id: threadId,
+    threadId,
+    activeTurnId: null,
+    title: "Independent task stream revisions",
+    preview: "Initial answer",
+    status: "completed",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: "Initial answer",
+  };
+  const initialEvents = [
+    {
+      id: "event_normalized_user_prompt",
+      threadId,
+      type: "user_message",
+      summary: "User prompt",
+      payload: {
+        turnId: "turn_initial",
+        prompt: "Initial prompt",
+        text: "Only this request should be visible.",
+      },
+      createdMs: now,
+    },
+    {
+      id: "event_initial_answer",
+      threadId,
+      type: "assistant_message",
+      summary: "Assistant response",
+      payload: { turnId: "turn_initial", text: "Initial answer" },
+      createdMs: now + 1,
+    },
+  ];
+  const detail = (revision, events = initialEvents) => ({
+    revision,
+    task,
+    events,
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  });
+  const submittedPrompts = [];
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [task] }),
+    }),
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(detail(1)) }),
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}/prompts(?:\\?|$)`), async (route) => {
+    submittedPrompts.push(route.request().postDataJSON().prompt);
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ threadId, turnId: "turn_follow_up", steered: false }),
+    });
+  });
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect(tasksPage).toContainText("Only this request should be visible.");
+
+  await expect
+    .poll(() => page.evaluate(() => window.__taskEventSources.length))
+    .toBeGreaterThanOrEqual(2);
+  await page.evaluate(({ threadId, task }) => {
+    const listSource = window.__taskEventSources.find(
+      (source) => source.url.startsWith("/api/tasks/stream"),
+    );
+    listSource.emit("task-sync", {
+      threadId,
+      revision: 100,
+      detail: {
+        revision: 100,
+        task: { ...task, updatedMs: task.updatedMs + 100 },
+        events: [],
+        eventsPage: { nextCursor: null },
+        pendingApprovals: [],
+      },
+    });
+  }, { threadId, task });
+
+  const externalEvent = {
+    id: "event_external_detail_update",
+    threadId,
+    type: "assistant_message",
+    summary: "Assistant response",
+    payload: { turnId: "turn_external", text: "Detail stream update is visible." },
+    createdMs: now + 2,
+  };
+  await page.evaluate(({ threadId, detail }) => {
+    const detailSource = window.__taskEventSources.find((source) =>
+      source.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    detailSource.emit("task-sync", {
+      threadId,
+      revision: detail.revision,
+      detail,
+      reason: "external-update",
+    });
+  }, { threadId, detail: detail(2, [...initialEvents, externalEvent]) });
+  await expect(tasksPage).toContainText("Detail stream update is visible.");
+
+  const runningTask = {
+    ...task,
+    activeTurnId: null,
+    activeTurnStartedMs: now + 2,
+    status: "running",
+    lastEventSummary: "Running command",
+  };
+  await page.evaluate(({ threadId, detail }) => {
+    const detailSource = window.__taskEventSources.find((source) =>
+      source.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    detailSource.emit("task-sync", {
+      threadId,
+      revision: detail.revision,
+      detail,
+      reason: "canonical-status-sync",
+    });
+  }, {
+    threadId,
+    detail: {
+      ...detail(3, [...initialEvents, externalEvent]),
+      task: runningTask,
+    },
+  });
+  await expect(
+    tasksPage.locator('.task-detail-summary .task-status-chip[data-status="running"]'),
+  ).toBeVisible();
+
+  const historyEvent = {
+    id: "event_history_after_status",
+    threadId,
+    type: "assistant_message",
+    summary: "Assistant progress",
+    payload: { turnId: "turn_external", text: "History synchronized after status." },
+    createdMs: now + 3,
+  };
+  await page.evaluate(({ threadId, detail }) => {
+    const detailSource = window.__taskEventSources.find((source) =>
+      source.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    detailSource.emit("task-sync", {
+      threadId,
+      revision: detail.revision,
+      detail,
+      reason: "canonical-sync",
+    });
+  }, {
+    threadId,
+    detail: {
+      ...detail(4, [...initialEvents, externalEvent, historyEvent]),
+      task: runningTask,
+    },
+  });
+  await expect(tasksPage).toContainText("History synchronized after status.");
+  await expect(
+    tasksPage.locator('.task-detail-summary .task-status-chip[data-status="running"]'),
+  ).toBeVisible();
+
+  await page.evaluate(({ threadId, detail }) => {
+    const detailSource = window.__taskEventSources.find((source) =>
+      source.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    detailSource.emit("task-sync", {
+      threadId,
+      revision: detail.revision,
+      detail,
+      reason: "canonical-status-sync",
+    });
+  }, {
+    threadId,
+    detail: detail(5, [...initialEvents, externalEvent, historyEvent]),
+  });
+  await expect(
+    tasksPage.locator('.task-detail-summary .task-status-chip[data-status="running"]'),
+  ).toHaveCount(0);
+
+  const form = tasksPage.locator(".task-follow-up-form");
+  await form.locator('textarea[name="prompt"]').fill("Follow-up after list update");
+  await form.getByRole("button", { name: "Send prompt" }).click();
+  await expect.poll(() => submittedPrompts).toEqual(["Follow-up after list update"]);
+});
+
+test("isolates task detail responses and conversation scroll by thread", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Wide master-detail regression");
+  await page.addInitScript(() => {
+    window.EventSource = class MockEventSource {
+      constructor(url) {
+        this.url = url;
+      }
+
+      addEventListener() {}
+
+      close() {}
+    };
+  });
+  await mockCodexModels(page);
+
+  const now = 1_767_191_000_000;
+  const makeTask = (threadId, title, offset) => ({
+    id: threadId,
+    threadId,
+    activeTurnId: null,
+    title,
+    preview: `${title} preview`,
+    status: "completed",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    createdMs: now,
+    updatedMs: now + offset,
+    recencyMs: now + offset,
+    lastEventSummary: `${title} preview`,
+  });
+  const taskA = makeTask("thread_scroll_a", "Thread A", 1);
+  const taskB = makeTask("thread_scroll_b", "Thread B", 2);
+  const tasks = [taskB, taskA];
+  const detailFor = (task) => ({
+    revision: 1,
+    task,
+    events: Array.from({ length: 20 }, (_, index) => ({
+      id: `${task.threadId}_event_${index}`,
+      threadId: task.threadId,
+      type: "assistant_message",
+      summary: "Assistant response",
+      payload: {
+        turnId: `${task.threadId}_turn_${index}`,
+        text: `${task.title} response ${index + 1}.\n\n${"Thread-specific scroll content. ".repeat(16)}`,
+      },
+      createdMs: now + index,
+    })),
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  });
+  let delayThreadA = false;
+  let releaseThreadA;
+  let threadAResponseGate = Promise.resolve();
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks }),
+    }),
+  );
+  await page.route(/\/api\/tasks\/thread_scroll_[ab](?:\?|$)/, async (route) => {
+    const threadId = new URL(route.request().url()).pathname.split("/").at(-1);
+    if (threadId === taskA.threadId && delayThreadA) {
+      await threadAResponseGate;
+    }
+    const task = threadId === taskA.threadId ? taskA : taskB;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(detailFor(task)),
+    });
+  });
+
+  await page.goto(`/tasks/${taskB.threadId}?cwd=src`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const scroller = tasksPage.locator(".task-conversation-scroll");
+  await expect(tasksPage).toContainText("Thread B response 20.");
+  await expect
+    .poll(() => scroller.evaluate((element) => element.scrollHeight > element.clientHeight))
+    .toBe(true);
+  await scroller.evaluate((element) => {
+    element.scrollTop = 140;
+    element.dispatchEvent(new Event("scroll"));
+  });
+
+  delayThreadA = true;
+  threadAResponseGate = new Promise((resolve) => {
+    releaseThreadA = resolve;
+  });
+  await tasksPage.locator(`.task-row[data-thread-id="${taskA.threadId}"]`).click();
+  await tasksPage.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
+  releaseThreadA();
+  await expect(page).toHaveURL(`/tasks/${taskB.threadId}?cwd=src`);
+  await expect(tasksPage).toContainText("Thread B response 20.");
+  await expect(tasksPage).not.toContainText("Thread A response 20.");
+  await expect
+    .poll(() => scroller.evaluate((element) => Math.round(element.scrollTop)))
+    .toBe(140);
+
+  delayThreadA = false;
+  await tasksPage.locator(`.task-row[data-thread-id="${taskA.threadId}"]`).click();
+  await expect(tasksPage).toContainText("Thread A response 20.");
+  await expect(
+    tasksPage.locator('caffold-task-markdown[data-render-state="markdown"]'),
+  ).toHaveCount(20);
+  const taskAAnchor = await scroller.evaluate(async (element) => {
+    element.scrollTop = Math.min(250, element.scrollHeight - element.clientHeight);
+    element.dispatchEvent(new Event("scroll"));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const scrollerRect = element.getBoundingClientRect();
+    const messages = [...element.querySelectorAll(".task-message[data-event-id]")];
+    const index = messages.findIndex(
+      (message) => message.getBoundingClientRect().bottom > scrollerRect.top + 1,
+    );
+    const message = messages[index];
+    return {
+      eventId: message?.dataset.eventId ?? "",
+      offset: Math.round(message.getBoundingClientRect().top - scrollerRect.top),
+    };
+  });
+  expect(taskAAnchor.eventId).not.toBe("");
+  await tasksPage.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
+  await expect(tasksPage).toContainText("Thread B response 20.");
+  await expect
+    .poll(() => scroller.evaluate((element) => Math.round(element.scrollTop)))
+    .toBe(140);
+  await tasksPage.locator(`.task-row[data-thread-id="${taskA.threadId}"]`).click();
+  await expect(tasksPage).toContainText("Thread A response 20.");
+  await expect(
+    tasksPage.locator('caffold-task-markdown[data-render-state="markdown"]'),
+  ).toHaveCount(20);
+  await expect
+    .poll(() =>
+      scroller.evaluate(
+        (element, anchor) => {
+          const scrollerRect = element.getBoundingClientRect();
+          const message = [...element.querySelectorAll(".task-message[data-event-id]")].find(
+            (candidate) => candidate.dataset.eventId === anchor.eventId,
+          );
+          return message
+            ? Math.abs(
+                Math.round(message.getBoundingClientRect().top - scrollerRect.top) -
+                  anchor.offset,
+              ) <= 2
+            : false;
+        },
+        taskAAnchor,
+      ),
     )
     .toBe(true);
 });

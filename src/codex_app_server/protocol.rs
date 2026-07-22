@@ -6,7 +6,7 @@ use serde_json::Value;
 use serde_json::json;
 
 #[allow(dead_code)]
-pub const SUPPORTED_CODEX_CLI_VERSION: &str = "0.144.4";
+pub const SUPPORTED_CODEX_CLI_VERSION: &str = "0.145.0";
 
 pub(crate) const INITIALIZE: &str = "initialize";
 pub(crate) const INITIALIZED: &str = "initialized";
@@ -15,6 +15,8 @@ pub(crate) const ACCOUNT_RATE_LIMITS_READ: &str = "account/rateLimits/read";
 pub(crate) const ACCOUNT_USAGE_READ: &str = "account/usage/read";
 pub(crate) const THREAD_LIST: &str = "thread/list";
 pub(crate) const THREAD_READ: &str = "thread/read";
+#[cfg(test)]
+pub(crate) const THREAD_LOADED_LIST: &str = "thread/loaded/list";
 pub(crate) const THREAD_START: &str = "thread/start";
 pub(crate) const THREAD_RESUME: &str = "thread/resume";
 pub(crate) const THREAD_ARCHIVE: &str = "thread/archive";
@@ -56,6 +58,14 @@ pub struct AccountReadResponse {
 pub enum SortDirection {
     Asc,
     Desc,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ThreadSortKey {
+    CreatedAt,
+    UpdatedAt,
+    RecencyAt,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -159,6 +169,16 @@ pub struct ThreadReadResponse {
     pub thread: CodexThread,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[cfg(test)]
+pub struct ThreadLoadedListResponse {
+    #[serde(default)]
+    pub data: Vec<String>,
+    #[serde(default)]
+    pub next_cursor: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TurnsPage {
@@ -255,9 +275,14 @@ pub struct AccountReadParams {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadListParams {
+pub struct ThreadListParams<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<&'a str>,
     pub limit: usize,
+    pub sort_key: ThreadSortKey,
+    pub sort_direction: SortDirection,
     pub archived: bool,
+    pub use_state_db_only: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -265,6 +290,15 @@ pub struct ThreadListParams {
 pub struct ThreadReadParams<'a> {
     pub thread_id: &'a str,
     pub include_turns: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[cfg(test)]
+pub struct ThreadLoadedListParams<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<&'a str>,
+    pub limit: usize,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -599,25 +633,37 @@ pub(crate) fn thread_resume_params<'a>(
         initial_turns_page: initial_turns_page.then_some(InitialTurnsPageParams {
             limit: 8,
             sort_direction: SortDirection::Desc,
-            items_view: TurnItemsView::Full,
+            items_view: TurnItemsView::Summary,
         }),
     }
 }
 
-pub(crate) fn thread_list_params(limit: usize) -> ThreadListParams {
+pub(crate) fn thread_list_params(cursor: Option<&str>, limit: usize) -> ThreadListParams<'_> {
     ThreadListParams {
+        cursor: cursor.filter(|cursor| !cursor.is_empty()),
         limit,
+        sort_key: ThreadSortKey::RecencyAt,
+        sort_direction: SortDirection::Desc,
         archived: false,
+        use_state_db_only: true,
     }
 }
 
-pub(crate) fn thread_read_params<'a>(
-    thread_id: &'a str,
-    include_turns: bool,
-) -> ThreadReadParams<'a> {
+pub(crate) fn thread_read_params(thread_id: &str) -> ThreadReadParams<'_> {
     ThreadReadParams {
         thread_id,
-        include_turns,
+        include_turns: false,
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn thread_loaded_list_params(
+    cursor: Option<&str>,
+    limit: usize,
+) -> ThreadLoadedListParams<'_> {
+    ThreadLoadedListParams {
+        cursor: cursor.filter(|cursor| !cursor.is_empty()),
+        limit,
     }
 }
 
@@ -712,7 +758,7 @@ pub(crate) fn thread_turns_list_params<'a>(
         cursor: cursor.filter(|cursor| !cursor.is_empty()),
         limit,
         sort_direction,
-        items_view: TurnItemsView::Full,
+        items_view: TurnItemsView::Summary,
     }
 }
 
@@ -785,7 +831,7 @@ mod tests {
                 "initialTurnsPage": {
                     "limit": 8,
                     "sortDirection": "desc",
-                    "itemsView": "full"
+                    "itemsView": "summary"
                 }
             })
         );
@@ -802,14 +848,24 @@ mod tests {
             ),
             (
                 THREAD_LIST,
-                serde_json::to_value(thread_list_params(100)).expect("thread list params"),
-                json!({ "limit": 100, "archived": false }),
+                serde_json::to_value(thread_list_params(Some("next-page"), 30))
+                    .expect("thread list params"),
+                json!({
+                    "cursor": "next-page",
+                    "limit": 30,
+                    "sortKey": "recency_at",
+                    "sortDirection": "desc",
+                    "archived": false,
+                    "useStateDbOnly": true
+                }),
             ),
             (
                 THREAD_READ,
-                serde_json::to_value(thread_read_params("thread_1", true))
-                    .expect("thread read params"),
-                json!({ "threadId": "thread_1", "includeTurns": true }),
+                serde_json::to_value(thread_read_params("thread_1")).expect("thread read params"),
+                json!({
+                    "threadId": "thread_1",
+                    "includeTurns": false
+                }),
             ),
             (
                 THREAD_START,
@@ -890,7 +946,7 @@ mod tests {
                     "cursor": "cursor_1",
                     "limit": 8,
                     "sortDirection": "asc",
-                    "itemsView": "full"
+                    "itemsView": "summary"
                 }),
             ),
             (
@@ -921,11 +977,6 @@ mod tests {
         )
         .expect("thread list response");
         assert_eq!(list.data[0].id, "thread_1");
-
-        let read: ThreadReadResponse =
-            decode_response(THREAD_READ, json!({ "thread": idle_thread.clone() }))
-                .expect("thread read response");
-        assert_eq!(read.thread.status, ThreadStatus::Idle);
 
         let account: AccountReadResponse = decode_response(
             ACCOUNT_READ,

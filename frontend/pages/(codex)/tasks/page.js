@@ -47,6 +47,7 @@ class CaffoldTasksPage extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
     this.attachGlobalListeners();
+    this.syncActiveTurnClock();
   }
 
   ensureRendered() {
@@ -58,8 +59,11 @@ class CaffoldTasksPage extends HTMLElement {
     this.view = "list";
     this.tasks = [];
     this.taskListLoading = false;
+    this.taskListLoadingMore = false;
     this.taskListLoaded = false;
     this.taskListError = null;
+    this.taskListLoadMoreError = null;
+    this.taskListNextCursor = null;
     this.taskListRequestId = 0;
     this.taskListContext = "";
     this.taskListDirty = true;
@@ -69,7 +73,8 @@ class CaffoldTasksPage extends HTMLElement {
     this.taskListWidth = TASK_LIST_DEFAULT_WIDTH;
     this.taskSeenState = readTaskSeenState();
     this.taskDetail = null;
-    this.taskRevisionByThread = new Map();
+    this.taskDetailRevisionByThread = new Map();
+    this.taskListRevisionByThread = new Map();
     this.taskGithubStatus = null;
     this.taskGithubStatusPath = "";
     this.taskGithubStatusState = "idle";
@@ -79,6 +84,8 @@ class CaffoldTasksPage extends HTMLElement {
     this.eventsByThread = new Map();
     this.eventsPage = { nextCursor: null };
     this.error = null;
+    this.detailLoadError = null;
+    this.historyLoadError = null;
     this.loading = false;
     this.loadingOlderEvents = false;
     this.cwdPath = "";
@@ -90,6 +97,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.streamGeneration = 0;
     this.streamErrorTimer = null;
     this.activeTurnClockTimer = null;
+    this.activeTurnClockByThread = new Map();
     this.taskRefresh = null;
     this.requestId = 0;
     this.conversationScrollMode = null;
@@ -254,7 +262,19 @@ class CaffoldTasksPage extends HTMLElement {
         }
 
         event.preventDefault();
-        this.handleForm(form.dataset.taskForm, form);
+        const formName = form.dataset.taskForm;
+        void this.handleForm(formName, form).catch((error) => {
+          if (formName === "create") {
+            this.loading = false;
+          } else if (formName === "follow-up") {
+            const threadId = `${form.dataset.threadId ?? ""}`.trim();
+            if (this.followUpRequest?.threadId === threadId) {
+              this.followUpRequest = null;
+            }
+          }
+          this.error = error instanceof Error ? error : new Error(`${error}`);
+          this.render();
+        });
       },
       true,
     );
@@ -333,8 +353,11 @@ class CaffoldTasksPage extends HTMLElement {
     this.closeTaskListStream();
     this.taskListRequestId += 1;
     this.taskListLoading = false;
+    this.taskListLoadingMore = false;
     this.taskListLoaded = false;
     this.taskListError = null;
+    this.taskListLoadMoreError = null;
+    this.taskListNextCursor = null;
     this.tasks = [];
     this.markTaskListDirty();
   }
@@ -349,12 +372,15 @@ class CaffoldTasksPage extends HTMLElement {
     ) {
       this.view = "detail";
       this.error = null;
+      this.detailLoadError = null;
       this.activateThreadEvents(route.threadId);
       this.setAttribute("data-tasks-view", this.view);
       return;
     }
 
     this.error = null;
+    this.detailLoadError = null;
+    this.historyLoadError = null;
     if (route?.new) {
       this.view = "new";
       this.taskDetailView = "conversation";
@@ -427,6 +453,8 @@ class CaffoldTasksPage extends HTMLElement {
     this.requestId += 1;
     this.loading = false;
     this.error = null;
+    this.detailLoadError = null;
+    this.historyLoadError = null;
     this.view = "list";
     this.render();
     return await this.loadTaskList({ force: true });
@@ -435,6 +463,8 @@ class CaffoldTasksPage extends HTMLElement {
   openNew() {
     this.view = "new";
     this.error = null;
+    this.detailLoadError = null;
+    this.historyLoadError = null;
     this.loading = false;
     this.openModelPickerForm = "";
     this.closeStream();
@@ -455,6 +485,8 @@ class CaffoldTasksPage extends HTMLElement {
     this.selectedThreadId = threadId;
     this.loading = true;
     this.error = null;
+    this.detailLoadError = null;
+    this.historyLoadError = null;
     this.render();
     this.loadTaskList();
     this.connectStream(threadId);
@@ -466,20 +498,25 @@ class CaffoldTasksPage extends HTMLElement {
       }
       if (
         detail?.task?.threadId !== threadId ||
-        !this.acceptTaskRevision(threadId, detail.revision)
+        !this.acceptTaskDetailRevision(threadId, detail.revision)
       ) {
         return null;
       }
+      this.acknowledgeFollowUpFromCanonicalDetail(threadId, detail);
       this.taskDetail = detail;
       this.setThreadEvents(
         threadId,
         mergeEvents(this.eventsByThread.get(threadId) ?? [], detail.events ?? []),
       );
-      this.eventsPage = detail.eventsPage ?? { nextCursor: null };
+      this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
       this.loading = false;
+      this.detailLoadError = null;
+      this.historyLoadError = null;
       this.markTaskSeen(detail.task);
       this.patchTaskListTask(detail.task);
-      this.conversationScrollMode = "bottom";
+      this.conversationScrollMode = this.conversationScrollSnapshot(threadId)
+        ? "preserve"
+        : "bottom";
       this.render();
       this.loadTaskGithubStatus(detail.task);
       this.loadModelOptions();
@@ -489,7 +526,7 @@ class CaffoldTasksPage extends HTMLElement {
         return null;
       }
       this.loading = false;
-      this.error = error;
+      this.detailLoadError = error;
       this.render();
       return null;
     }
@@ -531,13 +568,15 @@ class CaffoldTasksPage extends HTMLElement {
 
   async loadTaskList({ force = false } = {}) {
     if (this.taskListLoaded && !force) {
-      return { tasks: this.tasks };
+      return { tasks: this.tasks, nextCursor: this.taskListNextCursor };
     }
 
     const requestId = ++this.taskListRequestId;
     const context = this.taskListContext;
     this.taskListLoading = true;
+    this.taskListLoadingMore = false;
     this.taskListError = null;
+    this.taskListLoadMoreError = null;
     this.markTaskListDirty();
     this.renderTaskListRegion();
 
@@ -547,6 +586,7 @@ class CaffoldTasksPage extends HTMLElement {
         return null;
       }
       this.tasks = response.tasks ?? [];
+      this.taskListNextCursor = response.nextCursor ?? null;
       this.initializeTaskSeenState(this.tasks);
       this.taskListLoading = false;
       this.taskListLoaded = true;
@@ -560,6 +600,44 @@ class CaffoldTasksPage extends HTMLElement {
       }
       this.taskListLoading = false;
       this.taskListError = error;
+      this.markTaskListDirty();
+      this.renderTaskListRegion();
+      return null;
+    }
+  }
+
+  async loadMoreTasks() {
+    const cursor = this.taskListNextCursor;
+    if (!cursor || this.taskListLoading || this.taskListLoadingMore) {
+      return null;
+    }
+
+    const requestId = ++this.taskListRequestId;
+    const context = this.taskListContext;
+    this.taskListLoadingMore = true;
+    this.taskListLoadMoreError = null;
+    this.markTaskListDirty();
+    this.renderTaskListRegion();
+
+    try {
+      const response = await getTasks(this.cwdPath, cursor);
+      if (requestId !== this.taskListRequestId || context !== this.taskListContext) {
+        return null;
+      }
+      this.tasks = mergeTaskListPage(this.tasks, response.tasks ?? []);
+      this.taskListNextCursor = response.nextCursor ?? null;
+      this.initializeTaskSeenState(response.tasks ?? []);
+      this.taskListLoadingMore = false;
+      this.markTaskListDirty();
+      this.renderTaskListRegion();
+      this.syncTaskListSelection();
+      return response;
+    } catch (error) {
+      if (requestId !== this.taskListRequestId || context !== this.taskListContext) {
+        return null;
+      }
+      this.taskListLoadingMore = false;
+      this.taskListLoadMoreError = error;
       this.markTaskListDirty();
       this.renderTaskListRegion();
       return null;
@@ -621,6 +699,7 @@ class CaffoldTasksPage extends HTMLElement {
       const message = parseJson(event.data);
       const detail = message?.detail;
       if (
+        message?.reason === "external-sync-start" ||
         !this.isCurrentStream(stream, threadId, generation) ||
         message?.threadId !== threadId ||
         detail?.task?.threadId !== threadId
@@ -637,7 +716,7 @@ class CaffoldTasksPage extends HTMLElement {
         message?.threadId !== threadId ||
         !entry ||
         entry.threadId !== this.selectedThreadId ||
-        !this.acceptTaskRevision(threadId, message.revision)
+        !this.acceptTaskDetailRevision(threadId, message.revision)
       ) {
         return;
       }
@@ -651,20 +730,49 @@ class CaffoldTasksPage extends HTMLElement {
   applyTaskDetailSync(threadId, detail, revision) {
     if (
       threadId !== this.selectedThreadId ||
-      !this.acceptTaskRevision(threadId, revision ?? detail?.revision)
+      !this.acceptTaskDetailRevision(threadId, revision ?? detail?.revision)
     ) {
       return;
     }
+    this.acknowledgeFollowUpFromCanonicalDetail(threadId, detail);
     this.taskDetail = detail;
+    this.loading = false;
+    this.detailLoadError = null;
     this.setThreadEvents(
       threadId,
       mergeEvents(this.eventsByThread.get(threadId) ?? [], detail.events ?? []),
     );
-    this.eventsPage = detail.eventsPage ?? this.eventsPage;
+    this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
     this.patchTaskListTask(detail.task);
     this.loadTaskGithubStatus(detail.task);
     this.conversationScrollMode = "bottom-if-needed";
     this.render();
+  }
+
+  acknowledgeFollowUpFromCanonicalDetail(threadId, detail) {
+    const request = this.followUpRequest;
+    if (!request || request.threadId !== threadId) {
+      return;
+    }
+
+    const confirmedEvent = (detail?.events ?? []).find((event) => {
+      if (
+        event?.type !== "user_message" ||
+        event.payload?.optimistic ||
+        userMessageFingerprint(event) !== request.fingerprint
+      ) {
+        return false;
+      }
+      return !request.canonicalEventIds.has(event.id);
+    });
+    if (!confirmedEvent) {
+      return;
+    }
+
+    request.acknowledged = true;
+    if (this.followUpRequest === request) {
+      this.followUpRequest = null;
+    }
   }
 
   connectTaskListStream() {
@@ -717,7 +825,7 @@ class CaffoldTasksPage extends HTMLElement {
       if (
         !entry ||
         message?.threadId !== entry.threadId ||
-        !this.acceptTaskRevision(entry.threadId, message.revision)
+        !this.acceptTaskListRevision(entry.threadId, message.revision)
       ) {
         return;
       }
@@ -738,23 +846,31 @@ class CaffoldTasksPage extends HTMLElement {
       if (
         detail?.task &&
         message?.threadId === taskThreadId(detail.task) &&
-        this.acceptTaskRevision(message.threadId, message.revision)
+        this.acceptTaskListRevision(message.threadId, message.revision)
       ) {
         this.patchTaskListTask(detail.task);
       }
     });
   }
 
-  acceptTaskRevision(threadId, revision) {
+  acceptTaskDetailRevision(threadId, revision) {
+    return this.acceptTaskRevision(this.taskDetailRevisionByThread, threadId, revision);
+  }
+
+  acceptTaskListRevision(threadId, revision) {
+    return this.acceptTaskRevision(this.taskListRevisionByThread, threadId, revision);
+  }
+
+  acceptTaskRevision(revisions, threadId, revision) {
     const value = Number(revision);
     if (!threadId || !Number.isFinite(value) || value <= 0) {
       return true;
     }
-    const current = this.taskRevisionByThread.get(threadId) ?? 0;
+    const current = revisions.get(threadId) ?? 0;
     if (value < current) {
       return false;
     }
-    this.taskRevisionByThread.set(threadId, value);
+    revisions.set(threadId, value);
     return true;
   }
 
@@ -867,12 +983,12 @@ class CaffoldTasksPage extends HTMLElement {
       if (detail?.task?.threadId !== threadId) {
         return;
       }
-      if (!this.acceptTaskRevision(threadId, detail.revision)) {
+      if (!this.acceptTaskDetailRevision(threadId, detail.revision)) {
         return;
       }
       this.taskDetail = detail;
       this.setThreadEvents(threadId, mergeEvents(this.events, detail.events ?? []));
-      this.eventsPage = detail.eventsPage ?? this.eventsPage;
+      this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
       this.patchTaskListTask(detail.task);
       this.loadTaskGithubStatus(detail.task);
       this.conversationScrollMode = "bottom-if-needed";
@@ -924,6 +1040,10 @@ class CaffoldTasksPage extends HTMLElement {
       this.requestRoute({ kind: "tasks", threadId: element.dataset.threadId });
       return;
     }
+    if (action === "load-more-tasks") {
+      this.loadMoreTasks();
+      return;
+    }
     if (action === "browse-new-task-cwd") {
       this.newTaskBrowsing = true;
       if (this.view !== "new") {
@@ -955,6 +1075,16 @@ class CaffoldTasksPage extends HTMLElement {
         this.connectStream(this.selectedThreadId);
         this.render();
       }
+      return;
+    }
+    if (action === "retry-task-detail") {
+      if (this.selectedThreadId) {
+        this.openTask(this.selectedThreadId);
+      }
+      return;
+    }
+    if (action === "retry-task-history") {
+      this.loadOlderEvents({ retry: true });
       return;
     }
     if (action === "open-diff") {
@@ -1165,7 +1295,6 @@ class CaffoldTasksPage extends HTMLElement {
     if (event.isComposing) {
       return;
     }
-
     const textarea = closestElement(event.target, "textarea[name='prompt']");
     const form = closestElement(textarea, "form[data-task-form]");
     if (
@@ -1200,7 +1329,7 @@ class CaffoldTasksPage extends HTMLElement {
         images: images.map((image) => image.dataUrl),
         ...this.turnOptions(),
       });
-      this.acceptTaskRevision(detail?.task?.threadId, detail?.revision);
+      this.acceptTaskDetailRevision(detail?.task?.threadId, detail?.revision);
       this.taskDetail = detail;
       this.setThreadEvents(detail.task.threadId, detail.events ?? []);
       this.eventsPage = detail.eventsPage ?? { nextCursor: null };
@@ -1228,6 +1357,14 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
 
+    const textarea = promptTextareaForForm(form);
+    if (!textarea) {
+      this.error = new Error("Could not find the task prompt field.");
+      this.render();
+      return;
+    }
+    const restoreComposerFocus = form.contains(document.activeElement);
+
     if (this.selectedThreadId !== threadId) {
       this.selectedThreadId = threadId;
       this.activateThreadEvents(threadId);
@@ -1240,15 +1377,13 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
 
-    const requestId = ++this.requestId;
-    const followUpRequest = { requestId, threadId };
-    this.followUpRequest = followUpRequest;
-    form.prompt.value = "";
+    this.error = null;
+
     const optimisticEvent = optimisticUserMessageEvent(
       threadId,
       prompt,
       images,
-      requestId,
+      this.requestId + 1,
     );
     const previousTask =
       taskThreadId(this.taskDetail?.task) === threadId
@@ -1258,23 +1393,42 @@ class CaffoldTasksPage extends HTMLElement {
       updatedMs: optimisticEvent.createdMs,
       recencyMs: optimisticEvent.createdMs,
     });
-    this.setThreadEvents(
+    const requestId = ++this.requestId;
+    const followUpRequest = {
+      requestId,
       threadId,
-      mergeEvents(this.eventsByThread.get(threadId) ?? [], [optimisticEvent]),
-    );
-    if (runningTask) {
-      this.taskDetail = { ...this.taskDetail, task: runningTask };
-      this.patchTaskListTask(runningTask);
-    }
-    this.followUpDraft = "";
-    this.followUpDraftByThread.set(threadId, "");
-    this.followUpImages = [];
-    this.followUpImagesByThread.set(threadId, []);
-    this.composerImageErrors.delete("follow-up");
-    this.conversationScrollMode = "bottom";
-    this.render();
+      fingerprint: userMessageFingerprint(optimisticEvent),
+      canonicalEventIds: new Set(
+        (this.eventsByThread.get(threadId) ?? [])
+          .filter(
+            (event) =>
+              event?.type === "user_message" && !event.payload?.optimistic,
+          )
+          .map((event) => event.id)
+          .filter(Boolean),
+      ),
+      acknowledged: false,
+    };
+    this.followUpRequest = followUpRequest;
 
     try {
+      textarea.value = "";
+      this.setThreadEvents(
+        threadId,
+        mergeEvents(this.eventsByThread.get(threadId) ?? [], [optimisticEvent]),
+      );
+      if (runningTask) {
+        this.taskDetail = { ...this.taskDetail, task: runningTask };
+        this.patchTaskListTask(runningTask);
+      }
+      this.followUpDraft = "";
+      this.followUpDraftByThread.set(threadId, "");
+      this.followUpImages = [];
+      this.followUpImagesByThread.set(threadId, []);
+      this.composerImageErrors.delete("follow-up");
+      this.conversationScrollMode = "bottom";
+      this.render();
+
       const response = await sendTaskPrompt(
         threadId,
         prompt,
@@ -1295,6 +1449,9 @@ class CaffoldTasksPage extends HTMLElement {
         this.conversationScrollMode = "bottom-if-needed";
       }
     } catch (error) {
+      if (followUpRequest.acknowledged) {
+        return;
+      }
       const threadEvents = this.eventsByThread.get(threadId) ?? [];
       this.setThreadEvents(
         threadId,
@@ -1328,8 +1485,24 @@ class CaffoldTasksPage extends HTMLElement {
       }
       if (threadId === this.selectedThreadId) {
         this.render();
+        if (restoreComposerFocus) {
+          this.focusFollowUpComposer(threadId);
+        }
       }
     }
+  }
+
+  focusFollowUpComposer(threadId) {
+    const form = this.querySelector(
+      `.task-follow-up-form[data-thread-id="${CSS.escape(threadId)}"]`,
+    );
+    const textarea = promptTextareaForForm(form);
+    if (!textarea) {
+      return;
+    }
+    textarea.focus({ preventScroll: true });
+    const cursor = textarea.value.length;
+    textarea.setSelectionRange(cursor, cursor);
   }
 
   async interruptSelectedTask() {
@@ -1343,7 +1516,7 @@ class CaffoldTasksPage extends HTMLElement {
       if (requestId !== this.requestId) {
         return;
       }
-      if (!this.acceptTaskRevision(this.selectedThreadId, detail.revision)) {
+      if (!this.acceptTaskDetailRevision(this.selectedThreadId, detail.revision)) {
         return;
       }
       this.taskDetail = detail;
@@ -1380,7 +1553,7 @@ class CaffoldTasksPage extends HTMLElement {
       if (requestId !== this.requestId) {
         return;
       }
-      if (!this.acceptTaskRevision(this.selectedThreadId, detail.revision)) {
+      if (!this.acceptTaskDetailRevision(this.selectedThreadId, detail.revision)) {
         return;
       }
       this.taskDetail = detail;
@@ -1401,13 +1574,19 @@ class CaffoldTasksPage extends HTMLElement {
     }
   }
 
-  async loadOlderEvents() {
+  async loadOlderEvents(options = {}) {
     const cursor = this.eventsPage?.nextCursor;
-    if (!this.selectedThreadId || !cursor || this.loadingOlderEvents) {
+    if (
+      !this.selectedThreadId ||
+      !cursor ||
+      this.loadingOlderEvents ||
+      (this.historyLoadError && !options.retry)
+    ) {
       return;
     }
 
     this.loadingOlderEvents = true;
+    this.historyLoadError = null;
     this.conversationScrollMode = "preserve";
     const requestId = ++this.requestId;
     this.render();
@@ -1422,7 +1601,7 @@ class CaffoldTasksPage extends HTMLElement {
         this.render();
         return;
       }
-      if (!this.acceptTaskRevision(this.selectedThreadId, detail.revision)) {
+      if (!this.acceptTaskDetailRevision(this.selectedThreadId, detail.revision)) {
         this.loadingOlderEvents = false;
         this.conversationScrollMode = "preserve";
         this.render();
@@ -1438,6 +1617,7 @@ class CaffoldTasksPage extends HTMLElement {
       );
       this.eventsPage = detail.eventsPage ?? { nextCursor: null };
       this.loadingOlderEvents = false;
+      this.historyLoadError = null;
       this.conversationScrollMode = "prepend";
       this.render();
     } catch (error) {
@@ -1445,7 +1625,7 @@ class CaffoldTasksPage extends HTMLElement {
         return;
       }
       this.loadingOlderEvents = false;
-      this.error = error;
+      this.historyLoadError = error;
       this.conversationScrollMode = "preserve";
       this.render();
     }
@@ -1678,8 +1858,13 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   render() {
+    this.stabilizeActiveTurnStartedMs();
+    const renderedThreadId = this.renderedConversationThreadId();
+    const renderedScroll = this.rememberConversationScroll(renderedThreadId);
     const previousScroll =
-      this.rememberConversationScroll() ?? this.conversationScrollSnapshot();
+      renderedThreadId === this.selectedThreadId
+        ? renderedScroll
+        : this.conversationScrollSnapshot(this.selectedThreadId);
     const previousComposerFocus = this.captureComposerFocus();
     const previousTaskFilePath = this.captureTaskFileBrowserPath();
     const previousNewTaskCwdPath = this.captureNewTaskCwdBrowserPath();
@@ -1703,6 +1888,47 @@ class CaffoldTasksPage extends HTMLElement {
     this.applyTaskListWidth();
     this.syncTaskListSelection();
     this.syncActiveTurnClock();
+  }
+
+  stabilizeActiveTurnStartedMs() {
+    const detail = this.taskDetail;
+    const task = detail?.task;
+    const threadId = taskThreadId(task);
+    if (!threadId) {
+      return;
+    }
+
+    if (!isTaskActivelyWorking(task)) {
+      this.activeTurnClockByThread.delete(threadId);
+      return;
+    }
+
+    const incomingTurnId = `${task.activeTurnId ?? ""}`.trim();
+    const current = this.activeTurnClockByThread.get(threadId);
+    const sameTurn =
+      current &&
+      (!current.turnId || !incomingTurnId || current.turnId === incomingTurnId);
+    const taskEvents = this.eventsByThread.get(threadId) ?? this.events ?? [];
+    const matchingEvents = incomingTurnId
+      ? taskEvents.filter((event) => eventTurnId(event) === incomingTurnId)
+      : taskEvents;
+    const incomingStartedMs = activeTurnStartMs(matchingEvents, task);
+    const startedMs = sameTurn
+      ? Math.min(current.startedMs, incomingStartedMs)
+      : incomingStartedMs;
+    const turnId = incomingTurnId || current?.turnId || "";
+
+    this.activeTurnClockByThread.set(threadId, { turnId, startedMs });
+    if (Number(task.activeTurnStartedMs) === startedMs) {
+      return;
+    }
+    this.taskDetail = {
+      ...detail,
+      task: {
+        ...task,
+        activeTurnStartedMs: startedMs,
+      },
+    };
   }
 
   ensureTaskShell() {
@@ -2393,27 +2619,43 @@ class CaffoldTasksPage extends HTMLElement {
     if (!scroller || scroller.clientHeight === 0) {
       return null;
     }
+    const scrollerRect = scroller.getBoundingClientRect();
+    const anchor = [...scroller.querySelectorAll(".task-event[data-event-id]")].find(
+      (event) => event.getBoundingClientRect().bottom > scrollerRect.top + 1,
+    );
     return {
       scrollTop: scroller.scrollTop,
       scrollHeight: scroller.scrollHeight,
       clientHeight: scroller.clientHeight,
       atBottom: isScrolledToBottom(scroller),
+      anchorEventId: anchor?.dataset.eventId ?? "",
+      anchorOffset: anchor
+        ? anchor.getBoundingClientRect().top - scrollerRect.top
+        : null,
     };
   }
 
-  rememberConversationScroll() {
+  renderedConversationThreadId() {
+    return `${
+      this.querySelector(".task-conversation-scroll")
+        ?.closest(".task-detail")
+        ?.getAttribute("data-thread-id") ?? ""
+    }`.trim();
+  }
+
+  rememberConversationScroll(threadId = this.renderedConversationThreadId()) {
     const snapshot = this.captureConversationScroll();
-    if (snapshot && this.selectedThreadId) {
-      this.conversationScrollByThread.set(this.selectedThreadId, snapshot);
+    if (snapshot && threadId) {
+      this.conversationScrollByThread.set(threadId, snapshot);
     }
     return snapshot;
   }
 
-  conversationScrollSnapshot() {
-    if (!this.selectedThreadId) {
+  conversationScrollSnapshot(threadId = this.selectedThreadId) {
+    if (!threadId) {
       return null;
     }
-    return this.conversationScrollByThread.get(this.selectedThreadId) ?? null;
+    return this.conversationScrollByThread.get(threadId) ?? null;
   }
 
   restoreConversationScroll(previousScroll) {
@@ -2440,6 +2682,20 @@ class CaffoldTasksPage extends HTMLElement {
       );
       return;
     }
+    if (previousScroll?.anchorEventId && Number.isFinite(previousScroll.anchorOffset)) {
+      const anchor = [...scroller.querySelectorAll(".task-event[data-event-id]")].find(
+        (event) => event.dataset.eventId === previousScroll.anchorEventId,
+      );
+      if (anchor) {
+        const scrollerTop = scroller.getBoundingClientRect().top;
+        const currentOffset = anchor.getBoundingClientRect().top - scrollerTop;
+        scroller.scrollTop = Math.min(
+          Math.max(0, scroller.scrollTop + currentOffset - previousScroll.anchorOffset),
+          maxScrollTop(scroller),
+        );
+        return;
+      }
+    }
     if (previousScroll) {
       scroller.scrollTop = Math.min(previousScroll.scrollTop, maxScrollTop(scroller));
     }
@@ -2451,6 +2707,7 @@ class CaffoldTasksPage extends HTMLElement {
     if (
       !scroller ||
       this.loadingOlderEvents ||
+      this.historyLoadError ||
       !this.eventsPage?.nextCursor ||
       scroller.scrollTop > 32
     ) {
@@ -2529,11 +2786,23 @@ class CaffoldTasksPage extends HTMLElement {
     return this.cwdPath === "." ? "~" : this.cwdPath;
   }
 
+  hasSelectedTaskDetail() {
+    return Boolean(
+      this.view === "detail" &&
+        this.selectedThreadId &&
+        this.taskDetail?.task?.threadId === this.selectedThreadId,
+    );
+  }
+
   renderBody() {
-    if (this.loading && !this.taskDetail && this.view === "detail") {
+    const hasSelectedTaskDetail = this.hasSelectedTaskDetail();
+    if (this.loading && !hasSelectedTaskDetail && this.view === "detail") {
       return `<p class="surface-message">Loading task...</p>`;
     }
-    if (this.error && this.view !== "new") {
+    if (this.detailLoadError && !hasSelectedTaskDetail && this.view === "detail") {
+      return this.renderTaskDetailLoadError();
+    }
+    if (this.error && this.view !== "new" && !hasSelectedTaskDetail) {
       return `<p class="surface-message">${escapeHtml(this.error.message)}</p>`;
     }
     if (this.view === "new") {
@@ -2547,6 +2816,20 @@ class CaffoldTasksPage extends HTMLElement {
     return this.renderNewTaskWorkspace({ home: true });
   }
 
+  renderTaskDetailLoadError() {
+    const task = this.tasks.find(
+      (candidate) => taskThreadId(candidate) === this.selectedThreadId,
+    );
+    return `
+      <section class="task-detail-load-error" role="alert">
+        ${task?.title ? `<h2>${escapeHtml(task.title)}</h2>` : ""}
+        <p>Task details are temporarily unavailable.</p>
+        <p class="task-load-error-message">${escapeHtml(this.detailLoadError?.message ?? "")}</p>
+        <button type="button" class="task-secondary-button" data-task-action="retry-task-detail">Retry</button>
+      </section>
+    `;
+  }
+
   renderTaskList() {
     if (this.taskListLoading && !this.tasks.length) {
       return `<p class="surface-message">Loading tasks...</p>`;
@@ -2554,7 +2837,7 @@ class CaffoldTasksPage extends HTMLElement {
     if (this.taskListError && !this.tasks.length) {
       return `<p class="surface-message">${escapeHtml(this.taskListError.message)}</p>`;
     }
-    if (!this.tasks.length) {
+    if (!this.tasks.length && !this.taskListNextCursor) {
       return `
         <div class="tasks-empty">
           <p>No tasks yet.</p>
@@ -2564,12 +2847,18 @@ class CaffoldTasksPage extends HTMLElement {
     }
 
     const tasks = sortTasksByRecency(this.tasks);
+    const pagination = this.renderTaskListPagination();
     if (!this.usesRepositoryGroups()) {
       return `
         <div class="task-list-scroll">
-          <ol class="task-list">
-            ${tasks.map((task) => this.renderTaskRow(task)).join("")}
-          </ol>
+          ${
+            tasks.length
+              ? `<ol class="task-list">
+                  ${tasks.map((task) => this.renderTaskRow(task)).join("")}
+                </ol>`
+              : `<p class="surface-message">No matching tasks in this page.</p>`
+          }
+          ${pagination}
         </div>
       `;
     }
@@ -2580,6 +2869,28 @@ class CaffoldTasksPage extends HTMLElement {
         <ol class="task-repository-groups">
           ${groups.map((group) => this.renderTaskRepositoryGroup(group)).join("")}
         </ol>
+        ${pagination}
+      </div>
+    `;
+  }
+
+  renderTaskListPagination() {
+    if (!this.taskListNextCursor && !this.taskListLoadingMore && !this.taskListLoadMoreError) {
+      return "";
+    }
+    const label = this.taskListLoadingMore
+      ? "Loading more tasks..."
+      : this.taskListLoadMoreError
+        ? "Retry loading more tasks"
+        : "Load more tasks";
+    return `
+      <div class="task-list-pagination">
+        ${
+          this.taskListLoadMoreError
+            ? `<p class="task-list-pagination-error">${escapeHtml(this.taskListLoadMoreError.message)}</p>`
+            : ""
+        }
+        <button type="button" class="task-secondary-button" data-task-action="load-more-tasks" ${this.taskListLoadingMore ? "disabled" : ""}>${label}</button>
       </div>
     `;
   }
@@ -2760,7 +3071,8 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
     this.tasks = tasks;
-    this.taskRevisionByThread.delete(threadId);
+    this.taskDetailRevisionByThread.delete(threadId);
+    this.taskListRevisionByThread.delete(threadId);
     this.markTaskListDirty();
     this.renderTaskListRegion();
     this.syncTaskListSelection();
@@ -2872,6 +3184,10 @@ class CaffoldTasksPage extends HTMLElement {
       this.followUpRequest?.threadId === threadId;
     const images = this.composerImages(formName);
     const imageError = this.composerImageErrors.get(formName) ?? "";
+    const requestError =
+      formName === "follow-up" && this.error
+        ? this.error.message || `${this.error}`
+        : "";
     return `
       <form class="task-composer ${escapeHtml(className)}" data-task-form="${escapeHtml(formName)}"${threadId ? ` data-thread-id="${escapeHtml(threadId)}"` : ""} aria-busy="${submitting ? "true" : "false"}">
         <div class="task-composer-panel">
@@ -2893,6 +3209,7 @@ class CaffoldTasksPage extends HTMLElement {
             placeholder="${escapeHtml(placeholder)}"
           >${escapeHtml(prompt ?? "")}</textarea>
           ${imageError ? `<p class="task-composer-image-error" role="alert">${escapeHtml(imageError)}</p>` : ""}
+          ${requestError ? `<p class="task-composer-request-error" role="alert">${escapeHtml(requestError)}</p>` : ""}
           <input type="hidden" name="model" value="${escapeHtml(model?.model ?? "")}">
           <input type="hidden" name="effort" value="${escapeHtml(effort)}">
           <div class="task-composer-toolbar">
@@ -3007,7 +3324,36 @@ class CaffoldTasksPage extends HTMLElement {
           <div class="task-conversation-scroll">
             <div class="task-conversation-column">
               ${this.renderStreamState()}
-              ${this.eventsPage?.nextCursor || this.loadingOlderEvents ? `<div class="task-load-older">${this.loadingOlderEvents ? "Loading older..." : ""}</div>` : ""}
+              ${
+                this.detailLoadError
+                  ? `<div class="task-detail-load-error task-detail-load-error-inline" role="alert">
+                      <p>Task details could not be refreshed.</p>
+                      <p class="task-load-error-message">${escapeHtml(this.detailLoadError.message)}</p>
+                      <button type="button" class="task-secondary-button" data-task-action="retry-task-detail">Retry</button>
+                    </div>`
+                  : ""
+              }
+              ${
+                this.taskDetail?.historyLoading
+                  ? `<p class="task-history-loading" role="status">Loading conversation...</p>`
+                  : ""
+              }
+              ${
+                this.eventsPage?.nextCursor || this.loadingOlderEvents
+                  ? `<div class="task-load-older">
+                      ${this.loadingOlderEvents ? "Loading older..." : ""}
+                      ${
+                        this.historyLoadError
+                          ? `<div class="task-history-error" role="alert">
+                              <span>Older messages are temporarily unavailable.</span>
+                              <span class="task-load-error-message">${escapeHtml(this.historyLoadError.message)}</span>
+                              <button type="button" data-task-action="retry-task-history">Retry loading older messages</button>
+                            </div>`
+                          : ""
+                      }
+                    </div>`
+                  : ""
+              }
               <ol class="task-conversation" aria-label="Task conversation">
                 ${renderConversation(this.events, task, approvals)}
               </ol>
@@ -3779,7 +4125,7 @@ function isTerminalTurnEvent(event) {
 function renderStatusEvent(event) {
   const status = statusTone(event.type);
   return `
-    <li class="task-event task-event-status" data-event-type="${escapeHtml(event.type)}" data-event-status="${escapeHtml(status)}">
+    <li class="task-event task-event-status"${eventIdentityAttribute(event)} data-event-type="${escapeHtml(event.type)}" data-event-status="${escapeHtml(status)}">
       <span class="task-status-chip">${escapeHtml(event.summary)}</span>
       <time>${escapeHtml(formatDate(event.createdMs))}</time>
     </li>
@@ -3798,7 +4144,7 @@ function renderMessageEvent(event, role, text, options = {}) {
   const attachmentsAttribute = attachments.length ? " data-has-attachments" : "";
 
   return `
-    <li class="task-event task-message" data-event-type="${escapeHtml(event.type)}" data-message-role="${escapeHtml(role)}"${phaseAttribute}${attachmentsAttribute}>
+    <li class="task-event task-message"${eventIdentityAttribute(event)} data-event-type="${escapeHtml(event.type)}" data-message-role="${escapeHtml(role)}"${phaseAttribute}${attachmentsAttribute}>
       <div class="task-message-header">
         <time>${escapeHtml(formatDate(event.createdMs))}</time>
       </div>
@@ -3812,11 +4158,14 @@ function renderMessageEvent(event, role, text, options = {}) {
   `;
 }
 
+function eventIdentityAttribute(event) {
+  const eventId = `${event?.id ?? ""}`.trim();
+  return eventId ? ` data-event-id="${escapeHtml(eventId)}"` : "";
+}
+
 function userMessagePresentation(payload) {
-  const prompt = `${payload.prompt ?? ""}`.trim();
-  const payloadText = `${payload.text ?? ""}`.trim();
-  const text = prompt || payloadText;
-  const content = Array.isArray(payload.item?.content) ? payload.item.content : [];
+  const content = userMessageContent(payload);
+  const text = userMessageText(payload);
   const imageItems = content.filter((item) => ["image", "localImage"].includes(item?.type));
 
   if (!imageItems.length) {
@@ -3832,6 +4181,43 @@ function userMessagePresentation(payload) {
       name: item.name ?? names[index] ?? `Attached image ${index + 1}`,
     })),
   };
+}
+
+function userMessageText(payload) {
+  const prompt = `${payload?.prompt ?? ""}`.trim();
+  const payloadText = `${payload?.text ?? ""}`.trim();
+  const content = userMessageContent(payload);
+  const itemText = content
+    .filter((item) => ["text", "input_text"].includes(item?.type))
+    .map((item) => `${item?.text ?? ""}`.trim())
+    .filter(Boolean)
+    .join("\n\n");
+  return normalizedUserMessageText(payloadText || prompt || itemText);
+}
+
+function userMessageContent(payload) {
+  if (Array.isArray(payload?.content)) {
+    return payload.content;
+  }
+  return Array.isArray(payload?.item?.content) ? payload.item.content : [];
+}
+
+function normalizedUserMessageText(text) {
+  const isAmbientWrapper =
+    text.includes("automatically supplied ambient UI state") ||
+    text.includes("<in-app-browser-context") ||
+    text.includes("# In app browser:");
+  if (!isAmbientWrapper) {
+    return text;
+  }
+
+  for (const marker of ["## My request for Codex:", "My request for Codex:"]) {
+    const markerIndex = text.lastIndexOf(marker);
+    if (markerIndex >= 0) {
+      return text.slice(markerIndex + marker.length).trim();
+    }
+  }
+  return text;
 }
 
 function taskImageSource(item) {
@@ -4359,6 +4745,14 @@ function sortTasksByRecency(tasks) {
   return [...tasks].sort((left, right) => taskUpdatedMs(right) - taskUpdatedMs(left));
 }
 
+function mergeTaskListPage(current, incoming) {
+  const tasks = new Map(current.map((task) => [taskThreadId(task), task]));
+  for (const task of incoming) {
+    tasks.set(taskThreadId(task), task);
+  }
+  return [...tasks.values()];
+}
+
 function groupTasksByRepository(tasks) {
   const groupsByKey = new Map();
   for (const task of tasks) {
@@ -4505,6 +4899,21 @@ function mergeEvents(leftEvents, rightEvents) {
       (left.createdMs ?? 0) - (right.createdMs ?? 0) ||
       `${left.id ?? ""}`.localeCompare(`${right.id ?? ""}`),
   );
+}
+
+function mergeTaskEventsPage(currentPage, detail) {
+  const incomingPage = detail?.eventsPage;
+  if (!incomingPage) {
+    return currentPage ?? { nextCursor: null };
+  }
+  if (
+    detail?.historyLoading &&
+    !incomingPage.nextCursor &&
+    currentPage?.nextCursor
+  ) {
+    return currentPage;
+  }
+  return incomingPage;
 }
 
 function mergeEventRecord(existing, incoming) {
@@ -4658,7 +5067,10 @@ function eventIdentityKey(event) {
   }
 
   if (turnId && ["user_message", "assistant_message"].includes(event.type)) {
-    const text = `${payload.prompt ?? payload.text ?? ""}`.trim();
+    const text =
+      event.type === "user_message"
+        ? userMessageText(payload)
+        : `${payload.prompt ?? payload.text ?? ""}`.trim();
     if (text) {
       return ["message", threadId, turnId, event.type, text].join(":");
     }
@@ -4705,8 +5117,8 @@ function userMessageFingerprint(event) {
     return "";
   }
   const payload = event.payload ?? {};
-  const text = `${payload.prompt ?? payload.text ?? ""}`.trim();
-  const content = Array.isArray(payload.item?.content) ? payload.item.content : [];
+  const text = userMessageText(payload);
+  const content = userMessageContent(payload);
   const images = content
     .filter((item) => ["image", "localImage"].includes(item?.type))
     .map((item) => imageInputFingerprint(item));
@@ -4734,7 +5146,10 @@ function canonicalEventKey(event) {
   }
 
   const payload = event.payload ?? {};
-  const text = `${payload.prompt ?? payload.text ?? ""}`.trim();
+  const text =
+    event.type === "user_message"
+      ? userMessageText(payload)
+      : `${payload.prompt ?? payload.text ?? ""}`.trim();
   if (!text) {
     return "";
   }
@@ -4777,6 +5192,11 @@ function maxScrollTop(element) {
 
 function closestElement(target, selector) {
   return target instanceof Element ? target.closest(selector) : null;
+}
+
+function promptTextareaForForm(form) {
+  const field = form?.elements?.namedItem("prompt");
+  return field instanceof HTMLTextAreaElement ? field : null;
 }
 
 function syncComposerTextarea(textarea) {
@@ -4863,7 +5283,7 @@ function renderTaskStatusChip(status, className = "", options = {}) {
   const showLabel = options.label !== false;
 
   const classes = ["task-status-chip", className].filter(Boolean).join(" ");
-  const icon = view.status === "running"
+  const icon = ["running", "syncing"].includes(view.status)
     ? `<span class="task-status-spinner" aria-hidden="true"></span><span class="sr-only">${escapeHtml(view.label)}</span>`
     : renderInlineIcon(view.icon, view.label, "task-status-icon");
   return `
@@ -4883,6 +5303,7 @@ function taskStatusView(status) {
   const normalized = normalizeTaskStatus(status);
   return {
     running: { status: "running", label: "running", icon: "" },
+    syncing: { status: "syncing", label: "syncing", icon: "" },
     waiting_for_approval: {
       status: "waiting_for_approval",
       label: "approval",

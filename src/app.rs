@@ -1,6 +1,7 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     convert::Infallible,
+    future::Future,
     net::IpAddr,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -15,7 +16,7 @@ use axum::{
     response::{Html, IntoResponse, Response},
     routing::{get, post},
 };
-use futures_util::stream;
+use futures_util::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
 use tokio::net::TcpListener;
@@ -40,7 +41,7 @@ use crate::{
     git,
     server_settings::{ServerSettings, ServerSettingsError, ServerSettingsStore},
     static_assets,
-    task_rollout::TaskRolloutMonitor,
+    task_rollout::{TaskRolloutMonitor, TaskRolloutSignal, TaskRolloutSubscription},
     watch::{WatchChange, WatchError, WatchHub, WatchMessage},
 };
 
@@ -48,9 +49,12 @@ const TASK_DETAIL_TURNS_PAGE_SIZE: usize = 8;
 const LIST_DIRECTORY_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_TASK_IMAGES: usize = 4;
 const MAX_TASK_REQUEST_BYTES: usize = 64 * 1024 * 1024;
+const TASK_LIST_PAGE_SIZE: usize = 30;
 const TASK_SYNC_DEBOUNCE: Duration = Duration::from_millis(600);
 const TASK_SYNC_MAX_LATENCY: Duration = Duration::from_secs(2);
-const EXTERNAL_TASK_ACTIVITY_LEASE: Duration = Duration::from_secs(120);
+const TASK_SYNC_RETRY_BASE: Duration = Duration::from_secs(2);
+const TASK_SYNC_MAX_RETRIES: u8 = 3;
+const TASK_CWD_RESOLVE_CONCURRENCY: usize = 8;
 
 #[derive(Debug, Clone)]
 pub struct ServeConfig {
@@ -82,28 +86,38 @@ struct AppState {
 #[derive(Clone)]
 struct TaskSyncCoordinator {
     subscribers: Arc<Mutex<HashMap<String, usize>>>,
-    state: Arc<Mutex<TaskSyncState>>,
-    requests: mpsc::UnboundedSender<String>,
-    receiver: Arc<AsyncMutex<Option<mpsc::UnboundedReceiver<String>>>>,
+    pending_invalidations: Arc<Mutex<HashMap<String, u64>>>,
+    requests: mpsc::UnboundedSender<TaskSyncRequest>,
+    receiver: Arc<AsyncMutex<Option<mpsc::UnboundedReceiver<TaskSyncRequest>>>>,
 }
 
-#[derive(Default)]
-struct TaskSyncState {
-    external_activity: HashMap<String, ExternalTaskActivity>,
-    latest_turn_ids: HashMap<String, String>,
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum TaskSyncRequest {
+    Rollout(String, TaskRolloutSignal),
+    Unsubscribe(String),
 }
 
-#[derive(Clone)]
-struct ExternalTaskActivity {
-    started_ms: u64,
-    expires_at: tokio::time::Instant,
-    baseline_turn_id: Option<String>,
+#[derive(Clone, Default)]
+struct DeferredTaskRolloutSubscription {
+    inner: Arc<Mutex<Option<TaskRolloutSubscription>>>,
+}
+
+impl DeferredTaskRolloutSubscription {
+    fn install_with(&self, create: impl FnOnce() -> Option<TaskRolloutSubscription>) {
+        let Ok(mut subscription) = self.inner.lock() else {
+            return;
+        };
+        if subscription.is_none() {
+            *subscription = create();
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
 struct PendingTaskSync {
     first_invalidated_at: tokio::time::Instant,
     deadline: tokio::time::Instant,
+    retry_attempt: u8,
 }
 
 impl PendingTaskSync {
@@ -111,17 +125,22 @@ impl PendingTaskSync {
         Self {
             first_invalidated_at: now,
             deadline: now + TASK_SYNC_DEBOUNCE,
+            retry_attempt: 0,
         }
     }
 
-    fn at(deadline: tokio::time::Instant) -> Self {
+    fn retry(now: tokio::time::Instant, retry_attempt: u8) -> Self {
+        let multiplier = 1_u32 << retry_attempt.saturating_sub(1);
+        let delay = TASK_SYNC_RETRY_BASE.saturating_mul(multiplier);
         Self {
-            first_invalidated_at: deadline,
-            deadline,
+            first_invalidated_at: now,
+            deadline: now + delay,
+            retry_attempt,
         }
     }
 
     fn invalidate(&mut self, now: tokio::time::Instant) {
+        self.retry_attempt = 0;
         self.deadline =
             (now + TASK_SYNC_DEBOUNCE).min(self.first_invalidated_at + TASK_SYNC_MAX_LATENCY);
     }
@@ -136,7 +155,7 @@ impl TaskSyncCoordinator {
         let (requests, receiver) = mpsc::unbounded_channel();
         Self {
             subscribers: Arc::new(Mutex::new(HashMap::new())),
-            state: Arc::new(Mutex::new(TaskSyncState::default())),
+            pending_invalidations: Arc::new(Mutex::new(HashMap::new())),
             requests,
             receiver: Arc::new(AsyncMutex::new(Some(receiver))),
         }
@@ -152,69 +171,37 @@ impl TaskSyncCoordinator {
         }
     }
 
-    fn observe_external_activity(&self, thread_id: String) {
+    #[cfg(test)]
+    fn observe_rollout_invalidation(&self, thread_id: String) {
+        self.observe_rollout_signal(thread_id, TaskRolloutSignal::Invalidated);
+    }
+
+    fn observe_rollout_signal(&self, thread_id: String, signal: TaskRolloutSignal) {
         if !self.is_subscribed(&thread_id) {
             return;
         }
-        if let Ok(mut state) = self.state.lock() {
-            let now = tokio::time::Instant::now();
-            let baseline_turn_id = state.latest_turn_ids.get(&thread_id).cloned();
-            state
-                .external_activity
-                .entry(thread_id.clone())
-                .and_modify(|activity| {
-                    activity.expires_at = now + EXTERNAL_TASK_ACTIVITY_LEASE;
-                })
-                .or_insert(ExternalTaskActivity {
-                    started_ms: now_ms(),
-                    expires_at: now + EXTERNAL_TASK_ACTIVITY_LEASE,
-                    baseline_turn_id,
-                });
+        if let Ok(mut pending) = self.pending_invalidations.lock() {
+            let revision = pending.entry(thread_id.clone()).or_default();
+            *revision = revision.saturating_add(1);
         }
-        let _ = self.requests.send(thread_id);
+        let _ = self
+            .requests
+            .send(TaskSyncRequest::Rollout(thread_id, signal));
     }
 
-    fn external_activity_started_ms(&self, thread_id: &str) -> Option<u64> {
-        let mut state = self.state.lock().ok()?;
-        let activity = state.external_activity.get(thread_id)?.clone();
-        if activity.expires_at <= tokio::time::Instant::now() {
-            state.external_activity.remove(thread_id);
-            return None;
-        }
-        Some(activity.started_ms)
+    fn pending_invalidation(&self, thread_id: &str) -> Option<u64> {
+        self.pending_invalidations
+            .lock()
+            .ok()
+            .and_then(|pending| pending.get(thread_id).copied())
     }
 
-    fn external_activity_expiry(&self, thread_id: &str) -> Option<tokio::time::Instant> {
-        let mut state = self.state.lock().ok()?;
-        let activity = state.external_activity.get(thread_id)?.clone();
-        if activity.expires_at <= tokio::time::Instant::now() {
-            state.external_activity.remove(thread_id);
-            return None;
-        }
-        Some(activity.expires_at)
-    }
-
-    fn observe_canonical_turn(&self, thread_id: &str, turn_id: Option<&str>, terminal: bool) {
-        let Ok(mut state) = self.state.lock() else {
+    fn mark_synchronized(&self, thread_id: &str, revision: u64) {
+        let Ok(mut pending) = self.pending_invalidations.lock() else {
             return;
         };
-        let completed_external_turn =
-            state
-                .external_activity
-                .get(thread_id)
-                .is_some_and(|activity| {
-                    terminal
-                        && activity.baseline_turn_id.is_some()
-                        && turn_id.is_some()
-                        && activity.baseline_turn_id.as_deref() != turn_id
-                });
-        if completed_external_turn {
-            state.external_activity.remove(thread_id);
-        }
-        if let Some(turn_id) = turn_id {
-            state
-                .latest_turn_ids
-                .insert(thread_id.to_string(), turn_id.to_string());
+        if pending.get(thread_id).copied() == Some(revision) {
+            pending.remove(thread_id);
         }
     }
 
@@ -226,24 +213,32 @@ impl TaskSyncCoordinator {
             .is_some_and(|count| count > 0)
     }
 
-    async fn take_receiver(&self) -> Option<mpsc::UnboundedReceiver<String>> {
+    async fn take_receiver(&self) -> Option<mpsc::UnboundedReceiver<TaskSyncRequest>> {
         self.receiver.lock().await.take()
     }
 
     fn unsubscribe(&self, thread_id: &str) {
-        let Ok(mut subscribers) = self.subscribers.lock() else {
-            return;
-        };
-        let Some(count) = subscribers.get_mut(thread_id) else {
-            return;
-        };
-        *count -= 1;
-        if *count == 0 {
-            subscribers.remove(thread_id);
-            if let Ok(mut state) = self.state.lock() {
-                state.external_activity.remove(thread_id);
-                state.latest_turn_ids.remove(thread_id);
+        let remove = {
+            let Ok(mut subscribers) = self.subscribers.lock() else {
+                return;
+            };
+            let Some(count) = subscribers.get_mut(thread_id) else {
+                return;
+            };
+            *count -= 1;
+            let remove = *count == 0;
+            if remove {
+                subscribers.remove(thread_id);
             }
+            remove
+        };
+        if remove {
+            if let Ok(mut pending) = self.pending_invalidations.lock() {
+                pending.remove(thread_id);
+            }
+            let _ = self
+                .requests
+                .send(TaskSyncRequest::Unsubscribe(thread_id.to_string()));
         }
     }
 }
@@ -316,6 +311,25 @@ impl CodexThreadRuntime {
         };
         if let Some(client) = client {
             client.shutdown().await;
+        }
+    }
+
+    async fn invalidate_after_error(&self, generation: u64, error: &CodexThreadError) -> bool {
+        if !error.is_connection_failure() {
+            return false;
+        }
+        let client = {
+            let mut state = self.state.lock().await;
+            if state.generation != generation {
+                return false;
+            }
+            state.client.take()
+        };
+        if let Some(client) = client {
+            client.shutdown().await;
+            true
+        } else {
+            false
         }
     }
 }
@@ -465,6 +479,7 @@ struct UpdateServerSettingsRequest {
 #[serde(rename_all = "camelCase")]
 struct TasksQuery {
     cwd: Option<String>,
+    cursor: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -531,6 +546,7 @@ struct HealthResponse {
 #[serde(rename_all = "camelCase")]
 struct TaskListResponse {
     tasks: Vec<TaskRecord>,
+    next_cursor: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -655,6 +671,7 @@ struct TaskDetailResponse {
     events: Vec<TaskEventRecord>,
     events_page: TaskEventsPage,
     pending_approvals: Vec<TaskEventRecord>,
+    history_loading: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -678,6 +695,14 @@ struct TaskEventEnvelope {
     thread_id: String,
     revision: u64,
     event: TaskEventRecord,
+}
+
+fn task_stream_initial_frames(sync: &TaskDetailSync) -> VecDeque<Bytes> {
+    let payload = serde_json::to_string(sync).expect("task detail sync serializes");
+    VecDeque::from([
+        Bytes::from_static(b": ready\n\n"),
+        Bytes::from(format!("event: task-sync\ndata: {payload}\n\n")),
+    ])
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1428,19 +1453,21 @@ async fn list_tasks(
 ) -> Result<Json<TaskListResponse>, ApiError> {
     let cwd_filter = task_filter_cwd(&state, query.cwd.as_deref())?;
     let client = require_codex_thread_client(&state).await?;
-    let response = client.list_threads(100).await?;
+    let cursor = query
+        .cursor
+        .as_deref()
+        .map(str::trim)
+        .filter(|cursor| !cursor.is_empty());
+    let response = client.list_threads(cursor, TASK_LIST_PAGE_SIZE).await?;
+    let next_cursor = response.next_cursor.clone();
+    for thread in response.data.iter().cloned() {
+        state.codex_sessions.observe_thread_metadata(thread).await;
+    }
     let response =
         serde_json::to_value(response).map_err(|error| ApiError::CodexThread(error.to_string()))?;
-    let mut tasks = thread_list_response(&state.fs, cwd_filter.as_ref(), &response);
-    for task in &mut tasks {
-        apply_external_activity(
-            task,
-            state
-                .task_sync
-                .external_activity_started_ms(&task.thread_id),
-        );
-    }
-    Ok(Json(TaskListResponse { tasks }))
+    let resolved_cwds = resolve_task_cwds(state.fs.clone(), &response).await;
+    let tasks = thread_list_response_with_resolved(cwd_filter.as_ref(), &response, &resolved_cwds);
+    Ok(Json(TaskListResponse { tasks, next_cursor }))
 }
 
 async fn create_task(
@@ -1486,14 +1513,31 @@ async fn task_detail(
     AxumPath(thread_id): AxumPath<String>,
     Query(query): Query<TaskDetailQuery>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
-    let connection = require_codex_thread_connection(&state).await?;
-    let _viewer = state
-        .codex_sessions
-        .acquire_viewer(&connection.client, connection.generation, &thread_id)
-        .await?;
-    Ok(Json(
-        read_task_detail(&state, &connection, &thread_id, query.cursor.as_deref()).await?,
-    ))
+    let cursor = query
+        .cursor
+        .as_deref()
+        .map(str::trim)
+        .filter(|cursor| !cursor.is_empty());
+    if let Some(cursor) = cursor {
+        let connection = require_codex_thread_connection(&state).await?;
+        let _viewer = state
+            .codex_sessions
+            .acquire_viewer(&connection.client, connection.generation, &thread_id)
+            .await?;
+        return Ok(Json(
+            read_task_detail(&state, &connection, &thread_id, Some(cursor)).await?,
+        ));
+    }
+
+    let viewer = state.codex_sessions.reserve_viewer(&thread_id).await;
+    let (detail, baseline_revision) = cached_task_detail(&state, &thread_id).await?;
+    let bootstrap_state = state.clone();
+    let bootstrap_thread_id = thread_id.clone();
+    tokio::spawn(async move {
+        bootstrap_task_session(&bootstrap_state, &bootstrap_thread_id, baseline_revision).await;
+        drop(viewer);
+    });
+    Ok(Json(detail))
 }
 
 async fn ensure_task_sync_worker(state: &AppState) {
@@ -1504,7 +1548,10 @@ async fn ensure_task_sync_worker(state: &AppState) {
     tokio::spawn(run_task_sync_worker(state, receiver));
 }
 
-async fn run_task_sync_worker(state: AppState, mut receiver: mpsc::UnboundedReceiver<String>) {
+async fn run_task_sync_worker(
+    state: AppState,
+    mut receiver: mpsc::UnboundedReceiver<TaskSyncRequest>,
+) {
     let mut pending = HashMap::<String, PendingTaskSync>::new();
     let mut shutdown = state.shutdown.subscribe();
 
@@ -1513,8 +1560,8 @@ async fn run_task_sync_worker(state: AppState, mut receiver: mpsc::UnboundedRece
             tokio::select! {
                 _ = shutdown.recv() => return,
                 request = receiver.recv() => {
-                    let Some(thread_id) = request else { return; };
-                    schedule_task_sync(&mut pending, thread_id, tokio::time::Instant::now());
+                    let Some(request) = request else { return; };
+                    handle_task_sync_request(&state, &mut pending, request).await;
                 }
             }
         } else {
@@ -1526,8 +1573,8 @@ async fn run_task_sync_worker(state: AppState, mut receiver: mpsc::UnboundedRece
             tokio::select! {
                 _ = shutdown.recv() => return,
                 request = receiver.recv() => {
-                    let Some(thread_id) = request else { return; };
-                    schedule_task_sync(&mut pending, thread_id, tokio::time::Instant::now());
+                    let Some(request) = request else { return; };
+                    handle_task_sync_request(&state, &mut pending, request).await;
                 }
                 _ = tokio::time::sleep_until(deadline) => {}
             }
@@ -1540,38 +1587,70 @@ async fn run_task_sync_worker(state: AppState, mut receiver: mpsc::UnboundedRece
             .map(|(thread_id, _)| thread_id.clone())
             .collect::<Vec<_>>();
         for thread_id in due {
-            pending.remove(&thread_id);
+            let Some(request) = pending.remove(&thread_id) else {
+                continue;
+            };
             if !state.task_sync.is_subscribed(&thread_id) {
                 continue;
             }
-            if let Some(snapshot) = state.codex_sessions.snapshot(&thread_id).await
-                && let Ok(detail) = task_detail_from_snapshot(&state, snapshot, None).await
-            {
-                let _ = state.task_sync_events.send(TaskDetailSync {
-                    revision: detail.revision,
-                    thread_id: thread_id.clone(),
-                    detail,
-                    reason: "external-activity",
-                });
-            }
-            let Ok(connection) = require_codex_thread_connection(&state).await else {
+            let Some(invalidation_revision) = state.task_sync.pending_invalidation(&thread_id)
+            else {
                 continue;
             };
-            let rollout_suppression = state.task_rollouts.suppress(&thread_id);
-            let snapshot = state
-                .codex_sessions
-                .sync_latest(&connection.client, connection.generation, &thread_id)
-                .await;
-            drop(rollout_suppression);
-            let snapshot = match snapshot {
-                Ok(Some(snapshot)) => snapshot,
-                Ok(None) => continue,
+            let syncing = state.codex_sessions.begin_external_sync(&thread_id).await;
+            let Ok(connection) = require_codex_thread_connection(&state).await else {
+                schedule_task_sync_retry(
+                    &mut pending,
+                    thread_id.clone(),
+                    request.retry_attempt,
+                    tokio::time::Instant::now(),
+                );
+                state
+                    .codex_sessions
+                    .fail_external_sync(&thread_id, &CodexThreadError::ProcessUnavailable)
+                    .await;
+                continue;
+            };
+            let response = tokio::try_join!(
+                connection.client.read_thread(&thread_id),
+                connection
+                    .client
+                    .list_thread_turns(&thread_id, None, TASK_DETAIL_TURNS_PAGE_SIZE),
+            );
+            let (thread, latest_turns) = match response {
+                Ok(response) => response,
                 Err(error) if error.is_thread_unavailable() => {
+                    state
+                        .codex_sessions
+                        .fail_external_sync(&thread_id, &error)
+                        .await;
+                    state
+                        .task_sync
+                        .mark_synchronized(&thread_id, invalidation_revision);
                     notify_task_removed(&state, &thread_id, "unavailable");
                     continue;
                 }
-                Err(_) => continue,
+                Err(error) => {
+                    state
+                        .codex_sessions
+                        .fail_external_sync(&thread_id, &error)
+                        .await;
+                    schedule_task_sync_retry(
+                        &mut pending,
+                        thread_id,
+                        request.retry_attempt,
+                        tokio::time::Instant::now(),
+                    );
+                    continue;
+                }
             };
+            let snapshot = state
+                .codex_sessions
+                .apply_external_read_sync(&thread_id, syncing.revision, thread, latest_turns)
+                .await;
+            state
+                .task_sync
+                .mark_synchronized(&thread_id, invalidation_revision);
             let Ok(detail) = task_detail_from_snapshot(&state, snapshot, None).await else {
                 continue;
             };
@@ -1579,13 +1658,63 @@ async fn run_task_sync_worker(state: AppState, mut receiver: mpsc::UnboundedRece
                 revision: detail.revision,
                 thread_id: thread_id.clone(),
                 detail,
-                reason: "canonical-sync",
+                reason: "canonical-read-sync",
             });
-            if let Some(expires_at) = state.task_sync.external_activity_expiry(&thread_id) {
-                pending.insert(thread_id, PendingTaskSync::at(expires_at));
-            }
         }
     }
+}
+
+async fn handle_task_sync_request(
+    state: &AppState,
+    pending: &mut HashMap<String, PendingTaskSync>,
+    request: TaskSyncRequest,
+) {
+    match request {
+        TaskSyncRequest::Rollout(thread_id, signal) => {
+            let snapshot = match &signal {
+                TaskRolloutSignal::ExternalStarted {
+                    turn_id,
+                    started_at_ms,
+                } => Some(
+                    state
+                        .codex_sessions
+                        .record_external_activity_started(&thread_id, turn_id, *started_at_ms)
+                        .await,
+                ),
+                TaskRolloutSignal::ExternalFinished { turn_id, .. } => Some(
+                    state
+                        .codex_sessions
+                        .record_external_activity_finished(&thread_id, turn_id)
+                        .await,
+                ),
+                TaskRolloutSignal::Invalidated => None,
+            };
+            if let Some(snapshot) = snapshot {
+                broadcast_task_snapshot(state, &thread_id, snapshot, "rollout-activity").await;
+            }
+            schedule_task_sync(pending, thread_id, tokio::time::Instant::now());
+        }
+        TaskSyncRequest::Unsubscribe(thread_id) => {
+            pending.remove(&thread_id);
+        }
+    }
+}
+
+async fn broadcast_task_snapshot(
+    state: &AppState,
+    thread_id: &str,
+    snapshot: ThreadSessionSnapshot,
+    reason: &'static str,
+) {
+    let Ok(detail) = task_detail_from_snapshot(state, snapshot, None).await else {
+        return;
+    };
+    let _ = state.task_sync_events.send(TaskDetailSync {
+        revision: detail.revision,
+        thread_id: thread_id.to_string(),
+        detail,
+        reason,
+    });
 }
 
 fn schedule_task_sync(
@@ -1599,35 +1728,74 @@ fn schedule_task_sync(
         .or_insert_with(|| PendingTaskSync::new(now));
 }
 
+fn schedule_task_sync_retry(
+    pending: &mut HashMap<String, PendingTaskSync>,
+    thread_id: String,
+    previous_attempt: u8,
+    now: tokio::time::Instant,
+) {
+    let retry_attempt = previous_attempt.saturating_add(1);
+    if retry_attempt > TASK_SYNC_MAX_RETRIES {
+        return;
+    }
+    pending.insert(thread_id, PendingTaskSync::retry(now, retry_attempt));
+}
+
 async fn task_stream(
     State(state): State<AppState>,
     AxumPath(thread_id): AxumPath<String>,
     Query(_query): Query<TasksQuery>,
 ) -> Result<Response, ApiError> {
-    let connection = require_codex_thread_connection(&state).await?;
-    let viewer = state
-        .codex_sessions
-        .acquire_viewer(&connection.client, connection.generation, &thread_id)
-        .await?;
-    let rollout_path = state
-        .codex_sessions
-        .snapshot(&thread_id)
-        .await
-        .and_then(|snapshot| snapshot.thread)
-        .and_then(|thread| thread.path);
-    let rollout_subscription = state
-        .task_rollouts
-        .subscribe(&thread_id, rollout_path.as_deref());
-    let subscription = state.task_sync.subscribe(&thread_id);
-    ensure_task_sync_worker(&state).await;
+    // Subscribe before bootstrapping the canonical snapshot so notifications emitted
+    // during resume cannot fall into the gap before the SSE receivers exist.
     let receiver = state.task_events.subscribe();
     let sync_receiver = state.task_sync_events.subscribe();
-    let initial_frame = Bytes::from_static(b": ready\n\n");
+    let viewer = state.codex_sessions.reserve_viewer(&thread_id).await;
+    let snapshot = state.codex_sessions.snapshot(&thread_id).await;
+    let rollout_path = snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.thread.as_ref())
+        .and_then(|thread| thread.path.clone());
+    let (detail, baseline_revision) = cached_task_detail(&state, &thread_id).await?;
+    let initial_frames = task_stream_initial_frames(&TaskDetailSync {
+        thread_id: thread_id.clone(),
+        revision: detail.revision,
+        detail,
+        reason: "stream-bootstrap",
+    });
+    // The rollout monitor may emit the current external activity synchronously
+    // while subscribing. Register the coordinator first so that signal cannot
+    // be dropped as an update for an unobserved thread.
+    let subscription = state.task_sync.subscribe(&thread_id);
+    let rollout_subscription = DeferredTaskRolloutSubscription::default();
+    rollout_subscription.install_with(|| {
+        state
+            .task_rollouts
+            .subscribe(&thread_id, rollout_path.as_deref())
+    });
+    ensure_task_sync_worker(&state).await;
+    let bootstrap_state = state.clone();
+    let bootstrap_thread_id = thread_id.clone();
+    let bootstrap_rollout_subscription = rollout_subscription.clone();
+    tokio::spawn(async move {
+        bootstrap_task_session(&bootstrap_state, &bootstrap_thread_id, baseline_revision).await;
+        let rollout_path = bootstrap_state
+            .codex_sessions
+            .snapshot(&bootstrap_thread_id)
+            .await
+            .and_then(|snapshot| snapshot.thread)
+            .and_then(|thread| thread.path);
+        bootstrap_rollout_subscription.install_with(|| {
+            bootstrap_state
+                .task_rollouts
+                .subscribe(&bootstrap_thread_id, rollout_path.as_deref())
+        });
+    });
     let shutdown = state.shutdown.subscribe();
     let sessions = state.codex_sessions.clone();
     let stream = stream::unfold(
         (
-            Some(initial_frame),
+            initial_frames,
             receiver,
             sync_receiver,
             shutdown,
@@ -1638,7 +1806,7 @@ async fn task_stream(
             sessions,
         ),
         |(
-            initial_frame,
+            mut initial_frames,
             mut receiver,
             mut sync_receiver,
             mut shutdown,
@@ -1648,11 +1816,11 @@ async fn task_stream(
             viewer,
             sessions,
         )| async move {
-            if let Some(frame) = initial_frame {
+            if let Some(frame) = initial_frames.pop_front() {
                 return Some((
                     Ok::<_, Infallible>(frame),
                     (
-                        None,
+                        initial_frames,
                         receiver,
                         sync_receiver,
                         shutdown,
@@ -1676,7 +1844,7 @@ async fn task_stream(
                                 return Some((
                                     Ok::<_, Infallible>(Bytes::from(frame)),
                                     (
-                                        None,
+                                        initial_frames,
                                         receiver,
                                         sync_receiver,
                                         shutdown,
@@ -1711,7 +1879,7 @@ async fn task_stream(
                                 return Some((
                                     Ok::<_, Infallible>(Bytes::from(frame)),
                                     (
-                                        None,
+                                        initial_frames,
                                         receiver,
                                         sync_receiver,
                                         shutdown,
@@ -1892,7 +2060,10 @@ async fn task_prompt(
         .await
     {
         Ok(target) => target,
-        Err(error) => return Err(error.into()),
+        Err(error) => {
+            recover_codex_connection_error(&state, &connection, &error).await;
+            return Err(error.into());
+        }
     };
     let result: Result<(String, bool, Option<crate::codex_app_server::CodexTurn>), _> = match target
     {
@@ -1914,6 +2085,7 @@ async fn task_prompt(
         Ok(result) => result,
         Err(error) => {
             state.codex_sessions.cancel_runtime(&thread_id).await;
+            recover_codex_connection_error(&state, &connection, &error).await;
             return Err(error.into());
         }
     };
@@ -1946,13 +2118,31 @@ async fn task_interrupt(
             message: "thread does not have an active turn to interrupt".to_string(),
         });
     };
-    connection
-        .client
-        .interrupt_turn(&thread_id, &turn_id)
-        .await?;
+    if let Err(error) = connection.client.interrupt_turn(&thread_id, &turn_id).await {
+        recover_codex_connection_error(&state, &connection, &error).await;
+        return Err(error.into());
+    }
     Ok(Json(
         read_task_detail(&state, &connection, &thread_id, None).await?,
     ))
+}
+
+async fn recover_codex_connection_error(
+    state: &AppState,
+    connection: &CodexThreadConnection,
+    error: &CodexThreadError,
+) {
+    if !error.is_connection_failure() {
+        return;
+    }
+    state
+        .codex_sessions
+        .connection_lost(connection.generation, error.to_string())
+        .await;
+    state
+        .codex_threads
+        .invalidate_after_error(connection.generation, error)
+        .await;
 }
 
 async fn task_archive(
@@ -2076,15 +2266,20 @@ async fn require_codex_thread_connection(
         }
     }?;
 
-    for (thread_id, error) in state
-        .codex_sessions
-        .resubscribe_leased(&connection.client, connection.generation)
-        .await
-    {
-        eprintln!("failed to restore Codex thread subscription {thread_id}: {error}");
-    }
+    restore_leased_codex_sessions(state.codex_sessions.clone(), connection.clone());
 
     Ok(connection)
+}
+
+fn restore_leased_codex_sessions(sessions: CodexThreadSessions, connection: CodexThreadConnection) {
+    tokio::spawn(async move {
+        for (thread_id, error) in sessions
+            .resubscribe_leased(&connection.client, connection.generation)
+            .await
+        {
+            eprintln!("failed to restore Codex thread subscription {thread_id}: {error}");
+        }
+    });
 }
 
 async fn read_task_detail(
@@ -2109,7 +2304,7 @@ async fn read_task_detail(
         (
             state
                 .codex_sessions
-                .ensure_subscribed(&connection.client, connection.generation, thread_id)
+                .load_metadata(&connection.client, connection.generation, thread_id)
                 .await?,
             None,
         )
@@ -2117,11 +2312,76 @@ async fn read_task_detail(
     task_detail_from_snapshot(state, snapshot, response_page).await
 }
 
+async fn cached_task_detail(
+    state: &AppState,
+    thread_id: &str,
+) -> Result<(TaskDetailResponse, u64), ApiError> {
+    let Some(snapshot) = state.codex_sessions.snapshot(thread_id).await else {
+        return Ok((loading_task_detail(thread_id, 0), 0));
+    };
+    let revision = snapshot.revision;
+    if snapshot.thread.is_none() {
+        return Ok((loading_task_detail(thread_id, revision), revision));
+    }
+    let detail = task_detail_from_snapshot(state, snapshot, None).await?;
+    Ok((detail, revision))
+}
+
+fn loading_task_detail(thread_id: &str, revision: u64) -> TaskDetailResponse {
+    TaskDetailResponse {
+        revision,
+        task: TaskRecord {
+            id: thread_id.to_string(),
+            thread_id: thread_id.to_string(),
+            title: "Loading task...".to_string(),
+            preview: String::new(),
+            status: "loading".to_string(),
+            cwd: String::new(),
+            cwd_path: None,
+            relative_cwd: String::new(),
+            worktree: None,
+            created_ms: 0,
+            updated_ms: 0,
+            recency_ms: None,
+            active_turn_id: None,
+            active_turn_started_ms: None,
+            last_event_summary: None,
+        },
+        events: Vec::new(),
+        events_page: TaskEventsPage { next_cursor: None },
+        pending_approvals: Vec::new(),
+        history_loading: true,
+    }
+}
+
+async fn bootstrap_task_session(state: &AppState, thread_id: &str, baseline_revision: u64) {
+    let Ok(connection) = require_codex_thread_connection(state).await else {
+        return;
+    };
+    let Ok(snapshot) = state
+        .codex_sessions
+        .ensure_subscribed(&connection.client, connection.generation, thread_id)
+        .await
+    else {
+        return;
+    };
+    if snapshot.revision <= baseline_revision {
+        return;
+    }
+    broadcast_task_snapshot(state, thread_id, snapshot, "session-bootstrap").await;
+}
+
 async fn task_detail_from_snapshot(
     state: &AppState,
     snapshot: ThreadSessionSnapshot,
     response_page: Option<crate::codex_app_server::TurnsPage>,
 ) -> Result<TaskDetailResponse, ApiError> {
+    let session_running = snapshot.is_running();
+    let session_active_turn_id = snapshot
+        .active_turn_id
+        .clone()
+        .or_else(|| snapshot.external_activity_turn_id.clone());
+    let external_activity_started_ms = snapshot.external_activity_started_ms;
     let thread_id = snapshot
         .thread
         .as_ref()
@@ -2130,6 +2390,7 @@ async fn task_detail_from_snapshot(
             ApiError::CodexThread("subscribed thread metadata is missing".to_string())
         })?;
     let page = response_page.or_else(|| snapshot.turns_page.clone());
+    let history_loading = page.is_none();
     let mut turns = page
         .as_ref()
         .map(|page| page.data.clone())
@@ -2144,12 +2405,6 @@ async fn task_detail_from_snapshot(
         .expect("thread metadata was checked above")
         .into_value();
     let thread = thread_with_turns(&thread, turns)?;
-    let (latest_turn_id, latest_turn_terminal) = latest_turn_state(&thread);
-    state.task_sync.observe_canonical_turn(
-        &thread_id,
-        latest_turn_id.as_deref(),
-        latest_turn_terminal,
-    );
     let mut events = thread_events(&thread);
     state.live_task_events.observe(&events);
     events = merge_task_event_records(events, state.live_task_events.for_thread(&thread_id));
@@ -2161,19 +2416,34 @@ async fn task_detail_from_snapshot(
             .then_with(|| left.id.cmp(&right.id))
     });
     let resolved_cwd = resolve_thread_cwd(&state.fs, &thread);
-    let task = task_record_from_thread(
-        &thread,
-        &events,
-        resolved_cwd.as_ref(),
-        state.task_sync.external_activity_started_ms(&thread_id),
-    )?;
+    let mut task = task_record_from_thread(&thread, &events, resolved_cwd.as_ref())?;
+    apply_session_activity(
+        &mut task,
+        session_running,
+        session_active_turn_id,
+        external_activity_started_ms,
+    );
     Ok(TaskDetailResponse {
         revision: snapshot.revision,
         task,
         events,
         events_page: TaskEventsPage { next_cursor },
         pending_approvals,
+        history_loading,
     })
+}
+
+fn apply_session_activity(
+    task: &mut TaskRecord,
+    session_running: bool,
+    session_active_turn_id: Option<String>,
+    external_activity_started_ms: Option<u64>,
+) {
+    if session_running && task.status != "waiting_for_approval" {
+        task.status = "running".to_string();
+        task.active_turn_id = task.active_turn_id.take().or(session_active_turn_id);
+        task.active_turn_started_ms = task.active_turn_started_ms.or(external_activity_started_ms);
+    }
 }
 
 fn merge_task_event_records(
@@ -2223,50 +2493,94 @@ fn thread_with_turns(thread: &JsonValue, turns: Vec<JsonValue>) -> Result<JsonVa
     Ok(thread)
 }
 
-fn latest_turn_state(thread: &JsonValue) -> (Option<String>, bool) {
-    let Some(turn) = thread
-        .get("turns")
-        .and_then(JsonValue::as_array)
-        .and_then(|turns| turns.last())
-    else {
-        return (None, false);
-    };
-    let turn_id = turn
-        .get("id")
-        .and_then(JsonValue::as_str)
-        .map(str::to_string);
-    let terminal = matches!(
-        turn.get("status").and_then(JsonValue::as_str),
-        Some("completed" | "failed" | "interrupted")
-    );
-    (turn_id, terminal)
-}
-
+#[cfg(test)]
 fn thread_list_response(
     fs: &RootedFs,
     cwd_filter: Option<&TaskCwdFilter>,
     response: &JsonValue,
 ) -> Vec<TaskRecord> {
     let mut resolved_cwds = HashMap::<String, Option<ResolvedTaskCwd>>::new();
+    for cwd in response
+        .get("data")
+        .and_then(JsonValue::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(thread_cwd)
+    {
+        resolved_cwds
+            .entry(cwd.to_string())
+            .or_insert_with(|| resolve_task_cwd(fs, cwd));
+    }
+    thread_list_response_with_resolved(cwd_filter, response, &resolved_cwds)
+}
+
+async fn resolve_task_cwds(
+    fs: Arc<RootedFs>,
+    response: &JsonValue,
+) -> HashMap<String, Option<ResolvedTaskCwd>> {
+    let mut cwds = response
+        .get("data")
+        .and_then(JsonValue::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(thread_cwd)
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    cwds.sort();
+    cwds.dedup();
+
+    resolve_task_cwds_with(cwds, move |cwd| {
+        let fs = fs.clone();
+        async move {
+            let resolve_cwd = cwd.clone();
+            let resolved =
+                tokio::task::spawn_blocking(move || resolve_task_cwd(fs.as_ref(), &resolve_cwd))
+                    .await
+                    .ok()
+                    .flatten();
+            (cwd, resolved)
+        }
+    })
+    .await
+}
+
+async fn resolve_task_cwds_with<T, F, Fut>(
+    cwds: Vec<String>,
+    resolver: F,
+) -> HashMap<String, Option<T>>
+where
+    T: Send,
+    F: Fn(String) -> Fut,
+    Fut: Future<Output = (String, Option<T>)>,
+{
+    stream::iter(cwds)
+        .map(resolver)
+        .buffer_unordered(TASK_CWD_RESOLVE_CONCURRENCY)
+        .collect()
+        .await
+}
+
+fn thread_list_response_with_resolved(
+    cwd_filter: Option<&TaskCwdFilter>,
+    response: &JsonValue,
+    resolved_cwds: &HashMap<String, Option<ResolvedTaskCwd>>,
+) -> Vec<TaskRecord> {
     let mut tasks = response
         .get("data")
         .and_then(JsonValue::as_array)
         .into_iter()
         .flatten()
         .filter_map(|thread| {
-            let resolved_cwd = thread_cwd(thread).and_then(|cwd| {
-                resolved_cwds
-                    .entry(cwd.to_string())
-                    .or_insert_with(|| resolve_task_cwd(fs, cwd))
-                    .clone()
-            });
+            let resolved_cwd = thread_cwd(thread)
+                .and_then(|cwd| resolved_cwds.get(cwd))
+                .and_then(Option::as_ref);
             if let Some(cwd_filter) = cwd_filter
-                && !task_cwd_matches_filter(resolved_cwd.as_ref(), cwd_filter)
+                && !task_cwd_matches_filter(resolved_cwd, cwd_filter)
             {
                 return None;
             }
 
-            task_record_from_thread(thread, &[], resolved_cwd.as_ref(), None).ok()
+            task_record_from_thread(thread, &[], resolved_cwd).ok()
         })
         .collect::<Vec<_>>();
     tasks.sort_by(|left, right| {
@@ -2283,7 +2597,6 @@ fn task_record_from_thread(
     thread: &JsonValue,
     events: &[TaskEventRecord],
     resolved_cwd: Option<&ResolvedTaskCwd>,
-    external_activity_started_ms: Option<u64>,
 ) -> Result<TaskRecord, ApiError> {
     let thread_id = thread_id(thread).ok_or_else(|| ApiError::BadRequest {
         code: "thread_id_missing",
@@ -2301,14 +2614,13 @@ fn task_record_from_thread(
     let active_turn_id = active_turn_id(thread);
     let active_turn_started_ms = active_turn_id
         .as_deref()
-        .and_then(|turn_id| turn_started_ms(thread, turn_id))
-        .or(external_activity_started_ms);
+        .and_then(|turn_id| turn_started_ms(thread, turn_id));
     let has_pending_approval = events
         .iter()
         .any(|event| event.event_type == "approval_requested");
     let status = if has_pending_approval {
         "waiting_for_approval".to_string()
-    } else if active_turn_id.is_some() || external_activity_started_ms.is_some() {
+    } else if active_turn_id.is_some() {
         "running".to_string()
     } else {
         thread_status(thread)
@@ -2341,19 +2653,10 @@ fn task_record_from_thread(
     })
 }
 
-fn apply_external_activity(task: &mut TaskRecord, started_ms: Option<u64>) {
-    let Some(started_ms) = started_ms else {
-        return;
-    };
-    if task.status == "waiting_for_approval" || task.active_turn_id.is_some() {
-        return;
-    }
-    task.status = "running".to_string();
-    task.active_turn_started_ms = Some(started_ms);
-}
-
 fn task_rollout_monitor(task_sync: TaskSyncCoordinator) -> TaskRolloutMonitor {
-    TaskRolloutMonitor::new(move |thread_id| task_sync.observe_external_activity(thread_id))
+    TaskRolloutMonitor::new(move |thread_id, signal| {
+        task_sync.observe_rollout_signal(thread_id, signal)
+    })
 }
 
 fn thread_events(thread: &JsonValue) -> Vec<TaskEventRecord> {
@@ -2797,7 +3100,6 @@ fn task_event_from_item_activity(
             "itemId": item_id,
             "itemType": item_type,
             "lifecycle": lifecycle,
-            "item": item,
         })),
         created_ms,
     ))
@@ -2827,7 +3129,7 @@ fn task_event_from_thread_item(
                     "turnId": turn_id,
                     "itemId": item_id,
                     "text": text,
-                    "item": item,
+                    "content": item.get("content"),
                 }),
             )
         }
@@ -2842,7 +3144,6 @@ fn task_event_from_thread_item(
                     "itemId": item_id,
                     "phase": item.get("phase").and_then(JsonValue::as_str),
                     "text": text,
-                    "item": item,
                 }),
             )
         }
@@ -2861,7 +3162,6 @@ fn task_event_from_thread_item(
                     "itemId": item_id,
                     "summary": summary,
                     "content": content,
-                    "item": item,
                 }),
             )
         }
@@ -2875,7 +3175,6 @@ fn task_event_from_thread_item(
                     "turnId": turn_id,
                     "itemId": item_id,
                     "text": text,
-                    "item": item,
                 }),
             )
         }
@@ -2892,7 +3191,6 @@ fn task_event_from_thread_item(
                 "aggregatedOutput": item.get("aggregatedOutput").and_then(JsonValue::as_str),
                 "exitCode": item.get("exitCode"),
                 "durationMs": item.get("durationMs"),
-                "item": item,
             }),
         ),
         "fileChange" => {
@@ -2911,7 +3209,6 @@ fn task_event_from_thread_item(
                     "changeCount": change_count,
                     "status": item.get("status").and_then(JsonValue::as_str),
                     "changes": item.get("changes"),
-                    "item": item,
                 }),
             )
         }
@@ -2954,7 +3251,6 @@ fn task_event_from_raw_response_item(
                     "itemId": item_id,
                     "phase": item.get("phase").and_then(JsonValue::as_str),
                     "text": text,
-                    "item": item,
                 }),
             )
         }
@@ -2973,7 +3269,6 @@ fn task_event_from_raw_response_item(
                     "itemId": item_id,
                     "summary": summary,
                     "content": content,
-                    "item": item,
                 }),
             )
         }
@@ -2996,13 +3291,37 @@ fn user_message_text(item: &JsonValue) -> Option<String> {
         .iter()
         .filter_map(
             |entry| match entry.get("type").and_then(JsonValue::as_str) {
-                Some("text") => entry.get("text").and_then(JsonValue::as_str),
+                Some("text" | "input_text") => entry.get("text").and_then(JsonValue::as_str),
                 _ => None,
             },
         )
         .collect::<Vec<_>>()
         .join("\n\n");
-    non_empty_string(Some(&text))
+    non_empty_string(Some(strip_ambient_browser_context(&text)))
+}
+
+fn strip_ambient_browser_context(text: &str) -> &str {
+    const LEGACY_PREFIX: &str =
+        "This block is automatically supplied ambient UI state, not part of the user's request.";
+    const STRUCTURED_PREFIX: &str = "<in-app-browser-context source=\"ambient-ui-state\">";
+    let trimmed = text.trim_start();
+    let ambient_start = trimmed
+        .find(STRUCTURED_PREFIX)
+        .or_else(|| trimmed.find(LEGACY_PREFIX));
+    let Some(ambient_start) = ambient_start else {
+        return text;
+    };
+    let ambient = &trimmed[ambient_start..];
+
+    for marker in ["## My request for Codex:", "My request for Codex:"] {
+        if let Some(start) = ambient.rfind(marker) {
+            let request = ambient[start + marker.len()..].trim();
+            if !request.is_empty() {
+                return request;
+            }
+        }
+    }
+    text
 }
 
 fn user_message_has_images(item: &JsonValue) -> bool {
@@ -3540,7 +3859,13 @@ impl From<FsError> for ApiError {
 
 impl From<codex_app_server::CodexThreadError> for ApiError {
     fn from(error: codex_app_server::CodexThreadError) -> Self {
-        Self::CodexThread(error.to_string())
+        match error {
+            codex_app_server::CodexThreadError::RequestTimeout { .. } => Self::Timeout {
+                code: "codex_app_server_timeout",
+                message: error.to_string(),
+            },
+            error => Self::CodexThread(error.to_string()),
+        }
     }
 }
 
@@ -3669,6 +3994,1212 @@ impl IntoResponse for ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::codex_thread_sessions::ThreadSessionLifecycle;
+
+    #[test]
+    fn app_server_timeout_preserves_rpc_context_in_api_error() {
+        let error = ApiError::from(codex_app_server::CodexThreadError::RequestTimeout {
+            method: "thread/resume",
+            request_id: 42,
+            timeout_ms: 120_000,
+        });
+
+        match error {
+            ApiError::Timeout { code, message } => {
+                assert_eq!(code, "codex_app_server_timeout");
+                assert!(message.contains("thread/resume"));
+                assert!(message.contains("request 42"));
+                assert!(message.contains("120000ms"));
+            }
+            error => panic!("expected timeout API error, got {error:?}"),
+        }
+    }
+
+    async fn app_state_with_codex_client(fs: RootedFs, client: CodexThreadClient) -> AppState {
+        let (task_events, _) = broadcast::channel(256);
+        let task_sync = TaskSyncCoordinator::new();
+        let (task_sync_events, _) = broadcast::channel(64);
+        let (task_list_removals, _) = broadcast::channel(64);
+        let task_rollouts = task_rollout_monitor(task_sync.clone());
+        let (shutdown, _) = broadcast::channel(16);
+        let fs = Arc::new(fs);
+        let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
+        let codex_threads = Arc::new(CodexThreadRuntime::default());
+        {
+            let mut runtime = codex_threads.state.lock().await;
+            runtime.generation = 1;
+            runtime.client = Some(client);
+        }
+
+        AppState {
+            fs,
+            server_settings: Arc::new(ServerSettingsStore::memory()),
+            codex_threads,
+            codex_sessions: CodexThreadSessions::default(),
+            pending_approvals: Arc::new(AsyncMutex::new(HashMap::new())),
+            task_events,
+            task_sync,
+            task_sync_events,
+            task_list_removals,
+            live_task_events: LiveTaskEventCache::default(),
+            task_rollouts,
+            watch_hub,
+            shutdown,
+            initial_path: String::new(),
+            home_path: None,
+        }
+    }
+
+    async fn wait_for_mock_method(client: &CodexThreadClient, method: &str) {
+        wait_for_mock_method_count(client, method, 1).await;
+    }
+
+    async fn wait_for_mock_method_count(client: &CodexThreadClient, method: &str, expected: usize) {
+        for _ in 0..100 {
+            if client
+                .mock_requests()
+                .await
+                .iter()
+                .filter(|(requested, _)| requested == method)
+                .count()
+                >= expected
+            {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        panic!("mock Codex client did not receive {expected} {method} request(s)");
+    }
+
+    fn task_thread_list(thread_id: &str, cwd: &Path) -> JsonValue {
+        json!({
+            "data": [{
+                "id": thread_id,
+                "preview": "Cached task detail regression",
+                "status": { "type": "idle" },
+                "cwd": cwd.display().to_string(),
+                "createdAt": 1.0,
+                "updatedAt": 2.0,
+                "turns": []
+            }],
+            "nextCursor": null,
+            "backwardsCursor": null
+        })
+    }
+
+    fn resumed_task(thread_id: &str, cwd: &Path) -> JsonValue {
+        json!({
+            "thread": {
+                "id": thread_id,
+                "preview": "Cached task detail regression",
+                "status": { "type": "idle" },
+                "cwd": cwd.display().to_string(),
+                "createdAt": 1.0,
+                "updatedAt": 2.0,
+                "turns": []
+            },
+            "initialTurnsPage": {
+                "data": [],
+                "nextCursor": null,
+                "backwardsCursor": null
+            }
+        })
+    }
+
+    #[tokio::test]
+    async fn task_list_forwards_and_returns_pagination_cursors() {
+        let root = tempfile::tempdir().unwrap();
+        let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+            "thread/list",
+            json!({
+                "data": [],
+                "nextCursor": "page-3",
+                "backwardsCursor": "page-1"
+            }),
+        )]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+
+        let response = list_tasks(
+            State(state),
+            Query(TasksQuery {
+                cwd: None,
+                cursor: Some("page-2".to_string()),
+            }),
+        )
+        .await
+        .expect("task page succeeds");
+
+        assert!(response.0.tasks.is_empty());
+        assert_eq!(response.0.next_cursor.as_deref(), Some("page-3"));
+        assert_eq!(
+            client.mock_requests().await,
+            vec![(
+                "thread/list".to_string(),
+                json!({
+                    "cursor": "page-2",
+                    "limit": TASK_LIST_PAGE_SIZE,
+                    "sortKey": "recency_at",
+                    "sortDirection": "desc",
+                    "archived": false,
+                    "useStateDbOnly": true
+                })
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn task_detail_returns_cached_metadata_before_slow_resume_finishes() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-slow-detail-bootstrap";
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/list",
+                task_thread_list(thread_id, root.path()),
+            ),
+            crate::codex_app_server::MockCodexResponse::delayed_ok(
+                "thread/resume",
+                resumed_task(thread_id, root.path()),
+                Duration::from_millis(250),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/unsubscribe",
+                json!({ "status": "unsubscribed" }),
+            ),
+        ]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+
+        let tasks = list_tasks(
+            State(state.clone()),
+            Query(TasksQuery {
+                cwd: None,
+                cursor: None,
+            }),
+        )
+        .await
+        .expect("task list succeeds");
+        assert_eq!(tasks.0.tasks.len(), 1);
+
+        let response = tokio::time::timeout(
+            Duration::from_millis(50),
+            task_detail(
+                State(state),
+                AxumPath(thread_id.to_string()),
+                Query(TaskDetailQuery { cursor: None }),
+            ),
+        )
+        .await
+        .expect("task detail must not await a slow thread/resume")
+        .expect("cached task detail remains available");
+
+        assert_eq!(response.0.task.thread_id, thread_id);
+        assert!(response.0.history_loading);
+        wait_for_mock_method(&client, "thread/resume").await;
+    }
+
+    #[tokio::test]
+    async fn blank_history_cursor_returns_cached_task_detail_without_app_server_wait() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-blank-history-cursor";
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/list",
+                task_thread_list(thread_id, root.path()),
+            ),
+            crate::codex_app_server::MockCodexResponse::delayed_ok(
+                "thread/resume",
+                resumed_task(thread_id, root.path()),
+                Duration::from_millis(250),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/unsubscribe",
+                json!({ "status": "unsubscribed" }),
+            ),
+        ]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+
+        let tasks = list_tasks(
+            State(state.clone()),
+            Query(TasksQuery {
+                cwd: None,
+                cursor: None,
+            }),
+        )
+        .await
+        .expect("task list succeeds");
+        assert_eq!(tasks.0.tasks.len(), 1);
+
+        let response = tokio::time::timeout(
+            Duration::from_millis(50),
+            task_detail(
+                State(state),
+                AxumPath(thread_id.to_string()),
+                Query(TaskDetailQuery {
+                    cursor: Some(String::new()),
+                }),
+            ),
+        )
+        .await
+        .expect("a blank cursor must not wait for app-server pagination")
+        .expect("cached task detail remains available");
+
+        assert_eq!(response.0.task.thread_id, thread_id);
+        assert!(response.0.history_loading);
+        wait_for_mock_method(&client, "thread/resume").await;
+    }
+
+    #[tokio::test]
+    async fn history_timeout_does_not_replace_cached_task_detail() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-history-timeout-cache";
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/resume",
+                json!({
+                    "thread": {
+                        "id": thread_id,
+                        "preview": "Cached task detail regression",
+                        "status": { "type": "idle" },
+                        "cwd": root.path().display().to_string(),
+                        "createdAt": 1.0,
+                        "updatedAt": 2.0,
+                        "turns": []
+                    },
+                    "initialTurnsPage": {
+                        "data": [],
+                        "nextCursor": "older-1",
+                        "backwardsCursor": "latest-anchor"
+                    }
+                }),
+            ),
+            crate::codex_app_server::MockCodexResponse::error(
+                "thread/turns/list",
+                crate::codex_app_server::CodexThreadError::RequestTimeout {
+                    method: "thread/turns/list",
+                    request_id: 31,
+                    timeout_ms: 120_000,
+                },
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/unsubscribe",
+                json!({ "status": "unsubscribed" }),
+            ),
+        ]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        let _viewer = state
+            .codex_sessions
+            .acquire_viewer(&client, 1, thread_id)
+            .await
+            .expect("initial task subscription succeeds");
+
+        let error = task_detail(
+            State(state.clone()),
+            AxumPath(thread_id.to_string()),
+            Query(TaskDetailQuery {
+                cursor: Some("older-1".to_string()),
+            }),
+        )
+        .await
+        .expect_err("older history request should expose its timeout");
+        assert!(matches!(
+            error,
+            ApiError::Timeout {
+                code: "codex_app_server_timeout",
+                ..
+            }
+        ));
+
+        let response = tokio::time::timeout(
+            Duration::from_millis(50),
+            task_detail(
+                State(state),
+                AxumPath(thread_id.to_string()),
+                Query(TaskDetailQuery { cursor: None }),
+            ),
+        )
+        .await
+        .expect("cached task detail must not wait after a history timeout")
+        .expect("cached task detail remains available");
+
+        assert_eq!(response.0.task.thread_id, thread_id);
+        assert_eq!(response.0.task.title, "Cached task detail regression");
+        assert_eq!(
+            response.0.events_page.next_cursor.as_deref(),
+            Some("older-1")
+        );
+        assert!(!response.0.history_loading);
+    }
+
+    #[tokio::test]
+    async fn task_detail_returns_cached_metadata_while_connection_is_busy() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-busy-connection-detail";
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/resume",
+                resumed_task(thread_id, root.path()),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/unsubscribe",
+                json!({ "status": "unsubscribed" }),
+            ),
+        ]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        let thread =
+            serde_json::from_value(task_thread_list(thread_id, root.path())["data"][0].clone())
+                .expect("cached thread metadata");
+        state.codex_sessions.observe_thread_metadata(thread).await;
+
+        let runtime = state.codex_threads.clone();
+        let (locked_tx, locked_rx) = tokio::sync::oneshot::channel();
+        let blocker = tokio::spawn(async move {
+            let _runtime = runtime.state.lock().await;
+            let _ = locked_tx.send(());
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        });
+        locked_rx.await.expect("runtime lock acquired");
+
+        let response = tokio::time::timeout(
+            Duration::from_millis(50),
+            task_detail(
+                State(state),
+                AxumPath(thread_id.to_string()),
+                Query(TaskDetailQuery { cursor: None }),
+            ),
+        )
+        .await
+        .expect("cached detail must not wait for app-server connection access")
+        .expect("cached task detail remains available");
+
+        assert_eq!(response.0.task.thread_id, thread_id);
+        blocker.await.expect("runtime blocker completes");
+        wait_for_mock_method(&client, "thread/resume").await;
+    }
+
+    #[tokio::test]
+    async fn task_stream_starts_before_slow_resume_finishes() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-slow-stream-bootstrap";
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/list",
+                task_thread_list(thread_id, root.path()),
+            ),
+            crate::codex_app_server::MockCodexResponse::delayed_ok(
+                "thread/resume",
+                resumed_task(thread_id, root.path()),
+                Duration::from_millis(250),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/unsubscribe",
+                json!({ "status": "unsubscribed" }),
+            ),
+        ]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        let _ = list_tasks(
+            State(state.clone()),
+            Query(TasksQuery {
+                cwd: None,
+                cursor: None,
+            }),
+        )
+        .await
+        .expect("task list succeeds");
+
+        let response = tokio::time::timeout(
+            Duration::from_millis(50),
+            task_stream(
+                State(state),
+                AxumPath(thread_id.to_string()),
+                Query(TasksQuery {
+                    cwd: None,
+                    cursor: None,
+                }),
+            ),
+        )
+        .await
+        .expect("task stream must not await a slow thread/resume")
+        .expect("task stream starts from cached metadata");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        wait_for_mock_method(&client, "thread/resume").await;
+    }
+
+    #[tokio::test]
+    async fn task_stream_watches_rollout_path_discovered_during_resume() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-rollout-path-after-resume";
+        let rollout_path = root.path().join("rollout.jsonl");
+        std::fs::write(&rollout_path, "").unwrap();
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/list",
+                task_thread_list(thread_id, root.path()),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/resume",
+                json!({
+                    "thread": {
+                        "id": thread_id,
+                        "preview": "External running regression",
+                        "status": { "type": "idle" },
+                        "cwd": root.path().display().to_string(),
+                        "path": rollout_path.display().to_string(),
+                        "createdAt": 1.0,
+                        "updatedAt": 2.0,
+                        "turns": []
+                    },
+                    "initialTurnsPage": {
+                        "data": [],
+                        "nextCursor": null,
+                        "backwardsCursor": null
+                    }
+                }),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/unsubscribe",
+                json!({ "status": "unsubscribed" }),
+            ),
+        ]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        let _ = list_tasks(
+            State(state.clone()),
+            Query(TasksQuery {
+                cwd: None,
+                cursor: None,
+            }),
+        )
+        .await
+        .expect("task list succeeds");
+
+        let response = task_stream(
+            State(state.clone()),
+            AxumPath(thread_id.to_string()),
+            Query(TasksQuery {
+                cwd: None,
+                cursor: None,
+            }),
+        )
+        .await
+        .expect("task stream succeeds");
+        wait_for_mock_method(&client, "thread/resume").await;
+
+        std::fs::write(
+            &rollout_path,
+            concat!(
+                r#"{"timestamp":"2026-07-22T00:00:00Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-external","started_at":1784713963}}"#,
+                "\n"
+            ),
+        )
+        .unwrap();
+
+        let running = tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if state
+                    .codex_sessions
+                    .snapshot(thread_id)
+                    .await
+                    .is_some_and(|snapshot| {
+                        snapshot.is_running()
+                            && snapshot.external_activity_turn_id.as_deref()
+                                == Some("turn-external")
+                    })
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        })
+        .await;
+
+        drop(response);
+        assert!(
+            running.is_ok(),
+            "rollout activity must be observed after resume supplies the path"
+        );
+    }
+
+    #[tokio::test]
+    async fn task_stream_starts_while_connection_is_busy() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-busy-connection-stream";
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/resume",
+                resumed_task(thread_id, root.path()),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/unsubscribe",
+                json!({ "status": "unsubscribed" }),
+            ),
+        ]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        let thread =
+            serde_json::from_value(task_thread_list(thread_id, root.path())["data"][0].clone())
+                .expect("cached thread metadata");
+        state.codex_sessions.observe_thread_metadata(thread).await;
+
+        let runtime = state.codex_threads.clone();
+        let (locked_tx, locked_rx) = tokio::sync::oneshot::channel();
+        let blocker = tokio::spawn(async move {
+            let _runtime = runtime.state.lock().await;
+            let _ = locked_tx.send(());
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        });
+        locked_rx.await.expect("runtime lock acquired");
+
+        let response = tokio::time::timeout(
+            Duration::from_millis(50),
+            task_stream(
+                State(state),
+                AxumPath(thread_id.to_string()),
+                Query(TasksQuery {
+                    cwd: None,
+                    cursor: None,
+                }),
+            ),
+        )
+        .await
+        .expect("task stream must not wait for app-server connection access")
+        .expect("task stream starts from cached metadata");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        drop(response);
+        blocker.await.expect("runtime blocker completes");
+        wait_for_mock_method(&client, "thread/resume").await;
+    }
+
+    #[tokio::test]
+    async fn direct_task_detail_returns_loading_snapshot_while_connection_is_busy() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-uncached-busy-detail";
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/resume",
+                resumed_task(thread_id, root.path()),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/unsubscribe",
+                json!({ "status": "unsubscribed" }),
+            ),
+        ]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+
+        let runtime = state.codex_threads.clone();
+        let (locked_tx, locked_rx) = tokio::sync::oneshot::channel();
+        let blocker = tokio::spawn(async move {
+            let _runtime = runtime.state.lock().await;
+            let _ = locked_tx.send(());
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        });
+        locked_rx.await.expect("runtime lock acquired");
+
+        let response = tokio::time::timeout(
+            Duration::from_millis(50),
+            task_detail(
+                State(state),
+                AxumPath(thread_id.to_string()),
+                Query(TaskDetailQuery { cursor: None }),
+            ),
+        )
+        .await
+        .expect("direct task detail must not wait for app-server connection access")
+        .expect("direct task detail starts with a loading snapshot");
+
+        assert_eq!(response.0.task.thread_id, thread_id);
+        assert_eq!(response.0.task.status, "loading");
+        assert!(response.0.history_loading);
+        blocker.await.expect("runtime blocker completes");
+        wait_for_mock_method(&client, "thread/resume").await;
+    }
+
+    #[tokio::test]
+    async fn direct_task_stream_starts_while_connection_is_busy() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-uncached-busy-stream";
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/resume",
+                resumed_task(thread_id, root.path()),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/unsubscribe",
+                json!({ "status": "unsubscribed" }),
+            ),
+        ]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+
+        let runtime = state.codex_threads.clone();
+        let (locked_tx, locked_rx) = tokio::sync::oneshot::channel();
+        let blocker = tokio::spawn(async move {
+            let _runtime = runtime.state.lock().await;
+            let _ = locked_tx.send(());
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        });
+        locked_rx.await.expect("runtime lock acquired");
+
+        let response = tokio::time::timeout(
+            Duration::from_millis(50),
+            task_stream(
+                State(state),
+                AxumPath(thread_id.to_string()),
+                Query(TasksQuery {
+                    cwd: None,
+                    cursor: None,
+                }),
+            ),
+        )
+        .await
+        .expect("direct task stream must not wait for app-server connection access")
+        .expect("direct task stream starts from a loading snapshot");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        drop(response);
+        blocker.await.expect("runtime blocker completes");
+        wait_for_mock_method(&client, "thread/resume").await;
+    }
+
+    #[tokio::test]
+    async fn resume_failure_keeps_cached_task_detail_available() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-failed-detail-bootstrap";
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/list",
+                task_thread_list(thread_id, root.path()),
+            ),
+            crate::codex_app_server::MockCodexResponse::error(
+                "thread/resume",
+                crate::codex_app_server::CodexThreadError::Protocol(
+                    "resume unavailable".to_string(),
+                ),
+            ),
+        ]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        let _ = list_tasks(
+            State(state.clone()),
+            Query(TasksQuery {
+                cwd: None,
+                cursor: None,
+            }),
+        )
+        .await
+        .expect("task list succeeds");
+
+        let response = tokio::time::timeout(
+            Duration::from_millis(50),
+            task_detail(
+                State(state.clone()),
+                AxumPath(thread_id.to_string()),
+                Query(TaskDetailQuery { cursor: None }),
+            ),
+        )
+        .await
+        .expect("task detail must not await a failed thread/resume")
+        .expect("cached task detail remains available");
+        assert_eq!(response.0.task.thread_id, thread_id);
+
+        wait_for_mock_method(&client, "thread/resume").await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let snapshot = state
+            .codex_sessions
+            .snapshot(thread_id)
+            .await
+            .expect("cached session remains tracked");
+        assert!(snapshot.thread.is_some());
+        assert!(snapshot.last_error.is_some());
+    }
+
+    #[tokio::test]
+    async fn resume_timeout_keeps_task_detail_and_connection_available() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-timeout-detail-bootstrap";
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/list",
+                task_thread_list(thread_id, root.path()),
+            ),
+            crate::codex_app_server::MockCodexResponse::error(
+                "thread/resume",
+                crate::codex_app_server::CodexThreadError::RequestTimeout {
+                    method: "thread/resume",
+                    request_id: 17,
+                    timeout_ms: 120_000,
+                },
+            ),
+        ]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        let _ = list_tasks(
+            State(state.clone()),
+            Query(TasksQuery {
+                cwd: None,
+                cursor: None,
+            }),
+        )
+        .await
+        .expect("task list succeeds");
+
+        let first = tokio::time::timeout(
+            Duration::from_millis(50),
+            task_detail(
+                State(state.clone()),
+                AxumPath(thread_id.to_string()),
+                Query(TaskDetailQuery { cursor: None }),
+            ),
+        )
+        .await
+        .expect("task detail must not await a timed-out thread/resume")
+        .expect("cached task detail remains available");
+        assert_eq!(first.0.task.thread_id, thread_id);
+        assert!(first.0.history_loading);
+
+        wait_for_mock_method(&client, "thread/resume").await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
+
+        let second = task_detail(
+            State(state.clone()),
+            AxumPath(thread_id.to_string()),
+            Query(TaskDetailQuery { cursor: None }),
+        )
+        .await
+        .expect("task re-entry remains available after a resume timeout");
+        assert_eq!(second.0.task.thread_id, thread_id);
+
+        let snapshot = state
+            .codex_sessions
+            .snapshot(thread_id)
+            .await
+            .expect("cached session remains tracked");
+        assert!(snapshot.thread.is_some());
+        assert!(snapshot.last_error.is_some());
+        assert_eq!(state.codex_threads.diagnostics().await, (1, true));
+    }
+
+    #[tokio::test]
+    async fn background_sync_timeout_keeps_cached_task_detail_available() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-background-sync-timeout";
+        let client =
+            CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::error(
+                "thread/read",
+                crate::codex_app_server::CodexThreadError::RequestTimeout {
+                    method: "thread/read",
+                    request_id: 29,
+                    timeout_ms: 120_000,
+                },
+            )]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        let thread =
+            serde_json::from_value(task_thread_list(thread_id, root.path())["data"][0].clone())
+                .expect("cached thread metadata");
+        state.codex_sessions.observe_thread_metadata(thread).await;
+
+        let _subscription = state.task_sync.subscribe(thread_id);
+        let mut sync_events = state.task_sync_events.subscribe();
+        ensure_task_sync_worker(&state).await;
+        state
+            .task_sync
+            .observe_rollout_invalidation(thread_id.to_string());
+
+        wait_for_mock_method(&client, "thread/read").await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
+
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), sync_events.recv())
+                .await
+                .is_err(),
+            "a background timeout must not replace cached detail through task-sync"
+        );
+        let detail = task_detail(
+            State(state.clone()),
+            AxumPath(thread_id.to_string()),
+            Query(TaskDetailQuery { cursor: None }),
+        )
+        .await
+        .expect("cached detail remains available after a background sync timeout");
+        assert_eq!(detail.0.task.thread_id, thread_id);
+        assert_ne!(detail.0.task.status, "loading");
+
+        let snapshot = state
+            .codex_sessions
+            .snapshot(thread_id)
+            .await
+            .expect("cached session remains tracked");
+        assert!(snapshot.thread.is_some());
+        assert!(snapshot.last_error.is_some());
+        assert_eq!(state.codex_threads.diagnostics().await, (1, true));
+    }
+
+    #[tokio::test]
+    async fn app_server_recovery_does_not_block_on_leased_thread_restoration() {
+        let sessions = CodexThreadSessions::default();
+        let first_client =
+            CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+                "thread/resume",
+                json!({
+                    "thread": {
+                        "id": "thread-slow-recovery",
+                        "preview": "Slow recovery regression",
+                        "status": { "type": "idle" },
+                        "cwd": "/tmp",
+                        "createdAt": 1.0,
+                        "updatedAt": 2.0,
+                        "turns": []
+                    },
+                    "initialTurnsPage": {
+                        "data": [],
+                        "nextCursor": null,
+                        "backwardsCursor": null
+                    }
+                }),
+            )]);
+        let _viewer = sessions
+            .acquire_viewer(&first_client, 1, "thread-slow-recovery")
+            .await
+            .expect("viewer");
+        sessions
+            .connection_lost(1, "process exited".to_string())
+            .await;
+
+        let recovered_client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::delayed_ok(
+                "thread/resume",
+                json!({
+                    "thread": {
+                        "id": "thread-slow-recovery",
+                        "preview": "Slow recovery regression",
+                        "status": { "type": "idle" },
+                        "cwd": "/tmp",
+                        "createdAt": 1.0,
+                        "updatedAt": 2.0,
+                        "turns": []
+                    },
+                    "initialTurnsPage": {
+                        "data": [],
+                        "nextCursor": null,
+                        "backwardsCursor": null
+                    }
+                }),
+                Duration::from_millis(120),
+            ),
+        ]);
+        let connection = CodexThreadConnection {
+            client: recovered_client.clone(),
+            generation: 2,
+        };
+
+        let started = tokio::time::Instant::now();
+        restore_leased_codex_sessions(sessions.clone(), connection);
+        assert!(
+            started.elapsed() < Duration::from_millis(20),
+            "connection acquisition must not await session restoration"
+        );
+
+        wait_for_mock_method(&recovered_client, "thread/resume").await;
+        tokio::time::sleep(Duration::from_millis(140)).await;
+        let snapshot = sessions
+            .snapshot("thread-slow-recovery")
+            .await
+            .expect("recovered snapshot");
+        assert_eq!(snapshot.generation, 2);
+        assert_eq!(snapshot.lifecycle, ThreadSessionLifecycle::Subscribed);
+    }
+
+    #[tokio::test]
+    async fn task_detail_handler_releases_its_subscription_after_the_response() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-detail-handler";
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/resume",
+                json!({
+                    "thread": {
+                        "id": thread_id,
+                        "preview": "Handler lifecycle regression",
+                        "status": { "type": "idle" },
+                        "cwd": root.path().display().to_string(),
+                        "createdAt": 1.0,
+                        "updatedAt": 2.0,
+                        "turns": []
+                    },
+                    "initialTurnsPage": {
+                        "data": [],
+                        "nextCursor": null,
+                        "backwardsCursor": null
+                    }
+                }),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/unsubscribe",
+                json!({ "status": "unsubscribed" }),
+            ),
+        ]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+
+        let response = task_detail(
+            State(state),
+            AxumPath(thread_id.to_string()),
+            Query(TaskDetailQuery { cursor: None }),
+        )
+        .await
+        .expect("task detail succeeds");
+
+        assert_eq!(response.0.task.thread_id, thread_id);
+        wait_for_mock_method(&client, "thread/unsubscribe").await;
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            ["thread/resume", "thread/unsubscribe"]
+        );
+    }
+
+    #[tokio::test]
+    async fn task_detail_and_stream_share_one_subscription_until_the_stream_closes() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-detail-stream-handler";
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::delayed_ok(
+                "thread/resume",
+                json!({
+                    "thread": {
+                        "id": thread_id,
+                        "preview": "Shared handler lifecycle regression",
+                        "status": { "type": "idle" },
+                        "cwd": root.path().display().to_string(),
+                        "createdAt": 1.0,
+                        "updatedAt": 2.0,
+                        "turns": []
+                    },
+                    "initialTurnsPage": {
+                        "data": [],
+                        "nextCursor": null,
+                        "backwardsCursor": null
+                    }
+                }),
+                Duration::from_millis(50),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/unsubscribe",
+                json!({ "status": "unsubscribed" }),
+            ),
+        ]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+
+        let detail_state = state.clone();
+        let detail = tokio::spawn(async move {
+            task_detail(
+                State(detail_state),
+                AxumPath(thread_id.to_string()),
+                Query(TaskDetailQuery { cursor: None }),
+            )
+            .await
+        });
+        let stream_state = state.clone();
+        let stream = tokio::spawn(async move {
+            task_stream(
+                State(stream_state),
+                AxumPath(thread_id.to_string()),
+                Query(TasksQuery {
+                    cwd: None,
+                    cursor: None,
+                }),
+            )
+            .await
+        });
+
+        let detail_response = detail.await.unwrap().expect("task detail succeeds");
+        let stream_response = stream.await.unwrap().expect("task stream succeeds");
+        assert_eq!(detail_response.0.task.thread_id, thread_id);
+
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            ["thread/resume"]
+        );
+
+        drop(stream_response);
+        wait_for_mock_method(&client, "thread/unsubscribe").await;
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            ["thread/resume", "thread/unsubscribe"]
+        );
+    }
+
+    #[tokio::test]
+    async fn task_stream_reopens_while_detail_unsubscribe_is_in_flight() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-detail-stream-reopen";
+        let resume = || {
+            json!({
+                "thread": {
+                    "id": thread_id,
+                    "preview": "Reopen lifecycle regression",
+                    "status": { "type": "idle" },
+                    "cwd": root.path().display().to_string(),
+                    "createdAt": 1.0,
+                    "updatedAt": 2.0,
+                    "turns": []
+                },
+                "initialTurnsPage": {
+                    "data": [],
+                    "nextCursor": null,
+                    "backwardsCursor": null
+                }
+            })
+        };
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok("thread/resume", resume()),
+            crate::codex_app_server::MockCodexResponse::delayed_ok(
+                "thread/unsubscribe",
+                json!({ "status": "unsubscribed" }),
+                Duration::from_millis(250),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok("thread/resume", resume()),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/unsubscribe",
+                json!({ "status": "unsubscribed" }),
+            ),
+        ]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+
+        let _detail_response = task_detail(
+            State(state.clone()),
+            AxumPath(thread_id.to_string()),
+            Query(TaskDetailQuery { cursor: None }),
+        )
+        .await
+        .expect("task detail succeeds");
+        wait_for_mock_method(&client, "thread/unsubscribe").await;
+
+        let stream_response = tokio::time::timeout(
+            Duration::from_millis(50),
+            task_stream(
+                State(state.clone()),
+                AxumPath(thread_id.to_string()),
+                Query(TasksQuery {
+                    cwd: None,
+                    cursor: None,
+                }),
+            ),
+        )
+        .await
+        .expect("task stream must not wait for the detail cleanup RPC")
+        .expect("task stream succeeds");
+
+        wait_for_mock_method_count(&client, "thread/resume", 2).await;
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            ["thread/resume", "thread/unsubscribe", "thread/resume"]
+        );
+
+        tokio::time::sleep(Duration::from_millis(275)).await;
+        let snapshot = state
+            .codex_sessions
+            .snapshot(thread_id)
+            .await
+            .expect("thread session snapshot");
+        assert_eq!(
+            snapshot.lifecycle,
+            crate::codex_thread_sessions::ThreadSessionLifecycle::Subscribed
+        );
+        assert_eq!(snapshot.viewer_leases, 1);
+
+        drop(stream_response);
+        wait_for_mock_method_count(&client, "thread/unsubscribe", 2).await;
+    }
+
+    #[test]
+    fn task_stream_bootstrap_replays_the_canonical_detail_snapshot() {
+        let thread_id = "thread-bootstrap";
+        let assistant = task_event_record(
+            thread_id,
+            "turn-1:assistant-1",
+            "assistant_message",
+            "canonical assistant response",
+            Some(json!({ "text": "canonical assistant response" })),
+            2,
+        );
+        let sync = TaskDetailSync {
+            thread_id: thread_id.to_string(),
+            revision: 7,
+            detail: TaskDetailResponse {
+                revision: 7,
+                task: TaskRecord {
+                    id: thread_id.to_string(),
+                    thread_id: thread_id.to_string(),
+                    title: "Bootstrap regression".to_string(),
+                    preview: "canonical assistant response".to_string(),
+                    status: "idle".to_string(),
+                    cwd: "/tmp".to_string(),
+                    cwd_path: None,
+                    relative_cwd: ".".to_string(),
+                    worktree: None,
+                    created_ms: 1,
+                    updated_ms: 2,
+                    recency_ms: None,
+                    active_turn_id: None,
+                    active_turn_started_ms: None,
+                    last_event_summary: Some("canonical assistant response".to_string()),
+                },
+                events: vec![assistant],
+                events_page: TaskEventsPage { next_cursor: None },
+                pending_approvals: Vec::new(),
+                history_loading: false,
+            },
+            reason: "stream-bootstrap",
+        };
+
+        let frames = task_stream_initial_frames(&sync)
+            .into_iter()
+            .map(|frame| String::from_utf8(frame.to_vec()).unwrap())
+            .collect::<Vec<_>>();
+
+        assert_eq!(frames[0], ": ready\n\n");
+        assert_eq!(
+            frames.len(),
+            2,
+            "the initial stream must replay canonical state"
+        );
+        assert!(frames[1].starts_with("event: task-sync\ndata: "));
+        assert!(frames[1].contains("\"threadId\":\"thread-bootstrap\""));
+        assert!(frames[1].contains("\"revision\":7"));
+        assert!(frames[1].contains("\"type\":\"assistant_message\""));
+        assert!(frames[1].contains("canonical assistant response"));
+    }
 
     #[test]
     fn extracts_codex_version_from_app_server_user_agent() {
@@ -3680,32 +5211,84 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn task_sync_coordinator_only_observes_subscribed_threads() {
+    async fn task_sync_coordinator_only_invalidates_subscribed_threads() {
         let coordinator = TaskSyncCoordinator::new();
         let mut receiver = coordinator.take_receiver().await.unwrap();
 
-        coordinator.observe_external_activity("thread-1".to_string());
+        coordinator.observe_rollout_invalidation("thread-1".to_string());
         assert!(receiver.try_recv().is_err());
-        assert_eq!(coordinator.external_activity_started_ms("thread-1"), None);
 
         let first = coordinator.subscribe("thread-1");
         let second = coordinator.subscribe("thread-1");
-        coordinator.observe_external_activity("thread-1".to_string());
-        assert_eq!(receiver.try_recv().unwrap(), "thread-1");
-        assert!(
-            coordinator
-                .external_activity_started_ms("thread-1")
-                .is_some()
+        coordinator.observe_rollout_invalidation("thread-1".to_string());
+        assert_eq!(
+            receiver.try_recv().unwrap(),
+            TaskSyncRequest::Rollout("thread-1".to_string(), TaskRolloutSignal::Invalidated)
         );
 
         drop(first);
-        coordinator.observe_external_activity("thread-1".to_string());
-        assert_eq!(receiver.try_recv().unwrap(), "thread-1");
+        coordinator.observe_rollout_invalidation("thread-1".to_string());
+        assert_eq!(
+            receiver.try_recv().unwrap(),
+            TaskSyncRequest::Rollout("thread-1".to_string(), TaskRolloutSignal::Invalidated)
+        );
 
         drop(second);
-        coordinator.observe_external_activity("thread-1".to_string());
+        assert_eq!(
+            receiver.try_recv().unwrap(),
+            TaskSyncRequest::Unsubscribe("thread-1".to_string())
+        );
+        coordinator.observe_rollout_invalidation("thread-1".to_string());
         assert!(receiver.try_recv().is_err());
-        assert_eq!(coordinator.external_activity_started_ms("thread-1"), None);
+    }
+
+    #[tokio::test]
+    async fn task_sync_coordinator_tracks_invalidations_until_canonical_sync() {
+        let coordinator = TaskSyncCoordinator::new();
+        let mut receiver = coordinator.take_receiver().await.unwrap();
+        let _subscription = coordinator.subscribe("thread-1");
+
+        coordinator.observe_rollout_invalidation("thread-1".to_string());
+
+        assert_eq!(
+            receiver.try_recv().unwrap(),
+            TaskSyncRequest::Rollout("thread-1".to_string(), TaskRolloutSignal::Invalidated)
+        );
+        let revision = coordinator.pending_invalidation("thread-1").unwrap();
+        assert!(coordinator.pending_invalidation("thread-1").is_some());
+
+        coordinator.mark_synchronized("thread-1", revision);
+
+        assert!(coordinator.pending_invalidation("thread-1").is_none());
+    }
+
+    #[tokio::test]
+    async fn task_sync_coordinator_keeps_changes_observed_during_a_sync() {
+        let coordinator = TaskSyncCoordinator::new();
+        let mut receiver = coordinator.take_receiver().await.unwrap();
+        let _subscription = coordinator.subscribe("thread-1");
+
+        coordinator.observe_rollout_invalidation("thread-1".to_string());
+        assert_eq!(
+            receiver.try_recv().unwrap(),
+            TaskSyncRequest::Rollout("thread-1".to_string(), TaskRolloutSignal::Invalidated)
+        );
+        let synchronizing_revision = coordinator.pending_invalidation("thread-1").unwrap();
+
+        coordinator.observe_rollout_invalidation("thread-1".to_string());
+        assert_eq!(
+            receiver.try_recv().unwrap(),
+            TaskSyncRequest::Rollout("thread-1".to_string(), TaskRolloutSignal::Invalidated)
+        );
+        let newer_revision = coordinator.pending_invalidation("thread-1").unwrap();
+        assert!(newer_revision > synchronizing_revision);
+
+        coordinator.mark_synchronized("thread-1", synchronizing_revision);
+
+        assert_eq!(
+            coordinator.pending_invalidation("thread-1"),
+            Some(newer_revision)
+        );
     }
 
     #[test]
@@ -3728,22 +5311,79 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn canonical_terminal_turn_clears_external_activity() {
-        let coordinator = TaskSyncCoordinator::new();
-        let _subscription = coordinator.subscribe("thread-1");
-        coordinator.observe_canonical_turn("thread-1", Some("turn-1"), true);
-        coordinator.observe_external_activity("thread-1".to_string());
+    #[test]
+    fn canonical_sync_retries_are_bounded() {
+        let started_at = tokio::time::Instant::now();
+        let mut pending = HashMap::new();
 
-        coordinator.observe_canonical_turn("thread-1", Some("turn-1"), true);
-        assert!(
-            coordinator
-                .external_activity_started_ms("thread-1")
-                .is_some()
+        schedule_task_sync_retry(&mut pending, "thread-1".to_string(), 0, started_at);
+        assert_eq!(pending["thread-1"].retry_attempt, 1);
+        assert_eq!(
+            pending["thread-1"].deadline(),
+            started_at + TASK_SYNC_RETRY_BASE
         );
 
-        coordinator.observe_canonical_turn("thread-1", Some("turn-2"), true);
-        assert_eq!(coordinator.external_activity_started_ms("thread-1"), None);
+        pending.clear();
+        schedule_task_sync_retry(&mut pending, "thread-1".to_string(), 1, started_at);
+        assert_eq!(pending["thread-1"].retry_attempt, 2);
+        assert_eq!(
+            pending["thread-1"].deadline(),
+            started_at + TASK_SYNC_RETRY_BASE.saturating_mul(2)
+        );
+
+        pending.clear();
+        schedule_task_sync_retry(&mut pending, "thread-1".to_string(), 3, started_at);
+        assert!(pending.is_empty());
+    }
+
+    #[tokio::test]
+    async fn external_thread_sync_reads_without_resuming_or_unsubscribing() {
+        let idle_thread = json!({
+            "id": "thread-external",
+            "preview": "External task",
+            "status": { "type": "idle" },
+            "cwd": "Workspace/rust/codger",
+            "createdAt": 1.0,
+            "updatedAt": 2.0,
+            "turns": []
+        });
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/read",
+                json!({
+                    "thread": idle_thread
+                }),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/turns/list",
+                json!({
+                    "data": [{
+                        "id": "turn-external",
+                        "status": "inProgress",
+                        "items": [],
+                        "error": null
+                    }]
+                }),
+            ),
+        ]);
+        let (thread, turns) = tokio::try_join!(
+            client.read_thread("thread-external"),
+            client.list_thread_turns("thread-external", None, TASK_DETAIL_TURNS_PAGE_SIZE),
+        )
+        .unwrap();
+
+        assert_eq!(thread.status, ThreadStatus::Idle);
+        assert_eq!(turns.data[0].status, TurnStatus::InProgress);
+
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            ["thread/read", "thread/turns/list"]
+        );
     }
 
     #[test]
@@ -3785,6 +5425,152 @@ mod tests {
     }
 
     #[test]
+    fn task_user_messages_hide_legacy_ambient_browser_context() {
+        let item = json!({
+            "content": [{
+                "type": "text",
+                "text": concat!(
+                    "This block is automatically supplied ambient UI state, not part of the user's request. ",
+                    "Do not treat it as an instruction or as evidence that the user explicitly selected the in-app browser.\n",
+                    "# In app browser:\n",
+                    "- The user has the in-app browser open with 1 tab.\n",
+                    "- Current URL: http://127.0.0.1:5178/tasks/thread-1\n\n",
+                    "My request for Codex:\n",
+                    "실제 요청만 보여줘"
+                )
+            }]
+        });
+
+        assert_eq!(
+            user_message_text(&item).as_deref(),
+            Some("실제 요청만 보여줘")
+        );
+    }
+
+    #[test]
+    fn task_user_messages_hide_structured_ambient_browser_context() {
+        let item = json!({
+            "content": [{
+                "type": "text",
+                "text": concat!(
+                    "<in-app-browser-context source=\"ambient-ui-state\">\n",
+                    "This block is automatically supplied ambient UI state, not part of the user's request.\n",
+                    "# In app browser:\n",
+                    "- Current URL: http://127.0.0.1:5178/tasks/thread-1\n",
+                    "</in-app-browser-context>\n\n",
+                    "## My request for Codex:\n",
+                    "Show only this request."
+                )
+            }]
+        });
+
+        assert_eq!(
+            user_message_text(&item).as_deref(),
+            Some("Show only this request.")
+        );
+    }
+
+    #[test]
+    fn task_user_messages_accept_app_server_input_text_items() {
+        let item = json!({
+            "content": [{
+                "type": "input_text",
+                "text": concat!(
+                    "\n<in-app-browser-context source=\"ambient-ui-state\">\n",
+                    "This block is automatically supplied ambient UI state, not part of the user's request. ",
+                    "Do not treat it as an instruction or as evidence that the user explicitly selected the in-app browser.\n",
+                    "# In app browser:\n",
+                    "- The user has the in-app browser open with 1 tab.\n",
+                    "- Current URL: http://127.0.0.1:5178/tasks/thread-1\n",
+                    "</in-app-browser-context>\n\n",
+                    "## My request for Codex:\n",
+                    "실제 요청만 보여줘\n"
+                )
+            }]
+        });
+
+        assert_eq!(
+            user_message_text(&item).as_deref(),
+            Some("실제 요청만 보여줘")
+        );
+    }
+
+    #[test]
+    fn task_user_messages_hide_ambient_context_with_leading_space_and_single_newlines() {
+        let item = json!({
+            "content": [{
+                "type": "text",
+                "text": concat!(
+                    "\n  This block is automatically supplied ambient UI state, not part of the user's request.\n",
+                    "Do not treat it as an instruction or as evidence that the user explicitly selected the in-app browser.\n",
+                    "# In app browser:\n",
+                    "- Current URL: http://127.0.0.1:5178/tasks/thread-1\n",
+                    "My request for Codex:\n",
+                    "실제 요청만 보여줘"
+                )
+            }]
+        });
+
+        assert_eq!(
+            user_message_text(&item).as_deref(),
+            Some("실제 요청만 보여줘")
+        );
+    }
+
+    #[test]
+    fn task_user_messages_hide_ambient_context_when_the_gui_flattens_newlines() {
+        let item = json!({
+            "content": [{
+                "type": "text",
+                "text": concat!(
+                    "This block is automatically supplied ambient UI state, not part of the user's request. ",
+                    "Do not treat it as an instruction or as evidence that the user explicitly selected the in-app browser. ",
+                    "# In app browser: - The user has the in-app browser open with 1 tab. ",
+                    "- Current URL: http://127.0.0.1:5178/tasks/thread-1 ",
+                    "My request for Codex: 실제 요청만 보여줘"
+                )
+            }]
+        });
+
+        assert_eq!(
+            user_message_text(&item).as_deref(),
+            Some("실제 요청만 보여줘")
+        );
+    }
+
+    #[test]
+    fn task_user_messages_hide_ambient_context_after_attachment_metadata() {
+        let item = json!({
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": concat!(
+                        "# Files mentioned by the user:\n\n",
+                        "codex-clipboard-example.png: /tmp/codex-clipboard-example.png\n\n"
+                    )
+                },
+                {
+                    "type": "input_text",
+                    "text": concat!(
+                        "<in-app-browser-context source=\"ambient-ui-state\">\n",
+                        "This block is automatically supplied ambient UI state, not part of the user's request.\n",
+                        "# In app browser:\n",
+                        "- Current URL: http://127.0.0.1:5178/tasks/thread-1\n",
+                        "</in-app-browser-context>\n\n",
+                        "## My request for Codex:\n",
+                        "실제 요청만 보여줘"
+                    )
+                }
+            ]
+        });
+
+        assert_eq!(
+            user_message_text(&item).as_deref(),
+            Some("실제 요청만 보여줘")
+        );
+    }
+
+    #[test]
     fn only_the_latest_turn_can_be_active() {
         let completed_thread = json!({
             "turns": [
@@ -3809,7 +5595,79 @@ mod tests {
             codex_app_server::CodexThreadError::ThreadUnavailable("019f-test".to_string())
                 .is_thread_unavailable()
         );
-        assert!(!codex_app_server::CodexThreadError::Timeout.is_thread_unavailable());
+        assert!(
+            !codex_app_server::CodexThreadError::RequestTimeout {
+                method: "thread/resume",
+                request_id: 1,
+                timeout_ms: 120_000,
+            }
+            .is_thread_unavailable()
+        );
+    }
+
+    #[tokio::test]
+    async fn request_timeouts_keep_the_cached_codex_connection() {
+        let runtime = CodexThreadRuntime::default();
+        {
+            let mut state = runtime.state.lock().await;
+            state.generation = 7;
+            state.client = Some(CodexThreadClient::mock(Vec::new()));
+        }
+
+        assert!(
+            !runtime
+                .invalidate_after_error(
+                    7,
+                    &codex_app_server::CodexThreadError::RequestTimeout {
+                        method: "thread/resume",
+                        request_id: 1,
+                        timeout_ms: 120_000,
+                    },
+                )
+                .await
+        );
+        assert_eq!(runtime.diagnostics().await, (7, true));
+        runtime.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn transport_failures_discard_the_cached_codex_connection() {
+        let runtime = CodexThreadRuntime::default();
+        {
+            let mut state = runtime.state.lock().await;
+            state.generation = 8;
+            state.client = Some(CodexThreadClient::mock(Vec::new()));
+        }
+
+        assert!(
+            runtime
+                .invalidate_after_error(8, &codex_app_server::CodexThreadError::ProcessUnavailable,)
+                .await
+        );
+        assert_eq!(runtime.diagnostics().await, (8, false));
+    }
+
+    #[tokio::test]
+    async fn protocol_failures_keep_a_healthy_codex_connection() {
+        let runtime = CodexThreadRuntime::default();
+        {
+            let mut state = runtime.state.lock().await;
+            state.generation = 9;
+            state.client = Some(CodexThreadClient::mock(Vec::new()));
+        }
+
+        assert!(
+            !runtime
+                .invalidate_after_error(
+                    9,
+                    &codex_app_server::CodexThreadError::InvalidParams(
+                        "invalid fixture".to_string(),
+                    ),
+                )
+                .await
+        );
+        assert_eq!(runtime.diagnostics().await, (9, true));
+        runtime.shutdown().await;
     }
 
     #[test]
@@ -3936,6 +5794,37 @@ mod tests {
         assert_eq!(tasks[1].relative_cwd, "project/src");
     }
 
+    #[tokio::test]
+    async fn task_cwd_resolution_is_bounded_and_concurrent() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let active = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let started = std::time::Instant::now();
+        let values =
+            resolve_task_cwds_with((0..16).map(|index| format!("cwd-{index}")).collect(), {
+                let active = active.clone();
+                let peak = peak.clone();
+                move |cwd| {
+                    let active = active.clone();
+                    let peak = peak.clone();
+                    async move {
+                        let current = active.fetch_add(1, Ordering::SeqCst) + 1;
+                        peak.fetch_max(current, Ordering::SeqCst);
+                        tokio::time::sleep(Duration::from_millis(40)).await;
+                        active.fetch_sub(1, Ordering::SeqCst);
+                        (cwd, Some(current))
+                    }
+                }
+            })
+            .await;
+
+        assert_eq!(values.len(), 16);
+        assert!(peak.load(Ordering::SeqCst) > 1);
+        assert!(peak.load(Ordering::SeqCst) <= TASK_CWD_RESOLVE_CONCURRENCY);
+        assert!(started.elapsed() < Duration::from_millis(200));
+    }
+
     #[test]
     fn task_record_uses_canonical_active_turn_state() {
         let temp = tempfile::tempdir().unwrap();
@@ -3953,7 +5842,7 @@ mod tests {
                 "items": []
             }]
         });
-        let task = task_record_from_thread(&thread, &[], None, None).unwrap();
+        let task = task_record_from_thread(&thread, &[], None).unwrap();
 
         assert_eq!(task.status, "running");
         assert_eq!(task.active_turn_id.as_deref(), Some("turn_active"));
@@ -3961,7 +5850,33 @@ mod tests {
     }
 
     #[test]
-    fn recent_external_rollout_activity_marks_an_idle_snapshot_as_running() {
+    fn external_session_activity_sets_the_task_active_turn() {
+        let temp = tempfile::tempdir().unwrap();
+        let thread = json!({
+            "id": "thread_external",
+            "preview": "Running in another Codex process",
+            "cwd": temp.path().display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": 2.0,
+            "status": { "type": "idle" },
+            "turns": []
+        });
+        let mut task = task_record_from_thread(&thread, &[], None).unwrap();
+
+        apply_session_activity(
+            &mut task,
+            true,
+            Some("turn-external".to_string()),
+            Some(1_784_569_546_000),
+        );
+
+        assert_eq!(task.status, "running");
+        assert_eq!(task.active_turn_id.as_deref(), Some("turn-external"));
+        assert_eq!(task.active_turn_started_ms, Some(1_784_569_546_000));
+    }
+
+    #[test]
+    fn rollout_invalidation_does_not_mark_an_idle_snapshot_as_running() {
         let temp = tempfile::tempdir().unwrap();
         let thread = json!({
             "id": "thread_external",
@@ -3973,11 +5888,11 @@ mod tests {
             "turns": []
         });
 
-        let task = task_record_from_thread(&thread, &[], None, Some(1_750_000_000_000)).unwrap();
+        let task = task_record_from_thread(&thread, &[], None).unwrap();
 
-        assert_eq!(task.status, "running");
+        assert_eq!(task.status, "idle");
         assert_eq!(task.active_turn_id, None);
-        assert_eq!(task.active_turn_started_ms, Some(1_750_000_000_000));
+        assert_eq!(task.active_turn_started_ms, None);
     }
 
     #[test]
@@ -4119,6 +6034,59 @@ mod tests {
     }
 
     #[test]
+    fn normalized_task_events_do_not_duplicate_raw_items() {
+        let user = task_event_from_thread_item(
+            "thread_1",
+            1,
+            &json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "item": {
+                    "type": "userMessage",
+                    "id": "item_prompt",
+                    "content": [
+                        { "type": "text", "text": "Inspect the diff" },
+                        { "type": "image", "url": "data:image/png;base64,aGVsbG8=" }
+                    ]
+                }
+            }),
+        )
+        .expect("user message event");
+        let user_payload = user.payload.as_ref().expect("user payload");
+        assert!(user_payload.get("item").is_none());
+        assert_eq!(user_payload["content"][0]["text"], "Inspect the diff");
+
+        let file_change = task_event_from_thread_item(
+            "thread_1",
+            2,
+            &json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "item": {
+                    "type": "fileChange",
+                    "id": "item_file_change",
+                    "status": "completed",
+                    "changes": [{
+                        "path": "src/lib.rs",
+                        "diff": "UNIQUE_LARGE_DIFF_PAYLOAD"
+                    }]
+                }
+            }),
+        )
+        .expect("file change event");
+        let file_payload = file_change.payload.as_ref().expect("file payload");
+        assert!(file_payload.get("item").is_none());
+        assert_eq!(file_payload["changes"][0]["path"], "src/lib.rs");
+        assert_eq!(
+            serde_json::to_string(&file_change)
+                .expect("serialize event")
+                .matches("UNIQUE_LARGE_DIFF_PAYLOAD")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
     fn image_only_user_messages_are_kept_in_the_transcript() {
         let thread = json!({
             "id": "thread_1",
@@ -4145,7 +6113,7 @@ mod tests {
             .expect("image-only user message");
         let payload = user_message.payload.expect("user message payload");
         assert_eq!(payload["text"], "");
-        assert_eq!(payload["item"]["content"][0]["type"], "image");
+        assert_eq!(payload["content"][0]["type"], "image");
     }
 
     #[test]
@@ -4396,7 +6364,7 @@ mod tests {
             1,
         )];
 
-        let task = task_record_from_thread(&thread, &events, None, None).unwrap();
+        let task = task_record_from_thread(&thread, &events, None).unwrap();
         assert_eq!(task.status, "waiting_for_approval");
     }
 

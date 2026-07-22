@@ -253,6 +253,20 @@ caffold-tasks-page .task-list-scroll {
   font-size: var(--task-list-font-size);
 }
 
+caffold-tasks-page .task-list-pagination {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 12px 9px 4px;
+}
+
+caffold-tasks-page .task-list-pagination-error {
+  margin: 0;
+  color: var(--danger, #a33);
+  font-size: 12px;
+  text-align: center;
+}
+
 caffold-tasks-page .task-repository-groups {
   --task-repository-indent: calc(9px + var(--task-list-icon-size));
 
@@ -992,6 +1006,7 @@ caffold-tasks-page .task-composer {
 caffold-tasks-page .task-conversation-scroll {
   min-height: 0;
   overflow: auto;
+  overflow-anchor: none;
   padding: 16px 14px 18px;
 }
 
@@ -1026,6 +1041,69 @@ caffold-tasks-page .task-approval-flow .task-approvals {
 caffold-tasks-page .task-load-older {
   justify-self: center;
   min-height: 19px;
+  color: var(--muted);
+  font-size: var(--task-detail-meta-size);
+  line-height: 16px;
+}
+
+caffold-tasks-page .task-detail-load-error {
+  display: grid;
+  justify-items: start;
+  align-content: start;
+  gap: 8px;
+  max-width: 680px;
+  margin: 28px auto;
+  padding: 0 20px;
+  color: var(--text);
+}
+
+caffold-tasks-page .task-detail-load-error h2,
+caffold-tasks-page .task-detail-load-error p {
+  margin: 0;
+}
+
+caffold-tasks-page .task-detail-load-error h2 {
+  font-size: var(--task-detail-heading-size);
+  line-height: var(--task-detail-line-height);
+}
+
+caffold-tasks-page .task-detail-load-error-inline {
+  justify-self: stretch;
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid #dfc58f;
+  border-radius: 5px;
+  background: #fff8e7;
+}
+
+caffold-tasks-page .task-load-error-message {
+  color: var(--muted);
+  font-size: var(--task-detail-meta-size);
+  line-height: 16px;
+}
+
+caffold-tasks-page .task-history-error {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 8px;
+}
+
+caffold-tasks-page .task-history-error button {
+  min-height: 26px;
+  padding: 2px 7px;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+caffold-tasks-page .task-history-loading {
+  justify-self: start;
+  margin: 0;
   color: var(--muted);
   font-size: var(--task-detail-meta-size);
   line-height: 16px;
@@ -1147,7 +1225,8 @@ caffold-tasks-page .task-status-spinner {
   animation: task-status-spin 800ms linear infinite;
 }
 
-caffold-tasks-page .task-status-chip[data-status="running"] {
+caffold-tasks-page .task-status-chip[data-status="running"],
+caffold-tasks-page .task-status-chip[data-status="syncing"] {
   color: var(--accent);
 }
 
@@ -1680,6 +1759,14 @@ caffold-tasks-page .task-composer-attachment-remove-icon {
 }
 
 caffold-tasks-page .task-composer-image-error {
+  margin: 0;
+  padding: 0 18px 4px;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 17px;
+}
+
+caffold-tasks-page .task-composer-request-error {
   margin: 0;
   padding: 0 18px 4px;
   color: var(--danger);

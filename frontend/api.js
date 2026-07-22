@@ -10,8 +10,11 @@ export async function getCodexModels() {
   return requestJson("/api/codex/models");
 }
 
-export async function getTasks(cwd = "") {
-  return requestJson("/api/tasks", cwd ? { cwd } : {});
+export async function getTasks(cwd = "", cursor = null) {
+  return requestJson("/api/tasks", {
+    ...(cwd ? { cwd } : {}),
+    ...(cursor ? { cursor } : {}),
+  });
 }
 
 export async function createTask(task) {
@@ -202,7 +205,9 @@ async function requestJson(endpoint, params = {}, options = {}) {
 
   if (!response.ok) {
     const error = new Error(
-      payload?.error?.message ?? `Request failed with HTTP ${response.status}`,
+      payload?.error?.message ??
+        (typeof payload?.error === "string" ? payload.error : null) ??
+        `Request failed with HTTP ${response.status}`,
     );
     error.code = payload?.error?.code ?? "request_failed";
     error.status = response.status;
