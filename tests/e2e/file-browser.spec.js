@@ -4156,7 +4156,9 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   ).toContainText("test result: ok");
 });
 
-test("loads older task conversation events by cursor", async ({ page }) => {
+test("keeps the visible conversation anchor while loading older events by cursor", async ({
+  page,
+}) => {
   await page.addInitScript(() => {
     window.__taskEventSources = [];
     window.EventSource = class MockEventSource {
@@ -4216,15 +4218,48 @@ test("loads older task conversation events by cursor", async ({ page }) => {
       10 + index,
     );
   });
+  const olderPrompt = Array.from(
+    { length: 28 },
+    (_, index) => `Older prompt line ${index + 1} keeps the prepended page tall.`,
+  ).join("\n");
+  let releaseOlderImage;
+  const olderImageGate = new Promise((resolve) => {
+    releaseOlderImage = resolve;
+  });
   const olderEvents = [
     eventRecord(
       "event_older",
       "user_message",
       "User prompt",
-      { text: "This is the older prompt." },
+      {
+        text: olderPrompt,
+        content: [{ type: "localImage", path: "/tmp/older-image.png" }],
+      },
       1,
     ),
   ];
+  const ancientEvents = [
+    eventRecord(
+      "event_ancient",
+      "assistant_message",
+      "Assistant response",
+      {
+        text: Array.from(
+          { length: 20 },
+          (_, index) => `Ancient answer line ${index + 1} expands the next page.`,
+        ).join("\n"),
+      },
+      0,
+    ),
+  ];
+
+  await page.route(/\/api\/task-image(?:\?|$)/, async (route) => {
+    await olderImageGate;
+    return route.fulfill({
+      contentType: "image/png",
+      body: Buffer.from(PASTED_IMAGE_BASE64, "base64"),
+    });
+  });
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
     const url = new URL(route.request().url());
@@ -4240,13 +4275,23 @@ test("loads older task conversation events by cursor", async ({ page }) => {
     expect(url.searchParams.get("cwd")).toBe("src");
     const cursor = url.searchParams.get("cursor");
     detailCursors.push(cursor);
+    const events = cursor === "older_cursor"
+      ? olderEvents
+      : cursor === "ancient_cursor"
+        ? ancientEvents
+        : latestEvents;
+    const nextCursor = cursor === "older_cursor"
+      ? "ancient_cursor"
+      : cursor === "ancient_cursor"
+        ? null
+        : "older_cursor";
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        revision: cursor === "older_cursor" ? 3 : 1,
+        revision: cursor === "ancient_cursor" ? 4 : cursor === "older_cursor" ? 3 : 1,
         task,
-        events: cursor === "older_cursor" ? olderEvents : latestEvents,
-        eventsPage: { nextCursor: cursor === "older_cursor" ? null : "older_cursor" },
+        events,
+        eventsPage: { nextCursor },
         pendingApprovals: [],
       }),
     });
@@ -4301,18 +4346,95 @@ test("loads older task conversation events by cursor", async ({ page }) => {
     )
     .toBe(true);
 
-  await tasksPage.locator(".task-conversation-scroll").evaluate((element) => {
-    element.scrollTop = 0;
-    element.dispatchEvent(new Event("scroll"));
-  });
+  const visibleAnchor = await tasksPage
+    .locator(".task-conversation-scroll")
+    .evaluate((element) => {
+      element.scrollTop = 0;
+      const scrollerRect = element.getBoundingClientRect();
+      const anchor = [...element.querySelectorAll(".task-event[data-event-id]")].find(
+        (event) => event.getBoundingClientRect().bottom > scrollerRect.top + 1,
+      );
+      const snapshot = {
+        eventId: anchor?.dataset.eventId ?? "",
+        offset: anchor ? anchor.getBoundingClientRect().top - scrollerRect.top : null,
+      };
+      element.dispatchEvent(new Event("scroll"));
+      return snapshot;
+    });
+  expect(visibleAnchor.eventId).toBe("event_latest_0");
   await expect.poll(() => detailCursors).toContain("older_cursor");
-  await expect(tasksPage).toContainText("This is the older prompt.");
-  await expect(tasksPage.locator(".task-load-older")).toHaveCount(0);
+  await expect(tasksPage).toContainText("Older prompt line 1");
+  await expect(tasksPage.locator(".task-load-older")).toHaveCount(1);
+  await expect(
+    tasksPage.locator(
+      '.task-event[data-event-id="event_older"] caffold-task-markdown',
+    ),
+  ).toHaveAttribute("data-render-state", "markdown");
   await expect
-    .poll(() =>
-      tasksPage.locator(".task-conversation-scroll").evaluate((element) => element.scrollTop > 0),
-    )
-    .toBe(true);
+    .poll(async () => {
+      const currentOffset = await tasksPage
+        .locator('.task-event[data-event-id="event_latest_0"]')
+        .evaluate((anchor) => {
+          const scroller = anchor.closest(".task-conversation-scroll");
+          return anchor.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+        });
+      return Math.abs(currentOffset - visibleAnchor.offset);
+    })
+    .toBeLessThan(0.5);
+
+  releaseOlderImage();
+  const olderImage = tasksPage.locator(
+    '.task-event[data-event-id="event_older"] .task-message-attachment img',
+  );
+  await expect
+    .poll(() => olderImage.evaluate((image) => image.naturalHeight))
+    .toBeGreaterThan(0);
+  await page.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  );
+  const offsetAfterImageLoad = await tasksPage
+    .locator('.task-event[data-event-id="event_latest_0"]')
+    .evaluate((anchor) => {
+      const scroller = anchor.closest(".task-conversation-scroll");
+      return anchor.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+    });
+  expect(Math.abs(offsetAfterImageLoad - visibleAnchor.offset)).toBeLessThan(0.5);
+
+  const secondPageAnchor = await tasksPage
+    .locator(".task-conversation-scroll")
+    .evaluate((element) => {
+      element.scrollTop = 0;
+      const scrollerRect = element.getBoundingClientRect();
+      const anchor = [...element.querySelectorAll(".task-event[data-event-id]")].find(
+        (event) => event.getBoundingClientRect().bottom > scrollerRect.top + 1,
+      );
+      const snapshot = {
+        eventId: anchor?.dataset.eventId ?? "",
+        offset: anchor ? anchor.getBoundingClientRect().top - scrollerRect.top : null,
+      };
+      element.dispatchEvent(new Event("scroll"));
+      return snapshot;
+    });
+  expect(secondPageAnchor.eventId).toBe("event_older");
+  await expect.poll(() => detailCursors).toContain("ancient_cursor");
+  await expect(tasksPage).toContainText("Ancient answer line 1");
+  await expect(tasksPage.locator(".task-load-older")).toHaveCount(0);
+  await expect(
+    tasksPage.locator(
+      '.task-event[data-event-id="event_ancient"] caffold-task-markdown',
+    ),
+  ).toHaveAttribute("data-render-state", "markdown");
+  await expect
+    .poll(async () => {
+      const currentOffset = await tasksPage
+        .locator('.task-event[data-event-id="event_older"]')
+        .evaluate((anchor) => {
+          const scroller = anchor.closest(".task-conversation-scroll");
+          return anchor.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+        });
+      return Math.abs(currentOffset - secondPageAnchor.offset);
+    })
+    .toBeLessThan(0.5);
 });
 
 test("keeps task context and retries after an initial detail timeout", async ({

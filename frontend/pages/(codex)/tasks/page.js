@@ -102,6 +102,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.requestId = 0;
     this.conversationScrollMode = null;
     this.conversationScrollByThread = new Map();
+    this.conversationResizeObserver = null;
     this.newTaskDraft = { prompt: "" };
     this.newTaskImages = [];
     this.followUpDraft = "";
@@ -286,6 +287,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.stopTaskListResize();
     this.closeStream();
     this.closeTaskListStream();
+    this.disconnectConversationResizeObserver();
     this.unsubscribeTaskDiffWatch();
     this.stopActiveTurnClock();
   }
@@ -2610,8 +2612,35 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   bindConversationScroll() {
+    this.disconnectConversationResizeObserver();
     const scroller = this.querySelector(".task-conversation-scroll");
     scroller?.addEventListener("scroll", () => this.handleConversationScroll());
+    const column = scroller?.querySelector(".task-conversation-column");
+    const threadId = this.renderedConversationThreadId();
+    if (!scroller || !column || !threadId || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    this.conversationResizeObserver = new ResizeObserver(() => {
+      if (this.querySelector(".task-conversation-scroll") !== scroller) {
+        return;
+      }
+      const previousScroll = this.conversationScrollSnapshot(threadId);
+      if (!previousScroll) {
+        return;
+      }
+      if (previousScroll.atBottom) {
+        scroller.scrollTop = maxScrollTop(scroller);
+      } else {
+        this.restoreConversationAnchor(scroller, previousScroll);
+      }
+      this.rememberConversationScroll(threadId);
+    });
+    this.conversationResizeObserver.observe(column);
+  }
+
+  disconnectConversationResizeObserver() {
+    this.conversationResizeObserver?.disconnect();
+    this.conversationResizeObserver = null;
   }
 
   captureConversationScroll() {
@@ -2620,9 +2649,16 @@ class CaffoldTasksPage extends HTMLElement {
       return null;
     }
     const scrollerRect = scroller.getBoundingClientRect();
-    const anchor = [...scroller.querySelectorAll(".task-event[data-event-id]")].find(
-      (event) => event.getBoundingClientRect().bottom > scrollerRect.top + 1,
-    );
+    const events = [...scroller.querySelectorAll(".task-event[data-event-id]")];
+    const anchor =
+      events.find((event) => {
+        const eventRect = event.getBoundingClientRect();
+        return (
+          eventRect.top >= scrollerRect.top + 1 &&
+          eventRect.top < scrollerRect.bottom - 1
+        );
+      }) ??
+      events.find((event) => event.getBoundingClientRect().bottom > scrollerRect.top + 1);
     return {
       scrollTop: scroller.scrollTop,
       scrollHeight: scroller.scrollHeight,
@@ -2676,29 +2712,43 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
     if (mode === "prepend" && previousScroll) {
+      if (this.restoreConversationAnchor(scroller, previousScroll)) {
+        return;
+      }
       scroller.scrollTop = Math.min(
         previousScroll.scrollTop + (scroller.scrollHeight - previousScroll.scrollHeight),
         maxScrollTop(scroller),
       );
       return;
     }
-    if (previousScroll?.anchorEventId && Number.isFinite(previousScroll.anchorOffset)) {
-      const anchor = [...scroller.querySelectorAll(".task-event[data-event-id]")].find(
-        (event) => event.dataset.eventId === previousScroll.anchorEventId,
-      );
-      if (anchor) {
-        const scrollerTop = scroller.getBoundingClientRect().top;
-        const currentOffset = anchor.getBoundingClientRect().top - scrollerTop;
-        scroller.scrollTop = Math.min(
-          Math.max(0, scroller.scrollTop + currentOffset - previousScroll.anchorOffset),
-          maxScrollTop(scroller),
-        );
-        return;
-      }
+    if (this.restoreConversationAnchor(scroller, previousScroll)) {
+      return;
     }
     if (previousScroll) {
       scroller.scrollTop = Math.min(previousScroll.scrollTop, maxScrollTop(scroller));
     }
+  }
+
+  restoreConversationAnchor(scroller, previousScroll) {
+    if (
+      !previousScroll?.anchorEventId ||
+      !Number.isFinite(previousScroll.anchorOffset)
+    ) {
+      return false;
+    }
+    const anchor = [...scroller.querySelectorAll(".task-event[data-event-id]")].find(
+      (event) => event.dataset.eventId === previousScroll.anchorEventId,
+    );
+    if (!anchor) {
+      return false;
+    }
+    const scrollerTop = scroller.getBoundingClientRect().top;
+    const currentOffset = anchor.getBoundingClientRect().top - scrollerTop;
+    scroller.scrollTop = Math.min(
+      Math.max(0, scroller.scrollTop + currentOffset - previousScroll.anchorOffset),
+      maxScrollTop(scroller),
+    );
+    return true;
   }
 
   handleConversationScroll() {
@@ -2722,8 +2772,12 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
 
+    const previousScroll = this.conversationScrollSnapshot();
     if (event.detail.atBottom) {
       scroller.scrollTop = maxScrollTop(scroller);
+    } else if (this.restoreConversationAnchor(scroller, previousScroll)) {
+      // Keep the same conversation event at the same viewport offset while
+      // prepended Markdown replaces its temporary plain-text layout.
     } else if (
       event.detail.aboveViewport &&
       Number.isFinite(event.detail.scrollHeight) &&
