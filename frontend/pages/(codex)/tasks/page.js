@@ -4594,14 +4594,17 @@ function renderTurnGroup(group, task, options = {}) {
   const assistantEvents = group.events.filter((event) => event.type === "assistant_message");
   const statusEvents = group.events.filter(isTurnStatusEvent);
   const terminalEvent = statusEvents.find(isTerminalTurnEvent);
+  const finalAssistantEvent =
+    assistantEvents.findLast(isFinalAssistantEvent) ?? assistantEvents.at(-1);
   const isCurrentTurn = task?.activeTurnId === group.turnId;
   const isActive =
     isTaskActivelyWorking(task) && (options.forceActive || isCurrentTurn);
-  const isComplete = Boolean(terminalEvent) || (assistantEvents.length > 0 && !isActive);
+  const isComplete =
+    Boolean(terminalEvent) ||
+    (Boolean(finalAssistantEvent && isFinalAssistantEvent(finalAssistantEvent)) &&
+      !isActive);
 
   if (isComplete) {
-    const finalAssistantEvent =
-      assistantEvents.findLast(isFinalAssistantEvent) ?? assistantEvents.at(-1);
     return renderCompletedTurnGroup(
       group,
       task,
@@ -4634,46 +4637,35 @@ function renderCompletedTurnGroup(
   pendingApprovalIds = new Set(),
 ) {
   const output = [];
-  let workEvents = [];
-  const flushWorkEvents = () => {
-    if (workEvents.length > 0) {
-      output.push(renderTurnWorkSummary(group, workEvents, terminalEvent));
-      workEvents = [];
-    }
-  };
-
-  for (const event of group.events) {
-    if (
+  const userEvents = group.events.filter((event) => event.type === "user_message");
+  const workEvents = group.events.filter(
+    (event) =>
       isWorkEvent(event) ||
-      (event.type === "assistant_message" && event !== finalAssistantEvent)
-    ) {
-      workEvents.push(event);
-      continue;
-    }
-    if (event.type === "user_message") {
-      flushWorkEvents();
-      output.push(renderConversationEvent(event, task, { active: false }));
-      continue;
-    }
-    if (
+      (event.type === "assistant_message" && event !== finalAssistantEvent),
+  );
+  const approvals = group.events.filter(
+    (event) =>
       event.type === "approval_requested" &&
-      pendingApprovalIds.has(event.payload?.approvalId)
-    ) {
-      flushWorkEvents();
-      output.push(renderApprovalFlow([event]));
-      continue;
-    }
-    if (event === finalAssistantEvent) {
-      flushWorkEvents();
-      output.push(
-        renderConversationEvent(event, task, {
-          active: false,
-          messagePhase: "final",
-        }),
-      );
-    }
+      pendingApprovalIds.has(event.payload?.approvalId),
+  );
+
+  for (const event of userEvents) {
+    output.push(renderConversationEvent(event, task, { active: false }));
   }
-  flushWorkEvents();
+  if (workEvents.length > 0) {
+    output.push(renderTurnWorkSummary(group, workEvents, terminalEvent));
+  }
+  if (approvals.length > 0) {
+    output.push(renderApprovalFlow(approvals));
+  }
+  if (finalAssistantEvent) {
+    output.push(
+      renderConversationEvent(finalAssistantEvent, task, {
+        active: false,
+        messagePhase: "final",
+      }),
+    );
+  }
   return output.join("");
 }
 
@@ -4851,9 +4843,14 @@ function renderConversationEvent(event, task, eventState) {
 }
 
 function isWorkEvent(event) {
-  return ["reasoning", "plan", "command_execution", "file_change", "task_failed"].includes(
-    event.type,
-  );
+  return [
+    "reasoning",
+    "plan",
+    "command_execution",
+    "file_change",
+    "task_failed",
+    "approval_resolved",
+  ].includes(event.type);
 }
 
 function isTurnContinuationEvent(event) {
@@ -5128,7 +5125,7 @@ function renderThinkingEvent(event, text, task, eventState) {
 
 function renderTurnWorkSummary(group, workEvents, terminalEvent) {
   const duration = turnDurationLabel(group.events, terminalEvent);
-  const count = workEvents.length;
+  const count = turnWorkItemCount(workEvents);
   const updateText = count === 1 ? "1 update" : `${count} updates`;
   const label = duration ? `Worked for ${duration}` : "Work details";
   return `
@@ -5144,6 +5141,23 @@ function renderTurnWorkSummary(group, workEvents, terminalEvent) {
       </details>
     </li>
   `;
+}
+
+function turnWorkItemCount(events) {
+  let count = 0;
+  let combinedType = "";
+  for (const event of events) {
+    if (["reasoning", "file_change"].includes(event.type)) {
+      if (combinedType !== event.type) {
+        count += 1;
+        combinedType = event.type;
+      }
+      continue;
+    }
+    combinedType = "";
+    count += 1;
+  }
+  return count;
 }
 
 function turnDurationLabel(events, terminalEvent) {
@@ -5964,7 +5978,18 @@ function canonicalEventKey(event) {
   const threadId = event.threadId ?? payload.threadId ?? "";
   const turnId = eventTurnId(event);
   if (turnId) {
-    return ["message", threadId, turnId, event.type, messageFingerprint].join(":");
+    const phase =
+      event.type === "assistant_message"
+        ? assistantMessagePhase(payload.phase ?? payload.item?.phase) ?? ""
+        : "";
+    return [
+      "message",
+      threadId,
+      turnId,
+      event.type,
+      phase,
+      messageFingerprint,
+    ].join(":");
   }
 
   const createdMs = typeof event.createdMs === "number" ? event.createdMs : 0;
@@ -5976,17 +6001,26 @@ function preferStructuredEvent(existing, next) {
   if (!existing) {
     return next;
   }
-  return eventStructureScore(next) >= eventStructureScore(existing) ? next : existing;
+  const existingScore = eventStructureScore(existing);
+  const nextScore = eventStructureScore(next);
+  if (nextScore !== existingScore) {
+    return nextScore > existingScore ? next : existing;
+  }
+  return (next.createdMs ?? 0) >= (existing.createdMs ?? 0) ? next : existing;
 }
 
 function eventStructureScore(event) {
   const payload = event?.payload ?? {};
-  return [
-    payload.itemId,
-    payload.item?.id,
-    payload.turnId,
-    payload.threadId,
-  ].filter(Boolean).length;
+  return (
+    [
+      payload.itemId,
+      payload.item?.id,
+      payload.turnId,
+      payload.threadId,
+    ].filter(Boolean).length +
+    (payload.lifecycle ? 2 : 0) +
+    (event?.sortIndex === 0 ? 1 : 0)
+  );
 }
 
 function isScrolledToBottom(element) {

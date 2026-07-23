@@ -3547,7 +3547,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       }),
     )
     .toBe(true);
-  await expect(tasksPage.locator(".task-work-item")).toHaveCount(5);
+  await expect(tasksPage.locator(".task-work-item")).toHaveCount(6);
   await expect(tasksPage.locator(".task-work-item").first()).not.toBeVisible();
   await tasksPage.locator(".task-turn-work > details > summary").click();
   await expect(tasksPage.locator('.task-work-item[data-event-type="assistant_message"]')).toContainText(
@@ -3592,6 +3592,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     items.map((item) => item.getAttribute("data-event-type")),
   );
   expect(workItemOrder).toEqual([
+    "approval_resolved",
     "reasoning",
     "plan",
     "command_execution",
@@ -6437,6 +6438,16 @@ test("keeps task event chronology stable through approval, completion, and reloa
     phase: "commentary",
     text: "I found the ordering boundary.",
   });
+  const matchingCommentary = event(
+    "event_matching_commentary",
+    "assistant_message",
+    now + 250,
+    {
+      itemId: "commentary_2",
+      phase: "commentary",
+      text: "The event order is stable.",
+    },
+  );
   const approvalRequested = event(
     "event_approval_requested",
     "approval_requested",
@@ -6497,6 +6508,12 @@ test("keeps task event chronology stable through approval, completion, and reloa
     phase: "final",
     text: "The event order is stable.",
   });
+  const threadIdle = event(
+    "event_thread_idle",
+    "thread_status_changed",
+    now + 725,
+    { status: "idle" },
+  );
   const turnCompleted = event("event_turn_completed", "turn_completed", now + 800, {
     status: "completed",
   });
@@ -6531,6 +6548,13 @@ test("keeps task event chronology stable through approval, completion, and reloa
       );
       source.emit("task-event", { threadId, revision, event: entry });
     }, { threadId, entry, revision });
+  const emitTaskSync = (detail, revision) =>
+    page.evaluate(({ threadId, detail, revision }) => {
+      const source = window.__taskEventSources.find((candidate) =>
+        candidate.url.includes(`/api/tasks/${threadId}/stream`),
+      );
+      source.emit("task-sync", { threadId, revision, detail });
+    }, { threadId, detail, revision });
   const visibleEventOrder = () =>
     tasksPage.locator(".task-conversation").evaluate((conversation) =>
       [...conversation.children]
@@ -6546,31 +6570,53 @@ test("keeps task event chronology stable through approval, completion, and reloa
         .filter(Boolean),
     );
 
-  await emitTaskEvent(approvalRequested, 2);
+  await emitTaskEvent(matchingCommentary, 2);
+  await emitTaskEvent(approvalRequested, 3);
   await expect(tasksPage.locator(".task-approval-card")).toHaveCount(1);
   expect(await visibleEventOrder()).toEqual([
     "user_message",
     "reasoning",
     "assistant_message",
+    "assistant_message",
     "approval_requested",
   ]);
 
-  await emitTaskEvent(approvalResolved, 3);
-  await emitTaskEvent(commandStarted, 4);
-  await emitTaskEvent(plan, 5);
-  await emitTaskEvent(commandCompleted, 6);
+  await emitTaskEvent(approvalResolved, 4);
+  await emitTaskEvent(commandStarted, 5);
   await expect(tasksPage.locator(".task-approval-card")).toHaveCount(0);
   expect(await visibleEventOrder()).toEqual([
     "user_message",
     "reasoning",
     "assistant_message",
+    "assistant_message",
+    "approval_resolved",
     "command_execution",
-    "plan",
   ]);
 
-  await emitTaskEvent(finalAnswer, 7);
-  await emitTaskEvent(turnCompleted, 8);
+  await emitTaskEvent(finalAnswer, 6);
+  await emitTaskEvent(threadIdle, 7);
+  await emitTaskEvent(plan, 8);
+  await emitTaskEvent(commandCompleted, 9);
   await expect(tasksPage).toContainText("The event order is stable.");
+  await expect(tasksPage.locator(".task-turn-work")).toHaveCount(1);
+  await expect
+    .poll(() =>
+      tasksPage.locator(".task-conversation").evaluate((conversation) => {
+        const work = conversation.querySelector(".task-turn-work");
+        const final = conversation.querySelector(
+          '.task-message[data-message-phase="final"]',
+        );
+        return Boolean(
+          work &&
+            final &&
+            (work.compareDocumentPosition(final) &
+              Node.DOCUMENT_POSITION_FOLLOWING),
+        );
+      }),
+    )
+    .toBe(true);
+
+  await emitTaskEvent(turnCompleted, 10);
   const completedWorkDetails = tasksPage.locator(".task-turn-work > details");
   await completedWorkDetails.locator(":scope > summary").click();
   const completedWorkOrder = () =>
@@ -6580,6 +6626,8 @@ test("keeps task event chronology stable through approval, completion, and reloa
   expect(await completedWorkOrder()).toEqual([
     "reasoning",
     "assistant_message",
+    "assistant_message",
+    "approval_resolved",
     "command_execution",
     "plan",
   ]);
@@ -6592,21 +6640,48 @@ test("keeps task event chronology stable through approval, completion, and reloa
   await expect(completedCommandDetails).toHaveAttribute("open", "");
 
   await test.step("keeps opened work disclosures expanded through a live rerender", async () => {
-    await emitTaskEvent(turnCompleted, 9);
+    await emitTaskEvent(turnCompleted, 11);
     await expect(completedWorkDetails).toHaveAttribute("open", "");
     await expect(completedCommandDetails).toHaveAttribute("open", "");
   });
 
+  const canonicalUser = {
+    ...user,
+    id: "event_canonical_user",
+    sortIndex: 1,
+  };
+  const canonicalCommentary = {
+    ...commentary,
+    id: "event_canonical_commentary",
+    createdMs: now,
+    sortIndex: 2,
+    payload: { ...commentary.payload, itemId: "summary_commentary" },
+  };
+  const canonicalFinal = {
+    ...finalAnswer,
+    id: "event_canonical_final",
+    createdMs: now,
+    sortIndex: 3,
+    payload: {
+      ...finalAnswer.payload,
+      itemId: "summary_final",
+      phase: "final_answer",
+    },
+  };
   detailEvents = [
     user,
     reasoning,
     commentary,
+    matchingCommentary,
     approvalRequested,
     approvalResolved,
     { ...commandCompleted, createdMs: commandStarted.createdMs },
     plan,
     finalAnswer,
     turnCompleted,
+    canonicalUser,
+    canonicalCommentary,
+    canonicalFinal,
   ];
   detailTask = {
     ...task,
@@ -6616,13 +6691,45 @@ test("keeps task event chronology stable through approval, completion, and reloa
     updatedMs: turnCompleted.createdMs,
     recencyMs: turnCompleted.createdMs,
   };
-  detailRevision = 8;
+  detailRevision = 12;
+  await emitTaskSync(
+    {
+      revision: detailRevision,
+      task: detailTask,
+      events: detailEvents,
+      eventsPage: { nextCursor: null },
+      pendingApprovals: [],
+    },
+    detailRevision,
+  );
+  await expect(tasksPage.locator(".task-turn-work")).toHaveCount(1);
+  await expect
+    .poll(() =>
+      tasksPage.evaluate((element) => {
+        const final = element.events.find(
+          (entry) =>
+            entry.type === "assistant_message" &&
+            ["final", "final_answer"].includes(entry.payload?.phase),
+        );
+        return final?.createdMs;
+      }),
+    )
+    .toBe(finalAnswer.createdMs);
+  await expect(
+    tasksPage.locator(
+      '.task-work-item[data-event-type="assistant_message"]',
+    ),
+  ).toHaveCount(2);
+
   await page.reload();
   await expect(tasksPage).toContainText("The event order is stable.");
+  await expect(tasksPage.locator(".task-turn-work")).toHaveCount(1);
   await tasksPage.locator(".task-turn-work > details > summary").click();
   expect(await completedWorkOrder()).toEqual([
     "reasoning",
     "assistant_message",
+    "assistant_message",
+    "approval_resolved",
     "command_execution",
     "plan",
   ]);
