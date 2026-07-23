@@ -1583,7 +1583,14 @@ class CaffoldTasksPage extends HTMLElement {
       taskThreadId(this.taskDetail?.task) === threadId
         ? this.taskDetail.task
         : this.tasks.find((task) => taskThreadId(task) === threadId) ?? null;
+    const startsNewTurn = !isTaskActivelyWorking(previousTask);
     const runningTask = taskWithStatus(previousTask, "running", {
+      ...(startsNewTurn
+        ? {
+            activeTurnId: null,
+            activeTurnStartedMs: optimisticEvent.createdMs,
+          }
+        : {}),
       updatedMs: optimisticEvent.createdMs,
       recencyMs: optimisticEvent.createdMs,
     });
@@ -2249,7 +2256,7 @@ class CaffoldTasksPage extends HTMLElement {
     const taskEvents = this.eventsByThread.get(threadId) ?? this.events ?? [];
     const matchingEvents = incomingTurnId
       ? taskEvents.filter((event) => eventTurnId(event) === incomingTurnId)
-      : taskEvents;
+      : taskEvents.slice(-1);
     const incomingStartedMs = activeTurnStartMs(matchingEvents, task);
     const startedMs = sameTurn
       ? Math.min(current.startedMs, incomingStartedMs)

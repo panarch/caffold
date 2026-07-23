@@ -38,6 +38,38 @@ test.beforeEach(async ({ page }) => {
     }),
   );
 
+  await page.route(/\/api\/codex\/permissions(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        defaultMode: "approveForMe",
+        options: [
+          {
+            mode: "askForApproval",
+            label: "Ask for approval",
+            description: "Ask before crossing the workspace boundary.",
+            allowed: true,
+            dangerous: false,
+          },
+          {
+            mode: "approveForMe",
+            label: "Approve for me",
+            description: "Review eligible requests automatically.",
+            allowed: true,
+            dangerous: false,
+          },
+          {
+            mode: "fullAccess",
+            label: "Full access",
+            description: "Run without sandbox restrictions.",
+            allowed: true,
+            dangerous: true,
+          },
+        ],
+      }),
+    }),
+  );
+
   await page.route(/\/api\/task-history(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -3351,6 +3383,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     data: {
       effort: "xhigh",
       model: "gpt-5.6-sol",
+      permissionMode: "approveForMe",
       prompt: "Inspect the planner changes",
     },
     valid: true,
@@ -4731,6 +4764,189 @@ test("keeps the latest conversation when older history times out", async ({
   await expect(tasksPage).toContainText("Recovered older prompt.");
   await expect(tasksPage.locator(".task-history-error")).toHaveCount(0);
   await expect(textarea).toHaveValue("Draft survives history timeout");
+});
+
+test("starts a completed task follow-up clock from the new prompt", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Follow-up clock regression");
+  await page.addInitScript(() => {
+    window.__taskEventSources = [];
+    window.EventSource = class MockEventSource {
+      constructor(url) {
+        this.url = url;
+        this.listeners = new Map();
+        window.__taskEventSources.push(this);
+      }
+
+      addEventListener(type, listener) {
+        this.listeners.set(type, listener);
+      }
+
+      emit(type, payload) {
+        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
+      }
+
+      close() {}
+    };
+  });
+  await mockCodexModels(page);
+
+  const threadId = "thread_follow_up_clock";
+  const firstTurnStartedMs = Date.now() - 2 * 60 * 60 * 1_000;
+  const firstTurnCompletedMs = firstTurnStartedMs + 30_000;
+  const task = {
+    id: threadId,
+    threadId,
+    activeTurnId: null,
+    activeTurnStartedMs: null,
+    title: "Follow-up clock fixture",
+    preview: "Initial answer",
+    status: "completed",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    createdMs: firstTurnStartedMs,
+    updatedMs: firstTurnCompletedMs,
+    recencyMs: firstTurnCompletedMs,
+    lastEventSummary: "Initial answer",
+  };
+  const firstTurnEvents = [
+    {
+      id: "turn_initial:started",
+      threadId,
+      type: "turn_started",
+      summary: "Turn started",
+      payload: { turnId: "turn_initial" },
+      createdMs: firstTurnStartedMs,
+    },
+    {
+      id: "turn_initial:answer",
+      threadId,
+      type: "assistant_message",
+      summary: "Assistant response",
+      payload: {
+        turnId: "turn_initial",
+        phase: "final",
+        text: "Initial answer",
+      },
+      createdMs: firstTurnCompletedMs - 1,
+    },
+    {
+      id: "turn_initial:completed",
+      threadId,
+      type: "turn_completed",
+      summary: "Turn completed",
+      payload: { turnId: "turn_initial", status: "completed" },
+      createdMs: firstTurnCompletedMs,
+    },
+  ];
+  const detail = (overrides = {}) => ({
+    revision: overrides.revision ?? 1,
+    task: { ...task, ...(overrides.task ?? {}) },
+    events: overrides.events ?? firstTurnEvents,
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+    historyLoading: false,
+    permissionMode: "approveForMe",
+  });
+
+  let markPromptRequested;
+  const promptRequested = new Promise((resolve) => {
+    markPromptRequested = resolve;
+  });
+  let releasePromptResponse;
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [task], nextCursor: null }),
+    }),
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(detail()),
+    }),
+  );
+  await page.route(
+    new RegExp(`/api/tasks/${threadId}/prompts(?:\\?|$)`),
+    async (route) => {
+      await new Promise((resolve) => {
+        releasePromptResponse = resolve;
+        markPromptRequested();
+      });
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          threadId,
+          turnId: "turn_follow_up",
+          steered: false,
+        }),
+      });
+    },
+  );
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const form = tasksPage.locator(".task-follow-up-form");
+  const prompt = form.locator('textarea[name="prompt"]');
+  const submittedAtMs = Date.now();
+  await prompt.fill("Start a fresh timed turn");
+  await prompt.press("Enter");
+  await promptRequested;
+
+  const activeTurn = tasksPage.locator(".task-turn-active");
+  await expect(activeTurn).toBeVisible();
+  const optimisticStartedMs = Number(
+    await activeTurn.getAttribute("data-active-turn-started-ms"),
+  );
+  expect(optimisticStartedMs).toBeGreaterThanOrEqual(submittedAtMs - 1_000);
+  expect(Date.now() - optimisticStartedMs).toBeLessThan(30_000);
+
+  releasePromptResponse();
+  await expect(form).toHaveAttribute("aria-busy", "false");
+  const canonicalStartedMs = Date.now();
+  await page.evaluate(({ threadId, detail }) => {
+    const source = window.__taskEventSources.find((candidate) =>
+      candidate.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    source.emit("task-sync", {
+      threadId,
+      revision: detail.revision,
+      detail,
+      reason: "canonical-follow-up",
+    });
+  }, {
+    threadId,
+    detail: detail({
+      revision: 2,
+      task: {
+        status: "running",
+        activeTurnId: "turn_follow_up",
+        activeTurnStartedMs: canonicalStartedMs,
+        updatedMs: canonicalStartedMs,
+        recencyMs: canonicalStartedMs,
+      },
+      events: [
+        ...firstTurnEvents,
+        {
+          id: "turn_follow_up:started",
+          threadId,
+          type: "turn_started",
+          summary: "Turn started",
+          payload: { turnId: "turn_follow_up" },
+          createdMs: canonicalStartedMs,
+        },
+      ],
+    }),
+  });
+
+  await expect(activeTurn).toHaveAttribute("data-turn-id", "turn_follow_up");
+  const stabilizedStartedMs = Number(
+    await activeTurn.getAttribute("data-active-turn-started-ms"),
+  );
+  expect(stabilizedStartedMs).toBeGreaterThanOrEqual(submittedAtMs - 1_000);
+  expect(Date.now() - stabilizedStartedMs).toBeLessThan(30_000);
 });
 
 test("submits completed task follow-ups and reloads canonical messages", async ({
