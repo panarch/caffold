@@ -757,6 +757,50 @@ async fn external_completion_clears_running_state_without_losing_history() {
 }
 
 #[tokio::test]
+async fn idle_notification_overrides_stale_in_progress_turn_page() {
+    let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+        "thread/resume",
+        resume_response(
+            ThreadStatus::Active {
+                active_flags: Vec::new(),
+            },
+            Vec::new(),
+            vec![turn("turn-stale", TurnStatus::InProgress)],
+        ),
+    )]);
+    let sessions = CodexThreadSessions::default();
+    let _viewer = sessions
+        .acquire_viewer(&client, 1, "thread-1")
+        .await
+        .expect("viewer");
+
+    sessions
+        .apply_notification(
+            1,
+            &CodexNotification::ThreadStatusChanged {
+                thread_id: "thread-1".to_string(),
+                status: ThreadStatus::Idle,
+            },
+        )
+        .await;
+    let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
+
+    assert_eq!(snapshot.active_turn_id, None);
+    assert!(!snapshot.runtime_lease);
+    assert!(
+        snapshot
+            .thread
+            .as_ref()
+            .is_some_and(|thread| thread.status == ThreadStatus::Idle)
+    );
+    assert_eq!(
+        snapshot.turns_page.as_ref().expect("history").data[0].status,
+        TurnStatus::InProgress
+    );
+    assert!(!snapshot.is_running());
+}
+
+#[tokio::test]
 async fn completed_subscribed_prompt_starts_without_another_resume() {
     let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
         "thread/resume",

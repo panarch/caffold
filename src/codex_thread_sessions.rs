@@ -56,11 +56,6 @@ impl ThreadSessionSnapshot {
                 .thread
                 .as_ref()
                 .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }))
-            || self.turns_page.as_ref().is_some_and(|page| {
-                page.data
-                    .iter()
-                    .any(|turn| turn.status == TurnStatus::InProgress)
-            })
     }
 }
 

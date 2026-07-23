@@ -3308,15 +3308,13 @@ fn task_record_from_thread(
         .and_then(JsonValue::as_str)
         .unwrap_or("")
         .to_string();
-    let active_turn_id = active_turn_id(thread);
+    let status = thread_status(thread);
+    let active_turn_id = (status == "running")
+        .then(|| active_turn_id(thread))
+        .flatten();
     let active_turn_started_ms = active_turn_id
         .as_deref()
         .and_then(|turn_id| turn_started_ms(thread, turn_id));
-    let status = if active_turn_id.is_some() {
-        "running".to_string()
-    } else {
-        thread_status(thread)
-    };
     let last_event_summary = events
         .last()
         .map(|event| event.summary.clone())
@@ -7472,6 +7470,31 @@ mod tests {
         assert_eq!(task.status, "running");
         assert_eq!(task.active_turn_id.as_deref(), Some("turn_active"));
         assert_eq!(task.active_turn_started_ms, Some(1_750_000_000_000));
+    }
+
+    #[test]
+    fn task_record_does_not_revive_stale_active_turn_for_idle_thread() {
+        let temp = tempfile::tempdir().unwrap();
+        let thread = json!({
+            "id": "thread_idle_with_stale_turn",
+            "preview": "Canonical thread is already idle",
+            "cwd": temp.path().display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": 2.0,
+            "status": { "type": "idle" },
+            "turns": [{
+                "id": "turn_stale",
+                "status": "inProgress",
+                "startedAt": 1_750_000_000.0,
+                "items": []
+            }]
+        });
+
+        let task = task_record_from_thread(&thread, &[], None, false).unwrap();
+
+        assert_eq!(task.status, "idle");
+        assert_eq!(task.active_turn_id, None);
+        assert_eq!(task.active_turn_started_ms, None);
     }
 
     #[test]

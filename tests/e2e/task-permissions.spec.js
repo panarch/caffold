@@ -341,3 +341,79 @@ test("active turns lock the approval mode until the next turn", async ({ page })
   expect(submittedBody).not.toHaveProperty("model");
   expect(submittedBody).not.toHaveProperty("effort");
 });
+
+test("steering an active turn preserves its existing work clock", async ({ page }) => {
+  await stubComposerApis(page);
+  const startedMs = Date.now() - 65_000;
+  const detail = taskDetail({ running: true });
+  detail.task.activeTurnStartedMs = startedMs;
+  detail.events = [
+    {
+      id: "turn-1:started",
+      threadId: "thread-1",
+      type: "turn_started",
+      summary: "Turn started",
+      payload: { turnId: "turn-1" },
+      createdMs: startedMs,
+    },
+  ];
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: detail }),
+  );
+  await page.route("**/api/tasks/thread-1/stream*", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: ": ready\n\n",
+    }),
+  );
+  let submittedBody = null;
+  let acceptPrompt;
+  const promptAccepted = new Promise((resolve) => {
+    acceptPrompt = resolve;
+  });
+  let releasePrompt;
+  await page.route("**/api/tasks/thread-1/prompts", async (route) => {
+    submittedBody = route.request().postDataJSON();
+    acceptPrompt();
+    await new Promise((resolve) => {
+      releasePrompt = resolve;
+    });
+    return route.fulfill({
+      json: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        steered: true,
+      },
+    });
+  });
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  const activeTurn = page.locator('.task-turn-active[data-turn-id="turn-1"]');
+  await expect(activeTurn).toHaveAttribute(
+    "data-active-turn-started-ms",
+    `${startedMs}`,
+  );
+
+  const prompt = page.getByRole("textbox", { name: "Follow-up prompt" });
+  await prompt.fill("Steer without resetting the clock");
+  await prompt.press("Enter");
+  await promptAccepted;
+
+  expect(submittedBody).toMatchObject({
+    prompt: "Steer without resetting the clock",
+    activeTurnId: "turn-1",
+  });
+  await expect(activeTurn).toHaveAttribute(
+    "data-active-turn-started-ms",
+    `${startedMs}`,
+  );
+
+  releasePrompt();
+  await expect(
+    page.locator('.task-follow-up-form[data-task-form="follow-up"]'),
+  ).toHaveAttribute("aria-busy", "false");
+  await expect(activeTurn).toHaveAttribute(
+    "data-active-turn-started-ms",
+    `${startedMs}`,
+  );
+});
