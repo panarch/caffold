@@ -1463,6 +1463,13 @@ async fn list_managed_tasks(
 ) -> Result<Json<TaskListResponse>, ApiError> {
     let (stored, next_cursor) =
         thread_store_list(&state, query.cursor.as_deref(), TASK_LIST_PAGE_SIZE).await?;
+    let pending_thread_ids = state
+        .pending_approvals
+        .lock()
+        .await
+        .values()
+        .map(|pending| pending.thread_id.clone())
+        .collect::<HashSet<_>>();
     let mut cwds = stored
         .iter()
         .map(|thread| thread.cwd.clone())
@@ -1482,7 +1489,10 @@ async fn list_managed_tasks(
         .into_iter()
         .map(|thread| {
             let resolved_cwd = resolved_cwds.get(&thread.cwd).and_then(Option::as_ref);
-            task_record_from_stored(thread, resolved_cwd)
+            let mut task = task_record_from_stored(thread, resolved_cwd);
+            let has_pending_approval = pending_thread_ids.contains(&task.thread_id);
+            apply_current_approval_status(&mut task, has_pending_approval);
+            task
         })
         .collect();
     Ok(Json(TaskListResponse { tasks, next_cursor }))
@@ -1777,7 +1787,7 @@ fn task_record_from_codex_thread(
 ) -> Result<TaskRecord, ApiError> {
     let thread = thread.clone().into_value();
     let resolved = resolve_thread_cwd(&state.fs, &thread);
-    task_record_from_thread(&thread, &[], resolved.as_ref())
+    task_record_from_thread(&thread, &[], resolved.as_ref(), false)
 }
 
 fn task_not_managed_error() -> ApiError {
@@ -2505,7 +2515,7 @@ async fn task_approval(
         })),
         now_ms(),
     );
-    let _ = state.task_events.send(event);
+    publish_task_event(&state.task_events, &state.live_task_events, event);
 
     Ok(Json(
         read_task_detail(&state, &connection, &thread_id, None).await?,
@@ -2717,7 +2727,12 @@ async fn task_detail_from_snapshot(
             .then_with(|| left.id.cmp(&right.id))
     });
     let resolved_cwd = resolve_thread_cwd(&state.fs, &thread);
-    let mut task = task_record_from_thread(&thread, &events, resolved_cwd.as_ref())?;
+    let mut task = task_record_from_thread(
+        &thread,
+        &events,
+        resolved_cwd.as_ref(),
+        !pending_approvals.is_empty(),
+    )?;
     apply_session_activity(
         &mut task,
         session_running,
@@ -2879,7 +2894,7 @@ fn thread_list_response_with_resolved(
             let resolved_cwd = thread_cwd(thread)
                 .and_then(|cwd| resolved_cwds.get(cwd))
                 .and_then(Option::as_ref);
-            task_record_from_thread(thread, &[], resolved_cwd).ok()
+            task_record_from_thread(thread, &[], resolved_cwd, false).ok()
         })
         .collect::<Vec<_>>();
     tasks.sort_by(|left, right| {
@@ -2896,6 +2911,7 @@ fn task_record_from_thread(
     thread: &JsonValue,
     events: &[TaskEventRecord],
     resolved_cwd: Option<&ResolvedTaskCwd>,
+    has_pending_approval: bool,
 ) -> Result<TaskRecord, ApiError> {
     let thread_id = thread_id(thread).ok_or_else(|| ApiError::BadRequest {
         code: "thread_id_missing",
@@ -2914,12 +2930,7 @@ fn task_record_from_thread(
     let active_turn_started_ms = active_turn_id
         .as_deref()
         .and_then(|turn_id| turn_started_ms(thread, turn_id));
-    let has_pending_approval = events
-        .iter()
-        .any(|event| event.event_type == "approval_requested");
-    let status = if has_pending_approval {
-        "waiting_for_approval".to_string()
-    } else if active_turn_id.is_some() {
+    let status = if active_turn_id.is_some() {
         "running".to_string()
     } else {
         thread_status(thread)
@@ -2928,7 +2939,7 @@ fn task_record_from_thread(
         .last()
         .map(|event| event.summary.clone())
         .or_else(|| non_empty_string(Some(&preview)));
-    Ok(TaskRecord {
+    let mut task = TaskRecord {
         id: thread_id.to_string(),
         thread_id: thread_id.to_string(),
         title,
@@ -2950,7 +2961,21 @@ fn task_record_from_thread(
         active_turn_started_ms,
         last_event_summary,
         unseen: false,
-    })
+    };
+    apply_current_approval_status(&mut task, has_pending_approval);
+    Ok(task)
+}
+
+fn apply_current_approval_status(task: &mut TaskRecord, has_pending_approval: bool) {
+    if has_pending_approval {
+        task.status = "waiting_for_approval".to_string();
+    } else if task.status == "waiting_for_approval" {
+        task.status = if task.active_turn_id.is_some() {
+            "running".to_string()
+        } else {
+            "idle".to_string()
+        };
+    }
 }
 
 fn stored_thread_from_task_record(task: &TaskRecord) -> StoredThread {
@@ -3163,6 +3188,13 @@ fn spawn_codex_thread_bridge(
                                 .sessions
                                 .apply_notification(generation, &notification)
                                 .await;
+                            expire_stale_approvals_for_notification(
+                                &context.task_events,
+                                &context.live_task_events,
+                                &context.pending_approvals,
+                                &notification,
+                            )
+                            .await;
                             handle_codex_notification(
                                 &context.task_events,
                                 &context.live_task_events,
@@ -3172,6 +3204,7 @@ fn spawn_codex_thread_bridge(
                         CodexRuntimeEvent::ServerRequest(request) => {
                             handle_codex_server_request(
                                 &context.task_events,
+                                &context.live_task_events,
                                 &context.pending_approvals,
                                 request,
                             )
@@ -3768,6 +3801,7 @@ fn command_execution_summary(item: &JsonValue) -> String {
 
 async fn handle_codex_server_request(
     task_events: &broadcast::Sender<TaskEventRecord>,
+    live_task_events: &LiveTaskEventCache,
     pending_approvals: &Arc<AsyncMutex<HashMap<String, PendingApproval>>>,
     request: CodexServerRequest,
 ) {
@@ -3813,7 +3847,86 @@ async fn handle_codex_server_request(
         })),
         now_ms(),
     );
-    let _ = task_events.send(event);
+    publish_task_event(task_events, live_task_events, event);
+}
+
+async fn expire_stale_approvals_for_notification(
+    task_events: &broadcast::Sender<TaskEventRecord>,
+    live_task_events: &LiveTaskEventCache,
+    pending_approvals: &Arc<AsyncMutex<HashMap<String, PendingApproval>>>,
+    notification: &CodexNotification,
+) {
+    let expired = {
+        let mut approvals = pending_approvals.lock().await;
+        let expired_ids = approvals
+            .iter()
+            .filter_map(|(approval_id, pending)| {
+                stale_approval_reason(pending, notification)
+                    .map(|reason| (approval_id.clone(), reason))
+            })
+            .collect::<Vec<_>>();
+        expired_ids
+            .into_iter()
+            .filter_map(|(approval_id, reason)| {
+                approvals
+                    .remove(&approval_id)
+                    .map(|pending| (approval_id, pending, reason))
+            })
+            .collect::<Vec<_>>()
+    };
+
+    for (approval_id, pending, reason) in expired {
+        let event = task_event_record(
+            &pending.thread_id,
+            &format!("approval_resolved:{approval_id}"),
+            "approval_resolved",
+            "Approval expired",
+            Some(json!({
+                "approvalId": approval_id,
+                "kind": pending.kind.as_str(),
+                "decision": "expired",
+                "reason": reason
+            })),
+            now_ms(),
+        );
+        publish_task_event(task_events, live_task_events, event);
+    }
+}
+
+fn stale_approval_reason(
+    pending: &PendingApproval,
+    notification: &CodexNotification,
+) -> Option<&'static str> {
+    match notification {
+        CodexNotification::TurnStarted { thread_id, turn }
+            if pending.thread_id == *thread_id
+                && pending
+                    .params
+                    .get("turnId")
+                    .and_then(JsonValue::as_str)
+                    .is_some_and(|turn_id| turn_id != turn.id) =>
+        {
+            Some("another turn started")
+        }
+        CodexNotification::TurnCompleted { thread_id, turn }
+            if pending.thread_id == *thread_id
+                && turn.status != TurnStatus::InProgress
+                && pending
+                    .params
+                    .get("turnId")
+                    .and_then(JsonValue::as_str)
+                    .is_none_or(|turn_id| turn_id == turn.id) =>
+        {
+            Some("turn completed")
+        }
+        CodexNotification::ThreadStatusChanged { thread_id, status }
+            if pending.thread_id == *thread_id
+                && matches!(status, ThreadStatus::Idle | ThreadStatus::SystemError) =>
+        {
+            Some("thread became inactive")
+        }
+        _ => None,
+    }
 }
 
 fn approval_id_from_request(request_id: &JsonValue, params: &JsonValue) -> String {
@@ -4403,7 +4516,7 @@ mod tests {
     async fn manage_test_thread(state: &AppState, thread_id: &str, cwd: &Path) {
         let thread = task_thread_list(thread_id, cwd)["data"][0].clone();
         let resolved = resolve_thread_cwd(&state.fs, &thread);
-        let task = task_record_from_thread(&thread, &[], resolved.as_ref())
+        let task = task_record_from_thread(&thread, &[], resolved.as_ref(), false)
             .expect("test thread projection");
         thread_store_claim(state, stored_thread_from_task_record(&task))
             .await
@@ -4468,6 +4581,27 @@ mod tests {
                 })
             )]
         );
+    }
+
+    #[tokio::test]
+    async fn managed_list_downgrades_stored_waiting_without_live_approval() {
+        let root = tempfile::tempdir().unwrap();
+        let client = CodexThreadClient::mock(Vec::new());
+        let state = app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        let thread = task_thread_list("thread-stale-approval", root.path())["data"][0].clone();
+        let resolved = resolve_thread_cwd(&state.fs, &thread);
+        let stale = task_record_from_thread(&thread, &[], resolved.as_ref(), true).unwrap();
+        assert_eq!(stale.status, "waiting_for_approval");
+        thread_store_claim(&state, stored_thread_from_task_record(&stale))
+            .await
+            .unwrap();
+
+        let response = list_managed_tasks(State(state), Query(TasksQuery { cursor: None }))
+            .await
+            .unwrap();
+
+        assert_eq!(response.0.tasks.len(), 1);
+        assert_eq!(response.0.tasks[0].status, "idle");
     }
 
     #[tokio::test]
@@ -6217,7 +6351,7 @@ mod tests {
                 "items": []
             }]
         });
-        let task = task_record_from_thread(&thread, &[], None).unwrap();
+        let task = task_record_from_thread(&thread, &[], None, false).unwrap();
 
         assert_eq!(task.status, "running");
         assert_eq!(task.active_turn_id.as_deref(), Some("turn_active"));
@@ -6236,7 +6370,7 @@ mod tests {
             "status": { "type": "idle" },
             "turns": []
         });
-        let mut task = task_record_from_thread(&thread, &[], None).unwrap();
+        let mut task = task_record_from_thread(&thread, &[], None, false).unwrap();
 
         apply_session_activity(
             &mut task,
@@ -6263,7 +6397,7 @@ mod tests {
             "turns": []
         });
 
-        let task = task_record_from_thread(&thread, &[], None).unwrap();
+        let task = task_record_from_thread(&thread, &[], None, false).unwrap();
 
         assert_eq!(task.status, "idle");
         assert_eq!(task.active_turn_id, None);
@@ -6720,7 +6854,7 @@ mod tests {
     }
 
     #[test]
-    fn pending_approval_events_mark_task_as_waiting_for_approval() {
+    fn current_pending_approval_marks_task_as_waiting_for_approval() {
         let temp = tempfile::tempdir().unwrap();
         let thread = json!({
             "id": "thread_1",
@@ -6739,8 +6873,111 @@ mod tests {
             1,
         )];
 
-        let task = task_record_from_thread(&thread, &events, None).unwrap();
+        let task = task_record_from_thread(&thread, &events, None, true).unwrap();
         assert_eq!(task.status, "waiting_for_approval");
+    }
+
+    #[test]
+    fn resolved_approval_event_does_not_leave_idle_task_waiting() {
+        let temp = tempfile::tempdir().unwrap();
+        let thread = json!({
+            "id": "thread_1",
+            "preview": "Approval was accepted",
+            "cwd": temp.path().join("project").display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": 4.0,
+            "status": { "type": "idle" }
+        });
+        let events = vec![
+            task_event_record(
+                "thread_1",
+                "approval_requested:1",
+                "approval_requested",
+                "Command approval requested",
+                Some(json!({ "approvalId": "1" })),
+                1,
+            ),
+            task_event_record(
+                "thread_1",
+                "approval_resolved:1",
+                "approval_resolved",
+                "Approval resolved: accept",
+                Some(json!({ "approvalId": "1", "decision": "accept" })),
+                2,
+            ),
+            task_event_record(
+                "thread_1",
+                "turn_1:completed",
+                "turn_completed",
+                "Turn completed",
+                Some(json!({
+                    "threadId": "thread_1",
+                    "turnId": "turn_1",
+                    "status": "completed"
+                })),
+                3,
+            ),
+            task_event_record(
+                "thread_1",
+                "thread_status_changed",
+                "thread_status_changed",
+                "Thread idle",
+                Some(json!({ "threadId": "thread_1", "status": "idle" })),
+                4,
+            ),
+        ];
+
+        let task = task_record_from_thread(&thread, &events, None, false).unwrap();
+        assert_eq!(task.status, "idle");
+    }
+
+    #[test]
+    fn completed_turn_does_not_leave_abandoned_approval_waiting() {
+        let temp = tempfile::tempdir().unwrap();
+        let thread = json!({
+            "id": "thread_1",
+            "preview": "A later prompt completed",
+            "cwd": temp.path().join("project").display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": 3.0,
+            "status": { "type": "idle" }
+        });
+        let events = vec![
+            task_event_record(
+                "thread_1",
+                "approval_requested:1",
+                "approval_requested",
+                "Command approval requested",
+                Some(json!({
+                    "approvalId": "1",
+                    "params": { "turnId": "turn_1" }
+                })),
+                1,
+            ),
+            task_event_record(
+                "thread_1",
+                "turn_1:completed",
+                "turn_completed",
+                "Turn completed",
+                Some(json!({
+                    "threadId": "thread_1",
+                    "turnId": "turn_1",
+                    "status": "completed"
+                })),
+                2,
+            ),
+            task_event_record(
+                "thread_1",
+                "thread_status_changed",
+                "thread_status_changed",
+                "Thread idle",
+                Some(json!({ "threadId": "thread_1", "status": "idle" })),
+                3,
+            ),
+        ];
+
+        let task = task_record_from_thread(&thread, &events, None, false).unwrap();
+        assert_eq!(task.status, "idle");
     }
 
     #[test]
@@ -7016,10 +7253,12 @@ mod tests {
         let project_root = temp.path().join("project");
         std::fs::create_dir(&project_root).unwrap();
         let (sender, mut receiver) = broadcast::channel(4);
+        let live_task_events = LiveTaskEventCache::default();
         let pending = Arc::new(AsyncMutex::new(HashMap::new()));
 
         handle_codex_server_request(
             &sender,
+            &live_task_events,
             &pending,
             codex_app_server::decode_server_request(
                 json!(11),
@@ -7045,6 +7284,63 @@ mod tests {
         let event = receiver.recv().await.unwrap();
         assert_eq!(event.thread_id, "thread_1");
         assert_eq!(event.event_type, "approval_requested");
+        assert_eq!(live_task_events.for_thread("thread_1"), vec![event]);
+    }
+
+    #[tokio::test]
+    async fn completed_turn_expires_live_pending_approval() {
+        let (sender, mut receiver) = broadcast::channel(4);
+        let live_task_events = LiveTaskEventCache::default();
+        let pending = Arc::new(AsyncMutex::new(HashMap::new()));
+
+        handle_codex_server_request(
+            &sender,
+            &live_task_events,
+            &pending,
+            codex_app_server::decode_server_request(
+                json!(11),
+                "item/commandExecution/requestApproval",
+                json!({
+                    "threadId": "thread_1",
+                    "turnId": "turn_1",
+                    "command": "cargo test",
+                    "availableDecisions": ["accept", "decline"]
+                }),
+            )
+            .unwrap(),
+        )
+        .await;
+        let requested = receiver.recv().await.unwrap();
+        assert_eq!(requested.event_type, "approval_requested");
+
+        let completed = codex_app_server::decode_notification(
+            "turn/completed",
+            json!({
+                "threadId": "thread_1",
+                "turn": {
+                    "id": "turn_1",
+                    "status": "completed",
+                    "completedAt": 1_750_000_004.5
+                }
+            }),
+        )
+        .unwrap();
+        expire_stale_approvals_for_notification(&sender, &live_task_events, &pending, &completed)
+            .await;
+
+        assert!(pending.lock().await.is_empty());
+        let resolved = receiver.recv().await.unwrap();
+        assert_eq!(resolved.event_type, "approval_resolved");
+        assert_eq!(resolved.payload.as_ref().unwrap()["approvalId"], "11");
+        assert_eq!(resolved.payload.as_ref().unwrap()["decision"], "expired");
+        assert_eq!(
+            live_task_events
+                .for_thread("thread_1")
+                .iter()
+                .map(|event| event.event_type.as_str())
+                .collect::<Vec<_>>(),
+            ["approval_requested", "approval_resolved"]
+        );
     }
 
     fn git_is_available() -> bool {
