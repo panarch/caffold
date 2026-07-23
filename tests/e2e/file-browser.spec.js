@@ -2115,6 +2115,170 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
   }
 });
 
+test("keeps the Tasks list DOM stable while opening a managed task", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.EventSource = class MockEventSource {
+      constructor(url) {
+        this.url = url;
+        this.listeners = new Map();
+        if (url.includes("/api/tasks/stream")) {
+          window.__taskListEventSource = this;
+        }
+      }
+
+      addEventListener(type, listener) {
+        this.listeners.set(type, listener);
+      }
+
+      emit(type, payload) {
+        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
+      }
+
+      close() {}
+    };
+  });
+  await mockCodexModels(page);
+
+  const now = 1_767_300_000_000;
+  const tasks = [
+    {
+      id: "thread_dom_stability",
+      threadId: "thread_dom_stability",
+      activeTurnId: null,
+      title: "DOM stability task",
+      preview: "DOM stability task preview",
+      status: "completed",
+      cwd: "src",
+      cwdPath: "src",
+      relativeCwd: "",
+      worktree: null,
+      createdMs: now,
+      updatedMs: now + 200,
+      recencyMs: now + 200,
+      lastEventSummary: "DOM stability task summary",
+      unseen: true,
+    },
+    {
+      id: "thread_dom_sibling",
+      threadId: "thread_dom_sibling",
+      activeTurnId: null,
+      title: "DOM sibling task",
+      preview: "DOM sibling task preview",
+      status: "completed",
+      cwd: "src",
+      cwdPath: "src",
+      relativeCwd: "",
+      worktree: null,
+      createdMs: now,
+      updatedMs: now + 100,
+      recencyMs: now + 100,
+      lastEventSummary: "DOM sibling task summary",
+      unseen: false,
+    },
+  ];
+  let seenRequests = 0;
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks, nextCursor: null }),
+    }),
+  );
+  await page.route(/\/api\/task-history(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [], nextCursor: null }),
+    }),
+  );
+  await page.route(/\/api\/tasks\/thread_dom_stability\/seen$/, (route) => {
+    seenRequests += 1;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ...tasks[0], unseen: false }),
+    });
+  });
+  await page.route(/\/api\/tasks\/thread_dom_stability(?:\?|$)/, async (route) => {
+    const task = { ...tasks[0], unseen: false };
+    await page.evaluate((updatedTask) => {
+      window.__taskListEventSource.emit("task-updated", updatedTask);
+    }, task);
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        managed: true,
+        revision: 1,
+        task,
+        events: [
+          {
+            id: "event_dom_stability",
+            threadId: task.threadId,
+            type: "assistant_message",
+            summary: "Assistant response",
+            payload: { text: "DOM stability detail response" },
+            createdMs: task.updatedMs,
+          },
+        ],
+        eventsPage: { nextCursor: null },
+        pendingApprovals: [],
+      }),
+    });
+  });
+
+  await page.goto("/tasks");
+  const tasksPage = page.locator("caffold-tasks-page");
+  const target = tasksPage.locator(
+    '.task-row[data-thread-id="thread_dom_stability"]',
+  );
+  await expect(target.locator(".task-unseen-complete")).toBeVisible();
+  await tasksPage.evaluate((element) => {
+    const row = element.querySelector(
+      '.task-row[data-thread-id="thread_dom_stability"]',
+    );
+    row.dataset.domProbe = "preserved";
+    row.closest("li").dataset.domProbe = "preserved";
+    window.__taskListDomProbe = {
+      scroller: element.querySelector(".task-list-scroll"),
+      list: row.closest(".task-list"),
+      item: row.closest("li"),
+      row,
+    };
+  });
+
+  await target.click();
+  await expect(page).toHaveURL("/tasks/thread_dom_stability");
+  await expect(tasksPage.locator(".tasks-detail-pane")).toContainText(
+    "DOM stability detail response",
+  );
+
+  const result = await tasksPage.evaluate((element) => {
+    const row = element.querySelector(
+      '.task-row[data-thread-id="thread_dom_stability"]',
+    );
+    const probe = window.__taskListDomProbe;
+    return {
+      scrollerPreserved: probe.scroller === element.querySelector(".task-list-scroll"),
+      listPreserved: probe.list === row.closest(".task-list"),
+      itemPreserved: probe.item === row.closest("li"),
+      rowPreserved: probe.row === row,
+      itemStatePreserved: row.closest("li").dataset.domProbe,
+      rowStatePreserved: row.dataset.domProbe,
+      selected: row.getAttribute("aria-current"),
+      unseenIndicatorCount: row.querySelectorAll(".task-unseen-complete").length,
+    };
+  });
+  expect({ ...result, seenRequests }).toEqual({
+    scrollerPreserved: true,
+    listPreserved: true,
+    itemPreserved: true,
+    rowPreserved: true,
+    itemStatePreserved: "preserved",
+    rowStatePreserved: "preserved",
+    selected: "true",
+    unseenIndicatorCount: 0,
+    seenRequests: 0,
+  });
+});
+
 test("groups Tasks by repository without worktree accordions", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     window.EventSource = class MockEventSource {

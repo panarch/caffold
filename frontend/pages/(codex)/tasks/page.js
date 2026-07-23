@@ -9,7 +9,6 @@ import {
   getTaskHistory,
   getTasks,
   interruptTask,
-  markTaskSeen as acknowledgeTaskSeen,
   resolveTaskApproval,
   sendTaskPrompt,
   taskListStreamUrl,
@@ -545,7 +544,6 @@ class CaffoldTasksPage extends HTMLElement {
         return detail;
       }
       this.patchTaskListTask({ ...detail.task, unseen: false });
-      void this.acknowledgeSelectedTaskSeen(threadId);
       this.conversationScrollMode = this.isInitialConversationScrollPending(threadId)
         ? "bottom"
         : this.conversationScrollSnapshot(threadId)
@@ -566,24 +564,6 @@ class CaffoldTasksPage extends HTMLElement {
       this.render();
       this.finishInitialConversationScroll(threadId, requestId);
       return null;
-    }
-  }
-
-  async acknowledgeSelectedTaskSeen(threadId) {
-    try {
-      const task = await acknowledgeTaskSeen(threadId);
-      if (threadId !== this.selectedThreadId) {
-        return;
-      }
-      if (this.taskDetail?.task?.threadId === threadId) {
-        this.taskDetail = {
-          ...this.taskDetail,
-          task: { ...this.taskDetail.task, unseen: false },
-        };
-      }
-      this.patchTaskListTask(task);
-    } catch {
-      // The detail remains usable; the next canonical refresh can retry seen state.
     }
   }
 
@@ -992,12 +972,16 @@ class CaffoldTasksPage extends HTMLElement {
       if (!threadId) {
         return;
       }
+      const historyLength = this.taskHistory.length;
       this.taskHistory = this.taskHistory.filter(
         (candidate) => taskThreadId(candidate) !== threadId,
       );
       this.patchTaskListTask(task);
-      this.markTaskListDirty();
+      if (this.taskHistory.length !== historyLength) {
+        this.markTaskListDirty();
+      }
       this.renderTaskListRegion();
+      this.syncTaskListSelection();
     });
     stream.addEventListener("task-event", (event) => {
       if (this.taskListStream !== stream || this.taskListStreamContext !== context) {
@@ -3605,11 +3589,12 @@ class CaffoldTasksPage extends HTMLElement {
     const template = document.createElement("template");
     template.innerHTML = this.renderTaskRow(task, nextListKey).trim();
     const nextRow = template.content.firstElementChild;
-    if (nextRow) {
-      row.replaceWith(nextRow);
-      this.syncTaskListSelection();
-      this.reorderTaskListDom();
+    if (!nextRow || !patchTaskListRow(row, nextRow)) {
+      this.markTaskListDirty();
+      return;
     }
+    this.syncTaskListSelection();
+    this.reorderTaskListDom();
   }
 
   removeTaskListTask(threadId) {
@@ -3640,14 +3625,14 @@ class CaffoldTasksPage extends HTMLElement {
       if (!taskList) {
         return;
       }
-      for (const task of tasks) {
-        const row = taskList.querySelector(
-          `:scope > [data-thread-id="${CSS.escape(taskThreadId(task))}"]`,
-        );
-        if (row) {
-          taskList.append(row);
-        }
-      }
+      const rows = tasks
+        .map((task) =>
+          taskList.querySelector(
+            `:scope > [data-thread-id="${CSS.escape(taskThreadId(task))}"]`,
+          ),
+        )
+        .filter(Boolean);
+      reorderChildElements(taskList, rows);
       return;
     }
 
@@ -3658,6 +3643,7 @@ class CaffoldTasksPage extends HTMLElement {
     if (!groupList) {
       return;
     }
+    const groupElements = [];
     for (const group of groups) {
       const groupElement = groupList.querySelector(
         `:scope > [data-task-repository-key="${CSS.escape(group.key)}"]`,
@@ -3665,17 +3651,20 @@ class CaffoldTasksPage extends HTMLElement {
       if (!groupElement) {
         continue;
       }
+      groupElements.push(groupElement);
       const taskList = groupElement.querySelector(":scope > .task-list");
-      for (const task of group.tasks) {
-        const row = taskList?.querySelector(
-          `:scope > [data-thread-id="${CSS.escape(taskThreadId(task))}"]`,
-        );
-        if (row) {
-          taskList.append(row);
-        }
+      if (taskList) {
+        const rows = group.tasks
+          .map((task) =>
+            taskList.querySelector(
+              `:scope > [data-thread-id="${CSS.escape(taskThreadId(task))}"]`,
+            ),
+          )
+          .filter(Boolean);
+        reorderChildElements(taskList, rows);
       }
-      groupList.append(groupElement);
     }
+    reorderChildElements(groupList, groupElements);
   }
 
   renderNewTask(options = {}) {
@@ -6074,6 +6063,51 @@ function imageExtension(type) {
     "image/png": "png",
     "image/webp": "webp",
   }[type] ?? "png";
+}
+
+function patchTaskListRow(row, nextRow) {
+  const currentButton = row.querySelector(":scope > .task-row");
+  const nextButton = nextRow.querySelector(":scope > .task-row");
+  if (!currentButton || !nextButton) {
+    return false;
+  }
+
+  syncElementAttributes(row, nextRow, [
+    "class",
+    "data-thread-id",
+    "data-task-list-key",
+  ]);
+  syncElementAttributes(currentButton, nextButton, [
+    "type",
+    "class",
+    "data-task-action",
+    "data-thread-id",
+    "data-task-status",
+    "title",
+    "aria-current",
+    "aria-busy",
+  ]);
+  currentButton.replaceChildren(...nextButton.childNodes);
+  return true;
+}
+
+function syncElementAttributes(element, nextElement, names) {
+  for (const name of names) {
+    if (nextElement.hasAttribute(name)) {
+      element.setAttribute(name, nextElement.getAttribute(name));
+    } else {
+      element.removeAttribute(name);
+    }
+  }
+}
+
+function reorderChildElements(parent, elements) {
+  for (let index = 0; index < elements.length; index += 1) {
+    const element = elements[index];
+    if (parent.children[index] !== element) {
+      parent.insertBefore(element, parent.children[index] ?? null);
+    }
+  }
 }
 
 function upsertTask(tasks, task) {
