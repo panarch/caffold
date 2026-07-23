@@ -108,6 +108,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.conversationScrollMode = null;
     this.conversationScrollByThread = new Map();
     this.conversationResizeObserver = null;
+    this.conversationDisclosureByThread = new Map();
     this.newTaskDraft = { prompt: "" };
     this.newTaskImages = [];
     this.followUpDraft = "";
@@ -173,6 +174,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.addEventListener(
       "click",
       (event) => {
+        this.handleConversationDisclosureClick(event);
         const reviewMenu = closestElement(event.target, ".task-review-menu");
         for (const menu of this.querySelectorAll(".task-review-menu[open]")) {
           if (menu !== reviewMenu) {
@@ -2314,6 +2316,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.renderHeaderRegion();
     this.renderTaskListRegion();
     this.renderTaskContentRegion();
+    this.restoreConversationDisclosureState();
     this.syncComposerTextareas();
     this.restoreComposerFocus(previousComposerFocus);
     this.bindConversationScroll();
@@ -3114,6 +3117,52 @@ class CaffoldTasksPage extends HTMLElement {
     }`.trim();
   }
 
+  handleConversationDisclosureClick(event) {
+    const summary = closestElement(
+      event.target,
+      ".task-conversation details[data-disclosure-key] > summary",
+    );
+    const disclosure = summary?.parentElement;
+    if (
+      !(disclosure instanceof HTMLDetailsElement) ||
+      !disclosure.matches(".task-conversation details[data-disclosure-key]")
+    ) {
+      return;
+    }
+
+    const threadId = `${
+      disclosure.closest(".task-detail")?.getAttribute("data-thread-id") ?? ""
+    }`.trim();
+    const key = `${disclosure.dataset.disclosureKey ?? ""}`.trim();
+    if (!threadId || !key) {
+      return;
+    }
+    let state = this.conversationDisclosureByThread.get(threadId);
+    if (!state) {
+      state = new Map();
+      this.conversationDisclosureByThread.set(threadId, state);
+    }
+    state.set(key, !disclosure.open);
+  }
+
+  restoreConversationDisclosureState() {
+    const threadId = this.renderedConversationThreadId();
+    const state = this.conversationDisclosureByThread.get(threadId);
+    if (!state) {
+      return;
+    }
+
+    this.querySelectorAll(
+      ".task-conversation details[data-disclosure-key]",
+    ).forEach((disclosure) => {
+      const key = disclosure.dataset.disclosureKey;
+      if (!state.has(key)) {
+        return;
+      }
+      disclosure.toggleAttribute("open", state.get(key));
+    });
+  }
+
   rememberConversationScroll(threadId = this.renderedConversationThreadId()) {
     const snapshot = this.captureConversationScroll();
     if (snapshot && threadId) {
@@ -3576,6 +3625,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.tasks = tasks;
     this.taskDetailRevisionByThread.delete(threadId);
     this.taskListRevisionByThread.delete(threadId);
+    this.conversationDisclosureByThread.delete(threadId);
     this.markTaskListDirty();
     this.renderTaskListRegion();
     this.syncTaskListSelection();
@@ -4885,6 +4935,25 @@ function eventIdentityAttribute(event) {
   return eventId ? ` data-event-id="${escapeHtml(eventId)}"` : "";
 }
 
+function disclosureIdentityAttribute(kind, identity) {
+  const value = `${identity ?? ""}`.trim();
+  return value
+    ? ` data-disclosure-key="${escapeHtml(`${kind}:${value}`)}"`
+    : "";
+}
+
+function turnGroupDisclosureIdentity(group) {
+  const turnId = `${group?.turnId ?? ""}`.trim();
+  if (turnId && !turnId.startsWith("implicit-")) {
+    return turnId;
+  }
+
+  const eventId = group?.events
+    ?.map((event) => `${event?.id ?? ""}`.trim())
+    .find(Boolean);
+  return eventId || eventIdentityKey(group?.events?.[0]) || turnId;
+}
+
 function userMessagePresentation(payload) {
   const content = userMessageContent(payload);
   const text = userMessageText(payload);
@@ -5044,7 +5113,7 @@ function renderThinkingEvent(event, text, task, eventState) {
 
   return `
     <li class="task-event task-thinking" data-event-type="${escapeHtml(event.type)}" data-thinking-state="${escapeHtml(state)}">
-      <details${open}>
+      <details${open}${disclosureIdentityAttribute("thinking", eventIdentityKey(event))}>
         <summary>
           <span>Thinking</span>
           <time>${escapeHtml(formatDate(event.createdMs))}</time>
@@ -5064,7 +5133,7 @@ function renderTurnWorkSummary(group, workEvents, terminalEvent) {
   const label = duration ? `Worked for ${duration}` : "Work details";
   return `
     <li class="task-event task-turn-work" data-turn-id="${escapeHtml(group.turnId)}">
-      <details>
+      <details${disclosureIdentityAttribute("turn-work", turnGroupDisclosureIdentity(group))}>
         <summary>
           <span>${escapeHtml(label)}</span>
           <span>${escapeHtml(updateText)}</span>
@@ -5201,7 +5270,7 @@ function renderTurnWorkItem(event) {
     const open = status && status !== "completed" ? " open" : "";
     return `
       <article class="task-work-item task-work-command" data-event-type="command_execution" data-command-status="${escapeHtml(status || "unknown")}">
-        <details${open}>
+        <details${open}${disclosureIdentityAttribute("command", eventIdentityKey(event))}>
           <summary>
             <strong>Command</strong>
             ${status ? `<span>${escapeHtml(formatStatus(status))}</span>` : ""}
@@ -5305,7 +5374,7 @@ function renderCommandEvent(event) {
   const open = status && status !== "completed" ? " open" : "";
   return `
     <li class="task-event task-command" data-event-type="${escapeHtml(event.type)}" data-command-status="${escapeHtml(status || "unknown")}">
-      <details${open}>
+      <details${open}${disclosureIdentityAttribute("command", eventIdentityKey(event))}>
         <summary>
           <span>Command</span>
           ${status ? `<span>${escapeHtml(formatStatus(status))}</span>` : ""}

@@ -6571,7 +6571,8 @@ test("keeps task event chronology stable through approval, completion, and reloa
   await emitTaskEvent(finalAnswer, 7);
   await emitTaskEvent(turnCompleted, 8);
   await expect(tasksPage).toContainText("The event order is stable.");
-  await tasksPage.locator(".task-turn-work > details > summary").click();
+  const completedWorkDetails = tasksPage.locator(".task-turn-work > details");
+  await completedWorkDetails.locator(":scope > summary").click();
   const completedWorkOrder = () =>
     tasksPage.locator(".task-work-item").evaluateAll((items) =>
       items.map((item) => item.dataset.eventType),
@@ -6582,6 +6583,19 @@ test("keeps task event chronology stable through approval, completion, and reloa
     "command_execution",
     "plan",
   ]);
+  const completedCommandDetails = tasksPage.locator(
+    '.task-work-item[data-event-type="command_execution"] > details',
+  );
+  await expect(completedCommandDetails).not.toHaveAttribute("open", "");
+  await completedCommandDetails.locator("summary").click();
+  await expect(completedWorkDetails).toHaveAttribute("open", "");
+  await expect(completedCommandDetails).toHaveAttribute("open", "");
+
+  await test.step("keeps opened work disclosures expanded through a live rerender", async () => {
+    await emitTaskEvent(turnCompleted, 9);
+    await expect(completedWorkDetails).toHaveAttribute("open", "");
+    await expect(completedCommandDetails).toHaveAttribute("open", "");
+  });
 
   detailEvents = [
     user,
