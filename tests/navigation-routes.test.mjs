@@ -17,13 +17,13 @@ globalThis.window = {
   },
 };
 
-test("parses and serializes cwd-based routes canonically", () => {
+test("parses and serializes routes canonically", () => {
   const cases = [
     ["/settings", { kind: "settings" }, "/settings"],
     [
       "/tasks?cwd=Workspace%2Frust%2Fgluesql",
-      { kind: "tasks", new: false, threadId: "", cwd: "Workspace/rust/gluesql" },
-      "/tasks?cwd=Workspace%2Frust%2Fgluesql",
+      { kind: "tasks", new: false, threadId: "", cwd: "" },
+      "/tasks",
     ],
     [
       "/tasks/new?cwd=src",
@@ -32,8 +32,8 @@ test("parses and serializes cwd-based routes canonically", () => {
     ],
     [
       "/tasks/thread%201?cwd=src",
-      { kind: "tasks", new: false, threadId: "thread 1", cwd: "src" },
-      "/tasks/thread%201?cwd=src",
+      { kind: "tasks", new: false, threadId: "thread 1", cwd: "" },
+      "/tasks/thread%201",
     ],
     [
       "/files?cwd=Workspace%2Frust%2Fgluesql&file=core%2Fsrc%2Flib.rs",
@@ -99,8 +99,8 @@ test("derives deterministic parent routes", () => {
   const cases = [
     ["/settings", null],
     ["/tasks", null],
-    ["/tasks/new?cwd=src", "/tasks?cwd=src"],
-    ["/tasks/thread?cwd=src", "/tasks?cwd=src"],
+    ["/tasks/new?cwd=src", "/tasks"],
+    ["/tasks/thread?cwd=src", "/tasks"],
     ["/files?cwd=repo&file=src%2Flib.rs", "/files?cwd=repo"],
     ["/files?cwd=repo", null],
     ["/git/diff?cwd=repo&file=src%2Flib.rs", "/git/diff?cwd=repo"],

@@ -63,7 +63,7 @@ Codex remains the source of truth for thread content and runtime state. Caffold
 keeps one local `threads` table for the subset explicitly continued in Caffold,
 its bounded list projection, and Caffold-only seen timestamps. It derives
 repository and worktree context live from each thread cwd and does not keep a
-project registry. Open Tasks groups the main checkout and linked worktrees by
+project registry. Tasks globally groups the main checkout and linked worktrees by
 their shared Git repository while each Task keeps its actual worktree root for
 Files and Diff. Worktree lifecycle operations remain outside the current Tasks
 surface.

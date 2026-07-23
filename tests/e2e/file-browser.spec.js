@@ -977,11 +977,9 @@ test("groups header review actions into Git, GitHub, and Codex popovers", async 
   await expect(codexPopover.locator(".header-status-panel")).toContainText("69%");
   await expect(codexPopover.locator(".header-status-panel")).toContainText("3 available");
   await expect(codexPopover.locator('button[data-action="open-tasks"]')).toContainText(
-    "Open Tasks",
+    "Tasks",
   );
-  await expect(codexPopover.locator('button[data-action="open-all-tasks"]')).toContainText(
-    "All Tasks",
-  );
+  await expect(codexPopover.locator('button[data-action="open-all-tasks"]')).toHaveCount(0);
   await expect(codexPopover.locator('button[data-action="new-task"]')).toContainText(
     "New Task",
   );
@@ -1261,7 +1259,9 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await page.goto("/");
   await expect(page).toHaveURL("/tasks");
   const tasksPage = page.locator("caffold-tasks-page");
-  await expect(tasksPage.locator(".tasks-header")).toContainText("All Tasks");
+  await expect(tasksPage.locator(".tasks-header")).toContainText(
+    "Caffold Tasks and Codex History",
+  );
   await expect
     .poll(() => taskListQueries.at(-1))
     .toEqual({ cwd: null });
@@ -1270,11 +1270,13 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   ).toBeHidden();
 
   await page.goto("/tasks?cwd=.");
-  await expect(page).toHaveURL("/tasks?cwd=.");
+  await expect(page).toHaveURL("/tasks");
   await expect
     .poll(() => taskListQueries.at(-1))
-    .toEqual({ cwd: "." });
-  await expect(tasksPage.locator(".tasks-header")).toContainText("Tasks in ~");
+    .toEqual({ cwd: null });
+  await expect(tasksPage.locator(".tasks-header")).toContainText(
+    "Caffold Tasks and Codex History",
+  );
   await expect(tasksPage).toContainText("No tasks yet.");
 
   await page.goto("/tasks");
@@ -1282,15 +1284,24 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await expect
     .poll(() => taskListQueries.at(-1))
     .toEqual({ cwd: null });
-  await expect(tasksPage.locator(".tasks-header")).toContainText("All Tasks");
+  await expect(tasksPage.locator(".tasks-header")).toContainText(
+    "Caffold Tasks and Codex History",
+  );
   await expect(tasksPage).toContainText("No tasks yet.");
 
   await page.goto("/tasks?cwd=.");
-  await expect(page).toHaveURL("/tasks?cwd=.");
+  await expect(page).toHaveURL("/tasks");
   await expect
     .poll(() => taskListQueries.at(-1))
-    .toEqual({ cwd: "." });
+    .toEqual({ cwd: null });
 
+  await tasksPage
+    .locator(".tasks-empty")
+    .getByRole("button", { name: "New Task", exact: true })
+    .click();
+  await expect(page).toHaveURL("/tasks/new?cwd=.");
+  await page.locator("caffold-codex-workspace .codex-workspace-close").click();
+  await expect(page).toHaveURL("/tasks");
   await tasksPage
     .locator(".tasks-empty")
     .getByRole("button", { name: "New Task", exact: true })
@@ -1310,7 +1321,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await tasksPage.locator('textarea[name="prompt"]').press("Enter");
 
   await expect.poll(() => createdTaskRequest?.prompt).toBe("Say hello globally");
-  await expect(page).toHaveURL(`/tasks/${threadId}?cwd=src`);
+  await expect(page).toHaveURL(`/tasks/${threadId}`);
   await expect(tasksPage).toContainText("Hello from a global Codex thread.");
   const openDiff = tasksPage.getByRole("button", { name: "Open Diff" });
   await expect(openDiff).toBeDisabled();
@@ -1344,7 +1355,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
     "git",
   );
   await page.getByRole("button", { name: "Close review workspace" }).click();
-  await expect(page).toHaveURL(`/tasks/${threadId}?cwd=src`);
+  await expect(page).toHaveURL(`/tasks/${threadId}`);
   await expect(tasksPage).toContainText("Hello from a global Codex thread.");
 
   await tasksPage
@@ -1360,7 +1371,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
     "github",
   );
   await page.getByRole("button", { name: "Close review workspace" }).click();
-  await expect(page).toHaveURL(`/tasks/${threadId}?cwd=src`);
+  await expect(page).toHaveURL(`/tasks/${threadId}`);
   await expect(tasksPage).toContainText("Hello from a global Codex thread.");
 
   await tasksPage.locator('button[data-task-action="toggle-files"]').click();
@@ -1763,7 +1774,7 @@ test("recovers task detail and prompt submission across bootstrap races", async 
   ]);
 });
 
-test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) => {
+test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     window.EventSource = class MockEventSource {
       constructor(url) {
@@ -1844,7 +1855,7 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
     const url = new URL(route.request().url());
-    expect(url.searchParams.get("cwd")).toBe("src");
+    expect(url.searchParams.get("cwd")).toBeNull();
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ tasks }),
@@ -1855,7 +1866,7 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
     const threadId = url.pathname.split("/").at(-1);
     const task = tasks.find((candidate) => candidate.threadId === threadId);
     expect(task).toBeTruthy();
-    expect(url.searchParams.get("cwd")).toBe("src");
+    expect(url.searchParams.get("cwd")).toBeNull();
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -1877,13 +1888,14 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
   });
 
   await page.goto("/tasks?cwd=src");
+  await expect(page).toHaveURL("/tasks");
   const tasksPage = page.locator("caffold-tasks-page");
   const listPane = tasksPage.locator(".tasks-list-pane");
   const detailPane = tasksPage.locator(".tasks-detail-pane");
   const resizer = tasksPage.locator(".tasks-master-resizer");
   const rows = tasksPage.locator(".task-row");
 
-  await expect(tasksPage.locator(".task-repository-group")).toHaveCount(0);
+  await expect(tasksPage.locator(".task-repository-group")).toHaveCount(2);
   await expect(rows).toHaveCount(4);
   await expect(rows.nth(0)).toContainText("Feature worktree task");
   await expect(rows.nth(1)).toContainText("Main root task");
@@ -1955,7 +1967,6 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
     await expect(detailPane).toBeVisible();
     await expect(resizer).toBeVisible();
     await expect(tasksPage.locator('textarea[name="prompt"]')).toBeVisible();
-    await expect(tasksPage.locator(".task-composer-context")).toContainText("src");
     const initialLayout = await tasksPage.evaluate((element) => {
       const list = element.querySelector(".tasks-list-pane").getBoundingClientRect();
       const separator = element
@@ -1996,7 +2007,9 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
       const scroller = document.querySelector("caffold-tasks-page .task-list-scroll");
       scroller.style.height = "90px";
       scroller.scrollTop = 40;
-      scroller.querySelector('[data-task-section="managed"] > .task-list').dataset.domProbe = "preserved";
+      scroller.querySelector(
+        '.task-list-section[data-task-section="managed"] .task-list',
+      ).dataset.domProbe = "preserved";
       const row = document.querySelector(
         'caffold-tasks-page .task-row[data-thread-id="thread_main_core"]',
       );
@@ -2010,16 +2023,17 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
         .querySelector('caffold-tasks-page .task-row[data-thread-id="thread_main_root"]')
         .click(),
     );
-    await expect(page).toHaveURL("/tasks/thread_main_root?cwd=src");
+    await expect(page).toHaveURL("/tasks/thread_main_root");
     await expect(listPane).toBeVisible();
     await expect(detailPane).toContainText("Main root task detail response");
     await expect(
       tasksPage.locator('.task-row[data-thread-id="thread_main_root"]'),
     ).toHaveAttribute("aria-current", "true");
-    await expect(tasksPage.locator('[data-task-section="managed"] > .task-list')).toHaveAttribute(
-      "data-dom-probe",
-      "preserved",
-    );
+    await expect(
+      tasksPage
+        .locator('.task-list-section[data-task-section="managed"] .task-list')
+        .first(),
+    ).toHaveAttribute("data-dom-probe", "preserved");
     await expect(
       tasksPage.locator('li[data-thread-id="thread_main_core"]'),
     ).toHaveAttribute("data-dom-probe", "preserved");
@@ -2037,12 +2051,12 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
     await captureReviewScreenshot(page, testInfo, "tasks-master-detail-selected");
 
     await tasksPage.locator('.task-row[data-thread-id="thread_main_core"]').click();
-    await expect(page).toHaveURL("/tasks/thread_main_core?cwd=src");
+    await expect(page).toHaveURL("/tasks/thread_main_core");
     await expect(detailPane).toContainText("Main core task detail response");
     await expect(detailPane).not.toContainText("Main root task detail response");
 
     await tasksPage.locator('.task-row[data-thread-id="thread_main_root"]').click();
-    await expect(page).toHaveURL("/tasks/thread_main_root?cwd=src");
+    await expect(page).toHaveURL("/tasks/thread_main_root");
     await expect(detailPane).toContainText("Main root task detail response");
     await expect(detailPane).not.toContainText("Main core task detail response");
 
@@ -2057,19 +2071,19 @@ test("uses a flat scoped Tasks master-detail list", async ({ page }, testInfo) =
     await expect(detailPane).toBeHidden();
     await expect(resizer).toBeHidden();
     await tasksPage.locator('.task-row[data-thread-id="thread_main_root"]').click();
-    await expect(page).toHaveURL("/tasks/thread_main_root?cwd=src");
+    await expect(page).toHaveURL("/tasks/thread_main_root");
     await expect(listPane).toBeHidden();
     await expect(detailPane).toBeVisible();
     await expect(detailPane).toContainText("Main root task detail response");
     await captureReviewScreenshot(page, testInfo, "tasks-single-pane-detail");
     await tasksPage.locator('[data-task-action="open-list"]').click();
-    await expect(page).toHaveURL("/tasks?cwd=src");
+    await expect(page).toHaveURL("/tasks");
     await expect(listPane).toBeVisible();
     await expect(detailPane).toBeHidden();
   }
 });
 
-test("groups All Tasks by repository without worktree accordions", async ({ page }, testInfo) => {
+test("groups Tasks by repository without worktree accordions", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     window.EventSource = class MockEventSource {
       constructor(url) {
@@ -2174,7 +2188,9 @@ test("groups All Tasks by repository without worktree accordions", async ({ page
   await page.goto("/tasks");
   const tasksPage = page.locator("caffold-tasks-page");
   const groups = tasksPage.locator(".task-repository-group");
-  await expect(tasksPage.locator(".tasks-header")).toContainText("All Tasks");
+  await expect(tasksPage.locator(".tasks-header")).toContainText(
+    "Caffold Tasks and Codex History",
+  );
   await expect(
     tasksPage.locator('.tasks-header [data-task-action="open-settings"] svg'),
   ).toBeVisible();
@@ -2717,7 +2733,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     const method = request.method();
 
     if (segments.length === 2 && method === "GET") {
-      expect(url.searchParams.get("cwd")).toBe(contextPath);
+      expect(url.searchParams.get("cwd")).toBeNull();
       return route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({ tasks: task ? [task] : [] }),
@@ -3136,7 +3152,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await page.goto(`/files?cwd=${encodeURIComponent(contextPath)}`);
   const codexPopover = await openHeaderActionGroup(page, "codex");
   await codexPopover.locator('button[data-action="open-tasks"]').click();
-  await expect(page).toHaveURL(`/tasks?cwd=${encodeURIComponent(contextPath)}`);
+  await expect(page).toHaveURL("/tasks");
   const codexWorkspace = page.locator("caffold-codex-workspace");
   await expect(codexWorkspace).toBeVisible();
   await expect
@@ -3338,7 +3354,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await page.locator('caffold-tasks-page textarea[name="prompt"]').press("Enter");
 
   await expect.poll(() => createTaskRequests).toBe(1);
-  await expect(page).toHaveURL(`/tasks/${threadId}?cwd=${encodeURIComponent(contextPath)}`);
+  await expect(page).toHaveURL(`/tasks/${threadId}`);
   const tasksPage = page.locator("caffold-tasks-page");
   await expect(tasksPage).toHaveCount(1);
   await expect(tasksPage).toHaveAttribute("data-tasks-view", "detail");
@@ -3773,7 +3789,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-file-browser-list");
   await page.locator("caffold-codex-workspace .codex-workspace-close").click();
-  await expect(page).toHaveURL(`/tasks/${threadId}?cwd=${encodeURIComponent(contextPath)}`);
+  await expect(page).toHaveURL(`/tasks/${threadId}`);
   await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
     "data-task-detail-view",
     "conversation",
@@ -3791,7 +3807,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   );
   await expect(taskFilesView.locator('button[data-entry-path="src/alpha.rs"]')).toBeVisible();
   await taskFilesView.locator('button[data-entry-path="src/alpha.rs"]').click();
-  await expect(page).toHaveURL(`/tasks/${threadId}?cwd=${encodeURIComponent(contextPath)}`);
+  await expect(page).toHaveURL(`/tasks/${threadId}`);
   await expect(taskFilesView.locator("caffold-file-viewer")).toContainText(
     "alpha.rs",
   );
@@ -3996,9 +4012,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   expect(conversationBeforeDiff.maxScrollTop).toBeGreaterThan(0);
   const taskDetailReadsBeforeDiff = taskDetailReadRequests;
   await tasksPage.getByRole("button", { name: "Open Diff" }).click();
-  await expect(page).toHaveURL(
-    `/tasks/${threadId}?cwd=${encodeURIComponent(contextPath)}`,
-  );
+  await expect(page).toHaveURL(`/tasks/${threadId}`);
   await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
     "data-task-detail-view",
     "diff",
@@ -4347,7 +4361,7 @@ test("keeps the visible conversation anchor while loading older events by cursor
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
     const url = new URL(route.request().url());
-    expect(url.searchParams.get("cwd")).toBe("src");
+    expect(url.searchParams.get("cwd")).toBeNull();
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ tasks: [task] }),
@@ -4356,7 +4370,7 @@ test("keeps the visible conversation anchor while loading older events by cursor
 
   await page.route(/\/api\/tasks\/thread_cursor_fixture(?:\?|$)/, (route) => {
     const url = new URL(route.request().url());
-    expect(url.searchParams.get("cwd")).toBe("src");
+    expect(url.searchParams.get("cwd")).toBeNull();
     const cursor = url.searchParams.get("cursor");
     detailCursors.push(cursor);
     const events = cursor === "older_cursor"
@@ -5941,7 +5955,7 @@ test("isolates task detail responses and conversation scroll by thread", async (
   await tasksPage.locator(`.task-row[data-thread-id="${taskA.threadId}"]`).click();
   await tasksPage.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
   releaseThreadA();
-  await expect(page).toHaveURL(`/tasks/${taskB.threadId}?cwd=src`);
+  await expect(page).toHaveURL(`/tasks/${taskB.threadId}`);
   await expect(tasksPage).toContainText("Thread B response 20.");
   await expect(tasksPage).not.toContainText("Thread A response 20.");
   await expect

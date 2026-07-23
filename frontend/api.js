@@ -10,16 +10,14 @@ export async function getCodexModels() {
   return requestJson("/api/codex/models");
 }
 
-export async function getTasks(cwd = "", cursor = null) {
+export async function getTasks(cursor = null) {
   return requestJson("/api/tasks", {
-    ...(cwd ? { cwd } : {}),
     ...(cursor ? { cursor } : {}),
   });
 }
 
-export async function getTaskHistory(cwd = "", cursor = null) {
+export async function getTaskHistory(cursor = null) {
   return requestJson("/api/task-history", {
-    ...(cwd ? { cwd } : {}),
     ...(cursor ? { cursor } : {}),
   });
 }
@@ -43,14 +41,14 @@ export async function createTask(task) {
   });
 }
 
-export async function getTask(threadId, cursor = null, cwd = "") {
-  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}`, { cursor, cwd });
+export async function getTask(threadId, cursor = null) {
+  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}`, { cursor });
 }
 
-export async function sendTaskPrompt(threadId, prompt, options = {}, cwd = "", images = []) {
+export async function sendTaskPrompt(threadId, prompt, options = {}, images = []) {
   return requestJson(
     `/api/tasks/${encodeURIComponent(threadId)}/prompts`,
-    cwd ? { cwd } : {},
+    {},
     {
       method: "POST",
       body: { prompt, images, ...options },
@@ -58,20 +56,20 @@ export async function sendTaskPrompt(threadId, prompt, options = {}, cwd = "", i
   );
 }
 
-export async function interruptTask(threadId, cwd = "") {
+export async function interruptTask(threadId) {
   return requestJson(
     `/api/tasks/${encodeURIComponent(threadId)}/interrupt`,
-    cwd ? { cwd } : {},
+    {},
     {
       method: "POST",
     },
   );
 }
 
-export async function resolveTaskApproval(threadId, approvalId, decision, cwd = "") {
+export async function resolveTaskApproval(threadId, approvalId, decision) {
   return requestJson(
     `/api/tasks/${encodeURIComponent(threadId)}/approvals/${encodeURIComponent(approvalId)}`,
-    cwd ? { cwd } : {},
+    {},
     {
       method: "POST",
       body: { decision },
@@ -79,19 +77,13 @@ export async function resolveTaskApproval(threadId, approvalId, decision, cwd = 
   );
 }
 
-export function taskStreamUrl(threadId, cwd = "") {
+export function taskStreamUrl(threadId) {
   const url = new URL(`/api/tasks/${encodeURIComponent(threadId)}/stream`, window.location.origin);
-  if (cwd) {
-    url.searchParams.set("cwd", cwd);
-  }
   return `${url.pathname}${url.search}`;
 }
 
-export function taskListStreamUrl(cwd = "") {
+export function taskListStreamUrl() {
   const url = new URL("/api/tasks/stream", window.location.origin);
-  if (cwd) {
-    url.searchParams.set("cwd", cwd);
-  }
   return `${url.pathname}${url.search}`;
 }
 

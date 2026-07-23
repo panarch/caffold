@@ -31,7 +31,6 @@ class CaffoldHeaderActions extends HTMLElement {
         "open-github-issues-workspace": "caffold:open-github-issues-workspace",
         "open-github-pulls-workspace": "caffold:open-github-pulls-workspace",
         "open-tasks": "caffold:open-tasks",
-        "open-all-tasks": "caffold:open-all-tasks",
         "new-task": "caffold:new-task",
       }[button.dataset.action];
       if (!eventName) {

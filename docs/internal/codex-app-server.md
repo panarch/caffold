@@ -124,12 +124,11 @@ truth for:
 - turn status and history
 
 Caffold derives repository and Git worktree context from `thread.cwd` on every
-response. When the requested cwd is inside a Git repository, current-directory
-Tasks use the backend-only common Git directory as their list-filter identity.
-Threads from the main checkout and sibling linked worktrees therefore appear
-together. Each Task still retains its own canonical worktree root for Files and
-Diff. Outside Git, current-directory Tasks use canonical cwd exact matching.
-Unfiltered All Tasks remains available.
+response. Tasks always lists every locally managed thread and groups repository
+threads by the backend-only common Git directory, so the main checkout and
+sibling linked worktrees appear together. Each Task still retains its own
+canonical worktree root for Files and Diff. Outside Git, cwd remains useful as
+the thread's creation and file-review context, but it does not filter Tasks.
 
 The derived worktree context contains only RootedFs-relative paths plus live
 branch, HEAD, linked-worktree, and relative-cwd information. Caffold does not

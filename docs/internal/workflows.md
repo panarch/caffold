@@ -6,8 +6,8 @@ Caffold workflows should be described from the reviewer's point of view. The rev
 
 ## Task Creation
 
-1. Open All Tasks or a cwd-filtered task list.
-2. Choose the cwd and send a prompt.
+1. Open Tasks and start a New Task.
+2. Confirm or choose the cwd, then send a prompt.
 3. Start a Codex thread in that cwd.
 4. Derive repository and worktree context from the thread cwd.
 

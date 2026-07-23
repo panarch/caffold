@@ -481,7 +481,6 @@ struct UpdateServerSettingsRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TasksQuery {
-    cwd: Option<String>,
     cursor: Option<String>,
 }
 
@@ -591,13 +590,6 @@ struct ResolvedTaskCwd {
     worktree: Option<TaskWorktreeContext>,
     worktree_root: Option<PathBuf>,
     repository_common_dir: Option<PathBuf>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum TaskCwdFilter {
-    Exact(PathBuf),
-    Worktree(PathBuf),
-    Repository(PathBuf),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1469,7 +1461,6 @@ async fn list_managed_tasks(
     State(state): State<AppState>,
     Query(query): Query<TasksQuery>,
 ) -> Result<Json<TaskListResponse>, ApiError> {
-    let cwd_filter = task_filter_cwd(&state, query.cwd.as_deref())?;
     let (stored, next_cursor) =
         thread_store_list(&state, query.cursor.as_deref(), TASK_LIST_PAGE_SIZE).await?;
     let mut cwds = stored
@@ -1489,14 +1480,9 @@ async fn list_managed_tasks(
     .await;
     let tasks = stored
         .into_iter()
-        .filter_map(|thread| {
+        .map(|thread| {
             let resolved_cwd = resolved_cwds.get(&thread.cwd).and_then(Option::as_ref);
-            if let Some(cwd_filter) = cwd_filter.as_ref()
-                && !task_cwd_matches_filter(resolved_cwd, cwd_filter)
-            {
-                return None;
-            }
-            Some(task_record_from_stored(thread, resolved_cwd))
+            task_record_from_stored(thread, resolved_cwd)
         })
         .collect();
     Ok(Json(TaskListResponse { tasks, next_cursor }))
@@ -1506,7 +1492,6 @@ async fn list_task_history(
     State(state): State<AppState>,
     Query(query): Query<TasksQuery>,
 ) -> Result<Json<TaskListResponse>, ApiError> {
-    let cwd_filter = task_filter_cwd(&state, query.cwd.as_deref())?;
     let client = require_codex_thread_client(&state).await?;
     let cursor = query
         .cursor
@@ -1521,7 +1506,7 @@ async fn list_task_history(
     let response =
         serde_json::to_value(response).map_err(|error| ApiError::CodexThread(error.to_string()))?;
     let resolved_cwds = resolve_task_cwds(state.fs.clone(), &response).await;
-    let tasks = thread_list_response_with_resolved(cwd_filter.as_ref(), &response, &resolved_cwds);
+    let tasks = thread_list_response_with_resolved(&response, &resolved_cwds);
     let tasks = filter_and_refresh_managed_history(&state, tasks).await?;
     Ok(Json(TaskListResponse { tasks, next_cursor }))
 }
@@ -2819,11 +2804,7 @@ fn thread_with_turns(thread: &JsonValue, turns: Vec<JsonValue>) -> Result<JsonVa
 }
 
 #[cfg(test)]
-fn thread_list_response(
-    fs: &RootedFs,
-    cwd_filter: Option<&TaskCwdFilter>,
-    response: &JsonValue,
-) -> Vec<TaskRecord> {
+fn thread_list_response(fs: &RootedFs, response: &JsonValue) -> Vec<TaskRecord> {
     let mut resolved_cwds = HashMap::<String, Option<ResolvedTaskCwd>>::new();
     for cwd in response
         .get("data")
@@ -2836,7 +2817,7 @@ fn thread_list_response(
             .entry(cwd.to_string())
             .or_insert_with(|| resolve_task_cwd(fs, cwd));
     }
-    thread_list_response_with_resolved(cwd_filter, response, &resolved_cwds)
+    thread_list_response_with_resolved(response, &resolved_cwds)
 }
 
 async fn resolve_task_cwds(
@@ -2886,7 +2867,6 @@ where
 }
 
 fn thread_list_response_with_resolved(
-    cwd_filter: Option<&TaskCwdFilter>,
     response: &JsonValue,
     resolved_cwds: &HashMap<String, Option<ResolvedTaskCwd>>,
 ) -> Vec<TaskRecord> {
@@ -2899,12 +2879,6 @@ fn thread_list_response_with_resolved(
             let resolved_cwd = thread_cwd(thread)
                 .and_then(|cwd| resolved_cwds.get(cwd))
                 .and_then(Option::as_ref);
-            if let Some(cwd_filter) = cwd_filter
-                && !task_cwd_matches_filter(resolved_cwd, cwd_filter)
-            {
-                return None;
-            }
-
             task_record_from_thread(thread, &[], resolved_cwd).ok()
         })
         .collect::<Vec<_>>();
@@ -3933,19 +3907,6 @@ fn has_git_ancestor(path: &Path) -> bool {
     path.ancestors().any(git::has_git_marker)
 }
 
-fn task_cwd_matches_filter(resolved_cwd: Option<&ResolvedTaskCwd>, filter: &TaskCwdFilter) -> bool {
-    let Some(resolved_cwd) = resolved_cwd else {
-        return false;
-    };
-    match filter {
-        TaskCwdFilter::Exact(cwd) => resolved_cwd.canonical_cwd == *cwd,
-        TaskCwdFilter::Worktree(root) => resolved_cwd.worktree_root.as_ref() == Some(root),
-        TaskCwdFilter::Repository(common_dir) => {
-            resolved_cwd.repository_common_dir.as_ref() == Some(common_dir)
-        }
-    }
-}
-
 fn thread_id(thread: &JsonValue) -> Option<&str> {
     thread.get("id").and_then(JsonValue::as_str)
 }
@@ -4034,30 +3995,6 @@ fn task_cwd(state: &AppState, relative: Option<&str>) -> Result<String, ApiError
     let logical_path = normalize_logical_path(relative.unwrap_or(&state.initial_path))?;
     let cwd = state.fs.absolute_directory_path(&logical_path)?;
     Ok(cwd.display().to_string())
-}
-
-fn task_filter_cwd(
-    state: &AppState,
-    relative: Option<&str>,
-) -> Result<Option<TaskCwdFilter>, ApiError> {
-    relative
-        .filter(|path| !path.is_empty())
-        .map(|path| {
-            let cwd = task_cwd(state, Some(path))?;
-            let resolved =
-                resolve_task_cwd(&state.fs, &cwd).ok_or_else(|| ApiError::BadRequest {
-                    code: "invalid_task_cwd",
-                    message: "task cwd is unavailable".to_string(),
-                })?;
-            Ok(
-                match (resolved.repository_common_dir, resolved.worktree_root) {
-                    (Some(common_dir), _) => TaskCwdFilter::Repository(common_dir),
-                    (None, Some(root)) => TaskCwdFilter::Worktree(root),
-                    (None, None) => TaskCwdFilter::Exact(resolved.canonical_cwd),
-                },
-            )
-        })
-        .transpose()
 }
 
 fn relative_path_string(path: &Path) -> String {
@@ -4509,7 +4446,6 @@ mod tests {
         let response = list_tasks(
             State(state),
             Query(TasksQuery {
-                cwd: None,
                 cursor: Some("page-2".to_string()),
             }),
         )
@@ -4556,27 +4492,15 @@ mod tests {
         let state =
             app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
 
-        let managed = list_managed_tasks(
-            State(state.clone()),
-            Query(TasksQuery {
-                cwd: None,
-                cursor: None,
-            }),
-        )
-        .await
-        .unwrap();
+        let managed = list_managed_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
+            .await
+            .unwrap();
         assert!(managed.0.tasks.is_empty());
         assert!(client.mock_requests().await.is_empty());
 
-        let history = list_task_history(
-            State(state.clone()),
-            Query(TasksQuery {
-                cwd: None,
-                cursor: None,
-            }),
-        )
-        .await
-        .unwrap();
+        let history = list_task_history(State(state.clone()), Query(TasksQuery { cursor: None }))
+            .await
+            .unwrap();
         assert_eq!(history.0.tasks.len(), 1);
 
         let continued = continue_task(State(state.clone()), AxumPath(thread_id.to_string()))
@@ -4585,26 +4509,14 @@ mod tests {
         assert_eq!(continued.0.thread_id, thread_id);
         assert!(!continued.0.unseen);
 
-        let managed = list_managed_tasks(
-            State(state.clone()),
-            Query(TasksQuery {
-                cwd: None,
-                cursor: None,
-            }),
-        )
-        .await
-        .unwrap();
+        let managed = list_managed_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
+            .await
+            .unwrap();
         assert_eq!(managed.0.tasks.len(), 1);
 
-        let history = list_task_history(
-            State(state),
-            Query(TasksQuery {
-                cwd: None,
-                cursor: None,
-            }),
-        )
-        .await
-        .unwrap();
+        let history = list_task_history(State(state), Query(TasksQuery { cursor: None }))
+            .await
+            .unwrap();
         assert!(history.0.tasks.is_empty());
         assert_eq!(
             client
@@ -4672,15 +4584,9 @@ mod tests {
         let state =
             app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
 
-        let tasks = list_tasks(
-            State(state.clone()),
-            Query(TasksQuery {
-                cwd: None,
-                cursor: None,
-            }),
-        )
-        .await
-        .expect("task list succeeds");
+        let tasks = list_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
+            .await
+            .expect("task list succeeds");
         assert_eq!(tasks.0.tasks.len(), 1);
 
         let response = tokio::time::timeout(
@@ -4722,15 +4628,9 @@ mod tests {
         let state =
             app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
 
-        let tasks = list_tasks(
-            State(state.clone()),
-            Query(TasksQuery {
-                cwd: None,
-                cursor: None,
-            }),
-        )
-        .await
-        .expect("task list succeeds");
+        let tasks = list_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
+            .await
+            .expect("task list succeeds");
         assert_eq!(tasks.0.tasks.len(), 1);
 
         let response = tokio::time::timeout(
@@ -4905,25 +4805,16 @@ mod tests {
         ]);
         let state =
             app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-        let _ = list_tasks(
-            State(state.clone()),
-            Query(TasksQuery {
-                cwd: None,
-                cursor: None,
-            }),
-        )
-        .await
-        .expect("task list succeeds");
+        let _ = list_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
+            .await
+            .expect("task list succeeds");
 
         let response = tokio::time::timeout(
             Duration::from_millis(50),
             task_stream(
                 State(state),
                 AxumPath(thread_id.to_string()),
-                Query(TasksQuery {
-                    cwd: None,
-                    cursor: None,
-                }),
+                Query(TasksQuery { cursor: None }),
             ),
         )
         .await
@@ -4972,23 +4863,14 @@ mod tests {
         ]);
         let state =
             app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-        let _ = list_tasks(
-            State(state.clone()),
-            Query(TasksQuery {
-                cwd: None,
-                cursor: None,
-            }),
-        )
-        .await
-        .expect("task list succeeds");
+        let _ = list_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
+            .await
+            .expect("task list succeeds");
 
         let response = task_stream(
             State(state.clone()),
             AxumPath(thread_id.to_string()),
-            Query(TasksQuery {
-                cwd: None,
-                cursor: None,
-            }),
+            Query(TasksQuery { cursor: None }),
         )
         .await
         .expect("task stream succeeds");
@@ -5065,10 +4947,7 @@ mod tests {
             task_stream(
                 State(state),
                 AxumPath(thread_id.to_string()),
-                Query(TasksQuery {
-                    cwd: None,
-                    cursor: None,
-                }),
+                Query(TasksQuery { cursor: None }),
             ),
         )
         .await
@@ -5159,10 +5038,7 @@ mod tests {
             task_stream(
                 State(state),
                 AxumPath(thread_id.to_string()),
-                Query(TasksQuery {
-                    cwd: None,
-                    cursor: None,
-                }),
+                Query(TasksQuery { cursor: None }),
             ),
         )
         .await
@@ -5193,15 +5069,9 @@ mod tests {
         ]);
         let state =
             app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-        let _ = list_tasks(
-            State(state.clone()),
-            Query(TasksQuery {
-                cwd: None,
-                cursor: None,
-            }),
-        )
-        .await
-        .expect("task list succeeds");
+        let _ = list_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
+            .await
+            .expect("task list succeeds");
 
         let response = tokio::time::timeout(
             Duration::from_millis(50),
@@ -5247,15 +5117,9 @@ mod tests {
         ]);
         let state =
             app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-        let _ = list_tasks(
-            State(state.clone()),
-            Query(TasksQuery {
-                cwd: None,
-                cursor: None,
-            }),
-        )
-        .await
-        .expect("task list succeeds");
+        let _ = list_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
+            .await
+            .expect("task list succeeds");
 
         let first = tokio::time::timeout(
             Duration::from_millis(50),
@@ -5527,10 +5391,7 @@ mod tests {
             task_stream(
                 State(stream_state),
                 AxumPath(thread_id.to_string()),
-                Query(TasksQuery {
-                    cwd: None,
-                    cursor: None,
-                }),
+                Query(TasksQuery { cursor: None }),
             )
             .await
         });
@@ -5616,10 +5477,7 @@ mod tests {
             task_stream(
                 State(state.clone()),
                 AxumPath(thread_id.to_string()),
-                Query(TasksQuery {
-                    cwd: None,
-                    cursor: None,
-                }),
+                Query(TasksQuery { cursor: None }),
             ),
         )
         .await
@@ -6227,12 +6085,11 @@ mod tests {
     }
 
     #[test]
-    fn thread_list_response_filters_cwd_and_sorts_by_recency() {
+    fn thread_list_response_keeps_all_cwds_and_sorts_by_recency() {
         let temp = tempfile::tempdir().unwrap();
         let project_root = temp.path().join("project");
         std::fs::create_dir_all(project_root.join("src")).unwrap();
         let fs = RootedFs::new(temp.path()).unwrap();
-        let cwd_filter = TaskCwdFilter::Exact(project_root.canonicalize().unwrap());
         let response = json!({
             "data": [
                 {
@@ -6266,9 +6123,14 @@ mod tests {
             ]
         });
 
-        let tasks = thread_list_response(&fs, Some(&cwd_filter), &response);
-        assert_eq!(tasks.len(), 1);
-        assert_eq!(tasks[0].thread_id, "thread_old");
+        let tasks = thread_list_response(&fs, &response);
+        assert_eq!(
+            tasks
+                .iter()
+                .map(|task| task.thread_id.as_str())
+                .collect::<Vec<_>>(),
+            ["thread_outside", "thread_new", "thread_old"]
+        );
     }
 
     #[test]
@@ -6299,7 +6161,7 @@ mod tests {
             ]
         });
 
-        let tasks = thread_list_response(&fs, None, &response);
+        let tasks = thread_list_response(&fs, &response);
 
         assert_eq!(tasks.len(), 2);
         assert_eq!(tasks[0].thread_id, "thread_global");
@@ -6409,13 +6271,12 @@ mod tests {
     }
 
     #[test]
-    fn thread_list_response_exact_cwd_filter_does_not_include_subdirectories() {
+    fn thread_list_response_includes_nested_directories() {
         let temp = tempfile::tempdir().unwrap();
         let fs = RootedFs::new(temp.path()).unwrap();
         let project_root = temp.path().join("project");
         let src_root = project_root.join("src");
         std::fs::create_dir_all(&src_root).unwrap();
-        let cwd_filter = TaskCwdFilter::Exact(project_root.canonicalize().unwrap());
         let response = json!({
             "data": [
                 {
@@ -6437,10 +6298,11 @@ mod tests {
             ]
         });
 
-        let tasks = thread_list_response(&fs, Some(&cwd_filter), &response);
+        let tasks = thread_list_response(&fs, &response);
 
-        assert_eq!(tasks.len(), 1);
-        assert_eq!(tasks[0].thread_id, "thread_project_root");
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks[0].thread_id, "thread_src");
+        assert_eq!(tasks[1].thread_id, "thread_project_root");
     }
 
     #[test]
@@ -6882,7 +6744,7 @@ mod tests {
     }
 
     #[test]
-    fn task_repository_filter_includes_linked_worktrees() {
+    fn task_repository_context_includes_linked_worktrees() {
         if !git_is_available() {
             return;
         }
@@ -6956,17 +6818,14 @@ mod tests {
                 }
             ]
         });
-        let filter = TaskCwdFilter::Repository(main.repository_common_dir.unwrap());
-        let filtered = thread_list_response(&fs, Some(&filter), &response);
+        let tasks = thread_list_response(&fs, &response);
         assert_eq!(
-            filtered
+            tasks
                 .iter()
                 .map(|task| task.thread_id.as_str())
                 .collect::<Vec<_>>(),
             vec!["thread_linked", "thread_main_src", "thread_main_root"]
         );
-        let all = thread_list_response(&fs, None, &response);
-        assert_eq!(all.len(), 3);
 
         git(&linked_root, &["checkout", "--detach", "HEAD"]);
         let detached = resolve_task_cwd(&fs, linked_root.to_str().unwrap()).unwrap();

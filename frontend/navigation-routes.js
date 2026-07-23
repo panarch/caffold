@@ -3,8 +3,8 @@ const COMPARE_QUERY = [
   { name: "base", key: "baseRef", defaultValue: "" },
   { name: "head", key: "headRef", defaultValue: "" },
 ];
-const TASKS_QUERY = [{ name: "cwd", key: "cwd", defaultValue: "" }];
 const CWD_QUERY = [{ name: "cwd", key: "cwd", defaultValue: "" }];
+const NEW_TASK_QUERY = [...CWD_QUERY];
 const FILE_QUERY = [...CWD_QUERY, { name: "file", key: "path", defaultValue: "" }];
 const STANDALONE_COMPARE_QUERY = [
   ...CWD_QUERY,
@@ -165,7 +165,6 @@ const ROUTE_DEFINITIONS = [
     id: "global-tasks-list",
     kind: "tasks",
     pattern: "/tasks",
-    query: TASKS_QUERY,
     surface: "tasks",
     target: "list",
     toRoute: (_, query) => tasksRoute(query),
@@ -176,23 +175,22 @@ const ROUTE_DEFINITIONS = [
     id: "global-tasks-new",
     kind: "tasks",
     pattern: "/tasks/new",
-    query: TASKS_QUERY,
+    query: NEW_TASK_QUERY,
     surface: "tasks",
     target: "new",
     toRoute: (_, query) => tasksRoute({ ...query, new: true }),
     matchesRoute: (route) => route?.kind === "tasks" && Boolean(route.new),
-    parent: (route) => tasksRoute({ cwd: route.cwd }),
+    parent: () => tasksRoute(),
   }),
   routeDefinition({
     id: "global-tasks-detail",
     kind: "tasks",
     pattern: "/tasks/[threadId]",
-    query: TASKS_QUERY,
     surface: "tasks",
     target: "detail",
     toRoute: ({ threadId }, query) => tasksRoute({ ...query, threadId }),
     matchesRoute: (route) => route?.kind === "tasks" && Boolean(route.threadId),
-    parent: (route) => tasksRoute({ cwd: route.cwd }),
+    parent: () => tasksRoute(),
   }),
 ];
 
@@ -434,7 +432,7 @@ function tasksRoute(options = {}) {
     kind: "tasks",
     new: Boolean(options.new),
     threadId: options.threadId ?? "",
-    cwd: taskCwd(options.cwd),
+    cwd: options.new ? taskCwd(options.cwd) : "",
   };
 }
 

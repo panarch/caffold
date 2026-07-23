@@ -102,12 +102,8 @@ function renderCodexActions(codexStatus) {
                 <strong class="header-status-account">${escapeHtml(accountLabel)}</strong>
                 <div class="header-actions-menu header-status-actions">
                   <button type="button" class="header-menu-item" data-action="open-tasks">
-                    ${renderInlineActionIcon("ListTodo", "Open tasks")}
-                    <span class="header-menu-label">Open Tasks</span>
-                  </button>
-                  <button type="button" class="header-menu-item" data-action="open-all-tasks">
-                    ${renderInlineActionIcon("ListTodo", "All tasks")}
-                    <span class="header-menu-label">All Tasks</span>
+                    ${renderInlineActionIcon("ListTodo", "Tasks")}
+                    <span class="header-menu-label">Tasks</span>
                   </button>
                   <button type="button" class="header-menu-item" data-action="new-task">
                     ${renderInlineActionIcon("Plus", "New task")}

@@ -22,9 +22,8 @@ encode mobile, foldable, or desktop layout state.
 ## Route Shape
 
 - `/tasks`
-- `/tasks?cwd=...`
 - `/tasks/new?cwd=...`
-- `/tasks/:threadId?cwd=...`
+- `/tasks/:threadId`
 - `/files?cwd=...&file=...`
 - `/git/diff?cwd=...&file=...`
 - `/git/compare?cwd=...&base=...&head=...&file=...`
@@ -49,10 +48,11 @@ Codex remains the content/runtime source of truth and Caffold does not require a
 local project registry. `/tasks` is the explicit all-threads route, split into
 locally managed Caffold Tasks and unmanaged Codex History. History rows enter
 the managed set only through `Continue in Caffold`.
-Header `Open Tasks` enters `/tasks?cwd=...`. Inside Git, the backend resolves the
-cwd to its common Git directory and includes threads from every worktree of that
-repository; outside Git it uses canonical cwd exact matching. Header `All Tasks`
-enters plain `/tasks`.
+Header `Tasks` always enters `/tasks`. Task rows are grouped by repository and
+worktree context derived from each thread cwd; cwd never filters the list.
+`/tasks/new?cwd=...` is the only Tasks route that carries cwd, because it selects
+where the new thread starts. Legacy list and detail URLs containing cwd are
+canonicalized to their cwd-free forms.
 
 ## Route Definitions
 

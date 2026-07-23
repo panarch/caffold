@@ -95,14 +95,6 @@ class CaffoldAppShell extends HTMLElement {
         kind: "tasks",
         new: false,
         threadId: "",
-        cwd: this.currentPath || ".",
-      });
-    });
-    this.addEventListener("caffold:open-all-tasks", () => {
-      this.navigateToRoute({
-        kind: "tasks",
-        new: false,
-        threadId: "",
         cwd: "",
       });
     });
@@ -111,7 +103,7 @@ class CaffoldAppShell extends HTMLElement {
         kind: "tasks",
         new: true,
         threadId: "",
-        cwd: this.currentPath || ".",
+        cwd: this.newTaskContextPath(),
       });
     });
     this.addEventListener("caffold:open-settings", () => {
@@ -400,16 +392,19 @@ class CaffoldAppShell extends HTMLElement {
     this.reviewWorkspace.prepareForFileBrowserOpen();
     this.filesPage.hidden = true;
     this.codexWorkspace.hidden = false;
-    this.pathbar.path = route.cwd || this.preferredContextPath();
+    const defaultCwdPath = this.defaultTaskCwdPath();
+    this.pathbar.path = route.new ? route.cwd || defaultCwdPath : defaultCwdPath;
     if (!this.isCurrentRoute(route)) {
       return;
     }
     const preserveLoadedTask = this.shouldPreserveLoadedTask(route);
     await this.codexWorkspace.openRoute(route, {
       preserveLoadedTask,
-      defaultCwdPath:
-        this.currentPath || this.filesPage.loadStoredDirectoryPath() || this.initialPath,
+      defaultCwdPath,
     });
+    if (route.threadId && this.isCurrentRoute(route)) {
+      this.pathbar.path = this.codexWorkspace.selectedTaskContextPath() || defaultCwdPath;
+    }
   }
 
   async applyGitRoute(route) {
@@ -830,6 +825,25 @@ class CaffoldAppShell extends HTMLElement {
         this.initialPath ||
         ".",
     );
+  }
+
+  defaultTaskCwdPath() {
+    return cleanPath(
+      this.filesPage?.currentPath ||
+        this.filesPage?.loadStoredDirectoryPath?.() ||
+        this.initialPath ||
+        ".",
+    );
+  }
+
+  newTaskContextPath() {
+    if (this.currentRoute?.kind === "tasks" && this.currentRoute.threadId) {
+      const taskPath = cleanPath(this.codexWorkspace?.selectedTaskContextPath?.());
+      if (taskPath) {
+        return taskPath;
+      }
+    }
+    return this.defaultTaskCwdPath();
   }
 
   preferredReviewContextPath() {
