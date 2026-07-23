@@ -5888,9 +5888,7 @@ test("renders normalized Codex user messages instead of raw ambient context", as
   await expect(tasksPage).not.toContainText("Files mentioned by the user");
 });
 
-test("replays canonical task detail when the stream connects after completion", async ({
-  page,
-}) => {
+test("accepts canonical task detail after stream revisions restart", async ({ page }) => {
   await page.addInitScript(() => {
     window.__taskEventSources = [];
     window.EventSource = class MockEventSource {
@@ -5952,14 +5950,14 @@ test("replays canonical task detail when the stream connects after completion", 
     createdMs: now,
   };
   const staleDetail = {
-    revision: 1,
+    revision: 43,
     task: staleTask,
     events: [userEvent],
     eventsPage: { nextCursor: null },
     pendingApprovals: [],
   };
   const canonicalDetail = {
-    revision: 2,
+    revision: 1,
     task: {
       ...staleTask,
       activeTurnId: null,
@@ -6031,7 +6029,128 @@ test("replays canonical task detail when the stream connects after completion", 
   await expect(
     tasksPage.locator('.task-detail-summary .task-status-chip[data-status="running"]'),
   ).toHaveCount(0);
+  await expect(tasksPage).not.toContainText("Working for");
   await expect(tasksPage.locator(".task-detail-loading")).toHaveCount(0);
+});
+
+test("accepts task list events after stream revisions restart", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.EventSource = class MockEventSource {
+      constructor(url) {
+        this.url = url;
+        this.listeners = new Map();
+        this.readyState = 0;
+        if (url.startsWith("/api/tasks/stream")) {
+          window.__taskListEventSource = this;
+        }
+      }
+
+      addEventListener(type, listener) {
+        this.listeners.set(type, listener);
+      }
+
+      emit(type, payload) {
+        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
+      }
+
+      emitOpen() {
+        this.readyState = 1;
+        this.listeners.get("open")?.({});
+      }
+
+      emitError() {
+        this.readyState = 0;
+        this.listeners.get("error")?.({});
+      }
+
+      close() {
+        this.readyState = 2;
+      }
+    };
+  });
+  await mockCodexModels(page);
+
+  const threadId = "thread_list_revision_restart";
+  const now = 1_767_190_475_000;
+  let task = {
+    id: threadId,
+    threadId,
+    activeTurnId: null,
+    activeTurnStartedMs: null,
+    title: "Task list revision restart",
+    preview: "Initial result",
+    status: "completed",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: "Initial result",
+  };
+  let taskListRequests = 0;
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    taskListRequests += 1;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [task], nextCursor: null }),
+    });
+  });
+  await page.route(/\/api\/task-history(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [], nextCursor: null }),
+    }),
+  );
+
+  await page.goto("/tasks");
+  const row = page.locator(
+    `caffold-tasks-page .task-row[data-thread-id="${threadId}"]`,
+  );
+  await expect(row).toHaveAttribute("data-task-status", "completed");
+
+  await page.evaluate((threadId) => {
+    window.__taskListEventSource.emit("task-event", {
+      threadId,
+      revision: 43,
+      event: {
+        id: "event_running_before_restart",
+        threadId,
+        type: "thread_status_changed",
+        payload: { status: "running" },
+        createdMs: Date.now(),
+      },
+    });
+  }, threadId);
+  await expect(row).toHaveAttribute("data-task-status", "running");
+
+  task = {
+    ...task,
+    status: "running",
+    activeTurnId: "turn_before_restart",
+    activeTurnStartedMs: now,
+  };
+  await page.evaluate(() => {
+    window.__taskListEventSource.emitError();
+    window.__taskListEventSource.emitOpen();
+  });
+  await expect.poll(() => taskListRequests).toBe(2);
+
+  await page.evaluate((threadId) => {
+    window.__taskListEventSource.emit("task-event", {
+      threadId,
+      revision: 1,
+      event: {
+        id: "event_idle_after_restart",
+        threadId,
+        type: "thread_status_changed",
+        payload: { status: "idle" },
+        createdMs: Date.now(),
+      },
+    });
+  }, threadId);
+  await expect(row).toHaveAttribute("data-task-status", "idle");
 });
 
 test("keeps task list and detail revisions independent", async ({ page }, testInfo) => {

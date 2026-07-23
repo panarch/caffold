@@ -852,7 +852,9 @@ class CaffoldTasksPage extends HTMLElement {
       ) {
         return;
       }
-      this.applyTaskDetailSync(threadId, detail, message.revision);
+      this.applyTaskDetailSync(threadId, detail, message.revision, {
+        resetRevision: message.reason === "stream-bootstrap",
+      });
     });
     stream.addEventListener("task-event", (event) => {
       const message = parseJson(event.data);
@@ -873,11 +875,16 @@ class CaffoldTasksPage extends HTMLElement {
     });
   }
 
-  applyTaskDetailSync(threadId, detail, revision) {
-    if (
-      threadId !== this.selectedThreadId ||
-      !this.acceptTaskDetailRevision(threadId, revision ?? detail?.revision)
-    ) {
+  applyTaskDetailSync(threadId, detail, revision, { resetRevision = false } = {}) {
+    if (threadId !== this.selectedThreadId) {
+      return;
+    }
+    if (resetRevision) {
+      // Session revisions are process-local, so a reconnect after a server
+      // restart can authoritatively bootstrap at a lower revision.
+      this.taskDetailRevisionByThread.delete(threadId);
+    }
+    if (!this.acceptTaskDetailRevision(threadId, revision ?? detail?.revision)) {
       return;
     }
     this.acknowledgeFollowUpFromCanonicalDetail(threadId, detail);
@@ -946,6 +953,9 @@ class CaffoldTasksPage extends HTMLElement {
       }
       if (this.taskListStreamNeedsSync) {
         this.taskListStreamNeedsSync = false;
+        // The shared stream reconnects across backend restarts as well as
+        // transient network failures. The forced read establishes the new baseline.
+        this.taskListRevisionByThread.clear();
         this.loadTaskList({ force: true });
       }
     });
