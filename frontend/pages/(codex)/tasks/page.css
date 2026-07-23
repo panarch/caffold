@@ -1928,17 +1928,20 @@ caffold-tasks-page .task-composer-tools {
   min-width: 0;
 }
 
-caffold-tasks-page .task-model-picker {
+caffold-tasks-page .task-model-picker,
+caffold-tasks-page .task-permission-picker {
   position: relative;
   min-width: 0;
 }
 
-caffold-tasks-page .task-model-backdrop {
+caffold-tasks-page .task-model-backdrop,
+caffold-tasks-page .task-permission-backdrop {
   display: none;
 }
 
 caffold-tasks-page .task-toolbar-button,
-caffold-tasks-page .task-model-button {
+caffold-tasks-page .task-model-button,
+caffold-tasks-page .task-permission-button {
   display: inline-grid;
   grid-auto-flow: column;
   align-items: center;
@@ -1958,7 +1961,13 @@ caffold-tasks-page .task-model-button {
   color: var(--text);
 }
 
-caffold-tasks-page .task-model-button span:not(.task-model-caret) {
+caffold-tasks-page .task-permission-button {
+  max-width: min(100%, 220px);
+  color: var(--text);
+}
+
+caffold-tasks-page .task-model-button span:not(.task-model-caret),
+caffold-tasks-page .task-permission-button span:not(.task-model-caret) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1967,7 +1976,9 @@ caffold-tasks-page .task-model-button span:not(.task-model-caret) {
 caffold-tasks-page .task-toolbar-button:hover,
 caffold-tasks-page .task-toolbar-button:focus-visible,
 caffold-tasks-page .task-model-button:hover,
-caffold-tasks-page .task-model-button:focus-visible {
+caffold-tasks-page .task-model-button:focus-visible,
+caffold-tasks-page .task-permission-button:hover,
+caffold-tasks-page .task-permission-button:focus-visible {
   background: #eef4ef;
   outline: none;
 }
@@ -1977,6 +1988,23 @@ caffold-tasks-page .task-model-icon {
   height: 16px;
   color: var(--muted);
   stroke-width: 2;
+}
+
+caffold-tasks-page .task-permission-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+  stroke-width: 2;
+}
+
+caffold-tasks-page .task-permission-button.is-dangerous,
+caffold-tasks-page .task-permission-option.is-dangerous strong {
+  color: var(--danger);
+}
+
+caffold-tasks-page .task-permission-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 caffold-tasks-page .task-model-caret {
@@ -2010,7 +2038,8 @@ caffold-tasks-page .task-send-arrow {
   line-height: 1;
 }
 
-caffold-tasks-page .task-model-popover {
+caffold-tasks-page .task-model-popover,
+caffold-tasks-page .task-permission-popover {
   position: absolute;
   z-index: 10;
   top: calc(100% + 8px);
@@ -2027,9 +2056,21 @@ caffold-tasks-page .task-model-popover {
   color: var(--text);
 }
 
-caffold-tasks-page .task-follow-up-form .task-model-popover {
+caffold-tasks-page .task-permission-popover {
+  width: min(410px, calc(100vw - 32px));
+}
+
+caffold-tasks-page .task-follow-up-form .task-model-popover,
+caffold-tasks-page .task-follow-up-form .task-permission-popover {
   top: auto;
   bottom: calc(100% + 8px);
+}
+
+caffold-tasks-page .task-permission-heading {
+  margin: 0;
+  padding: 6px 8px 8px;
+  color: var(--muted);
+  font-size: var(--task-detail-meta-size);
 }
 
 caffold-tasks-page .task-model-popover section {
@@ -2072,6 +2113,15 @@ caffold-tasks-page .task-model-option:focus-visible,
 caffold-tasks-page .task-model-option[aria-pressed="true"] {
   background: #eef4ef;
   outline: none;
+}
+
+caffold-tasks-page .task-model-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+caffold-tasks-page .task-model-option:disabled:hover {
+  background: transparent;
 }
 
 caffold-tasks-page .task-model-option span {
@@ -2192,7 +2242,8 @@ caffold-tasks-page [data-status="waiting_for_approval"] {
     padding: 13px 14px 8px;
   }
 
-  caffold-tasks-page .task-model-popover {
+  caffold-tasks-page .task-model-popover,
+  caffold-tasks-page .task-permission-popover {
     position: fixed;
     top: auto;
     inset: auto 10px 10px;
@@ -2200,12 +2251,14 @@ caffold-tasks-page [data-status="waiting_for_approval"] {
     max-height: min(544px, calc(100vh - 24px));
   }
 
-  caffold-tasks-page .task-follow-up-form .task-model-popover {
+  caffold-tasks-page .task-follow-up-form .task-model-popover,
+  caffold-tasks-page .task-follow-up-form .task-permission-popover {
     top: auto;
     bottom: 10px;
   }
 
-  caffold-tasks-page .task-model-backdrop {
+  caffold-tasks-page .task-model-backdrop,
+  caffold-tasks-page .task-permission-backdrop {
     position: fixed;
     inset: 0;
     z-index: 9;
@@ -2215,7 +2268,8 @@ caffold-tasks-page [data-status="waiting_for_approval"] {
     cursor: default;
   }
 
-  caffold-tasks-page .task-model-popover {
+  caffold-tasks-page .task-model-popover,
+  caffold-tasks-page .task-permission-popover {
     z-index: 10;
     border-radius: 18px;
     box-shadow: 0 -12px 48px rgb(31 42 36 / 18%);

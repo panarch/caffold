@@ -27,6 +27,8 @@ pub(crate) const TURN_START: &str = "turn/start";
 pub(crate) const TURN_STEER: &str = "turn/steer";
 pub(crate) const TURN_INTERRUPT: &str = "turn/interrupt";
 pub(crate) const MODEL_LIST: &str = "model/list";
+pub(crate) const PERMISSION_PROFILE_LIST: &str = "permissionProfile/list";
+pub(crate) const CONFIG_READ: &str = "config/read";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -264,6 +266,28 @@ pub struct ModelListResponse {
     pub next_cursor: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PermissionProfileSummary {
+    pub id: String,
+    pub description: Option<String>,
+    pub allowed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PermissionProfileListResponse {
+    #[serde(default)]
+    pub data: Vec<PermissionProfileSummary>,
+    #[serde(default)]
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ConfigReadResponse {
+    pub config: Value,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct EmptyResponse {}
 
@@ -316,10 +340,129 @@ pub struct ModelListParams {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct PermissionProfileListParams<'a> {
+    pub limit: usize,
+    pub cwd: &'a str,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigReadParams<'a> {
+    pub include_layers: bool,
+    pub cwd: &'a str,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum CodexPermissionMode {
+    #[default]
+    AskForApproval,
+    ApproveForMe,
+    FullAccess,
+}
+
+impl CodexPermissionMode {
+    pub fn profile_id(self) -> &'static str {
+        match self {
+            Self::AskForApproval | Self::ApproveForMe => ":workspace",
+            Self::FullAccess => ":danger-full-access",
+        }
+    }
+
+    fn approval_policy(self) -> ApprovalPolicy {
+        match self {
+            Self::AskForApproval | Self::ApproveForMe => ApprovalPolicy::OnRequest,
+            Self::FullAccess => ApprovalPolicy::Never,
+        }
+    }
+
+    fn approvals_reviewer(self) -> ApprovalsReviewer {
+        match self {
+            Self::ApproveForMe => ApprovalsReviewer::AutoReview,
+            Self::AskForApproval | Self::FullAccess => ApprovalsReviewer::User,
+        }
+    }
+
+    pub fn from_settings(settings: &BTreeMap<String, Value>) -> Self {
+        let approval_policy = settings.get("approvalPolicy").and_then(Value::as_str);
+        let reviewer = settings.get("approvalsReviewer").and_then(Value::as_str);
+        let profile_id = settings
+            .get("activePermissionProfile")
+            .and_then(|profile| profile.get("id"))
+            .and_then(Value::as_str);
+        let sandbox_type = settings
+            .get("sandbox")
+            .and_then(|sandbox| sandbox.get("type"))
+            .and_then(Value::as_str);
+
+        let full_access =
+            profile_id == Some(":danger-full-access") || sandbox_type == Some("dangerFullAccess");
+        if approval_policy == Some("never") && full_access {
+            Self::FullAccess
+        } else if reviewer == Some("auto_review") {
+            Self::ApproveForMe
+        } else {
+            Self::AskForApproval
+        }
+    }
+
+    pub fn from_config(config: &Value) -> Self {
+        let approval_policy = config
+            .get("approval_policy")
+            .or_else(|| config.get("approvalPolicy"))
+            .and_then(Value::as_str);
+        let reviewer = config
+            .get("approvals_reviewer")
+            .or_else(|| config.get("approvalsReviewer"))
+            .and_then(Value::as_str);
+        let sandbox_mode = config
+            .get("sandbox_mode")
+            .or_else(|| config.get("sandboxMode"))
+            .and_then(Value::as_str);
+        let profile_id = config
+            .get("default_permissions")
+            .or_else(|| config.get("defaultPermissions"))
+            .and_then(Value::as_str);
+
+        let full_access =
+            sandbox_mode == Some("danger-full-access") || profile_id == Some(":danger-full-access");
+        if approval_policy == Some("never") && full_access {
+            Self::FullAccess
+        } else if reviewer == Some("auto_review") {
+            Self::ApproveForMe
+        } else {
+            Self::AskForApproval
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+enum ApprovalPolicy {
+    #[serde(rename = "on-request")]
+    OnRequest,
+    #[serde(rename = "never")]
+    Never,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+enum ApprovalsReviewer {
+    #[serde(rename = "user")]
+    User,
+    #[serde(rename = "auto_review")]
+    AutoReview,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct ThreadStartParams<'a> {
     pub cwd: &'a str,
     pub runtime_workspace_roots: [&'a str; 1],
-    pub approvals_reviewer: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    approval_policy: Option<ApprovalPolicy>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    approvals_reviewer: Option<ApprovalsReviewer>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permissions: Option<&'static str>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -341,7 +484,12 @@ pub struct TurnStartParams<'a> {
     pub input: Vec<UserInput<'a>>,
     pub cwd: &'a str,
     pub runtime_workspace_roots: [&'a str; 1],
-    pub approvals_reviewer: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    approval_policy: Option<ApprovalPolicy>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    approvals_reviewer: Option<ApprovalsReviewer>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permissions: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -678,17 +826,36 @@ pub(crate) fn model_list_params(limit: usize) -> ModelListParams {
     }
 }
 
+pub(crate) fn permission_profile_list_params(
+    cwd: &str,
+    limit: usize,
+) -> PermissionProfileListParams<'_> {
+    PermissionProfileListParams { limit, cwd }
+}
+
+pub(crate) fn config_read_params(cwd: &str) -> ConfigReadParams<'_> {
+    ConfigReadParams {
+        include_layers: false,
+        cwd,
+    }
+}
+
 pub(crate) fn account_read_params() -> AccountReadParams {
     AccountReadParams {
         refresh_token: false,
     }
 }
 
-pub(crate) fn thread_start_params(cwd: &str) -> ThreadStartParams<'_> {
+pub(crate) fn thread_start_params(
+    cwd: &str,
+    permission_mode: Option<CodexPermissionMode>,
+) -> ThreadStartParams<'_> {
     ThreadStartParams {
         cwd,
         runtime_workspace_roots: [cwd],
-        approvals_reviewer: "user",
+        approval_policy: permission_mode.map(CodexPermissionMode::approval_policy),
+        approvals_reviewer: permission_mode.map(CodexPermissionMode::approvals_reviewer),
+        permissions: permission_mode.map(CodexPermissionMode::profile_id),
     }
 }
 
@@ -699,13 +866,16 @@ pub(crate) fn turn_start_params<'a>(
     image_urls: &'a [String],
     model: Option<&'a str>,
     effort: Option<&'a str>,
+    permission_mode: Option<CodexPermissionMode>,
 ) -> TurnStartParams<'a> {
     TurnStartParams {
         thread_id,
         input: turn_input(prompt, image_urls),
         cwd,
         runtime_workspace_roots: [cwd],
-        approvals_reviewer: "user",
+        approval_policy: permission_mode.map(CodexPermissionMode::approval_policy),
+        approvals_reviewer: permission_mode.map(CodexPermissionMode::approvals_reviewer),
+        permissions: permission_mode.map(CodexPermissionMode::profile_id),
         model: model.filter(|value| !value.is_empty()),
         effort: effort.filter(|value| !value.is_empty()),
     }
@@ -869,12 +1039,17 @@ mod tests {
             ),
             (
                 THREAD_START,
-                serde_json::to_value(thread_start_params("/workspace/project"))
-                    .expect("thread start params"),
+                serde_json::to_value(thread_start_params(
+                    "/workspace/project",
+                    Some(CodexPermissionMode::ApproveForMe),
+                ))
+                .expect("thread start params"),
                 json!({
                     "cwd": "/workspace/project",
                     "runtimeWorkspaceRoots": ["/workspace/project"],
-                    "approvalsReviewer": "user"
+                    "approvalPolicy": "on-request",
+                    "approvalsReviewer": "auto_review",
+                    "permissions": ":workspace"
                 }),
             ),
             (
@@ -886,6 +1061,7 @@ mod tests {
                     &images,
                     Some("gpt-5.5"),
                     Some("high"),
+                    Some(CodexPermissionMode::FullAccess),
                 ))
                 .expect("turn start params"),
                 json!({
@@ -896,7 +1072,9 @@ mod tests {
                     ],
                     "cwd": "/workspace/project",
                     "runtimeWorkspaceRoots": ["/workspace/project"],
+                    "approvalPolicy": "never",
                     "approvalsReviewer": "user",
+                    "permissions": ":danger-full-access",
                     "model": "gpt-5.5",
                     "effort": "high"
                 }),
@@ -953,6 +1131,18 @@ mod tests {
                 MODEL_LIST,
                 serde_json::to_value(model_list_params(100)).expect("model list params"),
                 json!({ "limit": 100, "includeHidden": false }),
+            ),
+            (
+                PERMISSION_PROFILE_LIST,
+                serde_json::to_value(permission_profile_list_params("/workspace/project", 100))
+                    .expect("permission profile list params"),
+                json!({ "limit": 100, "cwd": "/workspace/project" }),
+            ),
+            (
+                CONFIG_READ,
+                serde_json::to_value(config_read_params("/workspace/project"))
+                    .expect("config read params"),
+                json!({ "includeLayers": false, "cwd": "/workspace/project" }),
             ),
         ];
 
@@ -1026,5 +1216,68 @@ mod tests {
             decode_response(THREAD_UNSUBSCRIBE, json!({ "status": "unsubscribed" }))
                 .expect("unsubscribe response");
         assert_eq!(response.status, ThreadUnsubscribeStatus::Unsubscribed);
+    }
+
+    #[test]
+    fn derives_permission_modes_from_app_server_settings() {
+        assert_eq!(
+            CodexPermissionMode::from_settings(&BTreeMap::from([
+                (
+                    "approvalPolicy".to_string(),
+                    Value::String("on-request".to_string()),
+                ),
+                (
+                    "approvalsReviewer".to_string(),
+                    Value::String("auto_review".to_string()),
+                ),
+                (
+                    "activePermissionProfile".to_string(),
+                    json!({ "id": ":workspace", "extends": null }),
+                ),
+            ])),
+            CodexPermissionMode::ApproveForMe
+        );
+        assert_eq!(
+            CodexPermissionMode::from_settings(&BTreeMap::from([
+                (
+                    "approvalPolicy".to_string(),
+                    Value::String("never".to_string()),
+                ),
+                ("sandbox".to_string(), json!({ "type": "dangerFullAccess" }),),
+            ])),
+            CodexPermissionMode::FullAccess
+        );
+    }
+
+    #[test]
+    fn omits_permission_overrides_when_the_composer_uses_codex_defaults() {
+        assert_eq!(
+            serde_json::to_value(thread_start_params("/workspace/project", None))
+                .expect("thread start params"),
+            json!({
+                "cwd": "/workspace/project",
+                "runtimeWorkspaceRoots": ["/workspace/project"]
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(turn_start_params(
+                "thread_1",
+                "/workspace/project",
+                "Inspect",
+                &[],
+                None,
+                None,
+                None,
+            ))
+            .expect("turn start params"),
+            json!({
+                "threadId": "thread_1",
+                "input": [
+                    { "type": "text", "text": "Inspect", "text_elements": [] }
+                ],
+                "cwd": "/workspace/project",
+                "runtimeWorkspaceRoots": ["/workspace/project"]
+            })
+        );
     }
 }

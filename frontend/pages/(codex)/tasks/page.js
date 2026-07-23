@@ -2,6 +2,7 @@ import {
   continueTask,
   createTask,
   getCodexModels,
+  getCodexPermissions,
   getGitHubStatus,
   getGitStatus,
   getTask,
@@ -118,11 +119,23 @@ class CaffoldTasksPage extends HTMLElement {
     this.modelOptionsLoaded = false;
     this.modelOptionsLoading = false;
     this.modelOptionsError = null;
+    this.permissionOptions = [];
+    this.permissionOptionsCwd = "";
+    this.permissionOptionsLoaded = false;
+    this.permissionOptionsLoading = false;
+    this.permissionOptionsError = null;
+    this.permissionOptionsRequestId = 0;
+    this.defaultPermissionMode = "askForApproval";
+    this.newTaskPermissionMode = "";
+    this.newTaskPermissionExplicit = false;
+    this.permissionModeByThread = new Map();
+    this.permissionOverrideThreadIds = new Set();
     this.composerSettings = {
       model: "",
       effort: "",
     };
     this.openModelPickerForm = "";
+    this.openPermissionPickerForm = "";
     this.taskDetailView = "conversation";
     this.taskDiffMode = "working";
     this.taskDiffStatus = null;
@@ -165,8 +178,13 @@ class CaffoldTasksPage extends HTMLElement {
         }
         const action = closestElement(event.target, "[data-task-action]");
         if (!action) {
-          if (!closestElement(event.target, ".task-model-picker")) {
-            window.setTimeout(() => this.closeModelPicker(), 0);
+          if (
+            !closestElement(
+              event.target,
+              ".task-model-picker, .task-permission-picker",
+            )
+          ) {
+            window.setTimeout(() => this.closeComposerPickers(), 0);
           }
           return;
         }
@@ -430,6 +448,8 @@ class CaffoldTasksPage extends HTMLElement {
         this.loading = false;
         this.loadTaskGithubStatus(this.taskDetail.task);
         this.loadModelOptions();
+        this.observeTaskPermission(this.taskDetail);
+        this.loadPermissionOptions(this.activeCwdPath());
         return this.taskDetail;
       }
       return await this.openTask(route.threadId);
@@ -459,11 +479,13 @@ class CaffoldTasksPage extends HTMLElement {
     this.historyLoadError = null;
     this.loading = false;
     this.openModelPickerForm = "";
+    this.openPermissionPickerForm = "";
     this.closeStream();
     this.render();
     this.loadTaskList();
     this.loadTaskHistory();
     this.loadModelOptions();
+    this.loadPermissionOptions(this.activeCwdPath());
     this.querySelector("textarea[name='prompt']")?.focus();
     return null;
   }
@@ -498,6 +520,7 @@ class CaffoldTasksPage extends HTMLElement {
       }
       this.acknowledgeFollowUpFromCanonicalDetail(threadId, detail);
       this.taskDetail = detail;
+      this.observeTaskPermission(detail);
       this.setThreadEvents(
         threadId,
         mergeEvents(this.eventsByThread.get(threadId) ?? [], detail.events ?? []),
@@ -519,6 +542,7 @@ class CaffoldTasksPage extends HTMLElement {
       this.render();
       this.loadTaskGithubStatus(detail.task);
       this.loadModelOptions();
+      this.loadPermissionOptions(this.activeCwdPath());
       return detail;
     } catch (error) {
       if (requestId !== this.requestId) {
@@ -864,6 +888,7 @@ class CaffoldTasksPage extends HTMLElement {
     }
     this.acknowledgeFollowUpFromCanonicalDetail(threadId, detail);
     this.taskDetail = detail;
+    this.observeTaskPermission(detail);
     this.loading = false;
     this.detailLoadError = null;
     this.setThreadEvents(
@@ -1131,6 +1156,7 @@ class CaffoldTasksPage extends HTMLElement {
         return;
       }
       this.taskDetail = detail;
+      this.observeTaskPermission(detail);
       this.setThreadEvents(threadId, mergeEvents(this.events, detail.events ?? []));
       this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
       this.patchTaskListTask(detail.task);
@@ -1146,9 +1172,11 @@ class CaffoldTasksPage extends HTMLElement {
     if (
       !action?.startsWith("select-") &&
       action !== "toggle-model-picker" &&
-      action !== "close-model-picker"
+      action !== "close-model-picker" &&
+      action !== "toggle-permission-picker" &&
+      action !== "close-permission-picker"
     ) {
-      this.closeModelPicker();
+      this.closeComposerPickers();
     }
     if (action === "open-list") {
       this.requestRoute({ kind: "tasks" });
@@ -1279,6 +1307,18 @@ class CaffoldTasksPage extends HTMLElement {
     if (action === "select-effort") {
       this.openModelPickerForm = "";
       this.selectEffort(element.dataset.effort);
+      return;
+    }
+    if (action === "toggle-permission-picker") {
+      this.togglePermissionPicker(element.dataset.formName);
+      return;
+    }
+    if (action === "close-permission-picker") {
+      this.closePermissionPicker();
+      return;
+    }
+    if (action === "select-permission") {
+      this.selectPermissionMode(element.dataset.formName, element.dataset.permissionMode);
     }
   }
 
@@ -1478,15 +1518,18 @@ class CaffoldTasksPage extends HTMLElement {
         ...(this.activeCwdPath() ? { cwd: this.activeCwdPath() } : {}),
         prompt,
         images: images.map((image) => image.dataUrl),
-        ...this.turnOptions(),
+        ...this.turnOptions("create"),
       });
       this.acceptTaskDetailRevision(detail?.task?.threadId, detail?.revision);
       this.taskDetail = detail;
+      this.observeTaskPermission(detail);
       this.setThreadEvents(detail.task.threadId, detail.events ?? []);
       this.eventsPage = detail.eventsPage ?? { nextCursor: null };
       this.tasks = upsertTask(this.tasks, detail.task);
       this.newTaskDraft = { prompt: "" };
       this.newTaskImages = [];
+      this.newTaskPermissionMode = this.defaultPermissionMode;
+      this.newTaskPermissionExplicit = false;
       this.composerImageErrors.delete("create");
       this.conversationScrollMode = "bottom";
       this.requestRoute({ kind: "tasks", threadId: detail.task.threadId });
@@ -1584,7 +1627,7 @@ class CaffoldTasksPage extends HTMLElement {
         threadId,
         prompt,
         {
-          ...this.turnOptions(),
+          ...this.turnOptions("follow-up"),
           activeTurnId:
             previousTask?.status === "running"
               ? previousTask.activeTurnId ?? null
@@ -1594,6 +1637,9 @@ class CaffoldTasksPage extends HTMLElement {
       );
       if (response?.threadId !== threadId) {
         throw new Error("Codex accepted the prompt for a different task.");
+      }
+      if (!response?.steered) {
+        this.permissionOverrideThreadIds.delete(threadId);
       }
       if (threadId === this.selectedThreadId) {
         this.conversationScrollMode = "bottom-if-needed";
@@ -1670,6 +1716,7 @@ class CaffoldTasksPage extends HTMLElement {
         return;
       }
       this.taskDetail = detail;
+      this.observeTaskPermission(detail);
       this.setThreadEvents(
         this.selectedThreadId,
         mergeEvents(this.events, detail.events ?? []),
@@ -1706,6 +1753,7 @@ class CaffoldTasksPage extends HTMLElement {
         return;
       }
       this.taskDetail = detail;
+      this.observeTaskPermission(detail);
       this.setThreadEvents(
         this.selectedThreadId,
         mergeEvents(this.events, detail.events ?? []),
@@ -1822,6 +1870,132 @@ class CaffoldTasksPage extends HTMLElement {
     }
   }
 
+  async loadPermissionOptions(cwd = this.activeCwdPath()) {
+    const targetCwd = cleanLogicalPath(cwd || ".");
+    if (
+      this.permissionOptionsCwd === targetCwd &&
+      (this.permissionOptionsLoaded || this.permissionOptionsLoading)
+    ) {
+      return;
+    }
+
+    const requestId = ++this.permissionOptionsRequestId;
+    this.permissionOptionsCwd = targetCwd;
+    this.permissionOptionsLoaded = false;
+    this.permissionOptionsLoading = true;
+    this.permissionOptionsError = null;
+    this.render();
+    try {
+      const response = await getCodexPermissions(targetCwd);
+      if (
+        requestId !== this.permissionOptionsRequestId ||
+        this.permissionOptionsCwd !== targetCwd
+      ) {
+        return;
+      }
+      this.permissionOptions = normalizePermissionOptions(response);
+      const requestedDefault = `${response?.defaultMode ?? ""}`.trim();
+      const defaultOption =
+        this.permissionOptions.find(
+          (option) => option.mode === requestedDefault && option.allowed,
+        ) ?? this.permissionOptions.find((option) => option.allowed);
+      this.defaultPermissionMode = defaultOption?.mode ?? "askForApproval";
+      const selectedNewOption = this.permissionOptions.find(
+        (option) => option.mode === this.newTaskPermissionMode,
+      );
+      if (!this.newTaskPermissionExplicit || !selectedNewOption?.allowed) {
+        this.newTaskPermissionMode = this.defaultPermissionMode;
+        this.newTaskPermissionExplicit = false;
+      }
+      this.permissionOptionsLoaded = true;
+    } catch (error) {
+      if (requestId !== this.permissionOptionsRequestId) {
+        return;
+      }
+      this.permissionOptions = [];
+      this.permissionOptionsError = error;
+      this.permissionOptionsLoaded = true;
+      this.defaultPermissionMode = "askForApproval";
+      this.newTaskPermissionMode ||= this.defaultPermissionMode;
+    } finally {
+      if (requestId === this.permissionOptionsRequestId) {
+        this.permissionOptionsLoading = false;
+        this.render();
+      }
+    }
+  }
+
+  observeTaskPermission(detail) {
+    const threadId = `${detail?.task?.threadId ?? ""}`.trim();
+    const permissionMode = `${detail?.permissionMode ?? ""}`.trim();
+    if (
+      threadId &&
+      permissionMode &&
+      !this.permissionOverrideThreadIds.has(threadId)
+    ) {
+      this.permissionModeByThread.set(threadId, permissionMode);
+    }
+  }
+
+  selectedPermissionMode(formName) {
+    if (formName === "create") {
+      return this.newTaskPermissionMode || this.defaultPermissionMode;
+    }
+    const threadId = this.selectedThreadId;
+    return (
+      this.permissionModeByThread.get(threadId) ||
+      `${this.taskDetail?.permissionMode ?? ""}`.trim() ||
+      this.defaultPermissionMode
+    );
+  }
+
+  selectPermissionMode(formName, permissionMode) {
+    const option = this.permissionOptions.find(
+      (candidate) => candidate.mode === permissionMode,
+    );
+    if (!option?.allowed) {
+      return;
+    }
+    if (
+      option.dangerous &&
+      this.selectedPermissionMode(formName) !== permissionMode &&
+      !window.confirm(
+        "Full access removes sandbox restrictions and approval prompts for subsequent turns. Continue?",
+      )
+    ) {
+      return;
+    }
+
+    if (formName === "create") {
+      this.newTaskPermissionMode = permissionMode;
+      this.newTaskPermissionExplicit = true;
+    } else if (this.selectedThreadId) {
+      this.permissionModeByThread.set(this.selectedThreadId, permissionMode);
+      this.permissionOverrideThreadIds.add(this.selectedThreadId);
+    }
+    this.openPermissionPickerForm = "";
+    this.render();
+  }
+
+  togglePermissionPicker(formName) {
+    const nextFormName = `${formName ?? ""}`;
+    this.openPermissionPickerForm =
+      this.openPermissionPickerForm === nextFormName ? "" : nextFormName;
+    this.openModelPickerForm = "";
+    if (this.openPermissionPickerForm) {
+      this.loadPermissionOptions(this.activeCwdPath());
+    }
+    this.render();
+  }
+
+  closePermissionPicker() {
+    if (!this.openPermissionPickerForm) {
+      return;
+    }
+    this.openPermissionPickerForm = "";
+    this.render();
+  }
+
   applyDefaultModelSelection() {
     if (!this.modelOptions.length) {
       return;
@@ -1856,6 +2030,7 @@ class CaffoldTasksPage extends HTMLElement {
   toggleModelPicker(formName) {
     const nextFormName = `${formName ?? ""}`;
     this.openModelPickerForm = this.openModelPickerForm === nextFormName ? "" : nextFormName;
+    this.openPermissionPickerForm = "";
     if (this.openModelPickerForm) {
       this.loadModelOptions();
     }
@@ -1870,6 +2045,15 @@ class CaffoldTasksPage extends HTMLElement {
     this.render();
   }
 
+  closeComposerPickers() {
+    if (!this.openModelPickerForm && !this.openPermissionPickerForm) {
+      return;
+    }
+    this.openModelPickerForm = "";
+    this.openPermissionPickerForm = "";
+    this.render();
+  }
+
   selectedModelOption() {
     return this.modelOptions.find((option) => option.model === this.composerSettings.model) ?? null;
   }
@@ -1878,11 +2062,20 @@ class CaffoldTasksPage extends HTMLElement {
     return this.composerSettings.effort || this.selectedModelOption()?.defaultReasoningEffort || "";
   }
 
-  turnOptions() {
-    return {
+  turnOptions(formName) {
+    const options = {
       model: this.composerSettings.model || undefined,
       effort: this.selectedEffort() || undefined,
     };
+    const activeTurn = formName === "follow-up" && isTaskActivelyWorking(this.taskDetail?.task);
+    const explicitPermission =
+      formName === "create"
+        ? this.newTaskPermissionExplicit
+        : this.permissionOverrideThreadIds.has(this.selectedThreadId);
+    if (!activeTurn && explicitPermission) {
+      options.permissionMode = this.selectedPermissionMode(formName);
+    }
+    return options;
   }
 
   reasoningOptionsForModel(model) {
@@ -3377,6 +3570,9 @@ class CaffoldTasksPage extends HTMLElement {
     const submitting =
       formName === "follow-up" &&
       this.followUpRequest?.threadId === threadId;
+    const permissionLocked =
+      formName === "follow-up" && isTaskActivelyWorking(this.taskDetail?.task);
+    const permissionMode = this.selectedPermissionMode(formName);
     const images = this.composerImages(formName);
     const imageError = this.composerImageErrors.get(formName) ?? "";
     const requestError =
@@ -3407,6 +3603,7 @@ class CaffoldTasksPage extends HTMLElement {
           ${requestError ? `<p class="task-composer-request-error" role="alert">${escapeHtml(requestError)}</p>` : ""}
           <input type="hidden" name="model" value="${escapeHtml(model?.model ?? "")}">
           <input type="hidden" name="effort" value="${escapeHtml(effort)}">
+          <input type="hidden" name="permissionMode" value="${escapeHtml(permissionMode)}">
           <div class="task-composer-toolbar">
             <div class="task-composer-tools">
               ${
@@ -3415,6 +3612,7 @@ class CaffoldTasksPage extends HTMLElement {
                   : ""
               }
               ${this.renderModelPicker(formName)}
+              ${this.renderPermissionPicker(formName, permissionLocked)}
             </div>
             <button type="submit" class="task-send-button" aria-label="${escapeHtml(submitLabel)}" title="${escapeHtml(submitLabel)}"${submitting ? " disabled" : ""}>
               <span class="task-send-arrow" aria-hidden="true">&uarr;</span>
@@ -3503,6 +3701,63 @@ class CaffoldTasksPage extends HTMLElement {
                   <p>Model</p>
                   ${modelRows}
                 </section>
+              </div>`
+            : ""
+        }
+      </div>
+    `;
+  }
+
+  renderPermissionPicker(formName, disabled = false) {
+    const permissionMode = this.selectedPermissionMode(formName);
+    const selected = this.permissionOptions.find(
+      (option) => option.mode === permissionMode,
+    );
+    const label =
+      selected?.label ??
+      (this.permissionOptionsLoading
+        ? "Loading permissions"
+        : this.permissionOptionsError
+          ? "Codex default"
+          : permissionModeLabel(permissionMode));
+    const open = !disabled && this.openPermissionPickerForm === formName;
+    const rows = this.permissionOptions.length
+      ? this.permissionOptions
+          .map((option) => renderPermissionOption(option, permissionMode, formName))
+          .join("")
+      : renderPermissionFallback(
+          this.permissionOptionsLoading,
+          this.permissionOptionsError,
+        );
+    const lockedMessage = "Approval mode can be changed after the active turn finishes.";
+
+    return `
+      <div class="task-permission-picker${open ? " is-open" : ""}">
+        <button
+          type="button"
+          class="task-permission-button${selected?.dangerous ? " is-dangerous" : ""}"
+          data-task-action="toggle-permission-picker"
+          data-form-name="${escapeHtml(formName)}"
+          aria-expanded="${open ? "true" : "false"}"
+          aria-label="Choose approval mode"
+          title="${escapeHtml(disabled ? lockedMessage : label)}"
+          ${disabled ? "disabled" : ""}
+        >
+          ${renderInlineIcon("Shield", "Permissions", "task-permission-icon")}
+          <span>${escapeHtml(label)}</span>
+          <span class="task-model-caret" aria-hidden="true">&#8964;</span>
+        </button>
+        ${
+          open
+            ? `<button
+                type="button"
+                class="task-permission-backdrop"
+                data-task-action="close-permission-picker"
+                aria-label="Close approval mode picker"
+              ></button>
+              <div class="task-permission-popover" role="menu" aria-label="Approval modes">
+                <p class="task-permission-heading">Permissions</p>
+                ${rows}
               </div>`
             : ""
         }
@@ -3923,6 +4178,67 @@ function normalizeReasoningOptions(options) {
       };
     })
     .filter(Boolean);
+}
+
+function normalizePermissionOptions(response) {
+  const options = Array.isArray(response?.options) ? response.options : [];
+  return options
+    .map((option) => {
+      const mode = `${option?.mode ?? ""}`.trim();
+      if (!mode) {
+        return null;
+      }
+      return {
+        mode,
+        label: `${option?.label ?? permissionModeLabel(mode)}`.trim(),
+        description: `${option?.description ?? ""}`.trim(),
+        allowed: Boolean(option?.allowed),
+        dangerous: Boolean(option?.dangerous),
+      };
+    })
+    .filter(Boolean);
+}
+
+function permissionModeLabel(mode) {
+  if (mode === "approveForMe") {
+    return "Approve for me";
+  }
+  if (mode === "fullAccess") {
+    return "Full access";
+  }
+  return "Ask for approval";
+}
+
+function renderPermissionOption(option, selectedMode, formName) {
+  const selected = option.mode === selectedMode;
+  const unavailable = option.allowed ? "" : " Not allowed by Codex requirements.";
+  return `
+    <button
+      type="button"
+      class="task-model-option task-permission-option${option.dangerous ? " is-dangerous" : ""}"
+      data-task-action="select-permission"
+      data-form-name="${escapeHtml(formName)}"
+      data-permission-mode="${escapeHtml(option.mode)}"
+      aria-pressed="${selected ? "true" : "false"}"
+      ${option.allowed ? "" : "disabled"}
+    >
+      <span>
+        <strong>${escapeHtml(option.label)}</strong>
+        <small>${escapeHtml(`${option.description}${unavailable}`)}</small>
+      </span>
+      ${selected ? renderInlineIcon("Check", "Selected", "task-model-check") : ""}
+    </button>
+  `;
+}
+
+function renderPermissionFallback(loading, error) {
+  if (loading) {
+    return `<p class="task-model-note">Loading permission modes...</p>`;
+  }
+  if (error) {
+    return `<p class="task-model-note">Permission modes are unavailable. Current Codex settings will be kept.</p>`;
+  }
+  return `<p class="task-model-note">Open this menu after Codex is connected.</p>`;
 }
 
 function renderReasoningOption(option, selectedEffort) {

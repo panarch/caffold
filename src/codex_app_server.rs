@@ -17,19 +17,21 @@ use std::{
 mod protocol;
 
 use protocol::{
-    ACCOUNT_RATE_LIMITS_READ, ACCOUNT_READ, ACCOUNT_USAGE_READ, AccountReadResponse, EmptyResponse,
-    INITIALIZE, INITIALIZED, JsonRpcError, MODEL_LIST, THREAD_ARCHIVE, THREAD_LIST, THREAD_READ,
-    THREAD_RESUME, THREAD_START, THREAD_TURNS_LIST, THREAD_UNSUBSCRIBE, TURN_INTERRUPT, TURN_START,
-    TURN_STEER, ThreadListResponse, ThreadReadResponse, ThreadStartResponse, TurnStartResponse,
-    TurnSteerResponse, account_read_params, decode_response, model_list_params,
+    ACCOUNT_RATE_LIMITS_READ, ACCOUNT_READ, ACCOUNT_USAGE_READ, AccountReadResponse, CONFIG_READ,
+    ConfigReadResponse, EmptyResponse, INITIALIZE, INITIALIZED, JsonRpcError, MODEL_LIST,
+    PERMISSION_PROFILE_LIST, PermissionProfileListResponse, THREAD_ARCHIVE, THREAD_LIST,
+    THREAD_READ, THREAD_RESUME, THREAD_START, THREAD_TURNS_LIST, THREAD_UNSUBSCRIBE,
+    TURN_INTERRUPT, TURN_START, TURN_STEER, ThreadListResponse, ThreadReadResponse,
+    ThreadStartResponse, TurnStartResponse, TurnSteerResponse, account_read_params,
+    config_read_params, decode_response, model_list_params, permission_profile_list_params,
     thread_archive_params, thread_list_params, thread_read_params, thread_resume_params,
     thread_start_params, thread_turns_list_params, thread_unsubscribe_params,
     turn_interrupt_params, turn_start_params, turn_steer_params,
 };
 pub use protocol::{
-    CodexAccount, CodexAppServerInfo, CodexNotification, CodexServerRequest, CodexThread,
-    CodexTurn, ModelListResponse, SortDirection, ThreadResumeResponse, ThreadStatus,
-    ThreadUnsubscribeResponse, TurnStatus, TurnsPage,
+    CodexAccount, CodexAppServerInfo, CodexNotification, CodexPermissionMode, CodexServerRequest,
+    CodexThread, CodexTurn, ModelListResponse, PermissionProfileSummary, SortDirection,
+    ThreadResumeResponse, ThreadStatus, ThreadUnsubscribeResponse, TurnStatus, TurnsPage,
 };
 #[cfg(test)]
 use protocol::{THREAD_LOADED_LIST, ThreadLoadedListResponse, thread_loaded_list_params};
@@ -229,12 +231,14 @@ pub enum CodexRuntimeEvent {
 pub struct CodexThreadStart {
     pub thread_id: String,
     pub thread: CodexThread,
+    pub permission_mode: Option<CodexPermissionMode>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CodexTurnOptions {
     pub model: Option<String>,
     pub effort: Option<String>,
+    pub permission_mode: Option<CodexPermissionMode>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -460,14 +464,28 @@ impl CodexThreadClient {
         .await
     }
 
-    pub async fn start_thread(&self, cwd: &str) -> Result<CodexThreadStart, CodexThreadError> {
+    pub async fn start_thread(
+        &self,
+        cwd: &str,
+        permission_mode: Option<CodexPermissionMode>,
+    ) -> Result<CodexThreadStart, CodexThreadError> {
         let typed: ThreadStartResponse = self
-            .request_typed(THREAD_START, thread_start_params(cwd))
+            .request_typed(THREAD_START, thread_start_params(cwd, permission_mode))
             .await?;
         let thread_id = typed.thread.id.clone();
+        let permission_mode = if typed.extra.contains_key("approvalPolicy")
+            || typed.extra.contains_key("approvalsReviewer")
+            || typed.extra.contains_key("activePermissionProfile")
+            || typed.extra.contains_key("sandbox")
+        {
+            Some(CodexPermissionMode::from_settings(&typed.extra))
+        } else {
+            permission_mode
+        };
         Ok(CodexThreadStart {
             thread_id,
             thread: typed.thread,
+            permission_mode,
         })
     }
 
@@ -516,6 +534,7 @@ impl CodexThreadClient {
                     image_urls,
                     options.model.as_deref(),
                     options.effort.as_deref(),
+                    options.permission_mode,
                 ),
             )
             .await?;
@@ -563,6 +582,30 @@ impl CodexThreadClient {
     pub async fn list_models(&self, limit: usize) -> Result<ModelListResponse, CodexThreadError> {
         self.request_typed(MODEL_LIST, model_list_params(limit))
             .await
+    }
+
+    pub async fn list_permission_profiles(
+        &self,
+        cwd: &str,
+        limit: usize,
+    ) -> Result<Vec<PermissionProfileSummary>, CodexThreadError> {
+        let response: PermissionProfileListResponse = self
+            .request_typed(
+                PERMISSION_PROFILE_LIST,
+                permission_profile_list_params(cwd, limit),
+            )
+            .await?;
+        Ok(response.data)
+    }
+
+    pub async fn default_permission_mode(
+        &self,
+        cwd: &str,
+    ) -> Result<CodexPermissionMode, CodexThreadError> {
+        let response: ConfigReadResponse = self
+            .request_typed(CONFIG_READ, config_read_params(cwd))
+            .await?;
+        Ok(CodexPermissionMode::from_config(&response.config))
     }
 
     pub async fn status(&self) -> CodexStatusResponse {

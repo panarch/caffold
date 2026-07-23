@@ -136,6 +136,33 @@ async fn initial_subscription_bootstraps_only_from_resume() {
 }
 
 #[tokio::test]
+async fn subscription_keeps_the_app_server_permission_mode() {
+    let mut response = resume_response(ThreadStatus::Idle, Vec::new(), Vec::new());
+    response
+        .extra
+        .insert("approvalPolicy".to_string(), json!("on-request"));
+    response
+        .extra
+        .insert("approvalsReviewer".to_string(), json!("auto_review"));
+    response.extra.insert(
+        "activePermissionProfile".to_string(),
+        json!({ "id": ":workspace", "extends": null }),
+    );
+    let client = CodexThreadClient::mock(vec![MockCodexResponse::ok("thread/resume", response)]);
+    let sessions = CodexThreadSessions::default();
+
+    let snapshot = sessions
+        .ensure_subscribed(&client, 1, "thread-1")
+        .await
+        .expect("subscribe");
+
+    assert_eq!(
+        snapshot.permission_mode,
+        Some(CodexPermissionMode::ApproveForMe)
+    );
+}
+
+#[tokio::test]
 async fn metadata_load_shares_the_in_flight_subscription_bootstrap() {
     let client = CodexThreadClient::mock(vec![MockCodexResponse::delayed_ok(
         "thread/resume",
@@ -993,7 +1020,12 @@ async fn completed_prompt_shares_initial_history_bootstrap() {
 
     assert!(matches!(target, PromptTarget::Start { .. }));
     sessions
-        .record_turn_started(1, "thread-1", turn("turn-new", TurnStatus::InProgress))
+        .record_turn_started(
+            1,
+            "thread-1",
+            turn("turn-new", TurnStatus::InProgress),
+            None,
+        )
         .await;
     viewer
         .await
@@ -1048,7 +1080,12 @@ async fn stale_background_refresh_does_not_overwrite_a_new_running_turn() {
     assert!(matches!(target, PromptTarget::Start { .. }));
 
     sessions
-        .record_turn_started(1, "thread-1", turn("turn-new", TurnStatus::InProgress))
+        .record_turn_started(
+            1,
+            "thread-1",
+            turn("turn-new", TurnStatus::InProgress),
+            None,
+        )
         .await;
     refresh
         .await
@@ -1717,6 +1754,7 @@ async fn registered_started_thread_is_subscribed_and_holds_runtime() {
                 },
                 vec![turn("turn-new", TurnStatus::InProgress)],
             ),
+            Some(CodexPermissionMode::AskForApproval),
         )
         .await;
 

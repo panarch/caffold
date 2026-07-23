@@ -10,6 +10,10 @@ export async function getCodexModels() {
   return requestJson("/api/codex/models");
 }
 
+export async function getCodexPermissions(cwd = "") {
+  return requestJson("/api/codex/permissions", cwd ? { cwd } : {});
+}
+
 export async function getTasks(cursor = null) {
   return requestJson("/api/tasks", {
     ...(cursor ? { cursor } : {}),

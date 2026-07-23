@@ -9,8 +9,8 @@ use serde::Serialize;
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::codex_app_server::{
-    CodexNotification, CodexThread, CodexThreadClient, CodexThreadError, CodexTurn, ThreadStatus,
-    TurnStatus, TurnsPage,
+    CodexNotification, CodexPermissionMode, CodexThread, CodexThreadClient, CodexThreadError,
+    CodexTurn, ThreadStatus, TurnStatus, TurnsPage,
 };
 
 const INITIAL_TURNS_PAGE_SIZE: usize = 8;
@@ -43,6 +43,7 @@ pub struct ThreadSessionSnapshot {
     pub external_sync_started_ms: Option<u64>,
     pub external_activity_turn_id: Option<String>,
     pub external_activity_started_ms: Option<u64>,
+    pub permission_mode: Option<CodexPermissionMode>,
 }
 
 impl ThreadSessionSnapshot {
@@ -118,6 +119,7 @@ struct ThreadSessionState {
     external_sync_started_ms: Option<u64>,
     external_activity_turn_id: Option<String>,
     external_activity_started_ms: Option<u64>,
+    permission_mode: Option<CodexPermissionMode>,
 }
 
 impl Default for ThreadSessionState {
@@ -140,6 +142,7 @@ impl Default for ThreadSessionState {
             external_sync_started_ms: None,
             external_activity_turn_id: None,
             external_activity_started_ms: None,
+            permission_mode: None,
         }
     }
 }
@@ -395,6 +398,7 @@ impl CodexThreadSessions {
         client: &CodexThreadClient,
         generation: u64,
         thread: CodexThread,
+        permission_mode: Option<CodexPermissionMode>,
     ) {
         let entry = self.entry(&thread.id).await;
         let mut state = entry.state.lock().await;
@@ -403,6 +407,7 @@ impl CodexThreadSessions {
         state.generation = generation;
         state.active_turn_id = active_turn_id(&thread, None);
         state.thread = Some(thread);
+        state.permission_mode = permission_mode;
         state.turns_page = None;
         state.runtime_lease = true;
         state.revision = state.revision.saturating_add(1);
@@ -536,13 +541,22 @@ impl CodexThreadSessions {
         Ok(snapshot(&state))
     }
 
-    pub async fn record_turn_started(&self, generation: u64, thread_id: &str, turn: CodexTurn) {
+    pub async fn record_turn_started(
+        &self,
+        generation: u64,
+        thread_id: &str,
+        turn: CodexTurn,
+        permission_mode: Option<CodexPermissionMode>,
+    ) {
         let entry = self.entry(thread_id).await;
         let mut state = entry.state.lock().await;
         if state.generation != generation {
             return;
         }
         state.active_turn_id = Some(turn.id.clone());
+        if permission_mode.is_some() {
+            state.permission_mode = permission_mode;
+        }
         state.runtime_lease = true;
         upsert_turn(&mut state.turns_page, turn);
         if let Some(thread) = state.thread.as_mut() {
@@ -868,6 +882,7 @@ fn snapshot(state: &ThreadSessionState) -> ThreadSessionSnapshot {
         external_sync_started_ms: state.external_sync_started_ms,
         external_activity_turn_id: state.external_activity_turn_id.clone(),
         external_activity_started_ms: state.external_activity_started_ms,
+        permission_mode: state.permission_mode,
     }
 }
 
@@ -876,6 +891,7 @@ fn merge_external_resume_response(
     response: crate::codex_app_server::ThreadResumeResponse,
     base_revision: u64,
 ) -> bool {
+    state.permission_mode = Some(CodexPermissionMode::from_settings(&response.extra));
     merge_external_snapshot(
         state,
         response.thread,
@@ -967,6 +983,7 @@ fn apply_resume_response(
     response: crate::codex_app_server::ThreadResumeResponse,
     merge_history: bool,
 ) {
+    state.permission_mode = Some(CodexPermissionMode::from_settings(&response.extra));
     let mut thread = response.thread;
     let active_turn_id = active_turn_id(&thread, response.initial_turns_page.as_ref());
     if active_turn_id.is_some() {
@@ -1004,6 +1021,7 @@ fn apply_stale_refresh_response(
     generation: u64,
     response: crate::codex_app_server::ThreadResumeResponse,
 ) {
+    state.permission_mode = Some(CodexPermissionMode::from_settings(&response.extra));
     let previous_status = state.thread.as_ref().map(|thread| thread.status.clone());
     let mut thread = response.thread;
     if let Some(current) = state.thread.take() {

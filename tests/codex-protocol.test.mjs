@@ -115,6 +115,8 @@ test(
         "turn/steer",
         "turn/interrupt",
         "model/list",
+        "permissionProfile/list",
+        "config/read",
       ]) {
         assert.ok(
           clientRequests.includes(`"method": "${method}"`),
@@ -152,6 +154,29 @@ test(
       assert.match(unsubscribeStatus, /notLoaded/);
       assert.match(unsubscribeStatus, /notSubscribed/);
       assert.match(unsubscribeStatus, /unsubscribed/);
+
+      const threadStartParams = readFileSync(
+        join(outputDirectory, "v2", "ThreadStartParams.ts"),
+        "utf8",
+      );
+      assert.match(threadStartParams, /approvalPolicy/);
+      assert.match(threadStartParams, /approvalsReviewer/);
+      assert.match(threadStartParams, /permissions/);
+
+      const turnStartParams = readFileSync(
+        join(outputDirectory, "v2", "TurnStartParams.ts"),
+        "utf8",
+      );
+      assert.match(turnStartParams, /approvalPolicy/);
+      assert.match(turnStartParams, /approvalsReviewer/);
+      assert.match(turnStartParams, /permissions/);
+
+      const permissionProfiles = readFileSync(
+        join(outputDirectory, "v2", "PermissionProfileListResponse.ts"),
+        "utf8",
+      );
+      assert.match(permissionProfiles, /PermissionProfileSummary/);
+      assert.match(permissionProfiles, /nextCursor/);
     } finally {
       rmSync(outputDirectory, { recursive: true, force: true });
     }

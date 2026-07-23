@@ -25,8 +25,9 @@ use tracing::info;
 
 use crate::{
     codex_app_server::{
-        self, CodexNotification, CodexRuntimeEvent, CodexServerRequest, CodexStatusResponse,
-        CodexThreadClient, CodexThreadError, CodexTurnOptions, ThreadStatus, TurnStatus,
+        self, CodexNotification, CodexPermissionMode, CodexRuntimeEvent, CodexServerRequest,
+        CodexStatusResponse, CodexThreadClient, CodexThreadError, CodexTurnOptions, ThreadStatus,
+        TurnStatus,
     },
     codex_thread_sessions::{
         CodexThreadSessions, PromptTarget, ThreadSessionSnapshot, ThreadSessionsDiagnostics,
@@ -497,6 +498,12 @@ struct TaskImageQuery {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct CodexPermissionsQuery {
+    cwd: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CreateTaskRequest {
     prompt: String,
     #[serde(default)]
@@ -504,6 +511,7 @@ struct CreateTaskRequest {
     cwd: Option<String>,
     model: Option<String>,
     effort: Option<String>,
+    permission_mode: Option<CodexPermissionMode>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -514,7 +522,25 @@ struct TaskPromptRequest {
     images: Vec<String>,
     model: Option<String>,
     effort: Option<String>,
+    permission_mode: Option<CodexPermissionMode>,
     active_turn_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CodexPermissionsResponse {
+    default_mode: CodexPermissionMode,
+    options: Vec<CodexPermissionOption>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CodexPermissionOption {
+    mode: CodexPermissionMode,
+    label: &'static str,
+    description: &'static str,
+    allowed: bool,
+    dangerous: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -523,6 +549,15 @@ struct TaskPromptResponse {
     thread_id: String,
     turn_id: String,
     steered: bool,
+}
+
+struct TaskPromptOutcome {
+    turn_id: String,
+    steered: bool,
+    started_turn: Option<(
+        crate::codex_app_server::CodexTurn,
+        Option<CodexPermissionMode>,
+    )>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -669,6 +704,7 @@ struct TaskDetailResponse {
     events_page: TaskEventsPage,
     pending_approvals: Vec<TaskEventRecord>,
     history_loading: bool,
+    permission_mode: Option<CodexPermissionMode>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -855,6 +891,7 @@ fn router_with_state(state: AppState) -> Router {
         .route("/api/github/pull-file", get(github_pull_file))
         .route("/api/codex/status", get(codex_status))
         .route("/api/codex/models", get(codex_models))
+        .route("/api/codex/permissions", get(codex_permissions))
         .route(
             "/api/tasks",
             get(list_managed_tasks)
@@ -1455,6 +1492,53 @@ async fn codex_models(State(state): State<AppState>) -> Result<Json<JsonValue>, 
     codex_models_payload(response).map(Json)
 }
 
+async fn codex_permissions(
+    State(state): State<AppState>,
+    Query(query): Query<CodexPermissionsQuery>,
+) -> Result<Json<CodexPermissionsResponse>, ApiError> {
+    let cwd = task_cwd(&state, query.cwd.as_deref())?;
+    let client = require_codex_thread_client(&state).await?;
+    let (profiles, default_mode) = tokio::try_join!(
+        client.list_permission_profiles(&cwd, 100),
+        client.default_permission_mode(&cwd),
+    )?;
+    let profile_allowed = |profile_id: &str| {
+        profiles
+            .iter()
+            .find(|profile| profile.id == profile_id)
+            .is_some_and(|profile| profile.allowed)
+    };
+    let workspace_allowed = profile_allowed(":workspace");
+    let full_access_allowed = profile_allowed(":danger-full-access");
+
+    Ok(Json(CodexPermissionsResponse {
+        default_mode,
+        options: vec![
+            CodexPermissionOption {
+                mode: CodexPermissionMode::AskForApproval,
+                label: "Ask for approval",
+                description: "Work in the workspace and ask before crossing its boundary.",
+                allowed: workspace_allowed,
+                dangerous: false,
+            },
+            CodexPermissionOption {
+                mode: CodexPermissionMode::ApproveForMe,
+                label: "Approve for me",
+                description: "Keep the workspace boundary and review eligible requests automatically.",
+                allowed: workspace_allowed,
+                dangerous: false,
+            },
+            CodexPermissionOption {
+                mode: CodexPermissionMode::FullAccess,
+                label: "Full access",
+                description: "Run without sandbox restrictions or approval prompts.",
+                allowed: full_access_allowed,
+                dangerous: true,
+            },
+        ],
+    }))
+}
+
 fn codex_models_payload(
     response: codex_app_server::ModelListResponse,
 ) -> Result<JsonValue, ApiError> {
@@ -1730,9 +1814,22 @@ async fn create_task(
     let cwd = task_cwd(&state, request.cwd.as_deref())?;
     let connection = require_codex_thread_connection(&state).await?;
     let client = &connection.client;
-    let turn_options = codex_turn_options(client, request.model, request.effort).await?;
+    let mut turn_options = codex_turn_options(
+        client,
+        request.model,
+        request.effort,
+        request.permission_mode,
+    )
+    .await?;
 
-    let thread = client.start_thread(&cwd).await?;
+    let requested_permission_mode = turn_options.permission_mode;
+    let thread = client
+        .start_thread(&cwd, turn_options.permission_mode)
+        .await?;
+    let thread_permission_mode = thread.permission_mode.or(requested_permission_mode);
+    if requested_permission_mode.is_some() {
+        turn_options.permission_mode = thread_permission_mode;
+    }
     let task = task_record_from_codex_thread(&state, &thread.thread)?;
     let stored = thread_store_claim(&state, stored_thread_from_task_record(&task)).await?;
     notify_task_updated(
@@ -1745,8 +1842,10 @@ async fn create_task(
             &connection.client,
             connection.generation,
             thread.thread.clone(),
+            thread_permission_mode,
         )
         .await;
+    let permission_mode = thread_permission_mode;
     let turn = match client
         .start_turn(&thread.thread_id, &cwd, &prompt, &images, turn_options)
         .await
@@ -1759,7 +1858,12 @@ async fn create_task(
     };
     state
         .codex_sessions
-        .record_turn_started(connection.generation, &thread.thread_id, turn.turn)
+        .record_turn_started(
+            connection.generation,
+            &thread.thread_id,
+            turn.turn,
+            permission_mode,
+        )
         .await;
     Ok(Json(
         read_task_detail(&state, &connection, &thread.thread_id, None).await?,
@@ -1855,6 +1959,7 @@ async fn unmanaged_task_detail(
         events_page: TaskEventsPage { next_cursor: None },
         pending_approvals: Vec::new(),
         history_loading: false,
+        permission_mode: None,
     })
 }
 
@@ -2430,6 +2535,7 @@ async fn task_prompt(
     let connection = require_codex_thread_connection(&state).await?;
     let requested_model = request.model;
     let requested_effort = request.effort;
+    let requested_permission_mode = request.permission_mode;
     let target = match state
         .codex_sessions
         .prepare_prompt(&connection.client, connection.generation, &thread_id)
@@ -2441,27 +2547,37 @@ async fn task_prompt(
             return Err(error.into());
         }
     };
-    let result: Result<(String, bool, Option<crate::codex_app_server::CodexTurn>), _> = match target
-    {
+    let result: Result<TaskPromptOutcome, _> = match target {
         PromptTarget::Steer { turn_id } => connection
             .client
             .steer_turn(&thread_id, &turn_id, &prompt, &images)
             .await
-            .map(|_| (turn_id, true, None)),
+            .map(|_| TaskPromptOutcome {
+                turn_id,
+                steered: true,
+                started_turn: None,
+            }),
         PromptTarget::Start { cwd } => {
-            let turn_options =
-                codex_turn_options(&connection.client, requested_model, requested_effort).await?;
+            let turn_options = codex_turn_options(
+                &connection.client,
+                requested_model,
+                requested_effort,
+                requested_permission_mode,
+            )
+            .await?;
+            let permission_mode = turn_options.permission_mode;
             connection
                 .client
                 .start_turn(&thread_id, &cwd, &prompt, &images, turn_options)
                 .await
-                .map(|started| {
-                    let turn_id = started.turn_id.clone();
-                    (turn_id, false, Some(started.turn))
+                .map(|started| TaskPromptOutcome {
+                    turn_id: started.turn_id.clone(),
+                    steered: false,
+                    started_turn: Some((started.turn, permission_mode)),
                 })
         }
     };
-    let (turn_id, steered, started_turn) = match result {
+    let outcome = match result {
         Ok(result) => result,
         Err(error) => {
             state.codex_sessions.cancel_runtime(&thread_id).await;
@@ -2469,16 +2585,16 @@ async fn task_prompt(
             return Err(error.into());
         }
     };
-    if let Some(turn) = started_turn {
+    if let Some((turn, permission_mode)) = outcome.started_turn {
         state
             .codex_sessions
-            .record_turn_started(connection.generation, &thread_id, turn)
+            .record_turn_started(connection.generation, &thread_id, turn, permission_mode)
             .await;
     }
     Ok(Json(TaskPromptResponse {
         thread_id,
-        turn_id,
-        steered,
+        turn_id: outcome.turn_id,
+        steered: outcome.steered,
     }))
 }
 
@@ -2743,6 +2859,7 @@ fn loading_task_detail(thread_id: &str, revision: u64) -> TaskDetailResponse {
         events_page: TaskEventsPage { next_cursor: None },
         pending_approvals: Vec::new(),
         history_loading: true,
+        permission_mode: None,
     }
 }
 
@@ -2837,6 +2954,7 @@ async fn task_detail_from_snapshot(
         events_page: TaskEventsPage { next_cursor },
         pending_approvals,
         history_loading,
+        permission_mode: snapshot.permission_mode,
     })
 }
 
@@ -4296,11 +4414,16 @@ async fn codex_turn_options(
     client: &CodexThreadClient,
     model: Option<String>,
     effort: Option<String>,
+    permission_mode: Option<CodexPermissionMode>,
 ) -> Result<CodexTurnOptions, ApiError> {
     let model = normalize_codex_model(model)?;
     let effort = normalize_codex_effort(effort)?;
     if model.is_none() && effort.is_none() {
-        return Ok(CodexTurnOptions { model, effort });
+        return Ok(CodexTurnOptions {
+            model,
+            effort,
+            permission_mode,
+        });
     }
 
     let models = client.list_models(100).await.map_err(ApiError::from)?.data;
@@ -4342,7 +4465,11 @@ async fn codex_turn_options(
         });
     }
 
-    Ok(CodexTurnOptions { model, effort })
+    Ok(CodexTurnOptions {
+        model,
+        effort,
+        permission_mode,
+    })
 }
 
 fn normalize_codex_model(model: Option<String>) -> Result<Option<String>, ApiError> {
@@ -4605,6 +4732,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn codex_permissions_use_app_server_profiles_and_effective_defaults() {
+        let root = tempfile::tempdir().unwrap();
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "permissionProfile/list",
+                json!({
+                    "data": [
+                        {
+                            "id": ":workspace",
+                            "description": "Workspace access",
+                            "allowed": true
+                        },
+                        {
+                            "id": ":danger-full-access",
+                            "description": "Full access",
+                            "allowed": false
+                        }
+                    ],
+                    "nextCursor": null
+                }),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "config/read",
+                json!({
+                    "config": {
+                        "approval_policy": "on-request",
+                        "approvals_reviewer": "auto_review",
+                        "sandbox_mode": "workspace-write"
+                    },
+                    "origins": {},
+                    "layers": null
+                }),
+            ),
+        ]);
+        let state = app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+
+        let Json(response) =
+            codex_permissions(State(state), Query(CodexPermissionsQuery { cwd: None }))
+                .await
+                .unwrap();
+
+        assert_eq!(response.default_mode, CodexPermissionMode::ApproveForMe);
+        assert!(response.options[0].allowed);
+        assert!(response.options[1].allowed);
+        assert!(!response.options[2].allowed);
+        assert!(response.options[2].dangerous);
+    }
+
+    #[tokio::test]
     async fn codex_turn_options_accepts_server_reported_reasoning_efforts() {
         let client = CodexThreadClient::mock(vec![
             crate::codex_app_server::MockCodexResponse::ok(
@@ -4621,6 +4797,7 @@ mod tests {
             &client,
             Some("gpt-5.6-sol".to_string()),
             Some("xhigh".to_string()),
+            Some(CodexPermissionMode::AskForApproval),
         )
         .await
         .unwrap();
@@ -4631,6 +4808,7 @@ mod tests {
             &client,
             Some("gpt-5.6-luna".to_string()),
             Some("max".to_string()),
+            Some(CodexPermissionMode::ApproveForMe),
         )
         .await
         .unwrap();
@@ -4649,6 +4827,7 @@ mod tests {
             &client,
             Some("gpt-5.6-luna".to_string()),
             Some("ultra".to_string()),
+            Some(CodexPermissionMode::AskForApproval),
         )
         .await
         .unwrap_err();
@@ -4673,6 +4852,7 @@ mod tests {
             &client,
             Some("gpt-imaginary".to_string()),
             Some("high".to_string()),
+            Some(CodexPermissionMode::AskForApproval),
         )
         .await
         .unwrap_err();
@@ -5977,6 +6157,7 @@ mod tests {
                 events_page: TaskEventsPage { next_cursor: None },
                 pending_approvals: Vec::new(),
                 history_loading: false,
+                permission_mode: Some(CodexPermissionMode::AskForApproval),
             },
             reason: "stream-bootstrap",
         };
