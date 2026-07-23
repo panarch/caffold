@@ -1277,7 +1277,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await expect(tasksPage.locator(".tasks-header")).toContainText(
     "Caffold Tasks and Codex History",
   );
-  await expect(tasksPage).toContainText("No tasks yet.");
+  await expect(tasksPage).toContainText("No Caffold tasks yet.");
 
   await page.goto("/tasks");
   await expect(page).toHaveURL("/tasks");
@@ -1287,7 +1287,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await expect(tasksPage.locator(".tasks-header")).toContainText(
     "Caffold Tasks and Codex History",
   );
-  await expect(tasksPage).toContainText("No tasks yet.");
+  await expect(tasksPage).toContainText("No Caffold tasks yet.");
 
   await page.goto("/tasks?cwd=.");
   await expect(page).toHaveURL("/tasks");
@@ -1299,14 +1299,14 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
     .locator(".tasks-empty")
     .getByRole("button", { name: "New Task", exact: true })
     .click();
-  await expect(page).toHaveURL("/tasks/new?cwd=.");
+  await expect(page).toHaveURL("/tasks/new");
   await page.locator("caffold-codex-workspace .codex-workspace-close").click();
   await expect(page).toHaveURL("/tasks");
   await tasksPage
     .locator(".tasks-empty")
     .getByRole("button", { name: "New Task", exact: true })
     .click();
-  await expect(page).toHaveURL("/tasks/new?cwd=.");
+  await expect(page).toHaveURL("/tasks/new");
   await tasksPage.locator('textarea[name="prompt"]').fill("Say hello globally");
   await tasksPage.getByRole("button", { name: "Browse Files" }).click();
   const cwdBrowser = tasksPage.locator(".task-new-cwd-browser caffold-file-browser");
@@ -2745,8 +2745,8 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       const body = request.postDataJSON();
       expect(body.cwd).toBe(contextPath);
       expect(body.prompt).toBe("Inspect the planner changes");
-      expect(body.model).toBe("gpt-5.5");
-      expect(body.effort).toBe("high");
+      expect(body.model).toBe("gpt-5.6-sol");
+      expect(body.effort).toBe("xhigh");
       expect(body.images).toHaveLength(1);
       expect(body.images[0]).toMatch(/^data:image\/png;base64,/);
       task = {
@@ -2904,7 +2904,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
         });
       }
       expect(body.prompt).toBe("Please tighten the tests");
-      expect(body.model).toBe("gpt-5.5");
+      expect(body.model).toBe("gpt-5.6-sol");
       expect(body.effort).toBe("ultra");
       expect(body.activeTurnId).toBeNull();
       expect(body.images).toHaveLength(1);
@@ -3174,7 +3174,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     "data-tasks-view",
     "list",
   );
-  await expect(page.locator("caffold-tasks-page")).toContainText("No tasks yet.");
+  await expect(page.locator("caffold-tasks-page")).toContainText("No Caffold tasks yet.");
 
   await page
     .locator("caffold-tasks-page .tasks-empty")
@@ -3210,7 +3210,8 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     newTaskHeaderMetrics.closeRight + 8,
   );
   const newTaskComposer = page.locator("caffold-tasks-page .task-new-form");
-  await expect(newTaskComposer.locator(".task-model-button")).toContainText("GPT-5.5");
+  await expect(newTaskComposer.locator(".task-model-button")).toContainText("GPT-5.6-Sol");
+  await expect(newTaskComposer.locator(".task-model-button")).toContainText("Light");
   await newTaskComposer.locator(".task-model-button").click();
   const modelPopover = page.locator("caffold-tasks-page .task-model-popover");
   await expect(modelPopover).toBeVisible();
@@ -3279,8 +3280,11 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     await expect(modelPopover).toBeVisible();
   }
   await captureReviewScreenshot(page, testInfo, "tasks-model-popover");
-  await modelPopover.getByRole("button", { name: /High/ }).click();
-  await expect(newTaskComposer.locator(".task-model-button")).toContainText("High");
+  await expect(modelPopover.locator('[data-effort="xhigh"]')).toBeVisible();
+  await expect(modelPopover.locator('[data-effort="max"]')).toBeVisible();
+  await expect(modelPopover.locator('[data-effort="ultra"]')).toBeVisible();
+  await modelPopover.locator('[data-effort="xhigh"]').click();
+  await expect(newTaskComposer.locator(".task-model-button")).toContainText("Extra High");
   const newPromptTextarea = newTaskComposer.locator('textarea[name="prompt"]');
   const initialTextareaMetrics = await newPromptTextarea.evaluate((textarea) => {
     const styles = getComputedStyle(textarea);
@@ -3345,8 +3349,8 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   });
   expect(newTaskFormState).toEqual({
     data: {
-      effort: "high",
-      model: "gpt-5.5",
+      effort: "xhigh",
+      model: "gpt-5.6-sol",
       prompt: "Inspect the planner changes",
     },
     valid: true,
@@ -3861,9 +3865,9 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
 
   await tasksPage.locator(".task-follow-up-form .task-model-button").click();
   await expect(modelPopover).toBeVisible();
-  await modelPopover.getByRole("button", { name: /Very high/ }).click();
+  await modelPopover.locator('[data-effort="ultra"]').click();
   await expect(tasksPage.locator(".task-follow-up-form .task-model-button")).toContainText(
-    "Very high",
+    "Ultra",
   );
   const followUpTextarea = tasksPage.locator('textarea[name="prompt"]');
   await followUpTextarea.fill("Please tighten the tests");
@@ -4126,7 +4130,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   );
   await expect(followUpTextarea).toHaveValue("Keep this draft while reviewing");
   await expect(tasksPage.locator(".task-follow-up-form .task-model-button")).toContainText(
-    "Very high",
+    "Ultra",
   );
 
   if (taskMasterStateBeforeTools) {
@@ -9758,18 +9762,50 @@ async function mockCodexModels(page) {
       body: JSON.stringify({
         data: [
           {
-            id: "gpt-5.5",
-            model: "gpt-5.5",
-            displayName: "GPT-5.5",
-            description: "Best for deeper coding work",
+            id: "gpt-5.6-sol",
+            model: "gpt-5.6-sol",
+            displayName: "GPT-5.6-Sol",
+            description: "Latest frontier agentic coding model.",
             hidden: false,
             isDefault: true,
-            defaultReasoningEffort: "ultra",
+            defaultReasoningEffort: "low",
             supportedReasoningEfforts: [
-              { reasoningEffort: "low", description: "Fastest responses" },
-              { reasoningEffort: "medium", description: "Balanced reasoning" },
-              { reasoningEffort: "high", description: "Deeper reasoning" },
-              { reasoningEffort: "ultra", description: "Most thorough reasoning" },
+              {
+                value: "low",
+                label: "Light",
+                reasoningEffort: "low",
+                description: "Fast responses with lighter reasoning",
+              },
+              {
+                value: "medium",
+                label: "Medium",
+                reasoningEffort: "medium",
+                description: "Balances speed and reasoning depth for everyday tasks",
+              },
+              {
+                value: "high",
+                label: "High",
+                reasoningEffort: "high",
+                description: "Greater reasoning depth for complex problems",
+              },
+              {
+                value: "xhigh",
+                label: "Extra High",
+                reasoningEffort: "xhigh",
+                description: "Extra high reasoning depth for complex problems",
+              },
+              {
+                value: "max",
+                label: "Max",
+                reasoningEffort: "max",
+                description: "Maximum reasoning depth for the hardest problems",
+              },
+              {
+                value: "ultra",
+                label: "Ultra",
+                reasoningEffort: "ultra",
+                description: "Maximum reasoning with automatic task delegation",
+              },
             ],
           },
         ],

@@ -1452,9 +1452,86 @@ fn codex_version_from_user_agent(user_agent: &str) -> Option<String> {
 async fn codex_models(State(state): State<AppState>) -> Result<Json<JsonValue>, ApiError> {
     let client = require_codex_thread_client(&state).await?;
     let response = client.list_models(100).await.map_err(ApiError::from)?;
-    serde_json::to_value(response)
-        .map(Json)
-        .map_err(|error| ApiError::CodexThread(error.to_string()))
+    codex_models_payload(response).map(Json)
+}
+
+fn codex_models_payload(
+    response: codex_app_server::ModelListResponse,
+) -> Result<JsonValue, ApiError> {
+    let mut payload =
+        serde_json::to_value(response).map_err(|error| ApiError::CodexThread(error.to_string()))?;
+    let Some(models) = payload.get_mut("data").and_then(JsonValue::as_array_mut) else {
+        return Ok(payload);
+    };
+
+    for model in models {
+        let Some(efforts) = model
+            .get_mut("supportedReasoningEfforts")
+            .and_then(JsonValue::as_array_mut)
+        else {
+            continue;
+        };
+        for effort in efforts {
+            add_codex_reasoning_label(effort);
+        }
+    }
+
+    Ok(payload)
+}
+
+fn add_codex_reasoning_label(effort: &mut JsonValue) {
+    let value = codex_reasoning_effort_value(effort).map(str::to_string);
+    let Some(value) = value else {
+        return;
+    };
+    let label = codex_reasoning_label(&value);
+
+    if let Some(object) = effort.as_object_mut() {
+        object
+            .entry("value".to_string())
+            .or_insert_with(|| JsonValue::String(value));
+        object
+            .entry("label".to_string())
+            .or_insert_with(|| JsonValue::String(label));
+        return;
+    }
+
+    *effort = json!({
+        "value": value,
+        "label": label,
+    });
+}
+
+fn codex_reasoning_effort_value(effort: &JsonValue) -> Option<&str> {
+    effort
+        .get("value")
+        .and_then(JsonValue::as_str)
+        .or_else(|| effort.get("reasoningEffort").and_then(JsonValue::as_str))
+        .or_else(|| effort.as_str())
+}
+
+fn codex_reasoning_label(effort: &str) -> String {
+    match effort {
+        "minimal" => "Minimal".to_string(),
+        "low" => "Light".to_string(),
+        "medium" => "Medium".to_string(),
+        "high" => "High".to_string(),
+        "xhigh" => "Extra High".to_string(),
+        "max" => "Max".to_string(),
+        "ultra" => "Ultra".to_string(),
+        effort => effort
+            .split(['-', '_'])
+            .filter(|part| !part.is_empty())
+            .map(|part| {
+                let mut chars = part.chars();
+                chars
+                    .next()
+                    .map(|first| first.to_uppercase().chain(chars).collect::<String>())
+                    .unwrap_or_default()
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+    }
 }
 
 async fn list_managed_tasks(
@@ -1651,9 +1728,9 @@ async fn create_task(
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
     let (prompt, images) = normalize_task_input(&request.prompt, request.images)?;
     let cwd = task_cwd(&state, request.cwd.as_deref())?;
-    let turn_options = codex_turn_options(request.model, request.effort)?;
     let connection = require_codex_thread_connection(&state).await?;
     let client = &connection.client;
+    let turn_options = codex_turn_options(client, request.model, request.effort).await?;
 
     let thread = client.start_thread(&cwd).await?;
     let task = task_record_from_codex_thread(&state, &thread.thread)?;
@@ -2349,9 +2426,10 @@ async fn task_prompt(
         return Err(task_not_managed_error());
     }
     let (prompt, images) = normalize_task_input(&request.prompt, request.images)?;
-    let turn_options = codex_turn_options(request.model, request.effort)?;
     let _requested_active_turn_id = request.active_turn_id;
     let connection = require_codex_thread_connection(&state).await?;
+    let requested_model = request.model;
+    let requested_effort = request.effort;
     let target = match state
         .codex_sessions
         .prepare_prompt(&connection.client, connection.generation, &thread_id)
@@ -2370,14 +2448,18 @@ async fn task_prompt(
             .steer_turn(&thread_id, &turn_id, &prompt, &images)
             .await
             .map(|_| (turn_id, true, None)),
-        PromptTarget::Start { cwd } => connection
-            .client
-            .start_turn(&thread_id, &cwd, &prompt, &images, turn_options)
-            .await
-            .map(|started| {
-                let turn_id = started.turn_id.clone();
-                (turn_id, false, Some(started.turn))
-            }),
+        PromptTarget::Start { cwd } => {
+            let turn_options =
+                codex_turn_options(&connection.client, requested_model, requested_effort).await?;
+            connection
+                .client
+                .start_turn(&thread_id, &cwd, &prompt, &images, turn_options)
+                .await
+                .map(|started| {
+                    let turn_id = started.turn_id.clone();
+                    (turn_id, false, Some(started.turn))
+                })
+        }
     };
     let (turn_id, steered, started_turn) = match result {
         Ok(result) => result,
@@ -4210,14 +4292,57 @@ fn validate_task_image_data_url(image: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
-fn codex_turn_options(
+async fn codex_turn_options(
+    client: &CodexThreadClient,
     model: Option<String>,
     effort: Option<String>,
 ) -> Result<CodexTurnOptions, ApiError> {
-    Ok(CodexTurnOptions {
-        model: normalize_codex_model(model)?,
-        effort: normalize_codex_effort(effort)?,
-    })
+    let model = normalize_codex_model(model)?;
+    let effort = normalize_codex_effort(effort)?;
+    if model.is_none() && effort.is_none() {
+        return Ok(CodexTurnOptions { model, effort });
+    }
+
+    let models = client.list_models(100).await.map_err(ApiError::from)?.data;
+    let selected_model = match model.as_deref() {
+        Some(requested) => models
+            .iter()
+            .find(|candidate| candidate.model == requested || candidate.id == requested),
+        None => models
+            .iter()
+            .find(|candidate| candidate.is_default)
+            .or_else(|| models.first()),
+    };
+
+    let Some(selected_model) = selected_model else {
+        let (code, message) = if model.is_some() {
+            ("invalid_codex_model", "Codex model value is not supported")
+        } else {
+            (
+                "invalid_codex_effort",
+                "Codex reasoning effort is not supported",
+            )
+        };
+        return Err(ApiError::BadRequest {
+            code,
+            message: message.to_string(),
+        });
+    };
+
+    if effort.as_deref().is_some_and(|requested| {
+        !selected_model
+            .supported_reasoning_efforts
+            .iter()
+            .filter_map(codex_reasoning_effort_value)
+            .any(|supported| supported == requested)
+    }) {
+        return Err(ApiError::BadRequest {
+            code: "invalid_codex_effort",
+            message: "Codex reasoning effort is not supported".to_string(),
+        });
+    }
+
+    Ok(CodexTurnOptions { model, effort })
 }
 
 fn normalize_codex_model(model: Option<String>) -> Result<Option<String>, ApiError> {
@@ -4245,13 +4370,13 @@ fn normalize_codex_effort(effort: Option<String>) -> Result<Option<String>, ApiE
     if effort.is_empty() {
         return Ok(None);
     }
-    match effort {
-        "minimal" | "low" | "medium" | "high" | "ultra" => Ok(Some(effort.to_string())),
-        _ => Err(ApiError::BadRequest {
+    if effort.len() > 32 || effort.chars().any(char::is_control) {
+        return Err(ApiError::BadRequest {
             code: "invalid_codex_effort",
             message: "Codex reasoning effort is not supported".to_string(),
-        }),
+        });
     }
+    Ok(Some(effort.to_string()))
 }
 
 fn normalize_approval_decision(decision: &str) -> Result<&str, ApiError> {
@@ -4436,6 +4561,174 @@ mod tests {
             }
             error => panic!("expected timeout API error, got {error:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn codex_models_adds_backend_owned_reasoning_labels() {
+        let root = tempfile::tempdir().unwrap();
+        let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+            "model/list",
+            json!({
+                "data": [{
+                    "id": "gpt-5.6-sol",
+                    "model": "gpt-5.6-sol",
+                    "displayName": "GPT-5.6-Sol",
+                    "description": "Latest frontier agentic coding model.",
+                    "hidden": false,
+                    "supportedReasoningEfforts": [
+                        { "reasoningEffort": "low", "description": "Fast responses" },
+                        { "reasoningEffort": "xhigh", "description": "Extra depth" },
+                        { "reasoningEffort": "max", "description": "Maximum depth" },
+                        { "reasoningEffort": "ultra", "description": "Automatic delegation" }
+                    ],
+                    "defaultReasoningEffort": "low",
+                    "inputModalities": ["text", "image"],
+                    "supportsPersonality": false,
+                    "isDefault": true
+                }],
+                "nextCursor": null
+            }),
+        )]);
+        let state = app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+
+        let Json(response) = codex_models(State(state)).await.unwrap();
+        let efforts = response["data"][0]["supportedReasoningEfforts"]
+            .as_array()
+            .unwrap();
+
+        assert_eq!(efforts[0]["value"], "low");
+        assert_eq!(efforts[0]["label"], "Light");
+        assert_eq!(efforts[1]["value"], "xhigh");
+        assert_eq!(efforts[1]["label"], "Extra High");
+        assert_eq!(efforts[2]["label"], "Max");
+        assert_eq!(efforts[3]["label"], "Ultra");
+    }
+
+    #[tokio::test]
+    async fn codex_turn_options_accepts_server_reported_reasoning_efforts() {
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "model/list",
+                current_model_list_response(),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "model/list",
+                current_model_list_response(),
+            ),
+        ]);
+
+        let xhigh = codex_turn_options(
+            &client,
+            Some("gpt-5.6-sol".to_string()),
+            Some("xhigh".to_string()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(xhigh.model.as_deref(), Some("gpt-5.6-sol"));
+        assert_eq!(xhigh.effort.as_deref(), Some("xhigh"));
+
+        let max = codex_turn_options(
+            &client,
+            Some("gpt-5.6-luna".to_string()),
+            Some("max".to_string()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(max.model.as_deref(), Some("gpt-5.6-luna"));
+        assert_eq!(max.effort.as_deref(), Some("max"));
+    }
+
+    #[tokio::test]
+    async fn codex_turn_options_rejects_effort_not_supported_by_selected_model() {
+        let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+            "model/list",
+            current_model_list_response(),
+        )]);
+
+        let error = codex_turn_options(
+            &client,
+            Some("gpt-5.6-luna".to_string()),
+            Some("ultra".to_string()),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            ApiError::BadRequest {
+                code: "invalid_codex_effort",
+                ..
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn codex_turn_options_rejects_model_missing_from_server_list() {
+        let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+            "model/list",
+            current_model_list_response(),
+        )]);
+
+        let error = codex_turn_options(
+            &client,
+            Some("gpt-imaginary".to_string()),
+            Some("high".to_string()),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            ApiError::BadRequest {
+                code: "invalid_codex_model",
+                ..
+            }
+        ));
+    }
+
+    fn current_model_list_response() -> JsonValue {
+        json!({
+            "data": [
+                {
+                    "id": "gpt-5.6-sol",
+                    "model": "gpt-5.6-sol",
+                    "displayName": "GPT-5.6-Sol",
+                    "description": "Latest frontier agentic coding model.",
+                    "hidden": false,
+                    "supportedReasoningEfforts": [
+                        { "reasoningEffort": "low", "description": "Fast responses" },
+                        { "reasoningEffort": "medium", "description": "Balanced depth" },
+                        { "reasoningEffort": "high", "description": "More depth" },
+                        { "reasoningEffort": "xhigh", "description": "Extra depth" },
+                        { "reasoningEffort": "max", "description": "Maximum depth" },
+                        { "reasoningEffort": "ultra", "description": "Automatic delegation" }
+                    ],
+                    "defaultReasoningEffort": "low",
+                    "inputModalities": ["text", "image"],
+                    "supportsPersonality": false,
+                    "isDefault": true
+                },
+                {
+                    "id": "gpt-5.6-luna",
+                    "model": "gpt-5.6-luna",
+                    "displayName": "GPT-5.6-Luna",
+                    "description": "General purpose model.",
+                    "hidden": false,
+                    "supportedReasoningEfforts": [
+                        { "reasoningEffort": "low", "description": "Fast responses" },
+                        { "reasoningEffort": "medium", "description": "Balanced depth" },
+                        { "reasoningEffort": "high", "description": "More depth" },
+                        { "reasoningEffort": "xhigh", "description": "Extra depth" },
+                        { "reasoningEffort": "max", "description": "Maximum depth" }
+                    ],
+                    "defaultReasoningEffort": "medium",
+                    "inputModalities": ["text", "image"],
+                    "supportsPersonality": true,
+                    "isDefault": false
+                }
+            ],
+            "nextCursor": null
+        })
     }
 
     async fn app_state_with_codex_client(fs: RootedFs, client: CodexThreadClient) -> AppState {

@@ -22,13 +22,6 @@ import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
 import { createRefreshCoordinator, subscribeToWatch } from "../../../watch.js";
 import "./components/markdown.js";
 
-const FALLBACK_REASONING_OPTIONS = [
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-  { value: "ultra", label: "Very high" },
-];
-const FALLBACK_EFFORT = "ultra";
 const STREAM_ERROR_DELAY_MS = 8_000;
 const TASK_LIST_DEFAULT_WIDTH = 380;
 const TASK_LIST_MIN_WIDTH = 280;
@@ -152,7 +145,10 @@ class CaffoldTasksPage extends HTMLElement {
       this.markTaskListDirty();
       this.render();
     };
-    this.boundTaskListResize = () => this.clampTaskListWidth();
+    this.boundTaskListResize = () => {
+      this.clampTaskListWidth();
+      this.fitModelPicker();
+    };
     this.boundVisibilityChange = () => this.handleVisibilityChange();
     this.boundTaskListPointerMove = (event) => this.resizeTaskList(event);
     this.boundTaskListPointerUp = () => this.stopTaskListResize();
@@ -487,6 +483,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.render();
     this.loadTaskList();
     this.loadTaskHistory();
+    this.connectStream(threadId);
 
     try {
       const detail = await getTask(threadId);
@@ -514,7 +511,6 @@ class CaffoldTasksPage extends HTMLElement {
         this.render();
         return detail;
       }
-      this.connectStream(threadId);
       this.patchTaskListTask({ ...detail.task, unseen: false });
       void this.acknowledgeSelectedTaskSeen(threadId);
       this.conversationScrollMode = this.conversationScrollSnapshot(threadId)
@@ -1847,7 +1843,7 @@ class CaffoldTasksPage extends HTMLElement {
     const supported = this.reasoningOptionsForModel(model).map((option) => option.value);
     if (this.composerSettings.effort && !supported.includes(this.composerSettings.effort)) {
       this.composerSettings.effort =
-        model?.defaultReasoningEffort ?? supported[0] ?? FALLBACK_EFFORT;
+        model?.defaultReasoningEffort ?? supported[0] ?? "";
     }
     this.render();
   }
@@ -1890,9 +1886,7 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   reasoningOptionsForModel(model) {
-    return model?.supportedReasoningEfforts?.length
-      ? model.supportedReasoningEfforts
-      : FALLBACK_REASONING_OPTIONS;
+    return model?.supportedReasoningEfforts ?? [];
   }
 
   captureDraft(form, threadId = form?.dataset?.threadId) {
@@ -2038,6 +2032,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.applyTaskListWidth();
     this.syncTaskListSelection();
     this.syncActiveTurnClock();
+    this.fitModelPicker();
   }
 
   stabilizeActiveTurnStartedMs() {
@@ -3462,12 +3457,16 @@ class CaffoldTasksPage extends HTMLElement {
     const model = this.selectedModelOption();
     const modelLabel = model?.displayName ?? (this.modelOptionsLoading ? "Loading model" : "Model");
     const effort = this.selectedEffort();
-    const effortLabel = reasoningLabel(effort);
+    const reasoningOptions = this.reasoningOptionsForModel(model);
+    const effortLabel =
+      reasoningOptions.find((option) => option.value === effort)?.label ||
+      effort ||
+      "Reasoning";
     const open = this.openModelPickerForm === formName;
     const modelRows = this.modelOptions.length
       ? this.modelOptions.map((option) => renderModelOption(option, this.composerSettings.model)).join("")
       : renderModelFallback(this.modelOptionsLoading, this.modelOptionsError);
-    const reasoningRows = this.reasoningOptionsForModel(model)
+    const reasoningRows = reasoningOptions
       .map((option) => renderReasoningOption(option, effort))
       .join("");
 
@@ -3509,6 +3508,34 @@ class CaffoldTasksPage extends HTMLElement {
         }
       </div>
     `;
+  }
+
+  fitModelPicker() {
+    const popover = this.querySelector(
+      ".task-model-picker.is-open .task-model-popover",
+    );
+    if (!popover) {
+      return;
+    }
+
+    popover.style.removeProperty("max-height");
+    if (window.matchMedia("(max-width: 860px)").matches) {
+      return;
+    }
+
+    const button = popover
+      .closest(".task-model-picker")
+      ?.querySelector(".task-model-button");
+    if (!button) {
+      return;
+    }
+
+    const buttonRect = button.getBoundingClientRect();
+    const opensUpward = Boolean(popover.closest(".task-follow-up-form"));
+    const availableHeight = opensUpward
+      ? buttonRect.top - 18
+      : window.innerHeight - buttonRect.bottom - 18;
+    popover.style.maxHeight = `${Math.max(0, Math.floor(availableHeight))}px`;
   }
 
   renderTaskDetail() {
@@ -3884,42 +3911,18 @@ function normalizeReasoningOptions(options) {
   }
   return options
     .map((option) => {
-      const value = `${option?.reasoningEffort ?? option ?? ""}`.trim();
+      const fallbackValue = typeof option === "string" ? option : "";
+      const value = `${option?.value ?? option?.reasoningEffort ?? fallbackValue}`.trim();
       if (!value) {
         return null;
       }
       return {
         value,
-        label: reasoningLabel(value),
+        label: `${option?.label ?? value}`.trim(),
         description: `${option?.description ?? ""}`.trim(),
       };
     })
     .filter(Boolean);
-}
-
-function reasoningLabel(value) {
-  switch (value) {
-    case "minimal":
-      return "Minimal";
-    case "low":
-      return "Low";
-    case "medium":
-      return "Medium";
-    case "high":
-      return "High";
-    case "ultra":
-      return "Very high";
-    default:
-      return value ? titleCase(value) : "Reasoning";
-  }
-}
-
-function titleCase(value) {
-  return `${value}`
-    .split(/[_\s-]+/)
-    .filter(Boolean)
-    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-    .join(" ");
 }
 
 function renderReasoningOption(option, selectedEffort) {
