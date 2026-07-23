@@ -45,8 +45,10 @@ using this precedence: the selected Task worktree/thread context, the current
 Files directory, then the server initial path. Review routes prefer the current
 live repository root when one is already loaded.
 
-Codex Tasks use Codex app-server threads as the source of truth and do not
-require a local project registry. `/tasks` is the explicit all-threads route.
+Codex remains the content/runtime source of truth and Caffold does not require a
+local project registry. `/tasks` is the explicit all-threads route, split into
+locally managed Caffold Tasks and unmanaged Codex History. History rows enter
+the managed set only through `Continue in Caffold`.
 Header `Open Tasks` enters `/tasks?cwd=...`. Inside Git, the backend resolves the
 cwd to its common Git directory and includes threads from every worktree of that
 repository; outside Git it uses canonical cwd exact matching. Header `All Tasks`
@@ -98,7 +100,9 @@ Back and close controls use deterministic parent routes:
 - standalone review workspace close -> standalone files at the same cwd
 
 Task detail routes use Codex app-server `threadId` values directly. Caffold does
-not mint a separate durable task ID in the first thread-backed slice.
+not mint a separate durable task ID. A direct route for an unmanaged thread
+performs a metadata-only read and shows the Continue gate without resuming or
+subscribing to the thread.
 
 Browser back/forward should produce the same state transitions as the visible
 controls.

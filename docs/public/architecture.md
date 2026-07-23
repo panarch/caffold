@@ -51,6 +51,7 @@ The worktree is the source of truth for code changes. Caffold reads from git and
 ## Source of Truth
 
 - Codex thread/session: conversation, turns, agent activity
+- Caffold Redb: managed-thread membership, cached list projection, and seen state
 - git worktree: actual file and code changes
 - PWA: view and controller only
 
@@ -58,9 +59,11 @@ The worktree is the source of truth for code changes. Caffold reads from git and
 
 The initial model is one Caffold backend instance per host. That backend manages one Codex app-server process for the host unless implementation evidence later suggests a different process model.
 
-Codex threads are the Tasks source of truth. Caffold derives repository and
-worktree context live from each thread cwd and does not keep a separate project
-or task registry. Open Tasks groups the main checkout and linked worktrees by
+Codex remains the source of truth for thread content and runtime state. Caffold
+keeps one local `threads` table for the subset explicitly continued in Caffold,
+its bounded list projection, and Caffold-only seen timestamps. It derives
+repository and worktree context live from each thread cwd and does not keep a
+project registry. Open Tasks groups the main checkout and linked worktrees by
 their shared Git repository while each Task keeps its actual worktree root for
 Files and Diff. Worktree lifecycle operations remain outside the current Tasks
 surface.

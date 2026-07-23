@@ -253,6 +253,45 @@ caffold-tasks-page .task-list-scroll {
   font-size: var(--task-list-font-size);
 }
 
+caffold-tasks-page .task-list-section + .task-list-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+caffold-tasks-page .task-list-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 12px 7px;
+  color: var(--muted);
+}
+
+caffold-tasks-page .task-list-section-header h2 {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+caffold-tasks-page .task-list-section-header span {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+caffold-tasks-page .task-section-message {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+caffold-tasks-page .task-section-message p {
+  margin: 0 0 8px;
+}
+
 caffold-tasks-page .task-list-pagination {
   display: grid;
   justify-items: center;
@@ -316,6 +355,80 @@ caffold-tasks-page .task-repository-count {
 
 caffold-tasks-page .task-repository-group > .task-list {
   margin-left: var(--task-repository-indent);
+}
+
+caffold-tasks-page .task-history-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--task-row-height);
+  padding: 2px 9px;
+}
+
+caffold-tasks-page .task-history-copy {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+caffold-tasks-page .task-continue-button {
+  min-height: 26px;
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+
+caffold-tasks-page .task-continue-button:hover,
+caffold-tasks-page .task-continue-button:focus-visible {
+  border-color: var(--border-strong);
+  outline: none;
+}
+
+caffold-tasks-page .task-continue-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+caffold-tasks-page .task-continue-gate {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 12px;
+  width: min(560px, calc(100% - 40px));
+  min-height: 100%;
+  margin: 0 auto;
+}
+
+caffold-tasks-page .task-continue-gate h2,
+caffold-tasks-page .task-continue-gate p {
+  margin: 0;
+}
+
+caffold-tasks-page .task-continue-eyebrow {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+caffold-tasks-page .task-continue-preview {
+  color: var(--text);
+}
+
+caffold-tasks-page .task-continue-cwd {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
 }
 
 caffold-tasks-page .task-row {

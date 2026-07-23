@@ -17,7 +17,8 @@ This roadmap is ordered by product risk and workflow value, not by implementatio
 - Rust backend starts
 - web UI is served
 - Codex thread-backed task list and detail screens exist
-- cwd-based Files context works without a local registry
+- cwd-based Files context works without a local project registry
+- managed thread membership and list state use one local GlueSQL table
 
 ## Phase 2: Git Review Surface
 

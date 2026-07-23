@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     convert::Infallible,
     future::Future,
     net::IpAddr,
@@ -42,6 +42,7 @@ use crate::{
     server_settings::{ServerSettings, ServerSettingsError, ServerSettingsStore},
     static_assets,
     task_rollout::{TaskRolloutMonitor, TaskRolloutSignal, TaskRolloutSubscription},
+    thread_store::{StoredThread, ThreadStore, ThreadStoreError},
     watch::{WatchChange, WatchError, WatchHub, WatchMessage},
 };
 
@@ -75,6 +76,8 @@ struct AppState {
     task_sync: TaskSyncCoordinator,
     task_sync_events: broadcast::Sender<TaskDetailSync>,
     task_list_removals: broadcast::Sender<TaskListRemoval>,
+    task_list_updates: broadcast::Sender<TaskRecord>,
+    thread_store: ThreadStore,
     live_task_events: LiveTaskEventCache,
     task_rollouts: TaskRolloutMonitor,
     watch_hub: WatchHub,
@@ -567,6 +570,7 @@ struct TaskRecord {
     active_turn_id: Option<String>,
     active_turn_started_ms: Option<u64>,
     last_event_summary: Option<String>,
+    unseen: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -666,6 +670,7 @@ impl LiveTaskEventCache {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TaskDetailResponse {
+    managed: bool,
     revision: u64,
     task: TaskRecord,
     events: Vec<TaskEventRecord>,
@@ -737,10 +742,12 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let server_settings = Arc::new(ServerSettingsStore::persistent(
         data_dir.join("server.json"),
     )?);
+    let thread_store = ThreadStore::redb(data_dir.join("caffold.redb"))?;
     let (task_events, _) = broadcast::channel(256);
     let task_sync = TaskSyncCoordinator::new();
     let (task_sync_events, _) = broadcast::channel(64);
     let (task_list_removals, _) = broadcast::channel(64);
+    let (task_list_updates, _) = broadcast::channel(64);
     let task_rollouts = task_rollout_monitor(task_sync.clone());
     let (shutdown, _) = broadcast::channel(16);
     let pending_approvals = Arc::new(AsyncMutex::new(HashMap::new()));
@@ -759,6 +766,8 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         task_sync,
         task_sync_events,
         task_list_removals,
+        task_list_updates,
+        thread_store,
         live_task_events: LiveTaskEventCache::default(),
         task_rollouts,
         watch_hub,
@@ -798,6 +807,7 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
     let task_sync = TaskSyncCoordinator::new();
     let (task_sync_events, _) = broadcast::channel(64);
     let (task_list_removals, _) = broadcast::channel(64);
+    let (task_list_updates, _) = broadcast::channel(64);
     let task_rollouts = task_rollout_monitor(task_sync.clone());
     let (shutdown, _) = broadcast::channel(16);
     let fs = Arc::new(fs);
@@ -812,6 +822,8 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         task_sync,
         task_sync_events,
         task_list_removals,
+        task_list_updates,
+        thread_store: ThreadStore::memory()?,
         live_task_events: LiveTaskEventCache::default(),
         task_rollouts,
         watch_hub,
@@ -853,12 +865,18 @@ fn router_with_state(state: AppState) -> Router {
         .route("/api/codex/models", get(codex_models))
         .route(
             "/api/tasks",
-            get(list_tasks)
+            get(list_managed_tasks)
                 .post(create_task)
                 .layer(DefaultBodyLimit::max(MAX_TASK_REQUEST_BYTES)),
         )
+        .route("/api/task-history", get(list_task_history))
         .route("/api/tasks/stream", get(task_list_stream))
         .route("/api/tasks/{thread_id}", get(task_detail))
+        .route("/api/tasks/{thread_id}/continue", post(continue_task))
+        .route(
+            "/api/tasks/{thread_id}/seen",
+            axum::routing::put(mark_task_seen),
+        )
         .route("/api/tasks/{thread_id}/stream", get(task_stream))
         .route("/api/tasks/{thread_id}/archive", post(task_archive))
         .route(
@@ -1447,7 +1465,44 @@ async fn codex_models(State(state): State<AppState>) -> Result<Json<JsonValue>, 
         .map_err(|error| ApiError::CodexThread(error.to_string()))
 }
 
-async fn list_tasks(
+async fn list_managed_tasks(
+    State(state): State<AppState>,
+    Query(query): Query<TasksQuery>,
+) -> Result<Json<TaskListResponse>, ApiError> {
+    let cwd_filter = task_filter_cwd(&state, query.cwd.as_deref())?;
+    let (stored, next_cursor) =
+        thread_store_list(&state, query.cursor.as_deref(), TASK_LIST_PAGE_SIZE).await?;
+    let mut cwds = stored
+        .iter()
+        .map(|thread| thread.cwd.clone())
+        .collect::<Vec<_>>();
+    cwds.sort();
+    cwds.dedup();
+    let fs = state.fs.clone();
+    let resolved_cwds = resolve_task_cwds_with(cwds, move |cwd| {
+        let fs = fs.clone();
+        async move {
+            let resolved = resolve_task_cwd(&fs, &cwd);
+            (cwd, resolved)
+        }
+    })
+    .await;
+    let tasks = stored
+        .into_iter()
+        .filter_map(|thread| {
+            let resolved_cwd = resolved_cwds.get(&thread.cwd).and_then(Option::as_ref);
+            if let Some(cwd_filter) = cwd_filter.as_ref()
+                && !task_cwd_matches_filter(resolved_cwd, cwd_filter)
+            {
+                return None;
+            }
+            Some(task_record_from_stored(thread, resolved_cwd))
+        })
+        .collect();
+    Ok(Json(TaskListResponse { tasks, next_cursor }))
+}
+
+async fn list_task_history(
     State(state): State<AppState>,
     Query(query): Query<TasksQuery>,
 ) -> Result<Json<TaskListResponse>, ApiError> {
@@ -1467,7 +1522,132 @@ async fn list_tasks(
         serde_json::to_value(response).map_err(|error| ApiError::CodexThread(error.to_string()))?;
     let resolved_cwds = resolve_task_cwds(state.fs.clone(), &response).await;
     let tasks = thread_list_response_with_resolved(cwd_filter.as_ref(), &response, &resolved_cwds);
+    let tasks = filter_and_refresh_managed_history(&state, tasks).await?;
     Ok(Json(TaskListResponse { tasks, next_cursor }))
+}
+
+#[cfg(test)]
+async fn list_tasks(
+    state: State<AppState>,
+    query: Query<TasksQuery>,
+) -> Result<Json<TaskListResponse>, ApiError> {
+    let app_state = state.0.clone();
+    let response = list_task_history(state, query).await?;
+    for task in &response.0.tasks {
+        thread_store_claim(&app_state, stored_thread_from_task_record(task)).await?;
+    }
+    Ok(response)
+}
+
+async fn thread_store_list(
+    state: &AppState,
+    cursor: Option<&str>,
+    limit: usize,
+) -> Result<(Vec<StoredThread>, Option<String>), ApiError> {
+    let store = state.thread_store.clone();
+    let cursor = cursor.map(ToOwned::to_owned);
+    tokio::task::spawn_blocking(move || store.list(cursor.as_deref(), limit))
+        .await
+        .map_err(thread_store_join_error)?
+        .map_err(thread_store_api_error)
+}
+
+async fn thread_store_get(
+    state: &AppState,
+    thread_id: &str,
+) -> Result<Option<StoredThread>, ApiError> {
+    let store = state.thread_store.clone();
+    let thread_id = thread_id.to_string();
+    tokio::task::spawn_blocking(move || store.get(&thread_id))
+        .await
+        .map_err(thread_store_join_error)?
+        .map_err(thread_store_api_error)
+}
+
+async fn thread_store_claim(
+    state: &AppState,
+    thread: StoredThread,
+) -> Result<StoredThread, ApiError> {
+    let store = state.thread_store.clone();
+    tokio::task::spawn_blocking(move || store.claim(thread, now_ms()))
+        .await
+        .map_err(thread_store_join_error)?
+        .map_err(thread_store_api_error)
+}
+
+async fn thread_store_mark_seen(
+    state: &AppState,
+    thread_id: &str,
+) -> Result<Option<StoredThread>, ApiError> {
+    let store = state.thread_store.clone();
+    let thread_id = thread_id.to_string();
+    tokio::task::spawn_blocking(move || store.mark_seen(&thread_id, now_ms()))
+        .await
+        .map_err(thread_store_join_error)?
+        .map_err(thread_store_api_error)
+}
+
+async fn thread_store_update_projection(
+    state: &AppState,
+    task: &TaskRecord,
+) -> Result<Option<StoredThread>, ApiError> {
+    let store = state.thread_store.clone();
+    let projection = stored_thread_from_task_record(task);
+    tokio::task::spawn_blocking(move || store.update_projection(&projection))
+        .await
+        .map_err(thread_store_join_error)?
+        .map_err(thread_store_api_error)
+}
+
+async fn thread_store_delete(state: &AppState, thread_id: &str) -> Result<bool, ApiError> {
+    let store = state.thread_store.clone();
+    let thread_id = thread_id.to_string();
+    tokio::task::spawn_blocking(move || store.delete(&thread_id))
+        .await
+        .map_err(thread_store_join_error)?
+        .map_err(thread_store_api_error)
+}
+
+async fn filter_and_refresh_managed_history(
+    state: &AppState,
+    tasks: Vec<TaskRecord>,
+) -> Result<Vec<TaskRecord>, ApiError> {
+    let store = state.thread_store.clone();
+    let projections = tasks
+        .iter()
+        .map(stored_thread_from_task_record)
+        .collect::<Vec<_>>();
+    let managed = tokio::task::spawn_blocking(move || {
+        let mut managed = HashSet::new();
+        for projection in projections {
+            let thread_id = projection.thread_id.clone();
+            if store.update_projection(&projection)?.is_some() {
+                managed.insert(thread_id);
+            }
+        }
+        Ok::<_, ThreadStoreError>(managed)
+    })
+    .await
+    .map_err(thread_store_join_error)?
+    .map_err(thread_store_api_error)?;
+    Ok(tasks
+        .into_iter()
+        .filter(|task| !managed.contains(&task.thread_id))
+        .collect())
+}
+
+fn thread_store_api_error(error: ThreadStoreError) -> ApiError {
+    match error {
+        ThreadStoreError::InvalidCursor => ApiError::BadRequest {
+            code: "task_cursor_invalid",
+            message: error.to_string(),
+        },
+        error => ApiError::Internal(error.to_string()),
+    }
+}
+
+fn thread_store_join_error(error: tokio::task::JoinError) -> ApiError {
+    ApiError::Internal(format!("thread store task failed: {error}"))
 }
 
 async fn create_task(
@@ -1481,6 +1661,12 @@ async fn create_task(
     let client = &connection.client;
 
     let thread = client.start_thread(&cwd).await?;
+    let task = task_record_from_codex_thread(&state, &thread.thread)?;
+    let stored = thread_store_claim(&state, stored_thread_from_task_record(&task)).await?;
+    notify_task_updated(
+        &state,
+        task_record_from_stored(stored, resolve_task_cwd(&state.fs, &cwd).as_ref()),
+    );
     state
         .codex_sessions
         .register_started_thread(
@@ -1513,6 +1699,16 @@ async fn task_detail(
     AxumPath(thread_id): AxumPath<String>,
     Query(query): Query<TaskDetailQuery>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
+    if thread_store_get(&state, &thread_id).await?.is_none() {
+        if query
+            .cursor
+            .as_deref()
+            .is_some_and(|cursor| !cursor.trim().is_empty())
+        {
+            return Err(task_not_managed_error());
+        }
+        return unmanaged_task_detail(&state, &thread_id).await.map(Json);
+    }
     let cursor = query
         .cursor
         .as_deref()
@@ -1529,6 +1725,11 @@ async fn task_detail(
         ));
     }
 
+    if let Some(stored) = thread_store_mark_seen(&state, &thread_id).await? {
+        let resolved = resolve_task_cwd(&state.fs, &stored.cwd);
+        notify_task_updated(&state, task_record_from_stored(stored, resolved.as_ref()));
+    }
+
     let viewer = state.codex_sessions.reserve_viewer(&thread_id).await;
     let (detail, baseline_revision) = cached_task_detail(&state, &thread_id).await?;
     let bootstrap_state = state.clone();
@@ -1538,6 +1739,71 @@ async fn task_detail(
         drop(viewer);
     });
     Ok(Json(detail))
+}
+
+async fn continue_task(
+    State(state): State<AppState>,
+    AxumPath(thread_id): AxumPath<String>,
+) -> Result<Json<TaskRecord>, ApiError> {
+    let client = require_codex_thread_client(&state).await?;
+    let thread = client.read_thread(&thread_id).await?;
+    let task = task_record_from_codex_thread(&state, &thread)?;
+    let stored = thread_store_claim(&state, stored_thread_from_task_record(&task)).await?;
+    let resolved = resolve_task_cwd(&state.fs, &stored.cwd);
+    let task = task_record_from_stored(stored, resolved.as_ref());
+    notify_task_updated(&state, task.clone());
+    Ok(Json(task))
+}
+
+async fn mark_task_seen(
+    State(state): State<AppState>,
+    AxumPath(thread_id): AxumPath<String>,
+) -> Result<Json<TaskRecord>, ApiError> {
+    let Some(stored) = thread_store_mark_seen(&state, &thread_id).await? else {
+        return Err(task_not_managed_error());
+    };
+    let resolved = resolve_task_cwd(&state.fs, &stored.cwd);
+    let task = task_record_from_stored(stored, resolved.as_ref());
+    notify_task_updated(&state, task.clone());
+    Ok(Json(task))
+}
+
+async fn unmanaged_task_detail(
+    state: &AppState,
+    thread_id: &str,
+) -> Result<TaskDetailResponse, ApiError> {
+    let client = require_codex_thread_client(state).await?;
+    let thread = client.read_thread(thread_id).await?;
+    let task = task_record_from_codex_thread(state, &thread)?;
+    Ok(TaskDetailResponse {
+        managed: false,
+        revision: 0,
+        task,
+        events: Vec::new(),
+        events_page: TaskEventsPage { next_cursor: None },
+        pending_approvals: Vec::new(),
+        history_loading: false,
+    })
+}
+
+fn task_record_from_codex_thread(
+    state: &AppState,
+    thread: &crate::codex_app_server::CodexThread,
+) -> Result<TaskRecord, ApiError> {
+    let thread = thread.clone().into_value();
+    let resolved = resolve_thread_cwd(&state.fs, &thread);
+    task_record_from_thread(&thread, &[], resolved.as_ref())
+}
+
+fn task_not_managed_error() -> ApiError {
+    ApiError::BadRequest {
+        code: "task_not_managed",
+        message: "thread must be continued in Caffold first".to_string(),
+    }
+}
+
+fn notify_task_updated(state: &AppState, task: TaskRecord) {
+    let _ = state.task_list_updates.send(task);
 }
 
 async fn ensure_task_sync_worker(state: &AppState) {
@@ -1627,6 +1893,7 @@ async fn run_task_sync_worker(
                     state
                         .task_sync
                         .mark_synchronized(&thread_id, invalidation_revision);
+                    let _ = thread_store_delete(&state, &thread_id).await;
                     notify_task_removed(&state, &thread_id, "unavailable");
                     continue;
                 }
@@ -1746,6 +2013,9 @@ async fn task_stream(
     AxumPath(thread_id): AxumPath<String>,
     Query(_query): Query<TasksQuery>,
 ) -> Result<Response, ApiError> {
+    if thread_store_get(&state, &thread_id).await?.is_none() {
+        return Err(task_not_managed_error());
+    }
     // Subscribe before bootstrapping the canonical snapshot so notifications emitted
     // during resume cannot fall into the gap before the SSE receivers exist.
     let receiver = state.task_events.subscribe();
@@ -1913,7 +2183,6 @@ async fn task_stream(
 }
 
 async fn task_list_stream(State(state): State<AppState>) -> Result<Response, ApiError> {
-    require_codex_thread_client(&state).await?;
     Ok(task_event_stream(state, None))
 }
 
@@ -1921,6 +2190,7 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
     let receiver = state.task_events.subscribe();
     let sync_receiver = state.task_sync_events.subscribe();
     let removal_receiver = state.task_list_removals.subscribe();
+    let update_receiver = state.task_list_updates.subscribe();
     let shutdown = state.shutdown.subscribe();
     let live_task_events = state.live_task_events.clone();
     let sessions = state.codex_sessions.clone();
@@ -1929,6 +2199,7 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
             receiver,
             sync_receiver,
             removal_receiver,
+            update_receiver,
             shutdown,
             thread_id,
             live_task_events,
@@ -1938,6 +2209,7 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
             mut receiver,
             mut sync_receiver,
             mut removal_receiver,
+            mut update_receiver,
             mut shutdown,
             thread_id,
             live_task_events,
@@ -1958,6 +2230,32 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
                                         receiver,
                                         sync_receiver,
                                         removal_receiver,
+                                        update_receiver,
+                                        shutdown,
+                                        thread_id,
+                                        live_task_events,
+                                        sessions,
+                                    ),
+                                ));
+                            }
+                            Ok(_) => continue,
+                            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(broadcast::error::RecvError::Closed) => return None,
+                        }
+                    }
+                    message = update_receiver.recv() => {
+                        match message {
+                            Ok(task) if thread_id.as_ref().is_none_or(|id| id == &task.thread_id) => {
+                                let payload = serde_json::to_string(&task)
+                                    .unwrap_or_else(|_| "{}".to_string());
+                                let frame = format!("event: task-updated\ndata: {payload}\n\n");
+                                return Some((
+                                    Ok::<_, Infallible>(Bytes::from(frame)),
+                                    (
+                                        receiver,
+                                        sync_receiver,
+                                        removal_receiver,
+                                        update_receiver,
                                         shutdown,
                                         thread_id,
                                         live_task_events,
@@ -1982,6 +2280,7 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
                                         receiver,
                                         sync_receiver,
                                         removal_receiver,
+                                        update_receiver,
                                         shutdown,
                                         thread_id,
                                         live_task_events,
@@ -2016,6 +2315,7 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
                                         receiver,
                                         sync_receiver,
                                         removal_receiver,
+                                        update_receiver,
                                         shutdown,
                                         thread_id,
                                         live_task_events,
@@ -2050,6 +2350,9 @@ async fn task_prompt(
     Query(_query): Query<TasksQuery>,
     Json(request): Json<TaskPromptRequest>,
 ) -> Result<Json<TaskPromptResponse>, ApiError> {
+    if thread_store_get(&state, &thread_id).await?.is_none() {
+        return Err(task_not_managed_error());
+    }
     let (prompt, images) = normalize_task_input(&request.prompt, request.images)?;
     let turn_options = codex_turn_options(request.model, request.effort)?;
     let _requested_active_turn_id = request.active_turn_id;
@@ -2107,6 +2410,9 @@ async fn task_interrupt(
     AxumPath(thread_id): AxumPath<String>,
     Query(_query): Query<TasksQuery>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
+    if thread_store_get(&state, &thread_id).await?.is_none() {
+        return Err(task_not_managed_error());
+    }
     let connection = require_codex_thread_connection(&state).await?;
     let Some(turn_id) = state
         .codex_sessions
@@ -2149,8 +2455,12 @@ async fn task_archive(
     State(state): State<AppState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<StatusCode, ApiError> {
+    if thread_store_get(&state, &thread_id).await?.is_none() {
+        return Err(task_not_managed_error());
+    }
     let connection = require_codex_thread_connection(&state).await?;
     connection.client.archive_thread(&thread_id).await?;
+    thread_store_delete(&state, &thread_id).await?;
     notify_task_removed(&state, &thread_id, "archived");
     Ok(StatusCode::NO_CONTENT)
 }
@@ -2168,6 +2478,9 @@ async fn task_approval(
     Query(_query): Query<TasksQuery>,
     Json(request): Json<TaskApprovalRequest>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
+    if thread_store_get(&state, &thread_id).await?.is_none() {
+        return Err(task_not_managed_error());
+    }
     let pending = {
         let approvals = state.pending_approvals.lock().await;
         let Some(pending) = approvals.get(&approval_id).cloned() else {
@@ -2329,6 +2642,7 @@ async fn cached_task_detail(
 
 fn loading_task_detail(thread_id: &str, revision: u64) -> TaskDetailResponse {
     TaskDetailResponse {
+        managed: true,
         revision,
         task: TaskRecord {
             id: thread_id.to_string(),
@@ -2346,6 +2660,7 @@ fn loading_task_detail(thread_id: &str, revision: u64) -> TaskDetailResponse {
             active_turn_id: None,
             active_turn_started_ms: None,
             last_event_summary: None,
+            unseen: false,
         },
         events: Vec::new(),
         events_page: TaskEventsPage { next_cursor: None },
@@ -2377,6 +2692,7 @@ async fn task_detail_from_snapshot(
     response_page: Option<crate::codex_app_server::TurnsPage>,
 ) -> Result<TaskDetailResponse, ApiError> {
     let session_running = snapshot.is_running();
+    let actively_viewed = snapshot.viewer_leases > 0;
     let session_active_turn_id = snapshot
         .active_turn_id
         .clone()
@@ -2423,7 +2739,16 @@ async fn task_detail_from_snapshot(
         session_active_turn_id,
         external_activity_started_ms,
     );
+    if let Some(mut stored) = thread_store_update_projection(state, &task).await? {
+        if actively_viewed
+            && let Some(seen) = thread_store_mark_seen(state, &stored.thread_id).await?
+        {
+            stored = seen;
+        }
+        task.unseen = stored.unseen();
+    }
     Ok(TaskDetailResponse {
+        managed: true,
         revision: snapshot.revision,
         task,
         events,
@@ -2650,7 +2975,55 @@ fn task_record_from_thread(
         active_turn_id,
         active_turn_started_ms,
         last_event_summary,
+        unseen: false,
     })
+}
+
+fn stored_thread_from_task_record(task: &TaskRecord) -> StoredThread {
+    StoredThread {
+        thread_id: task.thread_id.clone(),
+        title: task.title.clone(),
+        preview: task.preview.clone(),
+        cwd: task.cwd.clone(),
+        created_ms: task.created_ms,
+        updated_ms: task.updated_ms,
+        recency_ms: task.recency_ms,
+        status: task.status.clone(),
+        active_turn_id: task.active_turn_id.clone(),
+        active_turn_started_ms: task.active_turn_started_ms,
+        last_event_summary: task.last_event_summary.clone(),
+        claimed_at_ms: 0,
+        last_opened_at_ms: None,
+        last_seen_activity_ms: None,
+    }
+}
+
+fn task_record_from_stored(
+    thread: StoredThread,
+    resolved_cwd: Option<&ResolvedTaskCwd>,
+) -> TaskRecord {
+    let cwd = thread.cwd.clone();
+    let unseen = thread.unseen();
+    TaskRecord {
+        id: thread.thread_id.clone(),
+        thread_id: thread.thread_id,
+        title: thread.title,
+        preview: thread.preview,
+        status: thread.status,
+        cwd_path: resolved_cwd.and_then(|resolved| resolved.logical_cwd.clone()),
+        relative_cwd: resolved_cwd
+            .and_then(|resolved| resolved.logical_cwd.clone())
+            .unwrap_or_else(|| cwd.clone()),
+        worktree: resolved_cwd.and_then(|resolved| resolved.worktree.clone()),
+        cwd,
+        created_ms: thread.created_ms,
+        updated_ms: thread.updated_ms,
+        recency_ms: thread.recency_ms,
+        active_turn_id: thread.active_turn_id,
+        active_turn_started_ms: thread.active_turn_started_ms,
+        last_event_summary: thread.last_event_summary,
+        unseen,
+    }
 }
 
 fn task_rollout_monitor(task_sync: TaskSyncCoordinator) -> TaskRolloutMonitor {
@@ -4020,6 +4393,7 @@ mod tests {
         let task_sync = TaskSyncCoordinator::new();
         let (task_sync_events, _) = broadcast::channel(64);
         let (task_list_removals, _) = broadcast::channel(64);
+        let (task_list_updates, _) = broadcast::channel(64);
         let task_rollouts = task_rollout_monitor(task_sync.clone());
         let (shutdown, _) = broadcast::channel(16);
         let fs = Arc::new(fs);
@@ -4041,6 +4415,8 @@ mod tests {
             task_sync,
             task_sync_events,
             task_list_removals,
+            task_list_updates,
+            thread_store: ThreadStore::memory().unwrap(),
             live_task_events: LiveTaskEventCache::default(),
             task_rollouts,
             watch_hub,
@@ -4085,6 +4461,16 @@ mod tests {
             "nextCursor": null,
             "backwardsCursor": null
         })
+    }
+
+    async fn manage_test_thread(state: &AppState, thread_id: &str, cwd: &Path) {
+        let thread = task_thread_list(thread_id, cwd)["data"][0].clone();
+        let resolved = resolve_thread_cwd(&state.fs, &thread);
+        let task = task_record_from_thread(&thread, &[], resolved.as_ref())
+            .expect("test thread projection");
+        thread_store_claim(state, stored_thread_from_task_record(&task))
+            .await
+            .expect("test thread is managed");
     }
 
     fn resumed_task(thread_id: &str, cwd: &Path) -> JsonValue {
@@ -4145,6 +4531,122 @@ mod tests {
                     "useStateDbOnly": true
                 })
             )]
+        );
+    }
+
+    #[tokio::test]
+    async fn continue_moves_a_history_thread_into_the_managed_store() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-continue";
+        let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/list",
+                task_thread_list(thread_id, root.path()),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/read",
+                json!({ "thread": thread }),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/list",
+                task_thread_list(thread_id, root.path()),
+            ),
+        ]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+
+        let managed = list_managed_tasks(
+            State(state.clone()),
+            Query(TasksQuery {
+                cwd: None,
+                cursor: None,
+            }),
+        )
+        .await
+        .unwrap();
+        assert!(managed.0.tasks.is_empty());
+        assert!(client.mock_requests().await.is_empty());
+
+        let history = list_task_history(
+            State(state.clone()),
+            Query(TasksQuery {
+                cwd: None,
+                cursor: None,
+            }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(history.0.tasks.len(), 1);
+
+        let continued = continue_task(State(state.clone()), AxumPath(thread_id.to_string()))
+            .await
+            .unwrap();
+        assert_eq!(continued.0.thread_id, thread_id);
+        assert!(!continued.0.unseen);
+
+        let managed = list_managed_tasks(
+            State(state.clone()),
+            Query(TasksQuery {
+                cwd: None,
+                cursor: None,
+            }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(managed.0.tasks.len(), 1);
+
+        let history = list_task_history(
+            State(state),
+            Query(TasksQuery {
+                cwd: None,
+                cursor: None,
+            }),
+        )
+        .await
+        .unwrap();
+        assert!(history.0.tasks.is_empty());
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            ["thread/list", "thread/read", "thread/list"]
+        );
+    }
+
+    #[tokio::test]
+    async fn unmanaged_deep_link_reads_metadata_without_resuming() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-unmanaged-deep-link";
+        let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
+        let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+            "thread/read",
+            json!({ "thread": thread }),
+        )]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+
+        let detail = task_detail(
+            State(state),
+            AxumPath(thread_id.to_string()),
+            Query(TaskDetailQuery { cursor: None }),
+        )
+        .await
+        .unwrap();
+
+        assert!(!detail.0.managed);
+        assert!(detail.0.events.is_empty());
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            ["thread/read"]
         );
     }
 
@@ -4289,6 +4791,7 @@ mod tests {
         ]);
         let state =
             app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
         let _viewer = state
             .codex_sessions
             .acquire_viewer(&client, 1, thread_id)
@@ -4349,6 +4852,7 @@ mod tests {
         ]);
         let state =
             app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
         let thread =
             serde_json::from_value(task_thread_list(thread_id, root.path())["data"][0].clone())
                 .expect("cached thread metadata");
@@ -4541,6 +5045,7 @@ mod tests {
         ]);
         let state =
             app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
         let thread =
             serde_json::from_value(task_thread_list(thread_id, root.path())["data"][0].clone())
                 .expect("cached thread metadata");
@@ -4592,6 +5097,7 @@ mod tests {
         ]);
         let state =
             app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
 
         let runtime = state.codex_threads.clone();
         let (locked_tx, locked_rx) = tokio::sync::oneshot::channel();
@@ -4637,6 +5143,7 @@ mod tests {
         ]);
         let state =
             app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
 
         let runtime = state.codex_threads.clone();
         let (locked_tx, locked_rx) = tokio::sync::oneshot::channel();
@@ -4801,6 +5308,7 @@ mod tests {
             )]);
         let state =
             app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
         let thread =
             serde_json::from_value(task_thread_list(thread_id, root.path())["data"][0].clone())
                 .expect("cached thread metadata");
@@ -4948,6 +5456,7 @@ mod tests {
         ]);
         let state =
             app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
 
         let response = task_detail(
             State(state),
@@ -5002,6 +5511,7 @@ mod tests {
         ]);
         let state =
             app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
 
         let detail_state = state.clone();
         let detail = tokio::spawn(async move {
@@ -5090,6 +5600,7 @@ mod tests {
         ]);
         let state =
             app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
 
         let _detail_response = task_detail(
             State(state.clone()),
@@ -5157,6 +5668,7 @@ mod tests {
             thread_id: thread_id.to_string(),
             revision: 7,
             detail: TaskDetailResponse {
+                managed: true,
                 revision: 7,
                 task: TaskRecord {
                     id: thread_id.to_string(),
@@ -5174,6 +5686,7 @@ mod tests {
                     active_turn_id: None,
                     active_turn_started_ms: None,
                     last_event_summary: Some("canonical assistant response".to_string()),
+                    unseen: false,
                 },
                 events: vec![assistant],
                 events_page: TaskEventsPage { next_cursor: None },

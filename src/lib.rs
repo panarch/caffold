@@ -9,4 +9,5 @@ mod github;
 mod server_settings;
 mod static_assets;
 mod task_rollout;
+mod thread_store;
 mod watch;

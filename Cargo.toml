@@ -10,6 +10,7 @@ anyhow = "1.0.98"
 axum = "0.8.4"
 clap = { version = "4.5.40", features = ["derive"] }
 futures-util = "0.3.32"
+gluesql = { git = "https://github.com/gluesql/gluesql.git", branch = "main", default-features = false, features = ["gluesql_memory_storage", "gluesql-redb-storage"] }
 notify = "8.2.0"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"

@@ -1,11 +1,14 @@
 import {
+  continueTask,
   createTask,
   getCodexModels,
   getGitHubStatus,
   getGitStatus,
   getTask,
+  getTaskHistory,
   getTasks,
   interruptTask,
+  markTaskSeen as acknowledgeTaskSeen,
   resolveTaskApproval,
   sendTaskPrompt,
   taskListStreamUrl,
@@ -32,7 +35,6 @@ const TASK_LIST_MIN_WIDTH = 280;
 const TASK_LIST_MAX_WIDTH = 520;
 const TASK_DETAIL_MIN_WIDTH = 520;
 const TASK_LIST_RESIZER_WIDTH = 6;
-const TASK_SEEN_STORAGE_KEY = "caffold.tasks.seen-versions.v1";
 const TASK_COMPOSER_MAX_IMAGES = 4;
 const TASK_COMPOSER_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const TASK_COMPOSER_IMAGE_TYPES = new Set([
@@ -71,7 +73,15 @@ class CaffoldTasksPage extends HTMLElement {
     this.taskListStreamContext = "";
     this.taskListStreamNeedsSync = false;
     this.taskListWidth = TASK_LIST_DEFAULT_WIDTH;
-    this.taskSeenState = readTaskSeenState();
+    this.taskHistory = [];
+    this.taskHistoryLoading = false;
+    this.taskHistoryLoadingMore = false;
+    this.taskHistoryLoaded = false;
+    this.taskHistoryError = null;
+    this.taskHistoryLoadMoreError = null;
+    this.taskHistoryNextCursor = null;
+    this.taskHistoryRequestId = 0;
+    this.continuingThreadIds = new Set();
     this.taskDetail = null;
     this.taskDetailRevisionByThread = new Map();
     this.taskListRevisionByThread = new Map();
@@ -361,6 +371,15 @@ class CaffoldTasksPage extends HTMLElement {
     this.taskListLoadMoreError = null;
     this.taskListNextCursor = null;
     this.tasks = [];
+    this.taskHistoryRequestId += 1;
+    this.taskHistoryLoading = false;
+    this.taskHistoryLoadingMore = false;
+    this.taskHistoryLoaded = false;
+    this.taskHistoryError = null;
+    this.taskHistoryLoadMoreError = null;
+    this.taskHistoryNextCursor = null;
+    this.taskHistory = [];
+    this.continuingThreadIds.clear();
     this.markTaskListDirty();
   }
 
@@ -459,7 +478,11 @@ class CaffoldTasksPage extends HTMLElement {
     this.historyLoadError = null;
     this.view = "list";
     this.render();
-    return await this.loadTaskList({ force: true });
+    const [tasks, history] = await Promise.all([
+      this.loadTaskList({ force: true }),
+      this.loadTaskHistory({ force: true }),
+    ]);
+    return { tasks, history };
   }
 
   openNew() {
@@ -472,6 +495,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.closeStream();
     this.render();
     this.loadTaskList();
+    this.loadTaskHistory();
     this.loadModelOptions();
     this.querySelector("textarea[name='prompt']")?.focus();
     return null;
@@ -491,7 +515,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.historyLoadError = null;
     this.render();
     this.loadTaskList();
-    this.connectStream(threadId);
+    this.loadTaskHistory();
 
     try {
       const detail = await getTask(threadId, null, this.cwdPath);
@@ -514,8 +538,14 @@ class CaffoldTasksPage extends HTMLElement {
       this.loading = false;
       this.detailLoadError = null;
       this.historyLoadError = null;
-      this.markTaskSeen(detail.task);
-      this.patchTaskListTask(detail.task);
+      if (detail.managed === false) {
+        this.closeStream();
+        this.render();
+        return detail;
+      }
+      this.connectStream(threadId);
+      this.patchTaskListTask({ ...detail.task, unseen: false });
+      void this.acknowledgeSelectedTaskSeen(threadId);
       this.conversationScrollMode = this.conversationScrollSnapshot(threadId)
         ? "preserve"
         : "bottom";
@@ -531,6 +561,24 @@ class CaffoldTasksPage extends HTMLElement {
       this.detailLoadError = error;
       this.render();
       return null;
+    }
+  }
+
+  async acknowledgeSelectedTaskSeen(threadId) {
+    try {
+      const task = await acknowledgeTaskSeen(threadId);
+      if (threadId !== this.selectedThreadId) {
+        return;
+      }
+      if (this.taskDetail?.task?.threadId === threadId) {
+        this.taskDetail = {
+          ...this.taskDetail,
+          task: { ...this.taskDetail.task, unseen: false },
+        };
+      }
+      this.patchTaskListTask(task);
+    } catch {
+      // The detail remains usable; the next canonical refresh can retry seen state.
     }
   }
 
@@ -589,7 +637,6 @@ class CaffoldTasksPage extends HTMLElement {
       }
       this.tasks = response.tasks ?? [];
       this.taskListNextCursor = response.nextCursor ?? null;
-      this.initializeTaskSeenState(this.tasks);
       this.taskListLoading = false;
       this.taskListLoaded = true;
       this.markTaskListDirty();
@@ -628,7 +675,6 @@ class CaffoldTasksPage extends HTMLElement {
       }
       this.tasks = mergeTaskListPage(this.tasks, response.tasks ?? []);
       this.taskListNextCursor = response.nextCursor ?? null;
-      this.initializeTaskSeenState(response.tasks ?? []);
       this.taskListLoadingMore = false;
       this.markTaskListDirty();
       this.renderTaskListRegion();
@@ -643,6 +689,119 @@ class CaffoldTasksPage extends HTMLElement {
       this.markTaskListDirty();
       this.renderTaskListRegion();
       return null;
+    }
+  }
+
+  async loadTaskHistory({ force = false } = {}) {
+    if (this.taskHistoryLoaded && !force) {
+      return { tasks: this.taskHistory, nextCursor: this.taskHistoryNextCursor };
+    }
+
+    const requestId = ++this.taskHistoryRequestId;
+    const context = this.taskListContext;
+    this.taskHistoryLoading = true;
+    this.taskHistoryLoadingMore = false;
+    this.taskHistoryError = null;
+    this.taskHistoryLoadMoreError = null;
+    this.markTaskListDirty();
+    this.renderTaskListRegion();
+
+    try {
+      const response = await getTaskHistory(this.cwdPath);
+      if (requestId !== this.taskHistoryRequestId || context !== this.taskListContext) {
+        return null;
+      }
+      this.taskHistory = response.tasks ?? [];
+      this.taskHistoryNextCursor = response.nextCursor ?? null;
+      this.taskHistoryLoading = false;
+      this.taskHistoryLoaded = true;
+      this.markTaskListDirty();
+      this.renderTaskListRegion();
+      return response;
+    } catch (error) {
+      if (requestId !== this.taskHistoryRequestId || context !== this.taskListContext) {
+        return null;
+      }
+      this.taskHistoryLoading = false;
+      this.taskHistoryError = error;
+      this.markTaskListDirty();
+      this.renderTaskListRegion();
+      return null;
+    }
+  }
+
+  async loadMoreTaskHistory() {
+    const cursor = this.taskHistoryNextCursor;
+    if (!cursor || this.taskHistoryLoading || this.taskHistoryLoadingMore) {
+      return null;
+    }
+
+    const requestId = ++this.taskHistoryRequestId;
+    const context = this.taskListContext;
+    this.taskHistoryLoadingMore = true;
+    this.taskHistoryLoadMoreError = null;
+    this.markTaskListDirty();
+    this.renderTaskListRegion();
+
+    try {
+      const response = await getTaskHistory(this.cwdPath, cursor);
+      if (requestId !== this.taskHistoryRequestId || context !== this.taskListContext) {
+        return null;
+      }
+      this.taskHistory = mergeTaskListPage(this.taskHistory, response.tasks ?? []);
+      this.taskHistoryNextCursor = response.nextCursor ?? null;
+      this.taskHistoryLoadingMore = false;
+      this.markTaskListDirty();
+      this.renderTaskListRegion();
+      return response;
+    } catch (error) {
+      if (requestId !== this.taskHistoryRequestId || context !== this.taskListContext) {
+        return null;
+      }
+      this.taskHistoryLoadingMore = false;
+      this.taskHistoryLoadMoreError = error;
+      this.markTaskListDirty();
+      this.renderTaskListRegion();
+      return null;
+    }
+  }
+
+  async continueHistoryTask(threadId) {
+    if (!threadId || this.continuingThreadIds.has(threadId)) {
+      return null;
+    }
+    this.continuingThreadIds.add(threadId);
+    this.taskHistoryError = null;
+    this.markTaskListDirty();
+    this.renderTaskListRegion();
+    if (this.taskDetail?.task?.threadId === threadId) {
+      this.render();
+    }
+
+    try {
+      const task = await continueTask(threadId);
+      this.taskHistory = this.taskHistory.filter(
+        (candidate) => taskThreadId(candidate) !== threadId,
+      );
+      this.tasks = upsertTask(this.tasks, task);
+      this.taskListLoaded = true;
+      this.taskDetail = null;
+      this.markTaskListDirty();
+      this.renderTaskListRegion();
+      this.requestRoute({ kind: "tasks", threadId });
+      return task;
+    } catch (error) {
+      this.taskHistoryError = error;
+      this.markTaskListDirty();
+      this.renderTaskListRegion();
+      if (this.taskDetail?.task?.threadId === threadId) {
+        this.render();
+      }
+      return null;
+    } finally {
+      this.continuingThreadIds.delete(threadId);
+      this.markTaskListDirty();
+      this.renderTaskListRegion();
     }
   }
 
@@ -817,6 +976,22 @@ class CaffoldTasksPage extends HTMLElement {
       if (message?.threadId) {
         this.removeTaskListTask(message.threadId);
       }
+    });
+    stream.addEventListener("task-updated", (event) => {
+      if (this.taskListStream !== stream || this.taskListStreamContext !== context) {
+        return;
+      }
+      const task = parseJson(event.data);
+      const threadId = taskThreadId(task);
+      if (!threadId) {
+        return;
+      }
+      this.taskHistory = this.taskHistory.filter(
+        (candidate) => taskThreadId(candidate) !== threadId,
+      );
+      this.patchTaskListTask(task);
+      this.markTaskListDirty();
+      this.renderTaskListRegion();
     });
     stream.addEventListener("task-event", (event) => {
       if (this.taskListStream !== stream || this.taskListStreamContext !== context) {
@@ -1038,12 +1213,23 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
     if (action === "open-task") {
-      this.markTaskSeenByThreadId(element.dataset.threadId);
       this.requestRoute({ kind: "tasks", threadId: element.dataset.threadId });
       return;
     }
     if (action === "load-more-tasks") {
       this.loadMoreTasks();
+      return;
+    }
+    if (action === "load-more-task-history") {
+      this.loadMoreTaskHistory();
+      return;
+    }
+    if (action === "retry-task-history-list") {
+      this.loadTaskHistory({ force: true });
+      return;
+    }
+    if (action === "continue-history-task") {
+      this.continueHistoryTask(element.dataset.threadId);
       return;
     }
     if (action === "browse-new-task-cwd") {
@@ -2885,46 +3071,59 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   renderTaskList() {
-    if (this.taskListLoading && !this.tasks.length) {
-      return `<p class="surface-message">Loading tasks...</p>`;
-    }
-    if (this.taskListError && !this.tasks.length) {
-      return `<p class="surface-message">${escapeHtml(this.taskListError.message)}</p>`;
-    }
-    if (!this.tasks.length && !this.taskListNextCursor) {
-      return `
-        <div class="tasks-empty">
-          <p>No tasks yet.</p>
-          <button type="button" class="task-primary-button" data-task-action="open-new">New Task</button>
-        </div>
-      `;
-    }
-
-    const tasks = sortTasksByRecency(this.tasks);
-    const pagination = this.renderTaskListPagination();
-    if (!this.usesRepositoryGroups()) {
-      return `
-        <div class="task-list-scroll">
-          ${
-            tasks.length
-              ? `<ol class="task-list">
-                  ${tasks.map((task) => this.renderTaskRow(task)).join("")}
-                </ol>`
-              : `<p class="surface-message">No matching tasks in this page.</p>`
-          }
-          ${pagination}
-        </div>
-      `;
-    }
-
-    const groups = groupTasksByRepository(tasks);
     return `
       <div class="task-list-scroll">
-        <ol class="task-repository-groups">
-          ${groups.map((group) => this.renderTaskRepositoryGroup(group)).join("")}
-        </ol>
-        ${pagination}
+        ${this.renderTaskSection("Caffold Tasks", this.tasks, false)}
+        ${this.renderTaskSection("Codex History", this.taskHistory, true)}
       </div>
+    `;
+  }
+
+  renderTaskSection(title, entries, history) {
+    const loading = history ? this.taskHistoryLoading : this.taskListLoading;
+    const error = history ? this.taskHistoryError : this.taskListError;
+    const tasks = sortTasksByRecency(entries);
+    const pagination = history
+      ? this.renderTaskHistoryPagination()
+      : this.renderTaskListPagination();
+    let content;
+
+    if (loading && !tasks.length) {
+      content = `<p class="task-section-message">Loading...</p>`;
+    } else if (error && !tasks.length) {
+      content = `
+        <div class="task-section-message" role="alert">
+          <p>${escapeHtml(error.message)}</p>
+          ${history ? `<button type="button" class="task-secondary-button" data-task-action="retry-task-history-list">Retry</button>` : ""}
+        </div>
+      `;
+    } else if (!tasks.length) {
+      content = history
+        ? `<p class="task-section-message">No unmanaged Codex threads in this page.</p>`
+        : `<div class="tasks-empty">
+            <p>No Caffold tasks yet.</p>
+            <button type="button" class="task-primary-button" data-task-action="open-new">New Task</button>
+          </div>`;
+    } else if (!this.usesRepositoryGroups()) {
+      content = `<ol class="task-list">
+        ${tasks.map((task) => history ? this.renderHistoryTaskRow(task) : this.renderTaskRow(task)).join("")}
+      </ol>`;
+    } else {
+      const groups = groupTasksByRepository(tasks);
+      content = `<ol class="task-repository-groups" data-task-section="${history ? "history" : "managed"}">
+        ${groups.map((group) => this.renderTaskRepositoryGroup(group, history)).join("")}
+      </ol>`;
+    }
+
+    return `
+      <section class="task-list-section" data-task-section="${history ? "history" : "managed"}">
+        <header class="task-list-section-header">
+          <h2>${escapeHtml(title)}</h2>
+          <span>${tasks.length}</span>
+        </header>
+        ${content}
+        ${pagination}
+      </section>
     `;
   }
 
@@ -2949,11 +3148,36 @@ class CaffoldTasksPage extends HTMLElement {
     `;
   }
 
+  renderTaskHistoryPagination() {
+    if (
+      !this.taskHistoryNextCursor &&
+      !this.taskHistoryLoadingMore &&
+      !this.taskHistoryLoadMoreError
+    ) {
+      return "";
+    }
+    const label = this.taskHistoryLoadingMore
+      ? "Loading more history..."
+      : this.taskHistoryLoadMoreError
+        ? "Retry loading more history"
+        : "Load more history";
+    return `
+      <div class="task-list-pagination">
+        ${
+          this.taskHistoryLoadMoreError
+            ? `<p class="task-list-pagination-error">${escapeHtml(this.taskHistoryLoadMoreError.message)}</p>`
+            : ""
+        }
+        <button type="button" class="task-secondary-button" data-task-action="load-more-task-history" ${this.taskHistoryLoadingMore ? "disabled" : ""}>${label}</button>
+      </div>
+    `;
+  }
+
   usesRepositoryGroups() {
     return !cleanLogicalPath(this.cwdPath);
   }
 
-  renderTaskRepositoryGroup(group) {
+  renderTaskRepositoryGroup(group, history = false) {
     const icon = group.repository ? "FolderGit2" : "Folder";
     const iconLabel = group.repository ? "Git repository" : "Directory";
     return `
@@ -2964,8 +3188,27 @@ class CaffoldTasksPage extends HTMLElement {
           <span class="task-repository-count">${group.tasks.length}</span>
         </div>
         <ol class="task-list">
-          ${group.tasks.map((task) => this.renderTaskRow(task, group.key)).join("")}
+          ${group.tasks.map((task) => history ? this.renderHistoryTaskRow(task, group.key) : this.renderTaskRow(task, group.key)).join("")}
         </ol>
+      </li>
+    `;
+  }
+
+  renderHistoryTaskRow(task, repositoryKey = this.taskListPartitionKey(task)) {
+    const threadId = taskThreadId(task);
+    const continuing = this.continuingThreadIds.has(threadId);
+    const worktree = task?.worktree?.linked
+      ? `<span class="task-row-worktree" title="${escapeHtml(taskWorktreeLabel(task))}">
+          ${renderInlineIcon("GitBranch", "Linked worktree", "task-row-worktree-icon")}
+        </span>`
+      : "";
+    return `
+      <li class="task-history-row" data-thread-id="${escapeHtml(threadId)}" data-task-list-key="${escapeHtml(repositoryKey)}">
+        <div class="task-history-copy" title="${escapeHtml(task.title)}">
+          <span class="task-row-title">${escapeHtml(task.title)}</span>
+          <span class="task-row-indicators">${worktree}${renderTaskRowMeta(task, false)}</span>
+        </div>
+        <button type="button" class="task-continue-button" data-task-action="continue-history-task" data-thread-id="${escapeHtml(threadId)}" ${continuing ? "disabled" : ""}>${continuing ? "Continuing..." : "Continue in Caffold"}</button>
       </li>
     `;
   }
@@ -3008,53 +3251,9 @@ class CaffoldTasksPage extends HTMLElement {
     }
   }
 
-  initializeTaskSeenState(tasks) {
-    let changed = false;
-    if (!this.taskSeenState.initialized) {
-      for (const task of tasks) {
-        changed = rememberTaskVersion(this.taskSeenState, task) || changed;
-      }
-      this.taskSeenState.initialized = true;
-      changed = true;
-    } else {
-      for (const task of tasks) {
-        const threadId = taskThreadId(task);
-        if (
-          this.isTaskCurrentlyViewed(threadId) ||
-          (!hasSeenTaskVersion(this.taskSeenState, threadId) &&
-            !isTaskCompletionStatus(task.status))
-        ) {
-          changed = rememberTaskVersion(this.taskSeenState, task) || changed;
-        }
-      }
-    }
-    if (changed) {
-      writeTaskSeenState(this.taskSeenState);
-    }
-  }
-
   isTaskCompletionUnseen(task) {
     const threadId = taskThreadId(task);
-    const version = taskUpdatedMs(task);
-    if (
-      !this.taskSeenState.initialized ||
-      !threadId ||
-      this.isTaskCurrentlyViewed(threadId) ||
-      !version ||
-      !isTaskCompletionStatus(task.status)
-    ) {
-      return false;
-    }
-    const seenVersion = Number(this.taskSeenState.versions[threadId]);
-    return !Number.isFinite(seenVersion) || version > seenVersion;
-  }
-
-  markTaskSeenByThreadId(threadId) {
-    const task = this.tasks.find((candidate) => taskThreadId(candidate) === threadId);
-    if (!task || !this.markTaskSeen(task)) {
-      return;
-    }
-    this.patchTaskListTask(task);
+    return Boolean(threadId && task?.unseen && !this.isTaskCurrentlyViewed(threadId));
   }
 
   isTaskCurrentlyViewed(threadId) {
@@ -3066,22 +3265,13 @@ class CaffoldTasksPage extends HTMLElement {
     );
   }
 
-  markTaskSeen(task) {
-    if (!task || !rememberTaskVersion(this.taskSeenState, task)) {
-      return false;
-    }
-    this.taskSeenState.initialized = true;
-    writeTaskSeenState(this.taskSeenState);
-    return true;
-  }
-
   patchTaskListTask(task) {
     if (!task || !this.taskListLoaded) {
       return;
     }
     const threadId = taskThreadId(task);
     if (this.isTaskCurrentlyViewed(threadId)) {
-      this.markTaskSeen(task);
+      task = { ...task, unseen: false };
     }
     const index = this.tasks.findIndex((candidate) => taskThreadId(candidate) === threadId);
     if (index < 0) {
@@ -3135,7 +3325,9 @@ class CaffoldTasksPage extends HTMLElement {
   reorderTaskListDom() {
     const tasks = sortTasksByRecency(this.tasks);
     if (!this.usesRepositoryGroups()) {
-      const taskList = this.querySelector(".task-list-scroll > .task-list");
+      const taskList = this.querySelector(
+        '.task-list-section[data-task-section="managed"] > .task-list',
+      );
       if (!taskList) {
         return;
       }
@@ -3151,7 +3343,9 @@ class CaffoldTasksPage extends HTMLElement {
     }
 
     const groups = groupTasksByRepository(tasks);
-    const groupList = this.querySelector(".task-repository-groups");
+    const groupList = this.querySelector(
+      '.task-list-section[data-task-section="managed"] .task-repository-groups',
+    );
     if (!groupList) {
       return;
     }
@@ -3370,6 +3564,9 @@ class CaffoldTasksPage extends HTMLElement {
     if (!task) {
       return `<p class="surface-message">${this.loading ? "Loading task..." : "Select a task."}</p>`;
     }
+    if (this.taskDetail?.managed === false) {
+      return this.renderContinueGate(task);
+    }
     const approvals = pendingApprovals(this.events);
     return `
       <div class="task-detail" data-thread-id="${escapeHtml(task.threadId ?? task.id)}" data-task-detail-view="${escapeHtml(this.taskDetailView)}">
@@ -3426,6 +3623,22 @@ class CaffoldTasksPage extends HTMLElement {
         ${this.renderTaskFilesView()}
         ${this.renderTaskDiffView()}
       </div>
+    `;
+  }
+
+  renderContinueGate(task) {
+    const threadId = taskThreadId(task);
+    const continuing = this.continuingThreadIds.has(threadId);
+    return `
+      <section class="task-continue-gate" data-thread-id="${escapeHtml(threadId)}">
+        <p class="task-continue-eyebrow">Codex History</p>
+        <h2>${escapeHtml(task.title)}</h2>
+        ${task.preview ? `<p class="task-continue-preview">${escapeHtml(task.preview)}</p>` : ""}
+        ${task.cwd ? `<p class="task-continue-cwd">${escapeHtml(task.cwd)}</p>` : ""}
+        <p>This thread is not managed by Caffold yet. Continue it before loading its conversation or runtime.</p>
+        ${this.taskHistoryError ? `<p class="task-load-error-message" role="alert">${escapeHtml(this.taskHistoryError.message)}</p>` : ""}
+        <button type="button" class="task-primary-button" data-task-action="continue-history-task" data-thread-id="${escapeHtml(threadId)}" ${continuing ? "disabled" : ""}>${continuing ? "Continuing..." : "Continue in Caffold"}</button>
+      </section>
     `;
   }
 
@@ -5075,7 +5288,8 @@ function taskWithStatus(task, status, updates = {}) {
   if (!task || !status) {
     return task;
   }
-  return { ...task, ...updates, status };
+  const unseen = ["", "completed", "idle", "notLoaded"].includes(status);
+  return { ...task, unseen, ...updates, status };
 }
 
 function normalizeTurnStatus(status) {
@@ -5371,56 +5585,6 @@ function taskStatusView(status) {
 
 function normalizeTaskStatus(status) {
   return `${status ?? ""}`.trim();
-}
-
-function isTaskCompletionStatus(status) {
-  return ["", "completed", "idle", "notLoaded"].includes(normalizeTaskStatus(status));
-}
-
-function readTaskSeenState() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(TASK_SEEN_STORAGE_KEY) ?? "null");
-    if (parsed && typeof parsed === "object" && parsed.versions) {
-      return {
-        initialized: Boolean(parsed.initialized),
-        versions: { ...parsed.versions },
-      };
-    }
-  } catch {
-    // Treat unavailable or invalid local storage as a fresh local view state.
-  }
-  return { initialized: false, versions: {} };
-}
-
-function writeTaskSeenState(state) {
-  try {
-    const versions = Object.fromEntries(
-      Object.entries(state.versions)
-        .sort((left, right) => Number(right[1]) - Number(left[1]))
-        .slice(0, 1_000),
-    );
-    state.versions = versions;
-    localStorage.setItem(
-      TASK_SEEN_STORAGE_KEY,
-      JSON.stringify({ initialized: true, versions }),
-    );
-  } catch {
-    // The indicator remains session-local when storage is unavailable.
-  }
-}
-
-function hasSeenTaskVersion(state, threadId) {
-  return Object.hasOwn(state.versions, threadId);
-}
-
-function rememberTaskVersion(state, task) {
-  const threadId = taskThreadId(task);
-  const version = taskUpdatedMs(task);
-  if (!threadId || !version || Number(state.versions[threadId]) >= version) {
-    return false;
-  }
-  state.versions[threadId] = version;
-  return true;
 }
 
 function formatStatus(status) {

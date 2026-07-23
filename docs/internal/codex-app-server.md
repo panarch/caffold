@@ -137,6 +137,11 @@ persist that context in a Caffold registry or Codex metadata. A Task can open
 Files at the derived worktree root and review its working-tree Diff directly.
 Worktree creation, deletion, checkout, rename, prune, and cleanup remain
 outside this Tasks slice.
+Caffold persists managed-thread membership, a small list projection, and
+Caffold-only open/seen timestamps in GlueSQL Redb. It does not persist turns,
+transcript items, approvals, or derived project/worktree records. Existing
+app-server threads remain in Codex History until the user explicitly chooses
+`Continue in Caffold`.
 Caffold keeps pending approvals and SSE notifications as ephemeral in-memory
 state in this slice. Pending approval cards may disappear after a Caffold
 backend restart until app-server re-emits the request.
@@ -169,10 +174,13 @@ Tasks without an active detail subscriber do not trigger rollout-driven reads.
 
 ## Thread List Pagination
 
-The Tasks list reads 30 threads at a time from `thread/list`, ordered by
-`recency_at` descending and using `useStateDbOnly: true`. Caffold passes the
-opaque `nextCursor` through its API and requests another page only after an
-explicit browser action. It must not drain every page during initial load.
+The Tasks surface has two independent paginated sections. Caffold Tasks reads
+30 cached managed threads at a time from local Redb. Codex History reads one
+30-thread `thread/list` page, ordered by `recency_at` descending and using
+`useStateDbOnly: true`, then excludes managed IDs. Caffold passes the opaque
+app-server `nextCursor` through its History API and requests another page only
+after an explicit browser action. An empty filtered page may therefore still
+offer Load more; Caffold must not drain additional pages automatically.
 
 Running state comes only from app-server `Thread.status`, `Turn.status`, and
 typed notifications. Browser reconnect and visibility resume each request one
@@ -181,9 +189,9 @@ client was disconnected. If the rollout path is absent or the native watcher is
 unavailable, app-server notifications and explicit synchronization continue to
 work; Caffold does not add a polling fallback.
 
-Local task metadata/event storage is deferred and optional. If added later, it
-should augment Codex threads with Caffold-only annotations rather than become
-the required primary lookup path.
+The local list projection is the primary lookup path only for managed-thread
+membership and offline list rendering. Codex remains authoritative for thread
+metadata refresh, transcript, events, and runtime behavior.
 
 The Tasks surface uses the current cwd as its filter and New Task default.
 Files, Git, and GitHub use the same logical cwd context without a local project

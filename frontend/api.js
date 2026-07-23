@@ -17,6 +17,25 @@ export async function getTasks(cwd = "", cursor = null) {
   });
 }
 
+export async function getTaskHistory(cwd = "", cursor = null) {
+  return requestJson("/api/task-history", {
+    ...(cwd ? { cwd } : {}),
+    ...(cursor ? { cursor } : {}),
+  });
+}
+
+export async function continueTask(threadId) {
+  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}/continue`, {}, {
+    method: "POST",
+  });
+}
+
+export async function markTaskSeen(threadId) {
+  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}/seen`, {}, {
+    method: "PUT",
+  });
+}
+
 export async function createTask(task) {
   return requestJson("/api/tasks", {}, {
     method: "POST",
