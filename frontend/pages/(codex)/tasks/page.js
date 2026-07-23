@@ -5692,23 +5692,23 @@ function canonicalEventKey(event) {
   }
 
   const payload = event.payload ?? {};
-  const text =
+  const messageFingerprint =
     event.type === "user_message"
-      ? userMessageText(payload)
+      ? userMessageFingerprint(event)
       : `${payload.prompt ?? payload.text ?? ""}`.trim();
-  if (!text) {
+  if (!messageFingerprint) {
     return "";
   }
 
   const threadId = event.threadId ?? payload.threadId ?? "";
   const turnId = eventTurnId(event);
   if (turnId) {
-    return ["message", threadId, turnId, event.type, text].join(":");
+    return ["message", threadId, turnId, event.type, messageFingerprint].join(":");
   }
 
   const createdMs = typeof event.createdMs === "number" ? event.createdMs : 0;
   const createdBucket = createdMs ? Math.floor(createdMs / 5000) : "";
-  return ["message", threadId, event.type, text, createdBucket].join(":");
+  return ["message", threadId, event.type, messageFingerprint, createdBucket].join(":");
 }
 
 function preferStructuredEvent(existing, next) {

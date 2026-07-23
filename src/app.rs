@@ -679,6 +679,22 @@ impl LiveTaskEventCache {
             *existing = merge_task_event_record(existing.clone(), event);
             return;
         }
+        if is_pending_canonical_user_message(&event)
+            && thread_events.iter().any(|canonical| {
+                !is_pending_canonical_user_message(canonical)
+                    && pending_user_message_matches(&event, canonical)
+            })
+        {
+            return;
+        }
+        if event.event_type == "user_message"
+            && !is_pending_canonical_user_message(&event)
+            && let Some(index) = thread_events
+                .iter()
+                .position(|pending| pending_user_message_matches(pending, &event))
+        {
+            thread_events.remove(index);
+        }
         thread_events.push(event);
         if thread_events.len() > LIVE_TASK_EVENT_LIMIT_PER_THREAD {
             thread_events.remove(0);
@@ -1865,6 +1881,11 @@ async fn create_task(
             permission_mode,
         )
         .await;
+    publish_task_event(
+        &state.task_events,
+        &state.live_task_events,
+        accepted_user_message_event(&thread.thread_id, &turn.turn_id, &prompt, &images),
+    );
     Ok(Json(
         read_task_detail(&state, &connection, &thread.thread_id, None).await?,
     ))
@@ -2591,6 +2612,11 @@ async fn task_prompt(
             .record_turn_started(connection.generation, &thread_id, turn, permission_mode)
             .await;
     }
+    publish_task_event(
+        &state.task_events,
+        &state.live_task_events,
+        accepted_user_message_event(&thread_id, &outcome.turn_id, &prompt, &images),
+    );
     Ok(Json(TaskPromptResponse {
         thread_id,
         turn_id: outcome.turn_id,
@@ -3345,6 +3371,97 @@ fn task_event_record(
         payload,
         created_ms,
     }
+}
+
+fn accepted_user_message_event(
+    thread_id: &str,
+    turn_id: &str,
+    prompt: &str,
+    images: &[String],
+) -> TaskEventRecord {
+    let content = prompt
+        .is_empty()
+        .then(Vec::new)
+        .unwrap_or_else(|| vec![json!({ "type": "text", "text": prompt })])
+        .into_iter()
+        .chain(
+            images
+                .iter()
+                .map(|url| json!({ "type": "image", "url": url })),
+        )
+        .collect::<Vec<_>>();
+    task_event_record(
+        thread_id,
+        &format!("{turn_id}:accepted_user_message:{}", uuid::Uuid::new_v4()),
+        "user_message",
+        "User prompt",
+        Some(json!({
+            "threadId": thread_id,
+            "turnId": turn_id,
+            "text": prompt,
+            "content": content,
+            "pendingCanonical": true,
+        })),
+        now_ms(),
+    )
+}
+
+fn is_pending_canonical_user_message(event: &TaskEventRecord) -> bool {
+    event.event_type == "user_message"
+        && event
+            .payload
+            .as_ref()
+            .and_then(|payload| payload.get("pendingCanonical"))
+            .and_then(JsonValue::as_bool)
+            .unwrap_or(false)
+}
+
+fn pending_user_message_matches(pending: &TaskEventRecord, canonical: &TaskEventRecord) -> bool {
+    if !is_pending_canonical_user_message(pending) || canonical.event_type != "user_message" {
+        return false;
+    }
+    let Some(pending_payload) = pending.payload.as_ref() else {
+        return false;
+    };
+    let Some(canonical_payload) = canonical.payload.as_ref() else {
+        return false;
+    };
+    pending_payload.get("turnId").and_then(JsonValue::as_str)
+        == canonical_payload.get("turnId").and_then(JsonValue::as_str)
+        && user_message_event_text(pending_payload) == user_message_event_text(canonical_payload)
+        && user_message_event_images(pending_payload)
+            == user_message_event_images(canonical_payload)
+}
+
+fn user_message_event_text(payload: &JsonValue) -> String {
+    payload
+        .get("text")
+        .and_then(JsonValue::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
+
+fn user_message_event_images(payload: &JsonValue) -> Vec<String> {
+    payload
+        .get("content")
+        .and_then(JsonValue::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|item| {
+            matches!(
+                item.get("type").and_then(JsonValue::as_str),
+                Some("image" | "localImage")
+            )
+        })
+        .map(|item| {
+            item.get("url")
+                .or_else(|| item.get("path"))
+                .and_then(JsonValue::as_str)
+                .unwrap_or_default()
+                .to_string()
+        })
+        .collect()
 }
 
 fn turn_item_event_id(turn_id: Option<&str>, item_id: Option<&str>, fallback: &str) -> String {
@@ -5075,6 +5192,79 @@ mod tests {
 
         assert_eq!(response.0.tasks.len(), 1);
         assert_eq!(response.0.tasks[0].status, "idle");
+    }
+
+    #[tokio::test]
+    async fn task_prompt_keeps_accepted_steer_visible_before_canonical_sync() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-running-prompt-reload";
+        let turn_id = "turn-active";
+        let prompt = "Keep this accepted steer visible after reload";
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/resume",
+                json!({
+                    "thread": {
+                        "id": thread_id,
+                        "preview": "Running prompt reload regression",
+                        "status": { "type": "active", "activeFlags": [] },
+                        "cwd": root.path().display().to_string(),
+                        "createdAt": 1.0,
+                        "updatedAt": 2.0,
+                        "turns": [{
+                            "id": turn_id,
+                            "items": [],
+                            "status": "inProgress"
+                        }]
+                    }
+                }),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "turn/steer",
+                json!({ "turnId": turn_id }),
+            ),
+        ]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+
+        let response = task_prompt(
+            State(state.clone()),
+            AxumPath(thread_id.to_string()),
+            Query(TasksQuery { cursor: None }),
+            Json(TaskPromptRequest {
+                prompt: prompt.to_string(),
+                images: Vec::new(),
+                model: None,
+                effort: None,
+                permission_mode: None,
+                active_turn_id: Some(turn_id.to_string()),
+            }),
+        )
+        .await
+        .expect("steering prompt succeeds");
+
+        assert!(response.0.steered);
+        let (detail, _) = cached_task_detail(&state, thread_id)
+            .await
+            .expect("cached detail remains available during the active turn");
+        assert!(detail.events.iter().any(|event| {
+            event.event_type == "user_message"
+                && event
+                    .payload
+                    .as_ref()
+                    .and_then(|payload| payload["text"].as_str())
+                    == Some(prompt)
+        }));
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            ["thread/resume", "turn/steer"]
+        );
     }
 
     #[tokio::test]
@@ -7209,6 +7399,68 @@ mod tests {
         let merged = merge_task_event_records(later_thread_read, cache.for_thread("thread_1"));
 
         assert_eq!(merged, vec![command]);
+    }
+
+    #[test]
+    fn canonical_user_message_replaces_the_locally_accepted_prompt() {
+        let cache = LiveTaskEventCache::default();
+        let image = "data:image/png;base64,aGVsbG8=".to_string();
+        cache.record(accepted_user_message_event(
+            "thread_1",
+            "turn_1",
+            "Inspect this image",
+            std::slice::from_ref(&image),
+        ));
+        let canonical = task_event_from_thread_item(
+            "thread_1",
+            20,
+            &json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "item": {
+                    "type": "userMessage",
+                    "id": "item_prompt",
+                    "content": [
+                        { "type": "text", "text": "Inspect this image" },
+                        { "type": "image", "url": image }
+                    ]
+                }
+            }),
+        )
+        .expect("canonical user message");
+
+        cache.record(canonical.clone());
+
+        assert_eq!(cache.for_thread("thread_1"), vec![canonical]);
+    }
+
+    #[test]
+    fn late_local_acceptance_does_not_duplicate_an_existing_canonical_prompt() {
+        let cache = LiveTaskEventCache::default();
+        let canonical = task_event_from_thread_item(
+            "thread_1",
+            20,
+            &json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "item": {
+                    "type": "userMessage",
+                    "id": "item_prompt",
+                    "content": [{ "type": "text", "text": "Already canonical" }]
+                }
+            }),
+        )
+        .expect("canonical user message");
+        cache.record(canonical.clone());
+
+        cache.record(accepted_user_message_event(
+            "thread_1",
+            "turn_1",
+            "Already canonical",
+            &[],
+        ));
+
+        assert_eq!(cache.for_thread("thread_1"), vec![canonical]);
     }
 
     #[test]
