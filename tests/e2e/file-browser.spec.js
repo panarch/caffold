@@ -6235,6 +6235,134 @@ test("isolates task detail responses and conversation scroll by thread", async (
     .toBe(true);
 });
 
+test("opens a running conversation at the latest message when stream sync wins the reload race", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Conversation reload scroll regression");
+  await page.addInitScript(() => {
+    window.__taskEventSources = [];
+    window.EventSource = class MockEventSource {
+      constructor(url) {
+        this.url = url;
+        this.listeners = new Map();
+        window.__taskEventSources.push(this);
+      }
+
+      addEventListener(type, listener) {
+        const listeners = this.listeners.get(type) ?? [];
+        listeners.push(listener);
+        this.listeners.set(type, listeners);
+      }
+
+      emit(type, payload) {
+        for (const listener of this.listeners.get(type) ?? []) {
+          listener({ data: JSON.stringify(payload) });
+        }
+      }
+
+      close() {}
+    };
+  });
+  await page.route("https://esm.sh/**", (route) => route.abort());
+  await mockCodexModels(page);
+
+  const threadId = "thread_reload_scroll_race";
+  const now = 1_767_191_500_000;
+  const task = {
+    id: threadId,
+    threadId,
+    activeTurnId: "turn_active",
+    activeTurnStartedMs: now,
+    title: "Reload scroll race",
+    preview: "Latest running response",
+    status: "running",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    createdMs: now,
+    updatedMs: now + 20,
+    recencyMs: now + 20,
+    lastEventSummary: "Latest running response",
+  };
+  const events = Array.from({ length: 20 }, (_, index) => ({
+    id: `event_reload_scroll_${index}`,
+    threadId,
+    type: "assistant_message",
+    summary: "Assistant response",
+    payload: {
+      turnId: `turn_reload_scroll_${index}`,
+      text: `Reload race response ${index + 1}.\n\n${"Long running conversation content. ".repeat(16)}`,
+    },
+    createdMs: now + index,
+  }));
+  const detail = (revision) => ({
+    revision,
+    task,
+    events,
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  });
+  let releaseDetailResponse;
+  const detailResponseGate = new Promise((resolve) => {
+    releaseDetailResponse = resolve;
+  });
+
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), async (route) => {
+    await detailResponseGate;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(detail(2)),
+    });
+  });
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const scroller = tasksPage.locator(".task-conversation-scroll");
+  await expect
+    .poll(() => page.evaluate(() => window.__taskEventSources.length))
+    .toBeGreaterThan(0);
+
+  await page.evaluate(({ threadId, detail }) => {
+    const source = window.__taskEventSources.find((candidate) =>
+      candidate.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    source.emit("task-sync", {
+      threadId,
+      revision: 1,
+      detail,
+      reason: "stream-bootstrap",
+    });
+  }, { threadId, detail: detail(1) });
+  await expect(tasksPage).toContainText("Reload race response 20.");
+  await expect
+    .poll(() => scroller.evaluate((element) => element.scrollHeight > element.clientHeight))
+    .toBe(true);
+
+  await page.evaluate(({ threadId, detail }) => {
+    const scroller = document.querySelector(
+      "caffold-tasks-page .task-conversation-scroll",
+    );
+    // A browser reload can restore a nested scroller before the async detail
+    // request settles. That transient position must not become task history.
+    scroller.scrollTop = 0;
+    scroller.dispatchEvent(new Event("scroll"));
+    const source = window.__taskEventSources.find((candidate) =>
+      candidate.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    source.emit("task-sync", {
+      threadId,
+      revision: 2,
+      detail,
+      reason: "running-progress",
+    });
+  }, { threadId, detail: detail(2) });
+  const reachedLatestBeforeDetail = await isScrolledToBottom(scroller);
+  releaseDetailResponse();
+
+  expect(reachedLatestBeforeDetail).toBe(true);
+  await expect.poll(() => isScrolledToBottom(scroller)).toBe(true);
+});
+
 test("keeps task conversation scroll anchored during live updates", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     window.__taskEventSources = [];

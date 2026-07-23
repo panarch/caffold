@@ -104,6 +104,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.activeTurnClockByThread = new Map();
     this.taskRefresh = null;
     this.requestId = 0;
+    this.initialConversationScrollRequest = null;
     this.conversationScrollMode = null;
     this.conversationScrollByThread = new Map();
     this.conversationResizeObserver = null;
@@ -496,6 +497,9 @@ class CaffoldTasksPage extends HTMLElement {
     }
 
     const requestId = ++this.requestId;
+    this.initialConversationScrollRequest = this.conversationScrollSnapshot(threadId)
+      ? null
+      : { threadId, requestId };
     this.view = "detail";
     this.selectedThreadId = threadId;
     this.loading = true;
@@ -516,6 +520,7 @@ class CaffoldTasksPage extends HTMLElement {
         detail?.task?.threadId !== threadId ||
         !this.acceptTaskDetailRevision(threadId, detail.revision)
       ) {
+        this.finishInitialConversationScroll(threadId, requestId);
         return null;
       }
       this.acknowledgeFollowUpFromCanonicalDetail(threadId, detail);
@@ -532,14 +537,18 @@ class CaffoldTasksPage extends HTMLElement {
       if (detail.managed === false) {
         this.closeStream();
         this.render();
+        this.finishInitialConversationScroll(threadId, requestId);
         return detail;
       }
       this.patchTaskListTask({ ...detail.task, unseen: false });
       void this.acknowledgeSelectedTaskSeen(threadId);
-      this.conversationScrollMode = this.conversationScrollSnapshot(threadId)
-        ? "preserve"
-        : "bottom";
+      this.conversationScrollMode = this.isInitialConversationScrollPending(threadId)
+        ? "bottom"
+        : this.conversationScrollSnapshot(threadId)
+          ? "preserve"
+          : "bottom";
       this.render();
+      this.finishInitialConversationScroll(threadId, requestId);
       this.loadTaskGithubStatus(detail.task);
       this.loadModelOptions();
       this.loadPermissionOptions(this.activeCwdPath());
@@ -551,6 +560,7 @@ class CaffoldTasksPage extends HTMLElement {
       this.loading = false;
       this.detailLoadError = error;
       this.render();
+      this.finishInitialConversationScroll(threadId, requestId);
       return null;
     }
   }
@@ -874,7 +884,7 @@ class CaffoldTasksPage extends HTMLElement {
       }
       this.setThreadEvents(threadId, upsertEvent(this.events, entry));
       this.applyLiveTaskEvent(entry);
-      this.conversationScrollMode = "bottom-if-needed";
+      this.conversationScrollMode = this.liveConversationScrollMode(threadId);
       this.render();
     });
   }
@@ -898,7 +908,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
     this.patchTaskListTask(detail.task);
     this.loadTaskGithubStatus(detail.task);
-    this.conversationScrollMode = "bottom-if-needed";
+    this.conversationScrollMode = this.liveConversationScrollMode(threadId);
     this.render();
   }
 
@@ -1161,7 +1171,7 @@ class CaffoldTasksPage extends HTMLElement {
       this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
       this.patchTaskListTask(detail.task);
       this.loadTaskGithubStatus(detail.task);
-      this.conversationScrollMode = "bottom-if-needed";
+      this.conversationScrollMode = this.liveConversationScrollMode(threadId);
       this.render();
     } catch {
       // SSE already provided the timeline event. Keep the visible state stable.
@@ -3035,6 +3045,23 @@ class CaffoldTasksPage extends HTMLElement {
     return this.conversationScrollByThread.get(threadId) ?? null;
   }
 
+  isInitialConversationScrollPending(threadId = this.selectedThreadId) {
+    return this.initialConversationScrollRequest?.threadId === threadId;
+  }
+
+  liveConversationScrollMode(threadId = this.selectedThreadId) {
+    return this.isInitialConversationScrollPending(threadId)
+      ? "bottom"
+      : "bottom-if-needed";
+  }
+
+  finishInitialConversationScroll(threadId, requestId) {
+    const pending = this.initialConversationScrollRequest;
+    if (pending?.threadId === threadId && pending.requestId === requestId) {
+      this.initialConversationScrollRequest = null;
+    }
+  }
+
   restoreConversationScroll(previousScroll) {
     const scroller = this.querySelector(".task-conversation-scroll");
     if (!scroller) {
@@ -3050,6 +3077,7 @@ class CaffoldTasksPage extends HTMLElement {
       (!mode && previousScroll?.atBottom);
     if (shouldStickToBottom) {
       scroller.scrollTop = maxScrollTop(scroller);
+      this.rememberConversationScroll();
       return;
     }
     if (mode === "prepend" && previousScroll) {
