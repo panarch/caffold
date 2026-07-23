@@ -344,6 +344,8 @@ struct PendingApproval {
     request_id: JsonValue,
     kind: ApprovalKind,
     params: JsonValue,
+    created_ms: u64,
+    sort_index: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -637,6 +639,10 @@ struct TaskEventRecord {
     summary: String,
     payload: Option<JsonValue>,
     created_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    updated_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sort_index: Option<u32>,
 }
 
 #[derive(Clone, Default)]
@@ -654,9 +660,9 @@ impl LiveTaskEventCache {
         }
     }
 
-    fn record(&self, event: TaskEventRecord) {
+    fn record(&self, mut event: TaskEventRecord) -> TaskEventRecord {
         let Ok(mut events) = self.events.lock() else {
-            return;
+            return event;
         };
         let thread_id = event.thread_id.clone();
         if !events.contains_key(&thread_id) && events.len() >= LIVE_TASK_THREAD_LIMIT {
@@ -665,7 +671,7 @@ impl LiveTaskEventCache {
                 .min_by_key(|(_, items)| {
                     items
                         .iter()
-                        .map(|item| item.created_ms)
+                        .map(|item| item.updated_ms.unwrap_or(item.created_ms))
                         .max()
                         .unwrap_or_default()
                 })
@@ -677,7 +683,7 @@ impl LiveTaskEventCache {
         let thread_events = events.entry(thread_id).or_default();
         if let Some(existing) = thread_events.iter_mut().find(|item| item.id == event.id) {
             *existing = merge_task_event_record(existing.clone(), event);
-            return;
+            return existing.clone();
         }
         if is_pending_canonical_user_message(&event)
             && thread_events.iter().any(|canonical| {
@@ -685,7 +691,7 @@ impl LiveTaskEventCache {
                     && pending_user_message_matches(&event, canonical)
             })
         {
-            return;
+            return event;
         }
         if event.event_type == "user_message"
             && !is_pending_canonical_user_message(&event)
@@ -695,10 +701,21 @@ impl LiveTaskEventCache {
         {
             thread_events.remove(index);
         }
-        thread_events.push(event);
+        if event.sort_index.is_none() {
+            event.sort_index = Some(
+                thread_events
+                    .iter()
+                    .filter(|existing| existing.created_ms == event.created_ms)
+                    .filter_map(|existing| existing.sort_index)
+                    .max()
+                    .map_or(0, |index| index.saturating_add(1)),
+            );
+        }
+        thread_events.push(event.clone());
         if thread_events.len() > LIVE_TASK_EVENT_LIMIT_PER_THREAD {
             thread_events.remove(0);
         }
+        event
     }
 
     fn for_thread(&self, thread_id: &str) -> Vec<TaskEventRecord> {
@@ -2494,7 +2511,7 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
                     message = receiver.recv() => {
                         match message {
                             Ok(event) if thread_id.as_ref().is_none_or(|id| id == &event.thread_id) => {
-                                live_task_events.record(event.clone());
+                                let event = live_task_events.record(event);
                                 let revision = sessions
                                     .snapshot(&event.thread_id)
                                     .await
@@ -2735,6 +2752,7 @@ async fn task_approval(
         Some(json!({
             "approvalId": approval_id,
             "kind": pending.kind.as_str(),
+            "turnId": pending.params.get("turnId"),
             "decision": decision
         })),
         now_ms(),
@@ -2945,12 +2963,8 @@ async fn task_detail_from_snapshot(
     state.live_task_events.observe(&events);
     events = merge_task_event_records(events, state.live_task_events.for_thread(&thread_id));
     let pending_approvals = pending_approval_events(state, &thread_id).await;
-    events.extend(pending_approvals.iter().cloned());
-    events.sort_by(|left, right| {
-        left.created_ms
-            .cmp(&right.created_ms)
-            .then_with(|| left.id.cmp(&right.id))
-    });
+    events = merge_task_event_records(events, pending_approvals.clone());
+    sort_task_events(&mut events);
     let resolved_cwd = resolve_thread_cwd(&state.fs, &thread);
     let mut task = task_record_from_thread(
         &thread,
@@ -3002,11 +3016,20 @@ fn merge_task_event_records(
     right: Vec<TaskEventRecord>,
 ) -> Vec<TaskEventRecord> {
     let mut events = HashMap::<String, TaskEventRecord>::new();
-    for event in left.into_iter().chain(right) {
+    for event in left {
         events
             .entry(event.id.clone())
             .and_modify(|existing| {
                 *existing = merge_task_event_record(existing.clone(), event.clone());
+            })
+            .or_insert(event);
+    }
+    for event in right {
+        events
+            .entry(event.id.clone())
+            .and_modify(|existing| {
+                *existing =
+                    merge_task_event_record_at_incoming_position(existing.clone(), event.clone());
             })
             .or_insert(event);
     }
@@ -3017,7 +3040,11 @@ fn merge_task_event_record(
     existing: TaskEventRecord,
     incoming: TaskEventRecord,
 ) -> TaskEventRecord {
-    let (mut latest, earlier) = if incoming.created_ms >= existing.created_ms {
+    let created_ms = existing.created_ms;
+    let sort_index = existing.sort_index;
+    let existing_updated_ms = existing.updated_ms.unwrap_or(existing.created_ms);
+    let incoming_updated_ms = incoming.updated_ms.unwrap_or(incoming.created_ms);
+    let (mut latest, earlier) = if incoming_updated_ms >= existing_updated_ms {
         (incoming, existing)
     } else {
         (existing, incoming)
@@ -3030,7 +3057,36 @@ fn merge_task_event_record(
         (Some(earlier), None) => Some(earlier),
         (_, latest) => latest,
     };
+    latest.created_ms = created_ms;
+    latest.sort_index = sort_index;
+    let updated_ms = existing_updated_ms.max(incoming_updated_ms);
+    latest.updated_ms = (updated_ms > created_ms).then_some(updated_ms);
     latest
+}
+
+fn merge_task_event_record_at_incoming_position(
+    existing: TaskEventRecord,
+    incoming: TaskEventRecord,
+) -> TaskEventRecord {
+    let created_ms = incoming.created_ms;
+    let sort_index = incoming.sort_index;
+    let mut merged = merge_task_event_record(existing, incoming);
+    merged.created_ms = created_ms;
+    merged.sort_index = sort_index;
+    merged
+}
+
+fn sort_task_events(events: &mut [TaskEventRecord]) {
+    events.sort_by(|left, right| {
+        left.created_ms
+            .cmp(&right.created_ms)
+            .then_with(|| {
+                left.sort_index
+                    .unwrap_or(u32::MAX)
+                    .cmp(&right.sort_index.unwrap_or(u32::MAX))
+            })
+            .then_with(|| left.id.cmp(&right.id))
+    });
 }
 
 fn thread_with_turns(thread: &JsonValue, turns: Vec<JsonValue>) -> Result<JsonValue, ApiError> {
@@ -3275,26 +3331,30 @@ fn thread_events(thread: &JsonValue) -> Vec<TaskEventRecord> {
             .and_then(JsonValue::as_f64)
             .map(seconds_to_ms_value)
             .unwrap_or(created_ms);
-        events.push(task_event_record(
+        let mut started = task_event_record(
             thread_id,
             &format!("{turn_id}:started"),
             "turn_started",
             "Turn started",
             Some(json!({ "threadId": thread_id, "turnId": turn_id })),
             started_ms,
-        ));
-        for item in turn
+        );
+        started.sort_index = Some(0);
+        events.push(started);
+        for (index, item) in turn
             .get("items")
             .and_then(JsonValue::as_array)
             .into_iter()
             .flatten()
+            .enumerate()
         {
             let params = json!({
                 "threadId": thread_id,
                 "turnId": turn_id,
                 "item": item
             });
-            if let Some(event) = task_event_from_thread_item(thread_id, started_ms, &params) {
+            if let Some(mut event) = task_event_from_thread_item(thread_id, started_ms, &params) {
+                event.sort_index = Some(u32::try_from(index).unwrap_or(u32::MAX).saturating_add(1));
                 events.push(event);
             }
         }
@@ -3335,7 +3395,7 @@ async fn pending_approval_events(state: &AppState, thread_id: &str) -> Vec<TaskE
         .filter(|(_, pending)| pending.thread_id == thread_id)
         .map(|(approval_id, pending)| {
             let kind = pending.kind.as_str();
-            task_event_record(
+            let mut event = task_event_record(
                 &pending.thread_id,
                 &format!("approval_requested:{approval_id}"),
                 "approval_requested",
@@ -3347,10 +3407,13 @@ async fn pending_approval_events(state: &AppState, thread_id: &str) -> Vec<TaskE
                 Some(json!({
                     "approvalId": approval_id,
                     "kind": kind,
+                    "turnId": pending.params.get("turnId"),
                     "params": pending.params
                 })),
-                now_ms(),
-            )
+                pending.created_ms,
+            );
+            event.sort_index = pending.sort_index;
+            event
         })
         .collect()
 }
@@ -3370,6 +3433,8 @@ fn task_event_record(
         summary: summary.to_string(),
         payload,
         created_ms,
+        updated_ms: None,
+        sort_index: None,
     }
 }
 
@@ -3687,7 +3752,7 @@ fn publish_task_event(
     live_task_events: &LiveTaskEventCache,
     event: TaskEventRecord,
 ) {
-    live_task_events.record(event.clone());
+    let event = live_task_events.record(event);
     let _ = task_events.send(event);
 }
 
@@ -4136,16 +4201,7 @@ async fn handle_codex_server_request(
         CodexServerRequest::Unknown { .. } => return,
     };
     let approval_id = approval_id_from_request(&request_id, &params);
-    pending_approvals.lock().await.insert(
-        approval_id.clone(),
-        PendingApproval {
-            thread_id: thread_id.clone(),
-            request_id: request_id.clone(),
-            kind,
-            params: params.clone(),
-        },
-    );
-
+    let created_ms = now_ms();
     let summary = if kind == ApprovalKind::Command {
         "Command approval requested"
     } else {
@@ -4159,12 +4215,28 @@ async fn handle_codex_server_request(
         Some(json!({
             "approvalId": approval_id,
             "kind": kind.as_str(),
+            "turnId": params.get("turnId"),
             "requestId": request_id,
             "params": params
         })),
-        now_ms(),
+        created_ms,
     );
-    publish_task_event(task_events, live_task_events, event);
+    let mut approvals = pending_approvals.lock().await;
+    let event = live_task_events.record(event);
+    approvals.insert(
+        approval_id.clone(),
+        PendingApproval {
+            thread_id: thread_id.clone(),
+            request_id: request_id.clone(),
+            kind,
+            params: params.clone(),
+            created_ms: event.created_ms,
+            sort_index: event.sort_index,
+        },
+    );
+    drop(approvals);
+
+    let _ = task_events.send(event);
 }
 
 async fn expire_stale_approvals_for_notification(
@@ -4201,6 +4273,7 @@ async fn expire_stale_approvals_for_notification(
             Some(json!({
                 "approvalId": approval_id,
                 "kind": pending.kind.as_str(),
+                "turnId": pending.params.get("turnId"),
                 "decision": "expired",
                 "reason": reason
             })),
@@ -7331,6 +7404,68 @@ mod tests {
     }
 
     #[test]
+    fn canonical_thread_events_keep_codex_item_order_when_timestamps_match() {
+        let thread = json!({
+            "id": "thread_1",
+            "createdAt": 1.0,
+            "turns": [{
+                "id": "turn_1",
+                "status": "inProgress",
+                "startedAt": 2.0,
+                "items": [
+                    {
+                        "id": "item-z",
+                        "type": "userMessage",
+                        "content": [{ "type": "text", "text": "First" }]
+                    },
+                    {
+                        "id": "item-a",
+                        "type": "reasoning",
+                        "summary": ["Second"],
+                        "content": []
+                    },
+                    {
+                        "id": "item-m",
+                        "type": "agentMessage",
+                        "phase": "commentary",
+                        "text": "Third"
+                    }
+                ]
+            }]
+        });
+
+        let mut events = thread_events(&thread);
+        sort_task_events(&mut events);
+        let item_events = events
+            .into_iter()
+            .filter(|event| {
+                event
+                    .payload
+                    .as_ref()
+                    .is_some_and(|payload| payload["itemId"].is_string())
+            })
+            .map(|event| {
+                (
+                    event.payload.unwrap()["itemId"]
+                        .as_str()
+                        .unwrap()
+                        .to_string(),
+                    event.sort_index,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            item_events,
+            vec![
+                ("item-z".to_string(), Some(1)),
+                ("item-a".to_string(), Some(2)),
+                ("item-m".to_string(), Some(3)),
+            ]
+        );
+    }
+
+    #[test]
     fn live_task_event_cache_preserves_latest_transient_item_state() {
         let cache = LiveTaskEventCache::default();
         let started = task_event_record(
@@ -7369,6 +7504,10 @@ mod tests {
         assert_eq!(merged[0].summary, completed.summary);
         assert_eq!(merged[0].payload.as_ref().unwrap()["status"], "completed");
         assert_eq!(
+            merged[0].created_ms, started.created_ms,
+            "completing an item must not move it from its original timeline position"
+        );
+        assert_eq!(
             merged[0].payload.as_ref().unwrap()["aggregatedOutput"],
             "test result: ok"
         );
@@ -7397,8 +7536,10 @@ mod tests {
         cache.observe(std::slice::from_ref(&command));
         let later_thread_read = Vec::new();
         let merged = merge_task_event_records(later_thread_read, cache.for_thread("thread_1"));
+        let mut positioned_command = command;
+        positioned_command.sort_index = Some(0);
 
-        assert_eq!(merged, vec![command]);
+        assert_eq!(merged, vec![positioned_command]);
     }
 
     #[test]
@@ -7429,7 +7570,7 @@ mod tests {
         )
         .expect("canonical user message");
 
-        cache.record(canonical.clone());
+        let canonical = cache.record(canonical);
 
         assert_eq!(cache.for_thread("thread_1"), vec![canonical]);
     }
@@ -7451,7 +7592,7 @@ mod tests {
             }),
         )
         .expect("canonical user message");
-        cache.record(canonical.clone());
+        let canonical = cache.record(canonical);
 
         cache.record(accepted_user_message_event(
             "thread_1",
@@ -7929,7 +8070,8 @@ mod tests {
         let reasoning_completed = receiver.try_recv().unwrap();
         assert_eq!(reasoning_started.id, reasoning_completed.id);
         assert_eq!(reasoning_completed.event_type, "reasoning");
-        assert_eq!(reasoning_completed.created_ms, 1_750_000_003_000);
+        assert_eq!(reasoning_completed.created_ms, 1_750_000_002_000);
+        assert_eq!(reasoning_completed.updated_ms, Some(1_750_000_003_000));
         assert_eq!(
             reasoning_completed.payload.as_ref().unwrap()["lifecycle"],
             "completed"
@@ -7991,6 +8133,7 @@ mod tests {
                 "item/commandExecution/requestApproval",
                 json!({
                     "threadId": "thread_1",
+                    "turnId": "turn_1",
                     "command": "cargo test",
                     "cwd": project_root.join("src").display().to_string(),
                     "reason": "Run tests",
@@ -8005,11 +8148,20 @@ mod tests {
         let approval = approvals.get("11").unwrap();
         assert_eq!(approval.thread_id, "thread_1");
         assert_eq!(approval.params["command"], "cargo test");
+        let approval_created_ms = approval.created_ms;
+        let approval_sort_index = approval.sort_index;
         drop(approvals);
 
         let event = receiver.recv().await.unwrap();
         assert_eq!(event.thread_id, "thread_1");
         assert_eq!(event.event_type, "approval_requested");
+        assert_eq!(
+            event.payload.as_ref().unwrap()["turnId"],
+            "turn_1",
+            "approval events must remain attached to their causal turn"
+        );
+        assert_eq!(event.created_ms, approval_created_ms);
+        assert_eq!(event.sort_index, approval_sort_index);
         assert_eq!(live_task_events.for_thread("thread_1"), vec![event]);
     }
 

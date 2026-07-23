@@ -2950,7 +2950,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
           "prompt_sent",
           "Follow-up prompt sent",
           { prompt: body.prompt },
-          6,
+          13,
         ),
         eventRecord(
           "event_6_user",
@@ -2966,14 +2966,14 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
               ],
             },
           },
-          7,
+          14,
         ),
         eventRecord(
           "event_6_turn",
           "turn_started",
           "Turn started",
           { turnId: "turn_2" },
-          8,
+          15,
         ),
         eventRecord(
           "command_follow_up",
@@ -2987,7 +2987,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
             cwd: "src",
             status: "inProgress",
           },
-          9,
+          16,
         ),
       ];
       updateTask({
@@ -3013,7 +3013,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     ) {
       events = [
         ...events,
-        eventRecord("event_7", "turn_interrupted", "Interrupt requested", null, 7),
+        eventRecord("event_7", "turn_interrupted", "Interrupt requested", null, 17),
       ];
       updateTask({
         activeTurnId: null,
@@ -3592,11 +3592,11 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     items.map((item) => item.getAttribute("data-event-type")),
   );
   expect(workItemOrder).toEqual([
-    "assistant_message",
     "reasoning",
     "plan",
     "command_execution",
     "file_change",
+    "assistant_message",
   ]);
   await expect(tasksPage.locator('.task-work-item[data-event-type="file_change"]')).toContainText(
     "2 file change updates",
@@ -4285,7 +4285,11 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   }
   await tasksPage.locator(`.task-row[data-thread-id="${threadId}"]`).click();
   await expect(followUpTextarea).toHaveValue("Prompt that fails");
-  await tasksPage.locator(".task-turn-work > details > summary").click();
+  await tasksPage
+    .locator(
+      '.task-turn-work:has(.task-work-item[data-event-type="command_execution"]) > details > summary',
+    )
+    .click();
   await expect(
     tasksPage.locator('.task-work-item[data-event-type="command_execution"]'),
   ).toContainText("test result: ok");
@@ -6361,6 +6365,253 @@ test("opens a running conversation at the latest message when stream sync wins t
 
   expect(reachedLatestBeforeDetail).toBe(true);
   await expect.poll(() => isScrolledToBottom(scroller)).toBe(true);
+});
+
+test("keeps task event chronology stable through approval, completion, and reload", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Task chronology regression");
+  await page.addInitScript(() => {
+    window.__taskEventSources = [];
+    window.EventSource = class MockEventSource {
+      constructor(url) {
+        this.url = url;
+        this.listeners = new Map();
+        window.__taskEventSources.push(this);
+      }
+
+      addEventListener(type, listener) {
+        const listeners = this.listeners.get(type) ?? [];
+        listeners.push(listener);
+        this.listeners.set(type, listeners);
+      }
+
+      emit(type, payload) {
+        for (const listener of this.listeners.get(type) ?? []) {
+          listener({ data: JSON.stringify(payload) });
+        }
+      }
+
+      close() {}
+    };
+  });
+  await mockCodexModels(page);
+
+  const threadId = "thread_event_chronology";
+  const turnId = "turn_event_chronology";
+  const now = 1_767_192_000_000;
+  const task = {
+    id: threadId,
+    threadId,
+    activeTurnId: turnId,
+    activeTurnStartedMs: now,
+    title: "Event chronology",
+    preview: "Keep task events ordered",
+    status: "running",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: "Working",
+  };
+  const event = (id, type, createdMs, payload = {}) => ({
+    id,
+    threadId,
+    type,
+    summary: type,
+    payload: { threadId, turnId, ...payload },
+    createdMs,
+  });
+  const user = event("event_user", "user_message", now, {
+    text: "Keep every task event in order.",
+  });
+  const reasoning = event("event_reasoning", "reasoning", now + 100, {
+    itemId: "reasoning_1",
+    lifecycle: "completed",
+    summary: ["Inspected the current event sequence."],
+  });
+  const commentary = event("event_commentary", "assistant_message", now + 200, {
+    itemId: "commentary_1",
+    phase: "commentary",
+    text: "I found the ordering boundary.",
+  });
+  const approvalRequested = event(
+    "event_approval_requested",
+    "approval_requested",
+    now + 300,
+    {
+      approvalId: "approval_chronology",
+      kind: "command",
+      params: {
+        turnId,
+        command: "cargo test",
+        cwd: "src",
+        reason: "Run the regression test",
+      },
+    },
+  );
+  const approvalResolved = event(
+    "event_approval_resolved",
+    "approval_resolved",
+    now + 350,
+    {
+      approvalId: "approval_chronology",
+      kind: "command",
+      decision: "accept",
+    },
+  );
+  const commandStarted = event(
+    "event_command",
+    "command_execution",
+    now + 400,
+    {
+      itemId: "command_1",
+      lifecycle: "started",
+      command: "cargo test",
+      cwd: "src",
+      status: "inProgress",
+    },
+  );
+  const plan = event("event_plan", "plan", now + 500, {
+    itemId: "plan_1",
+    lifecycle: "completed",
+    text: "Record the stable ordering contract.",
+  });
+  const commandCompleted = event(
+    "event_command",
+    "command_execution",
+    now + 600,
+    {
+      itemId: "command_1",
+      lifecycle: "completed",
+      command: "cargo test",
+      cwd: "src",
+      status: "completed",
+      aggregatedOutput: "test result: ok",
+    },
+  );
+  const finalAnswer = event("event_final", "assistant_message", now + 700, {
+    itemId: "final_1",
+    phase: "final",
+    text: "The event order is stable.",
+  });
+  const turnCompleted = event("event_turn_completed", "turn_completed", now + 800, {
+    status: "completed",
+  });
+  let detailEvents = [user, reasoning, commentary];
+  let detailTask = task;
+  let detailRevision = 1;
+
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        revision: detailRevision,
+        task: detailTask,
+        events: detailEvents,
+        eventsPage: { nextCursor: null },
+        pendingApprovals: [],
+      }),
+    }),
+  );
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect(tasksPage).toContainText("I found the ordering boundary.");
+  await expect
+    .poll(() => page.evaluate(() => window.__taskEventSources.length))
+    .toBeGreaterThan(0);
+
+  const emitTaskEvent = (entry, revision) =>
+    page.evaluate(({ threadId, entry, revision }) => {
+      const source = window.__taskEventSources.find((candidate) =>
+        candidate.url.includes(`/api/tasks/${threadId}/stream`),
+      );
+      source.emit("task-event", { threadId, revision, event: entry });
+    }, { threadId, entry, revision });
+  const visibleEventOrder = () =>
+    tasksPage.locator(".task-conversation").evaluate((conversation) =>
+      [...conversation.children]
+        .map((entry) => {
+          if (entry.classList.contains("task-turn-active")) {
+            return null;
+          }
+          if (entry.classList.contains("task-approval-flow")) {
+            return "approval_requested";
+          }
+          return entry.dataset.eventType ?? null;
+        })
+        .filter(Boolean),
+    );
+
+  await emitTaskEvent(approvalRequested, 2);
+  await expect(tasksPage.locator(".task-approval-card")).toHaveCount(1);
+  expect(await visibleEventOrder()).toEqual([
+    "user_message",
+    "reasoning",
+    "assistant_message",
+    "approval_requested",
+  ]);
+
+  await emitTaskEvent(approvalResolved, 3);
+  await emitTaskEvent(commandStarted, 4);
+  await emitTaskEvent(plan, 5);
+  await emitTaskEvent(commandCompleted, 6);
+  await expect(tasksPage.locator(".task-approval-card")).toHaveCount(0);
+  expect(await visibleEventOrder()).toEqual([
+    "user_message",
+    "reasoning",
+    "assistant_message",
+    "command_execution",
+    "plan",
+  ]);
+
+  await emitTaskEvent(finalAnswer, 7);
+  await emitTaskEvent(turnCompleted, 8);
+  await expect(tasksPage).toContainText("The event order is stable.");
+  await tasksPage.locator(".task-turn-work > details > summary").click();
+  const completedWorkOrder = () =>
+    tasksPage.locator(".task-work-item").evaluateAll((items) =>
+      items.map((item) => item.dataset.eventType),
+    );
+  expect(await completedWorkOrder()).toEqual([
+    "reasoning",
+    "assistant_message",
+    "command_execution",
+    "plan",
+  ]);
+
+  detailEvents = [
+    user,
+    reasoning,
+    commentary,
+    approvalRequested,
+    approvalResolved,
+    { ...commandCompleted, createdMs: commandStarted.createdMs },
+    plan,
+    finalAnswer,
+    turnCompleted,
+  ];
+  detailTask = {
+    ...task,
+    activeTurnId: null,
+    activeTurnStartedMs: null,
+    status: "completed",
+    updatedMs: turnCompleted.createdMs,
+    recencyMs: turnCompleted.createdMs,
+  };
+  detailRevision = 8;
+  await page.reload();
+  await expect(tasksPage).toContainText("The event order is stable.");
+  await tasksPage.locator(".task-turn-work > details > summary").click();
+  expect(await completedWorkOrder()).toEqual([
+    "reasoning",
+    "assistant_message",
+    "command_execution",
+    "plan",
+  ]);
 });
 
 test("keeps task conversation scroll anchored during live updates", async ({ page }, testInfo) => {

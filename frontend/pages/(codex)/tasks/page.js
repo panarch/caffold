@@ -4328,6 +4328,9 @@ function renderConversation(events, task, approvals = []) {
   const conversationEvents = dedupeCanonicalEvents(events);
   const groups = conversationGroups(conversationEvents);
   const activeGroupIndex = activeTurnGroupIndex(groups, task);
+  const pendingApprovalIds = new Set(
+    approvals.map((event) => event.payload?.approvalId).filter(Boolean),
+  );
   const userPrompts = new Set(
     conversationEvents
       .filter((event) => event.type === "user_message")
@@ -4339,8 +4342,14 @@ function renderConversation(events, task, approvals = []) {
       if (group.kind === "turn") {
         return renderTurnGroup(group, task, {
           forceActive: index === activeGroupIndex,
-          approvals: index === activeGroupIndex ? approvals : [],
+          pendingApprovalIds,
         });
+      }
+      if (
+        group.event.type === "approval_requested" &&
+        pendingApprovalIds.has(group.event.payload?.approvalId)
+      ) {
+        return renderApprovalFlow([group.event]);
       }
       if (!shouldRenderStandaloneEvent(group.event, userPrompts)) {
         return "";
@@ -4355,7 +4364,7 @@ function renderConversation(events, task, approvals = []) {
         events: [],
       },
       task,
-    )}${renderApprovalFlow(approvals)}`;
+    )}`;
   }
   return output;
 }
@@ -4439,13 +4448,11 @@ function conversationGroups(events) {
 
 function eventTurnId(event) {
   const payload = event?.payload ?? {};
-  return payload.turnId ?? payload.turn?.id ?? null;
+  return payload.turnId ?? payload.turn?.id ?? payload.params?.turnId ?? null;
 }
 
 function renderTurnGroup(group, task, options = {}) {
-  const userEvents = group.events.filter((event) => event.type === "user_message");
   const assistantEvents = group.events.filter((event) => event.type === "assistant_message");
-  const workEvents = group.events.filter(isWorkEvent);
   const statusEvents = group.events.filter(isTurnStatusEvent);
   const terminalEvent = statusEvents.find(isTerminalTurnEvent);
   const isCurrentTurn = task?.activeTurnId === group.turnId;
@@ -4453,48 +4460,101 @@ function renderTurnGroup(group, task, options = {}) {
     isTaskActivelyWorking(task) && (options.forceActive || isCurrentTurn);
   const isComplete = Boolean(terminalEvent) || (assistantEvents.length > 0 && !isActive);
 
-  const output = [];
-  output.push(
-    ...userEvents.map((event) =>
-      renderConversationEvent(event, task, { active: false }),
-    ),
-  );
-
-  if (isActive) {
-    output.push(renderActiveTurnStatus(group, task));
-    output.push(renderApprovalFlow(options.approvals ?? []));
-  }
-
-  if (isComplete && assistantEvents.length > 0) {
+  if (isComplete) {
     const finalAssistantEvent =
       assistantEvents.findLast(isFinalAssistantEvent) ?? assistantEvents.at(-1);
-    const progressAssistantEvents = assistantEvents.filter(
-      (event) => event !== finalAssistantEvent,
+    return renderCompletedTurnGroup(
+      group,
+      task,
+      terminalEvent,
+      finalAssistantEvent,
+      options.pendingApprovalIds,
     );
-    const hiddenWorkEvents = [...progressAssistantEvents, ...workEvents];
-    if (hiddenWorkEvents.length > 0) {
-      output.push(renderTurnWorkSummary(group, hiddenWorkEvents, terminalEvent));
-    }
-    output.push(
-      renderConversationEvent(finalAssistantEvent, task, {
-        active: false,
-        messagePhase: "final",
-      }),
-    );
-    return output.join("");
   }
 
-  output.push(
-    ...workEvents.map((event) =>
-      renderConversationEvent(event, task, { active: isActive }),
-    ),
-  );
-  output.push(
-    ...assistantEvents.map((event) =>
-      renderConversationEvent(event, task, { active: false }),
-    ),
-  );
+  const output = group.events
+    .map((event) =>
+      renderActiveTurnTimelineEvent(
+        event,
+        task,
+        options.pendingApprovalIds,
+      ),
+    )
+    .filter(Boolean);
+  if (isActive) {
+    output.push(renderActiveTurnStatus(group, task));
+  }
   return output.join("");
+}
+
+function renderCompletedTurnGroup(
+  group,
+  task,
+  terminalEvent,
+  finalAssistantEvent,
+  pendingApprovalIds = new Set(),
+) {
+  const output = [];
+  let workEvents = [];
+  const flushWorkEvents = () => {
+    if (workEvents.length > 0) {
+      output.push(renderTurnWorkSummary(group, workEvents, terminalEvent));
+      workEvents = [];
+    }
+  };
+
+  for (const event of group.events) {
+    if (
+      isWorkEvent(event) ||
+      (event.type === "assistant_message" && event !== finalAssistantEvent)
+    ) {
+      workEvents.push(event);
+      continue;
+    }
+    if (event.type === "user_message") {
+      flushWorkEvents();
+      output.push(renderConversationEvent(event, task, { active: false }));
+      continue;
+    }
+    if (
+      event.type === "approval_requested" &&
+      pendingApprovalIds.has(event.payload?.approvalId)
+    ) {
+      flushWorkEvents();
+      output.push(renderApprovalFlow([event]));
+      continue;
+    }
+    if (event === finalAssistantEvent) {
+      flushWorkEvents();
+      output.push(
+        renderConversationEvent(event, task, {
+          active: false,
+          messagePhase: "final",
+        }),
+      );
+    }
+  }
+  flushWorkEvents();
+  return output.join("");
+}
+
+function renderActiveTurnTimelineEvent(event, task, pendingApprovalIds = new Set()) {
+  if (
+    event.type === "approval_requested" &&
+    pendingApprovalIds.has(event.payload?.approvalId)
+  ) {
+    return renderApprovalFlow([event]);
+  }
+  if (
+    event.type === "user_message" ||
+    event.type === "assistant_message" ||
+    isWorkEvent(event)
+  ) {
+    return renderConversationEvent(event, task, {
+      active: isWorkEvent(event),
+    });
+  }
+  return "";
 }
 
 function renderActiveTurnStatus(group, task) {
@@ -4939,37 +4999,33 @@ function turnDurationLabel(events, terminalEvent) {
 }
 
 function renderTurnWorkItems(events) {
-  const assistantEvents = events.filter((event) => event.type === "assistant_message");
-  const reasoningEvents = events.filter((event) => event.type === "reasoning");
-  const planEvents = events.filter((event) => event.type === "plan");
-  const commandEvents = events.filter((event) => event.type === "command_execution");
-  const fileChangeEvents = events.filter((event) => event.type === "file_change");
-  const failureEvents = events.filter((event) => event.type === "task_failed");
-  const knownEvents = new Set([
-    ...assistantEvents,
-    ...reasoningEvents,
-    ...planEvents,
-    ...commandEvents,
-    ...fileChangeEvents,
-    ...failureEvents,
-  ]);
-  const unknownEvents = events.filter((event) => !knownEvents.has(event));
+  const output = [];
+  let combinedEvents = [];
+  let combinedType = "";
+  const flushCombinedEvents = () => {
+    if (combinedType === "reasoning") {
+      output.push(renderCombinedReasoningWorkItem(combinedEvents));
+    } else if (combinedType === "file_change") {
+      output.push(renderCombinedFileChangeWorkItem(combinedEvents));
+    }
+    combinedEvents = [];
+    combinedType = "";
+  };
 
-  return [
-    ...assistantEvents.map(renderTurnWorkItem),
-    renderCombinedReasoningWorkItem(reasoningEvents),
-    renderLatestPlanWorkItem(planEvents),
-    ...commandEvents.map(renderTurnWorkItem),
-    renderCombinedFileChangeWorkItem(fileChangeEvents),
-    ...failureEvents.map(renderTurnWorkItem),
-    ...unknownEvents.map(renderTurnWorkItem),
-  ]
-    .filter(Boolean)
-    .join("");
-}
-
-function renderLatestPlanWorkItem(events) {
-  return events.length ? renderTurnWorkItem(latestEvent(events)) : "";
+  for (const event of events) {
+    if (["reasoning", "file_change"].includes(event.type)) {
+      if (combinedType && combinedType !== event.type) {
+        flushCombinedEvents();
+      }
+      combinedType = event.type;
+      combinedEvents.push(event);
+      continue;
+    }
+    flushCombinedEvents();
+    output.push(renderTurnWorkItem(event));
+  }
+  flushCombinedEvents();
+  return output.filter(Boolean).join("");
 }
 
 function renderCombinedReasoningWorkItem(events) {
@@ -5470,7 +5526,8 @@ function mergeEvents(leftEvents, rightEvents) {
   return dedupeCanonicalEvents([...byId.values()]).sort(
     (left, right) =>
       (left.createdMs ?? 0) - (right.createdMs ?? 0) ||
-      `${left.id ?? ""}`.localeCompare(`${right.id ?? ""}`),
+      (left.sortIndex ?? Number.MAX_SAFE_INTEGER) -
+        (right.sortIndex ?? Number.MAX_SAFE_INTEGER),
   );
 }
 
@@ -5493,16 +5550,34 @@ function mergeEventRecord(existing, incoming) {
   if (!existing) {
     return incoming;
   }
+  const createdMs = existing.createdMs;
+  const sortIndex = existing.sortIndex ?? incoming.sortIndex;
+  const existingUpdatedMs = existing.updatedMs ?? existing.createdMs ?? 0;
+  const incomingUpdatedMs = incoming.updatedMs ?? incoming.createdMs ?? 0;
+  const [latest, earlier] =
+    incomingUpdatedMs >= existingUpdatedMs
+      ? [incoming, existing]
+      : [existing, incoming];
   const existingPayload = existing.payload ?? {};
   const incomingPayload = incoming.payload ?? {};
-  const payload = { ...existingPayload, ...incomingPayload };
+  const earlierPayload = earlier.payload ?? {};
+  const latestPayload = latest.payload ?? {};
+  const payload = { ...earlierPayload, ...latestPayload };
   if (existingPayload.item || incomingPayload.item) {
     payload.item = {
-      ...(existingPayload.item ?? {}),
-      ...(incomingPayload.item ?? {}),
+      ...(earlierPayload.item ?? {}),
+      ...(latestPayload.item ?? {}),
     };
   }
-  return { ...existing, ...incoming, payload };
+  const updatedMs = Math.max(existingUpdatedMs, incomingUpdatedMs);
+  return {
+    ...earlier,
+    ...latest,
+    payload,
+    createdMs,
+    ...(sortIndex === undefined ? {} : { sortIndex }),
+    ...(updatedMs > (createdMs ?? 0) ? { updatedMs } : {}),
+  };
 }
 
 function optimisticUserMessageEvent(threadId, prompt, images, requestId) {
