@@ -136,7 +136,7 @@ async fn initial_subscription_bootstraps_only_from_resume() {
 }
 
 #[tokio::test]
-async fn subscription_keeps_the_app_server_permission_mode() {
+async fn subscription_keeps_the_app_server_thread_settings() {
     let mut response = resume_response(ThreadStatus::Idle, Vec::new(), Vec::new());
     response
         .extra
@@ -148,6 +148,12 @@ async fn subscription_keeps_the_app_server_permission_mode() {
         "activePermissionProfile".to_string(),
         json!({ "id": ":workspace", "extends": null }),
     );
+    response
+        .extra
+        .insert("model".to_string(), json!("gpt-test"));
+    response
+        .extra
+        .insert("reasoningEffort".to_string(), json!("xhigh"));
     let client = CodexThreadClient::mock(vec![MockCodexResponse::ok("thread/resume", response)]);
     let sessions = CodexThreadSessions::default();
 
@@ -160,6 +166,8 @@ async fn subscription_keeps_the_app_server_permission_mode() {
         snapshot.permission_mode,
         Some(CodexPermissionMode::ApproveForMe)
     );
+    assert_eq!(snapshot.model.as_deref(), Some("gpt-test"));
+    assert_eq!(snapshot.reasoning_effort.as_deref(), Some("xhigh"));
 }
 
 #[tokio::test]
@@ -1025,6 +1033,8 @@ async fn completed_prompt_shares_initial_history_bootstrap() {
             "thread-1",
             turn("turn-new", TurnStatus::InProgress),
             None,
+            None,
+            None,
         )
         .await;
     viewer
@@ -1084,6 +1094,8 @@ async fn stale_background_refresh_does_not_overwrite_a_new_running_turn() {
             1,
             "thread-1",
             turn("turn-new", TurnStatus::InProgress),
+            None,
+            None,
             None,
         )
         .await;
@@ -1755,6 +1767,8 @@ async fn registered_started_thread_is_subscribed_and_holds_runtime() {
                 vec![turn("turn-new", TurnStatus::InProgress)],
             ),
             Some(CodexPermissionMode::AskForApproval),
+            Some("gpt-test".to_string()),
+            Some("xhigh".to_string()),
         )
         .await;
 
@@ -1762,6 +1776,8 @@ async fn registered_started_thread_is_subscribed_and_holds_runtime() {
     assert_eq!(snapshot.lifecycle, ThreadSessionLifecycle::Subscribed);
     assert!(snapshot.runtime_lease);
     assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-new"));
+    assert_eq!(snapshot.model.as_deref(), Some("gpt-test"));
+    assert_eq!(snapshot.reasoning_effort.as_deref(), Some("xhigh"));
     assert!(methods(&client).await.is_empty());
 }
 

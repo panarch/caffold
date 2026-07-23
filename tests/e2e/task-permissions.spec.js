@@ -41,7 +41,10 @@ async function stubComposerApis(page) {
             displayName: "GPT Test",
             description: "Test model",
             hidden: false,
-            supportedReasoningEfforts: [{ value: "medium", label: "Medium" }],
+            supportedReasoningEfforts: [
+              { value: "medium", label: "Medium" },
+              { value: "xhigh", label: "XHigh" },
+            ],
             defaultReasoningEffort: "medium",
             inputModalities: ["text"],
             supportsPersonality: false,
@@ -66,7 +69,11 @@ async function stubComposerApis(page) {
   );
 }
 
-function taskDetail({ running = false } = {}) {
+function taskDetail({
+  running = false,
+  model = null,
+  reasoningEffort = null,
+} = {}) {
   return {
     managed: true,
     revision: 1,
@@ -93,6 +100,8 @@ function taskDetail({ running = false } = {}) {
     pendingApprovals: [],
     historyLoading: false,
     permissionMode: "approveForMe",
+    model,
+    reasoningEffort,
   };
 }
 
@@ -148,6 +157,137 @@ test("untouched approval mode preserves the effective Codex default", async ({ p
   expect(submittedBody).not.toHaveProperty("permissionMode");
 });
 
+test("explicit approval mode is sent with a new task prompt", async ({ page }) => {
+  await stubComposerApis(page);
+  await page.unroute("**/api/codex/permissions*");
+  await page.route("**/api/codex/permissions*", (route) =>
+    route.fulfill({
+      json: {
+        ...PERMISSIONS,
+        defaultMode: "askForApproval",
+      },
+    }),
+  );
+  await page.unroute("**/api/tasks");
+  let submittedBody = null;
+  await page.route("**/api/tasks", (route) => {
+    if (route.request().method() === "POST") {
+      submittedBody = route.request().postDataJSON();
+      return route.fulfill({ json: taskDetail() });
+    }
+    return route.fulfill({ json: { tasks: [], nextCursor: null } });
+  });
+
+  await page.goto("/tasks/new?cwd=src");
+  const form = page.locator('.task-new-form[data-task-form="create"]');
+  const picker = form.getByRole("button", { name: "Choose approval mode" });
+  await expect(picker).toContainText("Ask for approval");
+  await picker.click();
+  await form.getByRole("button", { name: /^Approve for me/ }).click();
+  await form.getByRole("textbox", { name: "New task prompt" }).fill("Inspect the task");
+  await form.getByRole("textbox", { name: "New task prompt" }).press("Enter");
+
+  await expect.poll(() => submittedBody).not.toBeNull();
+  expect(submittedBody).toMatchObject({
+    prompt: "Inspect the task",
+    permissionMode: "approveForMe",
+  });
+});
+
+test("explicit approval mode is sent with a follow-up prompt", async ({ page }) => {
+  await stubComposerApis(page);
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({
+      json: {
+        ...taskDetail(),
+        permissionMode: "askForApproval",
+      },
+    }),
+  );
+  await page.route("**/api/tasks/thread-1/stream*", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: ": ready\n\n",
+    }),
+  );
+  let submittedBody = null;
+  await page.route("**/api/tasks/thread-1/prompts", (route) => {
+    submittedBody = route.request().postDataJSON();
+    return route.fulfill({
+      json: {
+        threadId: "thread-1",
+        turnId: "turn-2",
+        steered: false,
+      },
+    });
+  });
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
+  const picker = form.getByRole("button", { name: "Choose approval mode" });
+  await expect(picker).toContainText("Ask for approval");
+  await picker.click();
+  await form.getByRole("button", { name: /^Approve for me/ }).click();
+  await form.getByRole("textbox", { name: "Follow-up prompt" }).fill("Continue the task");
+  await form.getByRole("textbox", { name: "Follow-up prompt" }).press("Enter");
+
+  await expect.poll(() => submittedBody).not.toBeNull();
+  expect(submittedBody).toMatchObject({
+    prompt: "Continue the task",
+    permissionMode: "approveForMe",
+  });
+});
+
+test("managed tasks restore their last applied model and reasoning effort", async ({
+  page,
+}) => {
+  await stubComposerApis(page);
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({
+      json: taskDetail({
+        model: "gpt-test",
+        reasoningEffort: "xhigh",
+      }),
+    }),
+  );
+  await page.route("**/api/tasks/thread-1/stream*", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: ": ready\n\n",
+    }),
+  );
+  let submittedBody = null;
+  await page.route("**/api/tasks/thread-1/prompts", (route) => {
+    submittedBody = route.request().postDataJSON();
+    return route.fulfill({
+      json: {
+        threadId: "thread-1",
+        turnId: "turn-2",
+        steered: false,
+      },
+    });
+  });
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
+  const picker = form.getByRole("button", {
+    name: "Choose model and reasoning",
+  });
+  await expect(picker).toContainText("GPT Test");
+  await expect(picker).toContainText("XHigh");
+  await page.reload();
+  await expect(picker).toContainText("GPT Test");
+  await expect(picker).toContainText("XHigh");
+  await form.getByRole("textbox", { name: "Follow-up prompt" }).fill("Continue");
+  await form.getByRole("textbox", { name: "Follow-up prompt" }).press("Enter");
+
+  await expect.poll(() => submittedBody).not.toBeNull();
+  expect(submittedBody).toMatchObject({
+    model: "gpt-test",
+    effort: "xhigh",
+  });
+});
+
 test("active turns lock the approval mode until the next turn", async ({ page }) => {
   await stubComposerApis(page);
   await page.route("**/api/tasks/thread-1", (route) =>
@@ -159,6 +299,17 @@ test("active turns lock the approval mode until the next turn", async ({ page })
       body: ": ready\n\n",
     }),
   );
+  let submittedBody = null;
+  await page.route("**/api/tasks/thread-1/prompts", (route) => {
+    submittedBody = route.request().postDataJSON();
+    return route.fulfill({
+      json: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        steered: true,
+      },
+    });
+  });
 
   await page.goto("/tasks/thread-1?cwd=src");
 
@@ -170,4 +321,23 @@ test("active turns lock the approval mode until the next turn", async ({ page })
     "title",
     "Approval mode can be changed after the active turn finishes.",
   );
+  const modelPicker = form.getByRole("button", {
+    name: "Choose model and reasoning",
+  });
+  await expect(modelPicker).toBeDisabled();
+  await expect(modelPicker).toHaveAttribute(
+    "title",
+    "Model and reasoning can be changed after the active turn finishes.",
+  );
+  await form.getByRole("textbox", { name: "Follow-up prompt" }).fill("Steer this turn");
+  await form.getByRole("textbox", { name: "Follow-up prompt" }).press("Enter");
+
+  await expect.poll(() => submittedBody).not.toBeNull();
+  expect(submittedBody).toMatchObject({
+    prompt: "Steer this turn",
+    activeTurnId: "turn-1",
+  });
+  expect(submittedBody).not.toHaveProperty("permissionMode");
+  expect(submittedBody).not.toHaveProperty("model");
+  expect(submittedBody).not.toHaveProperty("effort");
 });

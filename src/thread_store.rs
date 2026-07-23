@@ -1,38 +1,21 @@
 use std::{
-    collections::HashMap,
     path::Path,
     sync::{Arc, Mutex, MutexGuard},
 };
 
 use gluesql::{
+    FromGlueRow, ToGlueRow,
     core::{
-        data::Value,
         executor::Payload,
+        query_builder::{Execute, ExprNode, col, null, num, table, text},
+        row_conversion::ToGlueRow as _,
         store::{GStore, GStoreMut, Planner},
     },
-    prelude::{Error as GlueError, Glue, MemoryStorage, RedbStorage},
+    prelude::{Error as GlueError, Glue, MemoryStorage, RedbStorage, SelectResultExt},
 };
 use thiserror::Error;
 
-const CREATE_THREADS_TABLE: &str = "
-    CREATE TABLE IF NOT EXISTS threads (
-        thread_id TEXT PRIMARY KEY,
-        title TEXT,
-        preview TEXT,
-        cwd TEXT,
-        created_ms INTEGER,
-        updated_ms INTEGER,
-        recency_ms INTEGER NULL,
-        activity_ms INTEGER,
-        status TEXT,
-        active_turn_id TEXT NULL,
-        active_turn_started_ms INTEGER NULL,
-        last_event_summary TEXT NULL,
-        claimed_at_ms INTEGER,
-        last_opened_at_ms INTEGER NULL,
-        last_seen_activity_ms INTEGER NULL
-    )
-";
+const THREADS_TABLE: &str = "threads";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct StoredThread {
@@ -50,6 +33,29 @@ pub(crate) struct StoredThread {
     pub claimed_at_ms: u64,
     pub last_opened_at_ms: Option<u64>,
     pub last_seen_activity_ms: Option<u64>,
+    pub model: Option<String>,
+    pub reasoning_effort: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, FromGlueRow, ToGlueRow)]
+struct StoredThreadRow {
+    thread_id: String,
+    title: String,
+    preview: String,
+    cwd: String,
+    created_ms: i64,
+    updated_ms: i64,
+    recency_ms: Option<i64>,
+    activity_ms: i64,
+    status: String,
+    active_turn_id: Option<String>,
+    active_turn_started_ms: Option<i64>,
+    last_event_summary: Option<String>,
+    claimed_at_ms: i64,
+    last_opened_at_ms: Option<i64>,
+    last_seen_activity_ms: Option<i64>,
+    model: Option<String>,
+    reasoning_effort: Option<String>,
 }
 
 impl StoredThread {
@@ -66,6 +72,76 @@ impl StoredThread {
         ) && self
             .last_seen_activity_ms
             .is_none_or(|seen| self.activity_ms() > seen)
+    }
+}
+
+impl TryFrom<&StoredThread> for StoredThreadRow {
+    type Error = ThreadStoreError;
+
+    fn try_from(thread: &StoredThread) -> Result<Self> {
+        Ok(Self {
+            thread_id: thread.thread_id.clone(),
+            title: thread.title.clone(),
+            preview: thread.preview.clone(),
+            cwd: thread.cwd.clone(),
+            created_ms: to_db_integer(thread.created_ms, "created_ms")?,
+            updated_ms: to_db_integer(thread.updated_ms, "updated_ms")?,
+            recency_ms: to_optional_db_integer(thread.recency_ms, "recency_ms")?,
+            activity_ms: to_db_integer(thread.activity_ms(), "activity_ms")?,
+            status: thread.status.clone(),
+            active_turn_id: thread.active_turn_id.clone(),
+            active_turn_started_ms: to_optional_db_integer(
+                thread.active_turn_started_ms,
+                "active_turn_started_ms",
+            )?,
+            last_event_summary: thread.last_event_summary.clone(),
+            claimed_at_ms: to_db_integer(thread.claimed_at_ms, "claimed_at_ms")?,
+            last_opened_at_ms: to_optional_db_integer(
+                thread.last_opened_at_ms,
+                "last_opened_at_ms",
+            )?,
+            last_seen_activity_ms: to_optional_db_integer(
+                thread.last_seen_activity_ms,
+                "last_seen_activity_ms",
+            )?,
+            model: thread.model.clone(),
+            reasoning_effort: thread.reasoning_effort.clone(),
+        })
+    }
+}
+
+impl TryFrom<StoredThreadRow> for StoredThread {
+    type Error = ThreadStoreError;
+
+    fn try_from(row: StoredThreadRow) -> Result<Self> {
+        from_db_integer(row.activity_ms, "activity_ms")?;
+        Ok(Self {
+            thread_id: row.thread_id,
+            title: row.title,
+            preview: row.preview,
+            cwd: row.cwd,
+            created_ms: from_db_integer(row.created_ms, "created_ms")?,
+            updated_ms: from_db_integer(row.updated_ms, "updated_ms")?,
+            recency_ms: from_optional_db_integer(row.recency_ms, "recency_ms")?,
+            status: row.status,
+            active_turn_id: row.active_turn_id,
+            active_turn_started_ms: from_optional_db_integer(
+                row.active_turn_started_ms,
+                "active_turn_started_ms",
+            )?,
+            last_event_summary: row.last_event_summary,
+            claimed_at_ms: from_db_integer(row.claimed_at_ms, "claimed_at_ms")?,
+            last_opened_at_ms: from_optional_db_integer(
+                row.last_opened_at_ms,
+                "last_opened_at_ms",
+            )?,
+            last_seen_activity_ms: from_optional_db_integer(
+                row.last_seen_activity_ms,
+                "last_seen_activity_ms",
+            )?,
+            model: row.model,
+            reasoning_effort: row.reasoning_effort,
+        })
     }
 }
 
@@ -161,6 +237,22 @@ impl ThreadStore {
         }
     }
 
+    pub(crate) fn update_composer_settings(
+        &self,
+        thread_id: &str,
+        model: Option<&str>,
+        reasoning_effort: Option<&str>,
+    ) -> Result<Option<StoredThread>> {
+        match self {
+            Self::Memory(glue) => {
+                update_composer_settings(&mut *lock_glue(glue)?, thread_id, model, reasoning_effort)
+            }
+            Self::Redb(glue) => {
+                update_composer_settings(&mut *lock_glue(glue)?, thread_id, model, reasoning_effort)
+            }
+        }
+    }
+
     pub(crate) fn delete(&self, thread_id: &str) -> Result<bool> {
         match self {
             Self::Memory(glue) => delete(&mut *lock_glue(glue)?, thread_id),
@@ -177,7 +269,26 @@ fn initialize_schema<S>(glue: &mut Glue<S>) -> Result<()>
 where
     S: GStore + GStoreMut + Planner,
 {
-    glue.execute(CREATE_THREADS_TABLE)?;
+    table(THREADS_TABLE)
+        .create_table_if_not_exists()
+        .add_column("thread_id TEXT PRIMARY KEY")
+        .add_column("title TEXT")
+        .add_column("preview TEXT")
+        .add_column("cwd TEXT")
+        .add_column("created_ms INTEGER")
+        .add_column("updated_ms INTEGER")
+        .add_column("recency_ms INTEGER NULL")
+        .add_column("activity_ms INTEGER")
+        .add_column("status TEXT")
+        .add_column("active_turn_id TEXT NULL")
+        .add_column("active_turn_started_ms INTEGER NULL")
+        .add_column("last_event_summary TEXT NULL")
+        .add_column("claimed_at_ms INTEGER")
+        .add_column("last_opened_at_ms INTEGER NULL")
+        .add_column("last_seen_activity_ms INTEGER NULL")
+        .add_column("model TEXT NULL")
+        .add_column("reasoning_effort TEXT NULL")
+        .execute(glue)?;
     Ok(())
 }
 
@@ -187,6 +298,12 @@ where
 {
     if let Some(existing) = get(glue, &thread.thread_id)? {
         thread.claimed_at_ms = existing.claimed_at_ms;
+        if thread.model.is_none() {
+            thread.model = existing.model;
+        }
+        if thread.reasoning_effort.is_none() {
+            thread.reasoning_effort = existing.reasoning_effort;
+        }
     } else {
         thread.claimed_at_ms = now_ms;
     }
@@ -210,12 +327,18 @@ fn get<S>(glue: &mut Glue<S>, thread_id: &str) -> Result<Option<StoredThread>>
 where
     S: GStore + GStoreMut + Planner,
 {
-    let rows = select_rows(glue.execute(format!(
-        "{} WHERE thread_id = {}",
-        select_columns(),
-        sql_string(thread_id)
-    ))?)?;
-    rows.first().map(stored_thread_from_row).transpose()
+    let rows = table(THREADS_TABLE)
+        .select()
+        .filter(col("thread_id").eq(text(thread_id.to_owned())))
+        .project(stored_thread_columns())
+        .limit(2)
+        .execute(glue)
+        .rows_as::<StoredThreadRow>()?;
+    match rows.as_slice() {
+        [] => Ok(None),
+        [row] => Ok(Some(row.clone().try_into()?)),
+        _ => Err(ThreadStoreError::UnexpectedPayload),
+    }
 }
 
 fn list<S>(
@@ -229,15 +352,18 @@ where
     if limit == 0 {
         return Ok((Vec::new(), None));
     }
-    let rows = select_rows(glue.execute(format!(
-        "{} ORDER BY activity_ms DESC, thread_id ASC LIMIT {} OFFSET {}",
-        select_columns(),
-        limit.saturating_add(1),
-        offset
-    ))?)?;
+    let page_size = limit.saturating_add(1);
+    let rows = table(THREADS_TABLE)
+        .select()
+        .project(stored_thread_columns())
+        .order_by(vec![col("activity_ms").desc(), col("thread_id").asc()])
+        .offset(num(to_query_integer(offset, "offset")?))
+        .limit(num(to_query_integer(page_size, "limit")?))
+        .execute(glue)
+        .rows_as::<StoredThreadRow>()?;
     let mut threads = rows
-        .iter()
-        .map(stored_thread_from_row)
+        .into_iter()
+        .map(TryInto::try_into)
         .collect::<Result<Vec<_>>>()?;
     let has_more = threads.len() > limit;
     threads.truncate(limit);
@@ -295,28 +421,36 @@ where
     Ok(Some(thread))
 }
 
+fn update_composer_settings<S>(
+    glue: &mut Glue<S>,
+    thread_id: &str,
+    model: Option<&str>,
+    reasoning_effort: Option<&str>,
+) -> Result<Option<StoredThread>>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    if get(glue, thread_id)?.is_none() {
+        return Ok(None);
+    }
+    table(THREADS_TABLE)
+        .update()
+        .filter(col("thread_id").eq(text(thread_id.to_owned())))
+        .set("model", optional_text(model))
+        .set("reasoning_effort", optional_text(reasoning_effort))
+        .execute(glue)?;
+    get(glue, thread_id)
+}
+
 fn insert<S>(glue: &mut Glue<S>, thread: &StoredThread) -> Result<()>
 where
     S: GStore + GStoreMut + Planner,
 {
-    glue.execute(format!(
-        "INSERT INTO threads VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
-        sql_string(&thread.thread_id),
-        sql_string(&thread.title),
-        sql_string(&thread.preview),
-        sql_string(&thread.cwd),
-        thread.created_ms,
-        thread.updated_ms,
-        sql_optional_u64(thread.recency_ms),
-        thread.activity_ms(),
-        sql_string(&thread.status),
-        sql_optional_string(thread.active_turn_id.as_deref()),
-        sql_optional_u64(thread.active_turn_started_ms),
-        sql_optional_string(thread.last_event_summary.as_deref()),
-        thread.claimed_at_ms,
-        sql_optional_u64(thread.last_opened_at_ms),
-        sql_optional_u64(thread.last_seen_activity_ms),
-    ))?;
+    let row = StoredThreadRow::try_from(thread)?;
+    table(THREADS_TABLE)
+        .insert()
+        .values_from(std::slice::from_ref(&row))?
+        .execute(glue)?;
     Ok(())
 }
 
@@ -324,24 +458,42 @@ fn update_all<S>(glue: &mut Glue<S>, thread: &StoredThread) -> Result<()>
 where
     S: GStore + GStoreMut + Planner,
 {
-    glue.execute(format!(
-        "UPDATE threads SET title = {}, preview = {}, cwd = {}, created_ms = {}, updated_ms = {}, recency_ms = {}, activity_ms = {}, status = {}, active_turn_id = {}, active_turn_started_ms = {}, last_event_summary = {}, claimed_at_ms = {}, last_opened_at_ms = {}, last_seen_activity_ms = {} WHERE thread_id = {}",
-        sql_string(&thread.title),
-        sql_string(&thread.preview),
-        sql_string(&thread.cwd),
-        thread.created_ms,
-        thread.updated_ms,
-        sql_optional_u64(thread.recency_ms),
-        thread.activity_ms(),
-        sql_string(&thread.status),
-        sql_optional_string(thread.active_turn_id.as_deref()),
-        sql_optional_u64(thread.active_turn_started_ms),
-        sql_optional_string(thread.last_event_summary.as_deref()),
-        thread.claimed_at_ms,
-        sql_optional_u64(thread.last_opened_at_ms),
-        sql_optional_u64(thread.last_seen_activity_ms),
-        sql_string(&thread.thread_id),
-    ))?;
+    let row = StoredThreadRow::try_from(thread)?;
+    table(THREADS_TABLE)
+        .update()
+        .filter(col("thread_id").eq(text(row.thread_id)))
+        .set("title", text(row.title))
+        .set("preview", text(row.preview))
+        .set("cwd", text(row.cwd))
+        .set("created_ms", num(row.created_ms))
+        .set("updated_ms", num(row.updated_ms))
+        .set("recency_ms", optional_integer(row.recency_ms))
+        .set("activity_ms", num(row.activity_ms))
+        .set("status", text(row.status))
+        .set(
+            "active_turn_id",
+            optional_text(row.active_turn_id.as_deref()),
+        )
+        .set(
+            "active_turn_started_ms",
+            optional_integer(row.active_turn_started_ms),
+        )
+        .set(
+            "last_event_summary",
+            optional_text(row.last_event_summary.as_deref()),
+        )
+        .set("claimed_at_ms", num(row.claimed_at_ms))
+        .set("last_opened_at_ms", optional_integer(row.last_opened_at_ms))
+        .set(
+            "last_seen_activity_ms",
+            optional_integer(row.last_seen_activity_ms),
+        )
+        .set("model", optional_text(row.model.as_deref()))
+        .set(
+            "reasoning_effort",
+            optional_text(row.reasoning_effort.as_deref()),
+        )
+        .execute(glue)?;
     Ok(())
 }
 
@@ -349,91 +501,55 @@ fn delete<S>(glue: &mut Glue<S>, thread_id: &str) -> Result<bool>
 where
     S: GStore + GStoreMut + Planner,
 {
-    let payloads = glue.execute(format!(
-        "DELETE FROM threads WHERE thread_id = {}",
-        sql_string(thread_id)
-    ))?;
-    let Some(Payload::Delete(count)) = payloads.into_iter().next() else {
+    let payload = table(THREADS_TABLE)
+        .delete()
+        .filter(col("thread_id").eq(text(thread_id.to_owned())))
+        .execute(glue)?;
+    let Payload::Delete(count) = payload else {
         return Err(ThreadStoreError::UnexpectedPayload);
     };
     Ok(count > 0)
 }
 
-fn select_columns() -> &'static str {
-    "SELECT thread_id, title, preview, cwd, created_ms, updated_ms, recency_ms, status, active_turn_id, active_turn_started_ms, last_event_summary, claimed_at_ms, last_opened_at_ms, last_seen_activity_ms FROM threads"
+fn stored_thread_columns() -> Vec<ExprNode<'static>> {
+    StoredThreadRow::glue_columns()
+        .iter()
+        .map(|column| col(*column))
+        .collect()
 }
 
-fn select_rows(payloads: Vec<Payload>) -> Result<Vec<HashMap<String, Value>>> {
-    let Some(Payload::Select { labels, rows }) = payloads.into_iter().next() else {
-        return Err(ThreadStoreError::UnexpectedPayload);
-    };
-    Ok(rows
-        .into_iter()
-        .map(|row| labels.iter().cloned().zip(row).collect())
-        .collect())
+fn optional_text(value: Option<&str>) -> ExprNode<'static> {
+    value.map_or_else(null, |value| text(value.to_owned()))
 }
 
-fn stored_thread_from_row(row: &HashMap<String, Value>) -> Result<StoredThread> {
-    Ok(StoredThread {
-        thread_id: required_string(row, "thread_id")?,
-        title: required_string(row, "title")?,
-        preview: required_string(row, "preview")?,
-        cwd: required_string(row, "cwd")?,
-        created_ms: required_u64(row, "created_ms")?,
-        updated_ms: required_u64(row, "updated_ms")?,
-        recency_ms: optional_u64(row, "recency_ms")?,
-        status: required_string(row, "status")?,
-        active_turn_id: optional_string(row, "active_turn_id")?,
-        active_turn_started_ms: optional_u64(row, "active_turn_started_ms")?,
-        last_event_summary: optional_string(row, "last_event_summary")?,
-        claimed_at_ms: required_u64(row, "claimed_at_ms")?,
-        last_opened_at_ms: optional_u64(row, "last_opened_at_ms")?,
-        last_seen_activity_ms: optional_u64(row, "last_seen_activity_ms")?,
-    })
+fn optional_integer(value: Option<i64>) -> ExprNode<'static> {
+    value.map_or_else(null, num)
 }
 
-fn required_string(row: &HashMap<String, Value>, key: &'static str) -> Result<String> {
-    match row.get(key) {
-        Some(Value::Str(value)) => Ok(value.clone()),
-        _ => Err(ThreadStoreError::InvalidRow(key)),
-    }
+fn to_db_integer(value: u64, field: &'static str) -> Result<i64> {
+    value
+        .try_into()
+        .map_err(|_| ThreadStoreError::InvalidRow(field))
 }
 
-fn optional_string(row: &HashMap<String, Value>, key: &'static str) -> Result<Option<String>> {
-    match row.get(key) {
-        Some(Value::Null) | None => Ok(None),
-        Some(Value::Str(value)) => Ok(Some(value.clone())),
-        _ => Err(ThreadStoreError::InvalidRow(key)),
-    }
+fn to_optional_db_integer(value: Option<u64>, field: &'static str) -> Result<Option<i64>> {
+    value.map(|value| to_db_integer(value, field)).transpose()
 }
 
-fn required_u64(row: &HashMap<String, Value>, key: &'static str) -> Result<u64> {
-    match row.get(key) {
-        Some(Value::I64(value)) if *value >= 0 => Ok(*value as u64),
-        Some(Value::U64(value)) => Ok(*value),
-        _ => Err(ThreadStoreError::InvalidRow(key)),
-    }
+fn from_db_integer(value: i64, field: &'static str) -> Result<u64> {
+    value
+        .try_into()
+        .map_err(|_| ThreadStoreError::InvalidRow(field))
 }
 
-fn optional_u64(row: &HashMap<String, Value>, key: &'static str) -> Result<Option<u64>> {
-    match row.get(key) {
-        Some(Value::Null) | None => Ok(None),
-        Some(Value::I64(value)) if *value >= 0 => Ok(Some(*value as u64)),
-        Some(Value::U64(value)) => Ok(Some(*value)),
-        _ => Err(ThreadStoreError::InvalidRow(key)),
-    }
+fn from_optional_db_integer(value: Option<i64>, field: &'static str) -> Result<Option<u64>> {
+    value.map(|value| from_db_integer(value, field)).transpose()
 }
 
-fn sql_string(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "''"))
-}
-
-fn sql_optional_string(value: Option<&str>) -> String {
-    value.map_or_else(|| "NULL".to_string(), sql_string)
-}
-
-fn sql_optional_u64(value: Option<u64>) -> String {
-    value.map_or_else(|| "NULL".to_string(), |value| value.to_string())
+fn to_query_integer(value: usize, field: &'static str) -> Result<u64> {
+    value
+        .try_into()
+        .map_err(|_| ThreadStoreError::InvalidRow(field))
 }
 
 fn encode_cursor(offset: usize) -> String {
@@ -470,6 +586,8 @@ mod tests {
             claimed_at_ms: 0,
             last_opened_at_ms: None,
             last_seen_activity_ms: None,
+            model: None,
+            reasoning_effort: None,
         }
     }
 
@@ -492,6 +610,9 @@ mod tests {
         let claimed = store.claim(thread("task", 20), 100).unwrap();
         assert_eq!(claimed.claimed_at_ms, 100);
         assert_eq!(claimed.last_seen_activity_ms, Some(20));
+        store
+            .update_composer_settings("task", Some("gpt-test"), Some("xhigh"))
+            .unwrap();
 
         let mut refreshed = thread("task", 40);
         refreshed.title = "Refreshed title".to_string();
@@ -499,12 +620,41 @@ mod tests {
         assert_eq!(refreshed.title, "Refreshed title");
         assert_eq!(refreshed.claimed_at_ms, 100);
         assert_eq!(refreshed.last_seen_activity_ms, Some(20));
+        assert_eq!(refreshed.model.as_deref(), Some("gpt-test"));
+        assert_eq!(refreshed.reasoning_effort.as_deref(), Some("xhigh"));
         assert!(refreshed.unseen());
 
         let seen = store.mark_seen("task", 150).unwrap().unwrap();
         assert_eq!(seen.last_opened_at_ms, Some(150));
         assert_eq!(seen.last_seen_activity_ms, Some(40));
         assert!(!seen.unseen());
+    }
+
+    #[test]
+    fn query_builder_round_trips_literal_text_without_manual_escaping() {
+        let store = ThreadStore::memory().unwrap();
+        let mut quoted = thread("task'quoted", 20);
+        quoted.title = "Don't escape this by hand".to_string();
+        quoted.preview = "It's GlueSQL's job".to_string();
+        quoted.cwd = "/tmp/it's-a-project".to_string();
+
+        store.claim(quoted.clone(), 100).unwrap();
+        store
+            .update_composer_settings(
+                &quoted.thread_id,
+                Some("model'quoted"),
+                Some("reasoning'quoted"),
+            )
+            .unwrap();
+
+        let stored = store.get(&quoted.thread_id).unwrap().unwrap();
+        assert_eq!(stored.title, quoted.title);
+        assert_eq!(stored.preview, quoted.preview);
+        assert_eq!(stored.cwd, quoted.cwd);
+        assert_eq!(stored.model.as_deref(), Some("model'quoted"));
+        assert_eq!(stored.reasoning_effort.as_deref(), Some("reasoning'quoted"));
+        assert!(store.delete(&quoted.thread_id).unwrap());
+        assert!(store.get(&quoted.thread_id).unwrap().is_none());
     }
 
     #[test]
@@ -520,5 +670,99 @@ mod tests {
             store.get("persisted").unwrap().unwrap().thread_id,
             "persisted"
         );
+    }
+
+    #[test]
+    fn redb_accepts_the_manual_composer_settings_alter() {
+        #[derive(gluesql::ToGlueRow)]
+        struct LegacyStoredThreadRow {
+            thread_id: String,
+            title: String,
+            preview: String,
+            cwd: String,
+            created_ms: i64,
+            updated_ms: i64,
+            recency_ms: Option<i64>,
+            activity_ms: i64,
+            status: String,
+            active_turn_id: Option<String>,
+            active_turn_started_ms: Option<i64>,
+            last_event_summary: Option<String>,
+            claimed_at_ms: i64,
+            last_opened_at_ms: Option<i64>,
+            last_seen_activity_ms: Option<i64>,
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("caffold.redb");
+        {
+            let storage = RedbStorage::new(&path).unwrap();
+            let mut glue = Glue::new(storage);
+            table(THREADS_TABLE)
+                .create_table()
+                .add_column("thread_id TEXT PRIMARY KEY")
+                .add_column("title TEXT")
+                .add_column("preview TEXT")
+                .add_column("cwd TEXT")
+                .add_column("created_ms INTEGER")
+                .add_column("updated_ms INTEGER")
+                .add_column("recency_ms INTEGER NULL")
+                .add_column("activity_ms INTEGER")
+                .add_column("status TEXT")
+                .add_column("active_turn_id TEXT NULL")
+                .add_column("active_turn_started_ms INTEGER NULL")
+                .add_column("last_event_summary TEXT NULL")
+                .add_column("claimed_at_ms INTEGER")
+                .add_column("last_opened_at_ms INTEGER NULL")
+                .add_column("last_seen_activity_ms INTEGER NULL")
+                .execute(&mut glue)
+                .unwrap();
+            let legacy = LegacyStoredThreadRow {
+                thread_id: "legacy".to_string(),
+                title: "Legacy task".to_string(),
+                preview: String::new(),
+                cwd: "/tmp/project".to_string(),
+                created_ms: 1,
+                updated_ms: 2,
+                recency_ms: None,
+                activity_ms: 2,
+                status: "idle".to_string(),
+                active_turn_id: None,
+                active_turn_started_ms: None,
+                last_event_summary: None,
+                claimed_at_ms: 3,
+                last_opened_at_ms: None,
+                last_seen_activity_ms: None,
+            };
+            table(THREADS_TABLE)
+                .insert()
+                .values_from(&[legacy])
+                .unwrap()
+                .execute(&mut glue)
+                .unwrap();
+            table(THREADS_TABLE)
+                .alter_table()
+                .add_column("model TEXT NULL")
+                .execute(&mut glue)
+                .unwrap();
+            table(THREADS_TABLE)
+                .alter_table()
+                .add_column("reasoning_effort TEXT NULL")
+                .execute(&mut glue)
+                .unwrap();
+            table(THREADS_TABLE)
+                .update()
+                .filter(col("thread_id").eq(text("legacy")))
+                .set("model", text("gpt-test"))
+                .set("reasoning_effort", text("xhigh"))
+                .execute(&mut glue)
+                .unwrap();
+        }
+
+        let store = ThreadStore::redb(&path).unwrap();
+        let legacy = store.get("legacy").unwrap().unwrap();
+        assert_eq!(legacy.title, "Legacy task");
+        assert_eq!(legacy.model.as_deref(), Some("gpt-test"));
+        assert_eq!(legacy.reasoning_effort.as_deref(), Some("xhigh"));
     }
 }

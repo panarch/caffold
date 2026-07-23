@@ -120,6 +120,8 @@ class CaffoldTasksPage extends HTMLElement {
     this.modelOptionsLoaded = false;
     this.modelOptionsLoading = false;
     this.modelOptionsError = null;
+    this.composerSettingsByThread = new Map();
+    this.composerSettingsOverrideThreadIds = new Set();
     this.permissionOptions = [];
     this.permissionOptionsCwd = "";
     this.permissionOptionsLoaded = false;
@@ -449,7 +451,7 @@ class CaffoldTasksPage extends HTMLElement {
         this.loading = false;
         this.loadTaskGithubStatus(this.taskDetail.task);
         this.loadModelOptions();
-        this.observeTaskPermission(this.taskDetail);
+        this.observeTaskSettings(this.taskDetail);
         this.loadPermissionOptions(this.activeCwdPath());
         return this.taskDetail;
       }
@@ -525,7 +527,7 @@ class CaffoldTasksPage extends HTMLElement {
       }
       this.acknowledgeFollowUpFromCanonicalDetail(threadId, detail);
       this.taskDetail = detail;
-      this.observeTaskPermission(detail);
+      this.observeTaskSettings(detail);
       this.setThreadEvents(
         threadId,
         mergeEvents(this.eventsByThread.get(threadId) ?? [], detail.events ?? []),
@@ -898,7 +900,7 @@ class CaffoldTasksPage extends HTMLElement {
     }
     this.acknowledgeFollowUpFromCanonicalDetail(threadId, detail);
     this.taskDetail = detail;
-    this.observeTaskPermission(detail);
+    this.observeTaskSettings(detail);
     this.loading = false;
     this.detailLoadError = null;
     this.setThreadEvents(
@@ -1166,7 +1168,7 @@ class CaffoldTasksPage extends HTMLElement {
         return;
       }
       this.taskDetail = detail;
-      this.observeTaskPermission(detail);
+      this.observeTaskSettings(detail);
       this.setThreadEvents(threadId, mergeEvents(this.events, detail.events ?? []));
       this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
       this.patchTaskListTask(detail.task);
@@ -1311,12 +1313,12 @@ class CaffoldTasksPage extends HTMLElement {
     }
     if (action === "select-model") {
       this.openModelPickerForm = "";
-      this.selectModel(element.dataset.model);
+      this.selectModel(element.dataset.formName, element.dataset.model);
       return;
     }
     if (action === "select-effort") {
       this.openModelPickerForm = "";
-      this.selectEffort(element.dataset.effort);
+      this.selectEffort(element.dataset.formName, element.dataset.effort);
       return;
     }
     if (action === "toggle-permission-picker") {
@@ -1532,7 +1534,7 @@ class CaffoldTasksPage extends HTMLElement {
       });
       this.acceptTaskDetailRevision(detail?.task?.threadId, detail?.revision);
       this.taskDetail = detail;
-      this.observeTaskPermission(detail);
+      this.observeTaskSettings(detail);
       this.setThreadEvents(detail.task.threadId, detail.events ?? []);
       this.eventsPage = detail.eventsPage ?? { nextCursor: null };
       this.tasks = upsertTask(this.tasks, detail.task);
@@ -1593,6 +1595,7 @@ class CaffoldTasksPage extends HTMLElement {
       taskThreadId(this.taskDetail?.task) === threadId
         ? this.taskDetail.task
         : this.tasks.find((task) => taskThreadId(task) === threadId) ?? null;
+    const turnOptions = this.turnOptions("follow-up");
     const startsNewTurn = !isTaskActivelyWorking(previousTask);
     const runningTask = taskWithStatus(previousTask, "running", {
       ...(startsNewTurn
@@ -1644,7 +1647,7 @@ class CaffoldTasksPage extends HTMLElement {
         threadId,
         prompt,
         {
-          ...this.turnOptions("follow-up"),
+          ...turnOptions,
           activeTurnId:
             previousTask?.status === "running"
               ? previousTask.activeTurnId ?? null
@@ -1657,6 +1660,7 @@ class CaffoldTasksPage extends HTMLElement {
       }
       if (!response?.steered) {
         this.permissionOverrideThreadIds.delete(threadId);
+        this.composerSettingsOverrideThreadIds.delete(threadId);
       }
       if (threadId === this.selectedThreadId) {
         this.conversationScrollMode = "bottom-if-needed";
@@ -1733,7 +1737,7 @@ class CaffoldTasksPage extends HTMLElement {
         return;
       }
       this.taskDetail = detail;
-      this.observeTaskPermission(detail);
+      this.observeTaskSettings(detail);
       this.setThreadEvents(
         this.selectedThreadId,
         mergeEvents(this.events, detail.events ?? []),
@@ -1770,7 +1774,7 @@ class CaffoldTasksPage extends HTMLElement {
         return;
       }
       this.taskDetail = detail;
-      this.observeTaskPermission(detail);
+      this.observeTaskSettings(detail);
       this.setThreadEvents(
         this.selectedThreadId,
         mergeEvents(this.events, detail.events ?? []),
@@ -1942,7 +1946,7 @@ class CaffoldTasksPage extends HTMLElement {
     }
   }
 
-  observeTaskPermission(detail) {
+  observeTaskSettings(detail) {
     const threadId = `${detail?.task?.threadId ?? ""}`.trim();
     const permissionMode = `${detail?.permissionMode ?? ""}`.trim();
     if (
@@ -1951,6 +1955,17 @@ class CaffoldTasksPage extends HTMLElement {
       !this.permissionOverrideThreadIds.has(threadId)
     ) {
       this.permissionModeByThread.set(threadId, permissionMode);
+    }
+    if (
+      !threadId ||
+      this.composerSettingsOverrideThreadIds.has(threadId)
+    ) {
+      return;
+    }
+    const model = `${detail?.model ?? ""}`.trim();
+    const effort = `${detail?.reasoningEffort ?? ""}`.trim();
+    if (model || effort) {
+      this.composerSettingsByThread.set(threadId, { model, effort });
     }
   }
 
@@ -2017,7 +2032,7 @@ class CaffoldTasksPage extends HTMLElement {
     if (!this.modelOptions.length) {
       return;
     }
-    const selected = this.selectedModelOption();
+    const selected = this.selectedModelOption("create");
     const model = selected ?? this.modelOptions.find((option) => option.isDefault) ?? this.modelOptions[0];
     if (!this.composerSettings.model) {
       this.composerSettings.model = model.model;
@@ -2028,23 +2043,76 @@ class CaffoldTasksPage extends HTMLElement {
     }
   }
 
-  selectModel(modelValue) {
-    this.composerSettings.model = `${modelValue ?? ""}`;
-    const model = this.selectedModelOption();
+  composerSettingsFor(formName) {
+    if (formName === "create") {
+      return this.composerSettings;
+    }
+    return (
+      this.composerSettingsByThread.get(this.selectedThreadId) ?? {
+        model: "",
+        effort: "",
+      }
+    );
+  }
+
+  editableComposerSettings(formName) {
+    if (formName === "create") {
+      return this.composerSettings;
+    }
+    const threadId = this.selectedThreadId;
+    const existing = this.composerSettingsByThread.get(threadId);
+    if (existing) {
+      return existing;
+    }
+    const settings = { model: "", effort: "" };
+    if (threadId) {
+      this.composerSettingsByThread.set(threadId, settings);
+    }
+    return settings;
+  }
+
+  markComposerSettingsOverride(formName) {
+    if (formName === "follow-up" && this.selectedThreadId) {
+      this.composerSettingsOverrideThreadIds.add(this.selectedThreadId);
+    }
+  }
+
+  modelSelectionLocked(formName) {
+    return (
+      formName === "follow-up" &&
+      isTaskActivelyWorking(this.taskDetail?.task)
+    );
+  }
+
+  selectModel(formName, modelValue) {
+    if (this.modelSelectionLocked(formName)) {
+      return;
+    }
+    const settings = this.editableComposerSettings(formName);
+    settings.model = `${modelValue ?? ""}`;
+    const model = this.selectedModelOption(formName);
     const supported = this.reasoningOptionsForModel(model).map((option) => option.value);
-    if (this.composerSettings.effort && !supported.includes(this.composerSettings.effort)) {
-      this.composerSettings.effort =
+    if (settings.effort && !supported.includes(settings.effort)) {
+      settings.effort =
         model?.defaultReasoningEffort ?? supported[0] ?? "";
     }
+    this.markComposerSettingsOverride(formName);
     this.render();
   }
 
-  selectEffort(effort) {
-    this.composerSettings.effort = `${effort ?? ""}`;
+  selectEffort(formName, effort) {
+    if (this.modelSelectionLocked(formName)) {
+      return;
+    }
+    this.editableComposerSettings(formName).effort = `${effort ?? ""}`;
+    this.markComposerSettingsOverride(formName);
     this.render();
   }
 
   toggleModelPicker(formName) {
+    if (this.modelSelectionLocked(formName)) {
+      return;
+    }
     const nextFormName = `${formName ?? ""}`;
     this.openModelPickerForm = this.openModelPickerForm === nextFormName ? "" : nextFormName;
     this.openPermissionPickerForm = "";
@@ -2071,20 +2139,36 @@ class CaffoldTasksPage extends HTMLElement {
     this.render();
   }
 
-  selectedModelOption() {
-    return this.modelOptions.find((option) => option.model === this.composerSettings.model) ?? null;
+  selectedModelOption(formName) {
+    const selectedModel = this.composerSettingsFor(formName).model;
+    return (
+      this.modelOptions.find((option) => option.model === selectedModel) ??
+      this.modelOptions.find((option) => option.isDefault) ??
+      this.modelOptions[0] ??
+      null
+    );
   }
 
-  selectedEffort() {
-    return this.composerSettings.effort || this.selectedModelOption()?.defaultReasoningEffort || "";
+  selectedEffort(formName) {
+    const model = this.selectedModelOption(formName);
+    const supported = this.reasoningOptionsForModel(model).map((option) => option.value);
+    const selected = this.composerSettingsFor(formName).effort;
+    return (
+      (supported.includes(selected) ? selected : "") ||
+      model?.defaultReasoningEffort ||
+      supported[0] ||
+      ""
+    );
   }
 
   turnOptions(formName) {
-    const options = {
-      model: this.composerSettings.model || undefined,
-      effort: this.selectedEffort() || undefined,
-    };
     const activeTurn = formName === "follow-up" && isTaskActivelyWorking(this.taskDetail?.task);
+    const options = {};
+    if (!activeTurn) {
+      const model = this.selectedModelOption(formName);
+      options.model = model?.model || undefined;
+      options.effort = this.selectedEffort(formName) || undefined;
+    }
     const explicitPermission =
       formName === "create"
         ? this.newTaskPermissionExplicit
@@ -3600,8 +3684,8 @@ class CaffoldTasksPage extends HTMLElement {
     cancel = false,
     threadId = "",
   }) {
-    const model = this.selectedModelOption();
-    const effort = this.selectedEffort();
+    const model = this.selectedModelOption(formName);
+    const effort = this.selectedEffort(formName);
     const submitting =
       formName === "follow-up" &&
       this.followUpRequest?.threadId === threadId;
@@ -3646,7 +3730,7 @@ class CaffoldTasksPage extends HTMLElement {
                   ? `<button type="button" class="task-toolbar-button" data-task-action="open-list">Cancel</button>`
                   : ""
               }
-              ${this.renderModelPicker(formName)}
+              ${this.renderModelPicker(formName, permissionLocked)}
               ${this.renderPermissionPicker(formName, permissionLocked)}
             </div>
             <button type="submit" class="task-send-button" aria-label="${escapeHtml(submitLabel)}" title="${escapeHtml(submitLabel)}"${submitting ? " disabled" : ""}>
@@ -3686,21 +3770,23 @@ class CaffoldTasksPage extends HTMLElement {
     `;
   }
 
-  renderModelPicker(formName) {
-    const model = this.selectedModelOption();
+  renderModelPicker(formName, disabled = false) {
+    const model = this.selectedModelOption(formName);
     const modelLabel = model?.displayName ?? (this.modelOptionsLoading ? "Loading model" : "Model");
-    const effort = this.selectedEffort();
+    const effort = this.selectedEffort(formName);
     const reasoningOptions = this.reasoningOptionsForModel(model);
     const effortLabel =
       reasoningOptions.find((option) => option.value === effort)?.label ||
       effort ||
       "Reasoning";
-    const open = this.openModelPickerForm === formName;
+    const open = !disabled && this.openModelPickerForm === formName;
     const modelRows = this.modelOptions.length
-      ? this.modelOptions.map((option) => renderModelOption(option, this.composerSettings.model)).join("")
+      ? this.modelOptions
+          .map((option) => renderModelOption(option, model?.model ?? "", formName))
+          .join("")
       : renderModelFallback(this.modelOptionsLoading, this.modelOptionsError);
     const reasoningRows = reasoningOptions
-      .map((option) => renderReasoningOption(option, effort))
+      .map((option) => renderReasoningOption(option, effort, formName))
       .join("");
 
     return `
@@ -3712,6 +3798,7 @@ class CaffoldTasksPage extends HTMLElement {
           data-form-name="${escapeHtml(formName)}"
           aria-expanded="${open ? "true" : "false"}"
           aria-label="Choose model and reasoning"
+          ${disabled ? 'disabled title="Model and reasoning can be changed after the active turn finishes."' : ""}
         >
           ${renderInlineIcon("Circle", "Model", "task-model-icon")}
           <span>${escapeHtml(modelLabel)}</span>
@@ -4276,13 +4363,14 @@ function renderPermissionFallback(loading, error) {
   return `<p class="task-model-note">Open this menu after Codex is connected.</p>`;
 }
 
-function renderReasoningOption(option, selectedEffort) {
+function renderReasoningOption(option, selectedEffort, formName) {
   const selected = option.value === selectedEffort;
   return `
     <button
       type="button"
       class="task-model-option"
       data-task-action="select-effort"
+      data-form-name="${escapeHtml(formName)}"
       data-effort="${escapeHtml(option.value)}"
       aria-pressed="${selected ? "true" : "false"}"
     >
@@ -4295,13 +4383,14 @@ function renderReasoningOption(option, selectedEffort) {
   `;
 }
 
-function renderModelOption(option, selectedModel) {
+function renderModelOption(option, selectedModel, formName) {
   const selected = option.model === selectedModel;
   return `
     <button
       type="button"
       class="task-model-option"
       data-task-action="select-model"
+      data-form-name="${escapeHtml(formName)}"
       data-model="${escapeHtml(option.model)}"
       aria-pressed="${selected ? "true" : "false"}"
     >

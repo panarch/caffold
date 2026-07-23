@@ -232,6 +232,8 @@ pub struct CodexThreadStart {
     pub thread_id: String,
     pub thread: CodexThread,
     pub permission_mode: Option<CodexPermissionMode>,
+    pub model: Option<String>,
+    pub reasoning_effort: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -482,10 +484,22 @@ impl CodexThreadClient {
         } else {
             permission_mode
         };
+        let model = typed
+            .extra
+            .get("model")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let reasoning_effort = typed
+            .extra
+            .get("reasoningEffort")
+            .and_then(Value::as_str)
+            .map(str::to_string);
         Ok(CodexThreadStart {
             thread_id,
             thread: typed.thread,
             permission_mode,
+            model,
+            reasoning_effort,
         })
     }
 

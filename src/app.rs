@@ -556,10 +556,7 @@ struct TaskPromptResponse {
 struct TaskPromptOutcome {
     turn_id: String,
     steered: bool,
-    started_turn: Option<(
-        crate::codex_app_server::CodexTurn,
-        Option<CodexPermissionMode>,
-    )>,
+    started_turn: Option<(crate::codex_app_server::CodexTurn, CodexTurnOptions)>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -738,6 +735,8 @@ struct TaskDetailResponse {
     pending_approvals: Vec<TaskEventRecord>,
     history_loading: bool,
     permission_mode: Option<CodexPermissionMode>,
+    model: Option<String>,
+    reasoning_effort: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1776,6 +1775,24 @@ async fn thread_store_mark_seen(
         .map_err(thread_store_api_error)
 }
 
+async fn thread_store_update_composer_settings(
+    state: &AppState,
+    thread_id: &str,
+    model: Option<&str>,
+    reasoning_effort: Option<&str>,
+) -> Result<Option<StoredThread>, ApiError> {
+    let store = state.thread_store.clone();
+    let thread_id = thread_id.to_string();
+    let model = model.map(str::to_string);
+    let reasoning_effort = reasoning_effort.map(str::to_string);
+    tokio::task::spawn_blocking(move || {
+        store.update_composer_settings(&thread_id, model.as_deref(), reasoning_effort.as_deref())
+    })
+    .await
+    .map_err(thread_store_join_error)?
+    .map_err(thread_store_api_error)
+}
+
 async fn thread_store_update_projection(
     state: &AppState,
     task: &TaskRecord,
@@ -1847,7 +1864,7 @@ async fn create_task(
     let cwd = task_cwd(&state, request.cwd.as_deref())?;
     let connection = require_codex_thread_connection(&state).await?;
     let client = &connection.client;
-    let mut turn_options = codex_turn_options(
+    let turn_options = codex_turn_options(
         client,
         request.model,
         request.effort,
@@ -1856,13 +1873,15 @@ async fn create_task(
     .await?;
 
     let requested_permission_mode = turn_options.permission_mode;
+    let requested_model = turn_options.model.clone();
+    let requested_reasoning_effort = turn_options.effort.clone();
     let thread = client
         .start_thread(&cwd, turn_options.permission_mode)
         .await?;
-    let thread_permission_mode = thread.permission_mode.or(requested_permission_mode);
-    if requested_permission_mode.is_some() {
-        turn_options.permission_mode = thread_permission_mode;
-    }
+    let thread_permission_mode = requested_permission_mode.or(thread.permission_mode);
+    let effective_model = requested_model.or_else(|| thread.model.clone());
+    let effective_reasoning_effort =
+        requested_reasoning_effort.or_else(|| thread.reasoning_effort.clone());
     let task = task_record_from_codex_thread(&state, &thread.thread)?;
     let stored = thread_store_claim(&state, stored_thread_from_task_record(&task)).await?;
     notify_task_updated(
@@ -1876,6 +1895,8 @@ async fn create_task(
             connection.generation,
             thread.thread.clone(),
             thread_permission_mode,
+            thread.model.clone(),
+            thread.reasoning_effort.clone(),
         )
         .await;
     let permission_mode = thread_permission_mode;
@@ -1896,8 +1917,23 @@ async fn create_task(
             &thread.thread_id,
             turn.turn,
             permission_mode,
+            effective_model.clone(),
+            effective_reasoning_effort.clone(),
         )
         .await;
+    if let Err(error) = thread_store_update_composer_settings(
+        &state,
+        &thread.thread_id,
+        effective_model.as_deref(),
+        effective_reasoning_effort.as_deref(),
+    )
+    .await
+    {
+        eprintln!(
+            "failed to persist composer settings for started thread {}: {error:?}",
+            thread.thread_id
+        );
+    }
     publish_task_event(
         &state.task_events,
         &state.live_task_events,
@@ -1998,6 +2034,8 @@ async fn unmanaged_task_detail(
         pending_approvals: Vec::new(),
         history_loading: false,
         permission_mode: None,
+        model: None,
+        reasoning_effort: None,
     })
 }
 
@@ -2603,7 +2641,7 @@ async fn task_prompt(
                 requested_permission_mode,
             )
             .await?;
-            let permission_mode = turn_options.permission_mode;
+            let applied_options = turn_options.clone();
             connection
                 .client
                 .start_turn(&thread_id, &cwd, &prompt, &images, turn_options)
@@ -2611,7 +2649,7 @@ async fn task_prompt(
                 .map(|started| TaskPromptOutcome {
                     turn_id: started.turn_id.clone(),
                     steered: false,
-                    started_turn: Some((started.turn, permission_mode)),
+                    started_turn: Some((started.turn, applied_options)),
                 })
         }
     };
@@ -2623,11 +2661,32 @@ async fn task_prompt(
             return Err(error.into());
         }
     };
-    if let Some((turn, permission_mode)) = outcome.started_turn {
+    if let Some((turn, applied_options)) = outcome.started_turn {
         state
             .codex_sessions
-            .record_turn_started(connection.generation, &thread_id, turn, permission_mode)
+            .record_turn_started(
+                connection.generation,
+                &thread_id,
+                turn,
+                applied_options.permission_mode,
+                applied_options.model.clone(),
+                applied_options.effort.clone(),
+            )
             .await;
+        if let Some(snapshot) = state.codex_sessions.snapshot(&thread_id).await {
+            let persistence_result = thread_store_update_composer_settings(
+                &state,
+                &thread_id,
+                snapshot.model.as_deref(),
+                snapshot.reasoning_effort.as_deref(),
+            )
+            .await;
+            if let Err(error) = persistence_result {
+                eprintln!(
+                    "failed to persist composer settings for started turn on thread {thread_id}: {error:?}"
+                );
+            }
+        }
     }
     publish_task_event(
         &state.task_events,
@@ -2866,18 +2925,26 @@ async fn cached_task_detail(
     state: &AppState,
     thread_id: &str,
 ) -> Result<(TaskDetailResponse, u64), ApiError> {
+    let stored = thread_store_get(state, thread_id).await?;
     let Some(snapshot) = state.codex_sessions.snapshot(thread_id).await else {
-        return Ok((loading_task_detail(thread_id, 0), 0));
+        return Ok((loading_task_detail(thread_id, 0, stored.as_ref()), 0));
     };
     let revision = snapshot.revision;
     if snapshot.thread.is_none() {
-        return Ok((loading_task_detail(thread_id, revision), revision));
+        return Ok((
+            loading_task_detail(thread_id, revision, stored.as_ref()),
+            revision,
+        ));
     }
     let detail = task_detail_from_snapshot(state, snapshot, None).await?;
     Ok((detail, revision))
 }
 
-fn loading_task_detail(thread_id: &str, revision: u64) -> TaskDetailResponse {
+fn loading_task_detail(
+    thread_id: &str,
+    revision: u64,
+    stored: Option<&StoredThread>,
+) -> TaskDetailResponse {
     TaskDetailResponse {
         managed: true,
         revision,
@@ -2904,6 +2971,8 @@ fn loading_task_detail(thread_id: &str, revision: u64) -> TaskDetailResponse {
         pending_approvals: Vec::new(),
         history_loading: true,
         permission_mode: None,
+        model: stored.and_then(|thread| thread.model.clone()),
+        reasoning_effort: stored.and_then(|thread| thread.reasoning_effort.clone()),
     }
 }
 
@@ -2931,6 +3000,10 @@ async fn task_detail_from_snapshot(
 ) -> Result<TaskDetailResponse, ApiError> {
     let session_running = snapshot.is_running();
     let actively_viewed = snapshot.viewer_leases > 0;
+    let revision = snapshot.revision;
+    let permission_mode = snapshot.permission_mode;
+    let session_model = snapshot.model.clone();
+    let session_reasoning_effort = snapshot.reasoning_effort.clone();
     let session_active_turn_id = snapshot
         .active_turn_id
         .clone()
@@ -2978,23 +3051,50 @@ async fn task_detail_from_snapshot(
         session_active_turn_id,
         external_activity_started_ms,
     );
-    if let Some(mut stored) = thread_store_update_projection(state, &task).await? {
+    let mut stored = thread_store_update_projection(state, &task).await?;
+    if session_model.is_some() || session_reasoning_effort.is_some() {
+        stored = thread_store_update_composer_settings(
+            state,
+            &thread_id,
+            session_model.as_deref(),
+            session_reasoning_effort.as_deref(),
+        )
+        .await?
+        .or(stored);
+    }
+    if let Some(mut current) = stored {
         if actively_viewed
-            && let Some(seen) = thread_store_mark_seen(state, &stored.thread_id).await?
+            && let Some(seen) = thread_store_mark_seen(state, &current.thread_id).await?
         {
-            stored = seen;
+            current = seen;
         }
-        task.unseen = stored.unseen();
+        task.unseen = current.unseen();
+        let model = session_model.or(current.model);
+        let reasoning_effort = session_reasoning_effort.or(current.reasoning_effort);
+        return Ok(TaskDetailResponse {
+            managed: true,
+            revision,
+            task,
+            events,
+            events_page: TaskEventsPage { next_cursor },
+            pending_approvals,
+            history_loading,
+            permission_mode,
+            model,
+            reasoning_effort,
+        });
     }
     Ok(TaskDetailResponse {
         managed: true,
-        revision: snapshot.revision,
+        revision,
         task,
         events,
         events_page: TaskEventsPage { next_cursor },
         pending_approvals,
         history_loading,
-        permission_mode: snapshot.permission_mode,
+        permission_mode,
+        model: session_model,
+        reasoning_effort: session_reasoning_effort,
     })
 }
 
@@ -3276,6 +3376,8 @@ fn stored_thread_from_task_record(task: &TaskRecord) -> StoredThread {
         claimed_at_ms: 0,
         last_opened_at_ms: None,
         last_seen_activity_ms: None,
+        model: None,
+        reasoning_effort: None,
     }
 }
 
@@ -4971,6 +5073,213 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_task_keeps_explicit_permission_mode_for_the_first_turn() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-explicit-permission";
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/start",
+                json!({
+                    "thread": {
+                        "id": thread_id,
+                        "preview": "Explicit permission regression",
+                        "status": { "type": "idle" },
+                        "cwd": root.path().display().to_string(),
+                        "createdAt": 1.0,
+                        "updatedAt": 1.0,
+                        "turns": []
+                    },
+                    "approvalPolicy": "on-request",
+                    "approvalsReviewer": "user",
+                    "activePermissionProfile": {
+                        "id": ":workspace"
+                    }
+                }),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "turn/start",
+                json!({
+                    "turn": {
+                        "id": "turn-explicit-permission",
+                        "items": [],
+                        "status": "inProgress"
+                    }
+                }),
+            ),
+        ]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+
+        let response = create_task(
+            State(state),
+            Json(CreateTaskRequest {
+                prompt: "Use the selected approval mode".to_string(),
+                images: Vec::new(),
+                cwd: None,
+                model: None,
+                effort: None,
+                permission_mode: Some(CodexPermissionMode::ApproveForMe),
+            }),
+        )
+        .await
+        .expect("task creation succeeds");
+
+        assert_eq!(
+            response.0.permission_mode,
+            Some(CodexPermissionMode::ApproveForMe)
+        );
+        let requests = client.mock_requests().await;
+        assert_eq!(requests[0].0, "thread/start");
+        assert_eq!(requests[0].1["approvalsReviewer"], "auto_review");
+        assert_eq!(requests[1].0, "turn/start");
+        assert_eq!(requests[1].1["approvalsReviewer"], "auto_review");
+    }
+
+    #[tokio::test]
+    async fn create_task_persists_the_applied_model_and_reasoning_effort() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-model-settings";
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "model/list",
+                current_model_list_response(),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/start",
+                json!({
+                    "thread": {
+                        "id": thread_id,
+                        "preview": "Model settings regression",
+                        "status": { "type": "idle" },
+                        "cwd": root.path().display().to_string(),
+                        "createdAt": 1.0,
+                        "updatedAt": 1.0,
+                        "turns": []
+                    },
+                    "model": "gpt-5.6-luna",
+                    "reasoningEffort": "medium"
+                }),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "turn/start",
+                json!({
+                    "turn": {
+                        "id": "turn-model-settings",
+                        "items": [],
+                        "status": "inProgress"
+                    }
+                }),
+            ),
+        ]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+
+        let response = create_task(
+            State(state.clone()),
+            Json(CreateTaskRequest {
+                prompt: "Use xhigh".to_string(),
+                images: Vec::new(),
+                cwd: None,
+                model: Some("gpt-5.6-sol".to_string()),
+                effort: Some("xhigh".to_string()),
+                permission_mode: None,
+            }),
+        )
+        .await
+        .expect("task creation succeeds");
+
+        assert_eq!(response.0.model.as_deref(), Some("gpt-5.6-sol"));
+        assert_eq!(response.0.reasoning_effort.as_deref(), Some("xhigh"));
+        let stored = thread_store_get(&state, thread_id)
+            .await
+            .unwrap()
+            .expect("managed thread settings");
+        assert_eq!(stored.model.as_deref(), Some("gpt-5.6-sol"));
+        assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
+        let requests = client.mock_requests().await;
+        assert_eq!(requests[2].0, "turn/start");
+        assert_eq!(requests[2].1["model"], "gpt-5.6-sol");
+        assert_eq!(requests[2].1["effort"], "xhigh");
+    }
+
+    #[tokio::test]
+    async fn cached_task_detail_restores_managed_thread_model_settings() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-cached-model-settings";
+        let client = CodexThreadClient::mock(Vec::new());
+        let state = app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        thread_store_update_composer_settings(
+            &state,
+            thread_id,
+            Some("gpt-5.6-sol"),
+            Some("xhigh"),
+        )
+        .await
+        .unwrap();
+
+        let (detail, revision) = cached_task_detail(&state, thread_id).await.unwrap();
+
+        assert_eq!(revision, 0);
+        assert!(detail.history_loading);
+        assert_eq!(detail.model.as_deref(), Some("gpt-5.6-sol"));
+        assert_eq!(detail.reasoning_effort.as_deref(), Some("xhigh"));
+    }
+
+    #[tokio::test]
+    async fn canonical_resume_refreshes_cached_model_settings() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-canonical-model-settings";
+        let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+            "thread/resume",
+            json!({
+                "thread": {
+                    "id": thread_id,
+                    "preview": "Canonical model settings",
+                    "status": { "type": "idle" },
+                    "cwd": root.path().display().to_string(),
+                    "createdAt": 1.0,
+                    "updatedAt": 2.0,
+                    "turns": []
+                },
+                "model": "gpt-5.6-luna",
+                "reasoningEffort": "medium",
+                "initialTurnsPage": {
+                    "data": [],
+                    "nextCursor": null,
+                    "backwardsCursor": null
+                }
+            }),
+        )]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        thread_store_update_composer_settings(
+            &state,
+            thread_id,
+            Some("gpt-5.6-sol"),
+            Some("xhigh"),
+        )
+        .await
+        .unwrap();
+
+        let snapshot = state
+            .codex_sessions
+            .ensure_subscribed(&client, 1, thread_id)
+            .await
+            .unwrap();
+        let detail = task_detail_from_snapshot(&state, snapshot, None)
+            .await
+            .unwrap();
+
+        assert_eq!(detail.model.as_deref(), Some("gpt-5.6-luna"));
+        assert_eq!(detail.reasoning_effort.as_deref(), Some("medium"));
+        let stored = thread_store_get(&state, thread_id).await.unwrap().unwrap();
+        assert_eq!(stored.model.as_deref(), Some("gpt-5.6-luna"));
+        assert_eq!(stored.reasoning_effort.as_deref(), Some("medium"));
+    }
+
+    #[tokio::test]
     async fn codex_turn_options_accepts_server_reported_reasoning_efforts() {
         let client = CodexThreadClient::mock(vec![
             crate::codex_app_server::MockCodexResponse::ok(
@@ -5265,6 +5574,74 @@ mod tests {
 
         assert_eq!(response.0.tasks.len(), 1);
         assert_eq!(response.0.tasks[0].status, "idle");
+    }
+
+    #[tokio::test]
+    async fn task_prompt_persists_the_applied_model_and_reasoning_effort() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-follow-up-model-settings";
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/resume",
+                resumed_task(thread_id, root.path()),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "model/list",
+                current_model_list_response(),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "turn/start",
+                json!({
+                    "turn": {
+                        "id": "turn-follow-up-model-settings",
+                        "items": [],
+                        "status": "inProgress"
+                    }
+                }),
+            ),
+        ]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        thread_store_update_composer_settings(
+            &state,
+            thread_id,
+            Some("gpt-5.6-luna"),
+            Some("medium"),
+        )
+        .await
+        .unwrap();
+
+        let response = task_prompt(
+            State(state.clone()),
+            AxumPath(thread_id.to_string()),
+            Query(TasksQuery { cursor: None }),
+            Json(TaskPromptRequest {
+                prompt: "Continue with xhigh".to_string(),
+                images: Vec::new(),
+                model: Some("gpt-5.6-sol".to_string()),
+                effort: Some("xhigh".to_string()),
+                permission_mode: None,
+                active_turn_id: None,
+            }),
+        )
+        .await
+        .expect("follow-up prompt succeeds");
+
+        assert!(!response.0.steered);
+        let stored = thread_store_get(&state, thread_id).await.unwrap().unwrap();
+        assert_eq!(stored.model.as_deref(), Some("gpt-5.6-sol"));
+        assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
+        let requests = client.mock_requests().await;
+        assert_eq!(
+            requests
+                .iter()
+                .map(|(method, _)| method.as_str())
+                .collect::<Vec<_>>(),
+            ["thread/resume", "model/list", "turn/start"]
+        );
+        assert_eq!(requests[2].1["model"], "gpt-5.6-sol");
+        assert_eq!(requests[2].1["effort"], "xhigh");
     }
 
     #[tokio::test]
@@ -6421,6 +6798,8 @@ mod tests {
                 pending_approvals: Vec::new(),
                 history_loading: false,
                 permission_mode: Some(CodexPermissionMode::AskForApproval),
+                model: Some("gpt-test".to_string()),
+                reasoning_effort: Some("xhigh".to_string()),
             },
             reason: "stream-bootstrap",
         };

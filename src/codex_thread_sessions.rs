@@ -44,6 +44,8 @@ pub struct ThreadSessionSnapshot {
     pub external_activity_turn_id: Option<String>,
     pub external_activity_started_ms: Option<u64>,
     pub permission_mode: Option<CodexPermissionMode>,
+    pub model: Option<String>,
+    pub reasoning_effort: Option<String>,
 }
 
 impl ThreadSessionSnapshot {
@@ -120,6 +122,8 @@ struct ThreadSessionState {
     external_activity_turn_id: Option<String>,
     external_activity_started_ms: Option<u64>,
     permission_mode: Option<CodexPermissionMode>,
+    model: Option<String>,
+    reasoning_effort: Option<String>,
 }
 
 impl Default for ThreadSessionState {
@@ -143,6 +147,8 @@ impl Default for ThreadSessionState {
             external_activity_turn_id: None,
             external_activity_started_ms: None,
             permission_mode: None,
+            model: None,
+            reasoning_effort: None,
         }
     }
 }
@@ -399,6 +405,8 @@ impl CodexThreadSessions {
         generation: u64,
         thread: CodexThread,
         permission_mode: Option<CodexPermissionMode>,
+        model: Option<String>,
+        reasoning_effort: Option<String>,
     ) {
         let entry = self.entry(&thread.id).await;
         let mut state = entry.state.lock().await;
@@ -408,6 +416,8 @@ impl CodexThreadSessions {
         state.active_turn_id = active_turn_id(&thread, None);
         state.thread = Some(thread);
         state.permission_mode = permission_mode;
+        state.model = model;
+        state.reasoning_effort = reasoning_effort;
         state.turns_page = None;
         state.runtime_lease = true;
         state.revision = state.revision.saturating_add(1);
@@ -547,6 +557,8 @@ impl CodexThreadSessions {
         thread_id: &str,
         turn: CodexTurn,
         permission_mode: Option<CodexPermissionMode>,
+        model: Option<String>,
+        reasoning_effort: Option<String>,
     ) {
         let entry = self.entry(thread_id).await;
         let mut state = entry.state.lock().await;
@@ -556,6 +568,12 @@ impl CodexThreadSessions {
         state.active_turn_id = Some(turn.id.clone());
         if permission_mode.is_some() {
             state.permission_mode = permission_mode;
+        }
+        if model.is_some() {
+            state.model = model;
+        }
+        if reasoning_effort.is_some() {
+            state.reasoning_effort = reasoning_effort;
         }
         state.runtime_lease = true;
         upsert_turn(&mut state.turns_page, turn);
@@ -883,6 +901,21 @@ fn snapshot(state: &ThreadSessionState) -> ThreadSessionSnapshot {
         external_activity_turn_id: state.external_activity_turn_id.clone(),
         external_activity_started_ms: state.external_activity_started_ms,
         permission_mode: state.permission_mode,
+        model: state.model.clone(),
+        reasoning_effort: state.reasoning_effort.clone(),
+    }
+}
+
+fn apply_thread_settings(
+    state: &mut ThreadSessionState,
+    settings: &std::collections::BTreeMap<String, serde_json::Value>,
+) {
+    state.permission_mode = Some(CodexPermissionMode::from_settings(settings));
+    if let Some(model) = settings.get("model").and_then(serde_json::Value::as_str) {
+        state.model = Some(model.to_string());
+    }
+    if let Some(reasoning_effort) = settings.get("reasoningEffort") {
+        state.reasoning_effort = reasoning_effort.as_str().map(str::to_string);
     }
 }
 
@@ -891,7 +924,7 @@ fn merge_external_resume_response(
     response: crate::codex_app_server::ThreadResumeResponse,
     base_revision: u64,
 ) -> bool {
-    state.permission_mode = Some(CodexPermissionMode::from_settings(&response.extra));
+    apply_thread_settings(state, &response.extra);
     merge_external_snapshot(
         state,
         response.thread,
@@ -983,7 +1016,7 @@ fn apply_resume_response(
     response: crate::codex_app_server::ThreadResumeResponse,
     merge_history: bool,
 ) {
-    state.permission_mode = Some(CodexPermissionMode::from_settings(&response.extra));
+    apply_thread_settings(state, &response.extra);
     let mut thread = response.thread;
     let active_turn_id = active_turn_id(&thread, response.initial_turns_page.as_ref());
     if active_turn_id.is_some() {
@@ -1021,7 +1054,7 @@ fn apply_stale_refresh_response(
     generation: u64,
     response: crate::codex_app_server::ThreadResumeResponse,
 ) {
-    state.permission_mode = Some(CodexPermissionMode::from_settings(&response.extra));
+    apply_thread_settings(state, &response.extra);
     let previous_status = state.thread.as_ref().map(|thread| thread.status.clone());
     let mut thread = response.thread;
     if let Some(current) = state.thread.take() {
