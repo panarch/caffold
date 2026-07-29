@@ -288,6 +288,68 @@ test("managed tasks restore their last applied model and reasoning effort", asyn
   });
 });
 
+test("keeps a tall follow-up model menu inside the conversation pane", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "desktop uses the anchored model popover");
+  await stubComposerApis(page);
+  await page.unroute("**/api/codex/models");
+  await page.route("**/api/codex/models", (route) =>
+    route.fulfill({
+      json: {
+        data: Array.from({ length: 12 }, (_, index) => ({
+          id: `gpt-test-${index}`,
+          model: `gpt-test-${index}`,
+          displayName: `GPT Test ${index}`,
+          description: `Test model ${index} with enough detail to make the menu tall`,
+          hidden: false,
+          supportedReasoningEfforts: [
+            { value: "medium", label: "Medium" },
+            { value: "xhigh", label: "XHigh" },
+          ],
+          defaultReasoningEffort: "medium",
+          inputModalities: ["text"],
+          supportsPersonality: false,
+          isDefault: index === 0,
+        })),
+        nextCursor: null,
+      },
+    }),
+  );
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({
+      json: taskDetail({
+        model: "gpt-test-0",
+        reasoningEffort: "medium",
+      }),
+    }),
+  );
+  await page.route("**/api/tasks/thread-1/stream*", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: ": ready\n\n",
+    }),
+  );
+
+  await page.goto("/tasks/thread-1");
+  const conversationPane = page.locator(".task-conversation-pane");
+  const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
+  await form
+    .getByRole("button", { name: "Choose model and reasoning" })
+    .click();
+  const popover = form.getByRole("menu", { name: "Model and reasoning options" });
+  const [paneBox, popoverBox] = await Promise.all([
+    conversationPane.boundingBox(),
+    popover.boundingBox(),
+  ]);
+  expect(paneBox).not.toBeNull();
+  expect(popoverBox).not.toBeNull();
+  expect(popoverBox.y).toBeGreaterThanOrEqual(paneBox.y);
+
+  await form.locator('[data-effort="medium"]').click();
+  await expect(form.locator('input[name="effort"]')).toHaveValue("medium");
+});
+
 test("active turns lock the approval mode until the next turn", async ({ page }) => {
   await stubComposerApis(page);
   await page.route("**/api/tasks/thread-1", (route) =>

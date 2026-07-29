@@ -6,6 +6,7 @@ import { resolveCodexBin } from "./codex-bin.mjs";
 
 const PASTED_IMAGE_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+const liveThreadIds = new Set();
 
 function runCodex(args, { timeout = 120_000, maxBuffer = 4 * 1024 * 1024 } = {}) {
   return new Promise((resolve, reject) => {
@@ -167,6 +168,29 @@ async function createExternalTask(prompt) {
   return codexThreadId(result.stdout);
 }
 
+async function archiveLiveThread(request, threadId) {
+  const response = await request.post(`/api/tasks/${threadId}/archive`);
+  if (response.status() === 204) {
+    liveThreadIds.delete(threadId);
+    return;
+  }
+
+  const body = await response.text();
+  if (body.includes("task_not_managed")) {
+    await runCodex(["archive", threadId]);
+    liveThreadIds.delete(threadId);
+    return;
+  }
+
+  throw new Error(`failed to archive live thread ${threadId}: HTTP ${response.status()} ${body}`);
+}
+
+test.afterEach(async ({ request }) => {
+  for (const threadId of [...liveThreadIds]) {
+    await archiveLiveThread(request, threadId);
+  }
+});
+
 async function submitPromptAndExpectAccepted(page, threadId, submit) {
   const responsePromise = page.waitForResponse((response) => {
     const url = new URL(response.url());
@@ -198,7 +222,7 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
   const externalReply = `caffold-live-external-${marker}`;
   const externalCommandOutput = `caffold-live-external-command-${marker}`;
 
-  await page.goto(`/tasks?cwd=${encodeURIComponent(cwd)}`);
+  await page.goto(`/tasks/new?cwd=${encodeURIComponent(cwd)}`);
   const tasksPage = page.locator("caffold-tasks-page");
   const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
   await expect(newTaskForm).toBeVisible();
@@ -214,9 +238,10 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
     /^data:image\/png;base64,/,
   );
   await newTaskPrompt.press("Enter");
-  await expect(page).toHaveURL(/\/tasks\/[^?]+\?cwd=/);
+  await expect(page).toHaveURL(/\/tasks\/[^?]+$/);
   const threadId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
   expect(threadId).toBeTruthy();
+  liveThreadIds.add(threadId);
 
   const assistantMessages = tasksPage.locator(
     '.task-message[data-message-role="assistant"]',
@@ -231,14 +256,14 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
     ),
   ).toBeVisible();
 
-  await page.goto(`/tasks?cwd=${encodeURIComponent(cwd)}`);
+  await page.goto("/tasks");
   const createdTask = tasksPage.locator(`.task-row[data-thread-id="${threadId}"]`);
   await expect(createdTask).toBeVisible();
   await createdTask.click();
   await expect(assistantMessages.filter({ hasText: initialReply })).toBeVisible();
 
   const secondPage = await page.context().newPage();
-  await secondPage.goto(`/tasks/${threadId}?cwd=${encodeURIComponent(cwd)}`);
+  await secondPage.goto(`/tasks/${threadId}`);
   await expect(
     secondPage
       .locator('caffold-tasks-page .task-message[data-message-role="assistant"]')
@@ -327,7 +352,7 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
     { timeout: 60_000 },
   );
 
-  await page.goto(`/tasks?cwd=${encodeURIComponent(cwd)}`);
+  await page.goto("/tasks");
   await expect(createdTask).toBeVisible();
   await createdTask.click();
   if (await activeTurn.isVisible({ timeout: 2_000 }).catch(() => false)) {
@@ -360,7 +385,7 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
   await completedWorkDetails.locator(":scope > summary").click();
   await expect(completedWork).toContainText(commandOutput);
 
-  await page.goto(`/tasks?cwd=${encodeURIComponent(cwd)}`);
+  await page.goto("/tasks");
   await expect(createdTask).toHaveAttribute("data-task-status", "idle");
   await createdTask.click();
   await expect(markdownMessage).toBeVisible();
@@ -405,19 +430,17 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
     timeout: 15_000,
   });
 
-  const archiveResponse = await page.request.post(`/api/tasks/${threadId}/archive`);
-  expect(archiveResponse.status()).toBe(204);
+  await archiveLiveThread(page.request, threadId);
   await expect(
     tasksPage.locator(`.task-row[data-thread-id="${threadId}"]`),
   ).toHaveCount(0, { timeout: 5_000 });
-  await page.goto(`/tasks?cwd=${encodeURIComponent(cwd)}`);
+  await page.goto("/tasks");
   await expect(tasksPage.locator(`.task-row[data-thread-id="${threadId}"]`)).toHaveCount(0);
 });
 
 test("opens an external completed task and keeps follow-ups and activity canonical", async ({
   page,
 }) => {
-  const cwd = liveCwd();
   const marker = `${Date.now()}`;
   const initialReply = `caffold-external-initial-${marker}`;
   const clickReply = `caffold-external-click-${marker}`;
@@ -428,13 +451,17 @@ test("opens an external completed task and keeps follow-ups and activity canonic
   const threadId = await createExternalTask(
     `Reply with exactly ${initialReply}. Do not modify files or run commands.`,
   );
+  liveThreadIds.add(threadId);
 
-  await page.goto(`/tasks/${threadId}?cwd=${encodeURIComponent(cwd)}`);
+  await page.goto(`/tasks/${threadId}`);
   const tasksPage = page.locator("caffold-tasks-page");
   const assistantMessages = tasksPage.locator(
     '.task-message[data-message-role="assistant"][data-message-phase="final"]',
   );
   const userMessages = tasksPage.locator('.task-message[data-message-role="user"]');
+  const continueButton = tasksPage.getByRole("button", { name: "Continue in Caffold" });
+  await expect(continueButton).toBeVisible();
+  await continueButton.click();
   await expect(assistantMessages.filter({ hasText: initialReply })).toBeVisible();
 
   const followUpForm = tasksPage.locator(
@@ -544,11 +571,10 @@ test("opens an external completed task and keeps follow-ups and activity canonic
   await expect(assistantMessages.filter({ hasText: ambientReply })).toBeVisible();
   await expect(tasksPage).not.toContainText("automatically supplied ambient UI state");
 
-  const archiveResponse = await page.request.post(`/api/tasks/${threadId}/archive`);
-  expect(archiveResponse.status()).toBe(204);
+  await archiveLiveThread(page.request, threadId);
   await expect(tasksPage.locator(`.task-row[data-thread-id="${threadId}"]`)).toHaveCount(0, {
     timeout: 5_000,
   });
-  await page.goto(`/tasks?cwd=${encodeURIComponent(cwd)}`);
+  await page.goto("/tasks");
   await expect(tasksPage.locator(`.task-row[data-thread-id="${threadId}"]`)).toHaveCount(0);
 });

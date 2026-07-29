@@ -3958,8 +3958,11 @@ class CaffoldTasksPage extends HTMLElement {
 
     const buttonRect = button.getBoundingClientRect();
     const opensUpward = Boolean(popover.closest(".task-follow-up-form"));
+    const conversationRect = popover
+      .closest(".task-conversation-pane")
+      ?.getBoundingClientRect();
     const availableHeight = opensUpward
-      ? buttonRect.top - 18
+      ? buttonRect.top - (conversationRect?.top ?? 0) - 18
       : window.innerHeight - buttonRect.bottom - 18;
     popover.style.maxHeight = `${Math.max(0, Math.floor(availableHeight))}px`;
   }

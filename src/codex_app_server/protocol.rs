@@ -6,7 +6,7 @@ use serde_json::Value;
 use serde_json::json;
 
 #[allow(dead_code)]
-pub const SUPPORTED_CODEX_CLI_VERSION: &str = "0.145.0";
+pub const MINIMUM_SUPPORTED_CODEX_CLI_VERSION: &str = "0.146.0";
 
 pub(crate) const INITIALIZE: &str = "initialize";
 pub(crate) const INITIALIZED: &str = "initialized";
@@ -64,6 +64,7 @@ pub enum SortDirection {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[allow(clippy::enum_variant_names)]
 pub enum ThreadSortKey {
     CreatedAt,
     UpdatedAt,

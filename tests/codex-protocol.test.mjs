@@ -14,7 +14,47 @@ import test from "node:test";
 
 import { resolveCodexBin } from "./live/codex-bin.mjs";
 
-const SUPPORTED_VERSION = "0.145.0";
+const MINIMUM_SUPPORTED_VERSION = "0.146.0";
+
+function parseCodexVersion(versionOutput) {
+  const match =
+    /\bcodex-cli\s+(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?\b/.exec(
+      versionOutput,
+    );
+  assert.ok(match, `could not parse Codex CLI version from: ${versionOutput.trim()}`);
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3]),
+    prerelease: match[4] ?? null,
+  };
+}
+
+function compareCodexVersions(left, right) {
+  for (const field of ["major", "minor", "patch"]) {
+    if (left[field] !== right[field]) {
+      return left[field] < right[field] ? -1 : 1;
+    }
+  }
+  if (left.prerelease === right.prerelease) {
+    return 0;
+  }
+  if (left.prerelease === null) {
+    return 1;
+  }
+  if (right.prerelease === null) {
+    return -1;
+  }
+  return left.prerelease.localeCompare(right.prerelease, "en", {
+    numeric: true,
+  });
+}
+
+function supportsCodexVersion(versionOutput) {
+  const installed = parseCodexVersion(versionOutput);
+  const minimum = parseCodexVersion(`codex-cli ${MINIMUM_SUPPORTED_VERSION}`);
+  return compareCodexVersions(installed, minimum) >= 0;
+}
 
 function runCodex(args) {
   const result = spawnSync(resolveCodexBin(), args, {
@@ -87,12 +127,24 @@ test("live Codex binary resolution matches the backend install priorities", () =
   }
 });
 
+test("Codex version gate accepts compatible upgrades and rejects older baselines", () => {
+  assert.equal(supportsCodexVersion("codex-cli 0.146.0"), true);
+  assert.equal(supportsCodexVersion("codex-cli 0.147.0"), true);
+  assert.equal(supportsCodexVersion("codex-cli 1.0.0"), true);
+  assert.equal(supportsCodexVersion("codex-cli 0.146.0-alpha.1"), false);
+  assert.equal(supportsCodexVersion("codex-cli 0.145.9"), false);
+  assert.throws(() => supportsCodexVersion("codex-cli unknown"), /could not parse/);
+});
+
 test(
   "installed Codex app-server protocol keeps the required Caffold contract",
   { skip: process.env.CAFFOLD_CODEX_PROTOCOL_LIVE !== "1" },
   () => {
     const version = runCodex(["--version"]);
-    assert.match(version, new RegExp(`\\b${SUPPORTED_VERSION.replaceAll(".", "\\.")}\\b`));
+    assert.ok(
+      supportsCodexVersion(version),
+      `Codex CLI ${version.trim()} is older than the supported ${MINIMUM_SUPPORTED_VERSION} baseline`,
+    );
 
     const outputDirectory = mkdtempSync(join(tmpdir(), "caffold-codex-protocol-"));
     try {
