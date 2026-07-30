@@ -31,8 +31,9 @@ Missing optional dependencies do not prevent the server from starting. The menu 
 
 - Caffold listens on `http://127.0.0.1:5178`.
 - When Tailscale is available, the app configures tailnet-only Tailscale Serve on HTTPS port 443.
-- The default browser opens after the local health check succeeds.
-- The menu bar icon reopens Caffold, configures the server, exposes logs, retries Tailscale Serve, and quits the server.
+- Startup keeps the server in the menu bar without opening the default browser.
+- `Open Caffold` in the menu opens the browser; reopening the running app does the same.
+- The menu bar icon also configures the server, exposes logs, retries Tailscale Serve, and quits the server.
 - Data is stored in `~/Library/Application Support/Caffold/data`.
 - Logs are stored in `~/Library/Logs/Caffold/caffold.log`.
 

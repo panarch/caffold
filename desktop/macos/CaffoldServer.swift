@@ -83,7 +83,6 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.configureTailscaleServe()
                 }
                 self.refreshSystemStatus()
-                self.openCaffold()
             } else {
                 self.startServer()
             }
@@ -484,7 +483,6 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             refreshSystemStatus()
         }
-        openCaffold()
     }
 
     private func checkHealth(completion: @escaping (Bool) -> Void) {
