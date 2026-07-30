@@ -25,6 +25,33 @@ export function canonicalTaskState(
   };
 }
 
+export async function taskPresentation(locator) {
+  return locator.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const box = element.getBoundingClientRect();
+    return {
+      alignItems: style.alignItems,
+      animationName: style.animationName,
+      backgroundColor: style.backgroundColor,
+      borderColor: style.borderColor,
+      borderRadius: style.borderRadius,
+      borderWidth: style.borderWidth,
+      color: style.color,
+      cssHeight: style.height,
+      cssWidth: style.width,
+      display: style.display,
+      fontSize: style.fontSize,
+      height: Math.round(box.height),
+      lineHeight: style.lineHeight,
+      minHeight: style.minHeight,
+      overflow: style.overflow,
+      overflowWrap: style.overflowWrap,
+      padding: style.padding,
+      width: Math.round(box.width),
+    };
+  });
+}
+
 export async function pasteImage(locator, name = "clipboard-image.png") {
   await locator.evaluate(
     (textarea, { base64, fileName }) => {
@@ -131,50 +158,6 @@ export async function openHeaderActionGroup(page, group) {
   await expect(popover).toBeVisible();
 
   return popover;
-}
-
-export function mockCodexStatus(overrides = {}) {
-  return {
-    available: true,
-    codexCliAvailable: true,
-    appServerAvailable: true,
-    message: null,
-    account: {
-      accountType: "chatgpt",
-      email: "user@example.com",
-      planType: "pro",
-    },
-    requiresOpenaiAuth: true,
-    rateLimits: {
-      rateLimitResetCredits: {
-        availableCount: 3,
-      },
-      rateLimits: {
-        primary: {
-          usedPercent: 83,
-          resetsAt: 1914709200,
-          windowDurationMins: 300,
-        },
-        secondary: {
-          usedPercent: 31,
-          resetsAt: 1915243200,
-          windowDurationMins: 10080,
-        },
-      },
-    },
-    usage: {
-      summary: {
-        lifetimeTokens: 1234567,
-      },
-    },
-    appServer: {
-      userAgent: "Codex Desktop/0.142.3",
-      codexHome: "/Users/example/.codex",
-      platformFamily: "unix",
-      platformOs: "macos",
-    },
-    ...overrides,
-  };
 }
 
 export async function mockCodexModels(page) {

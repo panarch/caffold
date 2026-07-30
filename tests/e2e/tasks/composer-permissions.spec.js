@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { pasteImage } from "./support/task-fixtures.js";
+import { pasteImage } from "../support/task-fixtures.js";
 
 const PERMISSIONS = {
   defaultMode: "approveForMe",
