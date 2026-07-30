@@ -258,6 +258,8 @@ pub enum CodexThreadError {
     StartFailed(String),
     #[error("Codex app-server thread is unavailable: {0}")]
     ThreadUnavailable(String),
+    #[error("Codex app-server active turn is unavailable: {0}")]
+    TurnUnavailable(String),
     #[allow(dead_code)]
     #[error("Codex app-server subscription was lost: {0}")]
     SubscriptionLost(String),
@@ -283,6 +285,10 @@ impl CodexThreadError {
 
     pub fn is_connection_failure(&self) -> bool {
         matches!(self, Self::ProcessUnavailable)
+    }
+
+    pub fn is_turn_unavailable(&self) -> bool {
+        matches!(self, Self::TurnUnavailable(_))
     }
 }
 
@@ -857,6 +863,8 @@ fn classify_json_rpc_error(method: Option<&str>, value: &Value) -> CodexThreadEr
         CodexThreadError::InvalidParams(error.message)
     } else if error.code == -32600 && matches!(method, Some(THREAD_RESUME | THREAD_TURNS_LIST)) {
         CodexThreadError::ThreadUnavailable(error.message)
+    } else if error.code == -32600 && matches!(method, Some(TURN_STEER)) {
+        CodexThreadError::TurnUnavailable(error.message)
     } else {
         CodexThreadError::Protocol(format!("{} (code {})", error.message, error.code))
     }
@@ -1312,6 +1320,23 @@ mod tests {
             error,
             CodexThreadError::ThreadUnavailable(message)
                 if message == "no rollout found for thread id example"
+        ));
+    }
+
+    #[test]
+    fn classifies_stale_active_turn_by_request_method() {
+        let error = classify_json_rpc_error(
+            Some(TURN_STEER),
+            &json!({
+                "code": -32600,
+                "message": "no active turn to steer"
+            }),
+        );
+
+        assert!(matches!(
+            error,
+            CodexThreadError::TurnUnavailable(message)
+                if message == "no active turn to steer"
         ));
     }
 

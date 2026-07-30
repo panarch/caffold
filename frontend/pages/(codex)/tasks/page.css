@@ -529,7 +529,8 @@ caffold-tasks-page .task-row .task-status-chip[data-status="running"] {
   background: #e7f4ee;
 }
 
-caffold-tasks-page .task-row .task-status-chip[data-status="waiting_for_approval"] {
+caffold-tasks-page .task-row .task-status-chip[data-status="waiting_for_approval"],
+caffold-tasks-page .task-row .task-status-chip[data-status="waiting_on_user_input"] {
   background: #fff4d9;
 }
 
@@ -1343,7 +1344,8 @@ caffold-tasks-page .task-status-chip[data-status="syncing"] {
   color: var(--accent);
 }
 
-caffold-tasks-page .task-status-chip[data-status="waiting_for_approval"] {
+caffold-tasks-page .task-status-chip[data-status="waiting_for_approval"],
+caffold-tasks-page .task-status-chip[data-status="waiting_on_user_input"] {
   border-color: #dfc58f;
   background: #fff8e7;
   color: #7f5600;
@@ -2153,7 +2155,8 @@ caffold-tasks-page [data-status="interrupted"] {
   color: var(--danger);
 }
 
-caffold-tasks-page [data-status="waiting_for_approval"] {
+caffold-tasks-page [data-status="waiting_for_approval"],
+caffold-tasks-page [data-status="waiting_on_user_input"] {
   color: #956000;
 }
 

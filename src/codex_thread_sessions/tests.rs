@@ -1922,7 +1922,7 @@ async fn connection_recovery_resubscribes_only_leased_sessions() {
         .await
         .expect("viewer");
 
-    sessions
+    let _ = sessions
         .connection_lost(1, "process exited".to_string())
         .await;
     let failures = sessions.resubscribe_leased(&recovered_client, 2).await;
@@ -1956,7 +1956,7 @@ async fn connection_recovery_does_not_serialize_unrelated_thread_resumes() {
         .await
         .expect("second viewer");
 
-    sessions
+    let _ = sessions
         .connection_lost(1, "process exited".to_string())
         .await;
     let recovered_client = CodexThreadClient::mock(vec![

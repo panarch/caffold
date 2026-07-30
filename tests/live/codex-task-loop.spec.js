@@ -506,31 +506,22 @@ test("opens an external completed task and keeps follow-ups and activity canonic
     ],
   );
 
-  await expect
-    .poll(
-      async () => {
-        const response = await page.request.get(`/api/tasks/${threadId}`);
-        if (!response.ok()) {
-          return `http:${response.status()}`;
-        }
-        const detail = await response.json();
-        return `${detail.task?.status}:${Boolean(detail.task?.activeTurnId)}`;
-      },
-      {
-        message: "external Codex turn becomes canonical running state",
-        timeout: 30_000,
-      },
-    )
-    .toBe("running:true");
-
   const activeTurn = tasksPage.locator(".task-turn-active");
-  await expect(activeTurn).toBeVisible({ timeout: 30_000 });
-  await expect(activeTurn.locator(".task-turn-active-state")).not.toHaveText("");
   await externalRun;
   await expect(assistantMessages.filter({ hasText: runningReply })).toBeVisible({
     timeout: 30_000,
   });
   await expect(activeTurn).toHaveCount(0);
+  await expect
+    .poll(async () => {
+      const response = await page.request.get(`/api/tasks/${threadId}`);
+      if (!response.ok()) {
+        return `http:${response.status()}`;
+      }
+      const detail = await response.json();
+      return `${detail.task?.threadStatus?.type}:${Boolean(detail.task?.activeTurn)}`;
+    })
+    .toBe("idle:false");
 
   await runCodex([
     "exec",

@@ -75,6 +75,8 @@ function taskDetail({
   reasoningEffort = null,
 } = {}) {
   return {
+    threadId: "thread-1",
+    syncState: "ready",
     managed: true,
     revision: 1,
     task: {
@@ -82,7 +84,9 @@ function taskDetail({
       threadId: "thread-1",
       title: running ? "Running task" : "New task",
       preview: running ? "Working" : "Ready",
-      status: running ? "running" : "idle",
+      threadStatus: { type: running ? "active" : "idle", activeFlags: [] },
+      latestTurnStatus: running ? "inProgress" : null,
+      activeTurn: running ? { id: "turn-1", startedAtMs: 1 } : null,
       cwd: "src",
       cwdPath: "src",
       relativeCwd: ".",
@@ -90,8 +94,6 @@ function taskDetail({
       createdMs: 1,
       updatedMs: 2,
       recencyMs: 2,
-      activeTurnId: running ? "turn-1" : null,
-      activeTurnStartedMs: running ? 1 : null,
       lastEventSummary: null,
       unseen: false,
     },
@@ -408,7 +410,7 @@ test("steering an active turn preserves its existing work clock", async ({ page 
   await stubComposerApis(page);
   const startedMs = Date.now() - 65_000;
   const detail = taskDetail({ running: true });
-  detail.task.activeTurnStartedMs = startedMs;
+  detail.task.activeTurn.startedAtMs = startedMs;
   detail.events = [
     {
       id: "turn-1:started",
@@ -478,4 +480,169 @@ test("steering an active turn preserves its existing work clock", async ({ page 
     "data-active-turn-started-ms",
     `${startedMs}`,
   );
+});
+
+test("raw active flags prioritize approval over user input", async ({ page }) => {
+  await stubComposerApis(page);
+  const detail = taskDetail({ running: true });
+  detail.task.threadStatus.activeFlags = [
+    "waitingOnUserInput",
+    "waitingOnApproval",
+  ];
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: detail }),
+  );
+
+  await page.goto("/tasks/thread-1?cwd=src");
+
+  await expect(
+    page.locator(
+      '.task-detail-summary .task-status-chip[data-status="waiting_for_approval"]',
+    ),
+  ).toBeVisible();
+  await expect(page.locator(".task-turn-active-state")).toHaveText(
+    "Waiting for approval",
+  );
+});
+
+test("active task without a canonical turn omits controls and elapsed time", async ({
+  page,
+}) => {
+  await stubComposerApis(page);
+  const detail = taskDetail({ running: true });
+  detail.task.latestTurnStatus = null;
+  detail.task.activeTurn = null;
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: detail }),
+  );
+
+  await page.goto("/tasks/thread-1?cwd=src");
+
+  await expect(
+    page.locator('.task-detail-summary .task-status-chip[data-status="running"]'),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Interrupt" })).toHaveCount(0);
+  const active = page.locator(".task-turn-active");
+  await expect(active).toBeVisible();
+  await expect(active).not.toHaveAttribute("data-active-turn-started-ms");
+  await expect(active.locator(".task-turn-active-duration")).toHaveText("Working");
+});
+
+test("loading detail accepts a canonical task sync without a synthetic task", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.EventSource = class MockEventSource {
+      constructor(url) {
+        this.url = url;
+        this.listeners = new Map();
+        if (url.includes("/api/tasks/thread-1/stream")) {
+          window.__taskDetailSource = this;
+        } else if (url.startsWith("/api/tasks/stream")) {
+          window.__taskListSource = this;
+        }
+      }
+
+      addEventListener(type, listener) {
+        this.listeners.set(type, listener);
+      }
+
+      emit(type, payload) {
+        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
+      }
+
+      close() {}
+    };
+  });
+  await stubComposerApis(page);
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({
+      json: {
+        threadId: "thread-1",
+        syncState: "loading",
+        managed: true,
+        revision: 0,
+        task: null,
+        events: [],
+        eventsPage: { nextCursor: null },
+        pendingApprovals: [],
+        historyLoading: true,
+      },
+    }),
+  );
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  await expect(page.getByText("Loading task...")).toBeVisible();
+  await expect(page.locator(".task-detail")).toHaveCount(0);
+
+  const detail = taskDetail();
+  detail.revision = 2;
+  await page.evaluate((detail) => {
+    window.__taskDetailSource.emit("task-sync", {
+      threadId: detail.threadId,
+      revision: detail.revision,
+      detail,
+      reason: "canonical-bootstrap",
+    });
+  }, detail);
+
+  await expect(page.getByRole("heading", { name: "New task" })).toBeVisible();
+  await expect(page.getByText("Loading task...")).toHaveCount(0);
+
+  await page.evaluate((detail) => {
+    window.__taskListSource.emit("task-sync", {
+      threadId: detail.threadId,
+      revision: detail.revision,
+      detail: { ...detail, managed: false },
+      reason: "late-sync-after-removal",
+    });
+  }, detail);
+  await expect(
+    page.locator('.task-row[data-thread-id="thread-1"]'),
+  ).toHaveCount(0);
+
+  await page.evaluate(() => {
+    const message = {
+      threadId: "thread-1",
+      revision: 3,
+      detail: {
+        threadId: "thread-1",
+        syncState: "loading",
+        managed: true,
+        revision: 3,
+        task: null,
+        events: [],
+        eventsPage: { nextCursor: null },
+        pendingApprovals: [],
+        historyLoading: true,
+      },
+      reason: "canonical-source-error",
+      error: "Codex app-server is unavailable",
+    };
+    window.__taskDetailSource.emit("task-sync", message);
+    window.__taskListSource.emit("task-sync", message);
+  });
+
+  await expect(
+    page.getByText("Task details are temporarily unavailable."),
+  ).toBeVisible();
+  await expect(
+    page.locator(".task-load-error-message"),
+  ).toHaveText("Codex app-server is unavailable");
+  await expect(page.locator(".task-detail")).toHaveCount(0);
+  await expect(page.locator(".task-status-chip")).toHaveCount(0);
+  await expect(
+    page.locator('.task-list-section[data-task-section="managed"]'),
+  ).toContainText("Codex app-server is unavailable");
+  await expect(
+    page.locator('.task-row[data-thread-id="thread-1"]'),
+  ).toHaveCount(0);
+  await expect(
+    page.locator('[data-task-action="retry-task-detail"]'),
+  ).toHaveCount(1);
+  await expect(
+    page.locator(
+      '.task-list-section[data-task-section="managed"] [data-task-action="retry-task-list"]',
+    ),
+  ).toHaveCount(1);
 });

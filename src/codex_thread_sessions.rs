@@ -312,7 +312,6 @@ impl CodexThreadSessions {
         self.ensure_subscribed(client, generation, thread_id).await
     }
 
-    #[cfg(test)]
     pub async fn refresh_subscription(
         &self,
         client: &CodexThreadClient,
@@ -647,22 +646,26 @@ impl CodexThreadSessions {
         Ok((snapshot(&state), page))
     }
 
-    pub async fn connection_lost(&self, generation: u64, message: String) {
+    pub async fn connection_lost(&self, generation: u64, message: String) -> Vec<String> {
         let entries = self
             .entries
             .lock()
             .await
-            .values()
-            .cloned()
+            .iter()
+            .map(|(thread_id, entry)| (thread_id.clone(), entry.clone()))
             .collect::<Vec<_>>();
-        for entry in entries {
+        let mut affected = Vec::new();
+        for (thread_id, entry) in entries {
             let mut state = entry.state.lock().await;
             if state.generation == generation {
                 state.lifecycle = ThreadSessionLifecycle::Error;
                 state.client = None;
                 state.last_error = Some(message.clone());
+                state.revision = state.revision.saturating_add(1);
+                affected.push(thread_id);
             }
         }
+        affected
     }
 
     pub async fn resubscribe_leased(

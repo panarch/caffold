@@ -1,4 +1,26 @@
 import { expect, test } from "@playwright/test";
+
+function canonicalTaskState(
+  type,
+  {
+    activeFlags = [],
+    turnId = null,
+    startedAtMs = null,
+    latestTurnStatus = null,
+  } = {},
+) {
+  return {
+    threadStatus: {
+      type,
+      ...(type === "active" ? { activeFlags } : {}),
+    },
+    latestTurnStatus,
+    activeTurn:
+      type === "active" && turnId
+        ? { id: turnId, startedAtMs }
+        : null,
+  };
+}
 import { execFileSync } from "node:child_process";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -1032,10 +1054,9 @@ test("loads additional task-list pages only after a cursor request", async ({ pa
   const task = (threadId, title, updatedMs) => ({
     id: threadId,
     threadId,
-    activeTurnId: null,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title,
     preview: `${title} preview`,
-    status: "completed",
     cwd: "tests/fixtures/home",
     cwdPath: "tests/fixtures/home",
     relativeCwd: "tests/fixtures/home",
@@ -1093,10 +1114,9 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   const task = {
     id: threadId,
     threadId,
-    activeTurnId: null,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title: "Global task",
     preview: "Hello from a cwd-backed task",
-    status: "completed",
     cwd: "tests/fixtures/home",
     cwdPath: "tests/fixtures/home",
     relativeCwd: "tests/fixtures/home",
@@ -1478,10 +1498,9 @@ test("keeps a large task usable while conversation history is loading", async ({
   const task = {
     id: threadId,
     threadId,
-    activeTurnId: null,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title: "Large task history",
     preview: "Most recent response",
-    status: "completed",
     cwd: "tests/fixtures/home",
     cwdPath: "tests/fixtures/home",
     relativeCwd: "tests/fixtures/home",
@@ -1612,10 +1631,9 @@ test("recovers task detail and prompt submission across bootstrap races", async 
   const taskRecord = (threadId, title) => ({
     id: threadId,
     threadId,
-    activeTurnId: null,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title,
     preview: `${title} response`,
-    status: "completed",
     cwd: "src",
     cwdPath: "src",
     relativeCwd: "",
@@ -1822,10 +1840,9 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
   const now = 1_767_300_000_000;
   const taskRecord = (overrides) => ({
     id: overrides.threadId,
-    activeTurnId: null,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title: overrides.title,
     preview: `${overrides.title} preview`,
-    status: "completed",
     cwd: overrides.cwd,
     cwdPath: overrides.cwd,
     relativeCwd: overrides.relativeCwd ?? "",
@@ -1864,8 +1881,10 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
       threadId: "thread_feature",
       title: "Feature worktree task",
       cwd: "worktrees/feature",
-      status: "running",
-      activeTurnId: "turn_feature",
+      ...canonicalTaskState("active", {
+        turnId: "turn_feature",
+        latestTurnStatus: "inProgress",
+      }),
       worktree: {
         rootPath: "worktrees/feature",
         repositoryRootPath: "src",
@@ -1880,7 +1899,10 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
       threadId: "thread_docs",
       title: "Documentation directory task with an intentionally long title",
       cwd: "docs",
-      status: "waiting_for_approval",
+      ...canonicalTaskState("active", {
+        activeFlags: ["waitingOnApproval"],
+        latestTurnStatus: "inProgress",
+      }),
       updatedMs: now + 100,
     }),
   ];
@@ -2144,10 +2166,9 @@ test("keeps the Tasks list DOM stable while opening a managed task", async ({ pa
     {
       id: "thread_dom_stability",
       threadId: "thread_dom_stability",
-      activeTurnId: null,
+      ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
       title: "DOM stability task",
       preview: "DOM stability task preview",
-      status: "completed",
       cwd: "src",
       cwdPath: "src",
       relativeCwd: "",
@@ -2161,10 +2182,9 @@ test("keeps the Tasks list DOM stable while opening a managed task", async ({ pa
     {
       id: "thread_dom_sibling",
       threadId: "thread_dom_sibling",
-      activeTurnId: null,
+      ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
       title: "DOM sibling task",
       preview: "DOM sibling task preview",
-      status: "completed",
       cwd: "src",
       cwdPath: "src",
       relativeCwd: "",
@@ -2306,10 +2326,9 @@ test("groups Tasks by repository without worktree accordions", async ({ page }, 
   const task = (threadId, title, worktree, updatedMs) => ({
     id: threadId,
     threadId,
-    activeTurnId: null,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title,
     preview: `${title} preview`,
-    status: "completed",
     cwd: worktree?.rootPath ?? "notes",
     cwdPath: worktree?.rootPath ?? "notes",
     relativeCwd: "",
@@ -2403,7 +2422,7 @@ test("groups Tasks by repository without worktree accordions", async ({ page }, 
   const featureTask = groups.nth(0).locator(
     '.task-row[data-thread-id="thread_gluesql_feature"]',
   );
-  await expect(featureTask).toHaveAttribute("data-task-status", "completed");
+  await expect(featureTask).toHaveAttribute("data-task-status", "idle");
   await expect(featureTask.locator(".task-status-spinner")).toHaveCount(0);
   await page.evaluate(() => {
     window.__taskListEventSource.emit("task-event", {
@@ -2418,16 +2437,30 @@ test("groups Tasks by repository without worktree accordions", async ({ page }, 
       },
     });
   });
-  await expect(
-    featureTask,
-  ).toHaveAttribute("data-task-status", "running");
-  await expect(featureTask.locator(".task-status-spinner")).toBeVisible();
+  await expect(featureTask).toHaveAttribute("data-task-status", "idle");
+  await expect(featureTask.locator(".task-status-spinner")).toHaveCount(0);
   tasks[0] = {
     ...tasks[0],
-    status: "running",
-    activeTurnId: "turn_elsewhere",
-    activeTurnStartedMs: now + 500,
+    ...canonicalTaskState("active", {
+      turnId: "turn_elsewhere",
+      startedAtMs: now + 500,
+      latestTurnStatus: "inProgress",
+    }),
   };
+  await page.evaluate((detail) => {
+    window.__taskListEventSource.emit("task-sync", {
+      threadId: detail.threadId,
+      revision: 3,
+      detail,
+      reason: "canonical-running",
+    });
+  }, {
+    threadId: "thread_gluesql_feature",
+    syncState: "ready",
+    task: tasks[0],
+  });
+  await expect(featureTask).toHaveAttribute("data-task-status", "running");
+  await expect(featureTask.locator(".task-status-spinner")).toBeVisible();
   detailEvents.push(
     {
       id: "external-user",
@@ -2449,7 +2482,7 @@ test("groups Tasks by repository without worktree accordions", async ({ page }, 
   await page.evaluate(() => {
     window.__taskListEventSource.emit("task-event", {
       threadId: "thread_gluesql_feature",
-      revision: 3,
+      revision: 4,
       event: {
         id: "live-idle",
         threadId: "thread_gluesql_feature",
@@ -2458,6 +2491,24 @@ test("groups Tasks by repository without worktree accordions", async ({ page }, 
         createdMs: Date.now(),
       },
     });
+  });
+  await expect(featureTask).toHaveAttribute("data-task-status", "running");
+  const idleTask = {
+    ...tasks[0],
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    unseen: true,
+  };
+  await page.evaluate((detail) => {
+    window.__taskListEventSource.emit("task-sync", {
+      threadId: detail.threadId,
+      revision: 5,
+      detail,
+      reason: "canonical-idle",
+    });
+  }, {
+    threadId: "thread_gluesql_feature",
+    syncState: "ready",
+    task: idleTask,
   });
   await expect(featureTask).toHaveAttribute("data-task-status", "idle");
   await expect(featureTask.locator(".task-status-spinner")).toHaveCount(0);
@@ -2549,9 +2600,9 @@ test("continues a Codex History thread into Caffold Tasks", async ({ page }) => 
   const task = {
     id: "thread_history_continue",
     threadId: "thread_history_continue",
+    ...canonicalTaskState("idle"),
     title: "History task",
     preview: "History metadata only",
-    status: "idle",
     cwd: "/tmp/project",
     cwdPath: "tmp/project",
     relativeCwd: "tmp/project",
@@ -2559,8 +2610,6 @@ test("continues a Codex History thread into Caffold Tasks", async ({ page }) => 
     createdMs: 10,
     updatedMs: 20,
     recencyMs: 20,
-    activeTurnId: null,
-    activeTurnStartedMs: null,
     lastEventSummary: "History metadata only",
     unseen: false,
   };
@@ -2728,6 +2777,8 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     createdMs: now + offset,
   });
   const detailResponse = (overrides = {}) => ({
+    threadId,
+    syncState: "ready",
     revision: overrides.revision ?? 1,
     task: overrides.task ?? task,
     events: overrides.events ?? events,
@@ -2948,10 +2999,13 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       task = {
         id: threadId,
         threadId,
-        activeTurnId: "turn_1",
+        ...canonicalTaskState("active", {
+          activeFlags: ["waitingOnApproval"],
+          turnId: "turn_1",
+          latestTurnStatus: "inProgress",
+        }),
         title: "Inspect the planner changes",
         preview: "Inspect the planner changes",
-        status: "waiting_for_approval",
         cwd: "src",
         cwdPath: "src",
         relativeCwd: "",
@@ -3155,8 +3209,10 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
         ),
       ];
       updateTask({
-        activeTurnId: "turn_2",
-        status: "running",
+        ...canonicalTaskState("active", {
+          turnId: "turn_2",
+          latestTurnStatus: "inProgress",
+        }),
         lastEventSummary: "Command inProgress",
       });
       return route.fulfill({
@@ -3180,8 +3236,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
         eventRecord("event_7", "turn_interrupted", "Interrupt requested", null, 17),
       ];
       updateTask({
-        activeTurnId: null,
-        status: "interrupted",
+        ...canonicalTaskState("idle", { latestTurnStatus: "interrupted" }),
         lastEventSummary: "Interrupt requested",
       });
       return route.fulfill({
@@ -3332,8 +3387,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
         ),
       ];
       updateTask({
-        activeTurnId: null,
-        status: "completed",
+        ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
         lastEventSummary: "Turn completed",
       });
       return route.fulfill({
@@ -3787,11 +3841,11 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(tasksPage).not.toContainText("turn started");
   const taskDetailsButton = tasksPage.getByRole("button", { name: /Task details/ });
   await expect(taskDetailsButton).toBeVisible();
-  await expect(taskDetailsButton).toHaveAttribute("title", "Status: completed");
+  await expect(taskDetailsButton).toHaveAttribute("title", "Status: idle");
   await taskDetailsButton.click();
   const taskDetailsPopover = tasksPage.locator(".task-detail-popover");
   await expect(taskDetailsPopover).toBeVisible();
-  await expect(taskDetailsPopover).toContainText("completed");
+  await expect(taskDetailsPopover).toContainText("idle");
   await expect(taskDetailsPopover).toContainText(threadId);
   await expect(taskDetailsPopover).toContainText("src");
   await expect(taskDetailsPopover).toContainText("Worktree");
@@ -4125,8 +4179,11 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     revision: 2,
     task: {
       ...task,
-      activeTurnId: null,
-      activeTurnStartedMs: now + 7,
+      ...canonicalTaskState("active", {
+        turnId: "turn_2",
+        startedAtMs: now + 7,
+        latestTurnStatus: "inProgress",
+      }),
     },
   }));
   const runningStatus = tasksPage.locator(
@@ -4167,8 +4224,11 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       revision,
       task: {
         ...task,
-        activeTurnId: "turn_2",
-        activeTurnStartedMs: Date.now() + revision,
+        ...canonicalTaskState("active", {
+          turnId: "turn_2",
+          startedAtMs: Number(stableActiveTurnStartedMs),
+          latestTurnStatus: "inProgress",
+        }),
       },
     }));
   }
@@ -4398,8 +4458,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   );
   events = [...events, canonicalPromptEvent];
   updateTask({
-    activeTurnId: null,
-    status: "completed",
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     lastEventSummary: "Canonical prompt accepted",
   });
   await page.evaluate((detail) => {
@@ -4490,10 +4549,9 @@ test("keeps the visible conversation anchor while loading older events by cursor
   const task = {
     id: threadId,
     threadId,
-    activeTurnId: null,
+    ...canonicalTaskState("notLoaded"),
     title: "Long running thread",
     preview: "Latest answer",
-    status: "notLoaded",
     cwd: "src",
     relativeCwd: "",
     createdMs: now,
@@ -4757,10 +4815,9 @@ test("keeps task context and retries after an initial detail timeout", async ({
   const task = {
     id: threadId,
     threadId,
-    activeTurnId: null,
+    ...canonicalTaskState("idle"),
     title: "Recover delayed task detail",
     preview: "Canonical task summary",
-    status: "idle",
     cwd: "src",
     relativeCwd: "",
     createdMs: now,
@@ -4838,10 +4895,9 @@ test("keeps the latest conversation when older history times out", async ({
   const task = {
     id: threadId,
     threadId,
-    activeTurnId: null,
+    ...canonicalTaskState("idle"),
     title: "Preserve latest task history",
     preview: "Latest canonical response",
-    status: "idle",
     cwd: "src",
     relativeCwd: "",
     createdMs: now,
@@ -4935,7 +4991,7 @@ test("keeps the latest conversation when older history times out", async ({
   await expect(textarea).toHaveValue("Draft survives history timeout");
 });
 
-test("starts a completed task follow-up clock from the new prompt", async ({
+test("starts a completed task follow-up clock only from canonical turn metadata", async ({
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Follow-up clock regression");
@@ -4967,11 +5023,9 @@ test("starts a completed task follow-up clock from the new prompt", async ({
   const task = {
     id: threadId,
     threadId,
-    activeTurnId: null,
-    activeTurnStartedMs: null,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title: "Follow-up clock fixture",
     preview: "Initial answer",
-    status: "completed",
     cwd: "src",
     cwdPath: "src",
     relativeCwd: "",
@@ -5011,6 +5065,8 @@ test("starts a completed task follow-up clock from the new prompt", async ({
     },
   ];
   const detail = (overrides = {}) => ({
+    threadId,
+    syncState: "ready",
     revision: overrides.revision ?? 1,
     task: { ...task, ...(overrides.task ?? {}) },
     events: overrides.events ?? firstTurnEvents,
@@ -5059,18 +5115,12 @@ test("starts a completed task follow-up clock from the new prompt", async ({
   const tasksPage = page.locator("caffold-tasks-page");
   const form = tasksPage.locator(".task-follow-up-form");
   const prompt = form.locator('textarea[name="prompt"]');
-  const submittedAtMs = Date.now();
   await prompt.fill("Start a fresh timed turn");
   await prompt.press("Enter");
   await promptRequested;
 
   const activeTurn = tasksPage.locator(".task-turn-active");
-  await expect(activeTurn).toBeVisible();
-  const optimisticStartedMs = Number(
-    await activeTurn.getAttribute("data-active-turn-started-ms"),
-  );
-  expect(optimisticStartedMs).toBeGreaterThanOrEqual(submittedAtMs - 1_000);
-  expect(Date.now() - optimisticStartedMs).toBeLessThan(30_000);
+  await expect(activeTurn).toHaveCount(0);
 
   releasePromptResponse();
   await expect(form).toHaveAttribute("aria-busy", "false");
@@ -5090,9 +5140,11 @@ test("starts a completed task follow-up clock from the new prompt", async ({
     detail: detail({
       revision: 2,
       task: {
-        status: "running",
-        activeTurnId: "turn_follow_up",
-        activeTurnStartedMs: canonicalStartedMs,
+        ...canonicalTaskState("active", {
+          turnId: "turn_follow_up",
+          startedAtMs: canonicalStartedMs,
+          latestTurnStatus: "inProgress",
+        }),
         updatedMs: canonicalStartedMs,
         recencyMs: canonicalStartedMs,
       },
@@ -5111,11 +5163,10 @@ test("starts a completed task follow-up clock from the new prompt", async ({
   });
 
   await expect(activeTurn).toHaveAttribute("data-turn-id", "turn_follow_up");
-  const stabilizedStartedMs = Number(
-    await activeTurn.getAttribute("data-active-turn-started-ms"),
+  await expect(activeTurn).toHaveAttribute(
+    "data-active-turn-started-ms",
+    `${canonicalStartedMs}`,
   );
-  expect(stabilizedStartedMs).toBeGreaterThanOrEqual(submittedAtMs - 1_000);
-  expect(Date.now() - stabilizedStartedMs).toBeLessThan(30_000);
 });
 
 test("submits completed task follow-ups and reloads canonical messages", async ({
@@ -5148,10 +5199,9 @@ test("submits completed task follow-ups and reloads canonical messages", async (
   const task = {
     id: threadId,
     threadId,
-    activeTurnId: null,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title: "Completed follow-up fixture",
     preview: "Initial canonical answer",
-    status: "completed",
     cwd: "src",
     cwdPath: "src",
     relativeCwd: "",
@@ -5258,8 +5308,13 @@ test("submits completed task follow-ups and reloads canonical messages", async (
     },
     createdMs: now + 1,
   };
-  task.status = "running";
-  task.activeTurnId = "turn_external_running";
+  Object.assign(
+    task,
+    canonicalTaskState("active", {
+      turnId: "turn_external_running",
+      latestTurnStatus: "inProgress",
+    }),
+  );
   canonicalEvents = [...canonicalEvents, runningEvent];
   revision += 1;
   await page.evaluate(({ threadId, detail }) => {
@@ -5287,7 +5342,6 @@ test("submits completed task follow-ups and reloads canonical messages", async (
 
   // Synchronization progress is transport state. It must never replace the
   // canonical running task/turn state or reset the current conversation.
-  task.status = "syncing";
   revision += 1;
   await page.evaluate(({ threadId, detail }) => {
     const source = window.__taskEventSources.find((candidate) =>
@@ -5344,8 +5398,10 @@ test("submits completed task follow-ups and reloads canonical messages", async (
       createdMs: now + 2,
     },
   ];
-  task.status = "completed";
-  task.activeTurnId = null;
+  Object.assign(
+    task,
+    canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+  );
   revision += 1;
   await page.evaluate(({ threadId, detail }) => {
     const source = window.__taskEventSources.find((candidate) =>
@@ -5481,10 +5537,9 @@ test("unlocks a completed task when canonical item content arrives before the pr
   const task = {
     id: threadId,
     threadId,
-    activeTurnId: null,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title: "Canonical item acknowledgement",
     preview: "Initial response",
-    status: "completed",
     cwd: "src",
     cwdPath: "src",
     relativeCwd: "",
@@ -5572,8 +5627,13 @@ test("unlocks a completed task when canonical item content arrives before the pr
       createdMs: now + 1,
     },
   ];
-  task.status = "running";
-  task.activeTurnId = "turn_1";
+  Object.assign(
+    task,
+    canonicalTaskState("active", {
+      turnId: "turn_1",
+      latestTurnStatus: "inProgress",
+    }),
+  );
   revision += 1;
   await page.evaluate(({ threadId, detail }) => {
     const source = window.__taskEventSources.find((candidate) =>
@@ -5618,10 +5678,9 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
   const taskA = {
     id: "thread_pending_a",
     threadId: "thread_pending_a",
-    activeTurnId: null,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title: "Pending response task",
     preview: "Initial A response",
-    status: "completed",
     cwd: "src",
     cwdPath: "src",
     relativeCwd: "",
@@ -5633,10 +5692,12 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
   const taskB = {
     id: "thread_running_b",
     threadId: "thread_running_b",
-    activeTurnId: "turn_running_b",
+    ...canonicalTaskState("active", {
+      turnId: "turn_running_b",
+      latestTurnStatus: "inProgress",
+    }),
     title: "Externally running task",
     preview: "External work is running",
-    status: "running",
     cwd: "src",
     cwdPath: "src",
     relativeCwd: "",
@@ -5825,10 +5886,9 @@ test("renders normalized Codex user messages instead of raw ambient context", as
   const task = {
     id: threadId,
     threadId,
-    activeTurnId: null,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title: "Normalized user message",
     preview: "Only this request should be visible.",
-    status: "completed",
     cwd: "src",
     cwdPath: "src",
     relativeCwd: "",
@@ -5916,11 +5976,13 @@ test("accepts canonical task detail after stream revisions restart", async ({ pa
   const staleTask = {
     id: threadId,
     threadId,
-    activeTurnId: "turn_initial",
-    activeTurnStartedMs: now,
+    ...canonicalTaskState("active", {
+      turnId: "turn_initial",
+      startedAtMs: now,
+      latestTurnStatus: "inProgress",
+    }),
     title: "Stream bootstrap regression",
     preview: "Waiting for canonical response",
-    status: "running",
     cwd: "src",
     cwdPath: "src",
     relativeCwd: "",
@@ -5960,9 +6022,7 @@ test("accepts canonical task detail after stream revisions restart", async ({ pa
     revision: 1,
     task: {
       ...staleTask,
-      activeTurnId: null,
-      activeTurnStartedMs: null,
-      status: "completed",
+      ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
       preview: "Canonical response arrived before the stream connected.",
       updatedMs: now + 2,
       lastEventSummary: "Canonical response arrived before the stream connected.",
@@ -6033,7 +6093,7 @@ test("accepts canonical task detail after stream revisions restart", async ({ pa
   await expect(tasksPage.locator(".task-detail-loading")).toHaveCount(0);
 });
 
-test("accepts task list events after stream revisions restart", async ({ page }) => {
+test("accepts canonical task sync after stream revisions restart", async ({ page }) => {
   await page.addInitScript(() => {
     window.EventSource = class MockEventSource {
       constructor(url) {
@@ -6075,11 +6135,9 @@ test("accepts task list events after stream revisions restart", async ({ page })
   let task = {
     id: threadId,
     threadId,
-    activeTurnId: null,
-    activeTurnStartedMs: null,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title: "Task list revision restart",
     preview: "Initial result",
-    status: "completed",
     cwd: "src",
     cwdPath: "src",
     relativeCwd: "",
@@ -6108,7 +6166,7 @@ test("accepts task list events after stream revisions restart", async ({ page })
   const row = page.locator(
     `caffold-tasks-page .task-row[data-thread-id="${threadId}"]`,
   );
-  await expect(row).toHaveAttribute("data-task-status", "completed");
+  await expect(row).toHaveAttribute("data-task-status", "idle");
 
   await page.evaluate((threadId) => {
     window.__taskListEventSource.emit("task-event", {
@@ -6123,33 +6181,41 @@ test("accepts task list events after stream revisions restart", async ({ page })
       },
     });
   }, threadId);
-  await expect(row).toHaveAttribute("data-task-status", "running");
+  await expect(row).toHaveAttribute("data-task-status", "idle");
 
   task = {
     ...task,
-    status: "running",
-    activeTurnId: "turn_before_restart",
-    activeTurnStartedMs: now,
+    ...canonicalTaskState("active", {
+      turnId: "turn_before_restart",
+      startedAtMs: now,
+      latestTurnStatus: "inProgress",
+    }),
   };
   await page.evaluate(() => {
     window.__taskListEventSource.emitError();
     window.__taskListEventSource.emitOpen();
   });
   await expect.poll(() => taskListRequests).toBe(2);
+  await expect(row).toHaveAttribute("data-task-status", "running");
 
-  await page.evaluate((threadId) => {
-    window.__taskListEventSource.emit("task-event", {
+  await page.evaluate(({ threadId, task }) => {
+    window.__taskListEventSource.emit("task-sync", {
       threadId,
       revision: 1,
-      event: {
-        id: "event_idle_after_restart",
+      detail: {
         threadId,
-        type: "thread_status_changed",
-        payload: { status: "idle" },
-        createdMs: Date.now(),
+        syncState: "ready",
+        task,
       },
+      reason: "canonical-idle-after-restart",
     });
-  }, threadId);
+  }, {
+    threadId,
+    task: {
+      ...task,
+      ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    },
+  });
   await expect(row).toHaveAttribute("data-task-status", "idle");
 });
 
@@ -6182,10 +6248,9 @@ test("keeps task list and detail revisions independent", async ({ page }, testIn
   const task = {
     id: threadId,
     threadId,
-    activeTurnId: null,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title: "Independent task stream revisions",
     preview: "Initial answer",
-    status: "completed",
     cwd: "src",
     cwdPath: "src",
     relativeCwd: "",
@@ -6289,9 +6354,7 @@ test("keeps task list and detail revisions independent", async ({ page }, testIn
 
   const runningTask = {
     ...task,
-    activeTurnId: null,
-    activeTurnStartedMs: now + 2,
-    status: "running",
+    ...canonicalTaskState("active", { latestTurnStatus: "inProgress" }),
     lastEventSummary: "Running command",
   };
   await page.evaluate(({ threadId, detail }) => {
@@ -6390,10 +6453,9 @@ test("isolates task detail responses and conversation scroll by thread", async (
   const makeTask = (threadId, title, offset) => ({
     id: threadId,
     threadId,
-    activeTurnId: null,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title,
     preview: `${title} preview`,
-    status: "completed",
     cwd: "src",
     cwdPath: "src",
     relativeCwd: "",
@@ -6559,11 +6621,13 @@ test("opens a running conversation at the latest message when stream sync wins t
   const task = {
     id: threadId,
     threadId,
-    activeTurnId: "turn_active",
-    activeTurnStartedMs: now,
+    ...canonicalTaskState("active", {
+      turnId: "turn_active",
+      startedAtMs: now,
+      latestTurnStatus: "inProgress",
+    }),
     title: "Reload scroll race",
     preview: "Latest running response",
-    status: "running",
     cwd: "src",
     cwdPath: "src",
     relativeCwd: "",
@@ -6687,11 +6751,13 @@ test("keeps task event chronology stable through approval, completion, and reloa
   const task = {
     id: threadId,
     threadId,
-    activeTurnId: turnId,
-    activeTurnStartedMs: now,
+    ...canonicalTaskState("active", {
+      turnId,
+      startedAtMs: now,
+      latestTurnStatus: "inProgress",
+    }),
     title: "Event chronology",
     preview: "Keep task events ordered",
-    status: "running",
     cwd: "src",
     cwdPath: "src",
     relativeCwd: "",
@@ -6881,52 +6947,14 @@ test("keeps task event chronology stable through approval, completion, and reloa
   await emitTaskEvent(plan, 8);
   await emitTaskEvent(commandCompleted, 9);
   await expect(tasksPage).toContainText("The event order is stable.");
-  await expect(tasksPage.locator(".task-turn-work")).toHaveCount(1);
-  await expect
-    .poll(() =>
-      tasksPage.locator(".task-conversation").evaluate((conversation) => {
-        const work = conversation.querySelector(".task-turn-work");
-        const final = conversation.querySelector(
-          '.task-message[data-message-phase="final"]',
-        );
-        return Boolean(
-          work &&
-            final &&
-            (work.compareDocumentPosition(final) &
-              Node.DOCUMENT_POSITION_FOLLOWING),
-        );
-      }),
-    )
-    .toBe(true);
+  await expect(tasksPage.locator(".task-turn-work")).toHaveCount(0);
+  await expect(tasksPage.locator(".task-turn-active")).toHaveCount(1);
 
   await emitTaskEvent(turnCompleted, 10);
-  const completedWorkDetails = tasksPage.locator(".task-turn-work > details");
-  await completedWorkDetails.locator(":scope > summary").click();
-  const completedWorkOrder = () =>
-    tasksPage.locator(".task-work-item").evaluateAll((items) =>
-      items.map((item) => item.dataset.eventType),
-    );
-  expect(await completedWorkOrder()).toEqual([
-    "reasoning",
-    "assistant_message",
-    "assistant_message",
-    "approval_resolved",
-    "command_execution",
-    "plan",
-  ]);
-  const completedCommandDetails = tasksPage.locator(
-    '.task-work-item[data-event-type="command_execution"] > details',
-  );
-  await expect(completedCommandDetails).not.toHaveAttribute("open", "");
-  await completedCommandDetails.locator("summary").click();
-  await expect(completedWorkDetails).toHaveAttribute("open", "");
-  await expect(completedCommandDetails).toHaveAttribute("open", "");
-
-  await test.step("keeps opened work disclosures expanded through a live rerender", async () => {
-    await emitTaskEvent(turnCompleted, 11);
-    await expect(completedWorkDetails).toHaveAttribute("open", "");
-    await expect(completedCommandDetails).toHaveAttribute("open", "");
-  });
+  await expect(tasksPage.locator(".task-turn-work")).toHaveCount(1);
+  await expect(
+    tasksPage.locator('.task-detail-summary .task-status-chip[data-status="running"]'),
+  ).toBeVisible();
 
   const canonicalUser = {
     ...user,
@@ -6968,9 +6996,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
   ];
   detailTask = {
     ...task,
-    activeTurnId: null,
-    activeTurnStartedMs: null,
-    status: "completed",
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     updatedMs: turnCompleted.createdMs,
     recencyMs: turnCompleted.createdMs,
   };
@@ -6986,6 +7012,33 @@ test("keeps task event chronology stable through approval, completion, and reloa
     detailRevision,
   );
   await expect(tasksPage.locator(".task-turn-work")).toHaveCount(1);
+  const completedWorkDetails = tasksPage.locator(".task-turn-work > details");
+  await completedWorkDetails.locator(":scope > summary").click();
+  const completedWorkOrder = () =>
+    tasksPage.locator(".task-work-item").evaluateAll((items) =>
+      items.map((item) => item.dataset.eventType),
+    );
+  expect(await completedWorkOrder()).toEqual([
+    "reasoning",
+    "assistant_message",
+    "assistant_message",
+    "approval_resolved",
+    "command_execution",
+    "plan",
+  ]);
+  const completedCommandDetails = tasksPage.locator(
+    '.task-work-item[data-event-type="command_execution"] > details',
+  );
+  await expect(completedCommandDetails).not.toHaveAttribute("open", "");
+  await completedCommandDetails.locator("summary").click();
+  await expect(completedWorkDetails).toHaveAttribute("open", "");
+  await expect(completedCommandDetails).toHaveAttribute("open", "");
+
+  await test.step("keeps opened work disclosures expanded through a live rerender", async () => {
+    await emitTaskEvent(turnCompleted, 13);
+    await expect(completedWorkDetails).toHaveAttribute("open", "");
+    await expect(completedCommandDetails).toHaveAttribute("open", "");
+  });
   await expect
     .poll(() =>
       tasksPage.evaluate((element) => {
@@ -7068,10 +7121,9 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
   const task = {
     id: threadId,
     threadId,
-    activeTurnId: null,
+    ...canonicalTaskState("active", { latestTurnStatus: "inProgress" }),
     title: "Scroll fixture",
     preview: "Latest answer",
-    status: "running",
     cwd: "src",
     relativeCwd: "",
     createdMs: now,
@@ -7357,8 +7409,7 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     revision: 8,
     task: {
       ...taskDetail.task,
-      status: "idle",
-      activeTurnId: null,
+      ...canonicalTaskState("idle"),
     },
     events: [...taskDetail.events, reconnectEvent],
   };

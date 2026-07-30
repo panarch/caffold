@@ -593,7 +593,9 @@ struct TaskRecord {
     thread_id: String,
     title: String,
     preview: String,
-    status: String,
+    thread_status: ThreadStatus,
+    latest_turn_status: Option<TurnStatus>,
+    active_turn: Option<TaskActiveTurn>,
     cwd: String,
     cwd_path: Option<String>,
     relative_cwd: String,
@@ -601,10 +603,15 @@ struct TaskRecord {
     created_ms: u64,
     updated_ms: u64,
     recency_ms: Option<u64>,
-    active_turn_id: Option<String>,
-    active_turn_started_ms: Option<u64>,
     last_event_summary: Option<String>,
     unseen: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct TaskActiveTurn {
+    id: String,
+    started_at_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -728,9 +735,11 @@ impl LiveTaskEventCache {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TaskDetailResponse {
+    thread_id: String,
+    sync_state: TaskSyncState,
     managed: bool,
     revision: u64,
-    task: TaskRecord,
+    task: Option<TaskRecord>,
     events: Vec<TaskEventRecord>,
     events_page: TaskEventsPage,
     pending_approvals: Vec<TaskEventRecord>,
@@ -738,6 +747,13 @@ struct TaskDetailResponse {
     permission_mode: Option<CodexPermissionMode>,
     model: Option<String>,
     reasoning_effort: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+enum TaskSyncState {
+    Loading,
+    Ready,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -753,6 +769,8 @@ struct TaskDetailSync {
     revision: u64,
     detail: TaskDetailResponse,
     reason: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2048,9 +2066,11 @@ async fn unmanaged_task_detail(
     let thread = client.read_thread(thread_id).await?;
     let task = task_record_from_codex_thread(state, &thread)?;
     Ok(TaskDetailResponse {
+        thread_id: thread_id.to_string(),
+        sync_state: TaskSyncState::Ready,
         managed: false,
         revision: 0,
-        task,
+        task: Some(task),
         events: Vec::new(),
         events_page: TaskEventsPage { next_cursor: None },
         pending_approvals: Vec::new(),
@@ -2150,6 +2170,12 @@ async fn run_task_sync_worker(
                     .codex_sessions
                     .fail_external_sync(&thread_id, &CodexThreadError::ProcessUnavailable)
                     .await;
+                broadcast_task_sync_error(
+                    &state,
+                    &thread_id,
+                    CodexThreadError::ProcessUnavailable.to_string(),
+                )
+                .await;
                 continue;
             };
             let response = tokio::try_join!(
@@ -2165,6 +2191,7 @@ async fn run_task_sync_worker(
                         .codex_sessions
                         .fail_external_sync(&thread_id, &error)
                         .await;
+                    broadcast_task_sync_error(&state, &thread_id, error.to_string()).await;
                     state
                         .task_sync
                         .mark_synchronized(&thread_id, invalidation_revision);
@@ -2177,6 +2204,7 @@ async fn run_task_sync_worker(
                         .codex_sessions
                         .fail_external_sync(&thread_id, &error)
                         .await;
+                    broadcast_task_sync_error(&state, &thread_id, error.to_string()).await;
                     schedule_task_sync_retry(
                         &mut pending,
                         thread_id,
@@ -2201,6 +2229,7 @@ async fn run_task_sync_worker(
                 thread_id: thread_id.clone(),
                 detail,
                 reason: "canonical-read-sync",
+                error: None,
             });
         }
     }
@@ -2235,6 +2264,24 @@ async fn broadcast_task_snapshot(
         thread_id: thread_id.to_string(),
         detail,
         reason,
+        error: None,
+    });
+}
+
+async fn broadcast_task_sync_error(state: &AppState, thread_id: &str, error: String) {
+    let revision = state
+        .codex_sessions
+        .snapshot(thread_id)
+        .await
+        .map(|snapshot| snapshot.revision)
+        .unwrap_or_default();
+    let detail = loading_task_detail(thread_id, revision, None);
+    let _ = state.task_sync_events.send(TaskDetailSync {
+        thread_id: thread_id.to_string(),
+        revision,
+        detail,
+        reason: "canonical-source-error",
+        error: Some(error),
     });
 }
 
@@ -2286,6 +2333,7 @@ async fn task_stream(
         revision: detail.revision,
         detail,
         reason: "stream-bootstrap",
+        error: None,
     });
     // The rollout monitor may emit the current external activity synchronously
     // while subscribing. Register the coordinator first so that signal cannot
@@ -2613,7 +2661,7 @@ async fn task_prompt(
     let requested_model = request.model;
     let requested_effort = request.effort;
     let requested_permission_mode = request.permission_mode;
-    let target = match state
+    let mut target = match state
         .codex_sessions
         .prepare_prompt(&connection.client, connection.generation, &thread_id)
         .await
@@ -2624,42 +2672,72 @@ async fn task_prompt(
             return Err(error.into());
         }
     };
-    let result: Result<TaskPromptOutcome, _> = match target {
-        PromptTarget::Steer { turn_id } => connection
-            .client
-            .steer_turn(&thread_id, &turn_id, &prompt, &images)
-            .await
-            .map(|_| TaskPromptOutcome {
-                turn_id,
-                steered: true,
-                started_turn: None,
-            }),
-        PromptTarget::Start { cwd } => {
-            let turn_options = codex_turn_options(
-                &connection.client,
-                requested_model,
-                requested_effort,
-                requested_permission_mode,
-            )
-            .await?;
-            let applied_options = turn_options.clone();
-            connection
+    let mut refreshed_stale_turn = false;
+    let outcome = loop {
+        let attempted_steer = matches!(&target, PromptTarget::Steer { .. });
+        let result: Result<TaskPromptOutcome, _> = match target {
+            PromptTarget::Steer { turn_id } => connection
                 .client
-                .start_turn(&thread_id, &cwd, &prompt, &images, turn_options)
+                .steer_turn(&thread_id, &turn_id, &prompt, &images)
                 .await
-                .map(|started| TaskPromptOutcome {
-                    turn_id: started.turn_id.clone(),
-                    steered: false,
-                    started_turn: Some((started.turn, applied_options)),
-                })
-        }
-    };
-    let outcome = match result {
-        Ok(result) => result,
-        Err(error) => {
-            state.codex_sessions.cancel_runtime(&thread_id).await;
-            recover_codex_connection_error(&state, &connection, &error).await;
-            return Err(error.into());
+                .map(|_| TaskPromptOutcome {
+                    turn_id,
+                    steered: true,
+                    started_turn: None,
+                }),
+            PromptTarget::Start { cwd } => {
+                let turn_options = codex_turn_options(
+                    &connection.client,
+                    requested_model.clone(),
+                    requested_effort.clone(),
+                    requested_permission_mode,
+                )
+                .await?;
+                let applied_options = turn_options.clone();
+                connection
+                    .client
+                    .start_turn(&thread_id, &cwd, &prompt, &images, turn_options)
+                    .await
+                    .map(|started| TaskPromptOutcome {
+                        turn_id: started.turn_id.clone(),
+                        steered: false,
+                        started_turn: Some((started.turn, applied_options)),
+                    })
+            }
+        };
+        match result {
+            Ok(result) => break result,
+            Err(error)
+                if attempted_steer && !refreshed_stale_turn && error.is_turn_unavailable() =>
+            {
+                refreshed_stale_turn = true;
+                if let Err(refresh_error) = state
+                    .codex_sessions
+                    .refresh_subscription(&connection.client, connection.generation, &thread_id)
+                    .await
+                {
+                    state.codex_sessions.cancel_runtime(&thread_id).await;
+                    recover_codex_connection_error(&state, &connection, &refresh_error).await;
+                    return Err(refresh_error.into());
+                }
+                target = match state
+                    .codex_sessions
+                    .prepare_prompt(&connection.client, connection.generation, &thread_id)
+                    .await
+                {
+                    Ok(target) => target,
+                    Err(refresh_error) => {
+                        state.codex_sessions.cancel_runtime(&thread_id).await;
+                        recover_codex_connection_error(&state, &connection, &refresh_error).await;
+                        return Err(refresh_error.into());
+                    }
+                };
+            }
+            Err(error) => {
+                state.codex_sessions.cancel_runtime(&thread_id).await;
+                recover_codex_connection_error(&state, &connection, &error).await;
+                return Err(error.into());
+            }
         }
     };
     if let Some((turn, applied_options)) = outcome.started_turn {
@@ -2737,10 +2815,13 @@ async fn recover_codex_connection_error(
     if !error.is_connection_failure() {
         return;
     }
-    state
+    let affected = state
         .codex_sessions
         .connection_lost(connection.generation, error.to_string())
         .await;
+    for thread_id in affected {
+        broadcast_task_sync_error(state, &thread_id, error.to_string()).await;
+    }
     state
         .codex_threads
         .invalidate_after_error(connection.generation, error)
@@ -2926,6 +3007,11 @@ async fn cached_task_detail(
     let Some(snapshot) = state.codex_sessions.snapshot(thread_id).await else {
         return Ok((loading_task_detail(thread_id, 0, stored.as_ref()), 0));
     };
+    if let Some(error) = snapshot.last_error.as_ref() {
+        return Err(ApiError::CodexThread(format!(
+            "canonical Codex task state is unavailable: {error}"
+        )));
+    }
     let revision = snapshot.revision;
     if snapshot.thread.is_none() {
         return Ok((
@@ -2943,26 +3029,11 @@ fn loading_task_detail(
     managed: Option<&ManagedThread>,
 ) -> TaskDetailResponse {
     TaskDetailResponse {
+        thread_id: thread_id.to_string(),
+        sync_state: TaskSyncState::Loading,
         managed: true,
         revision,
-        task: TaskRecord {
-            id: thread_id.to_string(),
-            thread_id: thread_id.to_string(),
-            title: "Loading task...".to_string(),
-            preview: String::new(),
-            status: "loading".to_string(),
-            cwd: String::new(),
-            cwd_path: None,
-            relative_cwd: String::new(),
-            worktree: None,
-            created_ms: 0,
-            updated_ms: 0,
-            recency_ms: None,
-            active_turn_id: None,
-            active_turn_started_ms: None,
-            last_event_summary: None,
-            unseen: false,
-        },
+        task: None,
         events: Vec::new(),
         events_page: TaskEventsPage { next_cursor: None },
         pending_approvals: Vec::new(),
@@ -2974,15 +3045,31 @@ fn loading_task_detail(
 }
 
 async fn bootstrap_task_session(state: &AppState, thread_id: &str, baseline_revision: u64) {
-    let Ok(connection) = require_codex_thread_connection(state).await else {
-        return;
+    let connection = match require_codex_thread_connection(state).await {
+        Ok(connection) => connection,
+        Err(error) => {
+            state
+                .codex_sessions
+                .fail_external_sync(thread_id, &error)
+                .await;
+            broadcast_task_sync_error(state, thread_id, error.to_string()).await;
+            return;
+        }
     };
-    let Ok(snapshot) = state
+    let snapshot = match state
         .codex_sessions
         .ensure_subscribed(&connection.client, connection.generation, thread_id)
         .await
-    else {
-        return;
+    {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            state
+                .codex_sessions
+                .fail_external_sync(thread_id, &error)
+                .await;
+            broadcast_task_sync_error(state, thread_id, error.to_string()).await;
+            return;
+        }
     };
     if snapshot.revision <= baseline_revision {
         return;
@@ -2995,16 +3082,11 @@ async fn task_detail_from_snapshot(
     snapshot: ThreadSessionSnapshot,
     response_page: Option<crate::codex_app_server::TurnsPage>,
 ) -> Result<TaskDetailResponse, ApiError> {
-    let session_running = snapshot
-        .thread
-        .as_ref()
-        .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }));
     let actively_viewed = snapshot.viewer_leases > 0;
     let revision = snapshot.revision;
     let permission_mode = snapshot.permission_mode;
     let session_model = snapshot.model.clone();
     let session_reasoning_effort = snapshot.reasoning_effort.clone();
-    let session_active_turn_id = snapshot.active_turn_id.clone();
     let thread_id = snapshot
         .thread
         .as_ref()
@@ -3036,7 +3118,7 @@ async fn task_detail_from_snapshot(
     sort_task_events(&mut events);
     let resolved_cwd = resolve_thread_cwd(&state.fs, &thread);
     let mut task = task_record_from_thread(&thread, &events, resolved_cwd.as_ref())?;
-    apply_session_activity(&mut task, session_running, session_active_turn_id);
+    apply_canonical_turn_projection(&mut task, &thread)?;
     let activity_ms = task_activity_ms(&task);
     let mut managed = thread_store_update_observed_recency(state, &thread_id, activity_ms).await?;
     if session_model.is_some() || session_reasoning_effort.is_some() {
@@ -3060,9 +3142,11 @@ async fn task_detail_from_snapshot(
         let model = session_model.or(current.model);
         let reasoning_effort = session_reasoning_effort.or(current.reasoning_effort);
         return Ok(TaskDetailResponse {
+            thread_id,
+            sync_state: TaskSyncState::Ready,
             managed: true,
             revision,
-            task,
+            task: Some(task),
             events,
             events_page: TaskEventsPage { next_cursor },
             pending_approvals,
@@ -3073,9 +3157,11 @@ async fn task_detail_from_snapshot(
         });
     }
     Ok(TaskDetailResponse {
-        managed: true,
+        thread_id,
+        sync_state: TaskSyncState::Ready,
+        managed: false,
         revision,
-        task,
+        task: Some(task),
         events,
         events_page: TaskEventsPage { next_cursor },
         pending_approvals,
@@ -3084,17 +3170,6 @@ async fn task_detail_from_snapshot(
         model: session_model,
         reasoning_effort: session_reasoning_effort,
     })
-}
-
-fn apply_session_activity(
-    task: &mut TaskRecord,
-    session_running: bool,
-    session_active_turn_id: Option<String>,
-) {
-    if session_running {
-        task.status = "running".to_string();
-        task.active_turn_id = task.active_turn_id.take().or(session_active_turn_id);
-    }
 }
 
 fn merge_task_event_records(
@@ -3293,13 +3368,7 @@ fn task_record_from_thread(
         .and_then(JsonValue::as_str)
         .unwrap_or("")
         .to_string();
-    let status = thread_status(thread);
-    let active_turn_id = (status == "running")
-        .then(|| active_turn_id(thread))
-        .flatten();
-    let active_turn_started_ms = active_turn_id
-        .as_deref()
-        .and_then(|turn_id| turn_started_ms(thread, turn_id));
+    let thread_status = decode_thread_status(thread.get("status"))?;
     let last_event_summary = events
         .last()
         .map(|event| event.summary.clone())
@@ -3309,7 +3378,9 @@ fn task_record_from_thread(
         thread_id: thread_id.to_string(),
         title,
         preview,
-        status,
+        thread_status,
+        latest_turn_status: None,
+        active_turn: None,
         cwd_path: resolved_cwd.and_then(|resolved| resolved.logical_cwd.clone()),
         relative_cwd: resolved_cwd
             .and_then(|resolved| resolved.logical_cwd.clone())
@@ -3322,11 +3393,47 @@ fn task_record_from_thread(
             .get("recencyAt")
             .and_then(JsonValue::as_f64)
             .map(seconds_to_ms_value),
-        active_turn_id,
-        active_turn_started_ms,
         last_event_summary,
         unseen: false,
     })
+}
+
+fn apply_canonical_turn_projection(
+    task: &mut TaskRecord,
+    thread: &JsonValue,
+) -> Result<(), ApiError> {
+    let turns = thread
+        .get("turns")
+        .and_then(JsonValue::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    task.latest_turn_status = turns
+        .last()
+        .map(|turn| decode_turn_status(turn.get("status")))
+        .transpose()?;
+    task.active_turn = if matches!(task.thread_status, ThreadStatus::Active { .. }) {
+        turns
+            .last()
+            .filter(|turn| {
+                turn.get("status").and_then(JsonValue::as_str) == Some("inProgress")
+                    && turn.get("id").and_then(JsonValue::as_str).is_some()
+            })
+            .map(|turn| TaskActiveTurn {
+                id: turn
+                    .get("id")
+                    .and_then(JsonValue::as_str)
+                    .expect("active turn was checked above")
+                    .to_string(),
+                started_at_ms: turn
+                    .get("startedAt")
+                    .and_then(JsonValue::as_f64)
+                    .map(seconds_to_ms_value)
+                    .filter(|value| *value > 0),
+            })
+    } else {
+        None
+    };
+    Ok(())
 }
 
 fn managed_thread_from_task_record(
@@ -3657,11 +3764,14 @@ fn spawn_codex_thread_bridge(
                 }
             }
         };
-        context
+        let affected = context
             .state
             .codex_sessions
-            .connection_lost(generation, connection_error)
+            .connection_lost(generation, connection_error.clone())
             .await;
+        for thread_id in affected {
+            broadcast_task_sync_error(&context.state, &thread_id, connection_error.clone()).await;
+        }
         context.state.codex_threads.invalidate(generation).await;
     });
 }
@@ -4488,48 +4598,20 @@ fn thread_cwd(thread: &JsonValue) -> Option<&str> {
     thread.get("cwd").and_then(JsonValue::as_str)
 }
 
-fn thread_status(thread: &JsonValue) -> String {
-    normalized_thread_status(thread.get("status"))
+fn decode_thread_status(status: Option<&JsonValue>) -> Result<ThreadStatus, ApiError> {
+    serde_json::from_value(status.cloned().ok_or_else(|| {
+        ApiError::CodexThread("Codex thread did not include a status".to_string())
+    })?)
+    .map_err(|error| ApiError::CodexThread(format!("invalid Codex thread status: {error}")))
 }
 
-fn normalized_thread_status(status: Option<&JsonValue>) -> String {
-    match status
-        .and_then(|status| status.get("type"))
-        .and_then(JsonValue::as_str)
-    {
-        Some("active") => "running",
-        Some("systemError") => "failed",
-        Some("idle") => "idle",
-        Some(status) => status,
-        None => "unknown",
-    }
-    .to_string()
-}
-
-fn active_turn_id(thread: &JsonValue) -> Option<String> {
-    thread
-        .get("turns")
-        .and_then(JsonValue::as_array)?
-        .last()
-        .filter(|turn| {
-            turn.get("status")
-                .and_then(JsonValue::as_str)
-                .is_some_and(|status| status == "inProgress")
-        })
-        .and_then(|turn| turn.get("id").and_then(JsonValue::as_str))
-        .map(ToOwned::to_owned)
-}
-
-fn turn_started_ms(thread: &JsonValue, turn_id: &str) -> Option<u64> {
-    thread
-        .get("turns")
-        .and_then(JsonValue::as_array)?
-        .iter()
-        .find(|turn| turn.get("id").and_then(JsonValue::as_str) == Some(turn_id))?
-        .get("startedAt")
-        .and_then(JsonValue::as_f64)
-        .map(seconds_to_ms_value)
-        .filter(|value| *value > 0)
+fn decode_turn_status(status: Option<&JsonValue>) -> Result<TurnStatus, ApiError> {
+    serde_json::from_value(
+        status.cloned().ok_or_else(|| {
+            ApiError::CodexThread("Codex turn did not include a status".to_string())
+        })?,
+    )
+    .map_err(|error| ApiError::CodexThread(format!("invalid Codex turn status: {error}")))
 }
 
 fn seconds_to_ms(value: Option<f64>) -> u64 {
@@ -5534,7 +5616,7 @@ mod tests {
         let state = app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
         let resolved = resolve_thread_cwd(&state.fs, &thread);
         let task = task_record_from_thread(&thread, &[], resolved.as_ref()).unwrap();
-        assert_eq!(task.status, "idle");
+        assert_eq!(task.thread_status, ThreadStatus::Idle);
         thread_store_claim(&state, managed_thread_from_task_record(&task, None, None))
             .await
             .unwrap();
@@ -5544,7 +5626,37 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.0.tasks.len(), 1);
-        assert_eq!(response.0.tasks[0].status, "idle");
+        assert_eq!(response.0.tasks[0].thread_status, ThreadStatus::Idle);
+    }
+
+    #[tokio::test]
+    async fn canonical_snapshot_without_membership_is_not_managed() {
+        let root = tempfile::tempdir().unwrap();
+        let state = app_state_with_codex_client(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        let thread = serde_json::from_value(
+            task_thread_list("thread-unmanaged", root.path())["data"][0].clone(),
+        )
+        .expect("canonical thread");
+        state.codex_sessions.observe_thread_metadata(thread).await;
+        let snapshot = state
+            .codex_sessions
+            .snapshot("thread-unmanaged")
+            .await
+            .expect("canonical snapshot");
+
+        let detail = task_detail_from_snapshot(&state, snapshot, None)
+            .await
+            .expect("canonical detail");
+
+        assert!(!detail.managed);
+        assert_eq!(
+            detail.task.as_ref().map(|task| task.thread_id.as_str()),
+            Some("thread-unmanaged")
+        );
     }
 
     #[tokio::test]
@@ -5773,6 +5885,116 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stale_steer_refreshes_canonical_status_before_starting_a_follow_up() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-stale-steer-follow-up";
+        let stale_turn_id = "turn-completed-before-steer";
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/resume",
+                json!({
+                    "thread": {
+                        "id": thread_id,
+                        "preview": "Stale steer regression",
+                        "status": { "type": "active", "activeFlags": [] },
+                        "cwd": root.path().display().to_string(),
+                        "createdAt": 1.0,
+                        "updatedAt": 2.0,
+                        "turns": [{
+                            "id": stale_turn_id,
+                            "items": [],
+                            "status": "inProgress"
+                        }]
+                    },
+                    "initialTurnsPage": {
+                        "data": [{
+                            "id": stale_turn_id,
+                            "items": [],
+                            "status": "inProgress"
+                        }],
+                        "nextCursor": null,
+                        "backwardsCursor": null
+                    }
+                }),
+            ),
+            crate::codex_app_server::MockCodexResponse::error(
+                "turn/steer",
+                crate::codex_app_server::CodexThreadError::TurnUnavailable(
+                    "no active turn to steer".to_string(),
+                ),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/resume",
+                json!({
+                    "thread": {
+                        "id": thread_id,
+                        "preview": "Stale steer regression",
+                        "status": { "type": "idle" },
+                        "cwd": root.path().display().to_string(),
+                        "createdAt": 1.0,
+                        "updatedAt": 3.0,
+                        "turns": [{
+                            "id": stale_turn_id,
+                            "items": [],
+                            "status": "completed"
+                        }]
+                    },
+                    "initialTurnsPage": {
+                        "data": [{
+                            "id": stale_turn_id,
+                            "items": [],
+                            "status": "completed"
+                        }],
+                        "nextCursor": null,
+                        "backwardsCursor": null
+                    }
+                }),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "turn/start",
+                json!({
+                    "turn": {
+                        "id": "turn-follow-up",
+                        "items": [],
+                        "status": "inProgress"
+                    }
+                }),
+            ),
+        ]);
+        let state =
+            app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+
+        let response = task_prompt(
+            State(state),
+            AxumPath(thread_id.to_string()),
+            Query(TasksQuery { cursor: None }),
+            Json(TaskPromptRequest {
+                prompt: "Start after the completed turn".to_string(),
+                images: Vec::new(),
+                model: None,
+                effort: None,
+                permission_mode: None,
+                active_turn_id: Some(stale_turn_id.to_string()),
+            }),
+        )
+        .await
+        .expect("canonical refresh converts the stale steer into a new turn");
+
+        assert!(!response.0.steered);
+        assert_eq!(response.0.turn_id, "turn-follow-up");
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            ["thread/resume", "turn/steer", "thread/resume", "turn/start"]
+        );
+    }
+
+    #[tokio::test]
     async fn continue_moves_a_history_thread_into_the_managed_store() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-continue";
@@ -5938,7 +6160,9 @@ mod tests {
         .expect("task detail must not await a slow thread/resume")
         .expect("cached task detail remains available");
 
-        assert_eq!(response.0.task.thread_id, thread_id);
+        assert_eq!(response.0.thread_id, thread_id);
+        assert_eq!(response.0.sync_state, TaskSyncState::Ready);
+        assert_eq!(response.0.task.as_ref().unwrap().thread_id, thread_id);
         assert!(response.0.history_loading);
         wait_for_mock_method(&client, "thread/resume").await;
     }
@@ -5984,7 +6208,9 @@ mod tests {
         .expect("a blank cursor must not wait for app-server pagination")
         .expect("cached task detail remains available");
 
-        assert_eq!(response.0.task.thread_id, thread_id);
+        assert_eq!(response.0.thread_id, thread_id);
+        assert_eq!(response.0.sync_state, TaskSyncState::Ready);
+        assert_eq!(response.0.task.as_ref().unwrap().thread_id, thread_id);
         assert!(response.0.history_loading);
         wait_for_mock_method(&client, "thread/resume").await;
     }
@@ -6064,8 +6290,11 @@ mod tests {
         .expect("cached task detail must not wait after a history timeout")
         .expect("cached task detail remains available");
 
-        assert_eq!(response.0.task.thread_id, thread_id);
-        assert_eq!(response.0.task.title, "Cached task detail regression");
+        assert_eq!(response.0.task.as_ref().unwrap().thread_id, thread_id);
+        assert_eq!(
+            response.0.task.as_ref().unwrap().title,
+            "Cached task detail regression"
+        );
         assert_eq!(
             response.0.events_page.next_cursor.as_deref(),
             Some("older-1")
@@ -6116,7 +6345,7 @@ mod tests {
         .expect("cached detail must not wait for app-server connection access")
         .expect("cached task detail remains available");
 
-        assert_eq!(response.0.task.thread_id, thread_id);
+        assert_eq!(response.0.task.as_ref().unwrap().thread_id, thread_id);
         blocker.await.expect("runtime blocker completes");
         wait_for_mock_method(&client, "thread/resume").await;
     }
@@ -6343,8 +6572,9 @@ mod tests {
         .expect("direct task detail must not wait for app-server connection access")
         .expect("direct task detail starts with a loading snapshot");
 
-        assert_eq!(response.0.task.thread_id, thread_id);
-        assert_eq!(response.0.task.status, "loading");
+        assert_eq!(response.0.thread_id, thread_id);
+        assert_eq!(response.0.sync_state, TaskSyncState::Loading);
+        assert!(response.0.task.is_none());
         assert!(response.0.history_loading);
         blocker.await.expect("runtime blocker completes");
         wait_for_mock_method(&client, "thread/resume").await;
@@ -6396,7 +6626,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resume_failure_keeps_cached_task_detail_available() {
+    async fn resume_failure_makes_cached_task_detail_unavailable() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-failed-detail-bootstrap";
         let client = CodexThreadClient::mock(vec![
@@ -6428,7 +6658,7 @@ mod tests {
         .await
         .expect("task detail must not await a failed thread/resume")
         .expect("cached task detail remains available");
-        assert_eq!(response.0.task.thread_id, thread_id);
+        assert_eq!(response.0.task.as_ref().unwrap().thread_id, thread_id);
 
         wait_for_mock_method(&client, "thread/resume").await;
         tokio::time::sleep(Duration::from_millis(20)).await;
@@ -6439,10 +6669,18 @@ mod tests {
             .expect("cached session remains tracked");
         assert!(snapshot.thread.is_some());
         assert!(snapshot.last_error.is_some());
+        let error = task_detail(
+            State(state),
+            AxumPath(thread_id.to_string()),
+            Query(TaskDetailQuery { cursor: None }),
+        )
+        .await
+        .expect_err("stale task detail must not survive a canonical resume failure");
+        assert!(matches!(error, ApiError::CodexThread(_)));
     }
 
     #[tokio::test]
-    async fn resume_timeout_keeps_task_detail_and_connection_available() {
+    async fn resume_timeout_makes_task_detail_unavailable_but_keeps_the_connection() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-timeout-detail-bootstrap";
         let client = CodexThreadClient::mock(vec![
@@ -6476,7 +6714,7 @@ mod tests {
         .await
         .expect("task detail must not await a timed-out thread/resume")
         .expect("cached task detail remains available");
-        assert_eq!(first.0.task.thread_id, thread_id);
+        assert_eq!(first.0.task.as_ref().unwrap().thread_id, thread_id);
         assert!(first.0.history_loading);
 
         wait_for_mock_method(&client, "thread/resume").await;
@@ -6488,8 +6726,8 @@ mod tests {
             Query(TaskDetailQuery { cursor: None }),
         )
         .await
-        .expect("task re-entry remains available after a resume timeout");
-        assert_eq!(second.0.task.thread_id, thread_id);
+        .expect_err("task re-entry exposes the canonical source timeout");
+        assert!(matches!(second, ApiError::CodexThread(_)));
 
         let snapshot = state
             .codex_sessions
@@ -6502,7 +6740,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn background_sync_timeout_keeps_cached_task_detail_available() {
+    async fn background_sync_timeout_broadcasts_error_and_rejects_stale_detail() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-background-sync-timeout";
         let client =
@@ -6532,21 +6770,23 @@ mod tests {
         wait_for_mock_method(&client, "thread/read").await;
         tokio::time::sleep(Duration::from_millis(20)).await;
 
-        assert!(
-            tokio::time::timeout(Duration::from_millis(20), sync_events.recv())
-                .await
-                .is_err(),
-            "a background timeout must not replace cached detail through task-sync"
-        );
-        let detail = task_detail(
+        let sync = tokio::time::timeout(Duration::from_millis(50), sync_events.recv())
+            .await
+            .expect("a background timeout broadcasts unavailable state")
+            .expect("task sync channel remains open");
+        assert_eq!(sync.thread_id, thread_id);
+        assert_eq!(sync.detail.sync_state, TaskSyncState::Loading);
+        assert!(sync.detail.task.is_none());
+        assert!(sync.error.is_some());
+
+        let error = task_detail(
             State(state.clone()),
             AxumPath(thread_id.to_string()),
             Query(TaskDetailQuery { cursor: None }),
         )
         .await
-        .expect("cached detail remains available after a background sync timeout");
-        assert_eq!(detail.0.task.thread_id, thread_id);
-        assert_ne!(detail.0.task.status, "loading");
+        .expect_err("stale detail is rejected after a background sync timeout");
+        assert!(matches!(error, ApiError::CodexThread(_)));
 
         let snapshot = state
             .codex_sessions
@@ -6585,7 +6825,7 @@ mod tests {
             .acquire_viewer(&first_client, 1, "thread-slow-recovery")
             .await
             .expect("viewer");
-        sessions
+        let _ = sessions
             .connection_lost(1, "process exited".to_string())
             .await;
 
@@ -6674,7 +6914,12 @@ mod tests {
         .await
         .expect("task detail succeeds");
 
-        assert_eq!(response.0.task.thread_id, thread_id);
+        assert_eq!(response.0.thread_id, thread_id);
+        assert_eq!(response.0.sync_state, TaskSyncState::Loading);
+        assert!(
+            response.0.task.is_none(),
+            "detail must stay empty until the canonical resume snapshot arrives"
+        );
         wait_for_mock_method(&client, "thread/unsubscribe").await;
         assert_eq!(
             client
@@ -6742,7 +6987,12 @@ mod tests {
 
         let detail_response = detail.await.unwrap().expect("task detail succeeds");
         let stream_response = stream.await.unwrap().expect("task stream succeeds");
-        assert_eq!(detail_response.0.task.thread_id, thread_id);
+        assert_eq!(detail_response.0.thread_id, thread_id);
+        assert_eq!(detail_response.0.sync_state, TaskSyncState::Loading);
+        assert!(
+            detail_response.0.task.is_none(),
+            "detail must stay empty until the canonical resume snapshot arrives"
+        );
 
         tokio::time::sleep(Duration::from_millis(300)).await;
         assert_eq!(
@@ -6870,14 +7120,18 @@ mod tests {
             thread_id: thread_id.to_string(),
             revision: 7,
             detail: TaskDetailResponse {
+                thread_id: thread_id.to_string(),
+                sync_state: TaskSyncState::Ready,
                 managed: true,
                 revision: 7,
-                task: TaskRecord {
+                task: Some(TaskRecord {
                     id: thread_id.to_string(),
                     thread_id: thread_id.to_string(),
                     title: "Bootstrap regression".to_string(),
                     preview: "canonical assistant response".to_string(),
-                    status: "idle".to_string(),
+                    thread_status: ThreadStatus::Idle,
+                    latest_turn_status: Some(TurnStatus::Completed),
+                    active_turn: None,
                     cwd: "/tmp".to_string(),
                     cwd_path: None,
                     relative_cwd: ".".to_string(),
@@ -6885,11 +7139,9 @@ mod tests {
                     created_ms: 1,
                     updated_ms: 2,
                     recency_ms: None,
-                    active_turn_id: None,
-                    active_turn_started_ms: None,
                     last_event_summary: Some("canonical assistant response".to_string()),
                     unseen: false,
-                },
+                }),
                 events: vec![assistant],
                 events_page: TaskEventsPage { next_cursor: None },
                 pending_approvals: Vec::new(),
@@ -6899,6 +7151,7 @@ mod tests {
                 reasoning_effort: Some("xhigh".to_string()),
             },
             reason: "stream-bootstrap",
+            error: None,
         };
 
         let frames = task_stream_initial_frames(&sync)
@@ -7291,20 +7544,33 @@ mod tests {
     #[test]
     fn only_the_latest_turn_can_be_active() {
         let completed_thread = json!({
+            "id": "thread-completed",
+            "status": { "type": "active", "activeFlags": [] },
+            "cwd": "/tmp",
             "turns": [
                 { "id": "stale", "status": "inProgress" },
                 { "id": "latest", "status": "completed" }
             ]
         });
         let running_thread = json!({
+            "id": "thread-running",
+            "status": { "type": "active", "activeFlags": [] },
+            "cwd": "/tmp",
             "turns": [
                 { "id": "completed", "status": "completed" },
                 { "id": "latest", "status": "inProgress" }
             ]
         });
 
-        assert_eq!(active_turn_id(&completed_thread), None);
-        assert_eq!(active_turn_id(&running_thread).as_deref(), Some("latest"));
+        let mut completed = task_record_from_thread(&completed_thread, &[], None).unwrap();
+        apply_canonical_turn_projection(&mut completed, &completed_thread).unwrap();
+        assert_eq!(completed.latest_turn_status, Some(TurnStatus::Completed));
+        assert_eq!(completed.active_turn, None);
+
+        let mut running = task_record_from_thread(&running_thread, &[], None).unwrap();
+        apply_canonical_turn_projection(&mut running, &running_thread).unwrap();
+        assert_eq!(running.latest_turn_status, Some(TurnStatus::InProgress));
+        assert_eq!(running.active_turn.unwrap().id, "latest");
     }
 
     #[test]
@@ -7564,11 +7830,68 @@ mod tests {
                 "items": []
             }]
         });
-        let task = task_record_from_thread(&thread, &[], None).unwrap();
+        let mut task = task_record_from_thread(&thread, &[], None).unwrap();
+        assert_eq!(task.latest_turn_status, None);
+        assert_eq!(task.active_turn, None);
+        apply_canonical_turn_projection(&mut task, &thread).unwrap();
 
-        assert_eq!(task.status, "running");
-        assert_eq!(task.active_turn_id.as_deref(), Some("turn_active"));
-        assert_eq!(task.active_turn_started_ms, Some(1_750_000_000_000));
+        assert!(matches!(task.thread_status, ThreadStatus::Active { .. }));
+        assert_eq!(task.latest_turn_status, Some(TurnStatus::InProgress));
+        assert_eq!(
+            task.active_turn,
+            Some(TaskActiveTurn {
+                id: "turn_active".to_string(),
+                started_at_ms: Some(1_750_000_000_000)
+            })
+        );
+    }
+
+    #[test]
+    fn browser_task_status_serializes_the_canonical_wire_shape() {
+        let thread = json!({
+            "id": "thread_wire",
+            "preview": "Canonical wire status",
+            "cwd": "/tmp",
+            "status": {
+                "type": "active",
+                "activeFlags": ["waitingOnUserInput", "waitingOnApproval"]
+            },
+            "turns": [{
+                "id": "turn_wire",
+                "status": "inProgress",
+                "startedAt": null
+            }]
+        });
+        let mut task = task_record_from_thread(&thread, &[], None).unwrap();
+        let list_value = serde_json::to_value(&task).unwrap();
+        assert_eq!(
+            list_value["threadStatus"],
+            json!({
+                "type": "active",
+                "activeFlags": ["waitingOnUserInput", "waitingOnApproval"]
+            })
+        );
+        assert_eq!(list_value["latestTurnStatus"], JsonValue::Null);
+        assert_eq!(list_value["activeTurn"], JsonValue::Null);
+        assert!(list_value.get("status").is_none());
+        assert!(list_value.get("activeTurnId").is_none());
+
+        apply_canonical_turn_projection(&mut task, &thread).unwrap();
+        let detail_value = serde_json::to_value(&task).unwrap();
+        assert_eq!(detail_value["latestTurnStatus"], "inProgress");
+        assert_eq!(
+            detail_value["activeTurn"],
+            json!({ "id": "turn_wire", "startedAtMs": null })
+        );
+    }
+
+    #[test]
+    fn loading_detail_serializes_without_a_synthetic_task() {
+        let detail = loading_task_detail("thread-loading", 7, None);
+        let value = serde_json::to_value(detail).unwrap();
+        assert_eq!(value["threadId"], "thread-loading");
+        assert_eq!(value["syncState"], "loading");
+        assert_eq!(value["task"], JsonValue::Null);
     }
 
     #[test]
@@ -7589,15 +7912,16 @@ mod tests {
             }]
         });
 
-        let task = task_record_from_thread(&thread, &[], None).unwrap();
+        let mut task = task_record_from_thread(&thread, &[], None).unwrap();
+        apply_canonical_turn_projection(&mut task, &thread).unwrap();
 
-        assert_eq!(task.status, "idle");
-        assert_eq!(task.active_turn_id, None);
-        assert_eq!(task.active_turn_started_ms, None);
+        assert_eq!(task.thread_status, ThreadStatus::Idle);
+        assert_eq!(task.latest_turn_status, Some(TurnStatus::InProgress));
+        assert_eq!(task.active_turn, None);
     }
 
     #[test]
-    fn canonical_active_session_sets_the_task_active_turn() {
+    fn active_thread_without_a_confirmed_turn_keeps_raw_status_without_controls() {
         let temp = tempfile::tempdir().unwrap();
         let thread = json!({
             "id": "thread_external",
@@ -7605,16 +7929,15 @@ mod tests {
             "cwd": temp.path().display().to_string(),
             "createdAt": 1.0,
             "updatedAt": 2.0,
-            "status": { "type": "idle" },
+            "status": { "type": "active", "activeFlags": [] },
             "turns": []
         });
         let mut task = task_record_from_thread(&thread, &[], None).unwrap();
+        apply_canonical_turn_projection(&mut task, &thread).unwrap();
 
-        apply_session_activity(&mut task, true, Some("turn-external".to_string()));
-
-        assert_eq!(task.status, "running");
-        assert_eq!(task.active_turn_id.as_deref(), Some("turn-external"));
-        assert_eq!(task.active_turn_started_ms, None);
+        assert!(matches!(task.thread_status, ThreadStatus::Active { .. }));
+        assert_eq!(task.latest_turn_status, None);
+        assert_eq!(task.active_turn, None);
     }
 
     #[test]
@@ -7630,11 +7953,11 @@ mod tests {
             "turns": []
         });
 
-        let task = task_record_from_thread(&thread, &[], None).unwrap();
+        let mut task = task_record_from_thread(&thread, &[], None).unwrap();
+        apply_canonical_turn_projection(&mut task, &thread).unwrap();
 
-        assert_eq!(task.status, "idle");
-        assert_eq!(task.active_turn_id, None);
-        assert_eq!(task.active_turn_started_ms, None);
+        assert_eq!(task.thread_status, ThreadStatus::Idle);
+        assert_eq!(task.active_turn, None);
     }
 
     #[test]
@@ -8237,7 +8560,7 @@ mod tests {
         )];
 
         let task = task_record_from_thread(&thread, &events, None).unwrap();
-        assert_eq!(task.status, "running");
+        assert!(matches!(task.thread_status, ThreadStatus::Active { .. }));
     }
 
     #[test]
@@ -8291,7 +8614,7 @@ mod tests {
         ];
 
         let task = task_record_from_thread(&thread, &events, None).unwrap();
-        assert_eq!(task.status, "idle");
+        assert_eq!(task.thread_status, ThreadStatus::Idle);
     }
 
     #[test]
@@ -8340,7 +8663,7 @@ mod tests {
         ];
 
         let task = task_record_from_thread(&thread, &events, None).unwrap();
-        assert_eq!(task.status, "idle");
+        assert_eq!(task.thread_status, ThreadStatus::Idle);
     }
 
     #[test]

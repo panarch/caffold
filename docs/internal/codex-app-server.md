@@ -77,6 +77,10 @@ it does not persist a second task ledger.
 - A new thread returned by `thread/start` is registered as already subscribed.
 - A completed thread starts a follow-up with `turn/start`. An active thread is
   steered only when canonical thread status and an active turn ID agree.
+- If app-server rejects that pointer because the turn ended before
+  `turn/steer`, Caffold refreshes one canonical resume snapshot and chooses
+  Start or Steer again from that snapshot. It does not infer completion from
+  the rejection.
 - The last viewer releases the subscription with `thread/unsubscribe` unless a
   turn initiated or steered by Caffold still owns a runtime lease.
 - A completed runtime releases its lease and unsubscribes when no viewer
@@ -149,6 +153,35 @@ Caffold keeps pending approvals and SSE notifications as ephemeral in-memory
 state in this slice. Pending approval cards may disappear after a Caffold
 backend restart until app-server re-emits the request.
 
+## Browser Status Projection
+
+The browser API exposes app-server status without normalizing it into a Caffold
+lifecycle string:
+
+- `TaskRecord.threadStatus` is the raw `{ type, activeFlags }` wire shape.
+- `latestTurnStatus` and `activeTurn` are null on list responses, which do not
+  resolve a turn page.
+- Detail responses populate them only from the current canonical turn page.
+- `activeTurn` is present only when `threadStatus.type` is `active` and the
+  latest canonical turn is `inProgress`. Its ID is a control pointer, not a
+  second source for thread status.
+- A missing turn ID or start timestamp never demotes an active thread and never
+  creates a synthetic elapsed timer. Interrupt is available only with the
+  canonical ID.
+- Before canonical metadata arrives, detail returns `syncState: "loading"` and
+  `task: null`; it does not manufacture a loading Task record from Redb.
+- If subscription, canonical read, or app-server transport fails, REST rejects
+  the stale session snapshot and SSE replaces the visible task with an explicit
+  unavailable error and Retry action.
+
+List and header badges use only `threadStatus`. Within active flags,
+`waitingOnApproval` takes display precedence over `waitingOnUserInput`, while
+the original flag array remains unchanged. Turn completion, failure, and
+interruption are rendered inside that conversation turn rather than replacing
+the thread badge. `task-event` updates transcript/event UI only; task lifecycle
+changes arrive through canonical REST responses and revisioned `task-sync`
+snapshots.
+
 ## Cross-Process Reconciliation
 
 With Caffold's current process topology, its app-server child only delivers
@@ -191,12 +224,14 @@ app-server `nextCursor` through its History API and requests another page only
 after an explicit browser action. An empty filtered page may therefore still
 offer Load more; Caffold must not drain additional pages automatically.
 
-Running state comes only from app-server `Thread.status`, `Turn.status`, and
-typed notifications. Browser reconnect and visibility resume each request one
-canonical detail sync to recover events that may have been missed while the
-client was disconnected. If the rollout path is absent or the native watcher is
-unavailable, app-server notifications and explicit synchronization continue to
-work; Caffold does not add a polling fallback.
+Thread state comes only from app-server `Thread.status` snapshots and
+`thread/status/changed`. `Turn.status` remains turn-local conversation state;
+turn notifications, approval requests, browser events, and active-turn pointers
+do not rewrite the thread badge. Browser reconnect and visibility resume each
+request one canonical detail sync to recover events that may have been missed
+while the client was disconnected. If the rollout path is absent or the native
+watcher is unavailable, app-server notifications and explicit synchronization
+continue to work; Caffold does not add a polling fallback.
 
 The local table is the primary lookup path only for managed-thread membership
 and recency-first pagination. There is no offline Tasks rendering: if Codex

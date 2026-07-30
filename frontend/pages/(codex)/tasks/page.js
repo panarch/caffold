@@ -100,7 +100,6 @@ class CaffoldTasksPage extends HTMLElement {
     this.streamGeneration = 0;
     this.streamErrorTimer = null;
     this.activeTurnClockTimer = null;
-    this.activeTurnClockByThread = new Map();
     this.taskRefresh = null;
     this.requestId = 0;
     this.initialConversationScrollRequest = null;
@@ -379,7 +378,7 @@ class CaffoldTasksPage extends HTMLElement {
       options.preserveLoadedTask &&
       route?.threadId &&
       this.selectedThreadId === route.threadId &&
-      this.taskDetail?.task?.threadId === route.threadId
+      taskDetailThreadId(this.taskDetail) === route.threadId
     ) {
       this.view = "detail";
       this.error = null;
@@ -417,9 +416,9 @@ class CaffoldTasksPage extends HTMLElement {
       this.followUpDraft = this.followUpDraftByThread.get(route.threadId) ?? "";
       this.followUpImages = [...(this.followUpImagesByThread.get(route.threadId) ?? [])];
       this.taskDetail =
-        this.taskDetail?.task?.threadId === route.threadId ? this.taskDetail : null;
+        taskDetailThreadId(this.taskDetail) === route.threadId ? this.taskDetail : null;
       this.eventsPage =
-        this.taskDetail?.task?.threadId === route.threadId
+        taskDetailThreadId(this.taskDetail) === route.threadId
           ? this.eventsPage
           : { nextCursor: null };
     } else {
@@ -447,7 +446,7 @@ class CaffoldTasksPage extends HTMLElement {
     if (route?.threadId) {
       if (
         options.preserveLoadedTask &&
-        this.taskDetail?.task?.threadId === route.threadId
+        taskDetailThreadId(this.taskDetail) === route.threadId
       ) {
         this.loading = false;
         this.loadTaskGithubStatus(this.taskDetail.task);
@@ -520,7 +519,7 @@ class CaffoldTasksPage extends HTMLElement {
         return null;
       }
       if (
-        detail?.task?.threadId !== threadId ||
+        taskDetailThreadId(detail) !== threadId ||
         !this.acceptTaskDetailRevision(threadId, detail.revision)
       ) {
         this.finishInitialConversationScroll(threadId, requestId);
@@ -534,7 +533,7 @@ class CaffoldTasksPage extends HTMLElement {
         mergeEvents(this.eventsByThread.get(threadId) ?? [], detail.events ?? []),
       );
       this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
-      this.loading = false;
+      this.loading = detail.syncState === "loading";
       this.detailLoadError = null;
       this.historyLoadError = null;
       if (detail.managed === false) {
@@ -543,7 +542,9 @@ class CaffoldTasksPage extends HTMLElement {
         this.finishInitialConversationScroll(threadId, requestId);
         return detail;
       }
-      this.patchTaskListTask({ ...detail.task, unseen: false });
+      if (detail.task) {
+        this.patchTaskListTask({ ...detail.task, unseen: false });
+      }
       this.conversationScrollMode = this.isInitialConversationScrollPending(threadId)
         ? "bottom"
         : this.conversationScrollSnapshot(threadId)
@@ -634,6 +635,8 @@ class CaffoldTasksPage extends HTMLElement {
       }
       this.taskListLoading = false;
       this.taskListError = error;
+      this.tasks = [];
+      this.taskListLoaded = false;
       this.markTaskListDirty();
       this.renderTaskListRegion();
       return null;
@@ -759,7 +762,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.taskHistoryError = null;
     this.markTaskListDirty();
     this.renderTaskListRegion();
-    if (this.taskDetail?.task?.threadId === threadId) {
+    if (taskDetailThreadId(this.taskDetail) === threadId) {
       this.render();
     }
 
@@ -779,7 +782,7 @@ class CaffoldTasksPage extends HTMLElement {
       this.taskHistoryError = error;
       this.markTaskListDirty();
       this.renderTaskListRegion();
-      if (this.taskDetail?.task?.threadId === threadId) {
+      if (taskDetailThreadId(this.taskDetail) === threadId) {
         this.render();
       }
       return null;
@@ -848,12 +851,13 @@ class CaffoldTasksPage extends HTMLElement {
         message?.reason === "external-sync-start" ||
         !this.isCurrentStream(stream, threadId, generation) ||
         message?.threadId !== threadId ||
-        detail?.task?.threadId !== threadId
+        taskDetailThreadId(detail) !== threadId
       ) {
         return;
       }
       this.applyTaskDetailSync(threadId, detail, message.revision, {
         resetRevision: message.reason === "stream-bootstrap",
+        error: message.error,
       });
     });
     stream.addEventListener("task-event", (event) => {
@@ -869,13 +873,17 @@ class CaffoldTasksPage extends HTMLElement {
         return;
       }
       this.setThreadEvents(threadId, upsertEvent(this.events, entry));
-      this.applyLiveTaskEvent(entry);
       this.conversationScrollMode = this.liveConversationScrollMode(threadId);
       this.render();
     });
   }
 
-  applyTaskDetailSync(threadId, detail, revision, { resetRevision = false } = {}) {
+  applyTaskDetailSync(
+    threadId,
+    detail,
+    revision,
+    { resetRevision = false, error = null } = {},
+  ) {
     if (threadId !== this.selectedThreadId) {
       return;
     }
@@ -890,14 +898,16 @@ class CaffoldTasksPage extends HTMLElement {
     this.acknowledgeFollowUpFromCanonicalDetail(threadId, detail);
     this.taskDetail = detail;
     this.observeTaskSettings(detail);
-    this.loading = false;
-    this.detailLoadError = null;
+    this.loading = detail?.syncState === "loading" && !error;
+    this.detailLoadError = error ? new Error(error) : null;
     this.setThreadEvents(
       threadId,
       mergeEvents(this.eventsByThread.get(threadId) ?? [], detail.events ?? []),
     );
     this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
-    this.patchTaskListTask(detail.task);
+    if (detail?.task) {
+      this.patchTaskListTask(detail.task);
+    }
     this.loadTaskGithubStatus(detail.task);
     this.conversationScrollMode = this.liveConversationScrollMode(threadId);
     this.render();
@@ -993,33 +1003,24 @@ class CaffoldTasksPage extends HTMLElement {
       this.renderTaskListRegion();
       this.syncTaskListSelection();
     });
-    stream.addEventListener("task-event", (event) => {
-      if (this.taskListStream !== stream || this.taskListStreamContext !== context) {
-        return;
-      }
-      const message = parseJson(event.data);
-      const entry = message?.event;
-      if (
-        !entry ||
-        message?.threadId !== entry.threadId ||
-        !this.acceptTaskListRevision(entry.threadId, message.revision)
-      ) {
-        return;
-      }
-      const task = this.tasks.find(
-        (candidate) => taskThreadId(candidate) === entry.threadId,
-      );
-      const nextTask = taskWithLiveEventState(task, entry);
-      if (nextTask && nextTask !== task) {
-        this.patchTaskListTask(nextTask);
-      }
-    });
     stream.addEventListener("task-sync", (event) => {
       if (this.taskListStream !== stream || this.taskListStreamContext !== context) {
         return;
       }
       const message = parseJson(event.data);
       const detail = message?.detail;
+      if (message?.error) {
+        this.tasks = [];
+        this.taskListLoaded = false;
+        this.taskListError = new Error(message.error);
+        this.markTaskListDirty();
+        this.renderTaskListRegion();
+        return;
+      }
+      if (detail?.managed === false && message?.threadId) {
+        this.removeTaskListTask(message.threadId);
+        return;
+      }
       if (
         detail?.task &&
         message?.threadId === taskThreadId(detail.task) &&
@@ -1056,16 +1057,6 @@ class CaffoldTasksPage extends HTMLElement {
     this.taskListStream = null;
     this.taskListStreamContext = "";
     this.taskListStreamNeedsSync = false;
-  }
-
-  applyLiveTaskEvent(event) {
-    const task = this.taskDetail?.task;
-    const nextTask = taskWithLiveEventState(task, event);
-    if (!nextTask || nextTask === task) {
-      return;
-    }
-    this.taskDetail = { ...this.taskDetail, task: nextTask };
-    this.patchTaskListTask(nextTask);
   }
 
   closeStream() {
@@ -1157,7 +1148,7 @@ class CaffoldTasksPage extends HTMLElement {
       ) {
         return;
       }
-      if (detail?.task?.threadId !== threadId) {
+      if (taskDetailThreadId(detail) !== threadId) {
         return;
       }
       if (!this.acceptTaskDetailRevision(threadId, detail.revision)) {
@@ -1167,7 +1158,9 @@ class CaffoldTasksPage extends HTMLElement {
       this.observeTaskSettings(detail);
       this.setThreadEvents(threadId, mergeEvents(this.events, detail.events ?? []));
       this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
-      this.patchTaskListTask(detail.task);
+      if (detail.task) {
+        this.patchTaskListTask(detail.task);
+      }
       this.loadTaskGithubStatus(detail.task);
       this.conversationScrollMode = this.liveConversationScrollMode(threadId);
       this.render();
@@ -1229,6 +1222,10 @@ class CaffoldTasksPage extends HTMLElement {
     }
     if (action === "retry-task-history-list") {
       this.loadTaskHistory({ force: true });
+      return;
+    }
+    if (action === "retry-task-list") {
+      this.loadTaskList({ force: true });
       return;
     }
     if (action === "continue-history-task") {
@@ -1592,17 +1589,6 @@ class CaffoldTasksPage extends HTMLElement {
         ? this.taskDetail.task
         : this.tasks.find((task) => taskThreadId(task) === threadId) ?? null;
     const turnOptions = this.turnOptions("follow-up");
-    const startsNewTurn = !isTaskActivelyWorking(previousTask);
-    const runningTask = taskWithStatus(previousTask, "running", {
-      ...(startsNewTurn
-        ? {
-            activeTurnId: null,
-            activeTurnStartedMs: optimisticEvent.createdMs,
-          }
-        : {}),
-      updatedMs: optimisticEvent.createdMs,
-      recencyMs: optimisticEvent.createdMs,
-    });
     const requestId = ++this.requestId;
     const followUpRequest = {
       requestId,
@@ -1627,10 +1613,6 @@ class CaffoldTasksPage extends HTMLElement {
         threadId,
         mergeEvents(this.eventsByThread.get(threadId) ?? [], [optimisticEvent]),
       );
-      if (runningTask) {
-        this.taskDetail = { ...this.taskDetail, task: runningTask };
-        this.patchTaskListTask(runningTask);
-      }
       this.followUpDraft = "";
       this.followUpDraftByThread.set(threadId, "");
       this.followUpImages = [];
@@ -1644,10 +1626,9 @@ class CaffoldTasksPage extends HTMLElement {
         prompt,
         {
           ...turnOptions,
-          activeTurnId:
-            previousTask?.status === "running"
-              ? previousTask.activeTurnId ?? null
-              : null,
+          activeTurnId: isTaskActivelyWorking(previousTask)
+            ? previousTask?.activeTurn?.id ?? null
+            : null,
         },
         images.map((image) => image.dataUrl),
       );
@@ -1670,10 +1651,6 @@ class CaffoldTasksPage extends HTMLElement {
         threadId,
         threadEvents.filter((event) => event.id !== optimisticEvent.id),
       );
-      if (previousTask && threadId === this.selectedThreadId) {
-        this.taskDetail = { ...this.taskDetail, task: previousTask };
-        this.patchTaskListTask(previousTask);
-      }
       if (
         threadId === this.selectedThreadId &&
         !this.followUpDraft
@@ -1809,7 +1786,7 @@ class CaffoldTasksPage extends HTMLElement {
       if (requestId !== this.requestId) {
         return;
       }
-      if (detail?.task?.threadId !== this.selectedThreadId) {
+      if (taskDetailThreadId(detail) !== this.selectedThreadId || !detail?.task) {
         this.loadingOlderEvents = false;
         this.conversationScrollMode = "preserve";
         this.render();
@@ -1943,7 +1920,7 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   observeTaskSettings(detail) {
-    const threadId = `${detail?.task?.threadId ?? ""}`.trim();
+    const threadId = taskDetailThreadId(detail).trim();
     const permissionMode = `${detail?.permissionMode ?? ""}`.trim();
     if (
       threadId &&
@@ -2292,7 +2269,6 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   render() {
-    this.stabilizeActiveTurnStartedMs();
     const renderedThreadId = this.renderedConversationThreadId();
     const renderedScroll = this.rememberConversationScroll(renderedThreadId);
     const previousScroll =
@@ -2324,47 +2300,6 @@ class CaffoldTasksPage extends HTMLElement {
     this.syncTaskListSelection();
     this.syncActiveTurnClock();
     this.fitModelPicker();
-  }
-
-  stabilizeActiveTurnStartedMs() {
-    const detail = this.taskDetail;
-    const task = detail?.task;
-    const threadId = taskThreadId(task);
-    if (!threadId) {
-      return;
-    }
-
-    if (!isTaskActivelyWorking(task)) {
-      this.activeTurnClockByThread.delete(threadId);
-      return;
-    }
-
-    const incomingTurnId = `${task.activeTurnId ?? ""}`.trim();
-    const current = this.activeTurnClockByThread.get(threadId);
-    const sameTurn =
-      current &&
-      (!current.turnId || !incomingTurnId || current.turnId === incomingTurnId);
-    const taskEvents = this.eventsByThread.get(threadId) ?? this.events ?? [];
-    const matchingEvents = incomingTurnId
-      ? taskEvents.filter((event) => eventTurnId(event) === incomingTurnId)
-      : taskEvents.slice(-1);
-    const incomingStartedMs = activeTurnStartMs(matchingEvents, task);
-    const startedMs = sameTurn
-      ? Math.min(current.startedMs, incomingStartedMs)
-      : incomingStartedMs;
-    const turnId = incomingTurnId || current?.turnId || "";
-
-    this.activeTurnClockByThread.set(threadId, { turnId, startedMs });
-    if (Number(task.activeTurnStartedMs) === startedMs) {
-      return;
-    }
-    this.taskDetail = {
-      ...detail,
-      task: {
-        ...task,
-        activeTurnStartedMs: startedMs,
-      },
-    };
   }
 
   ensureTaskShell() {
@@ -3396,7 +3331,11 @@ class CaffoldTasksPage extends HTMLElement {
       content = `
         <div class="task-section-message" role="alert">
           <p>${escapeHtml(error.message)}</p>
-          ${history ? `<button type="button" class="task-secondary-button" data-task-action="retry-task-history-list">Retry</button>` : ""}
+          <button
+            type="button"
+            class="task-secondary-button"
+            data-task-action="${history ? "retry-task-history-list" : "retry-task-list"}"
+          >Retry</button>
         </div>
       `;
     } else if (!tasks.length) {
@@ -3518,7 +3457,7 @@ class CaffoldTasksPage extends HTMLElement {
   renderTaskRow(task, repositoryKey = this.taskListPartitionKey(task)) {
     const threadId = task.threadId ?? task.id;
     const selected = threadId === this.selectedThreadId ? ` aria-current="true"` : "";
-    const status = taskStatusView(task.status)?.status ?? "idle";
+    const status = taskStatusView(task)?.status ?? taskThreadStatusType(task);
     const busy = status === "running" ? ` aria-busy="true"` : "";
     const meta = renderTaskRowMeta(task, this.isTaskCompletionUnseen(task));
     const worktree = task?.worktree?.linked
@@ -4051,8 +3990,8 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   renderTaskDetailSummary(task) {
-    const status = renderTaskStatusChip(task.status, "task-detail-status", { label: false });
-    const statusLabel = formatStatus(task.status);
+    const status = renderTaskStatusChip(task, "task-detail-status", { label: false });
+    const statusLabel = formatTaskStatus(task);
     const canOpenDiff = Boolean(task.worktree);
     const worktreeLabel = taskWorktreeLabel(task);
 
@@ -4089,7 +4028,7 @@ class CaffoldTasksPage extends HTMLElement {
               </button>
               ${this.renderTaskReviewMenus(task)}
               ${
-                task.activeTurnId
+                task.activeTurn?.id
                   ? `<button type="button" class="task-secondary-button" data-task-action="interrupt">
                       ${renderInlineIcon("Square", "Interrupt", "task-action-icon")}
                       <span class="task-action-label">Interrupt</span>
@@ -4501,7 +4440,7 @@ function renderConversation(events, task, approvals = []) {
   if (isTaskActivelyWorking(task) && activeGroupIndex < 0) {
     return `${output}${renderActiveTurnStatus(
       {
-        turnId: task?.activeTurnId ?? "active-turn",
+        turnId: task?.activeTurn?.id ?? "active-turn",
         events: [],
       },
       task,
@@ -4515,13 +4454,13 @@ function activeTurnGroupIndex(groups, task) {
     return -1;
   }
   const exactIndex = groups.findIndex(
-    (group) => group.kind === "turn" && group.turnId === task?.activeTurnId,
+    (group) => group.kind === "turn" && group.turnId === task?.activeTurn?.id,
   );
   if (exactIndex >= 0) {
     return exactIndex;
   }
 
-  const startedMs = Number(task?.activeTurnStartedMs);
+  const startedMs = Number(task?.activeTurn?.startedAtMs);
   if (!Number.isFinite(startedMs) || startedMs <= 0) {
     return -1;
   }
@@ -4541,7 +4480,7 @@ function activeTurnGroupIndex(groups, task) {
 }
 
 function isTaskActivelyWorking(task) {
-  return ["running", "waiting_for_approval"].includes(task?.status);
+  return taskThreadStatusType(task) === "active";
 }
 
 function conversationGroups(events) {
@@ -4598,7 +4537,7 @@ function renderTurnGroup(group, task, options = {}) {
   const terminalEvent = statusEvents.find(isTerminalTurnEvent);
   const finalAssistantEvent =
     assistantEvents.findLast(isFinalAssistantEvent) ?? assistantEvents.at(-1);
-  const isCurrentTurn = task?.activeTurnId === group.turnId;
+  const isCurrentTurn = task?.activeTurn?.id === group.turnId;
   const isActive =
     isTaskActivelyWorking(task) && (options.forceActive || isCurrentTurn);
   const isComplete =
@@ -4691,34 +4630,42 @@ function renderActiveTurnTimelineEvent(event, task, pendingApprovalIds = new Set
 }
 
 function renderActiveTurnStatus(group, task) {
-  const startedMs = activeTurnStartMs(group.events, task);
+  const startedMs = activeTurnStartMs(task);
   const state = activeTurnStateLabel(group.events, task);
+  const startedAttribute = startedMs
+    ? ` data-active-turn-started-ms="${escapeHtml(startedMs)}"`
+    : "";
+  const duration = startedMs
+    ? `Working for ${formatDuration(Date.now() - startedMs)}`
+    : "Working";
   return `
     <li
       class="task-event task-turn-active"
-      data-active-turn-started-ms="${escapeHtml(startedMs)}"
+      ${startedAttribute}
       data-turn-id="${escapeHtml(group.turnId)}"
     >
       <span class="task-status-spinner" aria-hidden="true"></span>
-      <span class="task-turn-active-duration">Working for ${escapeHtml(formatDuration(Date.now() - startedMs))}</span>
+      <span class="task-turn-active-duration">${escapeHtml(duration)}</span>
       <span class="task-turn-active-state" title="${escapeHtml(state)}" aria-live="polite">${escapeHtml(state)}</span>
     </li>
   `;
 }
 
-function activeTurnStartMs(events, task) {
-  const taskStartedMs = Number(task?.activeTurnStartedMs);
+function activeTurnStartMs(task) {
+  const taskStartedMs = Number(task?.activeTurn?.startedAtMs);
   if (Number.isFinite(taskStartedMs) && taskStartedMs > 0) {
     return taskStartedMs;
   }
-  const started = events.find((event) => event.type === "turn_started");
-  const value = Number(started?.createdMs ?? events[0]?.createdMs ?? Date.now());
-  return Number.isFinite(value) && value > 0 ? value : Date.now();
+  return null;
 }
 
 function activeTurnStateLabel(events, task) {
-  if (task?.status === "waiting_for_approval") {
+  const activeFlags = taskActiveFlags(task);
+  if (activeFlags.includes("waitingOnApproval")) {
     return "Waiting for approval";
+  }
+  if (activeFlags.includes("waitingOnUserInput")) {
+    return "Waiting for input";
   }
 
   const event =
@@ -5106,7 +5053,7 @@ function renderThinkingEvent(event, text, task, eventState) {
   }
   const isActive =
     eventState?.active ??
-    ["running", "waiting_for_approval"].includes(task?.status);
+    isTaskActivelyWorking(task);
   const open = isActive ? " open" : "";
   const state = isActive ? "active" : "complete";
 
@@ -5519,6 +5466,10 @@ function taskThreadId(task) {
   return `${task?.threadId ?? task?.id ?? ""}`;
 }
 
+function taskDetailThreadId(detail) {
+  return `${detail?.threadId ?? taskThreadId(detail?.task)}`;
+}
+
 function taskUpdatedMs(task) {
   const value = Number(task?.recencyMs ?? task?.updatedMs ?? task?.createdMs ?? 0);
   return Number.isFinite(value) ? value : 0;
@@ -5776,95 +5727,6 @@ function optimisticUserMessageEvent(threadId, prompt, images, requestId) {
     },
     createdMs,
   };
-}
-
-function taskWithLiveEventState(task, event) {
-  if (!task || !event) {
-    return task;
-  }
-
-  const payload = event.payload ?? {};
-  const createdMs = Number(event.createdMs) || Date.now();
-  if (payload.lifecycle === "started" && payload.turnId) {
-    return taskWithStatus(task, "running", {
-      activeTurnId: payload.turnId,
-      activeTurnStartedMs: task.activeTurnStartedMs ?? createdMs,
-      updatedMs: createdMs,
-      recencyMs: createdMs,
-    });
-  }
-  if (event.type === "turn_started") {
-    return taskWithStatus(task, "running", {
-      activeTurnId: payload.turnId ?? payload.turn?.id ?? task.activeTurnId,
-      activeTurnStartedMs: createdMs,
-      updatedMs: createdMs,
-      recencyMs: createdMs,
-    });
-  }
-  if (event.type === "approval_requested") {
-    return taskWithStatus(task, "waiting_for_approval", {
-      updatedMs: createdMs,
-      recencyMs: createdMs,
-    });
-  }
-  if (event.type === "approval_resolved") {
-    return taskWithStatus(task, "running", {
-      updatedMs: createdMs,
-      recencyMs: createdMs,
-    });
-  }
-  if (event.type === "turn_completed") {
-    const status = normalizeTurnStatus(payload.turn?.status ?? payload.status);
-    return taskWithStatus(task, status, {
-      activeTurnId: null,
-      activeTurnStartedMs: null,
-      updatedMs: createdMs,
-      recencyMs: createdMs,
-    });
-  }
-  if (event.type === "thread_status_changed") {
-    const status = normalizeThreadStatus(payload.status ?? payload.notification?.status);
-    return taskWithStatus(task, status, {
-      ...(status === "running"
-        ? {
-            activeTurnId: payload.activeTurnId ?? task.activeTurnId,
-            activeTurnStartedMs:
-              payload.activeTurnStartedMs ?? task.activeTurnStartedMs ?? createdMs,
-          }
-        : { activeTurnId: null, activeTurnStartedMs: null }),
-      updatedMs: createdMs,
-      recencyMs: createdMs,
-    });
-  }
-  return task;
-}
-
-function taskWithStatus(task, status, updates = {}) {
-  if (!task || !status) {
-    return task;
-  }
-  const unseen = ["", "completed", "idle", "notLoaded"].includes(status);
-  return { ...task, unseen, ...updates, status };
-}
-
-function normalizeTurnStatus(status) {
-  return {
-    failed: "failed",
-    interrupted: "interrupted",
-    completed: "completed",
-  }[`${status ?? ""}`] ?? "running";
-}
-
-function normalizeThreadStatus(status) {
-  const type = typeof status === "object" ? status?.type : status;
-  return {
-    active: "running",
-    running: "running",
-    systemError: "failed",
-    failed: "failed",
-    idle: "idle",
-    notLoaded: "notLoaded",
-  }[`${type ?? ""}`] ?? "unknown";
 }
 
 function eventIdentityKey(event) {
@@ -6139,9 +6001,8 @@ function parseJson(value) {
 }
 
 function renderTaskRowMeta(task, unseen = false) {
-  const status = normalizeTaskStatus(task.status);
-  if (status && status !== "completed" && taskStatusView(status)) {
-    return renderTaskStatusChip(status, "task-row-meta", { label: false });
+  if (taskStatusView(task)) {
+    return renderTaskStatusChip(task, "task-row-meta", { label: false });
   }
   if (unseen) {
     return `
@@ -6163,8 +6024,8 @@ function renderTaskRowMeta(task, unseen = false) {
   `;
 }
 
-function renderTaskStatusChip(status, className = "", options = {}) {
-  const view = taskStatusView(status);
+function renderTaskStatusChip(task, className = "", options = {}) {
+  const view = taskStatusView(task);
   if (!view) {
     return "";
   }
@@ -6187,31 +6048,62 @@ function renderTaskStatusChip(status, className = "", options = {}) {
   `;
 }
 
-function taskStatusView(status) {
-  const normalized = normalizeTaskStatus(status);
+function taskStatusView(task) {
+  const normalized = taskStatusKey(task);
   return {
     running: { status: "running", label: "running", icon: "" },
-    syncing: { status: "syncing", label: "syncing", icon: "" },
     waiting_for_approval: {
       status: "waiting_for_approval",
       label: "approval",
       icon: "CircleAlert",
     },
+    waiting_on_user_input: {
+      status: "waiting_on_user_input",
+      label: "input",
+      icon: "MessageCircleQuestion",
+    },
     failed: { status: "failed", label: "failed", icon: "TriangleAlert" },
-    interrupted: { status: "interrupted", label: "interrupted", icon: "CircleSlash" },
-    completed: { status: "completed", label: "completed", icon: "CircleCheck" },
   }[normalized] ?? null;
 }
 
-function normalizeTaskStatus(status) {
-  return `${status ?? ""}`.trim();
+function taskStatusKey(task) {
+  const type = taskThreadStatusType(task);
+  if (type === "active") {
+    const activeFlags = taskActiveFlags(task);
+    if (activeFlags.includes("waitingOnApproval")) {
+      return "waiting_for_approval";
+    }
+    if (activeFlags.includes("waitingOnUserInput")) {
+      return "waiting_on_user_input";
+    }
+    return "running";
+  }
+  return type === "systemError" ? "failed" : type;
+}
+
+function taskThreadStatusType(task) {
+  return `${task?.threadStatus?.type ?? "notLoaded"}`;
+}
+
+function taskActiveFlags(task) {
+  return Array.isArray(task?.threadStatus?.activeFlags)
+    ? task.threadStatus.activeFlags
+    : [];
+}
+
+function formatTaskStatus(task) {
+  const key = taskStatusKey(task);
+  return {
+    waiting_for_approval: "waiting for approval",
+    waiting_on_user_input: "waiting for input",
+    running: "active",
+    systemError: "system error",
+    notLoaded: "not loaded",
+  }[key] ?? key;
 }
 
 function formatStatus(status) {
-  const normalized = normalizeTaskStatus(status);
-  if (normalized === "notLoaded") {
-    return "ready";
-  }
+  const normalized = `${status ?? ""}`.trim();
   return `${normalized || "unknown"}`.replaceAll("_", " ");
 }
 
