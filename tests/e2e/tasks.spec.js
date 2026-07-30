@@ -3455,9 +3455,9 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     stableActiveTurnStartedMs,
   );
   await tasksPage.evaluate((element) => {
-    const detail = element.querySelector("caffold-task-detail");
-    detail.stopActiveTurnClock();
-    detail.connectedCallback();
+    const conversation = element.querySelector("caffold-task-conversation");
+    conversation.stopActiveTurnClock();
+    conversation.connectedCallback();
   });
   const durationAfterReconnect = await activeTurn
     .locator(".task-turn-active-duration")

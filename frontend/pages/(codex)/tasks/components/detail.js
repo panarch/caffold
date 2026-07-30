@@ -15,6 +15,10 @@ import "../../../../components/git-compare-browser.js";
 import "../../../../components/git-diff-browser.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import { createRefreshCoordinator, subscribeToWatch } from "../../../../watch.js";
+import {
+  latestTaskRelatedWorktreePaths,
+} from "../conversation-render.js";
+import "./conversation.js";
 import "./markdown.js";
 import {
   PROMPT_SUBMISSION_STATE,
@@ -30,36 +34,16 @@ import {
   withPromptSubmissionState,
 } from "../runtime-state.js";
 import {
-  assistantMessagePhase,
-  canAcceptTurnContinuation,
-  conversationGroups,
-  dedupeCanonicalEvents,
-  eventIdentityKey,
-  eventTurnId,
-  isFinalAssistantEvent,
-  isImplicitTurnEvent,
-  isTerminalTurnEvent,
-  isTurnContinuationEvent,
-  isTurnStatusEvent,
-  isWorkEvent,
   mergeEvents,
   mergeTaskEventsPage,
   optimisticUserMessageEvent,
-  pendingApprovals,
   upsertEvent,
   userMessageFingerprint,
 } from "../task-events.js";
 import {
   cleanLogicalPath,
   cleanRelativeTaskPath,
-  formatCommand,
-  formatDate,
-  formatDecision,
-  formatDuration,
-  formatStatus,
-  normalizeTaskPath,
   shortId,
-  uniquePaths,
 } from "../task-format.js";
 import {
   taskDetailThreadId,
@@ -83,7 +67,6 @@ class CaffoldTaskDetail extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
     this.attachGlobalListeners();
-    this.syncActiveTurnClock();
   }
 
   ensureRendered() {
@@ -113,7 +96,6 @@ class CaffoldTaskDetail extends HTMLElement {
     this.streamState = TASK_TRANSPORT_STATE.IDLE;
     this.streamGeneration = 0;
     this.streamErrorTimer = null;
-    this.activeTurnClockTimer = null;
     this.taskRefresh = null;
     this.detailLoadGeneration = 0;
     this.historyRequestToken = 0;
@@ -121,11 +103,8 @@ class CaffoldTaskDetail extends HTMLElement {
     this.approvalActionToken = 0;
     this.promptSubmissionSequence = 0;
     this.continuationStateValue = { loading: false, error: null };
-    this.initialConversationScrollRequest = null;
-    this.conversationScrollMode = null;
-    this.conversationScrollByThread = new Map();
-    this.conversationResizeObserver = null;
-    this.conversationDisclosureByThread = new Map();
+    this.conversationUpdateKind = null;
+    this.initialConversationLoad = null;
     this.followUpDraft = "";
     this.followUpDraftByThread = new Map();
     this.followUpImages = [];
@@ -181,12 +160,11 @@ class CaffoldTaskDetail extends HTMLElement {
         if (
           closestElement(
             event.target,
-            "caffold-task-navigator, caffold-task-new",
+            "caffold-task-conversation",
           )
         ) {
           return;
         }
-        this.handleConversationDisclosureClick(event);
         const reviewMenu = closestElement(event.target, ".task-review-menu");
         for (const menu of this.querySelectorAll(".task-review-menu[open]")) {
           if (menu !== reviewMenu) {
@@ -210,9 +188,19 @@ class CaffoldTaskDetail extends HTMLElement {
       },
       true,
     );
-    this.addEventListener("caffold:task-markdown-rendered", (event) =>
-      this.handleTaskMarkdownRendered(event),
-    );
+    this.addEventListener("caffold:task-conversation-intent", (event) => {
+      event.stopPropagation();
+      if (event.detail?.type === "older-history") {
+        void this.loadOlderEvents({ retry: event.detail?.retry });
+      } else if (event.detail?.type === "retry-detail") {
+        void this.openTask(this.selectedThreadId);
+      } else if (event.detail?.type === "approval") {
+        void this.resolveApproval(
+          event.detail.approvalId,
+          event.detail.decision,
+        );
+      }
+    });
     this.addEventListener("caffold:open-git-diff", (event) => {
       const browser = closestElement(event.target, "caffold-git-diff-browser");
       if (!browser || !this.querySelector(".task-diff-view")?.contains(browser)) {
@@ -422,7 +410,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.observeTaskSettings(detail);
     this.setThreadEvents(threadId, detail.events ?? []);
     this.eventsPage = detail.eventsPage ?? { nextCursor: null };
-    this.conversationScrollMode = "bottom";
+    this.conversationUpdateKind = "bottom";
     this.emitTaskSnapshot();
     this.render();
     this.connectStream(threadId);
@@ -434,10 +422,9 @@ class CaffoldTaskDetail extends HTMLElement {
     this.historyRequestToken += 1;
     this.interruptActionToken += 1;
     this.approvalActionToken += 1;
+    this.initialConversationLoad = null;
     this.closeStream();
     this.unsubscribeTaskDiffWatch();
-    this.disconnectConversationResizeObserver();
-    this.stopActiveTurnClock();
     this.hidden = true;
   }
 
@@ -469,39 +456,6 @@ class CaffoldTaskDetail extends HTMLElement {
     );
   }
 
-  syncActiveTurnClock() {
-    const activeTurn = this.querySelector("[data-active-turn-started-ms]");
-    if (!activeTurn) {
-      this.stopActiveTurnClock();
-      return;
-    }
-
-    this.updateActiveTurnClock();
-    if (this.activeTurnClockTimer) {
-      return;
-    }
-    this.activeTurnClockTimer = window.setInterval(
-      () => this.updateActiveTurnClock(),
-      1_000,
-    );
-  }
-
-  updateActiveTurnClock() {
-    const activeTurn = this.querySelector("[data-active-turn-started-ms]");
-    const duration = activeTurn?.querySelector(".task-turn-active-duration");
-    const startedMs = Number(activeTurn?.dataset.activeTurnStartedMs);
-    if (!activeTurn || !duration || !Number.isFinite(startedMs)) {
-      this.stopActiveTurnClock();
-      return;
-    }
-    duration.textContent = `Working for ${formatDuration(Date.now() - startedMs)}`;
-  }
-
-  stopActiveTurnClock() {
-    window.clearInterval(this.activeTurnClockTimer);
-    this.activeTurnClockTimer = null;
-  }
-
   attachGlobalListeners() {
     if (this.globalListenersAttached) {
       return;
@@ -528,9 +482,9 @@ class CaffoldTaskDetail extends HTMLElement {
     }
 
     const loadGeneration = ++this.detailLoadGeneration;
-    this.initialConversationScrollRequest = this.conversationScrollSnapshot(threadId)
+    this.initialConversationLoad = this.conversationComponent()?.hasScrollSnapshot(threadId)
       ? null
-      : { threadId, requestId: loadGeneration };
+      : { threadId, loadGeneration };
     this.view = "detail";
     this.selectedThreadId = threadId;
     this.loading = true;
@@ -549,7 +503,7 @@ class CaffoldTaskDetail extends HTMLElement {
         taskDetailThreadId(detail) !== threadId ||
         !this.acceptTaskDetailRevision(threadId, detail.revision)
       ) {
-        this.finishInitialConversationScroll(threadId, loadGeneration);
+        this.finishInitialConversationLoad(threadId, loadGeneration);
         return null;
       }
       this.acknowledgeFollowUpFromCanonicalDetail(threadId, detail);
@@ -567,16 +521,14 @@ class CaffoldTaskDetail extends HTMLElement {
       if (detail.managed === false) {
         this.closeStream();
         this.render();
-        this.finishInitialConversationScroll(threadId, loadGeneration);
+        this.finishInitialConversationLoad(threadId, loadGeneration);
         return detail;
       }
-      this.conversationScrollMode = this.isInitialConversationScrollPending(threadId)
+      this.conversationUpdateKind = this.isInitialConversationLoadPending(threadId)
         ? "bottom"
-        : this.conversationScrollSnapshot(threadId)
-          ? "preserve"
-          : "bottom";
+        : "preserve";
       this.render();
-      this.finishInitialConversationScroll(threadId, loadGeneration);
+      this.finishInitialConversationLoad(threadId, loadGeneration);
       this.loadTaskGithubStatus(detail.task);
       this.loadModelOptions();
       this.loadPermissionOptions(this.activeCwdPath());
@@ -588,7 +540,7 @@ class CaffoldTaskDetail extends HTMLElement {
       this.loading = false;
       this.detailLoadError = error;
       this.render();
-      this.finishInitialConversationScroll(threadId, loadGeneration);
+      this.finishInitialConversationLoad(threadId, loadGeneration);
       return null;
     }
   }
@@ -711,7 +663,7 @@ class CaffoldTaskDetail extends HTMLElement {
         return;
       }
       this.setThreadEvents(threadId, upsertEvent(this.events, entry));
-      this.conversationScrollMode = this.liveConversationScrollMode(threadId);
+      this.conversationUpdateKind = this.liveConversationUpdateKind(threadId);
       this.render();
     });
   }
@@ -747,7 +699,7 @@ class CaffoldTaskDetail extends HTMLElement {
       this.emitTaskSnapshot();
     }
     this.loadTaskGithubStatus(detail.task);
-    this.conversationScrollMode = this.liveConversationScrollMode(threadId);
+    this.conversationUpdateKind = this.liveConversationUpdateKind(threadId);
     if (error && isTaskTransportStale(this.streamState)) {
       this.setStreamState(TASK_TRANSPORT_STATE.UNAVAILABLE, { render: false });
     } else if (detail?.syncState === "ready" && detail?.task) {
@@ -922,7 +874,7 @@ class CaffoldTaskDetail extends HTMLElement {
         this.emitTaskSnapshot();
       }
       this.loadTaskGithubStatus(detail.task);
-      this.conversationScrollMode = this.liveConversationScrollMode(threadId);
+      this.conversationUpdateKind = this.liveConversationUpdateKind(threadId);
       if (detail?.syncState === "ready" && detail?.task) {
         this.markStreamReadyFromCanonical(threadId);
       }
@@ -1299,7 +1251,7 @@ class CaffoldTaskDetail extends HTMLElement {
       this.followUpImages = [];
       this.followUpImagesByThread.set(threadId, []);
       this.composerImageErrors.delete("follow-up");
-      this.conversationScrollMode = "bottom";
+      this.conversationUpdateKind = "bottom";
       this.render();
 
       const response = await sendTaskPrompt(
@@ -1333,7 +1285,7 @@ class CaffoldTaskDetail extends HTMLElement {
         this.composerSettingsOverrideThreadIds.delete(threadId);
       }
       if (threadId === this.selectedThreadId) {
-        this.conversationScrollMode = "bottom-if-needed";
+        this.conversationUpdateKind = "live";
       }
     } catch (error) {
       if (followUpRequest.state === PROMPT_SUBMISSION_STATE.ACCEPTED) {
@@ -1353,7 +1305,7 @@ class CaffoldTaskDetail extends HTMLElement {
         );
         if (threadId === this.selectedThreadId) {
           this.error = error;
-          this.conversationScrollMode = "bottom-if-needed";
+          this.conversationUpdateKind = "live";
         }
         return;
       }
@@ -1377,7 +1329,7 @@ class CaffoldTaskDetail extends HTMLElement {
       }
       if (threadId === this.selectedThreadId) {
         this.error = error;
-        this.conversationScrollMode = "preserve";
+        this.conversationUpdateKind = "preserve";
       }
     } finally {
       if (this.followUpRequest === followUpRequest) {
@@ -1434,7 +1386,7 @@ class CaffoldTaskDetail extends HTMLElement {
       );
       this.eventsPage = detail.eventsPage ?? this.eventsPage;
       this.emitTaskSnapshot();
-      this.conversationScrollMode = "bottom-if-needed";
+      this.conversationUpdateKind = "live";
       this.render();
     } catch (error) {
       if (
@@ -1483,7 +1435,7 @@ class CaffoldTaskDetail extends HTMLElement {
       );
       this.eventsPage = detail.eventsPage ?? this.eventsPage;
       this.emitTaskSnapshot();
-      this.conversationScrollMode = "bottom-if-needed";
+      this.conversationUpdateKind = "live";
       this.render();
     } catch (error) {
       if (
@@ -1510,7 +1462,7 @@ class CaffoldTaskDetail extends HTMLElement {
 
     this.loadingOlderEvents = true;
     this.historyLoadError = null;
-    this.conversationScrollMode = "preserve";
+    this.conversationUpdateKind = "preserve";
     const historyToken = ++this.historyRequestToken;
     const threadId = this.selectedThreadId;
     this.render();
@@ -1524,13 +1476,13 @@ class CaffoldTaskDetail extends HTMLElement {
       }
       if (taskDetailThreadId(detail) !== threadId || !detail?.task) {
         this.loadingOlderEvents = false;
-        this.conversationScrollMode = "preserve";
+        this.conversationUpdateKind = "preserve";
         this.render();
         return;
       }
       if (!this.acceptTaskDetailRevision(threadId, detail.revision)) {
         this.loadingOlderEvents = false;
-        this.conversationScrollMode = "preserve";
+        this.conversationUpdateKind = "preserve";
         this.render();
         return;
       }
@@ -1545,7 +1497,7 @@ class CaffoldTaskDetail extends HTMLElement {
       this.eventsPage = detail.eventsPage ?? { nextCursor: null };
       this.loadingOlderEvents = false;
       this.historyLoadError = null;
-      this.conversationScrollMode = "prepend";
+      this.conversationUpdateKind = "prepend";
       this.render();
     } catch (error) {
       if (
@@ -1556,7 +1508,7 @@ class CaffoldTaskDetail extends HTMLElement {
       }
       this.loadingOlderEvents = false;
       this.historyLoadError = error;
-      this.conversationScrollMode = "preserve";
+      this.conversationUpdateKind = "preserve";
       this.render();
     }
   }
@@ -1947,12 +1899,6 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   render() {
-    const renderedThreadId = this.renderedConversationThreadId();
-    const renderedScroll = this.rememberConversationScroll(renderedThreadId);
-    const previousScroll =
-      renderedThreadId === this.selectedThreadId
-        ? renderedScroll
-        : this.conversationScrollSnapshot(this.selectedThreadId);
     const previousComposerFocus = this.captureComposerFocus();
     const previousTaskFilePath = this.captureTaskFileBrowserPath();
     const previousTaskDiffPath = this.captureTaskDiffPath();
@@ -1960,16 +1906,13 @@ class CaffoldTaskDetail extends HTMLElement {
     this.setAttribute("data-task-detail-view", this.taskDetailView);
     this.ensureTaskShell();
     this.renderTaskContentRegion();
-    this.restoreConversationDisclosureState();
     this.syncComposerTextareas();
     this.restoreComposerFocus(previousComposerFocus);
-    this.bindConversationScroll();
-    this.restoreConversationScroll(previousScroll);
+    this.syncConversationSnapshot();
     this.updateTaskDetailView();
     this.syncTaskFileBrowser(previousTaskFilePath);
     this.syncTaskDiffBrowser(previousTaskDiffPath);
     this.syncTaskCompareBrowser(previousTaskCompareState);
-    this.syncActiveTurnClock();
     this.fitModelPicker();
   }
 
@@ -1983,6 +1926,56 @@ class CaffoldTaskDetail extends HTMLElement {
     `;
   }
 
+  conversationComponent() {
+    return this.querySelector(
+      ".task-conversation-pane caffold-task-conversation",
+    );
+  }
+
+  isInitialConversationLoadPending(threadId = this.selectedThreadId) {
+    return this.initialConversationLoad?.threadId === threadId;
+  }
+
+  liveConversationUpdateKind(threadId = this.selectedThreadId) {
+    return this.isInitialConversationLoadPending(threadId) ? "bottom" : "live";
+  }
+
+  finishInitialConversationLoad(threadId, loadGeneration) {
+    if (
+      this.initialConversationLoad?.threadId === threadId &&
+      this.initialConversationLoad.loadGeneration === loadGeneration
+    ) {
+      this.initialConversationLoad = null;
+    }
+  }
+
+  syncConversationSnapshot() {
+    const conversation = this.conversationComponent();
+    const task = this.taskDetail?.task ?? null;
+    const taskThreadIdValue = task?.threadId ?? task?.id ?? "";
+    if (!conversation) {
+      this.conversationUpdateKind = null;
+      return;
+    }
+    if (!task || taskThreadIdValue !== this.selectedThreadId) {
+      this.conversationUpdateKind = null;
+      return;
+    }
+    conversation.setSnapshot({
+      threadId: this.selectedThreadId,
+      task,
+      events: this.events,
+      eventsPage: this.eventsPage,
+      loading: Boolean(this.taskDetail?.historyLoading),
+      loadingOlder: this.loadingOlderEvents,
+      detailError: this.detailLoadError,
+      historyError: this.historyLoadError,
+      transportState: this.streamState,
+      updateKind: this.conversationUpdateKind,
+    });
+    this.conversationUpdateKind = null;
+  }
+
   renderTaskContentRegion() {
     const region = this.querySelector(".tasks-detail-region");
     if (!region) {
@@ -1990,14 +1983,26 @@ class CaffoldTaskDetail extends HTMLElement {
     }
     const currentDetail = region.querySelector(":scope > .task-detail");
     const threadId = this.taskDetail?.task?.threadId ?? this.taskDetail?.task?.id ?? "";
-    if (
-      this.view === "detail" &&
-      currentDetail?.dataset.threadId === threadId &&
-      threadId
-    ) {
+    if (this.view === "detail" && currentDetail) {
       const template = document.createElement("template");
-      template.innerHTML = this.renderTaskDetail().trim();
-      const nextDetail = template.content.firstElementChild;
+      template.innerHTML = this.renderBody().trim();
+      const nextRoot = template.content.firstElementChild;
+      const nextDetail = nextRoot?.matches(".task-detail") ? nextRoot : null;
+      if (!nextDetail || !threadId) {
+        currentDetail.hidden = true;
+        const placeholder = document.createElement("div");
+        placeholder.className = "task-detail-placeholder";
+        placeholder.append(...template.content.childNodes);
+        region
+          .querySelector(":scope > .task-detail-placeholder")
+          ?.replaceWith(placeholder);
+        if (!region.querySelector(":scope > .task-detail-placeholder")) {
+          region.append(placeholder);
+        }
+        return;
+      }
+      region.querySelector(":scope > .task-detail-placeholder")?.remove();
+      currentDetail.hidden = false;
       const nextSummary = nextDetail?.querySelector(":scope > .task-detail-summary");
       const nextConversation = nextDetail?.querySelector(":scope > .task-conversation-pane");
       const currentSummary = currentDetail.querySelector(":scope > .task-detail-summary");
@@ -2008,8 +2013,35 @@ class CaffoldTaskDetail extends HTMLElement {
         currentSummary.replaceWith(nextSummary);
       }
       if (nextConversation && currentConversation) {
-        currentConversation.replaceChildren(...nextConversation.childNodes);
+        const currentTaskConversation = currentConversation.querySelector(
+          ":scope > caffold-task-conversation",
+        );
+        const nextTaskConversation = nextConversation.querySelector(
+          ":scope > caffold-task-conversation",
+        );
+        if (currentTaskConversation && nextTaskConversation) {
+          [...currentConversation.children].forEach((child) => {
+            if (child !== currentTaskConversation) {
+              child.remove();
+            }
+          });
+          [...nextConversation.children].forEach((child) => {
+            if (child !== nextTaskConversation) {
+              currentConversation.append(child);
+            }
+          });
+        } else {
+          currentConversation.replaceChildren(...nextConversation.childNodes);
+        }
       }
+      for (const selector of [".task-files-view", ".task-diff-view"]) {
+        const currentSubview = currentDetail.querySelector(`:scope > ${selector}`);
+        const nextSubview = nextDetail.querySelector(`:scope > ${selector}`);
+        if (currentSubview && nextSubview) {
+          currentSubview.replaceWith(nextSubview);
+        }
+      }
+      currentDetail.dataset.threadId = threadId;
       currentDetail.dataset.taskDetailView = this.taskDetailView;
       return;
     }
@@ -2064,19 +2096,11 @@ class CaffoldTaskDetail extends HTMLElement {
       return;
     }
 
-    if (nextView !== "conversation") {
-      this.rememberConversationScroll();
-    }
     this.taskDetailView = nextView;
     this.updateTaskDetailView();
     this.syncTaskFileBrowser();
     this.syncTaskDiffBrowser();
     this.syncTaskCompareBrowser();
-    if (nextView === "conversation") {
-      window.requestAnimationFrame(() => {
-        this.restoreConversationScroll(this.conversationScrollSnapshot());
-      });
-    }
     this.dispatchTaskDetailViewChange();
   }
 
@@ -2490,252 +2514,6 @@ class CaffoldTaskDetail extends HTMLElement {
     ).forEach((textarea) => syncComposerTextarea(textarea));
   }
 
-  bindConversationScroll() {
-    this.disconnectConversationResizeObserver();
-    const scroller = this.querySelector(".task-conversation-scroll");
-    scroller?.addEventListener("scroll", () => this.handleConversationScroll());
-    const column = scroller?.querySelector(".task-conversation-column");
-    const threadId = this.renderedConversationThreadId();
-    if (!scroller || !column || !threadId || typeof ResizeObserver === "undefined") {
-      return;
-    }
-    this.conversationResizeObserver = new ResizeObserver(() => {
-      if (this.querySelector(".task-conversation-scroll") !== scroller) {
-        return;
-      }
-      const previousScroll = this.conversationScrollSnapshot(threadId);
-      if (!previousScroll) {
-        return;
-      }
-      if (previousScroll.atBottom) {
-        scroller.scrollTop = maxScrollTop(scroller);
-      } else {
-        this.restoreConversationAnchor(scroller, previousScroll);
-      }
-      this.rememberConversationScroll(threadId);
-    });
-    this.conversationResizeObserver.observe(column);
-  }
-
-  disconnectConversationResizeObserver() {
-    this.conversationResizeObserver?.disconnect();
-    this.conversationResizeObserver = null;
-  }
-
-  captureConversationScroll() {
-    const scroller = this.querySelector(".task-conversation-scroll");
-    if (!scroller || scroller.clientHeight === 0) {
-      return null;
-    }
-    const scrollerRect = scroller.getBoundingClientRect();
-    const events = [...scroller.querySelectorAll(".task-event[data-event-id]")];
-    const anchor =
-      events.find((event) => {
-        const eventRect = event.getBoundingClientRect();
-        return (
-          eventRect.top >= scrollerRect.top + 1 &&
-          eventRect.top < scrollerRect.bottom - 1
-        );
-      }) ??
-      events.find((event) => event.getBoundingClientRect().bottom > scrollerRect.top + 1);
-    return {
-      scrollTop: scroller.scrollTop,
-      scrollHeight: scroller.scrollHeight,
-      clientHeight: scroller.clientHeight,
-      atBottom: isScrolledToBottom(scroller),
-      anchorEventId: anchor?.dataset.eventId ?? "",
-      anchorOffset: anchor
-        ? anchor.getBoundingClientRect().top - scrollerRect.top
-        : null,
-    };
-  }
-
-  renderedConversationThreadId() {
-    return `${
-      this.querySelector(".task-conversation-scroll")
-        ?.closest(".task-detail")
-        ?.getAttribute("data-thread-id") ?? ""
-    }`.trim();
-  }
-
-  handleConversationDisclosureClick(event) {
-    const summary = closestElement(
-      event.target,
-      ".task-conversation details[data-disclosure-key] > summary",
-    );
-    const disclosure = summary?.parentElement;
-    if (
-      !(disclosure instanceof HTMLDetailsElement) ||
-      !disclosure.matches(".task-conversation details[data-disclosure-key]")
-    ) {
-      return;
-    }
-
-    const threadId = `${
-      disclosure.closest(".task-detail")?.getAttribute("data-thread-id") ?? ""
-    }`.trim();
-    const key = `${disclosure.dataset.disclosureKey ?? ""}`.trim();
-    if (!threadId || !key) {
-      return;
-    }
-    let state = this.conversationDisclosureByThread.get(threadId);
-    if (!state) {
-      state = new Map();
-      this.conversationDisclosureByThread.set(threadId, state);
-    }
-    state.set(key, !disclosure.open);
-  }
-
-  restoreConversationDisclosureState() {
-    const threadId = this.renderedConversationThreadId();
-    const state = this.conversationDisclosureByThread.get(threadId);
-    if (!state) {
-      return;
-    }
-
-    this.querySelectorAll(
-      ".task-conversation details[data-disclosure-key]",
-    ).forEach((disclosure) => {
-      const key = disclosure.dataset.disclosureKey;
-      if (!state.has(key)) {
-        return;
-      }
-      disclosure.toggleAttribute("open", state.get(key));
-    });
-  }
-
-  rememberConversationScroll(threadId = this.renderedConversationThreadId()) {
-    const snapshot = this.captureConversationScroll();
-    if (snapshot && threadId) {
-      this.conversationScrollByThread.set(threadId, snapshot);
-    }
-    return snapshot;
-  }
-
-  conversationScrollSnapshot(threadId = this.selectedThreadId) {
-    if (!threadId) {
-      return null;
-    }
-    return this.conversationScrollByThread.get(threadId) ?? null;
-  }
-
-  isInitialConversationScrollPending(threadId = this.selectedThreadId) {
-    return this.initialConversationScrollRequest?.threadId === threadId;
-  }
-
-  liveConversationScrollMode(threadId = this.selectedThreadId) {
-    return this.isInitialConversationScrollPending(threadId)
-      ? "bottom"
-      : "bottom-if-needed";
-  }
-
-  finishInitialConversationScroll(threadId, requestId) {
-    const pending = this.initialConversationScrollRequest;
-    if (pending?.threadId === threadId && pending.requestId === requestId) {
-      this.initialConversationScrollRequest = null;
-    }
-  }
-
-  restoreConversationScroll(previousScroll) {
-    const scroller = this.querySelector(".task-conversation-scroll");
-    if (!scroller) {
-      this.conversationScrollMode = null;
-      return;
-    }
-
-    const mode = this.conversationScrollMode;
-    this.conversationScrollMode = null;
-    const shouldStickToBottom =
-      mode === "bottom" ||
-      (mode === "bottom-if-needed" && previousScroll?.atBottom) ||
-      (!mode && previousScroll?.atBottom);
-    if (shouldStickToBottom) {
-      scroller.scrollTop = maxScrollTop(scroller);
-      this.rememberConversationScroll();
-      return;
-    }
-    if (mode === "prepend" && previousScroll) {
-      if (this.restoreConversationAnchor(scroller, previousScroll)) {
-        return;
-      }
-      scroller.scrollTop = Math.min(
-        previousScroll.scrollTop + (scroller.scrollHeight - previousScroll.scrollHeight),
-        maxScrollTop(scroller),
-      );
-      return;
-    }
-    if (this.restoreConversationAnchor(scroller, previousScroll)) {
-      return;
-    }
-    if (previousScroll) {
-      scroller.scrollTop = Math.min(previousScroll.scrollTop, maxScrollTop(scroller));
-    }
-  }
-
-  restoreConversationAnchor(scroller, previousScroll) {
-    if (
-      !previousScroll?.anchorEventId ||
-      !Number.isFinite(previousScroll.anchorOffset)
-    ) {
-      return false;
-    }
-    const anchor = [...scroller.querySelectorAll(".task-event[data-event-id]")].find(
-      (event) => event.dataset.eventId === previousScroll.anchorEventId,
-    );
-    if (!anchor) {
-      return false;
-    }
-    const scrollerTop = scroller.getBoundingClientRect().top;
-    const currentOffset = anchor.getBoundingClientRect().top - scrollerTop;
-    scroller.scrollTop = Math.min(
-      Math.max(0, scroller.scrollTop + currentOffset - previousScroll.anchorOffset),
-      maxScrollTop(scroller),
-    );
-    return true;
-  }
-
-  handleConversationScroll() {
-    const scroller = this.querySelector(".task-conversation-scroll");
-    this.rememberConversationScroll();
-    if (
-      !scroller ||
-      this.loadingOlderEvents ||
-      this.historyLoadError ||
-      !this.eventsPage?.nextCursor ||
-      scroller.scrollTop > 32
-    ) {
-      return;
-    }
-    this.loadOlderEvents();
-  }
-
-  handleTaskMarkdownRendered(event) {
-    const scroller = this.querySelector(".task-conversation-scroll");
-    if (!scroller || !event.detail) {
-      return;
-    }
-
-    const previousScroll = this.conversationScrollSnapshot();
-    if (event.detail.atBottom) {
-      scroller.scrollTop = maxScrollTop(scroller);
-    } else if (this.restoreConversationAnchor(scroller, previousScroll)) {
-      // Keep the same conversation event at the same viewport offset while
-      // prepended Markdown replaces its temporary plain-text layout.
-    } else if (
-      event.detail.aboveViewport &&
-      Number.isFinite(event.detail.scrollHeight) &&
-      Number.isFinite(event.detail.nextScrollHeight) &&
-      Number.isFinite(event.detail.scrollTop)
-    ) {
-      scroller.scrollTop = Math.min(
-        event.detail.scrollTop +
-          (event.detail.nextScrollHeight - event.detail.scrollHeight),
-        maxScrollTop(scroller),
-      );
-    }
-    this.rememberConversationScroll();
-  }
-
   hasSelectedTaskDetail() {
     return Boolean(
       this.view === "detail" &&
@@ -3017,51 +2795,11 @@ class CaffoldTaskDetail extends HTMLElement {
     if (this.taskDetail?.managed === false) {
       return this.renderContinueGate(task);
     }
-    const approvals = pendingApprovals(this.events);
-    const controlsDisabled = isTaskTransportStale(this.streamState);
     return `
       <div class="task-detail" data-thread-id="${escapeHtml(task.threadId ?? task.id)}" data-task-detail-view="${escapeHtml(this.taskDetailView)}" data-task-availability="${escapeHtml(this.streamState)}">
         ${this.renderTaskDetailSummary(task)}
         <section class="task-conversation-pane" aria-label="Task conversation">
-          <div class="task-conversation-scroll">
-            <div class="task-conversation-column">
-              ${
-                this.detailLoadError
-                  ? `<div class="task-detail-load-error task-detail-load-error-inline" role="alert">
-                      <p>Task details could not be refreshed.</p>
-                      <p class="task-load-error-message">${escapeHtml(this.detailLoadError.message)}</p>
-                      <button type="button" class="task-secondary-button" data-task-action="retry-task-detail">Retry</button>
-                    </div>`
-                  : ""
-              }
-              ${
-                this.taskDetail?.historyLoading
-                  ? `<p class="task-history-loading" role="status">Loading conversation...</p>`
-                  : ""
-              }
-              ${
-                this.eventsPage?.nextCursor || this.loadingOlderEvents
-                  ? `<div class="task-load-older">
-                      ${this.loadingOlderEvents ? "Loading older..." : ""}
-                      ${
-                        this.historyLoadError
-                          ? `<div class="task-history-error" role="alert">
-                              <span>Older messages are temporarily unavailable.</span>
-                              <span class="task-load-error-message">${escapeHtml(this.historyLoadError.message)}</span>
-                              <button type="button" data-task-action="retry-task-history">Retry loading older messages</button>
-                            </div>`
-                          : ""
-                      }
-                    </div>`
-                  : ""
-              }
-              <ol class="task-conversation" aria-label="Task conversation">
-                ${renderConversation(this.events, task, approvals, {
-                  controlsDisabled,
-                })}
-              </ol>
-            </div>
-          </div>
+          <caffold-task-conversation></caffold-task-conversation>
           ${this.renderStreamState()}
           ${this.renderTaskComposer({
             formName: "follow-up",
@@ -3516,962 +3254,6 @@ function renderModelFallback(loading, error) {
   return `<p class="task-model-note">Open this menu after Codex is connected.</p>`;
 }
 
-function renderConversation(events, task, approvals = [], options = {}) {
-  const conversationEvents = dedupeCanonicalEvents(events);
-  const groups = conversationGroups(conversationEvents);
-  const liveStatusAvailable = !options.controlsDisabled;
-  const activeGroupIndex = liveStatusAvailable
-    ? activeTurnGroupIndex(groups, task)
-    : -1;
-  const pendingApprovalIds = new Set(
-    approvals.map((event) => event.payload?.approvalId).filter(Boolean),
-  );
-  const userPrompts = new Set(
-    conversationEvents
-      .filter((event) => event.type === "user_message")
-      .map((event) => `${event.payload?.text ?? event.payload?.prompt ?? ""}`.trim())
-      .filter(Boolean),
-  );
-  const output = groups
-    .map((group, index) => {
-      if (group.kind === "turn") {
-        return renderTurnGroup(group, task, {
-          forceActive: index === activeGroupIndex,
-          pendingApprovalIds,
-          controlsDisabled: options.controlsDisabled,
-          liveStatusAvailable,
-        });
-      }
-      if (
-        group.event.type === "approval_requested" &&
-        pendingApprovalIds.has(group.event.payload?.approvalId)
-      ) {
-        return renderApprovalFlow([group.event], {
-          disabled: options.controlsDisabled,
-        });
-      }
-      if (!shouldRenderStandaloneEvent(group.event, userPrompts)) {
-        return "";
-      }
-      return renderConversationEvent(group.event, task, { active: false });
-    })
-    .join("");
-  if (
-    liveStatusAvailable &&
-    isTaskActivelyWorking(task) &&
-    activeGroupIndex < 0
-  ) {
-    return `${output}${renderActiveTurnStatus(
-      {
-        turnId: task?.activeTurn?.id ?? "active-turn",
-        events: [],
-      },
-      task,
-    )}`;
-  }
-  return output;
-}
-
-function activeTurnGroupIndex(groups, task) {
-  if (!isTaskActivelyWorking(task)) {
-    return -1;
-  }
-  const exactIndex = groups.findIndex(
-    (group) => group.kind === "turn" && group.turnId === task?.activeTurn?.id,
-  );
-  if (exactIndex >= 0) {
-    return exactIndex;
-  }
-
-  const startedMs = Number(task?.activeTurn?.startedAtMs);
-  if (!Number.isFinite(startedMs) || startedMs <= 0) {
-    return -1;
-  }
-  for (let index = groups.length - 1; index >= 0; index -= 1) {
-    const group = groups[index];
-    if (group.kind !== "turn") {
-      continue;
-    }
-    const hasCurrentEvent = group.events.some(
-      (event) => Number(event.createdMs) >= startedMs - 2_000,
-    );
-    if (hasCurrentEvent) {
-      return index;
-    }
-  }
-  return groups.findLastIndex((group) => group.kind === "turn");
-}
-
-function renderTurnGroup(group, task, options = {}) {
-  const assistantEvents = group.events.filter((event) => event.type === "assistant_message");
-  const statusEvents = group.events.filter(isTurnStatusEvent);
-  const terminalEvent = statusEvents.find(isTerminalTurnEvent);
-  const finalAssistantEvent =
-    assistantEvents.findLast(isFinalAssistantEvent) ?? assistantEvents.at(-1);
-  const isCurrentTurn = task?.activeTurn?.id === group.turnId;
-  const isActive =
-    options.liveStatusAvailable !== false &&
-    isTaskActivelyWorking(task) &&
-    (options.forceActive || isCurrentTurn);
-  const isComplete =
-    Boolean(terminalEvent) ||
-    (Boolean(finalAssistantEvent && isFinalAssistantEvent(finalAssistantEvent)) &&
-      !isActive);
-
-  if (isComplete) {
-    return renderCompletedTurnGroup(
-      group,
-      task,
-      terminalEvent,
-      finalAssistantEvent,
-      options.pendingApprovalIds,
-      options.controlsDisabled,
-    );
-  }
-
-  const output = group.events
-    .map((event) =>
-      renderActiveTurnTimelineEvent(
-        event,
-        task,
-        options.pendingApprovalIds,
-        options.controlsDisabled,
-      ),
-    )
-    .filter(Boolean);
-  if (isActive) {
-    output.push(renderActiveTurnStatus(group, task));
-  }
-  return output.join("");
-}
-
-function renderCompletedTurnGroup(
-  group,
-  task,
-  terminalEvent,
-  finalAssistantEvent,
-  pendingApprovalIds = new Set(),
-  controlsDisabled = false,
-) {
-  const output = [];
-  const userEvents = group.events.filter((event) => event.type === "user_message");
-  const workEvents = group.events.filter(
-    (event) =>
-      isWorkEvent(event) ||
-      (event.type === "assistant_message" && event !== finalAssistantEvent),
-  );
-  const approvals = group.events.filter(
-    (event) =>
-      event.type === "approval_requested" &&
-      pendingApprovalIds.has(event.payload?.approvalId),
-  );
-
-  for (const event of userEvents) {
-    output.push(renderConversationEvent(event, task, { active: false }));
-  }
-  if (workEvents.length > 0) {
-    output.push(renderTurnWorkSummary(group, workEvents, terminalEvent));
-  }
-  if (approvals.length > 0) {
-    output.push(renderApprovalFlow(approvals, { disabled: controlsDisabled }));
-  }
-  if (finalAssistantEvent) {
-    output.push(
-      renderConversationEvent(finalAssistantEvent, task, {
-        active: false,
-        messagePhase: "final",
-      }),
-    );
-  }
-  return output.join("");
-}
-
-function renderActiveTurnTimelineEvent(
-  event,
-  task,
-  pendingApprovalIds = new Set(),
-  controlsDisabled = false,
-) {
-  if (
-    event.type === "approval_requested" &&
-    pendingApprovalIds.has(event.payload?.approvalId)
-  ) {
-    return renderApprovalFlow([event], { disabled: controlsDisabled });
-  }
-  if (
-    event.type === "user_message" ||
-    event.type === "assistant_message" ||
-    isWorkEvent(event)
-  ) {
-    return renderConversationEvent(event, task, {
-      active: isWorkEvent(event),
-    });
-  }
-  return "";
-}
-
-function renderActiveTurnStatus(group, task) {
-  const startedMs = activeTurnStartMs(task);
-  const state = activeTurnStateLabel(group.events, task);
-  const startedAttribute = startedMs
-    ? ` data-active-turn-started-ms="${escapeHtml(startedMs)}"`
-    : "";
-  const duration = startedMs
-    ? `Working for ${formatDuration(Date.now() - startedMs)}`
-    : "Working";
-  return `
-    <li
-      class="task-event task-turn-active"
-      ${startedAttribute}
-      data-turn-id="${escapeHtml(group.turnId)}"
-    >
-      <span class="task-status-spinner" aria-hidden="true"></span>
-      <span class="task-turn-active-duration">${escapeHtml(duration)}</span>
-      <span class="task-turn-active-state" title="${escapeHtml(state)}" aria-live="polite">${escapeHtml(state)}</span>
-    </li>
-  `;
-}
-
-function activeTurnStartMs(task) {
-  const taskStartedMs = Number(task?.activeTurn?.startedAtMs);
-  if (Number.isFinite(taskStartedMs) && taskStartedMs > 0) {
-    return taskStartedMs;
-  }
-  return null;
-}
-
-function activeTurnStateLabel(events, task) {
-  const activeFlagLabel = taskActiveFlagLabel(task);
-  if (activeFlagLabel) {
-    return activeFlagLabel;
-  }
-
-  const event =
-    [...events]
-      .reverse()
-      .find((entry) => entry.payload?.lifecycle === "started") ??
-    [...events]
-      .reverse()
-      .find((entry) =>
-        entry.type === "work_status" ||
-        entry.type === "reasoning" ||
-        entry.type === "plan" ||
-        entry.type === "command_execution" ||
-        entry.type === "file_change" ||
-        entry.type === "assistant_message",
-      );
-  if (!event) {
-    return "Thinking";
-  }
-  if (event.type === "work_status") {
-    return activeWorkItemLabel(event.payload?.itemType);
-  }
-  if (event.type === "reasoning") {
-    return "Thinking";
-  }
-  if (event.type === "plan") {
-    return "Updating plan";
-  }
-  if (event.type === "command_execution") {
-    return "Running command";
-  }
-  if (event.type === "file_change") {
-    return "Editing files";
-  }
-  return "Thinking";
-}
-
-function activeWorkItemLabel(itemType) {
-  if (itemType === "plan") {
-    return "Updating plan";
-  }
-  if (["commandExecution", "mcpToolCall", "dynamicToolCall"].includes(itemType)) {
-    return "Running command";
-  }
-  if (itemType === "fileChange") {
-    return "Editing files";
-  }
-  return "Thinking";
-}
-
-function renderApprovalFlow(approvals, options = {}) {
-  if (!approvals.length) {
-    return "";
-  }
-  return `
-    <li class="task-event task-approval-flow">
-      <section class="task-approvals" aria-label="Pending approvals">
-        ${approvals
-          .map((approval) => renderApprovalCard(approval, options))
-          .join("")}
-      </section>
-    </li>
-  `;
-}
-
-function shouldRenderStandaloneEvent(event, userPrompts) {
-  if (event.type === "prompt_sent") {
-    const prompt = `${event.payload?.prompt ?? event.payload?.text ?? ""}`.trim();
-    return Boolean(prompt && !userPrompts.has(prompt));
-  }
-  return ![
-    "thread_started",
-    "turn_started",
-    "turn_completed",
-    "thread_status_changed",
-    "approval_requested",
-    "approval_resolved",
-    "diff_updated",
-    "work_status",
-  ].includes(event.type);
-}
-
-function renderConversationEvent(event, task, eventState) {
-  const payload = event.payload ?? {};
-  if (event.type === "prompt_sent" || event.type === "user_message") {
-    if (event.type === "prompt_sent") {
-      return renderStatusEvent(event);
-    }
-    const message = userMessagePresentation(payload);
-    return renderMessageEvent(event, "user", message.text, {
-      attachments: message.attachments,
-    });
-  }
-  if (event.type === "assistant_message") {
-    return renderMessageEvent(event, "assistant", payload.text, {
-      phase: eventState?.messagePhase ?? assistantMessagePhase(payload.phase),
-    });
-  }
-  if (event.type === "reasoning") {
-    const summary = Array.isArray(payload.summary)
-      ? payload.summary.filter(Boolean).join("\n\n")
-      : "";
-    const content = Array.isArray(payload.content)
-      ? payload.content.filter(Boolean).join("\n\n")
-      : "";
-    return renderThinkingEvent(
-      event,
-      [summary, content].filter(Boolean).join("\n\n"),
-      task,
-      eventState,
-    );
-  }
-  if (event.type === "plan") {
-    return renderToolEvent(event, "Plan", payload.text);
-  }
-  if (event.type === "command_execution") {
-    return renderCommandEvent(event);
-  }
-  if (event.type === "file_change") {
-    return renderFileChangeEvent(event);
-  }
-  if (event.type === "task_failed") {
-    return renderToolEvent(event, "Error", event.summary, "danger");
-  }
-  return renderStatusEvent(event);
-}
-
-function renderStatusEvent(event) {
-  const status = statusTone(event.type);
-  return `
-    <li class="task-event task-event-status"${eventIdentityAttribute(event)} data-event-type="${escapeHtml(event.type)}" data-event-status="${escapeHtml(status)}">
-      <span class="task-status-chip">${escapeHtml(event.summary)}</span>
-      <time>${escapeHtml(formatDate(event.createdMs))}</time>
-    </li>
-  `;
-}
-
-function renderMessageEvent(event, role, text, options = {}) {
-  const value = `${text ?? ""}`.trim();
-  const attachments = Array.isArray(options.attachments) ? options.attachments : [];
-  if (!value && !attachments.length) {
-    return renderStatusEvent(event);
-  }
-  const phaseAttribute = options.phase
-    ? ` data-message-phase="${escapeHtml(options.phase)}"`
-    : "";
-  const attachmentsAttribute = attachments.length ? " data-has-attachments" : "";
-  const submissionState = promptSubmissionState(event);
-  const deliveryAttribute = submissionState
-    ? ` data-delivery-state="${escapeHtml(submissionState)}"`
-    : "";
-  const deliveryLabel = {
-    [PROMPT_SUBMISSION_STATE.SENDING]: "Sending...",
-    [PROMPT_SUBMISSION_STATE.ACCEPTED]: "Accepted - syncing...",
-    [PROMPT_SUBMISSION_STATE.OUTCOME_UNKNOWN]: "Delivery unconfirmed",
-  }[submissionState] ?? "";
-
-  return `
-    <li class="task-event task-message"${eventIdentityAttribute(event)} data-event-type="${escapeHtml(event.type)}" data-message-role="${escapeHtml(role)}"${phaseAttribute}${attachmentsAttribute}${deliveryAttribute}>
-      <div class="task-message-header">
-        ${deliveryLabel ? `<span class="task-message-delivery">${escapeHtml(deliveryLabel)}</span>` : ""}
-        <time>${escapeHtml(formatDate(event.createdMs))}</time>
-      </div>
-      ${renderMessageAttachments(attachments)}
-      ${value ? `
-        <div class="task-message-content">
-          <caffold-task-markdown>${escapeHtml(value)}</caffold-task-markdown>
-        </div>
-      ` : ""}
-    </li>
-  `;
-}
-
-function eventIdentityAttribute(event) {
-  const eventId = `${event?.id ?? ""}`.trim();
-  return eventId ? ` data-event-id="${escapeHtml(eventId)}"` : "";
-}
-
-function disclosureIdentityAttribute(kind, identity) {
-  const value = `${identity ?? ""}`.trim();
-  return value
-    ? ` data-disclosure-key="${escapeHtml(`${kind}:${value}`)}"`
-    : "";
-}
-
-function turnGroupDisclosureIdentity(group) {
-  const turnId = `${group?.turnId ?? ""}`.trim();
-  if (turnId && !turnId.startsWith("implicit-")) {
-    return turnId;
-  }
-
-  const eventId = group?.events
-    ?.map((event) => `${event?.id ?? ""}`.trim())
-    .find(Boolean);
-  return eventId || eventIdentityKey(group?.events?.[0]) || turnId;
-}
-
-function userMessagePresentation(payload) {
-  const content = userMessageContent(payload);
-  const text = userMessageText(payload);
-  const imageItems = content.filter((item) => ["image", "localImage"].includes(item?.type));
-
-  if (!imageItems.length) {
-    return { text, attachments: [] };
-  }
-
-  const parsed = parseCodexAttachmentPrompt(text);
-  const names = parsed?.fileNames ?? [];
-  return {
-    text: parsed?.request ?? text,
-    attachments: imageItems.map((item, index) => ({
-      src: taskImageSource(item),
-      name: item.name ?? names[index] ?? `Attached image ${index + 1}`,
-    })),
-  };
-}
-
-function userMessageText(payload) {
-  const prompt = `${payload?.prompt ?? ""}`.trim();
-  const payloadText = `${payload?.text ?? ""}`.trim();
-  const content = userMessageContent(payload);
-  const itemText = content
-    .filter((item) => ["text", "input_text"].includes(item?.type))
-    .map((item) => `${item?.text ?? ""}`.trim())
-    .filter(Boolean)
-    .join("\n\n");
-  return normalizedUserMessageText(payloadText || prompt || itemText);
-}
-
-function userMessageContent(payload) {
-  if (Array.isArray(payload?.content)) {
-    return payload.content;
-  }
-  return Array.isArray(payload?.item?.content) ? payload.item.content : [];
-}
-
-function normalizedUserMessageText(text) {
-  const isAmbientWrapper =
-    text.includes("automatically supplied ambient UI state") ||
-    text.includes("<in-app-browser-context") ||
-    text.includes("# In app browser:");
-  if (!isAmbientWrapper) {
-    return text;
-  }
-
-  for (const marker of ["## My request for Codex:", "My request for Codex:"]) {
-    const markerIndex = text.lastIndexOf(marker);
-    if (markerIndex >= 0) {
-      return text.slice(markerIndex + marker.length).trim();
-    }
-  }
-  return text;
-}
-
-function taskImageSource(item) {
-  if (item?.type === "image") {
-    return safeTaskImageSource(item.url);
-  }
-  if (item?.type !== "localImage") {
-    return "";
-  }
-  const path = `${item.path ?? ""}`.trim();
-  if (!path.startsWith("/")) {
-    return "";
-  }
-  return `/api/task-image?${new URLSearchParams({ path })}`;
-}
-
-function safeTaskImageSource(value) {
-  const source = `${value ?? ""}`.trim();
-  return /^data:image\/(?:avif|gif|jpe?g|png|webp);base64,/i.test(source)
-    ? source
-    : "";
-}
-
-function parseCodexAttachmentPrompt(text) {
-  const filesMarker = /^# Files mentioned by the user:\s*$/m;
-  const requestMarker = /^## My request for Codex:\s*$/m;
-  const filesMatch = filesMarker.exec(text);
-  const requestMatch = requestMarker.exec(text);
-  if (!filesMatch || !requestMatch || requestMatch.index <= filesMatch.index) {
-    return null;
-  }
-
-  const fileSection = text.slice(filesMatch.index + filesMatch[0].length, requestMatch.index);
-  const fileNames = Array.from(
-    fileSection.matchAll(/^##\s+(.+?):\s+\/.*$/gm),
-    (match) => match[1].trim(),
-  ).filter((name) => /\.(?:avif|gif|jpe?g|png|webp)$/i.test(name));
-  const request = text
-    .slice(requestMatch.index + requestMatch[0].length)
-    .trim();
-
-  return { fileNames, request };
-}
-
-function renderMessageAttachments(attachments) {
-  if (!attachments.length) {
-    return "";
-  }
-
-  return `
-    <div class="task-message-attachments" aria-label="Attached images">
-      ${attachments
-        .map(
-          (attachment) => `
-            <figure class="task-message-attachment">
-              ${attachment.src ? `
-                <div class="task-message-attachment-preview">
-                  <img src="${escapeHtml(attachment.src)}" alt="${escapeHtml(attachment.name)}" loading="lazy">
-                </div>
-              ` : `
-                <div class="task-message-attachment-preview task-message-attachment-unavailable">
-                  ${renderInlineIcon("ImageOff", "Image preview unavailable", "task-message-attachment-placeholder-icon")}
-                  <span>Preview unavailable</span>
-                </div>
-              `}
-              <figcaption title="${escapeHtml(attachment.name)}">
-                ${renderInlineIcon("FileImage", "Attached image", "task-message-attachment-icon")}
-                <span>${escapeHtml(attachment.name)}</span>
-              </figcaption>
-            </figure>
-          `,
-        )
-        .join("")}
-    </div>
-  `;
-}
-
-function renderThinkingEvent(event, text, task, eventState) {
-  const value = `${text ?? ""}`.trim();
-  if (!value) {
-    return renderStatusEvent(event);
-  }
-  const isActive =
-    eventState?.active ??
-    isTaskActivelyWorking(task);
-  const open = isActive ? " open" : "";
-  const state = isActive ? "active" : "complete";
-
-  return `
-    <li class="task-event task-thinking" data-event-type="${escapeHtml(event.type)}" data-thinking-state="${escapeHtml(state)}">
-      <details${open}${disclosureIdentityAttribute("thinking", eventIdentityKey(event))}>
-        <summary>
-          <span>Thinking</span>
-          <time>${escapeHtml(formatDate(event.createdMs))}</time>
-        </summary>
-        <div class="task-thinking-content">
-          <caffold-task-markdown>${escapeHtml(value)}</caffold-task-markdown>
-        </div>
-      </details>
-    </li>
-  `;
-}
-
-function renderTurnWorkSummary(group, workEvents, terminalEvent) {
-  const duration = turnDurationLabel(group.events, terminalEvent);
-  const count = turnWorkItemCount(workEvents);
-  const updateText = count === 1 ? "1 update" : `${count} updates`;
-  const label = duration ? `Worked for ${duration}` : "Work details";
-  return `
-    <li class="task-event task-turn-work" data-turn-id="${escapeHtml(group.turnId)}">
-      <details${disclosureIdentityAttribute("turn-work", turnGroupDisclosureIdentity(group))}>
-        <summary>
-          <span>${escapeHtml(label)}</span>
-          <span>${escapeHtml(updateText)}</span>
-        </summary>
-        <div class="task-turn-work-body">
-          ${renderTurnWorkItems(workEvents)}
-        </div>
-      </details>
-    </li>
-  `;
-}
-
-function turnWorkItemCount(events) {
-  let count = 0;
-  let combinedType = "";
-  for (const event of events) {
-    if (["reasoning", "file_change"].includes(event.type)) {
-      if (combinedType !== event.type) {
-        count += 1;
-        combinedType = event.type;
-      }
-      continue;
-    }
-    combinedType = "";
-    count += 1;
-  }
-  return count;
-}
-
-function turnDurationLabel(events, terminalEvent) {
-  const started = events.find((event) => event.type === "turn_started");
-  const startMs = started?.createdMs ?? events[0]?.createdMs;
-  const endMs = terminalEvent?.createdMs ?? events.at(-1)?.createdMs;
-  if (typeof startMs !== "number" || typeof endMs !== "number" || endMs <= startMs) {
-    return "";
-  }
-  return formatDuration(endMs - startMs);
-}
-
-function renderTurnWorkItems(events) {
-  const output = [];
-  let combinedEvents = [];
-  let combinedType = "";
-  const flushCombinedEvents = () => {
-    if (combinedType === "reasoning") {
-      output.push(renderCombinedReasoningWorkItem(combinedEvents));
-    } else if (combinedType === "file_change") {
-      output.push(renderCombinedFileChangeWorkItem(combinedEvents));
-    }
-    combinedEvents = [];
-    combinedType = "";
-  };
-
-  for (const event of events) {
-    if (["reasoning", "file_change"].includes(event.type)) {
-      if (combinedType && combinedType !== event.type) {
-        flushCombinedEvents();
-      }
-      combinedType = event.type;
-      combinedEvents.push(event);
-      continue;
-    }
-    flushCombinedEvents();
-    output.push(renderTurnWorkItem(event));
-  }
-  flushCombinedEvents();
-  return output.filter(Boolean).join("");
-}
-
-function renderCombinedReasoningWorkItem(events) {
-  if (!events.length) {
-    return "";
-  }
-  const text = events
-    .map((event) => {
-      const payload = event.payload ?? {};
-      const summary = Array.isArray(payload.summary)
-        ? payload.summary.filter(Boolean).join("\n\n")
-        : "";
-      const content = Array.isArray(payload.content)
-        ? payload.content.filter(Boolean).join("\n\n")
-        : "";
-      return [summary, content].filter(Boolean).join("\n\n");
-    })
-    .filter(Boolean)
-    .join("\n\n");
-  return renderTurnWorkItemShell(latestEvent(events), "Thinking", text);
-}
-
-function renderCombinedFileChangeWorkItem(events) {
-  if (!events.length) {
-    return "";
-  }
-
-  const latest = latestEvent(events);
-  const payload = latest.payload ?? {};
-  const latestCount =
-    typeof payload.changeCount === "number"
-      ? payload.changeCount
-      : Array.isArray(payload.changes)
-        ? payload.changes.length
-        : null;
-  const latestSummary =
-    typeof latestCount === "number"
-      ? latestCount === 1
-        ? "Latest: 1 changed file"
-        : `Latest: ${latestCount} changed files`
-      : "";
-  const status = payload.status ? `Latest status: ${formatStatus(payload.status)}` : "";
-  const updateText =
-    events.length === 1
-      ? "1 file change update"
-      : `${events.length} file change updates`;
-
-  return renderFileChangeWorkItemShell(
-    latest,
-    [updateText, latestSummary, status].filter(Boolean).join("\n"),
-    fileChangePaths(events),
-  );
-}
-
-function latestEvent(events) {
-  return events.reduce((latest, event) =>
-    (event.createdMs ?? 0) >= (latest.createdMs ?? 0) ? event : latest,
-  );
-}
-
-function renderTurnWorkItem(event) {
-  const payload = event.payload ?? {};
-  const dataType = escapeHtml(event.type);
-  if (event.type === "assistant_message") {
-    return renderTurnWorkItemShell(event, "Update", payload.text);
-  }
-  if (event.type === "reasoning") {
-    const summary = Array.isArray(payload.summary)
-      ? payload.summary.filter(Boolean).join("\n\n")
-      : "";
-    const content = Array.isArray(payload.content)
-      ? payload.content.filter(Boolean).join("\n\n")
-      : "";
-    return renderTurnWorkItemShell(event, "Thinking", [summary, content].filter(Boolean).join("\n\n"));
-  }
-  if (event.type === "plan") {
-    return renderTurnWorkItemShell(event, "Plan", payload.text);
-  }
-  if (event.type === "command_execution") {
-    const command = `${payload.command ?? ""}`.trim();
-    const cwd = `${payload.cwd ?? ""}`.trim();
-    const status = `${payload.status ?? ""}`.trim();
-    const output = `${payload.aggregatedOutput ?? ""}`.trim();
-    const open = status && status !== "completed" ? " open" : "";
-    return `
-      <article class="task-work-item task-work-command" data-event-type="command_execution" data-command-status="${escapeHtml(status || "unknown")}">
-        <details${open}${disclosureIdentityAttribute("command", eventIdentityKey(event))}>
-          <summary>
-            <strong>Command</strong>
-            ${status ? `<span>${escapeHtml(formatStatus(status))}</span>` : ""}
-            <time>${escapeHtml(formatDate(event.createdMs))}</time>
-          </summary>
-          <div class="task-work-command-body">
-            ${command ? `<code>$ ${escapeHtml(command)}</code>` : ""}
-            ${cwd ? `<span>cwd: ${escapeHtml(cwd)}</span>` : ""}
-            ${output ? `<pre>${escapeHtml(output)}</pre>` : ""}
-          </div>
-        </details>
-      </article>
-    `;
-  }
-  if (event.type === "file_change") {
-    const count =
-      typeof payload.changeCount === "number"
-        ? payload.changeCount
-        : Array.isArray(payload.changes)
-          ? payload.changes.length
-          : 0;
-    const status = payload.status ? `Status: ${formatStatus(payload.status)}` : "";
-    const summary = count === 1 ? "1 changed file" : `${count} changed files`;
-    return renderFileChangeWorkItemShell(
-      event,
-      [summary, status].filter(Boolean).join("\n"),
-      fileChangePaths([event]),
-    );
-  }
-  if (event.type === "task_failed") {
-    return renderTurnWorkItemShell(event, "Error", event.summary, "danger");
-  }
-  return `
-    <article class="task-work-item" data-event-type="${dataType}">
-      <header>
-        <strong>${escapeHtml(event.summary)}</strong>
-        <time>${escapeHtml(formatDate(event.createdMs))}</time>
-      </header>
-    </article>
-  `;
-}
-
-function renderTurnWorkItemShell(event, label, text, tone = "neutral") {
-  const value = `${text ?? ""}`.trim();
-  return `
-    <article class="task-work-item" data-event-type="${escapeHtml(event.type)}" data-tool-tone="${escapeHtml(tone)}">
-      <header>
-        <strong>${escapeHtml(label)}</strong>
-        <time>${escapeHtml(formatDate(event.createdMs))}</time>
-      </header>
-      ${value ? `<pre>${escapeHtml(value)}</pre>` : ""}
-    </article>
-  `;
-}
-
-function renderFileChangeWorkItemShell(event, text, paths) {
-  const value = `${text ?? ""}`.trim();
-  return `
-    <article class="task-work-item" data-event-type="file_change" data-tool-tone="neutral">
-      <header>
-        <strong>Files changed</strong>
-        <time>${escapeHtml(formatDate(event.createdMs))}</time>
-      </header>
-      ${value ? `<pre>${escapeHtml(value)}</pre>` : ""}
-      ${renderChangedFilePaths(paths)}
-    </article>
-  `;
-}
-
-function renderToolEvent(event, label, text, tone = "neutral") {
-  const value = `${text ?? ""}`.trim();
-  if (!value) {
-    return renderStatusEvent(event);
-  }
-
-  return `
-    <li class="task-event task-tool-card" data-event-type="${escapeHtml(event.type)}" data-tool-tone="${escapeHtml(tone)}">
-      <header>
-        <strong>${escapeHtml(label)}</strong>
-        <time>${escapeHtml(formatDate(event.createdMs))}</time>
-      </header>
-      <pre>${escapeHtml(value)}</pre>
-    </li>
-  `;
-}
-
-function renderCommandEvent(event) {
-  const payload = event.payload ?? {};
-  const command = `${payload.command ?? ""}`.trim();
-  const cwd = `${payload.cwd ?? ""}`.trim();
-  const status = `${payload.status ?? ""}`.trim();
-  const output = `${payload.aggregatedOutput ?? ""}`.trim();
-  const details = [
-    command ? `$ ${command}` : "",
-    cwd ? `cwd: ${cwd}` : "",
-    status ? `status: ${status}` : "",
-    output,
-  ]
-    .filter(Boolean)
-    .join("\n");
-  const open = status && status !== "completed" ? " open" : "";
-  return `
-    <li class="task-event task-command" data-event-type="${escapeHtml(event.type)}" data-command-status="${escapeHtml(status || "unknown")}">
-      <details${open}${disclosureIdentityAttribute("command", eventIdentityKey(event))}>
-        <summary>
-          <span>Command</span>
-          ${status ? `<span>${escapeHtml(formatStatus(status))}</span>` : ""}
-          <time>${escapeHtml(formatDate(event.createdMs))}</time>
-        </summary>
-        <pre>${escapeHtml(details || "(command unavailable)")}</pre>
-      </details>
-    </li>
-  `;
-}
-
-function renderFileChangeEvent(event) {
-  const payload = event.payload ?? {};
-  const count =
-    typeof payload.changeCount === "number"
-      ? payload.changeCount
-      : Array.isArray(payload.changes)
-        ? payload.changes.length
-        : 0;
-  const status = payload.status ? `Status: ${formatStatus(payload.status)}` : "";
-  const summary = count === 1 ? "1 changed file" : `${count} changed files`;
-  return `
-    <li class="task-event task-file-change" data-event-type="${escapeHtml(event.type)}">
-      <article>
-        <header>
-          <strong>Files changed</strong>
-          <time>${escapeHtml(formatDate(event.createdMs))}</time>
-        </header>
-        <p>${escapeHtml(summary)}${status ? ` · ${status}` : ""}</p>
-        ${renderChangedFilePaths(fileChangePaths([event]))}
-      </article>
-    </li>
-  `;
-}
-
-function renderChangedFilePaths(paths) {
-  if (!paths.length) {
-    return "";
-  }
-
-  return `
-    <ul class="task-changed-files" aria-label="Changed files">
-      ${paths.map((path) => `<li><code>${escapeHtml(path)}</code></li>`).join("")}
-    </ul>
-  `;
-}
-
-function latestTaskRelatedWorktreePaths(events, task) {
-  const groups = conversationGroups(dedupeCanonicalEvents(events));
-  for (let index = groups.length - 1; index >= 0; index -= 1) {
-    const group = groups[index];
-    if (group.kind !== "turn") {
-      continue;
-    }
-
-    const paths = uniquePaths(
-      fileChangePaths(group.events)
-        .map((path) => taskFileWorktreePath(path, task))
-        .filter(Boolean),
-    );
-    if (paths.length) {
-      return paths;
-    }
-  }
-  return [];
-}
-
-function fileChangePaths(events) {
-  return uniquePaths(
-    events.flatMap((event) => {
-      if (event?.type !== "file_change" || !Array.isArray(event.payload?.changes)) {
-        return [];
-      }
-      return event.payload.changes
-        .map((change) => normalizeTaskPath(typeof change === "string" ? change : change?.path))
-        .filter(Boolean);
-    }),
-  );
-}
-
-function taskFileWorktreePath(path, task) {
-  const rawPath = normalizeTaskPath(path);
-  if (!rawPath) {
-    return "";
-  }
-
-  const cwd = normalizeTaskPath(task?.cwd);
-  const relativeCwd = cleanRelativeTaskPath(task?.worktree?.relativeCwd);
-  let relativePath = rawPath;
-
-  if (cwd && (rawPath === cwd || rawPath.startsWith(`${cwd}/`))) {
-    relativePath = rawPath.slice(cwd.length).replace(/^\/+/, "");
-  } else {
-    relativePath = rawPath.replace(/^\/+/, "");
-  }
-
-  if (
-    relativeCwd &&
-    relativePath !== relativeCwd &&
-    !relativePath.startsWith(`${relativeCwd}/`)
-  ) {
-    relativePath = `${relativeCwd}/${relativePath}`;
-  }
-
-  return cleanRelativeTaskPath(relativePath);
-}
-
 function taskWorktreeRef(task) {
   const branch = `${task?.worktree?.branch ?? ""}`.trim();
   if (branch) {
@@ -4496,46 +3278,6 @@ function renderTaskCompareRefOptions(refs, selectedRef) {
       return `<option value="${escapeHtml(name)}"${selected}>${escapeHtml(name)}</option>`;
     })
     .join("");
-}
-
-function renderApprovalCard(event, options = {}) {
-  const payload = event.payload ?? {};
-  const params = payload.params ?? {};
-  const approvalId = payload.approvalId ?? "";
-  const isCommand = payload.kind === "command";
-  const decisions = params.availableDecisions ?? ["accept", "acceptForSession", "decline", "cancel"];
-
-  return `
-    <article class="task-approval-card">
-      <header>
-        <h3>${isCommand ? "Command Approval" : "File Change Approval"}</h3>
-        <span>${escapeHtml(params.reason ?? "Approval requested")}</span>
-      </header>
-      ${
-        isCommand
-          ? `<pre>${escapeHtml(formatCommand(params.command))}</pre>
-             <p>${escapeHtml(params.cwd ?? "")}</p>`
-          : `<p>${escapeHtml(params.grantRoot ? `Grant root: ${params.grantRoot}` : "File change permission requested")}</p>`
-      }
-      <div class="task-approval-actions">
-        ${decisions
-          .filter((decision) => ["accept", "acceptForSession", "decline", "cancel"].includes(decision))
-          .map(
-            (decision) =>
-              `<button type="button" class="task-secondary-button" data-task-action="approval" data-approval-id="${escapeHtml(approvalId)}" data-decision="${escapeHtml(decision)}" ${options.disabled ? "disabled" : ""}>${escapeHtml(formatDecision(decision))}</button>`,
-          )
-          .join("")}
-      </div>
-    </article>
-  `;
-}
-
-function isScrolledToBottom(element) {
-  return maxScrollTop(element) - element.scrollTop <= 8;
-}
-
-function maxScrollTop(element) {
-  return Math.max(0, element.scrollHeight - element.clientHeight);
 }
 
 function closestElement(target, selector) {
@@ -4616,14 +3358,4 @@ function renderTaskStatusChip(task, className = "", options = {}) {
       ${showLabel ? `<span class="task-status-label">${escapeHtml(view.label)}</span>` : ""}
     </span>
   `;
-}
-
-function statusTone(type) {
-  if (type === "task_failed" || type === "turn_interrupted") {
-    return "danger";
-  }
-  if (type === "approval_requested") {
-    return "warning";
-  }
-  return "muted";
 }

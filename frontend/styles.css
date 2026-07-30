@@ -10,6 +10,7 @@
 @import "./pages/(codex)/layout.css";
 @import "./pages/(codex)/tasks/page.css";
 @import "./pages/(codex)/tasks/components/composer.css";
+@import "./pages/(codex)/tasks/components/conversation.css";
 @import "./pages/(codex)/tasks/components/detail.css";
 @import "./pages/(codex)/tasks/components/navigator.css";
 @import "./pages/(codex)/tasks/components/task-new.css";

@@ -1,0 +1,10 @@
+caffold-task-conversation {
+  display: block;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+caffold-task-conversation > .task-conversation-scroll {
+  height: 100%;
+}

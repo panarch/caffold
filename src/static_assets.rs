@@ -119,6 +119,9 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(codex)/tasks/task-events.js" => Some(js(include_str!(
             "../frontend/pages/(codex)/tasks/task-events.js"
         ))),
+        "pages/(codex)/tasks/conversation-render.js" => Some(js(include_str!(
+            "../frontend/pages/(codex)/tasks/conversation-render.js"
+        ))),
         "pages/(codex)/tasks/task-format.js" => Some(js(include_str!(
             "../frontend/pages/(codex)/tasks/task-format.js"
         ))),
@@ -133,6 +136,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         ))),
         "pages/(codex)/tasks/components/composer.js" => Some(js(include_str!(
             "../frontend/pages/(codex)/tasks/components/composer.js"
+        ))),
+        "pages/(codex)/tasks/components/conversation.css" => Some(css(include_str!(
+            "../frontend/pages/(codex)/tasks/components/conversation.css"
+        ))),
+        "pages/(codex)/tasks/components/conversation.js" => Some(js(include_str!(
+            "../frontend/pages/(codex)/tasks/components/conversation.js"
         ))),
         "pages/(codex)/tasks/components/detail.css" => Some(css(include_str!(
             "../frontend/pages/(codex)/tasks/components/detail.css"
@@ -560,6 +569,7 @@ mod tests {
         );
         assert!(tasks_runtime_state.body.starts_with(b"export "));
         for path in [
+            "pages/(codex)/tasks/conversation-render.js",
             "pages/(codex)/tasks/task-events.js",
             "pages/(codex)/tasks/task-format.js",
             "pages/(codex)/tasks/task-list-model.js",
@@ -609,6 +619,10 @@ mod tests {
                 b"caffold-task-composer".as_slice(),
             ),
             (
+                "pages/(codex)/tasks/components/conversation.js",
+                b"caffold-task-conversation".as_slice(),
+            ),
+            (
                 "pages/(codex)/tasks/components/task-new.js",
                 b"caffold-task-new".as_slice(),
             ),
@@ -625,6 +639,10 @@ mod tests {
             (
                 "pages/(codex)/tasks/components/composer.css",
                 b"caffold-task-composer".as_slice(),
+            ),
+            (
+                "pages/(codex)/tasks/components/conversation.css",
+                b"caffold-task-conversation".as_slice(),
             ),
             (
                 "pages/(codex)/tasks/components/task-new.css",
