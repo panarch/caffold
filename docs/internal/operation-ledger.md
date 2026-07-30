@@ -90,6 +90,6 @@ Caffold can store small UI-facing snapshots such as:
 - latest diff stat
 - latest command exit code
 - latest test summary
-- latest known Codex thread status
 
-These snapshots improve recovery UX. They do not replace git or Codex as original sources.
+These snapshots may improve diagnostics. They do not replace git or Codex as
+original sources and cannot restore current external state.

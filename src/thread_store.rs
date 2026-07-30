@@ -15,21 +15,12 @@ use gluesql::{
 };
 use thiserror::Error;
 
-const THREADS_TABLE: &str = "threads";
+const MANAGED_THREADS_TABLE: &str = "managed_threads";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct StoredThread {
+pub(crate) struct ManagedThread {
     pub thread_id: String,
-    pub title: String,
-    pub preview: String,
-    pub cwd: String,
-    pub created_ms: u64,
-    pub updated_ms: u64,
-    pub recency_ms: Option<u64>,
-    pub status: String,
-    pub active_turn_id: Option<String>,
-    pub active_turn_started_ms: Option<u64>,
-    pub last_event_summary: Option<String>,
+    pub last_observed_recency_ms: Option<u64>,
     pub claimed_at_ms: u64,
     pub last_opened_at_ms: Option<u64>,
     pub last_seen_activity_ms: Option<u64>,
@@ -37,20 +28,34 @@ pub(crate) struct StoredThread {
     pub reasoning_effort: Option<String>,
 }
 
+impl ManagedThread {
+    pub(crate) fn new(
+        thread_id: impl Into<String>,
+        last_observed_recency_ms: Option<u64>,
+        model: Option<String>,
+        reasoning_effort: Option<String>,
+    ) -> Self {
+        Self {
+            thread_id: thread_id.into(),
+            last_observed_recency_ms,
+            claimed_at_ms: 0,
+            last_opened_at_ms: None,
+            last_seen_activity_ms: None,
+            model,
+            reasoning_effort,
+        }
+    }
+
+    pub(crate) fn unseen(&self, canonical_activity_ms: u64) -> bool {
+        self.last_seen_activity_ms
+            .is_none_or(|seen| canonical_activity_ms > seen)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, FromGlueRow, ToGlueRow)]
-struct StoredThreadRow {
+struct ManagedThreadRow {
     thread_id: String,
-    title: String,
-    preview: String,
-    cwd: String,
-    created_ms: i64,
-    updated_ms: i64,
-    recency_ms: Option<i64>,
-    activity_ms: i64,
-    status: String,
-    active_turn_id: Option<String>,
-    active_turn_started_ms: Option<i64>,
-    last_event_summary: Option<String>,
+    last_observed_recency_ms: Option<i64>,
     claimed_at_ms: i64,
     last_opened_at_ms: Option<i64>,
     last_seen_activity_ms: Option<i64>,
@@ -58,43 +63,16 @@ struct StoredThreadRow {
     reasoning_effort: Option<String>,
 }
 
-impl StoredThread {
-    pub(crate) fn activity_ms(&self) -> u64 {
-        self.recency_ms
-            .unwrap_or(self.updated_ms)
-            .max(self.created_ms)
-    }
-
-    pub(crate) fn unseen(&self) -> bool {
-        matches!(
-            self.status.as_str(),
-            "" | "completed" | "idle" | "notLoaded"
-        ) && self
-            .last_seen_activity_ms
-            .is_none_or(|seen| self.activity_ms() > seen)
-    }
-}
-
-impl TryFrom<&StoredThread> for StoredThreadRow {
+impl TryFrom<&ManagedThread> for ManagedThreadRow {
     type Error = ThreadStoreError;
 
-    fn try_from(thread: &StoredThread) -> Result<Self> {
+    fn try_from(thread: &ManagedThread) -> Result<Self> {
         Ok(Self {
             thread_id: thread.thread_id.clone(),
-            title: thread.title.clone(),
-            preview: thread.preview.clone(),
-            cwd: thread.cwd.clone(),
-            created_ms: to_db_integer(thread.created_ms, "created_ms")?,
-            updated_ms: to_db_integer(thread.updated_ms, "updated_ms")?,
-            recency_ms: to_optional_db_integer(thread.recency_ms, "recency_ms")?,
-            activity_ms: to_db_integer(thread.activity_ms(), "activity_ms")?,
-            status: thread.status.clone(),
-            active_turn_id: thread.active_turn_id.clone(),
-            active_turn_started_ms: to_optional_db_integer(
-                thread.active_turn_started_ms,
-                "active_turn_started_ms",
+            last_observed_recency_ms: to_optional_db_integer(
+                thread.last_observed_recency_ms,
+                "last_observed_recency_ms",
             )?,
-            last_event_summary: thread.last_event_summary.clone(),
             claimed_at_ms: to_db_integer(thread.claimed_at_ms, "claimed_at_ms")?,
             last_opened_at_ms: to_optional_db_integer(
                 thread.last_opened_at_ms,
@@ -110,26 +88,16 @@ impl TryFrom<&StoredThread> for StoredThreadRow {
     }
 }
 
-impl TryFrom<StoredThreadRow> for StoredThread {
+impl TryFrom<ManagedThreadRow> for ManagedThread {
     type Error = ThreadStoreError;
 
-    fn try_from(row: StoredThreadRow) -> Result<Self> {
-        from_db_integer(row.activity_ms, "activity_ms")?;
+    fn try_from(row: ManagedThreadRow) -> Result<Self> {
         Ok(Self {
             thread_id: row.thread_id,
-            title: row.title,
-            preview: row.preview,
-            cwd: row.cwd,
-            created_ms: from_db_integer(row.created_ms, "created_ms")?,
-            updated_ms: from_db_integer(row.updated_ms, "updated_ms")?,
-            recency_ms: from_optional_db_integer(row.recency_ms, "recency_ms")?,
-            status: row.status,
-            active_turn_id: row.active_turn_id,
-            active_turn_started_ms: from_optional_db_integer(
-                row.active_turn_started_ms,
-                "active_turn_started_ms",
+            last_observed_recency_ms: from_optional_db_integer(
+                row.last_observed_recency_ms,
+                "last_observed_recency_ms",
             )?,
-            last_event_summary: row.last_event_summary,
             claimed_at_ms: from_db_integer(row.claimed_at_ms, "claimed_at_ms")?,
             last_opened_at_ms: from_optional_db_integer(
                 row.last_opened_at_ms,
@@ -193,14 +161,14 @@ impl ThreadStore {
         }
     }
 
-    pub(crate) fn claim(&self, thread: StoredThread, now_ms: u64) -> Result<StoredThread> {
+    pub(crate) fn claim(&self, thread: ManagedThread, now_ms: u64) -> Result<ManagedThread> {
         match self {
             Self::Memory(glue) => claim(&mut *lock_glue(glue)?, thread, now_ms),
             Self::Redb(glue) => claim(&mut *lock_glue(glue)?, thread, now_ms),
         }
     }
 
-    pub(crate) fn get(&self, thread_id: &str) -> Result<Option<StoredThread>> {
+    pub(crate) fn get(&self, thread_id: &str) -> Result<Option<ManagedThread>> {
         match self {
             Self::Memory(glue) => get(&mut *lock_glue(glue)?, thread_id),
             Self::Redb(glue) => get(&mut *lock_glue(glue)?, thread_id),
@@ -211,29 +179,48 @@ impl ThreadStore {
         &self,
         cursor: Option<&str>,
         limit: usize,
-    ) -> Result<(Vec<StoredThread>, Option<String>)> {
-        let offset = decode_cursor(cursor)?;
+    ) -> Result<(Vec<ManagedThread>, Option<String>)> {
+        let cursor = decode_cursor(cursor)?;
         match self {
-            Self::Memory(glue) => list(&mut *lock_glue(glue)?, offset, limit),
-            Self::Redb(glue) => list(&mut *lock_glue(glue)?, offset, limit),
+            Self::Memory(glue) => list(&mut *lock_glue(glue)?, cursor.as_ref(), limit),
+            Self::Redb(glue) => list(&mut *lock_glue(glue)?, cursor.as_ref(), limit),
         }
     }
 
-    pub(crate) fn update_projection(&self, thread: &StoredThread) -> Result<Option<StoredThread>> {
+    pub(crate) fn update_observed_recency(
+        &self,
+        thread_id: &str,
+        activity_ms: u64,
+    ) -> Result<Option<ManagedThread>> {
         match self {
-            Self::Memory(glue) => update_projection(&mut *lock_glue(glue)?, thread),
-            Self::Redb(glue) => update_projection(&mut *lock_glue(glue)?, thread),
+            Self::Memory(glue) => {
+                update_observed_recency(&mut *lock_glue(glue)?, thread_id, activity_ms)
+            }
+            Self::Redb(glue) => {
+                update_observed_recency(&mut *lock_glue(glue)?, thread_id, activity_ms)
+            }
         }
     }
 
     pub(crate) fn mark_seen(
         &self,
         thread_id: &str,
+        canonical_activity_ms: u64,
         opened_at_ms: u64,
-    ) -> Result<Option<StoredThread>> {
+    ) -> Result<Option<ManagedThread>> {
         match self {
-            Self::Memory(glue) => mark_seen(&mut *lock_glue(glue)?, thread_id, opened_at_ms),
-            Self::Redb(glue) => mark_seen(&mut *lock_glue(glue)?, thread_id, opened_at_ms),
+            Self::Memory(glue) => mark_seen(
+                &mut *lock_glue(glue)?,
+                thread_id,
+                canonical_activity_ms,
+                opened_at_ms,
+            ),
+            Self::Redb(glue) => mark_seen(
+                &mut *lock_glue(glue)?,
+                thread_id,
+                canonical_activity_ms,
+                opened_at_ms,
+            ),
         }
     }
 
@@ -242,7 +229,7 @@ impl ThreadStore {
         thread_id: &str,
         model: Option<&str>,
         reasoning_effort: Option<&str>,
-    ) -> Result<Option<StoredThread>> {
+    ) -> Result<Option<ManagedThread>> {
         match self {
             Self::Memory(glue) => {
                 update_composer_settings(&mut *lock_glue(glue)?, thread_id, model, reasoning_effort)
@@ -269,20 +256,10 @@ fn initialize_schema<S>(glue: &mut Glue<S>) -> Result<()>
 where
     S: GStore + GStoreMut + Planner,
 {
-    table(THREADS_TABLE)
+    table(MANAGED_THREADS_TABLE)
         .create_table_if_not_exists()
         .add_column("thread_id TEXT PRIMARY KEY")
-        .add_column("title TEXT")
-        .add_column("preview TEXT")
-        .add_column("cwd TEXT")
-        .add_column("created_ms INTEGER")
-        .add_column("updated_ms INTEGER")
-        .add_column("recency_ms INTEGER NULL")
-        .add_column("activity_ms INTEGER")
-        .add_column("status TEXT")
-        .add_column("active_turn_id TEXT NULL")
-        .add_column("active_turn_started_ms INTEGER NULL")
-        .add_column("last_event_summary TEXT NULL")
+        .add_column("last_observed_recency_ms INTEGER NULL")
         .add_column("claimed_at_ms INTEGER")
         .add_column("last_opened_at_ms INTEGER NULL")
         .add_column("last_seen_activity_ms INTEGER NULL")
@@ -292,48 +269,44 @@ where
     Ok(())
 }
 
-fn claim<S>(glue: &mut Glue<S>, mut thread: StoredThread, now_ms: u64) -> Result<StoredThread>
+fn claim<S>(glue: &mut Glue<S>, mut thread: ManagedThread, now_ms: u64) -> Result<ManagedThread>
 where
     S: GStore + GStoreMut + Planner,
 {
     if let Some(existing) = get(glue, &thread.thread_id)? {
         thread.claimed_at_ms = existing.claimed_at_ms;
+        thread.last_opened_at_ms = max_optional(existing.last_opened_at_ms, Some(now_ms));
+        thread.last_seen_activity_ms = max_optional(
+            existing.last_seen_activity_ms,
+            thread.last_observed_recency_ms,
+        );
         if thread.model.is_none() {
             thread.model = existing.model;
         }
         if thread.reasoning_effort.is_none() {
             thread.reasoning_effort = existing.reasoning_effort;
         }
-    } else {
-        thread.claimed_at_ms = now_ms;
-    }
-    thread.last_opened_at_ms = Some(thread.last_opened_at_ms.unwrap_or_default().max(now_ms));
-    thread.last_seen_activity_ms = Some(
-        thread
-            .last_seen_activity_ms
-            .unwrap_or_default()
-            .max(thread.activity_ms()),
-    );
-
-    if get(glue, &thread.thread_id)?.is_some() {
         update_all(glue, &thread)?;
     } else {
+        thread.claimed_at_ms = now_ms;
+        thread.last_opened_at_ms = Some(now_ms);
+        thread.last_seen_activity_ms = thread.last_observed_recency_ms;
         insert(glue, &thread)?;
     }
     Ok(thread)
 }
 
-fn get<S>(glue: &mut Glue<S>, thread_id: &str) -> Result<Option<StoredThread>>
+fn get<S>(glue: &mut Glue<S>, thread_id: &str) -> Result<Option<ManagedThread>>
 where
     S: GStore + GStoreMut + Planner,
 {
-    let rows = table(THREADS_TABLE)
+    let rows = table(MANAGED_THREADS_TABLE)
         .select()
         .filter(col("thread_id").eq(text(thread_id.to_owned())))
-        .project(stored_thread_columns())
+        .project(managed_thread_columns())
         .limit(2)
         .execute(glue)
-        .rows_as::<StoredThreadRow>()?;
+        .rows_as::<ManagedThreadRow>()?;
     match rows.as_slice() {
         [] => Ok(None),
         [row] => Ok(Some(row.clone().try_into()?)),
@@ -343,80 +316,79 @@ where
 
 fn list<S>(
     glue: &mut Glue<S>,
-    offset: usize,
+    cursor: Option<&ManagedThreadCursor>,
     limit: usize,
-) -> Result<(Vec<StoredThread>, Option<String>)>
+) -> Result<(Vec<ManagedThread>, Option<String>)>
 where
     S: GStore + GStoreMut + Planner,
 {
     if limit == 0 {
         return Ok((Vec::new(), None));
     }
-    let page_size = limit.saturating_add(1);
-    let rows = table(THREADS_TABLE)
+    let rows = table(MANAGED_THREADS_TABLE)
         .select()
-        .project(stored_thread_columns())
-        .order_by(vec![col("activity_ms").desc(), col("thread_id").asc()])
-        .offset(num(to_query_integer(offset, "offset")?))
-        .limit(num(to_query_integer(page_size, "limit")?))
+        .project(managed_thread_columns())
         .execute(glue)
-        .rows_as::<StoredThreadRow>()?;
+        .rows_as::<ManagedThreadRow>()?;
     let mut threads = rows
         .into_iter()
         .map(TryInto::try_into)
         .collect::<Result<Vec<_>>>()?;
+    threads.sort_by(managed_thread_order);
+    if let Some(cursor) = cursor {
+        threads.retain(|thread| managed_thread_is_after(thread, cursor));
+    }
     let has_more = threads.len() > limit;
     threads.truncate(limit);
-    let next_cursor = has_more.then(|| encode_cursor(offset.saturating_add(limit)));
+    let next_cursor = has_more
+        .then(|| threads.last().map(encode_cursor))
+        .flatten();
     Ok((threads, next_cursor))
 }
 
-fn update_projection<S>(glue: &mut Glue<S>, thread: &StoredThread) -> Result<Option<StoredThread>>
+fn update_observed_recency<S>(
+    glue: &mut Glue<S>,
+    thread_id: &str,
+    activity_ms: u64,
+) -> Result<Option<ManagedThread>>
 where
     S: GStore + GStoreMut + Planner,
 {
-    let Some(mut existing) = get(glue, &thread.thread_id)? else {
+    let Some(existing) = get(glue, thread_id)? else {
         return Ok(None);
     };
-    existing.title.clone_from(&thread.title);
-    existing.preview.clone_from(&thread.preview);
-    existing.cwd.clone_from(&thread.cwd);
-    existing.created_ms = thread.created_ms;
-    existing.updated_ms = thread.updated_ms;
-    existing.recency_ms = thread.recency_ms;
-    existing.status.clone_from(&thread.status);
-    existing.active_turn_id.clone_from(&thread.active_turn_id);
-    existing.active_turn_started_ms = thread.active_turn_started_ms;
-    existing
-        .last_event_summary
-        .clone_from(&thread.last_event_summary);
-    update_all(glue, &existing)?;
-    Ok(Some(existing))
+    let activity_ms = existing
+        .last_observed_recency_ms
+        .unwrap_or_default()
+        .max(activity_ms);
+    table(MANAGED_THREADS_TABLE)
+        .update()
+        .filter(col("thread_id").eq(text(thread_id.to_owned())))
+        .set(
+            "last_observed_recency_ms",
+            num(to_db_integer(activity_ms, "last_observed_recency_ms")?),
+        )
+        .execute(glue)?;
+    get(glue, thread_id)
 }
 
 fn mark_seen<S>(
     glue: &mut Glue<S>,
     thread_id: &str,
+    canonical_activity_ms: u64,
     opened_at_ms: u64,
-) -> Result<Option<StoredThread>>
+) -> Result<Option<ManagedThread>>
 where
     S: GStore + GStoreMut + Planner,
 {
     let Some(mut thread) = get(glue, thread_id)? else {
         return Ok(None);
     };
-    thread.last_opened_at_ms = Some(
-        thread
-            .last_opened_at_ms
-            .unwrap_or_default()
-            .max(opened_at_ms),
-    );
-    thread.last_seen_activity_ms = Some(
-        thread
-            .last_seen_activity_ms
-            .unwrap_or_default()
-            .max(thread.activity_ms()),
-    );
+    thread.last_observed_recency_ms =
+        max_optional(thread.last_observed_recency_ms, Some(canonical_activity_ms));
+    thread.last_opened_at_ms = max_optional(thread.last_opened_at_ms, Some(opened_at_ms));
+    thread.last_seen_activity_ms =
+        max_optional(thread.last_seen_activity_ms, Some(canonical_activity_ms));
     update_all(glue, &thread)?;
     Ok(Some(thread))
 }
@@ -426,14 +398,14 @@ fn update_composer_settings<S>(
     thread_id: &str,
     model: Option<&str>,
     reasoning_effort: Option<&str>,
-) -> Result<Option<StoredThread>>
+) -> Result<Option<ManagedThread>>
 where
     S: GStore + GStoreMut + Planner,
 {
     if get(glue, thread_id)?.is_none() {
         return Ok(None);
     }
-    table(THREADS_TABLE)
+    table(MANAGED_THREADS_TABLE)
         .update()
         .filter(col("thread_id").eq(text(thread_id.to_owned())))
         .set("model", optional_text(model))
@@ -442,45 +414,29 @@ where
     get(glue, thread_id)
 }
 
-fn insert<S>(glue: &mut Glue<S>, thread: &StoredThread) -> Result<()>
+fn insert<S>(glue: &mut Glue<S>, thread: &ManagedThread) -> Result<()>
 where
     S: GStore + GStoreMut + Planner,
 {
-    let row = StoredThreadRow::try_from(thread)?;
-    table(THREADS_TABLE)
+    let row = ManagedThreadRow::try_from(thread)?;
+    table(MANAGED_THREADS_TABLE)
         .insert()
         .values_from(std::slice::from_ref(&row))?
         .execute(glue)?;
     Ok(())
 }
 
-fn update_all<S>(glue: &mut Glue<S>, thread: &StoredThread) -> Result<()>
+fn update_all<S>(glue: &mut Glue<S>, thread: &ManagedThread) -> Result<()>
 where
     S: GStore + GStoreMut + Planner,
 {
-    let row = StoredThreadRow::try_from(thread)?;
-    table(THREADS_TABLE)
+    let row = ManagedThreadRow::try_from(thread)?;
+    table(MANAGED_THREADS_TABLE)
         .update()
         .filter(col("thread_id").eq(text(row.thread_id)))
-        .set("title", text(row.title))
-        .set("preview", text(row.preview))
-        .set("cwd", text(row.cwd))
-        .set("created_ms", num(row.created_ms))
-        .set("updated_ms", num(row.updated_ms))
-        .set("recency_ms", optional_integer(row.recency_ms))
-        .set("activity_ms", num(row.activity_ms))
-        .set("status", text(row.status))
         .set(
-            "active_turn_id",
-            optional_text(row.active_turn_id.as_deref()),
-        )
-        .set(
-            "active_turn_started_ms",
-            optional_integer(row.active_turn_started_ms),
-        )
-        .set(
-            "last_event_summary",
-            optional_text(row.last_event_summary.as_deref()),
+            "last_observed_recency_ms",
+            optional_integer(row.last_observed_recency_ms),
         )
         .set("claimed_at_ms", num(row.claimed_at_ms))
         .set("last_opened_at_ms", optional_integer(row.last_opened_at_ms))
@@ -501,7 +457,7 @@ fn delete<S>(glue: &mut Glue<S>, thread_id: &str) -> Result<bool>
 where
     S: GStore + GStoreMut + Planner,
 {
-    let payload = table(THREADS_TABLE)
+    let payload = table(MANAGED_THREADS_TABLE)
         .delete()
         .filter(col("thread_id").eq(text(thread_id.to_owned())))
         .execute(glue)?;
@@ -511,8 +467,8 @@ where
     Ok(count > 0)
 }
 
-fn stored_thread_columns() -> Vec<ExprNode<'static>> {
-    StoredThreadRow::glue_columns()
+fn managed_thread_columns() -> Vec<ExprNode<'static>> {
+    ManagedThreadRow::glue_columns()
         .iter()
         .map(|column| col(*column))
         .collect()
@@ -524,6 +480,10 @@ fn optional_text(value: Option<&str>) -> ExprNode<'static> {
 
 fn optional_integer(value: Option<i64>) -> ExprNode<'static> {
     value.map_or_else(null, num)
+}
+
+fn max_optional(left: Option<u64>, right: Option<u64>) -> Option<u64> {
+    left.into_iter().chain(right).max()
 }
 
 fn to_db_integer(value: u64, field: &'static str) -> Result<i64> {
@@ -546,53 +506,75 @@ fn from_optional_db_integer(value: Option<i64>, field: &'static str) -> Result<O
     value.map(|value| from_db_integer(value, field)).transpose()
 }
 
-fn to_query_integer(value: usize, field: &'static str) -> Result<u64> {
-    value
-        .try_into()
-        .map_err(|_| ThreadStoreError::InvalidRow(field))
+fn managed_thread_order(left: &ManagedThread, right: &ManagedThread) -> std::cmp::Ordering {
+    right
+        .last_observed_recency_ms
+        .cmp(&left.last_observed_recency_ms)
+        .then_with(|| left.thread_id.cmp(&right.thread_id))
 }
 
-fn encode_cursor(offset: usize) -> String {
-    format!("v1:{offset}")
+fn managed_thread_is_after(thread: &ManagedThread, cursor: &ManagedThreadCursor) -> bool {
+    match (
+        thread.last_observed_recency_ms,
+        cursor.last_observed_recency_ms,
+    ) {
+        (Some(thread_recency), Some(cursor_recency)) => {
+            thread_recency < cursor_recency
+                || (thread_recency == cursor_recency && thread.thread_id > cursor.thread_id)
+        }
+        (None, Some(_)) => true,
+        (Some(_), None) => false,
+        (None, None) => thread.thread_id > cursor.thread_id,
+    }
 }
 
-fn decode_cursor(cursor: Option<&str>) -> Result<usize> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ManagedThreadCursor {
+    last_observed_recency_ms: Option<u64>,
+    thread_id: String,
+}
+
+fn encode_cursor(thread: &ManagedThread) -> String {
+    let recency = thread
+        .last_observed_recency_ms
+        .map_or_else(|| "-".to_string(), |value| value.to_string());
+    format!("v2:{recency}:{}", thread.thread_id)
+}
+
+fn decode_cursor(cursor: Option<&str>) -> Result<Option<ManagedThreadCursor>> {
     let Some(cursor) = cursor.map(str::trim).filter(|cursor| !cursor.is_empty()) else {
-        return Ok(0);
+        return Ok(None);
     };
-    cursor
-        .strip_prefix("v1:")
-        .and_then(|value| value.parse().ok())
-        .ok_or(ThreadStoreError::InvalidCursor)
+    let (recency, thread_id) = cursor
+        .strip_prefix("v2:")
+        .and_then(|value| value.split_once(':'))
+        .filter(|(_, thread_id)| !thread_id.is_empty())
+        .ok_or(ThreadStoreError::InvalidCursor)?;
+    let last_observed_recency_ms = if recency == "-" {
+        None
+    } else {
+        Some(
+            recency
+                .parse()
+                .map_err(|_| ThreadStoreError::InvalidCursor)?,
+        )
+    };
+    Ok(Some(ManagedThreadCursor {
+        last_observed_recency_ms,
+        thread_id: thread_id.to_string(),
+    }))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn thread(id: &str, activity_ms: u64) -> StoredThread {
-        StoredThread {
-            thread_id: id.to_string(),
-            title: format!("Task {id}"),
-            preview: String::new(),
-            cwd: "/tmp/project".to_string(),
-            created_ms: 10,
-            updated_ms: activity_ms,
-            recency_ms: None,
-            status: "idle".to_string(),
-            active_turn_id: None,
-            active_turn_started_ms: None,
-            last_event_summary: None,
-            claimed_at_ms: 0,
-            last_opened_at_ms: None,
-            last_seen_activity_ms: None,
-            model: None,
-            reasoning_effort: None,
-        }
+    fn thread(id: &str, recency_ms: u64) -> ManagedThread {
+        ManagedThread::new(id, Some(recency_ms), None, None)
     }
 
     #[test]
-    fn claims_lists_and_paginates_threads_by_activity() {
+    fn claims_lists_and_paginates_managed_threads_by_observed_recency() {
         let store = ThreadStore::memory().unwrap();
         store.claim(thread("older", 20), 100).unwrap();
         store.claim(thread("newer", 30), 110).unwrap();
@@ -605,60 +587,70 @@ mod tests {
     }
 
     #[test]
-    fn projection_updates_preserve_caffold_metadata() {
+    fn pagination_cursor_survives_recency_updates_to_the_previous_page() {
+        let store = ThreadStore::memory().unwrap();
+        store.claim(thread("first", 40), 100).unwrap();
+        store.claim(thread("second", 30), 100).unwrap();
+        store.claim(thread("third", 20), 100).unwrap();
+
+        let (first_page, cursor) = store.list(None, 2).unwrap();
+        assert_eq!(
+            first_page
+                .iter()
+                .map(|thread| thread.thread_id.as_str())
+                .collect::<Vec<_>>(),
+            ["first", "second"]
+        );
+        store.update_observed_recency("second", 50).unwrap();
+
+        let (second_page, cursor) = store.list(cursor.as_deref(), 2).unwrap();
+        assert_eq!(second_page[0].thread_id, "third");
+        assert!(cursor.is_none());
+    }
+
+    #[test]
+    fn recency_seen_and_composer_settings_are_the_only_mutable_metadata() {
         let store = ThreadStore::memory().unwrap();
         let claimed = store.claim(thread("task", 20), 100).unwrap();
         assert_eq!(claimed.claimed_at_ms, 100);
         assert_eq!(claimed.last_seen_activity_ms, Some(20));
+
         store
             .update_composer_settings("task", Some("gpt-test"), Some("xhigh"))
             .unwrap();
-
-        let mut refreshed = thread("task", 40);
-        refreshed.title = "Refreshed title".to_string();
-        let refreshed = store.update_projection(&refreshed).unwrap().unwrap();
-        assert_eq!(refreshed.title, "Refreshed title");
+        let refreshed = store.update_observed_recency("task", 40).unwrap().unwrap();
         assert_eq!(refreshed.claimed_at_ms, 100);
         assert_eq!(refreshed.last_seen_activity_ms, Some(20));
         assert_eq!(refreshed.model.as_deref(), Some("gpt-test"));
         assert_eq!(refreshed.reasoning_effort.as_deref(), Some("xhigh"));
-        assert!(refreshed.unseen());
+        assert!(refreshed.unseen(40));
 
-        let seen = store.mark_seen("task", 150).unwrap().unwrap();
+        let seen = store.mark_seen("task", 40, 150).unwrap().unwrap();
         assert_eq!(seen.last_opened_at_ms, Some(150));
         assert_eq!(seen.last_seen_activity_ms, Some(40));
-        assert!(!seen.unseen());
+        assert!(!seen.unseen(40));
     }
 
     #[test]
     fn query_builder_round_trips_literal_text_without_manual_escaping() {
         let store = ThreadStore::memory().unwrap();
-        let mut quoted = thread("task'quoted", 20);
-        quoted.title = "Don't escape this by hand".to_string();
-        quoted.preview = "It's GlueSQL's job".to_string();
-        quoted.cwd = "/tmp/it's-a-project".to_string();
+        let quoted = ManagedThread::new(
+            "task'quoted",
+            Some(20),
+            Some("model'quoted".to_string()),
+            Some("reasoning'quoted".to_string()),
+        );
 
         store.claim(quoted.clone(), 100).unwrap();
-        store
-            .update_composer_settings(
-                &quoted.thread_id,
-                Some("model'quoted"),
-                Some("reasoning'quoted"),
-            )
-            .unwrap();
-
         let stored = store.get(&quoted.thread_id).unwrap().unwrap();
-        assert_eq!(stored.title, quoted.title);
-        assert_eq!(stored.preview, quoted.preview);
-        assert_eq!(stored.cwd, quoted.cwd);
-        assert_eq!(stored.model.as_deref(), Some("model'quoted"));
-        assert_eq!(stored.reasoning_effort.as_deref(), Some("reasoning'quoted"));
+        assert_eq!(stored.model, quoted.model);
+        assert_eq!(stored.reasoning_effort, quoted.reasoning_effort);
         assert!(store.delete(&quoted.thread_id).unwrap());
         assert!(store.get(&quoted.thread_id).unwrap().is_none());
     }
 
     #[test]
-    fn redb_reopens_the_same_single_database_file() {
+    fn redb_reopens_the_same_managed_threads_table() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("caffold.redb");
         {
@@ -670,99 +662,5 @@ mod tests {
             store.get("persisted").unwrap().unwrap().thread_id,
             "persisted"
         );
-    }
-
-    #[test]
-    fn redb_accepts_the_manual_composer_settings_alter() {
-        #[derive(gluesql::ToGlueRow)]
-        struct LegacyStoredThreadRow {
-            thread_id: String,
-            title: String,
-            preview: String,
-            cwd: String,
-            created_ms: i64,
-            updated_ms: i64,
-            recency_ms: Option<i64>,
-            activity_ms: i64,
-            status: String,
-            active_turn_id: Option<String>,
-            active_turn_started_ms: Option<i64>,
-            last_event_summary: Option<String>,
-            claimed_at_ms: i64,
-            last_opened_at_ms: Option<i64>,
-            last_seen_activity_ms: Option<i64>,
-        }
-
-        let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("caffold.redb");
-        {
-            let storage = RedbStorage::new(&path).unwrap();
-            let mut glue = Glue::new(storage);
-            table(THREADS_TABLE)
-                .create_table()
-                .add_column("thread_id TEXT PRIMARY KEY")
-                .add_column("title TEXT")
-                .add_column("preview TEXT")
-                .add_column("cwd TEXT")
-                .add_column("created_ms INTEGER")
-                .add_column("updated_ms INTEGER")
-                .add_column("recency_ms INTEGER NULL")
-                .add_column("activity_ms INTEGER")
-                .add_column("status TEXT")
-                .add_column("active_turn_id TEXT NULL")
-                .add_column("active_turn_started_ms INTEGER NULL")
-                .add_column("last_event_summary TEXT NULL")
-                .add_column("claimed_at_ms INTEGER")
-                .add_column("last_opened_at_ms INTEGER NULL")
-                .add_column("last_seen_activity_ms INTEGER NULL")
-                .execute(&mut glue)
-                .unwrap();
-            let legacy = LegacyStoredThreadRow {
-                thread_id: "legacy".to_string(),
-                title: "Legacy task".to_string(),
-                preview: String::new(),
-                cwd: "/tmp/project".to_string(),
-                created_ms: 1,
-                updated_ms: 2,
-                recency_ms: None,
-                activity_ms: 2,
-                status: "idle".to_string(),
-                active_turn_id: None,
-                active_turn_started_ms: None,
-                last_event_summary: None,
-                claimed_at_ms: 3,
-                last_opened_at_ms: None,
-                last_seen_activity_ms: None,
-            };
-            table(THREADS_TABLE)
-                .insert()
-                .values_from(&[legacy])
-                .unwrap()
-                .execute(&mut glue)
-                .unwrap();
-            table(THREADS_TABLE)
-                .alter_table()
-                .add_column("model TEXT NULL")
-                .execute(&mut glue)
-                .unwrap();
-            table(THREADS_TABLE)
-                .alter_table()
-                .add_column("reasoning_effort TEXT NULL")
-                .execute(&mut glue)
-                .unwrap();
-            table(THREADS_TABLE)
-                .update()
-                .filter(col("thread_id").eq(text("legacy")))
-                .set("model", text("gpt-test"))
-                .set("reasoning_effort", text("xhigh"))
-                .execute(&mut glue)
-                .unwrap();
-        }
-
-        let store = ThreadStore::redb(&path).unwrap();
-        let legacy = store.get("legacy").unwrap().unwrap();
-        assert_eq!(legacy.title, "Legacy task");
-        assert_eq!(legacy.model.as_deref(), Some("gpt-test"));
-        assert_eq!(legacy.reasoning_effort.as_deref(), Some("xhigh"));
     }
 }
