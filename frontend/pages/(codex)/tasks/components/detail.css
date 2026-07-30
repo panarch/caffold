@@ -300,7 +300,7 @@ caffold-task-detail .task-detail-load-error-inline {
   background: #fff8e7;
 }
 
-caffold-task-detail .task-load-error-message {
+caffold-task-detail .task-detail-error-message {
   color: var(--muted);
   font-size: var(--task-detail-meta-size);
   line-height: 16px;
@@ -353,15 +353,6 @@ caffold-task-detail .task-detail-status {
   height: 22px;
   justify-content: center;
   padding: 0;
-}
-
-caffold-task-detail
-  .task-detail:is(
-    [data-task-availability="reconnecting"],
-    [data-task-availability="unavailable"]
-  )
-  .task-turn-active {
-  display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

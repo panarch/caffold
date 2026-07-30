@@ -225,8 +225,6 @@ const sharedDescendantClasses = new Map([
   ],
 ]);
 const KNOWN_OWNERSHIP_DEBT = new Set([
-  "pages/(codex)/tasks/components/detail.css selector uses .task-load-error-message owned by caffold-task-conversation: caffold-task-detail .task-load-error-message",
-  'pages/(codex)/tasks/components/detail.css selector uses .task-turn-active owned by caffold-task-conversation: caffold-task-detail .task-detail:is( [data-task-availability="reconnecting"], [data-task-availability="unavailable"] ) .task-turn-active',
   "pages/(review-workspace)/layout.css selector uses .review-panel-resizer owned by caffold-git-log-commit-page or caffold-github-pull-files-page: caffold-review-workspace .review-panel-resizer",
   "pages/(review-workspace)/layout.css selector uses .review-panel-resizer owned by caffold-git-log-commit-page or caffold-github-pull-files-page: caffold-review-workspace .review-panel-resizer:hover",
   "pages/(review-workspace)/layout.css selector uses .review-panel-resizer owned by caffold-git-log-commit-page or caffold-github-pull-files-page: caffold-review-workspace .review-panel-resizer:focus-visible",

@@ -1505,7 +1505,7 @@ class CaffoldTaskDetail extends HTMLElement {
     return `
       <section class="task-detail-load-error" role="alert">
         <p>Task details are temporarily unavailable.</p>
-        <p class="task-load-error-message">${escapeHtml(this.detailLoadError?.message ?? "")}</p>
+        <p class="task-detail-error-message">${escapeHtml(this.detailLoadError?.message ?? "")}</p>
         <button type="button" class="task-secondary-button" data-task-action="retry-task-detail">Retry</button>
       </section>
     `;
@@ -1521,7 +1521,7 @@ class CaffoldTaskDetail extends HTMLElement {
       return this.renderContinueGate(task);
     }
     return `
-      <div class="task-detail" data-thread-id="${escapeHtml(task.threadId ?? task.id)}" data-task-detail-view="${escapeHtml(this.reviewView)}" data-task-availability="${escapeHtml(this.streamState)}">
+      <div class="task-detail" data-thread-id="${escapeHtml(task.threadId ?? task.id)}" data-task-detail-view="${escapeHtml(this.reviewView)}">
         ${this.renderTaskDetailSummary(task)}
         <section class="task-conversation-pane" aria-label="Task conversation">
           <caffold-task-conversation></caffold-task-conversation>
@@ -1543,7 +1543,7 @@ class CaffoldTaskDetail extends HTMLElement {
         ${task.preview ? `<p class="task-continue-preview">${escapeHtml(task.preview)}</p>` : ""}
         ${task.cwd ? `<p class="task-continue-cwd">${escapeHtml(task.cwd)}</p>` : ""}
         <p>This thread is not managed by Caffold yet. Continue it before loading its conversation or runtime.</p>
-        ${continuation.error ? `<p class="task-load-error-message" role="alert">${escapeHtml(continuation.error.message)}</p>` : ""}
+        ${continuation.error ? `<p class="task-detail-error-message" role="alert">${escapeHtml(continuation.error.message)}</p>` : ""}
         <button type="button" class="task-primary-button" data-task-action="continue-history-task" data-thread-id="${escapeHtml(threadId)}" ${continuation.loading ? "disabled" : ""}>${continuation.loading ? "Continuing..." : "Continue in Caffold"}</button>
       </section>
     `;

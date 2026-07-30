@@ -7398,6 +7398,7 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
   await textarea.fill(promptText);
   await textarea.press("Enter");
   await expect.poll(() => promptAccepted).toBe(true);
+  await expect(tasksPage.locator(".task-turn-active")).toBeVisible();
 
   await page.evaluate((threadId) => {
     for (const source of window.__taskEventSources) {
@@ -7437,6 +7438,7 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
       '.task-stream-state[data-stream-state="reconnecting"]',
     ),
   ).toContainText("Caffold server connection lost");
+  await expect(tasksPage.locator(".task-turn-active")).toBeHidden();
 
   await page.evaluate((threadId) => {
     for (const source of window.__taskEventSources) {

@@ -751,7 +751,7 @@ test("loading detail accepts a canonical task sync without a synthetic task", as
     page.getByText("Task details are temporarily unavailable."),
   ).toBeVisible();
   await expect(
-    page.locator(".task-load-error-message"),
+    page.locator(".task-detail-error-message"),
   ).toHaveText("Codex app-server is unavailable");
   await expect(page.locator(".task-detail")).toHaveCount(0);
   await expect(page.locator(".task-status-chip")).toHaveCount(0);

@@ -450,6 +450,14 @@ caffold-task-conversation .task-turn-active {
   color: var(--muted);
 }
 
+caffold-task-conversation:is(
+    [data-transport-state="reconnecting"],
+    [data-transport-state="unavailable"]
+  )
+  .task-turn-active {
+  display: none;
+}
+
 caffold-task-conversation .task-turn-active .task-status-spinner {
   color: var(--accent);
 }

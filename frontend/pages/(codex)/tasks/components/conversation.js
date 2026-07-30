@@ -95,6 +95,7 @@ class CaffoldTaskConversation extends HTMLElement {
 
   render(previousScroll = null) {
     this.ensureState();
+    this.dataset.transportState = this.snapshot.transportState;
     const { task } = this.snapshot;
     if (!task) {
       this.innerHTML = "";
