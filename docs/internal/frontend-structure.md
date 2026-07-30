@@ -232,6 +232,52 @@ detail selectors. If a domain-owned control is rendered into shared chrome, keep
 its CSS in the owning domain's stylesheet and scope the selector to the shared
 slot instead of adding broad descendant rules to the parent layout.
 
+## Browser Test Structure
+
+The Playwright suite mirrors the runtime owner rather than the historical
+screen where a flow was first tested:
+
+```text
+tests/e2e/
+  app-shell.spec.js
+  files/
+    navigation.spec.js
+    live.spec.js
+    presentation.spec.js
+  review/
+    git.spec.js
+    github.spec.js
+    routing.spec.js
+  tasks/
+    ...
+  support/
+    file-browser-fixtures.js
+    header-actions.js
+    review-layout.js
+    review-route-fixtures.js
+    review-context-fixture.js
+    task-fixtures.js
+    ...
+```
+
+The spec owns the observable user contract: clicks, browser navigation, route
+transitions, responsive DOM, and assertions. Support modules own deterministic
+inputs and observation controls such as API responses, request counters,
+filesystem fixture values, delayed-request gates, and reusable layout
+measurements. They must not hide a surface's user flow behind a generic page
+object.
+
+`review/routing.spec.js` is intentionally a routing-owner suite. Each Git or
+GitHub route lifecycle and each cwd-context reload mode is an independent
+test. The one cross-domain case is a narrow smoke test for switching route
+owners without retaining stale layout state. Git and GitHub product behavior
+otherwise remains in their domain specs.
+
+All mutable fixture state is created inside one Playwright test. Specs must
+remain valid under normal parallel execution and under `--workers=1`; serial
+configuration is not a substitute for isolating filesystem paths, request
+counters, delay gates, or browser-local state.
+
 ## Page/Layout Skeleton
 
 The current page-level skeleton is:

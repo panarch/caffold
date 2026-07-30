@@ -184,6 +184,41 @@ Use these rules when reviewing CSS:
   change.
 - If a selector looks convenient because it is broad, review it with suspicion.
 
+## Browser Test Ownership
+
+Browser regression tests follow the same ownership boundaries as the product.
+Place a test with the surface whose behavior would need to change if the test
+failed. App-shell, Files, Review, and Tasks coverage should not accumulate in
+one integration spec merely because those surfaces can be reached from the
+same browser session.
+
+Keep independently failing behaviors in independent tests. One test may cover
+the complete lifecycle of one route or component contract, but it should not
+serially walk unrelated modes to save fixture setup. Retain only a small
+cross-owner smoke test when switching between owners is itself the behavior
+under review.
+
+Support modules may own API stubs, transport controls, fixture data, request
+counters, and deterministic delay gates. User actions, URL transitions, DOM
+assertions, and visual assertions should remain visible in the owning spec.
+Do not replace a large test with a page-object language that hides the
+interaction and expected behavior reviewers need to inspect.
+
+Browser fixtures must be isolated by test:
+
+- Use test-local mutable state and unique filesystem paths.
+- Clean up files, watches, timers, and subscriptions created by the test.
+- Do not depend on execution order or a shared mutable fixture that requires
+  serial execution.
+- Run the affected specs with normal parallel workers. When changing fixture
+  boundaries or suspected shared state, also run them with one worker and
+  require the same result.
+
+When product ownership moves, move its regression spec and support fixtures in
+the same change. Prefer ownership and failure boundaries over arbitrary
+line-count limits: a long fixture containing one coherent wire contract can be
+valid, while a short test that combines unrelated owners is not.
+
 ## Backend And API Review
 
 Backend changes should keep the browser API conservative unless the feature explicitly introduces a mutation.
