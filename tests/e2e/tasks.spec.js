@@ -15,6 +15,33 @@ import {
   stabilizeDynamicText,
 } from "./support/task-fixtures.js";
 
+async function taskPresentation(locator) {
+  return locator.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const box = element.getBoundingClientRect();
+    return {
+      alignItems: style.alignItems,
+      animationName: style.animationName,
+      backgroundColor: style.backgroundColor,
+      borderColor: style.borderColor,
+      borderRadius: style.borderRadius,
+      borderWidth: style.borderWidth,
+      color: style.color,
+      cssHeight: style.height,
+      cssWidth: style.width,
+      display: style.display,
+      fontSize: style.fontSize,
+      height: Math.round(box.height),
+      lineHeight: style.lineHeight,
+      minHeight: style.minHeight,
+      overflow: style.overflow,
+      overflowWrap: style.overflowWrap,
+      padding: style.padding,
+      width: Math.round(box.width),
+    };
+  });
+}
+
 test.beforeEach(async ({ page }) => {
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({
@@ -1192,6 +1219,46 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     ),
   ).toBeVisible();
   await expect(tasksPage.locator('.task-row .task-status-label')).toHaveCount(0);
+  await test.step("keeps navigator status presentation stable", async () => {
+    const runningChip = tasksPage.locator(
+      '.task-row[data-thread-id="thread_feature"] .task-status-chip',
+    );
+    const waitingChip = tasksPage.locator(
+      '.task-row[data-thread-id="thread_docs"] .task-status-chip',
+    );
+    expect(await taskPresentation(runningChip)).toEqual(
+      expect.objectContaining({
+        backgroundColor: "rgb(231, 244, 238)",
+        borderRadius: "999px",
+        borderWidth: "0px",
+        color: "rgb(22, 124, 92)",
+        display: "grid",
+        height: 20,
+        padding: "0px",
+        width: 20,
+      }),
+    );
+    expect(await taskPresentation(runningChip.locator(".task-status-spinner"))).toEqual(
+      expect.objectContaining({
+        animationName: "task-status-spin",
+        borderRadius: "999px",
+        cssHeight: "13px",
+        cssWidth: "13px",
+      }),
+    );
+    expect(await taskPresentation(waitingChip)).toEqual(
+      expect.objectContaining({
+        backgroundColor: "rgb(255, 244, 217)",
+        borderRadius: "999px",
+        borderWidth: "0px",
+        color: "rgb(127, 86, 0)",
+        display: "grid",
+        height: 20,
+        padding: "0px",
+        width: 20,
+      }),
+    );
+  });
   const rowLayout = await rows.evaluateAll((elements) =>
     elements.map((element) => {
       const title = element.querySelector(".task-row-title");
@@ -2702,10 +2769,42 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   );
   await expect(page.locator("caffold-tasks-page")).toContainText("No Caffold tasks yet.");
 
-  await page
+  const emptyNewTaskButton = page
     .locator("caffold-tasks-page .tasks-empty")
-    .getByRole("button", { name: "New Task", exact: true })
-    .click();
+    .getByRole("button", { name: "New Task", exact: true });
+  await test.step("keeps shared task controls stable", async () => {
+    expect(await taskPresentation(emptyNewTaskButton)).toEqual(
+      expect.objectContaining({
+        alignItems: "center",
+        backgroundColor: "rgb(221, 239, 232)",
+        borderColor: "rgb(159, 201, 187)",
+        borderRadius: "5px",
+        borderWidth: "1px",
+        color: "rgb(22, 124, 92)",
+        display: "inline-grid",
+        minHeight: "32px",
+        padding: "5px 10px",
+      }),
+    );
+    expect(
+      await taskPresentation(
+        page.locator(
+          'caffold-tasks-page .tasks-header [data-task-action="open-settings"]',
+        ),
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        backgroundColor: "rgb(255, 255, 255)",
+        borderRadius: "5px",
+        borderWidth: "1px",
+        display: "grid",
+        height: 32,
+        padding: "0px",
+        width: 32,
+      }),
+    );
+  });
+  await emptyNewTaskButton.click();
   await expect(page).toHaveURL(`/tasks/new?cwd=${encodeURIComponent(contextPath)}`);
   await expect(page.locator("caffold-tasks-page")).toHaveAttribute(
     "data-tasks-view",
@@ -2933,6 +3032,89 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(tasksPage.locator(".task-conversation .task-approval-flow")).toHaveCount(1);
   await expect(tasksPage.locator(".task-turn-active-state")).toHaveText(
     "Waiting for approval",
+  );
+  await test.step("keeps detail, conversation, and composer presentation stable", async () => {
+    const phone = testInfo.project.name === "phone";
+    expect(await taskPresentation(tasksPage.locator(".task-detail-summary"))).toEqual(
+      expect.objectContaining({
+        alignItems: "center",
+        borderWidth: "0px 0px 1px",
+        display: "grid",
+        padding: phone ? "7px 8px" : "12px 14px",
+      }),
+    );
+    expect(
+      await taskPresentation(
+        tasksPage.locator(
+          '.task-detail-summary .task-status-chip[data-status="waiting_for_approval"]',
+        ),
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        backgroundColor: "rgb(255, 248, 231)",
+        borderColor: "rgb(223, 197, 143)",
+        borderRadius: "999px",
+        borderWidth: "1px",
+        color: "rgb(127, 86, 0)",
+        display: "grid",
+        height: 22,
+        padding: "0px",
+        width: 22,
+      }),
+    );
+    expect(
+      await taskPresentation(
+        tasksPage.locator(
+          '.task-approval-card button[data-task-action="approval"][data-decision="accept"]',
+        ),
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        alignItems: "center",
+        backgroundColor: "rgb(255, 255, 255)",
+        borderRadius: "5px",
+        borderWidth: "1px",
+        color: "rgb(22, 124, 92)",
+        display: "grid",
+        minHeight: "32px",
+        padding: "5px 10px",
+      }),
+    );
+    expect(
+      await taskPresentation(
+        tasksPage.locator(
+          '.task-message[data-message-role="user"] .task-message-content',
+        ),
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        backgroundColor: "rgb(238, 242, 239)",
+        borderRadius: "18px",
+        fontSize: "15px",
+        lineHeight: "22px",
+        overflowWrap: "anywhere",
+        padding: "10px 14px",
+      }),
+    );
+    expect(
+      await taskPresentation(
+        tasksPage.locator(".task-follow-up-form .task-composer-panel"),
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        backgroundColor: "rgb(255, 255, 255)",
+        borderRadius: phone ? "16px" : "18px",
+        borderWidth: "1px",
+        display: "grid",
+        overflow: "visible",
+      }),
+    );
+  });
+  await stabilizeDynamicText(page);
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "tasks-presentation-contract-active",
   );
   await expect
     .poll(() => tasksPage.evaluate((element) => element.selectedThreadId))
