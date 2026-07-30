@@ -4,9 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:css-ownership": "node --test tests/css-ownership.test.mjs",
     "test:codex-protocol": "node --test tests/codex-protocol.test.mjs",
     "test:routes": "node --test tests/navigation-routes.test.mjs",
-    "test:task-state": "node --test tests/task-*.test.mjs",
+    "test:task-state": "node --test tests/css-ownership.test.mjs tests/task-*.test.mjs",
     "test:watch": "node --test tests/watch.test.mjs",
     "test:e2e": "playwright test",
     "test:codex-live": "playwright test --config=playwright.live.config.mjs"
