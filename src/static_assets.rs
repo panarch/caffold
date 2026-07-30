@@ -98,6 +98,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "components/file-browser/list.js" => Some(js(include_str!(
             "../frontend/components/file-browser/list.js"
         ))),
+        "components/review-panel-resizer.css" => Some(css(include_str!(
+            "../frontend/components/review-panel-resizer.css"
+        ))),
+        "components/review-panel-resizer.js" => Some(js(include_str!(
+            "../frontend/components/review-panel-resizer.js"
+        ))),
         "watch.js" => Some(js(include_str!("../frontend/watch.js"))),
         "pages/files/page.css" => Some(css(include_str!("../frontend/pages/files/page.css"))),
         "pages/files/page.js" => Some(js(include_str!("../frontend/pages/files/page.js"))),
@@ -545,6 +551,29 @@ mod tests {
             git_review_controls_css
                 .body
                 .starts_with(b"caffold-git-review-controls")
+        );
+        let review_panel_resizer =
+            get("components/review-panel-resizer.js").expect("review panel resizer js");
+        assert_eq!(
+            review_panel_resizer.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(
+            review_panel_resizer
+                .body
+                .windows(b"caffold-review-panel-resizer".len())
+                .any(|window| window == b"caffold-review-panel-resizer")
+        );
+        let review_panel_resizer_css =
+            get("components/review-panel-resizer.css").expect("review panel resizer css");
+        assert_eq!(
+            review_panel_resizer_css.content_type,
+            "text/css; charset=utf-8"
+        );
+        assert!(
+            review_panel_resizer_css
+                .body
+                .starts_with(b"caffold-review-panel-resizer")
         );
 
         let compare_page =

@@ -2,13 +2,6 @@ import { renderInlineIcon, warmIcons } from "../../components/icons.js";
 import { routeDomain } from "../../navigation-routes.js";
 import "./(git)/components/controls.js";
 
-const REVIEW_PANEL_DEFAULT_WIDTH = 320;
-const REVIEW_PANEL_MIN_WIDTH = 180;
-const REVIEW_PANEL_VIEWER_MIN_WIDTH = 320;
-const REVIEW_PANEL_MAX_RATIO = 0.7;
-const REVIEW_DIFF_RESIZE_QUERY = "(min-width: 861px)";
-const REVIEW_LOG_RESIZE_QUERY = "(min-width: 1101px)";
-
 class CaffoldReviewWorkspace extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
@@ -17,11 +10,6 @@ class CaffoldReviewWorkspace extends HTMLElement {
     }
 
     this.initialized = true;
-    this.reviewPanelWidth = REVIEW_PANEL_DEFAULT_WIDTH;
-    this.resizePointerId = null;
-    this.resizeTarget = null;
-    this.resizeHandle = null;
-    this.applyReviewPanelWidth(this.reviewPanelWidth);
     this.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-action]");
       if (!button) {
@@ -57,27 +45,6 @@ class CaffoldReviewWorkspace extends HTMLElement {
         this.refreshDetails();
       }
     });
-    this.addEventListener("pointerdown", (event) => {
-      const handle = event.target.closest(".review-panel-resizer");
-      if (handle) {
-        this.startReviewPanelResize(event, handle);
-      }
-    });
-    this.addEventListener("pointermove", (event) => {
-      this.moveReviewPanelResize(event);
-    });
-    this.addEventListener("pointerup", (event) => {
-      this.endReviewPanelResize(event);
-    });
-    this.addEventListener("pointercancel", (event) => {
-      this.endReviewPanelResize(event);
-    });
-    this.addEventListener("keydown", (event) => {
-      const handle = event.target.closest(".review-panel-resizer");
-      if (handle) {
-        this.adjustReviewPanelWidthFromKeyboard(event, handle);
-      }
-    });
     this.boundIconsReady = () => this.renderChrome();
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     warmIcons();
@@ -92,7 +59,6 @@ class CaffoldReviewWorkspace extends HTMLElement {
       return;
     }
 
-    this.reviewPanelWidth ??= REVIEW_PANEL_DEFAULT_WIDTH;
     this.rendered = true;
     this.innerHTML = `
       <section
@@ -381,153 +347,6 @@ class CaffoldReviewWorkspace extends HTMLElement {
       "review-workspace-back-icon",
     );
     this.closeButton.innerHTML = renderInlineIcon("X", "Close", "review-workspace-close-icon");
-    this.updateReviewPanelResizeAttributes();
-  }
-
-  startReviewPanelResize(event, handle) {
-    const target = handle.dataset.resizeTarget;
-    if (!this.canResizeReviewPanel(target)) {
-      return;
-    }
-
-    event.preventDefault();
-    this.resizePointerId = event.pointerId;
-    this.resizeTarget = target;
-    this.resizeHandle = handle;
-    handle.setPointerCapture(event.pointerId);
-    this.classList.add("is-resizing-review-panel");
-    this.updateReviewPanelWidthFromPointer(event);
-  }
-
-  moveReviewPanelResize(event) {
-    if (this.resizePointerId !== event.pointerId) {
-      return;
-    }
-
-    event.preventDefault();
-    this.updateReviewPanelWidthFromPointer(event);
-  }
-
-  endReviewPanelResize(event) {
-    if (this.resizePointerId !== event.pointerId) {
-      return;
-    }
-
-    const handle = this.resizeHandle;
-    this.resizePointerId = null;
-    this.resizeTarget = null;
-    this.resizeHandle = null;
-    this.classList.remove("is-resizing-review-panel");
-    if (handle?.hasPointerCapture(event.pointerId)) {
-      handle.releasePointerCapture(event.pointerId);
-    }
-  }
-
-  adjustReviewPanelWidthFromKeyboard(event, handle) {
-    const target = handle.dataset.resizeTarget;
-    if (!this.canResizeReviewPanel(target)) {
-      return;
-    }
-
-    const step = event.shiftKey ? 72 : 24;
-    let nextWidth = this.reviewPanelWidth;
-
-    if (event.key === "ArrowLeft") {
-      nextWidth -= step;
-    } else if (event.key === "ArrowRight") {
-      nextWidth += step;
-    } else if (event.key === "Home") {
-      nextWidth = REVIEW_PANEL_MIN_WIDTH;
-    } else if (event.key === "End") {
-      nextWidth = this.reviewPanelMaxWidth(target);
-    } else {
-      return;
-    }
-
-    event.preventDefault();
-    this.applyReviewPanelWidth(nextWidth, target);
-  }
-
-  updateReviewPanelWidthFromPointer(event) {
-    const panel = this.reviewPanelForTarget(this.resizeTarget);
-    if (!panel) {
-      return;
-    }
-
-    const rect = panel.getBoundingClientRect();
-    this.applyReviewPanelWidth(event.clientX - rect.left, this.resizeTarget);
-  }
-
-  applyReviewPanelWidth(width, target = null) {
-    const nextWidth = target ? this.clampReviewPanelWidth(width, target) : Math.round(width);
-    this.reviewPanelWidth = nextWidth;
-    this.style.setProperty("--review-left-panel-width", `${nextWidth}px`);
-    this.updateReviewPanelResizeAttributes();
-  }
-
-  clampReviewPanelWidth(width, target) {
-    return Math.min(
-      Math.max(Math.round(width), REVIEW_PANEL_MIN_WIDTH),
-      this.reviewPanelMaxWidth(target),
-    );
-  }
-
-  reviewPanelMaxWidth(target) {
-    const panel = this.reviewPanelForTarget(target);
-    const panelWidth = panel?.getBoundingClientRect().width ?? REVIEW_PANEL_DEFAULT_WIDTH;
-    const ratioMax = Math.round(panelWidth * REVIEW_PANEL_MAX_RATIO);
-    const viewerMax = Math.max(REVIEW_PANEL_MIN_WIDTH, panelWidth - REVIEW_PANEL_VIEWER_MIN_WIDTH);
-    return Math.max(REVIEW_PANEL_MIN_WIDTH, Math.min(ratioMax, viewerMax));
-  }
-
-  canResizeReviewPanel(target) {
-    const panel = this.reviewPanelForTarget(target);
-    if (!panel || panel.getClientRects().length === 0) {
-      return false;
-    }
-
-    if (target === "log") {
-      return window.matchMedia(REVIEW_LOG_RESIZE_QUERY).matches;
-    }
-
-    if (target === "pulls") {
-      return window.matchMedia(REVIEW_DIFF_RESIZE_QUERY).matches;
-    }
-
-    return (
-      (target === "diff" || target === "compare") &&
-      window.matchMedia(REVIEW_DIFF_RESIZE_QUERY).matches
-    );
-  }
-
-  reviewPanelForTarget(target) {
-    if (target === "log") {
-      return this.gitLayout.reviewPanelForTarget(target);
-    }
-
-    if (target === "diff") {
-      return this.gitLayout.reviewPanelForTarget(target);
-    }
-
-    if (target === "compare") {
-      return this.gitLayout.reviewPanelForTarget(target);
-    }
-
-    if (target === "pulls") {
-      return this.githubLayout.reviewPanelForTarget(target);
-    }
-
-    return null;
-  }
-
-  updateReviewPanelResizeAttributes() {
-    const handles = this.querySelectorAll(".review-panel-resizer");
-    for (const handle of handles) {
-      const target = handle.dataset.resizeTarget;
-      handle.setAttribute("aria-valuemin", `${REVIEW_PANEL_MIN_WIDTH}`);
-      handle.setAttribute("aria-valuemax", `${this.reviewPanelMaxWidth(target)}`);
-      handle.setAttribute("aria-valuenow", `${this.reviewPanelWidth}`);
-    }
   }
 
   updateMobileDetailState() {

@@ -721,22 +721,6 @@ class CaffoldGitReviewLayout extends HTMLElement {
     return this.logLayout.findCommitFile(path);
   }
 
-  reviewPanelForTarget(target) {
-    if (target === "log") {
-      return this.querySelector("caffold-git-log-commit-page");
-    }
-
-    if (target === "diff") {
-      return this.diffPage;
-    }
-
-    if (target === "compare") {
-      return this.comparePage;
-    }
-
-    return null;
-  }
-
   isMobileDetailOpen() {
     return (
       (this.mode === "diff" && this.diffPage.dataset.detailView === "viewer") ||

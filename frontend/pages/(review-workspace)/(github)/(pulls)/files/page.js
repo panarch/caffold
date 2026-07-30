@@ -1,5 +1,6 @@
 import { getGitHubPullFile, getGitHubPullFiles } from "../../../../../api.js";
 import "../../../../../components/file-viewer.js";
+import { REVIEW_PANEL_DEFAULT_WIDTH } from "../../../../../components/review-panel-resizer.js";
 import "./components/tree.js";
 
 const LOADING_DELAY_MS = 180;
@@ -17,22 +18,44 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
     this.rendered = true;
     this.innerHTML = `
       <caffold-github-pull-files-tree></caffold-github-pull-files-tree>
-      <div
-        class="review-panel-resizer"
-        role="separator"
+      <caffold-review-panel-resizer
         aria-label="Resize review side panel"
-        aria-orientation="vertical"
-        tabindex="0"
-        data-resize-target="pulls"
-      ></div>
+      ></caffold-review-panel-resizer>
       <caffold-review-file-viewer></caffold-review-file-viewer>
     `;
     this.tree = this.querySelector("caffold-github-pull-files-tree");
+    this.panelResizer = this.querySelector("caffold-review-panel-resizer");
     this.fileViewer = this.querySelector("caffold-review-file-viewer");
     this.fileViewer.setCloseLabel("Back to PR files");
     this.filesRequestId ??= 0;
     this.fileRequestId ??= 0;
     this.detailView ??= "list";
+    this.panelWidth ??= REVIEW_PANEL_DEFAULT_WIDTH;
+    this.panelResizer.addEventListener("caffold:review-panel-resize", (event) => {
+      this.handlePanelResize(event);
+    });
+    this.applyPanelWidth(this.panelWidth);
+  }
+
+  handlePanelResize(event) {
+    event.stopPropagation();
+    if (event.detail.phase === "start") {
+      this.classList.add("is-resizing-panel");
+      return;
+    }
+    if (event.detail.phase === "end") {
+      this.classList.remove("is-resizing-panel");
+      return;
+    }
+    if (event.detail.phase === "update") {
+      this.applyPanelWidth(event.detail.value);
+    }
+  }
+
+  applyPanelWidth(width) {
+    const nextWidth = this.panelResizer.setValue(width);
+    this.panelWidth = nextWidth;
+    this.style.setProperty("--github-pull-files-panel-width", `${nextWidth}px`);
   }
 
   reset() {

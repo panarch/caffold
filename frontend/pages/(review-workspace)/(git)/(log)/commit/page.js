@@ -1,5 +1,6 @@
 import { getGitCommit, getGitCommitDiff } from "../../../../../api.js";
 import "../../../../../components/file-viewer.js";
+import { REVIEW_PANEL_DEFAULT_WIDTH } from "../../../../../components/review-panel-resizer.js";
 import "./components/changes-tree.js";
 
 const LOADING_DELAY_MS = 180;
@@ -17,23 +18,45 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     this.rendered = true;
     this.innerHTML = `
       <caffold-commit-changes-tree></caffold-commit-changes-tree>
-      <div
-        class="review-panel-resizer"
-        role="separator"
+      <caffold-review-panel-resizer
         aria-label="Resize review side panel"
-        aria-orientation="vertical"
-        tabindex="0"
-        data-resize-target="log"
-      ></div>
+      ></caffold-review-panel-resizer>
       <caffold-review-file-viewer refresh-action="refresh-git-review"></caffold-review-file-viewer>
     `;
     this.commitTree = this.querySelector("caffold-commit-changes-tree");
+    this.panelResizer = this.querySelector("caffold-review-panel-resizer");
     this.fileViewer = this.querySelector("caffold-review-file-viewer");
     this.fileViewer.setCloseLabel("Back to commit");
     this.commitRequestId ??= 0;
     this.fileRequestId ??= 0;
     this.detailView ??= "list";
     this.scrollPositions ??= {};
+    this.panelWidth ??= REVIEW_PANEL_DEFAULT_WIDTH;
+    this.panelResizer.addEventListener("caffold:review-panel-resize", (event) => {
+      this.handlePanelResize(event);
+    });
+    this.applyPanelWidth(this.panelWidth);
+  }
+
+  handlePanelResize(event) {
+    event.stopPropagation();
+    if (event.detail.phase === "start") {
+      this.classList.add("is-resizing-panel");
+      return;
+    }
+    if (event.detail.phase === "end") {
+      this.classList.remove("is-resizing-panel");
+      return;
+    }
+    if (event.detail.phase === "update") {
+      this.applyPanelWidth(event.detail.value);
+    }
+  }
+
+  applyPanelWidth(width) {
+    const nextWidth = this.panelResizer.setValue(width);
+    this.panelWidth = nextWidth;
+    this.style.setProperty("--git-log-commit-panel-width", `${nextWidth}px`);
   }
 
   reset() {

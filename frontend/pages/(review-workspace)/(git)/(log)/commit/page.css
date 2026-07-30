@@ -2,14 +2,26 @@
 
 caffold-git-log-commit-page {
   display: grid;
-  grid-template-columns: var(--review-left-panel-width) 6px minmax(0, 1fr);
+  grid-template-columns:
+    var(--git-log-commit-panel-width, 320px)
+    6px
+    minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 
+caffold-git-log-commit-page.is-resizing-panel {
+  cursor: col-resize;
+  user-select: none;
+}
+
 caffold-git-log-commit-page > caffold-commit-changes-tree {
   grid-column: 1;
+}
+
+caffold-git-log-commit-page > caffold-review-panel-resizer {
+  grid-column: 2;
 }
 
 caffold-git-log-commit-page > caffold-review-file-viewer {
@@ -32,7 +44,7 @@ caffold-git-log-commit-page > caffold-review-file-viewer {
     grid-row: 2;
   }
 
-  caffold-git-log-commit-page > .review-panel-resizer {
+  caffold-git-log-commit-page > caffold-review-panel-resizer {
     display: none;
   }
 

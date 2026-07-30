@@ -494,14 +494,6 @@ class CaffoldGithubReviewLayout extends HTMLElement {
     return this.pullsLayout.isFileViewer(target);
   }
 
-  reviewPanelForTarget(target) {
-    if (target === "pulls") {
-      return this.querySelector("caffold-github-pull-files-page");
-    }
-
-    return null;
-  }
-
   isMobileDetailOpen() {
     return (
       (this.mode === "issues" && this.issuesLayout.dataset.issuesView === "detail") ||

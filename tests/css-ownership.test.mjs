@@ -28,6 +28,10 @@ const ownership = new Map([
     ["caffold-git-diff-changes-tree"],
   ],
   ["components/pagination.css", ["caffold-pagination"]],
+  [
+    "components/review-panel-resizer.css",
+    ["caffold-review-panel-resizer"],
+  ],
   ["pages/(codex)/layout.css", ["caffold-codex-workspace"]],
   [
     "pages/(codex)/tasks/components/composer.css",
@@ -190,7 +194,11 @@ const componentChildren = new Map([
   ],
   [
     "caffold-git-log-commit-page",
-    ["caffold-commit-changes-tree", "caffold-review-file-viewer"],
+    [
+      "caffold-commit-changes-tree",
+      "caffold-review-panel-resizer",
+      "caffold-review-file-viewer",
+    ],
   ],
   [
     "caffold-github-review-layout",
@@ -210,7 +218,11 @@ const componentChildren = new Map([
   ],
   [
     "caffold-github-pull-files-page",
-    ["caffold-github-pull-files-tree", "caffold-review-file-viewer"],
+    [
+      "caffold-github-pull-files-tree",
+      "caffold-review-panel-resizer",
+      "caffold-review-file-viewer",
+    ],
   ],
 ]);
 const sharedDescendantClasses = new Map([
@@ -224,12 +236,7 @@ const sharedDescendantClasses = new Map([
     ]),
   ],
 ]);
-const KNOWN_OWNERSHIP_DEBT = new Set([
-  "pages/(review-workspace)/layout.css selector uses .review-panel-resizer owned by caffold-git-log-commit-page or caffold-github-pull-files-page: caffold-review-workspace .review-panel-resizer",
-  "pages/(review-workspace)/layout.css selector uses .review-panel-resizer owned by caffold-git-log-commit-page or caffold-github-pull-files-page: caffold-review-workspace .review-panel-resizer:hover",
-  "pages/(review-workspace)/layout.css selector uses .review-panel-resizer owned by caffold-git-log-commit-page or caffold-github-pull-files-page: caffold-review-workspace .review-panel-resizer:focus-visible",
-  "pages/(review-workspace)/layout.css selector uses .review-panel-resizer owned by caffold-git-log-commit-page or caffold-github-pull-files-page: caffold-review-workspace.is-resizing-review-panel .review-panel-resizer",
-]);
+const KNOWN_OWNERSHIP_DEBT = new Set();
 
 test("resolves flat and nested selectors to the same ownership surface", () => {
   const selectors = effectiveSelectors(`

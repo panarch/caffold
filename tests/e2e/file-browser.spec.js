@@ -323,6 +323,8 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain("/assets/components/file-browser.css");
   expect(serviceWorker).toContain("/assets/components/file-browser/list.js");
   expect(serviceWorker).toContain("/assets/components/file-browser/list.css");
+  expect(serviceWorker).toContain("/assets/components/review-panel-resizer.js");
+  expect(serviceWorker).toContain("/assets/components/review-panel-resizer.css");
   expect(serviceWorker).toContain("/assets/watch.js");
   expect(serviceWorker).toContain("/assets/pages/files/page.js");
   expect(serviceWorker).not.toContain("/assets/pages/files/components/list.js");
@@ -3733,10 +3735,52 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
   await expect(page.locator(".github-mode-pulls caffold-review-file-viewer")).toContainText(
     "Select a file to inspect it.",
   );
+  const pullFilesPage = page.locator("caffold-github-pull-files-page");
+  const pullResizeHandle = pullFilesPage.locator(
+    ":scope > caffold-review-panel-resizer",
+  );
   if (testInfo.project.name === "phone") {
     await expect(workspace).toHaveAttribute("data-mobile-detail", "false");
     await expect(page.locator("caffold-github-pull-files-tree")).toBeVisible();
     await expect(page.locator(".github-mode-pulls caffold-review-file-viewer")).toBeHidden();
+    await expect(pullResizeHandle).toBeHidden();
+    await expect(pullFilesPage).toHaveCSS(
+      "--github-pull-files-panel-width",
+      "320px",
+    );
+  } else {
+    await expect(pullResizeHandle).toBeVisible();
+    await expect(pullResizeHandle).not.toHaveAttribute("resize-target");
+    await expect(pullResizeHandle).toHaveAttribute("aria-valuemin", "180");
+    const beforePullTreeWidth = await elementWidth(
+      page,
+      "caffold-github-pull-files-page > caffold-github-pull-files-tree",
+    );
+    await dragHorizontalResizer(page, pullResizeHandle, 72);
+    const afterPullTreeWidth = await elementWidth(
+      page,
+      "caffold-github-pull-files-page > caffold-github-pull-files-tree",
+    );
+    expect(afterPullTreeWidth).toBeGreaterThan(beforePullTreeWidth + 36);
+    await pullResizeHandle.focus();
+    await pullResizeHandle.press("Home");
+    await expect(pullResizeHandle).toHaveAttribute("aria-valuenow", "180");
+    await pullResizeHandle.press("ArrowRight");
+    await expect(pullResizeHandle).toHaveAttribute("aria-valuenow", "204");
+    const widthOwnership = await page.evaluate(() => {
+      const pullPage = document.querySelector("caffold-github-pull-files-page");
+      const reviewWorkspace = document.querySelector("caffold-review-workspace");
+      return {
+        pageWidth: pullPage?.style.getPropertyValue(
+          "--github-pull-files-panel-width",
+        ),
+        workspaceWidth: reviewWorkspace?.style.getPropertyValue(
+          "--review-left-panel-width",
+        ),
+      };
+    });
+    expect(widthOwnership.pageWidth).toBe("204px");
+    expect(widthOwnership.workspaceWidth).toBe("");
   }
 
   const listRequestsBeforeFileClick = listRequests;
@@ -4008,9 +4052,13 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
     await expect(commitTree).toBeVisible();
     await expect(page.locator(".git-mode-log caffold-review-file-viewer")).toBeHidden();
   }
+  const resizeHandle = workspace.locator(
+    "caffold-git-log-commit-page > caffold-review-panel-resizer",
+  );
   if (testInfo.project.name === "desktop") {
-    const resizeHandle = workspace.locator("caffold-git-log-commit-page .review-panel-resizer");
     await expect(resizeHandle).toBeVisible();
+    await expect(resizeHandle).not.toHaveAttribute("resize-target");
+    await expect(resizeHandle).toHaveAttribute("aria-valuemin", "180");
     const beforeReviewWidth = await elementWidth(
       page,
       "caffold-review-workspace caffold-git-log-commit-page > caffold-commit-changes-tree",
@@ -4021,6 +4069,41 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
       "caffold-review-workspace caffold-git-log-commit-page > caffold-commit-changes-tree",
     );
     expect(afterReviewWidth).toBeGreaterThan(beforeReviewWidth + 48);
+    await resizeHandle.focus();
+    await resizeHandle.press("Home");
+    await expect(resizeHandle).toHaveAttribute("aria-valuenow", "180");
+    await resizeHandle.press("ArrowRight");
+    await expect(resizeHandle).toHaveAttribute("aria-valuenow", "204");
+    await expect
+      .poll(() =>
+        elementWidth(
+          page,
+          "caffold-review-workspace caffold-git-log-commit-page > caffold-commit-changes-tree",
+        ),
+      )
+      .toBeCloseTo(204, 0);
+    const widthOwnership = await page.evaluate(() => {
+      const commitPage = document.querySelector("caffold-git-log-commit-page");
+      const reviewWorkspace = document.querySelector("caffold-review-workspace");
+      return {
+        pageWidth: commitPage?.style.getPropertyValue(
+          "--git-log-commit-panel-width",
+        ),
+        workspaceWidth: reviewWorkspace?.style.getPropertyValue(
+          "--review-left-panel-width",
+        ),
+      };
+    });
+    expect(widthOwnership.pageWidth).toBe("204px");
+    expect(widthOwnership.workspaceWidth).toBe("");
+  } else {
+    await expect(resizeHandle).toBeHidden();
+    if (testInfo.project.name === "phone") {
+      await expect(page.locator("caffold-git-log-commit-page")).toHaveCSS(
+        "--git-log-commit-panel-width",
+        "320px",
+      );
+    }
   }
 
   await commitFileButton.click();

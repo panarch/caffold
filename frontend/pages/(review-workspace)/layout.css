@@ -1,6 +1,5 @@
 caffold-review-workspace {
   --review-header-height: 42px;
-  --review-left-panel-width: 20rem;
   --review-pane-title-size: 0.82rem;
   position: absolute;
   inset: 0;
@@ -132,28 +131,6 @@ caffold-review-workspace .workspace-mode-github {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   height: 100%;
-}
-
-caffold-review-workspace .review-panel-resizer {
-  grid-column: 2;
-  min-width: 0;
-  border-right: 1px solid var(--border);
-  border-left: 1px solid var(--border);
-  background: var(--surface-muted);
-  cursor: col-resize;
-  touch-action: none;
-}
-
-caffold-review-workspace .review-panel-resizer:hover,
-caffold-review-workspace .review-panel-resizer:focus-visible,
-caffold-review-workspace.is-resizing-review-panel .review-panel-resizer {
-  background: #d9e6df;
-  outline: none;
-}
-
-caffold-review-workspace.is-resizing-review-panel {
-  cursor: col-resize;
-  user-select: none;
 }
 
 @media (max-width: 860px) {
