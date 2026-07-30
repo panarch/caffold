@@ -2716,8 +2716,13 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
       backName: "Back to changes",
       detailSelector: ".git-mode-diff caffold-review-file-viewer",
       listSelector: "caffold-git-diff-changes-tree",
+      sharedFileViewer: true,
+      viewerRefresh: true,
     });
   } else {
+    await expect(
+      page.locator(".git-mode-diff caffold-review-file-viewer .viewer-refresh-button"),
+    ).toBeHidden();
     await expectAlignedWorkspaceHeaders(page, [
       "caffold-review-workspace .review-workspace-header",
       "caffold-git-diff-changes-tree .changes-tree-panel > header",
@@ -3001,6 +3006,8 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
       backName: "Back to compare",
       detailSelector: ".git-mode-compare caffold-review-file-viewer",
       listSelector: "caffold-git-compare-tree",
+      sharedFileViewer: true,
+      viewerRefresh: true,
     });
     await page.getByRole("button", { name: "Back to compare" }).click();
     await expect(workspace).toHaveAttribute("data-mobile-detail", "false");
@@ -3705,6 +3712,7 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
       backName: "Back to PR files",
       detailSelector: ".github-mode-pulls caffold-review-file-viewer",
       listSelector: "caffold-github-pull-files-tree",
+      sharedFileViewer: true,
     });
   } else {
     await expectAlignedWorkspaceHeaders(page, [
@@ -3988,6 +3996,8 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
       backName: "Back to commit",
       detailSelector: ".git-mode-log caffold-review-file-viewer",
       listSelector: "caffold-commit-changes-tree",
+      sharedFileViewer: true,
+      viewerRefresh: true,
     });
   } else {
     await expectAlignedWorkspaceHeaders(page, [
@@ -4451,12 +4461,15 @@ async function expectMobileBrowserViewerOverlay(page) {
   expect(metrics.top).toBeLessThan(metrics.pathbarBottom);
 }
 
-async function expectMobileViewerCompactHeader(page) {
-  const metrics = await page.evaluate(() => {
-    const header = document.querySelector("caffold-file-viewer .viewer-panel > header");
-    const closeButton = document.querySelector("caffold-file-viewer .viewer-close-button");
-    const title = document.querySelector("caffold-file-viewer h2");
-    const infoButton = document.querySelector("caffold-file-viewer .viewer-info-button");
+async function expectMobileViewerCompactHeader(
+  page,
+  viewerSelector = "caffold-file-viewer",
+) {
+  const metrics = await page.locator(viewerSelector).evaluate((viewer) => {
+    const header = viewer.querySelector(".viewer-panel > header");
+    const closeButton = viewer.querySelector(".viewer-close-button");
+    const title = viewer.querySelector("h2");
+    const infoButton = viewer.querySelector(".viewer-info-button");
 
     function box(element) {
       const rect = element.getBoundingClientRect();
@@ -4488,7 +4501,16 @@ async function expectMobileViewerCompactHeader(page) {
   }
 }
 
-async function expectMobileReviewDetail(page, { backName, detailSelector, listSelector }) {
+async function expectMobileReviewDetail(
+  page,
+  {
+    backName,
+    detailSelector,
+    listSelector,
+    sharedFileViewer = false,
+    viewerRefresh = false,
+  },
+) {
   const workspace = page.locator("caffold-review-workspace");
 
   await expect(workspace).toHaveAttribute("data-mobile-detail", "true");
@@ -4496,6 +4518,14 @@ async function expectMobileReviewDetail(page, { backName, detailSelector, listSe
   await expect(page.locator(listSelector)).toBeHidden();
   await expect(page.locator(detailSelector)).toBeVisible();
   await expect(page.getByRole("button", { name: backName })).toBeVisible();
+  if (sharedFileViewer) {
+    await expectMobileViewerCompactHeader(page, detailSelector);
+  }
+  if (viewerRefresh) {
+    await expect(
+      page.locator(`${detailSelector} .viewer-refresh-button`),
+    ).toBeVisible();
+  }
 
   const metrics = await page.locator(detailSelector).evaluate((element) => {
     const workspace = document.querySelector("caffold-review-workspace");

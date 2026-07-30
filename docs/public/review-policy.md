@@ -160,6 +160,9 @@ caffold-app-shell button {
 Use these rules when reviewing CSS:
 
 - Container components should style their own chrome and direct layout children.
+- A container may style a child custom-element host for placement, sizing, and
+  visibility, but selectors that cross into that child's descendants belong in
+  the child component's stylesheet.
 - Prefer `>` for container layout selectors.
 - Use component-local classes for internal chrome.
 - Avoid raw tag selectors from shell or container components.
