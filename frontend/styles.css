@@ -8,6 +8,8 @@
 @import "./pages/files/page.css";
 @import "./pages/settings/page.css";
 @import "./pages/(codex)/layout.css";
+@import "./pages/(codex)/tasks/controls.css";
+@import "./pages/(codex)/tasks/components/task-status.css";
 @import "./pages/(codex)/tasks/page.css";
 @import "./pages/(codex)/tasks/components/composer.css";
 @import "./pages/(codex)/tasks/components/conversation.css";

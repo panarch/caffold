@@ -22,6 +22,7 @@ import {
   taskWorktreeLabel,
   upsertTask,
 } from "../task-list-model.js";
+import { renderTaskStatusChip } from "./task-status.js";
 
 class CaffoldTaskNavigator extends HTMLElement {
   connectedCallback() {
@@ -770,7 +771,10 @@ function renderTaskRowMeta(
   transportState = TASK_TRANSPORT_STATE.READY,
 ) {
   if (taskStatusView(task, transportState)) {
-    return renderTaskStatusChip(task, "task-row-meta", transportState);
+    return renderTaskStatusChip(task, "task-row-meta", {
+      label: false,
+      transportState,
+    });
   }
   if (unseen) {
     return `
@@ -785,22 +789,6 @@ function renderTaskRowMeta(
     <time class="task-row-meta task-row-time" datetime="${escapeHtml(dateTime)}">
       ${escapeHtml(formatRelativeAge(ms))}
     </time>
-  `;
-}
-
-function renderTaskStatusChip(task, className, transportState) {
-  const view = taskStatusView(task, transportState);
-  if (!view) {
-    return "";
-  }
-  const classes = ["task-status-chip", className].filter(Boolean).join(" ");
-  const icon = ["running", "syncing", "reconnecting"].includes(view.status)
-    ? `<span class="task-status-spinner" aria-hidden="true"></span><span class="sr-only">${escapeHtml(view.label)}</span>`
-    : renderInlineIcon(view.icon, view.label, "task-status-icon");
-  return `
-    <span class="${escapeHtml(classes)}" data-status="${escapeHtml(view.status)}" title="${escapeHtml(view.label)}" aria-label="${escapeHtml(view.label)}">
-      ${icon}
-    </span>
   `;
 }
 

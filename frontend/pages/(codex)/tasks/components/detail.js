@@ -11,6 +11,7 @@ import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import "./conversation.js";
 import "./markdown.js";
 import "./review.js";
+import { renderTaskStatusChip } from "./task-status.js";
 import {
   PROMPT_SUBMISSION_STATE,
   TASK_TRANSPORT_STATE,
@@ -20,7 +21,6 @@ import {
   isTaskTransportStale,
   promptSubmissionState,
   taskActiveFlagLabel,
-  taskStatusView,
   taskThreadStatusType,
   withPromptSubmissionState,
 } from "../runtime-state.js";
@@ -1757,31 +1757,4 @@ function parseJson(value) {
   } catch {
     return null;
   }
-}
-
-function renderTaskStatusChip(task, className = "", options = {}) {
-  const view = taskStatusView(
-    task,
-    options.transportState ?? TASK_TRANSPORT_STATE.READY,
-  );
-  if (!view) {
-    return "";
-  }
-  const showLabel = options.label !== false;
-
-  const classes = ["task-status-chip", className].filter(Boolean).join(" ");
-  const icon = ["running", "syncing", "reconnecting"].includes(view.status)
-    ? `<span class="task-status-spinner" aria-hidden="true"></span><span class="sr-only">${escapeHtml(view.label)}</span>`
-    : renderInlineIcon(view.icon, view.label, "task-status-icon");
-  return `
-    <span
-      class="${escapeHtml(classes)}"
-      data-status="${escapeHtml(view.status)}"
-      title="${escapeHtml(view.label)}"
-      aria-label="${escapeHtml(view.label)}"
-    >
-      ${icon}
-      ${showLabel ? `<span class="task-status-label">${escapeHtml(view.label)}</span>` : ""}
-    </span>
-  `;
 }

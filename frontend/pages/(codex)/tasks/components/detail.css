@@ -1,3 +1,455 @@
+caffold-task-detail .task-detail-summary h2,
+caffold-task-detail .task-detail-summary p {
+  margin: 0;
+}
+
+caffold-task-detail .task-detail-summary h2 {
+  overflow: hidden;
+  font-size: var(--task-detail-heading-size);
+  line-height: var(--task-detail-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+caffold-task-detail .task-detail-meta {
+  font-size: var(--task-detail-meta-size);
+  line-height: 16px;
+}
+
+caffold-task-detail .task-conversation-pane {
+  font-size: var(--task-detail-font-size);
+  line-height: var(--task-detail-line-height);
+}
+
+caffold-task-detail .task-stream-state {
+  font-size: var(--task-detail-meta-size);
+  line-height: 16px;
+}
+
+caffold-task-detail .task-detail-summary p {
+  color: var(--muted);
+}
+
+caffold-task-detail .task-detail-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+caffold-task-detail .task-continue-gate {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 12px;
+  width: min(560px, calc(100% - 40px));
+  min-height: 100%;
+  margin: 0 auto;
+}
+
+caffold-task-detail .task-continue-gate h2,
+caffold-task-detail .task-continue-gate p {
+  margin: 0;
+}
+
+caffold-task-detail .task-continue-eyebrow {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+caffold-task-detail .task-continue-preview {
+  color: var(--text);
+}
+
+caffold-task-detail .task-continue-cwd {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+caffold-task-detail .task-detail {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+caffold-task-detail .task-detail-summary {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+caffold-task-detail .task-detail-heading {
+  min-width: 0;
+}
+
+caffold-task-detail .task-detail-summary p {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+caffold-task-detail .task-detail-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+caffold-task-detail .task-review-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+caffold-task-detail .task-review-menu > summary {
+  list-style: none;
+}
+
+caffold-task-detail .task-review-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+caffold-task-detail .task-brand-button {
+  position: relative;
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+caffold-task-detail button.task-brand-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+caffold-task-detail .task-brand-button img {
+  display: block;
+  width: 19px;
+  height: 19px;
+  object-fit: contain;
+}
+
+caffold-task-detail .task-brand-button.is-loading::after {
+  position: absolute;
+  inset: auto 2px 2px auto;
+  width: 7px;
+  height: 7px;
+  border: 1px solid #6f7d75;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: task-spin 700ms linear infinite;
+  content: "";
+}
+
+caffold-task-detail .task-review-menu[open] > .task-brand-button,
+caffold-task-detail .task-brand-button:hover,
+caffold-task-detail .task-brand-button:focus-visible {
+  border-color: var(--border-strong);
+  background: var(--surface-muted);
+  outline: none;
+}
+
+caffold-task-detail .task-review-menu-popover {
+  position: absolute;
+  z-index: 8;
+  inset: calc(100% + 5px) 0 auto auto;
+  display: grid;
+  width: 168px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 12px 30px rgb(20 36 29 / 16%);
+}
+
+caffold-task-detail .task-review-menu-popover button {
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+caffold-task-detail .task-review-menu-popover button:hover,
+caffold-task-detail .task-review-menu-popover button:focus-visible {
+  background: var(--accent-soft);
+  outline: none;
+}
+
+caffold-task-detail .task-review-menu-popover button:disabled {
+  color: var(--muted);
+  opacity: 0.5;
+  cursor: default;
+}
+
+caffold-task-detail .task-detail-info-button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+caffold-task-detail .task-detail-info-button:hover,
+caffold-task-detail .task-detail-info-button:focus-visible {
+  outline: none;
+}
+
+caffold-task-detail .task-detail-info-button .task-status-chip {
+  pointer-events: none;
+}
+
+caffold-task-detail .task-detail-popover {
+  position: fixed;
+  inset: 112px 12px auto auto;
+  width: fit-content;
+  max-width: min(544px, calc(100vw - 24px));
+  max-height: min(60vh, 420px);
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 14px 34px rgb(20 36 29 / 18%);
+}
+
+caffold-task-detail .task-detail-popover::backdrop {
+  background: transparent;
+}
+
+caffold-task-detail .task-detail-popover dl {
+  display: grid;
+  grid-template-columns: max-content minmax(192px, 1fr);
+  gap: 9px 14px;
+  margin: 0;
+}
+
+caffold-task-detail .task-detail-popover dl div {
+  display: contents;
+}
+
+caffold-task-detail .task-detail-popover dt {
+  color: var(--muted);
+  font-size: var(--task-detail-meta-size);
+  line-height: 16px;
+}
+
+caffold-task-detail .task-detail-popover dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--task-detail-font-size);
+  line-height: var(--task-detail-line-height);
+}
+
+caffold-task-detail .task-detail-load-error {
+  display: grid;
+  justify-items: start;
+  align-content: start;
+  gap: 8px;
+  max-width: 680px;
+  margin: 28px auto;
+  padding: 0 20px;
+  color: var(--text);
+}
+
+caffold-task-detail .task-detail-load-error h2,
+caffold-task-detail .task-detail-load-error p {
+  margin: 0;
+}
+
+caffold-task-detail .task-detail-load-error h2 {
+  font-size: var(--task-detail-heading-size);
+  line-height: var(--task-detail-line-height);
+}
+
+caffold-task-detail .task-detail-load-error-inline {
+  justify-self: stretch;
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid #dfc58f;
+  border-radius: 5px;
+  background: #fff8e7;
+}
+
+caffold-task-detail .task-load-error-message {
+  color: var(--muted);
+  font-size: var(--task-detail-meta-size);
+  line-height: 16px;
+}
+
+caffold-task-detail .task-stream-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 5px 12px;
+  border-top: 1px solid #dfc58f;
+  background: #fff8e7;
+  color: var(--muted);
+}
+
+caffold-task-detail .task-stream-state[data-stream-state="unavailable"] {
+  color: #8a5b00;
+}
+
+caffold-task-detail .task-stream-state button {
+  min-height: 26px;
+  padding: 2px 7px;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+caffold-task-detail .task-stream-icon,
+caffold-task-detail .task-stream-spinner {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+}
+
+caffold-task-detail .task-stream-spinner {
+  box-sizing: border-box;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: task-status-spin 800ms linear infinite;
+}
+
+caffold-task-detail .task-detail-status {
+  width: 22px;
+  height: 22px;
+  justify-content: center;
+  padding: 0;
+}
+
+caffold-task-detail
+  .task-detail:is(
+    [data-task-availability="reconnecting"],
+    [data-task-availability="unavailable"]
+  )
+  .task-turn-active {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  caffold-task-detail .task-stream-spinner {
+    animation: none;
+  }
+}
+
+@media (max-width: 860px) {
+  caffold-task-detail .task-detail-summary {
+    padding: 8px 10px;
+  }
+
+  caffold-task-detail .task-detail-summary {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  caffold-task-detail .task-detail-actions {
+    justify-content: start;
+  }
+}
+
+@media (max-width: 520px) {
+  caffold-task-detail .task-detail-heading {
+    min-width: 0;
+  }
+
+  caffold-task-detail .task-detail-actions,
+  caffold-task-detail .task-detail-right {
+    gap: 4px;
+  }
+
+  caffold-task-detail .task-detail-actions .task-secondary-button,
+  caffold-task-detail .task-detail-info-button {
+    width: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+  }
+
+  caffold-task-detail .task-detail-summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    min-height: 48px;
+    gap: 6px;
+    padding: 7px 8px;
+  }
+
+  caffold-task-detail .task-detail-summary h2 {
+    font-size: var(--task-detail-heading-size);
+  }
+
+  caffold-task-detail .task-detail-summary .task-detail-meta {
+    display: none;
+  }
+
+  caffold-task-detail .task-detail-info-button {
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+  }
+
+  caffold-task-detail .task-detail-info-button:hover,
+  caffold-task-detail .task-detail-info-button:focus-visible {
+    border-color: var(--border-strong);
+  }
+
+  caffold-task-detail .task-detail-popover {
+    inset: 102px 8px auto 8px;
+    width: auto;
+  }
+
+  caffold-task-detail .task-detail-popover dl {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+
+  caffold-task-detail .task-detail-popover dl div {
+    display: grid;
+    gap: 2px;
+  }
+
+  caffold-task-detail .task-detail-popover dl div + div {
+    margin-top: 8px;
+  }
+}
+
 caffold-task-detail {
   display: block;
   min-height: 0;

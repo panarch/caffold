@@ -1,0 +1,54 @@
+caffold-tasks-page button,
+caffold-tasks-page input,
+caffold-tasks-page textarea {
+  font: inherit;
+}
+
+caffold-tasks-page .task-primary-button,
+caffold-tasks-page .task-secondary-button,
+caffold-tasks-page .task-icon-button {
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+caffold-tasks-page .task-primary-button {
+  border-color: #9fc9bb;
+  background: var(--accent-soft);
+}
+
+caffold-tasks-page .task-icon-button {
+  width: 32px;
+  padding: 0;
+}
+
+caffold-tasks-page .task-primary-button:hover,
+caffold-tasks-page .task-primary-button:focus-visible,
+caffold-tasks-page .task-secondary-button:hover,
+caffold-tasks-page .task-secondary-button:focus-visible,
+caffold-tasks-page .task-icon-button:hover,
+caffold-tasks-page .task-icon-button:focus-visible {
+  border-color: var(--border-strong);
+  outline: none;
+}
+
+caffold-tasks-page .task-action-icon {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
+}
+
+@media (max-width: 520px) {
+  caffold-tasks-page .task-action-label {
+    display: none;
+  }
+}

@@ -110,6 +110,9 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(codex)/tasks/page.css" => Some(css(include_str!(
             "../frontend/pages/(codex)/tasks/page.css"
         ))),
+        "pages/(codex)/tasks/controls.css" => Some(css(include_str!(
+            "../frontend/pages/(codex)/tasks/controls.css"
+        ))),
         "pages/(codex)/tasks/page.js" => {
             Some(js(include_str!("../frontend/pages/(codex)/tasks/page.js")))
         }
@@ -166,6 +169,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         ))),
         "pages/(codex)/tasks/components/task-new.js" => Some(js(include_str!(
             "../frontend/pages/(codex)/tasks/components/task-new.js"
+        ))),
+        "pages/(codex)/tasks/components/task-status.css" => Some(css(include_str!(
+            "../frontend/pages/(codex)/tasks/components/task-status.css"
+        ))),
+        "pages/(codex)/tasks/components/task-status.js" => Some(js(include_str!(
+            "../frontend/pages/(codex)/tasks/components/task-status.js"
         ))),
         "pages/(review-workspace)/layout.css" => Some(css(include_str!(
             "../frontend/pages/(review-workspace)/layout.css"
@@ -579,6 +588,7 @@ mod tests {
             "pages/(codex)/tasks/task-events.js",
             "pages/(codex)/tasks/task-format.js",
             "pages/(codex)/tasks/task-list-model.js",
+            "pages/(codex)/tasks/components/task-status.js",
         ] {
             let asset = get(path).expect("tasks state module");
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
@@ -587,6 +597,10 @@ mod tests {
         let tasks_page_css = get("pages/(codex)/tasks/page.css").expect("tasks page css");
         assert_eq!(tasks_page_css.content_type, "text/css; charset=utf-8");
         assert!(tasks_page_css.body.starts_with(b"caffold-tasks-page"));
+        let tasks_controls_css =
+            get("pages/(codex)/tasks/controls.css").expect("tasks controls css");
+        assert_eq!(tasks_controls_css.content_type, "text/css; charset=utf-8");
+        assert!(tasks_controls_css.body.starts_with(b"caffold-tasks-page"));
         let tasks_markdown =
             get("pages/(codex)/tasks/components/markdown.js").expect("tasks markdown component js");
         assert_eq!(
@@ -665,6 +679,10 @@ mod tests {
             (
                 "pages/(codex)/tasks/components/review.css",
                 b"caffold-task-review".as_slice(),
+            ),
+            (
+                "pages/(codex)/tasks/components/task-status.css",
+                b"caffold-tasks-page".as_slice(),
             ),
         ] {
             let asset = get(path).expect("tasks component css");

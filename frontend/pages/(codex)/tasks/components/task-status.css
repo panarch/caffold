@@ -1,0 +1,71 @@
+caffold-tasks-page .task-status-chip {
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1px solid #d9e2d9;
+  border-radius: 999px;
+  background: #f8fbf9;
+  color: var(--muted);
+  font-size: var(--task-detail-meta-size);
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+caffold-tasks-page .task-status-icon {
+  width: 13px;
+  height: 13px;
+}
+
+caffold-tasks-page .task-status-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  animation: task-status-spin 800ms linear infinite;
+}
+
+caffold-tasks-page .task-status-chip[data-status="running"],
+caffold-tasks-page .task-status-chip[data-status="syncing"],
+caffold-tasks-page .task-status-chip[data-status="reconnecting"] {
+  color: var(--accent);
+}
+
+caffold-tasks-page .task-status-chip[data-status="waiting_for_approval"],
+caffold-tasks-page .task-status-chip[data-status="waiting_on_user_input"] {
+  border-color: #dfc58f;
+  background: #fff8e7;
+  color: #7f5600;
+}
+
+caffold-tasks-page .task-status-chip[data-status="failed"],
+caffold-tasks-page .task-status-chip[data-status="interrupted"],
+caffold-tasks-page .task-status-chip[data-status="unavailable"] {
+  border-color: #e6b5b0;
+  background: #fff2f0;
+  color: #9f2f25;
+}
+
+@keyframes task-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  caffold-tasks-page .task-status-spinner {
+    animation: none;
+  }
+}
+
+caffold-tasks-page [data-status="failed"],
+caffold-tasks-page [data-status="interrupted"] {
+  color: var(--danger);
+}
+
+caffold-tasks-page [data-status="waiting_for_approval"],
+caffold-tasks-page [data-status="waiting_on_user_input"] {
+  color: #956000;
+}
