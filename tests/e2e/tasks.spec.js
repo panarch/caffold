@@ -758,7 +758,9 @@ test("keeps a large task usable while conversation history is loading", async ({
   await expect(tasksPage.getByText("Loading task...")).toHaveCount(0);
   await expect(tasksPage.getByText("Loading conversation...")).toBeVisible();
 
-  const composer = tasksPage.locator('.task-composer textarea[name="prompt"]');
+  const composer = tasksPage.locator(
+    '.task-follow-up-form textarea[name="prompt"]',
+  );
   await composer.fill("Keep this draft while history arrives");
   await expect
     .poll(() =>
@@ -3329,7 +3331,9 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(tasksPage.locator(".task-follow-up-form .task-model-button")).toContainText(
     "Ultra",
   );
-  const followUpTextarea = tasksPage.locator('textarea[name="prompt"]');
+  const followUpTextarea = tasksPage.locator(
+    '.task-follow-up-form textarea[name="prompt"]',
+  );
   await followUpTextarea.fill("Please tighten the tests");
   await pasteImage(followUpTextarea, "follow-up.png");
   await expect(
@@ -4177,7 +4181,9 @@ test("keeps the latest conversation when older history times out", async ({
   await page.goto(`/tasks/${threadId}?cwd=src`);
   const tasksPage = page.locator("caffold-tasks-page");
   const conversation = tasksPage.locator(".task-conversation-scroll");
-  const textarea = tasksPage.locator('textarea[name="prompt"]');
+  const textarea = tasksPage.locator(
+    '.task-follow-up-form textarea[name="prompt"]',
+  );
   await expect(tasksPage).toContainText("Latest response 12.");
   await textarea.fill("Draft survives history timeout");
 

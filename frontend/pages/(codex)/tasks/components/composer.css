@@ -1,0 +1,27 @@
+caffold-task-composer {
+  display: block;
+  width: min(calc(100% - 28px), 952px);
+  margin: 0 auto;
+  padding: 14px;
+  font-size: var(--task-detail-font-size);
+  line-height: var(--task-detail-line-height);
+}
+
+caffold-task-composer .task-composer {
+  width: 100%;
+  max-width: none;
+  padding: 0;
+}
+
+caffold-task-composer button,
+caffold-task-composer input,
+caffold-task-composer textarea {
+  font: inherit;
+}
+
+@media (max-width: 959px) {
+  caffold-task-composer {
+    width: 100%;
+    padding: 10px;
+  }
+}

@@ -128,11 +128,23 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(codex)/tasks/components/markdown.js" => Some(js(include_str!(
             "../frontend/pages/(codex)/tasks/components/markdown.js"
         ))),
+        "pages/(codex)/tasks/components/composer.css" => Some(css(include_str!(
+            "../frontend/pages/(codex)/tasks/components/composer.css"
+        ))),
+        "pages/(codex)/tasks/components/composer.js" => Some(js(include_str!(
+            "../frontend/pages/(codex)/tasks/components/composer.js"
+        ))),
         "pages/(codex)/tasks/components/navigator.css" => Some(css(include_str!(
             "../frontend/pages/(codex)/tasks/components/navigator.css"
         ))),
         "pages/(codex)/tasks/components/navigator.js" => Some(js(include_str!(
             "../frontend/pages/(codex)/tasks/components/navigator.js"
+        ))),
+        "pages/(codex)/tasks/components/task-new.css" => Some(css(include_str!(
+            "../frontend/pages/(codex)/tasks/components/task-new.css"
+        ))),
+        "pages/(codex)/tasks/components/task-new.js" => Some(js(include_str!(
+            "../frontend/pages/(codex)/tasks/components/task-new.js"
         ))),
         "pages/(review-workspace)/layout.css" => Some(css(include_str!(
             "../frontend/pages/(review-workspace)/layout.css"
@@ -585,6 +597,34 @@ mod tests {
                 .body
                 .starts_with(b"caffold-task-navigator")
         );
+        for (path, tag) in [
+            (
+                "pages/(codex)/tasks/components/composer.js",
+                b"caffold-task-composer".as_slice(),
+            ),
+            (
+                "pages/(codex)/tasks/components/task-new.js",
+                b"caffold-task-new".as_slice(),
+            ),
+        ] {
+            let asset = get(path).expect("tasks component js");
+            assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
+            assert!(asset.body.windows(tag.len()).any(|window| window == tag));
+        }
+        for (path, prefix) in [
+            (
+                "pages/(codex)/tasks/components/composer.css",
+                b"caffold-task-composer".as_slice(),
+            ),
+            (
+                "pages/(codex)/tasks/components/task-new.css",
+                b"caffold-task-new".as_slice(),
+            ),
+        ] {
+            let asset = get(path).expect("tasks component css");
+            assert_eq!(asset.content_type, "text/css; charset=utf-8");
+            assert!(asset.body.starts_with(prefix));
+        }
         assert!(get("pages/tasks/page.js").is_none());
         assert!(get("pages/tasks/page.css").is_none());
 

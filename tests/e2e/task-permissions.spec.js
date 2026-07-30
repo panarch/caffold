@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { pasteImage } from "./support/task-fixtures.js";
 
 const PERMISSIONS = {
   defaultMode: "approveForMe",
@@ -228,6 +229,66 @@ test("explicit approval mode is sent with a new task prompt", async ({ page }) =
     prompt: "Inspect the task",
     permissionMode: "approveForMe",
   });
+});
+
+test("new task submission stays single-flight and restores local input after rejection", async ({
+  page,
+}) => {
+  await stubComposerApis(page);
+  await page.unroute("**/api/tasks");
+  let releaseFirstRequest;
+  const firstRequestGate = new Promise((resolve) => {
+    releaseFirstRequest = resolve;
+  });
+  const submittedBodies = [];
+  await page.route("**/api/tasks", async (route) => {
+    if (route.request().method() !== "POST") {
+      return route.fulfill({ json: { tasks: [], nextCursor: null } });
+    }
+    submittedBodies.push(route.request().postDataJSON());
+    if (submittedBodies.length === 1) {
+      await firstRequestGate;
+      return route.fulfill({
+        status: 503,
+        json: { error: "Create request rejected" },
+      });
+    }
+    return route.fulfill({ json: taskDetail() });
+  });
+
+  await page.goto("/tasks/new?cwd=src");
+  const composer = page.locator("caffold-task-composer");
+  const form = composer.locator('.task-new-form[data-task-form="create"]');
+  const prompt = form.getByRole("textbox", { name: "New task prompt" });
+  await composer.evaluate((element) => {
+    element.dataset.instanceMarker = "stable";
+  });
+  await prompt.fill("Retry this exact task");
+  await pasteImage(prompt, "create-retry.png");
+  await prompt.press("Enter");
+
+  await expect.poll(() => submittedBodies).toHaveLength(1);
+  await expect(form).toHaveAttribute("aria-busy", "true");
+  await expect(prompt).toBeDisabled();
+  await expect(form.getByRole("button", { name: "Start task" })).toBeDisabled();
+  await form.getByRole("button", { name: "Start task" }).click({ force: true });
+  expect(submittedBodies).toHaveLength(1);
+
+  releaseFirstRequest();
+  await expect(form).toContainText("Create request rejected");
+  await expect(composer).toHaveAttribute("data-instance-marker", "stable");
+  await expect(prompt).toHaveValue("Retry this exact task");
+  await expect(prompt).toBeFocused();
+  await expect(form.locator(".task-composer-attachment")).toHaveCount(1);
+
+  await prompt.press("Enter");
+  await expect.poll(() => submittedBodies).toHaveLength(2);
+  expect(submittedBodies[1]).toMatchObject({
+    cwd: "src",
+    prompt: "Retry this exact task",
+  });
+  expect(submittedBodies[1].images).toHaveLength(1);
+  await expect(page).toHaveURL("/tasks/thread-1");
 });
 
 test("explicit approval mode is sent with a follow-up prompt", async ({ page }) => {

@@ -508,6 +508,16 @@ class CaffoldTaskNavigator extends HTMLElement {
     }
     this.streamState = state;
     this.render();
+    this.dispatchEvent(
+      new CustomEvent("caffold:task-navigator-transport-change", {
+        bubbles: true,
+        composed: true,
+        detail: {
+          available: !isTaskTransportStale(state),
+          state,
+        },
+      }),
+    );
   }
 
   removeTask(threadId) {

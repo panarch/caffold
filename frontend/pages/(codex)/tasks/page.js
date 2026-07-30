@@ -1,5 +1,4 @@
 import {
-  createTask,
   getCodexModels,
   getCodexPermissions,
   getGitHubStatus,
@@ -18,6 +17,7 @@ import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
 import { createRefreshCoordinator, subscribeToWatch } from "../../../watch.js";
 import "./components/markdown.js";
 import "./components/navigator.js";
+import "./components/task-new.js";
 import {
   PROMPT_SUBMISSION_STATE,
   TASK_TRANSPORT_STATE,
@@ -116,9 +116,6 @@ class CaffoldTasksPage extends HTMLElement {
     this.historyLoadError = null;
     this.loading = false;
     this.loadingOlderEvents = false;
-    this.newTaskCwd = "";
-    this.defaultCwdPath = "";
-    this.newTaskBrowsing = false;
     this.selectedThreadId = "";
     this.stream = null;
     this.streamState = TASK_TRANSPORT_STATE.IDLE;
@@ -132,8 +129,6 @@ class CaffoldTasksPage extends HTMLElement {
     this.conversationScrollByThread = new Map();
     this.conversationResizeObserver = null;
     this.conversationDisclosureByThread = new Map();
-    this.newTaskDraft = { prompt: "" };
-    this.newTaskImages = [];
     this.followUpDraft = "";
     this.followUpDraftByThread = new Map();
     this.followUpImages = [];
@@ -153,14 +148,8 @@ class CaffoldTasksPage extends HTMLElement {
     this.permissionOptionsError = null;
     this.permissionOptionsRequestId = 0;
     this.defaultPermissionMode = "askForApproval";
-    this.newTaskPermissionMode = "";
-    this.newTaskPermissionExplicit = false;
     this.permissionModeByThread = new Map();
     this.permissionOverrideThreadIds = new Set();
-    this.composerSettings = {
-      model: "",
-      effort: "",
-    };
     this.openModelPickerForm = "";
     this.openPermissionPickerForm = "";
     this.taskDetailView = "conversation";
@@ -196,7 +185,12 @@ class CaffoldTasksPage extends HTMLElement {
     this.addEventListener(
       "click",
       (event) => {
-        if (closestElement(event.target, "caffold-task-navigator")) {
+        if (
+          closestElement(
+            event.target,
+            "caffold-task-navigator, caffold-task-new",
+          )
+        ) {
           return;
         }
         this.handleConversationDisclosureClick(event);
@@ -260,6 +254,20 @@ class CaffoldTasksPage extends HTMLElement {
         this.render();
       }
     });
+    this.addEventListener("caffold:task-navigator-transport-change", (event) => {
+      event.stopPropagation();
+      this.taskNew()?.setTransportAvailable(event.detail?.available);
+    });
+    this.addEventListener("caffold:task-new-route-intent", (event) => {
+      event.stopPropagation();
+      if (event.detail?.route) {
+        this.requestRoute(event.detail.route);
+      }
+    });
+    this.addEventListener("caffold:task-created", (event) => {
+      event.stopPropagation();
+      this.adoptCreatedDetail(event.detail?.detail);
+    });
     this.addEventListener("caffold:open-git-diff", (event) => {
       const browser = closestElement(event.target, "caffold-git-diff-browser");
       if (!browser || !this.querySelector(".task-diff-view")?.contains(browser)) {
@@ -311,6 +319,9 @@ class CaffoldTasksPage extends HTMLElement {
       this.changeTaskCompareBase(select.value);
     });
     this.addEventListener("input", (event) => {
+      if (closestElement(event.target, "caffold-task-composer")) {
+        return;
+      }
       const textarea = closestElement(event.target, "textarea[name='prompt']");
       if (textarea) {
         syncComposerTextarea(textarea);
@@ -326,6 +337,9 @@ class CaffoldTasksPage extends HTMLElement {
     this.addEventListener(
       "paste",
       (event) => {
+        if (closestElement(event.target, "caffold-task-composer")) {
+          return;
+        }
         void this.handleComposerPaste(event);
       },
       true,
@@ -334,11 +348,17 @@ class CaffoldTasksPage extends HTMLElement {
       if (this.handleTaskListResizeKeydown(event)) {
         return;
       }
+      if (closestElement(event.target, "caffold-task-composer")) {
+        return;
+      }
       this.handlePromptKeydown(event);
     });
     this.addEventListener(
       "submit",
       (event) => {
+        if (closestElement(event.target, "caffold-task-composer")) {
+          return;
+        }
         const form = closestElement(event.target, "form[data-task-form]");
         if (!form) {
           return;
@@ -347,9 +367,7 @@ class CaffoldTasksPage extends HTMLElement {
         event.preventDefault();
         const formName = form.dataset.taskForm;
         void this.handleForm(formName, form).catch((error) => {
-          if (formName === "create") {
-            this.loading = false;
-          } else if (formName === "follow-up") {
+          if (formName === "follow-up") {
             const threadId = `${form.dataset.threadId ?? ""}`.trim();
             if (this.followUpRequest?.threadId === threadId) {
               this.followUpRequest = null;
@@ -454,7 +472,6 @@ class CaffoldTasksPage extends HTMLElement {
       this.activateThreadEvents("");
       this.closeStream();
     } else if (route?.threadId) {
-      this.newTaskBrowsing = false;
       if (this.selectedThreadId !== route.threadId) {
         this.taskDetailView = "conversation";
         this.taskDiffMode = "working";
@@ -477,7 +494,6 @@ class CaffoldTasksPage extends HTMLElement {
           ? this.eventsPage
           : { nextCursor: null };
     } else {
-      this.newTaskBrowsing = false;
       this.view = "list";
       this.taskDetailView = "conversation";
       this.unsubscribeTaskDiffWatch();
@@ -492,11 +508,12 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   async openRoute(route, options = {}) {
-    this.newTaskCwd = route?.new ? route.cwd ?? "" : "";
-    this.defaultCwdPath = options.defaultCwdPath ?? this.defaultCwdPath;
     this.prepareRoute(route, options);
     if (route?.new) {
-      return this.openNew();
+      return this.openNew({
+        cwd: route.cwd ?? "",
+        defaultCwdPath: options.defaultCwdPath ?? "",
+      });
     }
     if (route?.threadId) {
       if (
@@ -512,35 +529,58 @@ class CaffoldTasksPage extends HTMLElement {
       }
       return await this.openTask(route.threadId);
     }
-    return await this.openList();
+    return await this.openList({
+      defaultCwdPath: options.defaultCwdPath ?? "",
+    });
   }
 
-  async openList() {
+  async openList(options = {}) {
     this.requestId += 1;
     this.loading = false;
     this.error = null;
     this.detailLoadError = null;
     this.historyLoadError = null;
     this.view = "list";
+    this.taskNew()?.prepare({
+      defaultCwdPath: options.defaultCwdPath ?? "",
+      home: true,
+    });
+    this.taskNew()?.open({ home: true });
     this.render();
     return await this.taskNavigator()?.activate({ force: true });
   }
 
-  openNew() {
+  openNew(options = {}) {
     this.view = "new";
     this.error = null;
     this.detailLoadError = null;
     this.historyLoadError = null;
     this.loading = false;
-    this.openModelPickerForm = "";
-    this.openPermissionPickerForm = "";
     this.closeStream();
+    this.taskNew()?.prepare({
+      cwd: options.cwd ?? "",
+      defaultCwdPath: options.defaultCwdPath ?? "",
+      home: false,
+    });
+    this.taskNew()?.open({ home: false });
     this.render();
     void this.taskNavigator()?.activate();
-    this.loadModelOptions();
-    this.loadPermissionOptions(this.activeCwdPath());
-    this.querySelector("textarea[name='prompt']")?.focus();
     return null;
+  }
+
+  adoptCreatedDetail(detail) {
+    const threadId = taskDetailThreadId(detail);
+    if (!threadId || !detail?.task) {
+      return;
+    }
+    this.acceptTaskDetailRevision(threadId, detail.revision);
+    this.taskDetail = detail;
+    this.observeTaskSettings(detail);
+    this.setThreadEvents(threadId, detail.events ?? []);
+    this.eventsPage = detail.eventsPage ?? { nextCursor: null };
+    this.taskNavigator()?.upsertCanonicalTask(detail.task);
+    this.conversationScrollMode = "bottom";
+    this.requestRoute({ kind: "tasks", threadId });
   }
 
   async openTask(threadId) {
@@ -998,29 +1038,6 @@ class CaffoldTasksPage extends HTMLElement {
       void this.taskNavigator()?.continueThread(element.dataset.threadId);
       return;
     }
-    if (action === "browse-new-task-cwd") {
-      this.newTaskBrowsing = true;
-      if (this.view !== "new") {
-        this.requestRoute({ kind: "tasks", new: true });
-      } else {
-        this.render();
-      }
-      return;
-    }
-    if (action === "cancel-new-task-cwd") {
-      this.newTaskBrowsing = false;
-      this.render();
-      return;
-    }
-    if (action === "choose-new-task-cwd") {
-      const browser = this.querySelector(
-        ".task-new-cwd-browser caffold-file-browser",
-      );
-      const cwd = cleanLogicalPath(browser?.currentPath ?? this.activeCwdPath());
-      this.newTaskBrowsing = false;
-      this.requestRoute({ kind: "tasks", new: true, cwd });
-      return;
-    }
     if (action === "retry-stream") {
       if (this.selectedThreadId) {
         this.connectStream(this.selectedThreadId);
@@ -1235,10 +1252,6 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   async handleForm(formName, form) {
-    if (formName === "create") {
-      await this.createTaskFromForm(form);
-      return;
-    }
     if (formName === "follow-up") {
       await this.sendFollowUpFromForm(form);
     }
@@ -1269,53 +1282,6 @@ class CaffoldTasksPage extends HTMLElement {
 
     event.preventDefault();
     form.requestSubmit();
-  }
-
-  async createTaskFromForm(form) {
-    if (!this.taskNavigator()?.isTransportAvailable()) {
-      this.error = new Error(
-        "Caffold server is unavailable. Wait for the task list to reconnect.",
-      );
-      this.render();
-      return;
-    }
-    this.captureDraft(form);
-    const formData = new FormData(form);
-    const prompt = `${formData.get("prompt") ?? ""}`.trim();
-    const images = [...this.newTaskImages];
-    if (!prompt && !images.length) {
-      return;
-    }
-
-    this.loading = true;
-    this.error = null;
-    this.render();
-
-    try {
-      const detail = await createTask({
-        ...(this.activeCwdPath() ? { cwd: this.activeCwdPath() } : {}),
-        prompt,
-        images: images.map((image) => image.dataUrl),
-        ...this.turnOptions("create"),
-      });
-      this.acceptTaskDetailRevision(detail?.task?.threadId, detail?.revision);
-      this.taskDetail = detail;
-      this.observeTaskSettings(detail);
-      this.setThreadEvents(detail.task.threadId, detail.events ?? []);
-      this.eventsPage = detail.eventsPage ?? { nextCursor: null };
-      this.taskNavigator()?.upsertCanonicalTask(detail.task);
-      this.newTaskDraft = { prompt: "" };
-      this.newTaskImages = [];
-      this.newTaskPermissionMode = this.defaultPermissionMode;
-      this.newTaskPermissionExplicit = false;
-      this.composerImageErrors.delete("create");
-      this.conversationScrollMode = "bottom";
-      this.requestRoute({ kind: "tasks", threadId: detail.task.threadId });
-    } catch (error) {
-      this.loading = false;
-      this.error = error;
-      this.render();
-    }
   }
 
   async sendFollowUpFromForm(form) {
@@ -1671,7 +1637,6 @@ class CaffoldTasksPage extends HTMLElement {
       const response = await getCodexModels();
       this.modelOptions = normalizeModelOptions(response);
       this.modelOptionsLoaded = true;
-      this.applyDefaultModelSelection();
     } catch (error) {
       this.modelOptionsError = error;
       this.modelOptionsLoaded = true;
@@ -1711,13 +1676,6 @@ class CaffoldTasksPage extends HTMLElement {
           (option) => option.mode === requestedDefault && option.allowed,
         ) ?? this.permissionOptions.find((option) => option.allowed);
       this.defaultPermissionMode = defaultOption?.mode ?? "askForApproval";
-      const selectedNewOption = this.permissionOptions.find(
-        (option) => option.mode === this.newTaskPermissionMode,
-      );
-      if (!this.newTaskPermissionExplicit || !selectedNewOption?.allowed) {
-        this.newTaskPermissionMode = this.defaultPermissionMode;
-        this.newTaskPermissionExplicit = false;
-      }
       this.permissionOptionsLoaded = true;
     } catch (error) {
       if (requestId !== this.permissionOptionsRequestId) {
@@ -1727,7 +1685,6 @@ class CaffoldTasksPage extends HTMLElement {
       this.permissionOptionsError = error;
       this.permissionOptionsLoaded = true;
       this.defaultPermissionMode = "askForApproval";
-      this.newTaskPermissionMode ||= this.defaultPermissionMode;
     } finally {
       if (requestId === this.permissionOptionsRequestId) {
         this.permissionOptionsLoading = false;
@@ -1760,9 +1717,6 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   selectedPermissionMode(formName) {
-    if (formName === "create") {
-      return this.newTaskPermissionMode || this.defaultPermissionMode;
-    }
     const threadId = this.selectedThreadId;
     return (
       this.permissionModeByThread.get(threadId) ||
@@ -1788,10 +1742,7 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
 
-    if (formName === "create") {
-      this.newTaskPermissionMode = permissionMode;
-      this.newTaskPermissionExplicit = true;
-    } else if (this.selectedThreadId) {
+    if (this.selectedThreadId) {
       this.permissionModeByThread.set(this.selectedThreadId, permissionMode);
       this.permissionOverrideThreadIds.add(this.selectedThreadId);
     }
@@ -1818,25 +1769,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.render();
   }
 
-  applyDefaultModelSelection() {
-    if (!this.modelOptions.length) {
-      return;
-    }
-    const selected = this.selectedModelOption("create");
-    const model = selected ?? this.modelOptions.find((option) => option.isDefault) ?? this.modelOptions[0];
-    if (!this.composerSettings.model) {
-      this.composerSettings.model = model.model;
-    }
-    if (!this.composerSettings.effort) {
-      this.composerSettings.effort =
-        model.defaultReasoningEffort || model.supportedReasoningEfforts[0]?.value || "";
-    }
-  }
-
   composerSettingsFor(formName) {
-    if (formName === "create") {
-      return this.composerSettings;
-    }
     return (
       this.composerSettingsByThread.get(this.selectedThreadId) ?? {
         model: "",
@@ -1846,9 +1779,6 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   editableComposerSettings(formName) {
-    if (formName === "create") {
-      return this.composerSettings;
-    }
     const threadId = this.selectedThreadId;
     const existing = this.composerSettingsByThread.get(threadId);
     if (existing) {
@@ -1960,9 +1890,7 @@ class CaffoldTasksPage extends HTMLElement {
       options.effort = this.selectedEffort(formName) || undefined;
     }
     const explicitPermission =
-      formName === "create"
-        ? this.newTaskPermissionExplicit
-        : this.permissionOverrideThreadIds.has(this.selectedThreadId);
+      this.permissionOverrideThreadIds.has(this.selectedThreadId);
     if (!activeTurn && explicitPermission) {
       options.permissionMode = this.selectedPermissionMode(formName);
     }
@@ -1975,12 +1903,6 @@ class CaffoldTasksPage extends HTMLElement {
 
   captureDraft(form, threadId = form?.dataset?.threadId) {
     const formData = new FormData(form);
-    if (form.dataset.taskForm === "create") {
-      this.newTaskDraft = {
-        prompt: `${formData.get("prompt") ?? ""}`,
-      };
-      return;
-    }
     if (form.dataset.taskForm === "follow-up") {
       this.followUpDraft = `${formData.get("prompt") ?? ""}`;
       const targetThreadId = `${threadId ?? this.selectedThreadId ?? ""}`.trim();
@@ -1991,14 +1913,10 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   composerImages(formName) {
-    return formName === "create" ? this.newTaskImages : this.followUpImages;
+    return this.followUpImages;
   }
 
   setComposerImages(formName, images, threadId = this.selectedThreadId) {
-    if (formName === "create") {
-      this.newTaskImages = images;
-      return;
-    }
     this.followUpImages = images;
     if (threadId) {
       this.followUpImagesByThread.set(threadId, images);
@@ -2094,7 +2012,6 @@ class CaffoldTasksPage extends HTMLElement {
         : this.conversationScrollSnapshot(this.selectedThreadId);
     const previousComposerFocus = this.captureComposerFocus();
     const previousTaskFilePath = this.captureTaskFileBrowserPath();
-    const previousNewTaskCwdPath = this.captureNewTaskCwdBrowserPath();
     const previousTaskDiffPath = this.captureTaskDiffPath();
     const previousTaskCompareState = this.captureTaskCompareState();
     this.setAttribute("data-tasks-view", this.view ?? "list");
@@ -2109,7 +2026,6 @@ class CaffoldTasksPage extends HTMLElement {
     this.restoreConversationScroll(previousScroll);
     this.updateTaskDetailView();
     this.syncTaskFileBrowser(previousTaskFilePath);
-    this.syncNewTaskCwdBrowser(previousNewTaskCwdPath);
     this.syncTaskDiffBrowser(previousTaskDiffPath);
     this.syncTaskCompareBrowser(previousTaskCompareState);
     this.applyTaskListWidth();
@@ -2141,6 +2057,7 @@ class CaffoldTasksPage extends HTMLElement {
             aria-valuenow="${this.taskListWidth}"
           ></div>
           <main class="tasks-detail-pane" aria-label="Task content">
+            <caffold-task-new hidden></caffold-task-new>
             <div class="tasks-detail-region"></div>
           </main>
         </div>
@@ -2150,6 +2067,10 @@ class CaffoldTasksPage extends HTMLElement {
 
   taskNavigator() {
     return this.querySelector(":scope > .tasks-surface caffold-task-navigator");
+  }
+
+  taskNew() {
+    return this.querySelector(":scope > .tasks-surface caffold-task-new");
   }
 
   renderHeaderRegion() {
@@ -2168,6 +2089,16 @@ class CaffoldTasksPage extends HTMLElement {
   renderTaskContentRegion() {
     const region = this.querySelector(".tasks-detail-region");
     if (!region) {
+      return;
+    }
+    const taskNew = this.taskNew();
+    const showNewTask = this.view === "new" || this.view === "list";
+    taskNew?.toggleAttribute("hidden", !showNewTask);
+    region.toggleAttribute("hidden", showNewTask);
+    if (showNewTask) {
+      taskNew?.setTransportAvailable(
+        this.taskNavigator()?.isTransportAvailable() ?? true,
+      );
       return;
     }
 
@@ -2283,7 +2214,11 @@ class CaffoldTasksPage extends HTMLElement {
 
   captureComposerFocus() {
     const textarea = closestElement(document.activeElement, "textarea[name='prompt']");
-    if (!textarea || !this.contains(textarea)) {
+    if (
+      !textarea ||
+      !this.contains(textarea) ||
+      closestElement(textarea, "caffold-task-composer")
+    ) {
       return null;
     }
 
@@ -2305,7 +2240,7 @@ class CaffoldTasksPage extends HTMLElement {
     }
 
     const textarea = this.querySelector(
-      `form[data-task-form="${CSS.escape(previousFocus.formName)}"] textarea[name="prompt"]`,
+      `.tasks-detail-region form[data-task-form="${CSS.escape(previousFocus.formName)}"] textarea[name="prompt"]`,
     );
     if (!textarea) {
       return;
@@ -2403,41 +2338,16 @@ class CaffoldTasksPage extends HTMLElement {
     return browser?.currentPath ?? "";
   }
 
-  captureNewTaskCwdBrowserPath() {
-    const browser = this.querySelector(
-      ".task-new-cwd-browser caffold-file-browser",
-    );
-    return browser?.currentPath ?? "";
-  }
-
-  syncNewTaskCwdBrowser(previousPath = "") {
-    if (this.view !== "new" || !this.newTaskBrowsing) {
-      return;
-    }
-
-    const browser = this.querySelector(
-      ".task-new-cwd-browser caffold-file-browser",
-    );
-    const targetPath = previousPath || this.activeCwdPath();
-    if (!browser) {
-      return;
-    }
-
-    browser.ensureRendered();
-    browser.setStorageKey(null);
-    if (!browser.hasLoadedDirectory(targetPath)) {
-      browser.loadDirectory(targetPath, { allowFailure: true });
-    }
-  }
-
   activeCwdPath() {
-    const selectedTaskCwd = this.view === "detail" ? this.selectedTaskContextPath() : "";
-    return cleanLogicalPath(
-      this.newTaskCwd || selectedTaskCwd || this.defaultCwdPath || ".",
-    );
+    return this.view === "detail"
+      ? this.selectedTaskContextPath()
+      : this.taskNew()?.selectedContextPath() ?? ".";
   }
 
   selectedTaskContextPath() {
+    if (this.view !== "detail") {
+      return this.taskNew()?.selectedContextPath() ?? "";
+    }
     return cleanLogicalPath(
       this.taskDetail?.task?.worktree?.rootPath || this.taskDetail?.task?.cwdPath || "",
     );
@@ -2775,9 +2685,9 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   syncComposerTextareas() {
-    this.querySelectorAll("textarea[name='prompt']").forEach((textarea) =>
-      syncComposerTextarea(textarea),
-    );
+    this.querySelectorAll(
+      ".tasks-detail-region textarea[name='prompt']",
+    ).forEach((textarea) => syncComposerTextarea(textarea));
   }
 
   bindConversationScroll() {
@@ -3084,15 +2994,10 @@ class CaffoldTasksPage extends HTMLElement {
     if (this.error && this.view !== "new" && !hasSelectedTaskDetail) {
       return `<p class="surface-message">${escapeHtml(this.error.message)}</p>`;
     }
-    if (this.view === "new") {
-      return this.newTaskBrowsing
-        ? this.renderNewTaskCwdBrowser()
-        : this.renderNewTaskWorkspace();
-    }
     if (this.view === "detail") {
       return this.renderTaskDetail();
     }
-    return this.renderNewTaskWorkspace({ home: true });
+    return "";
   }
 
   renderTaskDetailLoadError() {
@@ -3101,52 +3006,6 @@ class CaffoldTasksPage extends HTMLElement {
         <p>Task details are temporarily unavailable.</p>
         <p class="task-load-error-message">${escapeHtml(this.detailLoadError?.message ?? "")}</p>
         <button type="button" class="task-secondary-button" data-task-action="retry-task-detail">Retry</button>
-      </section>
-    `;
-  }
-
-  renderNewTask(options = {}) {
-    return this.renderTaskComposer({
-      formName: "create",
-      className: "task-new-form",
-      prompt: this.newTaskDraft.prompt,
-      placeholder: "Ask Codex to work from the current directory",
-      ariaLabel: "New task prompt",
-      submitLabel: "Start task",
-      cancel: options.cancel ?? true,
-    });
-  }
-
-  renderNewTaskWorkspace(options = {}) {
-    return `
-      <section class="task-new-workspace${options.home ? " is-home" : ""}">
-        ${
-          this.error
-            ? `<div class="task-new-error" role="alert">
-                ${renderInlineIcon("TriangleAlert", "Codex unavailable", "task-new-error-icon")}
-                <span>${escapeHtml(this.error.message)}</span>
-              </div>`
-            : ""
-        }
-        ${this.renderNewTask({ cancel: !options.home })}
-      </section>
-    `;
-  }
-
-  renderNewTaskCwdBrowser() {
-    return `
-      <section class="task-new-cwd-browser" aria-label="Choose task directory">
-        <header>
-          <div>
-            <h2>Browse Files</h2>
-            <p>${escapeHtml(this.activeCwdPath())}</p>
-          </div>
-          <div>
-            <button type="button" class="task-toolbar-button" data-task-action="cancel-new-task-cwd">Cancel</button>
-            <button type="button" class="task-primary-button" data-task-action="choose-new-task-cwd">Use This Folder</button>
-          </div>
-        </header>
-        <caffold-file-browser></caffold-file-browser>
       </section>
     `;
   }
@@ -3183,15 +3042,6 @@ class CaffoldTasksPage extends HTMLElement {
     return `
       <form class="task-composer ${escapeHtml(className)}" data-task-form="${escapeHtml(formName)}"${threadId ? ` data-thread-id="${escapeHtml(threadId)}"` : ""} aria-busy="${submitting ? "true" : "false"}">
         <div class="task-composer-panel">
-          ${
-            formName === "create"
-              ? `<div class="task-composer-context">
-                  ${renderInlineIcon("Folder", "Working directory", "task-composer-context-icon")}
-                  <span title="${escapeHtml(this.activeCwdPath())}">${escapeHtml(this.activeCwdPath())}</span>
-                  <button type="button" data-task-action="browse-new-task-cwd">Browse Files</button>
-                </div>`
-              : ""
-          }
           ${this.renderComposerImages(formName, images, threadId)}
           <textarea
             name="prompt"
@@ -3372,7 +3222,7 @@ class CaffoldTasksPage extends HTMLElement {
 
   fitModelPicker() {
     const popover = this.querySelector(
-      ".task-model-picker.is-open .task-model-popover",
+      ".tasks-detail-region .task-model-picker.is-open .task-model-popover",
     );
     if (!popover) {
       return;
