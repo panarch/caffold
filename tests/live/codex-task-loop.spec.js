@@ -4,6 +4,9 @@ import { sep } from "node:path";
 
 import { resolveCodexBin } from "./codex-bin.mjs";
 
+const SPARK_MODEL = "gpt-5.3-codex-spark";
+const MULTIMODAL_MODEL = "gpt-5.6-luna";
+const LIVE_REASONING_EFFORT = "low";
 const PASTED_IMAGE_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 const liveThreadIds = new Set();
@@ -78,21 +81,21 @@ function liveCwd() {
   return process.cwd().split(sep).filter(Boolean).join("/");
 }
 
-async function chooseLowCostModel(taskForm) {
+async function chooseModel(taskForm, model, effort = LIVE_REASONING_EFFORT) {
   await taskForm.getByRole("button", { name: "Choose model and reasoning" }).click();
-  const modelOptions = taskForm.locator("[data-model]");
-  await expect(modelOptions.first()).toBeVisible();
-  const affordableOptions = modelOptions.filter({
-    hasText: /affordable|cost-efficient|ultra-fast/i,
-  });
-  const modelOption =
-    (await affordableOptions.count()) > 0 ? affordableOptions.first() : modelOptions.last();
+  const modelOption = taskForm.locator(`[data-model="${model}"]`);
+  await expect(modelOption, `Codex model ${model} should be available`).toBeVisible();
   await modelOption.click();
+  await expect(taskForm.locator('input[name="model"]')).toHaveValue(model);
 
   await taskForm.getByRole("button", { name: "Choose model and reasoning" }).click();
-  const lowEffort = taskForm.locator('[data-effort="low"]');
-  await expect(lowEffort).toBeVisible();
-  await lowEffort.click();
+  const effortOption = taskForm.locator(`[data-effort="${effort}"]`);
+  await expect(
+    effortOption,
+    `Reasoning effort ${effort} should be available for ${model}`,
+  ).toBeVisible();
+  await effortOption.click();
+  await expect(taskForm.locator('input[name="effort"]')).toHaveValue(effort);
 }
 
 async function pasteImage(locator, name) {
@@ -156,9 +159,9 @@ async function createExternalTask(prompt) {
       "--skip-git-repo-check",
       "--ignore-user-config",
       "-m",
-      "gpt-5.4-mini",
+      SPARK_MODEL,
       "-c",
-      'model_reasoning_effort="low"',
+      `model_reasoning_effort="${LIVE_REASONING_EFFORT}"`,
       "-C",
       process.cwd(),
       "--json",
@@ -208,7 +211,9 @@ async function submitPromptAndExpectAccepted(page, threadId, submit) {
   return payload;
 }
 
-test("creates and resumes a real Codex task through Caffold", async ({ page }) => {
+test("creates and resumes a real Codex task through Caffold with Spark", async ({
+  page,
+}) => {
   const cwd = liveCwd();
   const marker = `${Date.now()}`;
   const initialReply = `caffold-live-initial-${marker}`;
@@ -226,16 +231,11 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
   const tasksPage = page.locator("caffold-tasks-page");
   const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
   await expect(newTaskForm).toBeVisible();
-  await chooseLowCostModel(newTaskForm);
+  await chooseModel(newTaskForm, SPARK_MODEL);
 
   const newTaskPrompt = newTaskForm.getByRole("textbox", { name: "New task prompt" });
   await newTaskPrompt.fill(
     `Reply with exactly ${initialReply}. Do not modify files or run commands.`,
-  );
-  await pasteImage(newTaskPrompt, `caffold-live-${marker}.png`);
-  await expect(newTaskForm.locator(".task-composer-attachment img")).toHaveAttribute(
-    "src",
-    /^data:image\/png;base64,/,
   );
   await newTaskPrompt.press("Enter");
   await expect(page).toHaveURL(/\/tasks\/[^?]+$/);
@@ -250,11 +250,6 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
     '.task-message[data-message-role="assistant"][data-message-phase="final"]',
   );
   await expect(assistantMessages.filter({ hasText: initialReply })).toBeVisible();
-  await expect(
-    tasksPage.locator(
-      '.task-message[data-message-role="user"] .task-message-attachment img',
-    ),
-  ).toBeVisible();
 
   await page.goto("/tasks");
   const createdTask = tasksPage.locator(`.task-row[data-thread-id="${threadId}"]`);
@@ -280,7 +275,7 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
   const followUpForm = tasksPage.locator(
     '.task-follow-up-form[data-task-form="follow-up"]',
   );
-  await chooseLowCostModel(followUpForm);
+  await chooseModel(followUpForm, SPARK_MODEL);
   const followUpPrompt = followUpForm.getByRole("textbox", { name: "Follow-up prompt" });
   await followUpPrompt.fill(
     [
@@ -328,11 +323,6 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
   await followUpPrompt.fill(
     `Continue the current turn. After the running command finishes, reply with exactly ${steeredReply}. Do not modify files.`,
   );
-  await pasteImage(followUpPrompt, `caffold-live-steer-${marker}.png`);
-  await expect(followUpForm.locator(".task-composer-attachment img")).toHaveAttribute(
-    "src",
-    /^data:image\/png;base64,/,
-  );
   await submitPromptAndExpectAccepted(page, threadId, () =>
     followUpForm.getByRole("button", { name: "Send prompt" }).click(),
   );
@@ -340,12 +330,6 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
     tasksPage
       .locator('.task-message[data-message-role="user"]')
       .filter({ hasText: steeredReply }),
-  ).toBeVisible();
-  await expect(
-    tasksPage
-      .locator('.task-message[data-message-role="user"]')
-      .filter({ hasText: steeredReply })
-      .locator(".task-message-attachment img"),
   ).toBeVisible();
   await expect(tasksPage.locator(".task-command").last()).toContainText(
     commandOutput,
@@ -417,9 +401,9 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
       "--skip-git-repo-check",
       "--ignore-user-config",
       "-m",
-      "gpt-5.4-mini",
+      SPARK_MODEL,
       "-c",
-      'model_reasoning_effort="low"',
+      `model_reasoning_effort="${LIVE_REASONING_EFFORT}"`,
       threadId,
       `You must use the command execution tool to run this exact read-only command: /bin/sh -c 'printf ${externalCommandOutput}; sleep 20'. Do not skip or simulate the tool call. After the command finishes, reply with exactly ${externalReply}. Do not modify files.`,
     ],
@@ -438,7 +422,75 @@ test("creates and resumes a real Codex task through Caffold", async ({ page }) =
   await expect(tasksPage.locator(`.task-row[data-thread-id="${threadId}"]`)).toHaveCount(0);
 });
 
-test("opens an external completed task and keeps follow-ups and activity canonical", async ({
+test("sends image attachments through Caffold with a multimodal model", async ({
+  page,
+}) => {
+  const cwd = liveCwd();
+  const marker = `${Date.now()}`;
+  const initialReply = `caffold-live-image-initial-${marker}`;
+  const steeredReply = `caffold-live-image-steered-${marker}`;
+
+  await page.goto(`/tasks/new?cwd=${encodeURIComponent(cwd)}`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
+  await expect(newTaskForm).toBeVisible();
+  await chooseModel(newTaskForm, MULTIMODAL_MODEL);
+
+  const newTaskPrompt = newTaskForm.getByRole("textbox", { name: "New task prompt" });
+  await newTaskPrompt.fill(
+    `You must use the command execution tool to run this exact read-only command: /bin/sh -c 'sleep 20'. Do not skip or simulate the tool call. After it finishes, reply with exactly ${initialReply}. Do not modify files.`,
+  );
+  await pasteImage(newTaskPrompt, `caffold-live-create-${marker}.png`);
+  await expect(newTaskForm.locator(".task-composer-attachment img")).toHaveAttribute(
+    "src",
+    /^data:image\/png;base64,/,
+  );
+  await newTaskPrompt.press("Enter");
+  await expect(page).toHaveURL(/\/tasks\/[^?]+$/);
+  const threadId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
+  expect(threadId).toBeTruthy();
+  liveThreadIds.add(threadId);
+
+  const userMessages = tasksPage.locator('.task-message[data-message-role="user"]');
+  const initialMessage = userMessages.filter({ hasText: initialReply });
+  await expect(initialMessage.locator(".task-message-attachment img")).toBeVisible();
+
+  const activeTurn = tasksPage.locator(".task-turn-active");
+  await expect(activeTurn).toBeVisible({ timeout: 15_000 });
+  const followUpForm = tasksPage.locator(
+    '.task-follow-up-form[data-task-form="follow-up"]',
+  );
+  const followUpPrompt = followUpForm.getByRole("textbox", {
+    name: "Follow-up prompt",
+  });
+  await followUpPrompt.fill(
+    `Continue the current turn. After the running command finishes, reply with exactly ${steeredReply}. Do not modify files.`,
+  );
+  await pasteImage(followUpPrompt, `caffold-live-steer-${marker}.png`);
+  await expect(followUpForm.locator(".task-composer-attachment img")).toHaveAttribute(
+    "src",
+    /^data:image\/png;base64,/,
+  );
+  const outcome = await submitPromptAndExpectAccepted(page, threadId, () =>
+    followUpForm.getByRole("button", { name: "Send prompt" }).click(),
+  );
+  expect(outcome.steered).toBe(true);
+
+  const steeredMessage = userMessages.filter({ hasText: steeredReply });
+  await expect(steeredMessage.locator(".task-message-attachment img")).toBeVisible();
+  const approval = tasksPage.locator(".task-approval-card").last();
+  if (await approval.isVisible({ timeout: 2_000 }).catch(() => false)) {
+    await approval.getByRole("button", { name: "Accept", exact: true }).click();
+  }
+  await expect(
+    tasksPage
+      .locator('.task-message[data-message-role="assistant"][data-message-phase="final"]')
+      .filter({ hasText: steeredReply }),
+  ).toBeVisible({ timeout: 60_000 });
+  await expect(activeTurn).toHaveCount(0);
+});
+
+test("opens an external completed Spark task and keeps follow-ups canonical", async ({
   page,
 }) => {
   const marker = `${Date.now()}`;
@@ -470,7 +522,7 @@ test("opens an external completed task and keeps follow-ups and activity canonic
     '.task-follow-up-form[data-task-form="follow-up"]',
   );
   await expect(followUpForm).toHaveAttribute("data-thread-id", threadId);
-  await chooseLowCostModel(followUpForm);
+  await chooseModel(followUpForm, SPARK_MODEL);
   const followUpPrompt = followUpForm.getByRole("textbox", { name: "Follow-up prompt" });
 
   await followUpPrompt.fill(
@@ -500,9 +552,9 @@ test("opens an external completed task and keeps follow-ups and activity canonic
       "--skip-git-repo-check",
       "--ignore-user-config",
       "-m",
-      "gpt-5.4-mini",
+      SPARK_MODEL,
       "-c",
-      'model_reasoning_effort="low"',
+      `model_reasoning_effort="${LIVE_REASONING_EFFORT}"`,
       threadId,
       `You must use the command execution tool to run this exact read-only command: /bin/sh -c 'sleep 20'. Do not skip or simulate the tool call. After it finishes, reply with exactly ${runningReply}. Do not modify files.`,
     ],
@@ -532,9 +584,9 @@ test("opens an external completed task and keeps follow-ups and activity canonic
     "--skip-git-repo-check",
     "--ignore-user-config",
     "-m",
-    "gpt-5.4-mini",
+    SPARK_MODEL,
     "-c",
-    'model_reasoning_effort="low"',
+    `model_reasoning_effort="${LIVE_REASONING_EFFORT}"`,
     threadId,
     [
       "This block is automatically supplied ambient UI state, not part of the user's request.",
