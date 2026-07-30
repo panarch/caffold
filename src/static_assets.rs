@@ -128,6 +128,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(codex)/tasks/components/markdown.js" => Some(js(include_str!(
             "../frontend/pages/(codex)/tasks/components/markdown.js"
         ))),
+        "pages/(codex)/tasks/components/navigator.css" => Some(css(include_str!(
+            "../frontend/pages/(codex)/tasks/components/navigator.css"
+        ))),
+        "pages/(codex)/tasks/components/navigator.js" => Some(js(include_str!(
+            "../frontend/pages/(codex)/tasks/components/navigator.js"
+        ))),
         "pages/(review-workspace)/layout.css" => Some(css(include_str!(
             "../frontend/pages/(review-workspace)/layout.css"
         ))),
@@ -558,6 +564,26 @@ mod tests {
                 .body
                 .windows(b"caffold-task-markdown".len())
                 .any(|window| window == b"caffold-task-markdown")
+        );
+        let tasks_navigator = get("pages/(codex)/tasks/components/navigator.js")
+            .expect("tasks navigator component js");
+        assert_eq!(
+            tasks_navigator.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(
+            tasks_navigator
+                .body
+                .windows(b"caffold-task-navigator".len())
+                .any(|window| window == b"caffold-task-navigator")
+        );
+        let tasks_navigator_css = get("pages/(codex)/tasks/components/navigator.css")
+            .expect("tasks navigator component css");
+        assert_eq!(tasks_navigator_css.content_type, "text/css; charset=utf-8");
+        assert!(
+            tasks_navigator_css
+                .body
+                .starts_with(b"caffold-task-navigator")
         );
         assert!(get("pages/tasks/page.js").is_none());
         assert!(get("pages/tasks/page.css").is_none());

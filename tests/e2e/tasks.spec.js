@@ -233,6 +233,86 @@ test("loads additional task-list pages only after a cursor request", async ({ pa
   expect(cursors).toEqual([null, "page-2"]);
 });
 
+test("clears stale task rows when canonical list reload fails", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.EventSource = class MockEventSource {
+      constructor(url) {
+        this.url = url;
+        this.listeners = new Map();
+        this.readyState = 0;
+        if (url.includes("/api/tasks/stream")) {
+          window.__taskListEventSource = this;
+        }
+      }
+
+      addEventListener(type, listener) {
+        this.listeners.set(type, listener);
+      }
+
+      emitOpen() {
+        this.readyState = 1;
+        this.listeners.get("open")?.({});
+      }
+
+      emitError() {
+        this.readyState = 0;
+        this.listeners.get("error")?.({});
+      }
+
+      close() {
+        this.readyState = 2;
+      }
+    };
+  });
+  await mockCodexModels(page);
+
+  const task = {
+    id: "thread_stale_list",
+    threadId: "thread_stale_list",
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Must not survive failed reload",
+    preview: "Stale projection",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    worktree: null,
+    createdMs: 1,
+    updatedMs: 2,
+    recencyMs: 2,
+    lastEventSummary: "Stale projection",
+  };
+  let taskReads = 0;
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    taskReads += 1;
+    if (taskReads === 1) {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ tasks: [task], nextCursor: null }),
+      });
+    }
+    return route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "Canonical task list unavailable" }),
+    });
+  });
+
+  await page.goto("/tasks");
+  const navigator = page.locator("caffold-task-navigator");
+  await expect(navigator).toContainText("Must not survive failed reload");
+  await page.evaluate(() => {
+    window.__taskListEventSource.emitOpen();
+    window.__taskListEventSource.emitError();
+    window.__taskListEventSource.emitOpen();
+  });
+
+  await expect(navigator).not.toContainText("Must not survive failed reload");
+  await expect(navigator.getByRole("alert")).toContainText(
+    "Canonical task list unavailable",
+  );
+  expect(taskReads).toBe(2);
+});
+
 test("opens global Tasks without local registry state", async ({ page }, testInfo) => {
   await installEventSourceMock(page);
   await mockCodexModels(page);

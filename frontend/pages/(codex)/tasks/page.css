@@ -17,7 +17,7 @@ caffold-tasks-page .tasks-surface {
 caffold-tasks-page .tasks-header-region,
 caffold-tasks-page .tasks-master-detail,
 caffold-tasks-page .tasks-list-pane,
-caffold-tasks-page .tasks-list-region,
+caffold-tasks-page caffold-task-navigator,
 caffold-tasks-page .tasks-detail-pane,
 caffold-tasks-page .tasks-detail-region {
   min-width: 0;
@@ -33,7 +33,7 @@ caffold-tasks-page .tasks-master-detail {
 
 caffold-tasks-page .tasks-list-pane,
 caffold-tasks-page .tasks-detail-pane,
-caffold-tasks-page .tasks-list-region,
+caffold-tasks-page caffold-task-navigator,
 caffold-tasks-page .tasks-detail-region {
   height: 100%;
   overflow: hidden;
@@ -173,8 +173,7 @@ caffold-tasks-page .task-thinking summary,
 caffold-tasks-page .task-command summary,
 caffold-tasks-page .task-tool-card header,
 caffold-tasks-page .task-file-change header,
-caffold-tasks-page .task-file-change p,
-caffold-tasks-page .task-row-time {
+caffold-tasks-page .task-file-change p {
   color: var(--muted);
 }
 
@@ -237,166 +236,6 @@ caffold-tasks-page .task-action-icon {
   stroke-width: 2;
 }
 
-caffold-tasks-page .task-list {
-  min-height: 0;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-caffold-tasks-page .task-list-scroll {
-  height: 100%;
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding: 5px 0 calc(24px + env(safe-area-inset-bottom));
-  scroll-padding-block: 5px calc(24px + env(safe-area-inset-bottom));
-  font-size: var(--task-list-font-size);
-}
-
-caffold-tasks-page .task-list-section + .task-list-section {
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-
-caffold-tasks-page .task-list-section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 4px 12px 7px;
-  color: var(--muted);
-}
-
-caffold-tasks-page .task-list-section-header h2 {
-  margin: 0;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.045em;
-  text-transform: uppercase;
-}
-
-caffold-tasks-page .task-list-section-header span {
-  font-size: 0.75rem;
-  font-variant-numeric: tabular-nums;
-}
-
-caffold-tasks-page .task-section-message {
-  margin: 0;
-  padding: 10px 12px;
-  color: var(--muted);
-  font-size: 0.8125rem;
-}
-
-caffold-tasks-page .task-section-message p {
-  margin: 0 0 8px;
-}
-
-caffold-tasks-page .task-list-pagination {
-  display: grid;
-  justify-items: center;
-  gap: 6px;
-  padding: 12px 9px 4px;
-}
-
-caffold-tasks-page .task-list-pagination-error {
-  margin: 0;
-  color: var(--danger, #a33);
-  font-size: 12px;
-  text-align: center;
-}
-
-caffold-tasks-page .task-repository-groups {
-  --task-repository-indent: calc(9px + var(--task-list-icon-size));
-
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-caffold-tasks-page .task-repository-group + .task-repository-group {
-  margin-top: 7px;
-}
-
-caffold-tasks-page .task-repository-header {
-  display: grid;
-  grid-template-columns: var(--task-list-icon-size) minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 7px;
-  min-height: var(--task-group-row-height);
-  padding: 3px 9px;
-  border-left: 3px solid transparent;
-  background: transparent;
-  color: var(--muted);
-  font-size: var(--task-group-font-size);
-}
-
-caffold-tasks-page .task-repository-icon {
-  width: var(--task-list-icon-size);
-  height: var(--task-list-icon-size);
-  color: #718078;
-  stroke-width: 1.8;
-}
-
-caffold-tasks-page .task-repository-label {
-  overflow: hidden;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-caffold-tasks-page .task-repository-count {
-  min-width: 2ch;
-  color: var(--muted);
-  font-size: inherit;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-caffold-tasks-page .task-repository-group > .task-list {
-  margin-left: var(--task-repository-indent);
-}
-
-caffold-tasks-page .task-history-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 6px;
-  min-height: var(--task-row-height);
-  padding: 2px 9px;
-}
-
-caffold-tasks-page .task-history-copy {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-}
-
-caffold-tasks-page .task-continue-button {
-  min-height: 26px;
-  padding: 3px 7px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--surface);
-  color: var(--accent);
-  cursor: pointer;
-  font-size: 0.6875rem;
-  white-space: nowrap;
-}
-
-caffold-tasks-page .task-continue-button:hover,
-caffold-tasks-page .task-continue-button:focus-visible {
-  border-color: var(--border-strong);
-  outline: none;
-}
-
-caffold-tasks-page .task-continue-button:disabled {
-  cursor: wait;
-  opacity: 0.65;
-}
-
 caffold-tasks-page .task-continue-gate {
   display: grid;
   align-content: center;
@@ -429,114 +268,6 @@ caffold-tasks-page .task-continue-cwd {
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: 0.75rem;
-}
-
-caffold-tasks-page .task-row {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 56px;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-width: 0;
-  min-height: var(--task-list-row-height);
-  padding: 3px 9px;
-  border: 0;
-  border-left: 3px solid transparent;
-  background: transparent;
-  color: var(--text);
-  text-align: left;
-  cursor: pointer;
-}
-
-caffold-tasks-page .task-row:hover,
-caffold-tasks-page .task-row:focus-visible {
-  border-left-color: #bdd7cc;
-  background: #f1f6f3;
-  outline: none;
-}
-
-caffold-tasks-page .task-row[aria-current="true"] {
-  border-left-color: var(--accent);
-  background: var(--accent-soft);
-  outline: none;
-}
-
-caffold-tasks-page .task-row-title {
-  overflow: hidden;
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-caffold-tasks-page .task-row-indicators {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  width: 56px;
-  min-width: 0;
-}
-
-caffold-tasks-page .task-row-meta {
-  flex: 0 0 auto;
-}
-
-caffold-tasks-page .task-row-meta.task-status-chip {
-  width: 20px;
-  height: 20px;
-  justify-content: center;
-  padding: 0;
-  border: 0;
-  background: #edf3ef;
-}
-
-caffold-tasks-page .task-unseen-complete {
-  display: inline-grid;
-  width: 20px;
-  height: 20px;
-  place-items: center;
-}
-
-caffold-tasks-page .task-unseen-complete::before {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--accent);
-  content: "";
-}
-
-caffold-tasks-page .task-row-time {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-caffold-tasks-page .task-row-worktree {
-  display: inline-grid;
-  flex: 0 0 var(--task-list-icon-size);
-  width: var(--task-list-icon-size);
-  height: var(--task-list-icon-size);
-  place-items: center;
-  color: #7d8a82;
-}
-
-caffold-tasks-page .task-row-worktree-icon {
-  width: var(--task-list-icon-size);
-  height: var(--task-list-icon-size);
-}
-
-caffold-tasks-page .task-row .task-status-chip[data-status="running"] {
-  background: #e7f4ee;
-}
-
-caffold-tasks-page .task-row .task-status-chip[data-status="waiting_for_approval"],
-caffold-tasks-page .task-row .task-status-chip[data-status="waiting_on_user_input"] {
-  background: #fff4d9;
-}
-
-caffold-tasks-page .task-row .task-status-chip[data-status="failed"],
-caffold-tasks-page .task-row .task-status-chip[data-status="interrupted"] {
-  background: #ffebe8;
 }
 
 caffold-tasks-page .tasks-neutral-state {
@@ -1105,12 +836,6 @@ caffold-tasks-page .task-diff-panel > caffold-git-compare-browser {
   }
 }
 
-caffold-tasks-page .tasks-empty {
-  margin: 0 auto;
-  width: min(100%, 960px);
-  padding: 14px;
-}
-
 caffold-tasks-page .task-composer {
   margin: 0 auto;
   width: min(100%, 980px);
@@ -1237,16 +962,6 @@ caffold-tasks-page .task-stream-state {
 
 caffold-tasks-page .task-stream-state[data-stream-state="unavailable"] {
   color: #8a5b00;
-}
-
-caffold-tasks-page .task-list-availability {
-  margin: 0;
-  padding: 6px 10px;
-  border-bottom: 1px solid #dfc58f;
-  background: #fff8e7;
-  color: #7f5600;
-  font-size: 12px;
-  line-height: 16px;
 }
 
 caffold-tasks-page .task-stream-state button {

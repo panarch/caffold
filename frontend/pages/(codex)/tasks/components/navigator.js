@@ -1,0 +1,836 @@
+import {
+  continueTask,
+  getTaskHistory,
+  getTasks,
+  taskListStreamUrl,
+} from "../../../../api.js";
+import { escapeHtml } from "../../../../components/dom.js";
+import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
+import {
+  TASK_TRANSPORT_STATE,
+  isTaskTransportStale,
+  taskStatusView,
+  taskThreadStatusType,
+} from "../runtime-state.js";
+import { formatRelativeAge } from "../task-format.js";
+import {
+  groupTasksByRepository,
+  mergeTaskListPage,
+  sortTasksByRecency,
+  taskRepositoryKey,
+  taskThreadId,
+  taskWorktreeLabel,
+  upsertTask,
+} from "../task-list-model.js";
+
+class CaffoldTaskNavigator extends HTMLElement {
+  connectedCallback() {
+    this.ensureState();
+    this.addEventListener("click", this.boundClick);
+    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
+    this.render();
+  }
+
+  disconnectedCallback() {
+    this.removeEventListener("click", this.boundClick);
+    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
+    this.taskListRequestId += 1;
+    this.taskHistoryRequestId += 1;
+    this.closeStream();
+  }
+
+  ensureState() {
+    if (this.stateReady) {
+      return;
+    }
+    this.stateReady = true;
+    this.tasks = [];
+    this.taskListLoading = false;
+    this.taskListLoadingMore = false;
+    this.taskListLoaded = false;
+    this.taskListError = null;
+    this.taskListLoadMoreError = null;
+    this.taskListNextCursor = null;
+    this.taskListRequestId = 0;
+    this.taskHistory = [];
+    this.taskHistoryLoading = false;
+    this.taskHistoryLoadingMore = false;
+    this.taskHistoryLoaded = false;
+    this.taskHistoryError = null;
+    this.taskHistoryLoadMoreError = null;
+    this.taskHistoryNextCursor = null;
+    this.taskHistoryRequestId = 0;
+    this.continuingThreadIds = new Set();
+    this.continuationErrors = new Map();
+    this.selectedThreadId = "";
+    this.stream = null;
+    this.streamNeedsSync = false;
+    this.streamState = TASK_TRANSPORT_STATE.IDLE;
+    this.revisionByThread = new Map();
+    this.active = false;
+    this.boundClick = (event) => this.handleClick(event);
+    this.boundIconsReady = () => this.render();
+    warmIcons();
+  }
+
+  async activate({ force = false } = {}) {
+    this.ensureState();
+    this.active = true;
+    this.connectStream();
+    const [tasks, history] = await Promise.all([
+      this.loadTasks({ force }),
+      this.loadHistory({ force }),
+    ]);
+    return { tasks, history };
+  }
+
+  setSelectedThreadId(threadId) {
+    this.ensureState();
+    const nextThreadId = `${threadId ?? ""}`;
+    if (this.selectedThreadId === nextThreadId) {
+      return;
+    }
+    this.selectedThreadId = nextThreadId;
+    this.syncSelection();
+    if (nextThreadId) {
+      const task = this.tasks.find((candidate) => taskThreadId(candidate) === nextThreadId);
+      if (task?.unseen) {
+        this.upsertCanonicalTask({ ...task, unseen: false });
+      }
+    }
+  }
+
+  upsertCanonicalTask(task) {
+    this.ensureState();
+    if (!task || !this.taskListLoaded) {
+      return;
+    }
+    const threadId = taskThreadId(task);
+    if (!threadId) {
+      return;
+    }
+    const nextTask =
+      threadId === this.selectedThreadId ? { ...task, unseen: false } : task;
+    const index = this.tasks.findIndex((candidate) => taskThreadId(candidate) === threadId);
+    if (index < 0) {
+      this.tasks = [...this.tasks, nextTask];
+      this.render();
+      return;
+    }
+
+    const previous = this.tasks[index];
+    this.tasks = this.tasks.map((candidate, candidateIndex) =>
+      candidateIndex === index ? nextTask : candidate,
+    );
+    const previousListKey = taskRepositoryKey(previous);
+    const nextListKey = taskRepositoryKey(nextTask);
+    const row = this.querySelector(
+      `li[data-thread-id="${CSS.escape(threadId)}"]`,
+    );
+    if (!row || previousListKey !== nextListKey) {
+      this.render();
+      return;
+    }
+
+    const template = document.createElement("template");
+    template.innerHTML = this.renderTaskRow(nextTask, nextListKey).trim();
+    const nextRow = template.content.firstElementChild;
+    if (!nextRow || !patchTaskListRow(row, nextRow)) {
+      this.render();
+      return;
+    }
+    this.syncSelection();
+    this.reorderTaskListDom();
+  }
+
+  async continueThread(threadId) {
+    this.ensureState();
+    if (
+      !threadId ||
+      this.continuingThreadIds.has(threadId) ||
+      isTaskTransportStale(this.streamState)
+    ) {
+      return null;
+    }
+    this.continuingThreadIds.add(threadId);
+    this.continuationErrors.delete(threadId);
+    this.taskHistoryError = null;
+    this.render();
+    this.dispatchContinuationChange(threadId);
+
+    try {
+      const task = await continueTask(threadId);
+      this.taskHistory = this.taskHistory.filter(
+        (candidate) => taskThreadId(candidate) !== threadId,
+      );
+      this.tasks = upsertTask(this.tasks, task);
+      this.taskListLoaded = true;
+      this.render();
+      this.dispatchEvent(
+        new CustomEvent("caffold:task-continued", {
+          bubbles: true,
+          composed: true,
+          detail: { task },
+        }),
+      );
+      return task;
+    } catch (error) {
+      const normalized = error instanceof Error ? error : new Error(`${error}`);
+      this.taskHistoryError = normalized;
+      this.continuationErrors.set(threadId, normalized);
+      this.render();
+      this.dispatchContinuationChange(threadId);
+      return null;
+    } finally {
+      this.continuingThreadIds.delete(threadId);
+      this.render();
+      this.dispatchContinuationChange(threadId);
+    }
+  }
+
+  continuationState(threadId) {
+    this.ensureState();
+    return {
+      loading: this.continuingThreadIds.has(threadId),
+      error: this.continuationErrors.get(threadId) ?? null,
+    };
+  }
+
+  dispatchContinuationChange(threadId) {
+    this.dispatchEvent(
+      new CustomEvent("caffold:task-continuation-change", {
+        bubbles: true,
+        composed: true,
+        detail: { threadId },
+      }),
+    );
+  }
+
+  isTransportAvailable() {
+    this.ensureState();
+    return !isTaskTransportStale(this.streamState);
+  }
+
+  handleClick(event) {
+    const action = event.target instanceof Element
+      ? event.target.closest("[data-task-action]")
+      : null;
+    if (!action || !this.contains(action)) {
+      return;
+    }
+    event.stopPropagation();
+    const threadId = `${action.dataset.threadId ?? ""}`;
+    if (action.dataset.taskAction === "open-task") {
+      this.dispatchIntent("select-task", { threadId });
+    } else if (action.dataset.taskAction === "open-new") {
+      this.dispatchIntent("new-task");
+    } else if (action.dataset.taskAction === "load-more-tasks") {
+      void this.loadMoreTasks();
+    } else if (action.dataset.taskAction === "load-more-task-history") {
+      void this.loadMoreHistory();
+    } else if (action.dataset.taskAction === "retry-task-history-list") {
+      void this.loadHistory({ force: true });
+    } else if (action.dataset.taskAction === "retry-task-list") {
+      void this.loadTasks({ force: true });
+    } else if (action.dataset.taskAction === "continue-history-task") {
+      void this.continueThread(threadId);
+    }
+  }
+
+  dispatchIntent(type, detail = {}) {
+    this.dispatchEvent(
+      new CustomEvent("caffold:task-navigator-intent", {
+        bubbles: true,
+        composed: true,
+        detail: { type, ...detail },
+      }),
+    );
+  }
+
+  async loadTasks({ force = false } = {}) {
+    if (this.taskListLoaded && !force) {
+      return { tasks: this.tasks, nextCursor: this.taskListNextCursor };
+    }
+
+    const requestId = ++this.taskListRequestId;
+    this.taskListLoading = true;
+    this.taskListLoadingMore = false;
+    this.taskListError = null;
+    this.taskListLoadMoreError = null;
+    this.render();
+
+    try {
+      const response = await getTasks();
+      if (requestId !== this.taskListRequestId) {
+        return null;
+      }
+      this.tasks = response.tasks ?? [];
+      this.taskListNextCursor = response.nextCursor ?? null;
+      this.taskListLoading = false;
+      this.taskListLoaded = true;
+      this.render();
+      return response;
+    } catch (error) {
+      if (requestId !== this.taskListRequestId) {
+        return null;
+      }
+      this.taskListLoading = false;
+      this.taskListError = error;
+      this.tasks = [];
+      this.taskListLoaded = false;
+      this.render();
+      return null;
+    }
+  }
+
+  async loadMoreTasks() {
+    const cursor = this.taskListNextCursor;
+    if (!cursor || this.taskListLoading || this.taskListLoadingMore) {
+      return null;
+    }
+
+    const requestId = ++this.taskListRequestId;
+    this.taskListLoadingMore = true;
+    this.taskListLoadMoreError = null;
+    this.render();
+    try {
+      const response = await getTasks(cursor);
+      if (requestId !== this.taskListRequestId) {
+        return null;
+      }
+      this.tasks = mergeTaskListPage(this.tasks, response.tasks ?? []);
+      this.taskListNextCursor = response.nextCursor ?? null;
+      this.taskListLoadingMore = false;
+      this.render();
+      return response;
+    } catch (error) {
+      if (requestId !== this.taskListRequestId) {
+        return null;
+      }
+      this.taskListLoadingMore = false;
+      this.taskListLoadMoreError = error;
+      this.render();
+      return null;
+    }
+  }
+
+  async loadHistory({ force = false } = {}) {
+    if (this.taskHistoryLoaded && !force) {
+      return { tasks: this.taskHistory, nextCursor: this.taskHistoryNextCursor };
+    }
+
+    const requestId = ++this.taskHistoryRequestId;
+    this.taskHistoryLoading = true;
+    this.taskHistoryLoadingMore = false;
+    this.taskHistoryError = null;
+    this.taskHistoryLoadMoreError = null;
+    this.render();
+    try {
+      const response = await getTaskHistory();
+      if (requestId !== this.taskHistoryRequestId) {
+        return null;
+      }
+      this.taskHistory = response.tasks ?? [];
+      this.taskHistoryNextCursor = response.nextCursor ?? null;
+      this.taskHistoryLoading = false;
+      this.taskHistoryLoaded = true;
+      this.render();
+      return response;
+    } catch (error) {
+      if (requestId !== this.taskHistoryRequestId) {
+        return null;
+      }
+      this.taskHistoryLoading = false;
+      this.taskHistoryError = error;
+      this.render();
+      return null;
+    }
+  }
+
+  async loadMoreHistory() {
+    const cursor = this.taskHistoryNextCursor;
+    if (!cursor || this.taskHistoryLoading || this.taskHistoryLoadingMore) {
+      return null;
+    }
+
+    const requestId = ++this.taskHistoryRequestId;
+    this.taskHistoryLoadingMore = true;
+    this.taskHistoryLoadMoreError = null;
+    this.render();
+    try {
+      const response = await getTaskHistory(cursor);
+      if (requestId !== this.taskHistoryRequestId) {
+        return null;
+      }
+      this.taskHistory = mergeTaskListPage(this.taskHistory, response.tasks ?? []);
+      this.taskHistoryNextCursor = response.nextCursor ?? null;
+      this.taskHistoryLoadingMore = false;
+      this.render();
+      return response;
+    } catch (error) {
+      if (requestId !== this.taskHistoryRequestId) {
+        return null;
+      }
+      this.taskHistoryLoadingMore = false;
+      this.taskHistoryLoadMoreError = error;
+      this.render();
+      return null;
+    }
+  }
+
+  connectStream() {
+    if (!this.active || this.stream) {
+      return;
+    }
+    if (!("EventSource" in window)) {
+      this.setStreamState(TASK_TRANSPORT_STATE.UNAVAILABLE);
+      return;
+    }
+
+    let stream;
+    try {
+      stream = new EventSource(taskListStreamUrl());
+    } catch {
+      this.setStreamState(TASK_TRANSPORT_STATE.UNAVAILABLE);
+      return;
+    }
+    this.stream = stream;
+    this.setStreamState(TASK_TRANSPORT_STATE.CONNECTING);
+    stream.addEventListener("open", () => {
+      if (this.stream !== stream) {
+        return;
+      }
+      if (this.streamNeedsSync) {
+        this.streamNeedsSync = false;
+        this.revisionByThread.clear();
+        void this.loadTasks({ force: true }).then((response) => {
+          if (this.stream !== stream) {
+            return;
+          }
+          this.setStreamState(
+            response
+              ? TASK_TRANSPORT_STATE.READY
+              : TASK_TRANSPORT_STATE.UNAVAILABLE,
+          );
+        });
+        return;
+      }
+      this.setStreamState(TASK_TRANSPORT_STATE.READY);
+    });
+    stream.addEventListener("error", () => {
+      if (this.stream !== stream) {
+        return;
+      }
+      this.streamNeedsSync = true;
+      this.setStreamState(
+        stream.readyState === 2
+          ? TASK_TRANSPORT_STATE.UNAVAILABLE
+          : TASK_TRANSPORT_STATE.RECONNECTING,
+      );
+    });
+    stream.addEventListener("task-removed", (event) => {
+      if (this.stream !== stream) {
+        return;
+      }
+      const message = parseJson(event.data);
+      if (message?.threadId) {
+        this.removeTask(message.threadId);
+      }
+    });
+    stream.addEventListener("task-updated", (event) => {
+      if (this.stream !== stream) {
+        return;
+      }
+      const task = parseJson(event.data);
+      const threadId = taskThreadId(task);
+      if (!threadId) {
+        return;
+      }
+      const historyLength = this.taskHistory.length;
+      this.taskHistory = this.taskHistory.filter(
+        (candidate) => taskThreadId(candidate) !== threadId,
+      );
+      this.upsertCanonicalTask(task);
+      if (this.taskHistory.length !== historyLength) {
+        this.render();
+      }
+    });
+    stream.addEventListener("task-sync", (event) => {
+      if (this.stream !== stream) {
+        return;
+      }
+      const message = parseJson(event.data);
+      const detail = message?.detail;
+      if (message?.error) {
+        this.tasks = [];
+        this.taskListLoaded = false;
+        this.taskListError = new Error(message.error);
+        this.render();
+        return;
+      }
+      if (detail?.managed === false && message?.threadId) {
+        this.removeTask(message.threadId);
+        return;
+      }
+      if (
+        detail?.task &&
+        message?.threadId === taskThreadId(detail.task) &&
+        this.acceptRevision(message.threadId, message.revision)
+      ) {
+        this.upsertCanonicalTask(detail.task);
+      }
+    });
+  }
+
+  acceptRevision(threadId, revision) {
+    const value = Number(revision);
+    if (!threadId || !Number.isFinite(value) || value <= 0) {
+      return true;
+    }
+    const current = this.revisionByThread.get(threadId) ?? 0;
+    if (value < current) {
+      return false;
+    }
+    this.revisionByThread.set(threadId, value);
+    return true;
+  }
+
+  closeStream() {
+    this.stream?.close();
+    this.stream = null;
+    this.streamNeedsSync = false;
+    this.streamState = TASK_TRANSPORT_STATE.IDLE;
+  }
+
+  setStreamState(state) {
+    if (this.streamState === state) {
+      return;
+    }
+    this.streamState = state;
+    this.render();
+  }
+
+  removeTask(threadId) {
+    if (!threadId || !this.taskListLoaded) {
+      return;
+    }
+    const tasks = this.tasks.filter(
+      (candidate) => taskThreadId(candidate) !== threadId,
+    );
+    if (tasks.length === this.tasks.length) {
+      return;
+    }
+    this.tasks = tasks;
+    this.revisionByThread.delete(threadId);
+    this.render();
+  }
+
+  render() {
+    this.ensureState();
+    const scrollTop = this.querySelector(".task-list-scroll")?.scrollTop ?? 0;
+    this.innerHTML = `
+      <div class="task-list-scroll">
+        ${this.renderSection("Caffold Tasks", this.tasks, false)}
+        ${this.renderSection("Codex History", this.taskHistory, true)}
+      </div>
+    `;
+    const scroller = this.querySelector(".task-list-scroll");
+    if (scroller) {
+      scroller.scrollTop = scrollTop;
+    }
+    this.syncSelection();
+  }
+
+  renderSection(title, entries, history) {
+    const loading = history ? this.taskHistoryLoading : this.taskListLoading;
+    const error = history ? this.taskHistoryError : this.taskListError;
+    const availability =
+      !history && isTaskTransportStale(this.streamState)
+        ? `<p class="task-list-availability" data-task-list-availability="${escapeHtml(this.streamState)}" role="status">${
+            this.streamState === TASK_TRANSPORT_STATE.RECONNECTING
+              ? "Reconnecting to Caffold server..."
+              : "Caffold server unavailable."
+          }</p>`
+        : "";
+    const tasks = sortTasksByRecency(entries);
+    const pagination = history
+      ? this.renderHistoryPagination()
+      : this.renderTaskPagination();
+    let content;
+
+    if (loading && !tasks.length) {
+      content = `<p class="task-section-message">Loading...</p>`;
+    } else if (error && !tasks.length) {
+      content = `
+        <div class="task-section-message" role="alert">
+          <p>${escapeHtml(error.message)}</p>
+          <button type="button" class="task-secondary-button" data-task-action="${history ? "retry-task-history-list" : "retry-task-list"}">Retry</button>
+        </div>
+      `;
+    } else if (!tasks.length) {
+      content = history
+        ? `<p class="task-section-message">No unmanaged Codex threads in this page.</p>`
+        : `<div class="tasks-empty">
+            <p>No Caffold tasks yet.</p>
+            <button type="button" class="task-primary-button" data-task-action="open-new">New Task</button>
+          </div>`;
+    } else {
+      const groups = groupTasksByRepository(tasks);
+      content = `<ol class="task-repository-groups" data-task-section="${history ? "history" : "managed"}">
+        ${groups.map((group) => this.renderRepositoryGroup(group, history)).join("")}
+      </ol>`;
+    }
+
+    return `
+      <section class="task-list-section" data-task-section="${history ? "history" : "managed"}">
+        <header class="task-list-section-header">
+          <h2>${escapeHtml(title)}</h2>
+          <span>${tasks.length}</span>
+        </header>
+        ${availability}
+        ${content}
+        ${pagination}
+      </section>
+    `;
+  }
+
+  renderTaskPagination() {
+    if (!this.taskListNextCursor && !this.taskListLoadingMore && !this.taskListLoadMoreError) {
+      return "";
+    }
+    const label = this.taskListLoadingMore
+      ? "Loading more tasks..."
+      : this.taskListLoadMoreError
+        ? "Retry loading more tasks"
+        : "Load more tasks";
+    return `
+      <div class="task-list-pagination">
+        ${this.taskListLoadMoreError ? `<p class="task-list-pagination-error">${escapeHtml(this.taskListLoadMoreError.message)}</p>` : ""}
+        <button type="button" class="task-secondary-button" data-task-action="load-more-tasks" ${this.taskListLoadingMore ? "disabled" : ""}>${label}</button>
+      </div>
+    `;
+  }
+
+  renderHistoryPagination() {
+    if (
+      !this.taskHistoryNextCursor &&
+      !this.taskHistoryLoadingMore &&
+      !this.taskHistoryLoadMoreError
+    ) {
+      return "";
+    }
+    const label = this.taskHistoryLoadingMore
+      ? "Loading more history..."
+      : this.taskHistoryLoadMoreError
+        ? "Retry loading more history"
+        : "Load more history";
+    return `
+      <div class="task-list-pagination">
+        ${this.taskHistoryLoadMoreError ? `<p class="task-list-pagination-error">${escapeHtml(this.taskHistoryLoadMoreError.message)}</p>` : ""}
+        <button type="button" class="task-secondary-button" data-task-action="load-more-task-history" ${this.taskHistoryLoadingMore ? "disabled" : ""}>${label}</button>
+      </div>
+    `;
+  }
+
+  renderRepositoryGroup(group, history) {
+    const icon = group.repository ? "FolderGit2" : "Folder";
+    const iconLabel = group.repository ? "Git repository" : "Directory";
+    return `
+      <li class="task-repository-group" data-task-repository-key="${escapeHtml(group.key)}">
+        <div class="task-repository-header" title="${escapeHtml(group.rootPath)}">
+          ${renderInlineIcon(icon, iconLabel, "task-repository-icon")}
+          <span class="task-repository-label">${escapeHtml(group.label)}</span>
+          <span class="task-repository-count">${group.tasks.length}</span>
+        </div>
+        <ol class="task-list">
+          ${group.tasks.map((task) => history ? this.renderHistoryTaskRow(task, group.key) : this.renderTaskRow(task, group.key)).join("")}
+        </ol>
+      </li>
+    `;
+  }
+
+  renderHistoryTaskRow(task, repositoryKey = taskRepositoryKey(task)) {
+    const threadId = taskThreadId(task);
+    const continuing = this.continuingThreadIds.has(threadId);
+    const transportBlocked = isTaskTransportStale(this.streamState);
+    const worktree = task?.worktree?.linked
+      ? `<span class="task-row-worktree" title="${escapeHtml(taskWorktreeLabel(task))}">
+          ${renderInlineIcon("GitBranch", "Linked worktree", "task-row-worktree-icon")}
+        </span>`
+      : "";
+    return `
+      <li class="task-history-row" data-thread-id="${escapeHtml(threadId)}" data-task-list-key="${escapeHtml(repositoryKey)}">
+        <div class="task-history-copy" title="${escapeHtml(task.title)}">
+          <span class="task-row-title">${escapeHtml(task.title)}</span>
+          <span class="task-row-indicators">${worktree}${renderTaskRowMeta(task, false)}</span>
+        </div>
+        <button type="button" class="task-continue-button" data-task-action="continue-history-task" data-thread-id="${escapeHtml(threadId)}" ${continuing || transportBlocked ? "disabled" : ""}>${continuing ? "Continuing..." : "Continue in Caffold"}</button>
+      </li>
+    `;
+  }
+
+  renderTaskRow(task, repositoryKey = taskRepositoryKey(task)) {
+    const threadId = taskThreadId(task);
+    const transportState = this.streamState;
+    const selected = threadId === this.selectedThreadId ? ` aria-current="true"` : "";
+    const status =
+      taskStatusView(task, transportState)?.status ?? taskThreadStatusType(task);
+    const busy = status === "running" ? ` aria-busy="true"` : "";
+    const meta = renderTaskRowMeta(
+      task,
+      Boolean(threadId && task?.unseen && threadId !== this.selectedThreadId),
+      transportState,
+    );
+    const worktree = task?.worktree?.linked
+      ? `<span class="task-row-worktree" title="${escapeHtml(taskWorktreeLabel(task))}">
+          ${renderInlineIcon("GitBranch", "Linked worktree", "task-row-worktree-icon")}
+        </span>`
+      : "";
+    return `
+      <li data-thread-id="${escapeHtml(threadId)}" data-task-list-key="${escapeHtml(repositoryKey)}">
+        <button type="button" class="task-row" data-task-action="open-task" data-thread-id="${escapeHtml(threadId)}" data-task-status="${escapeHtml(status)}" title="${escapeHtml(task.title)}"${selected}${busy}>
+          <span class="task-row-title">${escapeHtml(task.title)}</span>
+          <span class="task-row-indicators">${worktree}${meta}</span>
+        </button>
+      </li>
+    `;
+  }
+
+  syncSelection() {
+    for (const row of this.querySelectorAll(".task-row[data-thread-id]")) {
+      if (row.dataset.threadId === this.selectedThreadId) {
+        row.setAttribute("aria-current", "true");
+      } else {
+        row.removeAttribute("aria-current");
+      }
+    }
+  }
+
+  reorderTaskListDom() {
+    const groups = groupTasksByRepository(sortTasksByRecency(this.tasks));
+    const groupList = this.querySelector(
+      '.task-list-section[data-task-section="managed"] .task-repository-groups',
+    );
+    if (!groupList) {
+      return;
+    }
+    const groupElements = [];
+    for (const group of groups) {
+      const groupElement = groupList.querySelector(
+        `:scope > [data-task-repository-key="${CSS.escape(group.key)}"]`,
+      );
+      if (!groupElement) {
+        continue;
+      }
+      groupElements.push(groupElement);
+      const taskList = groupElement.querySelector(":scope > .task-list");
+      if (taskList) {
+        const rows = group.tasks
+          .map((task) =>
+            taskList.querySelector(
+              `:scope > [data-thread-id="${CSS.escape(taskThreadId(task))}"]`,
+            ),
+          )
+          .filter(Boolean);
+        reorderChildElements(taskList, rows);
+      }
+    }
+    reorderChildElements(groupList, groupElements);
+  }
+}
+
+function parseJson(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function renderTaskRowMeta(
+  task,
+  unseen = false,
+  transportState = TASK_TRANSPORT_STATE.READY,
+) {
+  if (taskStatusView(task, transportState)) {
+    return renderTaskStatusChip(task, "task-row-meta", transportState);
+  }
+  if (unseen) {
+    return `
+      <span class="task-row-meta task-unseen-complete" title="Completed - not viewed" aria-label="Completed - not viewed"></span>
+    `;
+  }
+
+  const ms = task.recencyMs ?? task.updatedMs;
+  const date = new Date(Number(ms));
+  const dateTime = Number.isNaN(date.getTime()) ? "" : date.toISOString();
+  return `
+    <time class="task-row-meta task-row-time" datetime="${escapeHtml(dateTime)}">
+      ${escapeHtml(formatRelativeAge(ms))}
+    </time>
+  `;
+}
+
+function renderTaskStatusChip(task, className, transportState) {
+  const view = taskStatusView(task, transportState);
+  if (!view) {
+    return "";
+  }
+  const classes = ["task-status-chip", className].filter(Boolean).join(" ");
+  const icon = ["running", "syncing", "reconnecting"].includes(view.status)
+    ? `<span class="task-status-spinner" aria-hidden="true"></span><span class="sr-only">${escapeHtml(view.label)}</span>`
+    : renderInlineIcon(view.icon, view.label, "task-status-icon");
+  return `
+    <span class="${escapeHtml(classes)}" data-status="${escapeHtml(view.status)}" title="${escapeHtml(view.label)}" aria-label="${escapeHtml(view.label)}">
+      ${icon}
+    </span>
+  `;
+}
+
+function patchTaskListRow(row, nextRow) {
+  const currentButton = row.querySelector(":scope > .task-row");
+  const nextButton = nextRow.querySelector(":scope > .task-row");
+  if (!currentButton || !nextButton) {
+    return false;
+  }
+  syncElementAttributes(row, nextRow, [
+    "class",
+    "data-thread-id",
+    "data-task-list-key",
+  ]);
+  syncElementAttributes(currentButton, nextButton, [
+    "type",
+    "class",
+    "data-task-action",
+    "data-thread-id",
+    "data-task-status",
+    "title",
+    "aria-current",
+    "aria-busy",
+  ]);
+  currentButton.replaceChildren(...nextButton.childNodes);
+  return true;
+}
+
+function syncElementAttributes(element, nextElement, names) {
+  for (const name of names) {
+    if (nextElement.hasAttribute(name)) {
+      element.setAttribute(name, nextElement.getAttribute(name));
+    } else {
+      element.removeAttribute(name);
+    }
+  }
+}
+
+function reorderChildElements(parent, elements) {
+  for (let index = 0; index < elements.length; index += 1) {
+    const element = elements[index];
+    if (parent.children[index] !== element) {
+      parent.insertBefore(element, parent.children[index] ?? null);
+    }
+  }
+}
+
+if (!customElements.get("caffold-task-navigator")) {
+  customElements.define("caffold-task-navigator", CaffoldTaskNavigator);
+}

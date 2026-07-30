@@ -9,6 +9,7 @@
 @import "./pages/settings/page.css";
 @import "./pages/(codex)/layout.css";
 @import "./pages/(codex)/tasks/page.css";
+@import "./pages/(codex)/tasks/components/navigator.css";
 @import "./pages/(review-workspace)/(git)/layout.css";
 @import "./pages/(review-workspace)/(git)/diff/page.css";
 @import "./components/git-diff-browser.css";
