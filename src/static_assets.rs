@@ -116,6 +116,15 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(codex)/tasks/runtime-state.js" => Some(js(include_str!(
             "../frontend/pages/(codex)/tasks/runtime-state.js"
         ))),
+        "pages/(codex)/tasks/task-events.js" => Some(js(include_str!(
+            "../frontend/pages/(codex)/tasks/task-events.js"
+        ))),
+        "pages/(codex)/tasks/task-format.js" => Some(js(include_str!(
+            "../frontend/pages/(codex)/tasks/task-format.js"
+        ))),
+        "pages/(codex)/tasks/task-list-model.js" => Some(js(include_str!(
+            "../frontend/pages/(codex)/tasks/task-list-model.js"
+        ))),
         "pages/(codex)/tasks/components/markdown.js" => Some(js(include_str!(
             "../frontend/pages/(codex)/tasks/components/markdown.js"
         ))),
@@ -526,6 +535,15 @@ mod tests {
             "text/javascript; charset=utf-8"
         );
         assert!(tasks_runtime_state.body.starts_with(b"export "));
+        for path in [
+            "pages/(codex)/tasks/task-events.js",
+            "pages/(codex)/tasks/task-format.js",
+            "pages/(codex)/tasks/task-list-model.js",
+        ] {
+            let asset = get(path).expect("tasks state module");
+            assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
+            assert!(asset.body.starts_with(b"export ") || asset.body.starts_with(b"import "));
+        }
         let tasks_page_css = get("pages/(codex)/tasks/page.css").expect("tasks page css");
         assert_eq!(tasks_page_css.content_type, "text/css; charset=utf-8");
         assert!(tasks_page_css.body.starts_with(b"caffold-tasks-page"));

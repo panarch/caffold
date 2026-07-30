@@ -34,6 +34,53 @@ import {
   taskThreadStatusType,
   withPromptSubmissionState,
 } from "./runtime-state.js";
+import {
+  assistantMessagePhase,
+  canAcceptTurnContinuation,
+  conversationGroups,
+  dedupeCanonicalEvents,
+  eventIdentityKey,
+  eventTurnId,
+  isFinalAssistantEvent,
+  isImplicitTurnEvent,
+  isTerminalTurnEvent,
+  isTurnContinuationEvent,
+  isTurnStatusEvent,
+  isWorkEvent,
+  mergeEvents,
+  mergeTaskEventsPage,
+  optimisticUserMessageEvent,
+  pendingApprovals,
+  upsertEvent,
+  userMessageFingerprint,
+} from "./task-events.js";
+import {
+  cleanLogicalPath,
+  cleanRelativeTaskPath,
+  formatCommand,
+  formatDate,
+  formatDecision,
+  formatDuration,
+  formatRelativeAge,
+  formatStatus,
+  normalizeTaskPath,
+  shortId,
+  uniquePaths,
+} from "./task-format.js";
+import {
+  groupTasksByRepository,
+  mergeTaskListPage,
+  sortTasksByRecency,
+  taskDetailThreadId,
+  taskRepositoryKey,
+  taskRepositoryLabel,
+  taskRepositoryPath,
+  taskThreadId,
+  taskUpdatedMs,
+  taskWorktreeLabel,
+  taskWorktreeRootName,
+  upsertTask,
+} from "./task-list-model.js";
 
 const STREAM_ERROR_DELAY_MS = 8_000;
 const TASK_LIST_DEFAULT_WIDTH = 380;
@@ -4670,54 +4717,6 @@ function activeTurnGroupIndex(groups, task) {
   return groups.findLastIndex((group) => group.kind === "turn");
 }
 
-function conversationGroups(events) {
-  const groups = [];
-  const turns = new Map();
-  let activeGroup = null;
-
-  const createImplicitTurnGroup = () => {
-    const group = { kind: "turn", turnId: `implicit-${groups.length}`, events: [] };
-    groups.push(group);
-    activeGroup = group;
-    return group;
-  };
-
-  for (const event of events) {
-    const turnId = eventTurnId(event);
-    if (!turnId) {
-      if (event.type === "user_message") {
-        createImplicitTurnGroup().events.push(event);
-        continue;
-      }
-      if (isImplicitTurnEvent(event) && canAcceptTurnContinuation(activeGroup)) {
-        activeGroup.events.push(event);
-        continue;
-      }
-      if (isImplicitTurnEvent(event)) {
-        createImplicitTurnGroup().events.push(event);
-        continue;
-      }
-      groups.push({ kind: "event", event });
-      continue;
-    }
-
-    let group = turns.get(turnId);
-    if (!group) {
-      group = { kind: "turn", turnId, events: [] };
-      turns.set(turnId, group);
-      groups.push(group);
-    }
-    group.events.push(event);
-    activeGroup = isTerminalTurnEvent(event) ? null : group;
-  }
-  return groups;
-}
-
-function eventTurnId(event) {
-  const payload = event?.payload ?? {};
-  return payload.turnId ?? payload.turn?.id ?? payload.params?.turnId ?? null;
-}
-
 function renderTurnGroup(group, task, options = {}) {
   const assistantEvents = group.events.filter((event) => event.type === "assistant_message");
   const statusEvents = group.events.filter(isTurnStatusEvent);
@@ -4987,55 +4986,6 @@ function renderConversationEvent(event, task, eventState) {
   return renderStatusEvent(event);
 }
 
-function isWorkEvent(event) {
-  return [
-    "reasoning",
-    "plan",
-    "command_execution",
-    "file_change",
-    "task_failed",
-    "approval_resolved",
-  ].includes(event.type);
-}
-
-function isTurnContinuationEvent(event) {
-  return event.type === "work_status" || isWorkEvent(event) || isTurnStatusEvent(event);
-}
-
-function isImplicitTurnEvent(event) {
-  return event.type === "assistant_message" || isTurnContinuationEvent(event);
-}
-
-function canAcceptTurnContinuation(group) {
-  if (!group || group.kind !== "turn") {
-    return false;
-  }
-  const events = group.events ?? [];
-  return !events.some((event) => isTerminalTurnEvent(event));
-}
-
-function isTurnStatusEvent(event) {
-  return [
-    "turn_started",
-    "turn_completed",
-    "turn_interrupted",
-    "approval_resolved",
-    "diff_updated",
-  ].includes(event.type);
-}
-
-function isTerminalTurnEvent(event) {
-  if (!isTurnStatusEvent(event)) {
-    return false;
-  }
-  const status = event.payload?.status ?? event.type;
-  return (
-    event.type === "turn_completed" ||
-    event.type === "turn_interrupted" ||
-    ["completed", "failed", "interrupted"].includes(status)
-  );
-}
-
 function renderStatusEvent(event) {
   const status = statusTone(event.type);
   return `
@@ -5236,20 +5186,6 @@ function renderMessageAttachments(attachments) {
         .join("")}
     </div>
   `;
-}
-
-function assistantMessagePhase(phase) {
-  if (["final", "final_answer"].includes(phase)) {
-    return "final";
-  }
-  if (phase === "commentary") {
-    return "progress";
-  }
-  return null;
-}
-
-function isFinalAssistantEvent(event) {
-  return assistantMessagePhase(event?.payload?.phase ?? event?.payload?.item?.phase) === "final";
 }
 
 function renderThinkingEvent(event, text, task, eventState) {
@@ -5659,106 +5595,9 @@ function taskWorktreeRef(task) {
   return shortId(task?.worktree?.headSha ?? "");
 }
 
-function cleanLogicalPath(path) {
-  return cleanRelativeTaskPath(path);
-}
-
 function taskWorktreeRootPath(task) {
   const path = `${task?.worktree?.rootPath ?? ""}`.trim();
   return path === "." ? path : cleanLogicalPath(path);
-}
-
-function taskThreadId(task) {
-  return `${task?.threadId ?? task?.id ?? ""}`;
-}
-
-function taskDetailThreadId(detail) {
-  return `${detail?.threadId ?? taskThreadId(detail?.task)}`;
-}
-
-function taskUpdatedMs(task) {
-  const value = Number(task?.recencyMs ?? task?.updatedMs ?? task?.createdMs ?? 0);
-  return Number.isFinite(value) ? value : 0;
-}
-
-function taskRepositoryPath(task) {
-  return cleanLogicalPath(
-    task?.worktree?.repositoryRootPath ??
-      task?.worktree?.rootPath ??
-      task?.cwdPath ??
-      task?.cwd ??
-      task?.relativeCwd,
-  );
-}
-
-function taskRepositoryKey(task) {
-  const prefix = task?.worktree ? "repository" : "cwd";
-  return `${prefix}:${taskRepositoryPath(task)}`;
-}
-
-function taskRepositoryLabel(task) {
-  const path = taskRepositoryPath(task);
-  return path.split("/").filter(Boolean).at(-1) ?? "Directory";
-}
-
-function sortTasksByRecency(tasks) {
-  return [...tasks].sort((left, right) => taskUpdatedMs(right) - taskUpdatedMs(left));
-}
-
-function mergeTaskListPage(current, incoming) {
-  const tasks = new Map(current.map((task) => [taskThreadId(task), task]));
-  for (const task of incoming) {
-    tasks.set(taskThreadId(task), task);
-  }
-  return [...tasks.values()];
-}
-
-function groupTasksByRepository(tasks) {
-  const groupsByKey = new Map();
-  for (const task of tasks) {
-    const key = taskRepositoryKey(task);
-    const existing = groupsByKey.get(key);
-    if (existing) {
-      existing.tasks.push(task);
-      existing.updatedMs = Math.max(existing.updatedMs, taskUpdatedMs(task));
-      continue;
-    }
-    const rootPath = taskRepositoryPath(task);
-    groupsByKey.set(key, {
-      key,
-      label: taskRepositoryLabel(task),
-      rootPath,
-      repository: Boolean(task?.worktree),
-      updatedMs: taskUpdatedMs(task),
-      tasks: [task],
-    });
-  }
-
-  return [...groupsByKey.values()]
-    .map((group) => ({
-      ...group,
-      tasks: sortTasksByRecency(group.tasks),
-    }))
-    .sort((left, right) => right.updatedMs - left.updatedMs);
-}
-
-function taskWorktreeRootName(task) {
-  const rootPath = cleanRelativeTaskPath(task?.worktree?.rootPath);
-  return rootPath.split("/").filter(Boolean).at(-1) ?? "Worktree";
-}
-
-function taskWorktreeLabel(task) {
-  if (!task?.worktree) {
-    return task?.cwdPath ?? task?.relativeCwd ?? "";
-  }
-
-  return [
-    taskWorktreeRef(task),
-    taskWorktreeRootName(task),
-    cleanRelativeTaskPath(task.worktree.relativeCwd),
-  ]
-    .filter(Boolean)
-    .join(" · ");
 }
 
 function renderTaskCompareRefOptions(refs, selectedRef) {
@@ -5772,26 +5611,6 @@ function renderTaskCompareRefOptions(refs, selectedRef) {
       return `<option value="${escapeHtml(name)}"${selected}>${escapeHtml(name)}</option>`;
     })
     .join("");
-}
-
-function normalizeTaskPath(path) {
-  return `${path ?? ""}`
-    .trim()
-    .replaceAll("\\", "/")
-    .replace(/\/+/g, "/")
-    .replace(/^\.\//, "")
-    .replace(/\/$/, "");
-}
-
-function cleanRelativeTaskPath(path) {
-  return normalizeTaskPath(path)
-    .split("/")
-    .filter((segment) => segment && segment !== "." && segment !== "..")
-    .join("/");
-}
-
-function uniquePaths(paths) {
-  return [...new Set(paths)];
 }
 
 function renderApprovalCard(event, options = {}) {
@@ -5824,274 +5643,6 @@ function renderApprovalCard(event, options = {}) {
       </div>
     </article>
   `;
-}
-
-function pendingApprovals(events) {
-  const pending = new Map();
-  for (const event of events) {
-    const approvalId = event.payload?.approvalId;
-    if (!approvalId) {
-      continue;
-    }
-    if (event.type === "approval_requested") {
-      pending.set(approvalId, event);
-    } else if (event.type === "approval_resolved") {
-      pending.delete(approvalId);
-    }
-  }
-  return [...pending.values()];
-}
-
-function upsertEvent(events, event) {
-  return mergeEvents(events, [event]);
-}
-
-function mergeEvents(leftEvents, rightEvents) {
-  const byId = new Map();
-  for (const event of [...leftEvents, ...rightEvents]) {
-    const key = eventIdentityKey(event);
-    if (key) {
-      byId.set(key, mergeEventRecord(byId.get(key), event));
-    }
-  }
-  return dedupeCanonicalEvents([...byId.values()]).sort(
-    (left, right) =>
-      (left.createdMs ?? 0) - (right.createdMs ?? 0) ||
-      (left.sortIndex ?? Number.MAX_SAFE_INTEGER) -
-        (right.sortIndex ?? Number.MAX_SAFE_INTEGER),
-  );
-}
-
-function mergeTaskEventsPage(currentPage, detail) {
-  const incomingPage = detail?.eventsPage;
-  if (!incomingPage) {
-    return currentPage ?? { nextCursor: null };
-  }
-  if (
-    detail?.historyLoading &&
-    !incomingPage.nextCursor &&
-    currentPage?.nextCursor
-  ) {
-    return currentPage;
-  }
-  return incomingPage;
-}
-
-function mergeEventRecord(existing, incoming) {
-  if (!existing) {
-    return incoming;
-  }
-  const createdMs = existing.createdMs;
-  const sortIndex = existing.sortIndex ?? incoming.sortIndex;
-  const existingUpdatedMs = existing.updatedMs ?? existing.createdMs ?? 0;
-  const incomingUpdatedMs = incoming.updatedMs ?? incoming.createdMs ?? 0;
-  const [latest, earlier] =
-    incomingUpdatedMs >= existingUpdatedMs
-      ? [incoming, existing]
-      : [existing, incoming];
-  const existingPayload = existing.payload ?? {};
-  const incomingPayload = incoming.payload ?? {};
-  const earlierPayload = earlier.payload ?? {};
-  const latestPayload = latest.payload ?? {};
-  const payload = { ...earlierPayload, ...latestPayload };
-  if (existingPayload.item || incomingPayload.item) {
-    payload.item = {
-      ...(earlierPayload.item ?? {}),
-      ...(latestPayload.item ?? {}),
-    };
-  }
-  const updatedMs = Math.max(existingUpdatedMs, incomingUpdatedMs);
-  return {
-    ...earlier,
-    ...latest,
-    payload,
-    createdMs,
-    ...(sortIndex === undefined ? {} : { sortIndex }),
-    ...(updatedMs > (createdMs ?? 0) ? { updatedMs } : {}),
-  };
-}
-
-function optimisticUserMessageEvent(threadId, prompt, images, requestId) {
-  const createdMs = Date.now();
-  const content = [
-    ...(prompt ? [{ type: "text", text: prompt }] : []),
-    ...images.map((image) => ({
-      type: "image",
-      url: image.dataUrl,
-      name: image.name,
-    })),
-  ];
-  return {
-    id: `local:user:${threadId}:${requestId}:${createdMs}`,
-    threadId,
-    type: "user_message",
-    summary: "User prompt",
-    payload: {
-      text: prompt,
-      item: { content },
-      optimistic: true,
-      submissionState: PROMPT_SUBMISSION_STATE.SENDING,
-    },
-    createdMs,
-  };
-}
-
-function eventIdentityKey(event) {
-  if (!event) {
-    return "";
-  }
-
-  const payload = event.payload ?? {};
-  const threadId = event.threadId ?? payload.threadId ?? "";
-  const itemId = payload.itemId ?? payload.item?.id ?? "";
-  if (itemId) {
-    return ["item", threadId, eventTurnId(event) ?? "", itemId].join(":");
-  }
-
-  const approvalId = payload.approvalId ?? "";
-  if (approvalId) {
-    return ["approval", threadId, approvalId, event.type].join(":");
-  }
-
-  const turnId = eventTurnId(event);
-  if (turnId && isTurnStatusEvent(event)) {
-    return ["turn", threadId, turnId, event.type, payload.status ?? ""].join(":");
-  }
-
-  if (turnId && ["user_message", "assistant_message"].includes(event.type)) {
-    const text =
-      event.type === "user_message"
-        ? userMessageText(payload)
-        : `${payload.prompt ?? payload.text ?? ""}`.trim();
-    if (text) {
-      return ["message", threadId, turnId, event.type, text].join(":");
-    }
-  }
-
-  return event.id ?? "";
-}
-
-function dedupeCanonicalEvents(events) {
-  const byKey = new Map();
-  for (const event of removeSupersededOptimisticEvents(events)) {
-    const key = canonicalEventKey(event) || eventIdentityKey(event);
-    if (!key) {
-      continue;
-    }
-    const existing = byKey.get(key);
-    byKey.set(key, preferStructuredEvent(existing, event));
-  }
-  return [...byKey.values()];
-}
-
-function removeSupersededOptimisticEvents(events) {
-  const confirmedUserMessages = new Set();
-  for (const event of events) {
-    if (event?.type !== "user_message" || event.payload?.optimistic) {
-      continue;
-    }
-    const fingerprint = userMessageFingerprint(event);
-    if (fingerprint) {
-      confirmedUserMessages.add(fingerprint);
-    }
-  }
-
-  return events.filter((event) => {
-    if (event?.type !== "user_message" || !event.payload?.optimistic) {
-      return true;
-    }
-    return !confirmedUserMessages.has(userMessageFingerprint(event));
-  });
-}
-
-function userMessageFingerprint(event) {
-  if (event?.type !== "user_message") {
-    return "";
-  }
-  const payload = event.payload ?? {};
-  const text = userMessageText(payload);
-  const content = userMessageContent(payload);
-  const images = content
-    .filter((item) => ["image", "localImage"].includes(item?.type))
-    .map((item) => imageInputFingerprint(item));
-  if (!text && !images.length) {
-    return "";
-  }
-  return JSON.stringify([event.threadId ?? "", text, images]);
-}
-
-function imageInputFingerprint(item) {
-  if (item?.type === "localImage") {
-    return `local:${item.path ?? ""}`;
-  }
-  const value = `${item?.url ?? ""}`;
-  return `data:${value.length}:${value.slice(-64)}`;
-}
-
-function canonicalEventKey(event) {
-  if (!event || !["user_message", "assistant_message"].includes(event.type)) {
-    return "";
-  }
-
-  if (event.payload?.optimistic) {
-    return event.id ?? "";
-  }
-
-  const payload = event.payload ?? {};
-  const messageFingerprint =
-    event.type === "user_message"
-      ? userMessageFingerprint(event)
-      : `${payload.prompt ?? payload.text ?? ""}`.trim();
-  if (!messageFingerprint) {
-    return "";
-  }
-
-  const threadId = event.threadId ?? payload.threadId ?? "";
-  const turnId = eventTurnId(event);
-  if (turnId) {
-    const phase =
-      event.type === "assistant_message"
-        ? assistantMessagePhase(payload.phase ?? payload.item?.phase) ?? ""
-        : "";
-    return [
-      "message",
-      threadId,
-      turnId,
-      event.type,
-      phase,
-      messageFingerprint,
-    ].join(":");
-  }
-
-  const createdMs = typeof event.createdMs === "number" ? event.createdMs : 0;
-  const createdBucket = createdMs ? Math.floor(createdMs / 5000) : "";
-  return ["message", threadId, event.type, messageFingerprint, createdBucket].join(":");
-}
-
-function preferStructuredEvent(existing, next) {
-  if (!existing) {
-    return next;
-  }
-  const existingScore = eventStructureScore(existing);
-  const nextScore = eventStructureScore(next);
-  if (nextScore !== existingScore) {
-    return nextScore > existingScore ? next : existing;
-  }
-  return (next.createdMs ?? 0) >= (existing.createdMs ?? 0) ? next : existing;
-}
-
-function eventStructureScore(event) {
-  const payload = event?.payload ?? {};
-  return (
-    [
-      payload.itemId,
-      payload.item?.id,
-      payload.turnId,
-      payload.threadId,
-    ].filter(Boolean).length +
-    (payload.lifecycle ? 2 : 0) +
-    (event?.sortIndex === 0 ? 1 : 0)
-  );
 }
 
 function isScrolledToBottom(element) {
@@ -6192,13 +5743,6 @@ function reorderChildElements(parent, elements) {
   }
 }
 
-function upsertTask(tasks, task) {
-  const threadId = task.threadId ?? task.id;
-  const existing = tasks.filter((entry) => (entry.threadId ?? entry.id) !== threadId);
-  existing.unshift(task);
-  return existing;
-}
-
 function parseJson(value) {
   try {
     return JSON.parse(value);
@@ -6263,100 +5807,6 @@ function renderTaskStatusChip(task, className = "", options = {}) {
       ${showLabel ? `<span class="task-status-label">${escapeHtml(view.label)}</span>` : ""}
     </span>
   `;
-}
-
-function formatStatus(status) {
-  const normalized = `${status ?? ""}`.trim();
-  return `${normalized || "unknown"}`.replaceAll("_", " ");
-}
-
-function formatRelativeAge(ms, now = Date.now()) {
-  const value = Number(ms);
-  if (!Number.isFinite(value)) {
-    return "";
-  }
-
-  const seconds = Math.max(0, Math.floor((now - value) / 1000));
-  if (seconds < 60) {
-    return "now";
-  }
-
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) {
-    return `${minutes}m`;
-  }
-
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
-    return `${hours}h`;
-  }
-
-  const days = Math.floor(hours / 24);
-  if (days < 30) {
-    return `${days}d`;
-  }
-
-  const months = Math.floor(days / 30);
-  if (months < 12) {
-    return `${months}mo`;
-  }
-
-  return `${Math.floor(months / 12)}y`;
-}
-
-function formatDecision(decision) {
-  return {
-    accept: "Accept",
-    acceptForSession: "Accept for Session",
-    decline: "Decline",
-    cancel: "Cancel",
-  }[decision] ?? decision;
-}
-
-function formatCommand(command) {
-  if (Array.isArray(command)) {
-    return command.join(" ");
-  }
-  if (typeof command === "string" && command.trim()) {
-    return command;
-  }
-  if (command && typeof command === "object") {
-    return JSON.stringify(command);
-  }
-  return "(command unavailable)";
-}
-
-function shortId(id) {
-  return `${id ?? ""}`.slice(0, 8);
-}
-
-function formatDate(ms) {
-  const date = new Date(Number(ms));
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-  return date.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatDuration(ms) {
-  const seconds = Math.max(1, Math.round(Number(ms) / 1000));
-  if (!Number.isFinite(seconds)) {
-    return "";
-  }
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  if (minutes === 0) {
-    return `${remainingSeconds}s`;
-  }
-  if (remainingSeconds === 0) {
-    return `${minutes}m`;
-  }
-  return `${minutes}m ${remainingSeconds}s`;
 }
 
 function statusTone(type) {
