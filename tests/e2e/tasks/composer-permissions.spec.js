@@ -1,149 +1,13 @@
 import { expect, test } from "@playwright/test";
+import {
+  installTaskApiFixture,
+  TASK_PERMISSION_FIXTURE,
+  taskDetailFixture,
+} from "../support/task-api-fixture.js";
 import { pasteImage } from "../support/task-fixtures.js";
 
-const PERMISSIONS = {
-  defaultMode: "approveForMe",
-  options: [
-    {
-      mode: "askForApproval",
-      label: "Ask for approval",
-      description: "Work in the workspace and ask before crossing its boundary.",
-      allowed: true,
-      dangerous: false,
-    },
-    {
-      mode: "approveForMe",
-      label: "Approve for me",
-      description: "Keep the workspace boundary and review eligible requests automatically.",
-      allowed: true,
-      dangerous: false,
-    },
-    {
-      mode: "fullAccess",
-      label: "Full access",
-      description: "Run without sandbox restrictions or approval prompts.",
-      allowed: true,
-      dangerous: true,
-    },
-  ],
-};
-
-async function stubComposerApis(page) {
-  await page.addInitScript(() => {
-    window.__taskPermissionEventSources = [];
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        this.readyState = 0;
-        window.__taskPermissionEventSources.push(this);
-        if (url.includes("/api/tasks/thread-1/stream")) {
-          window.__taskDetailSource = this;
-        } else if (url.startsWith("/api/tasks/stream")) {
-          window.__taskListSource = this;
-        }
-        queueMicrotask(() => this.emitOpen());
-      }
-
-      addEventListener(type, listener) {
-        this.listeners.set(type, listener);
-      }
-
-      emit(type, payload) {
-        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
-      }
-
-      emitOpen() {
-        this.readyState = 1;
-        this.listeners.get("open")?.({});
-      }
-
-      close() {
-        this.readyState = 2;
-      }
-    };
-  });
-  await page.route("**/api/codex/permissions*", (route) =>
-    route.fulfill({ json: PERMISSIONS }),
-  );
-  await page.route("**/api/codex/models", (route) =>
-    route.fulfill({
-      json: {
-        data: [
-          {
-            id: "gpt-test",
-            model: "gpt-test",
-            displayName: "GPT Test",
-            description: "Test model",
-            hidden: false,
-            supportedReasoningEfforts: [
-              { value: "medium", label: "Medium" },
-              { value: "xhigh", label: "XHigh" },
-            ],
-            defaultReasoningEffort: "medium",
-            inputModalities: ["text"],
-            supportsPersonality: false,
-            isDefault: true,
-          },
-        ],
-        nextCursor: null,
-      },
-    }),
-  );
-  await page.route("**/api/tasks", (route) =>
-    route.fulfill({ json: { tasks: [], nextCursor: null } }),
-  );
-  await page.route("**/api/task-history*", (route) =>
-    route.fulfill({ json: { tasks: [], nextCursor: null } }),
-  );
-  await page.route("**/api/tasks/stream*", (route) =>
-    route.fulfill({
-      contentType: "text/event-stream",
-      body: ": ready\n\n",
-    }),
-  );
-}
-
-function taskDetail({
-  running = false,
-  model = null,
-  reasoningEffort = null,
-} = {}) {
-  return {
-    threadId: "thread-1",
-    syncState: "ready",
-    managed: true,
-    revision: 1,
-    task: {
-      id: "thread-1",
-      threadId: "thread-1",
-      title: running ? "Running task" : "New task",
-      preview: running ? "Working" : "Ready",
-      threadStatus: { type: running ? "active" : "idle", activeFlags: [] },
-      latestTurnStatus: running ? "inProgress" : null,
-      activeTurn: running ? { id: "turn-1", startedAtMs: 1 } : null,
-      cwd: "src",
-      cwdPath: "src",
-      relativeCwd: ".",
-      worktree: null,
-      createdMs: 1,
-      updatedMs: 2,
-      recencyMs: 2,
-      lastEventSummary: null,
-      unseen: false,
-    },
-    events: [],
-    eventsPage: { nextCursor: null },
-    pendingApprovals: [],
-    historyLoading: false,
-    permissionMode: "approveForMe",
-    model,
-    reasoningEffort,
-  };
-}
-
 test("composer exposes Codex approval modes and confirms full access", async ({ page }) => {
-  await stubComposerApis(page);
+  await installTaskApiFixture(page);
   await page.goto("/tasks/new?cwd=src");
 
   const form = page.locator('.task-new-form[data-task-form="create"]');
@@ -171,13 +35,13 @@ test("composer exposes Codex approval modes and confirms full access", async ({ 
 });
 
 test("untouched approval mode preserves the effective Codex default", async ({ page }) => {
-  await stubComposerApis(page);
+  await installTaskApiFixture(page);
   await page.unroute("**/api/tasks");
   let submittedBody = null;
   await page.route("**/api/tasks", (route) => {
     if (route.request().method() === "POST") {
       submittedBody = route.request().postDataJSON();
-      return route.fulfill({ json: taskDetail() });
+      return route.fulfill({ json: taskDetailFixture() });
     }
     return route.fulfill({ json: { tasks: [], nextCursor: null } });
   });
@@ -195,12 +59,12 @@ test("untouched approval mode preserves the effective Codex default", async ({ p
 });
 
 test("explicit approval mode is sent with a new task prompt", async ({ page }) => {
-  await stubComposerApis(page);
+  await installTaskApiFixture(page);
   await page.unroute("**/api/codex/permissions*");
   await page.route("**/api/codex/permissions*", (route) =>
     route.fulfill({
       json: {
-        ...PERMISSIONS,
+        ...TASK_PERMISSION_FIXTURE,
         defaultMode: "askForApproval",
       },
     }),
@@ -210,7 +74,7 @@ test("explicit approval mode is sent with a new task prompt", async ({ page }) =
   await page.route("**/api/tasks", (route) => {
     if (route.request().method() === "POST") {
       submittedBody = route.request().postDataJSON();
-      return route.fulfill({ json: taskDetail() });
+      return route.fulfill({ json: taskDetailFixture() });
     }
     return route.fulfill({ json: { tasks: [], nextCursor: null } });
   });
@@ -234,7 +98,7 @@ test("explicit approval mode is sent with a new task prompt", async ({ page }) =
 test("new task submission stays single-flight and restores local input after rejection", async ({
   page,
 }) => {
-  await stubComposerApis(page);
+  await installTaskApiFixture(page);
   await page.unroute("**/api/tasks");
   let releaseFirstRequest;
   const firstRequestGate = new Promise((resolve) => {
@@ -244,7 +108,7 @@ test("new task submission stays single-flight and restores local input after rej
   let adoptedDetailReads = 0;
   await page.route("**/api/tasks/thread-1", (route) => {
     adoptedDetailReads += 1;
-    return route.fulfill({ json: taskDetail() });
+    return route.fulfill({ json: taskDetailFixture() });
   });
   await page.route("**/api/tasks", async (route) => {
     if (route.request().method() !== "POST") {
@@ -258,7 +122,7 @@ test("new task submission stays single-flight and restores local input after rej
         json: { error: "Create request rejected" },
       });
     }
-    return route.fulfill({ json: taskDetail() });
+    return route.fulfill({ json: taskDetailFixture() });
   });
 
   await page.goto("/tasks/new?cwd=src");
@@ -298,11 +162,11 @@ test("new task submission stays single-flight and restores local input after rej
 });
 
 test("explicit approval mode is sent with a follow-up prompt", async ({ page }) => {
-  await stubComposerApis(page);
+  await installTaskApiFixture(page);
   await page.route("**/api/tasks/thread-1", (route) =>
     route.fulfill({
       json: {
-        ...taskDetail(),
+        ...taskDetailFixture(),
         permissionMode: "askForApproval",
       },
     }),
@@ -344,10 +208,10 @@ test("explicit approval mode is sent with a follow-up prompt", async ({ page }) 
 test("managed tasks restore their last applied model and reasoning effort", async ({
   page,
 }) => {
-  await stubComposerApis(page);
+  await installTaskApiFixture(page);
   await page.route("**/api/tasks/thread-1", (route) =>
     route.fulfill({
-      json: taskDetail({
+      json: taskDetailFixture({
         model: "gpt-test",
         reasoningEffort: "xhigh",
       }),
@@ -394,8 +258,8 @@ test("managed tasks restore their last applied model and reasoning effort", asyn
 test("canonical task sync preserves an open follow-up model picker", async ({
   page,
 }) => {
-  await stubComposerApis(page);
-  const initialDetail = taskDetail({
+  await installTaskApiFixture(page);
+  const initialDetail = taskDetailFixture({
     model: "gpt-test",
     reasoningEffort: "medium",
   });
@@ -441,7 +305,7 @@ test("keeps a tall follow-up model menu inside the conversation pane", async ({
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "desktop uses the anchored model popover");
-  await stubComposerApis(page);
+  await installTaskApiFixture(page);
   await page.unroute("**/api/codex/models");
   await page.route("**/api/codex/models", (route) =>
     route.fulfill({
@@ -467,7 +331,7 @@ test("keeps a tall follow-up model menu inside the conversation pane", async ({
   );
   await page.route("**/api/tasks/thread-1", (route) =>
     route.fulfill({
-      json: taskDetail({
+      json: taskDetailFixture({
         model: "gpt-test-0",
         reasoningEffort: "medium",
       }),
@@ -500,9 +364,9 @@ test("keeps a tall follow-up model menu inside the conversation pane", async ({
 });
 
 test("active turns lock the approval mode until the next turn", async ({ page }) => {
-  await stubComposerApis(page);
+  await installTaskApiFixture(page);
   await page.route("**/api/tasks/thread-1", (route) =>
-    route.fulfill({ json: taskDetail({ running: true }) }),
+    route.fulfill({ json: taskDetailFixture({ running: true }) }),
   );
   await page.route("**/api/tasks/thread-1/stream*", (route) =>
     route.fulfill({
@@ -554,9 +418,9 @@ test("active turns lock the approval mode until the next turn", async ({ page })
 });
 
 test("steering an active turn preserves its existing work clock", async ({ page }) => {
-  await stubComposerApis(page);
+  await installTaskApiFixture(page);
   const startedMs = Date.now() - 65_000;
-  const detail = taskDetail({ running: true });
+  const detail = taskDetailFixture({ running: true });
   detail.task.activeTurn.startedAtMs = startedMs;
   detail.events = [
     {
@@ -627,146 +491,4 @@ test("steering an active turn preserves its existing work clock", async ({ page 
     "data-active-turn-started-ms",
     `${startedMs}`,
   );
-});
-
-test("raw active flags prioritize approval over user input", async ({ page }) => {
-  await stubComposerApis(page);
-  const detail = taskDetail({ running: true });
-  detail.task.threadStatus.activeFlags = [
-    "waitingOnUserInput",
-    "waitingOnApproval",
-  ];
-  await page.route("**/api/tasks/thread-1", (route) =>
-    route.fulfill({ json: detail }),
-  );
-
-  await page.goto("/tasks/thread-1?cwd=src");
-
-  await expect(
-    page.locator(
-      '.task-detail-summary .task-status-chip[data-status="waiting_for_approval"]',
-    ),
-  ).toBeVisible();
-  await expect(page.locator(".task-turn-active-state")).toHaveText(
-    "Waiting for approval",
-  );
-});
-
-test("active task without a canonical turn omits controls and elapsed time", async ({
-  page,
-}) => {
-  await stubComposerApis(page);
-  const detail = taskDetail({ running: true });
-  detail.task.latestTurnStatus = null;
-  detail.task.activeTurn = null;
-  await page.route("**/api/tasks/thread-1", (route) =>
-    route.fulfill({ json: detail }),
-  );
-
-  await page.goto("/tasks/thread-1?cwd=src");
-
-  await expect(
-    page.locator('.task-detail-summary .task-status-chip[data-status="running"]'),
-  ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Interrupt" })).toHaveCount(0);
-  const active = page.locator(".task-turn-active");
-  await expect(active).toBeVisible();
-  await expect(active).not.toHaveAttribute("data-active-turn-started-ms");
-  await expect(active.locator(".task-turn-active-duration")).toHaveText("Working");
-});
-
-test("loading detail accepts a canonical task sync without a synthetic task", async ({
-  page,
-}) => {
-  await stubComposerApis(page);
-  await page.route("**/api/tasks/thread-1", (route) =>
-    route.fulfill({
-      json: {
-        threadId: "thread-1",
-        syncState: "loading",
-        managed: true,
-        revision: 0,
-        task: null,
-        events: [],
-        eventsPage: { nextCursor: null },
-        pendingApprovals: [],
-        historyLoading: true,
-      },
-    }),
-  );
-
-  await page.goto("/tasks/thread-1?cwd=src");
-  await expect(page.getByText("Loading task...")).toBeVisible();
-  await expect(page.locator(".task-detail")).toHaveCount(0);
-
-  const detail = taskDetail();
-  detail.revision = 2;
-  await page.evaluate((detail) => {
-    window.__taskDetailSource.emit("task-sync", {
-      threadId: detail.threadId,
-      revision: detail.revision,
-      detail,
-      reason: "canonical-bootstrap",
-    });
-  }, detail);
-
-  await expect(page.getByRole("heading", { name: "New task" })).toBeVisible();
-  await expect(page.getByText("Loading task...")).toHaveCount(0);
-
-  await page.evaluate((detail) => {
-    window.__taskListSource.emit("task-sync", {
-      threadId: detail.threadId,
-      revision: detail.revision,
-      detail: { ...detail, managed: false },
-      reason: "late-sync-after-removal",
-    });
-  }, detail);
-  await expect(
-    page.locator('.task-row[data-thread-id="thread-1"]'),
-  ).toHaveCount(0);
-
-  await page.evaluate(() => {
-    const message = {
-      threadId: "thread-1",
-      revision: 3,
-      detail: {
-        threadId: "thread-1",
-        syncState: "loading",
-        managed: true,
-        revision: 3,
-        task: null,
-        events: [],
-        eventsPage: { nextCursor: null },
-        pendingApprovals: [],
-        historyLoading: true,
-      },
-      reason: "canonical-source-error",
-      error: "Codex app-server is unavailable",
-    };
-    window.__taskDetailSource.emit("task-sync", message);
-    window.__taskListSource.emit("task-sync", message);
-  });
-
-  await expect(
-    page.getByText("Task details are temporarily unavailable."),
-  ).toBeVisible();
-  await expect(
-    page.locator(".task-detail-error-message"),
-  ).toHaveText("Codex app-server is unavailable");
-  await expect(page.locator(".task-detail")).toHaveCount(0);
-  await expect(page.locator(".task-status-chip")).toHaveCount(0);
-  await expect(
-    page.locator('.task-list-section[data-task-section="managed"]'),
-  ).toContainText("Codex app-server is unavailable");
-  await expect(
-    page.locator('.task-row[data-thread-id="thread-1"]'),
-  ).toHaveCount(0);
-  await expect(
-    page.locator('[data-task-action="retry-task-detail"]'),
-  ).toHaveCount(1);
-  await expect(
-    page.locator(
-      '.task-list-section[data-task-section="managed"] [data-task-action="retry-task-list"]',
-    ),
-  ).toHaveCount(1);
 });
