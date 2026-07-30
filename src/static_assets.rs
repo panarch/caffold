@@ -113,6 +113,9 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(codex)/tasks/page.js" => {
             Some(js(include_str!("../frontend/pages/(codex)/tasks/page.js")))
         }
+        "pages/(codex)/tasks/runtime-state.js" => Some(js(include_str!(
+            "../frontend/pages/(codex)/tasks/runtime-state.js"
+        ))),
         "pages/(codex)/tasks/components/markdown.js" => Some(js(include_str!(
             "../frontend/pages/(codex)/tasks/components/markdown.js"
         ))),
@@ -516,6 +519,13 @@ mod tests {
                 .windows(b"caffold-tasks-page".len())
                 .any(|window| window == b"caffold-tasks-page")
         );
+        let tasks_runtime_state =
+            get("pages/(codex)/tasks/runtime-state.js").expect("tasks runtime state js");
+        assert_eq!(
+            tasks_runtime_state.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(tasks_runtime_state.body.starts_with(b"export "));
         let tasks_page_css = get("pages/(codex)/tasks/page.css").expect("tasks page css");
         assert_eq!(tasks_page_css.content_type, "text/css; charset=utf-8");
         assert!(tasks_page_css.body.starts_with(b"caffold-tasks-page"));

@@ -3116,7 +3116,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
       followUpRequests += 1;
       if (body.prompt === "Prompt that fails") {
         return route.fulfill({
-          status: 500,
+          status: 422,
           contentType: "application/json",
           body: JSON.stringify({ error: "Prompt request failed" }),
         });
@@ -5261,7 +5261,7 @@ test("submits completed task follow-ups and reloads canonical messages", async (
     submittedBodies.push(body);
     if (body.prompt === "Rejected image prompt" && rejectedAttempts++ === 0) {
       return route.fulfill({
-        status: 500,
+        status: 422,
         contentType: "application/json",
         body: JSON.stringify({ error: "Follow-up rejected by fixture" }),
       });
@@ -5486,24 +5486,14 @@ test("submits completed task follow-ups and reloads canonical messages", async (
   await send.click();
   await expect.poll(() => timedOutAttempts).toBe(1);
   await expect(form).toHaveAttribute("aria-busy", "false");
-  await expect(prompt).toHaveValue("Timed out prompt");
+  await expect(prompt).toHaveValue("");
   await expect(prompt).toBeFocused();
   await expect(tasksPage).toContainText("Codex app-server request timed out.");
   await expect(
     tasksPage.locator('.task-message[data-message-role="user"]').filter({
       hasText: "Timed out prompt",
     }),
-  ).toHaveCount(0);
-
-  await prompt.press("Enter");
-  await expect.poll(() => timedOutAttempts).toBe(2);
-  await expect(form).toHaveAttribute("aria-busy", "false");
-  await expect(prompt).toHaveValue("");
-  await expect(
-    tasksPage.locator('.task-message[data-message-role="user"]').filter({
-      hasText: "Timed out prompt",
-    }),
-  ).toBeVisible();
+  ).toHaveAttribute("data-delivery-state", "outcomeUnknown");
 });
 
 test("unlocks a completed task when canonical item content arrives before the prompt response", async ({
@@ -7389,7 +7379,7 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
   }, threadId);
   await expect(
     tasksPage.locator('.task-stream-state[data-stream-state="reconnecting"]'),
-  ).toContainText("Reconnecting live updates...");
+  ).toContainText("Caffold server connection lost");
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-live-reconnecting");
 
@@ -7431,9 +7421,9 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     taskSource.emitError(true);
   }, threadId);
   const streamError = tasksPage.locator(
-    '.task-stream-state[data-stream-state="error"]',
+    '.task-stream-state[data-stream-state="unavailable"]',
   );
-  await expect(streamError).toContainText("Live updates unavailable.");
+  await expect(streamError).toContainText("Caffold server unavailable.");
   await streamError.getByRole("button", { name: "Retry" }).click();
   await expect(tasksPage.locator(".task-stream-state")).toHaveCount(0);
   await expect
@@ -7445,6 +7435,284 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     );
     sources.at(-1).emitOpen();
   }, threadId);
+});
+
+test("makes disconnected task state unavailable and reconciles an uncertain prompt", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.__taskEventSources = [];
+    window.EventSource = class MockEventSource {
+      constructor(url) {
+        this.url = url;
+        this.listeners = new Map();
+        this.readyState = 0;
+        window.__taskEventSources.push(this);
+      }
+
+      addEventListener(type, listener) {
+        const listeners = this.listeners.get(type) ?? [];
+        listeners.push(listener);
+        this.listeners.set(type, listeners);
+      }
+
+      emit(type, payload) {
+        for (const listener of this.listeners.get(type) ?? []) {
+          listener({ data: JSON.stringify(payload) });
+        }
+      }
+
+      emitOpen() {
+        this.readyState = 1;
+        for (const listener of this.listeners.get("open") ?? []) {
+          listener({});
+        }
+      }
+
+      emitError(closed = false) {
+        this.readyState = closed ? 2 : 0;
+        for (const listener of this.listeners.get("error") ?? []) {
+          listener({});
+        }
+      }
+
+      close() {
+        this.closed = true;
+        this.readyState = 2;
+      }
+    };
+  });
+  await mockCodexModels(page);
+
+  const threadId = "thread_self_host_restart";
+  const now = 1_767_210_000_000;
+  const promptText = "Prompt accepted before the server stopped";
+  let task = {
+    id: threadId,
+    threadId,
+    ...canonicalTaskState("active", {
+      turnId: "turn_before_restart",
+      startedAtMs: now,
+      latestTurnStatus: "inProgress",
+    }),
+    title: "Self-host restart fixture",
+    preview: "Work is active",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: "Work is active",
+  };
+  let revision = 1;
+  let reconnectDetailRead = null;
+  let releaseReconnectDetailRead = null;
+  let events = [
+    {
+      id: "event_before_restart",
+      threadId,
+      type: "assistant_message",
+      summary: "Assistant response",
+      payload: {
+        turnId: "turn_before_restart",
+        text: "Work is active before the restart.",
+      },
+      createdMs: now,
+    },
+  ];
+  let promptAccepted = false;
+  const detail = () => ({
+    threadId,
+    syncState: "ready",
+    revision,
+    task,
+    events,
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+    historyLoading: false,
+  });
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [task], nextCursor: null }),
+    }),
+  );
+  await page.route(/\/api\/task-history(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [], nextCursor: null }),
+    }),
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), async (route) => {
+    await reconnectDetailRead;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(detail()),
+    });
+  });
+  await page.route(new RegExp(`/api/tasks/${threadId}/prompts(?:\\?|$)`), (route) => {
+    promptAccepted = true;
+    revision += 1;
+    task = {
+      ...task,
+      ...canonicalTaskState("idle", { latestTurnStatus: "interrupted" }),
+      preview: "Restart interrupted the host task",
+      updatedMs: now + 2,
+      recencyMs: now + 2,
+      lastEventSummary: "Restart interrupted the host task",
+    };
+    events = [
+      ...events,
+      {
+        id: "event_prompt_after_restart",
+        threadId,
+        type: "user_message",
+        summary: "User prompt",
+        payload: {
+          turnId: "turn_after_restart",
+          text: promptText,
+        },
+        createdMs: now + 1,
+      },
+      {
+        id: "event_interrupted_after_restart",
+        threadId,
+        type: "assistant_message",
+        summary: "Assistant response",
+        payload: {
+          turnId: "turn_after_restart",
+          phase: "commentary",
+          text: "The host stopped after accepting the prompt.",
+        },
+        createdMs: now + 2,
+      },
+    ];
+    return route.abort("failed");
+  });
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const form = tasksPage.locator(".task-follow-up-form");
+  const textarea = form.locator('textarea[name="prompt"]');
+  const taskRow = tasksPage.locator(
+    `.task-row[data-thread-id="${threadId}"]`,
+  );
+  await expect(tasksPage).toContainText("Work is active before the restart.");
+
+  reconnectDetailRead = new Promise((resolve) => {
+    releaseReconnectDetailRead = resolve;
+  });
+  await page.evaluate((threadId) => {
+    for (const source of window.__taskEventSources) {
+      if (
+        source.url.startsWith("/api/tasks/stream") ||
+        source.url.includes(`/api/tasks/${threadId}/stream`)
+      ) {
+        source.emitOpen();
+      }
+    }
+  }, threadId);
+
+  await textarea.fill(promptText);
+  await textarea.press("Enter");
+  await expect.poll(() => promptAccepted).toBe(true);
+
+  await page.evaluate((threadId) => {
+    for (const source of window.__taskEventSources) {
+      if (
+        source.url.startsWith("/api/tasks/stream") ||
+        source.url.includes(`/api/tasks/${threadId}/stream`)
+      ) {
+        source.emitError();
+      }
+    }
+  }, threadId);
+
+  const uncertainPrompt = tasksPage
+    .locator('.task-message[data-message-role="user"]')
+    .filter({ hasText: promptText });
+  await expect(uncertainPrompt).toHaveAttribute(
+    "data-delivery-state",
+    "outcomeUnknown",
+  );
+  await expect(
+    tasksPage.locator(
+      '.task-detail-summary .task-status-chip[data-status="reconnecting"]',
+    ),
+  ).toBeVisible();
+  await expect(
+    tasksPage.locator(
+      '.task-detail-summary .task-status-chip[data-status="running"]',
+    ),
+  ).toHaveCount(0);
+  await expect(
+    tasksPage.locator('[data-task-action="interrupt"]'),
+  ).toBeDisabled();
+  await expect(textarea).toBeDisabled();
+  await expect(taskRow).toHaveAttribute("data-task-status", "reconnecting");
+  await expect(
+    tasksPage.locator(
+      '.task-stream-state[data-stream-state="reconnecting"]',
+    ),
+  ).toContainText("Caffold server connection lost");
+
+  await page.evaluate((threadId) => {
+    for (const source of window.__taskEventSources) {
+      if (
+        source.url.startsWith("/api/tasks/stream") ||
+        source.url.includes(`/api/tasks/${threadId}/stream`)
+      ) {
+        source.emitOpen();
+      }
+    }
+  }, threadId);
+
+  await expect(
+    tasksPage.locator(
+      '.task-detail-summary .task-status-chip[data-status="reconnecting"]',
+    ),
+  ).toBeVisible();
+  await expect(
+    tasksPage.locator(
+      '.task-stream-state[data-stream-state="reconnecting"]',
+    ),
+  ).toBeVisible();
+  releaseReconnectDetailRead();
+  reconnectDetailRead = null;
+  await expect(tasksPage).toContainText(
+    "The host stopped after accepting the prompt.",
+  );
+  const canonicalPrompt = tasksPage
+    .locator('.task-message[data-message-role="user"]')
+    .filter({ hasText: promptText });
+  await expect(canonicalPrompt).toHaveCount(1);
+  await expect(canonicalPrompt).not.toHaveAttribute(
+    "data-delivery-state",
+    "outcomeUnknown",
+  );
+  await expect(tasksPage.locator(".task-stream-state")).toHaveCount(0);
+  await expect(
+    tasksPage.locator(
+      '.task-detail-summary .task-status-chip[data-status="running"]',
+    ),
+  ).toHaveCount(0);
+  await expect(taskRow).toHaveAttribute("data-task-status", "idle");
+  await expect(textarea).toBeEnabled();
+
+  await page.evaluate(() => {
+    const listSource = window.__taskEventSources.find(
+      (source) => source.url.startsWith("/api/tasks/stream") && !source.closed,
+    );
+    listSource.emitError();
+  });
+  await tasksPage.getByRole("button", { name: "New Task" }).click();
+  const newTaskForm = tasksPage.locator(".task-new-form");
+  await expect(newTaskForm.locator('textarea[name="prompt"]')).toBeDisabled();
+  await expect(
+    newTaskForm.getByRole("button", { name: "Start task" }),
+  ).toBeDisabled();
 });
 
 test("keeps header action slots stable while status checks resolve", async ({ page }) => {

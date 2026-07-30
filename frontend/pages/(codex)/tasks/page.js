@@ -21,6 +21,19 @@ import "../../../components/git-diff-browser.js";
 import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
 import { createRefreshCoordinator, subscribeToWatch } from "../../../watch.js";
 import "./components/markdown.js";
+import {
+  PROMPT_SUBMISSION_STATE,
+  TASK_TRANSPORT_STATE,
+  classifyPromptFailure,
+  formatTaskStatus,
+  isTaskActivelyWorking,
+  isTaskTransportStale,
+  promptSubmissionState,
+  taskActiveFlagLabel,
+  taskStatusView,
+  taskThreadStatusType,
+  withPromptSubmissionState,
+} from "./runtime-state.js";
 
 const STREAM_ERROR_DELAY_MS = 8_000;
 const TASK_LIST_DEFAULT_WIDTH = 380;
@@ -65,6 +78,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.taskListStream = null;
     this.taskListStreamContext = "";
     this.taskListStreamNeedsSync = false;
+    this.taskListStreamState = TASK_TRANSPORT_STATE.IDLE;
     this.taskListWidth = TASK_LIST_DEFAULT_WIDTH;
     this.taskHistory = [];
     this.taskHistoryLoading = false;
@@ -96,7 +110,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.newTaskBrowsing = false;
     this.selectedThreadId = "";
     this.stream = null;
-    this.streamState = "idle";
+    this.streamState = TASK_TRANSPORT_STATE.IDLE;
     this.streamGeneration = 0;
     this.streamErrorTimer = null;
     this.activeTurnClockTimer = null;
@@ -755,7 +769,11 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   async continueHistoryTask(threadId) {
-    if (!threadId || this.continuingThreadIds.has(threadId)) {
+    if (
+      !threadId ||
+      this.continuingThreadIds.has(threadId) ||
+      isTaskTransportStale(this.taskListStreamState)
+    ) {
       return null;
     }
     this.continuingThreadIds.add(threadId);
@@ -796,7 +814,7 @@ class CaffoldTasksPage extends HTMLElement {
   connectStream(threadId) {
     this.closeStream();
     if (!("EventSource" in window)) {
-      this.setStreamState("error");
+      this.setStreamState(TASK_TRANSPORT_STATE.UNAVAILABLE);
       return;
     }
 
@@ -805,23 +823,24 @@ class CaffoldTasksPage extends HTMLElement {
     try {
       stream = new EventSource(taskStreamUrl(threadId));
     } catch {
-      this.setStreamState("error");
+      this.setStreamState(TASK_TRANSPORT_STATE.UNAVAILABLE);
       return;
     }
 
     this.stream = stream;
-    this.streamState = "connecting";
+    this.streamState = TASK_TRANSPORT_STATE.CONNECTING;
     stream.addEventListener("open", () => {
       if (!this.isCurrentStream(stream, threadId, generation)) {
         return;
       }
-      const shouldSync = this.streamState === "reconnecting";
+      const shouldSync = isTaskTransportStale(this.streamState);
       window.clearTimeout(this.streamErrorTimer);
       this.streamErrorTimer = null;
-      this.setStreamState("connected");
       if (shouldSync) {
         this.requestSelectedTaskRefresh(threadId, generation);
+        return;
       }
+      this.setStreamState(TASK_TRANSPORT_STATE.READY);
     });
     stream.addEventListener("error", () => {
       if (!this.isCurrentStream(stream, threadId, generation)) {
@@ -830,17 +849,17 @@ class CaffoldTasksPage extends HTMLElement {
       window.clearTimeout(this.streamErrorTimer);
       if (stream.readyState === 2) {
         this.streamErrorTimer = null;
-        this.setStreamState("error");
+        this.setStreamState(TASK_TRANSPORT_STATE.UNAVAILABLE);
         return;
       }
-      this.setStreamState("reconnecting");
+      this.setStreamState(TASK_TRANSPORT_STATE.RECONNECTING);
       this.streamErrorTimer = window.setTimeout(() => {
         if (
           this.isCurrentStream(stream, threadId, generation) &&
-          this.streamState === "reconnecting"
+          this.streamState === TASK_TRANSPORT_STATE.RECONNECTING
         ) {
           this.streamErrorTimer = null;
-          this.setStreamState("error");
+          this.setStreamState(TASK_TRANSPORT_STATE.UNAVAILABLE);
         }
       }, STREAM_ERROR_DELAY_MS);
     });
@@ -910,6 +929,11 @@ class CaffoldTasksPage extends HTMLElement {
     }
     this.loadTaskGithubStatus(detail.task);
     this.conversationScrollMode = this.liveConversationScrollMode(threadId);
+    if (error && isTaskTransportStale(this.streamState)) {
+      this.setStreamState(TASK_TRANSPORT_STATE.UNAVAILABLE, { render: false });
+    } else if (detail?.syncState === "ready" && detail?.task) {
+      this.markStreamReadyFromCanonical(threadId);
+    }
     this.render();
   }
 
@@ -933,7 +957,7 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
 
-    request.acknowledged = true;
+    request.state = PROMPT_SUBMISSION_STATE.ACCEPTED;
     if (this.followUpRequest === request) {
       this.followUpRequest = null;
     }
@@ -941,6 +965,7 @@ class CaffoldTasksPage extends HTMLElement {
 
   connectTaskListStream() {
     if (!("EventSource" in window)) {
+      this.setTaskListStreamState(TASK_TRANSPORT_STATE.UNAVAILABLE);
       return;
     }
     const context = this.taskListContext;
@@ -953,10 +978,12 @@ class CaffoldTasksPage extends HTMLElement {
     try {
       stream = new EventSource(taskListStreamUrl());
     } catch {
+      this.setTaskListStreamState(TASK_TRANSPORT_STATE.UNAVAILABLE);
       return;
     }
     this.taskListStream = stream;
     this.taskListStreamContext = context;
+    this.setTaskListStreamState(TASK_TRANSPORT_STATE.CONNECTING);
     stream.addEventListener("open", () => {
       if (this.taskListStream !== stream || this.taskListStreamContext !== context) {
         return;
@@ -966,12 +993,31 @@ class CaffoldTasksPage extends HTMLElement {
         // The shared stream reconnects across backend restarts as well as
         // transient network failures. The forced read establishes the new baseline.
         this.taskListRevisionByThread.clear();
-        this.loadTaskList({ force: true });
+        void this.loadTaskList({ force: true }).then((response) => {
+          if (
+            this.taskListStream !== stream ||
+            this.taskListStreamContext !== context
+          ) {
+            return;
+          }
+          this.setTaskListStreamState(
+            response
+              ? TASK_TRANSPORT_STATE.READY
+              : TASK_TRANSPORT_STATE.UNAVAILABLE,
+          );
+        });
+        return;
       }
+      this.setTaskListStreamState(TASK_TRANSPORT_STATE.READY);
     });
     stream.addEventListener("error", () => {
       if (this.taskListStream === stream) {
         this.taskListStreamNeedsSync = true;
+        this.setTaskListStreamState(
+          stream.readyState === 2
+            ? TASK_TRANSPORT_STATE.UNAVAILABLE
+            : TASK_TRANSPORT_STATE.RECONNECTING,
+        );
       }
     });
     stream.addEventListener("task-removed", (event) => {
@@ -1057,6 +1103,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.taskListStream = null;
     this.taskListStreamContext = "";
     this.taskListStreamNeedsSync = false;
+    this.taskListStreamState = TASK_TRANSPORT_STATE.IDLE;
   }
 
   closeStream() {
@@ -1065,7 +1112,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.streamErrorTimer = null;
     this.stream?.close();
     this.stream = null;
-    this.streamState = "idle";
+    this.streamState = TASK_TRANSPORT_STATE.IDLE;
     this.taskRefresh = null;
   }
 
@@ -1077,15 +1124,49 @@ class CaffoldTasksPage extends HTMLElement {
     );
   }
 
-  setStreamState(state) {
+  setStreamState(state, { render = true } = {}) {
     if (this.streamState === state) {
       return;
     }
     const wasVisible = isVisibleStreamState(this.streamState);
     this.streamState = state;
-    if (this.view === "detail" && (wasVisible || isVisibleStreamState(state))) {
+    this.markTaskListDirty();
+    if (
+      render &&
+      this.view === "detail" &&
+      (wasVisible || isVisibleStreamState(state))
+    ) {
       this.render();
     }
+  }
+
+  markStreamReadyFromCanonical(threadId) {
+    if (
+      threadId === this.selectedThreadId &&
+      this.stream?.readyState === 1 &&
+      isTaskTransportStale(this.streamState)
+    ) {
+      window.clearTimeout(this.streamErrorTimer);
+      this.streamErrorTimer = null;
+      this.setStreamState(TASK_TRANSPORT_STATE.READY, { render: false });
+    }
+  }
+
+  setTaskListStreamState(state) {
+    if (this.taskListStreamState === state) {
+      return;
+    }
+    const wasVisible = isVisibleStreamState(this.taskListStreamState);
+    this.taskListStreamState = state;
+    this.markTaskListDirty();
+    if (
+      this.view !== "detail" &&
+      (wasVisible || isVisibleStreamState(state))
+    ) {
+      this.render();
+      return;
+    }
+    this.renderTaskListRegion();
   }
 
   handleVisibilityChange() {
@@ -1163,9 +1244,18 @@ class CaffoldTasksPage extends HTMLElement {
       }
       this.loadTaskGithubStatus(detail.task);
       this.conversationScrollMode = this.liveConversationScrollMode(threadId);
+      if (detail?.syncState === "ready" && detail?.task) {
+        this.markStreamReadyFromCanonical(threadId);
+      }
       this.render();
     } catch {
-      // SSE already provided the timeline event. Keep the visible state stable.
+      if (
+        generation === this.streamGeneration &&
+        threadId === this.selectedThreadId &&
+        isTaskTransportStale(this.streamState)
+      ) {
+        this.setStreamState(TASK_TRANSPORT_STATE.UNAVAILABLE);
+      }
     }
   }
 
@@ -1506,6 +1596,13 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   async createTaskFromForm(form) {
+    if (isTaskTransportStale(this.taskListStreamState)) {
+      this.error = new Error(
+        "Caffold server is unavailable. Wait for the task list to reconnect.",
+      );
+      this.render();
+      return;
+    }
     this.captureDraft(form);
     const formData = new FormData(form);
     const prompt = `${formData.get("prompt") ?? ""}`.trim();
@@ -1549,6 +1646,13 @@ class CaffoldTasksPage extends HTMLElement {
     const threadId = `${form?.dataset?.threadId ?? ""}`.trim();
     if (!threadId) {
       this.error = new Error("Could not identify the task for this prompt.");
+      this.render();
+      return;
+    }
+    if (isTaskTransportStale(this.streamState)) {
+      this.error = new Error(
+        "Caffold server is unavailable. Wait for the task to reconnect.",
+      );
       this.render();
       return;
     }
@@ -1603,7 +1707,7 @@ class CaffoldTasksPage extends HTMLElement {
           .map((event) => event.id)
           .filter(Boolean),
       ),
-      acknowledged: false,
+      state: PROMPT_SUBMISSION_STATE.SENDING,
     };
     this.followUpRequest = followUpRequest;
 
@@ -1635,6 +1739,18 @@ class CaffoldTasksPage extends HTMLElement {
       if (response?.threadId !== threadId) {
         throw new Error("Codex accepted the prompt for a different task.");
       }
+      followUpRequest.state = PROMPT_SUBMISSION_STATE.ACCEPTED;
+      this.setThreadEvents(
+        threadId,
+        (this.eventsByThread.get(threadId) ?? []).map((event) =>
+          event.id === optimisticEvent.id
+            ? withPromptSubmissionState(
+                event,
+                PROMPT_SUBMISSION_STATE.ACCEPTED,
+              )
+            : event,
+        ),
+      );
       if (!response?.steered) {
         this.permissionOverrideThreadIds.delete(threadId);
         this.composerSettingsOverrideThreadIds.delete(threadId);
@@ -1643,10 +1759,27 @@ class CaffoldTasksPage extends HTMLElement {
         this.conversationScrollMode = "bottom-if-needed";
       }
     } catch (error) {
-      if (followUpRequest.acknowledged) {
+      if (followUpRequest.state === PROMPT_SUBMISSION_STATE.ACCEPTED) {
         return;
       }
       const threadEvents = this.eventsByThread.get(threadId) ?? [];
+      const failureState = classifyPromptFailure(error);
+      followUpRequest.state = failureState;
+      if (failureState === PROMPT_SUBMISSION_STATE.OUTCOME_UNKNOWN) {
+        this.setThreadEvents(
+          threadId,
+          threadEvents.map((event) =>
+            event.id === optimisticEvent.id
+              ? withPromptSubmissionState(event, failureState)
+              : event,
+          ),
+        );
+        if (threadId === this.selectedThreadId) {
+          this.error = error;
+          this.conversationScrollMode = "bottom-if-needed";
+        }
+        return;
+      }
       this.setThreadEvents(
         threadId,
         threadEvents.filter((event) => event.id !== optimisticEvent.id),
@@ -1696,7 +1829,10 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   async interruptSelectedTask() {
-    if (!this.selectedThreadId) {
+    if (
+      !this.selectedThreadId ||
+      isTaskTransportStale(this.streamState)
+    ) {
       return;
     }
 
@@ -1729,7 +1865,12 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   async resolveApproval(approvalId, decision) {
-    if (!this.selectedThreadId || !approvalId || !decision) {
+    if (
+      !this.selectedThreadId ||
+      !approvalId ||
+      !decision ||
+      isTaskTransportStale(this.streamState)
+    ) {
       return;
     }
 
@@ -3319,6 +3460,14 @@ class CaffoldTasksPage extends HTMLElement {
   renderTaskSection(title, entries, history) {
     const loading = history ? this.taskHistoryLoading : this.taskListLoading;
     const error = history ? this.taskHistoryError : this.taskListError;
+    const availability =
+      !history && isTaskTransportStale(this.taskListStreamState)
+        ? `<p class="task-list-availability" data-task-list-availability="${escapeHtml(this.taskListStreamState)}" role="status">${
+            this.taskListStreamState === TASK_TRANSPORT_STATE.RECONNECTING
+              ? "Reconnecting to Caffold server..."
+              : "Caffold server unavailable."
+          }</p>`
+        : "";
     const tasks = sortTasksByRecency(entries);
     const pagination = history
       ? this.renderTaskHistoryPagination()
@@ -3362,6 +3511,7 @@ class CaffoldTasksPage extends HTMLElement {
           <h2>${escapeHtml(title)}</h2>
           <span>${tasks.length}</span>
         </header>
+        ${availability}
         ${content}
         ${pagination}
       </section>
@@ -3438,6 +3588,7 @@ class CaffoldTasksPage extends HTMLElement {
   renderHistoryTaskRow(task, repositoryKey = this.taskListPartitionKey(task)) {
     const threadId = taskThreadId(task);
     const continuing = this.continuingThreadIds.has(threadId);
+    const transportBlocked = isTaskTransportStale(this.taskListStreamState);
     const worktree = task?.worktree?.linked
       ? `<span class="task-row-worktree" title="${escapeHtml(taskWorktreeLabel(task))}">
           ${renderInlineIcon("GitBranch", "Linked worktree", "task-row-worktree-icon")}
@@ -3449,17 +3600,33 @@ class CaffoldTasksPage extends HTMLElement {
           <span class="task-row-title">${escapeHtml(task.title)}</span>
           <span class="task-row-indicators">${worktree}${renderTaskRowMeta(task, false)}</span>
         </div>
-        <button type="button" class="task-continue-button" data-task-action="continue-history-task" data-thread-id="${escapeHtml(threadId)}" ${continuing ? "disabled" : ""}>${continuing ? "Continuing..." : "Continue in Caffold"}</button>
+        <button type="button" class="task-continue-button" data-task-action="continue-history-task" data-thread-id="${escapeHtml(threadId)}" ${continuing || transportBlocked ? "disabled" : ""}>${continuing ? "Continuing..." : "Continue in Caffold"}</button>
       </li>
     `;
   }
 
+  taskTransportStateForRow(threadId) {
+    if (
+      threadId === this.selectedThreadId &&
+      isTaskTransportStale(this.streamState)
+    ) {
+      return this.streamState;
+    }
+    return this.taskListStreamState;
+  }
+
   renderTaskRow(task, repositoryKey = this.taskListPartitionKey(task)) {
     const threadId = task.threadId ?? task.id;
+    const transportState = this.taskTransportStateForRow(threadId);
     const selected = threadId === this.selectedThreadId ? ` aria-current="true"` : "";
-    const status = taskStatusView(task)?.status ?? taskThreadStatusType(task);
+    const status =
+      taskStatusView(task, transportState)?.status ?? taskThreadStatusType(task);
     const busy = status === "running" ? ` aria-busy="true"` : "";
-    const meta = renderTaskRowMeta(task, this.isTaskCompletionUnseen(task));
+    const meta = renderTaskRowMeta(
+      task,
+      this.isTaskCompletionUnseen(task),
+      transportState,
+    );
     const worktree = task?.worktree?.linked
       ? `<span class="task-row-worktree" title="${escapeHtml(taskWorktreeLabel(task))}">
           ${renderInlineIcon("GitBranch", "Linked worktree", "task-row-worktree-icon")}
@@ -3677,8 +3844,13 @@ class CaffoldTasksPage extends HTMLElement {
     const submitting =
       formName === "follow-up" &&
       this.followUpRequest?.threadId === threadId;
+    const transportBlocked =
+      formName === "follow-up"
+        ? isTaskTransportStale(this.streamState)
+        : isTaskTransportStale(this.taskListStreamState);
     const permissionLocked =
-      formName === "follow-up" && isTaskActivelyWorking(this.taskDetail?.task);
+      formName === "follow-up" &&
+      (isTaskActivelyWorking(this.taskDetail?.task) || transportBlocked);
     const permissionMode = this.selectedPermissionMode(formName);
     const images = this.composerImages(formName);
     const imageError = this.composerImageErrors.get(formName) ?? "";
@@ -3705,6 +3877,7 @@ class CaffoldTasksPage extends HTMLElement {
             data-max-rows="10.5"
             aria-label="${escapeHtml(ariaLabel)}"
             placeholder="${escapeHtml(placeholder)}"
+            ${transportBlocked ? "disabled" : ""}
           >${escapeHtml(prompt ?? "")}</textarea>
           ${imageError ? `<p class="task-composer-image-error" role="alert">${escapeHtml(imageError)}</p>` : ""}
           ${requestError ? `<p class="task-composer-request-error" role="alert">${escapeHtml(requestError)}</p>` : ""}
@@ -3721,7 +3894,7 @@ class CaffoldTasksPage extends HTMLElement {
               ${this.renderModelPicker(formName, permissionLocked)}
               ${this.renderPermissionPicker(formName, permissionLocked)}
             </div>
-            <button type="submit" class="task-send-button" aria-label="${escapeHtml(submitLabel)}" title="${escapeHtml(submitLabel)}"${submitting ? " disabled" : ""}>
+            <button type="submit" class="task-send-button" aria-label="${escapeHtml(submitLabel)}" title="${escapeHtml(transportBlocked ? "Caffold server is reconnecting." : submitLabel)}"${submitting || transportBlocked ? " disabled" : ""}>
               <span class="task-send-arrow" aria-hidden="true">&uarr;</span>
             </button>
           </div>
@@ -3915,13 +4088,13 @@ class CaffoldTasksPage extends HTMLElement {
       return this.renderContinueGate(task);
     }
     const approvals = pendingApprovals(this.events);
+    const controlsDisabled = isTaskTransportStale(this.streamState);
     return `
-      <div class="task-detail" data-thread-id="${escapeHtml(task.threadId ?? task.id)}" data-task-detail-view="${escapeHtml(this.taskDetailView)}">
+      <div class="task-detail" data-thread-id="${escapeHtml(task.threadId ?? task.id)}" data-task-detail-view="${escapeHtml(this.taskDetailView)}" data-task-availability="${escapeHtml(this.streamState)}">
         ${this.renderTaskDetailSummary(task)}
         <section class="task-conversation-pane" aria-label="Task conversation">
           <div class="task-conversation-scroll">
             <div class="task-conversation-column">
-              ${this.renderStreamState()}
               ${
                 this.detailLoadError
                   ? `<div class="task-detail-load-error task-detail-load-error-inline" role="alert">
@@ -3953,10 +4126,13 @@ class CaffoldTasksPage extends HTMLElement {
                   : ""
               }
               <ol class="task-conversation" aria-label="Task conversation">
-                ${renderConversation(this.events, task, approvals)}
+                ${renderConversation(this.events, task, approvals, {
+                  controlsDisabled,
+                })}
               </ol>
             </div>
           </div>
+          ${this.renderStreamState()}
           ${this.renderTaskComposer({
             formName: "follow-up",
             className: "task-follow-up-form",
@@ -3990,10 +4166,14 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   renderTaskDetailSummary(task) {
-    const status = renderTaskStatusChip(task, "task-detail-status", { label: false });
-    const statusLabel = formatTaskStatus(task);
+    const status = renderTaskStatusChip(task, "task-detail-status", {
+      label: false,
+      transportState: this.streamState,
+    });
+    const statusLabel = formatTaskStatus(task, this.streamState);
     const canOpenDiff = Boolean(task.worktree);
     const worktreeLabel = taskWorktreeLabel(task);
+    const transportBlocked = isTaskTransportStale(this.streamState);
 
     return `
       <section class="task-detail-summary">
@@ -4029,7 +4209,7 @@ class CaffoldTasksPage extends HTMLElement {
               ${this.renderTaskReviewMenus(task)}
               ${
                 task.activeTurn?.id
-                  ? `<button type="button" class="task-secondary-button" data-task-action="interrupt">
+                  ? `<button type="button" class="task-secondary-button" data-task-action="interrupt" ${transportBlocked ? 'disabled title="Caffold server connection is unavailable."' : ""}>
                       ${renderInlineIcon("Square", "Interrupt", "task-action-icon")}
                       <span class="task-action-label">Interrupt</span>
                     </button>`
@@ -4138,19 +4318,19 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   renderStreamState() {
-    if (this.streamState === "reconnecting") {
+    if (this.streamState === TASK_TRANSPORT_STATE.RECONNECTING) {
       return `
         <div class="task-stream-state" data-stream-state="reconnecting" role="status">
           <span class="task-stream-spinner" aria-hidden="true"></span>
-          <span>Reconnecting live updates...</span>
+          <span>Caffold server connection lost. Reconnecting...</span>
         </div>
       `;
     }
-    if (this.streamState === "error") {
+    if (this.streamState === TASK_TRANSPORT_STATE.UNAVAILABLE) {
       return `
-        <div class="task-stream-state" data-stream-state="error" role="status">
-          ${renderInlineIcon("TriangleAlert", "Live updates unavailable", "task-stream-icon")}
-          <span>Live updates unavailable.</span>
+        <div class="task-stream-state" data-stream-state="unavailable" role="status">
+          ${renderInlineIcon("TriangleAlert", "Caffold server unavailable", "task-stream-icon")}
+          <span>Caffold server unavailable.</span>
           <button type="button" data-task-action="retry-stream">Retry</button>
         </div>
       `;
@@ -4248,7 +4428,7 @@ class CaffoldTasksPage extends HTMLElement {
 customElements.define("caffold-tasks-page", CaffoldTasksPage);
 
 function isVisibleStreamState(state) {
-  return state === "reconnecting" || state === "error";
+  return isTaskTransportStale(state);
 }
 
 function normalizeModelOptions(response) {
@@ -4404,10 +4584,13 @@ function renderModelFallback(loading, error) {
   return `<p class="task-model-note">Open this menu after Codex is connected.</p>`;
 }
 
-function renderConversation(events, task, approvals = []) {
+function renderConversation(events, task, approvals = [], options = {}) {
   const conversationEvents = dedupeCanonicalEvents(events);
   const groups = conversationGroups(conversationEvents);
-  const activeGroupIndex = activeTurnGroupIndex(groups, task);
+  const liveStatusAvailable = !options.controlsDisabled;
+  const activeGroupIndex = liveStatusAvailable
+    ? activeTurnGroupIndex(groups, task)
+    : -1;
   const pendingApprovalIds = new Set(
     approvals.map((event) => event.payload?.approvalId).filter(Boolean),
   );
@@ -4423,13 +4606,17 @@ function renderConversation(events, task, approvals = []) {
         return renderTurnGroup(group, task, {
           forceActive: index === activeGroupIndex,
           pendingApprovalIds,
+          controlsDisabled: options.controlsDisabled,
+          liveStatusAvailable,
         });
       }
       if (
         group.event.type === "approval_requested" &&
         pendingApprovalIds.has(group.event.payload?.approvalId)
       ) {
-        return renderApprovalFlow([group.event]);
+        return renderApprovalFlow([group.event], {
+          disabled: options.controlsDisabled,
+        });
       }
       if (!shouldRenderStandaloneEvent(group.event, userPrompts)) {
         return "";
@@ -4437,7 +4624,11 @@ function renderConversation(events, task, approvals = []) {
       return renderConversationEvent(group.event, task, { active: false });
     })
     .join("");
-  if (isTaskActivelyWorking(task) && activeGroupIndex < 0) {
+  if (
+    liveStatusAvailable &&
+    isTaskActivelyWorking(task) &&
+    activeGroupIndex < 0
+  ) {
     return `${output}${renderActiveTurnStatus(
       {
         turnId: task?.activeTurn?.id ?? "active-turn",
@@ -4477,10 +4668,6 @@ function activeTurnGroupIndex(groups, task) {
     }
   }
   return groups.findLastIndex((group) => group.kind === "turn");
-}
-
-function isTaskActivelyWorking(task) {
-  return taskThreadStatusType(task) === "active";
 }
 
 function conversationGroups(events) {
@@ -4539,7 +4726,9 @@ function renderTurnGroup(group, task, options = {}) {
     assistantEvents.findLast(isFinalAssistantEvent) ?? assistantEvents.at(-1);
   const isCurrentTurn = task?.activeTurn?.id === group.turnId;
   const isActive =
-    isTaskActivelyWorking(task) && (options.forceActive || isCurrentTurn);
+    options.liveStatusAvailable !== false &&
+    isTaskActivelyWorking(task) &&
+    (options.forceActive || isCurrentTurn);
   const isComplete =
     Boolean(terminalEvent) ||
     (Boolean(finalAssistantEvent && isFinalAssistantEvent(finalAssistantEvent)) &&
@@ -4552,6 +4741,7 @@ function renderTurnGroup(group, task, options = {}) {
       terminalEvent,
       finalAssistantEvent,
       options.pendingApprovalIds,
+      options.controlsDisabled,
     );
   }
 
@@ -4561,6 +4751,7 @@ function renderTurnGroup(group, task, options = {}) {
         event,
         task,
         options.pendingApprovalIds,
+        options.controlsDisabled,
       ),
     )
     .filter(Boolean);
@@ -4576,6 +4767,7 @@ function renderCompletedTurnGroup(
   terminalEvent,
   finalAssistantEvent,
   pendingApprovalIds = new Set(),
+  controlsDisabled = false,
 ) {
   const output = [];
   const userEvents = group.events.filter((event) => event.type === "user_message");
@@ -4597,7 +4789,7 @@ function renderCompletedTurnGroup(
     output.push(renderTurnWorkSummary(group, workEvents, terminalEvent));
   }
   if (approvals.length > 0) {
-    output.push(renderApprovalFlow(approvals));
+    output.push(renderApprovalFlow(approvals, { disabled: controlsDisabled }));
   }
   if (finalAssistantEvent) {
     output.push(
@@ -4610,12 +4802,17 @@ function renderCompletedTurnGroup(
   return output.join("");
 }
 
-function renderActiveTurnTimelineEvent(event, task, pendingApprovalIds = new Set()) {
+function renderActiveTurnTimelineEvent(
+  event,
+  task,
+  pendingApprovalIds = new Set(),
+  controlsDisabled = false,
+) {
   if (
     event.type === "approval_requested" &&
     pendingApprovalIds.has(event.payload?.approvalId)
   ) {
-    return renderApprovalFlow([event]);
+    return renderApprovalFlow([event], { disabled: controlsDisabled });
   }
   if (
     event.type === "user_message" ||
@@ -4660,12 +4857,9 @@ function activeTurnStartMs(task) {
 }
 
 function activeTurnStateLabel(events, task) {
-  const activeFlags = taskActiveFlags(task);
-  if (activeFlags.includes("waitingOnApproval")) {
-    return "Waiting for approval";
-  }
-  if (activeFlags.includes("waitingOnUserInput")) {
-    return "Waiting for input";
+  const activeFlagLabel = taskActiveFlagLabel(task);
+  if (activeFlagLabel) {
+    return activeFlagLabel;
   }
 
   const event =
@@ -4716,14 +4910,16 @@ function activeWorkItemLabel(itemType) {
   return "Thinking";
 }
 
-function renderApprovalFlow(approvals) {
+function renderApprovalFlow(approvals, options = {}) {
   if (!approvals.length) {
     return "";
   }
   return `
     <li class="task-event task-approval-flow">
       <section class="task-approvals" aria-label="Pending approvals">
-        ${approvals.map(renderApprovalCard).join("")}
+        ${approvals
+          .map((approval) => renderApprovalCard(approval, options))
+          .join("")}
       </section>
     </li>
   `;
@@ -4860,10 +5056,20 @@ function renderMessageEvent(event, role, text, options = {}) {
     ? ` data-message-phase="${escapeHtml(options.phase)}"`
     : "";
   const attachmentsAttribute = attachments.length ? " data-has-attachments" : "";
+  const submissionState = promptSubmissionState(event);
+  const deliveryAttribute = submissionState
+    ? ` data-delivery-state="${escapeHtml(submissionState)}"`
+    : "";
+  const deliveryLabel = {
+    [PROMPT_SUBMISSION_STATE.SENDING]: "Sending...",
+    [PROMPT_SUBMISSION_STATE.ACCEPTED]: "Accepted - syncing...",
+    [PROMPT_SUBMISSION_STATE.OUTCOME_UNKNOWN]: "Delivery unconfirmed",
+  }[submissionState] ?? "";
 
   return `
-    <li class="task-event task-message"${eventIdentityAttribute(event)} data-event-type="${escapeHtml(event.type)}" data-message-role="${escapeHtml(role)}"${phaseAttribute}${attachmentsAttribute}>
+    <li class="task-event task-message"${eventIdentityAttribute(event)} data-event-type="${escapeHtml(event.type)}" data-message-role="${escapeHtml(role)}"${phaseAttribute}${attachmentsAttribute}${deliveryAttribute}>
       <div class="task-message-header">
+        ${deliveryLabel ? `<span class="task-message-delivery">${escapeHtml(deliveryLabel)}</span>` : ""}
         <time>${escapeHtml(formatDate(event.createdMs))}</time>
       </div>
       ${renderMessageAttachments(attachments)}
@@ -5588,7 +5794,7 @@ function uniquePaths(paths) {
   return [...new Set(paths)];
 }
 
-function renderApprovalCard(event) {
+function renderApprovalCard(event, options = {}) {
   const payload = event.payload ?? {};
   const params = payload.params ?? {};
   const approvalId = payload.approvalId ?? "";
@@ -5612,7 +5818,7 @@ function renderApprovalCard(event) {
           .filter((decision) => ["accept", "acceptForSession", "decline", "cancel"].includes(decision))
           .map(
             (decision) =>
-              `<button type="button" class="task-secondary-button" data-task-action="approval" data-approval-id="${escapeHtml(approvalId)}" data-decision="${escapeHtml(decision)}">${escapeHtml(formatDecision(decision))}</button>`,
+              `<button type="button" class="task-secondary-button" data-task-action="approval" data-approval-id="${escapeHtml(approvalId)}" data-decision="${escapeHtml(decision)}" ${options.disabled ? "disabled" : ""}>${escapeHtml(formatDecision(decision))}</button>`,
           )
           .join("")}
       </div>
@@ -5724,6 +5930,7 @@ function optimisticUserMessageEvent(threadId, prompt, images, requestId) {
       text: prompt,
       item: { content },
       optimistic: true,
+      submissionState: PROMPT_SUBMISSION_STATE.SENDING,
     },
     createdMs,
   };
@@ -6000,9 +6207,16 @@ function parseJson(value) {
   }
 }
 
-function renderTaskRowMeta(task, unseen = false) {
-  if (taskStatusView(task)) {
-    return renderTaskStatusChip(task, "task-row-meta", { label: false });
+function renderTaskRowMeta(
+  task,
+  unseen = false,
+  transportState = TASK_TRANSPORT_STATE.READY,
+) {
+  if (taskStatusView(task, transportState)) {
+    return renderTaskStatusChip(task, "task-row-meta", {
+      label: false,
+      transportState,
+    });
   }
   if (unseen) {
     return `
@@ -6025,14 +6239,17 @@ function renderTaskRowMeta(task, unseen = false) {
 }
 
 function renderTaskStatusChip(task, className = "", options = {}) {
-  const view = taskStatusView(task);
+  const view = taskStatusView(
+    task,
+    options.transportState ?? TASK_TRANSPORT_STATE.READY,
+  );
   if (!view) {
     return "";
   }
   const showLabel = options.label !== false;
 
   const classes = ["task-status-chip", className].filter(Boolean).join(" ");
-  const icon = ["running", "syncing"].includes(view.status)
+  const icon = ["running", "syncing", "reconnecting"].includes(view.status)
     ? `<span class="task-status-spinner" aria-hidden="true"></span><span class="sr-only">${escapeHtml(view.label)}</span>`
     : renderInlineIcon(view.icon, view.label, "task-status-icon");
   return `
@@ -6046,60 +6263,6 @@ function renderTaskStatusChip(task, className = "", options = {}) {
       ${showLabel ? `<span class="task-status-label">${escapeHtml(view.label)}</span>` : ""}
     </span>
   `;
-}
-
-function taskStatusView(task) {
-  const normalized = taskStatusKey(task);
-  return {
-    running: { status: "running", label: "running", icon: "" },
-    waiting_for_approval: {
-      status: "waiting_for_approval",
-      label: "approval",
-      icon: "CircleAlert",
-    },
-    waiting_on_user_input: {
-      status: "waiting_on_user_input",
-      label: "input",
-      icon: "MessageCircleQuestion",
-    },
-    failed: { status: "failed", label: "failed", icon: "TriangleAlert" },
-  }[normalized] ?? null;
-}
-
-function taskStatusKey(task) {
-  const type = taskThreadStatusType(task);
-  if (type === "active") {
-    const activeFlags = taskActiveFlags(task);
-    if (activeFlags.includes("waitingOnApproval")) {
-      return "waiting_for_approval";
-    }
-    if (activeFlags.includes("waitingOnUserInput")) {
-      return "waiting_on_user_input";
-    }
-    return "running";
-  }
-  return type === "systemError" ? "failed" : type;
-}
-
-function taskThreadStatusType(task) {
-  return `${task?.threadStatus?.type ?? "notLoaded"}`;
-}
-
-function taskActiveFlags(task) {
-  return Array.isArray(task?.threadStatus?.activeFlags)
-    ? task.threadStatus.activeFlags
-    : [];
-}
-
-function formatTaskStatus(task) {
-  const key = taskStatusKey(task);
-  return {
-    waiting_for_approval: "waiting for approval",
-    waiting_on_user_input: "waiting for input",
-    running: "active",
-    systemError: "system error",
-    notLoaded: "not loaded",
-  }[key] ?? key;
 }
 
 function formatStatus(status) {

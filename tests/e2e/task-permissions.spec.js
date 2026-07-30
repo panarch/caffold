@@ -28,6 +28,40 @@ const PERMISSIONS = {
 };
 
 async function stubComposerApis(page) {
+  await page.addInitScript(() => {
+    window.__taskPermissionEventSources = [];
+    window.EventSource = class MockEventSource {
+      constructor(url) {
+        this.url = url;
+        this.listeners = new Map();
+        this.readyState = 0;
+        window.__taskPermissionEventSources.push(this);
+        if (url.includes("/api/tasks/thread-1/stream")) {
+          window.__taskDetailSource = this;
+        } else if (url.startsWith("/api/tasks/stream")) {
+          window.__taskListSource = this;
+        }
+        queueMicrotask(() => this.emitOpen());
+      }
+
+      addEventListener(type, listener) {
+        this.listeners.set(type, listener);
+      }
+
+      emit(type, payload) {
+        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
+      }
+
+      emitOpen() {
+        this.readyState = 1;
+        this.listeners.get("open")?.({});
+      }
+
+      close() {
+        this.readyState = 2;
+      }
+    };
+  });
   await page.route("**/api/codex/permissions*", (route) =>
     route.fulfill({ json: PERMISSIONS }),
   );
@@ -531,29 +565,6 @@ test("active task without a canonical turn omits controls and elapsed time", asy
 test("loading detail accepts a canonical task sync without a synthetic task", async ({
   page,
 }) => {
-  await page.addInitScript(() => {
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        if (url.includes("/api/tasks/thread-1/stream")) {
-          window.__taskDetailSource = this;
-        } else if (url.startsWith("/api/tasks/stream")) {
-          window.__taskListSource = this;
-        }
-      }
-
-      addEventListener(type, listener) {
-        this.listeners.set(type, listener);
-      }
-
-      emit(type, payload) {
-        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
-      }
-
-      close() {}
-    };
-  });
   await stubComposerApis(page);
   await page.route("**/api/tasks/thread-1", (route) =>
     route.fulfill({

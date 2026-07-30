@@ -847,7 +847,7 @@ caffold-tasks-page .task-diff-view {
 
 caffold-tasks-page .task-conversation-pane {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto auto;
 }
 
 caffold-tasks-page .task-files-view {
@@ -1224,17 +1224,29 @@ caffold-tasks-page .task-history-loading {
 }
 
 caffold-tasks-page .task-stream-state {
-  justify-self: center;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 7px;
   min-height: 28px;
-  padding: 3px 8px;
+  padding: 5px 12px;
+  border-top: 1px solid #dfc58f;
+  background: #fff8e7;
   color: var(--muted);
 }
 
-caffold-tasks-page .task-stream-state[data-stream-state="error"] {
+caffold-tasks-page .task-stream-state[data-stream-state="unavailable"] {
   color: #8a5b00;
+}
+
+caffold-tasks-page .task-list-availability {
+  margin: 0;
+  padding: 6px 10px;
+  border-bottom: 1px solid #dfc58f;
+  background: #fff8e7;
+  color: #7f5600;
+  font-size: 12px;
+  line-height: 16px;
 }
 
 caffold-tasks-page .task-stream-state button {
@@ -1340,7 +1352,8 @@ caffold-tasks-page .task-status-spinner {
 }
 
 caffold-tasks-page .task-status-chip[data-status="running"],
-caffold-tasks-page .task-status-chip[data-status="syncing"] {
+caffold-tasks-page .task-status-chip[data-status="syncing"],
+caffold-tasks-page .task-status-chip[data-status="reconnecting"] {
   color: var(--accent);
 }
 
@@ -1352,10 +1365,20 @@ caffold-tasks-page .task-status-chip[data-status="waiting_on_user_input"] {
 }
 
 caffold-tasks-page .task-status-chip[data-status="failed"],
-caffold-tasks-page .task-status-chip[data-status="interrupted"] {
+caffold-tasks-page .task-status-chip[data-status="interrupted"],
+caffold-tasks-page .task-status-chip[data-status="unavailable"] {
   border-color: #e6b5b0;
   background: #fff2f0;
   color: #9f2f25;
+}
+
+caffold-tasks-page
+  .task-detail:is(
+    [data-task-availability="reconnecting"],
+    [data-task-availability="unavailable"]
+  )
+  .task-turn-active {
+  display: none;
 }
 
 @keyframes task-status-spin {
@@ -1402,6 +1425,12 @@ caffold-tasks-page .task-message-header {
   align-items: center;
   min-height: 16px;
   color: var(--muted);
+}
+
+caffold-tasks-page .task-message-delivery {
+  margin-right: 7px;
+  color: #8a5b00;
+  font-size: 11px;
 }
 
 caffold-tasks-page .task-command pre,
