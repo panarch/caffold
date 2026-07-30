@@ -6179,6 +6179,109 @@ test("opens a running conversation at the latest message when stream sync wins t
   await expect.poll(() => isScrolledToBottom(scroller)).toBe(true);
 });
 
+test("orders separate turns by message chronology when a newer start marker is stale", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Task chronology regression");
+  await installEventSourceMock(page, { autoOpen: true });
+  await mockCodexModels(page);
+
+  const threadId = "thread_cross_turn_chronology";
+  const oldMs = 1_767_192_000_000;
+  const newMs = oldMs + 7 * 24 * 60 * 60 * 1_000;
+  const task = {
+    id: threadId,
+    threadId,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Cross-turn chronology",
+    preview: "New answer",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    createdMs: oldMs,
+    updatedMs: newMs,
+    recencyMs: newMs,
+    lastEventSummary: "New answer",
+  };
+  const event = (id, type, createdMs, turnId, text = null, sortIndex = 0) => ({
+    id,
+    threadId,
+    type,
+    summary: type,
+    payload: {
+      threadId,
+      turnId,
+      ...(text === null ? {} : { text }),
+      ...(type === "turn_completed" ? { status: "completed" } : {}),
+    },
+    createdMs,
+    sortIndex,
+  });
+  const events = [
+    event("new-start-stale", "turn_started", oldMs, "turn-new"),
+    event("old-start", "turn_started", oldMs + 1_000, "turn-old"),
+    event("old-user", "user_message", oldMs + 1_000, "turn-old", "Old prompt", 1),
+    event(
+      "old-answer",
+      "assistant_message",
+      oldMs + 1_000,
+      "turn-old",
+      "Old answer",
+      2,
+    ),
+    event("old-completed", "turn_completed", oldMs + 2_000, "turn-old"),
+    event("new-user", "user_message", newMs, "turn-new", "New prompt", 1),
+    event(
+      "new-answer",
+      "assistant_message",
+      newMs,
+      "turn-new",
+      "New answer",
+      2,
+    ),
+    event("new-completed", "turn_completed", newMs + 1_000, "turn-new"),
+  ];
+  const detail = {
+    threadId,
+    syncState: "ready",
+    managed: true,
+    revision: 1,
+    task,
+    events,
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+    historyLoading: false,
+    permissionMode: null,
+    model: null,
+    reasoningEffort: null,
+  };
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [task], nextCursor: null }),
+    }),
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(detail),
+    }),
+  );
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  const messageIds = await page
+    .locator(".task-conversation .task-message")
+    .evaluateAll((messages) => messages.map((message) => message.dataset.eventId));
+
+  expect(messageIds).toEqual([
+    "old-user",
+    "old-answer",
+    "new-user",
+    "new-answer",
+  ]);
+});
+
 test("keeps task event chronology stable through approval, completion, and reload", async ({
   page,
 }, testInfo) => {

@@ -3465,29 +3465,59 @@ fn thread_events(thread: &JsonValue) -> Vec<TaskEventRecord> {
         return Vec::new();
     };
     let mut events = Vec::new();
-    let created_ms = seconds_to_ms(thread.get("createdAt").and_then(JsonValue::as_f64));
-    for turn in thread
+    let thread_created_ms = seconds_to_ms(thread.get("createdAt").and_then(JsonValue::as_f64));
+    let thread_activity_ms = thread
+        .get("recencyAt")
+        .and_then(JsonValue::as_f64)
+        .or_else(|| thread.get("updatedAt").and_then(JsonValue::as_f64))
+        .map(seconds_to_ms_value)
+        .unwrap_or(thread_created_ms)
+        .max(thread_created_ms);
+    let turns = thread
         .get("turns")
         .and_then(JsonValue::as_array)
-        .into_iter()
-        .flatten()
-    {
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    let mut previous_turn_ms = thread_created_ms.saturating_sub(1);
+    for (turn_index, turn) in turns.iter().enumerate() {
         let turn_id = turn.get("id").and_then(JsonValue::as_str).unwrap_or("turn");
-        let started_ms = turn
+        let canonical_started_ms = turn
             .get("startedAt")
             .and_then(JsonValue::as_f64)
             .map(seconds_to_ms_value)
-            .unwrap_or(created_ms);
-        let mut started = task_event_record(
-            thread_id,
-            &format!("{turn_id}:started"),
-            "turn_started",
-            "Turn started",
-            Some(json!({ "threadId": thread_id, "turnId": turn_id })),
-            started_ms,
-        );
-        started.sort_index = Some(0);
-        events.push(started);
+            .filter(|value| *value > 0);
+        let canonical_completed_ms = turn
+            .get("completedAt")
+            .and_then(JsonValue::as_f64)
+            .map(seconds_to_ms_value)
+            .filter(|value| *value > 0);
+        let minimum_turn_ms = if turn_index == 0 {
+            thread_created_ms
+        } else {
+            previous_turn_ms.saturating_add(1)
+        };
+        let fallback_ms = canonical_completed_ms.unwrap_or_else(|| {
+            if turn_index + 1 == turns.len() {
+                thread_activity_ms
+            } else {
+                minimum_turn_ms
+            }
+        });
+        let timeline_ms = canonical_started_ms
+            .unwrap_or(fallback_ms)
+            .max(minimum_turn_ms);
+        if canonical_started_ms.is_some() {
+            let mut started = task_event_record(
+                thread_id,
+                &format!("{turn_id}:started"),
+                "turn_started",
+                "Turn started",
+                Some(json!({ "threadId": thread_id, "turnId": turn_id })),
+                timeline_ms,
+            );
+            started.sort_index = Some(0);
+            events.push(started);
+        }
         for (index, item) in turn
             .get("items")
             .and_then(JsonValue::as_array)
@@ -3500,16 +3530,12 @@ fn thread_events(thread: &JsonValue) -> Vec<TaskEventRecord> {
                 "turnId": turn_id,
                 "item": item
             });
-            if let Some(mut event) = task_event_from_thread_item(thread_id, started_ms, &params) {
+            if let Some(mut event) = task_event_from_thread_item(thread_id, timeline_ms, &params) {
                 event.sort_index = Some(u32::try_from(index).unwrap_or(u32::MAX).saturating_add(1));
                 events.push(event);
             }
         }
-        if let Some(completed_ms) = turn
-            .get("completedAt")
-            .and_then(JsonValue::as_f64)
-            .map(seconds_to_ms_value)
-        {
+        if let Some(completed_ms) = canonical_completed_ms {
             let status = turn
                 .get("status")
                 .and_then(JsonValue::as_str)
@@ -3526,8 +3552,11 @@ fn thread_events(thread: &JsonValue) -> Vec<TaskEventRecord> {
                 "turn_completed",
                 summary,
                 Some(json!({ "threadId": thread_id, "turnId": turn_id, "status": status })),
-                completed_ms,
+                completed_ms.max(timeline_ms),
             ));
+            previous_turn_ms = completed_ms.max(timeline_ms);
+        } else {
+            previous_turn_ms = timeline_ms;
         }
     }
     events
@@ -8095,6 +8124,97 @@ mod tests {
         assert_eq!(
             assistant.payload.as_ref().unwrap()["text"],
             "The change is ready to review."
+        );
+    }
+
+    #[test]
+    fn missing_turn_start_does_not_move_a_newer_turn_to_thread_creation() {
+        let thread = json!({
+            "id": "thread_1",
+            "createdAt": 1.0,
+            "updatedAt": 1.0,
+            "recencyAt": 20.0,
+            "turns": [
+                {
+                    "id": "turn_old",
+                    "status": "completed",
+                    "startedAt": 2.0,
+                    "completedAt": 4.0,
+                    "items": [
+                        {
+                            "type": "userMessage",
+                            "id": "old_user",
+                            "content": [{ "type": "text", "text": "Old prompt" }]
+                        },
+                        {
+                            "type": "agentMessage",
+                            "id": "old_answer",
+                            "text": "Old answer",
+                            "phase": "final"
+                        }
+                    ]
+                },
+                {
+                    "id": "turn_new",
+                    "status": "completed",
+                    "startedAt": null,
+                    "completedAt": 20.0,
+                    "items": [
+                        {
+                            "type": "userMessage",
+                            "id": "new_user",
+                            "content": [{ "type": "text", "text": "New prompt" }]
+                        },
+                        {
+                            "type": "agentMessage",
+                            "id": "new_answer",
+                            "text": "New answer",
+                            "phase": "final"
+                        }
+                    ]
+                }
+            ]
+        });
+
+        let mut events = thread_events(&thread);
+        sort_task_events(&mut events);
+
+        assert!(
+            events
+                .iter()
+                .all(|event| event.id != "thread_1:turn_new:started"),
+            "a missing startedAt must not create a turn_started event at thread creation"
+        );
+        let visible_messages = events
+            .iter()
+            .filter(|event| {
+                matches!(
+                    event.event_type.as_str(),
+                    "user_message" | "assistant_message"
+                )
+            })
+            .map(|event| {
+                (
+                    event
+                        .payload
+                        .as_ref()
+                        .and_then(|payload| payload.get("text"))
+                        .and_then(JsonValue::as_str)
+                        .unwrap()
+                        .to_string(),
+                    event.created_ms,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            visible_messages,
+            vec![
+                ("Old prompt".to_string(), 2_000),
+                ("Old answer".to_string(), 2_000),
+                ("New prompt".to_string(), 20_000),
+                ("New answer".to_string(), 20_000),
+            ]
         );
     }
 

@@ -40,7 +40,35 @@ export function conversationGroups(events) {
     group.events.push(event);
     activeGroup = isTerminalTurnEvent(event) ? null : group;
   }
-  return groups;
+  return groups
+    .map((group, index) => ({
+      group,
+      index,
+      createdMs: conversationGroupCreatedMs(group),
+    }))
+    .sort(
+      (left, right) =>
+        left.createdMs - right.createdMs || left.index - right.index,
+    )
+    .map(({ group }) => group);
+}
+
+function conversationGroupCreatedMs(group) {
+  if (group.kind !== "turn") {
+    return group.event?.createdMs ?? 0;
+  }
+  const message = group.events.find((event) =>
+    ["user_message", "assistant_message"].includes(event.type),
+  );
+  const substantive =
+    message ??
+    group.events.find(
+      (event) =>
+        event.type !== "turn_started" &&
+        event.type !== "thread_status_changed",
+    ) ??
+    group.events[0];
+  return substantive?.createdMs ?? 0;
 }
 
 export function eventTurnId(event) {
