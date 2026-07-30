@@ -5,12 +5,13 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     thread,
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 type RolloutSignalCallback = dyn Fn(String, TaskRolloutSignal) + Send + Sync;
 const ROLLOUT_STAT_INTERVAL: Duration = Duration::from_millis(250);
 const ROLLOUT_INITIAL_TAIL_BYTES: u64 = 1024 * 1024;
+const ROLLOUT_INITIAL_ACTIVITY_MAX_AGE: Duration = Duration::from_secs(30 * 60);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum TaskRolloutSignal {
@@ -249,7 +250,9 @@ fn initial_rollout_reader(path: &Path) -> (RolloutReader, Option<TaskRolloutSign
     let Ok(mut file) = std::fs::File::open(path) else {
         return (RolloutReader::default(), None);
     };
-    let len = file.metadata().map_or(0, |metadata| metadata.len());
+    let (len, modified) = file.metadata().map_or((0, None), |metadata| {
+        (metadata.len(), metadata.modified().ok())
+    });
     let start = len.saturating_sub(ROLLOUT_INITIAL_TAIL_BYTES);
     if file.seek(SeekFrom::Start(start)).is_err() {
         return (RolloutReader::default(), None);
@@ -268,8 +271,15 @@ fn initial_rollout_reader(path: &Path) -> (RolloutReader, Option<TaskRolloutSign
         .rposition(|byte| *byte == b'\n')
         .map_or(0, |index| index + 1);
     let carry = bytes.split_off(complete_len);
-    let signal = latest_external_activity_signal(&bytes);
+    let signal =
+        latest_external_activity_signal(&bytes).filter(|_| initial_activity_is_recent(modified));
     (RolloutReader { offset: len, carry }, signal)
+}
+
+fn initial_activity_is_recent(modified: Option<SystemTime>) -> bool {
+    modified
+        .and_then(|modified| SystemTime::now().duration_since(modified).ok())
+        .is_none_or(|age| age <= ROLLOUT_INITIAL_ACTIVITY_MAX_AGE)
 }
 
 fn read_rollout_changes(
@@ -418,6 +428,57 @@ mod tests {
                 turn_id: "turn-2".to_string(),
                 completed_at_ms: None,
                 aborted: true,
+            })
+        );
+    }
+
+    #[test]
+    fn stale_unfinished_activity_is_not_restored_on_initial_subscription() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("rollout.jsonl");
+        std::fs::write(
+            &path,
+            concat!(
+                r#"{"timestamp":"2026-07-29T13:00:58Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-stale","started_at":1785330058}}"#,
+                "\n"
+            ),
+        )
+        .unwrap();
+        let stale_modified = std::time::SystemTime::now()
+            .checked_sub(Duration::from_secs(24 * 60 * 60))
+            .unwrap();
+        OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_times(std::fs::FileTimes::new().set_modified(stale_modified))
+            .unwrap();
+
+        let (_, signal) = initial_rollout_reader(&path);
+
+        assert_eq!(signal, None);
+    }
+
+    #[test]
+    fn recent_unfinished_activity_is_restored_on_initial_subscription() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("rollout.jsonl");
+        std::fs::write(
+            &path,
+            concat!(
+                r#"{"timestamp":"2026-07-30T03:00:58Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-live","started_at":1785380458}}"#,
+                "\n"
+            ),
+        )
+        .unwrap();
+
+        let (_, signal) = initial_rollout_reader(&path);
+
+        assert_eq!(
+            signal,
+            Some(TaskRolloutSignal::ExternalStarted {
+                turn_id: "turn-live".to_string(),
+                started_at_ms: 1_785_380_458_000,
             })
         );
     }
