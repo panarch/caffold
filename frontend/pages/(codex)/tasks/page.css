@@ -136,7 +136,7 @@ caffold-tasks-page .task-detail-meta {
 }
 
 caffold-tasks-page .task-conversation-pane,
-:where(caffold-task-composer .task-composer, caffold-tasks-page .task-follow-up-form.task-composer) {
+caffold-task-composer .task-composer {
   font-size: var(--task-detail-font-size);
   line-height: var(--task-detail-line-height);
 }
@@ -159,8 +159,8 @@ caffold-task-conversation .task-command summary,
 caffold-task-conversation .task-tool-card header,
 caffold-task-conversation .task-file-change header,
 caffold-task-conversation .task-work-item header,
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-composer-context,
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-note {
+caffold-task-composer .task-composer-context,
+caffold-task-composer .task-model-note {
   font-size: var(--task-detail-meta-size);
   line-height: 16px;
 }
@@ -766,7 +766,7 @@ caffold-tasks-page .task-diff-panel > caffold-git-compare-browser {
   }
 }
 
-:where(caffold-task-composer .task-composer, caffold-tasks-page .task-follow-up-form.task-composer) {
+caffold-task-composer .task-composer {
   margin: 0 auto;
   width: min(100%, 980px);
   padding: 14px;
@@ -1428,7 +1428,7 @@ caffold-task-conversation .task-file-change p {
   padding: 10px 11px;
 }
 
-caffold-tasks-page .task-follow-up-form {
+caffold-task-composer .task-follow-up-form {
   width: 100%;
   max-width: none;
   padding: 10px 14px 12px;
@@ -1436,12 +1436,12 @@ caffold-tasks-page .task-follow-up-form {
   background: var(--surface);
 }
 
-caffold-tasks-page .task-follow-up-form .task-composer-panel {
+caffold-task-composer .task-follow-up-form .task-composer-panel {
   width: min(100%, 980px);
   margin: 0 auto;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-composer-panel {
+caffold-task-composer .task-composer-panel {
   display: grid;
   grid-template-rows: auto auto;
   position: relative;
@@ -1452,7 +1452,7 @@ caffold-tasks-page .task-follow-up-form .task-composer-panel {
   box-shadow: 0 10px 32px rgb(31 42 36 / 8%);
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-composer-context {
+caffold-task-composer .task-composer-context {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
@@ -1463,13 +1463,13 @@ caffold-tasks-page .task-follow-up-form .task-composer-panel {
   color: var(--muted);
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-composer-context > span {
+caffold-task-composer .task-composer-context > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-composer-context button {
+caffold-task-composer .task-composer-context button {
   min-height: 28px;
   padding: 3px 7px;
   border: 0;
@@ -1480,18 +1480,18 @@ caffold-tasks-page .task-follow-up-form .task-composer-panel {
   cursor: pointer;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-composer-context button:hover,
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-composer-context button:focus-visible {
+caffold-task-composer .task-composer-context button:hover,
+caffold-task-composer .task-composer-context button:focus-visible {
   background: #eef4ef;
   outline: none;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-composer-context-icon {
+caffold-task-composer .task-composer-context-icon {
   width: 16px;
   height: 16px;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-composer-attachments {
+caffold-task-composer .task-composer-attachments {
   display: flex;
   gap: 8px;
   min-width: 0;
@@ -1500,7 +1500,7 @@ caffold-tasks-page .task-follow-up-form .task-composer-panel {
   overscroll-behavior-inline: contain;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-composer-attachment {
+caffold-task-composer .task-composer-attachment {
   position: relative;
   flex: 0 0 72px;
   width: 72px;
@@ -1512,14 +1512,14 @@ caffold-tasks-page .task-follow-up-form .task-composer-panel {
   background: var(--surface-muted);
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-composer-attachment img {
+caffold-task-composer .task-composer-attachment img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-composer-attachment button {
+caffold-task-composer .task-composer-attachment button {
   display: grid;
   position: absolute;
   top: 4px;
@@ -1535,19 +1535,19 @@ caffold-tasks-page .task-follow-up-form .task-composer-panel {
   cursor: pointer;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-composer-attachment button:hover,
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-composer-attachment button:focus-visible {
+caffold-task-composer .task-composer-attachment button:hover,
+caffold-task-composer .task-composer-attachment button:focus-visible {
   background: var(--text);
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-composer-attachment-remove-icon {
+caffold-task-composer .task-composer-attachment-remove-icon {
   width: 14px;
   height: 14px;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-composer-image-error {
+caffold-task-composer .task-composer-image-error {
   margin: 0;
   padding: 0 18px 4px;
   color: var(--danger);
@@ -1555,7 +1555,7 @@ caffold-tasks-page .task-follow-up-form .task-composer-panel {
   line-height: 17px;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-composer-request-error {
+caffold-task-composer .task-composer-request-error {
   margin: 0;
   padding: 0 18px 4px;
   color: var(--danger);
@@ -1563,7 +1563,7 @@ caffold-tasks-page .task-follow-up-form .task-composer-panel {
   line-height: 17px;
 }
 
-:where(caffold-task-composer .task-composer, caffold-tasks-page .task-follow-up-form.task-composer) textarea {
+caffold-task-composer .task-composer textarea {
   width: 100%;
   min-width: 0;
   min-height: var(--task-detail-composer-min-height);
@@ -1579,16 +1579,16 @@ caffold-tasks-page .task-follow-up-form .task-composer-panel {
   resize: none;
 }
 
-:where(caffold-task-composer .task-composer, caffold-tasks-page .task-follow-up-form.task-composer) textarea::placeholder {
+caffold-task-composer .task-composer textarea::placeholder {
   color: #8d938f;
 }
 
-:where(caffold-task-composer .task-composer, caffold-tasks-page .task-follow-up-form.task-composer)[aria-busy="true"] .task-send-button {
+caffold-task-composer .task-composer[aria-busy="true"] .task-send-button {
   cursor: wait;
   opacity: 0.55;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-composer-toolbar {
+caffold-task-composer .task-composer-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -1597,27 +1597,27 @@ caffold-tasks-page .task-follow-up-form .task-composer-panel {
   padding: 8px 10px 10px 14px;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-composer-tools {
+caffold-task-composer .task-composer-tools {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-picker,
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-permission-picker {
+caffold-task-composer .task-model-picker,
+caffold-task-composer .task-permission-picker {
   position: relative;
   min-width: 0;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-backdrop,
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-permission-backdrop {
+caffold-task-composer .task-model-backdrop,
+caffold-task-composer .task-permission-backdrop {
   display: none;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-toolbar-button,
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-button,
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-permission-button {
+caffold-task-composer .task-toolbar-button,
+caffold-task-composer .task-model-button,
+caffold-task-composer .task-permission-button {
   display: inline-grid;
   grid-auto-flow: column;
   align-items: center;
@@ -1632,64 +1632,64 @@ caffold-tasks-page .task-follow-up-form .task-composer-panel {
   cursor: pointer;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-button {
+caffold-task-composer .task-model-button {
   max-width: min(100%, 384px);
   color: var(--text);
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-permission-button {
+caffold-task-composer .task-permission-button {
   max-width: min(100%, 220px);
   color: var(--text);
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-button span:not(.task-model-caret),
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-permission-button span:not(.task-model-caret) {
+caffold-task-composer .task-model-button span:not(.task-model-caret),
+caffold-task-composer .task-permission-button span:not(.task-model-caret) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-toolbar-button:hover,
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-toolbar-button:focus-visible,
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-button:hover,
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-button:focus-visible,
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-permission-button:hover,
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-permission-button:focus-visible {
+caffold-task-composer .task-toolbar-button:hover,
+caffold-task-composer .task-toolbar-button:focus-visible,
+caffold-task-composer .task-model-button:hover,
+caffold-task-composer .task-model-button:focus-visible,
+caffold-task-composer .task-permission-button:hover,
+caffold-task-composer .task-permission-button:focus-visible {
   background: #eef4ef;
   outline: none;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-icon {
+caffold-task-composer .task-model-icon {
   width: 16px;
   height: 16px;
   color: var(--muted);
   stroke-width: 2;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-permission-icon {
+caffold-task-composer .task-permission-icon {
   width: 16px;
   height: 16px;
   color: var(--muted);
   stroke-width: 2;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-permission-button.is-dangerous,
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-permission-option.is-dangerous strong {
+caffold-task-composer .task-permission-button.is-dangerous,
+caffold-task-composer .task-permission-option.is-dangerous strong {
   color: var(--danger);
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-permission-button:disabled {
+caffold-task-composer .task-permission-button:disabled {
   cursor: not-allowed;
   opacity: 0.58;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-caret {
+caffold-task-composer .task-model-caret {
   color: var(--muted);
   font-size: 15px;
   line-height: 15px;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-send-button {
+caffold-task-composer .task-send-button {
   display: grid;
   place-items: center;
   width: 38px;
@@ -1701,21 +1701,21 @@ caffold-tasks-page .task-follow-up-form .task-composer-panel {
   cursor: pointer;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-send-button:hover,
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-send-button:focus-visible {
+caffold-task-composer .task-send-button:hover,
+caffold-task-composer .task-send-button:focus-visible {
   background: #0b1711;
   outline: none;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-send-arrow {
+caffold-task-composer .task-send-arrow {
   display: block;
   font-size: 23px;
   font-weight: 500;
   line-height: 1;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-popover,
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-permission-popover {
+caffold-task-composer .task-model-popover,
+caffold-task-composer .task-permission-popover {
   position: absolute;
   z-index: 10;
   top: calc(100% + 8px);
@@ -1732,43 +1732,43 @@ caffold-tasks-page .task-follow-up-form .task-composer-panel {
   color: var(--text);
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-permission-popover {
+caffold-task-composer .task-permission-popover {
   width: min(410px, calc(100vw - 32px));
 }
 
-caffold-tasks-page .task-follow-up-form .task-model-popover,
-caffold-tasks-page .task-follow-up-form .task-permission-popover {
+caffold-task-composer .task-follow-up-form .task-model-popover,
+caffold-task-composer .task-follow-up-form .task-permission-popover {
   top: auto;
   bottom: calc(100% + 8px);
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-permission-heading {
+caffold-task-composer .task-permission-heading {
   margin: 0;
   padding: 6px 8px 8px;
   color: var(--muted);
   font-size: var(--task-detail-meta-size);
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-popover section {
+caffold-task-composer .task-model-popover section {
   display: grid;
   gap: 4px;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-popover p {
+caffold-task-composer .task-model-popover p {
   margin: 0;
   padding: 6px 8px;
   color: var(--muted);
   font-size: var(--task-detail-meta-size);
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-popover hr {
+caffold-task-composer .task-model-popover hr {
   height: 1px;
   margin: 8px;
   border: 0;
   background: #e3e8e3;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-option {
+caffold-task-composer .task-model-option {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -1784,43 +1784,43 @@ caffold-tasks-page .task-follow-up-form .task-permission-popover {
   cursor: pointer;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-option:hover,
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-option:focus-visible,
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-option[aria-pressed="true"] {
+caffold-task-composer .task-model-option:hover,
+caffold-task-composer .task-model-option:focus-visible,
+caffold-task-composer .task-model-option[aria-pressed="true"] {
   background: #eef4ef;
   outline: none;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-option:disabled {
+caffold-task-composer .task-model-option:disabled {
   cursor: not-allowed;
   opacity: 0.52;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-option:disabled:hover {
+caffold-task-composer .task-model-option:disabled:hover {
   background: transparent;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-option span {
+caffold-task-composer .task-model-option span {
   display: grid;
   gap: 2px;
   min-width: 0;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-option small {
+caffold-task-composer .task-model-option small {
   color: var(--muted);
   font-size: var(--task-detail-meta-size);
   line-height: 16px;
   overflow-wrap: anywhere;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-check {
+caffold-task-composer .task-model-check {
   width: 16px;
   height: 16px;
   color: var(--accent);
   stroke-width: 2.4;
 }
 
-:where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-note {
+caffold-task-composer .task-model-note {
   color: var(--muted);
 }
 
@@ -1899,24 +1899,24 @@ caffold-tasks-page [data-status="waiting_on_user_input"] {
     width: min(92%, 760px);
   }
 
-  caffold-tasks-page .task-follow-up-form {
+  caffold-task-composer .task-follow-up-form {
     padding: 8px 10px 10px;
   }
 
-  :where(caffold-task-composer .task-composer, caffold-tasks-page .task-follow-up-form.task-composer) {
+  caffold-task-composer .task-composer {
     padding: 10px;
   }
 
-  :where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-composer-panel {
+  caffold-task-composer .task-composer-panel {
     border-radius: 16px;
   }
 
-  :where(caffold-task-composer .task-composer, caffold-tasks-page .task-follow-up-form.task-composer) textarea {
+  caffold-task-composer .task-composer textarea {
     padding: 13px 14px 8px;
   }
 
-  :where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-popover,
-  :where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-permission-popover {
+  caffold-task-composer .task-model-popover,
+  caffold-task-composer .task-permission-popover {
     position: fixed;
     top: auto;
     inset: auto 10px 10px;
@@ -1924,14 +1924,14 @@ caffold-tasks-page [data-status="waiting_on_user_input"] {
     max-height: min(544px, calc(100vh - 24px));
   }
 
-  caffold-tasks-page .task-follow-up-form .task-model-popover,
-  caffold-tasks-page .task-follow-up-form .task-permission-popover {
+  caffold-task-composer .task-follow-up-form .task-model-popover,
+  caffold-task-composer .task-follow-up-form .task-permission-popover {
     top: auto;
     bottom: 10px;
   }
 
-  :where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-backdrop,
-  :where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-permission-backdrop {
+  caffold-task-composer .task-model-backdrop,
+  caffold-task-composer .task-permission-backdrop {
     position: fixed;
     inset: 0;
     z-index: 9;
@@ -1941,8 +1941,8 @@ caffold-tasks-page [data-status="waiting_on_user_input"] {
     cursor: default;
   }
 
-  :where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-model-popover,
-  :where(caffold-task-composer, caffold-tasks-page .task-follow-up-form) .task-permission-popover {
+  caffold-task-composer .task-model-popover,
+  caffold-task-composer .task-permission-popover {
     z-index: 10;
     border-radius: 18px;
     box-shadow: 0 -12px 48px rgb(31 42 36 / 18%);
@@ -1997,7 +1997,7 @@ caffold-tasks-page [data-status="waiting_on_user_input"] {
     display: inline;
   }
 
-  caffold-tasks-page .task-follow-up-form {
+  caffold-task-composer .task-follow-up-form {
     padding-bottom: max(10px, env(safe-area-inset-bottom));
   }
 

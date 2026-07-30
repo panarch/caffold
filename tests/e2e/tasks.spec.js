@@ -5683,6 +5683,12 @@ test("isolates task detail responses and conversation scroll by thread", async (
   const detailFor = (task) => ({
     revision: 1,
     task,
+    model: "gpt-5.6-sol",
+    reasoningEffort: task.threadId === taskA.threadId ? "xhigh" : "low",
+    permissionMode:
+      task.threadId === taskA.threadId
+        ? "askForApproval"
+        : "approveForMe",
     events: Array.from({ length: 20 }, (_, index) => ({
       id: `${task.threadId}_event_${index}`,
       threadId: task.threadId,
@@ -5726,6 +5732,17 @@ test("isolates task detail responses and conversation scroll by thread", async (
   await expect
     .poll(() => scroller.evaluate((element) => element.scrollHeight > element.clientHeight))
     .toBe(true);
+  const followUp = tasksPage.locator(".task-follow-up-form");
+  const followUpPrompt = followUp.getByRole("textbox", {
+    name: "Follow-up prompt",
+  });
+  await expect(
+    followUp.getByRole("button", { name: "Choose model and reasoning" }),
+  ).toContainText("Light");
+  await expect(
+    followUp.getByRole("button", { name: "Choose approval mode" }),
+  ).toContainText("Approve for me");
+  await followUpPrompt.fill("Draft for thread B");
   await scroller.evaluate((element) => {
     element.scrollTop = 140;
     element.dispatchEvent(new Event("scroll"));
@@ -5751,6 +5768,16 @@ test("isolates task detail responses and conversation scroll by thread", async (
   await expect(
     tasksPage.locator('caffold-task-markdown[data-render-state="markdown"]'),
   ).toHaveCount(20);
+  await expect(followUpPrompt).toHaveValue("");
+  await expect(
+    followUp.getByRole("button", { name: "Choose model and reasoning" }),
+  ).toContainText("Extra High");
+  await expect(
+    followUp.getByRole("button", { name: "Choose approval mode" }),
+  ).toContainText("Ask for approval");
+  await followUpPrompt.fill("Draft for thread A");
+  await pasteImage(followUpPrompt, "thread-a.png");
+  await expect(followUp.locator(".task-composer-attachment")).toHaveCount(1);
   const taskAAnchor = await scroller.evaluate(async (element) => {
     element.scrollTop = Math.min(250, element.scrollHeight - element.clientHeight);
     element.dispatchEvent(new Event("scroll"));
@@ -5769,11 +5796,27 @@ test("isolates task detail responses and conversation scroll by thread", async (
   expect(taskAAnchor.eventId).not.toBe("");
   await tasksPage.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
   await expect(tasksPage).toContainText("Thread B response 20.");
+  await expect(followUpPrompt).toHaveValue("Draft for thread B");
+  await expect(followUp.locator(".task-composer-attachment")).toHaveCount(0);
+  await expect(
+    followUp.getByRole("button", { name: "Choose model and reasoning" }),
+  ).toContainText("Light");
+  await expect(
+    followUp.getByRole("button", { name: "Choose approval mode" }),
+  ).toContainText("Approve for me");
   await expect
     .poll(() => scroller.evaluate((element) => Math.round(element.scrollTop)))
     .toBe(140);
   await tasksPage.locator(`.task-row[data-thread-id="${taskA.threadId}"]`).click();
   await expect(tasksPage).toContainText("Thread A response 20.");
+  await expect(followUpPrompt).toHaveValue("Draft for thread A");
+  await expect(followUp.locator(".task-composer-attachment")).toHaveCount(1);
+  await expect(
+    followUp.getByRole("button", { name: "Choose model and reasoning" }),
+  ).toContainText("Extra High");
+  await expect(
+    followUp.getByRole("button", { name: "Choose approval mode" }),
+  ).toContainText("Ask for approval");
   await expect(
     tasksPage.locator('caffold-task-markdown[data-render-state="markdown"]'),
   ).toHaveCount(20);

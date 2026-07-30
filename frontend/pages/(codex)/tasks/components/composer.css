@@ -13,6 +13,12 @@ caffold-task-composer .task-composer {
   padding: 0;
 }
 
+caffold-task-composer[data-composer-mode="follow-up"] {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
 caffold-task-composer button,
 caffold-task-composer input,
 caffold-task-composer textarea {
@@ -23,5 +29,9 @@ caffold-task-composer textarea {
   caffold-task-composer {
     width: 100%;
     padding: 10px;
+  }
+
+  caffold-task-composer[data-composer-mode="follow-up"] {
+    padding: 0;
   }
 }

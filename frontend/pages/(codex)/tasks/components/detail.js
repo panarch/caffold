@@ -1,6 +1,4 @@
 import {
-  getCodexModels,
-  getCodexPermissions,
   getGitHubStatus,
   getGitStatus,
   getTask,
@@ -53,16 +51,6 @@ import {
 } from "../task-list-model.js";
 
 const STREAM_ERROR_DELAY_MS = 8_000;
-const TASK_COMPOSER_MAX_IMAGES = 4;
-const TASK_COMPOSER_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-const TASK_COMPOSER_IMAGE_TYPES = new Set([
-  "image/avif",
-  "image/gif",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-]);
-
 class CaffoldTaskDetail extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
@@ -105,29 +93,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.continuationStateValue = { loading: false, error: null };
     this.conversationUpdateKind = null;
     this.initialConversationLoad = null;
-    this.followUpDraft = "";
-    this.followUpDraftByThread = new Map();
-    this.followUpImages = [];
-    this.followUpImagesByThread = new Map();
-    this.composerImageErrors = new Map();
     this.followUpRequest = null;
-    this.modelOptions = [];
-    this.modelOptionsLoaded = false;
-    this.modelOptionsLoading = false;
-    this.modelOptionsError = null;
-    this.composerSettingsByThread = new Map();
-    this.composerSettingsOverrideThreadIds = new Set();
-    this.permissionOptions = [];
-    this.permissionOptionsCwd = "";
-    this.permissionOptionsLoaded = false;
-    this.permissionOptionsLoading = false;
-    this.permissionOptionsError = null;
-    this.permissionOptionsRequestId = 0;
-    this.defaultPermissionMode = "askForApproval";
-    this.permissionModeByThread = new Map();
-    this.permissionOverrideThreadIds = new Set();
-    this.openModelPickerForm = "";
-    this.openPermissionPickerForm = "";
     this.taskDetailView = "conversation";
     this.taskDiffMode = "working";
     this.taskDiffStatus = null;
@@ -148,9 +114,6 @@ class CaffoldTaskDetail extends HTMLElement {
     this.boundIconsReady = () => {
       this.render();
     };
-    this.boundTaskListResize = () => {
-      this.fitModelPicker();
-    };
     this.boundVisibilityChange = () => this.handleVisibilityChange();
     warmIcons();
 
@@ -160,7 +123,7 @@ class CaffoldTaskDetail extends HTMLElement {
         if (
           closestElement(
             event.target,
-            "caffold-task-conversation",
+            "caffold-task-conversation, caffold-task-composer",
           )
         ) {
           return;
@@ -173,14 +136,6 @@ class CaffoldTaskDetail extends HTMLElement {
         }
         const action = closestElement(event.target, "[data-task-action]");
         if (!action) {
-          if (
-            !closestElement(
-              event.target,
-              ".task-model-picker, .task-permission-picker",
-            )
-          ) {
-            window.setTimeout(() => this.closeComposerPickers(), 0);
-          }
           return;
         }
 
@@ -200,6 +155,20 @@ class CaffoldTaskDetail extends HTMLElement {
           event.detail.decision,
         );
       }
+    });
+    this.addEventListener("caffold:task-composer-submit", (event) => {
+      const composer = closestElement(event.target, "caffold-task-composer");
+      if (!composer || composer !== this.followUpComposer()) {
+        return;
+      }
+      event.stopPropagation();
+      void this.sendFollowUpSubmission(composer, event.detail).catch((error) => {
+        const submissionId = `${event.detail?.submissionId ?? ""}`;
+        composer.resolveSubmission(submissionId, {
+          status: "rejected",
+          error,
+        });
+      });
     });
     this.addEventListener("caffold:open-git-diff", (event) => {
       const browser = closestElement(event.target, "caffold-git-diff-browser");
@@ -251,64 +220,6 @@ class CaffoldTaskDetail extends HTMLElement {
       }
       this.changeTaskCompareBase(select.value);
     });
-    this.addEventListener("input", (event) => {
-      if (closestElement(event.target, "caffold-task-composer")) {
-        return;
-      }
-      const textarea = closestElement(event.target, "textarea[name='prompt']");
-      if (textarea) {
-        syncComposerTextarea(textarea);
-      }
-
-      const form = closestElement(event.target, "form[data-task-form]");
-      if (!form) {
-        return;
-      }
-
-      this.captureDraft(form);
-    });
-    this.addEventListener(
-      "paste",
-      (event) => {
-        if (closestElement(event.target, "caffold-task-composer")) {
-          return;
-        }
-        void this.handleComposerPaste(event);
-      },
-      true,
-    );
-    this.addEventListener("keydown", (event) => {
-      if (closestElement(event.target, "caffold-task-composer")) {
-        return;
-      }
-      this.handlePromptKeydown(event);
-    });
-    this.addEventListener(
-      "submit",
-      (event) => {
-        if (closestElement(event.target, "caffold-task-composer")) {
-          return;
-        }
-        const form = closestElement(event.target, "form[data-task-form]");
-        if (!form) {
-          return;
-        }
-
-        event.preventDefault();
-        const formName = form.dataset.taskForm;
-        void this.handleForm(formName, form).catch((error) => {
-          if (formName === "follow-up") {
-            const threadId = `${form.dataset.threadId ?? ""}`.trim();
-            if (this.followUpRequest?.threadId === threadId) {
-              this.followUpRequest = null;
-            }
-          }
-          this.error = error instanceof Error ? error : new Error(`${error}`);
-          this.render();
-        });
-      },
-      true,
-    );
     this.render();
   }
 
@@ -356,11 +267,6 @@ class CaffoldTaskDetail extends HTMLElement {
     this.hidden = false;
     this.selectedThreadId = targetThreadId;
     this.activateThreadEvents(targetThreadId);
-    this.followUpDraft =
-      this.followUpDraftByThread.get(targetThreadId) ?? "";
-    this.followUpImages = [
-      ...(this.followUpImagesByThread.get(targetThreadId) ?? []),
-    ];
     this.taskDetail =
       taskDetailThreadId(this.taskDetail) === targetThreadId
         ? this.taskDetail
@@ -387,9 +293,6 @@ class CaffoldTaskDetail extends HTMLElement {
     ) {
       this.loading = false;
       this.loadTaskGithubStatus(this.taskDetail.task);
-      this.loadModelOptions();
-      this.observeTaskSettings(this.taskDetail);
-      this.loadPermissionOptions(this.activeCwdPath());
       this.connectStream(targetThreadId);
       return this.taskDetail;
     }
@@ -407,7 +310,6 @@ class CaffoldTaskDetail extends HTMLElement {
     this.hidden = false;
     this.acceptTaskDetailRevision(threadId, detail.revision);
     this.taskDetail = detail;
-    this.observeTaskSettings(detail);
     this.setThreadEvents(threadId, detail.events ?? []);
     this.eventsPage = detail.eventsPage ?? { nextCursor: null };
     this.conversationUpdateKind = "bottom";
@@ -462,7 +364,6 @@ class CaffoldTaskDetail extends HTMLElement {
     }
     this.globalListenersAttached = true;
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
-    window.addEventListener("resize", this.boundTaskListResize);
     document.addEventListener("visibilitychange", this.boundVisibilityChange);
   }
 
@@ -472,7 +373,6 @@ class CaffoldTaskDetail extends HTMLElement {
     }
     this.globalListenersAttached = false;
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
-    window.removeEventListener("resize", this.boundTaskListResize);
     document.removeEventListener("visibilitychange", this.boundVisibilityChange);
   }
 
@@ -508,7 +408,6 @@ class CaffoldTaskDetail extends HTMLElement {
       }
       this.acknowledgeFollowUpFromCanonicalDetail(threadId, detail);
       this.taskDetail = detail;
-      this.observeTaskSettings(detail);
       this.setThreadEvents(
         threadId,
         mergeEvents(this.eventsByThread.get(threadId) ?? [], detail.events ?? []),
@@ -530,8 +429,6 @@ class CaffoldTaskDetail extends HTMLElement {
       this.render();
       this.finishInitialConversationLoad(threadId, loadGeneration);
       this.loadTaskGithubStatus(detail.task);
-      this.loadModelOptions();
-      this.loadPermissionOptions(this.activeCwdPath());
       return detail;
     } catch (error) {
       if (loadGeneration !== this.detailLoadGeneration) {
@@ -687,7 +584,6 @@ class CaffoldTaskDetail extends HTMLElement {
     }
     this.acknowledgeFollowUpFromCanonicalDetail(threadId, detail);
     this.taskDetail = detail;
-    this.observeTaskSettings(detail);
     this.loading = detail?.syncState === "loading" && !error;
     this.detailLoadError = error ? new Error(error) : null;
     this.setThreadEvents(
@@ -729,6 +625,9 @@ class CaffoldTaskDetail extends HTMLElement {
     }
 
     request.state = PROMPT_SUBMISSION_STATE.ACCEPTED;
+    request.composer?.resolveSubmission(request.submissionId, {
+      status: "accepted",
+    });
     if (this.followUpRequest === request) {
       this.followUpRequest = null;
     }
@@ -867,7 +766,6 @@ class CaffoldTaskDetail extends HTMLElement {
         return;
       }
       this.taskDetail = detail;
-      this.observeTaskSettings(detail);
       this.setThreadEvents(threadId, mergeEvents(this.events, detail.events ?? []));
       this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
       if (detail.task) {
@@ -891,23 +789,6 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   handleAction(action, element) {
-    if (
-      !action?.startsWith("select-") &&
-      action !== "toggle-model-picker" &&
-      action !== "close-model-picker" &&
-      action !== "toggle-permission-picker" &&
-      action !== "close-permission-picker"
-    ) {
-      this.closeComposerPickers();
-    }
-    if (action === "remove-composer-image") {
-      this.removeComposerImage(
-        element.dataset.formName,
-        element.dataset.imageId,
-        element.dataset.threadId,
-      );
-      return;
-    }
     if (action === "open-git-tool" || action === "open-github-tool") {
       this.openTaskReviewRoute(action, element);
       return;
@@ -964,36 +845,6 @@ class CaffoldTaskDetail extends HTMLElement {
     }
     if (action === "approval") {
       this.resolveApproval(element.dataset.approvalId, element.dataset.decision);
-      return;
-    }
-    if (action === "toggle-model-picker") {
-      this.toggleModelPicker(element.dataset.formName);
-      return;
-    }
-    if (action === "close-model-picker") {
-      this.closeModelPicker();
-      return;
-    }
-    if (action === "select-model") {
-      this.openModelPickerForm = "";
-      this.selectModel(element.dataset.formName, element.dataset.model);
-      return;
-    }
-    if (action === "select-effort") {
-      this.openModelPickerForm = "";
-      this.selectEffort(element.dataset.formName, element.dataset.effort);
-      return;
-    }
-    if (action === "toggle-permission-picker") {
-      this.togglePermissionPicker(element.dataset.formName);
-      return;
-    }
-    if (action === "close-permission-picker") {
-      this.closePermissionPicker();
-      return;
-    }
-    if (action === "select-permission") {
-      this.selectPermissionMode(element.dataset.formName, element.dataset.permissionMode);
     }
   }
 
@@ -1138,93 +989,63 @@ class CaffoldTaskDetail extends HTMLElement {
     );
   }
 
-  async handleForm(formName, form) {
-    if (formName === "follow-up") {
-      await this.sendFollowUpFromForm(form);
-    }
-  }
-
-  handlePromptKeydown(event) {
-    if (
-      event.key !== "Enter" ||
-      event.shiftKey ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.altKey
-    ) {
+  async sendFollowUpSubmission(composer, submission = {}) {
+    const submissionId = `${submission.submissionId ?? ""}`;
+    const threadId = `${submission.threadId ?? this.selectedThreadId ?? ""}`.trim();
+    const prompt = `${submission.prompt ?? ""}`.trim();
+    const images = [...(submission.images ?? [])];
+    const attachments = [...(submission.attachments ?? [])];
+    if (!submissionId || !threadId || (!prompt && !images.length)) {
+      composer.resolveSubmission(submissionId, {
+        status: "rejected",
+        error: new Error("Could not identify this task prompt."),
+      });
       return;
     }
-    if (event.isComposing) {
-      return;
-    }
-    const textarea = closestElement(event.target, "textarea[name='prompt']");
-    const form = closestElement(textarea, "form[data-task-form]");
-    if (
-      !textarea ||
-      !form ||
-      (!textarea.value.trim() && !this.composerImages(form.dataset.taskForm).length)
-    ) {
-      return;
-    }
-
-    event.preventDefault();
-    form.requestSubmit();
-  }
-
-  async sendFollowUpFromForm(form) {
-    const threadId = `${form?.dataset?.threadId ?? ""}`.trim();
-    if (!threadId) {
-      this.error = new Error("Could not identify the task for this prompt.");
-      this.render();
-      return;
-    }
-    if (isTaskTransportStale(this.streamState)) {
-      this.error = new Error(
-        "Caffold server is unavailable. Wait for the task to reconnect.",
-      );
-      this.render();
-      return;
-    }
-    if (this.followUpRequest?.threadId === threadId) {
-      return;
-    }
-
-    const textarea = promptTextareaForForm(form);
-    if (!textarea) {
-      this.error = new Error("Could not find the task prompt field.");
-      this.render();
-      return;
-    }
-    const restoreComposerFocus = form.contains(document.activeElement);
-
     if (this.selectedThreadId !== threadId) {
       this.selectedThreadId = threadId;
       this.activateThreadEvents(threadId);
     }
-    this.captureDraft(form, threadId);
-    const formData = new FormData(form);
-    const prompt = `${formData.get("prompt") ?? ""}`.trim();
-    const images = [...this.followUpImages];
-    if (!prompt && !images.length) {
+    if (isTaskTransportStale(this.streamState)) {
+      composer.resolveSubmission(submissionId, {
+        status: "rejected",
+        error: new Error(
+          "Caffold server is unavailable. Wait for the task to reconnect.",
+        ),
+      });
+      return;
+    }
+    if (this.followUpRequest?.threadId === threadId) {
+      composer.resolveSubmission(submissionId, {
+        status: "rejected",
+        error: new Error("A prompt is already being submitted for this task."),
+      });
       return;
     }
 
-    this.error = null;
-
-    const optimisticEvent = optimisticUserMessageEvent(
-      threadId,
-      prompt,
-      images,
-      this.promptSubmissionSequence + 1,
-    );
     const previousTask =
       taskThreadId(this.taskDetail?.task) === threadId
         ? this.taskDetail.task
         : null;
-    const turnOptions = this.turnOptions("follow-up");
+    const active = isTaskActivelyWorking(previousTask);
+    const options = active
+      ? {
+          activeTurnId: previousTask?.activeTurn?.id ?? null,
+        }
+      : {
+          ...(submission.options ?? {}),
+          activeTurnId: null,
+        };
     const requestId = ++this.promptSubmissionSequence;
-    const followUpRequest = {
+    const optimisticEvent = optimisticUserMessageEvent(
+      threadId,
+      prompt,
+      attachments,
       requestId,
+    );
+    const followUpRequest = {
+      submissionId,
+      composer,
       threadId,
       fingerprint: userMessageFingerprint(optimisticEvent),
       canonicalEventIds: new Set(
@@ -1239,31 +1060,20 @@ class CaffoldTaskDetail extends HTMLElement {
       state: PROMPT_SUBMISSION_STATE.SENDING,
     };
     this.followUpRequest = followUpRequest;
+    this.error = null;
+    this.setThreadEvents(
+      threadId,
+      mergeEvents(this.eventsByThread.get(threadId) ?? [], [optimisticEvent]),
+    );
+    this.conversationUpdateKind = "bottom";
+    this.render();
 
     try {
-      textarea.value = "";
-      this.setThreadEvents(
-        threadId,
-        mergeEvents(this.eventsByThread.get(threadId) ?? [], [optimisticEvent]),
-      );
-      this.followUpDraft = "";
-      this.followUpDraftByThread.set(threadId, "");
-      this.followUpImages = [];
-      this.followUpImagesByThread.set(threadId, []);
-      this.composerImageErrors.delete("follow-up");
-      this.conversationUpdateKind = "bottom";
-      this.render();
-
       const response = await sendTaskPrompt(
         threadId,
         prompt,
-        {
-          ...turnOptions,
-          activeTurnId: isTaskActivelyWorking(previousTask)
-            ? previousTask?.activeTurn?.id ?? null
-            : null,
-        },
-        images.map((image) => image.dataUrl),
+        options,
+        images,
       );
       if (response?.threadId !== threadId) {
         throw new Error("Codex accepted the prompt for a different task.");
@@ -1281,9 +1091,12 @@ class CaffoldTaskDetail extends HTMLElement {
         ),
       );
       if (!response?.steered) {
-        this.permissionOverrideThreadIds.delete(threadId);
-        this.composerSettingsOverrideThreadIds.delete(threadId);
+        composer.resetOverrides(threadId);
       }
+      composer.resolveSubmission(submissionId, {
+        status: "accepted",
+        resetOverrides: !response?.steered,
+      });
       if (threadId === this.selectedThreadId) {
         this.conversationUpdateKind = "live";
       }
@@ -1291,45 +1104,40 @@ class CaffoldTaskDetail extends HTMLElement {
       if (followUpRequest.state === PROMPT_SUBMISSION_STATE.ACCEPTED) {
         return;
       }
-      const threadEvents = this.eventsByThread.get(threadId) ?? [];
       const failureState = classifyPromptFailure(error);
       followUpRequest.state = failureState;
       if (failureState === PROMPT_SUBMISSION_STATE.OUTCOME_UNKNOWN) {
         this.setThreadEvents(
           threadId,
-          threadEvents.map((event) =>
+          (this.eventsByThread.get(threadId) ?? []).map((event) =>
             event.id === optimisticEvent.id
               ? withPromptSubmissionState(event, failureState)
               : event,
           ),
         );
+        composer.resolveSubmission(submissionId, {
+          status: "outcome-unknown",
+          error,
+        });
         if (threadId === this.selectedThreadId) {
           this.error = error;
           this.conversationUpdateKind = "live";
         }
-        return;
-      }
-      this.setThreadEvents(
-        threadId,
-        threadEvents.filter((event) => event.id !== optimisticEvent.id),
-      );
-      if (
-        threadId === this.selectedThreadId &&
-        !this.followUpDraft
-      ) {
-        this.followUpDraft = prompt;
-        this.followUpDraftByThread.set(threadId, prompt);
-      }
-      if (
-        threadId === this.selectedThreadId &&
-        !this.followUpImages.length
-      ) {
-        this.followUpImages = images;
-        this.followUpImagesByThread.set(threadId, images);
-      }
-      if (threadId === this.selectedThreadId) {
-        this.error = error;
-        this.conversationUpdateKind = "preserve";
+      } else {
+        this.setThreadEvents(
+          threadId,
+          (this.eventsByThread.get(threadId) ?? []).filter(
+            (event) => event.id !== optimisticEvent.id,
+          ),
+        );
+        composer.resolveSubmission(submissionId, {
+          status: "rejected",
+          error,
+        });
+        if (threadId === this.selectedThreadId) {
+          this.error = error;
+          this.conversationUpdateKind = "preserve";
+        }
       }
     } finally {
       if (this.followUpRequest === followUpRequest) {
@@ -1337,25 +1145,10 @@ class CaffoldTaskDetail extends HTMLElement {
       }
       if (threadId === this.selectedThreadId) {
         this.render();
-        if (restoreComposerFocus) {
-          this.focusFollowUpComposer(threadId);
-        }
       }
     }
   }
 
-  focusFollowUpComposer(threadId) {
-    const form = this.querySelector(
-      `.task-follow-up-form[data-thread-id="${CSS.escape(threadId)}"]`,
-    );
-    const textarea = promptTextareaForForm(form);
-    if (!textarea) {
-      return;
-    }
-    textarea.focus({ preventScroll: true });
-    const cursor = textarea.value.length;
-    textarea.setSelectionRange(cursor, cursor);
-  }
 
   async interruptSelectedTask() {
     if (
@@ -1379,7 +1172,6 @@ class CaffoldTaskDetail extends HTMLElement {
         return;
       }
       this.taskDetail = detail;
-      this.observeTaskSettings(detail);
       this.setThreadEvents(
         threadId,
         mergeEvents(this.events, detail.events ?? []),
@@ -1428,7 +1220,6 @@ class CaffoldTaskDetail extends HTMLElement {
         return;
       }
       this.taskDetail = detail;
-      this.observeTaskSettings(detail);
       this.setThreadEvents(
         threadId,
         mergeEvents(this.events, detail.events ?? []),
@@ -1520,400 +1311,20 @@ class CaffoldTaskDetail extends HTMLElement {
     this.setTaskDetailView(this.taskDetailView === "diff" ? "conversation" : "diff");
   }
 
-  async loadModelOptions() {
-    if (this.modelOptionsLoaded || this.modelOptionsLoading) {
-      return;
-    }
-
-    this.modelOptionsLoading = true;
-    this.modelOptionsError = null;
-    this.render();
-    try {
-      const response = await getCodexModels();
-      this.modelOptions = normalizeModelOptions(response);
-      this.modelOptionsLoaded = true;
-    } catch (error) {
-      this.modelOptionsError = error;
-      this.modelOptionsLoaded = true;
-    } finally {
-      this.modelOptionsLoading = false;
-      this.render();
-    }
-  }
-
-  async loadPermissionOptions(cwd = this.activeCwdPath()) {
-    const targetCwd = cleanLogicalPath(cwd || ".");
-    if (
-      this.permissionOptionsCwd === targetCwd &&
-      (this.permissionOptionsLoaded || this.permissionOptionsLoading)
-    ) {
-      return;
-    }
-
-    const requestId = ++this.permissionOptionsRequestId;
-    this.permissionOptionsCwd = targetCwd;
-    this.permissionOptionsLoaded = false;
-    this.permissionOptionsLoading = true;
-    this.permissionOptionsError = null;
-    this.render();
-    try {
-      const response = await getCodexPermissions(targetCwd);
-      if (
-        requestId !== this.permissionOptionsRequestId ||
-        this.permissionOptionsCwd !== targetCwd
-      ) {
-        return;
-      }
-      this.permissionOptions = normalizePermissionOptions(response);
-      const requestedDefault = `${response?.defaultMode ?? ""}`.trim();
-      const defaultOption =
-        this.permissionOptions.find(
-          (option) => option.mode === requestedDefault && option.allowed,
-        ) ?? this.permissionOptions.find((option) => option.allowed);
-      this.defaultPermissionMode = defaultOption?.mode ?? "askForApproval";
-      this.permissionOptionsLoaded = true;
-    } catch (error) {
-      if (requestId !== this.permissionOptionsRequestId) {
-        return;
-      }
-      this.permissionOptions = [];
-      this.permissionOptionsError = error;
-      this.permissionOptionsLoaded = true;
-      this.defaultPermissionMode = "askForApproval";
-    } finally {
-      if (requestId === this.permissionOptionsRequestId) {
-        this.permissionOptionsLoading = false;
-        this.render();
-      }
-    }
-  }
-
-  observeTaskSettings(detail) {
-    const threadId = taskDetailThreadId(detail).trim();
-    const permissionMode = `${detail?.permissionMode ?? ""}`.trim();
-    if (
-      threadId &&
-      permissionMode &&
-      !this.permissionOverrideThreadIds.has(threadId)
-    ) {
-      this.permissionModeByThread.set(threadId, permissionMode);
-    }
-    if (
-      !threadId ||
-      this.composerSettingsOverrideThreadIds.has(threadId)
-    ) {
-      return;
-    }
-    const model = `${detail?.model ?? ""}`.trim();
-    const effort = `${detail?.reasoningEffort ?? ""}`.trim();
-    if (model || effort) {
-      this.composerSettingsByThread.set(threadId, { model, effort });
-    }
-  }
-
-  selectedPermissionMode(formName) {
-    const threadId = this.selectedThreadId;
-    return (
-      this.permissionModeByThread.get(threadId) ||
-      `${this.taskDetail?.permissionMode ?? ""}`.trim() ||
-      this.defaultPermissionMode
-    );
-  }
-
-  selectPermissionMode(formName, permissionMode) {
-    const option = this.permissionOptions.find(
-      (candidate) => candidate.mode === permissionMode,
-    );
-    if (!option?.allowed) {
-      return;
-    }
-    if (
-      option.dangerous &&
-      this.selectedPermissionMode(formName) !== permissionMode &&
-      !window.confirm(
-        "Full access removes sandbox restrictions and approval prompts for subsequent turns. Continue?",
-      )
-    ) {
-      return;
-    }
-
-    if (this.selectedThreadId) {
-      this.permissionModeByThread.set(this.selectedThreadId, permissionMode);
-      this.permissionOverrideThreadIds.add(this.selectedThreadId);
-    }
-    this.openPermissionPickerForm = "";
-    this.render();
-  }
-
-  togglePermissionPicker(formName) {
-    const nextFormName = `${formName ?? ""}`;
-    this.openPermissionPickerForm =
-      this.openPermissionPickerForm === nextFormName ? "" : nextFormName;
-    this.openModelPickerForm = "";
-    if (this.openPermissionPickerForm) {
-      this.loadPermissionOptions(this.activeCwdPath());
-    }
-    this.render();
-  }
-
-  closePermissionPicker() {
-    if (!this.openPermissionPickerForm) {
-      return;
-    }
-    this.openPermissionPickerForm = "";
-    this.render();
-  }
-
-  composerSettingsFor(formName) {
-    return (
-      this.composerSettingsByThread.get(this.selectedThreadId) ?? {
-        model: "",
-        effort: "",
-      }
-    );
-  }
-
-  editableComposerSettings(formName) {
-    const threadId = this.selectedThreadId;
-    const existing = this.composerSettingsByThread.get(threadId);
-    if (existing) {
-      return existing;
-    }
-    const settings = { model: "", effort: "" };
-    if (threadId) {
-      this.composerSettingsByThread.set(threadId, settings);
-    }
-    return settings;
-  }
-
-  markComposerSettingsOverride(formName) {
-    if (formName === "follow-up" && this.selectedThreadId) {
-      this.composerSettingsOverrideThreadIds.add(this.selectedThreadId);
-    }
-  }
-
-  modelSelectionLocked(formName) {
-    return (
-      formName === "follow-up" &&
-      isTaskActivelyWorking(this.taskDetail?.task)
-    );
-  }
-
-  selectModel(formName, modelValue) {
-    if (this.modelSelectionLocked(formName)) {
-      return;
-    }
-    const settings = this.editableComposerSettings(formName);
-    settings.model = `${modelValue ?? ""}`;
-    const model = this.selectedModelOption(formName);
-    const supported = this.reasoningOptionsForModel(model).map((option) => option.value);
-    if (settings.effort && !supported.includes(settings.effort)) {
-      settings.effort =
-        model?.defaultReasoningEffort ?? supported[0] ?? "";
-    }
-    this.markComposerSettingsOverride(formName);
-    this.render();
-  }
-
-  selectEffort(formName, effort) {
-    if (this.modelSelectionLocked(formName)) {
-      return;
-    }
-    this.editableComposerSettings(formName).effort = `${effort ?? ""}`;
-    this.markComposerSettingsOverride(formName);
-    this.render();
-  }
-
-  toggleModelPicker(formName) {
-    if (this.modelSelectionLocked(formName)) {
-      return;
-    }
-    const nextFormName = `${formName ?? ""}`;
-    this.openModelPickerForm = this.openModelPickerForm === nextFormName ? "" : nextFormName;
-    this.openPermissionPickerForm = "";
-    if (this.openModelPickerForm) {
-      this.loadModelOptions();
-    }
-    this.render();
-  }
-
-  closeModelPicker() {
-    if (!this.openModelPickerForm) {
-      return;
-    }
-    this.openModelPickerForm = "";
-    this.render();
-  }
-
-  closeComposerPickers() {
-    if (!this.openModelPickerForm && !this.openPermissionPickerForm) {
-      return;
-    }
-    this.openModelPickerForm = "";
-    this.openPermissionPickerForm = "";
-    this.render();
-  }
-
-  selectedModelOption(formName) {
-    const selectedModel = this.composerSettingsFor(formName).model;
-    return (
-      this.modelOptions.find((option) => option.model === selectedModel) ??
-      this.modelOptions.find((option) => option.isDefault) ??
-      this.modelOptions[0] ??
-      null
-    );
-  }
-
-  selectedEffort(formName) {
-    const model = this.selectedModelOption(formName);
-    const supported = this.reasoningOptionsForModel(model).map((option) => option.value);
-    const selected = this.composerSettingsFor(formName).effort;
-    return (
-      (supported.includes(selected) ? selected : "") ||
-      model?.defaultReasoningEffort ||
-      supported[0] ||
-      ""
-    );
-  }
-
-  turnOptions(formName) {
-    const activeTurn = formName === "follow-up" && isTaskActivelyWorking(this.taskDetail?.task);
-    const options = {};
-    if (!activeTurn) {
-      const model = this.selectedModelOption(formName);
-      options.model = model?.model || undefined;
-      options.effort = this.selectedEffort(formName) || undefined;
-    }
-    const explicitPermission =
-      this.permissionOverrideThreadIds.has(this.selectedThreadId);
-    if (!activeTurn && explicitPermission) {
-      options.permissionMode = this.selectedPermissionMode(formName);
-    }
-    return options;
-  }
-
-  reasoningOptionsForModel(model) {
-    return model?.supportedReasoningEfforts ?? [];
-  }
-
-  captureDraft(form, threadId = form?.dataset?.threadId) {
-    const formData = new FormData(form);
-    if (form.dataset.taskForm === "follow-up") {
-      this.followUpDraft = `${formData.get("prompt") ?? ""}`;
-      const targetThreadId = `${threadId ?? this.selectedThreadId ?? ""}`.trim();
-      if (targetThreadId) {
-        this.followUpDraftByThread.set(targetThreadId, this.followUpDraft);
-      }
-    }
-  }
-
-  composerImages(formName) {
-    return this.followUpImages;
-  }
-
-  setComposerImages(formName, images, threadId = this.selectedThreadId) {
-    this.followUpImages = images;
-    if (threadId) {
-      this.followUpImagesByThread.set(threadId, images);
-    }
-  }
-
-  async handleComposerPaste(event) {
-    const textarea = closestElement(event.target, "textarea[name='prompt']");
-    const form = closestElement(textarea, "form[data-task-form]");
-    if (!textarea || !form) {
-      return;
-    }
-    const imageFiles = Array.from(event.clipboardData?.items ?? [])
-      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
-      .map((item) => item.getAsFile())
-      .filter(Boolean);
-    if (!imageFiles.length) {
-      return;
-    }
-
-    event.preventDefault();
-    this.captureDraft(form);
-    const formName = form.dataset.taskForm;
-    const threadId = form.dataset.threadId;
-    const existing = this.composerImages(formName);
-    const availableSlots = TASK_COMPOSER_MAX_IMAGES - existing.length;
-    if (availableSlots <= 0) {
-      this.composerImageErrors.set(
-        formName,
-        `Attach up to ${TASK_COMPOSER_MAX_IMAGES} images.`,
-      );
-      this.render();
-      return;
-    }
-
-    const accepted = [];
-    let error = imageFiles.length > availableSlots
-      ? `Attach up to ${TASK_COMPOSER_MAX_IMAGES} images.`
-      : "";
-    for (const [index, file] of imageFiles.slice(0, availableSlots).entries()) {
-      if (!TASK_COMPOSER_IMAGE_TYPES.has(file.type)) {
-        error = "Use PNG, JPEG, GIF, WebP, or AVIF images.";
-        continue;
-      }
-      if (file.size > TASK_COMPOSER_MAX_IMAGE_BYTES) {
-        error = "Each image must be 10 MB or smaller.";
-        continue;
-      }
-      let dataUrl;
-      try {
-        dataUrl = await readFileAsDataUrl(file);
-      } catch {
-        error = "Could not read the pasted image.";
-        continue;
-      }
-      accepted.push({
-        id: `clipboard:${Date.now()}:${index}:${Math.random().toString(36).slice(2)}`,
-        name: file.name || `clipboard-image-${existing.length + accepted.length + 1}.${imageExtension(file.type)}`,
-        type: file.type,
-        size: file.size,
-        dataUrl,
-      });
-    }
-
-    this.setComposerImages(formName, [...existing, ...accepted], threadId);
-    if (error) {
-      this.composerImageErrors.set(formName, error);
-    } else {
-      this.composerImageErrors.delete(formName);
-    }
-    this.render();
-  }
-
-  removeComposerImage(formName, imageId, threadId = this.selectedThreadId) {
-    if (!formName || !imageId) {
-      return;
-    }
-    this.setComposerImages(
-      formName,
-      this.composerImages(formName).filter((image) => image.id !== imageId),
-      threadId,
-    );
-    this.composerImageErrors.delete(formName);
-    this.render();
-  }
 
   render() {
-    const previousComposerFocus = this.captureComposerFocus();
     const previousTaskFilePath = this.captureTaskFileBrowserPath();
     const previousTaskDiffPath = this.captureTaskDiffPath();
     const previousTaskCompareState = this.captureTaskCompareState();
     this.setAttribute("data-task-detail-view", this.taskDetailView);
     this.ensureTaskShell();
     this.renderTaskContentRegion();
-    this.syncComposerTextareas();
-    this.restoreComposerFocus(previousComposerFocus);
     this.syncConversationSnapshot();
+    this.syncFollowUpComposer();
     this.updateTaskDetailView();
     this.syncTaskFileBrowser(previousTaskFilePath);
     this.syncTaskDiffBrowser(previousTaskDiffPath);
     this.syncTaskCompareBrowser(previousTaskCompareState);
-    this.fitModelPicker();
   }
 
   ensureTaskShell() {
@@ -1930,6 +1341,37 @@ class CaffoldTaskDetail extends HTMLElement {
     return this.querySelector(
       ".task-conversation-pane caffold-task-conversation",
     );
+  }
+
+  followUpComposer() {
+    return this.querySelector(
+      ".task-conversation-pane caffold-task-composer",
+    );
+  }
+
+  syncFollowUpComposer() {
+    const composer = this.followUpComposer();
+    const task = this.taskDetail?.task ?? null;
+    const threadId = taskThreadId(task);
+    if (!composer || !task || threadId !== this.selectedThreadId) {
+      return;
+    }
+    composer.setContext({
+      mode: "follow-up",
+      stateKey: threadId,
+      threadId,
+      cwd: this.activeCwdPath(),
+      className: "task-follow-up-form",
+      placeholder: "Send another prompt to this task",
+      ariaLabel: "Follow-up prompt",
+      submitLabel: "Send prompt",
+      disabled: isTaskTransportStale(this.streamState),
+      settingsLocked: isTaskActivelyWorking(task),
+      model: `${this.taskDetail?.model ?? ""}`.trim(),
+      effort: `${this.taskDetail?.reasoningEffort ?? ""}`.trim(),
+      permissionMode: `${this.taskDetail?.permissionMode ?? ""}`.trim(),
+      requestError: this.error?.message ?? "",
+    });
   }
 
   isInitialConversationLoadPending(threadId = this.selectedThreadId) {
@@ -1989,7 +1431,11 @@ class CaffoldTaskDetail extends HTMLElement {
       const nextRoot = template.content.firstElementChild;
       const nextDetail = nextRoot?.matches(".task-detail") ? nextRoot : null;
       if (!nextDetail || !threadId) {
-        currentDetail.hidden = true;
+        if (this.detailLoadError && !this.taskDetail?.task) {
+          currentDetail.remove();
+        } else {
+          currentDetail.hidden = true;
+        }
         const placeholder = document.createElement("div");
         placeholder.className = "task-detail-placeholder";
         placeholder.append(...template.content.childNodes);
@@ -2013,26 +1459,26 @@ class CaffoldTaskDetail extends HTMLElement {
         currentSummary.replaceWith(nextSummary);
       }
       if (nextConversation && currentConversation) {
-        const currentTaskConversation = currentConversation.querySelector(
-          ":scope > caffold-task-conversation",
+        const stableChildren = new Map(
+          ["caffold-task-conversation", "caffold-task-composer"].map((tag) => [
+            tag,
+            currentConversation.querySelector(`:scope > ${tag}`),
+          ]),
         );
-        const nextTaskConversation = nextConversation.querySelector(
-          ":scope > caffold-task-conversation",
-        );
-        if (currentTaskConversation && nextTaskConversation) {
-          [...currentConversation.children].forEach((child) => {
-            if (child !== currentTaskConversation) {
-              child.remove();
-            }
-          });
-          [...nextConversation.children].forEach((child) => {
-            if (child !== nextTaskConversation) {
-              currentConversation.append(child);
-            }
-          });
-        } else {
-          currentConversation.replaceChildren(...nextConversation.childNodes);
-        }
+        [...currentConversation.children].forEach((child) => {
+          if (![...stableChildren.values()].includes(child)) {
+            child.remove();
+          }
+        });
+        let insertionPoint = currentConversation.firstElementChild;
+        [...nextConversation.children].forEach((child) => {
+          const desiredChild = stableChildren.get(child.localName) ?? child;
+          if (desiredChild === insertionPoint) {
+            insertionPoint = insertionPoint.nextElementSibling;
+          } else {
+            currentConversation.insertBefore(desiredChild, insertionPoint);
+          }
+        });
       }
       for (const selector of [".task-files-view", ".task-diff-view"]) {
         const currentSubview = currentDetail.querySelector(`:scope > ${selector}`);
@@ -2049,46 +1495,6 @@ class CaffoldTaskDetail extends HTMLElement {
     region.innerHTML = this.renderBody();
   }
 
-  captureComposerFocus() {
-    const textarea = closestElement(document.activeElement, "textarea[name='prompt']");
-    if (
-      !textarea ||
-      !this.contains(textarea) ||
-      closestElement(textarea, "caffold-task-composer")
-    ) {
-      return null;
-    }
-
-    const form = closestElement(textarea, "form[data-task-form]");
-    if (!form) {
-      return null;
-    }
-
-    return {
-      formName: form.dataset.taskForm,
-      selectionStart: textarea.selectionStart,
-      selectionEnd: textarea.selectionEnd,
-    };
-  }
-
-  restoreComposerFocus(previousFocus) {
-    if (!previousFocus?.formName) {
-      return;
-    }
-
-    const textarea = this.querySelector(
-      `.tasks-detail-region form[data-task-form="${CSS.escape(previousFocus.formName)}"] textarea[name="prompt"]`,
-    );
-    if (!textarea) {
-      return;
-    }
-
-    textarea.focus({ preventScroll: true });
-    const textLength = textarea.value.length;
-    const selectionStart = Math.min(previousFocus.selectionStart ?? textLength, textLength);
-    const selectionEnd = Math.min(previousFocus.selectionEnd ?? selectionStart, textLength);
-    textarea.setSelectionRange(selectionStart, selectionEnd);
-  }
 
   setTaskDetailView(view) {
     const nextView = view === "files" || view === "diff" ? view : "conversation";
@@ -2508,12 +1914,6 @@ class CaffoldTaskDetail extends HTMLElement {
       : "Refresh task diff";
   }
 
-  syncComposerTextareas() {
-    this.querySelectorAll(
-      ".tasks-detail-region textarea[name='prompt']",
-    ).forEach((textarea) => syncComposerTextarea(textarea));
-  }
-
   hasSelectedTaskDetail() {
     return Boolean(
       this.view === "detail" &&
@@ -2549,243 +1949,6 @@ class CaffoldTaskDetail extends HTMLElement {
     `;
   }
 
-  renderTaskComposer({
-    formName,
-    className,
-    prompt,
-    placeholder,
-    ariaLabel,
-    submitLabel,
-    cancel = false,
-    threadId = "",
-  }) {
-    const model = this.selectedModelOption(formName);
-    const effort = this.selectedEffort(formName);
-    const submitting =
-      formName === "follow-up" &&
-      this.followUpRequest?.threadId === threadId;
-    const transportBlocked = isTaskTransportStale(this.streamState);
-    const permissionLocked =
-      formName === "follow-up" &&
-      (isTaskActivelyWorking(this.taskDetail?.task) || transportBlocked);
-    const permissionMode = this.selectedPermissionMode(formName);
-    const images = this.composerImages(formName);
-    const imageError = this.composerImageErrors.get(formName) ?? "";
-    const requestError =
-      formName === "follow-up" && this.error
-        ? this.error.message || `${this.error}`
-        : "";
-    return `
-      <form class="task-composer ${escapeHtml(className)}" data-task-form="${escapeHtml(formName)}"${threadId ? ` data-thread-id="${escapeHtml(threadId)}"` : ""} aria-busy="${submitting ? "true" : "false"}">
-        <div class="task-composer-panel">
-          ${this.renderComposerImages(formName, images, threadId)}
-          <textarea
-            name="prompt"
-            rows="2"
-            data-max-rows="10.5"
-            aria-label="${escapeHtml(ariaLabel)}"
-            placeholder="${escapeHtml(placeholder)}"
-            ${transportBlocked ? "disabled" : ""}
-          >${escapeHtml(prompt ?? "")}</textarea>
-          ${imageError ? `<p class="task-composer-image-error" role="alert">${escapeHtml(imageError)}</p>` : ""}
-          ${requestError ? `<p class="task-composer-request-error" role="alert">${escapeHtml(requestError)}</p>` : ""}
-          <input type="hidden" name="model" value="${escapeHtml(model?.model ?? "")}">
-          <input type="hidden" name="effort" value="${escapeHtml(effort)}">
-          <input type="hidden" name="permissionMode" value="${escapeHtml(permissionMode)}">
-          <div class="task-composer-toolbar">
-            <div class="task-composer-tools">
-              ${
-                cancel
-                  ? `<button type="button" class="task-toolbar-button" data-task-action="open-list">Cancel</button>`
-                  : ""
-              }
-              ${this.renderModelPicker(formName, permissionLocked)}
-              ${this.renderPermissionPicker(formName, permissionLocked)}
-            </div>
-            <button type="submit" class="task-send-button" aria-label="${escapeHtml(submitLabel)}" title="${escapeHtml(transportBlocked ? "Caffold server is reconnecting." : submitLabel)}"${submitting || transportBlocked ? " disabled" : ""}>
-              <span class="task-send-arrow" aria-hidden="true">&uarr;</span>
-            </button>
-          </div>
-        </div>
-      </form>
-    `;
-  }
-
-  renderComposerImages(formName, images, threadId = "") {
-    if (!images.length) {
-      return "";
-    }
-    return `
-      <div class="task-composer-attachments" aria-label="Images to send">
-        ${images
-          .map(
-            (image) => `
-              <figure class="task-composer-attachment" title="${escapeHtml(image.name)}">
-                <img src="${escapeHtml(image.dataUrl)}" alt="${escapeHtml(image.name)}">
-                <button
-                  type="button"
-                  data-task-action="remove-composer-image"
-                  data-form-name="${escapeHtml(formName)}"
-                  ${threadId ? `data-thread-id="${escapeHtml(threadId)}"` : ""}
-                  data-image-id="${escapeHtml(image.id)}"
-                  aria-label="Remove ${escapeHtml(image.name)}"
-                  title="Remove image"
-                >${renderInlineIcon("X", "Remove image", "task-composer-attachment-remove-icon")}</button>
-              </figure>
-            `,
-          )
-          .join("")}
-      </div>
-    `;
-  }
-
-  renderModelPicker(formName, disabled = false) {
-    const model = this.selectedModelOption(formName);
-    const modelLabel = model?.displayName ?? (this.modelOptionsLoading ? "Loading model" : "Model");
-    const effort = this.selectedEffort(formName);
-    const reasoningOptions = this.reasoningOptionsForModel(model);
-    const effortLabel =
-      reasoningOptions.find((option) => option.value === effort)?.label ||
-      effort ||
-      "Reasoning";
-    const open = !disabled && this.openModelPickerForm === formName;
-    const modelRows = this.modelOptions.length
-      ? this.modelOptions
-          .map((option) => renderModelOption(option, model?.model ?? "", formName))
-          .join("")
-      : renderModelFallback(this.modelOptionsLoading, this.modelOptionsError);
-    const reasoningRows = reasoningOptions
-      .map((option) => renderReasoningOption(option, effort, formName))
-      .join("");
-
-    return `
-      <div class="task-model-picker${open ? " is-open" : ""}">
-        <button
-          type="button"
-          class="task-model-button"
-          data-task-action="toggle-model-picker"
-          data-form-name="${escapeHtml(formName)}"
-          aria-expanded="${open ? "true" : "false"}"
-          aria-label="Choose model and reasoning"
-          ${disabled ? 'disabled title="Model and reasoning can be changed after the active turn finishes."' : ""}
-        >
-          ${renderInlineIcon("Circle", "Model", "task-model-icon")}
-          <span>${escapeHtml(modelLabel)}</span>
-          <span>${escapeHtml(effortLabel)}</span>
-          <span class="task-model-caret" aria-hidden="true">&#8964;</span>
-        </button>
-        ${
-          open
-            ? `<button
-                type="button"
-                class="task-model-backdrop"
-                data-task-action="close-model-picker"
-                aria-label="Close model picker"
-              ></button>
-              <div class="task-model-popover" role="menu" aria-label="Model and reasoning options">
-                <section>
-                  <p>Reasoning level</p>
-                  ${reasoningRows}
-                </section>
-                <hr>
-                <section>
-                  <p>Model</p>
-                  ${modelRows}
-                </section>
-              </div>`
-            : ""
-        }
-      </div>
-    `;
-  }
-
-  renderPermissionPicker(formName, disabled = false) {
-    const permissionMode = this.selectedPermissionMode(formName);
-    const selected = this.permissionOptions.find(
-      (option) => option.mode === permissionMode,
-    );
-    const label =
-      selected?.label ??
-      (this.permissionOptionsLoading
-        ? "Loading permissions"
-        : this.permissionOptionsError
-          ? "Codex default"
-          : permissionModeLabel(permissionMode));
-    const open = !disabled && this.openPermissionPickerForm === formName;
-    const rows = this.permissionOptions.length
-      ? this.permissionOptions
-          .map((option) => renderPermissionOption(option, permissionMode, formName))
-          .join("")
-      : renderPermissionFallback(
-          this.permissionOptionsLoading,
-          this.permissionOptionsError,
-        );
-    const lockedMessage = "Approval mode can be changed after the active turn finishes.";
-
-    return `
-      <div class="task-permission-picker${open ? " is-open" : ""}">
-        <button
-          type="button"
-          class="task-permission-button${selected?.dangerous ? " is-dangerous" : ""}"
-          data-task-action="toggle-permission-picker"
-          data-form-name="${escapeHtml(formName)}"
-          aria-expanded="${open ? "true" : "false"}"
-          aria-label="Choose approval mode"
-          title="${escapeHtml(disabled ? lockedMessage : label)}"
-          ${disabled ? "disabled" : ""}
-        >
-          ${renderInlineIcon("Shield", "Permissions", "task-permission-icon")}
-          <span>${escapeHtml(label)}</span>
-          <span class="task-model-caret" aria-hidden="true">&#8964;</span>
-        </button>
-        ${
-          open
-            ? `<button
-                type="button"
-                class="task-permission-backdrop"
-                data-task-action="close-permission-picker"
-                aria-label="Close approval mode picker"
-              ></button>
-              <div class="task-permission-popover" role="menu" aria-label="Approval modes">
-                <p class="task-permission-heading">Permissions</p>
-                ${rows}
-              </div>`
-            : ""
-        }
-      </div>
-    `;
-  }
-
-  fitModelPicker() {
-    const popover = this.querySelector(
-      ".tasks-detail-region .task-model-picker.is-open .task-model-popover",
-    );
-    if (!popover) {
-      return;
-    }
-
-    popover.style.removeProperty("max-height");
-    if (window.matchMedia("(max-width: 860px)").matches) {
-      return;
-    }
-
-    const button = popover
-      .closest(".task-model-picker")
-      ?.querySelector(".task-model-button");
-    if (!button) {
-      return;
-    }
-
-    const buttonRect = button.getBoundingClientRect();
-    const opensUpward = Boolean(popover.closest(".task-follow-up-form"));
-    const conversationRect = popover
-      .closest(".task-conversation-pane")
-      ?.getBoundingClientRect();
-    const availableHeight = opensUpward
-      ? buttonRect.top - (conversationRect?.top ?? 0) - 18
-      : window.innerHeight - buttonRect.bottom - 18;
-    popover.style.maxHeight = `${Math.max(0, Math.floor(availableHeight))}px`;
-  }
 
   renderTaskDetail() {
     const task = this.taskDetail?.task;
@@ -2801,15 +1964,7 @@ class CaffoldTaskDetail extends HTMLElement {
         <section class="task-conversation-pane" aria-label="Task conversation">
           <caffold-task-conversation></caffold-task-conversation>
           ${this.renderStreamState()}
-          ${this.renderTaskComposer({
-            formName: "follow-up",
-            className: "task-follow-up-form",
-            threadId: taskThreadId(task),
-            prompt: this.followUpDraft,
-            placeholder: "Send another prompt to this task",
-            ariaLabel: "Follow-up prompt",
-            submitLabel: "Send prompt",
-          })}
+          <caffold-task-composer></caffold-task-composer>
         </section>
         ${this.renderTaskFilesView()}
         ${this.renderTaskDiffView()}
@@ -3101,158 +2256,6 @@ function isVisibleStreamState(state) {
   return isTaskTransportStale(state);
 }
 
-function normalizeModelOptions(response) {
-  const models = Array.isArray(response?.data) ? response.data : [];
-  return models
-    .map((model) => {
-      const modelValue = `${model?.model ?? model?.id ?? ""}`.trim();
-      if (!modelValue) {
-        return null;
-      }
-      return {
-        model: modelValue,
-        displayName: `${model?.displayName ?? modelValue}`.trim(),
-        description: `${model?.description ?? ""}`.trim(),
-        isDefault: Boolean(model?.isDefault),
-        defaultReasoningEffort: `${model?.defaultReasoningEffort ?? ""}`.trim(),
-        supportedReasoningEfforts: normalizeReasoningOptions(
-          model?.supportedReasoningEfforts,
-        ),
-      };
-    })
-    .filter(Boolean);
-}
-
-function normalizeReasoningOptions(options) {
-  if (!Array.isArray(options) || options.length === 0) {
-    return [];
-  }
-  return options
-    .map((option) => {
-      const fallbackValue = typeof option === "string" ? option : "";
-      const value = `${option?.value ?? option?.reasoningEffort ?? fallbackValue}`.trim();
-      if (!value) {
-        return null;
-      }
-      return {
-        value,
-        label: `${option?.label ?? value}`.trim(),
-        description: `${option?.description ?? ""}`.trim(),
-      };
-    })
-    .filter(Boolean);
-}
-
-function normalizePermissionOptions(response) {
-  const options = Array.isArray(response?.options) ? response.options : [];
-  return options
-    .map((option) => {
-      const mode = `${option?.mode ?? ""}`.trim();
-      if (!mode) {
-        return null;
-      }
-      return {
-        mode,
-        label: `${option?.label ?? permissionModeLabel(mode)}`.trim(),
-        description: `${option?.description ?? ""}`.trim(),
-        allowed: Boolean(option?.allowed),
-        dangerous: Boolean(option?.dangerous),
-      };
-    })
-    .filter(Boolean);
-}
-
-function permissionModeLabel(mode) {
-  if (mode === "approveForMe") {
-    return "Approve for me";
-  }
-  if (mode === "fullAccess") {
-    return "Full access";
-  }
-  return "Ask for approval";
-}
-
-function renderPermissionOption(option, selectedMode, formName) {
-  const selected = option.mode === selectedMode;
-  const unavailable = option.allowed ? "" : " Not allowed by Codex requirements.";
-  return `
-    <button
-      type="button"
-      class="task-model-option task-permission-option${option.dangerous ? " is-dangerous" : ""}"
-      data-task-action="select-permission"
-      data-form-name="${escapeHtml(formName)}"
-      data-permission-mode="${escapeHtml(option.mode)}"
-      aria-pressed="${selected ? "true" : "false"}"
-      ${option.allowed ? "" : "disabled"}
-    >
-      <span>
-        <strong>${escapeHtml(option.label)}</strong>
-        <small>${escapeHtml(`${option.description}${unavailable}`)}</small>
-      </span>
-      ${selected ? renderInlineIcon("Check", "Selected", "task-model-check") : ""}
-    </button>
-  `;
-}
-
-function renderPermissionFallback(loading, error) {
-  if (loading) {
-    return `<p class="task-model-note">Loading permission modes...</p>`;
-  }
-  if (error) {
-    return `<p class="task-model-note">Permission modes are unavailable. Current Codex settings will be kept.</p>`;
-  }
-  return `<p class="task-model-note">Open this menu after Codex is connected.</p>`;
-}
-
-function renderReasoningOption(option, selectedEffort, formName) {
-  const selected = option.value === selectedEffort;
-  return `
-    <button
-      type="button"
-      class="task-model-option"
-      data-task-action="select-effort"
-      data-form-name="${escapeHtml(formName)}"
-      data-effort="${escapeHtml(option.value)}"
-      aria-pressed="${selected ? "true" : "false"}"
-    >
-      <span>
-        <strong>${escapeHtml(option.label)}</strong>
-        ${option.description ? `<small>${escapeHtml(option.description)}</small>` : ""}
-      </span>
-      ${selected ? renderInlineIcon("Check", "Selected", "task-model-check") : ""}
-    </button>
-  `;
-}
-
-function renderModelOption(option, selectedModel, formName) {
-  const selected = option.model === selectedModel;
-  return `
-    <button
-      type="button"
-      class="task-model-option"
-      data-task-action="select-model"
-      data-form-name="${escapeHtml(formName)}"
-      data-model="${escapeHtml(option.model)}"
-      aria-pressed="${selected ? "true" : "false"}"
-    >
-      <span>
-        <strong>${escapeHtml(option.displayName)}</strong>
-        ${option.description ? `<small>${escapeHtml(option.description)}</small>` : ""}
-      </span>
-      ${selected ? renderInlineIcon("Check", "Selected", "task-model-check") : ""}
-    </button>
-  `;
-}
-
-function renderModelFallback(loading, error) {
-  if (loading) {
-    return `<p class="task-model-note">Loading models...</p>`;
-  }
-  if (error) {
-    return `<p class="task-model-note">Model list unavailable. The default Codex model will be used.</p>`;
-  }
-  return `<p class="task-model-note">Open this menu after Codex is connected.</p>`;
-}
 
 function taskWorktreeRef(task) {
   const branch = `${task?.worktree?.branch ?? ""}`.trim();
@@ -3284,46 +2287,6 @@ function closestElement(target, selector) {
   return target instanceof Element ? target.closest(selector) : null;
 }
 
-function promptTextareaForForm(form) {
-  const field = form?.elements?.namedItem("prompt");
-  return field instanceof HTMLTextAreaElement ? field : null;
-}
-
-function syncComposerTextarea(textarea) {
-  const styles = getComputedStyle(textarea);
-  const lineHeight = Number.parseFloat(styles.lineHeight) || 22;
-  const padding =
-    (Number.parseFloat(styles.paddingTop) || 0) +
-    (Number.parseFloat(styles.paddingBottom) || 0);
-  const maxRows = Number.parseFloat(textarea.dataset.maxRows ?? "10.5") || 10.5;
-  const maxHeight = lineHeight * maxRows + padding;
-
-  textarea.style.height = "auto";
-  const nextHeight = Math.min(textarea.scrollHeight, maxHeight);
-  textarea.style.height = `${nextHeight}px`;
-  textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
-}
-
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener("load", () => resolve(`${reader.result ?? ""}`), { once: true });
-    reader.addEventListener("error", () => reject(reader.error ?? new Error("Could not read image")), {
-      once: true,
-    });
-    reader.readAsDataURL(file);
-  });
-}
-
-function imageExtension(type) {
-  return {
-    "image/avif": "avif",
-    "image/gif": "gif",
-    "image/jpeg": "jpg",
-    "image/png": "png",
-    "image/webp": "webp",
-  }[type] ?? "png";
-}
 
 function parseJson(value) {
   try {

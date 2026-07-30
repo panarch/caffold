@@ -25,6 +25,7 @@ class CaffoldTaskComposer extends HTMLElement {
     this.addEventListener("paste", this.boundPaste, true);
     this.addEventListener("submit", this.boundSubmit, true);
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
+    window.addEventListener("resize", this.boundResize);
     document.addEventListener("click", this.boundDocumentClick);
     this.render();
   }
@@ -36,6 +37,7 @@ class CaffoldTaskComposer extends HTMLElement {
     this.removeEventListener("paste", this.boundPaste, true);
     this.removeEventListener("submit", this.boundSubmit, true);
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
+    window.removeEventListener("resize", this.boundResize);
     document.removeEventListener("click", this.boundDocumentClick);
     this.modelRequestId += 1;
     this.permissionRequestId += 1;
@@ -59,7 +61,7 @@ class CaffoldTaskComposer extends HTMLElement {
       requestError: "",
     };
     this.states = new Map();
-    this.activeSubmission = null;
+    this.activeSubmissions = new Map();
     this.submissionSequence = 0;
     this.modelOptions = [];
     this.modelLoading = false;
@@ -82,6 +84,7 @@ class CaffoldTaskComposer extends HTMLElement {
     };
     this.boundSubmit = (event) => this.handleSubmit(event);
     this.boundIconsReady = () => this.render();
+    this.boundResize = () => this.fitModelPicker();
     this.boundDocumentClick = (event) => {
       if (!this.openPicker || this.contains(event.target)) {
         return;
@@ -106,17 +109,17 @@ class CaffoldTaskComposer extends HTMLElement {
       settingsLocked: Boolean(context.settingsLocked),
       requestError: `${context.requestError ?? ""}`,
     };
+    this.setAttribute("data-composer-mode", this.context.mode);
     const state = this.stateFor(nextKey);
-    if (context.model && !state.modelExplicit && !state.model) {
+    if (context.model && !state.modelExplicit) {
       state.model = `${context.model}`;
     }
-    if (context.effort && !state.modelExplicit && !state.effort) {
+    if (context.effort && !state.modelExplicit) {
       state.effort = `${context.effort}`;
     }
     if (
       context.permissionMode &&
-      !state.permissionExplicit &&
-      !state.permissionMode
+      !state.permissionExplicit
     ) {
       state.permissionMode = `${context.permissionMode}`;
     }
@@ -128,16 +131,25 @@ class CaffoldTaskComposer extends HTMLElement {
 
   resolveSubmission(submissionId, result = {}) {
     this.ensureState();
-    if (!this.activeSubmission || this.activeSubmission.id !== submissionId) {
+    const submission = this.activeSubmissions.get(submissionId);
+    if (!submission) {
       return false;
     }
-    const submission = this.activeSubmission;
-    this.activeSubmission = null;
+    this.activeSubmissions.delete(submissionId);
     const state = this.stateFor(submission.stateKey);
+    if (state.activeSubmissionId === submissionId) {
+      state.activeSubmissionId = "";
+    }
     if (result.status === "rejected") {
-      state.prompt = submission.prompt;
-      state.images = [...submission.images];
+      state.prompt ||= submission.prompt;
+      if (!state.images.length) {
+        state.images = [...submission.images];
+      }
       state.imageError = "";
+    }
+    if (result.resetOverrides) {
+      state.modelExplicit = false;
+      state.permissionExplicit = false;
     }
     this.context.requestError = `${result.error?.message ?? result.error ?? ""}`;
     this.render();
@@ -145,6 +157,12 @@ class CaffoldTaskComposer extends HTMLElement {
       this.focus();
     }
     return true;
+  }
+
+  resetOverrides(stateKey = this.context.stateKey) {
+    const state = this.stateFor(stateKey);
+    state.modelExplicit = false;
+    state.permissionExplicit = false;
   }
 
   focus() {
@@ -173,10 +191,18 @@ class CaffoldTaskComposer extends HTMLElement {
         permissionExplicit: false,
         selectionStart: 0,
         selectionEnd: 0,
+        activeSubmissionId: "",
       };
       this.states.set(stateKey, state);
     }
     return state;
+  }
+
+  activeSubmissionFor(key = this.context.stateKey) {
+    const submissionId = this.stateFor(key).activeSubmissionId;
+    return submissionId
+      ? this.activeSubmissions.get(submissionId) ?? null
+      : null;
   }
 
   captureCurrentState() {
@@ -459,7 +485,10 @@ class CaffoldTaskComposer extends HTMLElement {
 
   async handlePaste(event) {
     const textarea = closestElement(event.target, "textarea[name='prompt']");
-    if (!textarea || this.activeSubmission) {
+    if (
+      !textarea ||
+      (this.context.mode === "create" && this.activeSubmissionFor())
+    ) {
       return;
     }
     const files = Array.from(event.clipboardData?.items ?? [])
@@ -514,7 +543,7 @@ class CaffoldTaskComposer extends HTMLElement {
       return;
     }
     event.preventDefault();
-    if (this.activeSubmission || this.context.disabled) {
+    if (this.activeSubmissionFor() || this.context.disabled) {
       return;
     }
     this.captureCurrentState();
@@ -541,13 +570,15 @@ class CaffoldTaskComposer extends HTMLElement {
       options.permissionMode =
         state.permissionMode || this.defaultPermissionMode;
     }
-    this.activeSubmission = {
+    const submission = {
       id: submissionId,
       stateKey: this.context.stateKey,
       prompt,
       images: [...state.images],
       hadFocus: form.contains(document.activeElement),
     };
+    this.activeSubmissions.set(submissionId, submission);
+    state.activeSubmissionId = submissionId;
     state.prompt = "";
     state.images = [];
     state.imageError = "";
@@ -560,8 +591,10 @@ class CaffoldTaskComposer extends HTMLElement {
         composed: true,
         detail: {
           submissionId,
+          threadId: `${this.context.threadId ?? ""}`,
           prompt,
-          images: this.activeSubmission.images.map((image) => image.dataUrl),
+          images: submission.images.map((image) => image.dataUrl),
+          attachments: [...submission.images],
           options,
         },
       }),
@@ -584,9 +617,12 @@ class CaffoldTaskComposer extends HTMLElement {
     const state = this.stateFor();
     const model = this.selectedModel();
     const effort = this.selectedEffort();
-    const submitting = Boolean(this.activeSubmission);
-    const disabled = submitting || this.context.disabled;
-    const settingsLocked = disabled || this.context.settingsLocked;
+    const submitting = Boolean(this.activeSubmissionFor());
+    const fieldDisabled =
+      this.context.disabled ||
+      (submitting && this.context.mode === "create");
+    const submitDisabled = submitting || this.context.disabled;
+    const settingsLocked = submitDisabled || this.context.settingsLocked;
     const permissionMode =
       state.permissionMode || this.defaultPermissionMode;
     const permission = this.permissionOptions.find(
@@ -596,6 +632,7 @@ class CaffoldTaskComposer extends HTMLElement {
       <form
         class="task-composer ${escapeHtml(this.context.className ?? "")}"
         data-task-form="${escapeHtml(this.context.mode)}"
+        ${this.context.threadId ? `data-thread-id="${escapeHtml(this.context.threadId)}"` : ""}
         aria-busy="${submitting ? "true" : "false"}"
       >
         <div class="task-composer-panel">
@@ -615,7 +652,7 @@ class CaffoldTaskComposer extends HTMLElement {
             data-max-rows="10.5"
             aria-label="${escapeHtml(this.context.ariaLabel)}"
             placeholder="${escapeHtml(this.context.placeholder)}"
-            ${disabled ? "disabled" : ""}
+            ${fieldDisabled ? "disabled" : ""}
           >${escapeHtml(state.prompt)}</textarea>
           ${
             state.imageError
@@ -645,7 +682,7 @@ class CaffoldTaskComposer extends HTMLElement {
               class="task-send-button"
               aria-label="${escapeHtml(this.context.submitLabel)}"
               title="${escapeHtml(this.context.disabled ? "Caffold server is reconnecting." : this.context.submitLabel)}"
-              ${disabled ? "disabled" : ""}
+              ${submitDisabled ? "disabled" : ""}
             >
               <span class="task-send-arrow" aria-hidden="true">&uarr;</span>
             </button>
