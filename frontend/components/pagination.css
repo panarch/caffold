@@ -3,60 +3,60 @@ caffold-pagination {
   min-width: 0;
   border-top: 1px solid var(--border);
   background: var(--surface);
-}
 
-caffold-pagination .pagination-panel {
-  display: grid;
-  grid-template-columns: 30px 30px minmax(3.8rem, auto) 30px 30px;
-  gap: 6px;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  padding: 5px 8px;
-}
+  & .pagination-panel {
+    display: grid;
+    grid-template-columns: 30px 30px minmax(3.8rem, auto) 30px 30px;
+    gap: 6px;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    padding: 5px 8px;
+  }
 
-caffold-pagination .pagination-button {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--surface);
-  color: var(--accent);
-  cursor: pointer;
-}
+  & .pagination-button {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--accent);
+    cursor: pointer;
+  }
 
-caffold-pagination .pagination-button:hover,
-caffold-pagination .pagination-button:focus-visible {
-  border-color: #abcbbf;
-  background: #f7fbf8;
-  outline: none;
-}
+  & .pagination-button:hover,
+  & .pagination-button:focus-visible {
+    border-color: #abcbbf;
+    background: #f7fbf8;
+    outline: none;
+  }
 
-caffold-pagination .pagination-button:disabled {
-  color: #a4b0aa;
-  cursor: default;
-  opacity: 0.55;
-}
+  & .pagination-button:disabled {
+    color: #a4b0aa;
+    cursor: default;
+    opacity: 0.55;
+  }
 
-caffold-pagination .pagination-button:disabled:hover {
-  border-color: var(--border);
-  background: var(--surface);
-}
+  & .pagination-button:disabled:hover {
+    border-color: var(--border);
+    background: var(--surface);
+  }
 
-caffold-pagination .pagination-icon {
-  width: 0.9rem;
-  height: 0.9rem;
-  stroke-width: 2.2;
-}
+  & .pagination-icon {
+    width: 0.9rem;
+    height: 0.9rem;
+    stroke-width: 2.2;
+  }
 
-caffold-pagination .pagination-indicator {
-  min-width: 0;
-  color: var(--muted);
-  font-size: 0.74rem;
-  line-height: 1;
-  text-align: center;
-  white-space: nowrap;
+  & .pagination-indicator {
+    min-width: 0;
+    color: var(--muted);
+    font-size: 0.74rem;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
+  }
 }

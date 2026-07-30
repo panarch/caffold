@@ -4,163 +4,163 @@ caffold-commit-changes-tree {
   min-height: 0;
   border-right: 1px solid var(--border);
   background: var(--surface);
-}
 
-caffold-commit-changes-tree .commit-tree-panel {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  min-height: 0;
-  height: 100%;
-}
+  & .commit-tree-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+    height: 100%;
+  }
 
-caffold-commit-changes-tree .commit-tree-panel > header {
-  box-sizing: border-box;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 2px;
-  align-content: center;
-  height: var(--review-header-height, 42px);
-  min-height: 0;
-  overflow: hidden;
-  padding: 5px 12px;
-  border-bottom: 1px solid var(--border);
-}
+  & .commit-tree-panel > header {
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+    align-content: center;
+    height: var(--review-header-height, 42px);
+    min-height: 0;
+    overflow: hidden;
+    padding: 5px 12px;
+    border-bottom: 1px solid var(--border);
+  }
 
-caffold-commit-changes-tree h2 {
-  margin: 0;
-  overflow: hidden;
-  font-size: var(--review-pane-title-size, 0.82rem);
-  font-weight: 600;
-  line-height: 1.05;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  & h2 {
+    margin: 0;
+    overflow: hidden;
+    font-size: var(--review-pane-title-size, 0.82rem);
+    font-weight: 600;
+    line-height: 1.05;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-caffold-commit-changes-tree .commit-tree-title-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  width: 100%;
-  min-width: 0;
-}
+  & .commit-tree-title-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+  }
 
-caffold-commit-changes-tree .commit-file-count {
-  justify-self: end;
-  color: var(--muted);
-  font-size: 0.74rem;
-  line-height: 1.1;
-  white-space: nowrap;
-}
+  & .commit-file-count {
+    justify-self: end;
+    color: var(--muted);
+    font-size: 0.74rem;
+    line-height: 1.1;
+    white-space: nowrap;
+  }
 
-caffold-commit-changes-tree .commit-line-stats {
-  display: inline-grid;
-  grid-auto-flow: column;
-  gap: 6px;
-  justify-self: end;
-  font-size: 0.74rem;
-  line-height: 1.1;
-  white-space: nowrap;
-}
+  & .commit-line-stats {
+    display: inline-grid;
+    grid-auto-flow: column;
+    gap: 6px;
+    justify-self: end;
+    font-size: 0.74rem;
+    line-height: 1.1;
+    white-space: nowrap;
+  }
 
-caffold-commit-changes-tree .commit-line-stats .is-addition {
-  color: #167c5c;
-}
+  & .commit-line-stats .is-addition {
+    color: #167c5c;
+  }
 
-caffold-commit-changes-tree .commit-line-stats .is-deletion {
-  color: var(--danger);
-}
+  & .commit-line-stats .is-deletion {
+    color: var(--danger);
+  }
 
-caffold-commit-changes-tree .commit-tree-list {
-  --tree-indent: var(--file-tree-indent);
-  display: block;
-  min-height: 0;
-  margin: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding: 4px 0;
-  list-style: none;
-}
+  & .commit-tree-list {
+    --tree-indent: var(--file-tree-indent);
+    display: block;
+    min-height: 0;
+    margin: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 4px 0;
+    list-style: none;
+  }
 
-caffold-commit-changes-tree .commit-tree-list > li {
-  width: max-content;
-  min-width: 100%;
-}
+  & .commit-tree-list > li {
+    width: max-content;
+    min-width: 100%;
+  }
 
-caffold-commit-changes-tree .commit-entry {
-  display: grid;
-  grid-template-columns: var(--file-tree-icon-slot-size) max-content;
-  gap: var(--file-tree-column-gap);
-  width: max-content;
-  min-width: 100%;
-  min-height: var(--file-tree-row-height);
-  align-items: center;
-  border: 0;
-  border-left: 3px solid transparent;
-  border-radius: 0;
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-  font-size: var(--file-tree-font-size);
-  padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
-    var(--file-tree-padding-y) var(--file-tree-padding-left);
-  text-align: left;
-}
+  & .commit-entry {
+    display: grid;
+    grid-template-columns: var(--file-tree-icon-slot-size) max-content;
+    gap: var(--file-tree-column-gap);
+    width: max-content;
+    min-width: 100%;
+    min-height: var(--file-tree-row-height);
+    align-items: center;
+    border: 0;
+    border-left: 3px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    font-size: var(--file-tree-font-size);
+    padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
+      var(--file-tree-padding-y) var(--file-tree-padding-left);
+    text-align: left;
+  }
 
-caffold-commit-changes-tree .commit-entry:hover,
-caffold-commit-changes-tree .commit-entry:focus-visible {
-  border-left-color: #bdd7cc;
-  background: #f1f6f3;
-  outline: none;
-}
+  & .commit-entry:hover,
+  & .commit-entry:focus-visible {
+    border-left-color: #bdd7cc;
+    background: #f1f6f3;
+    outline: none;
+  }
 
-caffold-commit-changes-tree .commit-file[aria-current="true"] {
-  border-left-color: var(--accent);
-  background: var(--accent-soft);
-}
+  & .commit-file[aria-current="true"] {
+    border-left-color: var(--accent);
+    background: var(--accent-soft);
+  }
 
-caffold-commit-changes-tree .commit-status-code {
-  align-self: center;
-  color: #764600;
-  font-size: var(--file-tree-font-size);
-  justify-self: start;
-  white-space: pre;
-}
+  & .commit-status-code {
+    align-self: center;
+    color: #764600;
+    font-size: var(--file-tree-font-size);
+    justify-self: start;
+    white-space: pre;
+  }
 
-caffold-commit-changes-tree .commit-node-label {
-  display: grid;
-  grid-template-columns: var(--file-tree-icon-slot-size) max-content;
-  gap: var(--file-tree-column-gap);
-  align-items: center;
-  min-width: 0;
-  margin-left: calc(var(--tree-depth, 0) * var(--tree-indent));
-}
+  & .commit-node-label {
+    display: grid;
+    grid-template-columns: var(--file-tree-icon-slot-size) max-content;
+    gap: var(--file-tree-column-gap);
+    align-items: center;
+    min-width: 0;
+    margin-left: calc(var(--tree-depth, 0) * var(--tree-indent));
+  }
 
-caffold-commit-changes-tree .entry-icon {
-  display: inline-grid;
-  width: var(--file-tree-icon-slot-size);
-  height: var(--file-tree-icon-slot-size);
-  place-items: center;
-  justify-self: center;
-}
+  & .entry-icon {
+    display: inline-grid;
+    width: var(--file-tree-icon-slot-size);
+    height: var(--file-tree-icon-slot-size);
+    place-items: center;
+    justify-self: center;
+  }
 
-caffold-commit-changes-tree .entry-icon-svg {
-  display: block;
-  width: var(--file-tree-icon-size);
-  height: var(--file-tree-icon-size);
-  stroke-width: 1.9;
-}
+  & .entry-icon-svg {
+    display: block;
+    width: var(--file-tree-icon-size);
+    height: var(--file-tree-icon-size);
+    stroke-width: 1.9;
+  }
 
-caffold-commit-changes-tree .commit-name {
-  min-width: 0;
-  overflow: visible;
-  text-overflow: clip;
-  white-space: nowrap;
-}
+  & .commit-name {
+    min-width: 0;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
 
-caffold-commit-changes-tree .error-panel {
-  background: var(--danger-soft);
-  color: var(--danger);
+  & .error-panel {
+    background: var(--danger-soft);
+    color: var(--danger);
+  }
 }
 
 @media (max-width: 860px) {

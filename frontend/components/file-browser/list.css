@@ -4,231 +4,231 @@ caffold-file-list {
   min-height: 0;
   border-right: 1px solid var(--border);
   background: var(--surface);
-}
 
-caffold-file-list .file-list-panel {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  min-height: 0;
-  height: 100%;
-}
+  & .file-list-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+    height: 100%;
+  }
 
-caffold-file-list .file-list-panel > header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 2px;
-  align-content: center;
-  padding: 7px 14px;
-  border-bottom: 1px solid var(--border);
-}
+  & .file-list-panel > header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+    align-content: center;
+    padding: 7px 14px;
+    border-bottom: 1px solid var(--border);
+  }
 
-caffold-file-list h2 {
-  margin: 0;
-  overflow: hidden;
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.15;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  & h2 {
+    margin: 0;
+    overflow: hidden;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-caffold-file-list .file-list-panel > header span {
-  color: var(--muted);
-  font-size: 13px;
-}
+  & .file-list-panel > header span {
+    color: var(--muted);
+    font-size: 13px;
+  }
 
-caffold-file-list .file-list-title-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  width: 100%;
-  min-width: 0;
-}
+  & .file-list-title-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+  }
 
-caffold-file-list .entry-count {
-  justify-self: end;
-  white-space: nowrap;
-}
+  & .entry-count {
+    justify-self: end;
+    white-space: nowrap;
+  }
 
-caffold-file-list .file-list-actions {
-  display: grid;
-  grid-auto-flow: column;
-  gap: 6px;
-  align-items: center;
-}
+  & .file-list-actions {
+    display: grid;
+    grid-auto-flow: column;
+    gap: 6px;
+    align-items: center;
+  }
 
-caffold-file-list .file-refresh-button {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--accent);
-  cursor: pointer;
-}
+  & .file-refresh-button {
+    display: grid;
+    width: 28px;
+    height: 28px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--accent);
+    cursor: pointer;
+  }
 
-caffold-file-list .file-refresh-button:hover,
-caffold-file-list .file-refresh-button:focus-visible {
-  border-color: var(--border);
-  background: var(--accent-soft);
-  outline: none;
-}
+  & .file-refresh-button:hover,
+  & .file-refresh-button:focus-visible {
+    border-color: var(--border);
+    background: var(--accent-soft);
+    outline: none;
+  }
 
-caffold-file-list .file-refresh-button.is-unavailable {
-  color: #8a5200;
-}
+  & .file-refresh-button.is-unavailable {
+    color: #8a5200;
+  }
 
-caffold-file-list .file-refresh-button.is-refreshing .file-refresh-icon {
-  animation: caffold-refresh-spin 0.8s linear infinite;
-}
+  & .file-refresh-button.is-refreshing .file-refresh-icon {
+    animation: caffold-refresh-spin 0.8s linear infinite;
+  }
 
-caffold-file-list .file-refresh-icon {
-  width: 16px;
-  height: 16px;
-}
+  & .file-refresh-icon {
+    width: 16px;
+    height: 16px;
+  }
 
-caffold-file-list .git-summary {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--accent);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  & .git-summary {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--accent);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-caffold-file-list .git-summary.is-dirty {
-  color: #8a5200;
-}
+  & .git-summary.is-dirty {
+    color: #8a5200;
+  }
 
-caffold-file-list .file-list {
-  display: block;
-  min-height: 0;
-  margin: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding: 4px 0;
-  list-style: none;
-}
+  & .file-list {
+    display: block;
+    min-height: 0;
+    margin: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 4px 0;
+    list-style: none;
+  }
 
-caffold-file-list .file-list > li {
-  width: max-content;
-  min-width: 100%;
-}
+  & .file-list > li {
+    width: max-content;
+    min-width: 100%;
+  }
 
-caffold-file-list .repo-tree {
-  --tree-indent: var(--file-tree-indent);
-}
+  & .repo-tree {
+    --tree-indent: var(--file-tree-indent);
+  }
 
-caffold-file-list .file-entry {
-  display: grid;
-  grid-template-columns: var(--file-tree-icon-slot-size) max-content;
-  gap: var(--file-tree-column-gap);
-  width: max-content;
-  min-width: 100%;
-  min-height: var(--file-tree-row-height);
-  align-items: center;
-  border: 0;
-  border-left: 3px solid transparent;
-  border-radius: 0;
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-  font-size: var(--file-tree-font-size);
-  padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
-    var(--file-tree-padding-y) var(--file-tree-padding-left);
-  text-align: left;
-}
+  & .file-entry {
+    display: grid;
+    grid-template-columns: var(--file-tree-icon-slot-size) max-content;
+    gap: var(--file-tree-column-gap);
+    width: max-content;
+    min-width: 100%;
+    min-height: var(--file-tree-row-height);
+    align-items: center;
+    border: 0;
+    border-left: 3px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    font-size: var(--file-tree-font-size);
+    padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
+      var(--file-tree-padding-y) var(--file-tree-padding-left);
+    text-align: left;
+  }
 
-caffold-file-list .tree-entry {
-  grid-template-columns: var(--file-tree-icon-slot-size) max-content;
-  padding-left: calc(
-    var(--file-tree-padding-left) + var(--tree-depth, 0) * var(--tree-indent)
-  );
-}
-
-caffold-file-list .file-entry:hover,
-caffold-file-list .file-entry:focus-visible {
-  background: #f1f6f3;
-  outline: none;
-}
-
-caffold-file-list .file-entry:disabled {
-  cursor: not-allowed;
-  opacity: 0.58;
-}
-
-caffold-file-list .parent-entry,
-caffold-file-list .file-entry.is-ignored {
-  color: #77857c;
-}
-
-caffold-file-list .file-entry.is-hidden {
-  color: #9aa59e;
-}
-
-caffold-file-list .file-entry.is-hidden .entry-kind {
-  color: #9aa59e;
-}
-
-caffold-file-list .file-entry:focus-visible,
-caffold-file-list .file-entry:hover {
-  border-left-color: #bdd7cc;
-}
-
-caffold-file-list .file-entry:not(.parent-entry)[aria-current="true"],
-caffold-file-list .file-entry:not(.parent-entry).is-selected {
-  border-left-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-caffold-file-list .entry-kind {
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-caffold-file-list .entry-icon {
-  display: inline-grid;
-  width: var(--file-tree-icon-slot-size);
-  height: var(--file-tree-icon-slot-size);
-  place-items: center;
-  justify-self: center;
-}
-
-caffold-file-list .entry-icon-svg {
-  display: block;
-  width: var(--file-tree-icon-size);
-  height: var(--file-tree-icon-size);
-  stroke-width: 1.9;
-}
-
-caffold-file-list .entry-name {
-  min-width: 0;
-  overflow: visible;
-  text-overflow: clip;
-  white-space: nowrap;
-}
-
-caffold-file-list .tree-status {
-  width: max-content;
-  min-width: 100%;
-  min-height: var(--file-tree-row-height);
-  padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
-    var(--file-tree-padding-y)
-    calc(
-      3px + var(--file-tree-padding-left) + var(--file-tree-icon-slot-size) +
-        var(--file-tree-column-gap) + var(--tree-depth, 0) * var(--tree-indent)
+  & .tree-entry {
+    grid-template-columns: var(--file-tree-icon-slot-size) max-content;
+    padding-left: calc(
+      var(--file-tree-padding-left) + var(--tree-depth, 0) * var(--tree-indent)
     );
-  color: var(--muted);
-  font-size: var(--file-tree-font-size);
-}
+  }
 
-caffold-file-list .tree-status.is-error {
-  color: var(--danger);
+  & .file-entry:hover,
+  & .file-entry:focus-visible {
+    background: #f1f6f3;
+    outline: none;
+  }
+
+  & .file-entry:disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
+  }
+
+  & .parent-entry,
+  & .file-entry.is-ignored {
+    color: #77857c;
+  }
+
+  & .file-entry.is-hidden {
+    color: #9aa59e;
+  }
+
+  & .file-entry.is-hidden .entry-kind {
+    color: #9aa59e;
+  }
+
+  & .file-entry:focus-visible,
+  & .file-entry:hover {
+    border-left-color: #bdd7cc;
+  }
+
+  & .file-entry:not(.parent-entry)[aria-current="true"],
+  & .file-entry:not(.parent-entry).is-selected {
+    border-left-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  & .entry-kind {
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  & .entry-icon {
+    display: inline-grid;
+    width: var(--file-tree-icon-slot-size);
+    height: var(--file-tree-icon-slot-size);
+    place-items: center;
+    justify-self: center;
+  }
+
+  & .entry-icon-svg {
+    display: block;
+    width: var(--file-tree-icon-size);
+    height: var(--file-tree-icon-size);
+    stroke-width: 1.9;
+  }
+
+  & .entry-name {
+    min-width: 0;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+
+  & .tree-status {
+    width: max-content;
+    min-width: 100%;
+    min-height: var(--file-tree-row-height);
+    padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
+      var(--file-tree-padding-y)
+      calc(
+        3px + var(--file-tree-padding-left) + var(--file-tree-icon-slot-size) +
+          var(--file-tree-column-gap) + var(--tree-depth, 0) * var(--tree-indent)
+      );
+    color: var(--muted);
+    font-size: var(--file-tree-font-size);
+  }
+
+  & .tree-status.is-error {
+    color: var(--danger);
+  }
 }
 
 @media (max-width: 860px) {

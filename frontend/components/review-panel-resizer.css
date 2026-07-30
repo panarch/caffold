@@ -6,11 +6,11 @@ caffold-review-panel-resizer {
   background: var(--surface-muted);
   cursor: col-resize;
   touch-action: none;
-}
 
-caffold-review-panel-resizer:hover,
-caffold-review-panel-resizer:focus-visible,
-caffold-review-panel-resizer[data-resizing] {
-  background: #d9e6df;
-  outline: none;
+  &:hover,
+  &:focus-visible,
+  &[data-resizing] {
+    background: #d9e6df;
+    outline: none;
+  }
 }

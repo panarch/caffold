@@ -4,92 +4,93 @@ caffold-pathbar {
   border-top: 1px solid #e3e9e4;
   border-bottom: 1px solid var(--border);
   background: var(--surface-muted);
-}
 
-caffold-pathbar .pathbar {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-  min-height: 34px;
-  padding: 0 12px;
-}
+  & .pathbar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    min-height: 34px;
+    padding: 0 12px;
+  }
 
-caffold-pathbar .pathbar-label {
-  color: var(--muted);
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
+  & .pathbar-label {
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
 
-caffold-pathbar .path-crumbs {
-  display: flex;
-  align-self: stretch;
-  min-width: 0;
-  margin: 0;
-  overflow-x: auto;
-  padding: 0;
-  list-style: none;
-}
+  & .path-crumbs {
+    display: flex;
+    align-self: stretch;
+    min-width: 0;
+    margin: 0;
+    overflow-x: auto;
+    padding: 0;
+    list-style: none;
+  }
 
-caffold-pathbar .path-crumbs li {
-  display: inline-grid;
-  grid-auto-flow: column;
-  align-items: stretch;
-}
+  & .path-crumbs li {
+    display: inline-grid;
+    grid-auto-flow: column;
+    align-items: stretch;
+  }
 
-caffold-pathbar .path-crumbs li + li::before {
-  content: "/";
-  display: inline-grid;
-  align-items: center;
-  color: #a9b6ad;
-  font-size: 0.78rem;
-  padding: 0 2px;
-}
+  & .path-crumbs li + li::before {
+    content: "/";
+    display: inline-grid;
+    align-items: center;
+    color: #a9b6ad;
+    font-size: 0.78rem;
+    padding: 0 2px;
+  }
 
-caffold-pathbar .path-crumbs button {
-  display: inline-grid;
-  min-height: 100%;
-  align-items: center;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-  padding: 0 8px;
-  white-space: nowrap;
-}
+  & .path-crumbs button {
+    display: inline-grid;
+    min-height: 100%;
+    align-items: center;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    padding: 0 8px;
+    white-space: nowrap;
+  }
 
-caffold-pathbar .path-crumbs button:hover {
-  background: #e7eee9;
-  color: #0d5f47;
-}
+  & .path-crumbs button:hover {
+    background: #e7eee9;
+    color: #0d5f47;
+  }
 
-caffold-pathbar .path-crumbs button:focus-visible {
-  background: #e7eee9;
-  outline: 2px solid #abcbbf;
-  outline-offset: -2px;
-}
+  & .path-crumbs button:focus-visible {
+    background: #e7eee9;
+    outline: 2px solid #abcbbf;
+    outline-offset: -2px;
+  }
 
-caffold-pathbar .path-crumbs button:focus:not(:focus-visible) {
-  outline: none;
-}
+  & .path-crumbs button:focus:not(:focus-visible) {
+    outline: none;
+  }
 
-caffold-pathbar .path-crumbs button[aria-current="page"] {
-  background: transparent;
-  color: #0d5f47;
-  font-weight: 500;
+  & .path-crumbs button[aria-current="page"] {
+    background: transparent;
+    color: #0d5f47;
+    font-weight: 500;
+  }
 }
 
 @media (max-width: 520px) {
-  caffold-pathbar .pathbar {
-    gap: 6px;
-    padding: 0 8px;
-  }
+  caffold-pathbar {
+    & .pathbar {
+      gap: 6px;
+      padding: 0 8px;
+    }
 
-  caffold-pathbar .pathbar-label {
-    display: none;
+    & .pathbar-label {
+      display: none;
+    }
   }
-
 }

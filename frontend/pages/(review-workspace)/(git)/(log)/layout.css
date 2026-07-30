@@ -1,4 +1,5 @@
 @import "./list/page.css";
+
 @import "./commit/page.css";
 
 caffold-git-log-layout {
@@ -9,19 +10,21 @@ caffold-git-log-layout {
   min-height: 0;
   height: 100%;
   overflow: hidden;
-}
 
-caffold-git-log-layout[data-log-view="list"] caffold-git-log-list-page {
-  border-right: 0;
-}
+  &[data-log-view="list"] caffold-git-log-list-page {
+    border-right: 0;
+  }
 
-caffold-git-log-layout[data-log-view="list"] caffold-git-log-commit-page,
-caffold-git-log-layout[data-log-view="detail"] caffold-git-log-list-page {
-  display: none;
+  &[data-log-view="list"] caffold-git-log-commit-page,
+  &[data-log-view="detail"] caffold-git-log-list-page {
+    display: none;
+  }
 }
 
 @media (max-width: 860px) {
-  caffold-git-log-layout[data-log-view="list"] caffold-git-log-list-page {
-    border-bottom: 0;
+  caffold-git-log-layout {
+    &[data-log-view="list"] caffold-git-log-list-page {
+      border-bottom: 0;
+    }
   }
 }

@@ -6,17 +6,17 @@ caffold-github-pulls-layout {
   min-height: 0;
   height: 100%;
   overflow: hidden;
-}
 
-caffold-github-pulls-layout[data-pulls-view="list"] caffold-github-pulls-list-page {
-  border-right: 0;
-}
+  &[data-pulls-view="list"] caffold-github-pulls-list-page {
+    border-right: 0;
+  }
 
-caffold-github-pulls-layout[data-pulls-view="list"] caffold-github-pull-detail-page,
-caffold-github-pulls-layout[data-pulls-view="list"] caffold-github-pull-files-page,
-caffold-github-pulls-layout[data-pulls-view="detail"] caffold-github-pulls-list-page,
-caffold-github-pulls-layout[data-pulls-view="detail"] caffold-github-pull-files-page,
-caffold-github-pulls-layout[data-pulls-view="files"] caffold-github-pulls-list-page,
-caffold-github-pulls-layout[data-pulls-view="files"] caffold-github-pull-detail-page {
-  display: none;
+  &[data-pulls-view="list"] caffold-github-pull-detail-page,
+  &[data-pulls-view="list"] caffold-github-pull-files-page,
+  &[data-pulls-view="detail"] caffold-github-pulls-list-page,
+  &[data-pulls-view="detail"] caffold-github-pull-files-page,
+  &[data-pulls-view="files"] caffold-github-pulls-list-page,
+  &[data-pulls-view="files"] caffold-github-pull-detail-page {
+    display: none;
+  }
 }

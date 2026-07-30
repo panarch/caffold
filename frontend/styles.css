@@ -80,101 +80,8 @@
   --task-detail-composer-max-height: 255px;
   --font-mono: ui-monospace, monospace;
   --font-sans: system-ui, sans-serif;
-}
 
-:root[data-file-tree-size="compact"] {
-  --file-tree-font-size: 13px;
-  --file-tree-row-height: 24px;
-  --file-tree-icon-slot-size: 20px;
-  --file-tree-icon-size: 15px;
-  --file-tree-indent: 12px;
-  --file-tree-column-gap: 6px;
-  --file-tree-padding-y: 2px;
-  --file-tree-padding-left: 6px;
-  --file-tree-padding-right: 8px;
-}
-
-:root[data-file-tree-size="default"] {
-  --file-tree-font-size: 15px;
-}
-
-:root[data-file-tree-size="large"] {
-  --file-tree-font-size: 17px;
-  --file-tree-row-height: 36px;
-  --file-tree-icon-slot-size: 28px;
-  --file-tree-icon-size: 20px;
-  --file-tree-indent: 16px;
-  --file-tree-column-gap: 9px;
-  --file-tree-padding-y: 5px;
-  --file-tree-padding-left: 8px;
-  --file-tree-padding-right: 12px;
-}
-
-:root[data-code-size="compact"] {
-  --code-viewer-font-size: 13px;
-}
-
-:root[data-code-size="default"] {
-  --code-viewer-font-size: 15px;
-}
-
-:root[data-code-size="large"] {
-  --code-viewer-font-size: 17px;
-}
-
-:root[data-task-list-size="compact"] {
-  --task-list-font-size: 13px;
-  --task-list-row-height: 30px;
-  --task-group-font-size: 11px;
-  --task-group-row-height: 24px;
-  --task-list-icon-size: 14px;
-}
-
-:root[data-task-list-size="default"] {
-  --task-list-font-size: 14px;
-  --task-list-row-height: 36px;
-  --task-group-font-size: 12px;
-  --task-group-row-height: 28px;
-  --task-list-icon-size: 15px;
-}
-
-:root[data-task-list-size="large"] {
-  --task-list-font-size: 16px;
-  --task-list-row-height: 42px;
-  --task-group-font-size: 14px;
-  --task-group-row-height: 32px;
-  --task-list-icon-size: 17px;
-}
-
-:root[data-task-detail-size="compact"] {
-  --task-detail-font-size: 13px;
-  --task-detail-meta-size: 11px;
-  --task-detail-heading-size: 14px;
-  --task-detail-line-height: 19px;
-  --task-detail-composer-min-height: 62px;
-  --task-detail-composer-max-height: 224px;
-}
-
-:root[data-task-detail-size="default"] {
-  --task-detail-font-size: 15px;
-  --task-detail-meta-size: 12px;
-  --task-detail-heading-size: 16px;
-  --task-detail-line-height: 22px;
-  --task-detail-composer-min-height: 68px;
-  --task-detail-composer-max-height: 255px;
-}
-
-:root[data-task-detail-size="large"] {
-  --task-detail-font-size: 17px;
-  --task-detail-meta-size: 14px;
-  --task-detail-heading-size: 18px;
-  --task-detail-line-height: 25px;
-  --task-detail-composer-min-height: 74px;
-  --task-detail-composer-max-height: 287px;
-}
-
-@media (pointer: fine) {
-  :root[data-file-tree-size="auto"] {
+  &[data-file-tree-size="compact"] {
     --file-tree-font-size: 13px;
     --file-tree-row-height: 24px;
     --file-tree-icon-slot-size: 20px;
@@ -184,6 +91,101 @@
     --file-tree-padding-y: 2px;
     --file-tree-padding-left: 6px;
     --file-tree-padding-right: 8px;
+  }
+
+  &[data-file-tree-size="default"] {
+    --file-tree-font-size: 15px;
+  }
+
+  &[data-file-tree-size="large"] {
+    --file-tree-font-size: 17px;
+    --file-tree-row-height: 36px;
+    --file-tree-icon-slot-size: 28px;
+    --file-tree-icon-size: 20px;
+    --file-tree-indent: 16px;
+    --file-tree-column-gap: 9px;
+    --file-tree-padding-y: 5px;
+    --file-tree-padding-left: 8px;
+    --file-tree-padding-right: 12px;
+  }
+
+  &[data-code-size="compact"] {
+    --code-viewer-font-size: 13px;
+  }
+
+  &[data-code-size="default"] {
+    --code-viewer-font-size: 15px;
+  }
+
+  &[data-code-size="large"] {
+    --code-viewer-font-size: 17px;
+  }
+
+  &[data-task-list-size="compact"] {
+    --task-list-font-size: 13px;
+    --task-list-row-height: 30px;
+    --task-group-font-size: 11px;
+    --task-group-row-height: 24px;
+    --task-list-icon-size: 14px;
+  }
+
+  &[data-task-list-size="default"] {
+    --task-list-font-size: 14px;
+    --task-list-row-height: 36px;
+    --task-group-font-size: 12px;
+    --task-group-row-height: 28px;
+    --task-list-icon-size: 15px;
+  }
+
+  &[data-task-list-size="large"] {
+    --task-list-font-size: 16px;
+    --task-list-row-height: 42px;
+    --task-group-font-size: 14px;
+    --task-group-row-height: 32px;
+    --task-list-icon-size: 17px;
+  }
+
+  &[data-task-detail-size="compact"] {
+    --task-detail-font-size: 13px;
+    --task-detail-meta-size: 11px;
+    --task-detail-heading-size: 14px;
+    --task-detail-line-height: 19px;
+    --task-detail-composer-min-height: 62px;
+    --task-detail-composer-max-height: 224px;
+  }
+
+  &[data-task-detail-size="default"] {
+    --task-detail-font-size: 15px;
+    --task-detail-meta-size: 12px;
+    --task-detail-heading-size: 16px;
+    --task-detail-line-height: 22px;
+    --task-detail-composer-min-height: 68px;
+    --task-detail-composer-max-height: 255px;
+  }
+
+  &[data-task-detail-size="large"] {
+    --task-detail-font-size: 17px;
+    --task-detail-meta-size: 14px;
+    --task-detail-heading-size: 18px;
+    --task-detail-line-height: 25px;
+    --task-detail-composer-min-height: 74px;
+    --task-detail-composer-max-height: 287px;
+  }
+}
+
+@media (pointer: fine) {
+  :root {
+    &[data-file-tree-size="auto"] {
+      --file-tree-font-size: 13px;
+      --file-tree-row-height: 24px;
+      --file-tree-icon-slot-size: 20px;
+      --file-tree-icon-size: 15px;
+      --file-tree-indent: 12px;
+      --file-tree-column-gap: 6px;
+      --file-tree-padding-y: 2px;
+      --file-tree-padding-left: 6px;
+      --file-tree-padding-right: 8px;
+    }
   }
 }
 

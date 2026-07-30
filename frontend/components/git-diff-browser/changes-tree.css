@@ -4,215 +4,215 @@ caffold-git-diff-changes-tree {
   min-height: 0;
   border-right: 1px solid var(--border);
   background: var(--surface);
-}
 
-caffold-git-diff-changes-tree .changes-tree-panel {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  min-height: 0;
-  height: 100%;
-}
+  & .changes-tree-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+    height: 100%;
+  }
 
-caffold-git-diff-changes-tree .changes-tree-panel > header {
-  box-sizing: border-box;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 2px;
-  align-content: center;
-  height: var(--review-header-height, 42px);
-  min-height: 0;
-  overflow: hidden;
-  padding: 5px 12px;
-  border-bottom: 1px solid var(--border);
-}
+  & .changes-tree-panel > header {
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+    align-content: center;
+    height: var(--review-header-height, 42px);
+    min-height: 0;
+    overflow: hidden;
+    padding: 5px 12px;
+    border-bottom: 1px solid var(--border);
+  }
 
-caffold-git-diff-changes-tree h2 {
-  margin: 0;
-  overflow: hidden;
-  font-size: var(--review-pane-title-size, 0.82rem);
-  font-weight: 600;
-  line-height: 1.05;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  & h2 {
+    margin: 0;
+    overflow: hidden;
+    font-size: var(--review-pane-title-size, 0.82rem);
+    font-weight: 600;
+    line-height: 1.05;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-caffold-git-diff-changes-tree .changes-tree-panel > header span {
-  color: var(--muted);
-  font-size: 0.74rem;
-  line-height: 1.1;
-}
+  & .changes-tree-panel > header span {
+    color: var(--muted);
+    font-size: 0.74rem;
+    line-height: 1.1;
+  }
 
-caffold-git-diff-changes-tree .changes-tree-title-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  width: 100%;
-  min-width: 0;
-}
+  & .changes-tree-title-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+  }
 
-caffold-git-diff-changes-tree .change-count {
-  justify-self: end;
-  white-space: nowrap;
-}
+  & .change-count {
+    justify-self: end;
+    white-space: nowrap;
+  }
 
-caffold-git-diff-changes-tree .changes-tree-meta-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  min-width: 0;
-}
+  & .changes-tree-meta-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    min-width: 0;
+  }
 
-caffold-git-diff-changes-tree .change-line-stats {
-  display: inline-grid;
-  grid-auto-flow: column;
-  gap: 6px;
-  justify-self: end;
-  white-space: nowrap;
-}
+  & .change-line-stats {
+    display: inline-grid;
+    grid-auto-flow: column;
+    gap: 6px;
+    justify-self: end;
+    white-space: nowrap;
+  }
 
-caffold-git-diff-changes-tree .change-line-stats .is-addition {
-  color: #167c5c;
-}
+  & .change-line-stats .is-addition {
+    color: #167c5c;
+  }
 
-caffold-git-diff-changes-tree .change-line-stats .is-deletion {
-  color: var(--danger);
-}
+  & .change-line-stats .is-deletion {
+    color: var(--danger);
+  }
 
-caffold-git-diff-changes-tree .changes-branch {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--accent);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  & .changes-branch {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--accent);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-caffold-git-diff-changes-tree .changes-branch.is-dirty {
-  color: #8a5200;
-}
+  & .changes-branch.is-dirty {
+    color: #8a5200;
+  }
 
-caffold-git-diff-changes-tree .changes-tree-list {
-  --tree-indent: var(--file-tree-indent);
-  display: block;
-  min-height: 0;
-  margin: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding: 4px 0;
-  list-style: none;
-}
+  & .changes-tree-list {
+    --tree-indent: var(--file-tree-indent);
+    display: block;
+    min-height: 0;
+    margin: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 4px 0;
+    list-style: none;
+  }
 
-caffold-git-diff-changes-tree .changes-tree-list > li {
-  width: max-content;
-  min-width: 100%;
-}
+  & .changes-tree-list > li {
+    width: max-content;
+    min-width: 100%;
+  }
 
-caffold-git-diff-changes-tree .change-section-label {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding: 8px 12px 4px;
-  background: var(--surface);
-  color: var(--muted);
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
+  & .change-section-label {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 8px 12px 4px;
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
 
-caffold-git-diff-changes-tree .change-entry {
-  display: grid;
-  grid-template-columns: var(--file-tree-icon-slot-size) max-content;
-  gap: var(--file-tree-column-gap);
-  width: max-content;
-  min-width: 100%;
-  min-height: var(--file-tree-row-height);
-  align-items: center;
-  border: 0;
-  border-left: 3px solid transparent;
-  border-radius: 0;
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-  font-size: var(--file-tree-font-size);
-  padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
-    var(--file-tree-padding-y) var(--file-tree-padding-left);
-  text-align: left;
-}
+  & .change-entry {
+    display: grid;
+    grid-template-columns: var(--file-tree-icon-slot-size) max-content;
+    gap: var(--file-tree-column-gap);
+    width: max-content;
+    min-width: 100%;
+    min-height: var(--file-tree-row-height);
+    align-items: center;
+    border: 0;
+    border-left: 3px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    font-size: var(--file-tree-font-size);
+    padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
+      var(--file-tree-padding-y) var(--file-tree-padding-left);
+    text-align: left;
+  }
 
-caffold-git-diff-changes-tree .change-entry:hover,
-caffold-git-diff-changes-tree .change-entry:focus-visible {
-  border-left-color: #bdd7cc;
-  background: #f1f6f3;
-  outline: none;
-}
+  & .change-entry:hover,
+  & .change-entry:focus-visible {
+    border-left-color: #bdd7cc;
+    background: #f1f6f3;
+    outline: none;
+  }
 
-caffold-git-diff-changes-tree .change-file[aria-current="true"] {
-  border-left-color: var(--accent);
-  background: var(--accent-soft);
-}
+  & .change-file[aria-current="true"] {
+    border-left-color: var(--accent);
+    background: var(--accent-soft);
+  }
 
-caffold-git-diff-changes-tree .change-status-code {
-  align-self: center;
-  color: #764600;
-  font-size: var(--file-tree-font-size);
-  justify-self: start;
-  white-space: pre;
-}
+  & .change-status-code {
+    align-self: center;
+    color: #764600;
+    font-size: var(--file-tree-font-size);
+    justify-self: start;
+    white-space: pre;
+  }
 
-caffold-git-diff-changes-tree .change-node-label {
-  display: grid;
-  grid-template-columns: var(--file-tree-icon-slot-size) max-content;
-  gap: var(--file-tree-column-gap);
-  align-items: center;
-  min-width: 0;
-  margin-left: calc(var(--tree-depth, 0) * var(--tree-indent));
-}
+  & .change-node-label {
+    display: grid;
+    grid-template-columns: var(--file-tree-icon-slot-size) max-content;
+    gap: var(--file-tree-column-gap);
+    align-items: center;
+    min-width: 0;
+    margin-left: calc(var(--tree-depth, 0) * var(--tree-indent));
+  }
 
-caffold-git-diff-changes-tree .entry-icon {
-  position: relative;
-  display: inline-grid;
-  width: var(--file-tree-icon-slot-size);
-  height: var(--file-tree-icon-slot-size);
-  place-items: center;
-  justify-self: center;
-}
+  & .entry-icon {
+    position: relative;
+    display: inline-grid;
+    width: var(--file-tree-icon-slot-size);
+    height: var(--file-tree-icon-slot-size);
+    place-items: center;
+    justify-self: center;
+  }
 
-caffold-git-diff-changes-tree .change-file[data-task-related="true"] .entry-icon {
-  color: var(--accent);
-}
+  & .change-file[data-task-related="true"] .entry-icon {
+    color: var(--accent);
+  }
 
-caffold-git-diff-changes-tree .change-file[data-task-related="true"] .entry-icon::after {
-  position: absolute;
-  top: 0;
-  right: 0;
-  box-sizing: border-box;
-  width: 6px;
-  height: 6px;
-  border: 1px solid var(--surface);
-  border-radius: 50%;
-  background: var(--accent);
-  content: "";
-}
+  & .change-file[data-task-related="true"] .entry-icon::after {
+    position: absolute;
+    top: 0;
+    right: 0;
+    box-sizing: border-box;
+    width: 6px;
+    height: 6px;
+    border: 1px solid var(--surface);
+    border-radius: 50%;
+    background: var(--accent);
+    content: "";
+  }
 
-caffold-git-diff-changes-tree .entry-icon-svg {
-  display: block;
-  width: var(--file-tree-icon-size);
-  height: var(--file-tree-icon-size);
-  stroke-width: 1.9;
-}
+  & .entry-icon-svg {
+    display: block;
+    width: var(--file-tree-icon-size);
+    height: var(--file-tree-icon-size);
+    stroke-width: 1.9;
+  }
 
-caffold-git-diff-changes-tree .change-name {
-  min-width: 0;
-  overflow: visible;
-  text-overflow: clip;
-  white-space: nowrap;
-}
+  & .change-name {
+    min-width: 0;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
 
-caffold-git-diff-changes-tree .error-panel {
-  background: var(--danger-soft);
-  color: var(--danger);
+  & .error-panel {
+    background: var(--danger-soft);
+    color: var(--danger);
+  }
 }
 
 @media (max-width: 860px) {

@@ -9,174 +9,178 @@ caffold-review-workspace {
   min-height: 0;
   overflow: hidden;
   background: var(--surface);
-}
 
-caffold-review-workspace .review-workspace-panel {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  background: var(--surface);
-}
+  & .review-workspace-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--surface);
+  }
 
-caffold-review-workspace .review-workspace-header {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
-  height: var(--review-header-height);
-  min-height: 0;
-  padding: 5px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-  overflow: hidden;
-}
+  & .review-workspace-header {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+    height: var(--review-header-height);
+    min-height: 0;
+    padding: 5px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    overflow: hidden;
+  }
 
-caffold-review-workspace .review-workspace-nav {
-  display: grid;
-  grid-auto-flow: column;
-  gap: 6px;
-  align-items: center;
-}
+  & .review-workspace-nav {
+    display: grid;
+    grid-auto-flow: column;
+    gap: 6px;
+    align-items: center;
+  }
 
-caffold-review-workspace .review-workspace-back,
-caffold-review-workspace .review-workspace-close {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--surface);
-  color: var(--accent);
-  cursor: pointer;
-}
+  & .review-workspace-back,
+  & .review-workspace-close {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--accent);
+    cursor: pointer;
+  }
 
-caffold-review-workspace .review-workspace-back:hover,
-caffold-review-workspace .review-workspace-back:focus-visible,
-caffold-review-workspace .review-workspace-close:hover,
-caffold-review-workspace .review-workspace-close:focus-visible {
-  border-color: #abcbbf;
-  background: #f7fbf8;
-  outline: none;
-}
+  & .review-workspace-back:hover,
+  & .review-workspace-back:focus-visible,
+  & .review-workspace-close:hover,
+  & .review-workspace-close:focus-visible {
+    border-color: #abcbbf;
+    background: #f7fbf8;
+    outline: none;
+  }
 
-caffold-review-workspace .review-workspace-back-icon,
-caffold-review-workspace .review-workspace-close-icon {
-  width: 1rem;
-  height: 1rem;
-  stroke-width: 2;
-}
+  & .review-workspace-back-icon,
+  & .review-workspace-close-icon {
+    width: 1rem;
+    height: 1rem;
+    stroke-width: 2;
+  }
 
-caffold-review-workspace .review-workspace-title {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 10px;
-  align-items: baseline;
-  min-width: 0;
-}
+  & .review-workspace-title {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px;
+    align-items: baseline;
+    min-width: 0;
+  }
 
-caffold-review-workspace .review-workspace-title.has-controls {
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  justify-content: start;
-}
+  & .review-workspace-title.has-controls {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    justify-content: start;
+  }
 
-caffold-review-workspace .review-workspace-title h2 {
-  margin: 0;
-  font-size: 0.96rem;
-  font-weight: 600;
-  line-height: 1.15;
-}
+  & .review-workspace-title h2 {
+    margin: 0;
+    font-size: 0.96rem;
+    font-weight: 600;
+    line-height: 1.15;
+  }
 
-caffold-review-workspace .review-workspace-controls {
-  justify-self: stretch;
-  min-width: 0;
-  width: 100%;
-}
+  & .review-workspace-controls {
+    justify-self: stretch;
+    min-width: 0;
+    width: 100%;
+  }
 
-caffold-review-workspace .review-workspace-subtitle {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 0.78rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  & .review-workspace-subtitle {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 0.78rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-caffold-review-workspace .review-workspace-title.has-controls .review-workspace-subtitle {
-  justify-self: start;
-}
+  & .review-workspace-title.has-controls .review-workspace-subtitle {
+    justify-self: start;
+  }
 
-caffold-review-workspace .review-workspace-body,
-caffold-review-workspace .review-workspace-view {
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
+  & .review-workspace-body,
+  & .review-workspace-view {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
 
-caffold-review-workspace .workspace-mode-git {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
-  height: 100%;
-}
+  & .workspace-mode-git {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    height: 100%;
+  }
 
-caffold-review-workspace .workspace-mode-github {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
-  height: 100%;
+  & .workspace-mode-github {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    height: 100%;
+  }
 }
 
 @media (max-width: 860px) {
-  caffold-review-workspace[data-mobile-detail="true"] .review-workspace-panel {
-    grid-template-rows: minmax(0, 1fr);
-  }
+  caffold-review-workspace {
+    &[data-mobile-detail="true"] .review-workspace-panel {
+      grid-template-rows: minmax(0, 1fr);
+    }
 
-  caffold-review-workspace[data-mobile-detail="true"] .review-workspace-header {
-    display: none;
-  }
+    &[data-mobile-detail="true"] .review-workspace-header {
+      display: none;
+    }
 
-  caffold-review-workspace .review-workspace-header {
-    height: auto;
-    min-height: var(--review-header-height);
-  }
+    & .review-workspace-header {
+      height: auto;
+      min-height: var(--review-header-height);
+    }
 
-  caffold-review-workspace .review-workspace-title.has-controls {
-    grid-template-columns: auto minmax(0, 1fr);
-    row-gap: 4px;
-    justify-content: stretch;
-  }
+    & .review-workspace-title.has-controls {
+      grid-template-columns: auto minmax(0, 1fr);
+      row-gap: 4px;
+      justify-content: stretch;
+    }
 
-  caffold-review-workspace .review-workspace-title.has-controls .review-workspace-controls {
-    grid-column: 1 / -1;
-  }
+    & .review-workspace-title.has-controls .review-workspace-controls {
+      grid-column: 1 / -1;
+    }
 
-  caffold-review-workspace .review-workspace-title.has-controls .review-workspace-subtitle {
-    justify-self: end;
-  }
+    & .review-workspace-title.has-controls .review-workspace-subtitle {
+      justify-self: end;
+    }
 
-  caffold-review-workspace .workspace-mode-git {
-    grid-template-columns: 1fr;
-  }
+    & .workspace-mode-git {
+      grid-template-columns: 1fr;
+    }
 
-  caffold-review-workspace .workspace-mode-github {
-    grid-template-columns: 1fr;
+    & .workspace-mode-github {
+      grid-template-columns: 1fr;
+    }
   }
 }
 
 @media (max-width: 520px) {
-  caffold-review-workspace .review-workspace-header {
-    padding: 6px 10px;
-  }
+  caffold-review-workspace {
+    & .review-workspace-header {
+      padding: 6px 10px;
+    }
 
-  caffold-review-workspace .review-workspace-title {
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 8px;
+    & .review-workspace-title {
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 8px;
+    }
   }
 }

@@ -4,8 +4,8 @@ caffold-files-page {
   min-height: 0;
   height: 100%;
   overflow: hidden;
-}
 
-caffold-files-page > caffold-file-browser {
-  height: 100%;
+  & > caffold-file-browser {
+    height: 100%;
+  }
 }

@@ -6,13 +6,13 @@ caffold-github-issues-layout {
   min-height: 0;
   height: 100%;
   overflow: hidden;
-}
 
-caffold-github-issues-layout[data-issues-view="list"] caffold-github-issues-list-page {
-  border-right: 0;
-}
+  &[data-issues-view="list"] caffold-github-issues-list-page {
+    border-right: 0;
+  }
 
-caffold-github-issues-layout[data-issues-view="list"] caffold-github-issue-detail-page,
-caffold-github-issues-layout[data-issues-view="detail"] caffold-github-issues-list-page {
-  display: none;
+  &[data-issues-view="list"] caffold-github-issue-detail-page,
+  &[data-issues-view="detail"] caffold-github-issues-list-page {
+    display: none;
+  }
 }

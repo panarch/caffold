@@ -9,48 +9,48 @@ caffold-git-log-commit-page {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-}
 
-caffold-git-log-commit-page.is-resizing-panel {
-  cursor: col-resize;
-  user-select: none;
-}
+  &.is-resizing-panel {
+    cursor: col-resize;
+    user-select: none;
+  }
 
-caffold-git-log-commit-page > caffold-commit-changes-tree {
-  grid-column: 1;
-}
+  & > caffold-commit-changes-tree {
+    grid-column: 1;
+  }
 
-caffold-git-log-commit-page > caffold-review-panel-resizer {
-  grid-column: 2;
-}
+  & > caffold-review-panel-resizer {
+    grid-column: 2;
+  }
 
-caffold-git-log-commit-page > caffold-review-file-viewer {
-  grid-column: 3;
+  & > caffold-review-file-viewer {
+    grid-column: 3;
+  }
 }
 
 @media (max-width: 1100px) {
   caffold-git-log-commit-page {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 32dvh) minmax(0, 1fr);
-  }
 
-  caffold-git-log-commit-page > caffold-commit-changes-tree {
-    grid-column: 1;
-    grid-row: 1;
-  }
+    & > caffold-commit-changes-tree {
+      grid-column: 1;
+      grid-row: 1;
+    }
 
-  caffold-git-log-commit-page > caffold-review-file-viewer {
-    grid-column: 1;
-    grid-row: 2;
-  }
+    & > caffold-review-file-viewer {
+      grid-column: 1;
+      grid-row: 2;
+    }
 
-  caffold-git-log-commit-page > caffold-review-panel-resizer {
-    display: none;
-  }
+    & > caffold-review-panel-resizer {
+      display: none;
+    }
 
-  caffold-git-log-commit-page caffold-commit-changes-tree {
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
+    & caffold-commit-changes-tree {
+      border-right: 0;
+      border-bottom: 1px solid var(--border);
+    }
   }
 }
 
@@ -58,16 +58,16 @@ caffold-git-log-commit-page > caffold-review-file-viewer {
   caffold-git-log-commit-page {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 1fr);
-  }
 
-  caffold-git-log-commit-page > caffold-commit-changes-tree,
-  caffold-git-log-commit-page > caffold-review-file-viewer {
-    grid-column: 1;
-    grid-row: 1;
-  }
+    & > caffold-commit-changes-tree,
+    & > caffold-review-file-viewer {
+      grid-column: 1;
+      grid-row: 1;
+    }
 
-  caffold-git-log-commit-page[data-detail-view="list"] > caffold-review-file-viewer,
-  caffold-git-log-commit-page[data-detail-view="viewer"] > caffold-commit-changes-tree {
-    display: none;
+    &[data-detail-view="list"] > caffold-review-file-viewer,
+    &[data-detail-view="viewer"] > caffold-commit-changes-tree {
+      display: none;
+    }
   }
 }

@@ -3,125 +3,127 @@ caffold-code-viewer {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-}
 
-caffold-code-viewer .code-viewer {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
-  background: var(--code-bg);
-  color: var(--code-text);
-}
+  & .code-viewer {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+    background: var(--code-bg);
+    color: var(--code-text);
+  }
 
-caffold-code-viewer .code-viewer > header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
-  align-items: center;
-  min-height: 34px;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-muted);
-  color: var(--muted);
-  font-size: 0.78rem;
-}
+  & .code-viewer > header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    align-items: center;
+    min-height: 34px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-muted);
+    color: var(--muted);
+    font-size: 0.78rem;
+  }
 
-caffold-code-viewer .code-lines {
-  display: grid;
-  min-width: 0;
-  min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  background: var(--code-bg);
-  font-family: var(--font-mono);
-  font-size: var(--code-viewer-font-size);
-  line-height: 1.55;
-}
+  & .code-lines {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    background: var(--code-bg);
+    font-family: var(--font-mono);
+    font-size: var(--code-viewer-font-size);
+    line-height: 1.55;
+  }
 
-caffold-code-viewer .code-gutter-backdrop {
-  position: sticky;
-  left: 0;
-  z-index: 1;
-  grid-area: 1 / 1;
-  width: var(--line-gutter-width);
-  min-height: 100%;
-  border-right: 1px solid var(--border);
-  background: var(--code-gutter);
-  pointer-events: none;
-}
+  & .code-gutter-backdrop {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    grid-area: 1 / 1;
+    width: var(--line-gutter-width);
+    min-height: 100%;
+    border-right: 1px solid var(--border);
+    background: var(--code-gutter);
+    pointer-events: none;
+  }
 
-caffold-code-viewer .code-table {
-  grid-area: 1 / 1;
-  width: max(100%, calc(var(--line-gutter-width) + var(--code-content-width) + 24px));
-  min-height: 100%;
-}
+  & .code-table {
+    grid-area: 1 / 1;
+    width: max(100%, calc(var(--line-gutter-width) + var(--code-content-width) + 24px));
+    min-height: 100%;
+  }
 
-caffold-code-viewer .code-row {
-  display: grid;
-  grid-template-columns: var(--line-gutter-width) minmax(0, 1fr);
-  width: 100%;
-  min-width: 0;
-  background: var(--code-bg);
-}
+  & .code-row {
+    display: grid;
+    grid-template-columns: var(--line-gutter-width) minmax(0, 1fr);
+    width: 100%;
+    min-width: 0;
+    background: var(--code-bg);
+  }
 
-caffold-code-viewer .line-number {
-  position: sticky;
-  left: 0;
-  z-index: 2;
-  user-select: none;
-  background: var(--code-gutter);
-  border-right: 1px solid var(--border);
-  color: #78867d;
-  padding: 0 10px;
-  text-align: right;
-}
+  & .line-number {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    user-select: none;
+    background: var(--code-gutter);
+    border-right: 1px solid var(--border);
+    color: #78867d;
+    padding: 0 10px;
+    text-align: right;
+  }
 
-caffold-code-viewer .line-code {
-  min-width: 0;
-  white-space: pre;
-  padding: 0 12px;
-}
+  & .line-code {
+    min-width: 0;
+    white-space: pre;
+    padding: 0 12px;
+  }
 
-caffold-code-viewer .hljs-comment,
-caffold-code-viewer .hljs-quote {
-  color: #65746a;
-}
+  & .hljs-comment,
+  & .hljs-quote {
+    color: #65746a;
+  }
 
-caffold-code-viewer .hljs-keyword,
-caffold-code-viewer .hljs-selector-tag,
-caffold-code-viewer .hljs-subst {
-  color: #005ea8;
-}
+  & .hljs-keyword,
+  & .hljs-selector-tag,
+  & .hljs-subst {
+    color: #005ea8;
+  }
 
-caffold-code-viewer .hljs-literal,
-caffold-code-viewer .hljs-number,
-caffold-code-viewer .hljs-tag .hljs-attr,
-caffold-code-viewer .hljs-template-variable,
-caffold-code-viewer .hljs-variable {
-  color: #8a5200;
-}
+  & .hljs-literal,
+  & .hljs-number,
+  & .hljs-tag .hljs-attr,
+  & .hljs-template-variable,
+  & .hljs-variable {
+    color: #8a5200;
+  }
 
-caffold-code-viewer .hljs-doctag,
-caffold-code-viewer .hljs-string {
-  color: #216e39;
-}
+  & .hljs-doctag,
+  & .hljs-string {
+    color: #216e39;
+  }
 
-caffold-code-viewer .hljs-section,
-caffold-code-viewer .hljs-selector-id,
-caffold-code-viewer .hljs-title {
-  color: #9a4d00;
-}
+  & .hljs-section,
+  & .hljs-selector-id,
+  & .hljs-title {
+    color: #9a4d00;
+  }
 
-caffold-code-viewer .hljs-type,
-caffold-code-viewer .hljs-class .hljs-title {
-  color: #00736b;
+  & .hljs-type,
+  & .hljs-class .hljs-title {
+    color: #00736b;
+  }
 }
 
 @media (max-width: 520px) {
-  caffold-code-viewer .line-number {
-    padding: 0 8px;
+  caffold-code-viewer {
+    & .line-number {
+      padding: 0 8px;
+    }
   }
 }

@@ -132,16 +132,20 @@ Because nested custom elements are still normal descendants in Light DOM, contai
 Preferred patterns:
 
 ```css
-caffold-review-workspace > .review-workspace-panel {
-  display: grid;
+caffold-review-workspace {
+  & > .review-workspace-panel {
+    display: grid;
+  }
+
+  & .review-workspace-title > h2 {
+    font-weight: 600;
+  }
 }
 
-.review-workspace-title > h2 {
-  font-weight: 600;
-}
-
-caffold-git-log-list-page .log-entry {
-  display: grid;
+caffold-git-log-list-page {
+  & .log-entry {
+    display: grid;
+  }
 }
 ```
 
@@ -159,6 +163,12 @@ caffold-app-shell button {
 
 Use these rules when reviewing CSS:
 
+- Group a component's internal selectors under its custom-element owner with
+  native CSS nesting. Keep nesting shallow, preserve source order across media
+  queries and owner-specific overrides, and do not combine or reorder selectors
+  merely to make the nesting tree smaller.
+- Keep global document rules and keyframes flat when nesting would not express
+  component ownership.
 - Container components should style their own chrome and direct layout children.
 - A container may style a child custom-element host for placement, sizing, and
   visibility, but selectors that cross into that child's descendants belong in

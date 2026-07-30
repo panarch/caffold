@@ -267,6 +267,20 @@ test("resolves flat and nested selectors to the same ownership surface", () => {
   ]);
 });
 
+test("omits declaration-free nesting containers from effective selectors", () => {
+  const selectors = effectiveSelectors(`
+    @media (max-width: 860px) {
+      caffold-owner {
+        & .internal {
+          display: grid;
+        }
+      }
+    }
+  `);
+
+  assert.deepEqual(selectors, ["caffold-owner .internal"]);
+});
+
 test("accepts component internals, contextual owners, and child hosts", () => {
   const css = `
     caffold-owner .internal,

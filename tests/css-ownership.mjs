@@ -79,8 +79,40 @@ function appendQualifiedRule(css, rule, prelude, parentSelectors, selectors) {
       : parentSelectors.flatMap((parent) =>
           localSelectors.map((local) => resolveNestedSelector(parent, local)),
         );
-  selectors.push(...resolvedSelectors);
+  if (hasTopLevelDeclarations(css, rule.bodyStart, rule.bodyEnd)) {
+    selectors.push(...resolvedSelectors);
+  }
   walkRules(css, rule.bodyStart, rule.bodyEnd, resolvedSelectors, selectors);
+}
+
+function hasTopLevelDeclarations(css, start, end) {
+  let index = start;
+  while (index < end) {
+    index = skipTrivia(css, index, end);
+    if (index >= end) {
+      return false;
+    }
+
+    const delimiter = findRuleDelimiter(css, index, end);
+    if (!delimiter) {
+      const trailing = cleanPrelude(css.slice(index, end));
+      return Boolean(trailing && !trailing.startsWith("@") && trailing.includes(":"));
+    }
+    if (delimiter.char === ";") {
+      const statement = cleanPrelude(css.slice(index, delimiter.index));
+      if (statement && !statement.startsWith("@") && statement.includes(":")) {
+        return true;
+      }
+      index = delimiter.index + 1;
+      continue;
+    }
+    if (delimiter.char === "{") {
+      index = findMatchingBrace(css, delimiter.index, end) + 1;
+      continue;
+    }
+    return false;
+  }
+  return false;
 }
 
 function parseRuleList(css, start, end) {

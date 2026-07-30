@@ -4,187 +4,187 @@ caffold-git-log-list-page {
   min-height: 0;
   border-right: 1px solid var(--border);
   background: var(--surface);
-}
 
-caffold-git-log-list-page .log-list-panel {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  min-height: 0;
-  height: 100%;
-}
+  & .log-list-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    min-height: 0;
+    height: 100%;
+  }
 
-caffold-git-log-list-page .log-list-panel > header {
-  box-sizing: border-box;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 2px;
-  align-content: center;
-  height: var(--review-header-height, 42px);
-  min-height: 0;
-  overflow: hidden;
-  padding: 5px 12px;
-  border-bottom: 1px solid var(--border);
-}
+  & .log-list-panel > header {
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+    align-content: center;
+    height: var(--review-header-height, 42px);
+    min-height: 0;
+    overflow: hidden;
+    padding: 5px 12px;
+    border-bottom: 1px solid var(--border);
+  }
 
-caffold-git-log-list-page h2 {
-  margin: 0;
-  overflow: hidden;
-  font-size: var(--review-pane-title-size, 0.82rem);
-  font-weight: 600;
-  line-height: 1.05;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  & h2 {
+    margin: 0;
+    overflow: hidden;
+    font-size: var(--review-pane-title-size, 0.82rem);
+    font-weight: 600;
+    line-height: 1.05;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-caffold-git-log-list-page .log-title-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  width: 100%;
-  min-width: 0;
-}
+  & .log-title-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+  }
 
-caffold-git-log-list-page .log-count {
-  justify-self: end;
-  color: var(--muted);
-  font-size: 0.74rem;
-  line-height: 1.1;
-  white-space: nowrap;
-}
+  & .log-count {
+    justify-self: end;
+    color: var(--muted);
+    font-size: 0.74rem;
+    line-height: 1.1;
+    white-space: nowrap;
+  }
 
-caffold-git-log-list-page .log-branch {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--accent);
-  font-size: 0.74rem;
-  line-height: 1.1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  & .log-branch {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--accent);
+    font-size: 0.74rem;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-caffold-git-log-list-page .log-list {
-  display: block;
-  min-height: 0;
-  margin: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding: 4px 0;
-  list-style: none;
-}
+  & .log-list {
+    display: block;
+    min-height: 0;
+    margin: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 4px 0;
+    list-style: none;
+  }
 
-caffold-git-log-list-page .log-entry {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  width: 100%;
-  min-height: 38px;
-  align-items: center;
-  border-left: 3px solid transparent;
-  background: transparent;
-  color: var(--text);
-  padding: 5px 12px 5px 10px;
-}
+  & .log-entry {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    width: 100%;
+    min-height: 38px;
+    align-items: center;
+    border-left: 3px solid transparent;
+    background: transparent;
+    color: var(--text);
+    padding: 5px 12px 5px 10px;
+  }
 
-caffold-git-log-list-page .log-summary {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-  text-align: left;
-}
+  & .log-summary {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+    text-align: left;
+  }
 
-caffold-git-log-list-page .log-summary-toggle {
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-}
+  & .log-summary-toggle {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+  }
 
-caffold-git-log-list-page .log-summary-toggle:hover .log-subject,
-caffold-git-log-list-page .log-summary-toggle:focus-visible .log-subject {
-  color: var(--accent);
-}
+  & .log-summary-toggle:hover .log-subject,
+  & .log-summary-toggle:focus-visible .log-subject {
+    color: var(--accent);
+  }
 
-caffold-git-log-list-page .log-summary-toggle:focus-visible {
-  outline: 1px solid #abcbbf;
-  outline-offset: 2px;
-}
+  & .log-summary-toggle:focus-visible {
+    outline: 1px solid #abcbbf;
+    outline-offset: 2px;
+  }
 
-caffold-git-log-list-page .log-subject,
-caffold-git-log-list-page .log-meta {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  & .log-subject,
+  & .log-meta {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-caffold-git-log-list-page .log-subject {
-  font-size: 0.84rem;
-  font-weight: 500;
-}
+  & .log-subject {
+    font-size: 0.84rem;
+    font-weight: 500;
+  }
 
-caffold-git-log-list-page .log-meta {
-  color: var(--muted);
-  font-size: 0.72rem;
-}
+  & .log-meta {
+    color: var(--muted);
+    font-size: 0.72rem;
+  }
 
-caffold-git-log-list-page .log-body {
-  grid-column: 1 / -1;
-  min-width: 0;
-  margin: 3px 0 7px 0.25rem;
-  padding: 3px 0 3px 0.7rem;
-  border-left: 2px solid #d3dfd8;
-  overflow: hidden;
-  color: #52635b;
-  font-size: 0.74rem;
-  line-height: 1.35;
-  white-space: pre-wrap;
-}
+  & .log-body {
+    grid-column: 1 / -1;
+    min-width: 0;
+    margin: 3px 0 7px 0.25rem;
+    padding: 3px 0 3px 0.7rem;
+    border-left: 2px solid #d3dfd8;
+    overflow: hidden;
+    color: #52635b;
+    font-size: 0.74rem;
+    line-height: 1.35;
+    white-space: pre-wrap;
+  }
 
-caffold-git-log-list-page .log-review-button {
-  display: grid;
-  grid-auto-flow: column;
-  gap: 5px;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  height: 28px;
-  padding: 0 8px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--surface);
-  color: var(--accent);
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.72rem;
-  line-height: 1;
-}
+  & .log-review-button {
+    display: grid;
+    grid-auto-flow: column;
+    gap: 5px;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    height: 28px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--accent);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.72rem;
+    line-height: 1;
+  }
 
-caffold-git-log-list-page .log-review-icon {
-  width: 0.82rem;
-  height: 0.82rem;
-  stroke-width: 2.2;
-}
+  & .log-review-icon {
+    width: 0.82rem;
+    height: 0.82rem;
+    stroke-width: 2.2;
+  }
 
-caffold-git-log-list-page .log-review-label {
-  line-height: 1;
-}
+  & .log-review-label {
+    line-height: 1;
+  }
 
-caffold-git-log-list-page .log-review-button:hover,
-caffold-git-log-list-page .log-review-button:focus-visible {
-  border-color: #abcbbf;
-  background: #f7fbf8;
-  outline: none;
-}
+  & .log-review-button:hover,
+  & .log-review-button:focus-visible {
+    border-color: #abcbbf;
+    background: #f7fbf8;
+    outline: none;
+  }
 
-caffold-git-log-list-page .error-panel {
-  background: var(--danger-soft);
-  color: var(--danger);
+  & .error-panel {
+    background: var(--danger-soft);
+    color: var(--danger);
+  }
 }
 
 @media (max-width: 860px) {

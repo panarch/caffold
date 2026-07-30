@@ -4,105 +4,105 @@ caffold-github-issue-detail-page {
   min-height: 0;
   overflow: hidden;
   background: var(--surface);
-}
 
-caffold-github-issue-detail-page .github-issue-viewer-panel {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
-}
+  & .github-issue-viewer-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+  }
 
-caffold-github-issue-detail-page .github-issue-viewer-panel > header {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-}
+  & .github-issue-viewer-panel > header {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+  }
 
-caffold-github-issue-detail-page .github-issue-viewer-title-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-  min-width: 0;
-}
+  & .github-issue-viewer-title-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    min-width: 0;
+  }
 
-caffold-github-issue-detail-page .github-issue-close-button {
-  display: none;
-}
+  & .github-issue-close-button {
+    display: none;
+  }
 
-caffold-github-issue-detail-page h2 {
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  font-size: 0.9rem;
-  font-weight: 600;
-  line-height: 1.15;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  & h2 {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: 0.9rem;
+    font-weight: 600;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-caffold-github-issue-detail-page .github-issue-link {
-  color: var(--accent);
-  font-size: 0.72rem;
-  line-height: 1;
-  text-decoration: none;
-}
+  & .github-issue-link {
+    color: var(--accent);
+    font-size: 0.72rem;
+    line-height: 1;
+    text-decoration: none;
+  }
 
-caffold-github-issue-detail-page .github-issue-link:hover,
-caffold-github-issue-detail-page .github-issue-link:focus-visible {
-  text-decoration: underline;
-}
+  & .github-issue-link:hover,
+  & .github-issue-link:focus-visible {
+    text-decoration: underline;
+  }
 
-caffold-github-issue-detail-page .github-issue-viewer-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 8px;
-  min-width: 0;
-  color: var(--muted);
-  font-size: 0.72rem;
-  line-height: 1.2;
-}
+  & .github-issue-viewer-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    min-width: 0;
+    color: var(--muted);
+    font-size: 0.72rem;
+    line-height: 1.2;
+  }
 
-caffold-github-issue-detail-page .github-issue-viewer-labels {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  min-width: 0;
-}
+  & .github-issue-viewer-labels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-width: 0;
+  }
 
-caffold-github-issue-detail-page .github-issue-viewer-labels span {
-  max-width: 12rem;
-  overflow: hidden;
-  padding: 1px 5px;
-  border: 1px solid #c8d8d0;
-  border-radius: 999px;
-  color: var(--muted);
-  font-size: 0.66rem;
-  line-height: 1.1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  & .github-issue-viewer-labels span {
+    max-width: 12rem;
+    overflow: hidden;
+    padding: 1px 5px;
+    border: 1px solid #c8d8d0;
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: 0.66rem;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-caffold-github-issue-detail-page .github-issue-body {
-  min-width: 0;
-  min-height: 0;
-}
+  & .github-issue-body {
+    min-width: 0;
+    min-height: 0;
+  }
 
-caffold-github-issue-detail-page .github-issue-raw-body {
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding: 12px;
-  white-space: pre-wrap;
-}
+  & .github-issue-raw-body {
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 12px;
+    white-space: pre-wrap;
+  }
 
-caffold-github-issue-detail-page .error-panel {
-  background: var(--danger-soft);
-  color: var(--danger);
+  & .error-panel {
+    background: var(--danger-soft);
+    color: var(--danger);
+  }
 }
 
 @media (max-width: 860px) {

@@ -6,19 +6,19 @@ caffold-git-review-layout {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-}
 
-caffold-git-review-layout .git-review-view {
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
+  & .git-review-view {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
 
-caffold-git-review-layout .git-mode-diff,
-caffold-git-review-layout .git-mode-compare,
-caffold-git-review-layout .git-mode-log {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
-  height: 100%;
+  & .git-mode-diff,
+  & .git-mode-compare,
+  & .git-mode-log {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    height: 100%;
+  }
 }

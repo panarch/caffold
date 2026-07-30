@@ -5,169 +5,169 @@ caffold-github-issues-list-page {
   overflow: hidden;
   border-right: 1px solid var(--border);
   background: var(--surface);
-}
 
-caffold-github-issues-list-page .github-issues-panel {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  min-height: 0;
-  height: 100%;
-}
+  & .github-issues-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    min-height: 0;
+    height: 100%;
+  }
 
-caffold-github-issues-list-page .github-issues-panel > header {
-  box-sizing: border-box;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 2px;
-  align-content: center;
-  height: var(--review-header-height, 42px);
-  min-height: 0;
-  overflow: hidden;
-  padding: 5px 12px;
-  border-bottom: 1px solid var(--border);
-}
+  & .github-issues-panel > header {
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+    align-content: center;
+    height: var(--review-header-height, 42px);
+    min-height: 0;
+    overflow: hidden;
+    padding: 5px 12px;
+    border-bottom: 1px solid var(--border);
+  }
 
-caffold-github-issues-list-page h2 {
-  margin: 0;
-  overflow: hidden;
-  font-size: var(--review-pane-title-size, 0.82rem);
-  font-weight: 600;
-  line-height: 1.05;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  & h2 {
+    margin: 0;
+    overflow: hidden;
+    font-size: var(--review-pane-title-size, 0.82rem);
+    font-weight: 600;
+    line-height: 1.05;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-caffold-github-issues-list-page .github-issues-title-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  width: 100%;
-  min-width: 0;
-}
+  & .github-issues-title-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+  }
 
-caffold-github-issues-list-page .github-issues-count {
-  justify-self: end;
-  color: var(--muted);
-  font-size: 0.74rem;
-  line-height: 1.1;
-  white-space: nowrap;
-}
+  & .github-issues-count {
+    justify-self: end;
+    color: var(--muted);
+    font-size: 0.74rem;
+    line-height: 1.1;
+    white-space: nowrap;
+  }
 
-caffold-github-issues-list-page .github-issues-repo {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--accent);
-  font-size: 0.74rem;
-  line-height: 1.1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  & .github-issues-repo {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--accent);
+    font-size: 0.74rem;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-caffold-github-issues-list-page .github-issues-list {
-  display: block;
-  min-height: 0;
-  margin: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding: 4px 0;
-  list-style: none;
-}
+  & .github-issues-list {
+    display: block;
+    min-height: 0;
+    margin: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 4px 0;
+    list-style: none;
+  }
 
-caffold-github-issues-list-page .github-issues-loading-body {
-  display: grid;
-  min-height: 0;
-  place-items: center;
-}
+  & .github-issues-loading-body {
+    display: grid;
+    min-height: 0;
+    place-items: center;
+  }
 
-caffold-github-issues-list-page .github-issue-row {
-  display: block;
-}
+  & .github-issue-row {
+    display: block;
+  }
 
-caffold-github-issues-list-page .github-issue-row + .github-issue-row {
-  position: relative;
-}
+  & .github-issue-row + .github-issue-row {
+    position: relative;
+  }
 
-caffold-github-issues-list-page .github-issue-row + .github-issue-row::before {
-  position: absolute;
-  top: 0;
-  right: 12px;
-  left: 12px;
-  height: 1px;
-  background: #e3ebe5;
-  content: "";
-  pointer-events: none;
-}
+  & .github-issue-row + .github-issue-row::before {
+    position: absolute;
+    top: 0;
+    right: 12px;
+    left: 12px;
+    height: 1px;
+    background: #e3ebe5;
+    content: "";
+    pointer-events: none;
+  }
 
-caffold-github-issues-list-page .github-issue-button {
-  display: grid;
-  gap: 3px;
-  width: 100%;
-  min-width: 0;
-  min-height: 42px;
-  padding: 5px 12px 5px 10px;
-  border: 0;
-  border-left: 3px solid transparent;
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-}
+  & .github-issue-button {
+    display: grid;
+    gap: 3px;
+    width: 100%;
+    min-width: 0;
+    min-height: 42px;
+    padding: 5px 12px 5px 10px;
+    border: 0;
+    border-left: 3px solid transparent;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+  }
 
-caffold-github-issues-list-page .github-issue-button:hover,
-caffold-github-issues-list-page .github-issue-button:focus-visible {
-  background: #eef7f2;
-  outline: none;
-}
+  & .github-issue-button:hover,
+  & .github-issue-button:focus-visible {
+    background: #eef7f2;
+    outline: none;
+  }
 
-caffold-github-issues-list-page .github-issue-button[aria-current="true"] {
-  border-left-color: var(--accent);
-  background: #dff1ea;
-}
+  & .github-issue-button[aria-current="true"] {
+    border-left-color: var(--accent);
+    background: #dff1ea;
+  }
 
-caffold-github-issues-list-page .github-issue-title,
-caffold-github-issues-list-page .github-issue-meta {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  & .github-issue-title,
+  & .github-issue-meta {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-caffold-github-issues-list-page .github-issue-title {
-  font-size: 0.82rem;
-  font-weight: 500;
-}
+  & .github-issue-title {
+    font-size: 0.82rem;
+    font-weight: 500;
+  }
 
-caffold-github-issues-list-page .github-issue-meta {
-  color: var(--muted);
-  font-size: 0.72rem;
-}
+  & .github-issue-meta {
+    color: var(--muted);
+    font-size: 0.72rem;
+  }
 
-caffold-github-issues-list-page .github-issue-labels {
-  display: flex;
-  gap: 4px;
-  min-width: 0;
-  overflow: hidden;
-}
+  & .github-issue-labels {
+    display: flex;
+    gap: 4px;
+    min-width: 0;
+    overflow: hidden;
+  }
 
-caffold-github-issues-list-page .github-issue-labels span {
-  overflow: hidden;
-  max-width: 10rem;
-  padding: 1px 5px;
-  border: 1px solid #c8d8d0;
-  border-radius: 999px;
-  color: var(--muted);
-  font-size: 0.66rem;
-  line-height: 1.1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  & .github-issue-labels span {
+    overflow: hidden;
+    max-width: 10rem;
+    padding: 1px 5px;
+    border: 1px solid #c8d8d0;
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: 0.66rem;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-caffold-github-issues-list-page .error-panel {
-  background: var(--danger-soft);
-  color: var(--danger);
+  & .error-panel {
+    background: var(--danger-soft);
+    color: var(--danger);
+  }
 }
 
 @media (max-width: 860px) {

@@ -5,226 +5,232 @@ caffold-tasks-page {
   height: 100%;
   overflow: hidden;
   background: var(--surface);
-}
 
-caffold-tasks-page .tasks-surface {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  height: 100%;
-  min-height: 0;
-}
+  & .tasks-surface {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100%;
+    min-height: 0;
+  }
 
-caffold-tasks-page .tasks-header-region,
-caffold-tasks-page .tasks-master-detail,
-caffold-tasks-page .tasks-list-pane,
-caffold-tasks-page caffold-task-navigator,
-caffold-tasks-page .tasks-detail-pane {
-  min-width: 0;
-  min-height: 0;
-}
+  & .tasks-header-region,
+  & .tasks-master-detail,
+  & .tasks-list-pane,
+  & caffold-task-navigator,
+  & .tasks-detail-pane {
+    min-width: 0;
+    min-height: 0;
+  }
 
-caffold-tasks-page .tasks-master-detail {
-  display: grid;
-  grid-template-columns: var(--tasks-list-width, 380px) 6px minmax(520px, 1fr);
-  height: 100%;
-  overflow: hidden;
-}
+  & .tasks-master-detail {
+    display: grid;
+    grid-template-columns: var(--tasks-list-width, 380px) 6px minmax(520px, 1fr);
+    height: 100%;
+    overflow: hidden;
+  }
 
-caffold-tasks-page .tasks-list-pane,
-caffold-tasks-page .tasks-detail-pane,
-caffold-tasks-page caffold-task-navigator {
-  height: 100%;
-  overflow: hidden;
-}
+  & .tasks-list-pane,
+  & .tasks-detail-pane,
+  & caffold-task-navigator {
+    height: 100%;
+    overflow: hidden;
+  }
 
-caffold-tasks-page .tasks-list-pane {
-  border-right: 1px solid var(--border);
-  background: var(--surface);
-}
+  & .tasks-list-pane {
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+  }
 
-caffold-tasks-page .tasks-master-resizer {
-  position: relative;
-  z-index: 1;
-  width: 6px;
-  min-height: 0;
-  margin-left: -1px;
-  border-left: 1px solid transparent;
-  border-right: 1px solid transparent;
-  cursor: col-resize;
-  touch-action: none;
-}
+  & .tasks-master-resizer {
+    position: relative;
+    z-index: 1;
+    width: 6px;
+    min-height: 0;
+    margin-left: -1px;
+    border-left: 1px solid transparent;
+    border-right: 1px solid transparent;
+    cursor: col-resize;
+    touch-action: none;
+  }
 
-caffold-tasks-page .tasks-master-resizer::after {
-  position: absolute;
-  inset: 0 2px;
-  background: var(--border);
-  content: "";
-}
+  & .tasks-master-resizer::after {
+    position: absolute;
+    inset: 0 2px;
+    background: var(--border);
+    content: "";
+  }
 
-caffold-tasks-page .tasks-master-resizer:hover::after,
-caffold-tasks-page .tasks-master-resizer:focus-visible::after,
-caffold-tasks-page.is-resizing-task-list .tasks-master-resizer::after {
-  background: var(--accent);
-}
+  & .tasks-master-resizer:hover::after,
+  & .tasks-master-resizer:focus-visible::after,
+  &.is-resizing-task-list .tasks-master-resizer::after {
+    background: var(--accent);
+  }
 
-caffold-tasks-page .tasks-master-resizer:focus-visible {
-  outline: none;
-}
+  & .tasks-master-resizer:focus-visible {
+    outline: none;
+  }
 
-caffold-tasks-page[data-task-detail-view="files"] .tasks-surface,
-caffold-tasks-page[data-task-detail-view="diff"] .tasks-surface {
-  grid-template-rows: minmax(0, 1fr);
-}
+  &[data-task-detail-view="files"] .tasks-surface,
+  &[data-task-detail-view="diff"] .tasks-surface {
+    grid-template-rows: minmax(0, 1fr);
+  }
 
-caffold-tasks-page[data-task-detail-view="files"] .tasks-header-region,
-caffold-tasks-page[data-task-detail-view="diff"] .tasks-header-region,
-caffold-tasks-page[data-task-detail-view="files"] .tasks-list-pane,
-caffold-tasks-page[data-task-detail-view="diff"] .tasks-list-pane,
-caffold-tasks-page[data-task-detail-view="files"] .tasks-master-resizer,
-caffold-tasks-page[data-task-detail-view="diff"] .tasks-master-resizer {
-  display: none;
-}
+  &[data-task-detail-view="files"] .tasks-header-region,
+  &[data-task-detail-view="diff"] .tasks-header-region,
+  &[data-task-detail-view="files"] .tasks-list-pane,
+  &[data-task-detail-view="diff"] .tasks-list-pane,
+  &[data-task-detail-view="files"] .tasks-master-resizer,
+  &[data-task-detail-view="diff"] .tasks-master-resizer {
+    display: none;
+  }
 
-caffold-tasks-page[data-task-detail-view="files"] .tasks-master-detail,
-caffold-tasks-page[data-task-detail-view="diff"] .tasks-master-detail {
-  grid-template-columns: minmax(0, 1fr);
-}
+  &[data-task-detail-view="files"] .tasks-master-detail,
+  &[data-task-detail-view="diff"] .tasks-master-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
 
-caffold-tasks-page .tasks-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px 10px calc(14px + var(--task-header-leading-space, 0px));
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-}
+  & .tasks-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px 10px calc(14px + var(--task-header-leading-space, 0px));
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
 
-caffold-tasks-page[data-task-detail-view="files"] .tasks-header,
-caffold-tasks-page[data-task-detail-view="diff"] .tasks-header {
-  display: none;
-}
+  &[data-task-detail-view="files"] .tasks-header,
+  &[data-task-detail-view="diff"] .tasks-header {
+    display: none;
+  }
 
-caffold-tasks-page .tasks-header h1,
-caffold-tasks-page .tasks-header p {
-  margin: 0;
-}
+  & .tasks-header h1,
+  & .tasks-header p {
+    margin: 0;
+  }
 
-caffold-tasks-page .tasks-header h1 {
-  overflow: hidden;
-  font-size: 1rem;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  & .tasks-header h1 {
+    overflow: hidden;
+    font-size: 1rem;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-caffold-tasks-page .tasks-header p {
-  color: var(--muted);
-}
+  & .tasks-header p {
+    color: var(--muted);
+  }
 
-caffold-tasks-page .tasks-header-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-}
+  & .tasks-header-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
 
-caffold-tasks-page .tasks-neutral-state {
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  gap: 10px;
-  height: 100%;
-  padding: 24px;
-  color: var(--muted);
-  text-align: center;
-}
+  & .tasks-neutral-state {
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 10px;
+    height: 100%;
+    padding: 24px;
+    color: var(--muted);
+    text-align: center;
+  }
 
-caffold-tasks-page .tasks-neutral-state p {
-  margin: 0;
-}
+  & .tasks-neutral-state p {
+    margin: 0;
+  }
 
-caffold-tasks-page .tasks-neutral-icon {
-  width: 24px;
-  height: 24px;
+  & .tasks-neutral-icon {
+    width: 24px;
+    height: 24px;
+  }
 }
 
 @media (min-width: 960px) {
-  caffold-tasks-page .tasks-header [data-task-action="open-list"] {
-    display: none;
+  caffold-tasks-page {
+    & .tasks-header [data-task-action="open-list"] {
+      display: none;
+    }
   }
 }
 
 @media (max-width: 959px) {
-  caffold-tasks-page .tasks-master-detail {
-    grid-template-columns: minmax(0, 1fr);
-  }
+  caffold-tasks-page {
+    & .tasks-master-detail {
+      grid-template-columns: minmax(0, 1fr);
+    }
 
-  caffold-tasks-page .tasks-master-resizer {
-    display: none;
-  }
+    & .tasks-master-resizer {
+      display: none;
+    }
 
-  caffold-tasks-page .tasks-list-pane {
-    border-right: 0;
-  }
+    & .tasks-list-pane {
+      border-right: 0;
+    }
 
-  caffold-tasks-page[data-tasks-view="list"] .tasks-detail-pane,
-  caffold-tasks-page[data-tasks-view="new"] .tasks-list-pane,
-  caffold-tasks-page[data-tasks-view="detail"] .tasks-list-pane {
-    display: none;
-  }
+    &[data-tasks-view="list"] .tasks-detail-pane,
+    &[data-tasks-view="new"] .tasks-list-pane,
+    &[data-tasks-view="detail"] .tasks-list-pane {
+      display: none;
+    }
 
-  caffold-tasks-page[data-task-detail-view="files"] .tasks-detail-pane,
-  caffold-tasks-page[data-task-detail-view="diff"] .tasks-detail-pane {
-    display: block;
+    &[data-task-detail-view="files"] .tasks-detail-pane,
+    &[data-task-detail-view="diff"] .tasks-detail-pane {
+      display: block;
+    }
   }
 }
 
 @media (max-width: 860px) {
   caffold-tasks-page {
     position: relative;
-  }
 
-  caffold-tasks-page .tasks-header {
-    padding: 8px 10px 8px calc(10px + var(--task-header-leading-space, 0px));
+    & .tasks-header {
+      padding: 8px 10px 8px calc(10px + var(--task-header-leading-space, 0px));
+    }
   }
 }
 
 @media (max-width: 520px) {
-  caffold-tasks-page .tasks-header {
-    min-height: 48px;
-    gap: 6px;
-    padding: 7px 8px 7px calc(8px + var(--task-header-leading-space, 0px));
-  }
+  caffold-tasks-page {
+    & .tasks-header {
+      min-height: 48px;
+      gap: 6px;
+      padding: 7px 8px 7px calc(8px + var(--task-header-leading-space, 0px));
+    }
 
-  caffold-tasks-page .tasks-header > div:first-child {
-    min-width: 0;
-  }
+    & .tasks-header > div:first-child {
+      min-width: 0;
+    }
 
-  caffold-tasks-page .tasks-header h1 {
-    font-size: 15px;
-  }
+    & .tasks-header h1 {
+      font-size: 15px;
+    }
 
-  caffold-tasks-page .tasks-header p {
-    overflow: hidden;
-    font-size: 12px;
-    line-height: 1.1;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+    & .tasks-header p {
+      overflow: hidden;
+      font-size: 12px;
+      line-height: 1.1;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
 
-  caffold-tasks-page .tasks-header-actions {
-    gap: 4px;
-  }
+    & .tasks-header-actions {
+      gap: 4px;
+    }
 
-  caffold-tasks-page .tasks-header .task-primary-button {
-    width: auto;
-    min-width: 32px;
-    min-height: 32px;
-    padding: 0 9px;
-  }
+    & .tasks-header .task-primary-button {
+      width: auto;
+      min-width: 32px;
+      min-height: 32px;
+      padding: 0 9px;
+    }
 
-  caffold-tasks-page .tasks-header .task-primary-button .task-action-label {
-    display: inline;
+    & .tasks-header .task-primary-button .task-action-label {
+      display: inline;
+    }
   }
 }

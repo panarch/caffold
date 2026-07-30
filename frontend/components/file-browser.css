@@ -1,4 +1,5 @@
 @import "./file-browser/list.css";
+
 @import "./file-viewer.css";
 
 caffold-file-browser {
@@ -9,37 +10,37 @@ caffold-file-browser {
   min-height: 0;
   height: 100%;
   overflow: hidden;
-}
 
-caffold-file-browser > caffold-file-list {
-  grid-column: 1;
-}
+  & > caffold-file-list {
+    grid-column: 1;
+  }
 
-caffold-file-browser > caffold-file-viewer {
-  grid-column: 3;
-  min-width: 0;
-}
+  & > caffold-file-viewer {
+    grid-column: 3;
+    min-width: 0;
+  }
 
-caffold-file-browser.is-resizing-left-panel {
-  cursor: col-resize;
-  user-select: none;
-}
+  &.is-resizing-left-panel {
+    cursor: col-resize;
+    user-select: none;
+  }
 
-caffold-file-browser > .panel-resizer {
-  grid-column: 2;
-  min-width: 0;
-  border-right: 1px solid var(--border);
-  border-left: 1px solid var(--border);
-  background: var(--surface-muted);
-  cursor: col-resize;
-  touch-action: none;
-}
+  & > .panel-resizer {
+    grid-column: 2;
+    min-width: 0;
+    border-right: 1px solid var(--border);
+    border-left: 1px solid var(--border);
+    background: var(--surface-muted);
+    cursor: col-resize;
+    touch-action: none;
+  }
 
-caffold-file-browser > .panel-resizer:hover,
-caffold-file-browser > .panel-resizer:focus-visible,
-caffold-file-browser.is-resizing-left-panel > .panel-resizer {
-  background: #d9e6df;
-  outline: none;
+  & > .panel-resizer:hover,
+  & > .panel-resizer:focus-visible,
+  &.is-resizing-left-panel > .panel-resizer {
+    background: #d9e6df;
+    outline: none;
+  }
 }
 
 @media (max-width: 860px) {
@@ -47,35 +48,35 @@ caffold-file-browser.is-resizing-left-panel > .panel-resizer {
     position: relative;
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 1fr);
-  }
 
-  caffold-file-browser[data-browser-view="viewer"] {
-    position: fixed;
-    inset: 0;
-    z-index: 10;
-    width: 100vw;
-    height: 100vh;
-    height: 100dvh;
-    background: var(--surface);
-  }
+    &[data-browser-view="viewer"] {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      background: var(--surface);
+    }
 
-  caffold-file-browser > caffold-file-list,
-  caffold-file-browser > caffold-file-viewer {
-    grid-column: 1;
-    grid-row: 1;
-  }
+    & > caffold-file-list,
+    & > caffold-file-viewer {
+      grid-column: 1;
+      grid-row: 1;
+    }
 
-  caffold-file-browser[data-browser-view="list"] > caffold-file-viewer,
-  caffold-file-browser[data-browser-view="viewer"] > caffold-file-list {
-    display: none;
-  }
+    &[data-browser-view="list"] > caffold-file-viewer,
+    &[data-browser-view="viewer"] > caffold-file-list {
+      display: none;
+    }
 
-  caffold-file-browser[data-browser-view="viewer"] > caffold-file-viewer {
-    grid-row: 1;
-  }
+    &[data-browser-view="viewer"] > caffold-file-viewer {
+      grid-row: 1;
+    }
 
-  caffold-file-browser > .panel-resizer {
-    display: none;
+    & > .panel-resizer {
+      display: none;
+    }
   }
 }
 

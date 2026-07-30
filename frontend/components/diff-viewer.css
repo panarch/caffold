@@ -3,140 +3,142 @@ caffold-diff-viewer {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-}
 
-caffold-diff-viewer .diff-viewer {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr);
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
-  background: var(--code-bg);
-  color: var(--code-text);
-}
+  & .diff-viewer {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr);
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+    background: var(--code-bg);
+    color: var(--code-text);
+  }
 
-caffold-diff-viewer .diff-lines {
-  --diff-old-width: 3.25rem;
-  --diff-new-width: 3.25rem;
-  --diff-prefix-width: 1.5rem;
-  --diff-gutter-width: calc(
-    var(--diff-old-width) + var(--diff-new-width) + var(--diff-prefix-width)
-  );
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  display: grid;
-  overflow: auto;
-  overscroll-behavior: contain;
-  background: var(--code-bg);
-  font-family: var(--font-mono);
-  font-size: var(--code-viewer-font-size);
-  line-height: 1.55;
-}
+  & .diff-lines {
+    --diff-old-width: 3.25rem;
+    --diff-new-width: 3.25rem;
+    --diff-prefix-width: 1.5rem;
+    --diff-gutter-width: calc(
+      var(--diff-old-width) + var(--diff-new-width) + var(--diff-prefix-width)
+    );
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    display: grid;
+    overflow: auto;
+    overscroll-behavior: contain;
+    background: var(--code-bg);
+    font-family: var(--font-mono);
+    font-size: var(--code-viewer-font-size);
+    line-height: 1.55;
+  }
 
-caffold-diff-viewer .diff-gutter-backdrop {
-  position: sticky;
-  left: 0;
-  z-index: 1;
-  grid-area: 1 / 1;
-  width: var(--diff-gutter-width);
-  min-height: 100%;
-  pointer-events: none;
-  background: var(--code-gutter);
-  border-right: 1px solid var(--border);
-}
+  & .diff-gutter-backdrop {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    grid-area: 1 / 1;
+    width: var(--diff-gutter-width);
+    min-height: 100%;
+    pointer-events: none;
+    background: var(--code-gutter);
+    border-right: 1px solid var(--border);
+  }
 
-caffold-diff-viewer .diff-table {
-  grid-area: 1 / 1;
-  width: max(100%, calc(var(--diff-gutter-width) + var(--diff-code-width) + 24px));
-  min-height: 100%;
-}
+  & .diff-table {
+    grid-area: 1 / 1;
+    width: max(100%, calc(var(--diff-gutter-width) + var(--diff-code-width) + 24px));
+    min-height: 100%;
+  }
 
-caffold-diff-viewer .diff-row {
-  display: grid;
-  grid-template-columns: var(--diff-gutter-width) minmax(0, 1fr);
-  width: 100%;
-  min-width: 0;
-  background: var(--code-bg);
-}
+  & .diff-row {
+    display: grid;
+    grid-template-columns: var(--diff-gutter-width) minmax(0, 1fr);
+    width: 100%;
+    min-width: 0;
+    background: var(--code-bg);
+  }
 
-caffold-diff-viewer .diff-gutter {
-  position: sticky;
-  left: 0;
-  z-index: 2;
-  display: grid;
-  grid-template-columns: var(--diff-old-width) var(--diff-new-width) var(--diff-prefix-width);
-  user-select: none;
-  background: inherit;
-  border-right: 1px solid var(--border);
-}
+  & .diff-gutter {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    display: grid;
+    grid-template-columns: var(--diff-old-width) var(--diff-new-width) var(--diff-prefix-width);
+    user-select: none;
+    background: inherit;
+    border-right: 1px solid var(--border);
+  }
 
-caffold-diff-viewer .diff-old-line,
-caffold-diff-viewer .diff-new-line,
-caffold-diff-viewer .diff-prefix {
-  color: #78867d;
-}
+  & .diff-old-line,
+  & .diff-new-line,
+  & .diff-prefix {
+    color: #78867d;
+  }
 
-caffold-diff-viewer .diff-old-line,
-caffold-diff-viewer .diff-new-line {
-  padding: 0 8px;
-  text-align: right;
-}
+  & .diff-old-line,
+  & .diff-new-line {
+    padding: 0 8px;
+    text-align: right;
+  }
 
-caffold-diff-viewer .diff-prefix {
-  padding: 0 6px;
-  text-align: center;
-}
+  & .diff-prefix {
+    padding: 0 6px;
+    text-align: center;
+  }
 
-caffold-diff-viewer .diff-code {
-  min-width: 0;
-  white-space: pre;
-  padding: 0 12px;
-}
+  & .diff-code {
+    min-width: 0;
+    white-space: pre;
+    padding: 0 12px;
+  }
 
-caffold-diff-viewer .diff-row-metadata {
-  background: #f8faf8;
-  color: #65746a;
-}
+  & .diff-row-metadata {
+    background: #f8faf8;
+    color: #65746a;
+  }
 
-caffold-diff-viewer .diff-row-hunk {
-  background: #e7eee9;
-  color: #0d5f47;
-}
+  & .diff-row-hunk {
+    background: #e7eee9;
+    color: #0d5f47;
+  }
 
-caffold-diff-viewer .diff-row-added {
-  background: #e7f5ec;
-}
+  & .diff-row-added {
+    background: #e7f5ec;
+  }
 
-caffold-diff-viewer .diff-row-added .diff-prefix,
-caffold-diff-viewer .diff-row-added .diff-new-line {
-  color: #167c5c;
-}
+  & .diff-row-added .diff-prefix,
+  & .diff-row-added .diff-new-line {
+    color: #167c5c;
+  }
 
-caffold-diff-viewer .diff-row-removed {
-  background: #f9e5e2;
-}
+  & .diff-row-removed {
+    background: #f9e5e2;
+  }
 
-caffold-diff-viewer .diff-row-removed .diff-prefix,
-caffold-diff-viewer .diff-row-removed .diff-old-line {
-  color: #9b2c2c;
-}
+  & .diff-row-removed .diff-prefix,
+  & .diff-row-removed .diff-old-line {
+    color: #9b2c2c;
+  }
 
-caffold-diff-viewer .diff-row-note {
-  background: #f8faf8;
-  color: #65746a;
-  font-style: italic;
-}
+  & .diff-row-note {
+    background: #f8faf8;
+    color: #65746a;
+    font-style: italic;
+  }
 
-caffold-diff-viewer .diff-row-empty {
-  color: var(--muted);
+  & .diff-row-empty {
+    color: var(--muted);
+  }
 }
 
 @media (max-width: 520px) {
-  caffold-diff-viewer .diff-lines {
-    --diff-old-width: 2.75rem;
-    --diff-new-width: 2.75rem;
-    --diff-prefix-width: 1.25rem;
+  caffold-diff-viewer {
+    & .diff-lines {
+      --diff-old-width: 2.75rem;
+      --diff-new-width: 2.75rem;
+      --diff-prefix-width: 1.25rem;
+    }
   }
 }

@@ -4,144 +4,144 @@ caffold-github-pull-files-tree {
   min-height: 0;
   border-right: 1px solid var(--border);
   background: var(--surface);
-}
 
-caffold-github-pull-files-tree .github-pull-files-panel {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  min-height: 0;
-  height: 100%;
-}
+  & .github-pull-files-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+    height: 100%;
+  }
 
-caffold-github-pull-files-tree .github-pull-files-panel > header {
-  box-sizing: border-box;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-content: center;
-  height: var(--review-header-height, 42px);
-  min-height: 0;
-  overflow: hidden;
-  padding: 4px 12px;
-  border-bottom: 1px solid var(--border);
-}
+  & .github-pull-files-panel > header {
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-content: center;
+    height: var(--review-header-height, 42px);
+    min-height: 0;
+    overflow: hidden;
+    padding: 4px 12px;
+    border-bottom: 1px solid var(--border);
+  }
 
-caffold-github-pull-files-tree h2 {
-  margin: 0;
-  overflow: hidden;
-  font-size: var(--review-pane-title-size, 0.82rem);
-  font-weight: 600;
-  line-height: 1.05;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  & h2 {
+    margin: 0;
+    overflow: hidden;
+    font-size: var(--review-pane-title-size, 0.82rem);
+    font-weight: 600;
+    line-height: 1.05;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-caffold-github-pull-files-tree .github-pull-files-title-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  width: 100%;
-  min-width: 0;
-}
+  & .github-pull-files-title-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+  }
 
-caffold-github-pull-files-tree .github-pull-files-count {
-  justify-self: end;
-  color: var(--muted);
-  font-size: 0.74rem;
-  line-height: 1.1;
-  white-space: nowrap;
-}
+  & .github-pull-files-count {
+    justify-self: end;
+    color: var(--muted);
+    font-size: 0.74rem;
+    line-height: 1.1;
+    white-space: nowrap;
+  }
 
-caffold-github-pull-files-tree .github-pull-files-list {
-  --tree-indent: var(--file-tree-indent);
-  display: block;
-  min-height: 0;
-  margin: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding: 4px 0;
-  list-style: none;
-}
+  & .github-pull-files-list {
+    --tree-indent: var(--file-tree-indent);
+    display: block;
+    min-height: 0;
+    margin: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 4px 0;
+    list-style: none;
+  }
 
-caffold-github-pull-files-tree .github-pull-files-list > li {
-  width: max-content;
-  min-width: 100%;
-}
+  & .github-pull-files-list > li {
+    width: max-content;
+    min-width: 100%;
+  }
 
-caffold-github-pull-files-tree .github-pull-file-entry {
-  display: grid;
-  grid-template-columns: var(--file-tree-icon-slot-size) max-content;
-  gap: var(--file-tree-column-gap);
-  width: max-content;
-  min-width: 100%;
-  min-height: var(--file-tree-row-height);
-  align-items: center;
-  border: 0;
-  border-left: 3px solid transparent;
-  border-radius: 0;
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-  font-size: var(--file-tree-font-size);
-  padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
-    var(--file-tree-padding-y) var(--file-tree-padding-left);
-  text-align: left;
-}
+  & .github-pull-file-entry {
+    display: grid;
+    grid-template-columns: var(--file-tree-icon-slot-size) max-content;
+    gap: var(--file-tree-column-gap);
+    width: max-content;
+    min-width: 100%;
+    min-height: var(--file-tree-row-height);
+    align-items: center;
+    border: 0;
+    border-left: 3px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    font-size: var(--file-tree-font-size);
+    padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
+      var(--file-tree-padding-y) var(--file-tree-padding-left);
+    text-align: left;
+  }
 
-caffold-github-pull-files-tree .github-pull-file-entry:hover,
-caffold-github-pull-files-tree .github-pull-file-entry:focus-visible {
-  border-left-color: #bdd7cc;
-  background: #f1f6f3;
-  outline: none;
-}
+  & .github-pull-file-entry:hover,
+  & .github-pull-file-entry:focus-visible {
+    border-left-color: #bdd7cc;
+    background: #f1f6f3;
+    outline: none;
+  }
 
-caffold-github-pull-files-tree .github-pull-file[aria-current="true"] {
-  border-left-color: var(--accent);
-  background: var(--accent-soft);
-}
+  & .github-pull-file[aria-current="true"] {
+    border-left-color: var(--accent);
+    background: var(--accent-soft);
+  }
 
-caffold-github-pull-files-tree .github-pull-file-status-code {
-  align-self: center;
-  color: #764600;
-  font-size: var(--file-tree-font-size);
-  justify-self: start;
-  white-space: pre;
-}
+  & .github-pull-file-status-code {
+    align-self: center;
+    color: #764600;
+    font-size: var(--file-tree-font-size);
+    justify-self: start;
+    white-space: pre;
+  }
 
-caffold-github-pull-files-tree .github-pull-file-node-label {
-  display: grid;
-  grid-template-columns: var(--file-tree-icon-slot-size) max-content;
-  gap: var(--file-tree-column-gap);
-  align-items: center;
-  min-width: 0;
-  margin-left: calc(var(--tree-depth, 0) * var(--tree-indent));
-}
+  & .github-pull-file-node-label {
+    display: grid;
+    grid-template-columns: var(--file-tree-icon-slot-size) max-content;
+    gap: var(--file-tree-column-gap);
+    align-items: center;
+    min-width: 0;
+    margin-left: calc(var(--tree-depth, 0) * var(--tree-indent));
+  }
 
-caffold-github-pull-files-tree .entry-icon {
-  display: inline-grid;
-  width: var(--file-tree-icon-slot-size);
-  height: var(--file-tree-icon-slot-size);
-  place-items: center;
-  justify-self: center;
-}
+  & .entry-icon {
+    display: inline-grid;
+    width: var(--file-tree-icon-slot-size);
+    height: var(--file-tree-icon-slot-size);
+    place-items: center;
+    justify-self: center;
+  }
 
-caffold-github-pull-files-tree .entry-icon-svg {
-  display: block;
-  width: var(--file-tree-icon-size);
-  height: var(--file-tree-icon-size);
-  stroke-width: 1.9;
-}
+  & .entry-icon-svg {
+    display: block;
+    width: var(--file-tree-icon-size);
+    height: var(--file-tree-icon-size);
+    stroke-width: 1.9;
+  }
 
-caffold-github-pull-files-tree .github-pull-file-name {
-  min-width: 0;
-  overflow: visible;
-  text-overflow: clip;
-  white-space: nowrap;
-}
+  & .github-pull-file-name {
+    min-width: 0;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
 
-caffold-github-pull-files-tree .error-panel {
-  background: var(--danger-soft);
-  color: var(--danger);
+  & .error-panel {
+    background: var(--danger-soft);
+    color: var(--danger);
+  }
 }
 
 @media (max-width: 860px) {
