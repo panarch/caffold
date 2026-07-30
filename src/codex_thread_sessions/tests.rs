@@ -108,6 +108,75 @@ async fn wait_for_method_count(client: &CodexThreadClient, method: &str, expecte
 }
 
 #[tokio::test]
+async fn turn_started_notification_does_not_change_canonical_thread_status() {
+    let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+        "thread/resume",
+        resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
+    )]);
+    let sessions = CodexThreadSessions::default();
+    sessions
+        .ensure_subscribed(&client, 1, "thread-1")
+        .await
+        .expect("subscribe");
+
+    sessions
+        .apply_notification(
+            1,
+            &CodexNotification::TurnStarted {
+                thread_id: "thread-1".to_string(),
+                turn: turn("turn-1", TurnStatus::InProgress),
+            },
+        )
+        .await;
+
+    let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
+    assert_eq!(
+        snapshot.thread.expect("canonical thread").status,
+        ThreadStatus::Idle,
+        "turn notifications must not synthesize thread status"
+    );
+    assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-1"));
+}
+
+#[tokio::test]
+async fn turn_completed_notification_does_not_change_canonical_thread_status() {
+    let active = ThreadStatus::Active {
+        active_flags: Vec::new(),
+    };
+    let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+        "thread/resume",
+        resume_response(
+            active.clone(),
+            Vec::new(),
+            vec![turn("turn-1", TurnStatus::InProgress)],
+        ),
+    )]);
+    let sessions = CodexThreadSessions::default();
+    sessions
+        .ensure_subscribed(&client, 1, "thread-1")
+        .await
+        .expect("subscribe");
+
+    sessions
+        .apply_notification(
+            1,
+            &CodexNotification::TurnCompleted {
+                thread_id: "thread-1".to_string(),
+                turn: turn("turn-1", TurnStatus::Completed),
+            },
+        )
+        .await;
+
+    let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
+    assert_eq!(
+        snapshot.thread.expect("canonical thread").status,
+        active,
+        "turn notifications must not synthesize thread status"
+    );
+    assert_eq!(snapshot.active_turn_id, None);
+}
+
+#[tokio::test]
 async fn initial_subscription_bootstraps_only_from_resume() {
     let initial_turns = (0..INITIAL_TURNS_PAGE_SIZE)
         .map(|index| {
@@ -240,7 +309,7 @@ async fn metadata_load_bootstraps_from_resume_without_thread_read() {
 }
 
 #[tokio::test]
-async fn stale_metadata_load_does_not_overwrite_a_newer_running_notification() {
+async fn stale_metadata_load_does_not_overwrite_a_newer_status_notification() {
     let client = CodexThreadClient::mock(vec![MockCodexResponse::delayed_ok(
         "thread/resume",
         resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
@@ -268,6 +337,17 @@ async fn stale_metadata_load_does_not_overwrite_a_newer_running_notification() {
             &CodexNotification::TurnStarted {
                 thread_id: "thread-1".to_string(),
                 turn: turn("turn-live", TurnStatus::InProgress),
+            },
+        )
+        .await;
+    sessions
+        .apply_notification(
+            1,
+            &CodexNotification::ThreadStatusChanged {
+                thread_id: "thread-1".to_string(),
+                status: ThreadStatus::Active {
+                    active_flags: Vec::new(),
+                },
             },
         )
         .await;
@@ -466,77 +546,6 @@ async fn external_invalidation_rejoins_thread_and_restores_running_state() {
 }
 
 #[tokio::test]
-async fn rollout_activity_remains_running_when_other_app_server_reports_idle() {
-    let sessions = CodexThreadSessions::default();
-    let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
-        "thread/resume",
-        resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
-    )]);
-    let _viewer = sessions
-        .acquire_viewer(&client, 1, "thread-1")
-        .await
-        .expect("viewer");
-
-    sessions
-        .record_external_activity_started("thread-1", "turn-gui", 1_784_569_546_000)
-        .await;
-    let syncing = sessions.begin_external_sync("thread-1").await;
-    let snapshot = apply_external_snapshot(
-        &sessions,
-        syncing.revision,
-        resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
-    )
-    .await;
-
-    assert_eq!(
-        snapshot.external_activity_turn_id.as_deref(),
-        Some("turn-gui")
-    );
-    assert_eq!(
-        snapshot.external_activity_started_ms,
-        Some(1_784_569_546_000)
-    );
-    assert!(snapshot.is_running());
-    assert!(matches!(
-        sessions
-            .prepare_prompt(&client, 1, "thread-1")
-            .await
-            .expect("prompt target"),
-        PromptTarget::Start { .. }
-    ));
-}
-
-#[tokio::test]
-async fn canonical_completion_clears_matching_rollout_activity() {
-    let sessions = CodexThreadSessions::default();
-    let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
-        "thread/resume",
-        resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
-    )]);
-    let _viewer = sessions
-        .acquire_viewer(&client, 1, "thread-1")
-        .await
-        .expect("viewer");
-
-    sessions
-        .record_external_activity_started("thread-1", "turn-gui", 1_784_569_546_000)
-        .await;
-    sessions
-        .apply_notification(
-            1,
-            &CodexNotification::TurnCompleted {
-                thread_id: "thread-1".to_string(),
-                turn: turn("turn-gui", TurnStatus::Completed),
-            },
-        )
-        .await;
-
-    let completed = sessions.snapshot("thread-1").await.expect("snapshot");
-    assert_eq!(completed.external_activity_turn_id, None);
-    assert!(!completed.is_running());
-}
-
-#[tokio::test]
 async fn terminal_turn_copy_wins_over_stale_running_history_copy() {
     let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
         "thread/resume",
@@ -555,28 +564,11 @@ async fn terminal_turn_copy_wins_over_stale_running_history_copy() {
     let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
 
     assert_eq!(snapshot.active_turn_id, None);
-    assert!(!snapshot.is_running());
     assert!(
         snapshot
             .thread
             .is_some_and(|thread| thread.status == ThreadStatus::Idle)
     );
-}
-
-#[tokio::test]
-async fn rollout_completion_clears_external_running_state() {
-    let sessions = CodexThreadSessions::default();
-    sessions
-        .record_external_activity_started("thread-1", "turn-gui", 1_784_569_546_000)
-        .await;
-    sessions
-        .record_external_activity_finished("thread-1", "turn-gui")
-        .await;
-
-    let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
-    assert_eq!(snapshot.external_activity_turn_id, None);
-    assert_eq!(snapshot.external_activity_started_ms, None);
-    assert!(!snapshot.is_running());
 }
 
 #[tokio::test]
@@ -664,7 +656,7 @@ async fn external_running_refresh_survives_concurrent_item_notification() {
 }
 
 #[tokio::test]
-async fn stale_running_refresh_does_not_overwrite_a_concurrent_completion() {
+async fn stale_turn_page_does_not_overwrite_a_concurrent_completion() {
     let external_turn = turn("turn-external", TurnStatus::InProgress);
     let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
         "thread/resume",
@@ -704,7 +696,8 @@ async fn stale_running_refresh_does_not_overwrite_a_concurrent_completion() {
     assert!(
         snapshot
             .thread
-            .is_some_and(|thread| thread.status == ThreadStatus::Idle)
+            .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. })),
+        "the app-server snapshot remains the canonical thread status"
     );
     assert_eq!(
         snapshot.turns_page.expect("history").data[0].status,
@@ -797,7 +790,6 @@ async fn idle_notification_overrides_stale_in_progress_turn_page() {
         snapshot.turns_page.as_ref().expect("history").data[0].status,
         TurnStatus::InProgress
     );
-    assert!(!snapshot.is_running());
 }
 
 #[tokio::test]
@@ -849,7 +841,6 @@ async fn stale_active_metadata_does_not_revive_turn_after_idle_notification() {
         snapshot.turns_page.as_ref().expect("history").data[0].status,
         TurnStatus::InProgress
     );
-    assert!(!snapshot.is_running());
 }
 
 #[tokio::test]
@@ -881,7 +872,6 @@ async fn idle_resume_does_not_revive_stale_in_progress_turn() {
         snapshot.turns_page.as_ref().expect("history").data[0].status,
         TurnStatus::InProgress
     );
-    assert!(!snapshot.is_running());
 }
 
 #[tokio::test]
@@ -919,7 +909,6 @@ async fn idle_external_read_does_not_revive_stale_in_progress_turn() {
         snapshot.turns_page.as_ref().expect("history").data[0].status,
         TurnStatus::InProgress
     );
-    assert!(!snapshot.is_running());
 }
 
 #[tokio::test]
@@ -1075,7 +1064,8 @@ async fn stale_external_sync_does_not_overwrite_a_different_newer_turn() {
         snapshot
             .thread
             .as_ref()
-            .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }))
+            .is_some_and(|thread| thread.status == ThreadStatus::Idle),
+        "a newer turn pointer must not synthesize thread status"
     );
     assert!(snapshot.turns_page.is_some_and(|page| {
         page.data
@@ -1210,11 +1200,16 @@ async fn completed_prompt_shares_initial_history_bootstrap() {
     assert_eq!(methods(&client).await, vec!["thread/resume"]);
     let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
     assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-new"));
-    assert!(snapshot.is_running());
+    assert!(
+        snapshot
+            .thread
+            .is_some_and(|thread| thread.status == ThreadStatus::Idle),
+        "starting a turn must not synthesize thread status"
+    );
 }
 
 #[tokio::test]
-async fn stale_background_refresh_does_not_overwrite_a_new_running_turn() {
+async fn stale_background_refresh_preserves_a_new_active_turn_pointer() {
     let client = CodexThreadClient::mock(vec![
         MockCodexResponse::ok(
             "thread/resume",
@@ -1275,7 +1270,8 @@ async fn stale_background_refresh_does_not_overwrite_a_new_running_turn() {
     assert!(
         snapshot
             .thread
-            .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }))
+            .is_some_and(|thread| thread.status == ThreadStatus::Idle),
+        "turn state must not be projected onto canonical thread status"
     );
 }
 
@@ -1349,7 +1345,6 @@ async fn stale_background_refresh_does_not_overwrite_a_new_idle_status() {
         snapshot.turns_page.as_ref().expect("history").data[0].status,
         TurnStatus::InProgress
     );
-    assert!(!snapshot.is_running());
 }
 
 #[tokio::test]
@@ -1539,7 +1534,7 @@ async fn refresh_failure_keeps_canonical_state_and_can_recover() {
 }
 
 #[tokio::test]
-async fn turn_started_notification_marks_the_session_running_immediately() {
+async fn turn_started_notification_updates_only_the_turn_session_state() {
     let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
         "thread/resume",
         resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
@@ -1567,7 +1562,8 @@ async fn turn_started_notification_marks_the_session_running_immediately() {
     assert!(
         snapshot
             .thread
-            .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }))
+            .is_some_and(|thread| thread.status == ThreadStatus::Idle),
+        "turn notifications must not synthesize thread status"
     );
 }
 

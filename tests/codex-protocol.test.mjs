@@ -199,6 +199,41 @@ test(
       assert.match(turnsResponse, /nextCursor/);
       assert.match(turnsResponse, /backwardsCursor/);
 
+      const threadStatus = readFileSync(
+        join(outputDirectory, "v2", "ThreadStatus.ts"),
+        "utf8",
+      );
+      assert.match(threadStatus, /"type": "notLoaded"/);
+      assert.match(threadStatus, /"type": "idle"/);
+      assert.match(threadStatus, /"type": "systemError"/);
+      assert.match(threadStatus, /"type": "active"/);
+      assert.match(threadStatus, /activeFlags: Array<ThreadActiveFlag>/);
+
+      const threadActiveFlag = readFileSync(
+        join(outputDirectory, "v2", "ThreadActiveFlag.ts"),
+        "utf8",
+      );
+      assert.match(threadActiveFlag, /"waitingOnApproval"/);
+      assert.match(threadActiveFlag, /"waitingOnUserInput"/);
+
+      const turnStatus = readFileSync(
+        join(outputDirectory, "v2", "TurnStatus.ts"),
+        "utf8",
+      );
+      for (const status of ["completed", "interrupted", "failed", "inProgress"]) {
+        assert.ok(turnStatus.includes(`"${status}"`), `missing turn status ${status}`);
+      }
+
+      const notificationContracts = [
+        ["ThreadStatusChangedNotification.ts", /threadId: string, status: ThreadStatus/],
+        ["TurnStartedNotification.ts", /threadId: string, turn: Turn/],
+        ["TurnCompletedNotification.ts", /threadId: string, turn: Turn/],
+      ];
+      for (const [file, contract] of notificationContracts) {
+        const notification = readFileSync(join(outputDirectory, "v2", file), "utf8");
+        assert.match(notification, contract);
+      }
+
       const unsubscribeStatus = readFileSync(
         join(outputDirectory, "v2", "ThreadUnsubscribeStatus.ts"),
         "utf8",

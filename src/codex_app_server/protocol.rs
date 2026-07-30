@@ -86,9 +86,16 @@ pub enum ThreadStatus {
     Idle,
     SystemError,
     Active {
-        #[serde(default)]
-        active_flags: Vec<Value>,
+        #[serde(default, rename = "activeFlags")]
+        active_flags: Vec<ThreadActiveFlag>,
     },
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ThreadActiveFlag {
+    WaitingOnApproval,
+    WaitingOnUserInput,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -1209,6 +1216,32 @@ mod tests {
         let steered: TurnSteerResponse = decode_response(TURN_STEER, json!({ "turnId": "turn_1" }))
             .expect("turn steer response");
         assert_eq!(steered.turn_id, "turn_1");
+    }
+
+    #[test]
+    fn preserves_canonical_thread_status_active_flags() {
+        let status: ThreadStatus = serde_json::from_value(json!({
+            "type": "active",
+            "activeFlags": ["waitingOnApproval", "waitingOnUserInput"]
+        }))
+        .expect("thread status");
+
+        assert_eq!(
+            status,
+            ThreadStatus::Active {
+                active_flags: vec![
+                    ThreadActiveFlag::WaitingOnApproval,
+                    ThreadActiveFlag::WaitingOnUserInput,
+                ],
+            }
+        );
+        assert_eq!(
+            serde_json::to_value(status).expect("serialize thread status"),
+            json!({
+                "type": "active",
+                "activeFlags": ["waitingOnApproval", "waitingOnUserInput"]
+            })
+        );
     }
 
     #[test]

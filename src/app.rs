@@ -1656,13 +1656,6 @@ async fn list_managed_tasks(
 ) -> Result<Json<TaskListResponse>, ApiError> {
     let (stored, next_cursor) =
         thread_store_list(&state, query.cursor.as_deref(), TASK_LIST_PAGE_SIZE).await?;
-    let pending_thread_ids = state
-        .pending_approvals
-        .lock()
-        .await
-        .values()
-        .map(|pending| pending.thread_id.clone())
-        .collect::<HashSet<_>>();
     let mut cwds = stored
         .iter()
         .map(|thread| thread.cwd.clone())
@@ -1682,10 +1675,7 @@ async fn list_managed_tasks(
         .into_iter()
         .map(|thread| {
             let resolved_cwd = resolved_cwds.get(&thread.cwd).and_then(Option::as_ref);
-            let mut task = task_record_from_stored(thread, resolved_cwd);
-            let has_pending_approval = pending_thread_ids.contains(&task.thread_id);
-            apply_current_approval_status(&mut task, has_pending_approval);
-            task
+            task_record_from_stored(thread, resolved_cwd)
         })
         .collect();
     Ok(Json(TaskListResponse { tasks, next_cursor }))
@@ -2045,7 +2035,7 @@ fn task_record_from_codex_thread(
 ) -> Result<TaskRecord, ApiError> {
     let thread = thread.clone().into_value();
     let resolved = resolve_thread_cwd(&state.fs, &thread);
-    task_record_from_thread(&thread, &[], resolved.as_ref(), false)
+    task_record_from_thread(&thread, &[], resolved.as_ref())
 }
 
 fn task_not_managed_error() -> ApiError {
@@ -2185,33 +2175,12 @@ async fn run_task_sync_worker(
 }
 
 async fn handle_task_sync_request(
-    state: &AppState,
+    _state: &AppState,
     pending: &mut HashMap<String, PendingTaskSync>,
     request: TaskSyncRequest,
 ) {
     match request {
-        TaskSyncRequest::Rollout(thread_id, signal) => {
-            let snapshot = match &signal {
-                TaskRolloutSignal::ExternalStarted {
-                    turn_id,
-                    started_at_ms,
-                } => Some(
-                    state
-                        .codex_sessions
-                        .record_external_activity_started(&thread_id, turn_id, *started_at_ms)
-                        .await,
-                ),
-                TaskRolloutSignal::ExternalFinished { turn_id, .. } => Some(
-                    state
-                        .codex_sessions
-                        .record_external_activity_finished(&thread_id, turn_id)
-                        .await,
-                ),
-                TaskRolloutSignal::Invalidated => None,
-            };
-            if let Some(snapshot) = snapshot {
-                broadcast_task_snapshot(state, &thread_id, snapshot, "rollout-activity").await;
-            }
+        TaskSyncRequest::Rollout(thread_id, TaskRolloutSignal::Invalidated) => {
             schedule_task_sync(pending, thread_id, tokio::time::Instant::now());
         }
         TaskSyncRequest::Unsubscribe(thread_id) => {
@@ -2860,11 +2829,7 @@ async fn require_codex_thread_connection(
                     client.clone(),
                     generation,
                     CodexThreadBridgeContext {
-                        runtime: state.codex_threads.clone(),
-                        sessions: state.codex_sessions.clone(),
-                        task_events: state.task_events.clone(),
-                        live_task_events: state.live_task_events.clone(),
-                        pending_approvals: state.pending_approvals.clone(),
+                        state: state.clone(),
                     },
                     state.shutdown.subscribe(),
                 );
@@ -2998,17 +2963,16 @@ async fn task_detail_from_snapshot(
     snapshot: ThreadSessionSnapshot,
     response_page: Option<crate::codex_app_server::TurnsPage>,
 ) -> Result<TaskDetailResponse, ApiError> {
-    let session_running = snapshot.is_running();
+    let session_running = snapshot
+        .thread
+        .as_ref()
+        .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }));
     let actively_viewed = snapshot.viewer_leases > 0;
     let revision = snapshot.revision;
     let permission_mode = snapshot.permission_mode;
     let session_model = snapshot.model.clone();
     let session_reasoning_effort = snapshot.reasoning_effort.clone();
-    let session_active_turn_id = snapshot
-        .active_turn_id
-        .clone()
-        .or_else(|| snapshot.external_activity_turn_id.clone());
-    let external_activity_started_ms = snapshot.external_activity_started_ms;
+    let session_active_turn_id = snapshot.active_turn_id.clone();
     let thread_id = snapshot
         .thread
         .as_ref()
@@ -3039,18 +3003,8 @@ async fn task_detail_from_snapshot(
     events = merge_task_event_records(events, pending_approvals.clone());
     sort_task_events(&mut events);
     let resolved_cwd = resolve_thread_cwd(&state.fs, &thread);
-    let mut task = task_record_from_thread(
-        &thread,
-        &events,
-        resolved_cwd.as_ref(),
-        !pending_approvals.is_empty(),
-    )?;
-    apply_session_activity(
-        &mut task,
-        session_running,
-        session_active_turn_id,
-        external_activity_started_ms,
-    );
+    let mut task = task_record_from_thread(&thread, &events, resolved_cwd.as_ref())?;
+    apply_session_activity(&mut task, session_running, session_active_turn_id);
     let mut stored = thread_store_update_projection(state, &task).await?;
     if session_model.is_some() || session_reasoning_effort.is_some() {
         stored = thread_store_update_composer_settings(
@@ -3102,12 +3056,10 @@ fn apply_session_activity(
     task: &mut TaskRecord,
     session_running: bool,
     session_active_turn_id: Option<String>,
-    external_activity_started_ms: Option<u64>,
 ) {
-    if session_running && task.status != "waiting_for_approval" {
+    if session_running {
         task.status = "running".to_string();
         task.active_turn_id = task.active_turn_id.take().or(session_active_turn_id);
-        task.active_turn_started_ms = task.active_turn_started_ms.or(external_activity_started_ms);
     }
 }
 
@@ -3276,7 +3228,7 @@ fn thread_list_response_with_resolved(
             let resolved_cwd = thread_cwd(thread)
                 .and_then(|cwd| resolved_cwds.get(cwd))
                 .and_then(Option::as_ref);
-            task_record_from_thread(thread, &[], resolved_cwd, false).ok()
+            task_record_from_thread(thread, &[], resolved_cwd).ok()
         })
         .collect::<Vec<_>>();
     tasks.sort_by(|left, right| {
@@ -3293,7 +3245,6 @@ fn task_record_from_thread(
     thread: &JsonValue,
     events: &[TaskEventRecord],
     resolved_cwd: Option<&ResolvedTaskCwd>,
-    has_pending_approval: bool,
 ) -> Result<TaskRecord, ApiError> {
     let thread_id = thread_id(thread).ok_or_else(|| ApiError::BadRequest {
         code: "thread_id_missing",
@@ -3319,7 +3270,7 @@ fn task_record_from_thread(
         .last()
         .map(|event| event.summary.clone())
         .or_else(|| non_empty_string(Some(&preview)));
-    let mut task = TaskRecord {
+    Ok(TaskRecord {
         id: thread_id.to_string(),
         thread_id: thread_id.to_string(),
         title,
@@ -3341,21 +3292,7 @@ fn task_record_from_thread(
         active_turn_started_ms,
         last_event_summary,
         unseen: false,
-    };
-    apply_current_approval_status(&mut task, has_pending_approval);
-    Ok(task)
-}
-
-fn apply_current_approval_status(task: &mut TaskRecord, has_pending_approval: bool) {
-    if has_pending_approval {
-        task.status = "waiting_for_approval".to_string();
-    } else if task.status == "waiting_for_approval" {
-        task.status = if task.active_turn_id.is_some() {
-            "running".to_string()
-        } else {
-            "idle".to_string()
-        };
-    }
+    })
 }
 
 fn stored_thread_from_task_record(task: &TaskRecord) -> StoredThread {
@@ -3639,11 +3576,7 @@ fn turn_item_event_id(turn_id: Option<&str>, item_id: Option<&str>, fallback: &s
 }
 
 struct CodexThreadBridgeContext {
-    runtime: Arc<CodexThreadRuntime>,
-    sessions: CodexThreadSessions,
-    task_events: broadcast::Sender<TaskEventRecord>,
-    live_task_events: LiveTaskEventCache,
-    pending_approvals: Arc<AsyncMutex<HashMap<String, PendingApproval>>>,
+    state: AppState,
 }
 
 fn spawn_codex_thread_bridge(
@@ -3666,28 +3599,47 @@ fn spawn_codex_thread_bridge(
                     };
                     match event {
                         CodexRuntimeEvent::Notification(notification) => {
-                            context
-                                .sessions
+                            let thread_id =
+                                codex_notification_thread_id(&notification).map(str::to_string);
+                            let revision = context
+                                .state
+                                .codex_sessions
                                 .apply_notification(generation, &notification)
                                 .await;
                             expire_stale_approvals_for_notification(
-                                &context.task_events,
-                                &context.live_task_events,
-                                &context.pending_approvals,
+                                &context.state.task_events,
+                                &context.state.live_task_events,
+                                &context.state.pending_approvals,
                                 &notification,
                             )
                             .await;
                             handle_codex_notification(
-                                &context.task_events,
-                                &context.live_task_events,
+                                &context.state.task_events,
+                                &context.state.live_task_events,
                                 notification,
                             );
+                            if revision.is_some()
+                                && let Some(thread_id) = thread_id
+                                && let Some(snapshot) = context
+                                    .state
+                                    .codex_sessions
+                                    .snapshot(&thread_id)
+                                    .await
+                            {
+                                broadcast_task_snapshot(
+                                    &context.state,
+                                    &thread_id,
+                                    snapshot,
+                                    "app-server-notification",
+                                )
+                                .await;
+                            }
                         }
                         CodexRuntimeEvent::ServerRequest(request) => {
                             handle_codex_server_request(
-                                &context.task_events,
-                                &context.live_task_events,
-                                &context.pending_approvals,
+                                &context.state.task_events,
+                                &context.state.live_task_events,
+                                &context.state.pending_approvals,
                                 request,
                             )
                             .await;
@@ -3703,11 +3655,26 @@ fn spawn_codex_thread_bridge(
             }
         };
         context
-            .sessions
+            .state
+            .codex_sessions
             .connection_lost(generation, connection_error)
             .await;
-        context.runtime.invalidate(generation).await;
+        context.state.codex_threads.invalidate(generation).await;
     });
+}
+
+fn codex_notification_thread_id(notification: &CodexNotification) -> Option<&str> {
+    match notification {
+        CodexNotification::ThreadStarted { thread } => Some(&thread.id),
+        CodexNotification::ThreadStatusChanged { thread_id, .. }
+        | CodexNotification::TurnStarted { thread_id, .. }
+        | CodexNotification::TurnCompleted { thread_id, .. }
+        | CodexNotification::ItemStarted { thread_id, .. }
+        | CodexNotification::ItemCompleted { thread_id, .. }
+        | CodexNotification::RawResponseItemCompleted { thread_id, .. }
+        | CodexNotification::TurnDiffUpdated { thread_id, .. } => Some(thread_id),
+        CodexNotification::Unknown { .. } => None,
+    }
 }
 
 fn handle_codex_notification(
@@ -5486,7 +5453,7 @@ mod tests {
     async fn manage_test_thread(state: &AppState, thread_id: &str, cwd: &Path) {
         let thread = task_thread_list(thread_id, cwd)["data"][0].clone();
         let resolved = resolve_thread_cwd(&state.fs, &thread);
-        let task = task_record_from_thread(&thread, &[], resolved.as_ref(), false)
+        let task = task_record_from_thread(&thread, &[], resolved.as_ref())
             .expect("test thread projection");
         thread_store_claim(state, stored_thread_from_task_record(&task))
             .await
@@ -5554,15 +5521,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn managed_list_downgrades_stored_waiting_without_live_approval() {
+    async fn managed_list_never_projects_pending_approval_onto_thread_status() {
         let root = tempfile::tempdir().unwrap();
         let client = CodexThreadClient::mock(Vec::new());
         let state = app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
         let thread = task_thread_list("thread-stale-approval", root.path())["data"][0].clone();
         let resolved = resolve_thread_cwd(&state.fs, &thread);
-        let stale = task_record_from_thread(&thread, &[], resolved.as_ref(), true).unwrap();
-        assert_eq!(stale.status, "waiting_for_approval");
-        thread_store_claim(&state, stored_thread_from_task_record(&stale))
+        let task = task_record_from_thread(&thread, &[], resolved.as_ref()).unwrap();
+        assert_eq!(task.status, "idle");
+        thread_store_claim(&state, stored_thread_from_task_record(&task))
             .await
             .unwrap();
 
@@ -6071,7 +6038,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn task_stream_watches_rollout_path_discovered_during_resume() {
+    async fn rollout_invalidation_never_synthesizes_thread_activity() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-rollout-path-after-resume";
         let rollout_path = root.path().join("rollout.jsonl");
@@ -6102,6 +6069,29 @@ mod tests {
                 }),
             ),
             crate::codex_app_server::MockCodexResponse::ok(
+                "thread/read",
+                json!({
+                    "thread": {
+                        "id": thread_id,
+                        "preview": "External running regression",
+                        "status": { "type": "idle" },
+                        "cwd": root.path().display().to_string(),
+                        "path": rollout_path.display().to_string(),
+                        "createdAt": 1.0,
+                        "updatedAt": 2.0,
+                        "turns": []
+                    }
+                }),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/turns/list",
+                json!({
+                    "data": [],
+                    "nextCursor": null,
+                    "backwardsCursor": null
+                }),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
                 "thread/unsubscribe",
                 json!({ "status": "unsubscribed" }),
             ),
@@ -6120,40 +6110,24 @@ mod tests {
         .await
         .expect("task stream succeeds");
         wait_for_mock_method(&client, "thread/resume").await;
+        state
+            .task_sync
+            .observe_rollout_invalidation(thread_id.to_string());
 
-        std::fs::write(
-            &rollout_path,
-            concat!(
-                r#"{"timestamp":"2026-07-22T00:00:00Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-external","started_at":1784713963}}"#,
-                "\n"
-            ),
-        )
-        .unwrap();
-
-        let running = tokio::time::timeout(Duration::from_secs(2), async {
-            loop {
-                if state
-                    .codex_sessions
-                    .snapshot(thread_id)
-                    .await
-                    .is_some_and(|snapshot| {
-                        snapshot.is_running()
-                            && snapshot.external_activity_turn_id.as_deref()
-                                == Some("turn-external")
-                    })
-                {
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(25)).await;
-            }
-        })
-        .await;
+        wait_for_mock_method(&client, "thread/read").await;
+        let snapshot = state
+            .codex_sessions
+            .snapshot(thread_id)
+            .await
+            .expect("thread session");
 
         drop(response);
-        assert!(
-            running.is_ok(),
-            "rollout activity must be observed after resume supplies the path"
+        assert_eq!(
+            snapshot.thread.expect("canonical thread").status,
+            ThreadStatus::Idle,
+            "rollout contents only invalidate the canonical app-server snapshot"
         );
+        assert_eq!(snapshot.active_turn_id, None);
     }
 
     #[tokio::test]
@@ -7465,7 +7439,7 @@ mod tests {
                 "items": []
             }]
         });
-        let task = task_record_from_thread(&thread, &[], None, false).unwrap();
+        let task = task_record_from_thread(&thread, &[], None).unwrap();
 
         assert_eq!(task.status, "running");
         assert_eq!(task.active_turn_id.as_deref(), Some("turn_active"));
@@ -7490,7 +7464,7 @@ mod tests {
             }]
         });
 
-        let task = task_record_from_thread(&thread, &[], None, false).unwrap();
+        let task = task_record_from_thread(&thread, &[], None).unwrap();
 
         assert_eq!(task.status, "idle");
         assert_eq!(task.active_turn_id, None);
@@ -7498,7 +7472,7 @@ mod tests {
     }
 
     #[test]
-    fn external_session_activity_sets_the_task_active_turn() {
+    fn canonical_active_session_sets_the_task_active_turn() {
         let temp = tempfile::tempdir().unwrap();
         let thread = json!({
             "id": "thread_external",
@@ -7509,18 +7483,13 @@ mod tests {
             "status": { "type": "idle" },
             "turns": []
         });
-        let mut task = task_record_from_thread(&thread, &[], None, false).unwrap();
+        let mut task = task_record_from_thread(&thread, &[], None).unwrap();
 
-        apply_session_activity(
-            &mut task,
-            true,
-            Some("turn-external".to_string()),
-            Some(1_784_569_546_000),
-        );
+        apply_session_activity(&mut task, true, Some("turn-external".to_string()));
 
         assert_eq!(task.status, "running");
         assert_eq!(task.active_turn_id.as_deref(), Some("turn-external"));
-        assert_eq!(task.active_turn_started_ms, Some(1_784_569_546_000));
+        assert_eq!(task.active_turn_started_ms, None);
     }
 
     #[test]
@@ -7536,7 +7505,7 @@ mod tests {
             "turns": []
         });
 
-        let task = task_record_from_thread(&thread, &[], None, false).unwrap();
+        let task = task_record_from_thread(&thread, &[], None).unwrap();
 
         assert_eq!(task.status, "idle");
         assert_eq!(task.active_turn_id, None);
@@ -8123,7 +8092,7 @@ mod tests {
     }
 
     #[test]
-    fn current_pending_approval_marks_task_as_waiting_for_approval() {
+    fn current_pending_approval_does_not_change_canonical_thread_status() {
         let temp = tempfile::tempdir().unwrap();
         let thread = json!({
             "id": "thread_1",
@@ -8142,8 +8111,8 @@ mod tests {
             1,
         )];
 
-        let task = task_record_from_thread(&thread, &events, None, true).unwrap();
-        assert_eq!(task.status, "waiting_for_approval");
+        let task = task_record_from_thread(&thread, &events, None).unwrap();
+        assert_eq!(task.status, "running");
     }
 
     #[test]
@@ -8196,7 +8165,7 @@ mod tests {
             ),
         ];
 
-        let task = task_record_from_thread(&thread, &events, None, false).unwrap();
+        let task = task_record_from_thread(&thread, &events, None).unwrap();
         assert_eq!(task.status, "idle");
     }
 
@@ -8245,7 +8214,7 @@ mod tests {
             ),
         ];
 
-        let task = task_record_from_thread(&thread, &events, None, false).unwrap();
+        let task = task_record_from_thread(&thread, &events, None).unwrap();
         assert_eq!(task.status, "idle");
     }
 

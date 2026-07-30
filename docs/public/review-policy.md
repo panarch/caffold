@@ -36,7 +36,18 @@ Caffold should present state without pretending to own state it does not own.
 - Caffold storage is for Caffold-owned metadata, indexes, recovery data, and UI-facing summaries.
 - The browser UI is a view and control surface, not durable state.
 
-Duplicating external state is acceptable only when it supports recovery, indexing, or a clearer review experience. The copied data should be treated as a snapshot, not as the authority.
+External domain state must not be reconstructed from Caffold databases, derived events, watched files, pending UI requests, or browser state. A copied snapshot may support diagnostics or indexing, but it must not decide the current lifecycle, badge, or whether a control is available. If the owning source is unavailable, expose an unavailable or error state instead of a guessed state.
+
+Keep domain state, transport state, and UI request state separate. Subscription leases, revisions, cache invalidations, optimistic submissions, and loading indicators may coordinate communication, but they do not change the external domain state being displayed.
+
+Every review that changes state handling must trace:
+
+- the owner of each state field;
+- every writer and the source that authorizes it;
+- whether the value is persisted;
+- every backend and frontend consumer.
+
+A state change is not ready while an unowned writer, stale fallback, or cross-layer status overlay remains.
 
 ## Frontend Review
 
