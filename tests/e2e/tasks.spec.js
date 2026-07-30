@@ -6618,11 +6618,18 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     ),
   );
   const taskDetail = {
+    threadId,
+    syncState: "ready",
+    managed: true,
     revision: 1,
     task,
     events,
     eventsPage: { nextCursor: null },
     pendingApprovals: [],
+    historyLoading: false,
+    permissionMode: null,
+    model: null,
+    reasoningEffort: null,
   };
   let taskDetailResponse = taskDetail;
   let taskDetailReadRequests = 0;
