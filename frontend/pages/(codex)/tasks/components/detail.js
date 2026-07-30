@@ -1,6 +1,5 @@
 import {
   getGitHubStatus,
-  getGitStatus,
   getTask,
   interruptTask,
   resolveTaskApproval,
@@ -8,16 +7,10 @@ import {
   taskStreamUrl,
 } from "../../../../api.js";
 import { escapeHtml } from "../../../../components/dom.js";
-import "../../../../components/file-browser.js";
-import "../../../../components/git-compare-browser.js";
-import "../../../../components/git-diff-browser.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
-import { createRefreshCoordinator, subscribeToWatch } from "../../../../watch.js";
-import {
-  latestTaskRelatedWorktreePaths,
-} from "../conversation-render.js";
 import "./conversation.js";
 import "./markdown.js";
+import "./review.js";
 import {
   PROMPT_SUBMISSION_STATE,
   TASK_TRANSPORT_STATE,
@@ -40,14 +33,12 @@ import {
 } from "../task-events.js";
 import {
   cleanLogicalPath,
-  cleanRelativeTaskPath,
   shortId,
 } from "../task-format.js";
 import {
   taskDetailThreadId,
   taskThreadId,
   taskWorktreeLabel,
-  taskWorktreeRootName,
 } from "../task-list-model.js";
 
 const STREAM_ERROR_DELAY_MS = 8_000;
@@ -94,23 +85,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.conversationUpdateKind = null;
     this.initialConversationLoad = null;
     this.followUpRequest = null;
-    this.taskDetailView = "conversation";
-    this.taskDiffMode = "working";
-    this.taskDiffStatus = null;
-    this.taskDiffError = null;
-    this.taskDiffRequestId = 0;
-    this.taskDiffWatchUnsubscribe = null;
-    this.taskDiffWatchPath = "";
-    this.taskDiffWatchUnavailable = false;
-    this.taskDiffRefreshState = "idle";
-    this.taskDiffRefreshCoordinator = createRefreshCoordinator(
-      () => this.refreshTaskDiff(),
-      (state) => this.setTaskDiffRefreshState(state),
-    );
-    this.taskCompareRefreshCoordinator = createRefreshCoordinator(
-      () => this.refreshTaskCompare(),
-      (state) => this.setTaskDiffRefreshState(state),
-    );
+    this.reviewView = "conversation";
     this.boundIconsReady = () => {
       this.render();
     };
@@ -123,7 +98,7 @@ class CaffoldTaskDetail extends HTMLElement {
         if (
           closestElement(
             event.target,
-            "caffold-task-conversation, caffold-task-composer",
+            "caffold-task-conversation, caffold-task-composer, caffold-task-review",
           )
         ) {
           return;
@@ -170,55 +145,13 @@ class CaffoldTaskDetail extends HTMLElement {
         });
       });
     });
-    this.addEventListener("caffold:open-git-diff", (event) => {
-      const browser = closestElement(event.target, "caffold-git-diff-browser");
-      if (!browser || !this.querySelector(".task-diff-view")?.contains(browser)) {
+    this.addEventListener("caffold:task-review-view-change", (event) => {
+      const review = closestElement(event.target, "caffold-task-review");
+      if (!review || review !== this.taskReview()) {
         return;
       }
       event.stopPropagation();
-      browser.openDiff(event.detail.path, event.detail.kind, event.detail.status);
-    });
-    this.addEventListener("caffold:open-compare-diff", (event) => {
-      const browser = closestElement(event.target, "caffold-git-compare-browser");
-      if (!browser || !this.querySelector(".task-diff-view")?.contains(browser)) {
-        return;
-      }
-      event.stopPropagation();
-      browser.openDiff(event.detail.path, event.detail.status);
-    });
-    this.addEventListener("caffold:git-compare-state-change", (event) => {
-      const browser = closestElement(event.target, "caffold-git-compare-browser");
-      if (!browser || !this.querySelector(".task-diff-view")?.contains(browser)) {
-        return;
-      }
-      event.stopPropagation();
-      this.patchTaskDiffHeader();
-    });
-    this.addEventListener("caffold:close-file-viewer", (event) => {
-      const browser = closestElement(
-        event.target,
-        "caffold-git-diff-browser, caffold-git-compare-browser",
-      );
-      if (!browser || !this.querySelector(".task-diff-view")?.contains(browser)) {
-        return;
-      }
-      event.stopPropagation();
-      browser.showList();
-    });
-    this.addEventListener("click", (event) => {
-      const button = closestElement(event.target, '[data-action="refresh-git-review"]');
-      if (!button || !this.querySelector(".task-diff-view")?.contains(button)) {
-        return;
-      }
-      event.stopPropagation();
-      this.requestTaskReviewRefresh();
-    });
-    this.addEventListener("change", (event) => {
-      const select = closestElement(event.target, "select[data-task-compare-base]");
-      if (!select) {
-        return;
-      }
-      this.changeTaskCompareBase(select.value);
+      this.applyReviewView(event.detail?.view);
     });
     this.render();
   }
@@ -254,12 +187,8 @@ class CaffoldTaskDetail extends HTMLElement {
       this.historyRequestToken += 1;
       this.interruptActionToken += 1;
       this.approvalActionToken += 1;
-      this.taskDetailView = "conversation";
-      this.taskDiffMode = "working";
-      this.unsubscribeTaskDiffWatch();
-      this.taskDiffRequestId += 1;
-      this.taskDiffStatus = null;
-      this.taskDiffError = null;
+      this.taskReview()?.setTaskContext({ task: null, events: [] });
+      this.reviewView = "conversation";
       this.resetTaskGithubStatus();
       this.closeStream();
     }
@@ -326,7 +255,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.approvalActionToken += 1;
     this.initialConversationLoad = null;
     this.closeStream();
-    this.unsubscribeTaskDiffWatch();
+    this.taskReview()?.deactivate();
     this.hidden = true;
   }
 
@@ -824,19 +753,21 @@ class CaffoldTaskDetail extends HTMLElement {
       return;
     }
     if (action === "open-diff") {
-      this.openTaskDiff();
+      const review = this.taskReview();
+      if (review?.view === "diff") {
+        review.close();
+      } else {
+        review?.openDiff();
+      }
       return;
     }
     if (action === "toggle-files") {
-      this.setTaskDetailView(this.taskDetailView === "files" ? "conversation" : "files");
-      return;
-    }
-    if (action === "refresh-diff") {
-      this.requestTaskReviewRefresh();
-      return;
-    }
-    if (action === "select-diff-mode") {
-      this.setTaskDiffMode(element.dataset.diffMode);
+      const review = this.taskReview();
+      if (review?.view === "files") {
+        review.close();
+      } else {
+        review?.openFiles();
+      }
       return;
     }
     if (action === "interrupt") {
@@ -1304,27 +1235,16 @@ class CaffoldTaskDetail extends HTMLElement {
     }
   }
 
-  openTaskDiff() {
-    if (!this.taskDetail?.task?.worktree) {
-      return;
-    }
-    this.setTaskDetailView(this.taskDetailView === "diff" ? "conversation" : "diff");
-  }
-
-
   render() {
-    const previousTaskFilePath = this.captureTaskFileBrowserPath();
-    const previousTaskDiffPath = this.captureTaskDiffPath();
-    const previousTaskCompareState = this.captureTaskCompareState();
-    this.setAttribute("data-task-detail-view", this.taskDetailView);
+    this.setAttribute("data-task-detail-view", this.reviewView);
     this.ensureTaskShell();
     this.renderTaskContentRegion();
     this.syncConversationSnapshot();
     this.syncFollowUpComposer();
-    this.updateTaskDetailView();
-    this.syncTaskFileBrowser(previousTaskFilePath);
-    this.syncTaskDiffBrowser(previousTaskDiffPath);
-    this.syncTaskCompareBrowser(previousTaskCompareState);
+    this.syncTaskReview();
+    this.applyReviewView(this.taskReview()?.view ?? this.reviewView, {
+      dispatch: false,
+    });
   }
 
   ensureTaskShell() {
@@ -1347,6 +1267,10 @@ class CaffoldTaskDetail extends HTMLElement {
     return this.querySelector(
       ".task-conversation-pane caffold-task-composer",
     );
+  }
+
+  taskReview() {
+    return this.querySelector(".task-detail > caffold-task-review");
   }
 
   syncFollowUpComposer() {
@@ -1372,6 +1296,15 @@ class CaffoldTaskDetail extends HTMLElement {
       permissionMode: `${this.taskDetail?.permissionMode ?? ""}`.trim(),
       requestError: this.error?.message ?? "",
     });
+  }
+
+  syncTaskReview() {
+    const review = this.taskReview();
+    const task = this.taskDetail?.task ?? null;
+    if (!review || !task || taskThreadId(task) !== this.selectedThreadId) {
+      return;
+    }
+    review.setTaskContext({ task, events: this.events });
   }
 
   isInitialConversationLoadPending(threadId = this.selectedThreadId) {
@@ -1480,98 +1413,23 @@ class CaffoldTaskDetail extends HTMLElement {
           }
         });
       }
-      for (const selector of [".task-files-view", ".task-diff-view"]) {
-        const currentSubview = currentDetail.querySelector(`:scope > ${selector}`);
-        const nextSubview = nextDetail.querySelector(`:scope > ${selector}`);
-        if (currentSubview && nextSubview) {
-          currentSubview.replaceWith(nextSubview);
-        }
+      const currentReview = currentDetail.querySelector(
+        ":scope > caffold-task-review",
+      );
+      const nextReview = nextDetail.querySelector(
+        ":scope > caffold-task-review",
+      );
+      if (!currentReview && nextReview) {
+        currentDetail.append(nextReview);
       }
       currentDetail.dataset.threadId = threadId;
-      currentDetail.dataset.taskDetailView = this.taskDetailView;
+      currentDetail.dataset.taskDetailView = this.reviewView;
       return;
     }
 
     region.innerHTML = this.renderBody();
   }
 
-
-  setTaskDetailView(view) {
-    const nextView = view === "files" || view === "diff" ? view : "conversation";
-    if (this.taskDetailView === nextView) {
-      return;
-    }
-
-    this.taskDetailView = nextView;
-    this.updateTaskDetailView();
-    this.syncTaskFileBrowser();
-    this.syncTaskDiffBrowser();
-    this.syncTaskCompareBrowser();
-    this.dispatchTaskDetailViewChange();
-  }
-
-  closeActiveSubview() {
-    if (this.taskDetailView === "conversation") {
-      return false;
-    }
-
-    this.setTaskDetailView("conversation");
-    return true;
-  }
-
-  updateTaskDetailView() {
-    this.setAttribute("data-task-detail-view", this.taskDetailView);
-    const detail = this.querySelector(".task-detail");
-    if (!detail) {
-      return;
-    }
-
-    detail.dataset.taskDetailView = this.taskDetailView;
-    const filesButton = detail.querySelector('button[data-task-action="toggle-files"]');
-    if (filesButton) {
-      filesButton.setAttribute(
-        "aria-pressed",
-        this.taskDetailView === "files" ? "true" : "false",
-      );
-    }
-    const diffButton = detail.querySelector('button[data-task-action="open-diff"]');
-    if (diffButton) {
-      diffButton.setAttribute(
-        "aria-pressed",
-        this.taskDetailView === "diff" ? "true" : "false",
-      );
-    }
-    this.patchTaskDiffHeader();
-  }
-
-  setTaskDiffMode(mode) {
-    const nextMode = mode === "branch" ? "branch" : "working";
-    if (this.taskDiffMode === nextMode) {
-      return;
-    }
-
-    this.taskDiffMode = nextMode;
-    this.patchTaskDiffHeader();
-    if (nextMode === "branch") {
-      this.syncTaskCompareBrowser();
-    } else {
-      this.syncTaskDiffBrowser();
-    }
-  }
-
-  dispatchTaskDetailViewChange() {
-    this.dispatchEvent(
-      new CustomEvent("caffold:task-detail-view-change", {
-        bubbles: true,
-        detail: { view: this.taskDetailView },
-      }),
-    );
-  }
-
-  captureTaskFileBrowserPath() {
-    const browser = this.querySelector(".task-files-view caffold-file-browser");
-    return browser?.currentPath ?? "";
-  }
 
   activeCwdPath() {
     return this.selectedTaskContextPath() || ".";
@@ -1583,335 +1441,37 @@ class CaffoldTaskDetail extends HTMLElement {
     );
   }
 
-  syncTaskFileBrowser(previousPath = "") {
-    if (this.taskDetailView !== "files") {
-      return;
-    }
-
-    const browser = this.querySelector(".task-files-view caffold-file-browser");
-    const targetPath = previousPath || this.taskFilesRootPath();
-    if (!browser) {
-      return;
-    }
-
-    browser.ensureRendered();
-    browser.setStorageKey(null);
-    if (!browser.hasLoadedDirectory(targetPath)) {
-      browser.loadDirectory(targetPath, { allowFailure: true });
-    }
+  get taskDetailView() {
+    return this.taskReview()?.view ?? this.reviewView;
   }
 
-  taskFilesRootPath() {
-    return (
-      this.taskDetail?.task?.worktree?.rootPath ||
-      this.taskDetail?.task?.cwdPath ||
-      ""
-    );
+  closeActiveSubview() {
+    return this.taskReview()?.close() ?? false;
   }
 
-  captureTaskDiffPath() {
-    const browser = this.querySelector(
-      '.task-diff-panel[data-task-diff-panel="working"] caffold-git-diff-browser',
-    );
-    return browser?.changesTree?.selectedPath ?? "";
-  }
-
-  captureTaskCompareState() {
-    const browser = this.querySelector(
-      '.task-diff-panel[data-task-diff-panel="branch"] caffold-git-compare-browser',
-    );
-    return browser?.stateSnapshot() ?? null;
-  }
-
-  syncTaskDiffBrowser(previousPath = "") {
-    if (this.taskDetailView !== "diff") {
-      this.unsubscribeTaskDiffWatch();
-      return;
+  applyReviewView(view, options = {}) {
+    const nextView = view === "files" || view === "diff" ? view : "conversation";
+    const changed = this.reviewView !== nextView;
+    this.reviewView = nextView;
+    this.setAttribute("data-task-detail-view", nextView);
+    const detail = this.querySelector(".task-detail");
+    if (detail) {
+      detail.dataset.taskDetailView = nextView;
+      detail
+        .querySelector('button[data-task-action="toggle-files"]')
+        ?.setAttribute("aria-pressed", nextView === "files" ? "true" : "false");
+      detail
+        .querySelector('button[data-task-action="open-diff"]')
+        ?.setAttribute("aria-pressed", nextView === "diff" ? "true" : "false");
     }
-
-    const rootPath = this.taskDetail?.task?.worktree?.rootPath ?? "";
-    const browser = this.querySelector(
-      '.task-diff-panel[data-task-diff-panel="working"] caffold-git-diff-browser',
-    );
-    if (!rootPath || !browser) {
-      this.unsubscribeTaskDiffWatch();
-      return;
-    }
-
-    browser.ensureRendered();
-    browser.setContext({ path: rootPath, repository: this.taskDiffStatus?.repository });
-    browser.setTaskRelatedPaths(latestTaskRelatedWorktreePaths(this.events, this.taskDetail?.task));
-    if (this.taskDiffStatus?.repository?.rootPath === rootPath) {
-      browser.setStatus(this.taskDiffStatus, { preserveState: true });
-      if (previousPath) {
-        browser.setSelectedPath(previousPath);
-      }
-    } else if (this.taskDiffError) {
-      browser.setError(this.taskDiffError);
-    } else {
-      browser.setLoading({
-        rootPath,
-        branch: this.taskDetail?.task?.worktree?.branch ?? null,
-        dirty: false,
-      });
-      this.requestTaskDiffRefresh();
-    }
-    browser.viewer.setRefreshState(
-      this.taskDiffWatchUnavailable
-        ? "unavailable"
-        : this.taskDiffRefreshState === "refreshing"
-          ? "refreshing"
-          : "idle",
-    );
-    this.subscribeTaskDiffWatch(rootPath);
-  }
-
-  syncTaskCompareBrowser(previousState = null) {
-    if (this.taskDetailView !== "diff" || this.taskDiffMode !== "branch") {
-      return;
-    }
-
-    const task = this.taskDetail?.task;
-    const rootPath = task?.worktree?.rootPath ?? "";
-    const browser = this.querySelector(
-      '.task-diff-panel[data-task-diff-panel="branch"] caffold-git-compare-browser',
-    );
-    if (!rootPath || !browser) {
-      return;
-    }
-
-    browser.ensureRendered();
-    if (previousState?.currentPath === rootPath) {
-      browser.restoreState(previousState);
-      return;
-    }
-
-    const headRef = this.taskCompareHeadRef();
-    const repository = this.taskDiffStatus?.repository ?? {
-      rootPath,
-      branch: task.worktree.branch ?? null,
-    };
-    browser.openCompare({
-      path: rootPath,
-      repository,
-      headRef,
-      preserveViewer: false,
-    });
-  }
-
-  taskCompareHeadRef() {
-    return this.taskDetail?.task?.worktree?.branch || "HEAD";
-  }
-
-  async changeTaskCompareBase(baseRef) {
-    const browser = this.querySelector(
-      '.task-diff-panel[data-task-diff-panel="branch"] caffold-git-compare-browser',
-    );
-    if (!browser || !baseRef) {
-      return;
-    }
-    await browser.changeRefs(baseRef, this.taskCompareHeadRef());
-  }
-
-  requestTaskDiffRefresh() {
-    return this.taskDiffRefreshCoordinator.request();
-  }
-
-  requestTaskReviewRefresh() {
-    return this.taskDiffMode === "branch"
-      ? this.taskCompareRefreshCoordinator.request()
-      : this.requestTaskDiffRefresh();
-  }
-
-  async refreshTaskDiff() {
-    const rootPath = this.taskDetail?.task?.worktree?.rootPath ?? "";
-    if (!rootPath || this.taskDetailView !== "diff") {
-      return null;
-    }
-
-    const requestId = ++this.taskDiffRequestId;
-    try {
-      const status = await getGitStatus(rootPath);
-      if (
-        requestId !== this.taskDiffRequestId ||
-        rootPath !== this.taskDetail?.task?.worktree?.rootPath
-      ) {
-        return null;
-      }
-
-      this.taskDiffStatus = status;
-      this.taskDiffError = null;
-      const browser = this.querySelector(
-        '.task-diff-panel[data-task-diff-panel="working"] caffold-git-diff-browser',
-      );
-      if (browser) {
-        browser.setContext({ path: rootPath, repository: status.repository });
-        browser.setStatus(status, { preserveState: true });
-        browser.setTaskRelatedPaths(
-          latestTaskRelatedWorktreePaths(this.events, this.taskDetail?.task),
-        );
-        await browser.refreshSelectedDiff(status);
-      }
-      if (this.taskDiffMode === "branch") {
-        this.syncTaskCompareBrowser();
-      }
-      return status;
-    } catch (error) {
-      if (requestId !== this.taskDiffRequestId) {
-        return null;
-      }
-      this.taskDiffError = error;
-      this.querySelector(
-        '.task-diff-panel[data-task-diff-panel="working"] caffold-git-diff-browser',
-      )?.setError(error);
-      throw error;
-    }
-  }
-
-  async refreshTaskCompare() {
-    if (this.taskDetailView !== "diff" || this.taskDiffMode !== "branch") {
-      return null;
-    }
-    const browser = this.querySelector(
-      '.task-diff-panel[data-task-diff-panel="branch"] caffold-git-compare-browser',
-    );
-    if (!browser) {
-      return null;
-    }
-    if (!browser.refsPayload) {
-      this.syncTaskCompareBrowser();
-      return null;
-    }
-    return await browser.refresh();
-  }
-
-  subscribeTaskDiffWatch(rootPath) {
-    if (this.taskDiffWatchPath === rootPath && this.taskDiffWatchUnsubscribe) {
-      return;
-    }
-    this.unsubscribeTaskDiffWatch();
-    this.taskDiffWatchPath = rootPath;
-    this.taskDiffWatchUnsubscribe = subscribeToWatch(rootPath, {
-      onReady: ({ recovered }) => {
-        this.taskDiffWatchUnavailable = false;
-        this.patchTaskDiffRefreshState();
-        if (recovered) {
-          this.requestTaskDiffRefresh();
-        }
-      },
-      onChange: (change) => {
-        if (change.gitStatusChanged || change.overflow) {
-          this.requestTaskDiffRefresh();
-        }
-        if ((change.gitRefsChanged || change.overflow) && this.taskDiffMode === "branch") {
-          this.taskCompareRefreshCoordinator.request();
-        }
-      },
-      onError: () => {
-        this.taskDiffWatchUnavailable = true;
-        this.patchTaskDiffRefreshState();
-      },
-    });
-  }
-
-  unsubscribeTaskDiffWatch() {
-    this.taskDiffWatchUnsubscribe?.();
-    this.taskDiffWatchUnsubscribe = null;
-    this.taskDiffWatchPath = "";
-    this.taskDiffWatchUnavailable = false;
-  }
-
-  setTaskDiffRefreshState(state) {
-    this.taskDiffRefreshState = state;
-    this.patchTaskDiffRefreshState();
-  }
-
-  patchTaskDiffRefreshState() {
-    const panel = this.taskDiffMode === "branch" ? "branch" : "working";
-    const viewer = this.querySelector(
-      `.task-diff-panel[data-task-diff-panel="${panel}"] caffold-review-file-viewer`,
-    );
-    viewer?.setRefreshState(
-      this.taskDiffWatchUnavailable
-        ? "unavailable"
-        : this.taskDiffRefreshState === "refreshing"
-          ? "refreshing"
-          : "idle",
-    );
-    const button = this.querySelector('.task-diff-header [data-task-action="refresh-diff"]');
-    if (button) {
-      button.classList.toggle("is-refreshing", this.taskDiffRefreshState === "refreshing");
-      button.classList.toggle("is-unavailable", this.taskDiffWatchUnavailable);
-      const label = this.taskDiffWatchUnavailable
-        ? "Live updates unavailable. Refresh manually."
-        : this.taskReviewRefreshLabel();
-      button.setAttribute("aria-label", label);
-      button.title = label;
-    }
-  }
-
-  patchTaskDiffHeader() {
-    const view = this.querySelector(".task-diff-view");
-    if (!view) {
-      return;
-    }
-    view.dataset.taskDiffMode = this.taskDiffMode;
-    for (const button of view.querySelectorAll("button[data-diff-mode]")) {
-      button.setAttribute(
-        "aria-pressed",
-        button.dataset.diffMode === this.taskDiffMode ? "true" : "false",
+    if (changed && options.dispatch !== false) {
+      this.dispatchEvent(
+        new CustomEvent("caffold:task-detail-view-change", {
+          bubbles: true,
+          detail: { view: nextView },
+        }),
       );
     }
-    const subtitle = view.querySelector(".task-diff-subtitle");
-    if (subtitle) {
-      subtitle.textContent = this.taskDiffSubtitle();
-    }
-    const compareBrowser = view.querySelector("caffold-git-compare-browser");
-    const baseSelect = view.querySelector("select[data-task-compare-base]");
-    if (baseSelect) {
-      const refs = compareBrowser?.refsPayload?.refs ?? [];
-      baseSelect.innerHTML = refs.length
-        ? renderTaskCompareRefOptions(refs, compareBrowser.baseRef)
-        : `<option value="">Loading refs...</option>`;
-      baseSelect.disabled = refs.length === 0;
-      if (compareBrowser?.baseRef) {
-        baseSelect.value = compareBrowser.baseRef;
-      }
-    }
-    const head = view.querySelector("[data-task-compare-head]");
-    if (head) {
-      head.textContent = this.taskCompareHeadRef();
-      head.title = this.taskCompareHeadRef();
-    }
-    this.patchTaskDiffRefreshState();
-  }
-
-  taskDiffSubtitle() {
-    if (this.taskDiffMode === "branch") {
-      const browser = this.querySelector(
-        '.task-diff-panel[data-task-diff-panel="branch"] caffold-git-compare-browser',
-      );
-      const compare = browser?.compare;
-      if (!compare) {
-        return `${this.taskCompareHeadRef()} · Loading comparison`;
-      }
-      const count = compare.files?.length ?? 0;
-      return `${compare.baseRef}...${compare.headRef} · ${count} ${count === 1 ? "file" : "files"} · +${compare.additions} -${compare.deletions}`;
-    }
-
-    const task = this.taskDetail?.task;
-    const status = this.taskDiffStatus;
-    const count = status?.files?.length ?? 0;
-    const stats = status
-      ? `${count} ${count === 1 ? "file" : "files"} · +${status.additions} -${status.deletions}`
-      : "Loading changes";
-    return `${taskWorktreeRef(task)} · ${stats}`;
-  }
-
-  taskReviewRefreshLabel() {
-    return this.taskDiffMode === "branch"
-      ? "Refresh branch comparison"
-      : "Refresh task diff";
   }
 
   hasSelectedTaskDetail() {
@@ -1959,15 +1519,14 @@ class CaffoldTaskDetail extends HTMLElement {
       return this.renderContinueGate(task);
     }
     return `
-      <div class="task-detail" data-thread-id="${escapeHtml(task.threadId ?? task.id)}" data-task-detail-view="${escapeHtml(this.taskDetailView)}" data-task-availability="${escapeHtml(this.streamState)}">
+      <div class="task-detail" data-thread-id="${escapeHtml(task.threadId ?? task.id)}" data-task-detail-view="${escapeHtml(this.reviewView)}" data-task-availability="${escapeHtml(this.streamState)}">
         ${this.renderTaskDetailSummary(task)}
         <section class="task-conversation-pane" aria-label="Task conversation">
           <caffold-task-conversation></caffold-task-conversation>
           ${this.renderStreamState()}
           <caffold-task-composer></caffold-task-composer>
         </section>
-        ${this.renderTaskFilesView()}
-        ${this.renderTaskDiffView()}
+        <caffold-task-review></caffold-task-review>
       </div>
     `;
   }
@@ -2013,7 +1572,7 @@ class CaffoldTaskDetail extends HTMLElement {
                 type="button"
                 class="task-secondary-button"
                 data-task-action="toggle-files"
-                aria-pressed="${this.taskDetailView === "files" ? "true" : "false"}"
+                aria-pressed="${this.reviewView === "files" ? "true" : "false"}"
               >
                 ${renderInlineIcon("Folder", "Files", "task-action-icon")}
                 <span class="task-action-label">Files</span>
@@ -2022,7 +1581,7 @@ class CaffoldTaskDetail extends HTMLElement {
                 type="button"
                 class="task-secondary-button"
                 data-task-action="open-diff"
-                aria-pressed="${this.taskDetailView === "diff" ? "true" : "false"}"
+                aria-pressed="${this.reviewView === "diff" ? "true" : "false"}"
                 ${canOpenDiff ? "" : "disabled"}
                 title="${canOpenDiff ? "Open worktree diff" : "Diff is unavailable outside a Git worktree"}"
               >
@@ -2161,91 +1720,6 @@ class CaffoldTaskDetail extends HTMLElement {
     return "";
   }
 
-  renderTaskFilesView() {
-    const task = this.taskDetail?.task;
-    const label = task?.worktree
-      ? `${taskWorktreeRootName(task)} · ${taskWorktreeRef(task)}`
-      : task?.cwdPath || "Current directory";
-    return `
-      <section class="task-files-view" aria-label="Task files">
-        <header class="task-files-header">
-          <div>
-            <h3>Files</h3>
-            <p>${escapeHtml(label)}</p>
-          </div>
-        </header>
-        <caffold-file-browser></caffold-file-browser>
-      </section>
-    `;
-  }
-
-  renderTaskDiffView() {
-    const task = this.taskDetail?.task;
-    if (!task?.worktree) {
-      return "";
-    }
-    const refreshLabel = this.taskDiffWatchUnavailable
-      ? "Live updates unavailable. Refresh manually."
-      : this.taskReviewRefreshLabel();
-    return `
-      <section
-        class="task-diff-view"
-        data-task-diff-mode="${escapeHtml(this.taskDiffMode)}"
-        aria-label="Task worktree review"
-      >
-        <header class="task-diff-header">
-          <div class="task-diff-heading">
-            <h3>Diff</h3>
-            <p class="task-diff-subtitle">${escapeHtml(this.taskDiffSubtitle())}</p>
-          </div>
-          <div class="task-diff-controls">
-            <div class="task-diff-mode-switch" role="group" aria-label="Diff mode">
-              <button
-                type="button"
-                data-task-action="select-diff-mode"
-                data-diff-mode="working"
-                aria-pressed="${this.taskDiffMode === "working"}"
-              >Working Tree</button>
-              <button
-                type="button"
-                data-task-action="select-diff-mode"
-                data-diff-mode="branch"
-                aria-pressed="${this.taskDiffMode === "branch"}"
-              >Branch</button>
-            </div>
-            <div class="task-compare-controls" aria-label="Branch comparison">
-              <label>
-                <span>Base</span>
-                <select data-task-compare-base disabled>
-                  <option value="">Loading refs...</option>
-                </select>
-              </label>
-              <span class="task-compare-separator" aria-hidden="true">...</span>
-              <span class="task-compare-head-label">Head</span>
-              <span class="task-compare-head" data-task-compare-head title="${escapeHtml(this.taskCompareHeadRef())}">
-                ${escapeHtml(this.taskCompareHeadRef())}
-              </span>
-            </div>
-            <button
-              type="button"
-              class="task-icon-button${this.taskDiffRefreshState === "refreshing" ? " is-refreshing" : ""}${this.taskDiffWatchUnavailable ? " is-unavailable" : ""}"
-              data-task-action="refresh-diff"
-              aria-label="${escapeHtml(refreshLabel)}"
-              title="${escapeHtml(refreshLabel)}"
-            >
-              ${renderInlineIcon("RefreshCw", refreshLabel, "task-refresh-icon")}
-            </button>
-          </div>
-        </header>
-        <div class="task-diff-panel" data-task-diff-panel="working">
-          <caffold-git-diff-browser></caffold-git-diff-browser>
-        </div>
-        <div class="task-diff-panel" data-task-diff-panel="branch">
-          <caffold-git-compare-browser></caffold-git-compare-browser>
-        </div>
-      </section>
-    `;
-  }
 }
 
 if (!customElements.get("caffold-task-detail")) {
@@ -2268,19 +1742,6 @@ function taskWorktreeRef(task) {
 function taskWorktreeRootPath(task) {
   const path = `${task?.worktree?.rootPath ?? ""}`.trim();
   return path === "." ? path : cleanLogicalPath(path);
-}
-
-function renderTaskCompareRefOptions(refs, selectedRef) {
-  return refs
-    .map((ref) => {
-      const name = `${ref?.name ?? ""}`;
-      if (!name) {
-        return "";
-      }
-      const selected = name === selectedRef ? " selected" : "";
-      return `<option value="${escapeHtml(name)}"${selected}>${escapeHtml(name)}</option>`;
-    })
-    .join("");
 }
 
 function closestElement(target, selector) {

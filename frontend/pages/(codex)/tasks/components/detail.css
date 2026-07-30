@@ -13,3 +13,25 @@ caffold-task-detail > .tasks-detail-region {
   height: 100%;
   min-height: 0;
 }
+
+caffold-task-detail .task-detail[data-task-detail-view="files"],
+caffold-task-detail .task-detail[data-task-detail-view="diff"] {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+caffold-task-detail .task-detail[data-task-detail-view="files"] .task-detail-summary,
+caffold-task-detail .task-detail[data-task-detail-view="diff"] .task-detail-summary {
+  display: none;
+}
+
+caffold-task-detail .task-conversation-pane {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+caffold-task-detail .task-detail[data-task-detail-view="files"] .task-conversation-pane,
+caffold-task-detail .task-detail[data-task-detail-view="diff"] .task-conversation-pane {
+  display: none;
+}

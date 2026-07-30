@@ -3113,6 +3113,10 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await tasksPage
     .locator(".task-conversation-pane")
     .evaluate((element) => element.setAttribute("data-persist-probe", "kept"));
+  const taskReview = tasksPage.locator("caffold-task-review");
+  await taskReview.evaluate((element) =>
+    element.setAttribute("data-persist-probe", "kept"),
+  );
   const taskMasterStateBeforeTools =
     testInfo.project.name === "desktop"
       ? await tasksPage.evaluate((element) => {
@@ -3142,6 +3146,17 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   );
   const taskFilesView = tasksPage.locator(".task-files-view");
   await expect(taskFilesView).toBeVisible();
+  await expect(taskReview).toHaveAttribute("data-persist-probe", "kept");
+  await expect
+    .poll(() =>
+      taskFilesView
+        .locator("caffold-file-browser")
+        .evaluate(
+          (browser) =>
+            browser.watchActive && Boolean(browser.watchUnsubscribe),
+        ),
+    )
+    .toBe(true);
   await expect(tasksPage.locator(".tasks-header")).toBeHidden();
   await expect(tasksPage.locator(".task-detail-summary")).toBeHidden();
   await expect(tasksPage.locator(".tasks-list-pane")).toBeHidden();
@@ -3267,6 +3282,16 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     "conversation",
   );
   await expect(tasksPage.locator(".task-conversation-pane")).toBeVisible();
+  await expect
+    .poll(() =>
+      taskFilesView
+        .locator("caffold-file-browser")
+        .evaluate(
+          (browser) =>
+            !browser.watchActive && !browser.watchUnsubscribe,
+        ),
+    )
+    .toBe(true);
   await expect(page.locator("caffold-codex-workspace")).toBeVisible();
   await expect(
     codexWorkspace.getByRole("button", { name: "Close Codex workspace" }),
@@ -3278,6 +3303,16 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     "files",
   );
   await expect(taskFilesView.locator('button[data-entry-path="src/alpha.rs"]')).toBeVisible();
+  await expect
+    .poll(() =>
+      taskFilesView
+        .locator("caffold-file-browser")
+        .evaluate(
+          (browser) =>
+            browser.watchActive && Boolean(browser.watchUnsubscribe),
+        ),
+    )
+    .toBe(true);
   await taskFilesView.locator('button[data-entry-path="src/alpha.rs"]').click();
   await expect(page).toHaveURL(`/tasks/${threadId}`);
   await expect(taskFilesView.locator("caffold-file-viewer")).toContainText(
@@ -3296,6 +3331,16 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     "conversation",
   );
   await expect(taskFilesView).toBeHidden();
+  await expect
+    .poll(() =>
+      taskFilesView
+        .locator("caffold-file-browser")
+        .evaluate(
+          (browser) =>
+            !browser.watchActive && !browser.watchUnsubscribe,
+        ),
+    )
+    .toBe(true);
   await expect(tasksPage.locator(".task-conversation-pane")).toBeVisible();
   await expect(tasksPage.locator(".tasks-header")).toBeVisible();
   await expect(tasksPage.locator(".task-detail-summary")).toBeVisible();
@@ -3502,6 +3547,12 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(page.locator("caffold-review-workspace")).toBeHidden();
   const taskDiffView = tasksPage.locator(".task-diff-view");
   await expect(taskDiffView).toBeVisible();
+  await expect(taskReview).toHaveAttribute("data-persist-probe", "kept");
+  await expect
+    .poll(() =>
+      taskReview.evaluate((review) => Boolean(review.diffWatchUnsubscribe)),
+    )
+    .toBe(true);
   await expect(tasksPage.locator(".task-conversation-pane")).toBeHidden();
   await expect(tasksPage.locator(".tasks-list-pane")).toBeHidden();
   await expect(tasksPage.locator(".tasks-master-resizer")).toBeHidden();
@@ -3536,7 +3587,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   includeTaskDiffLiveFile = true;
   await page.evaluate(() => {
     const source = window.__caffoldMockEventSources.find((candidate) =>
-      candidate.url.startsWith("/api/watch?"),
+      candidate.url.startsWith("/api/watch?") && candidate.readyState !== 2,
     );
     source?.emit("change", {
       revision: 4,
@@ -3605,6 +3656,12 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     "data-review-persist-probe",
     "kept",
   );
+  await expect(taskReview).toHaveAttribute("data-persist-probe", "kept");
+  await expect
+    .poll(() =>
+      taskReview.evaluate((review) => !review.diffWatchUnsubscribe),
+    )
+    .toBe(true);
   await expect(followUpTextarea).toHaveValue("Keep this draft while reviewing");
   await expect(tasksPage.locator(".task-follow-up-form .task-model-button")).toContainText(
     "Ultra",
@@ -5676,6 +5733,13 @@ test("isolates task detail responses and conversation scroll by thread", async (
     updatedMs: now + offset,
     recencyMs: now + offset,
     lastEventSummary: `${title} preview`,
+    worktree: {
+      rootPath: `${threadId}-worktree`,
+      branch: `${threadId}-branch`,
+      headSha: "0123456789abcdef",
+      relativeCwd: "",
+      linked: false,
+    },
   });
   const taskA = makeTask("thread_scroll_a", "Thread A", 1);
   const taskB = makeTask("thread_scroll_b", "Thread B", 2);
@@ -5706,6 +5770,10 @@ test("isolates task detail responses and conversation scroll by thread", async (
   let delayThreadA = false;
   let releaseThreadA;
   let threadAResponseGate = Promise.resolve();
+  let releaseThreadAGitStatus;
+  const threadAGitStatusGate = new Promise((resolve) => {
+    releaseThreadAGitStatus = resolve;
+  });
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
@@ -5722,6 +5790,37 @@ test("isolates task detail responses and conversation scroll by thread", async (
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify(detailFor(task)),
+    });
+  });
+  await page.route(/\/api\/git\/status(?:\?|$)/, async (route) => {
+    const rootPath = new URL(route.request().url()).searchParams.get("path");
+    if (rootPath === taskA.worktree.rootPath) {
+      await threadAGitStatusGate;
+    }
+    const task = rootPath === taskA.worktree.rootPath ? taskA : taskB;
+    const marker = task.threadId === taskA.threadId ? "thread-a.rs" : "thread-b.rs";
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        repository: {
+          rootPath: task.worktree.rootPath,
+          branch: task.worktree.branch,
+          dirty: true,
+        },
+        additions: 1,
+        deletions: 0,
+        files: [
+          {
+            path: marker,
+            repoRelativePath: marker,
+            status: "M",
+            category: "unstaged",
+            staged: false,
+            unstaged: true,
+            untracked: false,
+          },
+        ],
+      }),
     });
   });
 
@@ -5839,6 +5938,28 @@ test("isolates task detail responses and conversation scroll by thread", async (
       ),
     )
     .toBe(true);
+
+  await tasksPage.getByRole("button", { name: "Open Diff" }).click();
+  await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
+    "data-task-detail-view",
+    "diff",
+  );
+  await page.locator("caffold-codex-workspace .codex-workspace-close").click();
+  await tasksPage.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
+  await tasksPage.getByRole("button", { name: "Open Diff" }).click();
+  const reviewTree = tasksPage.locator(
+    ".task-diff-view caffold-git-diff-changes-tree",
+  );
+  await expect(
+    reviewTree.locator('button[data-repo-relative-path="thread-b.rs"]'),
+  ).toBeVisible();
+  releaseThreadAGitStatus();
+  await expect(
+    reviewTree.locator('button[data-repo-relative-path="thread-a.rs"]'),
+  ).toHaveCount(0);
+  await expect(
+    reviewTree.locator('button[data-repo-relative-path="thread-b.rs"]'),
+  ).toBeVisible();
 });
 
 test("opens a running conversation at the latest message when stream sync wins the reload race", async ({

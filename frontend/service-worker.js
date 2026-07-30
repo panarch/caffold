@@ -1,4 +1,4 @@
-const CACHE_NAME = "caffold-shell-v79";
+const CACHE_NAME = "caffold-shell-v80";
 
 const APP_SHELL_ASSETS = [
   "/",
@@ -62,6 +62,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(codex)/tasks/components/detail.js",
   "/assets/pages/(codex)/tasks/components/navigator.css",
   "/assets/pages/(codex)/tasks/components/navigator.js",
+  "/assets/pages/(codex)/tasks/components/review.css",
+  "/assets/pages/(codex)/tasks/components/review.js",
   "/assets/pages/(codex)/tasks/components/task-new.css",
   "/assets/pages/(codex)/tasks/components/task-new.js",
   "/assets/pages/(review-workspace)/layout.css",

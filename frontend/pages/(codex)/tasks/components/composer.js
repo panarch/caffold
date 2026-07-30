@@ -279,7 +279,13 @@ class CaffoldTaskComposer extends HTMLElement {
       const selected = this.permissionOptions.find(
         (option) => option.mode === state.permissionMode,
       );
-      if (!state.permissionExplicit || !selected?.allowed) {
+      const canonicalMode =
+        this.context.mode === "follow-up" && !state.permissionExplicit
+          ? `${this.context.permissionMode ?? ""}`.trim()
+          : "";
+      if (canonicalMode) {
+        state.permissionMode = canonicalMode;
+      } else if (!state.permissionExplicit || !selected?.allowed) {
         state.permissionMode = this.defaultPermissionMode;
         state.permissionExplicit = false;
       }
