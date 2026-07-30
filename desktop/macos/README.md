@@ -34,6 +34,7 @@ Missing optional dependencies do not prevent the server from starting. The menu 
 - Startup keeps the server in the menu bar without opening the default browser.
 - `Open Caffold` in the menu opens the browser; reopening the running app does the same.
 - The menu bar icon also configures the server, exposes logs, retries Tailscale Serve, and quits the server.
+- The About panel shows the version, build number, and local package date and time.
 - Data is stored in `~/Library/Application Support/Caffold/data`.
 - Logs are stored in `~/Library/Logs/Caffold/caffold.log`.
 

@@ -818,7 +818,25 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func showAbout() {
         NSApp.activate(ignoringOtherApps: true)
-        NSApp.orderFrontStandardAboutPanel(nil)
+        let buildTimestamp = Bundle.main.object(
+            forInfoDictionaryKey: "CaffoldBuildTimestamp"
+        ) as? String
+        guard let buildTimestamp, !buildTimestamp.isEmpty else {
+            NSApp.orderFrontStandardAboutPanel(nil)
+            return
+        }
+
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        let buildDetails = NSAttributedString(
+            string: "Built \(buildTimestamp)",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                .foregroundColor: NSColor.secondaryLabelColor,
+                .paragraphStyle: paragraphStyle,
+            ]
+        )
+        NSApp.orderFrontStandardAboutPanel(options: [.credits: buildDetails])
     }
 
     @objc private func quit() {
