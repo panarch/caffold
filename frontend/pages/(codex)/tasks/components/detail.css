@@ -1,0 +1,15 @@
+caffold-task-detail {
+  display: block;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+caffold-task-detail[hidden] {
+  display: none;
+}
+
+caffold-task-detail > .tasks-detail-region {
+  height: 100%;
+  min-height: 0;
+}

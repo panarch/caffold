@@ -2890,7 +2890,13 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect.poll(() => approvalRequests).toBe(1);
   await expect(tasksPage).toHaveCount(1);
   await expect
-    .poll(() => tasksPage.evaluate((element) => element.events.map((event) => event.type)))
+    .poll(() =>
+      tasksPage.evaluate((element) =>
+        element
+          .querySelector("caffold-task-detail")
+          .events.map((event) => event.type),
+      ),
+    )
     .toContain("approval_resolved");
   await expect(tasksPage.locator(".task-conversation .task-approval-flow")).toHaveCount(0);
   await expect(tasksPage.locator('.task-message[data-message-role="assistant"]')).toContainText(
@@ -3344,7 +3350,7 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     threadId,
   );
   await tasksPage.evaluate((element) => {
-    element.selectedThreadId = "";
+    element.querySelector("caffold-task-detail").selectedThreadId = "";
   });
   await tasksPage
     .locator('.task-follow-up-form button[type="submit"]')
@@ -3449,8 +3455,9 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
     stableActiveTurnStartedMs,
   );
   await tasksPage.evaluate((element) => {
-    element.stopActiveTurnClock();
-    element.connectedCallback();
+    const detail = element.querySelector("caffold-task-detail");
+    detail.stopActiveTurnClock();
+    detail.connectedCallback();
   });
   const durationAfterReconnect = await activeTurn
     .locator(".task-turn-active-duration")
@@ -4580,7 +4587,9 @@ test("submits completed task follow-ups and reloads canonical messages", async (
 
   blockNextDetailRequest = true;
   await page.evaluate(() => {
-    document.querySelector("caffold-tasks-page")?.requestSelectedTaskRefresh();
+    document
+      .querySelector("caffold-task-detail")
+      ?.requestSelectedTaskRefresh();
   });
   await staleDetailRequestStarted;
 
@@ -6246,7 +6255,9 @@ test("keeps task event chronology stable through approval, completion, and reloa
   await expect
     .poll(() =>
       tasksPage.evaluate((element) => {
-        const final = element.events.find(
+        const final = element
+          .querySelector("caffold-task-detail")
+          .events.find(
           (entry) =>
             entry.type === "assistant_message" &&
             ["final", "final_answer"].includes(entry.payload?.phase),
@@ -6475,7 +6486,12 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
   await expect(tasksPage).toContainText("Live answer while reading older content.");
   await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeLessThan(16);
   await expect
-    .poll(() => tasksPage.evaluate((element) => element.taskRefresh === null))
+    .poll(() =>
+      tasksPage.evaluate(
+        (element) =>
+          element.querySelector("caffold-task-detail").taskRefresh === null,
+      ),
+    )
     .toBe(true);
 
   const readsBeforeBurst = taskDetailReadRequests;

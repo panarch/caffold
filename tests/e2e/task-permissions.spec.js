@@ -241,6 +241,11 @@ test("new task submission stays single-flight and restores local input after rej
     releaseFirstRequest = resolve;
   });
   const submittedBodies = [];
+  let adoptedDetailReads = 0;
+  await page.route("**/api/tasks/thread-1", (route) => {
+    adoptedDetailReads += 1;
+    return route.fulfill({ json: taskDetail() });
+  });
   await page.route("**/api/tasks", async (route) => {
     if (route.request().method() !== "POST") {
       return route.fulfill({ json: { tasks: [], nextCursor: null } });
@@ -289,6 +294,7 @@ test("new task submission stays single-flight and restores local input after rej
   });
   expect(submittedBodies[1].images).toHaveLength(1);
   await expect(page).toHaveURL("/tasks/thread-1");
+  expect(adoptedDetailReads).toBe(0);
 });
 
 test("explicit approval mode is sent with a follow-up prompt", async ({ page }) => {

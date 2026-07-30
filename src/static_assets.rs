@@ -134,6 +134,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(codex)/tasks/components/composer.js" => Some(js(include_str!(
             "../frontend/pages/(codex)/tasks/components/composer.js"
         ))),
+        "pages/(codex)/tasks/components/detail.css" => Some(css(include_str!(
+            "../frontend/pages/(codex)/tasks/components/detail.css"
+        ))),
+        "pages/(codex)/tasks/components/detail.js" => Some(js(include_str!(
+            "../frontend/pages/(codex)/tasks/components/detail.js"
+        ))),
         "pages/(codex)/tasks/components/navigator.css" => Some(css(include_str!(
             "../frontend/pages/(codex)/tasks/components/navigator.css"
         ))),
@@ -606,6 +612,10 @@ mod tests {
                 "pages/(codex)/tasks/components/task-new.js",
                 b"caffold-task-new".as_slice(),
             ),
+            (
+                "pages/(codex)/tasks/components/detail.js",
+                b"caffold-task-detail".as_slice(),
+            ),
         ] {
             let asset = get(path).expect("tasks component js");
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
@@ -619,6 +629,10 @@ mod tests {
             (
                 "pages/(codex)/tasks/components/task-new.css",
                 b"caffold-task-new".as_slice(),
+            ),
+            (
+                "pages/(codex)/tasks/components/detail.css",
+                b"caffold-task-detail".as_slice(),
             ),
         ] {
             let asset = get(path).expect("tasks component css");
