@@ -17,7 +17,7 @@ const LEFT_PANEL_MAX_RATIO = 0.7;
 class CaffoldFileBrowser extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
-    if (this.watchActive && this.watchScopePath) {
+    if (this.watchActive && this.watchScopePath !== undefined) {
       this.subscribeWatchScope(this.watchScopePath);
     }
   }
@@ -332,7 +332,7 @@ class CaffoldFileBrowser extends HTMLElement {
     this.watchUnsubscribe = null;
     this.watchUnavailable = false;
     this.setRefreshState("idle");
-    if (this.isConnected && this.watchActive && nextPath) {
+    if (this.isConnected && this.watchActive) {
       this.subscribeWatchScope(nextPath);
     }
   }
@@ -351,7 +351,7 @@ class CaffoldFileBrowser extends HTMLElement {
       this.setRefreshState("idle");
       return;
     }
-    if (this.isConnected && this.watchScopePath) {
+    if (this.isConnected && this.watchScopePath !== undefined) {
       this.subscribeWatchScope(this.watchScopePath);
     }
   }

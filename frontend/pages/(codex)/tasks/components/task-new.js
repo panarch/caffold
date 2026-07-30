@@ -33,6 +33,16 @@ class CaffoldTaskNew extends HTMLElement {
     );
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
     this.requestGeneration += 1;
+    if (this.activeSubmissionId) {
+      const submissionId = this.activeSubmissionId;
+      this.activeSubmissionId = "";
+      this.composer()?.resolveSubmission(submissionId, {
+        status: "outcome-unknown",
+        error: new Error(
+          "Task creation was interrupted before Caffold received a response.",
+        ),
+      });
+    }
   }
 
   ensureState() {
@@ -78,7 +88,6 @@ class CaffoldTaskNew extends HTMLElement {
             <button type="button" class="task-primary-button" data-task-new-action="choose-cwd">Use This Folder</button>
           </div>
         </header>
-        <caffold-file-browser></caffold-file-browser>
       </section>
     `;
     this.syncView();
@@ -240,6 +249,11 @@ class CaffoldTaskNew extends HTMLElement {
     browserSection.hidden = !this.browsing;
     browserSection.querySelector("header p").textContent =
       this.selectedContextPath();
+    let browser = browserSection.querySelector(":scope > caffold-file-browser");
+    if (this.browsing) {
+      browser = this.ensureCwdBrowser();
+    }
+    browser?.setWatchActive(this.browsing);
     this.renderError();
     this.syncComposer();
     if (this.browsing) {
@@ -247,10 +261,21 @@ class CaffoldTaskNew extends HTMLElement {
     }
   }
 
+  ensureCwdBrowser() {
+    const section = this.querySelector(":scope > .task-new-cwd-browser");
+    if (!section) {
+      return null;
+    }
+    let browser = section.querySelector(":scope > caffold-file-browser");
+    if (!browser) {
+      browser = document.createElement("caffold-file-browser");
+      section.append(browser);
+    }
+    return browser;
+  }
+
   syncBrowser() {
-    const browser = this.querySelector(
-      ":scope > .task-new-cwd-browser caffold-file-browser",
-    );
+    const browser = this.ensureCwdBrowser();
     const targetPath = this.selectedContextPath();
     if (!browser) {
       return;

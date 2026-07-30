@@ -29,6 +29,9 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.addEventListener("click", this.boundClick);
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     this.render();
+    if (this.active) {
+      void this.activate({ force: true });
+    }
   }
 
   disconnectedCallback() {
@@ -36,6 +39,10 @@ class CaffoldTaskNavigator extends HTMLElement {
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
     this.taskListRequestId += 1;
     this.taskHistoryRequestId += 1;
+    this.taskListLoading = false;
+    this.taskListLoadingMore = false;
+    this.taskHistoryLoading = false;
+    this.taskHistoryLoadingMore = false;
     this.closeStream();
   }
 

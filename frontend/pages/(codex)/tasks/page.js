@@ -17,12 +17,12 @@ const TASK_LIST_RESIZER_WIDTH = 6;
 class CaffoldTasksPage extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
+    this.attachGlobalListeners();
   }
 
   disconnectedCallback() {
     this.stopTaskListResize();
-    window.removeEventListener("resize", this.boundResize);
-    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
+    this.detachGlobalListeners();
   }
 
   ensureRendered() {
@@ -34,6 +34,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.selectedThreadId = "";
     this.taskListWidth = TASK_LIST_DEFAULT_WIDTH;
     this.adoptedThreadId = "";
+    this.globalListenersAttached = false;
     this.boundResize = () => {
       this.clampTaskListWidth();
     };
@@ -141,9 +142,25 @@ class CaffoldTasksPage extends HTMLElement {
         );
       }
     });
+    this.render();
+  }
+
+  attachGlobalListeners() {
+    if (this.globalListenersAttached) {
+      return;
+    }
+    this.globalListenersAttached = true;
     window.addEventListener("resize", this.boundResize);
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
-    this.render();
+  }
+
+  detachGlobalListeners() {
+    if (!this.globalListenersAttached) {
+      return;
+    }
+    this.globalListenersAttached = false;
+    window.removeEventListener("resize", this.boundResize);
+    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
   prepareRoute(route, options = {}) {

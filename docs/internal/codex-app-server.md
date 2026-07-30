@@ -182,6 +182,36 @@ the thread badge. `task-event` updates transcript/event UI only; task lifecycle
 changes arrive through canonical REST responses and revisioned `task-sync`
 snapshots.
 
+## Frontend Ownership
+
+The Tasks browser keeps list and detail as separate projections of app-server
+state:
+
+- `caffold-task-navigator` owns managed/History reads, list SSE, and the
+  per-thread list revision baseline.
+- `caffold-task-detail` owns the selected task's canonical read, detail SSE,
+  event cache, and per-thread detail revision baseline.
+- A `stream-bootstrap` establishes a new detail process baseline even when its
+  revision is lower. Lower revisions from the same baseline remain stale.
+- A detail snapshot may be forwarded to Navigator through
+  `upsertCanonicalTask`, but a list revision never advances or rejects a detail
+  revision, and a detail revision never advances or rejects a list revision.
+
+The remaining components project or collect UI state without acquiring Codex
+status ownership. `caffold-task-conversation` renders the canonical task and
+events and may request older history or approval actions through intents.
+`caffold-task-composer` owns draft, image, picker, and focus state, but emits a
+submission intent for Detail or New Task to execute. `caffold-task-review`
+receives read-only task/event context and owns only Files/Diff/Compare state and
+watchers. None of these components may synthesize, overwrite, or restore
+`ThreadStatus`, active flags, turn status, or active-turn control pointers.
+
+Transport state and UI request state remain separate from this canonical
+projection. Reconnecting, loading, optimistic delivery, review refresh, and
+watch availability may disable or annotate controls, but they cannot rewrite
+the app-server thread lifecycle. When canonical detail is unavailable, Detail
+disables stale canonical controls and exposes the transport/API failure.
+
 ## Cross-Process Reconciliation
 
 With Caffold's current process topology, its app-server child only delivers

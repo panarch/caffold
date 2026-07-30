@@ -1509,6 +1509,72 @@ test("keeps the Tasks list DOM stable while opening a managed task", async ({ pa
   });
 });
 
+test("reattaches Tasks component lifecycles without rebuilding stable children", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Tasks lifecycle ownership regression");
+  await installEventSourceMock(page, { autoOpen: true });
+  await mockCodexModels(page);
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [], nextCursor: null }),
+    }),
+  );
+
+  await page.goto("/tasks");
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect(tasksPage.locator("caffold-task-navigator")).toBeVisible();
+  await expect(
+    tasksPage.locator(".task-new-cwd-browser caffold-file-browser"),
+  ).toHaveCount(0);
+
+  const lifecycle = await tasksPage.evaluate((element) => {
+    const parent = element.parentNode;
+    const nextSibling = element.nextSibling;
+    const navigator = element.querySelector("caffold-task-navigator");
+    const taskNew = element.querySelector("caffold-task-new");
+    const detail = element.querySelector("caffold-task-detail");
+    const composer = taskNew.querySelector("caffold-task-composer");
+    composer.modelLoading = true;
+    composer.permissionLoading = true;
+
+    let headerRenders = 0;
+    const renderHeader = element.renderHeader.bind(element);
+    element.renderHeader = (...args) => {
+      headerRenders += 1;
+      return renderHeader(...args);
+    };
+
+    element.remove();
+    const detached = !element.globalListenersAttached;
+    parent.insertBefore(element, nextSibling);
+    const attached = element.globalListenersAttached;
+    window.dispatchEvent(new CustomEvent("caffold:icons-ready"));
+
+    return {
+      attached,
+      detached,
+      headerRenders,
+      sameNavigator: navigator === element.querySelector("caffold-task-navigator"),
+      sameTaskNew: taskNew === element.querySelector("caffold-task-new"),
+      sameDetail: detail === element.querySelector("caffold-task-detail"),
+      composerRequestsReleased:
+        !composer.modelLoading && !composer.permissionLoading,
+    };
+  });
+
+  expect(lifecycle).toEqual({
+    attached: true,
+    detached: true,
+    headerRenders: 1,
+    sameNavigator: true,
+    sameTaskNew: true,
+    sameDetail: true,
+    composerRequestsReleased: true,
+  });
+});
+
 test("groups Tasks by repository without worktree accordions", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     window.EventSource = class MockEventSource {
@@ -5019,6 +5085,7 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
     pendingApprovals: [],
   });
   const submittedPrompts = [];
+  const submittedBPrompts = [];
   let releaseFirstPrompt;
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
@@ -5048,6 +5115,18 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
         threadId: taskA.threadId,
         turnId: `turn_a_follow_up_${submittedPrompts.length}`,
         steered: false,
+      }),
+    });
+  });
+  await page.route(/\/api\/tasks\/thread_running_b\/prompts(?:\?|$)/, async (route) => {
+    const body = route.request().postDataJSON();
+    submittedBPrompts.push(body.prompt);
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        threadId: taskB.threadId,
+        turnId: "turn_running_b",
+        steered: true,
       }),
     });
   });
@@ -5097,6 +5176,14 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
   await expect(
     tasksPage.locator('.task-detail-summary .task-status-chip[data-status="running"]'),
   ).toBeVisible();
+  form = tasksPage.locator(".task-follow-up-form");
+  prompt = form.locator('textarea[name="prompt"]');
+  await prompt.fill("Steer B while A response is pending");
+  await prompt.press("Enter");
+  await expect.poll(() => submittedBPrompts).toEqual([
+    "Steer B while A response is pending",
+  ]);
+  await expect(form).toHaveAttribute("aria-busy", "false");
   const conversation = tasksPage.locator(".task-conversation-scroll");
   await conversation.evaluate((element) => {
     element.scrollTop = Math.min(180, element.scrollHeight - element.clientHeight);

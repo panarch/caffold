@@ -1,7 +1,7 @@
 # Frontend Structure
 
-> Internal planning note. This document describes the intended frontend file
-> organization before broad component moves.
+> Internal architecture note. This document describes the current frontend
+> component hierarchy and ownership boundaries.
 
 Caffold does not use filesystem routes. `frontend/pages` should not be treated
 as a URL router like Next.js. It is a hierarchy for page-level custom elements:
@@ -45,15 +45,25 @@ caffold-app-shell
   codex workspace
     scaffold-codex-workspace
       scaffold-tasks-page
-        scaffold-file-browser
-          scaffold-file-list
-          scaffold-file-viewer
-        scaffold-git-diff-browser
-          scaffold-git-diff-changes-tree
-          scaffold-review-file-viewer
-        scaffold-git-compare-browser
-          scaffold-git-compare-tree
-          scaffold-review-file-viewer
+        caffold-task-navigator
+        caffold-task-new
+          caffold-task-composer
+          scaffold-file-browser
+            scaffold-file-list
+            scaffold-file-viewer
+        caffold-task-detail
+          caffold-task-conversation
+          caffold-task-composer
+          caffold-task-review
+            scaffold-file-browser
+              scaffold-file-list
+              scaffold-file-viewer
+            scaffold-git-diff-browser
+              scaffold-git-diff-changes-tree
+              scaffold-review-file-viewer
+            scaffold-git-compare-browser
+              scaffold-git-compare-tree
+              scaffold-review-file-viewer
   scaffold-review-workspace
     git
       scaffold-git-review-layout
@@ -114,23 +124,58 @@ subscription with other consumers of the same filesystem scope.
 app-shell overlay sibling of `app-main` and `(review-workspace)`, so Codex
 tasks do not inherit the file browser pathbar or pane shell. It is separate
 from `(review-workspace)` because Codex is a work/control surface, not only a
-review surface. For now the layout delegates to its Tasks child, but it is the
-future owner for Codex-level workspace lifecycle such as keeping thread UI
-state mounted while moving between conversation and review subviews.
-`(codex)/tasks/page` owns the Codex task surface: thread-derived
-list/new/detail state, prompt composition, Codex transcript rendering, approval
-cards, SSE subscription, and mobile list/detail switching. Tasks are global by
-default and may be filtered by cwd. Live repository and worktree context is
-derived from each thread cwd rather than stored by the frontend.
+review surface. The layout delegates its route-level work to a stable-mounted
+Tasks page. `(codex)/tasks/page` is only the route and master-detail
+coordinator. It owns the selected route/thread, responsive visibility, list
+width, and the conversation/Files/Diff outer layout. It does not fetch task
+data, subscribe to task streams, send Codex mutations, or render child
+internals.
 
-Task detail mounts both `scaffold-file-browser` and
-`scaffold-git-diff-browser` as full subviews. Files opens the derived worktree
-root, falling back to the thread cwd outside Git. Diff uses the same reusable
-tree/viewer implementation as the Git review route and is available whenever a
-live worktree context exists. Switching
-conversation/Files/Diff changes visibility without rebuilding the conversation
-DOM, so draft and scroll state remain local to the mounted Tasks page. The app
-root only routes cwd context into the Codex workspace.
+The Tasks runtime hierarchy deliberately separates state with different
+lifetimes:
+
+- `caffold-task-navigator` owns the managed and History REST pages, list SSE,
+  list revisions, Continue requests, repository grouping, list DOM, and list
+  scroll.
+- `caffold-task-new` owns cwd selection and the create request.
+  `caffold-task-composer` owns its create draft, images, focus, and option
+  pickers.
+- `caffold-task-detail` owns the selected thread's canonical REST/SSE session,
+  detail revisions, event cache, history requests, prompt reconciliation,
+  approvals, interrupt actions, and GitHub header availability.
+- `caffold-task-conversation` owns transcript rendering, disclosure state,
+  scroll anchors, Markdown reflow handling, and the canonical active-turn
+  clock.
+- The follow-up `caffold-task-composer` owns thread-local drafts, images,
+  focus/selection, textarea sizing, and explicit model/permission overrides.
+  Detail still owns the prompt mutation and canonical reconciliation.
+- `caffold-task-review` owns Files/Diff/Compare selection, Git status,
+  filesystem watches, refresh coordination, and the reusable review browsers.
+  Task and event inputs are read-only context for that component.
+
+Navigator and Detail are independent browser projections. Each owns its own
+REST/SSE baseline and revision map; neither revision can invalidate the other.
+Detail emits canonical task snapshots upward, the Tasks page forwards those
+snapshots to Navigator, and Navigator updates only through its public
+`upsertCanonicalTask` boundary. New Task similarly emits the canonical create
+response, which the page adopts into Detail and Navigator before requesting the
+new route.
+
+Data crosses these boundaries as snapshots or method calls from parent to
+child. Actions cross upward as intent events. Leaf components do not mutate
+sibling state or call Codex mutation APIs on behalf of their canonical owner.
+The Tasks page mounts Navigator, New Task, and Detail once and switches them
+with visibility and activation methods. Detail likewise preserves Conversation,
+Composer, and Review instances. Switching conversation/Files/Diff therefore
+does not require capture-and-restore code for drafts, transcript scroll, or
+review selection.
+
+Files opens the derived worktree root, falling back to the thread cwd outside
+Git. Diff uses the same reusable tree/viewer implementation as the Git review
+route and is available whenever a live worktree context exists. Live repository
+and worktree context is derived from each canonical thread cwd rather than
+stored by the frontend. The app root only routes cwd context into the Codex
+workspace.
 
 When a loaded directory enters or leaves a Git repository, the app root decides
 the current repository context and reloads the active review route if needed.
@@ -217,6 +262,25 @@ frontend/pages/
     tasks/
       page.js
       page.css
+      runtime-state.js
+      task-events.js
+      task-format.js
+      task-list-model.js
+      conversation-render.js
+      components/
+        navigator.js
+        navigator.css
+        task-new.js
+        task-new.css
+        detail.js
+        detail.css
+        conversation.js
+        conversation.css
+        composer.js
+        composer.css
+        review.js
+        review.css
+        markdown.js
 
   (review-workspace)/
     layout.js
@@ -318,6 +382,12 @@ pathbar and header actions belongs to `frontend/pages/layout`.
 ## Migration Rules
 
 - Do not mix file movement with behavior changes.
+- When extracting a stateful component, move its state, every writer,
+  subscription/timer/watcher cleanup, DOM, component-scoped CSS, and regression
+  tests in the same change.
+- Keep stateful children mounted. A container should show, hide, and call their
+  public methods instead of rebuilding their internal DOM and attempting to
+  restore local state afterward.
 - Update imports, `styles.css`, `service-worker.js`, `src/static_assets.rs`,
   and asset tests in the same commit.
 - Prefer stable custom element names. Moving a file should not require changing

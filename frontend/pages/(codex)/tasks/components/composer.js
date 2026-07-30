@@ -41,6 +41,8 @@ class CaffoldTaskComposer extends HTMLElement {
     document.removeEventListener("click", this.boundDocumentClick);
     this.modelRequestId += 1;
     this.permissionRequestId += 1;
+    this.modelLoading = false;
+    this.permissionLoading = false;
   }
 
   ensureState() {
@@ -99,6 +101,7 @@ class CaffoldTaskComposer extends HTMLElement {
     this.ensureState();
     const previousKey = this.context.stateKey;
     const nextKey = `${context.stateKey ?? context.threadId ?? previousKey ?? "create"}`;
+    const stateChanged = nextKey !== previousKey;
     this.captureCurrentState();
     this.context = {
       ...this.context,
@@ -123,7 +126,9 @@ class CaffoldTaskComposer extends HTMLElement {
     ) {
       state.permissionMode = `${context.permissionMode}`;
     }
-    this.openPicker = "";
+    if (stateChanged || this.context.disabled || this.context.settingsLocked) {
+      this.openPicker = "";
+    }
     this.render();
     void this.loadModels();
     void this.loadPermissions(this.context.cwd);

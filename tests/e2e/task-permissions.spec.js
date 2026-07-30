@@ -391,6 +391,52 @@ test("managed tasks restore their last applied model and reasoning effort", asyn
   });
 });
 
+test("canonical task sync preserves an open follow-up model picker", async ({
+  page,
+}) => {
+  await stubComposerApis(page);
+  const initialDetail = taskDetail({
+    model: "gpt-test",
+    reasoningEffort: "medium",
+  });
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: initialDetail }),
+  );
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
+  await form
+    .getByRole("button", { name: "Choose model and reasoning" })
+    .click();
+  const picker = form.getByRole("menu", {
+    name: "Model and reasoning options",
+  });
+  await expect(picker).toBeVisible();
+
+  const syncedDetail = {
+    ...initialDetail,
+    revision: 2,
+    task: {
+      ...initialDetail.task,
+      preview: "Canonical refresh while choosing a model",
+      updatedMs: 3,
+      recencyMs: 3,
+    },
+  };
+  await page.evaluate((detail) => {
+    window.__taskDetailSource.emit("task-sync", {
+      threadId: detail.threadId,
+      revision: detail.revision,
+      detail,
+      reason: "canonical-refresh",
+    });
+  }, syncedDetail);
+
+  await expect(picker).toBeVisible();
+  await form.locator('[data-model="gpt-test"]').click();
+  await expect(form.locator('input[name="model"]')).toHaveValue("gpt-test");
+});
+
 test("keeps a tall follow-up model menu inside the conversation pane", async ({
   page,
 }, testInfo) => {

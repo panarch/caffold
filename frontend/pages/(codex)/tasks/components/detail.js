@@ -84,7 +84,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.continuationStateValue = { loading: false, error: null };
     this.conversationUpdateKind = null;
     this.initialConversationLoad = null;
-    this.followUpRequest = null;
+    this.followUpRequests = new Map();
     this.reviewView = "conversation";
     this.boundIconsReady = () => {
       this.render();
@@ -187,6 +187,7 @@ class CaffoldTaskDetail extends HTMLElement {
       this.historyRequestToken += 1;
       this.interruptActionToken += 1;
       this.approvalActionToken += 1;
+      this.loadingOlderEvents = false;
       this.taskReview()?.setTaskContext({ task: null, events: [] });
       this.reviewView = "conversation";
       this.resetTaskGithubStatus();
@@ -253,6 +254,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.historyRequestToken += 1;
     this.interruptActionToken += 1;
     this.approvalActionToken += 1;
+    this.loadingOlderEvents = false;
     this.initialConversationLoad = null;
     this.closeStream();
     this.taskReview()?.deactivate();
@@ -534,8 +536,8 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   acknowledgeFollowUpFromCanonicalDetail(threadId, detail) {
-    const request = this.followUpRequest;
-    if (!request || request.threadId !== threadId) {
+    const request = this.followUpRequests.get(threadId);
+    if (!request) {
       return;
     }
 
@@ -557,8 +559,8 @@ class CaffoldTaskDetail extends HTMLElement {
     request.composer?.resolveSubmission(request.submissionId, {
       status: "accepted",
     });
-    if (this.followUpRequest === request) {
-      this.followUpRequest = null;
+    if (this.followUpRequests.get(threadId) === request) {
+      this.followUpRequests.delete(threadId);
     }
   }
 
@@ -946,7 +948,7 @@ class CaffoldTaskDetail extends HTMLElement {
       });
       return;
     }
-    if (this.followUpRequest?.threadId === threadId) {
+    if (this.followUpRequests.has(threadId)) {
       composer.resolveSubmission(submissionId, {
         status: "rejected",
         error: new Error("A prompt is already being submitted for this task."),
@@ -990,7 +992,7 @@ class CaffoldTaskDetail extends HTMLElement {
       ),
       state: PROMPT_SUBMISSION_STATE.SENDING,
     };
-    this.followUpRequest = followUpRequest;
+    this.followUpRequests.set(threadId, followUpRequest);
     this.error = null;
     this.setThreadEvents(
       threadId,
@@ -1071,8 +1073,8 @@ class CaffoldTaskDetail extends HTMLElement {
         }
       }
     } finally {
-      if (this.followUpRequest === followUpRequest) {
-        this.followUpRequest = null;
+      if (this.followUpRequests.get(threadId) === followUpRequest) {
+        this.followUpRequests.delete(threadId);
       }
       if (threadId === this.selectedThreadId) {
         this.render();

@@ -459,7 +459,9 @@ test("opens an external completed task and keeps follow-ups and activity canonic
     '.task-message[data-message-role="assistant"][data-message-phase="final"]',
   );
   const userMessages = tasksPage.locator('.task-message[data-message-role="user"]');
-  const continueButton = tasksPage.getByRole("button", { name: "Continue in Caffold" });
+  const continueButton = tasksPage
+    .locator("caffold-task-detail")
+    .getByRole("button", { name: "Continue in Caffold" });
   await expect(continueButton).toBeVisible();
   await continueButton.click();
   await expect(assistantMessages.filter({ hasText: initialReply })).toBeVisible();

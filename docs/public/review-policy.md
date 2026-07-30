@@ -95,6 +95,38 @@ Caffold currently uses internal Web Components rendered in Light DOM. This keeps
 
 Light DOM is the default until a component has a clear reason to isolate styles with Shadow DOM. Good reasons include reusable leaf widgets, third-party-like components, or a component whose styles cannot reasonably share the app cascade.
 
+### Component Ownership And Lifecycles
+
+A component extraction is a state-ownership change, not only a markup move.
+Move the component's state, every writer, subscription/timer/watcher cleanup,
+DOM, scoped CSS, and regression tests together. The previous container must not
+retain a second writer or lifecycle owner after the extraction.
+
+Use snapshots and public methods for parent-to-child data flow. Use intent
+events for actions that cross upward. UI-local state such as drafts, focus,
+scroll anchors, disclosure, picker state, and review selection belongs in the
+leaf component that renders and restores it. External mutations and canonical
+domain reconciliation remain with the component that owns that API boundary.
+A leaf must not reach sideways to mutate sibling state.
+
+Stateful children should be mounted once and shown or hidden. Do not let a
+container rerender destroy child DOM and then depend on capture-and-restore
+code for drafts, focus, scroll, selection, subscriptions, timers, or watchers.
+If a container patches its own Light DOM, preserve stateful child elements by
+identity and interact with them only through their public component boundary.
+
+Do not add a global store merely to coordinate an extraction. Independent API
+or revision projections must remain independent unless the external source
+provides one shared ordering contract. For example, a task-list revision must
+not reject a task-detail snapshot, and a detail revision must not advance the
+list baseline.
+
+For every lifecycle-owning component, review initial connection,
+activation/context changes, deactivation, thread or route switches, and
+disconnection. Every asynchronous response needs a generation, token, or
+identity check appropriate to its own request lifetime. Canceling one request
+must not accidentally invalidate an unrelated request.
+
 Because nested custom elements are still normal descendants in Light DOM, container selectors must be narrow.
 
 Preferred patterns:
@@ -132,6 +164,11 @@ Use these rules when reviewing CSS:
 - Use component-local classes for internal chrome.
 - Avoid raw tag selectors from shell or container components.
 - Cross-component overrides must be narrow and intentional.
+- New component selectors must be scoped below that custom element, and old
+  broad container selectors must be removed when ownership moves.
+- Register new JavaScript and CSS assets in the stylesheet entrypoint, service
+  worker cache, Rust static asset table, and static asset tests in the same
+  change.
 - If a selector looks convenient because it is broad, review it with suspicion.
 
 ## Backend And API Review
