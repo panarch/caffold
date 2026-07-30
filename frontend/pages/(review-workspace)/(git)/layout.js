@@ -1,6 +1,4 @@
 import { getGitStatus } from "../../../api.js";
-import { escapeHtml } from "../../../components/dom.js";
-import { renderInlineIcon } from "../../../components/icons.js";
 import { createRefreshCoordinator, subscribeToWatch } from "../../../watch.js";
 import { routeMode } from "../../../navigation-routes.js";
 import "./compare/page.js";
@@ -830,7 +828,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
         title: "Diff",
         subtitle: this.workspaceSubtitle("Working tree"),
         backVisible: false,
-        controlsHtml: this.renderRefreshControls(),
+        controls: this.controlsSnapshot(),
       };
     }
 
@@ -839,7 +837,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
         title: "Compare",
         subtitle: this.comparePage.compareSubtitle(this.workspaceSubtitle("Branches")),
         backVisible: false,
-        controlsHtml: this.renderCompareControls(),
+        controls: this.controlsSnapshot(),
       };
     }
 
@@ -849,7 +847,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
         subtitle: this.logLayout.commitSubtitle(),
         backVisible: true,
         backLabel: "Back to log",
-        controlsHtml: this.renderRefreshControls(),
+        controls: this.controlsSnapshot(),
       };
     }
 
@@ -858,7 +856,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
         title: "Log",
         subtitle: this.workspaceSubtitle("History"),
         backVisible: false,
-        controlsHtml: this.renderRefreshControls(),
+        controls: this.controlsSnapshot(),
       };
     }
 
@@ -866,6 +864,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
       title: "Git",
       subtitle: "",
       backVisible: false,
+      controls: null,
     };
   }
 
@@ -881,59 +880,14 @@ class CaffoldGitReviewLayout extends HTMLElement {
     return `${label} · ${branch}${dirty}${countLabel}`;
   }
 
-  renderCompareControls() {
-    const refs = this.comparePage.refsPayload?.refs ?? [];
-    return `
-      <div class="git-review-controls">
-        ${refs.length > 0 ? `
-          <div class="review-compare-ref-controls" aria-label="Compare refs">
-            <label for="caffold-compare-base-ref">Base</label>
-            <select
-              id="caffold-compare-base-ref"
-              data-compare-ref="base"
-              aria-label="Base ref"
-              title="${escapeHtml(this.comparePage.baseRef ?? "")}"
-            >
-              ${renderRefOptions(refs, this.comparePage.baseRef)}
-            </select>
-            <span class="review-compare-ref-separator" aria-hidden="true">...</span>
-            <label for="caffold-compare-head-ref">Head</label>
-            <select
-              id="caffold-compare-head-ref"
-              data-compare-ref="head"
-              aria-label="Head ref"
-              title="${escapeHtml(this.comparePage.headRef ?? "")}"
-            >
-              ${renderRefOptions(refs, this.comparePage.headRef)}
-            </select>
-          </div>
-        ` : ""}
-        ${this.renderRefreshButton()}
-      </div>
-    `;
-  }
-
-  renderRefreshControls() {
-    return `<div class="git-review-controls">${this.renderRefreshButton()}</div>`;
-  }
-
-  renderRefreshButton() {
-    const refreshing = this.refreshState === "refreshing";
-    const unavailable = this.refreshState === "unavailable";
-    const title = unavailable
-      ? "Live updates unavailable. Refresh manually."
-      : `Refresh ${this.mode ?? "Git"}`;
-    return `
-      <button
-        type="button"
-        class="git-review-refresh${refreshing ? " is-refreshing" : ""}${unavailable ? " is-unavailable" : ""}"
-        data-action="refresh-git-review"
-        aria-label="${escapeHtml(title)}"
-        title="${escapeHtml(title)}"
-      >
-        ${renderInlineIcon("RefreshCw", "Refresh Git review", "git-review-refresh-icon")}
-      </button>
-    `;
+  controlsSnapshot() {
+    return {
+      mode: this.mode,
+      refs: this.mode === "compare" ? this.comparePage.refsPayload?.refs ?? [] : [],
+      baseRef: this.mode === "compare" ? this.comparePage.baseRef ?? "" : "",
+      headRef: this.mode === "compare" ? this.comparePage.headRef ?? "" : "",
+      refreshState: this.refreshState ?? "idle",
+    };
   }
 
   get compareBaseRef() {
@@ -996,35 +950,4 @@ customElements.define("caffold-git-review-layout", CaffoldGitReviewLayout);
 
 function normalizeGitMode(mode) {
   return mode === "compare" || mode === "log" ? mode : "diff";
-}
-
-function renderRefOptions(refs, selectedRef) {
-  let lastKind = null;
-  let html = "";
-
-  for (const ref of refs) {
-    if (ref.kind !== lastKind) {
-      if (lastKind) {
-        html += "</optgroup>";
-      }
-      lastKind = ref.kind;
-      html += `<optgroup label="${escapeHtml(refKindLabel(ref.kind))}">`;
-    }
-
-    html += `
-      <option value="${escapeHtml(ref.name)}" ${ref.name === selectedRef ? "selected" : ""}>
-        ${escapeHtml(ref.name)}
-      </option>
-    `;
-  }
-
-  return lastKind ? `${html}</optgroup>` : html;
-}
-
-function refKindLabel(kind) {
-  if (kind === "head") {
-    return "Current";
-  }
-
-  return kind === "remote" ? "Remote" : "Local";
 }

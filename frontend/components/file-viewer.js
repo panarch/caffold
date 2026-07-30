@@ -13,11 +13,12 @@ class CaffoldFileViewer extends HTMLElement {
     if (!this.initialized) {
       this.initialized = true;
       this.addEventListener("click", (event) => {
-        const refreshButton = event.target.closest('button[data-action="refresh-file"]');
+        const refreshButton = event.target.closest('button[data-action="refresh-viewer"]');
         if (refreshButton) {
-          this.dispatchEvent(
-            new CustomEvent("caffold:refresh-file-viewer", { bubbles: true }),
-          );
+          const refreshEventName = this.refreshEventName();
+          if (refreshEventName) {
+            this.dispatchEvent(new CustomEvent(refreshEventName, { bubbles: true }));
+          }
           return;
         }
         const button = event.target.closest('button[data-action="close-browser-viewer"]');
@@ -314,10 +315,7 @@ class CaffoldFileViewer extends HTMLElement {
   }
 
   renderRefreshButton() {
-    const action = this.tagName === "CAFFOLD-FILE-VIEWER"
-      ? "refresh-file"
-      : this.getAttribute("refresh-action");
-    if (!action) {
+    if (!this.refreshEventName()) {
       return "";
     }
     const refreshing = this.refreshState === "refreshing";
@@ -329,13 +327,22 @@ class CaffoldFileViewer extends HTMLElement {
       <button
         type="button"
         class="viewer-refresh-button${refreshing ? " is-refreshing" : ""}${unavailable ? " is-unavailable" : ""}"
-        data-action="${escapeHtml(action)}"
+        data-action="refresh-viewer"
         aria-label="${escapeHtml(title)}"
         title="${escapeHtml(title)}"
       >
         ${renderInlineIcon("RefreshCw", "Refresh file", "viewer-refresh-icon")}
       </button>
     `;
+  }
+
+  refreshEventName() {
+    if (this.tagName === "CAFFOLD-FILE-VIEWER") {
+      return "caffold:refresh-file-viewer";
+    }
+
+    const action = this.getAttribute("refresh-action");
+    return action ? `caffold:${action}` : "";
   }
 
   patchRefreshButton() {

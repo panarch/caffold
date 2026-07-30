@@ -18,6 +18,7 @@
 @import "./pages/(codex)/tasks/components/review.css";
 @import "./pages/(codex)/tasks/components/task-new.css";
 @import "./pages/(review-workspace)/(git)/layout.css";
+@import "./pages/(review-workspace)/(git)/components/controls.css";
 @import "./pages/(review-workspace)/(git)/diff/page.css";
 @import "./components/git-diff-browser.css";
 @import "./components/git-diff-browser/changes-tree.css";

@@ -122,6 +122,10 @@ class CaffoldTaskReview extends HTMLElement {
 
     this.addEventListener("click", (event) => this.handleClick(event));
     this.addEventListener("change", (event) => this.handleChange(event));
+    this.addEventListener("caffold:refresh-git-review", (event) => {
+      event.stopPropagation();
+      this.requestReviewRefresh();
+    });
     this.addEventListener("caffold:open-git-diff", (event) => {
       const browser = closestElement(event.target, "caffold-git-diff-browser");
       if (!browser || browser !== this.diffBrowser()) {
@@ -639,15 +643,6 @@ class CaffoldTaskReview extends HTMLElement {
   }
 
   handleClick(event) {
-    const viewerRefresh = closestElement(
-      event.target,
-      '[data-action="refresh-git-review"]',
-    );
-    if (viewerRefresh && this.contains(viewerRefresh)) {
-      event.stopPropagation();
-      this.requestReviewRefresh();
-      return;
-    }
     const action = closestElement(event.target, "[data-task-review-action]");
     if (!action || !this.contains(action)) {
       return;

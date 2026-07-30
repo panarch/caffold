@@ -341,6 +341,12 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
     "/assets/pages/(review-workspace)/(git)/layout.js",
   );
   expect(serviceWorker).toContain(
+    "/assets/pages/(review-workspace)/(git)/components/controls.css",
+  );
+  expect(serviceWorker).toContain(
+    "/assets/pages/(review-workspace)/(git)/components/controls.js",
+  );
+  expect(serviceWorker).toContain(
     "/assets/pages/(review-workspace)/(git)/diff/page.js",
   );
   expect(serviceWorker).toContain(
@@ -2919,6 +2925,28 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
   await expect(workspace.locator('select[data-compare-ref="head"]')).toHaveValue(
     headRef,
   );
+  const gitReviewControls = workspace.locator("caffold-git-review-controls");
+  await expect(gitReviewControls).toBeVisible();
+  const headRefSelect = gitReviewControls.locator('select[data-compare-ref="head"]');
+  await headRefSelect.focus();
+  await expect(headRefSelect).toBeFocused();
+  await gitReviewControls.evaluate((controls) => {
+    controls.dataset.regressionInstance = "stable";
+    controls.addEventListener("caffold:refresh-git-review", () => {
+      window.__caffoldGitRefreshIntentCount =
+        (window.__caffoldGitRefreshIntentCount ?? 0) + 1;
+    });
+    document.querySelector("caffold-git-review-layout").setRefreshState("refreshing");
+  });
+  await expect(gitReviewControls).toHaveAttribute("data-regression-instance", "stable");
+  await expect(headRefSelect).toBeFocused();
+  await page.evaluate(() => {
+    document.querySelector("caffold-git-review-layout").setRefreshState("idle");
+  });
+  await gitReviewControls.getByRole("button", { name: "Refresh compare" }).click();
+  await expect
+    .poll(() => page.evaluate(() => window.__caffoldGitRefreshIntentCount ?? 0))
+    .toBe(1);
   await expect(
     workspace.locator('select[data-compare-ref="head"] optgroup[label="Current"]'),
   ).toHaveCount(1);
@@ -3009,6 +3037,19 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
       sharedFileViewer: true,
       viewerRefresh: true,
     });
+    const compareViewer = page.locator(
+      ".git-mode-compare caffold-review-file-viewer",
+    );
+    await compareViewer.evaluate((viewer) => {
+      viewer.addEventListener("caffold:refresh-git-review", () => {
+        window.__caffoldViewerRefreshIntentCount =
+          (window.__caffoldViewerRefreshIntentCount ?? 0) + 1;
+      });
+    });
+    await compareViewer.locator(".viewer-refresh-button").click();
+    await expect
+      .poll(() => page.evaluate(() => window.__caffoldViewerRefreshIntentCount ?? 0))
+      .toBe(1);
     await page.getByRole("button", { name: "Back to compare" }).click();
     await expect(workspace).toHaveAttribute("data-mobile-detail", "false");
     await expect(workspace.locator(".git-mode-compare")).toHaveAttribute(

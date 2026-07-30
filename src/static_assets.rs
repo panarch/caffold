@@ -188,6 +188,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(review-workspace)/(git)/layout.js" => Some(js(include_str!(
             "../frontend/pages/(review-workspace)/(git)/layout.js"
         ))),
+        "pages/(review-workspace)/(git)/components/controls.css" => Some(css(include_str!(
+            "../frontend/pages/(review-workspace)/(git)/components/controls.css"
+        ))),
+        "pages/(review-workspace)/(git)/components/controls.js" => Some(js(include_str!(
+            "../frontend/pages/(review-workspace)/(git)/components/controls.js"
+        ))),
         "pages/(review-workspace)/(git)/diff/page.css" => Some(css(include_str!(
             "../frontend/pages/(review-workspace)/(git)/diff/page.css"
         ))),
@@ -516,6 +522,29 @@ mod tests {
                 .body
                 .windows(b"caffold-git-review-layout".len())
                 .any(|window| window == b"caffold-git-review-layout")
+        );
+        let git_review_controls = get("pages/(review-workspace)/(git)/components/controls.js")
+            .expect("git review controls js");
+        assert_eq!(
+            git_review_controls.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(
+            git_review_controls
+                .body
+                .windows(b"caffold-git-review-controls".len())
+                .any(|window| window == b"caffold-git-review-controls")
+        );
+        let git_review_controls_css = get("pages/(review-workspace)/(git)/components/controls.css")
+            .expect("git review controls css");
+        assert_eq!(
+            git_review_controls_css.content_type,
+            "text/css; charset=utf-8"
+        );
+        assert!(
+            git_review_controls_css
+                .body
+                .starts_with(b"caffold-git-review-controls")
         );
 
         let compare_page =

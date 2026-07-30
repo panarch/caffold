@@ -1,5 +1,6 @@
 import { renderInlineIcon, warmIcons } from "../../components/icons.js";
 import { routeDomain } from "../../navigation-routes.js";
+import "./(git)/components/controls.js";
 
 const REVIEW_PANEL_DEFAULT_WIDTH = 320;
 const REVIEW_PANEL_MIN_WIDTH = 180;
@@ -32,11 +33,6 @@ class CaffoldReviewWorkspace extends HTMLElement {
         return;
       }
 
-      if (button.dataset.action === "refresh-git-review") {
-        this.gitLayout.refresh();
-        return;
-      }
-
       if (button.dataset.action !== "close-review-workspace") {
         return;
       }
@@ -47,20 +43,9 @@ class CaffoldReviewWorkspace extends HTMLElement {
         }),
       );
     });
-    this.addEventListener("change", (event) => {
-      const select = event.target.closest("select[data-compare-ref]");
-      if (!select) {
-        return;
-      }
-
-      const baseRef = this.querySelector('select[data-compare-ref="base"]')?.value ?? "";
-      const headRef = this.querySelector('select[data-compare-ref="head"]')?.value ?? "";
-      this.dispatchEvent(
-        new CustomEvent("caffold:change-compare-refs", {
-          bubbles: true,
-          detail: { baseRef, headRef },
-        }),
-      );
+    this.addEventListener("caffold:refresh-git-review", (event) => {
+      event.stopPropagation();
+      void this.gitLayout.refresh();
     });
     this.addEventListener("caffold:git-review-state-change", () => {
       if (this.isActive("git")) {
@@ -136,7 +121,9 @@ class CaffoldReviewWorkspace extends HTMLElement {
           </div>
           <div class="review-workspace-title">
             <h2></h2>
-            <div class="review-workspace-controls" hidden></div>
+            <div class="review-workspace-controls" hidden>
+              <caffold-git-review-controls hidden></caffold-git-review-controls>
+            </div>
             <span class="review-workspace-subtitle"></span>
           </div>
         </header>
@@ -153,6 +140,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
     this.titleWrapper = this.querySelector(".review-workspace-title");
     this.titleEl = this.querySelector(".review-workspace-title h2");
     this.controlsEl = this.querySelector(".review-workspace-controls");
+    this.gitControls = this.querySelector("caffold-git-review-controls");
     this.subtitleEl = this.querySelector(".review-workspace-subtitle");
     this.backButton = this.querySelector(".review-workspace-back");
     this.closeButton = this.querySelector(".review-workspace-close");
@@ -172,7 +160,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
     this.dataset.workspaceMode = mode;
     this.workspaceTitle = options.title ?? workspaceTitle(mode);
     this.subtitle = options.subtitle ?? "";
-    this.controlsHtml = options.controlsHtml ?? "";
+    this.controls = options.controls ?? null;
     this.backVisible = Boolean(options.backVisible);
     this.backLabel = options.backLabel ?? "Back";
     this.renderChrome();
@@ -187,7 +175,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
     this.mode = null;
     this.dataset.workspaceMode = "";
     this.backVisible = false;
-    this.controlsHtml = "";
+    this.controls = null;
     this.renderChrome();
     this.updateVisibleMode();
   }
@@ -198,7 +186,7 @@ class CaffoldReviewWorkspace extends HTMLElement {
     if (options.backVisible !== undefined) {
       this.backVisible = Boolean(options.backVisible);
     }
-    this.controlsHtml = options.controlsHtml ?? "";
+    this.controls = options.controls ?? null;
     this.backLabel = options.backLabel ?? this.backLabel ?? "Back";
     this.renderChrome();
     this.updateVisibleMode();
@@ -379,10 +367,11 @@ class CaffoldReviewWorkspace extends HTMLElement {
 
     this.titleEl.textContent = this.workspaceTitle ?? workspaceTitle(this.mode);
     this.subtitleEl.textContent = this.subtitle ?? "";
-    const controlsHtml = this.controlsHtml ?? "";
-    this.controlsEl.innerHTML = controlsHtml;
-    this.controlsEl.hidden = controlsHtml.length === 0;
-    this.titleWrapper.classList.toggle("has-controls", controlsHtml.length > 0);
+    const controlsVisible = this.mode === "git" && Boolean(this.controls);
+    this.gitControls.setSnapshot(this.controls);
+    this.gitControls.hidden = !controlsVisible;
+    this.controlsEl.hidden = !controlsVisible;
+    this.titleWrapper.classList.toggle("has-controls", controlsVisible);
     this.backButton.hidden = !this.backVisible;
     this.backButton.setAttribute("aria-label", this.backLabel ?? "Back");
     this.backButton.setAttribute("title", this.backLabel ?? "Back");

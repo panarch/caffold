@@ -3831,6 +3831,13 @@ test("opens Tasks from Codex header and runs a minimal task loop", async ({ page
   await expect(taskDiffViewer).toContainText(
     "new planner behavior",
   );
+  if (testInfo.project.name === "phone") {
+    const statusRequestsBeforeViewerRefresh = gitStatusRequests;
+    await taskDiffViewer.locator(".viewer-refresh-button").click();
+    await expect
+      .poll(() => gitStatusRequests)
+      .toBeGreaterThan(statusRequestsBeforeViewerRefresh);
+  }
   const statusRequestsBeforeWatchChange = gitStatusRequests;
   includeTaskDiffLiveFile = true;
   await page.evaluate(() => {
