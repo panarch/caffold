@@ -1,4 +1,4 @@
-use super::super::*;
+use super::*;
 
 #[test]
 fn server_name_is_applied_to_install_metadata() {

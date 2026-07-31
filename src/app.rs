@@ -12,8 +12,8 @@ use axum::{
     Json, Router,
     body::{Body, Bytes},
     extract::{DefaultBodyLimit, Path as AxumPath, Query, State},
-    http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header},
-    response::{Html, IntoResponse, Response},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use futures_util::{StreamExt, stream};
@@ -24,6 +24,7 @@ use tokio::sync::{Mutex as AsyncMutex, broadcast, mpsc};
 use tracing::info;
 
 mod error;
+mod shell;
 
 use error::ApiError;
 
@@ -40,12 +41,10 @@ use crate::{
         FileResponse, FsError, GitCommitResponse, GitCompareResponse, GitDiffResponse,
         GitLogResponse, GitRefsResponse, GitStatusResponse, GithubIssueResponse,
         GithubIssuesResponse, GithubPullFileResponse, GithubPullFilesResponse, GithubPullResponse,
-        GithubPullsResponse, GithubStatusResponse, ListResponse, MAX_FILE_BYTES, MAX_IMAGE_BYTES,
-        RootedFs,
+        GithubPullsResponse, GithubStatusResponse, ListResponse, MAX_IMAGE_BYTES, RootedFs,
     },
     git,
-    server_settings::{ServerSettings, ServerSettingsError, ServerSettingsStore},
-    static_assets,
+    server_settings::ServerSettingsStore,
     task_rollout::{TaskRolloutMonitor, TaskRolloutSignal, TaskRolloutSubscription},
     thread_store::{ManagedThread, ThreadStore, ThreadStoreError},
     watch::{WatchChange, WatchHub, WatchMessage},
@@ -69,14 +68,6 @@ pub struct ServeConfig {
     pub port: u16,
     pub root: Option<PathBuf>,
     pub data_dir: Option<PathBuf>,
-}
-
-#[derive(Clone)]
-struct ShellState {
-    fs: Arc<RootedFs>,
-    server_settings: Arc<ServerSettingsStore>,
-    initial_path: String,
-    home_path: Option<String>,
 }
 
 #[derive(Clone)]
@@ -537,11 +528,6 @@ struct GithubPullFileQuery {
 }
 
 #[derive(Debug, Deserialize)]
-struct UpdateServerSettingsRequest {
-    name: String,
-}
-
-#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TasksQuery {
     cursor: Option<String>,
@@ -622,20 +608,6 @@ struct TaskPromptOutcome {
 #[derive(Debug, Deserialize)]
 struct TaskApprovalRequest {
     decision: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct HealthResponse {
-    status: &'static str,
-    build_id: &'static str,
-    build_label: &'static str,
-    build_number: &'static str,
-    server_name: String,
-    root: String,
-    initial_path: String,
-    home_path: Option<String>,
-    max_file_bytes: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -873,16 +845,11 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let (shutdown, _) = broadcast::channel(16);
     let fs = Arc::new(fs);
     let root = fs.root().to_path_buf();
-    let shell_state = ShellState {
-        fs: fs.clone(),
-        server_settings,
-        initial_path: initial_path.clone(),
-        home_path,
-    };
+    let shell_router = shell::router(fs.clone(), server_settings, initial_path.clone(), home_path);
     let workspace_state = WorkspaceState::new(fs.clone(), shutdown.clone());
     let task_state = TaskState::new(fs, initial_path.clone(), shutdown.clone(), thread_store);
     let codex_threads = task_state.codex_threads.clone();
-    let app = router_with_states(shell_state, workspace_state, task_state);
+    let app = router_with_states(shell_router, workspace_state, task_state);
     let listener = TcpListener::bind((config.host, config.port)).await?;
     let addr = listener.local_addr()?;
 
@@ -913,47 +880,29 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
 pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
     let (shutdown, _) = broadcast::channel(16);
     let fs = Arc::new(fs);
-    let shell_state = ShellState {
-        fs: fs.clone(),
-        server_settings: Arc::new(ServerSettingsStore::memory()),
-        initial_path: String::new(),
-        home_path: None,
-    };
+    let shell_router = shell::router(
+        fs.clone(),
+        Arc::new(ServerSettingsStore::memory()),
+        String::new(),
+        None,
+    );
     let workspace_state = WorkspaceState::new(fs.clone(), shutdown.clone());
     let task_state = TaskState::new(fs, String::new(), shutdown, ThreadStore::memory()?);
-    Ok(router_with_states(shell_state, workspace_state, task_state))
+    Ok(router_with_states(
+        shell_router,
+        workspace_state,
+        task_state,
+    ))
 }
 
 fn router_with_states(
-    shell_state: ShellState,
+    shell_router: Router,
     workspace_state: WorkspaceState,
     task_state: TaskState,
 ) -> Router {
-    shell_router(shell_state)
+    shell_router
         .merge(workspace_router(workspace_state))
         .merge(task_router(task_state))
-}
-
-fn shell_router(state: ShellState) -> Router {
-    Router::new()
-        .route("/", get(index))
-        .route("/api/health", get(health))
-        .route(
-            "/api/server/settings",
-            get(get_server_settings).patch(update_server_settings),
-        )
-        .route("/service-worker.js", get(service_worker))
-        .route("/assets/manifest.webmanifest", get(manifest))
-        .route("/assets/{*path}", get(asset))
-        .route("/settings", get(index))
-        .route("/tasks", get(index))
-        .route("/tasks/{*path}", get(index))
-        .route("/files", get(index))
-        .route("/git", get(index))
-        .route("/git/{*path}", get(index))
-        .route("/github", get(index))
-        .route("/github/{*path}", get(index))
-        .with_state(state)
 }
 
 fn workspace_router(state: WorkspaceState) -> Router {
@@ -1064,131 +1013,6 @@ async fn shutdown_signal(shutdown: broadcast::Sender<()>) {
         _ = terminate => {}
     }
     let _ = shutdown.send(());
-}
-
-async fn index(State(state): State<ShellState>) -> Response {
-    let name = state.server_settings.get().name;
-    let body = render_index(&name);
-    let mut response = Html(body).into_response();
-    response
-        .headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
-    response
-}
-
-async fn manifest(State(state): State<ShellState>) -> Result<Response, ApiError> {
-    let name = state.server_settings.get().name;
-    let body = render_manifest(&name)?;
-    let mut response = Response::new(Body::from(body));
-    response.headers_mut().insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("application/manifest+json; charset=utf-8"),
-    );
-    response
-        .headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
-    Ok(response)
-}
-
-fn render_index(name: &str) -> String {
-    static_assets::INDEX.replace("{{CAFFOLD_SERVER_NAME}}", &escape_html(name))
-}
-
-fn render_manifest(name: &str) -> Result<Vec<u8>, ApiError> {
-    let asset = static_assets::get("manifest.webmanifest")
-        .ok_or_else(|| ApiError::Internal("PWA manifest asset is unavailable".to_string()))?;
-    let mut manifest: JsonValue = serde_json::from_slice(asset.body)
-        .map_err(|error| ApiError::Internal(format!("PWA manifest is invalid: {error}")))?;
-    manifest["name"] = JsonValue::String(name.to_string());
-    manifest["short_name"] = JsonValue::String(name.to_string());
-    serde_json::to_vec_pretty(&manifest)
-        .map_err(|error| ApiError::Internal(format!("PWA manifest failed to encode: {error}")))
-}
-
-async fn service_worker() -> Response {
-    match static_assets::get("service-worker.js") {
-        Some(asset) => {
-            let mut response = Response::new(Body::from(asset.body));
-            response.headers_mut().insert(
-                header::CONTENT_TYPE,
-                HeaderValue::from_static(asset.content_type),
-            );
-            response
-                .headers_mut()
-                .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
-            response.headers_mut().insert(
-                HeaderName::from_static("service-worker-allowed"),
-                HeaderValue::from_static("/"),
-            );
-            response
-        }
-        None => StatusCode::NOT_FOUND.into_response(),
-    }
-}
-
-async fn asset(AxumPath(path): AxumPath<String>) -> Response {
-    match static_assets::get(&path) {
-        Some(asset) => {
-            let mut response = Response::new(Body::from(asset.body));
-            response.headers_mut().insert(
-                header::CONTENT_TYPE,
-                HeaderValue::from_static(asset.content_type),
-            );
-            response
-        }
-        None => StatusCode::NOT_FOUND.into_response(),
-    }
-}
-
-async fn health(State(state): State<ShellState>) -> Json<HealthResponse> {
-    Json(HealthResponse {
-        status: "ok",
-        build_id: env!("CAFFOLD_BUILD_ID"),
-        build_label: env!("CAFFOLD_BUILD_LABEL"),
-        build_number: env!("CAFFOLD_BUILD_NUMBER"),
-        server_name: state.server_settings.get().name,
-        root: state.fs.root().display().to_string(),
-        initial_path: state.initial_path,
-        home_path: state.home_path,
-        max_file_bytes: MAX_FILE_BYTES,
-    })
-}
-
-async fn get_server_settings(State(state): State<ShellState>) -> Json<ServerSettings> {
-    Json(state.server_settings.get())
-}
-
-async fn update_server_settings(
-    State(state): State<ShellState>,
-    Json(request): Json<UpdateServerSettingsRequest>,
-) -> Result<Json<ServerSettings>, ApiError> {
-    state
-        .server_settings
-        .update_name(&request.name)
-        .map(Json)
-        .map_err(server_settings_error)
-}
-
-fn server_settings_error(error: ServerSettingsError) -> ApiError {
-    match error {
-        ServerSettingsError::EmptyName | ServerSettingsError::NameTooLong => ApiError::BadRequest {
-            code: "invalid_server_name",
-            message: error.to_string(),
-        },
-        ServerSettingsError::Read(_)
-        | ServerSettingsError::Parse(_)
-        | ServerSettingsError::Write(_)
-        | ServerSettingsError::Encode(_) => ApiError::Internal(error.to_string()),
-    }
-}
-
-fn escape_html(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;")
 }
 
 async fn list(
