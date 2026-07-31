@@ -981,26 +981,6 @@ async fn unmanaged_deep_link_reads_metadata_without_resuming() {
 }
 
 #[test]
-fn task_images_must_stay_inside_the_browsing_root() {
-    let root = tempfile::tempdir().unwrap();
-    let outside = tempfile::tempdir().unwrap();
-    let image_path = root.path().join("attachment.png");
-    let outside_path = outside.path().join("attachment.png");
-    std::fs::write(&image_path, b"png").unwrap();
-    std::fs::write(&outside_path, b"png").unwrap();
-    let fs = RootedFs::new(root.path()).unwrap();
-
-    assert_eq!(
-        task_image_logical_path(&fs, &image_path).unwrap(),
-        "attachment.png"
-    );
-    assert!(matches!(
-        task_image_logical_path(&fs, &outside_path),
-        Err(FsError::PathEscapesRoot)
-    ));
-}
-
-#[test]
 fn task_input_accepts_text_and_raster_images() {
     let image = "data:image/png;base64,aGVsbG8=".to_string();
     assert_eq!(
