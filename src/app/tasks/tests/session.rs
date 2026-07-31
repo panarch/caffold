@@ -1,4 +1,5 @@
-use super::super::*;
+use super::super::super::*;
+use super::super::{events::*, projection::*};
 use super::support::*;
 use crate::codex_thread_sessions::ThreadSessionLifecycle;
 

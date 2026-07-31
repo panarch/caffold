@@ -1,4 +1,5 @@
-use super::super::*;
+use super::super::super::*;
+use super::super::{events::*, projection::*};
 
 #[test]
 fn recognizes_structured_thread_unavailable_errors() {

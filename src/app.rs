@@ -1,9 +1,8 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     convert::Infallible,
-    future::Future,
     net::IpAddr,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -25,9 +24,18 @@ use tracing::info;
 
 mod error;
 mod shell;
+mod tasks;
 mod workspace;
 
 use error::ApiError;
+use tasks::{
+    LiveTaskEventCache, TaskEventRecord, TaskEvents, TaskRecord, accepted_user_message_event,
+    apply_canonical_turn_projection, event_id_from_params, merge_task_event_records, now_ms,
+    publish_task_event, resolve_task_cwds, resolve_thread_cwd, seconds_to_ms_value,
+    sort_task_events, task_activity_ms, task_event_from_item_lifecycle,
+    task_event_from_raw_response_item, task_event_record, task_record_from_thread, thread_events,
+    thread_list_response_with_resolved, thread_with_turns,
+};
 
 use crate::{
     codex_app_server::{
@@ -39,7 +47,6 @@ use crate::{
         CodexThreadSessions, PromptTarget, ThreadSessionSnapshot, ThreadSessionsDiagnostics,
     },
     fs::{MAX_IMAGE_BYTES, RootedFs},
-    git,
     server_settings::ServerSettingsStore,
     task_rollout::{TaskRolloutMonitor, TaskRolloutSignal, TaskRolloutSubscription},
     thread_store::{ManagedThread, ThreadStore, ThreadStoreError},
@@ -53,7 +60,6 @@ const TASK_SYNC_DEBOUNCE: Duration = Duration::from_millis(600);
 const TASK_SYNC_MAX_LATENCY: Duration = Duration::from_secs(2);
 const TASK_SYNC_RETRY_BASE: Duration = Duration::from_secs(2);
 const TASK_SYNC_MAX_RETRIES: u8 = 3;
-const TASK_CWD_RESOLVE_CONCURRENCY: usize = 8;
 const TASK_CANONICAL_READ_CONCURRENCY: usize = 8;
 
 #[derive(Debug, Clone)]
@@ -71,13 +77,12 @@ struct TaskState {
     codex_threads: Arc<CodexThreadRuntime>,
     codex_sessions: CodexThreadSessions,
     pending_approvals: Arc<AsyncMutex<HashMap<String, PendingApproval>>>,
-    task_events: broadcast::Sender<TaskEventRecord>,
+    task_events: TaskEvents,
     task_sync: TaskSyncCoordinator,
     task_sync_events: broadcast::Sender<TaskDetailSync>,
     task_list_removals: broadcast::Sender<TaskListRemoval>,
     task_list_updates: broadcast::Sender<TaskRecord>,
     thread_store: ThreadStore,
-    live_task_events: LiveTaskEventCache,
     task_rollouts: TaskRolloutMonitor,
     shutdown: broadcast::Sender<()>,
 }
@@ -89,7 +94,7 @@ impl TaskState {
         shutdown: broadcast::Sender<()>,
         thread_store: ThreadStore,
     ) -> Self {
-        let (task_events, _) = broadcast::channel(256);
+        let task_events = TaskEvents::default();
         let task_sync = TaskSyncCoordinator::new();
         let (task_sync_events, _) = broadcast::channel(64);
         let (task_list_removals, _) = broadcast::channel(64);
@@ -107,7 +112,6 @@ impl TaskState {
             task_list_removals,
             task_list_updates,
             thread_store,
-            live_task_events: LiveTaskEventCache::default(),
             task_rollouts,
             shutdown,
         }
@@ -473,152 +477,6 @@ struct TaskApprovalRequest {
 struct TaskListResponse {
     tasks: Vec<TaskRecord>,
     next_cursor: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-struct TaskRecord {
-    id: String,
-    thread_id: String,
-    title: String,
-    preview: String,
-    thread_status: ThreadStatus,
-    latest_turn_status: Option<TurnStatus>,
-    active_turn: Option<TaskActiveTurn>,
-    cwd: String,
-    cwd_path: Option<String>,
-    relative_cwd: String,
-    worktree: Option<TaskWorktreeContext>,
-    created_ms: u64,
-    updated_ms: u64,
-    recency_ms: Option<u64>,
-    last_event_summary: Option<String>,
-    unseen: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-struct TaskActiveTurn {
-    id: String,
-    started_at_ms: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-struct TaskWorktreeContext {
-    root_path: String,
-    repository_root_path: String,
-    branch: Option<String>,
-    head_sha: String,
-    relative_cwd: String,
-    linked: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ResolvedTaskCwd {
-    canonical_cwd: PathBuf,
-    logical_cwd: Option<String>,
-    worktree: Option<TaskWorktreeContext>,
-    worktree_root: Option<PathBuf>,
-    repository_common_dir: Option<PathBuf>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-struct TaskEventRecord {
-    id: String,
-    thread_id: String,
-    #[serde(rename = "type")]
-    event_type: String,
-    summary: String,
-    payload: Option<JsonValue>,
-    created_ms: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    updated_ms: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    sort_index: Option<u32>,
-}
-
-#[derive(Clone, Default)]
-struct LiveTaskEventCache {
-    events: Arc<Mutex<HashMap<String, Vec<TaskEventRecord>>>>,
-}
-
-const LIVE_TASK_EVENT_LIMIT_PER_THREAD: usize = 256;
-const LIVE_TASK_THREAD_LIMIT: usize = 128;
-
-impl LiveTaskEventCache {
-    fn observe(&self, events: &[TaskEventRecord]) {
-        for event in events {
-            self.record(event.clone());
-        }
-    }
-
-    fn record(&self, mut event: TaskEventRecord) -> TaskEventRecord {
-        let Ok(mut events) = self.events.lock() else {
-            return event;
-        };
-        let thread_id = event.thread_id.clone();
-        if !events.contains_key(&thread_id) && events.len() >= LIVE_TASK_THREAD_LIMIT {
-            let oldest_thread = events
-                .iter()
-                .min_by_key(|(_, items)| {
-                    items
-                        .iter()
-                        .map(|item| item.updated_ms.unwrap_or(item.created_ms))
-                        .max()
-                        .unwrap_or_default()
-                })
-                .map(|(thread_id, _)| thread_id.clone());
-            if let Some(oldest_thread) = oldest_thread {
-                events.remove(&oldest_thread);
-            }
-        }
-        let thread_events = events.entry(thread_id).or_default();
-        if let Some(existing) = thread_events.iter_mut().find(|item| item.id == event.id) {
-            *existing = merge_task_event_record(existing.clone(), event);
-            return existing.clone();
-        }
-        if is_pending_canonical_user_message(&event)
-            && thread_events.iter().any(|canonical| {
-                !is_pending_canonical_user_message(canonical)
-                    && pending_user_message_matches(&event, canonical)
-            })
-        {
-            return event;
-        }
-        if event.event_type == "user_message"
-            && !is_pending_canonical_user_message(&event)
-            && let Some(index) = thread_events
-                .iter()
-                .position(|pending| pending_user_message_matches(pending, &event))
-        {
-            thread_events.remove(index);
-        }
-        if event.sort_index.is_none() {
-            event.sort_index = Some(
-                thread_events
-                    .iter()
-                    .filter(|existing| existing.created_ms == event.created_ms)
-                    .filter_map(|existing| existing.sort_index)
-                    .max()
-                    .map_or(0, |index| index.saturating_add(1)),
-            );
-        }
-        thread_events.push(event.clone());
-        if thread_events.len() > LIVE_TASK_EVENT_LIMIT_PER_THREAD {
-            thread_events.remove(0);
-        }
-        event
-    }
-
-    fn for_thread(&self, thread_id: &str) -> Vec<TaskEventRecord> {
-        self.events
-            .lock()
-            .ok()
-            .and_then(|events| events.get(thread_id).cloned())
-            .unwrap_or_default()
-    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1291,11 +1149,12 @@ async fn create_task(
             thread.thread_id
         );
     }
-    publish_task_event(
-        &state.task_events,
-        &state.live_task_events,
-        accepted_user_message_event(&thread.thread_id, &turn.turn_id, &prompt, &images),
-    );
+    state.task_events.publish(accepted_user_message_event(
+        &thread.thread_id,
+        &turn.turn_id,
+        &prompt,
+        &images,
+    ));
     Ok(Json(
         read_task_detail(&state, &connection, &thread.thread_id, None).await?,
     ))
@@ -1820,7 +1679,7 @@ fn task_event_stream(state: TaskState, thread_id: Option<String>) -> Response {
     let removal_receiver = state.task_list_removals.subscribe();
     let update_receiver = state.task_list_updates.subscribe();
     let shutdown = state.shutdown.subscribe();
-    let live_task_events = state.live_task_events.clone();
+    let live_task_events = state.task_events.cache().clone();
     let sessions = state.codex_sessions.clone();
     let stream = stream::unfold(
         (
@@ -2093,11 +1952,12 @@ async fn task_prompt(
             }
         }
     }
-    publish_task_event(
-        &state.task_events,
-        &state.live_task_events,
-        accepted_user_message_event(&thread_id, &outcome.turn_id, &prompt, &images),
-    );
+    state.task_events.publish(accepted_user_message_event(
+        &thread_id,
+        &outcome.turn_id,
+        &prompt,
+        &images,
+    ));
     Ok(Json(TaskPromptResponse {
         thread_id,
         turn_id: outcome.turn_id,
@@ -2224,7 +2084,7 @@ async fn task_approval(
         })),
         now_ms(),
     );
-    publish_task_event(&state.task_events, &state.live_task_events, event);
+    state.task_events.publish(event);
 
     Ok(Json(
         read_task_detail(&state, &connection, &thread_id, None).await?,
@@ -2437,8 +2297,8 @@ async fn task_detail_from_snapshot(
         .into_value();
     let thread = thread_with_turns(&thread, turns)?;
     let mut events = thread_events(&thread);
-    state.live_task_events.observe(&events);
-    events = merge_task_event_records(events, state.live_task_events.for_thread(&thread_id));
+    state.task_events.observe(&events);
+    events = merge_task_event_records(events, state.task_events.for_thread(&thread_id));
     let pending_approvals = pending_approval_events(state, &thread_id).await;
     events = merge_task_event_records(events, pending_approvals.clone());
     sort_task_events(&mut events);
@@ -2498,270 +2358,6 @@ async fn task_detail_from_snapshot(
     })
 }
 
-fn merge_task_event_records(
-    left: Vec<TaskEventRecord>,
-    right: Vec<TaskEventRecord>,
-) -> Vec<TaskEventRecord> {
-    let mut events = HashMap::<String, TaskEventRecord>::new();
-    for event in left {
-        events
-            .entry(event.id.clone())
-            .and_modify(|existing| {
-                *existing = merge_task_event_record(existing.clone(), event.clone());
-            })
-            .or_insert(event);
-    }
-    for event in right {
-        events
-            .entry(event.id.clone())
-            .and_modify(|existing| {
-                *existing =
-                    merge_task_event_record_at_incoming_position(existing.clone(), event.clone());
-            })
-            .or_insert(event);
-    }
-    events.into_values().collect()
-}
-
-fn merge_task_event_record(
-    existing: TaskEventRecord,
-    incoming: TaskEventRecord,
-) -> TaskEventRecord {
-    let created_ms = existing.created_ms;
-    let sort_index = existing.sort_index;
-    let existing_updated_ms = existing.updated_ms.unwrap_or(existing.created_ms);
-    let incoming_updated_ms = incoming.updated_ms.unwrap_or(incoming.created_ms);
-    let (mut latest, earlier) = if incoming_updated_ms >= existing_updated_ms {
-        (incoming, existing)
-    } else {
-        (existing, incoming)
-    };
-    latest.payload = match (earlier.payload, latest.payload.take()) {
-        (Some(JsonValue::Object(mut earlier)), Some(JsonValue::Object(latest))) => {
-            earlier.extend(latest);
-            Some(JsonValue::Object(earlier))
-        }
-        (Some(earlier), None) => Some(earlier),
-        (_, latest) => latest,
-    };
-    latest.created_ms = created_ms;
-    latest.sort_index = sort_index;
-    let updated_ms = existing_updated_ms.max(incoming_updated_ms);
-    latest.updated_ms = (updated_ms > created_ms).then_some(updated_ms);
-    latest
-}
-
-fn merge_task_event_record_at_incoming_position(
-    existing: TaskEventRecord,
-    incoming: TaskEventRecord,
-) -> TaskEventRecord {
-    let created_ms = incoming.created_ms;
-    let sort_index = incoming.sort_index;
-    let mut merged = merge_task_event_record(existing, incoming);
-    merged.created_ms = created_ms;
-    merged.sort_index = sort_index;
-    merged
-}
-
-fn sort_task_events(events: &mut [TaskEventRecord]) {
-    events.sort_by(|left, right| {
-        left.created_ms
-            .cmp(&right.created_ms)
-            .then_with(|| {
-                left.sort_index
-                    .unwrap_or(u32::MAX)
-                    .cmp(&right.sort_index.unwrap_or(u32::MAX))
-            })
-            .then_with(|| left.id.cmp(&right.id))
-    });
-}
-
-fn thread_with_turns(thread: &JsonValue, turns: Vec<JsonValue>) -> Result<JsonValue, ApiError> {
-    let mut thread = thread.clone();
-    let Some(object) = thread.as_object_mut() else {
-        return Err(ApiError::CodexThread(
-            "thread/read response did not include a thread object".to_string(),
-        ));
-    };
-    object.insert("turns".to_string(), JsonValue::Array(turns));
-    Ok(thread)
-}
-
-#[cfg(test)]
-fn thread_list_response(fs: &RootedFs, response: &JsonValue) -> Vec<TaskRecord> {
-    let mut resolved_cwds = HashMap::<String, Option<ResolvedTaskCwd>>::new();
-    for cwd in response
-        .get("data")
-        .and_then(JsonValue::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(thread_cwd)
-    {
-        resolved_cwds
-            .entry(cwd.to_string())
-            .or_insert_with(|| resolve_task_cwd(fs, cwd));
-    }
-    thread_list_response_with_resolved(response, &resolved_cwds)
-}
-
-async fn resolve_task_cwds(
-    fs: Arc<RootedFs>,
-    response: &JsonValue,
-) -> HashMap<String, Option<ResolvedTaskCwd>> {
-    let mut cwds = response
-        .get("data")
-        .and_then(JsonValue::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(thread_cwd)
-        .map(ToOwned::to_owned)
-        .collect::<Vec<_>>();
-    cwds.sort();
-    cwds.dedup();
-
-    resolve_task_cwds_with(cwds, move |cwd| {
-        let fs = fs.clone();
-        async move {
-            let resolve_cwd = cwd.clone();
-            let resolved =
-                tokio::task::spawn_blocking(move || resolve_task_cwd(fs.as_ref(), &resolve_cwd))
-                    .await
-                    .ok()
-                    .flatten();
-            (cwd, resolved)
-        }
-    })
-    .await
-}
-
-async fn resolve_task_cwds_with<T, F, Fut>(
-    cwds: Vec<String>,
-    resolver: F,
-) -> HashMap<String, Option<T>>
-where
-    T: Send,
-    F: Fn(String) -> Fut,
-    Fut: Future<Output = (String, Option<T>)>,
-{
-    stream::iter(cwds)
-        .map(resolver)
-        .buffer_unordered(TASK_CWD_RESOLVE_CONCURRENCY)
-        .collect()
-        .await
-}
-
-fn thread_list_response_with_resolved(
-    response: &JsonValue,
-    resolved_cwds: &HashMap<String, Option<ResolvedTaskCwd>>,
-) -> Vec<TaskRecord> {
-    let mut tasks = response
-        .get("data")
-        .and_then(JsonValue::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|thread| {
-            let resolved_cwd = thread_cwd(thread)
-                .and_then(|cwd| resolved_cwds.get(cwd))
-                .and_then(Option::as_ref);
-            task_record_from_thread(thread, &[], resolved_cwd).ok()
-        })
-        .collect::<Vec<_>>();
-    tasks.sort_by(|left, right| {
-        right
-            .recency_ms
-            .unwrap_or(right.updated_ms)
-            .cmp(&left.recency_ms.unwrap_or(left.updated_ms))
-            .then_with(|| right.updated_ms.cmp(&left.updated_ms))
-    });
-    tasks
-}
-
-fn task_record_from_thread(
-    thread: &JsonValue,
-    events: &[TaskEventRecord],
-    resolved_cwd: Option<&ResolvedTaskCwd>,
-) -> Result<TaskRecord, ApiError> {
-    let thread_id = thread_id(thread).ok_or_else(|| ApiError::BadRequest {
-        code: "thread_id_missing",
-        message: "Codex thread did not include an id".to_string(),
-    })?;
-    let cwd = thread_cwd(thread).unwrap_or("").to_string();
-    let title = non_empty_string(thread.get("name").and_then(JsonValue::as_str))
-        .or_else(|| non_empty_string(thread.get("preview").and_then(JsonValue::as_str)))
-        .unwrap_or_else(|| format!("Thread {}", short_thread_id(thread_id)));
-    let preview = thread
-        .get("preview")
-        .and_then(JsonValue::as_str)
-        .unwrap_or("")
-        .to_string();
-    let thread_status = decode_thread_status(thread.get("status"))?;
-    let last_event_summary = events
-        .last()
-        .map(|event| event.summary.clone())
-        .or_else(|| non_empty_string(Some(&preview)));
-    Ok(TaskRecord {
-        id: thread_id.to_string(),
-        thread_id: thread_id.to_string(),
-        title,
-        preview,
-        thread_status,
-        latest_turn_status: None,
-        active_turn: None,
-        cwd_path: resolved_cwd.and_then(|resolved| resolved.logical_cwd.clone()),
-        relative_cwd: resolved_cwd
-            .and_then(|resolved| resolved.logical_cwd.clone())
-            .unwrap_or_else(|| cwd.clone()),
-        worktree: resolved_cwd.and_then(|resolved| resolved.worktree.clone()),
-        cwd,
-        created_ms: seconds_to_ms(thread.get("createdAt").and_then(JsonValue::as_f64)),
-        updated_ms: seconds_to_ms(thread.get("updatedAt").and_then(JsonValue::as_f64)),
-        recency_ms: thread
-            .get("recencyAt")
-            .and_then(JsonValue::as_f64)
-            .map(seconds_to_ms_value),
-        last_event_summary,
-        unseen: false,
-    })
-}
-
-fn apply_canonical_turn_projection(
-    task: &mut TaskRecord,
-    thread: &JsonValue,
-) -> Result<(), ApiError> {
-    let turns = thread
-        .get("turns")
-        .and_then(JsonValue::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or_default();
-    task.latest_turn_status = turns
-        .last()
-        .map(|turn| decode_turn_status(turn.get("status")))
-        .transpose()?;
-    task.active_turn = if matches!(task.thread_status, ThreadStatus::Active { .. }) {
-        turns
-            .last()
-            .filter(|turn| {
-                turn.get("status").and_then(JsonValue::as_str) == Some("inProgress")
-                    && turn.get("id").and_then(JsonValue::as_str).is_some()
-            })
-            .map(|turn| TaskActiveTurn {
-                id: turn
-                    .get("id")
-                    .and_then(JsonValue::as_str)
-                    .expect("active turn was checked above")
-                    .to_string(),
-                started_at_ms: turn
-                    .get("startedAt")
-                    .and_then(JsonValue::as_f64)
-                    .map(seconds_to_ms_value)
-                    .filter(|value| *value > 0),
-            })
-    } else {
-        None
-    };
-    Ok(())
-}
-
 fn managed_thread_from_task_record(
     task: &TaskRecord,
     model: Option<String>,
@@ -2775,117 +2371,10 @@ fn managed_thread_from_task_record(
     )
 }
 
-fn task_activity_ms(task: &TaskRecord) -> u64 {
-    task.recency_ms
-        .unwrap_or_else(|| task.updated_ms.max(task.created_ms))
-}
-
 fn task_rollout_monitor(task_sync: TaskSyncCoordinator) -> TaskRolloutMonitor {
     TaskRolloutMonitor::new(move |thread_id, signal| {
         task_sync.observe_rollout_signal(thread_id, signal)
     })
-}
-
-fn thread_events(thread: &JsonValue) -> Vec<TaskEventRecord> {
-    let Some(thread_id) = thread_id(thread) else {
-        return Vec::new();
-    };
-    let mut events = Vec::new();
-    let thread_created_ms = seconds_to_ms(thread.get("createdAt").and_then(JsonValue::as_f64));
-    let thread_activity_ms = thread
-        .get("recencyAt")
-        .and_then(JsonValue::as_f64)
-        .or_else(|| thread.get("updatedAt").and_then(JsonValue::as_f64))
-        .map(seconds_to_ms_value)
-        .unwrap_or(thread_created_ms)
-        .max(thread_created_ms);
-    let turns = thread
-        .get("turns")
-        .and_then(JsonValue::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or_default();
-    let mut previous_turn_ms = thread_created_ms.saturating_sub(1);
-    for (turn_index, turn) in turns.iter().enumerate() {
-        let turn_id = turn.get("id").and_then(JsonValue::as_str).unwrap_or("turn");
-        let canonical_started_ms = turn
-            .get("startedAt")
-            .and_then(JsonValue::as_f64)
-            .map(seconds_to_ms_value)
-            .filter(|value| *value > 0);
-        let canonical_completed_ms = turn
-            .get("completedAt")
-            .and_then(JsonValue::as_f64)
-            .map(seconds_to_ms_value)
-            .filter(|value| *value > 0);
-        let minimum_turn_ms = if turn_index == 0 {
-            thread_created_ms
-        } else {
-            previous_turn_ms.saturating_add(1)
-        };
-        let fallback_ms = canonical_completed_ms.unwrap_or_else(|| {
-            if turn_index + 1 == turns.len() {
-                thread_activity_ms
-            } else {
-                minimum_turn_ms
-            }
-        });
-        let timeline_ms = canonical_started_ms
-            .unwrap_or(fallback_ms)
-            .max(minimum_turn_ms);
-        if canonical_started_ms.is_some() {
-            let mut started = task_event_record(
-                thread_id,
-                &format!("{turn_id}:started"),
-                "turn_started",
-                "Turn started",
-                Some(json!({ "threadId": thread_id, "turnId": turn_id })),
-                timeline_ms,
-            );
-            started.sort_index = Some(0);
-            events.push(started);
-        }
-        for (index, item) in turn
-            .get("items")
-            .and_then(JsonValue::as_array)
-            .into_iter()
-            .flatten()
-            .enumerate()
-        {
-            let params = json!({
-                "threadId": thread_id,
-                "turnId": turn_id,
-                "item": item
-            });
-            if let Some(mut event) = task_event_from_thread_item(thread_id, timeline_ms, &params) {
-                event.sort_index = Some(u32::try_from(index).unwrap_or(u32::MAX).saturating_add(1));
-                events.push(event);
-            }
-        }
-        if let Some(completed_ms) = canonical_completed_ms {
-            let status = turn
-                .get("status")
-                .and_then(JsonValue::as_str)
-                .unwrap_or("completed");
-            let summary = match status {
-                "failed" => "Turn failed",
-                "interrupted" => "Turn interrupted",
-                "completed" => "Turn completed",
-                _ => "Turn updated",
-            };
-            events.push(task_event_record(
-                thread_id,
-                &format!("{turn_id}:completed"),
-                "turn_completed",
-                summary,
-                Some(json!({ "threadId": thread_id, "turnId": turn_id, "status": status })),
-                completed_ms.max(timeline_ms),
-            ));
-            previous_turn_ms = completed_ms.max(timeline_ms);
-        } else {
-            previous_turn_ms = timeline_ms;
-        }
-    }
-    events
 }
 
 async fn pending_approval_events(state: &TaskState, thread_id: &str) -> Vec<TaskEventRecord> {
@@ -2920,126 +2409,6 @@ async fn pending_approval_events(state: &TaskState, thread_id: &str) -> Vec<Task
         .collect()
 }
 
-fn task_event_record(
-    thread_id: &str,
-    event_id: &str,
-    event_type: &str,
-    summary: &str,
-    payload: Option<JsonValue>,
-    created_ms: u64,
-) -> TaskEventRecord {
-    TaskEventRecord {
-        id: format!("{thread_id}:{event_id}"),
-        thread_id: thread_id.to_string(),
-        event_type: event_type.to_string(),
-        summary: summary.to_string(),
-        payload,
-        created_ms,
-        updated_ms: None,
-        sort_index: None,
-    }
-}
-
-fn accepted_user_message_event(
-    thread_id: &str,
-    turn_id: &str,
-    prompt: &str,
-    images: &[String],
-) -> TaskEventRecord {
-    let content = prompt
-        .is_empty()
-        .then(Vec::new)
-        .unwrap_or_else(|| vec![json!({ "type": "text", "text": prompt })])
-        .into_iter()
-        .chain(
-            images
-                .iter()
-                .map(|url| json!({ "type": "image", "url": url })),
-        )
-        .collect::<Vec<_>>();
-    task_event_record(
-        thread_id,
-        &format!("{turn_id}:accepted_user_message:{}", uuid::Uuid::new_v4()),
-        "user_message",
-        "User prompt",
-        Some(json!({
-            "threadId": thread_id,
-            "turnId": turn_id,
-            "text": prompt,
-            "content": content,
-            "pendingCanonical": true,
-        })),
-        now_ms(),
-    )
-}
-
-fn is_pending_canonical_user_message(event: &TaskEventRecord) -> bool {
-    event.event_type == "user_message"
-        && event
-            .payload
-            .as_ref()
-            .and_then(|payload| payload.get("pendingCanonical"))
-            .and_then(JsonValue::as_bool)
-            .unwrap_or(false)
-}
-
-fn pending_user_message_matches(pending: &TaskEventRecord, canonical: &TaskEventRecord) -> bool {
-    if !is_pending_canonical_user_message(pending) || canonical.event_type != "user_message" {
-        return false;
-    }
-    let Some(pending_payload) = pending.payload.as_ref() else {
-        return false;
-    };
-    let Some(canonical_payload) = canonical.payload.as_ref() else {
-        return false;
-    };
-    pending_payload.get("turnId").and_then(JsonValue::as_str)
-        == canonical_payload.get("turnId").and_then(JsonValue::as_str)
-        && user_message_event_text(pending_payload) == user_message_event_text(canonical_payload)
-        && user_message_event_images(pending_payload)
-            == user_message_event_images(canonical_payload)
-}
-
-fn user_message_event_text(payload: &JsonValue) -> String {
-    payload
-        .get("text")
-        .and_then(JsonValue::as_str)
-        .unwrap_or_default()
-        .trim()
-        .to_string()
-}
-
-fn user_message_event_images(payload: &JsonValue) -> Vec<String> {
-    payload
-        .get("content")
-        .and_then(JsonValue::as_array)
-        .into_iter()
-        .flatten()
-        .filter(|item| {
-            matches!(
-                item.get("type").and_then(JsonValue::as_str),
-                Some("image" | "localImage")
-            )
-        })
-        .map(|item| {
-            item.get("url")
-                .or_else(|| item.get("path"))
-                .and_then(JsonValue::as_str)
-                .unwrap_or_default()
-                .to_string()
-        })
-        .collect()
-}
-
-fn turn_item_event_id(turn_id: Option<&str>, item_id: Option<&str>, fallback: &str) -> String {
-    match (turn_id, item_id) {
-        (Some(turn_id), Some(item_id)) => format!("{turn_id}:{item_id}"),
-        (Some(turn_id), None) => format!("{turn_id}:{fallback}"),
-        (None, Some(item_id)) => item_id.to_string(),
-        (None, None) => fallback.to_string(),
-    }
-}
-
 struct CodexThreadBridgeContext {
     state: TaskState,
 }
@@ -3072,15 +2441,15 @@ fn spawn_codex_thread_bridge(
                                 .apply_notification(generation, &notification)
                                 .await;
                             expire_stale_approvals_for_notification(
-                                &context.state.task_events,
-                                &context.state.live_task_events,
+                                context.state.task_events.publisher(),
+                                context.state.task_events.cache(),
                                 &context.state.pending_approvals,
                                 &notification,
                             )
                             .await;
                             handle_codex_notification(
-                                &context.state.task_events,
-                                &context.state.live_task_events,
+                                context.state.task_events.publisher(),
+                                context.state.task_events.cache(),
                                 notification,
                             );
                             if revision.is_some()
@@ -3102,8 +2471,8 @@ fn spawn_codex_thread_bridge(
                         }
                         CodexRuntimeEvent::ServerRequest(request) => {
                             handle_codex_server_request(
-                                &context.state.task_events,
-                                &context.state.live_task_events,
+                                context.state.task_events.publisher(),
+                                context.state.task_events.cache(),
                                 &context.state.pending_approvals,
                                 request,
                             )
@@ -3282,440 +2651,6 @@ fn handle_codex_notification(
     }
 }
 
-fn publish_task_event(
-    task_events: &broadcast::Sender<TaskEventRecord>,
-    live_task_events: &LiveTaskEventCache,
-    event: TaskEventRecord,
-) {
-    let event = live_task_events.record(event);
-    let _ = task_events.send(event);
-}
-
-fn task_event_from_item_lifecycle(
-    thread_id: &str,
-    created_ms: u64,
-    params: &JsonValue,
-    lifecycle: &str,
-) -> Option<TaskEventRecord> {
-    let event = task_event_from_thread_item(thread_id, created_ms, params)
-        .or_else(|| task_event_from_item_activity(thread_id, created_ms, params, lifecycle))?;
-    Some(with_item_lifecycle(event, lifecycle))
-}
-
-fn with_item_lifecycle(mut event: TaskEventRecord, lifecycle: &str) -> TaskEventRecord {
-    if let Some(JsonValue::Object(payload)) = event.payload.as_mut() {
-        payload.insert("lifecycle".to_string(), json!(lifecycle));
-    }
-    event
-}
-
-fn task_event_from_item_activity(
-    thread_id: &str,
-    created_ms: u64,
-    params: &JsonValue,
-    lifecycle: &str,
-) -> Option<TaskEventRecord> {
-    let item = params.get("item")?;
-    let item_type = item.get("type").and_then(JsonValue::as_str)?;
-    let item_id = item.get("id").and_then(JsonValue::as_str)?;
-    let turn_id = params.get("turnId").and_then(JsonValue::as_str);
-    let started = lifecycle == "started";
-    let summary = match item_type {
-        "reasoning" => {
-            if started {
-                "Thinking"
-            } else {
-                "Thought"
-            }
-        }
-        "agentMessage" => {
-            if started {
-                "Preparing response"
-            } else {
-                "Response ready"
-            }
-        }
-        "plan" => {
-            if started {
-                "Updating plan"
-            } else {
-                "Plan updated"
-            }
-        }
-        "mcpToolCall" | "dynamicToolCall" => {
-            if started {
-                "Calling tool"
-            } else {
-                "Tool completed"
-            }
-        }
-        "collabAgentToolCall" => {
-            if started {
-                "Working with agent"
-            } else {
-                "Agent work completed"
-            }
-        }
-        "webSearch" => {
-            if started {
-                "Searching the web"
-            } else {
-                "Web search completed"
-            }
-        }
-        "imageView" => {
-            if started {
-                "Viewing image"
-            } else {
-                "Image viewed"
-            }
-        }
-        "sleep" => {
-            if started {
-                "Waiting"
-            } else {
-                "Wait completed"
-            }
-        }
-        _ => {
-            if started {
-                "Working"
-            } else {
-                "Work completed"
-            }
-        }
-    };
-    let event_id = turn_item_event_id(turn_id, Some(item_id), "work_status");
-    Some(task_event_record(
-        thread_id,
-        &event_id,
-        "work_status",
-        summary,
-        Some(json!({
-            "threadId": thread_id,
-            "turnId": turn_id,
-            "itemId": item_id,
-            "itemType": item_type,
-            "lifecycle": lifecycle,
-        })),
-        created_ms,
-    ))
-}
-
-fn task_event_from_thread_item(
-    thread_id: &str,
-    created_ms: u64,
-    params: &JsonValue,
-) -> Option<TaskEventRecord> {
-    let item = params.get("item")?;
-    let item_type = item.get("type").and_then(JsonValue::as_str)?;
-    let turn_id = params.get("turnId").and_then(JsonValue::as_str);
-    let item_id = item.get("id").and_then(JsonValue::as_str);
-
-    let (event_type, summary, payload) = match item_type {
-        "userMessage" => {
-            let text = user_message_text(item).unwrap_or_default();
-            if text.is_empty() && !user_message_has_images(item) {
-                return None;
-            }
-            (
-                "user_message",
-                "User prompt".to_string(),
-                json!({
-                    "threadId": thread_id,
-                    "turnId": turn_id,
-                    "itemId": item_id,
-                    "text": text,
-                    "content": item.get("content"),
-                }),
-            )
-        }
-        "agentMessage" => {
-            let text = non_empty_string(item.get("text").and_then(JsonValue::as_str))?;
-            (
-                "assistant_message",
-                "Assistant response".to_string(),
-                json!({
-                    "threadId": thread_id,
-                    "turnId": turn_id,
-                    "itemId": item_id,
-                    "phase": item.get("phase").and_then(JsonValue::as_str),
-                    "text": text,
-                }),
-            )
-        }
-        "reasoning" => {
-            let summary = string_array(item.get("summary"));
-            let content = string_array(item.get("content"));
-            if summary.is_empty() && content.is_empty() {
-                return None;
-            }
-            (
-                "reasoning",
-                reasoning_event_summary(&summary, &content),
-                json!({
-                    "threadId": thread_id,
-                    "turnId": turn_id,
-                    "itemId": item_id,
-                    "summary": summary,
-                    "content": content,
-                }),
-            )
-        }
-        "plan" => {
-            let text = non_empty_string(item.get("text").and_then(JsonValue::as_str))?;
-            (
-                "plan",
-                "Plan updated".to_string(),
-                json!({
-                    "threadId": thread_id,
-                    "turnId": turn_id,
-                    "itemId": item_id,
-                    "text": text,
-                }),
-            )
-        }
-        "commandExecution" => (
-            "command_execution",
-            command_execution_summary(item),
-            json!({
-                "threadId": thread_id,
-                "turnId": turn_id,
-                "itemId": item_id,
-                "command": item.get("command").and_then(JsonValue::as_str),
-                "cwd": item.get("cwd").and_then(JsonValue::as_str),
-                "status": item.get("status").and_then(JsonValue::as_str),
-                "aggregatedOutput": item.get("aggregatedOutput").and_then(JsonValue::as_str),
-                "exitCode": item.get("exitCode"),
-                "durationMs": item.get("durationMs"),
-            }),
-        ),
-        "fileChange" => {
-            let change_count = item
-                .get("changes")
-                .and_then(JsonValue::as_array)
-                .map(Vec::len)
-                .unwrap_or(0);
-            (
-                "file_change",
-                format!("File changes: {change_count}"),
-                json!({
-                    "threadId": thread_id,
-                    "turnId": turn_id,
-                    "itemId": item_id,
-                    "changeCount": change_count,
-                    "status": item.get("status").and_then(JsonValue::as_str),
-                    "changes": item.get("changes"),
-                }),
-            )
-        }
-        _ => return None,
-    };
-    let event_id = turn_item_event_id(turn_id, item_id, event_type);
-    Some(task_event_record(
-        thread_id,
-        &event_id,
-        event_type,
-        &summary,
-        Some(payload),
-        created_ms,
-    ))
-}
-
-fn task_event_from_raw_response_item(
-    thread_id: &str,
-    created_ms: u64,
-    params: &JsonValue,
-) -> Option<TaskEventRecord> {
-    let item = params.get("item")?;
-    let item_type = item.get("type").and_then(JsonValue::as_str)?;
-    let turn_id = params.get("turnId").and_then(JsonValue::as_str);
-    let item_id = item.get("id").and_then(JsonValue::as_str);
-
-    let (event_type, summary, payload) = match item_type {
-        "message" => {
-            let role = item.get("role").and_then(JsonValue::as_str).unwrap_or("");
-            if role != "assistant" {
-                return None;
-            }
-            let text = response_content_text(item.get("content"))?;
-            (
-                "assistant_message",
-                "Assistant response".to_string(),
-                json!({
-                    "threadId": thread_id,
-                    "turnId": turn_id,
-                    "itemId": item_id,
-                    "phase": item.get("phase").and_then(JsonValue::as_str),
-                    "text": text,
-                }),
-            )
-        }
-        "reasoning" => {
-            let summary = reasoning_response_summary(item.get("summary"));
-            let content = reasoning_response_content(item.get("content"));
-            if summary.is_empty() && content.is_empty() {
-                return None;
-            }
-            (
-                "reasoning",
-                reasoning_event_summary(&summary, &content),
-                json!({
-                    "threadId": thread_id,
-                    "turnId": turn_id,
-                    "itemId": item_id,
-                    "summary": summary,
-                    "content": content,
-                }),
-            )
-        }
-        _ => return None,
-    };
-    let event_id = turn_item_event_id(turn_id, item_id, event_type);
-    Some(task_event_record(
-        thread_id,
-        &event_id,
-        event_type,
-        &summary,
-        Some(payload),
-        created_ms,
-    ))
-}
-
-fn user_message_text(item: &JsonValue) -> Option<String> {
-    let content = item.get("content")?.as_array()?;
-    let text = content
-        .iter()
-        .filter_map(
-            |entry| match entry.get("type").and_then(JsonValue::as_str) {
-                Some("text" | "input_text") => entry.get("text").and_then(JsonValue::as_str),
-                _ => None,
-            },
-        )
-        .collect::<Vec<_>>()
-        .join("\n\n");
-    non_empty_string(Some(strip_ambient_browser_context(&text)))
-}
-
-fn strip_ambient_browser_context(text: &str) -> &str {
-    const LEGACY_PREFIX: &str =
-        "This block is automatically supplied ambient UI state, not part of the user's request.";
-    const STRUCTURED_PREFIX: &str = "<in-app-browser-context source=\"ambient-ui-state\">";
-    let trimmed = text.trim_start();
-    let ambient_start = trimmed
-        .find(STRUCTURED_PREFIX)
-        .or_else(|| trimmed.find(LEGACY_PREFIX));
-    let Some(ambient_start) = ambient_start else {
-        return text;
-    };
-    let ambient = &trimmed[ambient_start..];
-
-    for marker in ["## My request for Codex:", "My request for Codex:"] {
-        if let Some(start) = ambient.rfind(marker) {
-            let request = ambient[start + marker.len()..].trim();
-            if !request.is_empty() {
-                return request;
-            }
-        }
-    }
-    text
-}
-
-fn user_message_has_images(item: &JsonValue) -> bool {
-    item.get("content")
-        .and_then(JsonValue::as_array)
-        .is_some_and(|content| {
-            content.iter().any(|entry| {
-                matches!(
-                    entry.get("type").and_then(JsonValue::as_str),
-                    Some("image" | "localImage")
-                )
-            })
-        })
-}
-
-fn response_content_text(content: Option<&JsonValue>) -> Option<String> {
-    let content = content?.as_array()?;
-    let text = content
-        .iter()
-        .filter_map(
-            |entry| match entry.get("type").and_then(JsonValue::as_str) {
-                Some("output_text") => entry.get("text").and_then(JsonValue::as_str),
-                _ => None,
-            },
-        )
-        .collect::<Vec<_>>()
-        .join("\n\n");
-    non_empty_string(Some(&text))
-}
-
-fn reasoning_response_summary(summary: Option<&JsonValue>) -> Vec<String> {
-    let Some(summary) = summary.and_then(JsonValue::as_array) else {
-        return Vec::new();
-    };
-    summary
-        .iter()
-        .filter_map(
-            |entry| match entry.get("type").and_then(JsonValue::as_str) {
-                Some("summary_text") => entry.get("text").and_then(JsonValue::as_str),
-                _ => None,
-            },
-        )
-        .filter_map(|text| non_empty_string(Some(text)))
-        .collect()
-}
-
-fn reasoning_response_content(content: Option<&JsonValue>) -> Vec<String> {
-    let Some(content) = content.and_then(JsonValue::as_array) else {
-        return Vec::new();
-    };
-    content
-        .iter()
-        .filter_map(|entry| {
-            entry.as_str().or_else(|| {
-                entry
-                    .get("text")
-                    .and_then(JsonValue::as_str)
-                    .or_else(|| entry.get("content").and_then(JsonValue::as_str))
-            })
-        })
-        .filter_map(|text| non_empty_string(Some(text)))
-        .collect()
-}
-
-fn reasoning_event_summary(summary: &[String], content: &[String]) -> String {
-    if summary.is_empty() && !content.is_empty() {
-        "Reasoning".to_string()
-    } else {
-        "Reasoning summary".to_string()
-    }
-}
-
-fn string_array(value: Option<&JsonValue>) -> Vec<String> {
-    value
-        .and_then(JsonValue::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(JsonValue::as_str)
-        .filter_map(|text| non_empty_string(Some(text)))
-        .collect()
-}
-
-fn non_empty_string(value: Option<&str>) -> Option<String> {
-    value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
-}
-
-fn command_execution_summary(item: &JsonValue) -> String {
-    let status = item
-        .get("status")
-        .and_then(JsonValue::as_str)
-        .unwrap_or("updated");
-    format!("Command {status}")
-}
-
 async fn handle_codex_server_request(
     task_events: &broadcast::Sender<TaskEventRecord>,
     live_task_events: &LiveTaskEventCache,
@@ -3867,154 +2802,10 @@ fn approval_id_from_request(request_id: &JsonValue, params: &JsonValue) -> Strin
         })
 }
 
-fn resolve_thread_cwd(fs: &RootedFs, thread: &JsonValue) -> Option<ResolvedTaskCwd> {
-    thread_cwd(thread).and_then(|cwd| resolve_task_cwd(fs, cwd))
-}
-
-fn resolve_task_cwd(fs: &RootedFs, cwd: &str) -> Option<ResolvedTaskCwd> {
-    let canonical_cwd = Path::new(cwd).canonicalize().ok()?;
-    if !canonical_cwd.is_dir() {
-        return None;
-    }
-    let logical_cwd = fs.logical_path_for_absolute(&canonical_cwd).ok();
-    if !has_git_ancestor(&canonical_cwd) {
-        return Some(ResolvedTaskCwd {
-            canonical_cwd,
-            logical_cwd,
-            worktree: None,
-            worktree_root: None,
-            repository_common_dir: None,
-        });
-    }
-    let Some(repository) = git::repository_for(&canonical_cwd) else {
-        return Some(ResolvedTaskCwd {
-            canonical_cwd,
-            logical_cwd,
-            worktree: None,
-            worktree_root: None,
-            repository_common_dir: None,
-        });
-    };
-    let root_path = fs.logical_path_for_absolute(&repository.root).ok()?;
-    let metadata = git::repository_metadata_paths(&repository);
-    let repository_root_path = metadata
-        .as_ref()
-        .and_then(|paths| {
-            if paths
-                .common_dir
-                .file_name()
-                .is_some_and(|name| name == ".git")
-            {
-                paths.common_dir.parent()
-            } else {
-                None
-            }
-        })
-        .and_then(|root| fs.logical_path_for_absolute(root).ok())
-        .unwrap_or_else(|| root_path.clone());
-    let linked = metadata
-        .as_ref()
-        .is_some_and(|paths| paths.git_dir != paths.common_dir);
-    let head_sha = git::head_sha(&repository).unwrap_or_default();
-    let branch = repository
-        .branch
-        .filter(|branch| !branch.starts_with("HEAD "));
-    let relative_cwd = canonical_cwd
-        .strip_prefix(&repository.root)
-        .ok()
-        .map(relative_path_string)
-        .unwrap_or_default();
-
-    Some(ResolvedTaskCwd {
-        canonical_cwd,
-        logical_cwd,
-        worktree: Some(TaskWorktreeContext {
-            root_path,
-            repository_root_path,
-            branch,
-            head_sha,
-            relative_cwd,
-            linked,
-        }),
-        worktree_root: Some(repository.root),
-        repository_common_dir: metadata.map(|paths| paths.common_dir),
-    })
-}
-
-fn has_git_ancestor(path: &Path) -> bool {
-    path.ancestors().any(git::has_git_marker)
-}
-
-fn thread_id(thread: &JsonValue) -> Option<&str> {
-    thread.get("id").and_then(JsonValue::as_str)
-}
-
-fn thread_cwd(thread: &JsonValue) -> Option<&str> {
-    thread.get("cwd").and_then(JsonValue::as_str)
-}
-
-fn decode_thread_status(status: Option<&JsonValue>) -> Result<ThreadStatus, ApiError> {
-    serde_json::from_value(status.cloned().ok_or_else(|| {
-        ApiError::CodexThread("Codex thread did not include a status".to_string())
-    })?)
-    .map_err(|error| ApiError::CodexThread(format!("invalid Codex thread status: {error}")))
-}
-
-fn decode_turn_status(status: Option<&JsonValue>) -> Result<TurnStatus, ApiError> {
-    serde_json::from_value(
-        status.cloned().ok_or_else(|| {
-            ApiError::CodexThread("Codex turn did not include a status".to_string())
-        })?,
-    )
-    .map_err(|error| ApiError::CodexThread(format!("invalid Codex turn status: {error}")))
-}
-
-fn seconds_to_ms(value: Option<f64>) -> u64 {
-    value.map(seconds_to_ms_value).unwrap_or(0)
-}
-
-fn seconds_to_ms_value(value: f64) -> u64 {
-    if value.is_finite() && value > 0.0 {
-        (value * 1000.0) as u64
-    } else {
-        0
-    }
-}
-
-fn event_id_from_params(prefix: &str, params: &JsonValue) -> String {
-    let turn_id = params
-        .get("turnId")
-        .or_else(|| params.pointer("/turn/id"))
-        .and_then(JsonValue::as_str)
-        .unwrap_or("turn");
-    format!("{prefix}:{turn_id}")
-}
-
-fn short_thread_id(thread_id: &str) -> &str {
-    thread_id.get(..8).unwrap_or(thread_id)
-}
-
-fn now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as u64)
-        .unwrap_or(0)
-}
-
 fn task_cwd(state: &TaskState, relative: Option<&str>) -> Result<String, ApiError> {
     let logical_path = normalize_logical_path(relative.unwrap_or(&state.default_cwd_path))?;
     let cwd = state.fs.absolute_directory_path(&logical_path)?;
     Ok(cwd.display().to_string())
-}
-
-fn relative_path_string(path: &Path) -> String {
-    path.components()
-        .filter_map(|component| match component {
-            std::path::Component::Normal(value) => value.to_str(),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("/")
 }
 
 fn normalize_logical_path(path: &str) -> Result<String, ApiError> {

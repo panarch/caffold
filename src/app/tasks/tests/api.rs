@@ -1,4 +1,5 @@
-use super::super::*;
+use super::super::super::*;
+use super::super::projection::*;
 use super::support::*;
 
 fn current_model_list_response() -> JsonValue {

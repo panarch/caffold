@@ -1,4 +1,6 @@
-use super::super::*;
+use super::super::super::*;
+use super::super::projection::*;
+use std::path::Path;
 
 pub(super) async fn task_state_with_codex_client(
     fs: RootedFs,

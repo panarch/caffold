@@ -1,4 +1,6 @@
-use super::super::*;
+use super::super::super::*;
+use super::super::{events::*, projection::*};
+use std::path::Path;
 
 fn git_is_available() -> bool {
     std::process::Command::new("git")
