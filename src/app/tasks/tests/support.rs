@@ -1,8 +1,8 @@
-use super::super::super::*;
 use super::super::projection::*;
+use super::*;
 use std::path::Path;
 
-pub(super) async fn task_state_with_codex_client(
+pub(in crate::app::tasks) async fn task_state_with_codex_client(
     fs: RootedFs,
     client: CodexThreadClient,
 ) -> TaskState {
@@ -17,11 +17,11 @@ pub(super) async fn task_state_with_codex_client(
     state
 }
 
-pub(super) async fn wait_for_mock_method(client: &CodexThreadClient, method: &str) {
+pub(in crate::app::tasks) async fn wait_for_mock_method(client: &CodexThreadClient, method: &str) {
     wait_for_mock_method_count(client, method, 1).await;
 }
 
-pub(super) async fn wait_for_mock_method_count(
+pub(in crate::app::tasks) async fn wait_for_mock_method_count(
     client: &CodexThreadClient,
     method: &str,
     expected: usize,
@@ -42,7 +42,7 @@ pub(super) async fn wait_for_mock_method_count(
     panic!("mock Codex client did not receive {expected} {method} request(s)");
 }
 
-pub(super) fn task_thread_list(thread_id: &str, cwd: &Path) -> JsonValue {
+pub(in crate::app::tasks) fn task_thread_list(thread_id: &str, cwd: &Path) -> JsonValue {
     json!({
         "data": [{
             "id": thread_id,
@@ -58,17 +58,21 @@ pub(super) fn task_thread_list(thread_id: &str, cwd: &Path) -> JsonValue {
     })
 }
 
-pub(super) async fn manage_test_thread(state: &TaskState, thread_id: &str, cwd: &Path) {
+pub(in crate::app::tasks) async fn manage_test_thread(
+    state: &TaskState,
+    thread_id: &str,
+    cwd: &Path,
+) {
     let thread = task_thread_list(thread_id, cwd)["data"][0].clone();
     let resolved = resolve_thread_cwd(&state.fs, &thread);
     let task =
         task_record_from_thread(&thread, &[], resolved.as_ref()).expect("test thread projection");
-    thread_store_claim(state, managed_thread_from_task_record(&task, None, None))
+    test_claim_task(state, &task)
         .await
         .expect("test thread is managed");
 }
 
-pub(super) fn resumed_task(thread_id: &str, cwd: &Path) -> JsonValue {
+pub(in crate::app::tasks) fn resumed_task(thread_id: &str, cwd: &Path) -> JsonValue {
     json!({
         "thread": {
             "id": thread_id,

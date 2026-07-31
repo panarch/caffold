@@ -1,6 +1,6 @@
-use super::super::super::*;
 use super::super::{detail::*, events::*, projection::*};
 use super::support::*;
+use super::*;
 use crate::codex_app_server::{ThreadStatus, TurnStatus};
 use crate::codex_thread_sessions::ThreadSessionLifecycle;
 
@@ -11,7 +11,7 @@ async fn cached_task_detail_restores_managed_thread_model_settings() {
     let client = CodexThreadClient::mock(Vec::new());
     let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
     manage_test_thread(&state, thread_id, root.path()).await;
-    thread_store_update_composer_settings(&state, thread_id, Some("gpt-5.6-sol"), Some("xhigh"))
+    test_store_update_composer_settings(&state, thread_id, Some("gpt-5.6-sol"), Some("xhigh"))
         .await
         .unwrap();
 
@@ -51,7 +51,7 @@ async fn canonical_resume_refreshes_cached_model_settings() {
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
-    thread_store_update_composer_settings(&state, thread_id, Some("gpt-5.6-sol"), Some("xhigh"))
+    test_store_update_composer_settings(&state, thread_id, Some("gpt-5.6-sol"), Some("xhigh"))
         .await
         .unwrap();
 
@@ -68,7 +68,7 @@ async fn canonical_resume_refreshes_cached_model_settings() {
 
     assert_eq!(detail.model.as_deref(), Some("gpt-5.6-luna"));
     assert_eq!(detail.reasoning_effort.as_deref(), Some("medium"));
-    let stored = thread_store_get(&state, thread_id).await.unwrap().unwrap();
+    let stored = test_store_get(&state, thread_id).await.unwrap().unwrap();
     assert_eq!(stored.model.as_deref(), Some("gpt-5.6-luna"));
     assert_eq!(stored.reasoning_effort.as_deref(), Some("medium"));
 }
@@ -127,18 +127,14 @@ async fn task_detail_returns_cached_metadata_before_slow_resume_finishes() {
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
 
-    let tasks = list_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
+    let task_count = test_load_tasks(state.clone(), None)
         .await
         .expect("task list succeeds");
-    assert_eq!(tasks.0.tasks.len(), 1);
+    assert_eq!(task_count, 1);
 
     let response = tokio::time::timeout(
         Duration::from_millis(50),
-        task_detail(
-            State(state),
-            AxumPath(thread_id.to_string()),
-            Query(TaskDetailQuery { cursor: None }),
-        ),
+        test_task_detail(state, thread_id.to_string(), None),
     )
     .await
     .expect("task detail must not await a slow thread/resume")
@@ -173,20 +169,14 @@ async fn blank_history_cursor_returns_cached_task_detail_without_app_server_wait
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
 
-    let tasks = list_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
+    let task_count = test_load_tasks(state.clone(), None)
         .await
         .expect("task list succeeds");
-    assert_eq!(tasks.0.tasks.len(), 1);
+    assert_eq!(task_count, 1);
 
     let response = tokio::time::timeout(
         Duration::from_millis(50),
-        task_detail(
-            State(state),
-            AxumPath(thread_id.to_string()),
-            Query(TaskDetailQuery {
-                cursor: Some(String::new()),
-            }),
-        ),
+        test_task_detail(state, thread_id.to_string(), Some(String::new())),
     )
     .await
     .expect("a blank cursor must not wait for app-server pagination")
@@ -245,12 +235,10 @@ async fn history_timeout_does_not_replace_cached_task_detail() {
         .await
         .expect("initial task subscription succeeds");
 
-    let error = task_detail(
-        State(state.clone()),
-        AxumPath(thread_id.to_string()),
-        Query(TaskDetailQuery {
-            cursor: Some("older-1".to_string()),
-        }),
+    let error = test_task_detail(
+        state.clone(),
+        thread_id.to_string(),
+        Some("older-1".to_string()),
     )
     .await
     .expect_err("older history request should expose its timeout");
@@ -264,11 +252,7 @@ async fn history_timeout_does_not_replace_cached_task_detail() {
 
     let response = tokio::time::timeout(
         Duration::from_millis(50),
-        task_detail(
-            State(state),
-            AxumPath(thread_id.to_string()),
-            Query(TaskDetailQuery { cursor: None }),
-        ),
+        test_task_detail(state, thread_id.to_string(), None),
     )
     .await
     .expect("cached task detail must not wait after a history timeout")
@@ -319,11 +303,7 @@ async fn task_detail_returns_cached_metadata_while_connection_is_busy() {
 
     let response = tokio::time::timeout(
         Duration::from_millis(50),
-        task_detail(
-            State(state),
-            AxumPath(thread_id.to_string()),
-            Query(TaskDetailQuery { cursor: None }),
-        ),
+        test_task_detail(state, thread_id.to_string(), None),
     )
     .await
     .expect("cached detail must not wait for app-server connection access")
@@ -355,17 +335,13 @@ async fn task_stream_starts_before_slow_resume_finishes() {
     ]);
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-    let _ = list_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
+    let _ = test_load_tasks(state.clone(), None)
         .await
         .expect("task list succeeds");
 
     let response = tokio::time::timeout(
         Duration::from_millis(50),
-        task_stream(
-            State(state),
-            AxumPath(thread_id.to_string()),
-            Query(TasksQuery { cursor: None }),
-        ),
+        test_task_stream(state, thread_id.to_string()),
     )
     .await
     .expect("task stream must not await a slow thread/resume")
@@ -408,11 +384,7 @@ async fn task_stream_starts_while_connection_is_busy() {
 
     let response = tokio::time::timeout(
         Duration::from_millis(50),
-        task_stream(
-            State(state),
-            AxumPath(thread_id.to_string()),
-            Query(TasksQuery { cursor: None }),
-        ),
+        test_task_stream(state, thread_id.to_string()),
     )
     .await
     .expect("task stream must not wait for app-server connection access")
@@ -453,11 +425,7 @@ async fn direct_task_detail_returns_loading_snapshot_while_connection_is_busy() 
 
     let response = tokio::time::timeout(
         Duration::from_millis(50),
-        task_detail(
-            State(state),
-            AxumPath(thread_id.to_string()),
-            Query(TaskDetailQuery { cursor: None }),
-        ),
+        test_task_detail(state, thread_id.to_string(), None),
     )
     .await
     .expect("direct task detail must not wait for app-server connection access")
@@ -500,11 +468,7 @@ async fn direct_task_stream_starts_while_connection_is_busy() {
 
     let response = tokio::time::timeout(
         Duration::from_millis(50),
-        task_stream(
-            State(state),
-            AxumPath(thread_id.to_string()),
-            Query(TasksQuery { cursor: None }),
-        ),
+        test_task_stream(state, thread_id.to_string()),
     )
     .await
     .expect("direct task stream must not wait for app-server connection access")
@@ -532,17 +496,13 @@ async fn resume_failure_makes_cached_task_detail_unavailable() {
     ]);
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-    let _ = list_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
+    let _ = test_load_tasks(state.clone(), None)
         .await
         .expect("task list succeeds");
 
     let response = tokio::time::timeout(
         Duration::from_millis(50),
-        task_detail(
-            State(state.clone()),
-            AxumPath(thread_id.to_string()),
-            Query(TaskDetailQuery { cursor: None }),
-        ),
+        test_task_detail(state.clone(), thread_id.to_string(), None),
     )
     .await
     .expect("task detail must not await a failed thread/resume")
@@ -558,13 +518,9 @@ async fn resume_failure_makes_cached_task_detail_unavailable() {
         .expect("cached session remains tracked");
     assert!(snapshot.thread.is_some());
     assert!(snapshot.last_error.is_some());
-    let error = task_detail(
-        State(state),
-        AxumPath(thread_id.to_string()),
-        Query(TaskDetailQuery { cursor: None }),
-    )
-    .await
-    .expect_err("stale task detail must not survive a canonical resume failure");
+    let error = test_task_detail(state, thread_id.to_string(), None)
+        .await
+        .expect_err("stale task detail must not survive a canonical resume failure");
     assert!(matches!(error, ApiError::CodexThread(_)));
 }
 
@@ -588,17 +544,13 @@ async fn resume_timeout_makes_task_detail_unavailable_but_keeps_the_connection()
     ]);
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-    let _ = list_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
+    let _ = test_load_tasks(state.clone(), None)
         .await
         .expect("task list succeeds");
 
     let first = tokio::time::timeout(
         Duration::from_millis(50),
-        task_detail(
-            State(state.clone()),
-            AxumPath(thread_id.to_string()),
-            Query(TaskDetailQuery { cursor: None }),
-        ),
+        test_task_detail(state.clone(), thread_id.to_string(), None),
     )
     .await
     .expect("task detail must not await a timed-out thread/resume")
@@ -609,13 +561,9 @@ async fn resume_timeout_makes_task_detail_unavailable_but_keeps_the_connection()
     wait_for_mock_method(&client, "thread/resume").await;
     tokio::time::sleep(Duration::from_millis(20)).await;
 
-    let second = task_detail(
-        State(state.clone()),
-        AxumPath(thread_id.to_string()),
-        Query(TaskDetailQuery { cursor: None }),
-    )
-    .await
-    .expect_err("task re-entry exposes the canonical source timeout");
+    let second = test_task_detail(state.clone(), thread_id.to_string(), None)
+        .await
+        .expect_err("task re-entry exposes the canonical source timeout");
     assert!(matches!(second, ApiError::CodexThread(_)));
 
     let snapshot = state
@@ -738,13 +686,9 @@ async fn task_detail_handler_releases_its_subscription_after_the_response() {
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
 
-    let response = task_detail(
-        State(state),
-        AxumPath(thread_id.to_string()),
-        Query(TaskDetailQuery { cursor: None }),
-    )
-    .await
-    .expect("task detail succeeds");
+    let response = test_task_detail(state, thread_id.to_string(), None)
+        .await
+        .expect("task detail succeeds");
 
     assert_eq!(response.0.thread_id, thread_id);
     assert_eq!(response.0.sync_state, TaskSyncState::Loading);
@@ -799,23 +743,13 @@ async fn task_detail_and_stream_share_one_subscription_until_the_stream_closes()
     manage_test_thread(&state, thread_id, root.path()).await;
 
     let detail_state = state.clone();
-    let detail = tokio::spawn(async move {
-        task_detail(
-            State(detail_state),
-            AxumPath(thread_id.to_string()),
-            Query(TaskDetailQuery { cursor: None }),
-        )
-        .await
-    });
+    let detail =
+        tokio::spawn(
+            async move { test_task_detail(detail_state, thread_id.to_string(), None).await },
+        );
     let stream_state = state.clone();
-    let stream = tokio::spawn(async move {
-        task_stream(
-            State(stream_state),
-            AxumPath(thread_id.to_string()),
-            Query(TasksQuery { cursor: None }),
-        )
-        .await
-    });
+    let stream =
+        tokio::spawn(async move { test_task_stream(stream_state, thread_id.to_string()).await });
 
     let detail_response = detail.await.unwrap().expect("task detail succeeds");
     let stream_response = stream.await.unwrap().expect("task stream succeeds");
@@ -889,22 +823,14 @@ async fn task_stream_reopens_while_detail_unsubscribe_is_in_flight() {
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
 
-    let _detail_response = task_detail(
-        State(state.clone()),
-        AxumPath(thread_id.to_string()),
-        Query(TaskDetailQuery { cursor: None }),
-    )
-    .await
-    .expect("task detail succeeds");
+    let _detail_response = test_task_detail(state.clone(), thread_id.to_string(), None)
+        .await
+        .expect("task detail succeeds");
     wait_for_mock_method(&client, "thread/unsubscribe").await;
 
     let stream_response = tokio::time::timeout(
         Duration::from_millis(50),
-        task_stream(
-            State(state.clone()),
-            AxumPath(thread_id.to_string()),
-            Query(TasksQuery { cursor: None }),
-        ),
+        test_task_stream(state.clone(), thread_id.to_string()),
     )
     .await
     .expect("task stream must not wait for the detail cleanup RPC")

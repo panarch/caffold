@@ -1,6 +1,6 @@
-use super::super::super::*;
 use super::super::{detail::*, projection::*, sync::*};
 use super::support::*;
+use super::*;
 use crate::codex_app_server::{ThreadStatus, TurnStatus};
 
 #[tokio::test]
@@ -64,17 +64,13 @@ async fn rollout_invalidation_never_synthesizes_thread_activity() {
     ]);
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-    let _ = list_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
+    let _ = test_load_tasks(state.clone(), None)
         .await
         .expect("task list succeeds");
 
-    let response = task_stream(
-        State(state.clone()),
-        AxumPath(thread_id.to_string()),
-        Query(TasksQuery { cursor: None }),
-    )
-    .await
-    .expect("task stream succeeds");
+    let response = test_task_stream(state.clone(), thread_id.to_string())
+        .await
+        .expect("task stream succeeds");
     wait_for_mock_method(&client, "thread/resume").await;
     state
         .task_sync
@@ -135,13 +131,9 @@ async fn background_sync_timeout_broadcasts_error_and_rejects_stale_detail() {
     assert!(sync.detail.task.is_none());
     assert!(sync.error.is_some());
 
-    let error = task_detail(
-        State(state.clone()),
-        AxumPath(thread_id.to_string()),
-        Query(TaskDetailQuery { cursor: None }),
-    )
-    .await
-    .expect_err("stale detail is rejected after a background sync timeout");
+    let error = test_task_detail(state.clone(), thread_id.to_string(), None)
+        .await
+        .expect_err("stale detail is rejected after a background sync timeout");
     assert!(matches!(error, ApiError::CodexThread(_)));
 
     let snapshot = state
