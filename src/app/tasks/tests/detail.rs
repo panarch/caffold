@@ -1,8 +1,109 @@
 use super::super::super::*;
-use super::super::{events::*, projection::*};
+use super::super::{detail::*, events::*, projection::*};
 use super::support::*;
 use crate::codex_app_server::{ThreadStatus, TurnStatus};
 use crate::codex_thread_sessions::ThreadSessionLifecycle;
+
+#[tokio::test]
+async fn cached_task_detail_restores_managed_thread_model_settings() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-cached-model-settings";
+    let client = CodexThreadClient::mock(Vec::new());
+    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+    thread_store_update_composer_settings(&state, thread_id, Some("gpt-5.6-sol"), Some("xhigh"))
+        .await
+        .unwrap();
+
+    let (detail, revision) = state.detail.cached(thread_id).await.unwrap();
+
+    assert_eq!(revision, 0);
+    assert!(detail.history_loading);
+    assert_eq!(detail.model.as_deref(), Some("gpt-5.6-sol"));
+    assert_eq!(detail.reasoning_effort.as_deref(), Some("xhigh"));
+}
+
+#[tokio::test]
+async fn canonical_resume_refreshes_cached_model_settings() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-canonical-model-settings";
+    let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+        "thread/resume",
+        json!({
+            "thread": {
+                "id": thread_id,
+                "preview": "Canonical model settings",
+                "status": { "type": "idle" },
+                "cwd": root.path().display().to_string(),
+                "createdAt": 1.0,
+                "updatedAt": 2.0,
+                "turns": []
+            },
+            "model": "gpt-5.6-luna",
+            "reasoningEffort": "medium",
+            "initialTurnsPage": {
+                "data": [],
+                "nextCursor": null,
+                "backwardsCursor": null
+            }
+        }),
+    )]);
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+    thread_store_update_composer_settings(&state, thread_id, Some("gpt-5.6-sol"), Some("xhigh"))
+        .await
+        .unwrap();
+
+    let snapshot = state
+        .codex_sessions
+        .ensure_subscribed(&client, 1, thread_id)
+        .await
+        .unwrap();
+    let detail = state
+        .detail
+        .assemble_snapshot(snapshot, None)
+        .await
+        .unwrap();
+
+    assert_eq!(detail.model.as_deref(), Some("gpt-5.6-luna"));
+    assert_eq!(detail.reasoning_effort.as_deref(), Some("medium"));
+    let stored = thread_store_get(&state, thread_id).await.unwrap().unwrap();
+    assert_eq!(stored.model.as_deref(), Some("gpt-5.6-luna"));
+    assert_eq!(stored.reasoning_effort.as_deref(), Some("medium"));
+}
+
+#[tokio::test]
+async fn canonical_snapshot_without_membership_is_not_managed() {
+    let root = tempfile::tempdir().unwrap();
+    let state = task_state_with_codex_client(
+        RootedFs::new(root.path()).unwrap(),
+        CodexThreadClient::mock(Vec::new()),
+    )
+    .await;
+    let thread = serde_json::from_value(
+        task_thread_list("thread-unmanaged", root.path())["data"][0].clone(),
+    )
+    .expect("canonical thread");
+    state.codex_sessions.observe_thread_metadata(thread).await;
+    let snapshot = state
+        .codex_sessions
+        .snapshot("thread-unmanaged")
+        .await
+        .expect("canonical snapshot");
+
+    let detail = state
+        .detail
+        .assemble_snapshot(snapshot, None)
+        .await
+        .expect("canonical detail");
+
+    assert!(!detail.managed);
+    assert_eq!(
+        detail.task.as_ref().map(|task| task.thread_id.as_str()),
+        Some("thread-unmanaged")
+    );
+}
 
 #[tokio::test]
 async fn task_detail_returns_cached_metadata_before_slow_resume_finishes() {
@@ -887,7 +988,6 @@ fn task_stream_bootstrap_replays_the_canonical_detail_snapshot() {
 
     let frames = task_stream_initial_frames(&sync)
         .into_iter()
-        .map(|frame| String::from_utf8(frame.to_vec()).unwrap())
         .collect::<Vec<_>>();
 
     assert_eq!(frames[0], ": ready\n\n");

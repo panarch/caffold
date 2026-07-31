@@ -1,5 +1,5 @@
 use super::super::super::*;
-use super::super::{events::*, projection::*};
+use super::super::{detail::*, events::*, projection::*};
 use crate::codex_app_server::{ThreadStatus, TurnStatus};
 use std::path::Path;
 
@@ -409,7 +409,7 @@ fn browser_task_status_serializes_the_canonical_wire_shape() {
 
 #[test]
 fn loading_detail_serializes_without_a_synthetic_task() {
-    let detail = loading_task_detail("thread-loading", 7, None);
+    let detail = loading_detail("thread-loading", 7, None);
     let value = serde_json::to_value(detail).unwrap();
     assert_eq!(value["threadId"], "thread-loading");
     assert_eq!(value["syncState"], "loading");

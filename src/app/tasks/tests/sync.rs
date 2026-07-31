@@ -1,5 +1,5 @@
 use super::super::super::*;
-use super::super::{projection::*, sync::*};
+use super::super::{detail::*, projection::*, sync::*};
 use super::support::*;
 use crate::codex_app_server::{ThreadStatus, TurnStatus};
 
@@ -118,7 +118,7 @@ async fn background_sync_timeout_broadcasts_error_and_rejects_stale_detail() {
 
     let _subscription = state.task_sync.subscribe(thread_id);
     let mut sync_events = state.task_sync.subscribe_updates();
-    ensure_task_sync_worker(&state).await;
+    state.detail.ensure_sync_worker().await;
     state
         .task_sync
         .observe_rollout_invalidation(thread_id.to_string());

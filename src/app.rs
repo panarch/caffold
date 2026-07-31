@@ -1,10 +1,4 @@
-use std::{
-    collections::{HashSet, VecDeque},
-    convert::Infallible,
-    net::IpAddr,
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{collections::HashSet, convert::Infallible, net::IpAddr, path::PathBuf, sync::Arc};
 
 use axum::{
     Json, Router,
@@ -18,7 +12,7 @@ use futures_util::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
 use tokio::net::TcpListener;
-use tokio::sync::{Mutex as AsyncMutex, broadcast, mpsc};
+use tokio::sync::broadcast;
 use tracing::info;
 
 #[cfg(test)]
@@ -31,12 +25,10 @@ mod workspace;
 
 use error::ApiError;
 use tasks::{
-    ApprovalResolveError, CodexConnection, CodexRuntime, CodexRuntimeSignal,
-    DeferredTaskRolloutSubscription, TaskEventRecord, TaskEvents, TaskRecord, TaskSync,
-    TaskSyncJob, TaskSyncOutcome, accepted_user_message_event, apply_canonical_turn_projection,
-    merge_task_event_records, now_ms, resolve_task_cwds, resolve_thread_cwd, sort_task_events,
-    task_activity_ms, task_record_from_thread, thread_events, thread_list_response_with_resolved,
-    thread_with_turns,
+    ApprovalResolveError, CodexConnection, CodexRuntime, DetailContext, DetailFrameStream,
+    TaskDetailResponse, TaskDetailSync, TaskEventRecord, TaskEvents, TaskRecord, TaskSync,
+    accepted_user_message_event, now_ms, resolve_task_cwds, task_activity_ms,
+    thread_list_response_with_resolved,
 };
 
 use crate::{
@@ -44,15 +36,12 @@ use crate::{
         self, CodexPermissionMode, CodexStatusResponse, CodexThreadClient, CodexThreadError,
         CodexTurnOptions,
     },
-    codex_thread_sessions::{
-        CodexThreadSessions, PromptTarget, ThreadSessionSnapshot, ThreadSessionsDiagnostics,
-    },
+    codex_thread_sessions::{CodexThreadSessions, PromptTarget, ThreadSessionsDiagnostics},
     fs::{MAX_IMAGE_BYTES, RootedFs},
     server_settings::ServerSettingsStore,
     thread_store::{ManagedThread, ThreadStore, ThreadStoreError},
 };
 
-const TASK_DETAIL_TURNS_PAGE_SIZE: usize = 8;
 const MAX_TASK_IMAGES: usize = 4;
 const MAX_TASK_REQUEST_BYTES: usize = 64 * 1024 * 1024;
 const TASK_LIST_PAGE_SIZE: usize = 30;
@@ -71,8 +60,8 @@ struct TaskState {
     fs: Arc<RootedFs>,
     default_cwd_path: String,
     codex_runtime: CodexRuntime,
-    codex_runtime_signals: Arc<AsyncMutex<Option<broadcast::Receiver<CodexRuntimeSignal>>>>,
     codex_sessions: CodexThreadSessions,
+    detail: DetailContext,
     task_events: TaskEvents,
     task_sync: TaskSync<TaskDetailSync>,
     task_list_removals: broadcast::Sender<TaskListRemoval>,
@@ -99,12 +88,29 @@ impl TaskState {
         let task_sync = TaskSync::new(shutdown.clone());
         let (task_list_removals, _) = broadcast::channel(64);
         let (task_list_updates, _) = broadcast::channel(64);
+        let removal_events = task_list_removals.clone();
+        let detail = DetailContext::new(
+            fs.clone(),
+            thread_store.clone(),
+            codex_runtime.clone(),
+            codex_runtime_signals,
+            codex_sessions.clone(),
+            task_events.clone(),
+            task_sync.clone(),
+            shutdown.clone(),
+            move |thread_id, reason| {
+                let _ = removal_events.send(TaskListRemoval {
+                    thread_id: thread_id.to_string(),
+                    reason,
+                });
+            },
+        );
         Self {
             fs,
             default_cwd_path,
             codex_runtime,
-            codex_runtime_signals: Arc::new(AsyncMutex::new(Some(codex_runtime_signals))),
             codex_sessions,
+            detail,
             task_events,
             task_sync,
             task_list_removals,
@@ -219,59 +225,10 @@ struct TaskListResponse {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct TaskDetailResponse {
-    thread_id: String,
-    sync_state: TaskSyncState,
-    managed: bool,
-    revision: u64,
-    task: Option<TaskRecord>,
-    events: Vec<TaskEventRecord>,
-    events_page: TaskEventsPage,
-    pending_approvals: Vec<TaskEventRecord>,
-    history_loading: bool,
-    permission_mode: Option<CodexPermissionMode>,
-    model: Option<String>,
-    reasoning_effort: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-enum TaskSyncState {
-    Loading,
-    Ready,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct TaskEventsPage {
-    next_cursor: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct TaskDetailSync {
-    thread_id: String,
-    revision: u64,
-    detail: TaskDetailResponse,
-    reason: &'static str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 struct TaskEventEnvelope {
     thread_id: String,
     revision: u64,
     event: TaskEventRecord,
-}
-
-fn task_stream_initial_frames(sync: &TaskDetailSync) -> VecDeque<Bytes> {
-    let payload = serde_json::to_string(sync).expect("task detail sync serializes");
-    VecDeque::from([
-        Bytes::from_static(b": ready\n\n"),
-        Bytes::from(format!("event: task-sync\ndata: {payload}\n\n")),
-    ])
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -608,7 +565,7 @@ async fn list_managed_tasks(
                     .codex_sessions
                     .observe_thread_metadata(thread.clone())
                     .await;
-                let mut task = task_record_from_codex_thread(&state, &thread)?;
+                let mut task = state.detail.record_from_codex_thread(&thread)?;
                 let activity_ms = task_activity_ms(&task);
                 task.unseen = managed.unseen(activity_ms);
                 Ok::<_, ApiError>((task, activity_ms))
@@ -830,7 +787,7 @@ async fn create_task(
     let effective_model = requested_model.or_else(|| thread.model.clone());
     let effective_reasoning_effort =
         requested_reasoning_effort.or_else(|| thread.reasoning_effort.clone());
-    let task = task_record_from_codex_thread(&state, &thread.thread)?;
+    let task = state.detail.record_from_codex_thread(&thread.thread)?;
     thread_store_claim(
         &state,
         managed_thread_from_task_record(
@@ -894,7 +851,10 @@ async fn create_task(
         &images,
     ));
     Ok(Json(
-        read_task_detail(&state, &connection, &thread.thread_id, None).await?,
+        state
+            .detail
+            .read(&connection, &thread.thread_id, None)
+            .await?,
     ))
 }
 
@@ -903,41 +863,11 @@ async fn task_detail(
     AxumPath(thread_id): AxumPath<String>,
     Query(query): Query<TaskDetailQuery>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
-    if thread_store_get(&state, &thread_id).await?.is_none() {
-        if query
-            .cursor
-            .as_deref()
-            .is_some_and(|cursor| !cursor.trim().is_empty())
-        {
-            return Err(task_not_managed_error());
-        }
-        return unmanaged_task_detail(&state, &thread_id).await.map(Json);
-    }
-    let cursor = query
-        .cursor
-        .as_deref()
-        .map(str::trim)
-        .filter(|cursor| !cursor.is_empty());
-    if let Some(cursor) = cursor {
-        let connection = require_codex_thread_connection(&state).await?;
-        let _viewer = state
-            .codex_sessions
-            .acquire_viewer(&connection.client, connection.generation, &thread_id)
-            .await?;
-        return Ok(Json(
-            read_task_detail(&state, &connection, &thread_id, Some(cursor)).await?,
-        ));
-    }
-
-    let viewer = state.codex_sessions.reserve_viewer(&thread_id).await;
-    let (detail, baseline_revision) = cached_task_detail(&state, &thread_id).await?;
-    let bootstrap_state = state.clone();
-    let bootstrap_thread_id = thread_id.clone();
-    tokio::spawn(async move {
-        bootstrap_task_session(&bootstrap_state, &bootstrap_thread_id, baseline_revision).await;
-        drop(viewer);
-    });
-    Ok(Json(detail))
+    state
+        .detail
+        .get(&thread_id, query.cursor.as_deref())
+        .await
+        .map(Json)
 }
 
 async fn continue_task(
@@ -950,7 +880,7 @@ async fn continue_task(
         .codex_sessions
         .observe_thread_metadata(thread.clone())
         .await;
-    let mut task = task_record_from_codex_thread(&state, &thread)?;
+    let mut task = state.detail.record_from_codex_thread(&thread)?;
     let managed = managed_thread_from_task_record(&task, None, None);
     thread_store_claim(&state, managed).await?;
     task.unseen = false;
@@ -971,7 +901,7 @@ async fn mark_task_seen(
         .codex_sessions
         .observe_thread_metadata(thread.clone())
         .await;
-    let mut task = task_record_from_codex_thread(&state, &thread)?;
+    let mut task = state.detail.record_from_codex_thread(&thread)?;
     let activity_ms = task_activity_ms(&task);
     let Some(managed) = thread_store_mark_seen(&state, &thread_id, activity_ms).await? else {
         return Err(task_not_managed_error());
@@ -979,38 +909,6 @@ async fn mark_task_seen(
     task.unseen = managed.unseen(activity_ms);
     notify_task_updated(&state, task.clone());
     Ok(Json(task))
-}
-
-async fn unmanaged_task_detail(
-    state: &TaskState,
-    thread_id: &str,
-) -> Result<TaskDetailResponse, ApiError> {
-    let client = require_codex_thread_client(state).await?;
-    let thread = client.read_thread(thread_id).await?;
-    let task = task_record_from_codex_thread(state, &thread)?;
-    Ok(TaskDetailResponse {
-        thread_id: thread_id.to_string(),
-        sync_state: TaskSyncState::Ready,
-        managed: false,
-        revision: 0,
-        task: Some(task),
-        events: Vec::new(),
-        events_page: TaskEventsPage { next_cursor: None },
-        pending_approvals: Vec::new(),
-        history_loading: false,
-        permission_mode: None,
-        model: None,
-        reasoning_effort: None,
-    })
-}
-
-fn task_record_from_codex_thread(
-    state: &TaskState,
-    thread: &crate::codex_app_server::CodexThread,
-) -> Result<TaskRecord, ApiError> {
-    let thread = thread.clone().into_value();
-    let resolved = resolve_thread_cwd(&state.fs, &thread);
-    task_record_from_thread(&thread, &[], resolved.as_ref())
 }
 
 fn task_not_managed_error() -> ApiError {
@@ -1024,294 +922,12 @@ fn notify_task_updated(state: &TaskState, task: TaskRecord) {
     let _ = state.task_list_updates.send(task);
 }
 
-async fn ensure_task_sync_worker(state: &TaskState) {
-    let Some(receiver) = state.task_sync.take_jobs().await else {
-        return;
-    };
-    let state = state.clone();
-    tokio::spawn(run_task_sync_worker(state, receiver));
-}
-
-async fn run_task_sync_worker(
-    state: TaskState,
-    mut receiver: mpsc::UnboundedReceiver<TaskSyncJob>,
-) {
-    let mut shutdown = state.shutdown.subscribe();
-
-    loop {
-        let job = tokio::select! {
-            _ = shutdown.recv() => return,
-            job = receiver.recv() => job,
-        };
-        let Some(job) = job else {
-            return;
-        };
-        run_task_sync_job(&state, job).await;
-    }
-}
-
-async fn run_task_sync_job(state: &TaskState, job: TaskSyncJob) {
-    debug_assert!(job.invalidation_revision > 0);
-    let thread_id = job.thread_id.clone();
-    let syncing = state.codex_sessions.begin_external_sync(&thread_id).await;
-    let Ok(connection) = require_codex_thread_connection(state).await else {
-        state
-            .codex_sessions
-            .fail_external_sync(&thread_id, &CodexThreadError::ProcessUnavailable)
-            .await;
-        broadcast_task_sync_error(
-            state,
-            &thread_id,
-            CodexThreadError::ProcessUnavailable.to_string(),
-        )
-        .await;
-        job.complete(TaskSyncOutcome::Retry);
-        return;
-    };
-    let response = tokio::try_join!(
-        connection.client.read_thread(&thread_id),
-        connection
-            .client
-            .list_thread_turns(&thread_id, None, TASK_DETAIL_TURNS_PAGE_SIZE),
-    );
-    let (thread, latest_turns) = match response {
-        Ok(response) => response,
-        Err(error) if error.is_thread_unavailable() => {
-            state
-                .codex_sessions
-                .fail_external_sync(&thread_id, &error)
-                .await;
-            broadcast_task_sync_error(state, &thread_id, error.to_string()).await;
-            let _ = thread_store_delete(state, &thread_id).await;
-            notify_task_removed(state, &thread_id, "unavailable");
-            job.complete(TaskSyncOutcome::Synchronized);
-            return;
-        }
-        Err(error) => {
-            state
-                .codex_sessions
-                .fail_external_sync(&thread_id, &error)
-                .await;
-            broadcast_task_sync_error(state, &thread_id, error.to_string()).await;
-            job.complete(TaskSyncOutcome::Retry);
-            return;
-        }
-    };
-    let snapshot = state
-        .codex_sessions
-        .apply_external_read_sync(&thread_id, syncing.revision, thread, latest_turns)
-        .await;
-    if let Ok(detail) = task_detail_from_snapshot(state, snapshot, None).await {
-        state.task_sync.publish(TaskDetailSync {
-            revision: detail.revision,
-            thread_id,
-            detail,
-            reason: "canonical-read-sync",
-            error: None,
-        });
-    }
-    job.complete(TaskSyncOutcome::Synchronized);
-}
-
-async fn broadcast_task_snapshot(
-    state: &TaskState,
-    thread_id: &str,
-    snapshot: ThreadSessionSnapshot,
-    reason: &'static str,
-) {
-    let Ok(detail) = task_detail_from_snapshot(state, snapshot, None).await else {
-        return;
-    };
-    state.task_sync.publish(TaskDetailSync {
-        revision: detail.revision,
-        thread_id: thread_id.to_string(),
-        detail,
-        reason,
-        error: None,
-    });
-}
-
-async fn broadcast_task_sync_error(state: &TaskState, thread_id: &str, error: String) {
-    let revision = state
-        .codex_sessions
-        .snapshot(thread_id)
-        .await
-        .map(|snapshot| snapshot.revision)
-        .unwrap_or_default();
-    let detail = loading_task_detail(thread_id, revision, None);
-    state.task_sync.publish(TaskDetailSync {
-        thread_id: thread_id.to_string(),
-        revision,
-        detail,
-        reason: "canonical-source-error",
-        error: Some(error),
-    });
-}
-
 async fn task_stream(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
     Query(_query): Query<TasksQuery>,
 ) -> Result<Response, ApiError> {
-    if thread_store_get(&state, &thread_id).await?.is_none() {
-        return Err(task_not_managed_error());
-    }
-    // Subscribe before bootstrapping the canonical snapshot so notifications emitted
-    // during resume cannot fall into the gap before the SSE receivers exist.
-    let receiver = state.task_events.subscribe();
-    let sync_receiver = state.task_sync.subscribe_updates();
-    let viewer = state.codex_sessions.reserve_viewer(&thread_id).await;
-    let snapshot = state.codex_sessions.snapshot(&thread_id).await;
-    let rollout_path = snapshot
-        .as_ref()
-        .and_then(|snapshot| snapshot.thread.as_ref())
-        .and_then(|thread| thread.path.clone());
-    let (detail, baseline_revision) = cached_task_detail(&state, &thread_id).await?;
-    let initial_frames = task_stream_initial_frames(&TaskDetailSync {
-        thread_id: thread_id.clone(),
-        revision: detail.revision,
-        detail,
-        reason: "stream-bootstrap",
-        error: None,
-    });
-    // The rollout monitor may emit the current external activity synchronously
-    // while subscribing. Register the coordinator first so that signal cannot
-    // be dropped as an update for an unobserved thread.
-    let subscription = state.task_sync.subscribe(&thread_id);
-    let rollout_subscription = DeferredTaskRolloutSubscription::default();
-    rollout_subscription.install_with(|| {
-        state
-            .task_sync
-            .subscribe_rollout(&thread_id, rollout_path.as_deref())
-    });
-    ensure_task_sync_worker(&state).await;
-    let bootstrap_state = state.clone();
-    let bootstrap_thread_id = thread_id.clone();
-    let bootstrap_rollout_subscription = rollout_subscription.clone();
-    tokio::spawn(async move {
-        bootstrap_task_session(&bootstrap_state, &bootstrap_thread_id, baseline_revision).await;
-        let rollout_path = bootstrap_state
-            .codex_sessions
-            .snapshot(&bootstrap_thread_id)
-            .await
-            .and_then(|snapshot| snapshot.thread)
-            .and_then(|thread| thread.path);
-        bootstrap_rollout_subscription.install_with(|| {
-            bootstrap_state
-                .task_sync
-                .subscribe_rollout(&bootstrap_thread_id, rollout_path.as_deref())
-        });
-    });
-    let shutdown = state.shutdown.subscribe();
-    let sessions = state.codex_sessions.clone();
-    let stream = stream::unfold(
-        (
-            initial_frames,
-            receiver,
-            sync_receiver,
-            shutdown,
-            thread_id,
-            subscription,
-            rollout_subscription,
-            viewer,
-            sessions,
-        ),
-        |(
-            mut initial_frames,
-            mut receiver,
-            mut sync_receiver,
-            mut shutdown,
-            thread_id,
-            subscription,
-            rollout_subscription,
-            viewer,
-            sessions,
-        )| async move {
-            if let Some(frame) = initial_frames.pop_front() {
-                return Some((
-                    Ok::<_, Infallible>(frame),
-                    (
-                        initial_frames,
-                        receiver,
-                        sync_receiver,
-                        shutdown,
-                        thread_id,
-                        subscription,
-                        rollout_subscription,
-                        viewer,
-                        sessions,
-                    ),
-                ));
-            }
-            loop {
-                tokio::select! {
-                    _ = shutdown.recv() => return None,
-                    message = sync_receiver.recv() => {
-                        match message {
-                            Ok(sync) if sync.thread_id == thread_id => {
-                                let payload = serde_json::to_string(&sync)
-                                    .unwrap_or_else(|_| "{}".to_string());
-                                let frame = format!("event: task-sync\ndata: {payload}\n\n");
-                                return Some((
-                                    Ok::<_, Infallible>(Bytes::from(frame)),
-                                    (
-                                        initial_frames,
-                                        receiver,
-                                        sync_receiver,
-                                        shutdown,
-                                        thread_id,
-                                        subscription,
-                                        rollout_subscription,
-                                        viewer,
-                                        sessions,
-                                    ),
-                                ));
-                            }
-                            Ok(_) => continue,
-                            Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                            Err(broadcast::error::RecvError::Closed) => return None,
-                        }
-                    }
-                    message = receiver.recv() => {
-                        match message {
-                            Ok(event) if event.thread_id == thread_id => {
-                                let revision = sessions
-                                    .snapshot(&thread_id)
-                                    .await
-                                    .map(|snapshot| snapshot.revision)
-                                    .unwrap_or_default();
-                                let payload = serde_json::to_string(&TaskEventEnvelope {
-                                    thread_id: thread_id.clone(),
-                                    revision,
-                                    event,
-                                })
-                                    .unwrap_or_else(|_| "{}".to_string());
-                                let frame = format!("event: task-event\ndata: {payload}\n\n");
-                                return Some((
-                                    Ok::<_, Infallible>(Bytes::from(frame)),
-                                    (
-                                        initial_frames,
-                                        receiver,
-                                        sync_receiver,
-                                        shutdown,
-                                        thread_id,
-                                        subscription,
-                                        rollout_subscription,
-                                        viewer,
-                                        sessions,
-                                    ),
-                                ));
-                            }
-                            Ok(_) => continue,
-                            Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                            Err(broadcast::error::RecvError::Closed) => return None,
-                        }
-                    }
-                }
-            }
-        },
-    );
-
+    let stream: DetailFrameStream = state.detail.stream(&thread_id).await?;
     let mut response = Response::new(Body::from_stream(stream));
     response.headers_mut().insert(
         header::CONTENT_TYPE,
@@ -1658,7 +1274,7 @@ async fn task_interrupt(
         return Err(error.into());
     }
     Ok(Json(
-        read_task_detail(&state, &connection, &thread_id, None).await?,
+        state.detail.read(&connection, &thread_id, None).await?,
     ))
 }
 
@@ -1716,258 +1332,18 @@ async fn task_approval(
     }
 
     Ok(Json(
-        read_task_detail(&state, &connection, &thread_id, None).await?,
+        state.detail.read(&connection, &thread_id, None).await?,
     ))
 }
 
 async fn require_codex_thread_client(state: &TaskState) -> Result<CodexThreadClient, ApiError> {
-    ensure_codex_runtime_signal_driver(state).await;
-    state.codex_runtime.client().await.map_err(ApiError::from)
+    state.detail.client().await
 }
 
 async fn require_codex_thread_connection(
     state: &TaskState,
 ) -> Result<CodexConnection, CodexThreadError> {
-    ensure_codex_runtime_signal_driver(state).await;
-    state.codex_runtime.connection().await
-}
-
-async fn ensure_codex_runtime_signal_driver(state: &TaskState) {
-    let Some(mut receiver) = state.codex_runtime_signals.lock().await.take() else {
-        return;
-    };
-    let state = state.clone();
-    let mut shutdown = state.shutdown.subscribe();
-    tokio::spawn(async move {
-        loop {
-            let signal = tokio::select! {
-                _ = shutdown.recv() => return,
-                signal = receiver.recv() => signal,
-            };
-            match signal {
-                Ok(CodexRuntimeSignal::SessionChanged {
-                    thread_id,
-                    snapshot,
-                }) => {
-                    broadcast_task_snapshot(
-                        &state,
-                        &thread_id,
-                        *snapshot,
-                        "app-server-notification",
-                    )
-                    .await;
-                }
-                Ok(CodexRuntimeSignal::SessionUnavailable { thread_id, message }) => {
-                    broadcast_task_sync_error(&state, &thread_id, message).await;
-                }
-                Err(broadcast::error::RecvError::Lagged(_)) => {}
-                Err(broadcast::error::RecvError::Closed) => return,
-            }
-        }
-    });
-}
-
-async fn read_task_detail(
-    state: &TaskState,
-    connection: &CodexConnection,
-    thread_id: &str,
-    cursor: Option<&str>,
-) -> Result<TaskDetailResponse, ApiError> {
-    let (snapshot, response_page) = if let Some(cursor) = cursor {
-        let (snapshot, page) = state
-            .codex_sessions
-            .load_older_turns(
-                &connection.client,
-                connection.generation,
-                thread_id,
-                cursor,
-                TASK_DETAIL_TURNS_PAGE_SIZE,
-            )
-            .await?;
-        (snapshot, Some(page))
-    } else {
-        (
-            state
-                .codex_sessions
-                .load_metadata(&connection.client, connection.generation, thread_id)
-                .await?,
-            None,
-        )
-    };
-    task_detail_from_snapshot(state, snapshot, response_page).await
-}
-
-async fn cached_task_detail(
-    state: &TaskState,
-    thread_id: &str,
-) -> Result<(TaskDetailResponse, u64), ApiError> {
-    let stored = thread_store_get(state, thread_id).await?;
-    let Some(snapshot) = state.codex_sessions.snapshot(thread_id).await else {
-        return Ok((loading_task_detail(thread_id, 0, stored.as_ref()), 0));
-    };
-    if let Some(error) = snapshot.last_error.as_ref() {
-        return Err(ApiError::CodexThread(format!(
-            "canonical Codex task state is unavailable: {error}"
-        )));
-    }
-    let revision = snapshot.revision;
-    if snapshot.thread.is_none() {
-        return Ok((
-            loading_task_detail(thread_id, revision, stored.as_ref()),
-            revision,
-        ));
-    }
-    let detail = task_detail_from_snapshot(state, snapshot, None).await?;
-    Ok((detail, revision))
-}
-
-fn loading_task_detail(
-    thread_id: &str,
-    revision: u64,
-    managed: Option<&ManagedThread>,
-) -> TaskDetailResponse {
-    TaskDetailResponse {
-        thread_id: thread_id.to_string(),
-        sync_state: TaskSyncState::Loading,
-        managed: true,
-        revision,
-        task: None,
-        events: Vec::new(),
-        events_page: TaskEventsPage { next_cursor: None },
-        pending_approvals: Vec::new(),
-        history_loading: true,
-        permission_mode: None,
-        model: managed.and_then(|thread| thread.model.clone()),
-        reasoning_effort: managed.and_then(|thread| thread.reasoning_effort.clone()),
-    }
-}
-
-async fn bootstrap_task_session(state: &TaskState, thread_id: &str, baseline_revision: u64) {
-    let connection = match require_codex_thread_connection(state).await {
-        Ok(connection) => connection,
-        Err(error) => {
-            state
-                .codex_sessions
-                .fail_external_sync(thread_id, &error)
-                .await;
-            broadcast_task_sync_error(state, thread_id, error.to_string()).await;
-            return;
-        }
-    };
-    let snapshot = match state
-        .codex_sessions
-        .ensure_subscribed(&connection.client, connection.generation, thread_id)
-        .await
-    {
-        Ok(snapshot) => snapshot,
-        Err(error) => {
-            state
-                .codex_sessions
-                .fail_external_sync(thread_id, &error)
-                .await;
-            broadcast_task_sync_error(state, thread_id, error.to_string()).await;
-            return;
-        }
-    };
-    if snapshot.revision <= baseline_revision {
-        return;
-    }
-    broadcast_task_snapshot(state, thread_id, snapshot, "session-bootstrap").await;
-}
-
-async fn task_detail_from_snapshot(
-    state: &TaskState,
-    snapshot: ThreadSessionSnapshot,
-    response_page: Option<crate::codex_app_server::TurnsPage>,
-) -> Result<TaskDetailResponse, ApiError> {
-    let actively_viewed = snapshot.viewer_leases > 0;
-    let revision = snapshot.revision;
-    let permission_mode = snapshot.permission_mode;
-    let session_model = snapshot.model.clone();
-    let session_reasoning_effort = snapshot.reasoning_effort.clone();
-    let thread_id = snapshot
-        .thread
-        .as_ref()
-        .map(|thread| thread.id.clone())
-        .ok_or_else(|| {
-            ApiError::CodexThread("subscribed thread metadata is missing".to_string())
-        })?;
-    let page = response_page.or_else(|| snapshot.turns_page.clone());
-    let history_loading = page.is_none();
-    let mut turns = page
-        .as_ref()
-        .map(|page| page.data.clone())
-        .unwrap_or_default()
-        .into_iter()
-        .map(|turn| serde_json::to_value(turn).expect("decoded turn serializes"))
-        .collect::<Vec<_>>();
-    turns.reverse();
-    let next_cursor = page.and_then(|page| page.next_cursor);
-    let thread = snapshot
-        .thread
-        .expect("thread metadata was checked above")
-        .into_value();
-    let thread = thread_with_turns(&thread, turns)?;
-    let mut events = thread_events(&thread);
-    state.task_events.observe(&events);
-    events = merge_task_event_records(events, state.task_events.for_thread(&thread_id));
-    let pending_approvals = pending_approval_events(state, &thread_id).await;
-    events = merge_task_event_records(events, pending_approvals.clone());
-    sort_task_events(&mut events);
-    let resolved_cwd = resolve_thread_cwd(&state.fs, &thread);
-    let mut task = task_record_from_thread(&thread, &events, resolved_cwd.as_ref())?;
-    apply_canonical_turn_projection(&mut task, &thread)?;
-    let activity_ms = task_activity_ms(&task);
-    let mut managed = thread_store_update_observed_recency(state, &thread_id, activity_ms).await?;
-    if session_model.is_some() || session_reasoning_effort.is_some() {
-        managed = thread_store_update_composer_settings(
-            state,
-            &thread_id,
-            session_model.as_deref(),
-            session_reasoning_effort.as_deref(),
-        )
-        .await?
-        .or(managed);
-    }
-    if let Some(mut current) = managed {
-        if actively_viewed
-            && let Some(seen) =
-                thread_store_mark_seen(state, &current.thread_id, activity_ms).await?
-        {
-            current = seen;
-        }
-        task.unseen = current.unseen(activity_ms);
-        let model = session_model.or(current.model);
-        let reasoning_effort = session_reasoning_effort.or(current.reasoning_effort);
-        return Ok(TaskDetailResponse {
-            thread_id,
-            sync_state: TaskSyncState::Ready,
-            managed: true,
-            revision,
-            task: Some(task),
-            events,
-            events_page: TaskEventsPage { next_cursor },
-            pending_approvals,
-            history_loading,
-            permission_mode,
-            model,
-            reasoning_effort,
-        });
-    }
-    Ok(TaskDetailResponse {
-        thread_id,
-        sync_state: TaskSyncState::Ready,
-        managed: false,
-        revision,
-        task: Some(task),
-        events,
-        events_page: TaskEventsPage { next_cursor },
-        pending_approvals,
-        history_loading,
-        permission_mode,
-        model: session_model,
-        reasoning_effort: session_reasoning_effort,
-    })
+    state.detail.connection().await
 }
 
 fn managed_thread_from_task_record(
@@ -1981,10 +1357,6 @@ fn managed_thread_from_task_record(
         model,
         reasoning_effort,
     )
-}
-
-async fn pending_approval_events(state: &TaskState, thread_id: &str) -> Vec<TaskEventRecord> {
-    state.codex_runtime.approval_events(thread_id).await
 }
 
 fn task_cwd(state: &TaskState, relative: Option<&str>) -> Result<String, ApiError> {
