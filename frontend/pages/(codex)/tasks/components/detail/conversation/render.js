@@ -52,6 +52,7 @@ export function renderConversation(events, task, approvals = [], options = {}) {
           forceActive: index === activeGroupIndex,
           pendingApprovalIds,
           controlsDisabled: options.controlsDisabled,
+          approvalErrors: options.approvalErrors,
           liveStatusAvailable,
         });
       }
@@ -61,6 +62,7 @@ export function renderConversation(events, task, approvals = [], options = {}) {
       ) {
         return renderApprovalFlow([group.event], {
           disabled: options.controlsDisabled,
+          approvalErrors: options.approvalErrors,
         });
       }
       if (!shouldRenderStandaloneEvent(group.event, userPrompts)) {
@@ -139,6 +141,7 @@ function renderTurnGroup(group, task, options = {}) {
       finalAssistantEvent,
       options.pendingApprovalIds,
       options.controlsDisabled,
+      options.approvalErrors,
     );
   }
 
@@ -149,6 +152,7 @@ function renderTurnGroup(group, task, options = {}) {
         task,
         options.pendingApprovalIds,
         options.controlsDisabled,
+        options.approvalErrors,
       ),
     )
     .filter(Boolean);
@@ -165,6 +169,7 @@ function renderCompletedTurnGroup(
   finalAssistantEvent,
   pendingApprovalIds = new Set(),
   controlsDisabled = false,
+  approvalErrors = new Map(),
 ) {
   const output = [];
   const userEvents = group.events.filter((event) => event.type === "user_message");
@@ -186,7 +191,12 @@ function renderCompletedTurnGroup(
     output.push(renderTurnWorkSummary(group, workEvents, terminalEvent));
   }
   if (approvals.length > 0) {
-    output.push(renderApprovalFlow(approvals, { disabled: controlsDisabled }));
+    output.push(
+      renderApprovalFlow(approvals, {
+        disabled: controlsDisabled,
+        approvalErrors,
+      }),
+    );
   }
   if (finalAssistantEvent) {
     output.push(
@@ -204,12 +214,16 @@ function renderActiveTurnTimelineEvent(
   task,
   pendingApprovalIds = new Set(),
   controlsDisabled = false,
+  approvalErrors = new Map(),
 ) {
   if (
     event.type === "approval_requested" &&
     pendingApprovalIds.has(event.payload?.approvalId)
   ) {
-    return renderApprovalFlow([event], { disabled: controlsDisabled });
+    return renderApprovalFlow([event], {
+      disabled: controlsDisabled,
+      approvalErrors,
+    });
   }
   if (
     event.type === "user_message" ||
@@ -929,6 +943,7 @@ function renderApprovalCard(event, options = {}) {
   const payload = event.payload ?? {};
   const params = payload.params ?? {};
   const approvalId = payload.approvalId ?? "";
+  const requestError = options.approvalErrors?.get(approvalId) ?? null;
   const isCommand = payload.kind === "command";
   const decisions = params.availableDecisions ?? ["accept", "acceptForSession", "decline", "cancel"];
 
@@ -943,6 +958,11 @@ function renderApprovalCard(event, options = {}) {
           ? `<pre>${escapeHtml(formatCommand(params.command))}</pre>
              <p>${escapeHtml(params.cwd ?? "")}</p>`
           : `<p>${escapeHtml(params.grantRoot ? `Grant root: ${params.grantRoot}` : "File change permission requested")}</p>`
+      }
+      ${
+        requestError
+          ? `<p class="task-approval-error" role="alert">${escapeHtml(requestError.message ?? requestError)}</p>`
+          : ""
       }
       <div class="task-approval-actions">
         ${decisions

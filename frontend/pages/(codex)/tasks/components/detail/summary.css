@@ -44,6 +44,17 @@ caffold-task-detail-summary {
     min-width: 0;
   }
 
+  & .task-summary-action-error {
+    grid-column: 1 / -1;
+    justify-self: end;
+    max-width: min(100%, 520px);
+    color: var(--danger);
+    font-size: var(--task-detail-meta-size);
+    line-height: 16px;
+    overflow-wrap: anywhere;
+    text-align: right;
+  }
+
   & .task-detail-actions {
     display: flex;
     align-items: center;

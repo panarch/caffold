@@ -146,7 +146,9 @@ class CaffoldTaskComposer extends HTMLElement {
       cwd: cleanLogicalPath(context.cwd ?? this.context.cwd ?? "."),
       disabled: Boolean(context.disabled),
       settingsLocked: Boolean(context.settingsLocked),
-      requestError: `${context.requestError ?? ""}`,
+      requestError: Object.hasOwn(context, "requestError")
+        ? `${context.requestError ?? ""}`
+        : this.context.requestError,
     };
     this.setAttribute("data-composer-mode", this.context.mode);
     const state = this.stateFor();

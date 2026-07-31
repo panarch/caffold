@@ -60,7 +60,6 @@ class CaffoldTaskDetail extends HTMLElement {
     this.eventsThreadId = "";
     this.eventsByThread = new Map();
     this.eventsPage = { nextCursor: null };
-    this.error = null;
     this.detailLoadError = null;
     this.historyLoadError = null;
     this.loading = false;
@@ -182,7 +181,6 @@ class CaffoldTaskDetail extends HTMLElement {
     ) {
       this.view = "detail";
       this.hidden = false;
-      this.error = null;
       this.detailLoadError = null;
       this.activateThreadEvents(targetThreadId);
       this.render();
@@ -212,7 +210,6 @@ class CaffoldTaskDetail extends HTMLElement {
       taskDetailThreadId(this.taskDetail) === targetThreadId
         ? this.eventsPage
         : { nextCursor: null };
-    this.error = null;
     this.detailLoadError = null;
     this.historyLoadError = null;
     this.render();
@@ -325,7 +322,6 @@ class CaffoldTaskDetail extends HTMLElement {
     this.view = "detail";
     this.selectedThreadId = threadId;
     this.loading = true;
-    this.error = null;
     this.detailLoadError = null;
     this.historyLoadError = null;
     this.render();
@@ -749,7 +745,6 @@ class CaffoldTaskDetail extends HTMLElement {
       state: PROMPT_SUBMISSION_STATE.SENDING,
     };
     this.followUpRequests.set(threadId, followUpRequest);
-    this.error = null;
     this.setThreadEvents(
       threadId,
       mergeEvents(this.eventsByThread.get(threadId) ?? [], [optimisticEvent]),
@@ -809,7 +804,6 @@ class CaffoldTaskDetail extends HTMLElement {
           error,
         });
         if (threadId === this.selectedThreadId) {
-          this.error = error;
           this.conversationUpdateKind = "live";
         }
       } else {
@@ -824,7 +818,6 @@ class CaffoldTaskDetail extends HTMLElement {
           error,
         });
         if (threadId === this.selectedThreadId) {
-          this.error = error;
           this.conversationUpdateKind = "preserve";
         }
       }
@@ -850,6 +843,7 @@ class CaffoldTaskDetail extends HTMLElement {
 
     const actionToken = ++this.interruptActionToken;
     const threadId = this.selectedThreadId;
+    this.taskSummary()?.setInterruptError(null);
     try {
       const detail = await interruptTask(threadId);
       if (
@@ -862,6 +856,7 @@ class CaffoldTaskDetail extends HTMLElement {
         return;
       }
       this.taskDetail = detail;
+      this.taskSummary()?.setInterruptError(null);
       this.setThreadEvents(
         threadId,
         mergeEvents(this.events, detail.events ?? []),
@@ -877,8 +872,7 @@ class CaffoldTaskDetail extends HTMLElement {
       ) {
         return;
       }
-      this.error = error;
-      this.render();
+      this.taskSummary()?.setInterruptError(error);
     }
   }
 
@@ -894,6 +888,7 @@ class CaffoldTaskDetail extends HTMLElement {
 
     const actionToken = ++this.approvalActionToken;
     const threadId = this.selectedThreadId;
+    this.conversationComponent()?.setApprovalError(approvalId, null);
     try {
       const detail = await resolveTaskApproval(
         threadId,
@@ -910,6 +905,7 @@ class CaffoldTaskDetail extends HTMLElement {
         return;
       }
       this.taskDetail = detail;
+      this.conversationComponent()?.setApprovalError(approvalId, null);
       this.setThreadEvents(
         threadId,
         mergeEvents(this.events, detail.events ?? []),
@@ -925,8 +921,7 @@ class CaffoldTaskDetail extends HTMLElement {
       ) {
         return;
       }
-      this.error = error;
-      this.render();
+      this.conversationComponent()?.setApprovalError(approvalId, error);
     }
   }
 
@@ -1196,7 +1191,6 @@ class CaffoldTaskDetail extends HTMLElement {
       model: `${this.taskDetail?.model ?? ""}`.trim(),
       effort: `${this.taskDetail?.reasoningEffort ?? ""}`.trim(),
       permissionMode: `${this.taskDetail?.permissionMode ?? ""}`.trim(),
-      requestError: this.error?.message ?? "",
     });
     this.activateFollowUpComposer(threadId);
   }
@@ -1414,9 +1408,6 @@ class CaffoldTaskDetail extends HTMLElement {
     }
     if (this.detailLoadError && !hasSelectedTaskDetail && this.view === "detail") {
       return this.renderTaskDetailLoadError();
-    }
-    if (this.error && this.view !== "new" && !hasSelectedTaskDetail) {
-      return `<p class="surface-message">${escapeHtml(this.error.message)}</p>`;
     }
     if (this.view === "detail") {
       return this.renderTaskDetail();

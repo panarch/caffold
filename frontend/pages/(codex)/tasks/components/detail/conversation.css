@@ -140,6 +140,14 @@ caffold-task-conversation {
     background: var(--code-bg);
   }
 
+  & .task-approval-card .task-approval-error {
+    margin: 8px 0 0;
+    color: var(--danger);
+    font-size: var(--task-detail-meta-size);
+    line-height: 16px;
+    overflow-wrap: anywhere;
+  }
+
   & .task-event {
     min-width: 0;
   }

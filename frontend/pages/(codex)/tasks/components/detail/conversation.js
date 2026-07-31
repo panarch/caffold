@@ -45,6 +45,7 @@ class CaffoldTaskConversation extends HTMLElement {
       transportState: "idle",
       updateKind: null,
     };
+    this.approvalErrors = new Map();
     this.scrollByThread = new Map();
     this.disclosureByThread = new Map();
     this.resizeObserver = null;
@@ -63,10 +64,14 @@ class CaffoldTaskConversation extends HTMLElement {
     this.ensureState();
     const previousThreadId = this.snapshot.threadId;
     const previousScroll = this.rememberScroll(previousThreadId);
+    const nextThreadId = `${snapshot.threadId ?? ""}`;
+    if (previousThreadId !== nextThreadId) {
+      this.approvalErrors.clear();
+    }
     this.snapshot = {
       ...this.snapshot,
       ...snapshot,
-      threadId: `${snapshot.threadId ?? ""}`,
+      threadId: nextThreadId,
       task: snapshot.task ?? null,
       events: [...(snapshot.events ?? [])],
       eventsPage: snapshot.eventsPage ?? { nextCursor: null },
@@ -77,12 +82,44 @@ class CaffoldTaskConversation extends HTMLElement {
       transportState: snapshot.transportState ?? "idle",
       updateKind: snapshot.updateKind ?? null,
     };
+    this.pruneApprovalErrors();
     const storedScroll = this.scrollByThread.get(this.snapshot.threadId) ?? null;
     this.render(
       previousThreadId === this.snapshot.threadId
         ? previousScroll ?? storedScroll
         : storedScroll,
     );
+  }
+
+  setApprovalError(approvalId, error) {
+    this.ensureState();
+    const id = `${approvalId ?? ""}`.trim();
+    if (!id) {
+      return;
+    }
+    const previousScroll = this.rememberScroll();
+    const pending = pendingApprovals(this.snapshot.events).some(
+      (event) => event.payload?.approvalId === id,
+    );
+    if (error && pending) {
+      this.approvalErrors.set(id, error);
+    } else {
+      this.approvalErrors.delete(id);
+    }
+    this.render(previousScroll);
+  }
+
+  pruneApprovalErrors() {
+    const pendingIds = new Set(
+      pendingApprovals(this.snapshot.events)
+        .map((event) => `${event.payload?.approvalId ?? ""}`.trim())
+        .filter(Boolean),
+    );
+    for (const approvalId of this.approvalErrors.keys()) {
+      if (!pendingIds.has(approvalId)) {
+        this.approvalErrors.delete(approvalId);
+      }
+    }
   }
 
   scroller() {
@@ -144,6 +181,7 @@ class CaffoldTaskConversation extends HTMLElement {
           <ol class="task-conversation" aria-label="Task conversation">
             ${renderConversation(this.snapshot.events, task, approvals, {
               controlsDisabled,
+              approvalErrors: this.approvalErrors,
             })}
           </ol>
         </div>

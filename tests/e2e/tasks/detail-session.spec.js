@@ -774,6 +774,130 @@ test("keeps one Composer per thread with a bounded clean inactive cache", async 
   ).toBeVisible();
   await expect(prompt).toHaveValue("Keep this thread-specific draft");
 });
+
+test("keeps prompt, interrupt, and approval request errors with their owning controls", async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  const detail = taskDetailFixture({
+    running: true,
+    model: "gpt-test",
+    reasoningEffort: "medium",
+  });
+  detail.events = [
+    {
+      id: "event-request-error-approval",
+      threadId: detail.threadId,
+      type: "approval_requested",
+      summary: "Approval requested",
+      payload: {
+        turnId: detail.task.activeTurn.id,
+        approvalId: "approval-request-error",
+        kind: "command",
+        params: {
+          command: ["cargo", "test"],
+          cwd: "src",
+          reason: "Run the regression tests",
+          availableDecisions: ["accept", "decline"],
+        },
+      },
+      createdMs: Date.now(),
+    },
+  ];
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: detail }),
+  );
+  await page.route("**/api/tasks/thread-1/interrupt", (route) =>
+    route.fulfill({
+      status: 503,
+      json: {
+        error: {
+          code: "interrupt_failed",
+          message: "Interrupt failed by fixture.",
+        },
+      },
+    }),
+  );
+  await page.route(
+    "**/api/tasks/thread-1/approvals/approval-request-error",
+    (route) =>
+      route.fulfill({
+        status: 409,
+        json: {
+          error: {
+            code: "approval_failed",
+            message: "Approval failed by fixture.",
+          },
+        },
+      }),
+  );
+  await page.route("**/api/tasks/thread-1/prompts", (route) =>
+    route.fulfill({
+      status: 422,
+      json: {
+        error: {
+          code: "prompt_rejected",
+          message: "Prompt rejected by fixture.",
+        },
+      },
+    }),
+  );
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  const tasksPage = page.locator("caffold-tasks-page");
+  const summaryError = tasksPage.locator(".task-summary-action-error");
+  const approvalCard = tasksPage.locator(
+    '.task-approval-card:has([data-approval-id="approval-request-error"])',
+  );
+  const approvalError = approvalCard.locator(".task-approval-error");
+  const composerError = tasksPage.locator(".task-composer-request-error");
+
+  await tasksPage.locator('[data-summary-action="interrupt"]').click();
+  await expect(summaryError).toHaveText("Interrupt failed by fixture.");
+  await expect(approvalError).toHaveCount(0);
+  await expect(composerError).toHaveCount(0);
+
+  await approvalCard
+    .locator('[data-task-action="approval"][data-decision="accept"]')
+    .click();
+  await expect(approvalError).toHaveText("Approval failed by fixture.");
+  await expect(summaryError).toHaveText("Interrupt failed by fixture.");
+  await expect(composerError).toHaveCount(0);
+
+  const composer = tasksPage.locator(".task-follow-up-form");
+  await composer
+    .getByRole("textbox", { name: "Follow-up prompt" })
+    .fill("Keep prompt errors in this composer");
+  await composer.locator('button[type="submit"]').click();
+  await expect(composerError).toHaveText("Prompt rejected by fixture.");
+  await expect(summaryError).toHaveText("Interrupt failed by fixture.");
+  await expect(approvalError).toHaveText("Approval failed by fixture.");
+
+  const ownedErrors = await tasksPage.evaluate((element) => {
+    const detail = element.querySelector("caffold-task-detail");
+    const summary = detail.querySelector("caffold-task-detail-summary");
+    const conversation = detail.querySelector("caffold-task-conversation");
+    const composer = detail.followUpComposer();
+    return {
+      detailErrorFields: ["error", "interruptError", "approvalErrors"].filter(
+        (field) => Object.hasOwn(detail, field),
+      ),
+      interrupt: summary.interruptError?.message ?? "",
+      approval:
+        conversation.approvalErrors
+          .get("approval-request-error")
+          ?.message ?? "",
+      prompt: composer.context.requestError,
+    };
+  });
+  expect(ownedErrors).toEqual({
+    detailErrorFields: [],
+    interrupt: "Interrupt failed by fixture.",
+    approval: "Approval failed by fixture.",
+    prompt: "Prompt rejected by fixture.",
+  });
+});
+
 test("accepts canonical task detail after stream revisions restart", async ({ page }) => {
   await page.addInitScript(() => {
     window.__taskEventSources = [];

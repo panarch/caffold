@@ -44,6 +44,7 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       reviewView: "conversation",
       contextPath: ".",
     };
+    this.interruptError = null;
     this.githubStatus = null;
     this.githubStatusPath = "";
     this.githubStatusState = "idle";
@@ -61,6 +62,9 @@ class CaffoldTaskDetailSummary extends HTMLElement {
     const task = snapshot.task ?? null;
     const nextThreadId = taskThreadId(task);
     const nextRootPath = taskWorktreeRootPath(task);
+    if (previousThreadId !== nextThreadId || !task?.activeTurn?.id) {
+      this.interruptError = null;
+    }
     this.snapshot = {
       task,
       transportState: snapshot.transportState ?? "idle",
@@ -77,6 +81,13 @@ class CaffoldTaskDetailSummary extends HTMLElement {
 
     this.render({ preserveDisclosure: previousThreadId === nextThreadId });
     this.ensureGithubStatus();
+  }
+
+  setInterruptError(error) {
+    this.ensureState();
+    this.interruptError =
+      error && this.snapshot.task?.activeTurn?.id ? error : null;
+    this.render();
   }
 
   setReviewView(view) {
@@ -299,6 +310,11 @@ class CaffoldTaskDetailSummary extends HTMLElement {
           ${status || renderInlineIcon("Info", "Task details", "task-action-icon")}
         </button>
       </div>
+      ${
+        this.interruptError
+          ? `<p class="task-summary-action-error" role="alert">${escapeHtml(this.interruptError.message ?? this.interruptError)}</p>`
+          : ""
+      }
       <div
         id="task-detail-info"
         class="task-detail-popover"
