@@ -43,6 +43,10 @@ const ownership = new Map([
   ],
   ["pages/(codex)/tasks/components/detail.css", ["caffold-task-detail"]],
   [
+    "pages/(codex)/tasks/components/detail/summary.css",
+    ["caffold-task-detail-summary"],
+  ],
+  [
     "pages/(codex)/tasks/components/navigator.css",
     ["caffold-task-navigator"],
   ],

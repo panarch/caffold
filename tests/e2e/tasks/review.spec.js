@@ -60,7 +60,7 @@ test("keeps Files and Diff review state isolated from the conversation", async (
         })
       : null;
 
-  await tasksPage.locator('button[data-task-action="toggle-files"]').click();
+  await tasksPage.locator('button[data-summary-action="toggle-files"]').click();
   await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
     "data-task-detail-view",
     "files",
@@ -222,7 +222,7 @@ test("keeps Files and Diff review state isolated from the conversation", async (
     codexWorkspace.getByRole("button", { name: "Close Codex workspace" }),
   ).toBeVisible();
 
-  await tasksPage.locator('button[data-task-action="toggle-files"]').click();
+  await tasksPage.locator('button[data-summary-action="toggle-files"]').click();
   await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
     "data-task-detail-view",
     "files",

@@ -308,7 +308,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
     .click();
   await captureReviewScreenshot(page, testInfo, "tasks-global-git-menu");
   await tasksPage
-    .locator('button[data-task-action="open-git-tool"][data-review-kind="diff"]')
+    .locator('button[data-summary-action="open-git-tool"][data-review-kind="diff"]')
     .click();
   await expect(page).toHaveURL("/git/diff?cwd=.");
   await expect(page.locator("caffold-review-workspace")).toHaveAttribute(
@@ -324,7 +324,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
     .click();
   await captureReviewScreenshot(page, testInfo, "tasks-global-github-menu");
   await tasksPage
-    .locator('button[data-task-action="open-github-tool"][data-review-kind="issues"]')
+    .locator('button[data-summary-action="open-github-tool"][data-review-kind="issues"]')
     .click();
   await expect(page).toHaveURL("/github/issues?cwd=.");
   await expect(page.locator("caffold-review-workspace")).toHaveAttribute(
@@ -335,7 +335,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await expect(page).toHaveURL(`/tasks/${threadId}`);
   await expect(tasksPage).toContainText("Hello from a global Codex thread.");
 
-  await tasksPage.locator('button[data-task-action="toggle-files"]').click();
+  await tasksPage.locator('button[data-summary-action="toggle-files"]').click();
   await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
     "data-task-detail-view",
     "files",

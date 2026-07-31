@@ -1,5 +1,4 @@
 import {
-  getGitHubStatus,
   getTask,
   interruptTask,
   resolveTaskApproval,
@@ -11,12 +10,11 @@ import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import "./composer.js";
 import "./detail/conversation.js";
 import "./detail/review.js";
-import { renderTaskStatusChip } from "./task-status.js";
+import "./detail/summary.js";
 import {
   PROMPT_SUBMISSION_STATE,
   TASK_TRANSPORT_STATE,
   classifyPromptFailure,
-  formatTaskStatus,
   isTaskActivelyWorking,
   isTaskTransportStale,
   promptSubmissionState,
@@ -31,14 +29,10 @@ import {
   upsertEvent,
   userMessageFingerprint,
 } from "../task-events.js";
-import {
-  cleanLogicalPath,
-  shortId,
-} from "../task-format.js";
+import { cleanLogicalPath } from "../task-format.js";
 import {
   taskDetailThreadId,
   taskThreadId,
-  taskWorktreeLabel,
 } from "../task-list-model.js";
 
 const STREAM_ERROR_DELAY_MS = 8_000;
@@ -57,10 +51,6 @@ class CaffoldTaskDetail extends HTMLElement {
     this.view = "detail";
     this.taskDetail = null;
     this.taskDetailRevisionByThread = new Map();
-    this.taskGithubStatus = null;
-    this.taskGithubStatusPath = "";
-    this.taskGithubStatusState = "idle";
-    this.taskGithubStatusRequestId = 0;
     this.events = [];
     this.eventsThreadId = "";
     this.eventsByThread = new Map();
@@ -98,16 +88,10 @@ class CaffoldTaskDetail extends HTMLElement {
         if (
           closestElement(
             event.target,
-            "caffold-task-conversation, caffold-task-composer, caffold-task-review",
+            "caffold-task-detail-summary, caffold-task-conversation, caffold-task-composer, caffold-task-review",
           )
         ) {
           return;
-        }
-        const reviewMenu = closestElement(event.target, ".task-review-menu");
-        for (const menu of this.querySelectorAll(".task-review-menu[open]")) {
-          if (menu !== reviewMenu) {
-            menu.removeAttribute("open");
-          }
         }
         const action = closestElement(event.target, "[data-task-action]");
         if (!action) {
@@ -153,6 +137,17 @@ class CaffoldTaskDetail extends HTMLElement {
       event.stopPropagation();
       this.applyReviewView(event.detail?.view);
     });
+    this.addEventListener("caffold:task-detail-summary-intent", (event) => {
+      const summary = closestElement(
+        event.target,
+        "caffold-task-detail-summary",
+      );
+      if (!summary || summary !== this.taskSummary()) {
+        return;
+      }
+      event.stopPropagation();
+      this.handleSummaryIntent(event.detail);
+    });
     this.render();
   }
 
@@ -190,7 +185,6 @@ class CaffoldTaskDetail extends HTMLElement {
       this.loadingOlderEvents = false;
       this.taskReview()?.setTaskContext({ task: null, events: [] });
       this.reviewView = "conversation";
-      this.resetTaskGithubStatus();
       this.closeStream();
     }
     this.view = "detail";
@@ -222,7 +216,6 @@ class CaffoldTaskDetail extends HTMLElement {
       taskDetailThreadId(this.taskDetail) === targetThreadId
     ) {
       this.loading = false;
-      this.loadTaskGithubStatus(this.taskDetail.task);
       this.connectStream(targetThreadId);
       return this.taskDetail;
     }
@@ -257,6 +250,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.loadingOlderEvents = false;
     this.initialConversationLoad = null;
     this.closeStream();
+    this.taskSummary()?.deactivate();
     this.taskReview()?.deactivate();
     this.hidden = true;
   }
@@ -359,7 +353,6 @@ class CaffoldTaskDetail extends HTMLElement {
         : "preserve";
       this.render();
       this.finishInitialConversationLoad(threadId, loadGeneration);
-      this.loadTaskGithubStatus(detail.task);
       return detail;
     } catch (error) {
       if (loadGeneration !== this.detailLoadGeneration) {
@@ -525,7 +518,6 @@ class CaffoldTaskDetail extends HTMLElement {
     if (detail?.task) {
       this.emitTaskSnapshot();
     }
-    this.loadTaskGithubStatus(detail.task);
     this.conversationUpdateKind = this.liveConversationUpdateKind(threadId);
     if (error && isTaskTransportStale(this.streamState)) {
       this.setStreamState(TASK_TRANSPORT_STATE.UNAVAILABLE, { render: false });
@@ -702,7 +694,6 @@ class CaffoldTaskDetail extends HTMLElement {
       if (detail.task) {
         this.emitTaskSnapshot();
       }
-      this.loadTaskGithubStatus(detail.task);
       this.conversationUpdateKind = this.liveConversationUpdateKind(threadId);
       if (detail?.syncState === "ready" && detail?.task) {
         this.markStreamReadyFromCanonical(threadId);
@@ -720,10 +711,6 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   handleAction(action, element) {
-    if (action === "open-git-tool" || action === "open-github-tool") {
-      this.openTaskReviewRoute(action, element);
-      return;
-    }
     if (action === "continue-history-task") {
       this.dispatchEvent(
         new CustomEvent("caffold:task-detail-intent", {
@@ -754,6 +741,17 @@ class CaffoldTaskDetail extends HTMLElement {
       this.loadOlderEvents({ retry: true });
       return;
     }
+    if (action === "approval") {
+      this.resolveApproval(element.dataset.approvalId, element.dataset.decision);
+    }
+  }
+
+  handleSummaryIntent(intent = {}) {
+    const action = intent.type;
+    if (action === "open-git-tool" || action === "open-github-tool") {
+      this.openTaskReviewRoute(action, intent.reviewKind);
+      return;
+    }
     if (action === "open-diff") {
       const review = this.taskReview();
       if (review?.view === "diff") {
@@ -774,118 +772,12 @@ class CaffoldTaskDetail extends HTMLElement {
     }
     if (action === "interrupt") {
       this.interruptSelectedTask();
-      return;
-    }
-    if (action === "approval") {
-      this.resolveApproval(element.dataset.approvalId, element.dataset.decision);
     }
   }
 
-  resetTaskGithubStatus() {
-    this.taskGithubStatusRequestId += 1;
-    this.taskGithubStatus = null;
-    this.taskGithubStatusPath = "";
-    this.taskGithubStatusState = "idle";
-  }
-
-  async loadTaskGithubStatus(task) {
-    const rootPath = taskWorktreeRootPath(task);
-    if (!rootPath) {
-      this.resetTaskGithubStatus();
-      this.patchTaskDetailSummary();
-      return null;
-    }
-    if (
-      this.taskGithubStatusPath === rootPath &&
-      ["loading", "ready", "error"].includes(this.taskGithubStatusState)
-    ) {
-      return this.taskGithubStatus;
-    }
-
-    const requestId = ++this.taskGithubStatusRequestId;
-    this.taskGithubStatusPath = rootPath;
-    this.taskGithubStatusState = "loading";
-    this.taskGithubStatus = null;
-    this.patchTaskDetailSummary();
-    try {
-      const status = await getGitHubStatus(rootPath);
-      if (
-        requestId !== this.taskGithubStatusRequestId ||
-        rootPath !== taskWorktreeRootPath(this.taskDetail?.task)
-      ) {
-        return null;
-      }
-      this.taskGithubStatus = status;
-      this.taskGithubStatusState = "ready";
-      this.patchTaskDetailSummary();
-      return status;
-    } catch (error) {
-      if (
-        requestId !== this.taskGithubStatusRequestId ||
-        rootPath !== taskWorktreeRootPath(this.taskDetail?.task)
-      ) {
-        return null;
-      }
-      this.taskGithubStatus = { message: error.message };
-      this.taskGithubStatusState = "error";
-      this.patchTaskDetailSummary();
-      return null;
-    }
-  }
-
-  patchTaskDetailSummary() {
-    const task = this.taskDetail?.task;
-    if (!task) {
-      return;
-    }
-    const current = this.querySelector(
-      `.task-detail[data-thread-id="${CSS.escape(taskThreadId(task))}"] > .task-detail-summary`,
-    );
-    if (!current) {
-      return;
-    }
-    const template = document.createElement("template");
-    template.innerHTML = this.renderTaskDetailSummary(task).trim();
-    const next = template.content.firstElementChild;
-    if (next) {
-      current.replaceWith(next);
-    }
-  }
-
-  taskGithubMenuState(rootPath) {
-    if (
-      this.taskGithubStatusPath !== rootPath ||
-      ["idle", "loading"].includes(this.taskGithubStatusState)
-    ) {
-      return {
-        enabled: false,
-        loading: true,
-        issues: false,
-        pulls: false,
-        message: "Checking GitHub availability",
-      };
-    }
-
-    const status = this.taskGithubStatus;
-    const issues = Boolean(status?.issuesAvailable);
-    const pulls = Boolean(status?.pullsAvailable);
-    return {
-      enabled: Boolean(status?.github) && (issues || pulls),
-      loading: false,
-      issues,
-      pulls,
-      message:
-        status?.message ||
-        (status?.github
-          ? "GitHub CLI authentication is required"
-          : "No GitHub remote detected"),
-    };
-  }
-
-  openTaskReviewRoute(action, element) {
+  openTaskReviewRoute(action, kind) {
     const task = this.taskDetail?.task;
     const cwd = taskWorktreeRootPath(task);
-    const kind = element.dataset.reviewKind;
     if (!cwd || !kind) {
       return;
     }
@@ -912,7 +804,6 @@ class CaffoldTaskDetail extends HTMLElement {
       action === "open-git-tool"
         ? "caffold:request-git-route"
         : "caffold:request-github-route";
-    element.closest("details")?.removeAttribute("open");
     this.dispatchEvent(
       new CustomEvent(eventName, {
         bubbles: true,
@@ -1241,6 +1132,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.setAttribute("data-task-detail-view", this.reviewView);
     this.ensureTaskShell();
     this.renderTaskContentRegion();
+    this.syncTaskSummary();
     this.syncConversationSnapshot();
     this.syncFollowUpComposer();
     this.syncTaskReview();
@@ -1265,6 +1157,12 @@ class CaffoldTaskDetail extends HTMLElement {
     );
   }
 
+  taskSummary() {
+    return this.querySelector(
+      ".task-detail > caffold-task-detail-summary",
+    );
+  }
+
   followUpComposer() {
     return this.querySelector(
       ".task-conversation-pane caffold-task-composer",
@@ -1273,6 +1171,27 @@ class CaffoldTaskDetail extends HTMLElement {
 
   taskReview() {
     return this.querySelector(".task-detail > caffold-task-review");
+  }
+
+  syncTaskSummary() {
+    const summary = this.taskSummary();
+    if (!summary) {
+      return;
+    }
+    if (this.hidden) {
+      summary.deactivate();
+      return;
+    }
+    const task = this.taskDetail?.task ?? null;
+    summary.setSnapshot({
+      task:
+        task && taskThreadId(task) === this.selectedThreadId
+          ? task
+          : null,
+      transportState: this.streamState,
+      reviewView: this.reviewView,
+      contextPath: this.activeCwdPath(),
+    });
   }
 
   syncFollowUpComposer() {
@@ -1384,14 +1303,18 @@ class CaffoldTaskDetail extends HTMLElement {
       }
       region.querySelector(":scope > .task-detail-placeholder")?.remove();
       currentDetail.hidden = false;
-      const nextSummary = nextDetail?.querySelector(":scope > .task-detail-summary");
+      const nextSummary = nextDetail?.querySelector(
+        ":scope > caffold-task-detail-summary",
+      );
       const nextConversation = nextDetail?.querySelector(":scope > .task-conversation-pane");
-      const currentSummary = currentDetail.querySelector(":scope > .task-detail-summary");
+      const currentSummary = currentDetail.querySelector(
+        ":scope > caffold-task-detail-summary",
+      );
       const currentConversation = currentDetail.querySelector(
         ":scope > .task-conversation-pane",
       );
-      if (nextSummary && currentSummary) {
-        currentSummary.replaceWith(nextSummary);
+      if (nextSummary && !currentSummary) {
+        currentDetail.insertBefore(nextSummary, currentConversation);
       }
       if (nextConversation && currentConversation) {
         const stableChildren = new Map(
@@ -1459,13 +1382,8 @@ class CaffoldTaskDetail extends HTMLElement {
     const detail = this.querySelector(".task-detail");
     if (detail) {
       detail.dataset.taskDetailView = nextView;
-      detail
-        .querySelector('button[data-task-action="toggle-files"]')
-        ?.setAttribute("aria-pressed", nextView === "files" ? "true" : "false");
-      detail
-        .querySelector('button[data-task-action="open-diff"]')
-        ?.setAttribute("aria-pressed", nextView === "diff" ? "true" : "false");
     }
+    this.taskSummary()?.setReviewView(nextView);
     if (changed && options.dispatch !== false) {
       this.dispatchEvent(
         new CustomEvent("caffold:task-detail-view-change", {
@@ -1522,7 +1440,7 @@ class CaffoldTaskDetail extends HTMLElement {
     }
     return `
       <div class="task-detail" data-thread-id="${escapeHtml(task.threadId ?? task.id)}" data-task-detail-view="${escapeHtml(this.reviewView)}">
-        ${this.renderTaskDetailSummary(task)}
+        <caffold-task-detail-summary class="task-detail-summary" role="region" aria-label="Task summary"></caffold-task-detail-summary>
         <section class="task-conversation-pane" aria-label="Task conversation">
           <caffold-task-conversation></caffold-task-conversation>
           ${this.renderStreamState()}
@@ -1546,158 +1464,6 @@ class CaffoldTaskDetail extends HTMLElement {
         ${continuation.error ? `<p class="task-detail-error-message" role="alert">${escapeHtml(continuation.error.message)}</p>` : ""}
         <button type="button" class="task-primary-button" data-task-action="continue-history-task" data-thread-id="${escapeHtml(threadId)}" ${continuation.loading ? "disabled" : ""}>${continuation.loading ? "Continuing..." : "Continue in Caffold"}</button>
       </section>
-    `;
-  }
-
-  renderTaskDetailSummary(task) {
-    const status = renderTaskStatusChip(task, "task-detail-status", {
-      label: false,
-      transportState: this.streamState,
-    });
-    const statusLabel = formatTaskStatus(task, this.streamState);
-    const canOpenDiff = Boolean(task.worktree);
-    const worktreeLabel = taskWorktreeLabel(task);
-    const transportBlocked = isTaskTransportStale(this.streamState);
-
-    return `
-      <section class="task-detail-summary">
-          <div class="task-detail-heading">
-            <h2>${escapeHtml(task.title)}</h2>
-            <p class="task-detail-meta">
-              <span>Thread ${escapeHtml(shortId(task.threadId ?? task.id))}</span>
-              ${worktreeLabel ? `<span>${escapeHtml(worktreeLabel)}</span>` : ""}
-            </p>
-          </div>
-          <div class="task-detail-right">
-            <div class="task-detail-actions">
-              <button
-                type="button"
-                class="task-secondary-button"
-                data-task-action="toggle-files"
-                aria-pressed="${this.reviewView === "files" ? "true" : "false"}"
-              >
-                ${renderInlineIcon("Folder", "Files", "task-action-icon")}
-                <span class="task-action-label">Files</span>
-              </button>
-              <button
-                type="button"
-                class="task-secondary-button"
-                data-task-action="open-diff"
-                aria-pressed="${this.reviewView === "diff" ? "true" : "false"}"
-                ${canOpenDiff ? "" : "disabled"}
-                title="${canOpenDiff ? "Open worktree diff" : "Diff is unavailable outside a Git worktree"}"
-              >
-                ${renderInlineIcon("FileDiff", "Open diff", "task-action-icon")}
-                <span class="task-action-label">Open Diff</span>
-              </button>
-              ${this.renderTaskReviewMenus(task)}
-              ${
-                task.activeTurn?.id
-                  ? `<button type="button" class="task-secondary-button" data-task-action="interrupt" ${transportBlocked ? 'disabled title="Caffold server connection is unavailable."' : ""}>
-                      ${renderInlineIcon("Square", "Interrupt", "task-action-icon")}
-                      <span class="task-action-label">Interrupt</span>
-                    </button>`
-                  : ""
-              }
-            </div>
-            <button
-              type="button"
-              class="task-detail-info-button"
-              popovertarget="task-detail-info"
-              aria-label="Task details, ${escapeHtml(statusLabel)}"
-              title="Status: ${escapeHtml(statusLabel)}"
-            >
-              ${status || renderInlineIcon("Info", "Task details", "task-action-icon")}
-            </button>
-          </div>
-          <div
-            id="task-detail-info"
-            class="task-detail-popover"
-            popover="auto"
-            aria-label="Task details"
-          >
-            <dl>
-              <div>
-                <dt>Status</dt>
-                <dd>${escapeHtml(statusLabel)}</dd>
-              </div>
-              <div>
-                <dt>Thread</dt>
-                <dd>${escapeHtml(task.threadId ?? task.id)}</dd>
-              </div>
-              <div>
-                <dt>Working directory</dt>
-                <dd>${escapeHtml(task.cwdPath || task.cwd || this.activeCwdPath())}</dd>
-              </div>
-              ${
-                task.worktree
-                  ? `<div>
-                      <dt>Worktree</dt>
-                      <dd>${escapeHtml(task.worktree.rootPath)}</dd>
-                    </div>
-                    <div>
-                      <dt>Branch</dt>
-                      <dd>${escapeHtml(taskWorktreeRef(task))}</dd>
-                    </div>`
-                  : ""
-              }
-              ${
-                canOpenDiff
-                  ? ""
-                  : `<div>
-                      <dt>Diff review</dt>
-                      <dd>Unavailable outside a Git worktree.</dd>
-                    </div>`
-              }
-            </dl>
-          </div>
-        </section>
-    `;
-  }
-
-  renderTaskReviewMenus(task) {
-    const rootPath = taskWorktreeRootPath(task);
-    if (!rootPath) {
-      return `
-        <button type="button" class="task-brand-button" disabled title="Git and GitHub are unavailable outside a Git worktree">
-          <img src="/assets/brand/git-logomark-light.svg" alt="">
-          <span class="sr-only">Git unavailable</span>
-        </button>
-        <button type="button" class="task-brand-button" disabled title="Git and GitHub are unavailable outside a Git worktree">
-          <img src="/assets/brand/github-invertocat-light.svg" alt="">
-          <span class="sr-only">GitHub unavailable</span>
-        </button>
-      `;
-    }
-
-    const github = this.taskGithubMenuState(rootPath);
-    return `
-      <details class="task-review-menu">
-        <summary class="task-brand-button" title="Open Git workspace" aria-label="Open Git workspace">
-          <img src="/assets/brand/git-logomark-light.svg" alt="">
-        </summary>
-        <div class="task-review-menu-popover" role="menu" aria-label="Git workspace">
-          <button type="button" role="menuitem" data-task-action="open-git-tool" data-review-kind="diff">Working Tree</button>
-          <button type="button" role="menuitem" data-task-action="open-git-tool" data-review-kind="compare">Compare</button>
-          <button type="button" role="menuitem" data-task-action="open-git-tool" data-review-kind="log">Log</button>
-        </div>
-      </details>
-      ${
-        github.enabled
-          ? `<details class="task-review-menu">
-              <summary class="task-brand-button" title="Open GitHub workspace" aria-label="Open GitHub workspace">
-                <img src="/assets/brand/github-invertocat-light.svg" alt="">
-              </summary>
-              <div class="task-review-menu-popover" role="menu" aria-label="GitHub workspace">
-                <button type="button" role="menuitem" data-task-action="open-github-tool" data-review-kind="pulls" ${github.pulls ? "" : "disabled"}>Pull Requests</button>
-                <button type="button" role="menuitem" data-task-action="open-github-tool" data-review-kind="issues" ${github.issues ? "" : "disabled"}>Issues</button>
-              </div>
-            </details>`
-          : `<button type="button" class="task-brand-button${github.loading ? " is-loading" : ""}" disabled title="${escapeHtml(github.message)}">
-              <img src="/assets/brand/github-invertocat-light.svg" alt="">
-              <span class="sr-only">${escapeHtml(github.message)}</span>
-            </button>`
-      }
     `;
   }
 
@@ -1732,14 +1498,6 @@ function isVisibleStreamState(state) {
   return isTaskTransportStale(state);
 }
 
-
-function taskWorktreeRef(task) {
-  const branch = `${task?.worktree?.branch ?? ""}`.trim();
-  if (branch) {
-    return branch;
-  }
-  return shortId(task?.worktree?.headSha ?? "");
-}
 
 function taskWorktreeRootPath(task) {
   const path = `${task?.worktree?.rootPath ?? ""}`.trim();

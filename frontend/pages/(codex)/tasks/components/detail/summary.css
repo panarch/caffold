@@ -1,0 +1,300 @@
+caffold-task-detail-summary {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+
+  & h2,
+  & p {
+    margin: 0;
+  }
+
+  & h2 {
+    overflow: hidden;
+    font-size: var(--task-detail-heading-size);
+    line-height: var(--task-detail-line-height);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & p {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--muted);
+  }
+
+  & .task-detail-heading {
+    min-width: 0;
+  }
+
+  & .task-detail-meta {
+    font-size: var(--task-detail-meta-size);
+    line-height: 16px;
+  }
+
+  & .task-detail-right {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  & .task-detail-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  & .task-review-menu {
+    position: relative;
+    flex: 0 0 auto;
+  }
+
+  & .task-review-menu > summary {
+    list-style: none;
+  }
+
+  & .task-review-menu > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  & .task-brand-button {
+    position: relative;
+    display: inline-grid;
+    width: 32px;
+    height: 32px;
+    padding: 6px;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  & button.task-brand-button:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+
+  & .task-brand-button img {
+    display: block;
+    width: 19px;
+    height: 19px;
+    object-fit: contain;
+  }
+
+  & .task-brand-button.is-loading::after {
+    position: absolute;
+    inset: auto 2px 2px auto;
+    width: 7px;
+    height: 7px;
+    border: 1px solid #6f7d75;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: task-spin 700ms linear infinite;
+    content: "";
+  }
+
+  & .task-review-menu[open] > .task-brand-button,
+  & .task-brand-button:hover,
+  & .task-brand-button:focus-visible {
+    border-color: var(--border-strong);
+    background: var(--surface-muted);
+    outline: none;
+  }
+
+  & .task-review-menu-popover {
+    position: absolute;
+    z-index: 8;
+    inset: calc(100% + 5px) 0 auto auto;
+    display: grid;
+    width: 168px;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    box-shadow: 0 12px 30px rgb(20 36 29 / 16%);
+  }
+
+  & .task-review-menu-popover button {
+    min-height: 32px;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  & .task-review-menu-popover button:hover,
+  & .task-review-menu-popover button:focus-visible {
+    background: var(--accent-soft);
+    outline: none;
+  }
+
+  & .task-review-menu-popover button:disabled {
+    color: var(--muted);
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  & .task-detail-info-button {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--accent);
+    cursor: pointer;
+    flex: 0 0 auto;
+  }
+
+  & .task-detail-info-button:hover,
+  & .task-detail-info-button:focus-visible {
+    outline: none;
+  }
+
+  & .task-detail-info-button .task-status-chip {
+    pointer-events: none;
+  }
+
+  & .task-detail-popover {
+    position: fixed;
+    inset: 112px 12px auto auto;
+    width: fit-content;
+    max-width: min(544px, calc(100vw - 24px));
+    max-height: min(60vh, 420px);
+    margin: 0;
+    padding: 12px;
+    overflow: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 14px 34px rgb(20 36 29 / 18%);
+  }
+
+  & .task-detail-popover::backdrop {
+    background: transparent;
+  }
+
+  & .task-detail-popover dl {
+    display: grid;
+    grid-template-columns: max-content minmax(192px, 1fr);
+    gap: 9px 14px;
+    margin: 0;
+  }
+
+  & .task-detail-popover dl div {
+    display: contents;
+  }
+
+  & .task-detail-popover dt {
+    color: var(--muted);
+    font-size: var(--task-detail-meta-size);
+    line-height: 16px;
+  }
+
+  & .task-detail-popover dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+    font-size: var(--task-detail-font-size);
+    line-height: var(--task-detail-line-height);
+  }
+
+  & .task-detail-status {
+    width: 22px;
+    height: 22px;
+    justify-content: center;
+    padding: 0;
+  }
+}
+
+@media (max-width: 860px) {
+  caffold-task-detail-summary {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    padding: 8px 10px;
+
+    & .task-detail-actions {
+      justify-content: start;
+    }
+  }
+}
+
+@media (max-width: 520px) {
+  caffold-task-detail-summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    min-height: 48px;
+    gap: 6px;
+    padding: 7px 8px;
+
+    & .task-detail-heading {
+      min-width: 0;
+    }
+
+    & .task-detail-actions,
+    & .task-detail-right {
+      gap: 4px;
+    }
+
+    & .task-detail-actions .task-secondary-button,
+    & .task-detail-info-button {
+      width: 32px;
+      min-width: 32px;
+      min-height: 32px;
+      padding: 0;
+    }
+
+    & h2 {
+      font-size: var(--task-detail-heading-size);
+    }
+
+    & .task-detail-meta {
+      display: none;
+    }
+
+    & .task-detail-info-button {
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      background: var(--surface);
+    }
+
+    & .task-detail-info-button:hover,
+    & .task-detail-info-button:focus-visible {
+      border-color: var(--border-strong);
+    }
+
+    & .task-detail-popover {
+      inset: 102px 8px auto 8px;
+      width: auto;
+    }
+
+    & .task-detail-popover dl {
+      grid-template-columns: 1fr;
+      gap: 3px;
+    }
+
+    & .task-detail-popover dl div {
+      display: grid;
+      gap: 2px;
+    }
+
+    & .task-detail-popover dl div + div {
+      margin-top: 8px;
+    }
+  }
+}

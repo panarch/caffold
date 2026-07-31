@@ -142,7 +142,11 @@ lifetimes:
   pickers.
 - `caffold-task-detail` owns the selected thread's canonical REST/SSE session,
   detail revisions, event cache, history requests, prompt reconciliation,
-  approvals, interrupt actions, and GitHub header availability.
+  approvals, interrupt actions, and review-route coordination.
+- `caffold-task-detail-summary` owns the stable header DOM, task-info and
+  Git/GitHub menu disclosure, and GitHub availability requests scoped to the
+  current worktree. It receives raw task/transport/review snapshots and emits
+  intents; it cannot mutate canonical task state or invoke Codex actions.
 - `caffold-task-conversation` owns transcript rendering, disclosure state,
   scroll anchors, Markdown reflow handling, and the canonical active-turn
   clock.
@@ -165,10 +169,10 @@ Data crosses these boundaries as snapshots or method calls from parent to
 child. Actions cross upward as intent events. Leaf components do not mutate
 sibling state or call Codex mutation APIs on behalf of their canonical owner.
 The Tasks page mounts Navigator, New Task, and Detail once and switches them
-with visibility and activation methods. Detail likewise preserves Conversation,
-Composer, and Review instances. Switching conversation/Files/Diff therefore
-does not require capture-and-restore code for drafts, transcript scroll, or
-review selection.
+with visibility and activation methods. Detail likewise preserves Summary,
+Conversation, Composer, and Review instances. Switching conversation/Files/Diff
+therefore does not require capture-and-restore code for header disclosure,
+drafts, transcript scroll, or review selection.
 
 Files opens the derived worktree root, falling back to the thread cwd outside
 Git. Diff uses the same reusable tree/viewer implementation as the Git review
@@ -324,6 +328,8 @@ frontend/pages/
         detail.js
         detail.css
         detail/
+          summary.js
+          summary.css
           conversation.js
           conversation.css
           conversation/

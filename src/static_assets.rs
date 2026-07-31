@@ -146,6 +146,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(codex)/tasks/components/detail.js" => Some(js(include_str!(
             "../frontend/pages/(codex)/tasks/components/detail.js"
         ))),
+        "pages/(codex)/tasks/components/detail/summary.css" => Some(css(include_str!(
+            "../frontend/pages/(codex)/tasks/components/detail/summary.css"
+        ))),
+        "pages/(codex)/tasks/components/detail/summary.js" => Some(js(include_str!(
+            "../frontend/pages/(codex)/tasks/components/detail/summary.js"
+        ))),
         "pages/(codex)/tasks/components/detail/conversation.css" => Some(css(include_str!(
             "../frontend/pages/(codex)/tasks/components/detail/conversation.css"
         ))),
@@ -709,6 +715,10 @@ mod tests {
                 b"caffold-task-detail".as_slice(),
             ),
             (
+                "pages/(codex)/tasks/components/detail/summary.js",
+                b"caffold-task-detail-summary".as_slice(),
+            ),
+            (
                 "pages/(codex)/tasks/components/detail/review.js",
                 b"caffold-task-review".as_slice(),
             ),
@@ -733,6 +743,10 @@ mod tests {
             (
                 "pages/(codex)/tasks/components/detail.css",
                 b"caffold-task-detail".as_slice(),
+            ),
+            (
+                "pages/(codex)/tasks/components/detail/summary.css",
+                b"caffold-task-detail-summary".as_slice(),
             ),
             (
                 "pages/(codex)/tasks/components/detail/review.css",

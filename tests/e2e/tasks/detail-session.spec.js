@@ -1072,7 +1072,7 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
     ),
   ).toHaveCount(0);
   await expect(
-    tasksPage.locator('[data-task-action="interrupt"]'),
+    tasksPage.locator('[data-summary-action="interrupt"]'),
   ).toBeDisabled();
   await expect(textarea).toBeDisabled();
   await expect(taskRow).toHaveAttribute("data-task-status", "reconnecting");
