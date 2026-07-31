@@ -1096,6 +1096,18 @@ class CaffoldTaskDetail extends HTMLElement {
       return;
     }
     if (!task || taskThreadIdValue !== this.selectedThreadId) {
+      conversation.setSnapshot({
+        threadId: this.selectedThreadId,
+        task: null,
+        events: [],
+        eventsPage: { nextCursor: null },
+        loading: false,
+        loadingOlder: false,
+        detailError: null,
+        historyError: null,
+        transportState: this.detailStream.state,
+        updateKind: null,
+      });
       this.conversationUpdateKind = null;
       return;
     }
@@ -1127,11 +1139,7 @@ class CaffoldTaskDetail extends HTMLElement {
       const nextRoot = template.content.firstElementChild;
       const nextDetail = nextRoot?.matches(".task-detail") ? nextRoot : null;
       if (!nextDetail || !threadId) {
-        if (this.detailLoadError && !this.taskDetail?.task) {
-          currentDetail.remove();
-        } else {
-          currentDetail.hidden = true;
-        }
+        currentDetail.hidden = true;
         const placeholder = document.createElement("div");
         placeholder.className = "task-detail-placeholder";
         placeholder.append(...template.content.childNodes);

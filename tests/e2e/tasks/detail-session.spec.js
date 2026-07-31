@@ -140,7 +140,8 @@ test("loading detail accepts a canonical task sync without a synthetic task", as
   await expect(
     page.locator(".task-detail-error-message"),
   ).toHaveText("Codex app-server is unavailable");
-  await expect(page.locator(".task-detail")).toHaveCount(0);
+  await expect(page.locator(".task-detail")).toHaveCount(1);
+  await expect(page.locator(".task-detail")).toBeHidden();
   await expect(page.locator(".task-status-chip")).toHaveCount(0);
   await expect(
     page.locator('.task-list-section[data-task-section="managed"]'),
@@ -461,6 +462,139 @@ test("keeps task context and retries after an initial detail timeout", async ({
   await expect.poll(() => detailRequests).toBe(2);
   await expect(tasksPage).toContainText("Recovered canonical response.");
   await expect(tasksPage.locator(".task-detail-load-error")).toHaveCount(0);
+});
+test("preserves stable detail children through another task load failure", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop",
+    "Wide master-detail lifecycle regression",
+  );
+  await installTaskApiFixture(page);
+  await page.unroute("**/api/tasks");
+
+  const now = Date.now();
+  const makeDetail = (threadId, title, { running = false } = {}) => {
+    const detail = taskDetailFixture({
+      running,
+      model: "gpt-test",
+      reasoningEffort: "medium",
+    });
+    detail.threadId = threadId;
+    detail.task = {
+      ...detail.task,
+      id: threadId,
+      threadId,
+      title,
+      preview: `${title} preview`,
+      cwd: "src",
+      cwdPath: "src",
+      createdMs: now,
+      updatedMs: now,
+      recencyMs: now,
+      activeTurn: running
+        ? { id: `${threadId}-turn`, startedAtMs: now - 5_000 }
+        : null,
+    };
+    detail.events = [
+      {
+        id: `${threadId}-assistant`,
+        threadId,
+        type: "assistant_message",
+        summary: "Assistant response",
+        payload: {
+          turnId: `${threadId}-turn`,
+          text: `${title} canonical response.`,
+        },
+        createdMs: now,
+      },
+    ];
+    return detail;
+  };
+  const detailA = makeDetail("thread-stable-a", "Stable task A", {
+    running: true,
+  });
+  const detailB = makeDetail("thread-stable-b", "Recover task B");
+  let taskBRequests = 0;
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: {
+        tasks: [detailB.task, detailA.task],
+        nextCursor: null,
+      },
+    }),
+  );
+  await page.route(/\/api\/tasks\/thread-stable-a(?:\?|$)/, (route) =>
+    route.fulfill({ json: detailA }),
+  );
+  await page.route(/\/api\/tasks\/thread-stable-b(?:\?|$)/, (route) => {
+    taskBRequests += 1;
+    return taskBRequests === 1
+      ? route.fulfill({
+          status: 504,
+          json: { error: "Codex app-server request timed out." },
+        })
+      : route.fulfill({ json: detailB });
+  });
+
+  await page.goto("/tasks/thread-stable-a?cwd=src");
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect(tasksPage).toContainText("Stable task A canonical response.");
+  const prompt = tasksPage.getByRole("textbox", { name: "Follow-up prompt" });
+  await prompt.fill("Draft retained for task A");
+  await tasksPage.evaluate((element) => {
+    const markers = new Map([
+      ["conversation", "caffold-task-conversation"],
+      ["composer", "caffold-task-composer"],
+      ["review", "caffold-task-review"],
+    ]);
+    for (const [name, selector] of markers) {
+      element.querySelector(selector).dataset.stableChild = name;
+    }
+  });
+  const conversation = tasksPage.locator(
+    '[data-stable-child="conversation"]',
+  );
+  await expect
+    .poll(() =>
+      conversation.evaluate(
+        (element) => element.activeTurnClockTimer !== null,
+      ),
+    )
+    .toBe(true);
+
+  await tasksPage
+    .locator('.task-row[data-thread-id="thread-stable-b"]')
+    .click();
+  await expect(tasksPage.locator(".task-detail-load-error")).toContainText(
+    "Codex app-server request timed out.",
+  );
+  await expect(conversation).toHaveCount(1);
+  await expect(
+    tasksPage.locator('[data-stable-child="composer"]'),
+  ).toHaveCount(1);
+  await expect(
+    tasksPage.locator('[data-stable-child="review"]'),
+  ).toHaveCount(1);
+  await expect
+    .poll(() =>
+      conversation.evaluate(
+        (element) => element.activeTurnClockTimer === null,
+      ),
+    )
+    .toBe(true);
+
+  await tasksPage.locator('[data-task-action="retry-task-detail"]').click();
+  await expect.poll(() => taskBRequests).toBe(2);
+  await expect(tasksPage).toContainText("Recover task B canonical response.");
+  await expect(conversation).toBeVisible();
+
+  await tasksPage
+    .locator('.task-row[data-thread-id="thread-stable-a"]')
+    .click();
+  await expect(tasksPage).toContainText("Stable task A canonical response.");
+  await expect(prompt).toHaveValue("Draft retained for task A");
 });
 test("accepts canonical task detail after stream revisions restart", async ({ page }) => {
   await page.addInitScript(() => {
