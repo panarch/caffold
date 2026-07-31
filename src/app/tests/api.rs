@@ -47,6 +47,15 @@ fn current_model_list_response() -> JsonValue {
 }
 
 #[test]
+fn extracts_codex_version_from_app_server_user_agent() {
+    assert_eq!(
+        codex_version_from_user_agent("Codex Desktop/0.144.4"),
+        Some("0.144.4".to_string())
+    );
+    assert_eq!(codex_version_from_user_agent("Codex Desktop"), None);
+}
+
+#[test]
 fn task_state_preserves_the_configured_default_cwd() {
     let root = tempfile::tempdir().unwrap();
     let project = root.path().join("project");
