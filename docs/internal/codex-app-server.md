@@ -189,8 +189,14 @@ state:
 
 - `caffold-task-navigator` owns managed/History reads, list SSE, and the
   per-thread list revision baseline.
-- `caffold-task-detail` owns the selected task's canonical read, detail SSE,
-  event cache, and per-thread detail revision baseline.
+- `caffold-task-detail` owns the selected task's canonical read and application,
+  event cache, and per-thread detail revision baseline. Its private
+  `detail/stream.js` module owns only the detail `EventSource`, connection
+  generation, reconnect timer, transport state, and visibility/reconnect
+  refresh coalescing. It forwards raw `task-sync` and `task-event` messages to
+  Detail and cannot write canonical task, event, or revision state. A refresh
+  response is applied only while both Detail's route generation and the
+  stream-provided current-generation guard still match.
 - A `stream-bootstrap` establishes a new detail process baseline even when its
   revision is lower. Lower revisions from the same baseline remain stale.
 - A detail snapshot may be forwarded to Navigator through

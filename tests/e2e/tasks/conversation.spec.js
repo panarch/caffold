@@ -1290,7 +1290,8 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     .poll(() =>
       tasksPage.evaluate(
         (element) =>
-          element.querySelector("caffold-task-detail").taskRefresh === null,
+          element.querySelector("caffold-task-detail").detailStream.refresh ===
+          null,
       ),
     )
     .toBe(true);

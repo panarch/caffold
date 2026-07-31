@@ -146,6 +146,9 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(codex)/tasks/components/detail.js" => Some(js(include_str!(
             "../frontend/pages/(codex)/tasks/components/detail.js"
         ))),
+        "pages/(codex)/tasks/components/detail/stream.js" => Some(js(include_str!(
+            "../frontend/pages/(codex)/tasks/components/detail/stream.js"
+        ))),
         "pages/(codex)/tasks/components/detail/summary.css" => Some(css(include_str!(
             "../frontend/pages/(codex)/tasks/components/detail/summary.css"
         ))),
@@ -696,6 +699,18 @@ mod tests {
             tasks_navigator_css
                 .body
                 .starts_with(b"caffold-task-navigator")
+        );
+        let task_detail_stream =
+            get("pages/(codex)/tasks/components/detail/stream.js").expect("task detail stream js");
+        assert_eq!(
+            task_detail_stream.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(
+            task_detail_stream
+                .body
+                .windows(b"TaskDetailStream".len())
+                .any(|window| window == b"TaskDetailStream")
         );
         for (path, tag) in [
             (

@@ -387,7 +387,7 @@ test("submits completed task follow-ups and reloads canonical messages", async (
   await page.evaluate(() => {
     document
       .querySelector("caffold-task-detail")
-      ?.requestSelectedTaskRefresh();
+      ?.detailStream.requestRefresh();
   });
   await staleDetailRequestStarted;
 

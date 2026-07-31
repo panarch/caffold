@@ -140,9 +140,15 @@ lifetimes:
 - `caffold-task-new` owns cwd selection and the create request.
   `caffold-task-composer` owns its create draft, images, focus, and option
   pickers.
-- `caffold-task-detail` owns the selected thread's canonical REST/SSE session,
-  detail revisions, event cache, history requests, prompt reconciliation,
-  approvals, interrupt actions, and review-route coordination.
+- `caffold-task-detail` owns the selected thread's canonical REST read and
+  application, detail revisions, event cache, history requests, prompt
+  reconciliation, approvals, interrupt actions, and review-route coordination.
+  Its private `detail/stream.js` module owns only the selected thread's
+  `EventSource`, reconnect/visibility refresh scheduling, connection generation,
+  and transport state. Raw stream messages and a guarded refresh request go to
+  Detail; the module has no task/event cache or revision writer. Detail checks
+  both its route generation and the stream-provided current-generation guard
+  before applying a refresh response.
 - `caffold-task-detail-summary` owns the stable header DOM, task-info and
   Git/GitHub menu disclosure, and GitHub availability requests scoped to the
   current worktree. It receives raw task/transport/review snapshots and emits
@@ -328,6 +334,7 @@ frontend/pages/
         detail.js
         detail.css
         detail/
+          stream.js
           summary.js
           summary.css
           conversation.js

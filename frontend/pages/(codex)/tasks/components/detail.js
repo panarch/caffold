@@ -3,7 +3,6 @@ import {
   interruptTask,
   resolveTaskApproval,
   sendTaskPrompt,
-  taskStreamUrl,
 } from "../../../../api.js";
 import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
@@ -11,6 +10,7 @@ import "./composer.js";
 import "./detail/conversation.js";
 import "./detail/review.js";
 import "./detail/summary.js";
+import { TaskDetailStream } from "./detail/stream.js";
 import {
   PROMPT_SUBMISSION_STATE,
   TASK_TRANSPORT_STATE,
@@ -35,7 +35,6 @@ import {
   taskThreadId,
 } from "../task-list-model.js";
 
-const STREAM_ERROR_DELAY_MS = 8_000;
 class CaffoldTaskDetail extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
@@ -61,11 +60,14 @@ class CaffoldTaskDetail extends HTMLElement {
     this.loading = false;
     this.loadingOlderEvents = false;
     this.selectedThreadId = "";
-    this.stream = null;
-    this.streamState = TASK_TRANSPORT_STATE.IDLE;
-    this.streamGeneration = 0;
-    this.streamErrorTimer = null;
-    this.taskRefresh = null;
+    this.detailStream = new TaskDetailStream({
+      onTaskSync: (message) => this.applyTaskStreamSync(message),
+      onTaskEvent: (message) => this.applyTaskStreamEvent(message),
+      onRefresh: (threadId, isCurrent) =>
+        this.refreshSelectedTask(threadId, isCurrent),
+      onStateChange: (state, previousState) =>
+        this.handleStreamStateChange(state, previousState),
+    });
     this.detailLoadGeneration = 0;
     this.historyRequestToken = 0;
     this.interruptActionToken = 0;
@@ -79,7 +81,6 @@ class CaffoldTaskDetail extends HTMLElement {
     this.boundIconsReady = () => {
       this.render();
     };
-    this.boundVisibilityChange = () => this.handleVisibilityChange();
     warmIcons();
 
     this.addEventListener(
@@ -185,7 +186,7 @@ class CaffoldTaskDetail extends HTMLElement {
       this.loadingOlderEvents = false;
       this.taskReview()?.setTaskContext({ task: null, events: [] });
       this.reviewView = "conversation";
-      this.closeStream();
+      this.detailStream.deactivate();
     }
     this.view = "detail";
     this.hidden = false;
@@ -216,7 +217,7 @@ class CaffoldTaskDetail extends HTMLElement {
       taskDetailThreadId(this.taskDetail) === targetThreadId
     ) {
       this.loading = false;
-      this.connectStream(targetThreadId);
+      this.detailStream.activate(targetThreadId);
       return this.taskDetail;
     }
     return await this.openTask(targetThreadId);
@@ -238,7 +239,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.conversationUpdateKind = "bottom";
     this.emitTaskSnapshot();
     this.render();
-    this.connectStream(threadId);
+    this.detailStream.activate(threadId);
     return true;
   }
 
@@ -249,7 +250,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.approvalActionToken += 1;
     this.loadingOlderEvents = false;
     this.initialConversationLoad = null;
-    this.closeStream();
+    this.detailStream.deactivate();
     this.taskSummary()?.deactivate();
     this.taskReview()?.deactivate();
     this.hidden = true;
@@ -289,7 +290,6 @@ class CaffoldTaskDetail extends HTMLElement {
     }
     this.globalListenersAttached = true;
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
-    document.addEventListener("visibilitychange", this.boundVisibilityChange);
   }
 
   detachGlobalListeners() {
@@ -298,7 +298,6 @@ class CaffoldTaskDetail extends HTMLElement {
     }
     this.globalListenersAttached = false;
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
-    document.removeEventListener("visibilitychange", this.boundVisibilityChange);
   }
 
   async openTask(threadId) {
@@ -317,7 +316,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.detailLoadError = null;
     this.historyLoadError = null;
     this.render();
-    this.connectStream(threadId);
+    this.detailStream.activate(threadId);
 
     try {
       const detail = await getTask(threadId);
@@ -343,7 +342,7 @@ class CaffoldTaskDetail extends HTMLElement {
       this.historyLoadError = null;
       this.emitTaskSnapshot();
       if (detail.managed === false) {
-        this.closeStream();
+        this.detailStream.deactivate();
         this.render();
         this.finishInitialConversationLoad(threadId, loadGeneration);
         return detail;
@@ -400,93 +399,35 @@ class CaffoldTaskDetail extends HTMLElement {
     this.events = nextEvents;
   }
 
-  connectStream(threadId, { force = false } = {}) {
-    if (!force && this.stream && this.selectedThreadId === threadId) {
+  applyTaskStreamSync(message) {
+    const threadId = `${message?.threadId ?? ""}`;
+    const detail = message?.detail;
+    if (
+      threadId !== this.selectedThreadId ||
+      taskDetailThreadId(detail) !== threadId
+    ) {
       return;
     }
-    this.closeStream();
-    if (!("EventSource" in window)) {
-      this.setStreamState(TASK_TRANSPORT_STATE.UNAVAILABLE);
-      return;
-    }
+    this.applyTaskDetailSync(threadId, detail, message.revision, {
+      resetRevision: message.reason === "stream-bootstrap",
+      error: message.error,
+    });
+  }
 
-    const generation = this.streamGeneration;
-    let stream;
-    try {
-      stream = new EventSource(taskStreamUrl(threadId));
-    } catch {
-      this.setStreamState(TASK_TRANSPORT_STATE.UNAVAILABLE);
+  applyTaskStreamEvent(message) {
+    const threadId = `${message?.threadId ?? ""}`;
+    const entry = message?.event;
+    if (
+      threadId !== this.selectedThreadId ||
+      !entry ||
+      entry.threadId !== threadId ||
+      !this.acceptTaskDetailRevision(threadId, message.revision)
+    ) {
       return;
     }
-
-    this.stream = stream;
-    this.streamState = TASK_TRANSPORT_STATE.CONNECTING;
-    stream.addEventListener("open", () => {
-      if (!this.isCurrentStream(stream, threadId, generation)) {
-        return;
-      }
-      const shouldSync = isTaskTransportStale(this.streamState);
-      window.clearTimeout(this.streamErrorTimer);
-      this.streamErrorTimer = null;
-      if (shouldSync) {
-        this.requestSelectedTaskRefresh(threadId, generation);
-        return;
-      }
-      this.setStreamState(TASK_TRANSPORT_STATE.READY);
-    });
-    stream.addEventListener("error", () => {
-      if (!this.isCurrentStream(stream, threadId, generation)) {
-        return;
-      }
-      window.clearTimeout(this.streamErrorTimer);
-      if (stream.readyState === 2) {
-        this.streamErrorTimer = null;
-        this.setStreamState(TASK_TRANSPORT_STATE.UNAVAILABLE);
-        return;
-      }
-      this.setStreamState(TASK_TRANSPORT_STATE.RECONNECTING);
-      this.streamErrorTimer = window.setTimeout(() => {
-        if (
-          this.isCurrentStream(stream, threadId, generation) &&
-          this.streamState === TASK_TRANSPORT_STATE.RECONNECTING
-        ) {
-          this.streamErrorTimer = null;
-          this.setStreamState(TASK_TRANSPORT_STATE.UNAVAILABLE);
-        }
-      }, STREAM_ERROR_DELAY_MS);
-    });
-    stream.addEventListener("task-sync", (event) => {
-      const message = parseJson(event.data);
-      const detail = message?.detail;
-      if (
-        message?.reason === "external-sync-start" ||
-        !this.isCurrentStream(stream, threadId, generation) ||
-        message?.threadId !== threadId ||
-        taskDetailThreadId(detail) !== threadId
-      ) {
-        return;
-      }
-      this.applyTaskDetailSync(threadId, detail, message.revision, {
-        resetRevision: message.reason === "stream-bootstrap",
-        error: message.error,
-      });
-    });
-    stream.addEventListener("task-event", (event) => {
-      const message = parseJson(event.data);
-      const entry = message?.event;
-      if (
-        !this.isCurrentStream(stream, threadId, generation) ||
-        message?.threadId !== threadId ||
-        !entry ||
-        entry.threadId !== this.selectedThreadId ||
-        !this.acceptTaskDetailRevision(threadId, message.revision)
-      ) {
-        return;
-      }
-      this.setThreadEvents(threadId, upsertEvent(this.events, entry));
-      this.conversationUpdateKind = this.liveConversationUpdateKind(threadId);
-      this.render();
-    });
+    this.setThreadEvents(threadId, upsertEvent(this.events, entry));
+    this.conversationUpdateKind = this.liveConversationUpdateKind(threadId);
+    this.render();
   }
 
   applyTaskDetailSync(
@@ -519,10 +460,10 @@ class CaffoldTaskDetail extends HTMLElement {
       this.emitTaskSnapshot();
     }
     this.conversationUpdateKind = this.liveConversationUpdateKind(threadId);
-    if (error && isTaskTransportStale(this.streamState)) {
-      this.setStreamState(TASK_TRANSPORT_STATE.UNAVAILABLE, { render: false });
+    if (error && isTaskTransportStale(this.detailStream.state)) {
+      this.detailStream.markUnavailable(threadId, { notify: false });
     } else if (detail?.syncState === "ready" && detail?.task) {
-      this.markStreamReadyFromCanonical(threadId);
+      this.detailStream.markCanonicalReady(threadId);
     }
     this.render();
   }
@@ -573,141 +514,42 @@ class CaffoldTaskDetail extends HTMLElement {
     return true;
   }
 
-  closeStream() {
-    this.streamGeneration += 1;
-    window.clearTimeout(this.streamErrorTimer);
-    this.streamErrorTimer = null;
-    this.stream?.close();
-    this.stream = null;
-    this.streamState = TASK_TRANSPORT_STATE.IDLE;
-    this.taskRefresh = null;
-  }
-
-  isCurrentStream(stream, threadId, generation) {
-    return (
-      this.stream === stream &&
-      this.streamGeneration === generation &&
-      this.selectedThreadId === threadId
-    );
-  }
-
-  setStreamState(state, { render = true } = {}) {
-    if (this.streamState === state) {
-      return;
-    }
-    const wasVisible = isVisibleStreamState(this.streamState);
-    this.streamState = state;
+  handleStreamStateChange(state, previousState) {
     if (
-      render &&
       this.view === "detail" &&
-      (wasVisible || isVisibleStreamState(state))
+      (isVisibleStreamState(previousState) || isVisibleStreamState(state))
     ) {
       this.render();
     }
   }
 
-  markStreamReadyFromCanonical(threadId) {
+  async refreshSelectedTask(threadId, isCurrent = () => true) {
+    const loadGeneration = this.detailLoadGeneration;
+    const detail = await getTask(threadId);
     if (
-      threadId === this.selectedThreadId &&
-      this.stream?.readyState === 1 &&
-      isTaskTransportStale(this.streamState)
-    ) {
-      window.clearTimeout(this.streamErrorTimer);
-      this.streamErrorTimer = null;
-      this.setStreamState(TASK_TRANSPORT_STATE.READY, { render: false });
-    }
-  }
-
-  handleVisibilityChange() {
-    if (
-      this.hidden ||
-      document.visibilityState !== "visible" ||
-      !this.selectedThreadId
+      !isCurrent() ||
+      loadGeneration !== this.detailLoadGeneration ||
+      threadId !== this.selectedThreadId
     ) {
       return;
     }
-    this.requestSelectedTaskRefresh(
-      this.selectedThreadId,
-      this.streamGeneration,
-    );
-  }
-
-  requestSelectedTaskRefresh(
-    threadId = this.selectedThreadId,
-    generation = this.streamGeneration,
-  ) {
-    if (!threadId || threadId !== this.selectedThreadId) {
-      return Promise.resolve(null);
+    if (taskDetailThreadId(detail) !== threadId) {
+      return;
     }
-
-    if (
-      this.taskRefresh?.threadId === threadId &&
-      this.taskRefresh?.generation === generation
-    ) {
-      this.taskRefresh.dirty = true;
-      return this.taskRefresh.promise;
+    if (!this.acceptTaskDetailRevision(threadId, detail.revision)) {
+      return;
     }
-
-    const refresh = {
-      threadId,
-      generation,
-      dirty: false,
-      promise: null,
-    };
-    refresh.promise = this.refreshSelectedTask(threadId, generation).finally(() => {
-      if (this.taskRefresh !== refresh) {
-        return;
-      }
-      const shouldRefreshAgain =
-        refresh.dirty &&
-        this.streamGeneration === generation &&
-        this.selectedThreadId === threadId;
-      this.taskRefresh = null;
-      if (shouldRefreshAgain) {
-        this.requestSelectedTaskRefresh(threadId, generation);
-      }
-    });
-    this.taskRefresh = refresh;
-    return refresh.promise;
-  }
-
-  async refreshSelectedTask(threadId, generation) {
-    const loadGeneration = this.detailLoadGeneration;
-    try {
-      const detail = await getTask(threadId);
-      if (
-        loadGeneration !== this.detailLoadGeneration ||
-        generation !== this.streamGeneration ||
-        threadId !== this.selectedThreadId
-      ) {
-        return;
-      }
-      if (taskDetailThreadId(detail) !== threadId) {
-        return;
-      }
-      if (!this.acceptTaskDetailRevision(threadId, detail.revision)) {
-        return;
-      }
-      this.taskDetail = detail;
-      this.setThreadEvents(threadId, mergeEvents(this.events, detail.events ?? []));
-      this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
-      if (detail.task) {
-        this.emitTaskSnapshot();
-      }
-      this.conversationUpdateKind = this.liveConversationUpdateKind(threadId);
-      if (detail?.syncState === "ready" && detail?.task) {
-        this.markStreamReadyFromCanonical(threadId);
-      }
-      this.render();
-    } catch {
-      if (
-        generation === this.streamGeneration &&
-        threadId === this.selectedThreadId &&
-        isTaskTransportStale(this.streamState)
-      ) {
-        this.setStreamState(TASK_TRANSPORT_STATE.UNAVAILABLE);
-      }
+    this.taskDetail = detail;
+    this.setThreadEvents(threadId, mergeEvents(this.events, detail.events ?? []));
+    this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
+    if (detail.task) {
+      this.emitTaskSnapshot();
     }
+    this.conversationUpdateKind = this.liveConversationUpdateKind(threadId);
+    if (detail?.syncState === "ready" && detail?.task) {
+      this.detailStream.markCanonicalReady(threadId);
+    }
+    this.render();
   }
 
   handleAction(action, element) {
@@ -726,7 +568,7 @@ class CaffoldTaskDetail extends HTMLElement {
     }
     if (action === "retry-stream") {
       if (this.selectedThreadId) {
-        this.connectStream(this.selectedThreadId, { force: true });
+        this.detailStream.activate(this.selectedThreadId, { force: true });
         this.render();
       }
       return;
@@ -830,7 +672,7 @@ class CaffoldTaskDetail extends HTMLElement {
       this.selectedThreadId = threadId;
       this.activateThreadEvents(threadId);
     }
-    if (isTaskTransportStale(this.streamState)) {
+    if (isTaskTransportStale(this.detailStream.state)) {
       composer.resolveSubmission(submissionId, {
         status: "rejected",
         error: new Error(
@@ -977,7 +819,7 @@ class CaffoldTaskDetail extends HTMLElement {
   async interruptSelectedTask() {
     if (
       !this.selectedThreadId ||
-      isTaskTransportStale(this.streamState)
+      isTaskTransportStale(this.detailStream.state)
     ) {
       return;
     }
@@ -1021,7 +863,7 @@ class CaffoldTaskDetail extends HTMLElement {
       !this.selectedThreadId ||
       !approvalId ||
       !decision ||
-      isTaskTransportStale(this.streamState)
+      isTaskTransportStale(this.detailStream.state)
     ) {
       return;
     }
@@ -1188,7 +1030,7 @@ class CaffoldTaskDetail extends HTMLElement {
         task && taskThreadId(task) === this.selectedThreadId
           ? task
           : null,
-      transportState: this.streamState,
+      transportState: this.detailStream.state,
       reviewView: this.reviewView,
       contextPath: this.activeCwdPath(),
     });
@@ -1210,7 +1052,7 @@ class CaffoldTaskDetail extends HTMLElement {
       placeholder: "Send another prompt to this task",
       ariaLabel: "Follow-up prompt",
       submitLabel: "Send prompt",
-      disabled: isTaskTransportStale(this.streamState),
+      disabled: isTaskTransportStale(this.detailStream.state),
       settingsLocked: isTaskActivelyWorking(task),
       model: `${this.taskDetail?.model ?? ""}`.trim(),
       effort: `${this.taskDetail?.reasoningEffort ?? ""}`.trim(),
@@ -1266,7 +1108,7 @@ class CaffoldTaskDetail extends HTMLElement {
       loadingOlder: this.loadingOlderEvents,
       detailError: this.detailLoadError,
       historyError: this.historyLoadError,
-      transportState: this.streamState,
+      transportState: this.detailStream.state,
       updateKind: this.conversationUpdateKind,
     });
     this.conversationUpdateKind = null;
@@ -1468,7 +1310,7 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   renderStreamState() {
-    if (this.streamState === TASK_TRANSPORT_STATE.RECONNECTING) {
+    if (this.detailStream.state === TASK_TRANSPORT_STATE.RECONNECTING) {
       return `
         <div class="task-stream-state" data-stream-state="reconnecting" role="status">
           <span class="task-stream-spinner" aria-hidden="true"></span>
@@ -1476,7 +1318,7 @@ class CaffoldTaskDetail extends HTMLElement {
         </div>
       `;
     }
-    if (this.streamState === TASK_TRANSPORT_STATE.UNAVAILABLE) {
+    if (this.detailStream.state === TASK_TRANSPORT_STATE.UNAVAILABLE) {
       return `
         <div class="task-stream-state" data-stream-state="unavailable" role="status">
           ${renderInlineIcon("TriangleAlert", "Caffold server unavailable", "task-stream-icon")}
@@ -1506,13 +1348,4 @@ function taskWorktreeRootPath(task) {
 
 function closestElement(target, selector) {
   return target instanceof Element ? target.closest(selector) : null;
-}
-
-
-function parseJson(value) {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return null;
-  }
 }
