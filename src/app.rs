@@ -68,9 +68,24 @@ pub struct ServeConfig {
 }
 
 #[derive(Clone)]
-struct AppState {
+struct ShellState {
     fs: Arc<RootedFs>,
     server_settings: Arc<ServerSettingsStore>,
+    initial_path: String,
+    home_path: Option<String>,
+}
+
+#[derive(Clone)]
+struct WorkspaceState {
+    fs: Arc<RootedFs>,
+    watch_hub: WatchHub,
+    shutdown: broadcast::Sender<()>,
+}
+
+#[derive(Clone)]
+struct TaskState {
+    fs: Arc<RootedFs>,
+    default_cwd_path: String,
     codex_threads: Arc<CodexThreadRuntime>,
     codex_sessions: CodexThreadSessions,
     pending_approvals: Arc<AsyncMutex<HashMap<String, PendingApproval>>>,
@@ -82,10 +97,50 @@ struct AppState {
     thread_store: ThreadStore,
     live_task_events: LiveTaskEventCache,
     task_rollouts: TaskRolloutMonitor,
-    watch_hub: WatchHub,
     shutdown: broadcast::Sender<()>,
-    initial_path: String,
-    home_path: Option<String>,
+}
+
+impl WorkspaceState {
+    fn new(fs: Arc<RootedFs>, shutdown: broadcast::Sender<()>) -> Self {
+        let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
+        Self {
+            fs,
+            watch_hub,
+            shutdown,
+        }
+    }
+}
+
+impl TaskState {
+    fn new(
+        fs: Arc<RootedFs>,
+        default_cwd_path: String,
+        shutdown: broadcast::Sender<()>,
+        thread_store: ThreadStore,
+    ) -> Self {
+        let (task_events, _) = broadcast::channel(256);
+        let task_sync = TaskSyncCoordinator::new();
+        let (task_sync_events, _) = broadcast::channel(64);
+        let (task_list_removals, _) = broadcast::channel(64);
+        let (task_list_updates, _) = broadcast::channel(64);
+        let task_rollouts = task_rollout_monitor(task_sync.clone());
+        Self {
+            fs,
+            default_cwd_path,
+            codex_threads: Arc::new(CodexThreadRuntime::default()),
+            codex_sessions: CodexThreadSessions::default(),
+            pending_approvals: Arc::new(AsyncMutex::new(HashMap::new())),
+            task_events,
+            task_sync,
+            task_sync_events,
+            task_list_removals,
+            task_list_updates,
+            thread_store,
+            live_task_events: LiveTaskEventCache::default(),
+            task_rollouts,
+            shutdown,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -822,38 +877,19 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         data_dir.join("server.json"),
     )?);
     let thread_store = ThreadStore::redb(data_dir.join("caffold.redb"))?;
-    let (task_events, _) = broadcast::channel(256);
-    let task_sync = TaskSyncCoordinator::new();
-    let (task_sync_events, _) = broadcast::channel(64);
-    let (task_list_removals, _) = broadcast::channel(64);
-    let (task_list_updates, _) = broadcast::channel(64);
-    let task_rollouts = task_rollout_monitor(task_sync.clone());
     let (shutdown, _) = broadcast::channel(16);
-    let pending_approvals = Arc::new(AsyncMutex::new(HashMap::new()));
-    let codex_threads = Arc::new(CodexThreadRuntime::default());
-    let codex_sessions = CodexThreadSessions::default();
     let fs = Arc::new(fs);
     let root = fs.root().to_path_buf();
-    let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
-    let app = router_with_state(AppState {
-        fs,
+    let shell_state = ShellState {
+        fs: fs.clone(),
         server_settings,
-        codex_threads: codex_threads.clone(),
-        codex_sessions,
-        pending_approvals,
-        task_events,
-        task_sync,
-        task_sync_events,
-        task_list_removals,
-        task_list_updates,
-        thread_store,
-        live_task_events: LiveTaskEventCache::default(),
-        task_rollouts,
-        watch_hub,
-        shutdown: shutdown.clone(),
         initial_path: initial_path.clone(),
         home_path,
-    });
+    };
+    let workspace_state = WorkspaceState::new(fs.clone(), shutdown.clone());
+    let task_state = TaskState::new(fs, initial_path.clone(), shutdown.clone(), thread_store);
+    let codex_threads = task_state.codex_threads.clone();
+    let app = router_with_states(shell_state, workspace_state, task_state);
     let listener = TcpListener::bind((config.host, config.port)).await?;
     let addr = listener.local_addr()?;
 
@@ -882,37 +918,30 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
 }
 
 pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
-    let (task_events, _) = broadcast::channel(256);
-    let task_sync = TaskSyncCoordinator::new();
-    let (task_sync_events, _) = broadcast::channel(64);
-    let (task_list_removals, _) = broadcast::channel(64);
-    let (task_list_updates, _) = broadcast::channel(64);
-    let task_rollouts = task_rollout_monitor(task_sync.clone());
     let (shutdown, _) = broadcast::channel(16);
     let fs = Arc::new(fs);
-    let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
-    Ok(router_with_state(AppState {
-        fs,
+    let shell_state = ShellState {
+        fs: fs.clone(),
         server_settings: Arc::new(ServerSettingsStore::memory()),
-        codex_threads: Arc::new(CodexThreadRuntime::default()),
-        codex_sessions: CodexThreadSessions::default(),
-        pending_approvals: Arc::new(AsyncMutex::new(HashMap::new())),
-        task_events,
-        task_sync,
-        task_sync_events,
-        task_list_removals,
-        task_list_updates,
-        thread_store: ThreadStore::memory()?,
-        live_task_events: LiveTaskEventCache::default(),
-        task_rollouts,
-        watch_hub,
-        shutdown,
         initial_path: String::new(),
         home_path: None,
-    }))
+    };
+    let workspace_state = WorkspaceState::new(fs.clone(), shutdown.clone());
+    let task_state = TaskState::new(fs, String::new(), shutdown, ThreadStore::memory()?);
+    Ok(router_with_states(shell_state, workspace_state, task_state))
 }
 
-fn router_with_state(state: AppState) -> Router {
+fn router_with_states(
+    shell_state: ShellState,
+    workspace_state: WorkspaceState,
+    task_state: TaskState,
+) -> Router {
+    shell_router(shell_state)
+        .merge(workspace_router(workspace_state))
+        .merge(task_router(task_state))
+}
+
+fn shell_router(state: ShellState) -> Router {
     Router::new()
         .route("/", get(index))
         .route("/api/health", get(health))
@@ -920,6 +949,22 @@ fn router_with_state(state: AppState) -> Router {
             "/api/server/settings",
             get(get_server_settings).patch(update_server_settings),
         )
+        .route("/service-worker.js", get(service_worker))
+        .route("/assets/manifest.webmanifest", get(manifest))
+        .route("/assets/{*path}", get(asset))
+        .route("/settings", get(index))
+        .route("/tasks", get(index))
+        .route("/tasks/{*path}", get(index))
+        .route("/files", get(index))
+        .route("/git", get(index))
+        .route("/git/{*path}", get(index))
+        .route("/github", get(index))
+        .route("/github/{*path}", get(index))
+        .with_state(state)
+}
+
+fn workspace_router(state: WorkspaceState) -> Router {
+    Router::new()
         .route("/api/list", get(list))
         .route("/api/file", get(file))
         .route("/api/image", get(image))
@@ -940,6 +985,11 @@ fn router_with_state(state: AppState) -> Router {
         .route("/api/github/pull", get(github_pull))
         .route("/api/github/pull-files", get(github_pull_files))
         .route("/api/github/pull-file", get(github_pull_file))
+        .with_state(state)
+}
+
+fn task_router(state: TaskState) -> Router {
+    Router::new()
         .route("/api/codex/status", get(codex_status))
         .route("/api/codex/models", get(codex_models))
         .route("/api/codex/permissions", get(codex_permissions))
@@ -968,17 +1018,6 @@ fn router_with_state(state: AppState) -> Router {
             "/api/tasks/{thread_id}/approvals/{approval_id}",
             post(task_approval),
         )
-        .route("/service-worker.js", get(service_worker))
-        .route("/assets/manifest.webmanifest", get(manifest))
-        .route("/assets/{*path}", get(asset))
-        .route("/settings", get(index))
-        .route("/tasks", get(index))
-        .route("/tasks/{*path}", get(index))
-        .route("/files", get(index))
-        .route("/git", get(index))
-        .route("/git/{*path}", get(index))
-        .route("/github", get(index))
-        .route("/github/{*path}", get(index))
         .with_state(state)
 }
 
@@ -1034,7 +1073,7 @@ async fn shutdown_signal(shutdown: broadcast::Sender<()>) {
     let _ = shutdown.send(());
 }
 
-async fn index(State(state): State<AppState>) -> Response {
+async fn index(State(state): State<ShellState>) -> Response {
     let name = state.server_settings.get().name;
     let body = render_index(&name);
     let mut response = Html(body).into_response();
@@ -1044,7 +1083,7 @@ async fn index(State(state): State<AppState>) -> Response {
     response
 }
 
-async fn manifest(State(state): State<AppState>) -> Result<Response, ApiError> {
+async fn manifest(State(state): State<ShellState>) -> Result<Response, ApiError> {
     let name = state.server_settings.get().name;
     let body = render_manifest(&name)?;
     let mut response = Response::new(Body::from(body));
@@ -1108,7 +1147,7 @@ async fn asset(AxumPath(path): AxumPath<String>) -> Response {
     }
 }
 
-async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
+async fn health(State(state): State<ShellState>) -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok",
         build_id: env!("CAFFOLD_BUILD_ID"),
@@ -1122,12 +1161,12 @@ async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
     })
 }
 
-async fn get_server_settings(State(state): State<AppState>) -> Json<ServerSettings> {
+async fn get_server_settings(State(state): State<ShellState>) -> Json<ServerSettings> {
     Json(state.server_settings.get())
 }
 
 async fn update_server_settings(
-    State(state): State<AppState>,
+    State(state): State<ShellState>,
     Json(request): Json<UpdateServerSettingsRequest>,
 ) -> Result<Json<ServerSettings>, ApiError> {
     state
@@ -1160,7 +1199,7 @@ fn escape_html(value: &str) -> String {
 }
 
 async fn list(
-    State(state): State<AppState>,
+    State(state): State<WorkspaceState>,
     Query(query): Query<PathQuery>,
 ) -> Result<Json<ListResponse>, ApiError> {
     let fs = state.fs.clone();
@@ -1182,7 +1221,7 @@ async fn list(
 }
 
 async fn file(
-    State(state): State<AppState>,
+    State(state): State<WorkspaceState>,
     Query(query): Query<PathQuery>,
 ) -> Result<Json<FileResponse>, ApiError> {
     state
@@ -1193,7 +1232,7 @@ async fn file(
 }
 
 async fn image(
-    State(state): State<AppState>,
+    State(state): State<WorkspaceState>,
     Query(query): Query<PathQuery>,
 ) -> Result<Response, ApiError> {
     let image = state.fs.read_image(&query.path)?;
@@ -1208,7 +1247,7 @@ async fn image(
 }
 
 async fn task_image(
-    State(state): State<AppState>,
+    State(state): State<WorkspaceState>,
     Query(query): Query<TaskImageQuery>,
 ) -> Result<Response, ApiError> {
     let logical_path = task_image_logical_path(&state.fs, Path::new(&query.path))?;
@@ -1228,7 +1267,7 @@ fn task_image_logical_path(fs: &RootedFs, path: &Path) -> Result<String, FsError
 }
 
 async fn watch_stream(
-    State(state): State<AppState>,
+    State(state): State<WorkspaceState>,
     Query(query): Query<PathQuery>,
 ) -> Result<Response, ApiError> {
     let subscription = state.watch_hub.subscribe(&query.path)?;
@@ -1317,7 +1356,7 @@ async fn watch_stream(
 }
 
 async fn git_status(
-    State(state): State<AppState>,
+    State(state): State<WorkspaceState>,
     Query(query): Query<PathQuery>,
 ) -> Result<Json<GitStatusResponse>, ApiError> {
     state
@@ -1328,7 +1367,7 @@ async fn git_status(
 }
 
 async fn git_diff(
-    State(state): State<AppState>,
+    State(state): State<WorkspaceState>,
     Query(query): Query<GitDiffQuery>,
 ) -> Result<Json<GitDiffResponse>, ApiError> {
     state
@@ -1339,7 +1378,7 @@ async fn git_diff(
 }
 
 async fn git_log(
-    State(state): State<AppState>,
+    State(state): State<WorkspaceState>,
     Query(query): Query<GitLogQuery>,
 ) -> Result<Json<GitLogResponse>, ApiError> {
     let per_page = query
@@ -1354,7 +1393,7 @@ async fn git_log(
 }
 
 async fn git_commit(
-    State(state): State<AppState>,
+    State(state): State<WorkspaceState>,
     Query(query): Query<GitCommitQuery>,
 ) -> Result<Json<GitCommitResponse>, ApiError> {
     state
@@ -1365,7 +1404,7 @@ async fn git_commit(
 }
 
 async fn git_commit_diff(
-    State(state): State<AppState>,
+    State(state): State<WorkspaceState>,
     Query(query): Query<GitCommitDiffQuery>,
 ) -> Result<Json<GitDiffResponse>, ApiError> {
     state
@@ -1376,7 +1415,7 @@ async fn git_commit_diff(
 }
 
 async fn git_compare(
-    State(state): State<AppState>,
+    State(state): State<WorkspaceState>,
     Query(query): Query<GitCompareQuery>,
 ) -> Result<Json<GitCompareResponse>, ApiError> {
     state
@@ -1387,7 +1426,7 @@ async fn git_compare(
 }
 
 async fn git_compare_diff(
-    State(state): State<AppState>,
+    State(state): State<WorkspaceState>,
     Query(query): Query<GitCompareDiffQuery>,
 ) -> Result<Json<GitDiffResponse>, ApiError> {
     state
@@ -1403,7 +1442,7 @@ async fn git_compare_diff(
 }
 
 async fn git_refs(
-    State(state): State<AppState>,
+    State(state): State<WorkspaceState>,
     Query(query): Query<PathQuery>,
 ) -> Result<Json<GitRefsResponse>, ApiError> {
     state
@@ -1414,7 +1453,7 @@ async fn git_refs(
 }
 
 async fn github_status(
-    State(state): State<AppState>,
+    State(state): State<WorkspaceState>,
     Query(query): Query<PathQuery>,
 ) -> Result<Json<GithubStatusResponse>, ApiError> {
     state
@@ -1425,7 +1464,7 @@ async fn github_status(
 }
 
 async fn github_issues(
-    State(state): State<AppState>,
+    State(state): State<WorkspaceState>,
     Query(query): Query<GithubIssuesQuery>,
 ) -> Result<Json<GithubIssuesResponse>, ApiError> {
     let per_page = query
@@ -1440,7 +1479,7 @@ async fn github_issues(
 }
 
 async fn github_issue(
-    State(state): State<AppState>,
+    State(state): State<WorkspaceState>,
     Query(query): Query<GithubIssueQuery>,
 ) -> Result<Json<GithubIssueResponse>, ApiError> {
     state
@@ -1451,7 +1490,7 @@ async fn github_issue(
 }
 
 async fn github_pulls(
-    State(state): State<AppState>,
+    State(state): State<WorkspaceState>,
     Query(query): Query<GithubPullsQuery>,
 ) -> Result<Json<GithubPullsResponse>, ApiError> {
     let per_page = query
@@ -1466,7 +1505,7 @@ async fn github_pulls(
 }
 
 async fn github_pull(
-    State(state): State<AppState>,
+    State(state): State<WorkspaceState>,
     Query(query): Query<GithubPullQuery>,
 ) -> Result<Json<GithubPullResponse>, ApiError> {
     state
@@ -1477,7 +1516,7 @@ async fn github_pull(
 }
 
 async fn github_pull_files(
-    State(state): State<AppState>,
+    State(state): State<WorkspaceState>,
     Query(query): Query<GithubPullQuery>,
 ) -> Result<Json<GithubPullFilesResponse>, ApiError> {
     state
@@ -1488,7 +1527,7 @@ async fn github_pull_files(
 }
 
 async fn github_pull_file(
-    State(state): State<AppState>,
+    State(state): State<WorkspaceState>,
     Query(query): Query<GithubPullFileQuery>,
 ) -> Result<Json<GithubPullFileResponse>, ApiError> {
     state
@@ -1498,7 +1537,7 @@ async fn github_pull_file(
         .map_err(ApiError::from)
 }
 
-async fn codex_status(State(state): State<AppState>) -> Json<CodexStatusPayload> {
+async fn codex_status(State(state): State<TaskState>) -> Json<CodexStatusPayload> {
     let (status, process_generation, process_connected) =
         match require_codex_thread_connection(&state).await {
             Ok(connection) => (
@@ -1537,14 +1576,14 @@ fn codex_version_from_user_agent(user_agent: &str) -> Option<String> {
     (!version.is_empty()).then(|| version.to_string())
 }
 
-async fn codex_models(State(state): State<AppState>) -> Result<Json<JsonValue>, ApiError> {
+async fn codex_models(State(state): State<TaskState>) -> Result<Json<JsonValue>, ApiError> {
     let client = require_codex_thread_client(&state).await?;
     let response = client.list_models(100).await.map_err(ApiError::from)?;
     codex_models_payload(response).map(Json)
 }
 
 async fn codex_permissions(
-    State(state): State<AppState>,
+    State(state): State<TaskState>,
     Query(query): Query<CodexPermissionsQuery>,
 ) -> Result<Json<CodexPermissionsResponse>, ApiError> {
     let cwd = task_cwd(&state, query.cwd.as_deref())?;
@@ -1670,7 +1709,7 @@ fn codex_reasoning_label(effort: &str) -> String {
 }
 
 async fn list_managed_tasks(
-    State(state): State<AppState>,
+    State(state): State<TaskState>,
     Query(query): Query<TasksQuery>,
 ) -> Result<Json<TaskListResponse>, ApiError> {
     let (managed, next_cursor) =
@@ -1709,7 +1748,7 @@ async fn list_managed_tasks(
 }
 
 async fn list_task_history(
-    State(state): State<AppState>,
+    State(state): State<TaskState>,
     Query(query): Query<TasksQuery>,
 ) -> Result<Json<TaskListResponse>, ApiError> {
     let client = require_codex_thread_client(&state).await?;
@@ -1733,14 +1772,14 @@ async fn list_task_history(
 
 #[cfg(test)]
 async fn list_tasks(
-    state: State<AppState>,
+    state: State<TaskState>,
     query: Query<TasksQuery>,
 ) -> Result<Json<TaskListResponse>, ApiError> {
-    let app_state = state.0.clone();
+    let task_state = state.0.clone();
     let response = list_task_history(state, query).await?;
     for task in &response.0.tasks {
         thread_store_claim(
-            &app_state,
+            &task_state,
             managed_thread_from_task_record(task, None, None),
         )
         .await?;
@@ -1749,7 +1788,7 @@ async fn list_tasks(
 }
 
 async fn thread_store_list(
-    state: &AppState,
+    state: &TaskState,
     cursor: Option<&str>,
     limit: usize,
 ) -> Result<(Vec<ManagedThread>, Option<String>), ApiError> {
@@ -1762,7 +1801,7 @@ async fn thread_store_list(
 }
 
 async fn thread_store_get(
-    state: &AppState,
+    state: &TaskState,
     thread_id: &str,
 ) -> Result<Option<ManagedThread>, ApiError> {
     let store = state.thread_store.clone();
@@ -1774,7 +1813,7 @@ async fn thread_store_get(
 }
 
 async fn thread_store_claim(
-    state: &AppState,
+    state: &TaskState,
     thread: ManagedThread,
 ) -> Result<ManagedThread, ApiError> {
     let store = state.thread_store.clone();
@@ -1785,7 +1824,7 @@ async fn thread_store_claim(
 }
 
 async fn thread_store_mark_seen(
-    state: &AppState,
+    state: &TaskState,
     thread_id: &str,
     canonical_activity_ms: u64,
 ) -> Result<Option<ManagedThread>, ApiError> {
@@ -1800,7 +1839,7 @@ async fn thread_store_mark_seen(
 }
 
 async fn thread_store_update_observed_recency(
-    state: &AppState,
+    state: &TaskState,
     thread_id: &str,
     canonical_activity_ms: u64,
 ) -> Result<Option<ManagedThread>, ApiError> {
@@ -1815,7 +1854,7 @@ async fn thread_store_update_observed_recency(
 }
 
 async fn thread_store_update_composer_settings(
-    state: &AppState,
+    state: &TaskState,
     thread_id: &str,
     model: Option<&str>,
     reasoning_effort: Option<&str>,
@@ -1832,7 +1871,7 @@ async fn thread_store_update_composer_settings(
     .map_err(thread_store_api_error)
 }
 
-async fn thread_store_delete(state: &AppState, thread_id: &str) -> Result<bool, ApiError> {
+async fn thread_store_delete(state: &TaskState, thread_id: &str) -> Result<bool, ApiError> {
     let store = state.thread_store.clone();
     let thread_id = thread_id.to_string();
     tokio::task::spawn_blocking(move || store.delete(&thread_id))
@@ -1842,7 +1881,7 @@ async fn thread_store_delete(state: &AppState, thread_id: &str) -> Result<bool, 
 }
 
 async fn filter_and_refresh_managed_history(
-    state: &AppState,
+    state: &TaskState,
     tasks: Vec<TaskRecord>,
 ) -> Result<Vec<TaskRecord>, ApiError> {
     let store = state.thread_store.clone();
@@ -1883,7 +1922,7 @@ fn thread_store_join_error(error: tokio::task::JoinError) -> ApiError {
 }
 
 async fn create_task(
-    State(state): State<AppState>,
+    State(state): State<TaskState>,
     Json(request): Json<CreateTaskRequest>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
     let (prompt, images) = normalize_task_input(&request.prompt, request.images)?;
@@ -1976,7 +2015,7 @@ async fn create_task(
 }
 
 async fn task_detail(
-    State(state): State<AppState>,
+    State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
     Query(query): Query<TaskDetailQuery>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
@@ -2018,7 +2057,7 @@ async fn task_detail(
 }
 
 async fn continue_task(
-    State(state): State<AppState>,
+    State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<TaskRecord>, ApiError> {
     let client = require_codex_thread_client(&state).await?;
@@ -2036,7 +2075,7 @@ async fn continue_task(
 }
 
 async fn mark_task_seen(
-    State(state): State<AppState>,
+    State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<TaskRecord>, ApiError> {
     if thread_store_get(&state, &thread_id).await?.is_none() {
@@ -2059,7 +2098,7 @@ async fn mark_task_seen(
 }
 
 async fn unmanaged_task_detail(
-    state: &AppState,
+    state: &TaskState,
     thread_id: &str,
 ) -> Result<TaskDetailResponse, ApiError> {
     let client = require_codex_thread_client(state).await?;
@@ -2082,7 +2121,7 @@ async fn unmanaged_task_detail(
 }
 
 fn task_record_from_codex_thread(
-    state: &AppState,
+    state: &TaskState,
     thread: &crate::codex_app_server::CodexThread,
 ) -> Result<TaskRecord, ApiError> {
     let thread = thread.clone().into_value();
@@ -2097,11 +2136,11 @@ fn task_not_managed_error() -> ApiError {
     }
 }
 
-fn notify_task_updated(state: &AppState, task: TaskRecord) {
+fn notify_task_updated(state: &TaskState, task: TaskRecord) {
     let _ = state.task_list_updates.send(task);
 }
 
-async fn ensure_task_sync_worker(state: &AppState) {
+async fn ensure_task_sync_worker(state: &TaskState) {
     let Some(receiver) = state.task_sync.take_receiver().await else {
         return;
     };
@@ -2110,7 +2149,7 @@ async fn ensure_task_sync_worker(state: &AppState) {
 }
 
 async fn run_task_sync_worker(
-    state: AppState,
+    state: TaskState,
     mut receiver: mpsc::UnboundedReceiver<TaskSyncRequest>,
 ) {
     let mut pending = HashMap::<String, PendingTaskSync>::new();
@@ -2236,7 +2275,7 @@ async fn run_task_sync_worker(
 }
 
 async fn handle_task_sync_request(
-    _state: &AppState,
+    _state: &TaskState,
     pending: &mut HashMap<String, PendingTaskSync>,
     request: TaskSyncRequest,
 ) {
@@ -2251,7 +2290,7 @@ async fn handle_task_sync_request(
 }
 
 async fn broadcast_task_snapshot(
-    state: &AppState,
+    state: &TaskState,
     thread_id: &str,
     snapshot: ThreadSessionSnapshot,
     reason: &'static str,
@@ -2268,7 +2307,7 @@ async fn broadcast_task_snapshot(
     });
 }
 
-async fn broadcast_task_sync_error(state: &AppState, thread_id: &str, error: String) {
+async fn broadcast_task_sync_error(state: &TaskState, thread_id: &str, error: String) {
     let revision = state
         .codex_sessions
         .snapshot(thread_id)
@@ -2310,7 +2349,7 @@ fn schedule_task_sync_retry(
 }
 
 async fn task_stream(
-    State(state): State<AppState>,
+    State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
     Query(_query): Query<TasksQuery>,
 ) -> Result<Response, ApiError> {
@@ -2484,11 +2523,11 @@ async fn task_stream(
     Ok(response)
 }
 
-async fn task_list_stream(State(state): State<AppState>) -> Result<Response, ApiError> {
+async fn task_list_stream(State(state): State<TaskState>) -> Result<Response, ApiError> {
     Ok(task_event_stream(state, None))
 }
 
-fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
+fn task_event_stream(state: TaskState, thread_id: Option<String>) -> Response {
     let receiver = state.task_events.subscribe();
     let sync_receiver = state.task_sync_events.subscribe();
     let removal_receiver = state.task_list_removals.subscribe();
@@ -2647,7 +2686,7 @@ fn task_event_stream(state: AppState, thread_id: Option<String>) -> Response {
 }
 
 async fn task_prompt(
-    State(state): State<AppState>,
+    State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
     Query(_query): Query<TasksQuery>,
     Json(request): Json<TaskPromptRequest>,
@@ -2780,7 +2819,7 @@ async fn task_prompt(
 }
 
 async fn task_interrupt(
-    State(state): State<AppState>,
+    State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
     Query(_query): Query<TasksQuery>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
@@ -2808,7 +2847,7 @@ async fn task_interrupt(
 }
 
 async fn recover_codex_connection_error(
-    state: &AppState,
+    state: &TaskState,
     connection: &CodexThreadConnection,
     error: &CodexThreadError,
 ) {
@@ -2829,7 +2868,7 @@ async fn recover_codex_connection_error(
 }
 
 async fn task_archive(
-    State(state): State<AppState>,
+    State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<StatusCode, ApiError> {
     if thread_store_get(&state, &thread_id).await?.is_none() {
@@ -2842,7 +2881,7 @@ async fn task_archive(
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn notify_task_removed(state: &AppState, thread_id: &str, reason: &'static str) {
+fn notify_task_removed(state: &TaskState, thread_id: &str, reason: &'static str) {
     let _ = state.task_list_removals.send(TaskListRemoval {
         thread_id: thread_id.to_string(),
         reason,
@@ -2850,7 +2889,7 @@ fn notify_task_removed(state: &AppState, thread_id: &str, reason: &'static str) 
 }
 
 async fn task_approval(
-    State(state): State<AppState>,
+    State(state): State<TaskState>,
     AxumPath((thread_id, approval_id)): AxumPath<(String, String)>,
     Query(_query): Query<TasksQuery>,
     Json(request): Json<TaskApprovalRequest>,
@@ -2905,7 +2944,7 @@ async fn task_approval(
     ))
 }
 
-async fn require_codex_thread_client(state: &AppState) -> Result<CodexThreadClient, ApiError> {
+async fn require_codex_thread_client(state: &TaskState) -> Result<CodexThreadClient, ApiError> {
     require_codex_thread_connection(state)
         .await
         .map(|connection| connection.client)
@@ -2913,7 +2952,7 @@ async fn require_codex_thread_client(state: &AppState) -> Result<CodexThreadClie
 }
 
 async fn require_codex_thread_connection(
-    state: &AppState,
+    state: &TaskState,
 ) -> Result<CodexThreadConnection, CodexThreadError> {
     {
         let runtime = state.codex_threads.state.lock().await;
@@ -2970,7 +3009,7 @@ fn restore_leased_codex_sessions(sessions: CodexThreadSessions, connection: Code
 }
 
 async fn read_task_detail(
-    state: &AppState,
+    state: &TaskState,
     connection: &CodexThreadConnection,
     thread_id: &str,
     cursor: Option<&str>,
@@ -3000,7 +3039,7 @@ async fn read_task_detail(
 }
 
 async fn cached_task_detail(
-    state: &AppState,
+    state: &TaskState,
     thread_id: &str,
 ) -> Result<(TaskDetailResponse, u64), ApiError> {
     let stored = thread_store_get(state, thread_id).await?;
@@ -3044,7 +3083,7 @@ fn loading_task_detail(
     }
 }
 
-async fn bootstrap_task_session(state: &AppState, thread_id: &str, baseline_revision: u64) {
+async fn bootstrap_task_session(state: &TaskState, thread_id: &str, baseline_revision: u64) {
     let connection = match require_codex_thread_connection(state).await {
         Ok(connection) => connection,
         Err(error) => {
@@ -3078,7 +3117,7 @@ async fn bootstrap_task_session(state: &AppState, thread_id: &str, baseline_revi
 }
 
 async fn task_detail_from_snapshot(
-    state: &AppState,
+    state: &TaskState,
     snapshot: ThreadSessionSnapshot,
     response_page: Option<crate::codex_app_server::TurnsPage>,
 ) -> Result<TaskDetailResponse, ApiError> {
@@ -3562,7 +3601,7 @@ fn thread_events(thread: &JsonValue) -> Vec<TaskEventRecord> {
     events
 }
 
-async fn pending_approval_events(state: &AppState, thread_id: &str) -> Vec<TaskEventRecord> {
+async fn pending_approval_events(state: &TaskState, thread_id: &str) -> Vec<TaskEventRecord> {
     state
         .pending_approvals
         .lock()
@@ -3715,7 +3754,7 @@ fn turn_item_event_id(turn_id: Option<&str>, item_id: Option<&str>, fallback: &s
 }
 
 struct CodexThreadBridgeContext {
-    state: AppState,
+    state: TaskState,
 }
 
 fn spawn_codex_thread_bridge(
@@ -4675,8 +4714,8 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-fn task_cwd(state: &AppState, relative: Option<&str>) -> Result<String, ApiError> {
-    let logical_path = normalize_logical_path(relative.unwrap_or(&state.initial_path))?;
+fn task_cwd(state: &TaskState, relative: Option<&str>) -> Result<String, ApiError> {
+    let logical_path = normalize_logical_path(relative.unwrap_or(&state.default_cwd_path))?;
     let cwd = state.fs.absolute_directory_path(&logical_path)?;
     Ok(cwd.display().to_string())
 }

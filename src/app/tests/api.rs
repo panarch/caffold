@@ -46,6 +46,25 @@ fn current_model_list_response() -> JsonValue {
     })
 }
 
+#[test]
+fn task_state_preserves_the_configured_default_cwd() {
+    let root = tempfile::tempdir().unwrap();
+    let project = root.path().join("project");
+    std::fs::create_dir(&project).unwrap();
+    let (shutdown, _) = broadcast::channel(1);
+    let state = TaskState::new(
+        Arc::new(RootedFs::new(root.path()).unwrap()),
+        "project".to_string(),
+        shutdown,
+        ThreadStore::memory().unwrap(),
+    );
+
+    assert_eq!(
+        PathBuf::from(task_cwd(&state, None).unwrap()),
+        project.canonicalize().unwrap()
+    );
+}
+
 #[tokio::test]
 async fn codex_models_adds_backend_owned_reasoning_labels() {
     let root = tempfile::tempdir().unwrap();
@@ -72,7 +91,7 @@ async fn codex_models_adds_backend_owned_reasoning_labels() {
             "nextCursor": null
         }),
     )]);
-    let state = app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
 
     let Json(response) = codex_models(State(state)).await.unwrap();
     let efforts = response["data"][0]["supportedReasoningEfforts"]
@@ -122,7 +141,7 @@ async fn codex_permissions_use_app_server_profiles_and_effective_defaults() {
             }),
         ),
     ]);
-    let state = app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
 
     let Json(response) =
         codex_permissions(State(state), Query(CodexPermissionsQuery { cwd: None }))
@@ -172,7 +191,7 @@ async fn create_task_keeps_explicit_permission_mode_for_the_first_turn() {
         ),
     ]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
 
     let response = create_task(
         State(state),
@@ -233,7 +252,7 @@ async fn create_task_persists_the_applied_model_and_reasoning_effort() {
         ),
     ]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
 
     let response = create_task(
         State(state.clone()),
@@ -268,7 +287,7 @@ async fn cached_task_detail_restores_managed_thread_model_settings() {
     let root = tempfile::tempdir().unwrap();
     let thread_id = "thread-cached-model-settings";
     let client = CodexThreadClient::mock(Vec::new());
-    let state = app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
     manage_test_thread(&state, thread_id, root.path()).await;
     thread_store_update_composer_settings(&state, thread_id, Some("gpt-5.6-sol"), Some("xhigh"))
         .await
@@ -308,7 +327,7 @@ async fn canonical_resume_refreshes_cached_model_settings() {
         }),
     )]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
     thread_store_update_composer_settings(&state, thread_id, Some("gpt-5.6-sol"), Some("xhigh"))
         .await
@@ -422,7 +441,7 @@ async fn task_list_forwards_and_returns_pagination_cursors() {
         }),
     )]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
 
     let response = list_tasks(
         State(state),
@@ -459,7 +478,7 @@ async fn managed_list_never_projects_pending_approval_onto_thread_status() {
         "thread/read",
         json!({ "thread": thread.clone() }),
     )]);
-    let state = app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
     let resolved = resolve_thread_cwd(&state.fs, &thread);
     let task = task_record_from_thread(&thread, &[], resolved.as_ref()).unwrap();
     assert_eq!(task.thread_status, ThreadStatus::Idle);
@@ -478,7 +497,7 @@ async fn managed_list_never_projects_pending_approval_onto_thread_status() {
 #[tokio::test]
 async fn canonical_snapshot_without_membership_is_not_managed() {
     let root = tempfile::tempdir().unwrap();
-    let state = app_state_with_codex_client(
+    let state = task_state_with_codex_client(
         RootedFs::new(root.path()).unwrap(),
         CodexThreadClient::mock(Vec::new()),
     )
@@ -522,7 +541,7 @@ async fn managed_list_fails_as_a_whole_without_updating_recency_on_read_error() 
             CodexThreadError::ProcessUnavailable,
         ),
     ]);
-    let state = app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
     manage_test_thread(&state, good_id, root.path()).await;
     manage_test_thread(&state, failed_id, root.path()).await;
     let before = thread_store_get(&state, good_id)
@@ -562,7 +581,7 @@ async fn managed_list_limits_parallel_canonical_reads_to_eight() {
     }
     let client = CodexThreadClient::mock(responses);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     for thread_id in &thread_ids {
         manage_test_thread(&state, thread_id, root.path()).await;
     }
@@ -610,7 +629,7 @@ async fn task_prompt_persists_the_applied_model_and_reasoning_effort() {
         ),
     ]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
     thread_store_update_composer_settings(&state, thread_id, Some("gpt-5.6-luna"), Some("medium"))
         .await
@@ -676,7 +695,7 @@ async fn task_prompt_keeps_accepted_steer_visible_before_canonical_sync() {
         crate::codex_app_server::MockCodexResponse::ok("turn/steer", json!({ "turnId": turn_id })),
     ]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
 
     let response = task_prompt(
@@ -796,7 +815,7 @@ async fn stale_steer_refreshes_canonical_status_before_starting_a_follow_up() {
         ),
     ]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
 
     let response = task_prompt(
@@ -849,7 +868,7 @@ async fn continue_moves_a_history_thread_into_the_managed_store() {
         ),
     ]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
 
     let managed = list_managed_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
         .await
@@ -898,7 +917,7 @@ async fn mark_seen_uses_canonical_activity_instead_of_cached_recency() {
         "thread/read",
         json!({ "thread": thread }),
     )]);
-    let state = app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
     manage_test_thread(&state, thread_id, root.path()).await;
     assert_eq!(
         thread_store_get(&state, thread_id)
@@ -929,7 +948,7 @@ async fn unmanaged_deep_link_reads_metadata_without_resuming() {
         json!({ "thread": thread }),
     )]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
 
     let detail = task_detail(
         State(state),

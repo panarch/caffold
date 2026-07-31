@@ -22,7 +22,7 @@ async fn task_detail_returns_cached_metadata_before_slow_resume_finishes() {
         ),
     ]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
 
     let tasks = list_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
         .await
@@ -68,7 +68,7 @@ async fn blank_history_cursor_returns_cached_task_detail_without_app_server_wait
         ),
     ]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
 
     let tasks = list_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
         .await
@@ -134,7 +134,7 @@ async fn history_timeout_does_not_replace_cached_task_detail() {
         ),
     ]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
     let _viewer = state
         .codex_sessions
@@ -198,7 +198,7 @@ async fn task_detail_returns_cached_metadata_while_connection_is_busy() {
         ),
     ]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
     let thread =
         serde_json::from_value(task_thread_list(thread_id, root.path())["data"][0].clone())
@@ -251,7 +251,7 @@ async fn task_stream_starts_before_slow_resume_finishes() {
         ),
     ]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     let _ = list_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
         .await
         .expect("task list succeeds");
@@ -287,7 +287,7 @@ async fn task_stream_starts_while_connection_is_busy() {
         ),
     ]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
     let thread =
         serde_json::from_value(task_thread_list(thread_id, root.path())["data"][0].clone())
@@ -336,7 +336,7 @@ async fn direct_task_detail_returns_loading_snapshot_while_connection_is_busy() 
         ),
     ]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
 
     let runtime = state.codex_threads.clone();
@@ -383,7 +383,7 @@ async fn direct_task_stream_starts_while_connection_is_busy() {
         ),
     ]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
 
     let runtime = state.codex_threads.clone();
@@ -428,7 +428,7 @@ async fn resume_failure_makes_cached_task_detail_unavailable() {
         ),
     ]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     let _ = list_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
         .await
         .expect("task list succeeds");
@@ -484,7 +484,7 @@ async fn resume_timeout_makes_task_detail_unavailable_but_keeps_the_connection()
         ),
     ]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     let _ = list_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
         .await
         .expect("task list succeeds");
@@ -630,7 +630,7 @@ async fn task_detail_handler_releases_its_subscription_after_the_response() {
         ),
     ]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
 
     let response = task_detail(
@@ -690,7 +690,7 @@ async fn task_detail_and_stream_share_one_subscription_until_the_stream_closes()
         ),
     ]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
 
     let detail_state = state.clone();
@@ -781,7 +781,7 @@ async fn task_stream_reopens_while_detail_unsubscribe_is_in_flight() {
         ),
     ]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
 
     let _detail_response = task_detail(

@@ -61,7 +61,7 @@ async fn rollout_invalidation_never_synthesizes_thread_activity() {
         ),
     ]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     let _ = list_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
         .await
         .expect("task list succeeds");
@@ -107,7 +107,7 @@ async fn background_sync_timeout_broadcasts_error_and_rejects_stale_detail() {
         },
     )]);
     let state =
-        app_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
     let thread =
         serde_json::from_value(task_thread_list(thread_id, root.path())["data"][0].clone())
