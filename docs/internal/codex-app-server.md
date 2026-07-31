@@ -41,8 +41,10 @@ The rest of Caffold should not depend directly on app-server protocol details.
 
 `src/codex_app_server/protocol.rs` is the maintained protocol boundary. It owns
 the method names, request and response DTOs, notification decoding, and JSON-RPC
-error shape used by Caffold. `src/app.rs` consumes typed adapter operations and
-must not inspect raw method names or protocol JSON paths.
+error shape used by Caffold. `src/app/tasks/runtime.rs` consumes the typed
+adapter operations and bridges notifications and server requests into the
+Tasks application. Neither the application composition root nor the browser
+projection modules inspect raw method names or protocol JSON paths.
 
 Unsupported item payloads and new notifications are preserved or logged as
 unknown protocol values rather than crashing the process. Missing required
@@ -62,6 +64,47 @@ older than the baseline, but allows newer versions to proceed to the generated
 schema contract instead of failing on an exact version string. An intentional
 breaking protocol upgrade should update the minimum version, DTOs, fixtures,
 and this check in one change.
+
+## Backend Application Ownership
+
+The Tasks backend keeps one dependency direction:
+
+```text
+routes.rs
+  -> detail.rs
+       -> runtime.rs
+       -> sync.rs
+       -> projection.rs
+       -> events.rs
+  -> runtime.rs
+  -> projection.rs
+  -> events.rs
+```
+
+`src/app/tasks.rs` is the feature root. Its private `TaskState` assembles the
+owner types, while `TasksApp` exposes only a completed router and runtime
+shutdown lifecycle to `src/app.rs`.
+
+- `routes.rs` is the only Tasks module that imports Axum or receives
+  `TaskState`. It owns browser request/response DTOs, validation, route
+  registration, and REST/SSE adaptation.
+- `runtime.rs` owns the app-server process generation, connection recovery,
+  notification/server-request bridge, and pending approval lifecycle. Pending
+  approvals remain JSON-RPC/card state and never become a thread-status writer.
+- `sync.rs` owns subscription counts, rollout invalidation, debounce,
+  maximum-latency, and retry scheduling. It does not read Codex threads or
+  construct browser details.
+- `detail.rs` owns canonical detail assembly, session/viewer lifecycle,
+  history pages, detail SSE frames, and the worker that applies scheduled
+  canonical reads. Source errors produce unavailable detail rather than a Redb
+  fallback.
+- `projection.rs` and `events.rs` do not import Axum, Redb, process lifecycle,
+  or `TaskState`. Projection preserves app-server status; Events normalizes and
+  merges transcript/live records without acquiring thread-status ownership.
+
+This separation is application ownership, not another state ledger.
+`CodexThreadSessions` remains the ephemeral canonical session coordinator and
+Codex app-server remains the source of truth.
 
 ## Thread Subscription Lifecycle
 

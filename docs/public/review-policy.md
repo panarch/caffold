@@ -223,6 +223,24 @@ valid, while a short test that combines unrelated owners is not.
 
 Backend changes should keep the browser API conservative unless the feature explicitly introduces a mutation.
 
+- Keep the application root limited to dependency construction, lifecycle
+  shutdown, and router composition. Feature state and handlers belong to their
+  route owner.
+- Keep a route module's private state, HTTP DTOs, validation, handlers, and
+  route registration together.
+- Lower application modules must receive the narrow capability they need. They
+  must not accept Axum extractors or a complete route state merely because the
+  handler already has it.
+- Do not move unrelated dependencies behind an `AppState`, generic
+  `SharedState`, service locator, or catch-all `shared` module to make an
+  extraction compile.
+- Trace every external state writer during backend extraction. Routes, caches,
+  databases, file watchers, and optimistic events must not become alternate
+  writers for externally owned lifecycle state.
+- Move regression tests and owner-specific fixtures with the production owner.
+  Shared test support is only for fixtures used by more than one real owner;
+  do not widen production visibility solely to let a test reach private
+  implementation.
 - Keep path handling rooted and canonicalized.
 - Do not allow path escape through symlinks or traversal.
 - Return clear JSON errors for unsupported files and operations.

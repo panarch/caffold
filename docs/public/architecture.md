@@ -40,6 +40,30 @@ The backend owns:
 - command runner
 - PWA asset serving
 
+The application layer is split by the state and transport boundary it owns:
+
+```text
+src/app.rs                     dependency construction and router composition
+src/app/error.rs               shared JSON HTTP error contract
+src/app/shell.rs               shell, health, settings, manifest, static assets
+src/app/workspace.rs           Files, images, watches, Git, and GitHub HTTP adapters
+src/app/tasks.rs               private Tasks state assembly and runtime shutdown
+src/app/tasks/routes.rs        Tasks/Codex HTTP DTOs, validation, handlers, REST/SSE routes
+src/app/tasks/detail.rs        canonical task detail, session, history, and sync application
+src/app/tasks/runtime.rs       app-server process, notification, and approval lifecycle
+src/app/tasks/sync.rs          rollout invalidation scheduling and retry timing
+src/app/tasks/projection.rs    pure thread/turn to browser task projection
+src/app/tasks/events.rs        event normalization, merge, cache, and publication
+```
+
+`src/app.rs` does not own feature state. It constructs the Shell, Workspace, and
+Tasks applications and merges their completed routers. Each HTTP owner keeps
+its route state and DTOs private. Tasks lower modules receive only the
+capabilities they use; they do not depend on Axum extractors or the full Tasks
+route state. Within Tasks, Projection and Events are the stateless or
+bounded-memory base, Runtime owns app-server transport, Sync owns scheduling,
+Detail applies canonical reads, and Routes adapts those owners to HTTP.
+
 ### Codex App Server
 
 Codex app-server owns Codex thread, turn, approval, and event stream behavior. Caffold should treat it as an external integration boundary rather than embedding Codex internals in the first implementation.
