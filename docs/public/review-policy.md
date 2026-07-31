@@ -184,6 +184,34 @@ Use these rules when reviewing CSS:
   change.
 - If a selector looks convenient because it is broad, review it with suspicion.
 
+### Appearance Ownership
+
+Choose a sizing owner by the meaning of the content, not by the component or
+screen where it happens to render:
+
+- Interface owns UI typography, controls, rows, icons, spacing, and touch
+  targets.
+- Conversation owns readable task and long-form review prose, including the
+  Composer textarea.
+- Code owns source, diff, command/tool output, and inline or fenced code.
+
+Mixed components must consume more than one axis when their content has more
+than one meaning. For example, Composer controls are Interface while its
+textarea is Conversation; an approval card combines Conversation prose, Code
+command text, and Interface actions. Metadata, status, disclosure labels,
+loading/retry actions, and errors stay Interface even when placed inside a
+conversation.
+
+Do not add a fixed font, row, or control size that bypasses the existing
+appearance axis. Pixel values remain valid for borders, breakpoints, image
+dimensions, and deliberate content bounds; the review question is whether the
+value represents user-scalable Interface, Conversation, or Code content.
+
+Shared appearance tokens do not grant shared selector ownership. Define root
+tokens centrally, but consume them inside the component that owns the DOM.
+When a stateful range applies live changes, patch its value and preview without
+rerendering the parent and replacing the focused range element.
+
 ## Browser Test Ownership
 
 Browser regression tests follow the same ownership boundaries as the product.

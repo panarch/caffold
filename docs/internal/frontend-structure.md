@@ -108,6 +108,33 @@ before the app shell renders. `settings/page` is a global app surface opened
 from `scaffold-app-menu`; it persists device-
 specific UI preferences in `localStorage` rather than the server database.
 
+Appearance has three independent semantic axes:
+
+- Interface size is a 90–120% scale over a 16px fine-pointer base or a 17px
+  coarse-pointer/narrow-screen base. It owns UI text, controls, rows, icons,
+  and spacing. Coarse pointers and screens at or below 520px keep important
+  targets at least 40px tall.
+- Conversation text is a device-independent 13–20px value. It owns Tasks
+  messages and work prose, the Composer textarea, and GitHub issue/PR prose.
+- Code text is a device-independent 12–20px value. It owns source and diff
+  viewers, command/tool output, and inline or fenced code inside Tasks and
+  GitHub prose.
+
+The shared root variables expose values; they do not transfer selector
+ownership to the root stylesheet. Each component consumes the semantic token
+inside its existing CSS boundary, including the Task and GitHub Markdown
+Shadow DOM styles. Mixed components keep their boundaries explicit: Composer
+chrome is Interface while its textarea is Conversation; approval prose is
+Conversation, its command is Code, and its controls are Interface. Timestamps,
+status, disclosure labels, loading/retry actions, and errors remain Interface
+even inside a conversation.
+
+`settings.js` normalizes and writes `appearanceVersion: 2` on initial load
+without emitting a change event. The Settings page uses stable native range
+elements and patches their values in place so live updates do not replace the
+focused control or lose pointer capture. User updates and resets publish one
+`caffold:settings-change` snapshot.
+
 `files/page` is the app root's route-level file browsing page. It renders
 `scaffold-file-browser` and delegates the file browser API that app-shell uses.
 `components/file-browser` owns the reusable file browser surface: directory
