@@ -78,7 +78,7 @@ caffold-github-pull-detail-page {
     grid-template-columns: auto auto;
     gap: 5px;
     align-items: center;
-    height: 28px;
+    height: var(--interface-compact-control-size);
     padding: 0 8px;
     border: 1px solid var(--border);
     border-radius: 4px;
@@ -162,6 +162,8 @@ caffold-github-pull-detail-page {
 
   & .github-pull-raw-body {
     padding: 12px;
+    font-size: var(--conversation-font-size);
+    line-height: var(--conversation-line-height);
     white-space: pre-wrap;
   }
 
@@ -245,7 +247,7 @@ caffold-github-pull-detail-page {
   }
 
   caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-pull-detail-page .github-pull-viewer-title-row {
-    grid-template-columns: 28px minmax(0, 1fr) auto;
+    grid-template-columns: var(--interface-compact-control-size) minmax(0, 1fr) auto;
     gap: 6px;
   }
 
@@ -256,8 +258,8 @@ caffold-github-pull-detail-page {
   caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-pull-detail-page .github-pull-close-button {
     display: grid;
     place-items: center;
-    width: 28px;
-    height: 28px;
+    width: var(--interface-compact-control-size);
+    height: var(--interface-compact-control-size);
     padding: 0;
     border: 1px solid var(--border);
     border-radius: 4px;

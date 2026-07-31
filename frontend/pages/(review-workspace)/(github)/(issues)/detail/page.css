@@ -96,6 +96,8 @@ caffold-github-issue-detail-page {
     overflow: auto;
     overscroll-behavior: contain;
     padding: 12px;
+    font-size: var(--conversation-font-size);
+    line-height: var(--conversation-line-height);
     white-space: pre-wrap;
   }
 
@@ -111,15 +113,15 @@ caffold-github-issue-detail-page {
   }
 
   caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-issue-detail-page .github-issue-viewer-title-row {
-    grid-template-columns: 28px minmax(0, 1fr) auto;
+    grid-template-columns: var(--interface-compact-control-size) minmax(0, 1fr) auto;
     gap: 6px;
   }
 
   caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-issue-detail-page .github-issue-close-button {
     display: grid;
     place-items: center;
-    width: 28px;
-    height: 28px;
+    width: var(--interface-compact-control-size);
+    height: var(--interface-compact-control-size);
     padding: 0;
     border: 1px solid var(--border);
     border-radius: 4px;

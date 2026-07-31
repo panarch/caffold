@@ -1,90 +1,152 @@
 const STORAGE_KEY = "caffold:settings";
 
-export const FILE_TREE_SIZES = Object.freeze([
-  {
-    value: "auto",
-    label: "Auto",
-    description: "Adapts to pointer and touch input",
-  },
-  {
-    value: "compact",
-    label: "Compact",
-    description: "24 px rows",
-  },
-  {
-    value: "default",
-    label: "Default",
-    description: "30 px rows",
-  },
-  {
-    value: "large",
-    label: "Large",
-    description: "36 px rows",
-  },
-]);
+export const APPEARANCE_VERSION = 2;
 
-export const CODE_SIZES = Object.freeze([
-  {
-    value: "compact",
-    label: "Compact",
-    description: "13 px text",
-  },
-  {
-    value: "default",
-    label: "Default",
-    description: "15 px text",
-  },
-  {
-    value: "large",
-    label: "Large",
-    description: "17 px text",
-  },
-]);
-
-export const TASK_LIST_SIZES = Object.freeze([
-  {
-    value: "compact",
-    label: "Compact",
-    description: "30 px rows",
-  },
-  {
-    value: "default",
-    label: "Default",
-    description: "36 px rows",
-  },
-  {
-    value: "large",
-    label: "Large",
-    description: "42 px rows",
-  },
-]);
-
-export const TASK_DETAIL_SIZES = Object.freeze([
-  {
-    value: "compact",
-    label: "Compact",
-    description: "13 px text",
-  },
-  {
-    value: "default",
-    label: "Default",
-    description: "15 px text",
-  },
-  {
-    value: "large",
-    label: "Large",
-    description: "17 px text",
-  },
-]);
-
-const DEFAULT_SETTINGS = Object.freeze({
-  fileTreeSize: "auto",
-  codeSize: "compact",
-  taskListSize: "default",
-  taskDetailSize: "default",
+export const APPEARANCE_SETTINGS = Object.freeze({
+  interfaceScalePercent: Object.freeze({
+    label: "Interface size",
+    min: 90,
+    max: 120,
+    step: 5,
+    defaultValue: 100,
+    suffix: "%",
+  }),
+  conversationTextPx: Object.freeze({
+    label: "Conversation text",
+    min: 13,
+    max: 20,
+    step: 1,
+    defaultValue: 15,
+    suffix: "px",
+  }),
+  codeTextPx: Object.freeze({
+    label: "Code text",
+    min: 12,
+    max: 20,
+    step: 1,
+    defaultValue: 13,
+    suffix: "px",
+  }),
 });
 
+export const DEFAULT_SETTINGS = Object.freeze({
+  appearanceVersion: APPEARANCE_VERSION,
+  interfaceScalePercent: APPEARANCE_SETTINGS.interfaceScalePercent.defaultValue,
+  conversationTextPx: APPEARANCE_SETTINGS.conversationTextPx.defaultValue,
+  codeTextPx: APPEARANCE_SETTINGS.codeTextPx.defaultValue,
+});
+
+const LEGACY_TEXT_SIZES = Object.freeze({
+  compact: 13,
+  default: 15,
+  large: 17,
+});
+
+let currentSettings = readStoredSettings();
+
+persistSettings(currentSettings);
+applySettings(currentSettings);
+
 export function getSettings() {
+  return { ...currentSettings };
+}
+
+export function setAppearanceSetting(name, value) {
+  if (!Object.hasOwn(APPEARANCE_SETTINGS, name)) {
+    return getSettings();
+  }
+
+  const settings = normalizeSettings({
+    ...currentSettings,
+    [name]: value,
+  });
+  persistApplyAndPublish(settings);
+  return getSettings();
+}
+
+export function resetAppearanceSetting(name) {
+  if (!Object.hasOwn(APPEARANCE_SETTINGS, name)) {
+    return getSettings();
+  }
+
+  return setAppearanceSetting(name, APPEARANCE_SETTINGS[name].defaultValue);
+}
+
+export function resetAppearanceSettings() {
+  const settings = { ...DEFAULT_SETTINGS };
+  persistApplyAndPublish(settings);
+  return getSettings();
+}
+
+export function applySettings(settings = currentSettings) {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  const normalized = normalizeSettings(settings);
+  const root = document.documentElement;
+  root.style.setProperty(
+    "--interface-scale",
+    `${normalized.interfaceScalePercent / 100}`,
+  );
+  root.style.setProperty(
+    "--conversation-font-size",
+    `${normalized.conversationTextPx}px`,
+  );
+  root.style.setProperty("--code-font-size", `${normalized.codeTextPx}px`);
+}
+
+export function normalizeSettings(value) {
+  const legacyConversationTextPx = legacyTextSize(value?.taskDetailSize);
+  const legacyCodeTextPx = legacyTextSize(value?.codeSize);
+  const conversationTextPx = hasSetting(value, "conversationTextPx")
+    ? value.conversationTextPx
+    : legacyConversationTextPx;
+  const codeTextPx = hasSetting(value, "codeTextPx")
+    ? value.codeTextPx
+    : legacyCodeTextPx;
+
+  return {
+    appearanceVersion: APPEARANCE_VERSION,
+    interfaceScalePercent: normalizeSettingValue(
+      value?.interfaceScalePercent,
+      APPEARANCE_SETTINGS.interfaceScalePercent,
+    ),
+    conversationTextPx: normalizeSettingValue(
+      conversationTextPx,
+      APPEARANCE_SETTINGS.conversationTextPx,
+    ),
+    codeTextPx: normalizeSettingValue(
+      codeTextPx,
+      APPEARANCE_SETTINGS.codeTextPx,
+    ),
+  };
+}
+
+function hasSetting(value, name) {
+  return value !== null && typeof value === "object" && Object.hasOwn(value, name);
+}
+
+function normalizeSettingValue(value, definition) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return definition.defaultValue;
+  }
+
+  const stepped =
+    definition.min +
+    Math.round((value - definition.min) / definition.step) * definition.step;
+  return Math.min(definition.max, Math.max(definition.min, stepped));
+}
+
+function legacyTextSize(value) {
+  return typeof value === "string" ? LEGACY_TEXT_SIZES[value] : undefined;
+}
+
+function readStoredSettings() {
+  if (typeof window === "undefined") {
+    return { ...DEFAULT_SETTINGS };
+  }
+
   try {
     const stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null");
     return normalizeSettings(stored);
@@ -93,106 +155,28 @@ export function getSettings() {
   }
 }
 
-export function setFileTreeSize(value) {
-  const fileTreeSize = validFileTreeSize(value) ? value : DEFAULT_SETTINGS.fileTreeSize;
-  const settings = {
-    ...getSettings(),
-    fileTreeSize,
-  };
+function persistApplyAndPublish(settings) {
+  currentSettings = { ...settings };
+  persistSettings(currentSettings);
+  applySettings(currentSettings);
 
-  persistAndApply(settings);
-  return settings;
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("caffold:settings-change", {
+        detail: { settings: getSettings() },
+      }),
+    );
+  }
 }
 
-export function setCodeSize(value) {
-  const codeSize = validCodeSize(value) ? value : DEFAULT_SETTINGS.codeSize;
-  const settings = {
-    ...getSettings(),
-    codeSize,
-  };
-
-  persistAndApply(settings);
-  return settings;
-}
-
-export function setTaskListSize(value) {
-  const taskListSize = validTaskListSize(value) ? value : DEFAULT_SETTINGS.taskListSize;
-  const settings = {
-    ...getSettings(),
-    taskListSize,
-  };
-
-  persistAndApply(settings);
-  return settings;
-}
-
-export function setTaskDetailSize(value) {
-  const taskDetailSize = validTaskDetailSize(value)
-    ? value
-    : DEFAULT_SETTINGS.taskDetailSize;
-  const settings = {
-    ...getSettings(),
-    taskDetailSize,
-  };
-
-  persistAndApply(settings);
-  return settings;
-}
-
-export function applySettings(settings = getSettings()) {
-  if (typeof document === "undefined") {
+function persistSettings(settings) {
+  if (typeof window === "undefined") {
     return;
   }
 
-  document.documentElement.dataset.fileTreeSize = settings.fileTreeSize;
-  document.documentElement.dataset.codeSize = settings.codeSize;
-  document.documentElement.dataset.taskListSize = settings.taskListSize;
-  document.documentElement.dataset.taskDetailSize = settings.taskDetailSize;
-}
-
-function normalizeSettings(value) {
-  const fileTreeSize = value?.fileTreeSize ?? value?.fileTreeTextSize;
-  return {
-    fileTreeSize: validFileTreeSize(fileTreeSize) ? fileTreeSize : DEFAULT_SETTINGS.fileTreeSize,
-    codeSize: validCodeSize(value?.codeSize) ? value.codeSize : DEFAULT_SETTINGS.codeSize,
-    taskListSize: validTaskListSize(value?.taskListSize)
-      ? value.taskListSize
-      : DEFAULT_SETTINGS.taskListSize,
-    taskDetailSize: validTaskDetailSize(value?.taskDetailSize)
-      ? value.taskDetailSize
-      : DEFAULT_SETTINGS.taskDetailSize,
-  };
-}
-
-function validFileTreeSize(value) {
-  return FILE_TREE_SIZES.some((option) => option.value === value);
-}
-
-function validCodeSize(value) {
-  return CODE_SIZES.some((option) => option.value === value);
-}
-
-function validTaskListSize(value) {
-  return TASK_LIST_SIZES.some((option) => option.value === value);
-}
-
-function validTaskDetailSize(value) {
-  return TASK_DETAIL_SIZES.some((option) => option.value === value);
-}
-
-function persistAndApply(settings) {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   } catch {
-    // The live setting still applies when storage is unavailable.
+    // Keep the normalized in-memory setting active when storage is unavailable.
   }
-
-  applySettings(settings);
-  window.dispatchEvent(
-    new CustomEvent("caffold:settings-change", {
-      detail: { settings },
-    }),
-  );
 }
-
-applySettings();

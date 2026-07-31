@@ -1,13 +1,13 @@
 caffold-task-composer {
   & .task-composer {
-    font-size: var(--task-detail-font-size);
-    line-height: var(--task-detail-line-height);
+    font-size: var(--interface-font-size);
+    line-height: var(--interface-line-height);
   }
 
   & .task-composer-context,
   & .task-model-note {
-    font-size: var(--task-detail-meta-size);
-    line-height: 16px;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
   }
 
   & .task-composer {
@@ -45,7 +45,7 @@ caffold-task-composer {
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 7px;
-    min-height: 34px;
+    min-height: var(--interface-header-size);
     margin: 8px 10px 0;
     padding: 0 6px;
     color: var(--muted);
@@ -58,7 +58,7 @@ caffold-task-composer {
   }
 
   & .task-composer-context button {
-    min-height: 28px;
+    min-height: var(--interface-compact-control-size);
     padding: 3px 7px;
     border: 0;
     border-radius: 5px;
@@ -113,8 +113,8 @@ caffold-task-composer {
     top: 4px;
     right: 4px;
     place-items: center;
-    width: 24px;
-    height: 24px;
+    width: var(--interface-compact-control-size);
+    height: var(--interface-compact-control-size);
     padding: 0;
     border: 1px solid rgb(255 255 255 / 70%);
     border-radius: 50%;
@@ -139,30 +139,30 @@ caffold-task-composer {
     margin: 0;
     padding: 0 18px 4px;
     color: var(--danger);
-    font-size: 12px;
-    line-height: 17px;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
   }
 
   & .task-composer-request-error {
     margin: 0;
     padding: 0 18px 4px;
     color: var(--danger);
-    font-size: 12px;
-    line-height: 17px;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
   }
 
   & .task-composer textarea {
     width: 100%;
     min-width: 0;
-    min-height: var(--task-detail-composer-min-height);
-    max-height: var(--task-detail-composer-max-height);
+    min-height: calc(2lh + 1.5rem);
+    max-height: calc(10.5lh + 1.5rem);
     padding: 14px 18px 10px;
     border: 0;
     background: transparent;
     color: var(--text);
     outline: none;
-    font-size: var(--task-detail-font-size);
-    line-height: var(--task-detail-line-height);
+    font-size: var(--conversation-font-size);
+    line-height: var(--conversation-line-height);
     overflow-y: hidden;
     resize: none;
   }
@@ -211,7 +211,7 @@ caffold-task-composer {
     align-items: center;
     justify-content: center;
     gap: 7px;
-    min-height: 32px;
+    min-height: var(--interface-control-size);
     padding: 4px 8px;
     border: 0;
     border-radius: 999px;
@@ -273,15 +273,15 @@ caffold-task-composer {
 
   & .task-model-caret {
     color: var(--muted);
-    font-size: 15px;
-    line-height: 15px;
+    font-size: 0.9375rem;
+    line-height: 1;
   }
 
   & .task-send-button {
     display: grid;
     place-items: center;
-    width: 38px;
-    height: 38px;
+    width: max(2.375rem, var(--interface-target-floor));
+    height: max(2.375rem, var(--interface-target-floor));
     border: 0;
     border-radius: 999px;
     background: #16211b;
@@ -297,7 +297,7 @@ caffold-task-composer {
 
   & .task-send-arrow {
     display: block;
-    font-size: 23px;
+    font-size: 1.4375rem;
     font-weight: 500;
     line-height: 1;
   }
@@ -334,7 +334,7 @@ caffold-task-composer {
     margin: 0;
     padding: 6px 8px 8px;
     color: var(--muted);
-    font-size: var(--task-detail-meta-size);
+    font-size: var(--interface-meta-font-size);
   }
 
   & .task-model-popover section {
@@ -346,7 +346,7 @@ caffold-task-composer {
     margin: 0;
     padding: 6px 8px;
     color: var(--muted);
-    font-size: var(--task-detail-meta-size);
+    font-size: var(--interface-meta-font-size);
   }
 
   & .task-model-popover hr {
@@ -362,7 +362,7 @@ caffold-task-composer {
     align-items: center;
     gap: 10px;
     width: 100%;
-    min-height: 38px;
+    min-height: max(2.375rem, var(--interface-target-floor));
     padding: 8px;
     border: 0;
     border-radius: 8px;
@@ -396,8 +396,8 @@ caffold-task-composer {
 
   & .task-model-option small {
     color: var(--muted);
-    font-size: var(--task-detail-meta-size);
-    line-height: 16px;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
     overflow-wrap: anywhere;
   }
 
@@ -479,8 +479,8 @@ caffold-task-composer {
   width: min(calc(100% - 28px), 952px);
   margin: 0 auto;
   padding: 14px;
-  font-size: var(--task-detail-font-size);
-  line-height: var(--task-detail-line-height);
+  font-size: var(--interface-font-size);
+  line-height: var(--interface-line-height);
 
   & .task-composer {
     width: 100%;

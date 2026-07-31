@@ -9,8 +9,8 @@ caffold-tasks-page {
     border-radius: 999px;
     background: #f8fbf9;
     color: var(--muted);
-    font-size: var(--task-detail-meta-size);
-    line-height: 16px;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
     white-space: nowrap;
   }
 

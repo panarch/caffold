@@ -18,6 +18,7 @@ test("creates a task with responsive composer controls and canonical approval st
 }, testInfo) => {
   const scenario = await installTaskLoopFixture(page);
   const { contextPath, threadId } = scenario;
+  const touchInterface = testInfo.project.name !== "desktop";
   await page.goto(`/files?cwd=${encodeURIComponent(contextPath)}`);
   const codexPopover = await openHeaderActionGroup(page, "codex");
   await codexPopover.locator('button[data-action="open-tasks"]').click();
@@ -58,7 +59,7 @@ test("creates a task with responsive composer controls and canonical approval st
         borderWidth: "1px",
         color: "rgb(22, 124, 92)",
         display: "inline-grid",
-        minHeight: "32px",
+        minHeight: touchInterface ? "40px" : "32px",
         padding: "5px 10px",
       }),
     );
@@ -74,9 +75,9 @@ test("creates a task with responsive composer controls and canonical approval st
         borderRadius: "5px",
         borderWidth: "1px",
         display: "grid",
-        height: 32,
+        height: touchInterface ? 40 : 32,
         padding: "0px",
-        width: 32,
+        width: touchInterface ? 40 : 32,
       }),
     );
   });
@@ -270,9 +271,12 @@ test("creates a task with responsive composer controls and canonical approval st
   await expect(tasksPage.locator(".task-conversation")).toBeVisible();
   await expect(tasksPage.locator(".task-detail-summary h2")).toHaveCSS(
     "font-size",
-    "16px",
+    touchInterface ? "17px" : "16px",
   );
-  await expect(tasksPage.locator(".task-detail-meta")).toHaveCSS("font-size", "12px");
+  await expect(tasksPage.locator(".task-detail-meta")).toHaveCSS(
+    "font-size",
+    touchInterface ? "12.75px" : "12px",
+  );
   await expect(tasksPage.locator('.task-message[data-message-role="user"]')).toContainText(
     "Inspect the planner changes",
   );
@@ -352,7 +356,7 @@ test("creates a task with responsive composer controls and canonical approval st
         borderWidth: "1px",
         color: "rgb(22, 124, 92)",
         display: "grid",
-        minHeight: "32px",
+        minHeight: touchInterface ? "40px" : "32px",
         padding: "5px 10px",
       }),
     );
@@ -367,7 +371,7 @@ test("creates a task with responsive composer controls and canonical approval st
         backgroundColor: "rgb(238, 242, 239)",
         borderRadius: "18px",
         fontSize: "15px",
-        lineHeight: "22px",
+        lineHeight: "22.05px",
         overflowWrap: "anywhere",
         padding: "10px 14px",
       }),

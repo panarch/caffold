@@ -3,8 +3,8 @@ caffold-task-conversation {
   & .task-thinking-content,
   & .task-file-change p,
   & .task-turn-work-body {
-    font-size: var(--task-detail-font-size);
-    line-height: var(--task-detail-line-height);
+    font-size: var(--conversation-font-size);
+    line-height: var(--conversation-line-height);
   }
 
   & .task-message-header,
@@ -15,8 +15,8 @@ caffold-task-conversation {
   & .task-tool-card header,
   & .task-file-change header,
   & .task-work-item header {
-    font-size: var(--task-detail-meta-size);
-    line-height: 16px;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
   }
 
   & .task-message-header,
@@ -74,14 +74,14 @@ caffold-task-conversation {
     justify-self: center;
     min-height: 19px;
     color: var(--muted);
-    font-size: var(--task-detail-meta-size);
-    line-height: 16px;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
   }
 
   & .task-load-error-message {
     color: var(--muted);
-    font-size: var(--task-detail-meta-size);
-    line-height: 16px;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
   }
 
   & .task-history-error {
@@ -93,7 +93,7 @@ caffold-task-conversation {
   }
 
   & .task-history-error button {
-    min-height: 26px;
+    min-height: var(--interface-compact-control-size);
     padding: 2px 7px;
     border: 1px solid currentColor;
     border-radius: 5px;
@@ -107,8 +107,8 @@ caffold-task-conversation {
     justify-self: start;
     margin: 0;
     color: var(--muted);
-    font-size: var(--task-detail-meta-size);
-    line-height: 16px;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
   }
 
   & .task-approval-card {
@@ -122,6 +122,11 @@ caffold-task-conversation {
   & .task-approval-card h3,
   & .task-approval-card p {
     margin: 0;
+  }
+
+  & .task-approval-card p {
+    font-size: var(--conversation-font-size);
+    line-height: var(--conversation-line-height);
   }
 
   & .task-approval-card header {
@@ -138,13 +143,15 @@ caffold-task-conversation {
     border: 1px solid var(--border);
     border-radius: 5px;
     background: var(--code-bg);
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
   }
 
   & .task-approval-card .task-approval-error {
     margin: 8px 0 0;
     color: var(--danger);
-    font-size: var(--task-detail-meta-size);
-    line-height: 16px;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
     overflow-wrap: anywhere;
   }
 
@@ -158,8 +165,8 @@ caffold-task-conversation {
     justify-content: center;
     gap: 8px;
     padding: 2px 0;
-    font-size: var(--task-detail-meta-size);
-    line-height: 16px;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
   }
 
   & .task-event-status[data-event-status="warning"] .task-status-chip {
@@ -198,15 +205,15 @@ caffold-task-conversation {
   & .task-message-delivery {
     margin-right: 7px;
     color: #8a5b00;
-    font-size: 11px;
+    font-size: var(--interface-meta-font-size);
   }
 
   & .task-command pre,
   & .task-tool-card pre,
   & .task-work-item pre {
     margin: 0;
-    font-size: var(--code-viewer-font-size);
-    line-height: 1.55;
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
@@ -257,7 +264,7 @@ caffold-task-conversation {
     align-content: center;
     gap: 7px;
     color: var(--muted);
-    font-size: var(--task-detail-meta-size);
+    font-size: var(--interface-meta-font-size);
   }
 
   & .task-message-attachment-placeholder-icon {
@@ -270,13 +277,13 @@ caffold-task-conversation {
     align-items: center;
     gap: 7px;
     min-width: 0;
-    min-height: 30px;
+    min-height: var(--interface-compact-control-size);
     padding: 4px 10px;
     border: 1px solid var(--border);
     border-radius: 15px;
     background: var(--surface);
     color: var(--text);
-    font-size: var(--task-detail-meta-size);
+    font-size: var(--interface-meta-font-size);
   }
 
   & .task-message-attachment figcaption span:last-child {
@@ -334,7 +341,7 @@ caffold-task-conversation {
     align-items: center;
     gap: 8px;
     min-width: 0;
-    min-height: 32px;
+    min-height: var(--interface-control-size);
     padding: 7px 11px;
     border-bottom: 1px solid #e2e8e2;
     cursor: pointer;
@@ -386,7 +393,7 @@ caffold-task-conversation {
   & .task-file-change header time,
   & .task-work-item header time {
     margin-left: auto;
-    font-size: var(--task-detail-meta-size);
+    font-size: var(--interface-meta-font-size);
   }
 
   & .task-thinking-content,
@@ -406,7 +413,8 @@ caffold-task-conversation {
   & .task-work-command-body > code,
   & .task-work-command-body > span {
     overflow-wrap: anywhere;
-    font-size: var(--code-viewer-font-size);
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
   }
 
   & .task-work-command-body > span {
@@ -438,7 +446,8 @@ caffold-task-conversation {
     display: block;
     overflow-wrap: anywhere;
     color: var(--text);
-    font-size: var(--code-viewer-font-size);
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
   }
 
   & .task-turn-work {
@@ -454,7 +463,7 @@ caffold-task-conversation {
     justify-self: start;
     gap: 8px;
     width: min(100%, 850px);
-    min-height: 30px;
+    min-height: var(--interface-compact-control-size);
     color: var(--muted);
   }
 
@@ -502,7 +511,7 @@ caffold-task-conversation {
     display: inline-flex;
     align-items: center;
     gap: 9px;
-    min-height: 30px;
+    min-height: var(--interface-compact-control-size);
     padding: 0 0 2px;
     cursor: pointer;
   }
@@ -512,7 +521,7 @@ caffold-task-conversation {
   }
 
   & .task-turn-work summary span:last-child {
-    font-size: var(--task-detail-meta-size);
+    font-size: var(--interface-meta-font-size);
   }
 
   & .task-turn-work summary span:first-child {

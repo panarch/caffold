@@ -24,7 +24,7 @@ caffold-file-list {
   & h2 {
     margin: 0;
     overflow: hidden;
-    font-size: 15px;
+    font-size: 0.9375rem;
     font-weight: 600;
     line-height: 1.15;
     text-overflow: ellipsis;
@@ -33,7 +33,7 @@ caffold-file-list {
 
   & .file-list-panel > header span {
     color: var(--muted);
-    font-size: 13px;
+    font-size: 0.8125rem;
   }
 
   & .file-list-title-row {
@@ -59,8 +59,8 @@ caffold-file-list {
 
   & .file-refresh-button {
     display: grid;
-    width: 28px;
-    height: 28px;
+    width: var(--interface-compact-control-size);
+    height: var(--interface-compact-control-size);
     place-items: center;
     padding: 0;
     border: 1px solid transparent;
@@ -95,7 +95,7 @@ caffold-file-list {
     min-width: 0;
     overflow: hidden;
     color: var(--accent);
-    font-size: 12px;
+    font-size: var(--interface-meta-font-size);
     text-overflow: ellipsis;
     white-space: nowrap;
   }

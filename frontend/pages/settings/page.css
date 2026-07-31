@@ -6,20 +6,22 @@ caffold-settings-page {
   min-width: 0;
   min-height: 0;
   background: var(--surface);
+  font-size: var(--interface-font-size);
+  line-height: var(--interface-line-height);
 
   & .settings-header {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
-    gap: 10px;
-    min-height: 54px;
+    gap: 0.625rem;
+    min-height: max(3.375rem, var(--interface-target-floor));
     border-bottom: 1px solid var(--border);
-    padding: 7px 14px;
+    padding: 0.4375rem 0.875rem;
   }
 
   & .settings-header > div {
     display: grid;
-    gap: 1px;
+    gap: 0.0625rem;
     min-width: 0;
   }
 
@@ -36,11 +38,11 @@ caffold-settings-page {
 
   & .settings-close-button {
     display: grid;
-    width: 34px;
-    height: 34px;
+    width: var(--interface-control-size);
+    height: var(--interface-control-size);
     place-items: center;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: 0.25rem;
     background: var(--surface);
     color: var(--accent);
     cursor: pointer;
@@ -48,54 +50,105 @@ caffold-settings-page {
   }
 
   & .settings-close-button:hover,
-  & .settings-close-button:focus-visible {
+  & .settings-close-button:focus-visible,
+  & .settings-reset-all:hover,
+  & .settings-reset-all:focus-visible,
+  & .settings-range-control button:hover,
+  & .settings-range-control button:focus-visible {
     border-color: var(--border-strong);
     background: var(--accent-soft);
     outline: none;
   }
 
   & .settings-close-icon {
-    width: 18px;
-    height: 18px;
+    width: 1.125rem;
+    height: 1.125rem;
   }
 
   & .settings-scroll {
     min-height: 0;
     overflow: auto;
-    padding: 28px 24px 48px;
+    padding: 1.75rem 1.5rem 3rem;
   }
 
   & .settings-section {
     display: grid;
-    gap: 20px;
-    width: min(100%, 760px);
+    gap: 1.75rem;
+    width: min(100%, 48rem);
     margin: 0 auto;
   }
 
   & .settings-section > header {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 1rem;
     border-bottom: 1px solid var(--border);
-    padding-bottom: 8px;
+    padding-bottom: 0.75rem;
+  }
+
+  & .settings-section > header > div {
+    display: grid;
+    gap: 0.25rem;
+  }
+
+  & .settings-section h2,
+  & .settings-section > header p {
+    margin: 0;
   }
 
   & .settings-section h2 {
-    margin: 0;
     font-size: 1rem;
+  }
+
+  & .settings-section > header p {
+    color: var(--muted);
+    font-size: 0.75rem;
+  }
+
+  & .settings-reset-all,
+  & .settings-range-control button {
+    min-height: var(--interface-compact-control-size);
+    border: 1px solid var(--border);
+    border-radius: 0.3125rem;
+    background: var(--surface);
+    color: var(--accent);
+    cursor: pointer;
+    padding: 0.25rem 0.625rem;
+    white-space: nowrap;
+  }
+
+  & .settings-reset-all:disabled,
+  & .settings-range-control button:disabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+
+  & .settings-appearance-group {
+    display: grid;
+    gap: 0.875rem;
+  }
+
+  & .settings-appearance-group + .settings-appearance-group {
+    border-top: 1px solid #e6ebe6;
+    padding-top: 1.75rem;
   }
 
   & .settings-field {
     display: grid;
     grid-template-columns: minmax(13rem, 0.8fr) minmax(24rem, 1.2fr);
-    align-items: start;
-    gap: 24px;
+    align-items: center;
+    gap: 1.5rem;
   }
 
   & .settings-field-copy {
     display: grid;
-    gap: 5px;
+    gap: 0.3125rem;
   }
 
-  & .settings-field-copy strong {
+  & .settings-field-copy label {
     font-size: 0.86rem;
+    font-weight: 700;
   }
 
   & .settings-field-copy span {
@@ -104,117 +157,161 @@ caffold-settings-page {
     line-height: 1.45;
   }
 
-  & .settings-segmented-control {
+  & .settings-range-control {
     display: grid;
+    grid-template-columns: minmax(0, 1fr) 4.5rem auto;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+  }
+
+  & .settings-range-control input {
+    width: 100%;
+    min-width: 0;
+    min-height: var(--interface-control-size);
+    margin: 0;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
+  & .settings-range-control input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  & .settings-range-control output {
+    min-width: 4ch;
+    color: var(--text);
+    font-size: 0.86rem;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  & .settings-interface-preview,
+  & .settings-conversation-preview,
+  & .settings-code-preview {
+    width: min(100%, 35rem);
     overflow: hidden;
     border: 1px solid var(--border);
-    border-radius: 5px;
-    background: var(--surface-muted);
+    border-radius: 0.3125rem;
+    background: var(--surface);
   }
 
-  & .settings-segmented-control-four {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  & .settings-segmented-control-three {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  & .settings-segmented-control button {
+  & .settings-interface-preview {
     display: grid;
+    padding: 0.3125rem 0 0.5rem;
+    font-size: var(--task-list-font-size);
+  }
+
+  & .settings-interface-preview-header,
+  & .settings-interface-preview-row {
+    display: grid;
+    align-items: center;
     min-width: 0;
-    min-height: 52px;
-    gap: 2px;
-    border: 0;
-    border-right: 1px solid var(--border);
-    background: transparent;
-    color: var(--text);
-    cursor: pointer;
-    padding: 8px 6px;
-    text-align: center;
   }
 
-  & .settings-segmented-control button:last-child {
-    border-right: 0;
+  & .settings-interface-preview-header {
+    grid-template-columns: var(--task-list-icon-size) minmax(0, 1fr) auto;
+    gap: 0.4375rem;
+    min-height: var(--task-group-row-height);
+    padding: 0 0.5625rem;
+    color: var(--muted);
+    font-size: var(--task-group-font-size);
   }
 
-  & .settings-segmented-control button:hover,
-  & .settings-segmented-control button:focus-visible {
-    background: #f7fbf8;
-    outline: none;
+  & .settings-interface-preview-header button {
+    min-height: var(--interface-compact-control-size);
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    background: var(--surface);
+    color: var(--accent);
+    padding: 0.1875rem 0.4375rem;
+    pointer-events: none;
   }
 
-  & .settings-segmented-control button[aria-checked="true"] {
+  & .settings-preview-icon {
+    width: var(--task-list-icon-size);
+    height: var(--task-list-icon-size);
+  }
+
+  & .settings-interface-preview-row {
+    grid-template-columns: minmax(0, 1fr) 4ch;
+    min-height: var(--task-list-row-height);
+    margin-left: calc(0.5625rem + var(--task-list-icon-size));
+    border-left: 3px solid var(--accent);
     background: var(--accent-soft);
-    color: #0d5f47;
+    padding: 0 0.5625rem;
   }
 
-  & .settings-segmented-control strong {
+  & .settings-interface-preview-row span {
     overflow: hidden;
-    font-size: 0.78rem;
-    font-weight: 500;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  & .settings-segmented-control span {
+  & .settings-interface-preview-row time {
     color: var(--muted);
-    font-size: 0.65rem;
-    line-height: 1.2;
-    overflow-wrap: anywhere;
+    font-size: 0.85em;
+    text-align: right;
   }
 
-  & .settings-tree-preview {
+  & .settings-conversation-preview {
     display: grid;
-    width: min(100%, 448px);
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    background: var(--surface);
-    padding: 6px 0;
-    font-size: var(--file-tree-font-size);
+    gap: 0.875rem;
+    padding: 1rem;
   }
 
-  & .settings-preview-row {
+  & .settings-conversation-message {
     display: grid;
-    grid-template-columns: var(--file-tree-icon-slot-size) max-content;
-    align-items: center;
-    gap: var(--file-tree-column-gap);
-    min-height: var(--file-tree-row-height);
-    border-left: 3px solid transparent;
-    padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
-      var(--file-tree-padding-y) var(--file-tree-padding-left);
+    gap: 0.3125rem;
+    max-width: 88%;
   }
 
-  & .settings-preview-file {
-    border-left-color: var(--accent);
-    background: var(--accent-soft);
-    padding-left: calc(var(--file-tree-padding-left) + var(--file-tree-indent));
+  & .settings-conversation-message[data-message-role="user"] {
+    justify-self: end;
   }
 
-  & .settings-preview-icon {
-    width: var(--file-tree-icon-size);
-    height: var(--file-tree-icon-size);
+  & .settings-conversation-message time {
     color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .settings-conversation-message[data-message-role="user"] time {
+    text-align: right;
+  }
+
+  & .settings-conversation-message h3,
+  & .settings-conversation-message p {
+    margin: 0;
+    font-size: var(--conversation-font-size);
+    line-height: var(--conversation-line-height);
+  }
+
+  & .settings-conversation-message h3 {
+    font-size: calc(var(--conversation-font-size) + 2px);
+  }
+
+  & .settings-conversation-message[data-message-role="user"] p {
+    padding: 0.5rem 0.6875rem;
+    border-radius: 0.875rem;
+    background: var(--surface-muted);
   }
 
   & .settings-code-preview {
     display: grid;
-    grid-template-columns: 48px minmax(0, 1fr);
-    width: min(100%, 448px);
-    overflow: hidden;
-    border: 1px solid var(--border);
-    border-radius: 5px;
+    grid-template-columns: var(--line-gutter-width) minmax(0, 1fr);
     background: var(--code-bg);
     color: var(--code-text);
-    font-size: var(--code-viewer-font-size);
-    line-height: 1.55;
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
   }
 
   & .settings-code-preview-line-number {
     border-right: 1px solid var(--border);
     background: var(--code-gutter);
     color: #78867d;
-    padding: 0 8px;
+    padding: 0 0.5rem;
     text-align: right;
     user-select: none;
   }
@@ -222,7 +319,7 @@ caffold-settings-page {
   & .settings-code-preview code {
     min-width: 0;
     overflow: hidden;
-    padding: 0 12px;
+    padding: 0 0.75rem;
     font: inherit;
     text-overflow: ellipsis;
     white-space: pre;
@@ -231,134 +328,17 @@ caffold-settings-page {
   & .settings-code-preview code span {
     color: #005ea8;
   }
-
-  & .settings-task-preview {
-    display: grid;
-    width: min(100%, 448px);
-    overflow: hidden;
-    padding: 5px 0 8px;
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    background: var(--surface);
-    font-size: var(--task-list-font-size);
-  }
-
-  & .settings-task-preview-group,
-  & .settings-task-preview-row {
-    display: grid;
-    align-items: center;
-    min-width: 0;
-  }
-
-  & .settings-task-preview-group {
-    grid-template-columns: var(--task-list-icon-size) minmax(0, 1fr) auto;
-    gap: 7px;
-    min-height: var(--task-group-row-height);
-    border-left: 3px solid transparent;
-    background: transparent;
-    color: var(--muted);
-    font-size: var(--task-group-font-size);
-    padding: 0 9px;
-  }
-
-  & .settings-task-preview-icon {
-    width: var(--task-list-icon-size);
-    height: var(--task-list-icon-size);
-  }
-
-  & .settings-task-preview-group > span:nth-child(2),
-  & .settings-task-preview-row > span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  & .settings-task-preview-row {
-    grid-template-columns: minmax(0, 1fr) 4ch;
-    min-height: var(--task-list-row-height);
-    margin-left: calc(9px + var(--task-list-icon-size));
-    border-left: 3px solid var(--accent);
-    background: var(--accent-soft);
-    padding: 0 9px;
-  }
-
-  & .settings-task-preview-row time {
-    color: var(--muted);
-    font-size: 0.85em;
-    text-align: right;
-  }
-
-  & .settings-task-detail-preview {
-    display: grid;
-    gap: 14px;
-    width: min(100%, 560px);
-    padding: 16px;
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    background: var(--surface);
-    font-size: var(--task-detail-font-size);
-    line-height: var(--task-detail-line-height);
-  }
-
-  & .settings-task-detail-message {
-    display: grid;
-    gap: 5px;
-    max-width: 88%;
-  }
-
-  & .settings-task-detail-message[data-message-role="user"] {
-    justify-self: end;
-  }
-
-  & .settings-task-detail-message time {
-    color: var(--muted);
-    font-size: var(--task-detail-meta-size);
-    line-height: 16px;
-  }
-
-  & .settings-task-detail-message[data-message-role="user"] time {
-    text-align: right;
-  }
-
-  & .settings-task-detail-message h3,
-  & .settings-task-detail-message p {
-    margin: 0;
-  }
-
-  & .settings-task-detail-message h3 {
-    font-size: var(--task-detail-heading-size);
-    line-height: var(--task-detail-line-height);
-  }
-
-  & .settings-task-detail-message[data-message-role="user"] p {
-    padding: 8px 11px;
-    border-radius: 14px;
-    background: var(--surface-muted);
-  }
-
-  & .settings-task-detail-work {
-    color: var(--muted);
-    font-size: var(--task-detail-meta-size);
-  }
-
-  & .settings-task-detail-work summary {
-    cursor: default;
-  }
-
-  & .settings-task-detail-work summary span {
-    margin-left: 7px;
-  }
 }
 
 @media (max-width: 700px) {
   caffold-settings-page {
     & .settings-scroll {
-      padding: 20px 16px 36px;
+      padding: 1.25rem 1rem 2.25rem;
     }
 
     & .settings-field {
       grid-template-columns: minmax(0, 1fr);
-      gap: 12px;
+      gap: 0.75rem;
     }
   }
 }
@@ -366,23 +346,25 @@ caffold-settings-page {
 @media (max-width: 520px) {
   caffold-settings-page {
     & .settings-header {
-      padding-inline: 10px;
+      padding-inline: 0.625rem;
     }
 
     & .settings-scroll {
-      padding-inline: 10px;
+      padding-inline: 0.625rem;
     }
 
-    & .settings-segmented-control-four {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+    & .settings-section > header {
+      align-items: start;
+      flex-direction: column;
     }
 
-    & .settings-segmented-control-four button:nth-child(2) {
-      border-right: 0;
+    & .settings-range-control {
+      grid-template-columns: minmax(0, 1fr) 4rem;
     }
 
-    & .settings-segmented-control-four button:nth-child(-n + 2) {
-      border-bottom: 1px solid var(--border);
+    & .settings-range-control button {
+      grid-column: 1 / -1;
+      justify-self: start;
     }
   }
 }

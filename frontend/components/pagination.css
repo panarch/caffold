@@ -6,7 +6,12 @@ caffold-pagination {
 
   & .pagination-panel {
     display: grid;
-    grid-template-columns: 30px 30px minmax(3.8rem, auto) 30px 30px;
+    grid-template-columns:
+      var(--interface-compact-control-size)
+      var(--interface-compact-control-size)
+      minmax(3.8rem, auto)
+      var(--interface-compact-control-size)
+      var(--interface-compact-control-size);
     gap: 6px;
     align-items: center;
     justify-content: center;
@@ -17,8 +22,8 @@ caffold-pagination {
   & .pagination-button {
     display: grid;
     place-items: center;
-    width: 30px;
-    height: 28px;
+    width: var(--interface-compact-control-size);
+    height: var(--interface-compact-control-size);
     padding: 0;
     border: 1px solid var(--border);
     border-radius: 4px;

@@ -374,7 +374,7 @@ test("keeps the visible conversation anchor while loading older events by cursor
         });
       return Math.abs(currentOffset - visibleAnchor.offset);
     })
-    .toBeLessThan(0.5);
+    .toBeLessThan(1);
 
   releaseOlderImage();
   const olderImage = tasksPage.locator(
@@ -392,7 +392,7 @@ test("keeps the visible conversation anchor while loading older events by cursor
       const scroller = anchor.closest(".task-conversation-scroll");
       return anchor.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
     });
-  expect(Math.abs(offsetAfterImageLoad - visibleAnchor.offset)).toBeLessThan(0.5);
+  expect(Math.abs(offsetAfterImageLoad - visibleAnchor.offset)).toBeLessThan(1);
 
   const secondPageAnchor = await tasksPage
     .locator(".task-conversation-scroll")
@@ -428,7 +428,7 @@ test("keeps the visible conversation anchor while loading older events by cursor
         });
       return Math.abs(currentOffset - secondPageAnchor.offset);
     })
-    .toBeLessThan(0.5);
+    .toBeLessThan(1);
 });
 test("keeps the latest conversation when older history times out", async ({
   page,

@@ -13,7 +13,7 @@ caffold-tasks-page {
     align-items: center;
     justify-content: center;
     gap: 6px;
-    min-height: 32px;
+    min-height: var(--interface-control-size);
     padding: 5px 10px;
     border: 1px solid var(--border);
     border-radius: 5px;
@@ -28,7 +28,7 @@ caffold-tasks-page {
   }
 
   & .task-icon-button {
-    width: 32px;
+    width: var(--interface-control-size);
     padding: 0;
   }
 

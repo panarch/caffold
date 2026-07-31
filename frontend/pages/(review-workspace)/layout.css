@@ -1,5 +1,8 @@
 caffold-review-workspace {
-  --review-header-height: 42px;
+  --review-header-height: max(
+    2.625rem,
+    calc(var(--interface-target-floor) + 0.75rem)
+  );
   --review-pane-title-size: 0.82rem;
   position: absolute;
   inset: 0;
@@ -45,8 +48,8 @@ caffold-review-workspace {
   & .review-workspace-close {
     display: grid;
     place-items: center;
-    width: 30px;
-    height: 30px;
+    width: var(--interface-compact-control-size);
+    height: var(--interface-compact-control-size);
     padding: 0;
     border: 1px solid var(--border);
     border-radius: 4px;

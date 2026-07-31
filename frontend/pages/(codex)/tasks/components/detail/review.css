@@ -73,7 +73,7 @@ caffold-task-review {
   }
 
   & .task-diff-mode-switch button {
-    min-height: 28px;
+    min-height: var(--interface-compact-control-size);
     padding: 3px 8px;
     border: 0;
     border-radius: 3px;
@@ -94,7 +94,7 @@ caffold-task-review {
     min-width: 0;
     gap: 7px;
     color: var(--muted);
-    font-size: 13px;
+    font-size: var(--interface-meta-font-size);
   }
 
   & .task-diff-view[data-task-diff-mode="branch"] .task-compare-controls {
@@ -109,7 +109,7 @@ caffold-task-review {
   & .task-compare-controls select {
     width: min(28vw, 250px);
     min-width: 120px;
-    height: 30px;
+    height: var(--interface-compact-control-size);
     border: 1px solid var(--border);
     border-radius: 4px;
     background: var(--surface);

@@ -6,15 +6,15 @@ caffold-app-menu {
     display: grid;
     grid-template-columns: auto auto;
     align-items: center;
-    gap: 7px;
+    gap: 0.4375rem;
     min-width: 0;
-    min-height: 30px;
+    min-height: var(--interface-control-size);
     border: 0;
     border-radius: 4px;
     background: transparent;
     color: var(--text);
     cursor: pointer;
-    padding: 2px 4px;
+    padding: 0.125rem 0.25rem;
   }
 
   & .app-menu-button:hover,
@@ -26,8 +26,8 @@ caffold-app-menu {
 
   & .app-menu-mark {
     display: block;
-    width: 26px;
-    height: 26px;
+    width: 1.625rem;
+    height: 1.625rem;
   }
 
   & .app-menu-name {
@@ -50,17 +50,17 @@ caffold-app-menu {
 
   & .app-menu-popover button {
     display: grid;
-    grid-template-columns: 20px minmax(0, 1fr);
+    grid-template-columns: 1.25rem minmax(0, 1fr);
     align-items: center;
-    gap: 8px;
+    gap: 0.5rem;
     width: 100%;
-    min-height: 34px;
+    min-height: var(--interface-header-size);
     border: 0;
     border-radius: 4px;
     background: transparent;
     color: var(--text);
     cursor: pointer;
-    padding: 5px 8px;
+    padding: 0.3125rem 0.5rem;
     text-align: left;
   }
 
@@ -72,8 +72,8 @@ caffold-app-menu {
   }
 
   & .app-menu-item-icon {
-    width: 16px;
-    height: 16px;
+    width: 1rem;
+    height: 1rem;
   }
 }
 

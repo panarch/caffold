@@ -67,9 +67,11 @@ test("keeps the toggled tree row anchored while expanding", async ({ page }) => 
   const planner = page.locator('button[data-entry-path="src/planner"]');
   await expect(planner).toBeVisible();
 
-  const beforeTop = await planner.evaluate((element) => {
+  const beforeTop = await planner.evaluate(async (element) => {
     const scroller = element.closest(".file-list");
-    scroller.scrollTop = 0;
+    const scrollerTop = scroller.getBoundingClientRect().top;
+    scroller.scrollTop += element.getBoundingClientRect().top - scrollerTop - 8;
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     return element.getBoundingClientRect().top;
   });
 

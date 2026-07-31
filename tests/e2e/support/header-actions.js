@@ -49,20 +49,33 @@ export async function clickHeaderAction(page, group, action) {
 
 export async function expectFileTreeDensity(page, entry) {
   const metrics = await entry.evaluate((element) => {
-    const rootStyle = getComputedStyle(document.documentElement);
     const entryStyle = getComputedStyle(element);
     const iconStyle = getComputedStyle(element.querySelector(".entry-icon-svg"));
     const status = element.querySelector('[class*="status-code"]');
+    const probe = document.createElement("span");
+    probe.style.cssText = `
+      position: fixed;
+      inset: auto;
+      visibility: hidden;
+      font-size: var(--file-tree-font-size);
+      min-height: var(--file-tree-row-height);
+      width: var(--file-tree-icon-size);
+      column-gap: var(--file-tree-column-gap);
+      padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
+        var(--file-tree-padding-y) var(--file-tree-padding-left);
+    `;
+    document.body.append(probe);
+    const expectedStyle = getComputedStyle(probe);
 
-    return {
+    const result = {
       expected: {
-        fontSize: rootStyle.getPropertyValue("--file-tree-font-size").trim(),
-        rowHeight: rootStyle.getPropertyValue("--file-tree-row-height").trim(),
-        iconSize: rootStyle.getPropertyValue("--file-tree-icon-size").trim(),
-        gap: rootStyle.getPropertyValue("--file-tree-column-gap").trim(),
-        paddingTop: rootStyle.getPropertyValue("--file-tree-padding-y").trim(),
-        paddingRight: rootStyle.getPropertyValue("--file-tree-padding-right").trim(),
-        paddingLeft: rootStyle.getPropertyValue("--file-tree-padding-left").trim(),
+        fontSize: expectedStyle.fontSize,
+        rowHeight: expectedStyle.minHeight,
+        iconSize: expectedStyle.width,
+        gap: expectedStyle.columnGap,
+        paddingTop: expectedStyle.paddingTop,
+        paddingRight: expectedStyle.paddingRight,
+        paddingLeft: expectedStyle.paddingLeft,
       },
       actual: {
         fontSize: entryStyle.fontSize,
@@ -75,6 +88,8 @@ export async function expectFileTreeDensity(page, entry) {
         statusFontSize: status ? getComputedStyle(status).fontSize : null,
       },
     };
+    probe.remove();
+    return result;
   });
 
   expect(metrics.actual.fontSize).toBe(metrics.expected.fontSize);
@@ -134,12 +149,17 @@ export async function expectHeaderActionsFit(page) {
   expect(metrics.git.right).toBeLessThanOrEqual(metrics.github.left);
   expect(metrics.github.right).toBeLessThanOrEqual(metrics.codex.left);
   expect(metrics.codex.right).toBeLessThanOrEqual(metrics.viewportWidth + 1);
-  expect(metrics.git.width).toBeGreaterThanOrEqual(30);
-  expect(metrics.git.width).toBeLessThanOrEqual(32);
-  expect(metrics.github.width).toBeGreaterThanOrEqual(30);
-  expect(metrics.github.width).toBeLessThanOrEqual(32);
-  expect(metrics.codex.width).toBeGreaterThanOrEqual(30);
-  expect(metrics.codex.width).toBeLessThanOrEqual(32);
+  const expectedControlSize =
+    (await page.evaluate(
+      () =>
+        matchMedia("(pointer: coarse)").matches ||
+        matchMedia("(max-width: 520px)").matches,
+    ))
+      ? 40
+      : 32;
+  expect(metrics.git.width).toBeCloseTo(expectedControlSize, 0);
+  expect(metrics.github.width).toBeCloseTo(expectedControlSize, 0);
+  expect(metrics.codex.width).toBeCloseTo(expectedControlSize, 0);
 
   if (metrics.badge) {
     expect(metrics.badge.left).toBeGreaterThanOrEqual(metrics.git.left);

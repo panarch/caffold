@@ -90,25 +90,25 @@ class CaffoldTaskMarkdown extends HTMLElement {
         h6 {
           margin: 20px 0 8px;
           font-weight: 600;
-          line-height: calc(var(--task-detail-line-height) + 1px);
+          line-height: var(--conversation-line-height);
         }
 
         h1 {
-          font-size: calc(var(--task-detail-font-size) + 4px);
+          font-size: calc(var(--conversation-font-size) + 4px);
         }
 
         h2 {
-          font-size: calc(var(--task-detail-font-size) + 3px);
+          font-size: calc(var(--conversation-font-size) + 3px);
         }
 
         h3 {
-          font-size: calc(var(--task-detail-font-size) + 2px);
+          font-size: calc(var(--conversation-font-size) + 2px);
         }
 
         h4,
         h5,
         h6 {
-          font-size: calc(var(--task-detail-font-size) + 1px);
+          font-size: calc(var(--conversation-font-size) + 1px);
         }
 
         a {
@@ -123,7 +123,8 @@ class CaffoldTaskMarkdown extends HTMLElement {
           background: var(--code-gutter);
           color: var(--code-text);
           font-family: var(--font-mono);
-          font-size: calc(var(--task-detail-font-size) - 1px);
+          font-size: var(--code-font-size);
+          line-height: var(--code-line-height);
         }
 
         pre {
@@ -133,8 +134,8 @@ class CaffoldTaskMarkdown extends HTMLElement {
           border: 1px solid var(--border);
           border-radius: 6px;
           background: var(--code-bg);
-          font-size: var(--code-viewer-font-size);
-          line-height: 1.55;
+          font-size: var(--code-font-size);
+          line-height: var(--code-line-height);
           white-space: pre;
           overscroll-behavior-x: contain;
         }

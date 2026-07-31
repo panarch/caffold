@@ -43,6 +43,21 @@
 
 :root {
   color-scheme: light;
+  --interface-scale: 1;
+  --interface-base-font-size: 16px;
+  --interface-target-floor: 0px;
+  --interface-font-size: 1rem;
+  --interface-meta-font-size: 0.75rem;
+  --interface-heading-font-size: 1rem;
+  --interface-line-height: 1.45;
+  --interface-control-size: max(2rem, var(--interface-target-floor));
+  --interface-compact-control-size: max(1.75rem, var(--interface-target-floor));
+  --interface-row-size: max(2.25rem, var(--interface-target-floor));
+  --interface-header-size: max(2.125rem, var(--interface-target-floor));
+  --conversation-font-size: 15px;
+  --conversation-line-height: 1.47;
+  --code-font-size: 13px;
+  --code-line-height: 1.55;
   --bg: #f4f6f3;
   --surface: #ffffff;
   --surface-muted: #eef2ee;
@@ -57,137 +72,24 @@
   --code-bg: #ffffff;
   --code-gutter: #f0f4f1;
   --code-text: #17201b;
-  --line-gutter-width: 4rem;
-  --file-tree-font-size: 15px;
-  --file-tree-row-height: 30px;
-  --file-tree-icon-slot-size: 24px;
-  --file-tree-icon-size: 18px;
-  --file-tree-indent: 14px;
-  --file-tree-column-gap: 8px;
-  --file-tree-padding-y: 4px;
-  --file-tree-padding-left: 7px;
-  --file-tree-padding-right: 10px;
-  --code-viewer-font-size: 13px;
-  --task-list-font-size: 14px;
-  --task-list-row-height: 36px;
-  --task-group-font-size: 12px;
-  --task-group-row-height: 28px;
-  --task-list-icon-size: 15px;
-  --task-detail-font-size: 15px;
-  --task-detail-meta-size: 12px;
-  --task-detail-heading-size: 16px;
-  --task-detail-line-height: 22px;
-  --task-detail-composer-min-height: 68px;
-  --task-detail-composer-max-height: 255px;
+  --line-gutter-width: calc(var(--code-font-size) * 4.9);
+  --file-tree-font-size: 0.8125rem;
+  --file-tree-row-height: max(1.5rem, var(--interface-target-floor));
+  --file-tree-icon-slot-size: 1.25rem;
+  --file-tree-icon-size: 0.9375rem;
+  --file-tree-indent: 0.75rem;
+  --file-tree-column-gap: 0.375rem;
+  --file-tree-padding-y: 0.125rem;
+  --file-tree-padding-left: 0.375rem;
+  --file-tree-padding-right: 0.5rem;
+  --task-list-font-size: 0.875rem;
+  --task-list-row-height: var(--interface-row-size);
+  --task-group-font-size: 0.75rem;
+  --task-group-row-height: max(1.75rem, var(--interface-target-floor));
+  --task-list-icon-size: 0.9375rem;
   --font-mono: ui-monospace, monospace;
   --font-sans: system-ui, sans-serif;
-
-  &[data-file-tree-size="compact"] {
-    --file-tree-font-size: 13px;
-    --file-tree-row-height: 24px;
-    --file-tree-icon-slot-size: 20px;
-    --file-tree-icon-size: 15px;
-    --file-tree-indent: 12px;
-    --file-tree-column-gap: 6px;
-    --file-tree-padding-y: 2px;
-    --file-tree-padding-left: 6px;
-    --file-tree-padding-right: 8px;
-  }
-
-  &[data-file-tree-size="default"] {
-    --file-tree-font-size: 15px;
-  }
-
-  &[data-file-tree-size="large"] {
-    --file-tree-font-size: 17px;
-    --file-tree-row-height: 36px;
-    --file-tree-icon-slot-size: 28px;
-    --file-tree-icon-size: 20px;
-    --file-tree-indent: 16px;
-    --file-tree-column-gap: 9px;
-    --file-tree-padding-y: 5px;
-    --file-tree-padding-left: 8px;
-    --file-tree-padding-right: 12px;
-  }
-
-  &[data-code-size="compact"] {
-    --code-viewer-font-size: 13px;
-  }
-
-  &[data-code-size="default"] {
-    --code-viewer-font-size: 15px;
-  }
-
-  &[data-code-size="large"] {
-    --code-viewer-font-size: 17px;
-  }
-
-  &[data-task-list-size="compact"] {
-    --task-list-font-size: 13px;
-    --task-list-row-height: 30px;
-    --task-group-font-size: 11px;
-    --task-group-row-height: 24px;
-    --task-list-icon-size: 14px;
-  }
-
-  &[data-task-list-size="default"] {
-    --task-list-font-size: 14px;
-    --task-list-row-height: 36px;
-    --task-group-font-size: 12px;
-    --task-group-row-height: 28px;
-    --task-list-icon-size: 15px;
-  }
-
-  &[data-task-list-size="large"] {
-    --task-list-font-size: 16px;
-    --task-list-row-height: 42px;
-    --task-group-font-size: 14px;
-    --task-group-row-height: 32px;
-    --task-list-icon-size: 17px;
-  }
-
-  &[data-task-detail-size="compact"] {
-    --task-detail-font-size: 13px;
-    --task-detail-meta-size: 11px;
-    --task-detail-heading-size: 14px;
-    --task-detail-line-height: 19px;
-    --task-detail-composer-min-height: 62px;
-    --task-detail-composer-max-height: 224px;
-  }
-
-  &[data-task-detail-size="default"] {
-    --task-detail-font-size: 15px;
-    --task-detail-meta-size: 12px;
-    --task-detail-heading-size: 16px;
-    --task-detail-line-height: 22px;
-    --task-detail-composer-min-height: 68px;
-    --task-detail-composer-max-height: 255px;
-  }
-
-  &[data-task-detail-size="large"] {
-    --task-detail-font-size: 17px;
-    --task-detail-meta-size: 14px;
-    --task-detail-heading-size: 18px;
-    --task-detail-line-height: 25px;
-    --task-detail-composer-min-height: 74px;
-    --task-detail-composer-max-height: 287px;
-  }
-}
-
-@media (pointer: fine) {
-  :root {
-    &[data-file-tree-size="auto"] {
-      --file-tree-font-size: 13px;
-      --file-tree-row-height: 24px;
-      --file-tree-icon-slot-size: 20px;
-      --file-tree-icon-size: 15px;
-      --file-tree-indent: 12px;
-      --file-tree-column-gap: 6px;
-      --file-tree-padding-y: 2px;
-      --file-tree-padding-left: 6px;
-      --file-tree-padding-right: 8px;
-    }
-  }
+  font-size: calc(var(--interface-base-font-size) * var(--interface-scale));
 }
 
 html {
@@ -235,6 +137,13 @@ button {
 
 @media (max-width: 520px) {
   :root {
-    --line-gutter-width: 3.25rem;
+    --line-gutter-width: calc(var(--code-font-size) * 4);
+  }
+}
+
+@media (pointer: coarse), (max-width: 520px) {
+  :root {
+    --interface-base-font-size: 17px;
+    --interface-target-floor: 40px;
   }
 }

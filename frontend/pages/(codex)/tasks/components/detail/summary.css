@@ -14,8 +14,8 @@ caffold-task-detail-summary {
 
   & h2 {
     overflow: hidden;
-    font-size: var(--task-detail-heading-size);
-    line-height: var(--task-detail-line-height);
+    font-size: var(--interface-heading-font-size);
+    line-height: var(--interface-line-height);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -32,8 +32,8 @@ caffold-task-detail-summary {
   }
 
   & .task-detail-meta {
-    font-size: var(--task-detail-meta-size);
-    line-height: 16px;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
   }
 
   & .task-detail-right {
@@ -49,8 +49,8 @@ caffold-task-detail-summary {
     justify-self: end;
     max-width: min(100%, 520px);
     color: var(--danger);
-    font-size: var(--task-detail-meta-size);
-    line-height: 16px;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
     overflow-wrap: anywhere;
     text-align: right;
   }
@@ -78,8 +78,8 @@ caffold-task-detail-summary {
   & .task-brand-button {
     position: relative;
     display: inline-grid;
-    width: 32px;
-    height: 32px;
+    width: var(--interface-control-size);
+    height: var(--interface-control-size);
     padding: 6px;
     place-items: center;
     border: 1px solid var(--border);
@@ -135,7 +135,7 @@ caffold-task-detail-summary {
   }
 
   & .task-review-menu-popover button {
-    min-height: 32px;
+    min-height: var(--interface-control-size);
     padding: 6px 8px;
     border: 0;
     border-radius: 4px;
@@ -160,8 +160,8 @@ caffold-task-detail-summary {
   & .task-detail-info-button {
     display: grid;
     place-items: center;
-    width: 32px;
-    height: 32px;
+    width: var(--interface-control-size);
+    height: var(--interface-control-size);
     padding: 0;
     border: 0;
     background: transparent;
@@ -213,16 +213,16 @@ caffold-task-detail-summary {
 
   & .task-detail-popover dt {
     color: var(--muted);
-    font-size: var(--task-detail-meta-size);
-    line-height: 16px;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
   }
 
   & .task-detail-popover dd {
     min-width: 0;
     margin: 0;
     overflow-wrap: anywhere;
-    font-size: var(--task-detail-font-size);
-    line-height: var(--task-detail-line-height);
+    font-size: var(--interface-font-size);
+    line-height: var(--interface-line-height);
   }
 
   & .task-detail-status {
@@ -264,14 +264,14 @@ caffold-task-detail-summary {
 
     & .task-detail-actions .task-secondary-button,
     & .task-detail-info-button {
-      width: 32px;
-      min-width: 32px;
-      min-height: 32px;
+      width: var(--interface-control-size);
+      min-width: var(--interface-control-size);
+      min-height: var(--interface-control-size);
       padding: 0;
     }
 
     & h2 {
-      font-size: var(--task-detail-heading-size);
+      font-size: var(--interface-heading-font-size);
     }
 
     & .task-detail-meta {

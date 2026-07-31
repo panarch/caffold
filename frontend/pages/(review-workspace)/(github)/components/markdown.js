@@ -30,8 +30,8 @@ class CaffoldGithubMarkdown extends HTMLElement {
           overscroll-behavior: auto;
           padding: 16px;
           color: var(--text);
-          font-size: 0.875rem;
-          line-height: 1.5;
+          font-size: var(--conversation-font-size);
+          line-height: var(--conversation-line-height);
         }
 
         :host(.github-issue-body) {
@@ -73,21 +73,21 @@ class CaffoldGithubMarkdown extends HTMLElement {
         }
 
         h1 {
-          font-size: 1.75rem;
+          font-size: 1.75em;
         }
 
         h2 {
-          font-size: 1.35rem;
+          font-size: 1.35em;
         }
 
         h3 {
-          font-size: 1.1rem;
+          font-size: 1.1em;
         }
 
         h4,
         h5,
         h6 {
-          font-size: 1rem;
+          font-size: 1em;
         }
 
         h1,
@@ -107,7 +107,8 @@ class CaffoldGithubMarkdown extends HTMLElement {
           background: var(--code-gutter);
           color: var(--code-text);
           font-family: var(--font-mono);
-          font-size: 0.78rem;
+          font-size: var(--code-font-size);
+          line-height: var(--code-line-height);
         }
 
         pre {
@@ -116,6 +117,8 @@ class CaffoldGithubMarkdown extends HTMLElement {
           border: 1px solid var(--border);
           border-radius: 4px;
           background: var(--code-bg);
+          font-size: var(--code-font-size);
+          line-height: var(--code-line-height);
         }
 
         pre code {

@@ -78,7 +78,7 @@ caffold-git-log-list-page {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px;
     width: 100%;
-    min-height: 38px;
+    min-height: max(2.375rem, var(--interface-target-floor));
     align-items: center;
     border-left: 3px solid transparent;
     background: transparent;
@@ -152,7 +152,7 @@ caffold-git-log-list-page {
     align-items: center;
     justify-content: center;
     min-width: 0;
-    height: 28px;
+    height: var(--interface-compact-control-size);
     padding: 0 8px;
     border: 1px solid var(--border);
     border-radius: 4px;

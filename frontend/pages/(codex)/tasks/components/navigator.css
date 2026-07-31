@@ -70,7 +70,7 @@ caffold-task-navigator {
   & .task-list-pagination-error {
     margin: 0;
     color: var(--danger, #a33);
-    font-size: 12px;
+    font-size: var(--interface-meta-font-size);
     text-align: center;
   }
 
@@ -143,7 +143,7 @@ caffold-task-navigator {
   }
 
   & .task-continue-button {
-    min-height: 26px;
+    min-height: var(--interface-compact-control-size);
     padding: 3px 7px;
     border: 1px solid var(--border);
     border-radius: 4px;
@@ -285,7 +285,7 @@ caffold-task-navigator {
     border-bottom: 1px solid #dfc58f;
     background: #fff8e7;
     color: #7f5600;
-    font-size: 12px;
-    line-height: 16px;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
   }
 }

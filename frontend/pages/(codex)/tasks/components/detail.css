@@ -1,12 +1,12 @@
 caffold-task-detail {
   & .task-conversation-pane {
-    font-size: var(--task-detail-font-size);
-    line-height: var(--task-detail-line-height);
+    font-size: var(--interface-font-size);
+    line-height: var(--interface-line-height);
   }
 
   & .task-stream-state {
-    font-size: var(--task-detail-meta-size);
-    line-height: 16px;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
   }
 
   & .task-continue-gate {
@@ -68,8 +68,8 @@ caffold-task-detail {
   }
 
   & .task-detail-load-error h2 {
-    font-size: var(--task-detail-heading-size);
-    line-height: var(--task-detail-line-height);
+    font-size: var(--interface-heading-font-size);
+    line-height: var(--interface-line-height);
   }
 
   & .task-detail-load-error-inline {
@@ -83,8 +83,8 @@ caffold-task-detail {
 
   & .task-detail-error-message {
     color: var(--muted);
-    font-size: var(--task-detail-meta-size);
-    line-height: 16px;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
   }
 
   & .task-stream-state {
@@ -92,7 +92,7 @@ caffold-task-detail {
     align-items: center;
     justify-content: center;
     gap: 7px;
-    min-height: 28px;
+    min-height: var(--interface-compact-control-size);
     padding: 5px 12px;
     border-top: 1px solid #dfc58f;
     background: #fff8e7;
@@ -104,7 +104,7 @@ caffold-task-detail {
   }
 
   & .task-stream-state button {
-    min-height: 26px;
+    min-height: var(--interface-compact-control-size);
     padding: 2px 7px;
     border: 1px solid currentColor;
     border-radius: 5px;

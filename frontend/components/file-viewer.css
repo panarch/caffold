@@ -91,8 +91,8 @@ caffold-review-file-viewer {
   & .viewer-refresh-button {
     display: grid;
     place-items: center;
-    width: 32px;
-    height: 32px;
+    width: var(--interface-control-size);
+    height: var(--interface-control-size);
     padding: 0;
     border: 1px solid var(--border);
     border-radius: 4px;
@@ -235,7 +235,7 @@ caffold-review-file-viewer {
     }
 
     & .viewer-title-row {
-      grid-template-columns: 28px minmax(0, 1fr) auto;
+      grid-template-columns: var(--interface-compact-control-size) minmax(0, 1fr) auto;
       gap: 6px;
     }
 
@@ -243,8 +243,8 @@ caffold-review-file-viewer {
     & .viewer-close-button {
       display: grid;
       place-items: center;
-      width: 28px;
-      height: 28px;
+      width: var(--interface-compact-control-size);
+      height: var(--interface-compact-control-size);
       padding: 0;
       border: 1px solid var(--border);
       border-radius: 4px;

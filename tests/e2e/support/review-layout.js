@@ -172,7 +172,7 @@ export async function expectMobileViewerCompactHeader(
     };
   });
 
-  expect(metrics.header.height).toBeLessThanOrEqual(42);
+  expect(metrics.header.height).toBeLessThanOrEqual(54);
   expect(metrics.closeButton.left).toBeGreaterThanOrEqual(metrics.header.left - 1);
   expect(metrics.title.left).toBeGreaterThan(metrics.closeButton.right);
   expect(metrics.infoButton.left).toBeGreaterThan(metrics.title.left);
@@ -410,9 +410,9 @@ export async function expectCompareRefControlsFit(page, testInfo, options = {}) 
   }
 
   if (testInfo.project.name === "phone") {
-    expect(metrics.header.height).toBeLessThanOrEqual(84);
+    expect(metrics.header.height).toBeLessThanOrEqual(106);
   } else {
-    expect(metrics.header.height).toBeLessThanOrEqual(44);
+    expect(metrics.header.height).toBeLessThanOrEqual(54);
   }
 }
 

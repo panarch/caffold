@@ -1,15 +1,20 @@
 import { renderInlineIcon, warmIcons } from "../../components/icons.js";
 import {
-  CODE_SIZES,
-  FILE_TREE_SIZES,
-  TASK_DETAIL_SIZES,
-  TASK_LIST_SIZES,
+  APPEARANCE_SETTINGS,
+  DEFAULT_SETTINGS,
   getSettings,
-  setCodeSize,
-  setFileTreeSize,
-  setTaskDetailSize,
-  setTaskListSize,
+  resetAppearanceSetting,
+  resetAppearanceSettings,
+  setAppearanceSetting,
 } from "../../settings.js";
+
+const SETTING_DESCRIPTIONS = Object.freeze({
+  interfaceScalePercent:
+    "Adjusts app controls, rows, icons, spacing, and interface text.",
+  conversationTextPx:
+    "Adjusts task conversation and long-form GitHub review text.",
+  codeTextPx: "Adjusts source, diff, command output, and embedded code text.",
+});
 
 class CaffoldSettingsPage extends HTMLElement {
   connectedCallback() {
@@ -19,12 +24,15 @@ class CaffoldSettingsPage extends HTMLElement {
 
     this.initialized = true;
     this.addEventListener("click", (event) => this.handleClick(event));
-    this.boundSettingsChange = () => this.render();
-    this.boundIconsReady = () => this.render();
+    this.addEventListener("input", (event) => this.handleInput(event));
+    this.boundSettingsChange = (event) =>
+      this.syncControls(event.detail?.settings ?? getSettings());
+    this.boundIconsReady = () => this.refreshIcons();
     window.addEventListener("caffold:settings-change", this.boundSettingsChange);
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
-    warmIcons();
     this.render();
+    this.syncControls(getSettings());
+    warmIcons();
   }
 
   disconnectedCallback() {
@@ -33,7 +41,16 @@ class CaffoldSettingsPage extends HTMLElement {
   }
 
   prepareRoute() {
-    this.render();
+    this.syncControls(getSettings());
+  }
+
+  handleInput(event) {
+    const range = event.target.closest('input[type="range"][data-setting]');
+    if (!range) {
+      return;
+    }
+
+    setAppearanceSetting(range.dataset.setting, range.valueAsNumber);
   }
 
   handleClick(event) {
@@ -52,45 +69,17 @@ class CaffoldSettingsPage extends HTMLElement {
       return;
     }
 
-    if (button.dataset.action === "set-file-tree-size") {
-      setFileTreeSize(button.dataset.value);
+    if (button.dataset.action === "reset-setting") {
+      resetAppearanceSetting(button.dataset.setting);
       return;
     }
 
-    if (button.dataset.action === "set-code-size") {
-      setCodeSize(button.dataset.value);
-      return;
-    }
-
-    if (button.dataset.action === "set-task-list-size") {
-      setTaskListSize(button.dataset.value);
-      return;
-    }
-
-    if (button.dataset.action === "set-task-detail-size") {
-      setTaskDetailSize(button.dataset.value);
+    if (button.dataset.action === "reset-appearance") {
+      resetAppearanceSettings();
     }
   }
 
   render() {
-    const settings = getSettings();
-    const fileTreeOptions = renderOptions(
-      FILE_TREE_SIZES,
-      settings.fileTreeSize,
-      "set-file-tree-size",
-    );
-    const codeOptions = renderOptions(CODE_SIZES, settings.codeSize, "set-code-size");
-    const taskListOptions = renderOptions(
-      TASK_LIST_SIZES,
-      settings.taskListSize,
-      "set-task-list-size",
-    );
-    const taskDetailOptions = renderOptions(
-      TASK_DETAIL_SIZES,
-      settings.taskDetailSize,
-      "set-task-detail-size",
-    );
-
     this.innerHTML = `
       <header class="settings-header">
         <button
@@ -100,7 +89,9 @@ class CaffoldSettingsPage extends HTMLElement {
           title="Close settings"
           aria-label="Close settings"
         >
-          ${renderInlineIcon("X", "Close settings", "settings-close-icon")}
+          <span data-settings-icon="close">
+            ${renderInlineIcon("X", "Close settings", "settings-close-icon")}
+          </span>
         </button>
         <div>
           <h1>Settings</h1>
@@ -110,108 +101,151 @@ class CaffoldSettingsPage extends HTMLElement {
       <div class="settings-scroll">
         <section class="settings-section" aria-labelledby="settings-appearance-title">
           <header>
-            <h2 id="settings-appearance-title">Appearance</h2>
+            <div>
+              <h2 id="settings-appearance-title">Appearance</h2>
+              <p>Three independent controls keep interface, reading, and code density consistent.</p>
+            </div>
+            <button type="button" class="settings-reset-all" data-action="reset-appearance">
+              Reset appearance
+            </button>
           </header>
-          <div class="settings-field">
-            <div class="settings-field-copy">
-              <strong>File tree size</strong>
-              <span>Adjusts text, row height, icons, and indentation in every Files tree.</span>
-            </div>
-            <div class="settings-segmented-control settings-segmented-control-four" role="radiogroup" aria-label="File tree size">
-              ${fileTreeOptions}
-            </div>
-          </div>
-          <div class="settings-tree-preview" aria-label="File tree preview">
-            <div class="settings-preview-row settings-preview-directory">
-              ${renderInlineIcon("FolderOpen", "Open directory", "settings-preview-icon")}
-              <span>frontend</span>
-            </div>
-            <div class="settings-preview-row settings-preview-file">
-              ${renderInlineIcon("FileCode", "Source file", "settings-preview-icon")}
-              <span>settings.js</span>
-            </div>
-          </div>
-          <div class="settings-field">
-            <div class="settings-field-copy">
-              <strong>Code size</strong>
-              <span>Adjusts source and diff text while keeping code line spacing independent.</span>
-            </div>
-            <div class="settings-segmented-control settings-segmented-control-three" role="radiogroup" aria-label="Code size">
-              ${codeOptions}
-            </div>
-          </div>
-          <div class="settings-code-preview" aria-label="Code preview">
-            <span class="settings-code-preview-line-number">12</span>
-            <code><span>const</span> size = "readable";</code>
-            <span class="settings-code-preview-line-number">13</span>
-            <code>render(size);</code>
-          </div>
-          <div class="settings-field">
-            <div class="settings-field-copy">
-              <strong>Task navigator size</strong>
-              <span>Adjusts repository context and task row density in the Tasks navigator.</span>
-            </div>
-            <div class="settings-segmented-control settings-segmented-control-three" role="radiogroup" aria-label="Task navigator size">
-              ${taskListOptions}
-            </div>
-          </div>
-          <div class="settings-task-preview" aria-label="Task navigator preview">
-            <div class="settings-task-preview-group">
-              ${renderInlineIcon("FolderGit2", "Git repository", "settings-task-preview-icon")}
-              <span>caffold</span>
-              <span>2</span>
-            </div>
-            <div class="settings-task-preview-row">
-              <span>Review task navigation</span>
-              <time>now</time>
-            </div>
-          </div>
-          <div class="settings-field">
-            <div class="settings-field-copy">
-              <strong>Task detail size</strong>
-              <span>Adjusts conversation, work summaries, and composer text without changing code size.</span>
-            </div>
-            <div class="settings-segmented-control settings-segmented-control-three" role="radiogroup" aria-label="Task detail size">
-              ${taskDetailOptions}
-            </div>
-          </div>
-          <div class="settings-task-detail-preview" aria-label="Task detail preview">
-            <div class="settings-task-detail-message" data-message-role="user">
-              <time>10:42</time>
-              <p>Keep the review focused.</p>
-            </div>
-            <details class="settings-task-detail-work">
-              <summary>Worked for 18s <span>3 updates</span></summary>
-            </details>
-            <div class="settings-task-detail-message" data-message-role="assistant">
-              <time>10:43</time>
-              <h3>Review complete</h3>
-              <p>The changed behavior is covered by a focused test.</p>
-            </div>
-          </div>
+          ${renderSetting(
+            "interfaceScalePercent",
+            `
+              <div class="settings-interface-preview" aria-label="Interface preview">
+                <div class="settings-interface-preview-header">
+                  <span data-settings-icon="preview">
+                    ${renderInlineIcon("FolderGit2", "Git repository", "settings-preview-icon")}
+                  </span>
+                  <strong>caffold</strong>
+                  <button type="button" tabindex="-1">Open</button>
+                </div>
+                <div class="settings-interface-preview-row">
+                  <span>Review appearance settings</span>
+                  <time>now</time>
+                </div>
+              </div>
+            `,
+          )}
+          ${renderSetting(
+            "conversationTextPx",
+            `
+              <div class="settings-conversation-preview" aria-label="Conversation preview">
+                <div class="settings-conversation-message" data-message-role="user">
+                  <time>10:42</time>
+                  <p>Keep the review focused.</p>
+                </div>
+                <div class="settings-conversation-message" data-message-role="assistant">
+                  <time>10:43</time>
+                  <h3>Review complete</h3>
+                  <p>The changed behavior is covered by a focused test.</p>
+                </div>
+              </div>
+            `,
+          )}
+          ${renderSetting(
+            "codeTextPx",
+            `
+              <div class="settings-code-preview" aria-label="Code preview">
+                <span class="settings-code-preview-line-number">12</span>
+                <code><span>const</span> size = "readable";</code>
+                <span class="settings-code-preview-line-number">13</span>
+                <code>render(size);</code>
+              </div>
+            `,
+          )}
         </section>
       </div>
     `;
   }
+
+  syncControls(settings) {
+    for (const [name, definition] of Object.entries(APPEARANCE_SETTINGS)) {
+      const value = settings[name];
+      const range = this.querySelector(`input[data-setting="${name}"]`);
+      const output = this.querySelector(`output[data-setting-value="${name}"]`);
+      const reset = this.querySelector(
+        `button[data-action="reset-setting"][data-setting="${name}"]`,
+      );
+      if (!range || !output || !reset) {
+        continue;
+      }
+
+      range.value = `${value}`;
+      range.setAttribute("aria-valuetext", `${value}${definition.suffix}`);
+      output.value = `${value}${definition.suffix}`;
+      output.textContent = `${value}${definition.suffix}`;
+      reset.disabled = value === definition.defaultValue;
+    }
+
+    const resetAll = this.querySelector('button[data-action="reset-appearance"]');
+    if (resetAll) {
+      resetAll.disabled = Object.keys(APPEARANCE_SETTINGS).every(
+        (name) => settings[name] === DEFAULT_SETTINGS[name],
+      );
+    }
+  }
+
+  refreshIcons() {
+    const closeIcon = this.querySelector('[data-settings-icon="close"]');
+    if (closeIcon) {
+      closeIcon.innerHTML = renderInlineIcon(
+        "X",
+        "Close settings",
+        "settings-close-icon",
+      );
+    }
+
+    const previewIcon = this.querySelector('[data-settings-icon="preview"]');
+    if (previewIcon) {
+      previewIcon.innerHTML = renderInlineIcon(
+        "FolderGit2",
+        "Git repository",
+        "settings-preview-icon",
+      );
+    }
+  }
 }
 
-function renderOptions(options, selectedValue, action) {
-  return options
-    .map(
-      (option) => `
-        <button
-          type="button"
-          role="radio"
-          aria-checked="${option.value === selectedValue}"
-          data-action="${action}"
-          data-value="${option.value}"
-        >
-          <strong>${option.label}</strong>
-          <span>${option.description}</span>
-        </button>
-      `,
-    )
-    .join("");
+function renderSetting(name, preview) {
+  const definition = APPEARANCE_SETTINGS[name];
+  const id = `settings-${toKebabCase(name)}`;
+  const defaultLabel = `${definition.defaultValue}${definition.suffix}`;
+
+  return `
+    <div class="settings-appearance-group">
+      <div class="settings-field">
+        <div class="settings-field-copy">
+          <label for="${id}">${definition.label}</label>
+          <span>${SETTING_DESCRIPTIONS[name]}</span>
+        </div>
+        <div class="settings-range-control">
+          <input
+            id="${id}"
+            type="range"
+            min="${definition.min}"
+            max="${definition.max}"
+            step="${definition.step}"
+            value="${definition.defaultValue}"
+            data-setting="${name}"
+          >
+          <output for="${id}" data-setting-value="${name}">${defaultLabel}</output>
+          <button
+            type="button"
+            data-action="reset-setting"
+            data-setting="${name}"
+          >
+            Reset
+          </button>
+        </div>
+      </div>
+      ${preview}
+    </div>
+  `;
+}
+
+function toKebabCase(value) {
+  return value.replace(/[A-Z]/g, (character) => `-${character.toLowerCase()}`);
 }
 
 customElements.define("caffold-settings-page", CaffoldSettingsPage);

@@ -208,12 +208,12 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
         })),
       };
     });
-    expect(mobileHeaderMetrics.headerHeight).toBeLessThanOrEqual(50);
-    expect(mobileHeaderMetrics.summaryHeight).toBeLessThanOrEqual(50);
+    expect(mobileHeaderMetrics.headerHeight).toBeLessThanOrEqual(64);
+    expect(mobileHeaderMetrics.summaryHeight).toBeLessThanOrEqual(64);
     expect(mobileHeaderMetrics.overflow).toBe(false);
     for (const size of mobileHeaderMetrics.actionSizes) {
-      expect(Math.round(size.width)).toBe(32);
-      expect(Math.round(size.height)).toBe(32);
+      expect(Math.round(size.width)).toBe(40);
+      expect(Math.round(size.height)).toBe(40);
     }
     await stabilizeDynamicText(page);
     await captureReviewScreenshot(page, testInfo, "tasks-mobile-header-details");

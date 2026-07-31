@@ -1,4 +1,5 @@
 caffold-header-actions {
+  --header-popover-control-gap: 0.25rem;
   display: grid;
   min-width: 0;
 
@@ -20,8 +21,8 @@ caffold-header-actions {
     position: relative;
     display: grid;
     place-items: center;
-    width: 32px;
-    min-height: 28px;
+    width: var(--interface-control-size);
+    min-height: var(--interface-compact-control-size);
     border: 1px solid transparent;
     border-radius: 4px;
     background: transparent;
@@ -94,7 +95,8 @@ caffold-header-actions {
     --header-popover-arrow-left: 123px;
     position: absolute;
     z-index: 20;
-    inset: 36px auto auto -112px;
+    inset: calc(var(--interface-control-size) + var(--header-popover-control-gap))
+      auto auto -112px;
     width: 256px;
     max-height: min(24rem, calc(100dvh - 64px));
     overflow: visible;
@@ -126,7 +128,7 @@ caffold-header-actions {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
-    min-height: 34px;
+    min-height: var(--interface-header-size);
     border-bottom: 1px solid var(--border);
     background: var(--surface-muted);
     padding: 0 10px;
@@ -168,7 +170,7 @@ caffold-header-actions {
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     column-gap: 8px;
-    min-height: 34px;
+    min-height: var(--interface-header-size);
     border: 0;
     border-bottom: 1px solid #eef3ef;
     background: transparent;
@@ -214,6 +216,12 @@ caffold-header-actions {
   }
 }
 
+@media (pointer: coarse) {
+  caffold-header-actions {
+    --header-popover-control-gap: 0.5rem;
+  }
+}
+
 @media (max-width: 520px) {
   caffold-header-actions {
     & .header-actions {
@@ -221,7 +229,7 @@ caffold-header-actions {
     }
 
     & .header-action-group-button {
-      width: 30px;
+      width: var(--interface-control-size);
     }
   }
 }
@@ -231,9 +239,9 @@ caffold-header-actions {
     & .header-actions-popover,
     & .header-actions-popover[data-action-group="github"] {
       position: fixed;
-      inset: 42px 8px auto 8px;
+      inset: calc(var(--interface-control-size) + 0.75rem) 8px auto 8px;
       width: auto;
-      max-height: calc(100dvh - 52px);
+      max-height: calc(100dvh - var(--interface-control-size) - 1.25rem);
       overflow: auto;
     }
 
