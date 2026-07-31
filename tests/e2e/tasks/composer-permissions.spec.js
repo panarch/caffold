@@ -305,6 +305,7 @@ test("keeps a tall follow-up model menu inside the conversation pane", async ({
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "desktop uses the anchored model popover");
+  await page.setViewportSize({ width: 1280, height: 360 });
   await installTaskApiFixture(page);
   await page.unroute("**/api/codex/models");
   await page.route("**/api/codex/models", (route) =>
@@ -347,17 +348,24 @@ test("keeps a tall follow-up model menu inside the conversation pane", async ({
   await page.goto("/tasks/thread-1");
   const conversationPane = page.locator(".task-conversation-pane");
   const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
-  await form
-    .getByRole("button", { name: "Choose model and reasoning" })
-    .click();
+  const modelButton = form.getByRole("button", {
+    name: "Choose model and reasoning",
+  });
+  await modelButton.click();
   const popover = form.getByRole("menu", { name: "Model and reasoning options" });
-  const [paneBox, popoverBox] = await Promise.all([
+  const [paneBox, buttonBox, popoverBox] = await Promise.all([
     conversationPane.boundingBox(),
+    modelButton.boundingBox(),
     popover.boundingBox(),
   ]);
   expect(paneBox).not.toBeNull();
+  expect(buttonBox).not.toBeNull();
   expect(popoverBox).not.toBeNull();
-  expect(popoverBox.y).toBeGreaterThanOrEqual(paneBox.y);
+  expect(popoverBox.y).toBeGreaterThanOrEqual(Math.max(0, paneBox.y));
+  expect(popoverBox.y + popoverBox.height).toBeLessThanOrEqual(
+    buttonBox.y - 7,
+  );
+  expect(popoverBox.height).toBeGreaterThanOrEqual(120);
 
   await form.locator('[data-effort="medium"]').click();
   await expect(form.locator('input[name="effort"]')).toHaveValue("medium");

@@ -847,9 +847,19 @@ class CaffoldTaskComposer extends HTMLElement {
       return;
     }
     const buttonRect = button.getBoundingClientRect();
+    const availableHeight =
+      this.context.mode === "follow-up"
+        ? buttonRect.top -
+          Math.max(
+            0,
+            this.closest(".task-conversation-pane")?.getBoundingClientRect()
+              .top ?? 0,
+          ) -
+          18
+        : window.innerHeight - buttonRect.bottom - 18;
     popover.style.maxHeight = `${Math.max(
       0,
-      Math.floor(window.innerHeight - buttonRect.bottom - 18),
+      Math.floor(availableHeight),
     )}px`;
   }
 }
