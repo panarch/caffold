@@ -1,10 +1,9 @@
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashSet, VecDeque},
     convert::Infallible,
     net::IpAddr,
     path::PathBuf,
-    sync::{Arc, Mutex},
-    time::Duration,
+    sync::Arc,
 };
 
 use axum::{
@@ -22,6 +21,9 @@ use tokio::net::TcpListener;
 use tokio::sync::{Mutex as AsyncMutex, broadcast, mpsc};
 use tracing::info;
 
+#[cfg(test)]
+use std::time::Duration;
+
 mod error;
 mod shell;
 mod tasks;
@@ -29,8 +31,9 @@ mod workspace;
 
 use error::ApiError;
 use tasks::{
-    ApprovalResolveError, CodexConnection, CodexRuntime, CodexRuntimeSignal, TaskEventRecord,
-    TaskEvents, TaskRecord, accepted_user_message_event, apply_canonical_turn_projection,
+    ApprovalResolveError, CodexConnection, CodexRuntime, CodexRuntimeSignal,
+    DeferredTaskRolloutSubscription, TaskEventRecord, TaskEvents, TaskRecord, TaskSync,
+    TaskSyncJob, TaskSyncOutcome, accepted_user_message_event, apply_canonical_turn_projection,
     merge_task_event_records, now_ms, resolve_task_cwds, resolve_thread_cwd, sort_task_events,
     task_activity_ms, task_record_from_thread, thread_events, thread_list_response_with_resolved,
     thread_with_turns,
@@ -46,7 +49,6 @@ use crate::{
     },
     fs::{MAX_IMAGE_BYTES, RootedFs},
     server_settings::ServerSettingsStore,
-    task_rollout::{TaskRolloutMonitor, TaskRolloutSignal, TaskRolloutSubscription},
     thread_store::{ManagedThread, ThreadStore, ThreadStoreError},
 };
 
@@ -54,10 +56,6 @@ const TASK_DETAIL_TURNS_PAGE_SIZE: usize = 8;
 const MAX_TASK_IMAGES: usize = 4;
 const MAX_TASK_REQUEST_BYTES: usize = 64 * 1024 * 1024;
 const TASK_LIST_PAGE_SIZE: usize = 30;
-const TASK_SYNC_DEBOUNCE: Duration = Duration::from_millis(600);
-const TASK_SYNC_MAX_LATENCY: Duration = Duration::from_secs(2);
-const TASK_SYNC_RETRY_BASE: Duration = Duration::from_secs(2);
-const TASK_SYNC_MAX_RETRIES: u8 = 3;
 const TASK_CANONICAL_READ_CONCURRENCY: usize = 8;
 
 #[derive(Debug, Clone)]
@@ -76,12 +74,10 @@ struct TaskState {
     codex_runtime_signals: Arc<AsyncMutex<Option<broadcast::Receiver<CodexRuntimeSignal>>>>,
     codex_sessions: CodexThreadSessions,
     task_events: TaskEvents,
-    task_sync: TaskSyncCoordinator,
-    task_sync_events: broadcast::Sender<TaskDetailSync>,
+    task_sync: TaskSync<TaskDetailSync>,
     task_list_removals: broadcast::Sender<TaskListRemoval>,
     task_list_updates: broadcast::Sender<TaskRecord>,
     thread_store: ThreadStore,
-    task_rollouts: TaskRolloutMonitor,
     shutdown: broadcast::Sender<()>,
 }
 
@@ -100,11 +96,9 @@ impl TaskState {
             shutdown.clone(),
         );
         let codex_runtime_signals = codex_runtime.subscribe();
-        let task_sync = TaskSyncCoordinator::new();
-        let (task_sync_events, _) = broadcast::channel(64);
+        let task_sync = TaskSync::new(shutdown.clone());
         let (task_list_removals, _) = broadcast::channel(64);
         let (task_list_updates, _) = broadcast::channel(64);
-        let task_rollouts = task_rollout_monitor(task_sync.clone());
         Self {
             fs,
             default_cwd_path,
@@ -113,184 +107,11 @@ impl TaskState {
             codex_sessions,
             task_events,
             task_sync,
-            task_sync_events,
             task_list_removals,
             task_list_updates,
             thread_store,
-            task_rollouts,
             shutdown,
         }
-    }
-}
-
-#[derive(Clone)]
-struct TaskSyncCoordinator {
-    subscribers: Arc<Mutex<HashMap<String, usize>>>,
-    pending_invalidations: Arc<Mutex<HashMap<String, u64>>>,
-    requests: mpsc::UnboundedSender<TaskSyncRequest>,
-    receiver: Arc<AsyncMutex<Option<mpsc::UnboundedReceiver<TaskSyncRequest>>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum TaskSyncRequest {
-    Rollout(String, TaskRolloutSignal),
-    Unsubscribe(String),
-}
-
-#[derive(Clone, Default)]
-struct DeferredTaskRolloutSubscription {
-    inner: Arc<Mutex<Option<TaskRolloutSubscription>>>,
-}
-
-impl DeferredTaskRolloutSubscription {
-    fn install_with(&self, create: impl FnOnce() -> Option<TaskRolloutSubscription>) {
-        let Ok(mut subscription) = self.inner.lock() else {
-            return;
-        };
-        if subscription.is_none() {
-            *subscription = create();
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-struct PendingTaskSync {
-    first_invalidated_at: tokio::time::Instant,
-    deadline: tokio::time::Instant,
-    retry_attempt: u8,
-}
-
-impl PendingTaskSync {
-    fn new(now: tokio::time::Instant) -> Self {
-        Self {
-            first_invalidated_at: now,
-            deadline: now + TASK_SYNC_DEBOUNCE,
-            retry_attempt: 0,
-        }
-    }
-
-    fn retry(now: tokio::time::Instant, retry_attempt: u8) -> Self {
-        let multiplier = 1_u32 << retry_attempt.saturating_sub(1);
-        let delay = TASK_SYNC_RETRY_BASE.saturating_mul(multiplier);
-        Self {
-            first_invalidated_at: now,
-            deadline: now + delay,
-            retry_attempt,
-        }
-    }
-
-    fn invalidate(&mut self, now: tokio::time::Instant) {
-        self.retry_attempt = 0;
-        self.deadline =
-            (now + TASK_SYNC_DEBOUNCE).min(self.first_invalidated_at + TASK_SYNC_MAX_LATENCY);
-    }
-
-    fn deadline(self) -> tokio::time::Instant {
-        self.deadline
-    }
-}
-
-impl TaskSyncCoordinator {
-    fn new() -> Self {
-        let (requests, receiver) = mpsc::unbounded_channel();
-        Self {
-            subscribers: Arc::new(Mutex::new(HashMap::new())),
-            pending_invalidations: Arc::new(Mutex::new(HashMap::new())),
-            requests,
-            receiver: Arc::new(AsyncMutex::new(Some(receiver))),
-        }
-    }
-
-    fn subscribe(&self, thread_id: &str) -> TaskSyncSubscription {
-        if let Ok(mut subscribers) = self.subscribers.lock() {
-            *subscribers.entry(thread_id.to_string()).or_default() += 1;
-        }
-        TaskSyncSubscription {
-            coordinator: self.clone(),
-            thread_id: thread_id.to_string(),
-        }
-    }
-
-    #[cfg(test)]
-    fn observe_rollout_invalidation(&self, thread_id: String) {
-        self.observe_rollout_signal(thread_id, TaskRolloutSignal::Invalidated);
-    }
-
-    fn observe_rollout_signal(&self, thread_id: String, signal: TaskRolloutSignal) {
-        if !self.is_subscribed(&thread_id) {
-            return;
-        }
-        if let Ok(mut pending) = self.pending_invalidations.lock() {
-            let revision = pending.entry(thread_id.clone()).or_default();
-            *revision = revision.saturating_add(1);
-        }
-        let _ = self
-            .requests
-            .send(TaskSyncRequest::Rollout(thread_id, signal));
-    }
-
-    fn pending_invalidation(&self, thread_id: &str) -> Option<u64> {
-        self.pending_invalidations
-            .lock()
-            .ok()
-            .and_then(|pending| pending.get(thread_id).copied())
-    }
-
-    fn mark_synchronized(&self, thread_id: &str, revision: u64) {
-        let Ok(mut pending) = self.pending_invalidations.lock() else {
-            return;
-        };
-        if pending.get(thread_id).copied() == Some(revision) {
-            pending.remove(thread_id);
-        }
-    }
-
-    fn is_subscribed(&self, thread_id: &str) -> bool {
-        self.subscribers
-            .lock()
-            .ok()
-            .and_then(|subscribers| subscribers.get(thread_id).copied())
-            .is_some_and(|count| count > 0)
-    }
-
-    async fn take_receiver(&self) -> Option<mpsc::UnboundedReceiver<TaskSyncRequest>> {
-        self.receiver.lock().await.take()
-    }
-
-    fn unsubscribe(&self, thread_id: &str) {
-        let remove = {
-            let Ok(mut subscribers) = self.subscribers.lock() else {
-                return;
-            };
-            let Some(count) = subscribers.get_mut(thread_id) else {
-                return;
-            };
-            *count -= 1;
-            let remove = *count == 0;
-            if remove {
-                subscribers.remove(thread_id);
-            }
-            remove
-        };
-        if remove {
-            if let Ok(mut pending) = self.pending_invalidations.lock() {
-                pending.remove(thread_id);
-            }
-            let _ = self
-                .requests
-                .send(TaskSyncRequest::Unsubscribe(thread_id.to_string()));
-        }
-    }
-}
-
-struct TaskSyncSubscription {
-    coordinator: TaskSyncCoordinator,
-    thread_id: String,
-}
-
-impl Drop for TaskSyncSubscription {
-    fn drop(&mut self) {
-        self.coordinator.unsubscribe(&self.thread_id);
     }
 }
 
@@ -1204,7 +1025,7 @@ fn notify_task_updated(state: &TaskState, task: TaskRecord) {
 }
 
 async fn ensure_task_sync_worker(state: &TaskState) {
-    let Some(receiver) = state.task_sync.take_receiver().await else {
+    let Some(receiver) = state.task_sync.take_jobs().await else {
         return;
     };
     let state = state.clone();
@@ -1213,143 +1034,83 @@ async fn ensure_task_sync_worker(state: &TaskState) {
 
 async fn run_task_sync_worker(
     state: TaskState,
-    mut receiver: mpsc::UnboundedReceiver<TaskSyncRequest>,
+    mut receiver: mpsc::UnboundedReceiver<TaskSyncJob>,
 ) {
-    let mut pending = HashMap::<String, PendingTaskSync>::new();
     let mut shutdown = state.shutdown.subscribe();
 
     loop {
-        if pending.is_empty() {
-            tokio::select! {
-                _ = shutdown.recv() => return,
-                request = receiver.recv() => {
-                    let Some(request) = request else { return; };
-                    handle_task_sync_request(&state, &mut pending, request).await;
-                }
-            }
-        } else {
-            let deadline = pending
-                .values()
-                .map(|pending| pending.deadline())
-                .min()
-                .unwrap();
-            tokio::select! {
-                _ = shutdown.recv() => return,
-                request = receiver.recv() => {
-                    let Some(request) = request else { return; };
-                    handle_task_sync_request(&state, &mut pending, request).await;
-                }
-                _ = tokio::time::sleep_until(deadline) => {}
-            }
-        }
-
-        let now = tokio::time::Instant::now();
-        let due = pending
-            .iter()
-            .filter(|(_, pending)| pending.deadline() <= now)
-            .map(|(thread_id, _)| thread_id.clone())
-            .collect::<Vec<_>>();
-        for thread_id in due {
-            let Some(request) = pending.remove(&thread_id) else {
-                continue;
-            };
-            if !state.task_sync.is_subscribed(&thread_id) {
-                continue;
-            }
-            let Some(invalidation_revision) = state.task_sync.pending_invalidation(&thread_id)
-            else {
-                continue;
-            };
-            let syncing = state.codex_sessions.begin_external_sync(&thread_id).await;
-            let Ok(connection) = require_codex_thread_connection(&state).await else {
-                schedule_task_sync_retry(
-                    &mut pending,
-                    thread_id.clone(),
-                    request.retry_attempt,
-                    tokio::time::Instant::now(),
-                );
-                state
-                    .codex_sessions
-                    .fail_external_sync(&thread_id, &CodexThreadError::ProcessUnavailable)
-                    .await;
-                broadcast_task_sync_error(
-                    &state,
-                    &thread_id,
-                    CodexThreadError::ProcessUnavailable.to_string(),
-                )
-                .await;
-                continue;
-            };
-            let response = tokio::try_join!(
-                connection.client.read_thread(&thread_id),
-                connection
-                    .client
-                    .list_thread_turns(&thread_id, None, TASK_DETAIL_TURNS_PAGE_SIZE),
-            );
-            let (thread, latest_turns) = match response {
-                Ok(response) => response,
-                Err(error) if error.is_thread_unavailable() => {
-                    state
-                        .codex_sessions
-                        .fail_external_sync(&thread_id, &error)
-                        .await;
-                    broadcast_task_sync_error(&state, &thread_id, error.to_string()).await;
-                    state
-                        .task_sync
-                        .mark_synchronized(&thread_id, invalidation_revision);
-                    let _ = thread_store_delete(&state, &thread_id).await;
-                    notify_task_removed(&state, &thread_id, "unavailable");
-                    continue;
-                }
-                Err(error) => {
-                    state
-                        .codex_sessions
-                        .fail_external_sync(&thread_id, &error)
-                        .await;
-                    broadcast_task_sync_error(&state, &thread_id, error.to_string()).await;
-                    schedule_task_sync_retry(
-                        &mut pending,
-                        thread_id,
-                        request.retry_attempt,
-                        tokio::time::Instant::now(),
-                    );
-                    continue;
-                }
-            };
-            let snapshot = state
-                .codex_sessions
-                .apply_external_read_sync(&thread_id, syncing.revision, thread, latest_turns)
-                .await;
-            state
-                .task_sync
-                .mark_synchronized(&thread_id, invalidation_revision);
-            let Ok(detail) = task_detail_from_snapshot(&state, snapshot, None).await else {
-                continue;
-            };
-            let _ = state.task_sync_events.send(TaskDetailSync {
-                revision: detail.revision,
-                thread_id: thread_id.clone(),
-                detail,
-                reason: "canonical-read-sync",
-                error: None,
-            });
-        }
+        let job = tokio::select! {
+            _ = shutdown.recv() => return,
+            job = receiver.recv() => job,
+        };
+        let Some(job) = job else {
+            return;
+        };
+        run_task_sync_job(&state, job).await;
     }
 }
 
-async fn handle_task_sync_request(
-    _state: &TaskState,
-    pending: &mut HashMap<String, PendingTaskSync>,
-    request: TaskSyncRequest,
-) {
-    match request {
-        TaskSyncRequest::Rollout(thread_id, TaskRolloutSignal::Invalidated) => {
-            schedule_task_sync(pending, thread_id, tokio::time::Instant::now());
+async fn run_task_sync_job(state: &TaskState, job: TaskSyncJob) {
+    debug_assert!(job.invalidation_revision > 0);
+    let thread_id = job.thread_id.clone();
+    let syncing = state.codex_sessions.begin_external_sync(&thread_id).await;
+    let Ok(connection) = require_codex_thread_connection(state).await else {
+        state
+            .codex_sessions
+            .fail_external_sync(&thread_id, &CodexThreadError::ProcessUnavailable)
+            .await;
+        broadcast_task_sync_error(
+            state,
+            &thread_id,
+            CodexThreadError::ProcessUnavailable.to_string(),
+        )
+        .await;
+        job.complete(TaskSyncOutcome::Retry);
+        return;
+    };
+    let response = tokio::try_join!(
+        connection.client.read_thread(&thread_id),
+        connection
+            .client
+            .list_thread_turns(&thread_id, None, TASK_DETAIL_TURNS_PAGE_SIZE),
+    );
+    let (thread, latest_turns) = match response {
+        Ok(response) => response,
+        Err(error) if error.is_thread_unavailable() => {
+            state
+                .codex_sessions
+                .fail_external_sync(&thread_id, &error)
+                .await;
+            broadcast_task_sync_error(state, &thread_id, error.to_string()).await;
+            let _ = thread_store_delete(state, &thread_id).await;
+            notify_task_removed(state, &thread_id, "unavailable");
+            job.complete(TaskSyncOutcome::Synchronized);
+            return;
         }
-        TaskSyncRequest::Unsubscribe(thread_id) => {
-            pending.remove(&thread_id);
+        Err(error) => {
+            state
+                .codex_sessions
+                .fail_external_sync(&thread_id, &error)
+                .await;
+            broadcast_task_sync_error(state, &thread_id, error.to_string()).await;
+            job.complete(TaskSyncOutcome::Retry);
+            return;
         }
+    };
+    let snapshot = state
+        .codex_sessions
+        .apply_external_read_sync(&thread_id, syncing.revision, thread, latest_turns)
+        .await;
+    if let Ok(detail) = task_detail_from_snapshot(state, snapshot, None).await {
+        state.task_sync.publish(TaskDetailSync {
+            revision: detail.revision,
+            thread_id,
+            detail,
+            reason: "canonical-read-sync",
+            error: None,
+        });
     }
+    job.complete(TaskSyncOutcome::Synchronized);
 }
 
 async fn broadcast_task_snapshot(
@@ -1361,7 +1122,7 @@ async fn broadcast_task_snapshot(
     let Ok(detail) = task_detail_from_snapshot(state, snapshot, None).await else {
         return;
     };
-    let _ = state.task_sync_events.send(TaskDetailSync {
+    state.task_sync.publish(TaskDetailSync {
         revision: detail.revision,
         thread_id: thread_id.to_string(),
         detail,
@@ -1378,37 +1139,13 @@ async fn broadcast_task_sync_error(state: &TaskState, thread_id: &str, error: St
         .map(|snapshot| snapshot.revision)
         .unwrap_or_default();
     let detail = loading_task_detail(thread_id, revision, None);
-    let _ = state.task_sync_events.send(TaskDetailSync {
+    state.task_sync.publish(TaskDetailSync {
         thread_id: thread_id.to_string(),
         revision,
         detail,
         reason: "canonical-source-error",
         error: Some(error),
     });
-}
-
-fn schedule_task_sync(
-    pending: &mut HashMap<String, PendingTaskSync>,
-    thread_id: String,
-    now: tokio::time::Instant,
-) {
-    pending
-        .entry(thread_id)
-        .and_modify(|pending| pending.invalidate(now))
-        .or_insert_with(|| PendingTaskSync::new(now));
-}
-
-fn schedule_task_sync_retry(
-    pending: &mut HashMap<String, PendingTaskSync>,
-    thread_id: String,
-    previous_attempt: u8,
-    now: tokio::time::Instant,
-) {
-    let retry_attempt = previous_attempt.saturating_add(1);
-    if retry_attempt > TASK_SYNC_MAX_RETRIES {
-        return;
-    }
-    pending.insert(thread_id, PendingTaskSync::retry(now, retry_attempt));
 }
 
 async fn task_stream(
@@ -1422,7 +1159,7 @@ async fn task_stream(
     // Subscribe before bootstrapping the canonical snapshot so notifications emitted
     // during resume cannot fall into the gap before the SSE receivers exist.
     let receiver = state.task_events.subscribe();
-    let sync_receiver = state.task_sync_events.subscribe();
+    let sync_receiver = state.task_sync.subscribe_updates();
     let viewer = state.codex_sessions.reserve_viewer(&thread_id).await;
     let snapshot = state.codex_sessions.snapshot(&thread_id).await;
     let rollout_path = snapshot
@@ -1444,8 +1181,8 @@ async fn task_stream(
     let rollout_subscription = DeferredTaskRolloutSubscription::default();
     rollout_subscription.install_with(|| {
         state
-            .task_rollouts
-            .subscribe(&thread_id, rollout_path.as_deref())
+            .task_sync
+            .subscribe_rollout(&thread_id, rollout_path.as_deref())
     });
     ensure_task_sync_worker(&state).await;
     let bootstrap_state = state.clone();
@@ -1461,8 +1198,8 @@ async fn task_stream(
             .and_then(|thread| thread.path);
         bootstrap_rollout_subscription.install_with(|| {
             bootstrap_state
-                .task_rollouts
-                .subscribe(&bootstrap_thread_id, rollout_path.as_deref())
+                .task_sync
+                .subscribe_rollout(&bootstrap_thread_id, rollout_path.as_deref())
         });
     });
     let shutdown = state.shutdown.subscribe();
@@ -1592,7 +1329,7 @@ async fn task_list_stream(State(state): State<TaskState>) -> Result<Response, Ap
 
 fn task_event_stream(state: TaskState, thread_id: Option<String>) -> Response {
     let receiver = state.task_events.subscribe();
-    let sync_receiver = state.task_sync_events.subscribe();
+    let sync_receiver = state.task_sync.subscribe_updates();
     let removal_receiver = state.task_list_removals.subscribe();
     let update_receiver = state.task_list_updates.subscribe();
     let shutdown = state.shutdown.subscribe();
@@ -2244,12 +1981,6 @@ fn managed_thread_from_task_record(
         model,
         reasoning_effort,
     )
-}
-
-fn task_rollout_monitor(task_sync: TaskSyncCoordinator) -> TaskRolloutMonitor {
-    TaskRolloutMonitor::new(move |thread_id, signal| {
-        task_sync.observe_rollout_signal(thread_id, signal)
-    })
 }
 
 async fn pending_approval_events(state: &TaskState, thread_id: &str) -> Vec<TaskEventRecord> {

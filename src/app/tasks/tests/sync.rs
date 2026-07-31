@@ -1,5 +1,5 @@
 use super::super::super::*;
-use super::super::projection::*;
+use super::super::{projection::*, sync::*};
 use super::support::*;
 use crate::codex_app_server::{ThreadStatus, TurnStatus};
 
@@ -117,7 +117,7 @@ async fn background_sync_timeout_broadcasts_error_and_rejects_stale_detail() {
     state.codex_sessions.observe_thread_metadata(thread).await;
 
     let _subscription = state.task_sync.subscribe(thread_id);
-    let mut sync_events = state.task_sync_events.subscribe();
+    let mut sync_events = state.task_sync.subscribe_updates();
     ensure_task_sync_worker(&state).await;
     state
         .task_sync
@@ -156,128 +156,117 @@ async fn background_sync_timeout_broadcasts_error_and_rejects_stale_detail() {
 
 #[tokio::test]
 async fn task_sync_coordinator_only_invalidates_subscribed_threads() {
-    let coordinator = TaskSyncCoordinator::new();
-    let mut receiver = coordinator.take_receiver().await.unwrap();
+    let (shutdown, _) = broadcast::channel(1);
+    let sync = TaskSync::<()>::new(shutdown);
+    let mut jobs = sync.take_jobs().await.unwrap();
 
-    coordinator.observe_rollout_invalidation("thread-1".to_string());
-    assert!(receiver.try_recv().is_err());
-
-    let first = coordinator.subscribe("thread-1");
-    let second = coordinator.subscribe("thread-1");
-    coordinator.observe_rollout_invalidation("thread-1".to_string());
-    assert_eq!(
-        receiver.try_recv().unwrap(),
-        TaskSyncRequest::Rollout("thread-1".to_string(), TaskRolloutSignal::Invalidated)
+    sync.observe_rollout_invalidation("thread-1".to_string());
+    assert!(
+        tokio::time::timeout(Duration::from_millis(20), jobs.recv())
+            .await
+            .is_err()
     );
+
+    let first = sync.subscribe("thread-1");
+    let second = sync.subscribe("thread-1");
+    sync.observe_rollout_invalidation("thread-1".to_string());
+    let job = tokio::time::timeout(Duration::from_secs(1), jobs.recv())
+        .await
+        .expect("subscribed invalidation becomes due")
+        .expect("sync job");
+    assert_eq!(job.thread_id, "thread-1");
+    job.complete(TaskSyncOutcome::Synchronized);
 
     drop(first);
-    coordinator.observe_rollout_invalidation("thread-1".to_string());
-    assert_eq!(
-        receiver.try_recv().unwrap(),
-        TaskSyncRequest::Rollout("thread-1".to_string(), TaskRolloutSignal::Invalidated)
-    );
+    sync.observe_rollout_invalidation("thread-1".to_string());
+    let job = tokio::time::timeout(Duration::from_secs(1), jobs.recv())
+        .await
+        .expect("remaining subscriber keeps sync active")
+        .expect("sync job");
+    job.complete(TaskSyncOutcome::Synchronized);
 
     drop(second);
-    assert_eq!(
-        receiver.try_recv().unwrap(),
-        TaskSyncRequest::Unsubscribe("thread-1".to_string())
+    sync.observe_rollout_invalidation("thread-1".to_string());
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), jobs.recv())
+            .await
+            .is_err()
     );
-    coordinator.observe_rollout_invalidation("thread-1".to_string());
-    assert!(receiver.try_recv().is_err());
 }
 
 #[tokio::test]
 async fn task_sync_coordinator_tracks_invalidations_until_canonical_sync() {
-    let coordinator = TaskSyncCoordinator::new();
-    let mut receiver = coordinator.take_receiver().await.unwrap();
-    let _subscription = coordinator.subscribe("thread-1");
+    let (shutdown, _) = broadcast::channel(1);
+    let sync = TaskSync::<()>::new(shutdown);
+    let mut jobs = sync.take_jobs().await.unwrap();
+    let _subscription = sync.subscribe("thread-1");
 
-    coordinator.observe_rollout_invalidation("thread-1".to_string());
+    sync.observe_rollout_invalidation("thread-1".to_string());
 
-    assert_eq!(
-        receiver.try_recv().unwrap(),
-        TaskSyncRequest::Rollout("thread-1".to_string(), TaskRolloutSignal::Invalidated)
+    let job = tokio::time::timeout(Duration::from_secs(1), jobs.recv())
+        .await
+        .expect("invalidation becomes due")
+        .expect("sync job");
+    assert_eq!(job.invalidation_revision, 1);
+    job.complete(TaskSyncOutcome::Synchronized);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), jobs.recv())
+            .await
+            .is_err(),
+        "a synchronized revision must not schedule itself again"
     );
-    let revision = coordinator.pending_invalidation("thread-1").unwrap();
-    assert!(coordinator.pending_invalidation("thread-1").is_some());
-
-    coordinator.mark_synchronized("thread-1", revision);
-
-    assert!(coordinator.pending_invalidation("thread-1").is_none());
 }
 
 #[tokio::test]
 async fn task_sync_coordinator_keeps_changes_observed_during_a_sync() {
-    let coordinator = TaskSyncCoordinator::new();
-    let mut receiver = coordinator.take_receiver().await.unwrap();
-    let _subscription = coordinator.subscribe("thread-1");
+    let (shutdown, _) = broadcast::channel(1);
+    let sync = TaskSync::<()>::new(shutdown);
+    let mut jobs = sync.take_jobs().await.unwrap();
+    let _subscription = sync.subscribe("thread-1");
 
-    coordinator.observe_rollout_invalidation("thread-1".to_string());
-    assert_eq!(
-        receiver.try_recv().unwrap(),
-        TaskSyncRequest::Rollout("thread-1".to_string(), TaskRolloutSignal::Invalidated)
-    );
-    let synchronizing_revision = coordinator.pending_invalidation("thread-1").unwrap();
+    sync.observe_rollout_invalidation("thread-1".to_string());
+    let synchronizing = tokio::time::timeout(Duration::from_secs(1), jobs.recv())
+        .await
+        .expect("first invalidation becomes due")
+        .expect("sync job");
+    let synchronizing_revision = synchronizing.invalidation_revision;
 
-    coordinator.observe_rollout_invalidation("thread-1".to_string());
-    assert_eq!(
-        receiver.try_recv().unwrap(),
-        TaskSyncRequest::Rollout("thread-1".to_string(), TaskRolloutSignal::Invalidated)
-    );
-    let newer_revision = coordinator.pending_invalidation("thread-1").unwrap();
-    assert!(newer_revision > synchronizing_revision);
-
-    coordinator.mark_synchronized("thread-1", synchronizing_revision);
-
-    assert_eq!(
-        coordinator.pending_invalidation("thread-1"),
-        Some(newer_revision)
-    );
+    sync.observe_rollout_invalidation("thread-1".to_string());
+    synchronizing.complete(TaskSyncOutcome::Synchronized);
+    let newer = tokio::time::timeout(Duration::from_secs(1), jobs.recv())
+        .await
+        .expect("change observed during sync is scheduled")
+        .expect("newer sync job");
+    assert!(newer.invalidation_revision > synchronizing_revision);
+    newer.complete(TaskSyncOutcome::Synchronized);
 }
 
 #[test]
 fn continuous_task_invalidations_have_a_maximum_latency() {
     let started_at = tokio::time::Instant::now();
-    let mut pending = HashMap::new();
-
-    schedule_task_sync(&mut pending, "thread-1".to_string(), started_at);
-    for offset_ms in [500, 1_000, 1_500, 1_900] {
-        schedule_task_sync(
-            &mut pending,
-            "thread-1".to_string(),
-            started_at + Duration::from_millis(offset_ms),
-        );
-    }
 
     assert_eq!(
-        pending["thread-1"].deadline(),
-        started_at + TASK_SYNC_MAX_LATENCY
+        scheduled_deadline_for_test(
+            started_at,
+            &[500, 1_000, 1_500, 1_900].map(Duration::from_millis),
+        ),
+        started_at + SYNC_MAX_LATENCY_FOR_TEST
     );
 }
 
 #[test]
 fn canonical_sync_retries_are_bounded() {
     let started_at = tokio::time::Instant::now();
-    let mut pending = HashMap::new();
 
-    schedule_task_sync_retry(&mut pending, "thread-1".to_string(), 0, started_at);
-    assert_eq!(pending["thread-1"].retry_attempt, 1);
     assert_eq!(
-        pending["thread-1"].deadline(),
-        started_at + TASK_SYNC_RETRY_BASE
+        retry_schedule_for_test(0, started_at),
+        Some((1, started_at + SYNC_RETRY_BASE_FOR_TEST))
     );
-
-    pending.clear();
-    schedule_task_sync_retry(&mut pending, "thread-1".to_string(), 1, started_at);
-    assert_eq!(pending["thread-1"].retry_attempt, 2);
     assert_eq!(
-        pending["thread-1"].deadline(),
-        started_at + TASK_SYNC_RETRY_BASE.saturating_mul(2)
+        retry_schedule_for_test(1, started_at),
+        Some((2, started_at + SYNC_RETRY_BASE_FOR_TEST.saturating_mul(2)))
     );
-
-    pending.clear();
-    schedule_task_sync_retry(&mut pending, "thread-1".to_string(), 3, started_at);
-    assert!(pending.is_empty());
+    assert_eq!(retry_schedule_for_test(3, started_at), None);
 }
 
 #[tokio::test]

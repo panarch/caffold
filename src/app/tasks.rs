@@ -1,6 +1,7 @@
 mod events;
 mod projection;
 mod runtime;
+mod sync;
 
 pub(super) use events::{
     TaskEventRecord, TaskEvents, accepted_user_message_event, merge_task_event_records, now_ms,
@@ -12,6 +13,7 @@ pub(super) use projection::{
     thread_with_turns,
 };
 pub(super) use runtime::{ApprovalResolveError, CodexConnection, CodexRuntime, CodexRuntimeSignal};
+pub(super) use sync::{DeferredTaskRolloutSubscription, TaskSync, TaskSyncJob, TaskSyncOutcome};
 
 #[cfg(test)]
 mod tests;
