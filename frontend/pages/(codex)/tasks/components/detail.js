@@ -241,13 +241,15 @@ class CaffoldTaskDetail extends HTMLElement {
     this.selectedThreadId = threadId;
     this.view = "detail";
     this.hidden = false;
-    this.acceptTaskDetailRevision(threadId, detail.revision);
-    this.taskDetail = detail;
-    this.setThreadEvents(threadId, detail.events ?? []);
-    this.eventsPage = detail.eventsPage ?? { nextCursor: null };
-    this.conversationUpdateKind = "bottom";
-    this.emitTaskSnapshot();
-    this.render();
+    if (
+      !this.applyCanonicalTaskDetail(threadId, detail, {
+        resetRevision: true,
+        updateKind: "bottom",
+        clearHistoryError: true,
+      })
+    ) {
+      return false;
+    }
     this.detailStream.activate(threadId);
     return true;
   }
@@ -332,34 +334,24 @@ class CaffoldTaskDetail extends HTMLElement {
       if (loadGeneration !== this.detailLoadGeneration) {
         return null;
       }
+      const updateKind = this.isInitialConversationLoadPending(threadId)
+        ? "bottom"
+        : "preserve";
       if (
-        taskDetailThreadId(detail) !== threadId ||
-        !this.acceptTaskDetailRevision(threadId, detail.revision)
+        !this.applyCanonicalTaskDetail(threadId, detail, {
+          updateKind,
+          clearHistoryError: true,
+        })
       ) {
         this.finishInitialConversationLoad(threadId, loadGeneration);
         return null;
       }
-      this.acknowledgeFollowUpFromCanonicalDetail(threadId, detail);
-      this.taskDetail = detail;
-      this.setThreadEvents(
-        threadId,
-        mergeEvents(this.eventsByThread.get(threadId) ?? [], detail.events ?? []),
-      );
-      this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
-      this.loading = detail.syncState === "loading";
-      this.detailLoadError = null;
-      this.historyLoadError = null;
-      this.emitTaskSnapshot();
       if (detail.managed === false) {
         this.detailStream.deactivate();
         this.render();
         this.finishInitialConversationLoad(threadId, loadGeneration);
         return detail;
       }
-      this.conversationUpdateKind = this.isInitialConversationLoadPending(threadId)
-        ? "bottom"
-        : "preserve";
-      this.render();
       this.finishInitialConversationLoad(threadId, loadGeneration);
       return detail;
     } catch (error) {
@@ -411,15 +403,11 @@ class CaffoldTaskDetail extends HTMLElement {
   applyTaskStreamSync(message) {
     const threadId = `${message?.threadId ?? ""}`;
     const detail = message?.detail;
-    if (
-      threadId !== this.selectedThreadId ||
-      taskDetailThreadId(detail) !== threadId
-    ) {
-      return;
-    }
-    this.applyTaskDetailSync(threadId, detail, message.revision, {
+    this.applyCanonicalTaskDetail(threadId, detail, {
+      revision: message.revision,
       resetRevision: message.reason === "stream-bootstrap",
-      error: message.error,
+      detailError: message.error,
+      updateKind: this.liveConversationUpdateKind(threadId),
     });
   }
 
@@ -439,42 +427,81 @@ class CaffoldTaskDetail extends HTMLElement {
     this.render();
   }
 
-  applyTaskDetailSync(
+  applyCanonicalTaskDetail(
     threadId,
     detail,
-    revision,
-    { resetRevision = false, error = null } = {},
+    {
+      revision = detail?.revision,
+      resetRevision = false,
+      preserveCurrentTask = false,
+      preferCurrentEvents = false,
+      updateKind = "preserve",
+      detailError = null,
+      clearHistoryError = false,
+      reconcilePrompt = true,
+    } = {},
   ) {
-    if (threadId !== this.selectedThreadId) {
-      return;
+    if (
+      threadId !== this.selectedThreadId ||
+      taskDetailThreadId(detail) !== threadId
+    ) {
+      return false;
     }
     if (resetRevision) {
       // Session revisions are process-local, so a reconnect after a server
       // restart can authoritatively bootstrap at a lower revision.
       this.taskDetailRevisionByThread.delete(threadId);
     }
-    if (!this.acceptTaskDetailRevision(threadId, revision ?? detail?.revision)) {
-      return;
+    if (!this.acceptTaskDetailRevision(threadId, revision)) {
+      return false;
     }
-    this.acknowledgeFollowUpFromCanonicalDetail(threadId, detail);
-    this.taskDetail = detail;
-    this.loading = detail?.syncState === "loading" && !error;
-    this.detailLoadError = error ? new Error(error) : null;
+    if (reconcilePrompt) {
+      this.acknowledgeFollowUpFromCanonicalDetail(threadId, detail);
+    }
+    const currentTask =
+      taskDetailThreadId(this.taskDetail) === threadId
+        ? this.taskDetail?.task
+        : null;
+    this.taskDetail = preserveCurrentTask
+      ? {
+          ...detail,
+          task: currentTask ?? detail.task,
+        }
+      : detail;
+    const currentEvents = this.eventsByThread.get(threadId) ?? [];
+    const incomingEvents = detail.events ?? [];
     this.setThreadEvents(
       threadId,
-      mergeEvents(this.eventsByThread.get(threadId) ?? [], detail.events ?? []),
+      preferCurrentEvents
+        ? mergeEvents(incomingEvents, currentEvents)
+        : mergeEvents(currentEvents, incomingEvents),
     );
     this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
-    if (detail?.task) {
+    const canonicalError =
+      detailError instanceof Error
+        ? detailError
+        : detailError
+          ? new Error(`${detailError}`)
+          : null;
+    this.loading = detail?.syncState === "loading" && !canonicalError;
+    this.detailLoadError = canonicalError;
+    if (clearHistoryError) {
+      this.historyLoadError = null;
+    }
+    if (!preserveCurrentTask && this.taskDetail?.task) {
       this.emitTaskSnapshot();
     }
-    this.conversationUpdateKind = this.liveConversationUpdateKind(threadId);
-    if (error && isTaskTransportStale(this.detailStream.state)) {
+    this.conversationUpdateKind = updateKind;
+    if (canonicalError && isTaskTransportStale(this.detailStream.state)) {
       this.detailStream.markUnavailable(threadId, { notify: false });
-    } else if (detail?.syncState === "ready" && detail?.task) {
+    } else if (
+      this.taskDetail?.syncState === "ready" &&
+      this.taskDetail?.task
+    ) {
       this.detailStream.markCanonicalReady(threadId);
     }
     this.render();
+    return true;
   }
 
   acknowledgeFollowUpFromCanonicalDetail(threadId, detail) {
@@ -542,23 +569,9 @@ class CaffoldTaskDetail extends HTMLElement {
     ) {
       return;
     }
-    if (taskDetailThreadId(detail) !== threadId) {
-      return;
-    }
-    if (!this.acceptTaskDetailRevision(threadId, detail.revision)) {
-      return;
-    }
-    this.taskDetail = detail;
-    this.setThreadEvents(threadId, mergeEvents(this.events, detail.events ?? []));
-    this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
-    if (detail.task) {
-      this.emitTaskSnapshot();
-    }
-    this.conversationUpdateKind = this.liveConversationUpdateKind(threadId);
-    if (detail?.syncState === "ready" && detail?.task) {
-      this.detailStream.markCanonicalReady(threadId);
-    }
-    this.render();
+    this.applyCanonicalTaskDetail(threadId, detail, {
+      updateKind: this.liveConversationUpdateKind(threadId),
+    });
   }
 
   handleAction(action, element) {
@@ -852,19 +865,13 @@ class CaffoldTaskDetail extends HTMLElement {
       ) {
         return;
       }
-      if (!this.acceptTaskDetailRevision(threadId, detail.revision)) {
+      if (
+        !this.applyCanonicalTaskDetail(threadId, detail, {
+          updateKind: "live",
+        })
+      ) {
         return;
       }
-      this.taskDetail = detail;
-      this.taskSummary()?.setInterruptError(null);
-      this.setThreadEvents(
-        threadId,
-        mergeEvents(this.events, detail.events ?? []),
-      );
-      this.eventsPage = detail.eventsPage ?? this.eventsPage;
-      this.emitTaskSnapshot();
-      this.conversationUpdateKind = "live";
-      this.render();
     } catch (error) {
       if (
         actionToken !== this.interruptActionToken ||
@@ -901,19 +908,13 @@ class CaffoldTaskDetail extends HTMLElement {
       ) {
         return;
       }
-      if (!this.acceptTaskDetailRevision(threadId, detail.revision)) {
+      if (
+        !this.applyCanonicalTaskDetail(threadId, detail, {
+          updateKind: "live",
+        })
+      ) {
         return;
       }
-      this.taskDetail = detail;
-      this.conversationComponent()?.setApprovalError(approvalId, null);
-      this.setThreadEvents(
-        threadId,
-        mergeEvents(this.events, detail.events ?? []),
-      );
-      this.eventsPage = detail.eventsPage ?? this.eventsPage;
-      this.emitTaskSnapshot();
-      this.conversationUpdateKind = "live";
-      this.render();
     } catch (error) {
       if (
         actionToken !== this.approvalActionToken ||
@@ -950,31 +951,21 @@ class CaffoldTaskDetail extends HTMLElement {
       ) {
         return;
       }
-      if (taskDetailThreadId(detail) !== threadId || !detail?.task) {
-        this.loadingOlderEvents = false;
-        this.conversationUpdateKind = "preserve";
-        this.render();
-        return;
-      }
-      if (!this.acceptTaskDetailRevision(threadId, detail.revision)) {
-        this.loadingOlderEvents = false;
-        this.conversationUpdateKind = "preserve";
-        this.render();
-        return;
-      }
-      this.taskDetail = {
-        ...detail,
-        task: this.taskDetail?.task ?? detail.task,
-      };
-      this.setThreadEvents(
-        threadId,
-        mergeEvents(detail.events ?? [], this.events),
-      );
-      this.eventsPage = detail.eventsPage ?? { nextCursor: null };
       this.loadingOlderEvents = false;
-      this.historyLoadError = null;
-      this.conversationUpdateKind = "prepend";
-      this.render();
+      if (
+        !detail?.task ||
+        !this.applyCanonicalTaskDetail(threadId, detail, {
+          preserveCurrentTask: true,
+          preferCurrentEvents: true,
+          updateKind: "prepend",
+          clearHistoryError: true,
+          reconcilePrompt: false,
+        })
+      ) {
+        this.conversationUpdateKind = "preserve";
+        this.render();
+        return;
+      }
     } catch (error) {
       if (
         historyToken !== this.historyRequestToken ||

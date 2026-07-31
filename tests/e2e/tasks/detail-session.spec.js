@@ -898,6 +898,239 @@ test("keeps prompt, interrupt, and approval request errors with their owning con
   });
 });
 
+test("canonical refresh clears errors and reconciles prompts without trusting older history", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop",
+    "Detail refresh ownership regression",
+  );
+  await installTaskApiFixture(page);
+  const promptText = "Reconcile this prompt from the canonical refresh";
+  const initialDetail = taskDetailFixture({
+    model: "gpt-test",
+    reasoningEffort: "medium",
+  });
+  initialDetail.eventsPage = { nextCursor: "older-matching-prompt" };
+  let detailResponse = initialDetail;
+  let releasePrompt;
+  const promptGate = new Promise((resolve) => {
+    releasePrompt = resolve;
+  });
+
+  await page.route(/\/api\/tasks\/thread-1(?:\?|$)/, (route) => {
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    if (cursor === "older-matching-prompt") {
+      return route.fulfill({
+        json: {
+          ...initialDetail,
+          revision: 2,
+          events: [
+            {
+              id: "event-older-matching-prompt",
+              threadId: "thread-1",
+              type: "user_message",
+              summary: "User prompt",
+              payload: {
+                turnId: "turn-older-matching-prompt",
+                text: promptText,
+              },
+              createdMs: 1,
+            },
+          ],
+          eventsPage: { nextCursor: null },
+        },
+      });
+    }
+    return route.fulfill({ json: detailResponse });
+  });
+  await page.route("**/api/tasks/thread-1/prompts", async (route) => {
+    await promptGate;
+    return route.fulfill({
+      json: {
+        threadId: "thread-1",
+        turnId: "turn-refresh-reconciled",
+        steered: false,
+      },
+    });
+  });
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  const tasksPage = page.locator("caffold-tasks-page");
+  const composer = tasksPage.locator(".task-follow-up-form");
+  await composer
+    .getByRole("textbox", { name: "Follow-up prompt" })
+    .fill(promptText);
+  await composer.locator('button[type="submit"]').click();
+  await expect
+    .poll(() =>
+      tasksPage.evaluate((element) => {
+        const detail = element.querySelector("caffold-task-detail");
+        return {
+          requests: detail.followUpRequests.size,
+          submissions: detail.followUpComposer().activeSubmissions.size,
+        };
+      }),
+    )
+    .toEqual({ requests: 1, submissions: 1 });
+
+  await tasksPage.evaluate(async (element) => {
+    await element
+      .querySelector("caffold-task-detail")
+      .loadOlderEvents();
+  });
+  await expect
+    .poll(() =>
+      tasksPage.evaluate((element) => {
+        const detail = element.querySelector("caffold-task-detail");
+        return {
+          requests: detail.followUpRequests.size,
+          submissions: detail.followUpComposer().activeSubmissions.size,
+        };
+      }),
+    )
+    .toEqual({ requests: 1, submissions: 1 });
+
+  const unavailableDetail = {
+    ...initialDetail,
+    revision: 3,
+  };
+  await page.evaluate((detail) => {
+    window.__taskDetailSource.emit("task-sync", {
+      threadId: detail.threadId,
+      revision: detail.revision,
+      detail,
+      reason: "canonical-source-error",
+      error: "Canonical refresh temporarily failed.",
+    });
+  }, unavailableDetail);
+  await expect(
+    tasksPage.locator(".task-detail-load-error-inline"),
+  ).toContainText("Canonical refresh temporarily failed.");
+
+  detailResponse = {
+    ...initialDetail,
+    revision: 4,
+    events: [
+      {
+        id: "event-refresh-canonical-prompt",
+        threadId: "thread-1",
+        type: "user_message",
+        summary: "User prompt",
+        payload: {
+          turnId: "turn-refresh-reconciled",
+          text: promptText,
+        },
+        createdMs: Date.now(),
+      },
+    ],
+  };
+  await tasksPage.evaluate(async (element) => {
+    await element
+      .querySelector("caffold-task-detail")
+      .refreshSelectedTask("thread-1");
+  });
+
+  await expect(
+    tasksPage.locator(".task-detail-load-error-inline"),
+  ).toHaveCount(0);
+  await expect
+    .poll(() =>
+      tasksPage.evaluate((element) => {
+        const detail = element.querySelector("caffold-task-detail");
+        return {
+          requests: detail.followUpRequests.size,
+          submissions: detail.followUpComposer().activeSubmissions.size,
+        };
+      }),
+    )
+    .toEqual({ requests: 0, submissions: 0 });
+
+  releasePrompt();
+});
+
+test("canonical action responses reject foreign tasks and preserve history cursors", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop",
+    "Detail action response ownership regression",
+  );
+  await installTaskApiFixture(page);
+  const initialDetail = taskDetailFixture({
+    running: true,
+    model: "gpt-test",
+    reasoningEffort: "medium",
+  });
+  initialDetail.eventsPage = { nextCursor: "older-action-events" };
+  let interruptRequests = 0;
+
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: initialDetail }),
+  );
+  await page.route("**/api/tasks/thread-1/interrupt", (route) => {
+    interruptRequests += 1;
+    if (interruptRequests === 1) {
+      return route.fulfill({
+        json: {
+          ...initialDetail,
+          threadId: "foreign-thread",
+          revision: 2,
+          task: {
+            ...initialDetail.task,
+            id: "foreign-thread",
+            threadId: "foreign-thread",
+            title: "Foreign interrupt response",
+          },
+          eventsPage: { nextCursor: null },
+          historyLoading: true,
+        },
+      });
+    }
+    return route.fulfill({
+      json: {
+        ...initialDetail,
+        revision: 3,
+        task: {
+          ...initialDetail.task,
+          title: "Canonical interrupt response",
+        },
+        eventsPage: { nextCursor: null },
+        historyLoading: true,
+      },
+    });
+  });
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  const tasksPage = page.locator("caffold-tasks-page");
+  await tasksPage.locator('[data-summary-action="interrupt"]').click();
+  await expect.poll(() => interruptRequests).toBe(1);
+  await expect(
+    tasksPage.getByRole("heading", { name: "Running task" }),
+  ).toBeVisible();
+
+  await tasksPage.locator('[data-summary-action="interrupt"]').click();
+  await expect.poll(() => interruptRequests).toBe(2);
+  await expect(
+    tasksPage.getByRole("heading", { name: "Canonical interrupt response" }),
+  ).toBeVisible();
+  await expect(tasksPage.locator(".task-load-older")).toHaveCount(1);
+  await expect
+    .poll(() =>
+      tasksPage.evaluate((element) => {
+        const detail = element.querySelector("caffold-task-detail");
+        return {
+          threadId: detail.taskDetail?.task?.threadId,
+          nextCursor: detail.eventsPage?.nextCursor,
+        };
+      }),
+    )
+    .toEqual({
+      threadId: "thread-1",
+      nextCursor: "older-action-events",
+    });
+});
+
 test("accepts canonical task detail after stream revisions restart", async ({ page }) => {
   await page.addInitScript(() => {
     window.__taskEventSources = [];
