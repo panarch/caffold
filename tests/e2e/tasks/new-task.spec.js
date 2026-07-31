@@ -50,7 +50,11 @@ test("creates a task with responsive composer controls and canonical approval st
     .locator("caffold-tasks-page .tasks-empty")
     .getByRole("button", { name: "New Task", exact: true });
   await test.step("keeps shared task controls stable", async () => {
-    expect(await taskPresentation(emptyNewTaskButton)).toEqual(
+    const rootFontSize = await page.evaluate(() =>
+      Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+    );
+    const primaryPresentation = await taskPresentation(emptyNewTaskButton);
+    expect(primaryPresentation).toEqual(
       expect.objectContaining({
         alignItems: "center",
         backgroundColor: "rgb(221, 239, 232)",
@@ -60,9 +64,13 @@ test("creates a task with responsive composer controls and canonical approval st
         color: "rgb(22, 124, 92)",
         display: "inline-grid",
         minHeight: touchInterface ? "40px" : "32px",
-        padding: "5px 10px",
       }),
     );
+    const [paddingBlock, paddingInline] = primaryPresentation.padding
+      .split(" ")
+      .map(Number.parseFloat);
+    expect(paddingBlock).toBeCloseTo(rootFontSize * 0.25, 2);
+    expect(paddingInline).toBeCloseTo(rootFontSize * 0.625, 2);
     expect(
       await taskPresentation(
         page.locator(
@@ -315,21 +323,31 @@ test("creates a task with responsive composer controls and canonical approval st
   );
   await test.step("keeps detail, conversation, and composer presentation stable", async () => {
     const phone = testInfo.project.name === "phone";
-    expect(await taskPresentation(tasksPage.locator(".task-detail-summary"))).toEqual(
+    const rootFontSize = await page.evaluate(() =>
+      Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+    );
+    const detailSummary = await taskPresentation(
+      tasksPage.locator(".task-detail-summary"),
+    );
+    expect(detailSummary).toEqual(
       expect.objectContaining({
         alignItems: "center",
         borderWidth: "0px 0px 1px",
         display: "grid",
-        padding: phone ? "7px 8px" : "12px 14px",
       }),
     );
-    expect(
-      await taskPresentation(
-        tasksPage.locator(
-          '.task-detail-summary .task-status-chip[data-status="waiting_for_approval"]',
-        ),
+    expectCssSpacing(
+      detailSummary.padding,
+      (phone ? [0.4375, 0.5] : [0.75, 0.875]).map(
+        (value) => value * rootFontSize,
       ),
-    ).toEqual(
+    );
+    const statusPresentation = await taskPresentation(
+      tasksPage.locator(
+        '.task-detail-summary .task-status-chip[data-status="waiting_for_approval"]',
+      ),
+    );
+    expect(statusPresentation).toEqual(
       expect.objectContaining({
         backgroundColor: "rgb(255, 248, 231)",
         borderColor: "rgb(223, 197, 143)",
@@ -337,18 +355,17 @@ test("creates a task with responsive composer controls and canonical approval st
         borderWidth: "1px",
         color: "rgb(127, 86, 0)",
         display: "grid",
-        height: 22,
+        height: Math.round(rootFontSize * 1.25),
         padding: "0px",
-        width: 22,
+        width: Math.round(rootFontSize * 1.25),
       }),
     );
-    expect(
-      await taskPresentation(
-        tasksPage.locator(
-          '.task-approval-card button[data-task-action="approval"][data-decision="accept"]',
-        ),
+    const approvalButton = await taskPresentation(
+      tasksPage.locator(
+        '.task-approval-card button[data-task-action="approval"][data-decision="accept"]',
       ),
-    ).toEqual(
+    );
+    expect(approvalButton).toEqual(
       expect.objectContaining({
         alignItems: "center",
         backgroundColor: "rgb(255, 255, 255)",
@@ -357,24 +374,29 @@ test("creates a task with responsive composer controls and canonical approval st
         color: "rgb(22, 124, 92)",
         display: "grid",
         minHeight: touchInterface ? "40px" : "32px",
-        padding: "5px 10px",
       }),
     );
-    expect(
-      await taskPresentation(
-        tasksPage.locator(
-          '.task-message[data-message-role="user"] .task-message-content',
-        ),
+    expectCssSpacing(
+      approvalButton.padding,
+      [0.25, 0.625].map((value) => value * rootFontSize),
+    );
+    const userMessage = await taskPresentation(
+      tasksPage.locator(
+        '.task-message[data-message-role="user"] .task-message-content',
       ),
-    ).toEqual(
+    );
+    expect(userMessage).toEqual(
       expect.objectContaining({
         backgroundColor: "rgb(238, 242, 239)",
         borderRadius: "18px",
         fontSize: "15px",
         lineHeight: "22.05px",
         overflowWrap: "anywhere",
-        padding: "10px 14px",
       }),
+    );
+    expectCssSpacing(
+      userMessage.padding,
+      [0.625, 0.875].map((value) => value * rootFontSize),
     );
     expect(
       await taskPresentation(
@@ -389,6 +411,30 @@ test("creates a task with responsive composer controls and canonical approval st
         overflow: "visible",
       }),
     );
+    if (phone) {
+      const approvalLayout = await tasksPage
+        .locator(".task-approval-actions")
+        .evaluate((actions) => {
+          const parent = actions.getBoundingClientRect();
+          const columns = getComputedStyle(actions).gridTemplateColumns
+            .split(" ")
+            .filter(Boolean).length;
+          const buttons = [...actions.querySelectorAll("button")].map((button) => {
+            const box = button.getBoundingClientRect();
+            return {
+              left: box.left,
+              right: box.right,
+            };
+          });
+          return {
+            columns,
+            contained: buttons.every(
+              ({ left, right }) => left >= parent.left - 0.5 && right <= parent.right + 0.5,
+            ),
+          };
+        });
+      expect(approvalLayout).toEqual({ columns: 2, contained: true });
+    }
   });
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(
@@ -412,3 +458,11 @@ test("creates a task with responsive composer controls and canonical approval st
     .toEqual({ action: "approval", approvalId: "approval_1", decision: "accept" });
 
 });
+
+function expectCssSpacing(cssValue, expected) {
+  const actual = cssValue.split(" ").map((value) => Number.parseFloat(value));
+  expect(actual).toHaveLength(expected.length);
+  actual.forEach((value, index) => {
+    expect(value).toBeCloseTo(expected[index], 2);
+  });
+}

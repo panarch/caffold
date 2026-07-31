@@ -16,12 +16,12 @@ caffold-git-log-list-page {
     box-sizing: border-box;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 2px;
+    gap: 0.125rem;
     align-content: center;
-    height: var(--review-header-height, 42px);
+    height: var(--review-header-height, 2.625rem);
     min-height: 0;
     overflow: hidden;
-    padding: 5px 12px;
+    padding: 0.3125rem 0.75rem;
     border-bottom: 1px solid var(--border);
   }
 
@@ -38,7 +38,7 @@ caffold-git-log-list-page {
   & .log-title-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
+    gap: 0.5rem;
     align-items: center;
     width: 100%;
     min-width: 0;
@@ -69,26 +69,26 @@ caffold-git-log-list-page {
     margin: 0;
     overflow: auto;
     overscroll-behavior: contain;
-    padding: 4px 0;
+    padding: 0.25rem 0;
     list-style: none;
   }
 
   & .log-entry {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
+    gap: 0.5rem;
     width: 100%;
     min-height: max(2.375rem, var(--interface-target-floor));
     align-items: center;
     border-left: 3px solid transparent;
     background: transparent;
     color: var(--text);
-    padding: 5px 12px 5px 10px;
+    padding: 0.3125rem 0.75rem 0.3125rem 0.625rem;
   }
 
   & .log-summary {
     display: grid;
-    gap: 3px;
+    gap: 0.1875rem;
     min-width: 0;
     text-align: left;
   }
@@ -135,8 +135,8 @@ caffold-git-log-list-page {
   & .log-body {
     grid-column: 1 / -1;
     min-width: 0;
-    margin: 3px 0 7px 0.25rem;
-    padding: 3px 0 3px 0.7rem;
+    margin: 0.1875rem 0 0.4375rem 0.25rem;
+    padding: 0.1875rem 0 0.1875rem 0.7rem;
     border-left: 2px solid #d3dfd8;
     overflow: hidden;
     color: #52635b;
@@ -148,12 +148,12 @@ caffold-git-log-list-page {
   & .log-review-button {
     display: grid;
     grid-auto-flow: column;
-    gap: 5px;
+    gap: 0.3125rem;
     align-items: center;
     justify-content: center;
     min-width: 0;
     height: var(--interface-compact-control-size);
-    padding: 0 8px;
+    padding: 0 0.5rem;
     border: 1px solid var(--border);
     border-radius: 4px;
     background: var(--surface);
@@ -165,8 +165,9 @@ caffold-git-log-list-page {
   }
 
   & .log-review-icon {
-    width: 0.82rem;
-    height: 0.82rem;
+    display: block;
+    width: var(--interface-icon-small-size);
+    height: var(--interface-icon-small-size);
     stroke-width: 2.2;
   }
 

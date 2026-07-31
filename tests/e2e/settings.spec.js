@@ -382,6 +382,89 @@ test("keeps mixed surfaces reflowed across appearance extremes", async ({
   }
 });
 
+test("keeps model picker chrome compact and scales it only with Interface", async ({
+  page,
+}) => {
+  await page.goto("/settings");
+  const settingsPage = page.locator("caffold-settings-page");
+  const interfaceRange = range(settingsPage, "interfaceScalePercent");
+  const conversationRange = range(settingsPage, "conversationTextPx");
+  const codeRange = range(settingsPage, "codeTextPx");
+
+  await page.evaluate(() => {
+    const host = document.createElement("section");
+    host.dataset.appearancePickerProbe = "";
+    host.style.cssText =
+      "position:fixed;inset:0;z-index:100;background:var(--surface);overflow:auto";
+    const composer = document.createElement("caffold-task-composer");
+    composer.setContext({ mode: "create", cwd: "." });
+    host.append(composer);
+    document.body.append(host);
+  });
+
+  const composer = page.locator(
+    "[data-appearance-picker-probe] caffold-task-composer",
+  );
+  const modelButton = composer.getByRole("button", {
+    name: "Choose model and reasoning",
+  });
+  await expect(modelButton).toContainText("GPT-5.6-Sol");
+
+  await setRange(interfaceRange, 90);
+  await setRange(conversationRange, 13);
+  await setRange(codeRange, 12);
+  await modelButton.click();
+  const popover = composer.getByRole("menu", {
+    name: "Model and reasoning options",
+  });
+  await expect(popover).toBeVisible();
+  const compact = await modelPickerMetrics(composer);
+  expect(compact.modelButtonFontSize / compact.rootFontSize).toBeCloseTo(
+    0.875,
+    2,
+  );
+  expect(compact.titleFontSize / compact.rootFontSize).toBeCloseTo(0.875, 2);
+  expect(compact.descriptionFontSize / compact.rootFontSize).toBeCloseTo(0.75, 2);
+  expect(compact.toolbarPadding / compact.rootFontSize).toBeCloseTo(0.25, 2);
+  expect(compact.toolbarGap / compact.rootFontSize).toBeCloseTo(0.5, 2);
+  expect(compact.popoverPadding / compact.rootFontSize).toBeCloseTo(0.5, 2);
+  expect(compact.optionPadding / compact.rootFontSize).toBeCloseTo(0.375, 2);
+  expect(compact.optionGap / compact.rootFontSize).toBeCloseTo(0.5, 2);
+  expectComposerIconsCentered(compact);
+
+  await setRange(conversationRange, 20);
+  await setRange(codeRange, 20);
+  const contentAxesChanged = await modelPickerMetrics(composer);
+  expect(contentAxesChanged).toEqual(compact);
+
+  await setRange(interfaceRange, 120);
+  const spacious = await modelPickerMetrics(composer);
+  const interfaceRatio = spacious.rootFontSize / compact.rootFontSize;
+  expect(interfaceRatio).toBeCloseTo(4 / 3, 2);
+  for (const property of [
+    "titleFontSize",
+    "descriptionFontSize",
+    "toolbarPadding",
+    "toolbarGap",
+    "popoverPadding",
+    "optionPadding",
+    "optionGap",
+  ]) {
+    expect(spacious[property] / compact[property]).toBeCloseTo(interfaceRatio, 2);
+  }
+  expect(spacious.modelButtonHeight).toBeGreaterThanOrEqual(
+    compact.modelButtonHeight,
+  );
+  expect(compact.modelButtonHeight).toBeGreaterThanOrEqual(compact.targetFloor);
+  expect(spacious.modelButtonHeight).toBeGreaterThanOrEqual(spacious.targetFloor);
+  expect(spacious.optionHeight).toBeGreaterThanOrEqual(compact.optionHeight);
+  expect(compact.optionHeight).toBeGreaterThanOrEqual(compact.targetFloor);
+  expect(spacious.optionHeight).toBeGreaterThanOrEqual(spacious.targetFloor);
+  expectComposerIconsCentered(spacious);
+  expect(compact.overflowX).toBe(false);
+  expect(spacious.overflowX).toBe(false);
+});
+
 function range(settingsPage, name) {
   return settingsPage.locator(`input[type="range"][data-setting="${name}"]`);
 }
@@ -391,4 +474,94 @@ async function setRange(locator, value) {
     element.value = `${nextValue}`;
     element.dispatchEvent(new Event("input", { bubbles: true }));
   }, value);
+}
+
+async function modelPickerMetrics(composer) {
+  return composer.evaluate((element) => {
+    const rootStyle = getComputedStyle(document.documentElement);
+    const toolbar = element.querySelector(".task-composer-toolbar");
+    const modelButton = element.querySelector(".task-model-button");
+    const popover = element.querySelector(".task-model-popover");
+    const option = popover.querySelector(".task-model-option");
+    const title = option.querySelector("strong");
+    const description = option.querySelector("small");
+    const toolbarStyle = getComputedStyle(toolbar);
+    const popoverStyle = getComputedStyle(popover);
+    const optionStyle = getComputedStyle(option);
+    const number = (value) => Number.parseFloat(value) || 0;
+    const iconGeometry = [
+      ["model", modelButton, modelButton.querySelector(".task-model-icon")],
+      ["model caret", modelButton, modelButton.querySelector(".task-model-caret")],
+      [
+        "permission",
+        element.querySelector(".task-permission-button"),
+        element.querySelector(".task-permission-icon"),
+      ],
+      [
+        "permission caret",
+        element.querySelector(".task-permission-button"),
+        element.querySelector(".task-permission-button .task-model-caret"),
+      ],
+      ["send", element.querySelector(".task-send-button"), element.querySelector(".task-send-icon")],
+    ].map(([name, button, icon]) => {
+      const buttonBox = button.getBoundingClientRect();
+      const iconBox = icon?.getBoundingClientRect();
+      const glyphBox = icon?.getBBox?.();
+      const viewBox = icon?.viewBox?.baseVal;
+      return {
+        name,
+        tagName: icon?.tagName?.toLowerCase() ?? "",
+        outerAspectDelta: Math.abs(iconBox.width - iconBox.height),
+        buttonCenterDeltaY: Math.abs(
+          iconBox.top + iconBox.height / 2 - (buttonBox.top + buttonBox.height / 2),
+        ),
+        glyphCenterDeltaX: Math.abs(
+          glyphBox.x + glyphBox.width / 2 - (viewBox.x + viewBox.width / 2),
+        ),
+        glyphCenterDeltaY: Math.abs(
+          glyphBox.y + glyphBox.height / 2 - (viewBox.y + viewBox.height / 2),
+        ),
+      };
+    });
+    return {
+      rootFontSize: number(rootStyle.fontSize),
+      targetFloor: number(rootStyle.getPropertyValue("--interface-target-floor")),
+      titleFontSize: number(getComputedStyle(title).fontSize),
+      descriptionFontSize: number(getComputedStyle(description).fontSize),
+      modelButtonFontSize: number(getComputedStyle(modelButton).fontSize),
+      toolbarPadding: number(toolbarStyle.paddingTop),
+      toolbarGap: number(toolbarStyle.columnGap),
+      modelButtonHeight: modelButton.getBoundingClientRect().height,
+      popoverPadding: number(popoverStyle.paddingTop),
+      optionPadding: number(optionStyle.paddingTop),
+      optionGap: number(optionStyle.columnGap),
+      optionHeight: option.getBoundingClientRect().height,
+      iconGeometry,
+      overflowX:
+        popover.scrollWidth > popover.clientWidth ||
+        document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    };
+  });
+}
+
+function expectComposerIconsCentered(metrics) {
+  expect(metrics.iconGeometry).toHaveLength(5);
+  for (const icon of metrics.iconGeometry) {
+    expect(icon.tagName, `${icon.name} must use an SVG icon`).toBe("svg");
+    expect(icon.outerAspectDelta, `${icon.name} must use a square slot`).toBeLessThanOrEqual(
+      0.1,
+    );
+    expect(
+      icon.buttonCenterDeltaY,
+      `${icon.name} must be vertically centered in its control`,
+    ).toBeLessThanOrEqual(0.5);
+    expect(
+      icon.glyphCenterDeltaX,
+      `${icon.name} glyph must be centered in its SVG view box`,
+    ).toBeLessThanOrEqual(0.75);
+    expect(
+      icon.glyphCenterDeltaY,
+      `${icon.name} glyph must be centered in its SVG view box`,
+    ).toBeLessThanOrEqual(0.75);
+  }
 }

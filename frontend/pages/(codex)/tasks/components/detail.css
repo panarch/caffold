@@ -13,8 +13,8 @@ caffold-task-detail {
     display: grid;
     align-content: center;
     justify-items: start;
-    gap: 12px;
-    width: min(560px, calc(100% - 40px));
+    gap: 0.75rem;
+    width: min(560px, calc(100% - 2.5rem));
     min-height: 100%;
     margin: 0 auto;
   }
@@ -55,10 +55,10 @@ caffold-task-detail {
     display: grid;
     justify-items: start;
     align-content: start;
-    gap: 8px;
+    gap: 0.5rem;
     max-width: 680px;
-    margin: 28px auto;
-    padding: 0 20px;
+    margin: 1.75rem auto;
+    padding: 0 1.25rem;
     color: var(--text);
   }
 
@@ -75,7 +75,7 @@ caffold-task-detail {
   & .task-detail-load-error-inline {
     justify-self: stretch;
     margin: 0;
-    padding: 9px 10px;
+    padding: 0.5625rem 0.625rem;
     border: 1px solid #dfc58f;
     border-radius: 5px;
     background: #fff8e7;
@@ -91,9 +91,9 @@ caffold-task-detail {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 7px;
+    gap: 0.4375rem;
     min-height: var(--interface-compact-control-size);
-    padding: 5px 12px;
+    padding: 0.3125rem 0.75rem;
     border-top: 1px solid #dfc58f;
     background: #fff8e7;
     color: var(--muted);
@@ -105,7 +105,7 @@ caffold-task-detail {
 
   & .task-stream-state button {
     min-height: var(--interface-compact-control-size);
-    padding: 2px 7px;
+    padding: 0.125rem 0.4375rem;
     border: 1px solid currentColor;
     border-radius: 5px;
     background: transparent;
@@ -116,9 +116,9 @@ caffold-task-detail {
 
   & .task-stream-icon,
   & .task-stream-spinner {
-    width: 14px;
-    height: 14px;
-    flex: 0 0 14px;
+    width: var(--interface-icon-small-size);
+    height: var(--interface-icon-small-size);
+    flex: 0 0 var(--interface-icon-small-size);
   }
 
   & .task-stream-spinner {

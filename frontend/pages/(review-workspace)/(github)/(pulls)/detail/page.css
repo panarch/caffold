@@ -16,16 +16,16 @@ caffold-github-pull-detail-page {
 
   & .github-pull-viewer-panel > header {
     display: grid;
-    gap: 4px;
+    gap: 0.25rem;
     min-width: 0;
-    padding: 8px 12px;
+    padding: 0.5rem 0.75rem;
     border-bottom: 1px solid var(--border);
   }
 
   & .github-pull-viewer-title-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto;
-    gap: 10px;
+    gap: 0.625rem;
     align-items: center;
     min-width: 0;
   }
@@ -50,7 +50,7 @@ caffold-github-pull-detail-page {
   }
 
   & h3 {
-    padding: 8px 12px 6px;
+    padding: 0.5rem 0.75rem 0.375rem;
     border-bottom: 1px solid #e3ebe5;
     color: var(--muted);
     font-size: 0.78rem;
@@ -76,10 +76,10 @@ caffold-github-pull-detail-page {
   & .github-pull-files-button {
     display: grid;
     grid-template-columns: auto auto;
-    gap: 5px;
+    gap: 0.3125rem;
     align-items: center;
     height: var(--interface-compact-control-size);
-    padding: 0 8px;
+    padding: 0 0.5rem;
     border: 1px solid var(--border);
     border-radius: 4px;
     background: var(--surface);
@@ -97,15 +97,16 @@ caffold-github-pull-detail-page {
   }
 
   & .github-pull-files-icon {
-    width: 0.9rem;
-    height: 0.9rem;
+    display: block;
+    width: var(--interface-icon-small-size);
+    height: var(--interface-icon-small-size);
     stroke-width: 2;
   }
 
   & .github-pull-viewer-meta {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px 8px;
+    gap: 0.25rem 0.5rem;
     min-width: 0;
     color: var(--muted);
     font-size: 0.72rem;
@@ -115,14 +116,14 @@ caffold-github-pull-detail-page {
   & .github-pull-viewer-labels {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: 0.25rem;
     min-width: 0;
   }
 
   & .github-pull-viewer-labels span {
     max-width: 12rem;
     overflow: hidden;
-    padding: 1px 5px;
+    padding: 0.0625rem 0.3125rem;
     border: 1px solid #c8d8d0;
     border-radius: 999px;
     color: var(--muted);
@@ -161,7 +162,7 @@ caffold-github-pull-detail-page {
   }
 
   & .github-pull-raw-body {
-    padding: 12px;
+    padding: 0.75rem;
     font-size: var(--conversation-font-size);
     line-height: var(--conversation-line-height);
     white-space: pre-wrap;
@@ -191,9 +192,9 @@ caffold-github-pull-detail-page {
   & .github-pull-comment-meta {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px 8px;
+    gap: 0.25rem 0.5rem;
     min-width: 0;
-    padding: 8px 12px 0;
+    padding: 0.5rem 0.75rem 0;
     color: var(--muted);
     font-size: 0.72rem;
     line-height: 1.2;
@@ -201,19 +202,19 @@ caffold-github-pull-detail-page {
 
   & .github-pull-empty-note {
     margin: 0 auto;
-    padding: 10px 12px;
+    padding: 0.625rem 0.75rem;
     color: var(--muted);
     font-size: 0.78rem;
   }
 
   & .github-pull-commit {
-    padding: 8px 12px;
+    padding: 0.5rem 0.75rem;
   }
 
   & .github-pull-commit a {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
-    gap: 8px;
+    gap: 0.5rem;
     min-width: 0;
     color: var(--text);
     text-decoration: none;
@@ -243,12 +244,12 @@ caffold-github-pull-detail-page {
 
 @media (max-width: 860px) {
   caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-pull-detail-page .github-pull-viewer-panel > header {
-    padding: 4px 8px;
+    padding: 0.25rem 0.5rem;
   }
 
   caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-pull-detail-page .github-pull-viewer-title-row {
     grid-template-columns: var(--interface-compact-control-size) minmax(0, 1fr) auto;
-    gap: 6px;
+    gap: 0.375rem;
   }
 
   caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-pull-detail-page .github-pull-link {
@@ -276,8 +277,9 @@ caffold-github-pull-detail-page {
   }
 
   caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-pull-detail-page .github-pull-close-icon {
-    width: 1rem;
-    height: 1rem;
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
     stroke-width: 2;
   }
 }

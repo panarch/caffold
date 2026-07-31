@@ -15,9 +15,9 @@ caffold-file-list {
   & .file-list-panel > header {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 2px;
+    gap: 0.125rem;
     align-content: center;
-    padding: 7px 14px;
+    padding: 0.4375rem 0.875rem;
     border-bottom: 1px solid var(--border);
   }
 
@@ -39,7 +39,7 @@ caffold-file-list {
   & .file-list-title-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
+    gap: 0.5rem;
     align-items: center;
     width: 100%;
     min-width: 0;
@@ -53,7 +53,7 @@ caffold-file-list {
   & .file-list-actions {
     display: grid;
     grid-auto-flow: column;
-    gap: 6px;
+    gap: 0.375rem;
     align-items: center;
   }
 
@@ -63,9 +63,9 @@ caffold-file-list {
     height: var(--interface-compact-control-size);
     place-items: center;
     padding: 0;
-    border: 1px solid transparent;
+    border: 1px solid var(--border);
     border-radius: 4px;
-    background: transparent;
+    background: var(--surface);
     color: var(--accent);
     cursor: pointer;
   }
@@ -86,8 +86,9 @@ caffold-file-list {
   }
 
   & .file-refresh-icon {
-    width: 16px;
-    height: 16px;
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
   }
 
   & .git-summary {
@@ -110,7 +111,7 @@ caffold-file-list {
     margin: 0;
     overflow: auto;
     overscroll-behavior: contain;
-    padding: 4px 0;
+    padding: 0.25rem 0;
     list-style: none;
   }
 
@@ -219,7 +220,7 @@ caffold-file-list {
     padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
       var(--file-tree-padding-y)
       calc(
-        3px + var(--file-tree-padding-left) + var(--file-tree-icon-slot-size) +
+        0.1875rem + var(--file-tree-padding-left) + var(--file-tree-icon-slot-size) +
           var(--file-tree-column-gap) + var(--tree-depth, 0) * var(--tree-indent)
       );
     color: var(--muted);

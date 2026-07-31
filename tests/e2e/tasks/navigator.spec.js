@@ -299,6 +299,11 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
   ).toBeVisible();
   await expect(tasksPage.locator('.task-row .task-status-label')).toHaveCount(0);
   await test.step("keeps navigator status presentation stable", async () => {
+    const rootFontSize = await page.evaluate(() =>
+      Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+    );
+    const expectedSlotSize = Math.round(rootFontSize * 1.25);
+    const expectedIconSize = rootFontSize * 0.875;
     const runningChip = tasksPage.locator(
       '.task-row[data-thread-id="thread_feature"] .task-status-chip',
     );
@@ -312,18 +317,27 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
         borderWidth: "0px",
         color: "rgb(22, 124, 92)",
         display: "grid",
-        height: 20,
+        height: expectedSlotSize,
         padding: "0px",
-        width: 20,
+        width: expectedSlotSize,
       }),
     );
     expect(await taskPresentation(runningChip.locator(".task-status-spinner"))).toEqual(
       expect.objectContaining({
         animationName: "task-status-spin",
         borderRadius: "999px",
-        cssHeight: "13px",
-        cssWidth: "13px",
       }),
+    );
+    const spinnerPresentation = await taskPresentation(
+      runningChip.locator(".task-status-spinner"),
+    );
+    expect(Number.parseFloat(spinnerPresentation.cssHeight)).toBeCloseTo(
+      expectedIconSize,
+      2,
+    );
+    expect(Number.parseFloat(spinnerPresentation.cssWidth)).toBeCloseTo(
+      expectedIconSize,
+      2,
     );
     expect(await taskPresentation(waitingChip)).toEqual(
       expect.objectContaining({
@@ -332,9 +346,9 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
         borderWidth: "0px",
         color: "rgb(127, 86, 0)",
         display: "grid",
-        height: 20,
+        height: expectedSlotSize,
         padding: "0px",
-        width: 20,
+        width: expectedSlotSize,
       }),
     );
   });
@@ -351,11 +365,14 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     }),
   );
   const rowHeights = rowLayout.map(({ height }) => height);
+  const rootFontSize = await page.evaluate(() =>
+    Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+  );
   expect(new Set(rowHeights).size).toBe(1);
   expect(rowHeights[0]).toBeLessThanOrEqual(44);
   expect(new Set(rowLayout.map(({ titleWidth }) => titleWidth)).size).toBe(1);
   expect(new Set(rowLayout.map(({ indicatorWidth }) => indicatorWidth))).toEqual(
-    new Set([56]),
+    new Set([Math.round(rootFontSize * 3.5)]),
   );
   expect(rowLayout.every(({ hasHorizontalOverflow }) => !hasHorizontalOverflow)).toBe(true);
   const longTitleLayout = await tasksPage

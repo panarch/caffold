@@ -11,19 +11,19 @@ caffold-task-new {
   & .task-new-workspace {
     display: grid;
     align-content: start;
-    gap: 12px;
+    gap: 0.75rem;
     height: 100%;
     overflow: auto;
-    padding-top: clamp(18px, 6vh, 72px);
+    padding-top: clamp(1.125rem, 6vh, 4.5rem);
   }
 
   & .task-new-error {
     display: flex;
     align-items: start;
-    gap: 8px;
-    width: min(calc(100% - 28px), 952px);
+    gap: 0.5rem;
+    width: min(calc(100% - 1.75rem), 952px);
     margin: 0 auto;
-    padding: 10px 12px;
+    padding: 0.625rem 0.75rem;
     border: 1px solid #d9b86c;
     border-radius: 6px;
     background: #fffaf0;
@@ -33,9 +33,10 @@ caffold-task-new {
   }
 
   & .task-new-error-icon {
+    display: block;
     flex: 0 0 auto;
-    width: 17px;
-    height: 17px;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
   }
 
   & .task-new-cwd-browser {
@@ -50,8 +51,8 @@ caffold-task-new {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: 12px;
-    padding: 8px 12px;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
     border-bottom: 1px solid var(--border);
   }
 
@@ -75,7 +76,7 @@ caffold-task-new {
   & .task-new-cwd-browser > header > div:last-child {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 0.375rem;
   }
 }
 

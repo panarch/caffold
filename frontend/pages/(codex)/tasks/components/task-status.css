@@ -3,8 +3,8 @@ caffold-tasks-page {
     display: inline-grid;
     grid-auto-flow: column;
     align-items: center;
-    gap: 5px;
-    padding: 2px 8px;
+    gap: 0.3125rem;
+    padding: 0.125rem 0.5rem;
     border: 1px solid #d9e2d9;
     border-radius: 999px;
     background: #f8fbf9;
@@ -15,13 +15,14 @@ caffold-tasks-page {
   }
 
   & .task-status-icon {
-    width: 13px;
-    height: 13px;
+    display: block;
+    width: var(--interface-icon-small-size);
+    height: var(--interface-icon-small-size);
   }
 
   & .task-status-spinner {
-    width: 13px;
-    height: 13px;
+    width: var(--interface-icon-small-size);
+    height: var(--interface-icon-small-size);
     border: 2px solid currentColor;
     border-right-color: transparent;
     border-radius: 999px;

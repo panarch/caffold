@@ -17,10 +17,10 @@ caffold-github-pull-files-tree {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     align-content: center;
-    height: var(--review-header-height, 42px);
+    height: var(--review-header-height, 2.625rem);
     min-height: 0;
     overflow: hidden;
-    padding: 4px 12px;
+    padding: 0.25rem 0.75rem;
     border-bottom: 1px solid var(--border);
   }
 
@@ -37,7 +37,7 @@ caffold-github-pull-files-tree {
   & .github-pull-files-title-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
+    gap: 0.5rem;
     align-items: center;
     width: 100%;
     min-width: 0;
@@ -58,7 +58,7 @@ caffold-github-pull-files-tree {
     margin: 0;
     overflow: auto;
     overscroll-behavior: contain;
-    padding: 4px 0;
+    padding: 0.25rem 0;
     list-style: none;
   }
 

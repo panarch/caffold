@@ -1,8 +1,16 @@
+import { renderInlineIcon, warmIcons } from "../../components/icons.js";
 import "./tasks/page.js";
 
 class CaffoldCodexWorkspace extends HTMLElement {
   connectedCallback() {
+    this.boundIconsReady ??= () => this.updateCloseIcon();
+    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     this.ensureRendered();
+    void warmIcons();
+  }
+
+  disconnectedCallback() {
+    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
   ensureRendered() {
@@ -18,11 +26,12 @@ class CaffoldCodexWorkspace extends HTMLElement {
         aria-label="Close Codex workspace"
         title="Close Codex workspace"
       >
-        <span aria-hidden="true">&times;</span>
+        ${renderInlineIcon("X", "Close", "codex-workspace-close-icon")}
       </button>
       <caffold-tasks-page></caffold-tasks-page>
     `;
     this.closeButton = this.querySelector(".codex-workspace-close");
+    this.updateCloseIcon();
     this.closeButton.addEventListener("click", () => {
       if (this.tasksPage?.closeActiveSubview?.()) {
         this.updateCloseButton();
@@ -39,6 +48,17 @@ class CaffoldCodexWorkspace extends HTMLElement {
     this.tasksPage.ensureRendered();
     this.addEventListener("caffold:task-detail-view-change", () => this.updateCloseButton());
     this.updateCloseButton();
+  }
+
+  updateCloseIcon() {
+    if (!this.closeButton) {
+      return;
+    }
+    this.closeButton.innerHTML = renderInlineIcon(
+      "X",
+      "Close",
+      "codex-workspace-close-icon",
+    );
   }
 
   prepareRoute(route, options = {}) {

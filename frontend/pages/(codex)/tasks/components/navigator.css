@@ -16,14 +16,15 @@ caffold-task-navigator {
     height: 100%;
     overflow: auto;
     overscroll-behavior: contain;
-    padding: 5px 0 calc(24px + env(safe-area-inset-bottom));
-    scroll-padding-block: 5px calc(24px + env(safe-area-inset-bottom));
+    padding: 0.3125rem 0 calc(1.5rem + env(safe-area-inset-bottom));
+    scroll-padding-block: var(--interface-space-2)
+      calc(var(--interface-space-12) + env(safe-area-inset-bottom));
     font-size: var(--task-list-font-size);
   }
 
   & .task-list-section + .task-list-section {
-    margin-top: 16px;
-    padding-top: 12px;
+    margin-top: 1rem;
+    padding-top: 0.75rem;
     border-top: 1px solid var(--border);
   }
 
@@ -31,8 +32,8 @@ caffold-task-navigator {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
-    padding: 4px 12px 7px;
+    gap: 0.5rem;
+    padding: 0.25rem 0.75rem 0.4375rem;
     color: var(--muted);
   }
 
@@ -51,20 +52,20 @@ caffold-task-navigator {
 
   & .task-section-message {
     margin: 0;
-    padding: 10px 12px;
+    padding: 0.625rem 0.75rem;
     color: var(--muted);
     font-size: 0.8125rem;
   }
 
   & .task-section-message p {
-    margin: 0 0 8px;
+    margin: 0 0 0.5rem;
   }
 
   & .task-list-pagination {
     display: grid;
     justify-items: center;
-    gap: 6px;
-    padding: 12px 9px 4px;
+    gap: 0.375rem;
+    padding: 0.75rem 0.5625rem 0.25rem;
   }
 
   & .task-list-pagination-error {
@@ -83,16 +84,16 @@ caffold-task-navigator {
   }
 
   & .task-repository-group + .task-repository-group {
-    margin-top: 7px;
+    margin-top: 0.4375rem;
   }
 
   & .task-repository-header {
     display: grid;
     grid-template-columns: var(--task-list-icon-size) minmax(0, 1fr) auto;
     align-items: center;
-    gap: 7px;
+    gap: 0.4375rem;
     min-height: var(--task-group-row-height);
-    padding: 3px 9px;
+    padding: 0.1875rem 0.5625rem;
     border-left: 3px solid transparent;
     background: transparent;
     color: var(--muted);
@@ -100,6 +101,7 @@ caffold-task-navigator {
   }
 
   & .task-repository-icon {
+    display: block;
     width: var(--task-list-icon-size);
     height: var(--task-list-icon-size);
     color: #718078;
@@ -129,22 +131,22 @@ caffold-task-navigator {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: 6px;
+    gap: 0.375rem;
     min-height: var(--task-row-height);
-    padding: 2px 9px;
+    padding: 0.125rem 0.5625rem;
   }
 
   & .task-history-copy {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: 7px;
+    gap: 0.4375rem;
     min-width: 0;
   }
 
   & .task-continue-button {
     min-height: var(--interface-compact-control-size);
-    padding: 3px 7px;
+    padding: 0.1875rem 0.4375rem;
     border: 1px solid var(--border);
     border-radius: 4px;
     background: var(--surface);
@@ -170,11 +172,11 @@ caffold-task-navigator {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 56px;
     align-items: center;
-    gap: 8px;
+    gap: 0.5rem;
     width: 100%;
     min-width: 0;
     min-height: var(--task-list-row-height);
-    padding: 3px 9px;
+    padding: 0.1875rem 0.5625rem;
     border: 0;
     border-left: 3px solid transparent;
     background: transparent;
@@ -207,8 +209,8 @@ caffold-task-navigator {
     display: inline-flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 6px;
-    width: 56px;
+    gap: 0.375rem;
+    width: 3.5rem;
     min-width: 0;
   }
 
@@ -217,8 +219,8 @@ caffold-task-navigator {
   }
 
   & .task-row-meta.task-status-chip {
-    width: 20px;
-    height: 20px;
+    width: var(--interface-icon-slot-size);
+    height: var(--interface-icon-slot-size);
     justify-content: center;
     padding: 0;
     border: 0;
@@ -227,14 +229,14 @@ caffold-task-navigator {
 
   & .task-unseen-complete {
     display: inline-grid;
-    width: 20px;
-    height: 20px;
+    width: var(--interface-icon-slot-size);
+    height: var(--interface-icon-slot-size);
     place-items: center;
   }
 
   & .task-unseen-complete::before {
-    width: 10px;
-    height: 10px;
+    width: var(--interface-space-5);
+    height: var(--interface-space-5);
     border-radius: 50%;
     background: var(--accent);
     content: "";
@@ -255,6 +257,7 @@ caffold-task-navigator {
   }
 
   & .task-row-worktree-icon {
+    display: block;
     width: var(--task-list-icon-size);
     height: var(--task-list-icon-size);
   }
@@ -276,12 +279,12 @@ caffold-task-navigator {
   & .tasks-empty {
     margin: 0 auto;
     width: min(100%, 960px);
-    padding: 14px;
+    padding: 0.875rem;
   }
 
   & .task-list-availability {
     margin: 0;
-    padding: 6px 10px;
+    padding: 0.375rem 0.625rem;
     border-bottom: 1px solid #dfc58f;
     background: #fff8e7;
     color: #7f5600;

@@ -237,6 +237,9 @@ export async function expectHeaderGroupOpenVisualState(page, group) {
       isMobileLayout: window.matchMedia("(max-width: 520px)").matches,
       popoverLeft: popoverRect.left,
       popoverRight: popoverRect.right,
+      rootFontSize: Number.parseFloat(
+        getComputedStyle(document.documentElement).fontSize,
+      ),
       viewportWidth: window.innerWidth,
     };
   }, group);
@@ -252,8 +255,14 @@ export async function expectHeaderGroupOpenVisualState(page, group) {
   }
 
   expect(metrics.arrowContent).toBe('""');
-  expect(metrics.arrowWidth).toBe("10px");
-  expect(metrics.arrowHeight).toBe("10px");
+  expect(Number.parseFloat(metrics.arrowWidth)).toBeCloseTo(
+    metrics.rootFontSize * 0.625,
+    2,
+  );
+  expect(Number.parseFloat(metrics.arrowHeight)).toBeCloseTo(
+    metrics.rootFontSize * 0.625,
+    2,
+  );
   expect(Math.abs(metrics.arrowCenter - metrics.buttonCenter)).toBeLessThanOrEqual(4);
   expect(metrics.buttonToArrowGap).toBeGreaterThanOrEqual(-1);
   expect(metrics.buttonToArrowGap).toBeLessThanOrEqual(3);

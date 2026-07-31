@@ -729,7 +729,7 @@ class CaffoldTaskComposer extends HTMLElement {
               title="${escapeHtml(this.context.disabled ? "Caffold server is reconnecting." : this.context.submitLabel)}"
               ${submitDisabled ? "disabled" : ""}
             >
-              <span class="task-send-arrow" aria-hidden="true">&uarr;</span>
+              ${renderInlineIcon("ArrowUp", "Send", "task-send-icon")}
             </button>
           </div>
         </div>
@@ -765,7 +765,7 @@ class CaffoldTaskComposer extends HTMLElement {
           ${renderInlineIcon("Circle", "Model", "task-model-icon")}
           <span>${escapeHtml(modelLabel)}</span>
           <span>${escapeHtml(effortLabel)}</span>
-          <span class="task-model-caret" aria-hidden="true">&#8964;</span>
+          ${renderInlineIcon("ChevronDown", "Open", "task-model-caret")}
         </button>
         ${
           open
@@ -819,7 +819,7 @@ class CaffoldTaskComposer extends HTMLElement {
         >
           ${renderInlineIcon("Shield", "Permissions", "task-permission-icon")}
           <span>${escapeHtml(label)}</span>
-          <span class="task-model-caret" aria-hidden="true">&#8964;</span>
+          ${renderInlineIcon("ChevronDown", "Open", "task-model-caret")}
         </button>
         ${
           open
@@ -881,6 +881,9 @@ class CaffoldTaskComposer extends HTMLElement {
       return;
     }
     const buttonRect = button.getBoundingClientRect();
+    const interfaceFontSize =
+      Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    const pickerViewportMargin = interfaceFontSize * 1.125;
     const availableHeight =
       this.context.mode === "follow-up"
         ? buttonRect.top -
@@ -889,8 +892,8 @@ class CaffoldTaskComposer extends HTMLElement {
             this.closest(".task-conversation-pane")?.getBoundingClientRect()
               .top ?? 0,
           ) -
-          18
-        : window.innerHeight - buttonRect.bottom - 18;
+          pickerViewportMargin
+        : window.innerHeight - buttonRect.bottom - pickerViewportMargin;
     popover.style.maxHeight = `${Math.max(
       0,
       Math.floor(availableHeight),

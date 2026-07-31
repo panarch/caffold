@@ -16,12 +16,12 @@ caffold-git-diff-changes-tree {
     box-sizing: border-box;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 2px;
+    gap: 0.125rem;
     align-content: center;
-    height: var(--review-header-height, 42px);
+    height: var(--review-header-height, 2.625rem);
     min-height: 0;
     overflow: hidden;
-    padding: 5px 12px;
+    padding: 0.3125rem 0.75rem;
     border-bottom: 1px solid var(--border);
   }
 
@@ -44,7 +44,7 @@ caffold-git-diff-changes-tree {
   & .changes-tree-title-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
+    gap: 0.5rem;
     align-items: center;
     width: 100%;
     min-width: 0;
@@ -58,7 +58,7 @@ caffold-git-diff-changes-tree {
   & .changes-tree-meta-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
+    gap: 0.5rem;
     align-items: center;
     min-width: 0;
   }
@@ -66,7 +66,7 @@ caffold-git-diff-changes-tree {
   & .change-line-stats {
     display: inline-grid;
     grid-auto-flow: column;
-    gap: 6px;
+    gap: 0.375rem;
     justify-self: end;
     white-space: nowrap;
   }
@@ -99,7 +99,7 @@ caffold-git-diff-changes-tree {
     margin: 0;
     overflow: auto;
     overscroll-behavior: contain;
-    padding: 4px 0;
+    padding: 0.25rem 0;
     list-style: none;
   }
 
@@ -112,7 +112,7 @@ caffold-git-diff-changes-tree {
     position: sticky;
     top: 0;
     z-index: 1;
-    padding: 8px 12px 4px;
+    padding: 0.5rem 0.75rem 0.25rem;
     background: var(--surface);
     color: var(--muted);
     font-size: 0.72rem;
@@ -187,8 +187,8 @@ caffold-git-diff-changes-tree {
     top: 0;
     right: 0;
     box-sizing: border-box;
-    width: 6px;
-    height: 6px;
+    width: var(--interface-space-3);
+    height: var(--interface-space-3);
     border: 1px solid var(--surface);
     border-radius: 50%;
     background: var(--accent);

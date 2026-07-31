@@ -17,8 +17,8 @@ caffold-codex-workspace {
 
   & .codex-workspace-close {
     position: absolute;
-    top: 12px;
-    left: 12px;
+    top: var(--interface-space-6);
+    left: var(--interface-space-6);
     z-index: 2;
     display: grid;
     place-items: center;
@@ -39,9 +39,11 @@ caffold-codex-workspace {
     outline: none;
   }
 
-  & .codex-workspace-close span {
-    font-size: 1.05rem;
-    line-height: 1;
+  & .codex-workspace-close-icon {
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+    stroke-width: 2;
   }
 }
 
@@ -50,8 +52,8 @@ caffold-codex-workspace {
     --task-header-leading-space: calc(var(--interface-control-size) + 0.5rem);
 
     & .codex-workspace-close {
-      top: 8px;
-      left: 8px;
+      top: var(--interface-space-4);
+      left: var(--interface-space-4);
     }
   }
 }

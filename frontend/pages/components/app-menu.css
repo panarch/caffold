@@ -37,14 +37,14 @@ caffold-app-menu {
 
   & .app-menu-popover {
     position: fixed;
-    inset: 42px auto auto 12px;
-    width: min(14rem, calc(100vw - 24px));
+    inset: 2.625rem auto auto var(--interface-space-6);
+    width: min(14rem, calc(100vw - 1.5rem));
     margin: 0;
     border: 1px solid var(--border);
     border-radius: 6px;
     background: var(--surface);
     color: var(--text);
-    padding: 4px;
+    padding: var(--interface-space-2);
     box-shadow: 0 12px 28px rgb(24 32 27 / 18%);
   }
 
@@ -72,8 +72,9 @@ caffold-app-menu {
   }
 
   & .app-menu-item-icon {
-    width: 1rem;
-    height: 1rem;
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
   }
 }
 
@@ -81,7 +82,7 @@ caffold-app-menu {
   caffold-app-menu {
     & .app-menu-button {
       grid-template-columns: auto;
-      padding-inline: 2px;
+      padding-inline: 0.125rem;
     }
 
     & .app-menu-name {
@@ -89,7 +90,7 @@ caffold-app-menu {
     }
 
     & .app-menu-popover {
-      inset-inline: 10px;
+      inset-inline: var(--interface-space-5);
       width: auto;
     }
   }

@@ -5,7 +5,7 @@ caffold-git-review-controls {
 
   & .git-review-controls {
     display: flex;
-    gap: 6px;
+    gap: var(--interface-control-gap);
     align-items: center;
     justify-content: flex-end;
     min-width: 0;
@@ -42,13 +42,14 @@ caffold-git-review-controls {
   }
 
   & .git-review-refresh-icon {
-    width: 16px;
-    height: 16px;
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
   }
 
   & .review-compare-ref-controls {
     display: flex;
-    gap: 6px;
+    gap: var(--interface-control-gap);
     align-items: center;
     min-width: 0;
     flex: 1 1 auto;

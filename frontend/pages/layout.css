@@ -32,12 +32,12 @@ caffold-app-shell {
 
   & .app-build {
     position: fixed;
-    right: 5px;
-    bottom: max(3px, env(safe-area-inset-bottom));
+    right: 0.3125rem;
+    bottom: max(0.1875rem, env(safe-area-inset-bottom));
     z-index: 1000;
-    max-width: calc(100vw - 10px);
+    max-width: calc(100vw - 0.625rem);
     overflow: hidden;
-    padding: 1px 3px;
+    padding: 0.0625rem 0.1875rem;
     border-radius: 2px;
     background: rgb(255 255 255 / 82%);
     color: var(--muted);

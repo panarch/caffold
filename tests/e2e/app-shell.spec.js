@@ -382,6 +382,36 @@ test("groups header review actions into Git, GitHub, and Codex popovers", async 
   await expect(gitBrandIcon).toBeVisible();
   await expect(githubBrandIcon).toBeVisible();
   await expect(codexBrandIcon).toBeVisible();
+  const headerActionGeometry = await page
+    .locator("caffold-header-actions .header-action-group-button")
+    .evaluateAll((buttons) =>
+      buttons.map((button) => {
+        const icon = button.querySelector(".header-action-icon");
+        const controlBox = button.getBoundingClientRect();
+        const iconBox = icon.getBoundingClientRect();
+        return {
+          controlWidth: controlBox.width,
+          controlHeight: controlBox.height,
+          iconWidth: iconBox.width,
+          iconHeight: iconBox.height,
+          centerDeltaX: Math.abs(
+            controlBox.left + controlBox.width / 2 -
+              (iconBox.left + iconBox.width / 2),
+          ),
+          centerDeltaY: Math.abs(
+            controlBox.top + controlBox.height / 2 -
+              (iconBox.top + iconBox.height / 2),
+          ),
+        };
+      }),
+    );
+  for (const geometry of headerActionGeometry) {
+    expect(geometry.controlWidth).toBeCloseTo(geometry.controlHeight, 1);
+    expect(geometry.iconWidth).toBeCloseTo(geometry.iconHeight, 1);
+    expect(geometry.centerDeltaX).toBeLessThanOrEqual(0.5);
+    expect(geometry.centerDeltaY).toBeLessThanOrEqual(0.5);
+  }
+  expect(new Set(headerActionGeometry.map(({ iconWidth }) => iconWidth)).size).toBe(1);
   await expect(gitBrandIcon).toHaveAttribute(
     "src",
     "/assets/brand/git-logomark-light.svg",

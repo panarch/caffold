@@ -12,9 +12,9 @@ caffold-tasks-page {
     grid-auto-flow: column;
     align-items: center;
     justify-content: center;
-    gap: 6px;
+    gap: var(--interface-control-gap);
     min-height: var(--interface-control-size);
-    padding: 5px 10px;
+    padding: var(--interface-space-2) var(--interface-control-padding-inline);
     border: 1px solid var(--border);
     border-radius: 5px;
     background: var(--surface);
@@ -43,8 +43,9 @@ caffold-tasks-page {
   }
 
   & .task-action-icon {
-    width: 16px;
-    height: 16px;
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
     stroke-width: 2;
   }
 }

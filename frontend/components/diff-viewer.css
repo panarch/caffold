@@ -79,19 +79,19 @@ caffold-diff-viewer {
 
   & .diff-old-line,
   & .diff-new-line {
-    padding: 0 8px;
+    padding: 0 0.5rem;
     text-align: right;
   }
 
   & .diff-prefix {
-    padding: 0 6px;
+    padding: 0 0.375rem;
     text-align: center;
   }
 
   & .diff-code {
     min-width: 0;
     white-space: pre;
-    padding: 0 12px;
+    padding: 0 0.75rem;
   }
 
   & .diff-row-metadata {

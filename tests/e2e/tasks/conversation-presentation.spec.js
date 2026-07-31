@@ -186,6 +186,41 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   await expect(taskDetailsPopover).toContainText("Worktree");
   await expect(taskDetailsPopover).toContainText("Branch");
   await expect(taskDetailsPopover).toContainText("main");
+  const detailActionGeometry = await tasksPage
+    .locator(
+      ".task-detail-actions > button, .task-detail-actions > details > summary, .task-detail-info-button",
+    )
+    .evaluateAll((controls) =>
+      controls.map((control) => {
+        const icon = control.querySelector("svg, img");
+        const controlBox = control.getBoundingClientRect();
+        const iconBox = icon.getBoundingClientRect();
+        return {
+          iconOnly:
+            control.matches(".task-brand-button, .task-detail-info-button") ||
+            control.classList.contains("task-icon-button"),
+          iconWidth: iconBox.width,
+          iconHeight: iconBox.height,
+          centerDeltaX: Math.abs(
+            controlBox.left + controlBox.width / 2 -
+              (iconBox.left + iconBox.width / 2),
+          ),
+          centerDeltaY: Math.abs(
+            controlBox.top + controlBox.height / 2 -
+              (iconBox.top + iconBox.height / 2),
+          ),
+        };
+      }),
+    );
+  expect(detailActionGeometry.length).toBeGreaterThan(2);
+  for (const geometry of detailActionGeometry) {
+    expect(geometry.iconWidth).toBeCloseTo(geometry.iconHeight, 1);
+    if (geometry.iconOnly) {
+      expect(geometry.centerDeltaX).toBeLessThanOrEqual(0.5);
+    }
+    expect(geometry.centerDeltaY).toBeLessThanOrEqual(0.5);
+  }
+  expect(new Set(detailActionGeometry.map(({ iconWidth }) => iconWidth)).size).toBe(1);
   if (testInfo.project.name === "phone") {
     const mobileHeaderMetrics = await tasksPage.evaluate((element) => {
       const header = element.querySelector(".tasks-header").getBoundingClientRect();
