@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:appearance": "node --test tests/appearance-*.test.mjs",
     "test:css-ownership": "node --test tests/css-ownership.test.mjs",
     "test:codex-protocol": "node --test tests/codex-protocol.test.mjs",
     "test:routes": "node --test tests/navigation-routes.test.mjs",
