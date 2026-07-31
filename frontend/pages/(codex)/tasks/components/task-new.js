@@ -290,7 +290,6 @@ class CaffoldTaskNew extends HTMLElement {
   syncComposer() {
     this.composer()?.setContext({
       mode: "create",
-      stateKey: "create",
       className: "task-new-form",
       cwd: this.selectedContextPath(),
       placeholder: "Ask Codex to work from the current directory",

@@ -16,9 +16,29 @@ const IMAGE_TYPES = new Set([
   "image/webp",
 ]);
 
+function createComposerState() {
+  return {
+    prompt: "",
+    images: [],
+    imageError: "",
+    model: "",
+    effort: "",
+    modelExplicit: false,
+    permissionMode: "",
+    permissionExplicit: false,
+    selectionStart: 0,
+    selectionEnd: 0,
+    activeSubmissionId: "",
+  };
+}
+
 class CaffoldTaskComposer extends HTMLElement {
   connectedCallback() {
     this.ensureState();
+    if (this.listenersAttached) {
+      return;
+    }
+    this.listenersAttached = true;
     this.addEventListener("click", this.boundClick);
     this.addEventListener("input", this.boundInput);
     this.addEventListener("keydown", this.boundKeydown);
@@ -28,9 +48,16 @@ class CaffoldTaskComposer extends HTMLElement {
     window.addEventListener("resize", this.boundResize);
     document.addEventListener("click", this.boundDocumentClick);
     this.render();
+    void this.loadModels();
+    void this.loadPermissions(this.context.cwd);
   }
 
   disconnectedCallback() {
+    this.captureCurrentState();
+    if (!this.listenersAttached) {
+      return;
+    }
+    this.listenersAttached = false;
     this.removeEventListener("click", this.boundClick);
     this.removeEventListener("input", this.boundInput);
     this.removeEventListener("keydown", this.boundKeydown);
@@ -52,7 +79,6 @@ class CaffoldTaskComposer extends HTMLElement {
     this.stateReady = true;
     this.context = {
       mode: "create",
-      stateKey: "create",
       cwd: ".",
       placeholder: "",
       ariaLabel: "Task prompt",
@@ -62,7 +88,8 @@ class CaffoldTaskComposer extends HTMLElement {
       settingsLocked: false,
       requestError: "",
     };
-    this.states = new Map();
+    this.state = createComposerState();
+    this.boundThreadId = "";
     this.activeSubmissions = new Map();
     this.submissionSequence = 0;
     this.modelOptions = [];
@@ -99,21 +126,30 @@ class CaffoldTaskComposer extends HTMLElement {
 
   setContext(context = {}) {
     this.ensureState();
-    const previousKey = this.context.stateKey;
-    const nextKey = `${context.stateKey ?? context.threadId ?? previousKey ?? "create"}`;
-    const stateChanged = nextKey !== previousKey;
+    const nextMode = `${context.mode ?? this.context.mode ?? "create"}`;
+    const nextThreadId =
+      `${context.threadId ?? this.context.threadId ?? ""}`.trim();
+    if (nextMode === "follow-up" && nextThreadId) {
+      if (this.boundThreadId && this.boundThreadId !== nextThreadId) {
+        throw new Error(
+          `Task Composer is already bound to thread ${this.boundThreadId}.`,
+        );
+      }
+      this.boundThreadId = nextThreadId;
+    }
     this.captureCurrentState();
     this.context = {
       ...this.context,
       ...context,
-      stateKey: nextKey,
+      mode: nextMode,
+      threadId: nextThreadId,
       cwd: cleanLogicalPath(context.cwd ?? this.context.cwd ?? "."),
       disabled: Boolean(context.disabled),
       settingsLocked: Boolean(context.settingsLocked),
       requestError: `${context.requestError ?? ""}`,
     };
     this.setAttribute("data-composer-mode", this.context.mode);
-    const state = this.stateFor(nextKey);
+    const state = this.stateFor();
     if (context.model && !state.modelExplicit) {
       state.model = `${context.model}`;
     }
@@ -126,12 +162,14 @@ class CaffoldTaskComposer extends HTMLElement {
     ) {
       state.permissionMode = `${context.permissionMode}`;
     }
-    if (stateChanged || this.context.disabled || this.context.settingsLocked) {
+    if (this.context.disabled || this.context.settingsLocked) {
       this.openPicker = "";
     }
     this.render();
-    void this.loadModels();
-    void this.loadPermissions(this.context.cwd);
+    if (this.isConnected) {
+      void this.loadModels();
+      void this.loadPermissions(this.context.cwd);
+    }
   }
 
   resolveSubmission(submissionId, result = {}) {
@@ -141,7 +179,7 @@ class CaffoldTaskComposer extends HTMLElement {
       return false;
     }
     this.activeSubmissions.delete(submissionId);
-    const state = this.stateFor(submission.stateKey);
+    const state = this.stateFor();
     if (state.activeSubmissionId === submissionId) {
       state.activeSubmissionId = "";
     }
@@ -164,10 +202,24 @@ class CaffoldTaskComposer extends HTMLElement {
     return true;
   }
 
-  resetOverrides(stateKey = this.context.stateKey) {
-    const state = this.stateFor(stateKey);
+  resetOverrides() {
+    const state = this.stateFor();
     state.modelExplicit = false;
     state.permissionExplicit = false;
+  }
+
+  hasRestorableState() {
+    this.captureCurrentState();
+    const state = this.stateFor();
+    return Boolean(
+      state.prompt.trim() ||
+        state.images.length ||
+        state.imageError ||
+        state.modelExplicit ||
+        state.permissionExplicit ||
+        this.activeSubmissionFor() ||
+        this.context.requestError,
+    );
   }
 
   focus() {
@@ -181,30 +233,12 @@ class CaffoldTaskComposer extends HTMLElement {
     }
   }
 
-  stateFor(key = this.context.stateKey) {
-    const stateKey = `${key || "create"}`;
-    let state = this.states.get(stateKey);
-    if (!state) {
-      state = {
-        prompt: "",
-        images: [],
-        imageError: "",
-        model: "",
-        effort: "",
-        modelExplicit: false,
-        permissionMode: "",
-        permissionExplicit: false,
-        selectionStart: 0,
-        selectionEnd: 0,
-        activeSubmissionId: "",
-      };
-      this.states.set(stateKey, state);
-    }
-    return state;
+  stateFor() {
+    return this.state;
   }
 
-  activeSubmissionFor(key = this.context.stateKey) {
-    const submissionId = this.stateFor(key).activeSubmissionId;
+  activeSubmissionFor() {
+    const submissionId = this.stateFor().activeSubmissionId;
     return submissionId
       ? this.activeSubmissions.get(submissionId) ?? null
       : null;
@@ -316,17 +350,16 @@ class CaffoldTaskComposer extends HTMLElement {
     if (!this.modelOptions.length) {
       return;
     }
-    for (const state of this.states.values()) {
-      const model =
-        this.modelOptions.find((option) => option.model === state.model) ??
-        this.modelOptions.find((option) => option.isDefault) ??
-        this.modelOptions[0];
-      state.model ||= model.model;
-      state.effort ||=
-        model.defaultReasoningEffort ||
-        model.supportedReasoningEfforts[0]?.value ||
-        "";
-    }
+    const state = this.stateFor();
+    const model =
+      this.modelOptions.find((option) => option.model === state.model) ??
+      this.modelOptions.find((option) => option.isDefault) ??
+      this.modelOptions[0];
+    state.model ||= model.model;
+    state.effort ||=
+      model.defaultReasoningEffort ||
+      model.supportedReasoningEfforts[0]?.value ||
+      "";
   }
 
   selectedModel() {
@@ -583,7 +616,6 @@ class CaffoldTaskComposer extends HTMLElement {
     }
     const submission = {
       id: submissionId,
-      stateKey: this.context.stateKey,
       prompt,
       images: [...state.images],
       hadFocus: form.contains(document.activeElement),

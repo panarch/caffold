@@ -546,12 +546,15 @@ test("preserves stable detail children through another task load failure", async
   await tasksPage.evaluate((element) => {
     const markers = new Map([
       ["conversation", "caffold-task-conversation"],
-      ["composer", "caffold-task-composer"],
+      ["composer", "caffold-task-detail caffold-task-composer"],
       ["review", "caffold-task-review"],
     ]);
     for (const [name, selector] of markers) {
       element.querySelector(selector).dataset.stableChild = name;
     }
+    window.__stableTaskComposer = element.querySelector(
+      "caffold-task-detail caffold-task-composer",
+    );
   });
   const conversation = tasksPage.locator(
     '[data-stable-child="conversation"]',
@@ -571,9 +574,18 @@ test("preserves stable detail children through another task load failure", async
     "Codex app-server request timed out.",
   );
   await expect(conversation).toHaveCount(1);
-  await expect(
-    tasksPage.locator('[data-stable-child="composer"]'),
-  ).toHaveCount(1);
+  await expect
+    .poll(() =>
+      tasksPage.evaluate((element) => {
+        const detail = element.querySelector("caffold-task-detail");
+        return (
+          detail.followUpComposers?.get("thread-stable-a") ===
+            window.__stableTaskComposer &&
+          !window.__stableTaskComposer.isConnected
+        );
+      }),
+    )
+    .toBe(true);
   await expect(
     tasksPage.locator('[data-stable-child="review"]'),
   ).toHaveCount(1);
@@ -595,6 +607,172 @@ test("preserves stable detail children through another task load failure", async
     .click();
   await expect(tasksPage).toContainText("Stable task A canonical response.");
   await expect(prompt).toHaveValue("Draft retained for task A");
+  await expect(
+    tasksPage.locator('[data-stable-child="composer"]'),
+  ).toHaveCount(1);
+});
+test("keeps one Composer per thread with a bounded clean inactive cache", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop",
+    "Wide master-detail Composer ownership regression",
+  );
+  await installTaskApiFixture(page);
+  await page.unroute("**/api/tasks");
+
+  const now = Date.now();
+  const threadIds = Array.from(
+    { length: 9 },
+    (_, index) => `thread-composer-cache-${index}`,
+  );
+  const details = new Map(
+    threadIds.map((threadId, index) => {
+      const detail = taskDetailFixture({
+        model: "gpt-test",
+        reasoningEffort: "medium",
+      });
+      detail.threadId = threadId;
+      detail.task = {
+        ...detail.task,
+        id: threadId,
+        threadId,
+        title: `Composer cache task ${index}`,
+        preview: `Composer cache preview ${index}`,
+        createdMs: now + index,
+        updatedMs: now + index,
+        recencyMs: now + index,
+      };
+      return [threadId, detail];
+    }),
+  );
+  let promptRequests = 0;
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: {
+        tasks: threadIds.map((threadId) => details.get(threadId).task),
+        nextCursor: null,
+      },
+    }),
+  );
+  await page.route(
+    /\/api\/tasks\/thread-composer-cache-\d+(?:\?|$)/,
+    (route) => {
+      const threadId = new URL(route.request().url()).pathname.split("/").at(-1);
+      return route.fulfill({ json: details.get(threadId) });
+    },
+  );
+  await page.route(
+    /\/api\/tasks\/thread-composer-cache-\d+\/prompts(?:\?|$)/,
+    (route) => {
+      promptRequests += 1;
+      const threadId = new URL(route.request().url()).pathname.split("/").at(-2);
+      return route.fulfill({
+        json: { threadId, turnId: `${threadId}-turn`, steered: false },
+      });
+    },
+  );
+
+  await page.goto(`/tasks/${threadIds[0]}?cwd=src`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const prompt = tasksPage.getByRole("textbox", { name: "Follow-up prompt" });
+  await prompt.fill("Keep this thread-specific draft");
+  await tasksPage.evaluate((element) => {
+    const detail = element.querySelector("caffold-task-detail");
+    const composer = detail.followUpComposer();
+    composer.dataset.cacheIdentity = "stateful";
+    window.__statefulTaskComposer = composer;
+  });
+
+  await tasksPage.evaluate(async (element, threadId) => {
+    await element.querySelector("caffold-task-detail").open(threadId);
+    const detail = element.querySelector("caffold-task-detail");
+    window.__oldestCleanTaskComposer =
+      detail.followUpComposers.get(threadId);
+  }, threadIds[1]);
+  for (const threadId of threadIds.slice(2)) {
+    await tasksPage.evaluate(async (element, targetThreadId) => {
+      await element.querySelector("caffold-task-detail").open(targetThreadId);
+    }, threadId);
+  }
+
+  const cache = await tasksPage.evaluate((element, ids) => {
+    const detail = element.querySelector("caffold-task-detail");
+    const active = detail.followUpComposer();
+    return {
+      keys: [...detail.followUpComposers.keys()],
+      statefulRetained:
+        detail.followUpComposers.get(ids[0]) ===
+        window.__statefulTaskComposer,
+      statefulConnected: window.__statefulTaskComposer.isConnected,
+      oldestCleanRetained: detail.followUpComposers.has(ids[1]),
+      oldestCleanConnected: window.__oldestCleanTaskComposer.isConnected,
+      activeThreadId: active?.dataset.threadId ?? "",
+      connectedComposers: element.querySelectorAll(
+        "caffold-task-detail caffold-task-composer",
+      ).length,
+    };
+  }, threadIds);
+  expect(cache.keys).toHaveLength(8);
+  expect(cache.statefulRetained).toBe(true);
+  expect(cache.statefulConnected).toBe(false);
+  expect(cache.oldestCleanRetained).toBe(false);
+  expect(cache.oldestCleanConnected).toBe(false);
+  expect(cache.activeThreadId).toBe(threadIds.at(-1));
+  expect(cache.connectedComposers).toBe(1);
+
+  const staleSubmission = await tasksPage.evaluate(
+    async (element, { staleThreadId, activeThreadId }) => {
+      const detail = element.querySelector("caffold-task-detail");
+      const composer = window.__statefulTaskComposer;
+      const originalResolve = composer.resolveSubmission.bind(composer);
+      let resolution = null;
+      composer.resolveSubmission = (submissionId, result) => {
+        resolution = result;
+        return originalResolve(submissionId, result);
+      };
+      await detail.sendFollowUpSubmission(composer, {
+        submissionId: "stale-submission",
+        threadId: staleThreadId,
+        prompt: "Do not send this stale prompt",
+      });
+      return {
+        selectedThreadId: detail.selectedThreadId,
+        activeThreadId,
+        resolutionStatus: resolution?.status ?? "",
+      };
+    },
+    {
+      staleThreadId: threadIds[0],
+      activeThreadId: threadIds.at(-1),
+    },
+  );
+  expect(staleSubmission).toEqual({
+    selectedThreadId: threadIds.at(-1),
+    activeThreadId: threadIds.at(-1),
+    resolutionStatus: "rejected",
+  });
+  expect(promptRequests).toBe(0);
+
+  await tasksPage.evaluate(async (element, threadId) => {
+    const detail = element.querySelector("caffold-task-detail");
+    await detail.open(threadId);
+    if (
+      detail.followUpComposer() !== detail.followUpComposers.get(threadId)
+    ) {
+      throw new Error("The activated clean cached Composer was evicted.");
+    }
+  }, threadIds[2]);
+  await tasksPage.evaluate(async (element, threadId) => {
+    await element.querySelector("caffold-task-detail").open(threadId);
+  }, threadIds[0]);
+  await expect(
+    tasksPage.locator(
+      'caffold-task-composer[data-cache-identity="stateful"]',
+    ),
+  ).toBeVisible();
+  await expect(prompt).toHaveValue("Keep this thread-specific draft");
 });
 test("accepts canonical task detail after stream revisions restart", async ({ page }) => {
   await page.addInitScript(() => {

@@ -35,10 +35,16 @@ import {
   taskThreadId,
 } from "../task-list-model.js";
 
+const CLEAN_COMPOSER_CACHE_LIMIT = 6;
+
 class CaffoldTaskDetail extends HTMLElement {
   connectedCallback() {
+    const reconnecting = Boolean(this.rendered);
     this.ensureRendered();
     this.attachGlobalListeners();
+    if (reconnecting) {
+      this.render();
+    }
   }
 
   ensureRendered() {
@@ -77,6 +83,10 @@ class CaffoldTaskDetail extends HTMLElement {
     this.conversationUpdateKind = null;
     this.initialConversationLoad = null;
     this.followUpRequests = new Map();
+    this.followUpComposers = new Map();
+    this.followUpComposerLastUsed = new Map();
+    this.followUpComposerUseSequence = 0;
+    this.activeFollowUpComposerThreadId = "";
     this.reviewView = "conversation";
     this.boundIconsReady = () => {
       this.render();
@@ -155,6 +165,7 @@ class CaffoldTaskDetail extends HTMLElement {
   disconnectedCallback() {
     this.detachGlobalListeners();
     this.deactivate();
+    this.disposeFollowUpComposers();
   }
 
   prepare(threadId, options = {}) {
@@ -179,6 +190,7 @@ class CaffoldTaskDetail extends HTMLElement {
     }
 
     if (this.selectedThreadId !== targetThreadId) {
+      this.deactivateFollowUpComposer();
       this.detailLoadGeneration += 1;
       this.historyRequestToken += 1;
       this.interruptActionToken += 1;
@@ -251,6 +263,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.loadingOlderEvents = false;
     this.initialConversationLoad = null;
     this.detailStream.deactivate();
+    this.deactivateFollowUpComposer();
     this.taskSummary()?.deactivate();
     this.taskReview()?.deactivate();
     this.hidden = true;
@@ -668,9 +681,19 @@ class CaffoldTaskDetail extends HTMLElement {
       });
       return;
     }
-    if (this.selectedThreadId !== threadId) {
-      this.selectedThreadId = threadId;
-      this.activateThreadEvents(threadId);
+    if (
+      this.selectedThreadId !== threadId ||
+      taskThreadId(this.taskDetail?.task) !== threadId ||
+      this.followUpComposers.get(threadId) !== composer ||
+      this.followUpComposer() !== composer
+    ) {
+      composer.resolveSubmission(submissionId, {
+        status: "rejected",
+        error: new Error(
+          "This prompt belongs to a task that is no longer selected.",
+        ),
+      });
+      return;
     }
     if (isTaskTransportStale(this.detailStream.state)) {
       composer.resolveSubmission(submissionId, {
@@ -757,7 +780,7 @@ class CaffoldTaskDetail extends HTMLElement {
         ),
       );
       if (!response?.steered) {
-        composer.resetOverrides(threadId);
+        composer.resetOverrides();
       }
       composer.resolveSubmission(submissionId, {
         status: "accepted",
@@ -809,6 +832,7 @@ class CaffoldTaskDetail extends HTMLElement {
       if (this.followUpRequests.get(threadId) === followUpRequest) {
         this.followUpRequests.delete(threadId);
       }
+      this.pruneFollowUpComposerCache();
       if (threadId === this.selectedThreadId) {
         this.render();
       }
@@ -975,8 +999,8 @@ class CaffoldTaskDetail extends HTMLElement {
     this.ensureTaskShell();
     this.renderTaskContentRegion();
     this.syncTaskSummary();
-    this.syncConversationSnapshot();
     this.syncFollowUpComposer();
+    this.syncConversationSnapshot();
     this.syncTaskReview();
     this.applyReviewView(this.taskReview()?.view ?? this.reviewView, {
       dispatch: false,
@@ -1006,9 +1030,120 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   followUpComposer() {
+    return this.activeFollowUpComposerThreadId
+      ? this.followUpComposers.get(this.activeFollowUpComposerThreadId) ?? null
+      : null;
+  }
+
+  followUpComposerSlot() {
     return this.querySelector(
-      ".task-conversation-pane caffold-task-composer",
+      ".task-conversation-pane .task-follow-up-composer-slot",
     );
+  }
+
+  ensureFollowUpComposer(threadId) {
+    let composer = this.followUpComposers.get(threadId);
+    if (composer) {
+      return composer;
+    }
+    composer = document.createElement("caffold-task-composer");
+    composer.dataset.threadId = threadId;
+    this.followUpComposers.set(threadId, composer);
+    this.followUpComposerLastUsed.set(
+      threadId,
+      ++this.followUpComposerUseSequence,
+    );
+    return composer;
+  }
+
+  activateFollowUpComposer(threadId) {
+    const composer = this.followUpComposers.get(threadId);
+    const slot = this.followUpComposerSlot();
+    if (!composer || !slot) {
+      return null;
+    }
+    if (
+      this.activeFollowUpComposerThreadId &&
+      this.activeFollowUpComposerThreadId !== threadId
+    ) {
+      this.deactivateFollowUpComposer({ prune: false });
+    }
+    this.activeFollowUpComposerThreadId = threadId;
+    this.followUpComposerLastUsed.set(
+      threadId,
+      ++this.followUpComposerUseSequence,
+    );
+    if (composer.parentElement !== slot) {
+      slot.replaceChildren(composer);
+    }
+    this.pruneFollowUpComposerCache();
+    return composer;
+  }
+
+  deactivateFollowUpComposer({ prune = true } = {}) {
+    const threadId = this.activeFollowUpComposerThreadId;
+    if (!threadId) {
+      return;
+    }
+    const composer = this.followUpComposers.get(threadId);
+    composer?.remove();
+    this.followUpComposerLastUsed.set(
+      threadId,
+      ++this.followUpComposerUseSequence,
+    );
+    this.activeFollowUpComposerThreadId = "";
+    if (prune) {
+      this.pruneFollowUpComposerCache();
+    }
+  }
+
+  shouldRetainFollowUpComposer(threadId, composer) {
+    if (
+      composer.hasRestorableState() ||
+      this.followUpRequests.has(threadId)
+    ) {
+      return true;
+    }
+    return (this.eventsByThread.get(threadId) ?? []).some(
+      (event) =>
+        event?.type === "user_message" &&
+        promptSubmissionState(event) ===
+          PROMPT_SUBMISSION_STATE.OUTCOME_UNKNOWN,
+    );
+  }
+
+  pruneFollowUpComposerCache() {
+    const cleanInactive = [...this.followUpComposers.entries()]
+      .filter(
+        ([threadId, composer]) =>
+          threadId !== this.activeFollowUpComposerThreadId &&
+          !this.shouldRetainFollowUpComposer(threadId, composer),
+      )
+      .sort(
+        ([leftThreadId], [rightThreadId]) =>
+          (this.followUpComposerLastUsed.get(leftThreadId) ?? 0) -
+          (this.followUpComposerLastUsed.get(rightThreadId) ?? 0),
+      );
+    for (
+      let index = 0;
+      index < cleanInactive.length - CLEAN_COMPOSER_CACHE_LIMIT;
+      index += 1
+    ) {
+      const [threadId, composer] = cleanInactive[index];
+      composer.remove();
+      this.followUpComposers.delete(threadId);
+      this.followUpComposerLastUsed.delete(threadId);
+    }
+  }
+
+  disposeFollowUpComposers() {
+    for (const composer of this.followUpComposers.values()) {
+      composer.remove();
+    }
+    this.followUpComposers.clear();
+    this.followUpComposerLastUsed.clear();
+    this.followUpComposerUseSequence = 0;
+    this.activeFollowUpComposerThreadId = "";
   }
 
   taskReview() {
@@ -1037,15 +1172,19 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   syncFollowUpComposer() {
-    const composer = this.followUpComposer();
     const task = this.taskDetail?.task ?? null;
     const threadId = taskThreadId(task);
-    if (!composer || !task || threadId !== this.selectedThreadId) {
+    if (
+      !task ||
+      threadId !== this.selectedThreadId ||
+      !this.followUpComposerSlot()
+    ) {
+      this.deactivateFollowUpComposer();
       return;
     }
+    const composer = this.ensureFollowUpComposer(threadId);
     composer.setContext({
       mode: "follow-up",
-      stateKey: threadId,
       threadId,
       cwd: this.activeCwdPath(),
       className: "task-follow-up-form",
@@ -1059,6 +1198,7 @@ class CaffoldTaskDetail extends HTMLElement {
       permissionMode: `${this.taskDetail?.permissionMode ?? ""}`.trim(),
       requestError: this.error?.message ?? "",
     });
+    this.activateFollowUpComposer(threadId);
   }
 
   syncTaskReview() {
@@ -1167,12 +1307,26 @@ class CaffoldTaskDetail extends HTMLElement {
         currentDetail.insertBefore(nextSummary, currentConversation);
       }
       if (nextConversation && currentConversation) {
-        const stableChildren = new Map(
-          ["caffold-task-conversation", "caffold-task-composer"].map((tag) => [
-            tag,
-            currentConversation.querySelector(`:scope > ${tag}`),
-          ]),
-        );
+        const stableChildren = new Map([
+          [
+            "conversation",
+            currentConversation.querySelector(
+              ":scope > caffold-task-conversation",
+            ),
+          ],
+          [
+            "composer-slot",
+            currentConversation.querySelector(
+              ":scope > .task-follow-up-composer-slot",
+            ),
+          ],
+        ]);
+        const stableChildKey = (child) =>
+          child.matches("caffold-task-conversation")
+            ? "conversation"
+            : child.matches(".task-follow-up-composer-slot")
+              ? "composer-slot"
+              : "";
         [...currentConversation.children].forEach((child) => {
           if (![...stableChildren.values()].includes(child)) {
             child.remove();
@@ -1180,7 +1334,8 @@ class CaffoldTaskDetail extends HTMLElement {
         });
         let insertionPoint = currentConversation.firstElementChild;
         [...nextConversation.children].forEach((child) => {
-          const desiredChild = stableChildren.get(child.localName) ?? child;
+          const desiredChild =
+            stableChildren.get(stableChildKey(child)) ?? child;
           if (desiredChild === insertionPoint) {
             insertionPoint = insertionPoint.nextElementSibling;
           } else {
@@ -1294,7 +1449,7 @@ class CaffoldTaskDetail extends HTMLElement {
         <section class="task-conversation-pane" aria-label="Task conversation">
           <caffold-task-conversation></caffold-task-conversation>
           ${this.renderStreamState()}
-          <caffold-task-composer></caffold-task-composer>
+          <div class="task-follow-up-composer-slot"></div>
         </section>
         <caffold-task-review></caffold-task-review>
       </div>

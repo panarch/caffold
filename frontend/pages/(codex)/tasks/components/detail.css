@@ -172,6 +172,10 @@ caffold-task-detail {
     overflow: hidden;
   }
 
+  & .task-follow-up-composer-slot {
+    display: contents;
+  }
+
   & .task-detail[data-task-detail-view="files"] .task-conversation-pane,
   & .task-detail[data-task-detail-view="diff"] .task-conversation-pane {
     display: none;
