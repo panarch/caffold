@@ -1,4 +1,9 @@
 import { PROMPT_SUBMISSION_STATE } from "./runtime-state.js";
+import {
+  cleanRelativeTaskPath,
+  normalizeTaskPath,
+  uniquePaths,
+} from "./task-format.js";
 
 export function conversationGroups(events) {
   const groups = [];
@@ -153,6 +158,70 @@ export function pendingApprovals(events) {
     }
   }
   return [...pending.values()];
+}
+
+export function fileChangePaths(events) {
+  return uniquePaths(
+    events.flatMap((event) => {
+      if (event?.type !== "file_change" || !Array.isArray(event.payload?.changes)) {
+        return [];
+      }
+      return event.payload.changes
+        .map((change) =>
+          normalizeTaskPath(
+            typeof change === "string" ? change : change?.path,
+          ),
+        )
+        .filter(Boolean);
+    }),
+  );
+}
+
+export function latestTaskRelatedWorktreePaths(events, task) {
+  const groups = conversationGroups(dedupeCanonicalEvents(events));
+  for (let index = groups.length - 1; index >= 0; index -= 1) {
+    const group = groups[index];
+    if (group.kind !== "turn") {
+      continue;
+    }
+
+    const paths = uniquePaths(
+      fileChangePaths(group.events)
+        .map((path) => taskFileWorktreePath(path, task))
+        .filter(Boolean),
+    );
+    if (paths.length) {
+      return paths;
+    }
+  }
+  return [];
+}
+
+function taskFileWorktreePath(path, task) {
+  const rawPath = normalizeTaskPath(path);
+  if (!rawPath) {
+    return "";
+  }
+
+  const cwd = normalizeTaskPath(task?.cwd);
+  const relativeCwd = cleanRelativeTaskPath(task?.worktree?.relativeCwd);
+  let relativePath = rawPath;
+
+  if (cwd && (rawPath === cwd || rawPath.startsWith(`${cwd}/`))) {
+    relativePath = rawPath.slice(cwd.length).replace(/^\/+/, "");
+  } else {
+    relativePath = rawPath.replace(/^\/+/, "");
+  }
+
+  if (
+    relativeCwd &&
+    relativePath !== relativeCwd &&
+    !relativePath.startsWith(`${relativeCwd}/`)
+  ) {
+    relativePath = `${relativeCwd}/${relativePath}`;
+  }
+
+  return cleanRelativeTaskPath(relativePath);
 }
 
 export function upsertEvent(events, event) {

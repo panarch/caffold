@@ -1,4 +1,4 @@
-const CACHE_NAME = "caffold-shell-v90";
+const CACHE_NAME = "caffold-shell-v91";
 
 const APP_SHELL_ASSETS = [
   "/",
@@ -52,21 +52,21 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(codex)/tasks/page.css",
   "/assets/pages/(codex)/tasks/page.js",
   "/assets/pages/(codex)/tasks/runtime-state.js",
-  "/assets/pages/(codex)/tasks/conversation-render.js",
   "/assets/pages/(codex)/tasks/task-events.js",
   "/assets/pages/(codex)/tasks/task-format.js",
   "/assets/pages/(codex)/tasks/task-list-model.js",
-  "/assets/pages/(codex)/tasks/components/markdown.js",
   "/assets/pages/(codex)/tasks/components/composer.css",
   "/assets/pages/(codex)/tasks/components/composer.js",
-  "/assets/pages/(codex)/tasks/components/conversation.css",
-  "/assets/pages/(codex)/tasks/components/conversation.js",
   "/assets/pages/(codex)/tasks/components/detail.css",
   "/assets/pages/(codex)/tasks/components/detail.js",
+  "/assets/pages/(codex)/tasks/components/detail/conversation.css",
+  "/assets/pages/(codex)/tasks/components/detail/conversation.js",
+  "/assets/pages/(codex)/tasks/components/detail/conversation/markdown.js",
+  "/assets/pages/(codex)/tasks/components/detail/conversation/render.js",
+  "/assets/pages/(codex)/tasks/components/detail/review.css",
+  "/assets/pages/(codex)/tasks/components/detail/review.js",
   "/assets/pages/(codex)/tasks/components/navigator.css",
   "/assets/pages/(codex)/tasks/components/navigator.js",
-  "/assets/pages/(codex)/tasks/components/review.css",
-  "/assets/pages/(codex)/tasks/components/review.js",
   "/assets/pages/(codex)/tasks/components/task-new.css",
   "/assets/pages/(codex)/tasks/components/task-new.js",
   "/assets/pages/(codex)/tasks/components/task-status.css",

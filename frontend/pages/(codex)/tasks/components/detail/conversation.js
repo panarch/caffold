@@ -1,8 +1,9 @@
-import { escapeHtml } from "../../../../components/dom.js";
-import { formatDuration } from "../task-format.js";
-import { pendingApprovals } from "../task-events.js";
-import { isTaskTransportStale } from "../runtime-state.js";
-import { renderConversation } from "../conversation-render.js";
+import { escapeHtml } from "../../../../../components/dom.js";
+import { formatDuration } from "../../task-format.js";
+import { pendingApprovals } from "../../task-events.js";
+import { isTaskTransportStale } from "../../runtime-state.js";
+import "./conversation/markdown.js";
+import { renderConversation } from "./conversation/render.js";
 
 class CaffoldTaskConversation extends HTMLElement {
   connectedCallback() {

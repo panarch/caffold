@@ -128,17 +128,11 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(codex)/tasks/task-events.js" => Some(js(include_str!(
             "../frontend/pages/(codex)/tasks/task-events.js"
         ))),
-        "pages/(codex)/tasks/conversation-render.js" => Some(js(include_str!(
-            "../frontend/pages/(codex)/tasks/conversation-render.js"
-        ))),
         "pages/(codex)/tasks/task-format.js" => Some(js(include_str!(
             "../frontend/pages/(codex)/tasks/task-format.js"
         ))),
         "pages/(codex)/tasks/task-list-model.js" => Some(js(include_str!(
             "../frontend/pages/(codex)/tasks/task-list-model.js"
-        ))),
-        "pages/(codex)/tasks/components/markdown.js" => Some(js(include_str!(
-            "../frontend/pages/(codex)/tasks/components/markdown.js"
         ))),
         "pages/(codex)/tasks/components/composer.css" => Some(css(include_str!(
             "../frontend/pages/(codex)/tasks/components/composer.css"
@@ -146,29 +140,35 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(codex)/tasks/components/composer.js" => Some(js(include_str!(
             "../frontend/pages/(codex)/tasks/components/composer.js"
         ))),
-        "pages/(codex)/tasks/components/conversation.css" => Some(css(include_str!(
-            "../frontend/pages/(codex)/tasks/components/conversation.css"
-        ))),
-        "pages/(codex)/tasks/components/conversation.js" => Some(js(include_str!(
-            "../frontend/pages/(codex)/tasks/components/conversation.js"
-        ))),
         "pages/(codex)/tasks/components/detail.css" => Some(css(include_str!(
             "../frontend/pages/(codex)/tasks/components/detail.css"
         ))),
         "pages/(codex)/tasks/components/detail.js" => Some(js(include_str!(
             "../frontend/pages/(codex)/tasks/components/detail.js"
         ))),
+        "pages/(codex)/tasks/components/detail/conversation.css" => Some(css(include_str!(
+            "../frontend/pages/(codex)/tasks/components/detail/conversation.css"
+        ))),
+        "pages/(codex)/tasks/components/detail/conversation.js" => Some(js(include_str!(
+            "../frontend/pages/(codex)/tasks/components/detail/conversation.js"
+        ))),
+        "pages/(codex)/tasks/components/detail/conversation/markdown.js" => Some(js(include_str!(
+            "../frontend/pages/(codex)/tasks/components/detail/conversation/markdown.js"
+        ))),
+        "pages/(codex)/tasks/components/detail/conversation/render.js" => Some(js(include_str!(
+            "../frontend/pages/(codex)/tasks/components/detail/conversation/render.js"
+        ))),
+        "pages/(codex)/tasks/components/detail/review.css" => Some(css(include_str!(
+            "../frontend/pages/(codex)/tasks/components/detail/review.css"
+        ))),
+        "pages/(codex)/tasks/components/detail/review.js" => Some(js(include_str!(
+            "../frontend/pages/(codex)/tasks/components/detail/review.js"
+        ))),
         "pages/(codex)/tasks/components/navigator.css" => Some(css(include_str!(
             "../frontend/pages/(codex)/tasks/components/navigator.css"
         ))),
         "pages/(codex)/tasks/components/navigator.js" => Some(js(include_str!(
             "../frontend/pages/(codex)/tasks/components/navigator.js"
-        ))),
-        "pages/(codex)/tasks/components/review.css" => Some(css(include_str!(
-            "../frontend/pages/(codex)/tasks/components/review.css"
-        ))),
-        "pages/(codex)/tasks/components/review.js" => Some(js(include_str!(
-            "../frontend/pages/(codex)/tasks/components/review.js"
         ))),
         "pages/(codex)/tasks/components/task-new.css" => Some(css(include_str!(
             "../frontend/pages/(codex)/tasks/components/task-new.css"
@@ -642,11 +642,11 @@ mod tests {
         );
         assert!(tasks_runtime_state.body.starts_with(b"export "));
         for path in [
-            "pages/(codex)/tasks/conversation-render.js",
             "pages/(codex)/tasks/task-events.js",
             "pages/(codex)/tasks/task-format.js",
             "pages/(codex)/tasks/task-list-model.js",
             "pages/(codex)/tasks/components/task-status.js",
+            "pages/(codex)/tasks/components/detail/conversation/render.js",
         ] {
             let asset = get(path).expect("tasks state module");
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
@@ -659,8 +659,8 @@ mod tests {
             get("pages/(codex)/tasks/controls.css").expect("tasks controls css");
         assert_eq!(tasks_controls_css.content_type, "text/css; charset=utf-8");
         assert!(tasks_controls_css.body.starts_with(b"caffold-tasks-page"));
-        let tasks_markdown =
-            get("pages/(codex)/tasks/components/markdown.js").expect("tasks markdown component js");
+        let tasks_markdown = get("pages/(codex)/tasks/components/detail/conversation/markdown.js")
+            .expect("tasks markdown component js");
         assert_eq!(
             tasks_markdown.content_type,
             "text/javascript; charset=utf-8"
@@ -697,7 +697,7 @@ mod tests {
                 b"caffold-task-composer".as_slice(),
             ),
             (
-                "pages/(codex)/tasks/components/conversation.js",
+                "pages/(codex)/tasks/components/detail/conversation.js",
                 b"caffold-task-conversation".as_slice(),
             ),
             (
@@ -709,7 +709,7 @@ mod tests {
                 b"caffold-task-detail".as_slice(),
             ),
             (
-                "pages/(codex)/tasks/components/review.js",
+                "pages/(codex)/tasks/components/detail/review.js",
                 b"caffold-task-review".as_slice(),
             ),
         ] {
@@ -723,7 +723,7 @@ mod tests {
                 b"caffold-task-composer".as_slice(),
             ),
             (
-                "pages/(codex)/tasks/components/conversation.css",
+                "pages/(codex)/tasks/components/detail/conversation.css",
                 b"caffold-task-conversation".as_slice(),
             ),
             (
@@ -735,7 +735,7 @@ mod tests {
                 b"caffold-task-detail".as_slice(),
             ),
             (
-                "pages/(codex)/tasks/components/review.css",
+                "pages/(codex)/tasks/components/detail/review.css",
                 b"caffold-task-review".as_slice(),
             ),
             (

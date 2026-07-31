@@ -169,7 +169,7 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain("/assets/pages/(codex)/tasks/page.js");
   expect(serviceWorker).toContain("/assets/pages/(codex)/tasks/page.css");
   expect(serviceWorker).toContain(
-    "/assets/pages/(codex)/tasks/components/markdown.js",
+    "/assets/pages/(codex)/tasks/components/detail/conversation/markdown.js",
   );
   expect(serviceWorker).not.toContain("/assets/pages/tasks/page.js");
   expect(serviceWorker).not.toContain("/assets/pages/tasks/page.css");

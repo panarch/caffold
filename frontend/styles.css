@@ -13,10 +13,10 @@
 @import "./pages/(codex)/tasks/components/task-status.css";
 @import "./pages/(codex)/tasks/page.css";
 @import "./pages/(codex)/tasks/components/composer.css";
-@import "./pages/(codex)/tasks/components/conversation.css";
 @import "./pages/(codex)/tasks/components/detail.css";
+@import "./pages/(codex)/tasks/components/detail/conversation.css";
+@import "./pages/(codex)/tasks/components/detail/review.css";
 @import "./pages/(codex)/tasks/components/navigator.css";
-@import "./pages/(codex)/tasks/components/review.css";
 @import "./pages/(codex)/tasks/components/task-new.css";
 @import "./pages/(review-workspace)/(git)/layout.css";
 @import "./pages/(review-workspace)/(git)/components/controls.css";

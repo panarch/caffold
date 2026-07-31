@@ -8,9 +8,9 @@ import {
 } from "../../../../api.js";
 import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
-import "./conversation.js";
-import "./markdown.js";
-import "./review.js";
+import "./composer.js";
+import "./detail/conversation.js";
+import "./detail/review.js";
 import { renderTaskStatusChip } from "./task-status.js";
 import {
   PROMPT_SUBMISSION_STATE,

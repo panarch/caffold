@@ -312,21 +312,25 @@ frontend/pages/
       task-events.js
       task-format.js
       task-list-model.js
-      conversation-render.js
       components/
         navigator.js
         navigator.css
         task-new.js
         task-new.css
-        detail.js
-        detail.css
-        conversation.js
-        conversation.css
         composer.js
         composer.css
-        review.js
-        review.css
-        markdown.js
+        task-status.js
+        task-status.css
+        detail.js
+        detail.css
+        detail/
+          conversation.js
+          conversation.css
+          conversation/
+            render.js
+            markdown.js
+          review.js
+          review.css
 
   (review-workspace)/
     layout.js

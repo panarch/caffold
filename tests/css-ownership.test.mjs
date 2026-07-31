@@ -38,7 +38,7 @@ const ownership = new Map([
     ["caffold-task-composer"],
   ],
   [
-    "pages/(codex)/tasks/components/conversation.css",
+    "pages/(codex)/tasks/components/detail/conversation.css",
     ["caffold-task-conversation"],
   ],
   ["pages/(codex)/tasks/components/detail.css", ["caffold-task-detail"]],
@@ -46,7 +46,10 @@ const ownership = new Map([
     "pages/(codex)/tasks/components/navigator.css",
     ["caffold-task-navigator"],
   ],
-  ["pages/(codex)/tasks/components/review.css", ["caffold-task-review"]],
+  [
+    "pages/(codex)/tasks/components/detail/review.css",
+    ["caffold-task-review"],
+  ],
   ["pages/(codex)/tasks/components/task-new.css", ["caffold-task-new"]],
   ["pages/(codex)/tasks/components/task-status.css", ["caffold-tasks-page"]],
   ["pages/(codex)/tasks/controls.css", ["caffold-tasks-page"]],

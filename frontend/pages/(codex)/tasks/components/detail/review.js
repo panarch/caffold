@@ -1,13 +1,16 @@
-import { getGitStatus } from "../../../../api.js";
-import { escapeHtml } from "../../../../components/dom.js";
-import "../../../../components/file-browser.js";
-import "../../../../components/git-compare-browser.js";
-import "../../../../components/git-diff-browser.js";
-import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
-import { createRefreshCoordinator, subscribeToWatch } from "../../../../watch.js";
-import { latestTaskRelatedWorktreePaths } from "../conversation-render.js";
-import { cleanLogicalPath, shortId } from "../task-format.js";
-import { taskThreadId, taskWorktreeRootName } from "../task-list-model.js";
+import { getGitStatus } from "../../../../../api.js";
+import { escapeHtml } from "../../../../../components/dom.js";
+import "../../../../../components/file-browser.js";
+import "../../../../../components/git-compare-browser.js";
+import "../../../../../components/git-diff-browser.js";
+import { renderInlineIcon, warmIcons } from "../../../../../components/icons.js";
+import {
+  createRefreshCoordinator,
+  subscribeToWatch,
+} from "../../../../../watch.js";
+import { latestTaskRelatedWorktreePaths } from "../../task-events.js";
+import { cleanLogicalPath, shortId } from "../../task-format.js";
+import { taskThreadId, taskWorktreeRootName } from "../../task-list-model.js";
 
 class CaffoldTaskReview extends HTMLElement {
   connectedCallback() {
