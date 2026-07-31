@@ -1,5 +1,6 @@
 use super::super::super::*;
 use super::super::{events::*, projection::*};
+use crate::codex_app_server::{ThreadStatus, TurnStatus};
 use std::path::Path;
 
 fn git_is_available() -> bool {
@@ -1242,4 +1243,131 @@ fn task_worktree_context_is_optional_outside_git_or_rooted_fs() {
         run_test_git(&outside, &["init", "-b", "main"]);
         assert!(resolve_task_cwd(&fs, outside.to_str().unwrap()).is_none());
     }
+}
+
+#[test]
+fn current_pending_approval_does_not_change_canonical_thread_status() {
+    let temp = tempfile::tempdir().unwrap();
+    let thread = json!({
+        "id": "thread_1",
+        "preview": "Needs approval",
+        "cwd": temp.path().join("project").display().to_string(),
+        "createdAt": 1.0,
+        "updatedAt": 1.0,
+        "status": { "type": "active" }
+    });
+    let events = vec![task_event_record(
+        "thread_1",
+        "approval_requested:1",
+        "approval_requested",
+        "Command approval requested",
+        Some(json!({ "approvalId": "1" })),
+        1,
+    )];
+
+    let task = task_record_from_thread(&thread, &events, None).unwrap();
+    assert!(matches!(task.thread_status, ThreadStatus::Active { .. }));
+}
+
+#[test]
+fn resolved_approval_event_does_not_leave_idle_task_waiting() {
+    let temp = tempfile::tempdir().unwrap();
+    let thread = json!({
+        "id": "thread_1",
+        "preview": "Approval was accepted",
+        "cwd": temp.path().join("project").display().to_string(),
+        "createdAt": 1.0,
+        "updatedAt": 4.0,
+        "status": { "type": "idle" }
+    });
+    let events = vec![
+        task_event_record(
+            "thread_1",
+            "approval_requested:1",
+            "approval_requested",
+            "Command approval requested",
+            Some(json!({ "approvalId": "1" })),
+            1,
+        ),
+        task_event_record(
+            "thread_1",
+            "approval_resolved:1",
+            "approval_resolved",
+            "Approval resolved: accept",
+            Some(json!({ "approvalId": "1", "decision": "accept" })),
+            2,
+        ),
+        task_event_record(
+            "thread_1",
+            "turn_1:completed",
+            "turn_completed",
+            "Turn completed",
+            Some(json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "status": "completed"
+            })),
+            3,
+        ),
+        task_event_record(
+            "thread_1",
+            "thread_status_changed",
+            "thread_status_changed",
+            "Thread idle",
+            Some(json!({ "threadId": "thread_1", "status": "idle" })),
+            4,
+        ),
+    ];
+
+    let task = task_record_from_thread(&thread, &events, None).unwrap();
+    assert_eq!(task.thread_status, ThreadStatus::Idle);
+}
+
+#[test]
+fn completed_turn_does_not_leave_abandoned_approval_waiting() {
+    let temp = tempfile::tempdir().unwrap();
+    let thread = json!({
+        "id": "thread_1",
+        "preview": "A later prompt completed",
+        "cwd": temp.path().join("project").display().to_string(),
+        "createdAt": 1.0,
+        "updatedAt": 3.0,
+        "status": { "type": "idle" }
+    });
+    let events = vec![
+        task_event_record(
+            "thread_1",
+            "approval_requested:1",
+            "approval_requested",
+            "Command approval requested",
+            Some(json!({
+                "approvalId": "1",
+                "params": { "turnId": "turn_1" }
+            })),
+            1,
+        ),
+        task_event_record(
+            "thread_1",
+            "turn_1:completed",
+            "turn_completed",
+            "Turn completed",
+            Some(json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "status": "completed"
+            })),
+            2,
+        ),
+        task_event_record(
+            "thread_1",
+            "thread_status_changed",
+            "thread_status_changed",
+            "Thread idle",
+            Some(json!({ "threadId": "thread_1", "status": "idle" })),
+            3,
+        ),
+    ];
+
+    let task = task_record_from_thread(&thread, &events, None).unwrap();
+    assert_eq!(task.thread_status, ThreadStatus::Idle);
 }

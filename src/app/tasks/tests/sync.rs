@@ -1,6 +1,7 @@
 use super::super::super::*;
 use super::super::projection::*;
 use super::support::*;
+use crate::codex_app_server::{ThreadStatus, TurnStatus};
 
 #[tokio::test]
 async fn rollout_invalidation_never_synthesizes_thread_activity() {
@@ -150,7 +151,7 @@ async fn background_sync_timeout_broadcasts_error_and_rejects_stale_detail() {
         .expect("cached session remains tracked");
     assert!(snapshot.thread.is_some());
     assert!(snapshot.last_error.is_some());
-    assert_eq!(state.codex_threads.diagnostics().await, (1, true));
+    assert_eq!(state.codex_runtime.diagnostics().await, (1, true));
 }
 
 #[tokio::test]

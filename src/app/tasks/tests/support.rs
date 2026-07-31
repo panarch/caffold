@@ -13,11 +13,7 @@ pub(super) async fn task_state_with_codex_client(
         shutdown,
         ThreadStore::memory().expect("in-memory thread store"),
     );
-    {
-        let mut runtime = state.codex_threads.state.lock().await;
-        runtime.generation = 1;
-        runtime.client = Some(client);
-    }
+    state.codex_runtime.install_test_client(1, client).await;
     state
 }
 

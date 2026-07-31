@@ -1,5 +1,15 @@
 use super::super::super::*;
-use super::super::{events::*, projection::*};
+use super::super::{events::*, runtime::*};
+use crate::codex_app_server::CodexThreadError;
+
+fn runtime_with_events(events: TaskEvents) -> CodexRuntime {
+    let (shutdown, _) = broadcast::channel(1);
+    CodexRuntime::new(CodexThreadSessions::default(), events, shutdown)
+}
+
+fn test_runtime() -> CodexRuntime {
+    runtime_with_events(TaskEvents::default())
+}
 
 #[test]
 fn recognizes_structured_thread_unavailable_errors() {
@@ -19,202 +29,68 @@ fn recognizes_structured_thread_unavailable_errors() {
 
 #[tokio::test]
 async fn request_timeouts_keep_the_cached_codex_connection() {
-    let runtime = CodexThreadRuntime::default();
-    {
-        let mut state = runtime.state.lock().await;
-        state.generation = 7;
-        state.client = Some(CodexThreadClient::mock(Vec::new()));
-    }
-
-    assert!(
-        !runtime
-            .invalidate_after_error(
-                7,
-                &codex_app_server::CodexThreadError::RequestTimeout {
-                    method: "thread/resume",
-                    request_id: 1,
-                    timeout_ms: 120_000,
-                },
-            )
-            .await
-    );
+    let runtime = test_runtime();
+    let client = CodexThreadClient::mock(Vec::new());
+    runtime.install_test_client(7, client.clone()).await;
+    runtime
+        .recover_connection_error(
+            &CodexConnection {
+                client,
+                generation: 7,
+            },
+            &CodexThreadError::RequestTimeout {
+                method: "thread/resume",
+                request_id: 1,
+                timeout_ms: 120_000,
+            },
+        )
+        .await;
     assert_eq!(runtime.diagnostics().await, (7, true));
     runtime.shutdown().await;
 }
 
 #[tokio::test]
 async fn transport_failures_discard_the_cached_codex_connection() {
-    let runtime = CodexThreadRuntime::default();
-    {
-        let mut state = runtime.state.lock().await;
-        state.generation = 8;
-        state.client = Some(CodexThreadClient::mock(Vec::new()));
-    }
-
-    assert!(
-        runtime
-            .invalidate_after_error(8, &codex_app_server::CodexThreadError::ProcessUnavailable,)
-            .await
-    );
+    let runtime = test_runtime();
+    let client = CodexThreadClient::mock(Vec::new());
+    runtime.install_test_client(8, client.clone()).await;
+    runtime
+        .recover_connection_error(
+            &CodexConnection {
+                client,
+                generation: 8,
+            },
+            &CodexThreadError::ProcessUnavailable,
+        )
+        .await;
     assert_eq!(runtime.diagnostics().await, (8, false));
 }
 
 #[tokio::test]
 async fn protocol_failures_keep_a_healthy_codex_connection() {
-    let runtime = CodexThreadRuntime::default();
-    {
-        let mut state = runtime.state.lock().await;
-        state.generation = 9;
-        state.client = Some(CodexThreadClient::mock(Vec::new()));
-    }
-
-    assert!(
-        !runtime
-            .invalidate_after_error(
-                9,
-                &codex_app_server::CodexThreadError::InvalidParams("invalid fixture".to_string(),),
-            )
-            .await
-    );
+    let runtime = test_runtime();
+    let client = CodexThreadClient::mock(Vec::new());
+    runtime.install_test_client(9, client.clone()).await;
+    runtime
+        .recover_connection_error(
+            &CodexConnection {
+                client,
+                generation: 9,
+            },
+            &CodexThreadError::InvalidParams("invalid fixture".to_string()),
+        )
+        .await;
     assert_eq!(runtime.diagnostics().await, (9, true));
     runtime.shutdown().await;
 }
 
 #[test]
-fn current_pending_approval_does_not_change_canonical_thread_status() {
-    let temp = tempfile::tempdir().unwrap();
-    let thread = json!({
-        "id": "thread_1",
-        "preview": "Needs approval",
-        "cwd": temp.path().join("project").display().to_string(),
-        "createdAt": 1.0,
-        "updatedAt": 1.0,
-        "status": { "type": "active" }
-    });
-    let events = vec![task_event_record(
-        "thread_1",
-        "approval_requested:1",
-        "approval_requested",
-        "Command approval requested",
-        Some(json!({ "approvalId": "1" })),
-        1,
-    )];
-
-    let task = task_record_from_thread(&thread, &events, None).unwrap();
-    assert!(matches!(task.thread_status, ThreadStatus::Active { .. }));
-}
-
-#[test]
-fn resolved_approval_event_does_not_leave_idle_task_waiting() {
-    let temp = tempfile::tempdir().unwrap();
-    let thread = json!({
-        "id": "thread_1",
-        "preview": "Approval was accepted",
-        "cwd": temp.path().join("project").display().to_string(),
-        "createdAt": 1.0,
-        "updatedAt": 4.0,
-        "status": { "type": "idle" }
-    });
-    let events = vec![
-        task_event_record(
-            "thread_1",
-            "approval_requested:1",
-            "approval_requested",
-            "Command approval requested",
-            Some(json!({ "approvalId": "1" })),
-            1,
-        ),
-        task_event_record(
-            "thread_1",
-            "approval_resolved:1",
-            "approval_resolved",
-            "Approval resolved: accept",
-            Some(json!({ "approvalId": "1", "decision": "accept" })),
-            2,
-        ),
-        task_event_record(
-            "thread_1",
-            "turn_1:completed",
-            "turn_completed",
-            "Turn completed",
-            Some(json!({
-                "threadId": "thread_1",
-                "turnId": "turn_1",
-                "status": "completed"
-            })),
-            3,
-        ),
-        task_event_record(
-            "thread_1",
-            "thread_status_changed",
-            "thread_status_changed",
-            "Thread idle",
-            Some(json!({ "threadId": "thread_1", "status": "idle" })),
-            4,
-        ),
-    ];
-
-    let task = task_record_from_thread(&thread, &events, None).unwrap();
-    assert_eq!(task.thread_status, ThreadStatus::Idle);
-}
-
-#[test]
-fn completed_turn_does_not_leave_abandoned_approval_waiting() {
-    let temp = tempfile::tempdir().unwrap();
-    let thread = json!({
-        "id": "thread_1",
-        "preview": "A later prompt completed",
-        "cwd": temp.path().join("project").display().to_string(),
-        "createdAt": 1.0,
-        "updatedAt": 3.0,
-        "status": { "type": "idle" }
-    });
-    let events = vec![
-        task_event_record(
-            "thread_1",
-            "approval_requested:1",
-            "approval_requested",
-            "Command approval requested",
-            Some(json!({
-                "approvalId": "1",
-                "params": { "turnId": "turn_1" }
-            })),
-            1,
-        ),
-        task_event_record(
-            "thread_1",
-            "turn_1:completed",
-            "turn_completed",
-            "Turn completed",
-            Some(json!({
-                "threadId": "thread_1",
-                "turnId": "turn_1",
-                "status": "completed"
-            })),
-            2,
-        ),
-        task_event_record(
-            "thread_1",
-            "thread_status_changed",
-            "thread_status_changed",
-            "Thread idle",
-            Some(json!({ "threadId": "thread_1", "status": "idle" })),
-            3,
-        ),
-    ];
-
-    let task = task_record_from_thread(&thread, &events, None).unwrap();
-    assert_eq!(task.thread_status, ThreadStatus::Idle);
-}
-
-#[test]
 fn codex_notifications_publish_live_task_status() {
-    let (sender, mut receiver) = broadcast::channel(8);
-    let live_task_events = LiveTaskEventCache::default();
+    let events = TaskEvents::default();
+    let mut receiver = events.subscribe();
+    let runtime = runtime_with_events(events.clone());
 
-    handle_codex_notification(
-        &sender,
-        &live_task_events,
+    runtime.handle_test_notification(
         codex_app_server::decode_notification(
             "turn/started",
             json!({
@@ -234,9 +110,7 @@ fn codex_notifications_publish_live_task_status() {
     assert_eq!(started.created_ms, 1_750_000_000_250);
     assert_eq!(started.payload.unwrap()["turn"]["id"], "turn_1");
 
-    handle_codex_notification(
-        &sender,
-        &live_task_events,
+    runtime.handle_test_notification(
         codex_app_server::decode_notification(
             "item/started",
             json!({
@@ -261,16 +135,14 @@ fn codex_notifications_publish_live_task_status() {
         command_started.payload.as_ref().unwrap()["lifecycle"],
         "started"
     );
-    let cached_command = live_task_events
+    let cached_command = events
         .for_thread("thread_1")
         .into_iter()
         .find(|event| event.id == command_started.id)
         .expect("notification bridge should cache commands without an SSE consumer");
     assert_eq!(cached_command.event_type, "command_execution");
 
-    handle_codex_notification(
-        &sender,
-        &live_task_events,
+    runtime.handle_test_notification(
         codex_app_server::decode_notification(
             "item/started",
             json!({
@@ -295,9 +167,7 @@ fn codex_notifications_publish_live_task_status() {
         "started"
     );
 
-    handle_codex_notification(
-        &sender,
-        &live_task_events,
+    runtime.handle_test_notification(
         codex_app_server::decode_notification(
             "item/completed",
             json!({
@@ -324,9 +194,7 @@ fn codex_notifications_publish_live_task_status() {
         "completed"
     );
 
-    handle_codex_notification(
-        &sender,
-        &live_task_events,
+    runtime.handle_test_notification(
         codex_app_server::decode_notification(
             "thread/status/changed",
             json!({
@@ -341,9 +209,7 @@ fn codex_notifications_publish_live_task_status() {
     assert_eq!(status.event_type, "thread_status_changed");
     assert_eq!(status.payload.unwrap()["status"], "running");
 
-    handle_codex_notification(
-        &sender,
-        &live_task_events,
+    runtime.handle_test_notification(
         codex_app_server::decode_notification(
             "turn/completed",
             json!({
@@ -367,37 +233,27 @@ async fn server_requests_store_live_pending_approvals_without_local_task_ledger(
     let temp = tempfile::tempdir().unwrap();
     let project_root = temp.path().join("project");
     std::fs::create_dir(&project_root).unwrap();
-    let (sender, mut receiver) = broadcast::channel(4);
-    let live_task_events = LiveTaskEventCache::default();
-    let pending = Arc::new(AsyncMutex::new(HashMap::new()));
+    let events = TaskEvents::default();
+    let mut receiver = events.subscribe();
+    let runtime = runtime_with_events(events.clone());
 
-    handle_codex_server_request(
-        &sender,
-        &live_task_events,
-        &pending,
-        codex_app_server::decode_server_request(
-            json!(11),
-            "item/commandExecution/requestApproval",
-            json!({
-                "threadId": "thread_1",
-                "turnId": "turn_1",
-                "command": "cargo test",
-                "cwd": project_root.join("src").display().to_string(),
-                "reason": "Run tests",
-                "availableDecisions": ["accept", "decline"]
-            }),
+    runtime
+        .handle_test_server_request(
+            codex_app_server::decode_server_request(
+                json!(11),
+                "item/commandExecution/requestApproval",
+                json!({
+                    "threadId": "thread_1",
+                    "turnId": "turn_1",
+                    "command": "cargo test",
+                    "cwd": project_root.join("src").display().to_string(),
+                    "reason": "Run tests",
+                    "availableDecisions": ["accept", "decline"]
+                }),
+            )
+            .unwrap(),
         )
-        .unwrap(),
-    )
-    .await;
-
-    let approvals = pending.lock().await;
-    let approval = approvals.get("11").unwrap();
-    assert_eq!(approval.thread_id, "thread_1");
-    assert_eq!(approval.params["command"], "cargo test");
-    let approval_created_ms = approval.created_ms;
-    let approval_sort_index = approval.sort_index;
-    drop(approvals);
+        .await;
 
     let event = receiver.recv().await.unwrap();
     assert_eq!(event.thread_id, "thread_1");
@@ -407,34 +263,43 @@ async fn server_requests_store_live_pending_approvals_without_local_task_ledger(
         "turn_1",
         "approval events must remain attached to their causal turn"
     );
-    assert_eq!(event.created_ms, approval_created_ms);
-    assert_eq!(event.sort_index, approval_sort_index);
-    assert_eq!(live_task_events.for_thread("thread_1"), vec![event]);
+    assert_eq!(
+        event.payload.as_ref().unwrap()["params"]["command"],
+        "cargo test"
+    );
+    let approvals = runtime.approval_events("thread_1").await;
+    assert_eq!(approvals.len(), 1);
+    assert_eq!(approvals[0].id, event.id);
+    assert_eq!(approvals[0].created_ms, event.created_ms);
+    assert_eq!(approvals[0].sort_index, event.sort_index);
+    assert_eq!(
+        approvals[0].payload.as_ref().unwrap()["params"]["command"],
+        "cargo test"
+    );
+    assert_eq!(events.for_thread("thread_1"), vec![event]);
 }
 
 #[tokio::test]
 async fn completed_turn_expires_live_pending_approval() {
-    let (sender, mut receiver) = broadcast::channel(4);
-    let live_task_events = LiveTaskEventCache::default();
-    let pending = Arc::new(AsyncMutex::new(HashMap::new()));
+    let events = TaskEvents::default();
+    let mut receiver = events.subscribe();
+    let runtime = runtime_with_events(events.clone());
 
-    handle_codex_server_request(
-        &sender,
-        &live_task_events,
-        &pending,
-        codex_app_server::decode_server_request(
-            json!(11),
-            "item/commandExecution/requestApproval",
-            json!({
-                "threadId": "thread_1",
-                "turnId": "turn_1",
-                "command": "cargo test",
-                "availableDecisions": ["accept", "decline"]
-            }),
+    runtime
+        .handle_test_server_request(
+            codex_app_server::decode_server_request(
+                json!(11),
+                "item/commandExecution/requestApproval",
+                json!({
+                    "threadId": "thread_1",
+                    "turnId": "turn_1",
+                    "command": "cargo test",
+                    "availableDecisions": ["accept", "decline"]
+                }),
+            )
+            .unwrap(),
         )
-        .unwrap(),
-    )
-    .await;
+        .await;
     let requested = receiver.recv().await.unwrap();
     assert_eq!(requested.event_type, "approval_requested");
 
@@ -450,15 +315,15 @@ async fn completed_turn_expires_live_pending_approval() {
         }),
     )
     .unwrap();
-    expire_stale_approvals_for_notification(&sender, &live_task_events, &pending, &completed).await;
+    runtime.expire_test_approvals(&completed).await;
 
-    assert!(pending.lock().await.is_empty());
+    assert!(runtime.approval_events("thread_1").await.is_empty());
     let resolved = receiver.recv().await.unwrap();
     assert_eq!(resolved.event_type, "approval_resolved");
     assert_eq!(resolved.payload.as_ref().unwrap()["approvalId"], "11");
     assert_eq!(resolved.payload.as_ref().unwrap()["decision"], "expired");
     assert_eq!(
-        live_task_events
+        events
             .for_thread("thread_1")
             .iter()
             .map(|event| event.event_type.as_str())

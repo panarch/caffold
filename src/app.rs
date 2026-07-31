@@ -29,19 +29,17 @@ mod workspace;
 
 use error::ApiError;
 use tasks::{
-    LiveTaskEventCache, TaskEventRecord, TaskEvents, TaskRecord, accepted_user_message_event,
-    apply_canonical_turn_projection, event_id_from_params, merge_task_event_records, now_ms,
-    publish_task_event, resolve_task_cwds, resolve_thread_cwd, seconds_to_ms_value,
-    sort_task_events, task_activity_ms, task_event_from_item_lifecycle,
-    task_event_from_raw_response_item, task_event_record, task_record_from_thread, thread_events,
-    thread_list_response_with_resolved, thread_with_turns,
+    ApprovalResolveError, CodexConnection, CodexRuntime, CodexRuntimeSignal, TaskEventRecord,
+    TaskEvents, TaskRecord, accepted_user_message_event, apply_canonical_turn_projection,
+    merge_task_event_records, now_ms, resolve_task_cwds, resolve_thread_cwd, sort_task_events,
+    task_activity_ms, task_record_from_thread, thread_events, thread_list_response_with_resolved,
+    thread_with_turns,
 };
 
 use crate::{
     codex_app_server::{
-        self, CodexNotification, CodexPermissionMode, CodexRuntimeEvent, CodexServerRequest,
-        CodexStatusResponse, CodexThreadClient, CodexThreadError, CodexTurnOptions, ThreadStatus,
-        TurnStatus,
+        self, CodexPermissionMode, CodexStatusResponse, CodexThreadClient, CodexThreadError,
+        CodexTurnOptions,
     },
     codex_thread_sessions::{
         CodexThreadSessions, PromptTarget, ThreadSessionSnapshot, ThreadSessionsDiagnostics,
@@ -74,9 +72,9 @@ pub struct ServeConfig {
 struct TaskState {
     fs: Arc<RootedFs>,
     default_cwd_path: String,
-    codex_threads: Arc<CodexThreadRuntime>,
+    codex_runtime: CodexRuntime,
+    codex_runtime_signals: Arc<AsyncMutex<Option<broadcast::Receiver<CodexRuntimeSignal>>>>,
     codex_sessions: CodexThreadSessions,
-    pending_approvals: Arc<AsyncMutex<HashMap<String, PendingApproval>>>,
     task_events: TaskEvents,
     task_sync: TaskSyncCoordinator,
     task_sync_events: broadcast::Sender<TaskDetailSync>,
@@ -95,6 +93,13 @@ impl TaskState {
         thread_store: ThreadStore,
     ) -> Self {
         let task_events = TaskEvents::default();
+        let codex_sessions = CodexThreadSessions::default();
+        let codex_runtime = CodexRuntime::new(
+            codex_sessions.clone(),
+            task_events.clone(),
+            shutdown.clone(),
+        );
+        let codex_runtime_signals = codex_runtime.subscribe();
         let task_sync = TaskSyncCoordinator::new();
         let (task_sync_events, _) = broadcast::channel(64);
         let (task_list_removals, _) = broadcast::channel(64);
@@ -103,9 +108,9 @@ impl TaskState {
         Self {
             fs,
             default_cwd_path,
-            codex_threads: Arc::new(CodexThreadRuntime::default()),
-            codex_sessions: CodexThreadSessions::default(),
-            pending_approvals: Arc::new(AsyncMutex::new(HashMap::new())),
+            codex_runtime,
+            codex_runtime_signals: Arc::new(AsyncMutex::new(Some(codex_runtime_signals))),
+            codex_sessions,
             task_events,
             task_sync,
             task_sync_events,
@@ -289,23 +294,6 @@ impl Drop for TaskSyncSubscription {
     }
 }
 
-#[derive(Default)]
-struct CodexThreadRuntime {
-    state: AsyncMutex<CodexThreadRuntimeState>,
-}
-
-#[derive(Default)]
-struct CodexThreadRuntimeState {
-    client: Option<CodexThreadClient>,
-    generation: u64,
-}
-
-#[derive(Clone)]
-struct CodexThreadConnection {
-    client: CodexThreadClient,
-    generation: u64,
-}
-
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CodexRuntimeDiagnostics {
@@ -321,77 +309,6 @@ struct CodexStatusPayload {
     #[serde(flatten)]
     status: CodexStatusResponse,
     diagnostics: CodexRuntimeDiagnostics,
-}
-
-impl CodexThreadRuntime {
-    async fn diagnostics(&self) -> (u64, bool) {
-        let state = self.state.lock().await;
-        (state.generation, state.client.is_some())
-    }
-
-    async fn shutdown(&self) {
-        let client = self.state.lock().await.client.take();
-        if let Some(client) = client {
-            client.shutdown().await;
-        }
-    }
-
-    async fn invalidate(&self, generation: u64) {
-        let client = {
-            let mut state = self.state.lock().await;
-            if state.generation != generation {
-                return;
-            }
-            state.client.take()
-        };
-        if let Some(client) = client {
-            client.shutdown().await;
-        }
-    }
-
-    async fn invalidate_after_error(&self, generation: u64, error: &CodexThreadError) -> bool {
-        if !error.is_connection_failure() {
-            return false;
-        }
-        let client = {
-            let mut state = self.state.lock().await;
-            if state.generation != generation {
-                return false;
-            }
-            state.client.take()
-        };
-        if let Some(client) = client {
-            client.shutdown().await;
-            true
-        } else {
-            false
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct PendingApproval {
-    thread_id: String,
-    request_id: JsonValue,
-    kind: ApprovalKind,
-    params: JsonValue,
-    created_ms: u64,
-    sort_index: Option<u32>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ApprovalKind {
-    Command,
-    FileChange,
-}
-
-impl ApprovalKind {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Command => "command",
-            Self::FileChange => "file_change",
-        }
-    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -564,7 +481,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let shell_router = shell::router(fs.clone(), server_settings, initial_path.clone(), home_path);
     let workspace_router = workspace::router(fs.clone(), shutdown.clone());
     let task_state = TaskState::new(fs, initial_path.clone(), shutdown.clone(), thread_store);
-    let codex_threads = task_state.codex_threads.clone();
+    let codex_runtime = task_state.codex_runtime.clone();
     let app = router_with_states(shell_router, workspace_router, task_state);
     let listener = TcpListener::bind((config.host, config.port)).await?;
     let addr = listener.local_addr()?;
@@ -587,7 +504,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let result = axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal(shutdown))
         .await;
-    codex_threads.shutdown().await;
+    codex_runtime.shutdown().await;
     result?;
 
     Ok(())
@@ -691,7 +608,7 @@ async fn codex_status(State(state): State<TaskState>) -> Json<CodexStatusPayload
                 true,
             ),
             Err(error) => {
-                let (generation, connected) = state.codex_threads.diagnostics().await;
+                let (generation, connected) = state.codex_runtime.diagnostics().await;
                 (
                     CodexThreadClient::unavailable_status(&error),
                     generation,
@@ -1853,7 +1770,10 @@ async fn task_prompt(
     {
         Ok(target) => target,
         Err(error) => {
-            recover_codex_connection_error(&state, &connection, &error).await;
+            state
+                .codex_runtime
+                .recover_connection_error(&connection, &error)
+                .await;
             return Err(error.into());
         }
     };
@@ -1902,7 +1822,10 @@ async fn task_prompt(
                     .await
                 {
                     state.codex_sessions.cancel_runtime(&thread_id).await;
-                    recover_codex_connection_error(&state, &connection, &refresh_error).await;
+                    state
+                        .codex_runtime
+                        .recover_connection_error(&connection, &refresh_error)
+                        .await;
                     return Err(refresh_error.into());
                 }
                 target = match state
@@ -1913,14 +1836,20 @@ async fn task_prompt(
                     Ok(target) => target,
                     Err(refresh_error) => {
                         state.codex_sessions.cancel_runtime(&thread_id).await;
-                        recover_codex_connection_error(&state, &connection, &refresh_error).await;
+                        state
+                            .codex_runtime
+                            .recover_connection_error(&connection, &refresh_error)
+                            .await;
                         return Err(refresh_error.into());
                     }
                 };
             }
             Err(error) => {
                 state.codex_sessions.cancel_runtime(&thread_id).await;
-                recover_codex_connection_error(&state, &connection, &error).await;
+                state
+                    .codex_runtime
+                    .recover_connection_error(&connection, &error)
+                    .await;
                 return Err(error.into());
             }
         }
@@ -1985,33 +1914,15 @@ async fn task_interrupt(
         });
     };
     if let Err(error) = connection.client.interrupt_turn(&thread_id, &turn_id).await {
-        recover_codex_connection_error(&state, &connection, &error).await;
+        state
+            .codex_runtime
+            .recover_connection_error(&connection, &error)
+            .await;
         return Err(error.into());
     }
     Ok(Json(
         read_task_detail(&state, &connection, &thread_id, None).await?,
     ))
-}
-
-async fn recover_codex_connection_error(
-    state: &TaskState,
-    connection: &CodexThreadConnection,
-    error: &CodexThreadError,
-) {
-    if !error.is_connection_failure() {
-        return;
-    }
-    let affected = state
-        .codex_sessions
-        .connection_lost(connection.generation, error.to_string())
-        .await;
-    for thread_id in affected {
-        broadcast_task_sync_error(state, &thread_id, error.to_string()).await;
-    }
-    state
-        .codex_threads
-        .invalidate_after_error(connection.generation, error)
-        .await;
 }
 
 async fn task_archive(
@@ -2044,47 +1955,28 @@ async fn task_approval(
     if thread_store_get(&state, &thread_id).await?.is_none() {
         return Err(task_not_managed_error());
     }
-    let pending = {
-        let approvals = state.pending_approvals.lock().await;
-        let Some(pending) = approvals.get(&approval_id).cloned() else {
+    let connection = require_codex_thread_connection(&state).await?;
+    let decision = normalize_approval_decision(&request.decision)?;
+    match state
+        .codex_runtime
+        .resolve_approval(&connection, &thread_id, &approval_id, decision)
+        .await
+    {
+        Ok(()) => {}
+        Err(ApprovalResolveError::NotFound) => {
             return Err(ApiError::BadRequest {
                 code: "approval_not_found",
                 message: "approval request is no longer pending".to_string(),
             });
-        };
-        pending
-    };
-    if pending.thread_id != thread_id {
-        return Err(ApiError::BadRequest {
-            code: "approval_task_mismatch",
-            message: "approval request belongs to another thread".to_string(),
-        });
+        }
+        Err(ApprovalResolveError::ThreadMismatch) => {
+            return Err(ApiError::BadRequest {
+                code: "approval_task_mismatch",
+                message: "approval request belongs to another thread".to_string(),
+            });
+        }
+        Err(ApprovalResolveError::Codex(error)) => return Err(error.into()),
     }
-    let connection = require_codex_thread_connection(&state).await?;
-    let decision = normalize_approval_decision(&request.decision)?;
-    connection
-        .client
-        .respond_to_server_request(pending.request_id.clone(), json!({ "decision": decision }))
-        .await?;
-    {
-        let mut approvals = state.pending_approvals.lock().await;
-        approvals.remove(&approval_id);
-    }
-
-    let event = task_event_record(
-        &pending.thread_id,
-        &format!("approval_resolved:{approval_id}"),
-        "approval_resolved",
-        &format!("Approval resolved: {decision}"),
-        Some(json!({
-            "approvalId": approval_id,
-            "kind": pending.kind.as_str(),
-            "turnId": pending.params.get("turnId"),
-            "decision": decision
-        })),
-        now_ms(),
-    );
-    state.task_events.publish(event);
 
     Ok(Json(
         read_task_detail(&state, &connection, &thread_id, None).await?,
@@ -2092,72 +1984,55 @@ async fn task_approval(
 }
 
 async fn require_codex_thread_client(state: &TaskState) -> Result<CodexThreadClient, ApiError> {
-    require_codex_thread_connection(state)
-        .await
-        .map(|connection| connection.client)
-        .map_err(ApiError::from)
+    ensure_codex_runtime_signal_driver(state).await;
+    state.codex_runtime.client().await.map_err(ApiError::from)
 }
 
 async fn require_codex_thread_connection(
     state: &TaskState,
-) -> Result<CodexThreadConnection, CodexThreadError> {
-    {
-        let runtime = state.codex_threads.state.lock().await;
-        if let Some(client) = runtime.client.clone() {
-            return Ok(CodexThreadConnection {
-                client,
-                generation: runtime.generation,
-            });
-        }
-    }
-
-    let connection = {
-        let mut runtime = state.codex_threads.state.lock().await;
-        if let Some(client) = runtime.client.clone() {
-            return Ok(CodexThreadConnection {
-                client,
-                generation: runtime.generation,
-            });
-        }
-
-        match CodexThreadClient::start().await {
-            Ok(client) => {
-                runtime.generation += 1;
-                let generation = runtime.generation;
-                spawn_codex_thread_bridge(
-                    client.clone(),
-                    generation,
-                    CodexThreadBridgeContext {
-                        state: state.clone(),
-                    },
-                    state.shutdown.subscribe(),
-                );
-                runtime.client = Some(client.clone());
-                Ok(CodexThreadConnection { client, generation })
-            }
-            Err(error) => Err(error),
-        }
-    }?;
-
-    restore_leased_codex_sessions(state.codex_sessions.clone(), connection.clone());
-
-    Ok(connection)
+) -> Result<CodexConnection, CodexThreadError> {
+    ensure_codex_runtime_signal_driver(state).await;
+    state.codex_runtime.connection().await
 }
 
-fn restore_leased_codex_sessions(sessions: CodexThreadSessions, connection: CodexThreadConnection) {
+async fn ensure_codex_runtime_signal_driver(state: &TaskState) {
+    let Some(mut receiver) = state.codex_runtime_signals.lock().await.take() else {
+        return;
+    };
+    let state = state.clone();
+    let mut shutdown = state.shutdown.subscribe();
     tokio::spawn(async move {
-        for (thread_id, error) in sessions
-            .resubscribe_leased(&connection.client, connection.generation)
-            .await
-        {
-            eprintln!("failed to restore Codex thread subscription {thread_id}: {error}");
+        loop {
+            let signal = tokio::select! {
+                _ = shutdown.recv() => return,
+                signal = receiver.recv() => signal,
+            };
+            match signal {
+                Ok(CodexRuntimeSignal::SessionChanged {
+                    thread_id,
+                    snapshot,
+                }) => {
+                    broadcast_task_snapshot(
+                        &state,
+                        &thread_id,
+                        *snapshot,
+                        "app-server-notification",
+                    )
+                    .await;
+                }
+                Ok(CodexRuntimeSignal::SessionUnavailable { thread_id, message }) => {
+                    broadcast_task_sync_error(&state, &thread_id, message).await;
+                }
+                Err(broadcast::error::RecvError::Lagged(_)) => {}
+                Err(broadcast::error::RecvError::Closed) => return,
+            }
         }
     });
 }
 
 async fn read_task_detail(
     state: &TaskState,
-    connection: &CodexThreadConnection,
+    connection: &CodexConnection,
     thread_id: &str,
     cursor: Option<&str>,
 ) -> Result<TaskDetailResponse, ApiError> {
@@ -2378,428 +2253,7 @@ fn task_rollout_monitor(task_sync: TaskSyncCoordinator) -> TaskRolloutMonitor {
 }
 
 async fn pending_approval_events(state: &TaskState, thread_id: &str) -> Vec<TaskEventRecord> {
-    state
-        .pending_approvals
-        .lock()
-        .await
-        .iter()
-        .filter(|(_, pending)| pending.thread_id == thread_id)
-        .map(|(approval_id, pending)| {
-            let kind = pending.kind.as_str();
-            let mut event = task_event_record(
-                &pending.thread_id,
-                &format!("approval_requested:{approval_id}"),
-                "approval_requested",
-                if kind == "command" {
-                    "Command approval requested"
-                } else {
-                    "File change approval requested"
-                },
-                Some(json!({
-                    "approvalId": approval_id,
-                    "kind": kind,
-                    "turnId": pending.params.get("turnId"),
-                    "params": pending.params
-                })),
-                pending.created_ms,
-            );
-            event.sort_index = pending.sort_index;
-            event
-        })
-        .collect()
-}
-
-struct CodexThreadBridgeContext {
-    state: TaskState,
-}
-
-fn spawn_codex_thread_bridge(
-    client: CodexThreadClient,
-    generation: u64,
-    context: CodexThreadBridgeContext,
-    mut shutdown: broadcast::Receiver<()>,
-) {
-    tokio::spawn(async move {
-        let mut receiver = client.subscribe();
-        let connection_error = loop {
-            tokio::select! {
-                _ = shutdown.recv() => return,
-                event = receiver.recv() => {
-                    let event = match event {
-                        Ok(event) => event,
-                        Err(error) => {
-                            break format!("Codex app-server event stream closed: {error}");
-                        }
-                    };
-                    match event {
-                        CodexRuntimeEvent::Notification(notification) => {
-                            let thread_id =
-                                codex_notification_thread_id(&notification).map(str::to_string);
-                            let revision = context
-                                .state
-                                .codex_sessions
-                                .apply_notification(generation, &notification)
-                                .await;
-                            expire_stale_approvals_for_notification(
-                                context.state.task_events.publisher(),
-                                context.state.task_events.cache(),
-                                &context.state.pending_approvals,
-                                &notification,
-                            )
-                            .await;
-                            handle_codex_notification(
-                                context.state.task_events.publisher(),
-                                context.state.task_events.cache(),
-                                notification,
-                            );
-                            if revision.is_some()
-                                && let Some(thread_id) = thread_id
-                                && let Some(snapshot) = context
-                                    .state
-                                    .codex_sessions
-                                    .snapshot(&thread_id)
-                                    .await
-                            {
-                                broadcast_task_snapshot(
-                                    &context.state,
-                                    &thread_id,
-                                    snapshot,
-                                    "app-server-notification",
-                                )
-                                .await;
-                            }
-                        }
-                        CodexRuntimeEvent::ServerRequest(request) => {
-                            handle_codex_server_request(
-                                context.state.task_events.publisher(),
-                                context.state.task_events.cache(),
-                                &context.state.pending_approvals,
-                                request,
-                            )
-                            .await;
-                        }
-                        CodexRuntimeEvent::Diagnostic { message } => {
-                            eprintln!("{message}");
-                        }
-                        CodexRuntimeEvent::Error { message } => {
-                            break message;
-                        }
-                    }
-                }
-            }
-        };
-        let affected = context
-            .state
-            .codex_sessions
-            .connection_lost(generation, connection_error.clone())
-            .await;
-        for thread_id in affected {
-            broadcast_task_sync_error(&context.state, &thread_id, connection_error.clone()).await;
-        }
-        context.state.codex_threads.invalidate(generation).await;
-    });
-}
-
-fn codex_notification_thread_id(notification: &CodexNotification) -> Option<&str> {
-    match notification {
-        CodexNotification::ThreadStarted { thread } => Some(&thread.id),
-        CodexNotification::ThreadStatusChanged { thread_id, .. }
-        | CodexNotification::TurnStarted { thread_id, .. }
-        | CodexNotification::TurnCompleted { thread_id, .. }
-        | CodexNotification::ItemStarted { thread_id, .. }
-        | CodexNotification::ItemCompleted { thread_id, .. }
-        | CodexNotification::RawResponseItemCompleted { thread_id, .. }
-        | CodexNotification::TurnDiffUpdated { thread_id, .. } => Some(thread_id),
-        CodexNotification::Unknown { .. } => None,
-    }
-}
-
-fn handle_codex_notification(
-    task_events: &broadcast::Sender<TaskEventRecord>,
-    live_task_events: &LiveTaskEventCache,
-    notification: CodexNotification,
-) {
-    match notification {
-        CodexNotification::TurnStarted { thread_id, turn } => {
-            let started_ms = turn
-                .started_at
-                .map(seconds_to_ms_value)
-                .filter(|value| *value > 0)
-                .unwrap_or_else(now_ms);
-            let params = json!({ "threadId": thread_id, "turn": turn });
-            let event = task_event_record(
-                &thread_id,
-                &event_id_from_params("turn_started", &params),
-                "turn_started",
-                "Turn started",
-                Some(params),
-                started_ms,
-            );
-            publish_task_event(task_events, live_task_events, event);
-        }
-        CodexNotification::ThreadStatusChanged { thread_id, status } => {
-            let task_status = match status {
-                ThreadStatus::Active { .. } => "running",
-                ThreadStatus::Idle | ThreadStatus::NotLoaded => "idle",
-                ThreadStatus::SystemError => "failed",
-            };
-            let summary = match task_status {
-                "running" => "Thread running",
-                "failed" => "Thread failed",
-                _ => "Thread idle",
-            };
-            let event = task_event_record(
-                &thread_id,
-                "thread_status_changed",
-                "thread_status_changed",
-                summary,
-                Some(json!({
-                    "threadId": thread_id,
-                    "status": task_status,
-                })),
-                now_ms(),
-            );
-            publish_task_event(task_events, live_task_events, event);
-        }
-        CodexNotification::ItemStarted {
-            thread_id,
-            turn_id,
-            item,
-            started_at_ms,
-        } => {
-            let created_ms = if started_at_ms > 0 {
-                started_at_ms
-            } else {
-                now_ms()
-            };
-            let params = json!({ "threadId": thread_id, "turnId": turn_id, "item": item });
-            if let Some(event) =
-                task_event_from_item_lifecycle(&thread_id, created_ms, &params, "started")
-            {
-                publish_task_event(task_events, live_task_events, event);
-            }
-        }
-        CodexNotification::ItemCompleted {
-            thread_id,
-            turn_id,
-            item,
-            completed_at_ms,
-        } => {
-            let created_ms = if completed_at_ms > 0 {
-                completed_at_ms
-            } else {
-                now_ms()
-            };
-            let params = json!({ "threadId": thread_id, "turnId": turn_id, "item": item });
-            if let Some(event) =
-                task_event_from_item_lifecycle(&thread_id, created_ms, &params, "completed")
-            {
-                publish_task_event(task_events, live_task_events, event);
-            }
-        }
-        CodexNotification::RawResponseItemCompleted {
-            thread_id,
-            turn_id,
-            item,
-        } => {
-            let params = json!({ "threadId": thread_id, "turnId": turn_id, "item": item });
-            if let Some(event) = task_event_from_raw_response_item(&thread_id, now_ms(), &params) {
-                publish_task_event(task_events, live_task_events, event);
-            }
-        }
-        CodexNotification::TurnCompleted { thread_id, turn } => {
-            let task_status = match turn.status {
-                TurnStatus::Failed => "failed",
-                TurnStatus::Interrupted => "interrupted",
-                TurnStatus::Completed => "completed",
-                TurnStatus::InProgress => "running",
-            };
-            let summary = match task_status {
-                "failed" => "Turn failed",
-                "interrupted" => "Turn interrupted",
-                "completed" => "Turn completed",
-                _ => "Turn updated",
-            };
-            let completed_ms = turn
-                .completed_at
-                .map(seconds_to_ms_value)
-                .filter(|value| *value > 0)
-                .unwrap_or_else(now_ms);
-            let params = json!({ "threadId": thread_id, "turn": turn });
-            let event = task_event_record(
-                &thread_id,
-                &event_id_from_params("turn_completed", &params),
-                "turn_completed",
-                summary,
-                Some(params),
-                completed_ms,
-            );
-            publish_task_event(task_events, live_task_events, event);
-        }
-        CodexNotification::TurnDiffUpdated { thread_id, params } => {
-            let event = task_event_record(
-                &thread_id,
-                "diff_updated",
-                "diff_updated",
-                "Diff updated",
-                Some(params),
-                now_ms(),
-            );
-            publish_task_event(task_events, live_task_events, event);
-        }
-        CodexNotification::ThreadStarted { .. } | CodexNotification::Unknown { .. } => {}
-    }
-}
-
-async fn handle_codex_server_request(
-    task_events: &broadcast::Sender<TaskEventRecord>,
-    live_task_events: &LiveTaskEventCache,
-    pending_approvals: &Arc<AsyncMutex<HashMap<String, PendingApproval>>>,
-    request: CodexServerRequest,
-) {
-    let (request_id, thread_id, params, kind) = match request {
-        CodexServerRequest::CommandExecutionApproval {
-            id,
-            thread_id,
-            params,
-        } => (id, thread_id, params, ApprovalKind::Command),
-        CodexServerRequest::FileChangeApproval {
-            id,
-            thread_id,
-            params,
-        } => (id, thread_id, params, ApprovalKind::FileChange),
-        CodexServerRequest::Unknown { .. } => return,
-    };
-    let approval_id = approval_id_from_request(&request_id, &params);
-    let created_ms = now_ms();
-    let summary = if kind == ApprovalKind::Command {
-        "Command approval requested"
-    } else {
-        "File change approval requested"
-    };
-    let event = task_event_record(
-        &thread_id,
-        &format!("approval_requested:{approval_id}"),
-        "approval_requested",
-        summary,
-        Some(json!({
-            "approvalId": approval_id,
-            "kind": kind.as_str(),
-            "turnId": params.get("turnId"),
-            "requestId": request_id,
-            "params": params
-        })),
-        created_ms,
-    );
-    let mut approvals = pending_approvals.lock().await;
-    let event = live_task_events.record(event);
-    approvals.insert(
-        approval_id.clone(),
-        PendingApproval {
-            thread_id: thread_id.clone(),
-            request_id: request_id.clone(),
-            kind,
-            params: params.clone(),
-            created_ms: event.created_ms,
-            sort_index: event.sort_index,
-        },
-    );
-    drop(approvals);
-
-    let _ = task_events.send(event);
-}
-
-async fn expire_stale_approvals_for_notification(
-    task_events: &broadcast::Sender<TaskEventRecord>,
-    live_task_events: &LiveTaskEventCache,
-    pending_approvals: &Arc<AsyncMutex<HashMap<String, PendingApproval>>>,
-    notification: &CodexNotification,
-) {
-    let expired = {
-        let mut approvals = pending_approvals.lock().await;
-        let expired_ids = approvals
-            .iter()
-            .filter_map(|(approval_id, pending)| {
-                stale_approval_reason(pending, notification)
-                    .map(|reason| (approval_id.clone(), reason))
-            })
-            .collect::<Vec<_>>();
-        expired_ids
-            .into_iter()
-            .filter_map(|(approval_id, reason)| {
-                approvals
-                    .remove(&approval_id)
-                    .map(|pending| (approval_id, pending, reason))
-            })
-            .collect::<Vec<_>>()
-    };
-
-    for (approval_id, pending, reason) in expired {
-        let event = task_event_record(
-            &pending.thread_id,
-            &format!("approval_resolved:{approval_id}"),
-            "approval_resolved",
-            "Approval expired",
-            Some(json!({
-                "approvalId": approval_id,
-                "kind": pending.kind.as_str(),
-                "turnId": pending.params.get("turnId"),
-                "decision": "expired",
-                "reason": reason
-            })),
-            now_ms(),
-        );
-        publish_task_event(task_events, live_task_events, event);
-    }
-}
-
-fn stale_approval_reason(
-    pending: &PendingApproval,
-    notification: &CodexNotification,
-) -> Option<&'static str> {
-    match notification {
-        CodexNotification::TurnStarted { thread_id, turn }
-            if pending.thread_id == *thread_id
-                && pending
-                    .params
-                    .get("turnId")
-                    .and_then(JsonValue::as_str)
-                    .is_some_and(|turn_id| turn_id != turn.id) =>
-        {
-            Some("another turn started")
-        }
-        CodexNotification::TurnCompleted { thread_id, turn }
-            if pending.thread_id == *thread_id
-                && turn.status != TurnStatus::InProgress
-                && pending
-                    .params
-                    .get("turnId")
-                    .and_then(JsonValue::as_str)
-                    .is_none_or(|turn_id| turn_id == turn.id) =>
-        {
-            Some("turn completed")
-        }
-        CodexNotification::ThreadStatusChanged { thread_id, status }
-            if pending.thread_id == *thread_id
-                && matches!(status, ThreadStatus::Idle | ThreadStatus::SystemError) =>
-        {
-            Some("thread became inactive")
-        }
-        _ => None,
-    }
-}
-
-fn approval_id_from_request(request_id: &JsonValue, params: &JsonValue) -> String {
-    params
-        .get("approvalId")
-        .and_then(JsonValue::as_str)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| match request_id {
-            JsonValue::String(value) => value.clone(),
-            JsonValue::Number(value) => value.to_string(),
-            _ => request_id.to_string(),
-        })
+    state.codex_runtime.approval_events(thread_id).await
 }
 
 fn task_cwd(state: &TaskState, relative: Option<&str>) -> Result<String, ApiError> {

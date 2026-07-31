@@ -1,6 +1,7 @@
 use super::super::super::*;
 use super::super::projection::*;
 use super::support::*;
+use crate::codex_app_server::ThreadStatus;
 
 fn current_model_list_response() -> JsonValue {
     json!({

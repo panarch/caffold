@@ -127,9 +127,17 @@ impl TaskEvents {
     }
 
     pub(in crate::app) fn publish(&self, event: TaskEventRecord) -> TaskEventRecord {
-        let event = self.cache.record(event);
-        let _ = self.sender.send(event.clone());
+        let event = self.record(event);
+        self.broadcast(event.clone());
         event
+    }
+
+    pub(in crate::app) fn record(&self, event: TaskEventRecord) -> TaskEventRecord {
+        self.cache.record(event)
+    }
+
+    pub(in crate::app) fn broadcast(&self, event: TaskEventRecord) {
+        let _ = self.sender.send(event);
     }
 
     pub(in crate::app) fn observe(&self, events: &[TaskEventRecord]) {
@@ -138,10 +146,6 @@ impl TaskEvents {
 
     pub(in crate::app) fn for_thread(&self, thread_id: &str) -> Vec<TaskEventRecord> {
         self.cache.for_thread(thread_id)
-    }
-
-    pub(in crate::app) fn publisher(&self) -> &broadcast::Sender<TaskEventRecord> {
-        &self.sender
     }
 
     pub(in crate::app) fn cache(&self) -> &LiveTaskEventCache {
@@ -454,15 +458,6 @@ pub(in crate::app) fn turn_item_event_id(
         (None, Some(item_id)) => item_id.to_string(),
         (None, None) => fallback.to_string(),
     }
-}
-
-pub(in crate::app) fn publish_task_event(
-    task_events: &broadcast::Sender<TaskEventRecord>,
-    live_task_events: &LiveTaskEventCache,
-    event: TaskEventRecord,
-) {
-    let event = live_task_events.record(event);
-    let _ = task_events.send(event);
 }
 
 pub(in crate::app) fn task_event_from_item_lifecycle(

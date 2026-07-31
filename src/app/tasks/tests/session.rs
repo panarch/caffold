@@ -1,6 +1,7 @@
 use super::super::super::*;
 use super::super::{events::*, projection::*};
 use super::support::*;
+use crate::codex_app_server::{ThreadStatus, TurnStatus};
 use crate::codex_thread_sessions::ThreadSessionLifecycle;
 
 #[tokio::test]
@@ -206,12 +207,12 @@ async fn task_detail_returns_cached_metadata_while_connection_is_busy() {
             .expect("cached thread metadata");
     state.codex_sessions.observe_thread_metadata(thread).await;
 
-    let runtime = state.codex_threads.clone();
+    let runtime = state.codex_runtime.clone();
     let (locked_tx, locked_rx) = tokio::sync::oneshot::channel();
     let blocker = tokio::spawn(async move {
-        let _runtime = runtime.state.lock().await;
-        let _ = locked_tx.send(());
-        tokio::time::sleep(Duration::from_millis(250)).await;
+        runtime
+            .hold_process_lock_for_test(locked_tx, Duration::from_millis(250))
+            .await;
     });
     locked_rx.await.expect("runtime lock acquired");
 
@@ -295,12 +296,12 @@ async fn task_stream_starts_while_connection_is_busy() {
             .expect("cached thread metadata");
     state.codex_sessions.observe_thread_metadata(thread).await;
 
-    let runtime = state.codex_threads.clone();
+    let runtime = state.codex_runtime.clone();
     let (locked_tx, locked_rx) = tokio::sync::oneshot::channel();
     let blocker = tokio::spawn(async move {
-        let _runtime = runtime.state.lock().await;
-        let _ = locked_tx.send(());
-        tokio::time::sleep(Duration::from_millis(250)).await;
+        runtime
+            .hold_process_lock_for_test(locked_tx, Duration::from_millis(250))
+            .await;
     });
     locked_rx.await.expect("runtime lock acquired");
 
@@ -340,12 +341,12 @@ async fn direct_task_detail_returns_loading_snapshot_while_connection_is_busy() 
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
 
-    let runtime = state.codex_threads.clone();
+    let runtime = state.codex_runtime.clone();
     let (locked_tx, locked_rx) = tokio::sync::oneshot::channel();
     let blocker = tokio::spawn(async move {
-        let _runtime = runtime.state.lock().await;
-        let _ = locked_tx.send(());
-        tokio::time::sleep(Duration::from_millis(250)).await;
+        runtime
+            .hold_process_lock_for_test(locked_tx, Duration::from_millis(250))
+            .await;
     });
     locked_rx.await.expect("runtime lock acquired");
 
@@ -387,12 +388,12 @@ async fn direct_task_stream_starts_while_connection_is_busy() {
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
 
-    let runtime = state.codex_threads.clone();
+    let runtime = state.codex_runtime.clone();
     let (locked_tx, locked_rx) = tokio::sync::oneshot::channel();
     let blocker = tokio::spawn(async move {
-        let _runtime = runtime.state.lock().await;
-        let _ = locked_tx.send(());
-        tokio::time::sleep(Duration::from_millis(250)).await;
+        runtime
+            .hold_process_lock_for_test(locked_tx, Duration::from_millis(250))
+            .await;
     });
     locked_rx.await.expect("runtime lock acquired");
 
@@ -523,7 +524,7 @@ async fn resume_timeout_makes_task_detail_unavailable_but_keeps_the_connection()
         .expect("cached session remains tracked");
     assert!(snapshot.thread.is_some());
     assert!(snapshot.last_error.is_some());
-    assert_eq!(state.codex_threads.diagnostics().await, (1, true));
+    assert_eq!(state.codex_runtime.diagnostics().await, (1, true));
 }
 
 #[tokio::test]
@@ -579,13 +580,15 @@ async fn app_server_recovery_does_not_block_on_leased_thread_restoration() {
             Duration::from_millis(120),
         ),
     ]);
-    let connection = CodexThreadConnection {
+    let connection = CodexConnection {
         client: recovered_client.clone(),
         generation: 2,
     };
+    let (shutdown, _) = broadcast::channel(1);
+    let runtime = CodexRuntime::new(sessions.clone(), TaskEvents::default(), shutdown);
 
     let started = tokio::time::Instant::now();
-    restore_leased_codex_sessions(sessions.clone(), connection);
+    runtime.restore_test_sessions(connection);
     assert!(
         started.elapsed() < Duration::from_millis(20),
         "connection acquisition must not await session restoration"
