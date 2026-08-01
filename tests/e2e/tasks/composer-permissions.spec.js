@@ -239,7 +239,7 @@ test("send button does not return focus to the prompt after submission", async (
 
   await page.goto("/tasks/thread-1?cwd=src");
   const form = page.locator(
-    '.task-follow-up-form[data-task-form="follow-up"]',
+    'caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden]) .task-follow-up-form[data-task-form="follow-up"]',
   );
   const prompt = form.getByRole("textbox", { name: "Follow-up prompt" });
   await prompt.fill("Continue without reopening the keyboard");
@@ -250,6 +250,101 @@ test("send button does not return focus to the prompt after submission", async (
   releasePrompt();
   await expect(form).toHaveAttribute("aria-busy", "false");
   await expect(prompt).not.toBeFocused();
+});
+
+test("keeps an idle follow-up composer compact within the portrait content gutter", async ({
+  page,
+}, testInfo) => {
+  await installTaskApiFixture(page);
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: taskDetailFixture() }),
+  );
+  await page.route("**/api/tasks/thread-1/stream*", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: ": ready\n\n",
+    }),
+  );
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  const form = page.locator(
+    'caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden]) .task-follow-up-form[data-task-form="follow-up"]',
+  );
+  const prompt = form.getByRole("textbox", { name: "Follow-up prompt" });
+  const send = form.getByRole("button", { name: "Send prompt" });
+  await expect(form).toBeVisible();
+  const metrics = () =>
+    form.evaluate((element) => {
+      const panel = element.querySelector(".task-composer-panel");
+      const textarea = element.querySelector("textarea[name='prompt']");
+      const sendButton = element.querySelector(".task-send-button");
+      const build = document.querySelector(".app-build");
+      const workspace = document.querySelector("caffold-codex-workspace");
+      const conversation = document.querySelector(".task-conversation-scroll");
+      const rootStyle = getComputedStyle(document.documentElement);
+      const formStyle = getComputedStyle(element);
+      const conversationStyle = getComputedStyle(conversation);
+      const sendStyle = getComputedStyle(sendButton);
+      const panelRect = panel.getBoundingClientRect();
+      const buildRect = build.getBoundingClientRect();
+      const workspaceRect = workspace.getBoundingClientRect();
+      return {
+        borderTopWidth: formStyle.borderTopWidth,
+        panelHeight: panelRect.height,
+        panelLeft: panelRect.left,
+        panelRight: panelRect.right,
+        panelBottom: panelRect.bottom,
+        textareaHeight: textarea.getBoundingClientRect().height,
+        viewportWidth: window.innerWidth,
+        rootFontSize: Number.parseFloat(rootStyle.fontSize),
+        formPaddingLeft: Number.parseFloat(formStyle.paddingLeft),
+        conversationPaddingLeft: Number.parseFloat(
+          conversationStyle.paddingLeft,
+        ),
+        sendDisabled: sendButton.disabled,
+        sendBackground: sendStyle.backgroundColor,
+        buildPosition: getComputedStyle(build).position,
+        buildTop: buildRect.top,
+        workspaceBottom: workspaceRect.bottom,
+      };
+    });
+
+  const idle = await metrics();
+  expect(idle).toEqual(
+    expect.objectContaining({
+      borderTopWidth: "0px",
+      sendDisabled: true,
+      buildPosition: "static",
+    }),
+  );
+  expect(idle.panelHeight).toBeLessThanOrEqual(96);
+  expect(idle.panelBottom).toBeLessThanOrEqual(idle.buildTop);
+  expect(idle.workspaceBottom).toBeLessThanOrEqual(idle.buildTop);
+  if (testInfo.project.name === "phone") {
+    expect(idle.formPaddingLeft / idle.rootFontSize).toBeCloseTo(0.75, 2);
+    expect(idle.conversationPaddingLeft / idle.rootFontSize).toBeCloseTo(
+      0.75,
+      2,
+    );
+    expect(idle.panelLeft).toBeCloseTo(idle.formPaddingLeft, 1);
+    expect(idle.viewportWidth - idle.panelRight).toBeCloseTo(
+      idle.formPaddingLeft,
+      1,
+    );
+  }
+
+  await prompt.fill("One\nTwo\nThree\nFour\nFive");
+  const expanded = await metrics();
+  await expect(send).toBeEnabled();
+  expect(expanded.panelHeight).toBeGreaterThan(idle.panelHeight + 60);
+  expect(expanded.textareaHeight).toBeGreaterThan(idle.textareaHeight + 60);
+  expect(expanded.sendBackground).not.toBe(idle.sendBackground);
+
+  await prompt.fill("");
+  const reset = await metrics();
+  await expect(send).toBeDisabled();
+  expect(reset.panelHeight).toBeLessThanOrEqual(idle.panelHeight + 1);
+  expect(reset.sendBackground).toBe(idle.sendBackground);
 });
 
 test("managed tasks restore their last applied model and reasoning effort", async ({

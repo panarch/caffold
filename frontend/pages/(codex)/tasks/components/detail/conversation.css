@@ -605,6 +605,14 @@ caffold-task-conversation {
   }
 }
 
+@media (max-width: 520px) and (orientation: portrait) {
+  caffold-task-conversation {
+    & .task-conversation-scroll {
+      padding-inline: 0.75rem;
+    }
+  }
+}
+
 caffold-task-conversation {
   display: block;
   min-height: 0;

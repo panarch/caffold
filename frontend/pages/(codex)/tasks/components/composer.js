@@ -396,6 +396,20 @@ class CaffoldTaskComposer extends HTMLElement {
     state.selectionStart = textarea.selectionStart;
     state.selectionEnd = textarea.selectionEnd;
     syncTextarea(textarea);
+    this.syncSubmitAvailability();
+  }
+
+  syncSubmitAvailability() {
+    const state = this.stateFor();
+    const submit = this.querySelector(".task-send-button");
+    if (!submit) {
+      return;
+    }
+    submit.disabled = Boolean(
+      this.activeSubmissionFor() ||
+        this.context.disabled ||
+        (!state.prompt.trim() && !state.images.length),
+    );
   }
 
   handleKeydown(event) {
@@ -669,8 +683,10 @@ class CaffoldTaskComposer extends HTMLElement {
     const fieldDisabled =
       this.context.disabled ||
       (submitting && this.context.mode === "create");
-    const submitDisabled = submitting || this.context.disabled;
-    const settingsLocked = submitDisabled || this.context.settingsLocked;
+    const requestLocked = submitting || this.context.disabled;
+    const submitDisabled =
+      requestLocked || (!state.prompt.trim() && !state.images.length);
+    const settingsLocked = requestLocked || this.context.settingsLocked;
     const permissionMode =
       state.permissionMode || this.defaultPermissionMode;
     const permission = this.permissionOptions.find(
@@ -696,7 +712,7 @@ class CaffoldTaskComposer extends HTMLElement {
           ${renderImages(state.images)}
           <textarea
             name="prompt"
-            rows="2"
+            rows="1"
             data-max-rows="10.5"
             aria-label="${escapeHtml(this.context.ariaLabel)}"
             placeholder="${escapeHtml(this.context.placeholder)}"

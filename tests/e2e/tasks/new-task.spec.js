@@ -68,9 +68,15 @@ test("creates a task with responsive composer controls and canonical approval st
     .toBe("caffold-app-shell");
   const appShellBox = await page.locator("caffold-app-shell").boundingBox();
   const codexWorkspaceBox = await codexWorkspace.boundingBox();
+  const buildRailBox = await page.locator(".app-build-rail").boundingBox();
   expect(Math.round(codexWorkspaceBox?.y ?? -1)).toBe(Math.round(appShellBox?.y ?? -2));
-  expect(Math.round(codexWorkspaceBox?.height ?? -1)).toBe(
-    Math.round(appShellBox?.height ?? -2),
+  expect(
+    Math.round((codexWorkspaceBox?.y ?? -1) + (codexWorkspaceBox?.height ?? 0)),
+  ).toBe(Math.round(buildRailBox?.y ?? -2));
+  expect(
+    Math.round((buildRailBox?.y ?? -1) + (buildRailBox?.height ?? 0)),
+  ).toBe(
+    Math.round((appShellBox?.y ?? -2) + (appShellBox?.height ?? 0)),
   );
   await expect(page.locator("caffold-files-page")).toBeHidden();
   await expect(
@@ -243,7 +249,7 @@ test("creates a task with responsive composer controls and canonical approval st
       rows: textarea.getAttribute("rows"),
     };
   });
-  expect(initialTextareaMetrics.rows).toBe("2");
+  expect(initialTextareaMetrics.rows).toBe("1");
 
   await newPromptTextarea.fill(
     Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join("\n"),
@@ -441,7 +447,7 @@ test("creates a task with responsive composer controls and canonical approval st
     ).toEqual(
       expect.objectContaining({
         backgroundColor: "rgb(255, 255, 255)",
-        borderRadius: phone ? "16px" : "18px",
+        borderRadius: "14px",
         borderWidth: "1px",
         display: "grid",
         overflow: "visible",

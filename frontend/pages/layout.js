@@ -196,7 +196,9 @@ class CaffoldAppShell extends HTMLElement {
       </main>
       <caffold-codex-workspace hidden></caffold-codex-workspace>
       <caffold-review-workspace hidden></caffold-review-workspace>
-      <span class="app-build" data-status="checking">build ${BUILD_INFO.label}</span>
+      <footer class="app-build-rail" aria-label="Build information">
+        <span class="app-build" data-status="checking">build ${BUILD_INFO.label}</span>
+      </footer>
     `;
   }
 

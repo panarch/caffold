@@ -1,7 +1,8 @@
 caffold-app-shell {
+  --app-build-rail-height: calc(1rem + env(safe-area-inset-bottom));
   position: relative;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) var(--app-build-rail-height);
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
@@ -30,11 +31,19 @@ caffold-app-shell {
     overflow: hidden;
   }
 
+  & .app-build-rail {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 0;
+    min-height: var(--app-build-rail-height);
+    padding: 0 0.3125rem env(safe-area-inset-bottom);
+    overflow: hidden;
+    background: var(--surface);
+  }
+
   & .app-build {
-    position: fixed;
-    right: 0.3125rem;
-    bottom: max(0.1875rem, env(safe-area-inset-bottom));
-    z-index: 1000;
+    position: static;
     max-width: calc(100vw - 0.625rem);
     overflow: hidden;
     padding: 0.0625rem 0.1875rem;
@@ -59,7 +68,7 @@ caffold-app-shell {
 
 @media (max-width: 860px) {
   caffold-app-shell {
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr) var(--app-build-rail-height);
   }
 }
 

@@ -5,7 +5,7 @@ caffold-review-workspace {
   );
   --review-pane-title-size: 0.82rem;
   position: absolute;
-  inset: 0;
+  inset: 0 0 var(--app-build-rail-height);
   z-index: 20;
   display: block;
   min-width: 0;

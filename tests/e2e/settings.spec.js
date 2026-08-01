@@ -420,7 +420,11 @@ test("keeps model picker chrome compact and scales it only with Interface", asyn
   await expect(popover).toBeVisible();
   const compact = await modelPickerMetrics(composer);
   expect(compact.modelButtonFontSize / compact.rootFontSize).toBeCloseTo(
-    0.875,
+    0.75,
+    2,
+  );
+  expect(compact.permissionButtonFontSize / compact.rootFontSize).toBeCloseTo(
+    0.75,
     2,
   );
   expect(compact.titleFontSize / compact.rootFontSize).toBeCloseTo(0.875, 2);
@@ -442,6 +446,8 @@ test("keeps model picker chrome compact and scales it only with Interface", asyn
   const interfaceRatio = spacious.rootFontSize / compact.rootFontSize;
   expect(interfaceRatio).toBeCloseTo(4 / 3, 2);
   for (const property of [
+    "modelButtonFontSize",
+    "permissionButtonFontSize",
     "titleFontSize",
     "descriptionFontSize",
     "toolbarPadding",
@@ -481,6 +487,7 @@ async function modelPickerMetrics(composer) {
     const rootStyle = getComputedStyle(document.documentElement);
     const toolbar = element.querySelector(".task-composer-toolbar");
     const modelButton = element.querySelector(".task-model-button");
+    const permissionButton = element.querySelector(".task-permission-button");
     const popover = element.querySelector(".task-model-popover");
     const option = popover.querySelector(".task-model-option");
     const title = option.querySelector("strong");
@@ -529,6 +536,9 @@ async function modelPickerMetrics(composer) {
       titleFontSize: number(getComputedStyle(title).fontSize),
       descriptionFontSize: number(getComputedStyle(description).fontSize),
       modelButtonFontSize: number(getComputedStyle(modelButton).fontSize),
+      permissionButtonFontSize: number(
+        getComputedStyle(permissionButton).fontSize,
+      ),
       toolbarPadding: number(toolbarStyle.paddingTop),
       toolbarGap: number(toolbarStyle.columnGap),
       modelButtonHeight: modelButton.getBoundingClientRect().height,

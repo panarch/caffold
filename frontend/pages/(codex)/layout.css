@@ -1,13 +1,12 @@
 caffold-codex-workspace {
   --task-header-leading-space: calc(var(--interface-control-size) + 0.625rem);
   position: absolute;
-  inset: 0;
+  inset: 0 0 var(--app-build-rail-height);
   z-index: 15;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
-  height: 100%;
   overflow: hidden;
   background: var(--surface);
 

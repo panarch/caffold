@@ -381,7 +381,8 @@ test("submits completed task follow-ups and reloads canonical messages", async (
   await expect
     .poll(() => conversation.evaluate((element) => element.scrollTop))
     .toBe(scrollBeforeSync);
-  await expect(send).toBeEnabled();
+  await expect(prompt).toBeEnabled();
+  await expect(send).toBeDisabled();
 
   blockNextDetailRequest = true;
   await page.evaluate(() => {
@@ -392,6 +393,7 @@ test("submits completed task follow-ups and reloads canonical messages", async (
   await staleDetailRequestStarted;
 
   await prompt.fill("Submitted by button");
+  await expect(send).toBeEnabled();
   await send.click();
   await expect.poll(() => submittedPrompts).toEqual(["Submitted by button"]);
   await expect(tasksPage).toContainText("Submitted by button");
@@ -660,9 +662,11 @@ test("unlocks a completed task when canonical item content arrives before the pr
 
   await expect(tasksPage).toContainText("Canonical item prompt");
   await expect(form).toHaveAttribute("aria-busy", "false");
-  await expect(send).toBeEnabled();
+  await expect(prompt).toBeEnabled();
+  await expect(send).toBeDisabled();
 
   await prompt.fill("Submitted after canonical item acknowledgement");
+  await expect(send).toBeEnabled();
   await send.click();
   await expect.poll(() => submittedPrompts).toEqual([
     "Canonical item prompt",
@@ -871,9 +875,11 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
   prompt = form.locator('textarea[name="prompt"]');
   send = form.locator('button[type="submit"]');
   await expect(form).toHaveAttribute("aria-busy", "false");
-  await expect(send).toBeEnabled();
+  await expect(prompt).toBeEnabled();
+  await expect(send).toBeDisabled();
 
   await prompt.fill("Sent after canonical unlock");
+  await expect(send).toBeEnabled();
   await send.click();
   await expect.poll(() => submittedPrompts).toEqual([
     "Canonical while response is pending",

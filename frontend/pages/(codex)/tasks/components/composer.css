@@ -13,14 +13,13 @@ caffold-task-composer {
   & .task-composer {
     margin: 0 auto;
     width: min(100%, 980px);
-    padding: 0.875rem;
   }
 
-  & .task-follow-up-form {
+  & .task-composer.task-follow-up-form {
     width: 100%;
     max-width: none;
-    padding: 0.625rem 0.875rem 0.75rem;
-    border-top: 1px solid var(--border);
+    padding: 0.5rem 0.875rem 0.625rem;
+    border-top: 0;
     background: var(--surface);
   }
 
@@ -35,9 +34,9 @@ caffold-task-composer {
     position: relative;
     overflow: visible;
     border: 1px solid var(--border);
-    border-radius: 18px;
+    border-radius: 14px;
     background: var(--surface);
-    box-shadow: 0 10px 32px rgb(31 42 36 / 8%);
+    box-shadow: 0 4px 18px rgb(31 42 36 / 6%);
   }
 
   & .task-composer-context {
@@ -156,9 +155,9 @@ caffold-task-composer {
   & .task-composer textarea {
     width: 100%;
     min-width: 0;
-    min-height: calc(2lh + 1.5rem);
-    max-height: calc(10.5lh + 1.5rem);
-    padding: 0.875rem 1.125rem 0.625rem;
+    min-height: calc(1lh + 1rem);
+    max-height: calc(10.5lh + 1rem);
+    padding: 0.625rem 1rem 0.375rem;
     border: 0;
     background: transparent;
     color: var(--text);
@@ -219,7 +218,7 @@ caffold-task-composer {
     border-radius: 999px;
     background: transparent;
     color: var(--muted);
-    font-size: 0.875rem;
+    font-size: var(--interface-meta-font-size);
     cursor: pointer;
   }
 
@@ -300,6 +299,18 @@ caffold-task-composer {
   & .task-send-button:focus-visible {
     background: #0b1711;
     outline: none;
+  }
+
+  & .task-send-button:disabled {
+    border: 1px solid var(--border);
+    background: var(--surface-muted);
+    color: var(--muted);
+    cursor: default;
+    opacity: 0.72;
+  }
+
+  & .task-send-button:disabled:hover {
+    background: var(--surface-muted);
   }
 
   & .task-send-icon {
@@ -424,7 +435,7 @@ caffold-task-composer {
 
 @media (max-width: 860px) {
   caffold-task-composer {
-    & .task-follow-up-form {
+    & .task-composer.task-follow-up-form {
       padding: 0.5rem 0.625rem 0.625rem;
     }
 
@@ -433,11 +444,11 @@ caffold-task-composer {
     }
 
     & .task-composer-panel {
-      border-radius: 16px;
+      border-radius: 14px;
     }
 
     & .task-composer textarea {
-      padding: 0.8125rem 0.875rem 0.5rem;
+      padding: 0.625rem 0.875rem 0.375rem;
     }
 
     & .task-model-popover,
@@ -475,9 +486,10 @@ caffold-task-composer {
   }
 }
 
-@media (max-width: 520px) {
+@media (max-width: 520px) and (orientation: portrait) {
   caffold-task-composer {
-    & .task-follow-up-form {
+    & .task-composer.task-follow-up-form {
+      padding-inline: 0.75rem;
       padding-bottom: max(0.625rem, env(safe-area-inset-bottom));
     }
   }
