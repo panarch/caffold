@@ -398,7 +398,7 @@ test("submits completed task follow-ups and reloads canonical messages", async (
   releaseStaleDetailRequest();
   await expect(tasksPage).toContainText("Submitted by button");
   await expect(form).toHaveAttribute("aria-busy", "false");
-  await expect(prompt).toBeFocused();
+  await expect(prompt).not.toBeFocused();
 
   canonicalEvents = [
     ...canonicalEvents,
@@ -445,6 +445,7 @@ test("submits completed task follow-ups and reloads canonical messages", async (
     "Submitted by Enter",
   ]);
   await expect(tasksPage).toContainText("Submitted by Enter");
+  await expect(prompt).toBeFocused();
 
   canonicalEvents = [
     ...canonicalEvents,
@@ -478,7 +479,7 @@ test("submits completed task follow-ups and reloads canonical messages", async (
   expect(submittedBodies.at(-1).images).toHaveLength(1);
   expect(submittedBodies.at(-1).images[0]).toMatch(/^data:image\/png;base64,/);
   await expect(form).toHaveAttribute("aria-busy", "false");
-  await expect(prompt).toBeFocused();
+  await expect(prompt).not.toBeFocused();
   await expect(prompt).toHaveValue("Rejected image prompt");
   await expect(form.locator(".task-composer-attachment")).toHaveCount(1);
   await expect(tasksPage).toContainText("Follow-up rejected by fixture");
@@ -508,7 +509,7 @@ test("submits completed task follow-ups and reloads canonical messages", async (
   await expect.poll(() => timedOutAttempts).toBe(1);
   await expect(form).toHaveAttribute("aria-busy", "false");
   await expect(prompt).toHaveValue("");
-  await expect(prompt).toBeFocused();
+  await expect(prompt).not.toBeFocused();
   await expect(tasksPage).toContainText("Codex app-server request timed out.");
   await expect(
     tasksPage.locator('.task-message[data-message-role="user"]').filter({

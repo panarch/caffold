@@ -198,7 +198,7 @@ class CaffoldTaskComposer extends HTMLElement {
     }
     this.context.requestError = `${result.error?.message ?? result.error ?? ""}`;
     this.render();
-    if (submission.hadFocus) {
+    if (submission.restorePromptFocus) {
       this.focus();
     }
     return true;
@@ -620,7 +620,10 @@ class CaffoldTaskComposer extends HTMLElement {
       id: submissionId,
       prompt,
       images: [...state.images],
-      hadFocus: form.contains(document.activeElement),
+      restorePromptFocus:
+        !event.submitter &&
+        document.activeElement ===
+          form.querySelector("textarea[name='prompt']"),
     };
     this.activeSubmissions.set(submissionId, submission);
     state.activeSubmissionId = submissionId;

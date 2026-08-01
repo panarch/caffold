@@ -5,6 +5,9 @@ import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import { cleanLogicalPath } from "../task-format.js";
 import "./composer.js";
 
+const AUTO_FOCUS_PROMPT_MEDIA =
+  "(hover: hover) and (pointer: fine) and (min-width: 521px)";
+
 class CaffoldTaskNew extends HTMLElement {
   connectedCallback() {
     this.ensureState();
@@ -109,7 +112,9 @@ class CaffoldTaskNew extends HTMLElement {
     this.home = Boolean(home);
     this.hidden = false;
     this.syncView();
-    this.composer()?.focus();
+    if (window.matchMedia(AUTO_FOCUS_PROMPT_MEDIA).matches) {
+      this.composer()?.focus();
+    }
   }
 
   deactivate() {

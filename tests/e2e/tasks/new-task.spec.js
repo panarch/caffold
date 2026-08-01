@@ -13,6 +13,42 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
+test("focuses a new task prompt automatically only on desktop", async ({
+  page,
+}, testInfo) => {
+  await installTaskLoopFixture(page);
+  await page.goto("/tasks");
+
+  const homePrompt = page.locator(
+    'caffold-tasks-page .task-new-form textarea[name="prompt"]',
+  );
+  if (testInfo.project.name === "desktop") {
+    await expect(homePrompt).toBeFocused();
+  } else {
+    await expect(homePrompt).not.toBeFocused();
+  }
+
+  const openNewTask = page.locator(
+    'caffold-tasks-page .tasks-header [data-task-action="open-new"]',
+  );
+  await expect(openNewTask).toBeVisible();
+  await openNewTask.click();
+  await expect(page).toHaveURL(/\/tasks\/new/);
+
+  const prompt = page.locator(
+    'caffold-tasks-page .task-new-form textarea[name="prompt"]',
+  );
+  await expect(prompt).toBeVisible();
+  if (testInfo.project.name === "desktop") {
+    await expect(prompt).toBeFocused();
+    return;
+  }
+
+  await expect(prompt).not.toBeFocused();
+  await prompt.click();
+  await expect(prompt).toBeFocused();
+});
+
 test("creates a task with responsive composer controls and canonical approval state", async ({
   page,
 }, testInfo) => {
