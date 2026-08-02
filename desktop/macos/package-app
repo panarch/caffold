@@ -4,6 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
 DIST_DIR="${REPO_DIR}/target/caffold-server"
+PRODUCT_NAME="Caffold Server"
+BUNDLE_IDENTIFIER="io.panarch.caffold.server"
+MINIMUM_MACOS_VERSION="14.0"
 SWIFT_SOURCES=(
   "${SCRIPT_DIR}/CaffoldServer.swift"
   "${SCRIPT_DIR}/CaffoldServer/Runtime.swift"
@@ -14,10 +17,13 @@ CONTENTS_DIR="${APP_DIR}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
 RESOURCES_DIR="${CONTENTS_DIR}/Resources"
 ARCH="$(uname -m)"
-ARCHIVE="${DIST_DIR}/Caffold-Server-macos-${ARCH}.zip"
 VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' "${REPO_DIR}/Cargo.toml" | head -n 1)"
+WEB_VERSION="$(sed -n 's/^[[:space:]]*"version": "\([^"]*\)",/\1/p' "${REPO_DIR}/package.json" | head -n 1)"
 BUILD_NUMBER="$(git -C "${REPO_DIR}" rev-list --count HEAD)"
 BUILD_TIMESTAMP="${CAFFOLD_BUILD_TIMESTAMP:-$(date '+%Y-%m-%d %H:%M %Z')}"
+ARCHIVE_BASENAME="Caffold-Server-${VERSION}-macos-${ARCH}.zip"
+ARCHIVE="${DIST_DIR}/${ARCHIVE_BASENAME}"
+CHECKSUM="${ARCHIVE}.sha256"
 
 require_macos() {
   if [[ "$(uname -s)" != "Darwin" ]]; then
@@ -26,8 +32,26 @@ require_macos() {
   fi
 }
 
+require_supported_architecture() {
+  if [[ "${ARCH}" != "arm64" ]]; then
+    echo "Caffold Server releases currently support macOS arm64 only; found ${ARCH}." >&2
+    exit 1
+  fi
+}
+
+validate_source_versions() {
+  if [[ -z "${VERSION}" ]]; then
+    echo "Could not read the Caffold version from Cargo.toml." >&2
+    exit 1
+  fi
+  if [[ "${WEB_VERSION}" != "${VERSION}" ]]; then
+    echo "Cargo.toml (${VERSION}) and package.json (${WEB_VERSION}) versions differ." >&2
+    exit 1
+  fi
+}
+
 build_release() {
-  (cd "${REPO_DIR}" && cargo build --release)
+  (cd "${REPO_DIR}" && cargo build --release --locked)
 }
 
 prepare_bundle() {
@@ -82,25 +106,106 @@ install_readme() {
 }
 
 package_archive() {
-  rm -f -- "${ARCHIVE}"
+  rm -f -- "${ARCHIVE}" "${CHECKSUM}"
   ditto -c -k --sequesterRsrc --keepParent "${APP_DIR}" "${ARCHIVE}"
+  verify_archive "${ARCHIVE}" "${BUILD_TIMESTAMP}"
+  write_checksum
 }
 
 verify_bundle() {
-  test -x "${MACOS_DIR}/CaffoldServer"
-  test -x "${RESOURCES_DIR}/caffold"
-  test -f "${RESOURCES_DIR}/CaffoldServer.icns"
-  test -f "${CONTENTS_DIR}/Info.plist"
-  test "$(
-    /usr/libexec/PlistBuddy -c "Print :CaffoldBuildTimestamp" \
-      "${CONTENTS_DIR}/Info.plist"
-  )" = "${BUILD_TIMESTAMP}"
-  codesign --verify --deep --strict "${APP_DIR}"
-  plutil -lint "${CONTENTS_DIR}/Info.plist" >/dev/null
+  local app_dir="${1:-${APP_DIR}}"
+  local expected_build_timestamp="${2-${BUILD_TIMESTAMP}}"
+  local contents_dir="${app_dir}/Contents"
+  local macos_dir="${contents_dir}/MacOS"
+  local resources_dir="${contents_dir}/Resources"
+  local plist="${contents_dir}/Info.plist"
+  local actual_build_timestamp
+
+  require_executable "${macos_dir}/CaffoldServer"
+  require_executable "${resources_dir}/caffold"
+  require_file "${resources_dir}/CaffoldServer.icns"
+  require_file "${plist}"
+  assert_plist_value "${plist}" CFBundleIdentifier "${BUNDLE_IDENTIFIER}"
+  assert_plist_value "${plist}" CFBundleShortVersionString "${VERSION}"
+  assert_plist_value "${plist}" CFBundleVersion "${BUILD_NUMBER}"
+  assert_plist_value "${plist}" LSMinimumSystemVersion "${MINIMUM_MACOS_VERSION}"
+  actual_build_timestamp="$(/usr/libexec/PlistBuddy -c 'Print :CaffoldBuildTimestamp' "${plist}")"
+  if [[ -z "${actual_build_timestamp}" ]]; then
+    echo "${plist} has an empty CaffoldBuildTimestamp." >&2
+    return 1
+  fi
+  if [[ -n "${expected_build_timestamp}" && \
+    "${actual_build_timestamp}" != "${expected_build_timestamp}" ]]; then
+    echo "${plist} has CaffoldBuildTimestamp=${actual_build_timestamp}; expected ${expected_build_timestamp}." >&2
+    return 1
+  fi
+  verify_binary_architecture "${macos_dir}/CaffoldServer"
+  verify_binary_architecture "${resources_dir}/caffold"
+  codesign --verify --deep --strict "${app_dir}"
+  plutil -lint "${plist}" >/dev/null
+}
+
+require_executable() {
+  local path="$1"
+  if [[ ! -x "${path}" ]]; then
+    echo "Expected executable is missing: ${path}" >&2
+    return 1
+  fi
+}
+
+require_file() {
+  local path="$1"
+  if [[ ! -f "${path}" ]]; then
+    echo "Expected file is missing: ${path}" >&2
+    return 1
+  fi
+}
+
+assert_plist_value() {
+  local plist="$1"
+  local key="$2"
+  local expected="$3"
+  local actual
+  actual="$(/usr/libexec/PlistBuddy -c "Print :${key}" "${plist}")"
+  if [[ "${actual}" != "${expected}" ]]; then
+    echo "${plist} has ${key}=${actual}; expected ${expected}." >&2
+    return 1
+  fi
+}
+
+verify_binary_architecture() {
+  local binary="$1"
+  local architectures
+  architectures="$(lipo -archs "${binary}")"
+  if [[ " ${architectures} " != *" ${ARCH} "* ]]; then
+    echo "${binary} does not contain the expected ${ARCH} architecture." >&2
+    return 1
+  fi
+}
+
+verify_archive() {
+  local archive="${1:-${ARCHIVE}}"
+  local expected_build_timestamp="${2-}"
+  local extract_dir
+  extract_dir="$(mktemp -d "${TMPDIR:-/tmp}/caffold-release.XXXXXX")"
+
+  (
+    trap 'rm -rf -- "${extract_dir}"' EXIT
+    ditto -x -k "${archive}" "${extract_dir}"
+    verify_bundle "${extract_dir}/${PRODUCT_NAME}.app" "${expected_build_timestamp}"
+  )
+}
+
+write_checksum() {
+  local digest
+  digest="$(shasum -a 256 "${ARCHIVE}" | awk '{print $1}')"
+  printf '%s  %s\n' "${digest}" "${ARCHIVE_BASENAME}" >"${CHECKSUM}"
 }
 
 build() {
   require_macos
+  require_supported_architecture
+  validate_source_versions
   mkdir -p "${DIST_DIR}"
   build_release
   prepare_bundle
@@ -116,6 +221,8 @@ archive() {
   build
   package_archive
   echo "archive: ${ARCHIVE}"
+  echo "checksum: ${CHECKSUM}"
+  echo "sha256:  $(awk '{print $1}' "${CHECKSUM}")"
 }
 
 status() {
@@ -130,16 +237,33 @@ status() {
   else
     echo "archive: not built"
   fi
+
+  if [[ -f "${CHECKSUM}" ]]; then
+    echo "checksum: ${CHECKSUM}"
+  else
+    echo "checksum: not built"
+  fi
+}
+
+metadata() {
+  require_supported_architecture
+  validate_source_versions
+  echo "version=${VERSION}"
+  echo "arch=${ARCH}"
+  echo "archive=${ARCHIVE_BASENAME}"
+  echo "checksum=${ARCHIVE_BASENAME}.sha256"
 }
 
 usage() {
   cat <<'EOF'
-usage: desktop/macos/package-app {build|archive|status}
+usage: desktop/macos/package-app {build|archive|verify-archive|status|metadata}
 
 Commands:
-  build   build the release binary and Caffold Server.app
-  archive build the app and an optional zip archive
-  status  print the current bundle and archive paths
+  build           build and verify the release app bundle
+  archive         build, archive, re-extract, verify, and checksum the app
+  verify-archive  re-extract and verify the current archive
+  status          print the current bundle and archive paths
+  metadata        print the release identity as key=value pairs
 EOF
 }
 
@@ -150,8 +274,17 @@ case "${1:-build}" in
   archive)
     archive
     ;;
+  verify-archive)
+    require_macos
+    require_supported_architecture
+    validate_source_versions
+    verify_archive "${2:-${ARCHIVE}}"
+    ;;
   status)
     status
+    ;;
+  metadata)
+    metadata
     ;;
   -h|--help|help)
     usage

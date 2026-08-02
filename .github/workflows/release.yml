@@ -1,0 +1,102 @@
+name: Release
+run-name: Release v${{ inputs.version }} (dry run)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version without the v prefix, already committed in Cargo.toml and package.json
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  macos:
+    name: macOS arm64 dry run
+    runs-on: macos-14
+    timeout-minutes: 45
+
+    steps:
+      - name: Require main
+        env:
+          SELECTED_REF: ${{ github.ref }}
+        run: |
+          if [[ "${SELECTED_REF}" != "refs/heads/main" ]]; then
+            echo "Release dry runs must be dispatched from main, not ${SELECTED_REF}." >&2
+            exit 1
+          fi
+
+      - name: Check out the complete release history
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: main
+
+      - name: Verify the requested commit
+        env:
+          REQUESTED_SHA: ${{ github.sha }}
+        run: |
+          if [[ "$(git rev-parse HEAD)" != "${REQUESTED_SHA}" ]]; then
+            echo "main changed after this workflow was dispatched; run it again." >&2
+            exit 1
+          fi
+
+      - name: Install Rust 1.96
+        run: |
+          rustup toolchain install 1.96.0 \
+            --profile minimal \
+            --component clippy \
+            --component rustfmt
+          rustup default 1.96.0
+
+      - name: Install Node.js 22
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Verify the requested version
+        id: release_metadata
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          actual_version="$(desktop/macos/package-app metadata | sed -n 's/^version=//p')"
+          if [[ "${RELEASE_VERSION}" != "${actual_version}" ]]; then
+            echo "Requested ${RELEASE_VERSION}; source contains ${actual_version}." >&2
+            exit 1
+          fi
+          echo "version=${actual_version}" >>"${GITHUB_OUTPUT}"
+
+      - name: Verify release contracts
+        run: npm run test:release
+
+      - name: Check Rust formatting
+        run: cargo fmt --check
+
+      - name: Test Rust
+        run: cargo test
+
+      - name: Lint Rust
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Build and verify the macOS artifact
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: desktop/macos/release --dry-run --version "${RELEASE_VERSION}"
+
+      - name: Upload the verified macOS artifact
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: caffold-macos-arm64-v${{ steps.release_metadata.outputs.version }}
+          path: |
+            target/caffold-server/Caffold-Server-*.zip
+            target/caffold-server/Caffold-Server-*.zip.sha256
+          if-no-files-found: error
+          retention-days: 7

@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
+PACKAGE_APP="${SCRIPT_DIR}/package-app"
+
+usage() {
+  cat <<'EOF'
+usage: desktop/macos/release --dry-run [--version <version>]
+
+Build and fully verify the macOS arm64 release artifact from a clean worktree.
+This dry run writes only ignored files under target/caffold-server. It does not
+create a tag or GitHub Release and does not modify the Homebrew tap.
+
+Options:
+  --dry-run            prepare and verify the local artifact without publishing
+  --version <version>  require Cargo.toml to contain this version
+  -h, --help           show this help
+EOF
+}
+
+fail() {
+  echo "release preparation failed: $*" >&2
+  exit 1
+}
+
+require_clean_worktree() {
+  local status
+  status="$(git -C "${REPO_DIR}" status --porcelain --untracked-files=all)"
+  if [[ -n "${status}" ]]; then
+    echo "${status}" >&2
+    fail "the worktree must be clean"
+  fi
+}
+
+require_main_branch() {
+  local branch
+  branch="$(git -C "${REPO_DIR}" branch --show-current)"
+  if [[ "${branch}" != "main" ]]; then
+    fail "releases must be prepared from main, not ${branch:-detached HEAD}"
+  fi
+}
+
+metadata_value() {
+  local key="$1"
+  "${PACKAGE_APP}" metadata | sed -n "s/^${key}=//p"
+}
+
+verify_requested_version() {
+  local requested="$1"
+  local actual
+  actual="$(metadata_value version)"
+  requested="${requested#v}"
+  if [[ -n "${requested}" && "${requested}" != "${actual}" ]]; then
+    fail "requested version ${requested} does not match Cargo.toml ${actual}"
+  fi
+}
+
+verify_checksum() {
+  local archive checksum_dir checksum_file
+  archive="$(metadata_value archive)"
+  checksum_file="$(metadata_value checksum)"
+  checksum_dir="${REPO_DIR}/target/caffold-server"
+
+  test -f "${checksum_dir}/${archive}" || fail "archive was not created"
+  test -f "${checksum_dir}/${checksum_file}" || fail "checksum was not created"
+  (cd "${checksum_dir}" && shasum -a 256 -c "${checksum_file}")
+}
+
+dry_run() {
+  local requested_version="$1"
+  local commit version archive checksum
+
+  require_main_branch
+  require_clean_worktree
+  verify_requested_version "${requested_version}"
+
+  commit="$(git -C "${REPO_DIR}" rev-parse HEAD)"
+  version="$(metadata_value version)"
+  archive="$(metadata_value archive)"
+  checksum="$(metadata_value checksum)"
+
+  "${PACKAGE_APP}" archive
+  verify_checksum
+  require_clean_worktree
+
+  echo
+  echo "macOS release dry run complete"
+  echo "commit:   ${commit}"
+  echo "version:  ${version}"
+  echo "tag:      v${version}"
+  echo "archive:  ${REPO_DIR}/target/caffold-server/${archive}"
+  echo "checksum: ${REPO_DIR}/target/caffold-server/${checksum}"
+  echo "No repository, GitHub, or Homebrew state was changed."
+}
+
+mode=""
+requested_version=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run)
+      mode="dry-run"
+      shift
+      ;;
+    --version)
+      [[ $# -ge 2 ]] || fail "--version requires a value"
+      requested_version="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ "${mode}" != "dry-run" ]]; then
+  usage >&2
+  exit 2
+fi
+
+dry_run "${requested_version}"

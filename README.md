@@ -104,6 +104,7 @@ Internal planning notes:
 - [UI Surfaces](docs/internal/ui-surfaces.md)
 - [Frontend Structure](docs/internal/frontend-structure.md)
 - [Security and Approvals](docs/internal/security-approvals.md)
+- [macOS Release Process](docs/internal/macos-release.md)
 
 ## Status
 

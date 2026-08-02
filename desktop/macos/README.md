@@ -10,13 +10,22 @@ desktop/macos/package-app build
 
 The app is written to `target/caffold-server/Caffold Server.app` and can be moved directly to `/Applications` or transferred with AirDrop.
 
-Create an optional zip archive only when a single-file distribution container is useful:
+Create and verify a versioned zip archive with:
 
 ```sh
 desktop/macos/package-app archive
 ```
 
-The archive is written to `target/caffold-server/Caffold-Server-macos-<arch>.zip`.
+The command uses the committed Cargo lockfile and verifies both the bundle and its archived copy. It writes:
+
+```text
+target/caffold-server/Caffold-Server-<version>-macos-arm64.zip
+target/caffold-server/Caffold-Server-<version>-macos-arm64.zip.sha256
+```
+
+The current preview package is arm64-only, ad-hoc signed, and not Apple-notarized.
+
+Maintainers preparing a distribution should follow the [internal release process](../../docs/internal/macos-release.md).
 
 ## Runtime dependencies
 

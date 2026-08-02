@@ -7,6 +7,7 @@
     "test:appearance": "node --test tests/appearance-*.test.mjs",
     "test:css-ownership": "node --test tests/css-ownership.test.mjs",
     "test:codex-protocol": "node --test tests/codex-protocol.test.mjs",
+    "test:release": "node --test tests/macos-release.test.mjs",
     "test:routes": "node --test tests/navigation-routes.test.mjs",
     "test:task-state": "node --test tests/css-ownership.test.mjs tests/task-*.test.mjs",
     "test:watch": "node --test tests/watch.test.mjs",
