@@ -149,6 +149,21 @@ test("manual release workflow keeps dry runs read-only and scopes publishing", (
   assert.match(releaseJob, /gh release download/);
   assert.match(releaseJob, /package-app verify-archive/);
   assert.match(releaseJob, /shasum -a 256 -c/);
+  const existingReleaseIndex = releaseJob.indexOf(
+    'if gh release view "${tag}"',
+  );
+  const newReleaseIndex = releaseJob.indexOf(
+    "          else\n            release_args=(",
+    existingReleaseIndex,
+  );
+  const tagMismatchIndex = releaseJob.indexOf(
+    'if [[ "${tag_sha}" != "${RELEASE_SHA}" ]]',
+  );
+  assert.ok(
+    existingReleaseIndex >= 0 &&
+      newReleaseIndex > existingReleaseIndex &&
+      tagMismatchIndex > newReleaseIndex,
+  );
   assert.doesNotMatch(releaseJob, /cmp --/);
   assert.doesNotMatch(releaseJob, /HOMEBREW_TAP_TOKEN/);
   assert.doesNotMatch(releaseJob, /brew install|git push/);

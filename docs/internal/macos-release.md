@@ -58,7 +58,7 @@ With `operation: publish`, two narrower jobs run after verification. `publish_re
 4. register the checked-out tap locally, trust only the generated Caffold Cask, run Homebrew style and strict Cask audit, install the app and bundled CLI, check that quarantine was removed, and uninstall the smoke-test copy; and
 5. commit and push the Cask to the tap only after the release and Homebrew installation checks pass.
 
-The publish jobs never edit or commit Caffold source. A failed tap update can be retried from the same workflow commit: the already-published assets, rather than a newly timestamped rebuild, become the canonical input to the Homebrew job.
+The publish jobs never edit or commit Caffold source. After a GitHub Release exists, its tag and validated assets remain canonical, so a later workflow-fix commit with the same application version can retry a failed tap update without replacing the release. When no release exists yet, an existing version tag must still point to the workflow commit before assets can be published.
 
 ## Public release transaction
 

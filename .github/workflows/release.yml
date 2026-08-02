@@ -143,18 +143,9 @@ jobs:
         run: |
           tag="v${RELEASE_VERSION}"
           artifact_dir="${GITHUB_WORKSPACE}/target/caffold-server"
-          tag_exists=false
-
-          if tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${tag}" --jq .sha 2>/dev/null)"; then
-            tag_exists=true
-            if [[ "${tag_sha}" != "${RELEASE_SHA}" ]]; then
-              echo "${tag} points to ${tag_sha}, not ${RELEASE_SHA}." >&2
-              exit 1
-            fi
-          fi
 
           if gh release view "${tag}" >/dev/null 2>&1; then
-            if [[ "${tag_exists}" != true ]]; then
+            if ! tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${tag}" --jq .sha 2>/dev/null)"; then
               echo "${tag} has a release without a matching tag." >&2
               exit 1
             fi
@@ -180,7 +171,11 @@ jobs:
               --title "Caffold ${tag}"
               --generate-notes
             )
-            if [[ "${tag_exists}" == true ]]; then
+            if tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${tag}" --jq .sha 2>/dev/null)"; then
+              if [[ "${tag_sha}" != "${RELEASE_SHA}" ]]; then
+                echo "${tag} points to ${tag_sha}, not ${RELEASE_SHA}." >&2
+                exit 1
+              fi
               release_args+=(--verify-tag)
             else
               release_args+=(--target "${RELEASE_SHA}")
