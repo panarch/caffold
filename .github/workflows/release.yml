@@ -211,7 +211,7 @@ jobs:
   publish_release:
     name: Publish GitHub Release
     needs: macos
-    if: inputs.action != 'dry-run'
+    if: always() && needs.macos.result == 'success' && inputs.action != 'dry-run'
     runs-on: macos-14
     timeout-minutes: 15
     permissions:
@@ -308,7 +308,7 @@ jobs:
     needs:
       - macos
       - publish_release
-    if: inputs.action != 'dry-run'
+    if: always() && needs.macos.result == 'success' && needs.publish_release.result == 'success' && inputs.action != 'dry-run'
     environment: release
     runs-on: macos-14
     timeout-minutes: 20

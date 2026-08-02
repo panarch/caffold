@@ -180,7 +180,10 @@ test("manual release workflow isolates versioning, verification, and publication
     assert.doesNotMatch(macosJob, new RegExp(publishingCommand, "i"));
   }
 
-  assert.match(releaseJob, /if: inputs\.action != 'dry-run'/);
+  assert.match(
+    releaseJob,
+    /if: always\(\) && needs\.macos\.result == 'success' && inputs\.action != 'dry-run'/,
+  );
   assert.match(releaseJob, /^\s+contents: write$/m);
   assert.match(releaseJob, /RELEASE_SHA: \$\{\{ needs\.macos\.outputs\.release_sha \}\}/);
   assert.match(releaseJob, /actions\/download-artifact@v\d+\.\d+\.\d+/);
@@ -211,7 +214,10 @@ test("manual release workflow isolates versioning, verification, and publication
   assert.doesNotMatch(releaseJob, /HOMEBREW_TAP_TOKEN/);
   assert.doesNotMatch(releaseJob, /brew install|git push/);
 
-  assert.match(homebrewJob, /if: inputs\.action != 'dry-run'/);
+  assert.match(
+    homebrewJob,
+    /if: always\(\) && needs\.macos\.result == 'success' && needs\.publish_release\.result == 'success' && inputs\.action != 'dry-run'/,
+  );
   assert.match(homebrewJob, /^\s+environment: release$/m);
   assert.match(homebrewJob, /^\s+contents: read$/m);
   assert.doesNotMatch(homebrewJob, /contents: write/);
