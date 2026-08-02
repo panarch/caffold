@@ -147,7 +147,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ steps.release_source.outputs.release_sha }}
+          ref: main
 
       - name: Verify the requested commit
         env:

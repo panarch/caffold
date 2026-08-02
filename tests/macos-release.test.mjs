@@ -163,6 +163,14 @@ test("manual release workflow isolates versioning, verification, and publication
   assert.match(macosJob, /release_sha="\$\{BUMP_RELEASE_SHA:-\$\{REQUESTED_SHA\}\}"/);
   assert.match(macosJob, /fetch-depth: 0/);
   assert.match(macosJob, /persist-credentials: false/);
+  assert.match(
+    macosJob,
+    /Check out the complete release history[\s\S]*?ref: main/,
+  );
+  assert.doesNotMatch(
+    macosJob,
+    /ref: \$\{\{ steps\.release_source\.outputs\.release_sha \}\}/,
+  );
   assert.match(macosJob, new RegExp(`rustup toolchain install ${rustVersion}(?:\\.0)?`));
   assert.match(macosJob, /release --dry-run/);
   assert.match(macosJob, /actions\/upload-artifact@v\d+\.\d+\.\d+/);
