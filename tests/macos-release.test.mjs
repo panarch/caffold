@@ -224,6 +224,12 @@ test("manual release workflow isolates versioning, verification, and publication
   assert.match(homebrewJob, /published-caffold-macos-arm64-v/);
   assert.match(homebrewJob, /repository: panarch\/homebrew-tap/);
   assert.match(homebrewJob, /token: \$\{\{ secrets\.HOMEBREW_TAP_TOKEN \}\}/);
+  const renderIndex = homebrewJob.indexOf(
+    ">homebrew-tap/Casks/caffold.rb",
+  );
+  const commitIndex = homebrewJob.indexOf(
+    'git commit -m "Update Caffold to ${RELEASE_VERSION}"',
+  );
   const tapIndex = homebrewJob.indexOf(
     'brew tap panarch/tap "${GITHUB_WORKSPACE}/homebrew-tap"',
   );
@@ -233,7 +239,20 @@ test("manual release workflow isolates versioning, verification, and publication
   const auditIndex = homebrewJob.indexOf(
     "brew audit --cask --strict panarch/tap/caffold",
   );
-  assert.ok(tapIndex >= 0 && trustIndex > tapIndex && auditIndex > trustIndex);
+  const installIndex = homebrewJob.indexOf(
+    "brew install --cask panarch/tap/caffold",
+  );
+  const pushIndex = homebrewJob.indexOf("git push origin HEAD:main");
+  assert.ok(
+    renderIndex >= 0 &&
+      commitIndex > renderIndex &&
+      tapIndex > commitIndex &&
+      trustIndex > tapIndex &&
+      auditIndex > trustIndex &&
+      installIndex > auditIndex &&
+      pushIndex > installIndex,
+  );
+  assert.match(homebrewJob, /if: steps\.tap_update\.outputs\.changed == 'true'/);
   assert.doesNotMatch(homebrewJob, /HOMEBREW_NO_REQUIRE_TAP_TRUST/);
   assert.match(homebrewJob, /brew install --cask panarch\/tap\/caffold/);
   assert.match(homebrewJob, /git push origin HEAD:main/);

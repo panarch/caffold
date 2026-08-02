@@ -357,6 +357,21 @@ jobs:
             --sha256 "${archive_sha}" \
             >homebrew-tap/Casks/caffold.rb
 
+      - name: Prepare the unpublished Homebrew tap update
+        id: tap_update
+        working-directory: homebrew-tap
+        run: |
+          if [[ -z "$(git status --porcelain -- Casks/caffold.rb)" ]]; then
+            echo "Casks/caffold.rb already describes v${RELEASE_VERSION}."
+            echo "changed=false" >>"${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/caffold.rb
+          git commit -m "Update Caffold to ${RELEASE_VERSION}"
+          echo "changed=true" >>"${GITHUB_OUTPUT}"
+
       - name: Audit and install the unpublished tap checkout
         run: |
           brew tap panarch/tap "${GITHUB_WORKSPACE}/homebrew-tap"
@@ -374,14 +389,6 @@ jobs:
           brew uninstall --cask panarch/tap/caffold
 
       - name: Update the Homebrew tap
+        if: steps.tap_update.outputs.changed == 'true'
         working-directory: homebrew-tap
-        run: |
-          if [[ -z "$(git status --porcelain -- Casks/caffold.rb)" ]]; then
-            echo "Casks/caffold.rb already describes v${RELEASE_VERSION}."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Casks/caffold.rb
-          git commit -m "Update Caffold to ${RELEASE_VERSION}"
-          git push origin HEAD:main
+        run: git push origin HEAD:main

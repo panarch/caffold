@@ -63,8 +63,8 @@ With any `release-*` action or `resume`, two narrower jobs run after verificatio
 1. download and recheck the exact artifact produced by the verification job;
 2. create the immutable version tag and GitHub Release, or on `resume` verify the existing tag, download the already-published assets, and revalidate their checksum, release-tag version and build number, bundle, architecture, and signature;
 3. pass those canonical published assets to the Homebrew job, then render `Casks/caffold.rb` with their verified version and SHA-256;
-4. register the checked-out tap locally, trust only the generated Caffold Cask, run Homebrew style and strict Cask audit, install the app and bundled CLI, check that quarantine was removed, and uninstall the smoke-test copy; and
-5. commit and push the Cask to the tap only after the release and Homebrew installation checks pass.
+4. create an unpublished local tap commit when the rendered Cask changed, register that exact commit with Homebrew, trust only the generated Caffold Cask, run Homebrew style and strict Cask audit, install the app and bundled CLI, check that quarantine was removed, and uninstall the smoke-test copy; and
+5. push the already-verified tap commit only after the release and Homebrew installation checks pass.
 
 The publish jobs never edit or commit Caffold source. After a GitHub Release exists, its tag and validated assets remain canonical, so a later workflow-fix commit with the same application version can `resume` a failed tap update without replacing the release. Archive verification derives `CFBundleVersion` from the release tag's commit count rather than the later workflow commit. When no release exists yet, an existing version tag must still point to the selected release commit before assets can be published.
 
