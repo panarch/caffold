@@ -1,17 +1,20 @@
 name: Release
-run-name: Release (${{ inputs.operation }})
+run-name: Release (${{ inputs.action }})
 
 on:
   workflow_dispatch:
     inputs:
-      operation:
-        description: Build a temporary artifact or publish the committed version
+      action:
+        description: Verify, create a version release, or resume the current version
         required: true
         default: dry-run
         type: choice
         options:
           - dry-run
-          - publish
+          - release-patch
+          - release-minor
+          - release-major
+          - resume
 
 permissions:
   contents: read
@@ -21,15 +24,16 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  macos:
-    name: Verify macOS arm64 release
-    runs-on: macos-14
-    timeout-minutes: 45
+  bump_release:
+    name: Commit release version
+    if: startsWith(inputs.action, 'release-')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
     outputs:
-      version: ${{ steps.release_metadata.outputs.version }}
-      archive: ${{ steps.release_metadata.outputs.archive }}
-      checksum: ${{ steps.release_metadata.outputs.checksum }}
-      artifact_name: caffold-macos-arm64-v${{ steps.release_metadata.outputs.version }}
+      version: ${{ steps.bump.outputs.version }}
+      release_sha: ${{ steps.release_commit.outputs.release_sha }}
 
     steps:
       - name: Require main
@@ -45,7 +49,7 @@ jobs:
         uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
           ref: main
 
       - name: Verify the requested commit
@@ -53,6 +57,108 @@ jobs:
           REQUESTED_SHA: ${{ github.sha }}
         run: |
           if [[ "$(git rev-parse HEAD)" != "${REQUESTED_SHA}" ]]; then
+            echo "main changed after this workflow was dispatched; run it again." >&2
+            exit 1
+          fi
+
+      - name: Install Node.js 22
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Bump the release version
+        id: bump
+        env:
+          RELEASE_ACTION: ${{ inputs.action }}
+        run: |
+          bump="${RELEASE_ACTION#release-}"
+          node scripts/bump-release-version.mjs "${bump}" >>"${GITHUB_OUTPUT}"
+
+      - name: Require an unused release version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          tag="v${RELEASE_VERSION}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "${tag} already exists." >&2
+            exit 1
+          fi
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "Release ${tag} already exists." >&2
+            exit 1
+          fi
+
+      - name: Commit and push the release version
+        id: release_commit
+        env:
+          RELEASE_VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          changed_files="$(git diff --name-only | LC_ALL=C sort)"
+          expected_files="$(printf '%s\n' Cargo.lock Cargo.toml package.json | LC_ALL=C sort)"
+          if [[ "${changed_files}" != "${expected_files}" ]]; then
+            echo "Version bump changed unexpected files:" >&2
+            printf '%s\n' "${changed_files}" >&2
+            exit 1
+          fi
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock Cargo.toml package.json
+          git commit -m "Release v${RELEASE_VERSION}"
+          git push origin HEAD:main
+          echo "release_sha=$(git rev-parse HEAD)" >>"${GITHUB_OUTPUT}"
+
+  macos:
+    name: Verify macOS arm64 release
+    needs: bump_release
+    if: always() && (needs.bump_release.result == 'success' || needs.bump_release.result == 'skipped')
+    runs-on: macos-14
+    timeout-minutes: 45
+    outputs:
+      release_sha: ${{ steps.release_source.outputs.release_sha }}
+      version: ${{ steps.release_metadata.outputs.version }}
+      archive: ${{ steps.release_metadata.outputs.archive }}
+      checksum: ${{ steps.release_metadata.outputs.checksum }}
+      artifact_name: caffold-macos-arm64-v${{ steps.release_metadata.outputs.version }}
+
+    steps:
+      - name: Require main
+        env:
+          SELECTED_REF: ${{ github.ref }}
+        run: |
+          if [[ "${SELECTED_REF}" != "refs/heads/main" ]]; then
+            echo "Release runs must be dispatched from main, not ${SELECTED_REF}." >&2
+            exit 1
+          fi
+
+      - name: Resolve the release source
+        id: release_source
+        env:
+          BUMP_RELEASE_SHA: ${{ needs.bump_release.outputs.release_sha }}
+          REQUESTED_SHA: ${{ github.sha }}
+        run: |
+          release_sha="${BUMP_RELEASE_SHA:-${REQUESTED_SHA}}"
+          echo "release_sha=${release_sha}" >>"${GITHUB_OUTPUT}"
+
+      - name: Check out the complete release history
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ steps.release_source.outputs.release_sha }}
+
+      - name: Verify the requested commit
+        env:
+          RELEASE_SHA: ${{ steps.release_source.outputs.release_sha }}
+        run: |
+          git fetch origin main
+          if [[ "$(git rev-parse HEAD)" != "${RELEASE_SHA}" ]]; then
+            echo "Checked out source does not match ${RELEASE_SHA}." >&2
+            exit 1
+          fi
+          if [[ "$(git rev-parse origin/main)" != "${RELEASE_SHA}" ]]; then
             echo "main changed after this workflow was dispatched; run it again." >&2
             exit 1
           fi
@@ -105,7 +211,7 @@ jobs:
   publish_release:
     name: Publish GitHub Release
     needs: macos
-    if: inputs.operation == 'publish'
+    if: inputs.action != 'dry-run'
     runs-on: macos-14
     timeout-minutes: 15
     permissions:
@@ -114,7 +220,7 @@ jobs:
       RELEASE_VERSION: ${{ needs.macos.outputs.version }}
       RELEASE_ARCHIVE: ${{ needs.macos.outputs.archive }}
       RELEASE_CHECKSUM: ${{ needs.macos.outputs.checksum }}
-      RELEASE_SHA: ${{ github.sha }}
+      RELEASE_SHA: ${{ needs.macos.outputs.release_sha }}
 
     steps:
       - name: Check out the release source
@@ -122,7 +228,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ github.sha }}
+          ref: ${{ needs.macos.outputs.release_sha }}
 
       - name: Download the verified artifact
         uses: actions/download-artifact@v8.0.1
@@ -159,7 +265,11 @@ jobs:
               cd "${existing_dir}"
               shasum -a 256 -c "${RELEASE_CHECKSUM}"
             )
-            desktop/macos/package-app verify-archive "${existing_dir}/${RELEASE_ARCHIVE}"
+            tag_build_number="$(git rev-list --count "${tag_sha}")"
+            desktop/macos/package-app verify-archive \
+              "${existing_dir}/${RELEASE_ARCHIVE}" \
+              --expected-version "${RELEASE_VERSION}" \
+              --expected-build-number "${tag_build_number}"
             cp "${existing_dir}/${RELEASE_ARCHIVE}" "${artifact_dir}/${RELEASE_ARCHIVE}"
             cp "${existing_dir}/${RELEASE_CHECKSUM}" "${artifact_dir}/${RELEASE_CHECKSUM}"
             echo "${tag} already contains valid release artifacts; reusing them."
@@ -198,7 +308,7 @@ jobs:
     needs:
       - macos
       - publish_release
-    if: inputs.operation == 'publish'
+    if: inputs.action != 'dry-run'
     environment: release
     runs-on: macos-14
     timeout-minutes: 20
@@ -214,7 +324,7 @@ jobs:
         uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ github.sha }}
+          ref: ${{ needs.macos.outputs.release_sha }}
 
       - name: Download the verified artifact
         uses: actions/download-artifact@v8.0.1

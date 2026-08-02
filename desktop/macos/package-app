@@ -115,6 +115,8 @@ package_archive() {
 verify_bundle() {
   local app_dir="${1:-${APP_DIR}}"
   local expected_build_timestamp="${2-${BUILD_TIMESTAMP}}"
+  local expected_version="${3:-${VERSION}}"
+  local expected_build_number="${4:-${BUILD_NUMBER}}"
   local contents_dir="${app_dir}/Contents"
   local macos_dir="${contents_dir}/MacOS"
   local resources_dir="${contents_dir}/Resources"
@@ -126,8 +128,8 @@ verify_bundle() {
   require_file "${resources_dir}/CaffoldServer.icns"
   require_file "${plist}"
   assert_plist_value "${plist}" CFBundleIdentifier "${BUNDLE_IDENTIFIER}"
-  assert_plist_value "${plist}" CFBundleShortVersionString "${VERSION}"
-  assert_plist_value "${plist}" CFBundleVersion "${BUILD_NUMBER}"
+  assert_plist_value "${plist}" CFBundleShortVersionString "${expected_version}"
+  assert_plist_value "${plist}" CFBundleVersion "${expected_build_number}"
   assert_plist_value "${plist}" LSMinimumSystemVersion "${MINIMUM_MACOS_VERSION}"
   actual_build_timestamp="$(/usr/libexec/PlistBuddy -c 'Print :CaffoldBuildTimestamp' "${plist}")"
   if [[ -z "${actual_build_timestamp}" ]]; then
@@ -186,14 +188,65 @@ verify_binary_architecture() {
 verify_archive() {
   local archive="${1:-${ARCHIVE}}"
   local expected_build_timestamp="${2-}"
+  local expected_version="${3:-${VERSION}}"
+  local expected_build_number="${4:-${BUILD_NUMBER}}"
   local extract_dir
   extract_dir="$(mktemp -d "${TMPDIR:-/tmp}/caffold-release.XXXXXX")"
 
   (
     trap 'rm -rf -- "${extract_dir}"' EXIT
     ditto -x -k "${archive}" "${extract_dir}"
-    verify_bundle "${extract_dir}/${PRODUCT_NAME}.app" "${expected_build_timestamp}"
+    verify_bundle \
+      "${extract_dir}/${PRODUCT_NAME}.app" \
+      "${expected_build_timestamp}" \
+      "${expected_version}" \
+      "${expected_build_number}"
   )
+}
+
+verify_archive_command() {
+  local archive="${ARCHIVE}"
+  local expected_version="${VERSION}"
+  local expected_build_number="${BUILD_NUMBER}"
+
+  if [[ $# -gt 0 && "$1" != --* ]]; then
+    archive="$1"
+    shift
+  fi
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --expected-version)
+        [[ $# -ge 2 ]] || {
+          echo "--expected-version requires a value" >&2
+          return 2
+        }
+        expected_version="$2"
+        shift 2
+        ;;
+      --expected-build-number)
+        [[ $# -ge 2 ]] || {
+          echo "--expected-build-number requires a value" >&2
+          return 2
+        }
+        expected_build_number="$2"
+        shift 2
+        ;;
+      *)
+        echo "Unknown verify-archive argument: $1" >&2
+        return 2
+        ;;
+    esac
+  done
+
+  [[ "${expected_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || {
+    echo "Expected version must be a release version such as 0.1.0." >&2
+    return 2
+  }
+  [[ "${expected_build_number}" =~ ^[1-9][0-9]*$ ]] || {
+    echo "Expected build number must be a positive integer." >&2
+    return 2
+  }
+  verify_archive "${archive}" "" "${expected_version}" "${expected_build_number}"
 }
 
 write_checksum() {
@@ -261,7 +314,8 @@ usage: desktop/macos/package-app {build|archive|verify-archive|status|metadata}
 Commands:
   build           build and verify the release app bundle
   archive         build, archive, re-extract, verify, and checksum the app
-  verify-archive  re-extract and verify the current archive
+  verify-archive [archive] [--expected-version <version>] [--expected-build-number <number>]
+                  re-extract and verify an archive against explicit release identity
   status          print the current bundle and archive paths
   metadata        print the release identity as key=value pairs
 EOF
@@ -278,7 +332,8 @@ case "${1:-build}" in
     require_macos
     require_supported_architecture
     validate_source_versions
-    verify_archive "${2:-${ARCHIVE}}"
+    shift
+    verify_archive_command "$@"
     ;;
   status)
     status

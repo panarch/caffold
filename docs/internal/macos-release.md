@@ -4,7 +4,9 @@ This document separates reversible local release preparation from public distrib
 
 ## Version ownership
 
-`Cargo.toml` is the application version source and `package.json` must contain the same value. A version change is an ordinary reviewed source commit; release tooling does not edit or commit version files.
+`Cargo.toml` is the application version source; `package.json` and the Caffold package entry in `Cargo.lock` must contain the same value. `scripts/bump-release-version.mjs` validates all three values before changing them and supports stable `major`, `minor`, and `patch` increments.
+
+The manual Release workflow creates and pushes a `Release v<version>` commit when a `release-patch`, `release-minor`, or `release-major` action is selected. The bump job may change only `Cargo.toml`, `package.json`, and `Cargo.lock`. Its resulting commit SHA, rather than the workflow dispatch SHA, becomes the source for every build and publication job.
 
 The app bundle uses:
 
@@ -37,7 +39,13 @@ The output under `target/caffold-server` is ignored build output. A successful d
 
 ## GitHub workflow
 
-`.github/workflows/release.yml` exposes preparation and publication through one manual `Release` workflow. Its `operation` input defaults to `dry-run`; the committed `Cargo.toml` version is read automatically rather than accepted as workflow input.
+`.github/workflows/release.yml` exposes preparation, versioning, publication, and recovery through one manual `Release` workflow. Its required `action` input has five unambiguous choices:
+
+- `dry-run` verifies and packages the currently committed version without repository or public mutation.
+- `release-patch`, `release-minor`, and `release-major` increment the current version, push the version commit, then publish that exact commit.
+- `resume` does not change the version. It reconciles the currently committed version with its tag, GitHub Release, and Homebrew Cask after a partial failure.
+
+For a new release action, the version job runs with `contents: write`; checks that the workflow still targets the current `main`; rejects an already-used target tag or Release; changes only the three canonical version files; and pushes the version commit. `dry-run` and `resume` skip this job and retain read-only source handling.
 
 The verification job:
 
@@ -48,24 +56,26 @@ The verification job:
 5. runs the local release dry run on a GitHub-hosted macOS arm64 runner; and
 6. uploads only the versioned zip and SHA-256 file as a seven-day workflow artifact.
 
-With `operation: dry-run`, no other job runs. The artifact is for inspecting the runner-built output and is not a stable distribution URL.
+With `action: dry-run`, no publication job runs. The artifact is for inspecting the runner-built output and is not a stable distribution URL.
 
-With `operation: publish`, two narrower jobs run after verification. `publish_release` receives `contents: write` only for `panarch/caffold`; it creates the GitHub Release without receiving the tap token. After that succeeds, `publish_homebrew` uses the `release` environment, keeps only `contents: read` for Caffold, and receives the `HOMEBREW_TAP_TOKEN` environment secret, whose fine-grained access is limited to `panarch/homebrew-tap`. Together they:
+With any `release-*` action or `resume`, two narrower jobs run after verification. `publish_release` receives `contents: write` only for `panarch/caffold`; it creates or reconciles the GitHub Release without receiving the tap token. After that succeeds, `publish_homebrew` uses the `release` environment, keeps only `contents: read` for Caffold, and receives the `HOMEBREW_TAP_TOKEN` environment secret, whose fine-grained access is limited to `panarch/homebrew-tap`. Together they:
 
 1. download and recheck the exact artifact produced by the verification job;
-2. create the immutable version tag and GitHub Release, or on a retry verify the existing tag and commit, download the already-published assets, and revalidate their checksum, bundle, architecture, and signature;
+2. create the immutable version tag and GitHub Release, or on `resume` verify the existing tag, download the already-published assets, and revalidate their checksum, release-tag version and build number, bundle, architecture, and signature;
 3. pass those canonical published assets to the Homebrew job, then render `Casks/caffold.rb` with their verified version and SHA-256;
 4. register the checked-out tap locally, trust only the generated Caffold Cask, run Homebrew style and strict Cask audit, install the app and bundled CLI, check that quarantine was removed, and uninstall the smoke-test copy; and
 5. commit and push the Cask to the tap only after the release and Homebrew installation checks pass.
 
-The publish jobs never edit or commit Caffold source. After a GitHub Release exists, its tag and validated assets remain canonical, so a later workflow-fix commit with the same application version can retry a failed tap update without replacing the release. When no release exists yet, an existing version tag must still point to the workflow commit before assets can be published.
+The publish jobs never edit or commit Caffold source. After a GitHub Release exists, its tag and validated assets remain canonical, so a later workflow-fix commit with the same application version can `resume` a failed tap update without replacing the release. Archive verification derives `CFBundleVersion` from the release tag's commit count rather than the later workflow commit. When no release exists yet, an existing version tag must still point to the selected release commit before assets can be published.
+
+`resume` is desired-state reconciliation, not continuation from a stored step number. Completed external state is validated and reused; missing state is created in order. Conflicting tag ownership, invalid or missing canonical assets, or mismatched release metadata stop with an error instead of being overwritten.
 
 ## Public release transaction
 
 Public distribution is a separately approved operation. Once started, the following steps stay together because the GitHub asset and Homebrew Cask share one immutable version, URL, and checksum:
 
-1. confirm the reviewed version commit is pushed and `origin/main` is the current commit;
-2. manually run `Release` with `operation: publish`;
+1. confirm the reviewed source is pushed and `origin/main` is the current commit;
+2. manually run `Release` with the intended `release-patch`, `release-minor`, or `release-major` action, or use `resume` after a partial failure;
 3. confirm the workflow produced the version tag, GitHub Release assets, and matching `Casks/caffold.rb` commit in `panarch/homebrew-tap`;
 4. confirm the tap's own `Homebrew audit` workflow passed;
 5. install with `brew install --cask panarch/tap/caffold` on the target Mac;
