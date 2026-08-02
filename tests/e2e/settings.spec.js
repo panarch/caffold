@@ -419,6 +419,10 @@ test("keeps model picker chrome compact and scales it only with Interface", asyn
   });
   await expect(popover).toBeVisible();
   const compact = await modelPickerMetrics(composer);
+  await expect(modelButton).toHaveText("GPT-5.6-Sol · Light");
+  await expect(
+    composer.getByRole("button", { name: "Choose approval mode" }),
+  ).toHaveText("Auto review");
   expect(compact.modelButtonFontSize / compact.rootFontSize).toBeCloseTo(
     0.75,
     2,
@@ -434,12 +438,23 @@ test("keeps model picker chrome compact and scales it only with Interface", asyn
   expect(compact.popoverPadding / compact.rootFontSize).toBeCloseTo(0.5, 2);
   expect(compact.optionPadding / compact.rootFontSize).toBeCloseTo(0.375, 2);
   expect(compact.optionGap / compact.rootFontSize).toBeCloseTo(0.5, 2);
+  expect(compact.modelButtonIconCount).toBe(0);
+  expect(compact.permissionButtonIconCount).toBe(0);
+  expect(compact.modelButtonBackground).not.toBe("rgba(0, 0, 0, 0)");
+  expect(compact.permissionButtonBackground).not.toBe("rgba(0, 0, 0, 0)");
+  expect(compact.modelButtonOverflow).toBe(false);
+  expect(compact.permissionButtonOverflow).toBe(false);
+  expect(compact.modelPickerDeadSpace).toBeLessThanOrEqual(1);
+  expect(compact.chipGap).toBeGreaterThanOrEqual(0);
+  expect(compact.chipGap).toBeLessThanOrEqual(compact.toolbarGap + 1);
   expectComposerIconsCentered(compact);
 
   await setRange(conversationRange, 20);
   await setRange(codeRange, 20);
   const contentAxesChanged = await modelPickerMetrics(composer);
-  expect(contentAxesChanged).toEqual(compact);
+  expect(stableModelPickerMetrics(contentAxesChanged)).toEqual(
+    stableModelPickerMetrics(compact),
+  );
 
   await setRange(interfaceRange, 120);
   const spacious = await modelPickerMetrics(composer);
@@ -466,6 +481,12 @@ test("keeps model picker chrome compact and scales it only with Interface", asyn
   expect(spacious.optionHeight).toBeGreaterThanOrEqual(compact.optionHeight);
   expect(compact.optionHeight).toBeGreaterThanOrEqual(compact.targetFloor);
   expect(spacious.optionHeight).toBeGreaterThanOrEqual(spacious.targetFloor);
+  expect(spacious.modelButtonOverflow).toBe(false);
+  expect(spacious.permissionButtonOverflow).toBe(false);
+  expect(spacious.toolbarOverflow).toBe(false);
+  expect(spacious.modelPickerDeadSpace).toBeLessThanOrEqual(1);
+  expect(spacious.chipGap).toBeGreaterThanOrEqual(0);
+  expect(spacious.chipGap).toBeLessThanOrEqual(spacious.toolbarGap + 1);
   expectComposerIconsCentered(spacious);
   expect(compact.overflowX).toBe(false);
   expect(spacious.overflowX).toBe(false);
@@ -495,20 +516,13 @@ async function modelPickerMetrics(composer) {
     const toolbarStyle = getComputedStyle(toolbar);
     const popoverStyle = getComputedStyle(popover);
     const optionStyle = getComputedStyle(option);
+    const modelButtonStyle = getComputedStyle(modelButton);
+    const permissionButtonStyle = getComputedStyle(permissionButton);
+    const modelPickerRect = modelButton.parentElement.getBoundingClientRect();
+    const modelButtonRect = modelButton.getBoundingClientRect();
+    const permissionButtonRect = permissionButton.getBoundingClientRect();
     const number = (value) => Number.parseFloat(value) || 0;
     const iconGeometry = [
-      ["model", modelButton, modelButton.querySelector(".task-model-icon")],
-      ["model caret", modelButton, modelButton.querySelector(".task-model-caret")],
-      [
-        "permission",
-        element.querySelector(".task-permission-button"),
-        element.querySelector(".task-permission-icon"),
-      ],
-      [
-        "permission caret",
-        element.querySelector(".task-permission-button"),
-        element.querySelector(".task-permission-button .task-model-caret"),
-      ],
       ["send", element.querySelector(".task-send-button"), element.querySelector(".task-send-icon")],
     ].map(([name, button, icon]) => {
       const buttonBox = button.getBoundingClientRect();
@@ -539,6 +553,16 @@ async function modelPickerMetrics(composer) {
       permissionButtonFontSize: number(
         getComputedStyle(permissionButton).fontSize,
       ),
+      modelButtonBackground: modelButtonStyle.backgroundColor,
+      permissionButtonBackground: permissionButtonStyle.backgroundColor,
+      modelButtonIconCount: modelButton.querySelectorAll("svg").length,
+      permissionButtonIconCount: permissionButton.querySelectorAll("svg").length,
+      modelButtonOverflow: modelButton.scrollWidth > modelButton.clientWidth,
+      permissionButtonOverflow:
+        permissionButton.scrollWidth > permissionButton.clientWidth,
+      modelPickerDeadSpace: modelPickerRect.width - modelButtonRect.width,
+      chipGap: permissionButtonRect.left - modelButtonRect.right,
+      toolbarOverflow: toolbar.scrollWidth > toolbar.clientWidth,
       toolbarPadding: number(toolbarStyle.paddingTop),
       toolbarGap: number(toolbarStyle.columnGap),
       modelButtonHeight: modelButton.getBoundingClientRect().height,
@@ -554,8 +578,17 @@ async function modelPickerMetrics(composer) {
   });
 }
 
+function stableModelPickerMetrics(metrics) {
+  const {
+    modelButtonBackground: _modelButtonBackground,
+    permissionButtonBackground: _permissionButtonBackground,
+    ...stableMetrics
+  } = metrics;
+  return stableMetrics;
+}
+
 function expectComposerIconsCentered(metrics) {
-  expect(metrics.iconGeometry).toHaveLength(5);
+  expect(metrics.iconGeometry).toHaveLength(1);
   for (const icon of metrics.iconGeometry) {
     expect(icon.tagName, `${icon.name} must use an SVG icon`).toBe("svg");
     expect(icon.outerAspectDelta, `${icon.name} must use a square slot`).toBeLessThanOrEqual(

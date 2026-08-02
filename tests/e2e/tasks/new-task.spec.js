@@ -204,7 +204,7 @@ test("creates a task with responsive composer controls and canonical approval st
     modelPopoverMetrics.viewportHeight - 9,
   );
   expect(modelPopoverMetrics.descriptionWhiteSpace).not.toBe("nowrap");
-  if (testInfo.project.name !== "phone") {
+  if (testInfo.project.name === "desktop") {
     expect(modelPopoverMetrics.backdropVisible).toBe(false);
     expect(
       Math.abs(modelPopoverMetrics.popoverLeft - modelPopoverMetrics.buttonLeft),

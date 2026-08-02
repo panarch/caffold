@@ -141,9 +141,6 @@ test("visible inline icons have explicit block geometry from their UI owner", ()
     ["pages/settings/page.css", ".settings-preview-icon", "--task-list-icon-size"],
     ["pages/(codex)/layout.css", ".codex-workspace-close-icon", "--interface-icon-size"],
     ["pages/(codex)/tasks/controls.css", ".task-action-icon", "--interface-icon-size"],
-    ["pages/(codex)/tasks/components/composer.css", ".task-model-icon", "--interface-icon-small-size"],
-    ["pages/(codex)/tasks/components/composer.css", ".task-permission-icon", "--interface-icon-small-size"],
-    ["pages/(codex)/tasks/components/composer.css", ".task-model-caret", "--interface-icon-small-size"],
     ["pages/(codex)/tasks/components/composer.css", ".task-send-icon", "--interface-icon-size"],
     ["pages/(codex)/tasks/components/detail/review.css", ".task-refresh-icon", "--interface-icon-size"],
     ["pages/(codex)/tasks/components/navigator.css", ".task-repository-icon", "--task-list-icon-size"],
@@ -235,10 +232,7 @@ test("mixed surfaces keep content and controls on separate axes", () => {
     composer,
     /\.task-model-button[\s\S]*min-height: var\(--interface-compact-control-size\)/,
   );
-  assert.match(
-    composer,
-    /\.task-model-icon[\s\S]*width: var\(--interface-icon-small-size\);[\s\S]*height: var\(--interface-icon-small-size\);/,
-  );
+  assert.doesNotMatch(composer, /\.task-(?:model|permission)-(?:icon|caret)/);
   assert.match(
     composer,
     /\.task-model-popover,[\s\S]*padding: 0\.5rem;/,

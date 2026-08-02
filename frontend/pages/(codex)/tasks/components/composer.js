@@ -113,7 +113,7 @@ class CaffoldTaskComposer extends HTMLElement {
     };
     this.boundSubmit = (event) => this.handleSubmit(event);
     this.boundIconsReady = () => this.render();
-    this.boundResize = () => this.fitModelPicker();
+    this.boundResize = () => this.fitOpenPicker();
     this.boundDocumentClick = (event) => {
       if (!this.openPicker || this.contains(event.target)) {
         return;
@@ -759,7 +759,7 @@ class CaffoldTaskComposer extends HTMLElement {
       syncTextarea(textarea);
     }
     this.restoreFocus(previousFocus);
-    this.fitModelPicker();
+    this.fitOpenPicker();
   }
 
   renderModelPicker(model, effort, disabled) {
@@ -770,6 +770,7 @@ class CaffoldTaskComposer extends HTMLElement {
       reasoningOptions.find((option) => option.value === effort)?.label ||
       effort ||
       "Reasoning";
+    const summaryLabel = `${modelLabel} · ${effortLabel}`;
     const open = !disabled && this.openPicker === "model";
     return `
       <div class="task-model-picker${open ? " is-open" : ""}">
@@ -779,12 +780,11 @@ class CaffoldTaskComposer extends HTMLElement {
           data-composer-action="toggle-model"
           aria-expanded="${open ? "true" : "false"}"
           aria-label="Choose model and reasoning"
-          ${disabled ? 'disabled title="Model and reasoning can be changed after the active turn finishes."' : ""}
+          title="${escapeHtml(disabled ? "Model and reasoning can be changed after the active turn finishes." : summaryLabel)}"
+          ${disabled ? "disabled" : ""}
         >
-          ${renderInlineIcon("Circle", "Model", "task-model-icon")}
-          <span>${escapeHtml(modelLabel)}</span>
-          <span>${escapeHtml(effortLabel)}</span>
-          ${renderInlineIcon("ChevronDown", "Open", "task-model-caret")}
+          <span class="task-model-name">${escapeHtml(modelLabel)}</span>
+          <span class="task-model-effort"> · ${escapeHtml(effortLabel)}</span>
         </button>
         ${
           open
@@ -824,6 +824,13 @@ class CaffoldTaskComposer extends HTMLElement {
         : this.permissionError
           ? "Codex default"
           : permissionModeLabel(permissionMode));
+    const compactLabel = permission
+      ? compactPermissionModeLabel(permissionMode)
+      : this.permissionLoading
+        ? "Loading"
+        : this.permissionError
+          ? "Codex default"
+          : compactPermissionModeLabel(permissionMode);
     const open = !disabled && this.openPicker === "permission";
     return `
       <div class="task-permission-picker${open ? " is-open" : ""}">
@@ -836,9 +843,7 @@ class CaffoldTaskComposer extends HTMLElement {
           title="${escapeHtml(disabled ? "Approval mode can be changed after the active turn finishes." : label)}"
           ${disabled ? "disabled" : ""}
         >
-          ${renderInlineIcon("Shield", "Permissions", "task-permission-icon")}
-          <span>${escapeHtml(label)}</span>
-          ${renderInlineIcon("ChevronDown", "Open", "task-model-caret")}
+          <span>${escapeHtml(compactLabel)}</span>
         </button>
         ${
           open
@@ -884,18 +889,28 @@ class CaffoldTaskComposer extends HTMLElement {
     textarea?.setSelectionRange(focus.start, focus.end);
   }
 
-  fitModelPicker() {
-    const popover = this.querySelector(
+  fitOpenPicker() {
+    const modelPopover = this.querySelector(
       ".task-model-picker.is-open .task-model-popover",
     );
+    const permissionPopover = this.querySelector(
+      ".task-permission-picker.is-open .task-permission-popover",
+    );
+    const popover = modelPopover ?? permissionPopover;
     if (!popover) {
       return;
     }
     popover.style.removeProperty("max-height");
-    if (window.matchMedia("(max-width: 860px)").matches) {
+    popover.style.removeProperty("left");
+    popover.style.removeProperty("right");
+    if (
+      window.matchMedia("(max-width: 860px), (pointer: coarse)").matches
+    ) {
       return;
     }
-    const button = this.querySelector(".task-model-button");
+    const button = this.querySelector(
+      modelPopover ? ".task-model-button" : ".task-permission-button",
+    );
     if (!button) {
       return;
     }
@@ -903,20 +918,39 @@ class CaffoldTaskComposer extends HTMLElement {
     const interfaceFontSize =
       Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
     const pickerViewportMargin = interfaceFontSize * 1.125;
-    const availableHeight =
-      this.context.mode === "follow-up"
-        ? buttonRect.top -
-          Math.max(
-            0,
-            this.closest(".task-conversation-pane")?.getBoundingClientRect()
-              .top ?? 0,
-          ) -
-          pickerViewportMargin
-        : window.innerHeight - buttonRect.bottom - pickerViewportMargin;
-    popover.style.maxHeight = `${Math.max(
-      0,
-      Math.floor(availableHeight),
-    )}px`;
+    if (modelPopover) {
+      const availableHeight =
+        this.context.mode === "follow-up"
+          ? buttonRect.top -
+            Math.max(
+              0,
+              this.closest(".task-conversation-pane")?.getBoundingClientRect()
+                .top ?? 0,
+            ) -
+            pickerViewportMargin
+          : window.innerHeight - buttonRect.bottom - pickerViewportMargin;
+      popover.style.maxHeight = `${Math.max(
+        0,
+        Math.floor(availableHeight),
+      )}px`;
+    }
+
+    const paneRect = this.closest(".tasks-detail-pane")?.getBoundingClientRect();
+    const horizontalMargin = interfaceFontSize * 0.5;
+    const boundaryLeft = Math.max(0, paneRect?.left ?? 0) + horizontalMargin;
+    const boundaryRight =
+      Math.min(window.innerWidth, paneRect?.right ?? window.innerWidth) -
+      horizontalMargin;
+    const maximumLeft = Math.max(
+      boundaryLeft,
+      boundaryRight - popover.getBoundingClientRect().width,
+    );
+    const popoverLeft = Math.min(
+      Math.max(buttonRect.left, boundaryLeft),
+      maximumLeft,
+    );
+    popover.style.left = `${popoverLeft - buttonRect.left}px`;
+    popover.style.right = "auto";
   }
 }
 
@@ -1096,6 +1130,16 @@ function permissionModeLabel(mode) {
     return "Full access";
   }
   return "Ask for approval";
+}
+
+function compactPermissionModeLabel(mode) {
+  if (mode === "approveForMe") {
+    return "Auto review";
+  }
+  if (mode === "fullAccess") {
+    return "Full access";
+  }
+  return "Ask approval";
 }
 
 function syncTextarea(textarea) {

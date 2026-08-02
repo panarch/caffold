@@ -199,6 +199,14 @@ caffold-task-composer {
     min-width: 0;
   }
 
+  & .task-model-picker {
+    flex: 0 1 auto;
+  }
+
+  & .task-permission-picker {
+    flex: 0 0 auto;
+  }
+
   & .task-model-backdrop,
   & .task-permission-backdrop {
     display: none;
@@ -223,19 +231,32 @@ caffold-task-composer {
   }
 
   & .task-model-button {
+    grid-template-columns: minmax(0, 1fr) auto;
+    justify-content: stretch;
+    width: fit-content;
     max-width: min(100%, 384px);
+    overflow: hidden;
+    padding-inline: 0.625rem;
+    background: var(--surface-muted);
     color: var(--text);
+    text-align: left;
   }
 
   & .task-permission-button {
     max-width: min(100%, 220px);
+    padding-inline: 0.625rem;
+    background: var(--surface-muted);
     color: var(--text);
+    white-space: nowrap;
   }
 
-  & .task-model-button span:not(.task-model-caret),
-  & .task-permission-button span:not(.task-model-caret) {
+  & .task-model-name {
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & .task-model-effort {
     white-space: nowrap;
   }
 
@@ -249,22 +270,6 @@ caffold-task-composer {
     outline: none;
   }
 
-  & .task-model-icon {
-    display: block;
-    width: var(--interface-icon-small-size);
-    height: var(--interface-icon-small-size);
-    color: var(--muted);
-    stroke-width: 2;
-  }
-
-  & .task-permission-icon {
-    display: block;
-    width: var(--interface-icon-small-size);
-    height: var(--interface-icon-small-size);
-    color: var(--muted);
-    stroke-width: 2;
-  }
-
   & .task-permission-button.is-dangerous,
   & .task-permission-option.is-dangerous strong {
     color: var(--danger);
@@ -273,14 +278,6 @@ caffold-task-composer {
   & .task-permission-button:disabled {
     cursor: not-allowed;
     opacity: 0.58;
-  }
-
-  & .task-model-caret {
-    display: block;
-    width: var(--interface-icon-small-size);
-    height: var(--interface-icon-small-size);
-    color: var(--muted);
-    stroke-width: 2.2;
   }
 
   & .task-send-button {
@@ -433,7 +430,7 @@ caffold-task-composer {
   }
 }
 
-@media (max-width: 860px) {
+@media (max-width: 860px), (pointer: coarse) {
   caffold-task-composer {
     & .task-composer.task-follow-up-form {
       padding: 0.5rem 0.625rem 0.625rem;

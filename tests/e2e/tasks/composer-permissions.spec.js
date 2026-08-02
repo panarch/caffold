@@ -4,15 +4,20 @@ import {
   TASK_PERMISSION_FIXTURE,
   taskDetailFixture,
 } from "../support/task-api-fixture.js";
-import { pasteImage } from "../support/task-fixtures.js";
+import {
+  captureReviewScreenshot,
+  pasteImage,
+} from "../support/task-fixtures.js";
 
-test("composer exposes Codex approval modes and confirms full access", async ({ page }) => {
+test("composer exposes Codex approval modes and confirms full access", async ({
+  page,
+}, testInfo) => {
   await installTaskApiFixture(page);
   await page.goto("/tasks/new?cwd=src");
 
   const form = page.locator('.task-new-form[data-task-form="create"]');
   const picker = form.getByRole("button", { name: "Choose approval mode" });
-  await expect(picker).toContainText("Approve for me");
+  await expect(picker).toContainText("Auto review");
   await expect
     .poll(() =>
       form
@@ -22,16 +27,43 @@ test("composer exposes Codex approval modes and confirms full access", async ({ 
     .toBe(true);
 
   await picker.click();
-  await expect(form.getByRole("menu", { name: "Approval modes" })).toBeVisible();
+  const permissionPopover = form.getByRole("menu", { name: "Approval modes" });
+  await expect(permissionPopover).toBeVisible();
+  const permissionPopoverBounds = await permissionPopover.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const paneRect = element
+      .closest(".tasks-detail-pane")
+      .getBoundingClientRect();
+    return {
+      left: rect.left,
+      right: rect.right,
+      paneLeft: paneRect.left,
+      paneRight: paneRect.right,
+      viewportWidth: document.documentElement.clientWidth,
+    };
+  });
+  expect(permissionPopoverBounds.left).toBeGreaterThanOrEqual(0);
+  expect(permissionPopoverBounds.right).toBeLessThanOrEqual(
+    permissionPopoverBounds.viewportWidth,
+  );
+  expect(permissionPopoverBounds.left).toBeGreaterThanOrEqual(
+    permissionPopoverBounds.paneLeft,
+  );
+  expect(permissionPopoverBounds.right).toBeLessThanOrEqual(
+    permissionPopoverBounds.paneRight,
+  );
+  await captureReviewScreenshot(page, testInfo, "tasks-permission-popover");
   await form.getByRole("button", { name: /^Ask for approval/ }).click();
   await expect(form.locator('input[name="permissionMode"]')).toHaveValue(
     "askForApproval",
   );
+  await expect(picker).toContainText("Ask approval");
 
   await picker.click();
   page.once("dialog", (dialog) => dialog.accept());
   await form.getByRole("button", { name: /^Full access/ }).click();
   await expect(form.locator('input[name="permissionMode"]')).toHaveValue("fullAccess");
+  await expect(picker).toContainText("Full access");
 });
 
 test("untouched approval mode preserves the effective Codex default", async ({ page }) => {
@@ -50,7 +82,7 @@ test("untouched approval mode preserves the effective Codex default", async ({ p
   const form = page.locator('.task-new-form[data-task-form="create"]');
   await expect(
     form.getByRole("button", { name: "Choose approval mode" }),
-  ).toContainText("Approve for me");
+  ).toContainText("Auto review");
   await form.getByRole("textbox", { name: "New task prompt" }).fill("Inspect the task");
   await form.getByRole("textbox", { name: "New task prompt" }).press("Enter");
 
@@ -82,7 +114,7 @@ test("explicit approval mode is sent with a new task prompt", async ({ page }) =
   await page.goto("/tasks/new?cwd=src");
   const form = page.locator('.task-new-form[data-task-form="create"]');
   const picker = form.getByRole("button", { name: "Choose approval mode" });
-  await expect(picker).toContainText("Ask for approval");
+  await expect(picker).toContainText("Ask approval");
   await picker.click();
   await form.getByRole("button", { name: /^Approve for me/ }).click();
   await form.getByRole("textbox", { name: "New task prompt" }).fill("Inspect the task");
@@ -192,7 +224,7 @@ test("explicit approval mode is sent with a follow-up prompt", async ({ page }) 
   await page.goto("/tasks/thread-1?cwd=src");
   const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
   const picker = form.getByRole("button", { name: "Choose approval mode" });
-  await expect(picker).toContainText("Ask for approval");
+  await expect(picker).toContainText("Ask approval");
   await picker.click();
   await form.getByRole("button", { name: /^Approve for me/ }).click();
   await form.getByRole("textbox", { name: "Follow-up prompt" }).fill("Continue the task");
@@ -278,6 +310,9 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
       const panel = element.querySelector(".task-composer-panel");
       const textarea = element.querySelector("textarea[name='prompt']");
       const sendButton = element.querySelector(".task-send-button");
+      const modelButton = element.querySelector(".task-model-button");
+      const modelName = element.querySelector(".task-model-name");
+      const permissionButton = element.querySelector(".task-permission-button");
       const build = document.querySelector(".app-build");
       const workspace = document.querySelector("caffold-codex-workspace");
       const conversation = document.querySelector(".task-conversation-scroll");
@@ -286,6 +321,8 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
       const conversationStyle = getComputedStyle(conversation);
       const sendStyle = getComputedStyle(sendButton);
       const panelRect = panel.getBoundingClientRect();
+      const modelButtonRect = modelButton.getBoundingClientRect();
+      const permissionButtonRect = permissionButton.getBoundingClientRect();
       const buildRect = build.getBoundingClientRect();
       const workspaceRect = workspace.getBoundingClientRect();
       return {
@@ -295,6 +332,9 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
         panelRight: panelRect.right,
         panelBottom: panelRect.bottom,
         textareaHeight: textarea.getBoundingClientRect().height,
+        modelLabel: modelButton.innerText.replace(/\s+/g, " ").trim(),
+        modelNameClipped: modelName.scrollWidth > modelName.clientWidth + 1,
+        chipGap: permissionButtonRect.left - modelButtonRect.right,
         viewportWidth: window.innerWidth,
         rootFontSize: Number.parseFloat(rootStyle.fontSize),
         formPaddingLeft: Number.parseFloat(formStyle.paddingLeft),
@@ -318,6 +358,10 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
     }),
   );
   expect(idle.panelHeight).toBeLessThanOrEqual(96);
+  expect(idle.modelLabel).toBe("GPT Test · Medium");
+  expect(idle.modelNameClipped).toBe(false);
+  expect(idle.chipGap).toBeGreaterThanOrEqual(0);
+  expect(idle.chipGap).toBeLessThanOrEqual(8);
   expect(idle.panelBottom).toBeLessThanOrEqual(idle.buildTop);
   expect(idle.workspaceBottom).toBeLessThanOrEqual(idle.buildTop);
   if (testInfo.project.name === "phone") {
@@ -332,6 +376,11 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
       1,
     );
   }
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "tasks-follow-up-composer-compact",
+  );
 
   await prompt.fill("One\nTwo\nThree\nFour\nFive");
   const expanded = await metrics();
@@ -540,7 +589,7 @@ test("active turns lock the approval mode until the next turn", async ({ page })
 
   const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
   const picker = form.getByRole("button", { name: "Choose approval mode" });
-  await expect(picker).toContainText("Approve for me");
+  await expect(picker).toContainText("Auto review");
   await expect(picker).toBeDisabled();
   await expect(picker).toHaveAttribute(
     "title",
