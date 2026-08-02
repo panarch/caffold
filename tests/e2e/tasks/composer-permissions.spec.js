@@ -305,6 +305,18 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
   const prompt = form.getByRole("textbox", { name: "Follow-up prompt" });
   const send = form.getByRole("button", { name: "Send prompt" });
   await expect(form).toBeVisible();
+  await expect
+    .poll(() =>
+      form.evaluate((element) => {
+        const composer = element.closest("caffold-task-composer");
+        return Boolean(
+          composer?.isConnected &&
+            !composer.modelLoading &&
+            !composer.permissionLoading,
+        );
+      }),
+    )
+    .toBe(true);
   const metrics = () =>
     form.evaluate((element) => {
       const panel = element.querySelector(".task-composer-panel");

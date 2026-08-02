@@ -139,6 +139,14 @@ class CaffoldTaskDetail extends HTMLElement {
         });
       });
     });
+    this.addEventListener("caffold:task-composer-layout-change", (event) => {
+      const composer = closestElement(event.target, "caffold-task-composer");
+      if (!composer || composer !== this.followUpComposer()) {
+        return;
+      }
+      event.stopPropagation();
+      this.conversationComponent()?.reconcileViewportResize();
+    });
     this.addEventListener("caffold:task-review-view-change", (event) => {
       const review = closestElement(event.target, "caffold-task-review");
       if (!review || review !== this.taskReview()) {

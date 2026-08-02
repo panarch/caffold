@@ -395,7 +395,7 @@ class CaffoldTaskComposer extends HTMLElement {
     state.prompt = textarea.value;
     state.selectionStart = textarea.selectionStart;
     state.selectionEnd = textarea.selectionEnd;
-    syncTextarea(textarea);
+    this.notifyLayoutChange();
     this.syncSubmitAvailability();
   }
 
@@ -713,7 +713,6 @@ class CaffoldTaskComposer extends HTMLElement {
           <textarea
             name="prompt"
             rows="1"
-            data-max-rows="10.5"
             aria-label="${escapeHtml(this.context.ariaLabel)}"
             placeholder="${escapeHtml(this.context.placeholder)}"
             ${fieldDisabled ? "disabled" : ""}
@@ -754,12 +753,21 @@ class CaffoldTaskComposer extends HTMLElement {
         </div>
       </form>
     `;
-    const textarea = this.querySelector("textarea[name='prompt']");
-    if (textarea) {
-      syncTextarea(textarea);
-    }
     this.restoreFocus(previousFocus);
     this.fitOpenPicker();
+    this.notifyLayoutChange();
+  }
+
+  notifyLayoutChange() {
+    if (this.context.mode !== "follow-up") {
+      return;
+    }
+    this.dispatchEvent(
+      new CustomEvent("caffold:task-composer-layout-change", {
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   renderModelPicker(model, effort, disabled) {
@@ -1140,20 +1148,6 @@ function compactPermissionModeLabel(mode) {
     return "Full access";
   }
   return "Ask approval";
-}
-
-function syncTextarea(textarea) {
-  const styles = getComputedStyle(textarea);
-  const lineHeight = Number.parseFloat(styles.lineHeight) || 22;
-  const padding =
-    (Number.parseFloat(styles.paddingTop) || 0) +
-    (Number.parseFloat(styles.paddingBottom) || 0);
-  const maxRows = Number.parseFloat(textarea.dataset.maxRows ?? "10.5") || 10.5;
-  const maxHeight = lineHeight * maxRows + padding;
-  textarea.style.height = "auto";
-  textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
-  textarea.style.overflowY =
-    textarea.scrollHeight > maxHeight ? "auto" : "hidden";
 }
 
 function readFileAsDataUrl(file) {

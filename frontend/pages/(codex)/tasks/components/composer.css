@@ -153,6 +153,7 @@ caffold-task-composer {
   }
 
   & .task-composer textarea {
+    field-sizing: content;
     width: 100%;
     min-width: 0;
     min-height: calc(1lh + 1rem);
@@ -164,8 +165,12 @@ caffold-task-composer {
     outline: none;
     font-size: var(--conversation-font-size);
     line-height: var(--conversation-line-height);
-    overflow-y: hidden;
+    overflow-y: auto;
     resize: none;
+  }
+
+  & .task-follow-up-form textarea {
+    max-height: min(calc(8lh + 1rem), 32dvh);
   }
 
   & .task-composer textarea::placeholder {

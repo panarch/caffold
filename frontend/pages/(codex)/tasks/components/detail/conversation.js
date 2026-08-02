@@ -131,6 +131,20 @@ class CaffoldTaskConversation extends HTMLElement {
     return this.scrollByThread.has(`${threadId ?? ""}`);
   }
 
+  reconcileViewportResize() {
+    const scroller = this.scroller();
+    const previousScroll = this.scrollByThread.get(this.snapshot.threadId);
+    if (!scroller || !previousScroll) {
+      return;
+    }
+    if (previousScroll.atBottom) {
+      scroller.scrollTop = maxScrollTop(scroller);
+    } else {
+      this.restoreAnchor(scroller, previousScroll);
+    }
+    this.rememberScroll();
+  }
+
   render(previousScroll = null) {
     this.ensureState();
     this.dataset.transportState = this.snapshot.transportState;
