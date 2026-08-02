@@ -160,6 +160,17 @@ test("manual release workflow keeps dry runs read-only and scopes publishing", (
   assert.match(homebrewJob, /published-caffold-macos-arm64-v/);
   assert.match(homebrewJob, /repository: panarch\/homebrew-tap/);
   assert.match(homebrewJob, /token: \$\{\{ secrets\.HOMEBREW_TAP_TOKEN \}\}/);
+  const tapIndex = homebrewJob.indexOf(
+    'brew tap panarch/tap "${GITHUB_WORKSPACE}/homebrew-tap"',
+  );
+  const trustIndex = homebrewJob.indexOf(
+    "brew trust --cask panarch/tap/caffold",
+  );
+  const auditIndex = homebrewJob.indexOf(
+    "brew audit --cask --strict panarch/tap/caffold",
+  );
+  assert.ok(tapIndex >= 0 && trustIndex > tapIndex && auditIndex > trustIndex);
+  assert.doesNotMatch(homebrewJob, /HOMEBREW_NO_REQUIRE_TAP_TRUST/);
   assert.match(homebrewJob, /brew install --cask panarch\/tap\/caffold/);
   assert.match(homebrewJob, /git push origin HEAD:main/);
   assert.doesNotMatch(homebrewJob, /gh release create/);

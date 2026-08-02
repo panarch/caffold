@@ -255,6 +255,7 @@ jobs:
       - name: Audit and install the unpublished tap checkout
         run: |
           brew tap panarch/tap "${GITHUB_WORKSPACE}/homebrew-tap"
+          brew trust --cask panarch/tap/caffold
           brew style panarch/tap
           brew audit --cask --strict panarch/tap/caffold
           brew install --cask panarch/tap/caffold

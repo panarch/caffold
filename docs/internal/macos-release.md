@@ -55,7 +55,7 @@ With `operation: publish`, two narrower jobs run after verification. `publish_re
 1. download and recheck the exact artifact produced by the verification job;
 2. create the immutable version tag and GitHub Release, or on a retry verify the existing tag and commit, download the already-published assets, and revalidate their checksum, bundle, architecture, and signature;
 3. pass those canonical published assets to the Homebrew job, then render `Casks/caffold.rb` with their verified version and SHA-256;
-4. register the checked-out tap locally, run Homebrew style and strict Cask audit, install the app and bundled CLI, check that quarantine was removed, and uninstall the smoke-test copy; and
+4. register the checked-out tap locally, trust only the generated Caffold Cask, run Homebrew style and strict Cask audit, install the app and bundled CLI, check that quarantine was removed, and uninstall the smoke-test copy; and
 5. commit and push the Cask to the tap only after the release and Homebrew installation checks pass.
 
 The publish jobs never edit or commit Caffold source. A failed tap update can be retried from the same workflow commit: the already-published assets, rather than a newly timestamped rebuild, become the canonical input to the Homebrew job.
