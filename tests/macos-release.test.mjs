@@ -8,7 +8,10 @@ import test from "node:test";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packageApp = resolve(repoRoot, "desktop/macos/package-app");
 const release = resolve(repoRoot, "desktop/macos/release");
+const renderCask = resolve(repoRoot, "desktop/macos/render-cask");
 const releaseWorkflow = resolve(repoRoot, ".github/workflows/release.yml");
+const rootReadme = resolve(repoRoot, "README.md");
+const macosReadme = resolve(repoRoot, "desktop/macos/README.md");
 
 function run(command, args = []) {
   return execFileSync(command, args, {
@@ -70,25 +73,94 @@ test("macOS packaging locks dependencies and verifies the distributed archive", 
   assert.match(source, /io\.panarch\.caffold\.server/);
 });
 
-test("manual release workflow can only build and upload a dry-run artifact", () => {
+test("Homebrew cask installs the app and bundled CLI without a user quarantine flag", () => {
+  const sha256 = "a".repeat(64);
+  const cask = run(renderCask, ["--version", "1.2.3", "--sha256", sha256]);
+
+  assert.match(cask, /^cask "caffold" do$/m);
+  assert.match(cask, /^  version "1\.2\.3"$/m);
+  assert.match(cask, new RegExp(`^  sha256 "${sha256}"$`, "m"));
+  assert.match(
+    cask,
+    /releases\/download\/v#\{version\}\/Caffold-Server-#\{version\}-macos-arm64\.zip/,
+  );
+  assert.match(cask, /^  depends_on arch: :arm64$/m);
+  assert.match(cask, /^  depends_on macos: :sonoma$/m);
+  assert.match(cask, /^  app "Caffold Server\.app"$/m);
+  assert.match(cask, /binary "#\{appdir\}\/Caffold Server\.app\/Contents\/Resources\/caffold"/);
+  assert.match(cask, /system_command "\/usr\/bin\/xattr"/);
+  assert.match(cask, /args: \["-cr", "#\{appdir\}\/Caffold Server\.app"\]/);
+
+  const invalid = spawnSync(
+    renderCask,
+    ["--version", "1.2.3", "--sha256", "not-a-checksum"],
+    { cwd: repoRoot, encoding: "utf8" },
+  );
+  assert.notEqual(invalid.status, 0);
+  assert.match(invalid.stderr, /64 lowercase hexadecimal characters/);
+
+  for (const readme of [rootReadme, macosReadme]) {
+    assert.match(
+      readFileSync(readme, "utf8"),
+      /brew install --cask panarch\/tap\/caffold/,
+    );
+  }
+});
+
+test("manual release workflow keeps dry runs read-only and scopes publishing", () => {
   const source = readFileSync(releaseWorkflow, "utf8");
   const rustVersion = readFileSync(resolve(repoRoot, "Cargo.toml"), "utf8").match(
     /^rust-version = "([^"]+)"$/m,
   )?.[1];
+  const macosStart = source.indexOf("  macos:");
+  const releaseStart = source.indexOf("  publish_release:");
+  const homebrewStart = source.indexOf("  publish_homebrew:");
+  const macosJob = source.slice(macosStart, releaseStart);
+  const releaseJob = source.slice(releaseStart, homebrewStart);
+  const homebrewJob = source.slice(homebrewStart);
 
   assert.match(source, /^name: Release$/m);
   assert.match(source, /^\s+workflow_dispatch:$/m);
   assert.doesNotMatch(source, /^\s+(push|pull_request|schedule):$/m);
   assert.match(source, /^\s+contents: read$/m);
-  assert.doesNotMatch(source, /^\s+contents: write$/m);
-  assert.match(source, /runs-on: macos-14/);
-  assert.match(source, /fetch-depth: 0/);
-  assert.match(source, /persist-credentials: false/);
-  assert.match(source, new RegExp(`rustup toolchain install ${rustVersion}(?:\\.0)?`));
-  assert.match(source, /release --dry-run/);
-  assert.match(source, /actions\/upload-artifact@v\d+\.\d+\.\d+/);
+  assert.match(source, /^\s+operation:$/m);
+  assert.match(source, /^\s+type: choice$/m);
+  assert.match(source, /^\s+default: dry-run$/m);
+  assert.match(source, /^\s+- publish$/m);
+  assert.ok(macosStart >= 0 && releaseStart > macosStart && homebrewStart > releaseStart);
 
-  for (const publishingCommand of ["git push", "git tag", "gh release", "brew install"]) {
-    assert.doesNotMatch(source, new RegExp(publishingCommand, "i"));
+  assert.match(macosJob, /runs-on: macos-14/);
+  assert.match(macosJob, /fetch-depth: 0/);
+  assert.match(macosJob, /persist-credentials: false/);
+  assert.match(macosJob, new RegExp(`rustup toolchain install ${rustVersion}(?:\\.0)?`));
+  assert.match(macosJob, /release --dry-run/);
+  assert.match(macosJob, /actions\/upload-artifact@v\d+\.\d+\.\d+/);
+  assert.doesNotMatch(macosJob, /contents: write/);
+  assert.doesNotMatch(macosJob, /HOMEBREW_TAP_TOKEN/);
+  for (const publishingCommand of ["git push", "gh release", "brew install"]) {
+    assert.doesNotMatch(macosJob, new RegExp(publishingCommand, "i"));
   }
+
+  assert.match(releaseJob, /if: inputs\.operation == 'publish'/);
+  assert.match(releaseJob, /^\s+contents: write$/m);
+  assert.match(releaseJob, /actions\/download-artifact@v\d+\.\d+\.\d+/);
+  assert.match(releaseJob, /published-caffold-macos-arm64-v/);
+  assert.match(releaseJob, /gh release create/);
+  assert.match(releaseJob, /gh release download/);
+  assert.match(releaseJob, /package-app verify-archive/);
+  assert.match(releaseJob, /shasum -a 256 -c/);
+  assert.doesNotMatch(releaseJob, /cmp --/);
+  assert.doesNotMatch(releaseJob, /HOMEBREW_TAP_TOKEN/);
+  assert.doesNotMatch(releaseJob, /brew install|git push/);
+
+  assert.match(homebrewJob, /if: inputs\.operation == 'publish'/);
+  assert.match(homebrewJob, /^\s+environment: release$/m);
+  assert.match(homebrewJob, /^\s+contents: read$/m);
+  assert.doesNotMatch(homebrewJob, /contents: write/);
+  assert.match(homebrewJob, /published-caffold-macos-arm64-v/);
+  assert.match(homebrewJob, /repository: panarch\/homebrew-tap/);
+  assert.match(homebrewJob, /token: \$\{\{ secrets\.HOMEBREW_TAP_TOKEN \}\}/);
+  assert.match(homebrewJob, /brew install --cask panarch\/tap\/caffold/);
+  assert.match(homebrewJob, /git push origin HEAD:main/);
+  assert.doesNotMatch(homebrewJob, /gh release create/);
 });

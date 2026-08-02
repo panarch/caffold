@@ -1,13 +1,17 @@
 name: Release
-run-name: Release v${{ inputs.version }} (dry run)
+run-name: Release (${{ inputs.operation }})
 
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: Version without the v prefix, already committed in Cargo.toml and package.json
+      operation:
+        description: Build a temporary artifact or publish the committed version
         required: true
-        type: string
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - publish
 
 permissions:
   contents: read
@@ -18,9 +22,14 @@ concurrency:
 
 jobs:
   macos:
-    name: macOS arm64 dry run
+    name: Verify macOS arm64 release
     runs-on: macos-14
     timeout-minutes: 45
+    outputs:
+      version: ${{ steps.release_metadata.outputs.version }}
+      archive: ${{ steps.release_metadata.outputs.archive }}
+      checksum: ${{ steps.release_metadata.outputs.checksum }}
+      artifact_name: caffold-macos-arm64-v${{ steps.release_metadata.outputs.version }}
 
     steps:
       - name: Require main
@@ -28,12 +37,12 @@ jobs:
           SELECTED_REF: ${{ github.ref }}
         run: |
           if [[ "${SELECTED_REF}" != "refs/heads/main" ]]; then
-            echo "Release dry runs must be dispatched from main, not ${SELECTED_REF}." >&2
+            echo "Release runs must be dispatched from main, not ${SELECTED_REF}." >&2
             exit 1
           fi
 
       - name: Check out the complete release history
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -57,22 +66,14 @@ jobs:
           rustup default 1.96.0
 
       - name: Install Node.js 22
-        uses: actions/setup-node@v6.4.0
+        uses: actions/setup-node@v7.0.0
         with:
           node-version: 22
           package-manager-cache: false
 
-      - name: Verify the requested version
+      - name: Read release metadata
         id: release_metadata
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: |
-          actual_version="$(desktop/macos/package-app metadata | sed -n 's/^version=//p')"
-          if [[ "${RELEASE_VERSION}" != "${actual_version}" ]]; then
-            echo "Requested ${RELEASE_VERSION}; source contains ${actual_version}." >&2
-            exit 1
-          fi
-          echo "version=${actual_version}" >>"${GITHUB_OUTPUT}"
+        run: desktop/macos/package-app metadata >>"${GITHUB_OUTPUT}"
 
       - name: Verify release contracts
         run: npm run test:release
@@ -88,15 +89,193 @@ jobs:
 
       - name: Build and verify the macOS artifact
         env:
-          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_VERSION: ${{ steps.release_metadata.outputs.version }}
         run: desktop/macos/release --dry-run --version "${RELEASE_VERSION}"
 
       - name: Upload the verified macOS artifact
-        uses: actions/upload-artifact@v6.0.0
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: caffold-macos-arm64-v${{ steps.release_metadata.outputs.version }}
           path: |
-            target/caffold-server/Caffold-Server-*.zip
-            target/caffold-server/Caffold-Server-*.zip.sha256
+            target/caffold-server/${{ steps.release_metadata.outputs.archive }}
+            target/caffold-server/${{ steps.release_metadata.outputs.checksum }}
           if-no-files-found: error
           retention-days: 7
+
+  publish_release:
+    name: Publish GitHub Release
+    needs: macos
+    if: inputs.operation == 'publish'
+    runs-on: macos-14
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      RELEASE_VERSION: ${{ needs.macos.outputs.version }}
+      RELEASE_ARCHIVE: ${{ needs.macos.outputs.archive }}
+      RELEASE_CHECKSUM: ${{ needs.macos.outputs.checksum }}
+      RELEASE_SHA: ${{ github.sha }}
+
+    steps:
+      - name: Check out the release source
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Download the verified artifact
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: ${{ needs.macos.outputs.artifact_name }}
+          path: target/caffold-server
+
+      - name: Verify the downloaded artifact
+        run: |
+          cd target/caffold-server
+          test -f "${RELEASE_ARCHIVE}"
+          test -f "${RELEASE_CHECKSUM}"
+          shasum -a 256 -c "${RELEASE_CHECKSUM}"
+
+      - name: Publish or verify the immutable GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v${RELEASE_VERSION}"
+          artifact_dir="${GITHUB_WORKSPACE}/target/caffold-server"
+          tag_exists=false
+
+          if tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${tag}" --jq .sha 2>/dev/null)"; then
+            tag_exists=true
+            if [[ "${tag_sha}" != "${RELEASE_SHA}" ]]; then
+              echo "${tag} points to ${tag_sha}, not ${RELEASE_SHA}." >&2
+              exit 1
+            fi
+          fi
+
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            if [[ "${tag_exists}" != true ]]; then
+              echo "${tag} has a release without a matching tag." >&2
+              exit 1
+            fi
+            existing_dir="$(mktemp -d "${RUNNER_TEMP}/caffold-existing-release.XXXXXX")"
+            trap 'rm -rf -- "${existing_dir}"' EXIT
+            gh release download "${tag}" \
+              --pattern "${RELEASE_ARCHIVE}" \
+              --pattern "${RELEASE_CHECKSUM}" \
+              --dir "${existing_dir}"
+            (
+              cd "${existing_dir}"
+              shasum -a 256 -c "${RELEASE_CHECKSUM}"
+            )
+            desktop/macos/package-app verify-archive "${existing_dir}/${RELEASE_ARCHIVE}"
+            cp "${existing_dir}/${RELEASE_ARCHIVE}" "${artifact_dir}/${RELEASE_ARCHIVE}"
+            cp "${existing_dir}/${RELEASE_CHECKSUM}" "${artifact_dir}/${RELEASE_CHECKSUM}"
+            echo "${tag} already contains valid release artifacts; reusing them."
+          else
+            release_args=(
+              "${tag}"
+              "${artifact_dir}/${RELEASE_ARCHIVE}#Caffold Server ${RELEASE_VERSION} for macOS arm64"
+              "${artifact_dir}/${RELEASE_CHECKSUM}#SHA-256 checksum"
+              --title "Caffold ${tag}"
+              --generate-notes
+            )
+            if [[ "${tag_exists}" == true ]]; then
+              release_args+=(--verify-tag)
+            else
+              release_args+=(--target "${RELEASE_SHA}")
+            fi
+            gh release create "${release_args[@]}"
+          fi
+
+      - name: Preserve the published artifact for Homebrew
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: published-caffold-macos-arm64-v${{ needs.macos.outputs.version }}
+          path: |
+            target/caffold-server/${{ needs.macos.outputs.archive }}
+            target/caffold-server/${{ needs.macos.outputs.checksum }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish_homebrew:
+    name: Publish Homebrew Cask
+    needs:
+      - macos
+      - publish_release
+    if: inputs.operation == 'publish'
+    environment: release
+    runs-on: macos-14
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      RELEASE_VERSION: ${{ needs.macos.outputs.version }}
+      RELEASE_ARCHIVE: ${{ needs.macos.outputs.archive }}
+      RELEASE_CHECKSUM: ${{ needs.macos.outputs.checksum }}
+
+    steps:
+      - name: Check out the release source
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Download the verified artifact
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: published-caffold-macos-arm64-v${{ needs.macos.outputs.version }}
+          path: target/caffold-server
+
+      - name: Verify the downloaded artifact
+        run: |
+          cd target/caffold-server
+          test -f "${RELEASE_ARCHIVE}"
+          test -f "${RELEASE_CHECKSUM}"
+          shasum -a 256 -c "${RELEASE_CHECKSUM}"
+
+      - name: Check out the Homebrew tap
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: panarch/homebrew-tap
+          ref: main
+          path: homebrew-tap
+          fetch-depth: 0
+          persist-credentials: true
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Render the Cask
+        run: |
+          archive_sha="$(awk '{print $1}' "target/caffold-server/${RELEASE_CHECKSUM}")"
+          desktop/macos/render-cask \
+            --version "${RELEASE_VERSION}" \
+            --sha256 "${archive_sha}" \
+            >homebrew-tap/Casks/caffold.rb
+
+      - name: Audit and install the unpublished tap checkout
+        run: |
+          brew tap panarch/tap "${GITHUB_WORKSPACE}/homebrew-tap"
+          brew style panarch/tap
+          brew audit --cask --strict panarch/tap/caffold
+          brew install --cask panarch/tap/caffold
+          test -d "/Applications/Caffold Server.app"
+          command -v caffold
+          caffold --help | grep -F "browser-based review and control surface"
+          if xattr -p com.apple.quarantine "/Applications/Caffold Server.app" >/dev/null 2>&1; then
+            echo "The installed app is still quarantined." >&2
+            exit 1
+          fi
+          brew uninstall --cask panarch/tap/caffold
+
+      - name: Update the Homebrew tap
+        working-directory: homebrew-tap
+        run: |
+          if [[ -z "$(git status --porcelain -- Casks/caffold.rb)" ]]; then
+            echo "Casks/caffold.rb already describes v${RELEASE_VERSION}."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/caffold.rb
+          git commit -m "Update Caffold to ${RELEASE_VERSION}"
+          git push origin HEAD:main

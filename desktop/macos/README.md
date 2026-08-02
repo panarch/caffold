@@ -2,6 +2,16 @@
 
 `Caffold Server` packages the Rust server as a portable macOS menu bar application. The browser/PWA remains the primary Caffold interface; this app starts and controls the local server.
 
+## Install
+
+The current preview requires an Apple silicon Mac running macOS 14 or later. Install it with:
+
+```sh
+brew install --cask panarch/tap/caffold
+```
+
+The Cask installs `Caffold Server.app` in `/Applications` and links the bundled CLI as `caffold`. The preview is ad-hoc signed and not Apple-notarized; installation clears its quarantine attribute.
+
 ## Build
 
 ```sh
@@ -22,8 +32,6 @@ The command uses the committed Cargo lockfile and verifies both the bundle and i
 target/caffold-server/Caffold-Server-<version>-macos-arm64.zip
 target/caffold-server/Caffold-Server-<version>-macos-arm64.zip.sha256
 ```
-
-The current preview package is arm64-only, ad-hoc signed, and not Apple-notarized.
 
 Maintainers preparing a distribution should follow the [internal release process](../../docs/internal/macos-release.md).
 

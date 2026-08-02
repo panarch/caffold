@@ -58,6 +58,14 @@ cargo run -- serve --root tests/fixtures/home
 
 `Caffold Server` packages the Rust backend as a portable macOS menu bar app while the browser/PWA remains the primary interface.
 
+Install the preview on an Apple silicon Mac running macOS 14 or later:
+
+```sh
+brew install --cask panarch/tap/caffold
+```
+
+The Cask installs `Caffold Server.app` in `/Applications` and links the bundled `caffold` CLI.
+
 Build the application bundle with:
 
 ```sh

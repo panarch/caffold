@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+usage: desktop/macos/render-cask --version <version> --sha256 <digest>
+
+Render the Homebrew Cask for one verified Caffold macOS release.
+EOF
+}
+
+fail() {
+  echo "cask rendering failed: $*" >&2
+  exit 1
+}
+
+version=""
+sha256=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --version)
+      [[ $# -ge 2 ]] || fail "--version requires a value"
+      version="$2"
+      shift 2
+      ;;
+    --sha256)
+      [[ $# -ge 2 ]] || fail "--sha256 requires a value"
+      sha256="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+[[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] ||
+  fail "version must be a release version such as 0.1.0"
+[[ "${sha256}" =~ ^[0-9a-f]{64}$ ]] ||
+  fail "SHA-256 must contain exactly 64 lowercase hexadecimal characters"
+
+cat <<EOF
+cask "caffold" do
+  version "${version}"
+  sha256 "${sha256}"
+
+  url "https://github.com/panarch/caffold/releases/download/v#{version}/Caffold-Server-#{version}-macos-arm64.zip"
+  name "Caffold Server"
+  desc "Browser-based review and control surface for Codex-backed development tasks"
+  homepage "https://github.com/panarch/caffold"
+
+  depends_on arch: :arm64
+  depends_on macos: :sonoma
+
+  app "Caffold Server.app"
+  binary "#{appdir}/Caffold Server.app/Contents/Resources/caffold", target: "caffold"
+
+  postflight do
+    system_command "/usr/bin/xattr",
+                   args: ["-cr", "#{appdir}/Caffold Server.app"],
+                   sudo: false
+  end
+
+  zap trash: [
+    "~/Library/Application Support/Caffold",
+    "~/Library/Logs/Caffold",
+    "~/Library/Preferences/io.panarch.caffold.server.plist",
+  ]
+end
+EOF
