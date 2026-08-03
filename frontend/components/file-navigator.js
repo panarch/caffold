@@ -13,6 +13,8 @@ class CaffoldFileNavigator extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this.directoryRequestId += 1;
+    this.refreshGeneration += 1;
     this.watchUnsubscribe?.();
     this.watchUnsubscribe = null;
   }
@@ -25,6 +27,7 @@ class CaffoldFileNavigator extends HTMLElement {
     this.rendered = true;
     this.currentPath ??= "";
     this.directoryRequestId ??= 0;
+    this.refreshGeneration ??= 0;
     this.loadedDirectoryPath ??= null;
     this.selectedPath ??= "";
     this.storageKey ??= null;
@@ -274,9 +277,13 @@ class CaffoldFileNavigator extends HTMLElement {
   }
 
   async performPendingRefresh() {
+    const generation = this.refreshGeneration;
     const pending = this.pendingRefresh;
     this.pendingRefresh = createPendingRefresh();
-    await this.refreshDirectories(pending);
+    await this.refreshDirectories(pending, generation);
+    if (!this.acceptRefresh(generation)) {
+      return;
+    }
     if (pending.selected && this.selectedPath) {
       this.dispatchEvent(
         new CustomEvent("caffold:file-navigator-refresh-selected", {
@@ -291,7 +298,7 @@ class CaffoldFileNavigator extends HTMLElement {
     }
   }
 
-  async refreshDirectories(pending) {
+  async refreshDirectories(pending, generation = this.refreshGeneration) {
     const cachedPaths = this.fileList.cachedDirectoryPaths();
     const targets = new Set();
     if (pending.allDirectories) {
@@ -318,6 +325,9 @@ class CaffoldFileNavigator extends HTMLElement {
       const results = await Promise.allSettled(
         batch.map((path) => listDirectory(path)),
       );
+      if (!this.acceptRefresh(generation)) {
+        return;
+      }
       results.forEach((result, offset) => {
         if (result.status === "fulfilled") {
           directories.push(result.value);
@@ -327,6 +337,10 @@ class CaffoldFileNavigator extends HTMLElement {
       });
     }
     this.fileList.updateDirectories(directories);
+  }
+
+  acceptRefresh(generation) {
+    return this.isConnected && generation === this.refreshGeneration;
   }
 
   setRefreshState(state) {

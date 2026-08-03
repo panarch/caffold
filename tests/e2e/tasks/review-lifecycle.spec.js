@@ -74,3 +74,55 @@ test("preserves conversation and thread-local Review state while lifecycles deac
     )
     .toBe(360);
 });
+
+test("rejects a late file navigator response while Review is inactive", async ({
+  page,
+}) => {
+  const { taskScenario, tasksPage } = await openCompletedTaskForReview(page);
+  let releaseDirectory;
+  let directoryRequested;
+  const requested = new Promise((resolve) => {
+    directoryRequested = resolve;
+  });
+  const release = new Promise((resolve) => {
+    releaseDirectory = resolve;
+  });
+  let directoryRequests = 0;
+  await page.route(/\/api\/list(?:\?|$)/, async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("path") !== "src") {
+      return route.continue();
+    }
+    directoryRequests += 1;
+    directoryRequested();
+    await release;
+    const response = await route.fetch();
+    await route.fulfill({ response });
+  });
+
+  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await requested;
+  await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
+  releaseDirectory();
+
+  await expect
+    .poll(() =>
+      tasksPage.evaluate((element, threadId) => {
+        const detail = element.querySelector("caffold-task-detail");
+        const review = detail.reviewComponents.get(threadId);
+        return review.fileNavigator().loadedDirectoryPath;
+      }, taskScenario.threadId),
+    )
+    .toBe(null);
+
+  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await expect
+    .poll(() => directoryRequests)
+    .toBeGreaterThanOrEqual(2);
+  await tasksPage.getByRole("button", { name: "Files", exact: true }).click();
+  await expect(
+    tasksPage.locator(
+      'caffold-task-review caffold-file-navigator button[data-entry-path="src/alpha.rs"]',
+    ),
+  ).toBeVisible();
+});
