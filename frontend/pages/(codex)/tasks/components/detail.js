@@ -667,8 +667,11 @@ class CaffoldTaskDetail extends HTMLElement {
     if (!this.selectedThreadId) {
       return;
     }
+    const preservedReviewRoute = this.reviewComponents
+      .get(this.selectedThreadId)
+      ?.currentTaskRoute?.();
     const route = options.review
-      ? {
+      ? preservedReviewRoute ?? {
           kind: "tasks",
           threadId: this.selectedThreadId,
           review: true,

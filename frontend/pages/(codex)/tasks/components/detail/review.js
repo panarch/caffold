@@ -233,6 +233,14 @@ class CaffoldTaskReview extends HTMLElement {
     this.syncReview({ contextChanged, routeChanged });
   }
 
+  currentTaskRoute() {
+    const threadId = taskThreadId(this.task);
+    if (!threadId || !this.route) {
+      return null;
+    }
+    return taskRouteForReview(threadId, this.route);
+  }
+
   resetContext() {
     this.unsubscribeWatch();
     this.invalidateRequests();
@@ -725,16 +733,7 @@ class CaffoldTaskReview extends HTMLElement {
   }
 
   requestRoute(state, options = {}) {
-    const route = {
-      kind: "tasks",
-      threadId: taskThreadId(this.task),
-      review: true,
-      reviewScope: state.scope,
-      reviewNavigator: state.navigator,
-      reviewViewer: state.viewer,
-      path: state.path,
-      baseRef: state.baseRef,
-    };
+    const route = taskRouteForReview(taskThreadId(this.task), state);
     this.dispatchEvent(
       new CustomEvent("caffold:task-review-route-intent", {
         bubbles: true,
@@ -910,6 +909,19 @@ function normalizeReviewRoute(route = {}, task = null) {
     path: safeRelativePath(route?.path),
     baseRef: `${route?.baseRef ?? ""}`,
     ...(task ? { threadId: taskThreadId(task) } : {}),
+  };
+}
+
+function taskRouteForReview(threadId, state) {
+  return {
+    kind: "tasks",
+    threadId,
+    review: true,
+    reviewScope: state.scope,
+    reviewNavigator: state.navigator,
+    reviewViewer: state.viewer,
+    path: state.path,
+    baseRef: state.baseRef,
   };
 }
 

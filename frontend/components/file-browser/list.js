@@ -6,43 +6,45 @@ const TREE_LOADING_DELAY_MS = 180;
 
 class CaffoldFileList extends HTMLElement {
   connectedCallback() {
-    this.addEventListener("click", (event) => {
-      const refreshButton = event.target.closest('button[data-action="refresh-files"]');
-      if (refreshButton) {
+    if (!this.initialized) {
+      this.initialized = true;
+      this.addEventListener("click", (event) => {
+        const refreshButton = event.target.closest('button[data-action="refresh-files"]');
+        if (refreshButton) {
+          this.dispatchEvent(
+            new CustomEvent("caffold:refresh-file-list", { bubbles: true }),
+          );
+          return;
+        }
+
+        const button = event.target.closest("button[data-entry-path]");
+        if (!button || button.disabled) {
+          return;
+        }
+
+        if (button.dataset.action === "toggle-directory") {
+          this.toggleTreeDirectory(button.dataset.entryPath, button);
+          return;
+        }
+
+        const path = button.dataset.entryPath;
+        const eventName =
+          button.dataset.kind === "directory"
+            ? "caffold:open-directory"
+            : "caffold:open-file";
+
         this.dispatchEvent(
-          new CustomEvent("caffold:refresh-file-list", { bubbles: true }),
+          new CustomEvent(eventName, {
+            bubbles: true,
+            detail: { path, entry: this.entryForPath(path) },
+          }),
         );
-        return;
-      }
-
-      const button = event.target.closest("button[data-entry-path]");
-      if (!button || button.disabled) {
-        return;
-      }
-
-      if (button.dataset.action === "toggle-directory") {
-        this.toggleTreeDirectory(button.dataset.entryPath, button);
-        return;
-      }
-
-      const path = button.dataset.entryPath;
-      const eventName =
-        button.dataset.kind === "directory"
-          ? "caffold:open-directory"
-          : "caffold:open-file";
-
-      this.dispatchEvent(
-        new CustomEvent(eventName, {
-          bubbles: true,
-          detail: { path, entry: this.entryForPath(path) },
-        }),
-      );
-    });
-    this.boundIconsReady = () => this.render();
+      });
+      this.boundIconsReady = () => this.render();
+      this.setIdle();
+    }
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     warmIcons();
-
-    this.setIdle();
   }
 
   disconnectedCallback() {

@@ -455,7 +455,10 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
     "data-task-detail-view",
     "review",
   );
+  await expect(page).toHaveURL(`/tasks/${threadId}/review?nav=files&view=source`);
   const taskDiff = tasksPage.locator("caffold-task-review");
+  await taskDiff.getByRole("button", { name: "Changes", exact: true }).click();
+  await taskDiff.getByRole("button", { name: "Diff", exact: true }).click();
   const readmeChange = taskDiff.locator(
     'caffold-git-diff-changes-tree button[data-repo-relative-path="README.md"]',
   );

@@ -75,6 +75,35 @@ test("preserves conversation and thread-local Review state while lifecycles deac
     .toBe(360);
 });
 
+test("reopens Review at its last semantic route after returning to Conversation", async ({
+  page,
+}) => {
+  const { taskScenario, tasksPage, taskReview } =
+    await openCompletedTaskForReview(page);
+
+  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await taskReview
+    .locator('caffold-git-diff-changes-tree button[data-repo-relative-path="planner.rs"]')
+    .click();
+  await taskReview.getByRole("button", { name: "Branch", exact: true }).click();
+  await taskReview.getByRole("button", { name: "Source", exact: true }).click();
+  await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+  await expect(page).toHaveURL(
+    `/tasks/${taskScenario.threadId}/review?scope=branch&nav=files&view=source&file=planner.rs&base=origin%2Fmain`,
+  );
+
+  await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
+  await expect(page).toHaveURL(`/tasks/${taskScenario.threadId}`);
+
+  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await expect(page).toHaveURL(
+    `/tasks/${taskScenario.threadId}/review?scope=branch&nav=files&view=source&file=planner.rs&base=origin%2Fmain`,
+  );
+  await expect(
+    taskReview.locator('caffold-file-navigator button[data-entry-path="src/planner.rs"]'),
+  ).toHaveAttribute("aria-current", "true");
+});
+
 test("rejects a late file navigator response while Review is inactive", async ({
   page,
 }) => {
