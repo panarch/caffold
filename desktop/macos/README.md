@@ -52,6 +52,8 @@ Missing optional dependencies do not prevent the server from starting. The menu 
 - `Open Caffold` in the menu opens the browser; reopening the running app does the same.
 - The menu bar icon also configures the server, exposes logs, retries Tailscale Serve, and quits the server.
 - The About panel shows the version, build number, and local package date and time.
+- The app checks the latest stable GitHub Release at launch and when its menu is reopened after six hours.
+- `Check for Updates…` installs an approved update through Homebrew, then relaunches Caffold and confirms that its owned local server becomes ready.
 - Data is stored in `~/Library/Application Support/Caffold/data`.
 - Logs are stored in `~/Library/Logs/Caffold/caffold.log`.
 
@@ -60,5 +62,7 @@ Missing optional dependencies do not prevent the server from starting. The menu 
 The menu reports stable status rows for Codex, Git, GitHub CLI, Tailscale connectivity, and the Caffold Serve URL. Missing integrations disable only their related features; the file browser and server remain available.
 
 The app only restarts a server process that it started. When it connects to an existing Caffold process, choosing a different port starts a separate app-managed server and leaves the external process untouched. Changing only the bind mode on the occupied port remains blocked.
+
+Updates follow the same ownership rule. Caffold refuses to update while connected to an externally managed server. For an app-managed server, it reads canonical managed-task status before confirmation and warns if active work may be interrupted. GitHub is only the release-discovery source; Homebrew remains responsible for downloading, checksum verification, installation, and CLI-link replacement. Manually copied app bundles receive a release-page link instead of being overwritten.
 
 The private `.notes/bin/caffold-5178` helper remains separate. It manages the local development/validation service and is not part of the distributed application.

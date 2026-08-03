@@ -7,6 +7,7 @@ import test from "node:test";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packageApp = resolve(repoRoot, "desktop/macos/package-app");
+const updaterTest = resolve(repoRoot, "desktop/macos/test-updater");
 const release = resolve(repoRoot, "desktop/macos/release");
 const renderCask = resolve(repoRoot, "desktop/macos/render-cask");
 const releaseWorkflow = resolve(repoRoot, ".github/workflows/release.yml");
@@ -73,6 +74,9 @@ test("macOS packaging locks dependencies and verifies the distributed archive", 
   assert.match(source, /--expected-build-number/);
   assert.match(source, /LSMinimumSystemVersion/);
   assert.match(source, /io\.panarch\.caffold\.server/);
+  assert.match(source, /CaffoldServer\/UpdateModel\.swift/);
+  assert.match(source, /CaffoldServer\/Updater\.swift/);
+  run("bash", ["-n", updaterTest]);
 });
 
 test("Homebrew cask installs the app and bundled CLI without a user quarantine flag", () => {
@@ -102,10 +106,9 @@ test("Homebrew cask installs the app and bundled CLI without a user quarantine f
   assert.match(invalid.stderr, /64 lowercase hexadecimal characters/);
 
   for (const readme of [rootReadme, macosReadme]) {
-    assert.match(
-      readFileSync(readme, "utf8"),
-      /brew install --cask panarch\/tap\/caffold/,
-    );
+    const documentation = readFileSync(readme, "utf8");
+    assert.match(documentation, /brew install --cask panarch\/tap\/caffold/);
+    assert.match(documentation, /Homebrew/);
   }
 });
 
@@ -173,6 +176,7 @@ test("manual release workflow isolates versioning, verification, and publication
   );
   assert.match(macosJob, new RegExp(`rustup toolchain install ${rustVersion}(?:\\.0)?`));
   assert.match(macosJob, /release --dry-run/);
+  assert.match(macosJob, /npm run test:updater/);
   assert.match(macosJob, /actions\/upload-artifact@v\d+\.\d+\.\d+/);
   assert.doesNotMatch(macosJob, /contents: write/);
   assert.doesNotMatch(macosJob, /HOMEBREW_TAP_TOKEN/);

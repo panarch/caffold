@@ -84,6 +84,15 @@ Public distribution is a separately approved operation. Once started, the follow
 
 Published version tags and assets are not overwritten. If installation reveals a defect, fix it in source and release the next patch version.
 
-## Deferred update lifecycle
+## Application update lifecycle
 
-The first release supports Homebrew installation and manual `brew upgrade`. App-driven release detection, coordinated shutdown, upgrade, relaunch, and post-upgrade health validation require an installed older release and are developed after `v0.1.0`. The first real end-to-end updater check therefore uses a later version such as `v0.1.1`.
+`v0.1.0` establishes the Homebrew installation baseline. Source developed after that release adds the app-driven path whose first real end-to-end check uses a later release such as `v0.1.1`:
+
+1. the menu app requests the latest stable `panarch/caffold` GitHub Release at launch and refreshes a stale result when the menu opens;
+2. GitHub provides only version discovery and the release-page fallback;
+3. before installation, the app verifies that the Cask is Homebrew-managed, refuses to replace an app connected to an externally managed server, and reads every managed-task page to warn about canonical `active` threads;
+4. explicit user approval runs `brew upgrade --cask panarch/tap/caffold` without downloading or replacing executable content directly;
+5. the running app verifies the installed bundle version, records a pending health receipt, schedules a detached relaunch, and terminates the server process it owns;
+6. the replacement app clears that receipt only after its own server becomes ready, and reports an externally managed port instead of claiming successful validation.
+
+Automatic background installation is intentionally not supported. Network failure leaves the installed app untouched, a Homebrew or version mismatch remains retryable, and manually copied app bundles open the release page rather than being overwritten.

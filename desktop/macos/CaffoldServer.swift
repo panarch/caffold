@@ -21,6 +21,8 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var codexStatusMenuItem: NSMenuItem?
     private var gitStatusMenuItem: NSMenuItem?
     private var githubStatusMenuItem: NSMenuItem?
+    private var updateMenuItem: NSMenuItem?
+    private var updater: ApplicationUpdater?
     private var preferences = ServerRuntimePreferences.load()
     private var lastTailscaleStatus: TailscaleStatus?
     private var ownsServer = false
@@ -71,7 +73,9 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ProcessInfo.processInfo.disableSuddenTermination()
         NSApp.setActivationPolicy(.accessory)
         installStatusMenu()
+        installUpdater()
         setStatus("Checking local server...")
+        updater?.checkAutomatically()
 
         checkHealth { [weak self] isRunning in
             guard let self else { return }
@@ -166,6 +170,12 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         githubStatusMenuItem = githubStatus
 
         menu.addItem(.separator())
+        menu.addItem(sectionItem("Application"))
+
+        let update = actionItem("Check for Updates…", action: #selector(checkForUpdates))
+        menu.addItem(update)
+        updateMenuItem = update
+
         menu.addItem(actionItem("About Caffold Server", action: #selector(showAbout)))
         menu.addItem(actionItem("Show Logs", action: #selector(showLogs), key: "l"))
         menu.addItem(actionItem("Quit", action: #selector(quit), key: "q"))
@@ -176,6 +186,44 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         refreshSystemStatus()
+        updater?.refreshIfStale()
+    }
+
+    private func installUpdater() {
+        guard
+            let updateMenuItem,
+            let currentVersion = Bundle.main.object(
+                forInfoDictionaryKey: "CFBundleShortVersionString"
+            ) as? String
+        else {
+            updateMenuItem?.title = "Updates unavailable"
+            updateMenuItem?.isEnabled = false
+            return
+        }
+
+        updater = ApplicationUpdater(
+            currentVersion: currentVersion,
+            bundleURL: Bundle.main.bundleURL,
+            menuItem: updateMenuItem,
+            runtimeState: { [weak self] in
+                guard let self, self.serverRunning else { return .stopped }
+                return self.ownsServer ? .ownedServer : .externalServer
+            },
+            serverBaseURL: { [weak self] in
+                self?.localURL ?? URL(string: "http://127.0.0.1:5178/")!
+            },
+            scheduleRelaunch: { [weak self] expectedVersion in
+                guard let self else {
+                    return .failure(UpdateRelaunchError.applicationUnavailable)
+                }
+                return Result {
+                    try self.scheduleRelaunchAfterUpdate(expectedVersion: expectedVersion)
+                }
+            },
+            logger: { [weak self] message in
+                self?.appendLog(message)
+            }
+        )
     }
 
     private func sectionItem(_ title: String) -> NSMenuItem {
@@ -458,6 +506,7 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         serverRunning = true
         setStatus(serverStatusTitle())
         updateServerControls()
+        updater?.serverDidBecomeReady(isOwnedServer: ownsServer)
 
         guard let name = serverNameAfterStart else {
             finishServerStartup()
@@ -679,6 +728,27 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    private func scheduleRelaunchAfterUpdate(expectedVersion: String) throws {
+        let parentPID = ProcessInfo.processInfo.processIdentifier
+        let serverPID = ownsServer && serverProcess?.isRunning == true
+            ? serverProcess?.processIdentifier ?? 0
+            : 0
+        let relauncher = Process()
+        relauncher.executableURL = URL(fileURLWithPath: "/bin/sh")
+        relauncher.arguments = [
+            "-c",
+            caffoldRelaunchScript(),
+            "caffold-relaunch",
+            String(parentPID),
+            String(serverPID),
+            Bundle.main.bundleURL.path,
+        ]
+        relauncher.environment = caffoldEnvironment()
+        try relauncher.run()
+        appendLog("Caffold \(expectedVersion) is installed; quitting for relaunch.")
+        NSApp.terminate(nil)
+    }
+
     private func configureTailscaleServe() {
         guard let tailscale = caffoldExecutable(named: "tailscale") else {
             applyTailscaleStatus(TailscaleStatus(
@@ -803,6 +873,10 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         restartServerProcess()
     }
 
+    @objc private func checkForUpdates() {
+        updater?.handleMenuAction()
+    }
+
     @objc private func toggleTailscaleServe() {
         if lastTailscaleStatus?.serveEnabled == true {
             disableTailscaleServe()
@@ -828,8 +902,9 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
+        let updateStatus = updater?.aboutStatusText.map { "\n\($0)" } ?? ""
         let buildDetails = NSAttributedString(
-            string: "Built \(buildTimestamp)",
+            string: "Built \(buildTimestamp)\(updateStatus)",
             attributes: [
                 .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
                 .foregroundColor: NSColor.secondaryLabelColor,
@@ -964,6 +1039,14 @@ private enum ServerError: LocalizedError {
         case .missingBinary:
             return "The Caffold server binary is missing from the application bundle."
         }
+    }
+}
+
+private enum UpdateRelaunchError: LocalizedError {
+    case applicationUnavailable
+
+    var errorDescription: String? {
+        "The running Caffold application is no longer available."
     }
 }
 

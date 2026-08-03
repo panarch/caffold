@@ -65,6 +65,9 @@ brew install --cask panarch/tap/caffold
 ```
 
 The Cask installs `Caffold Server.app` in `/Applications` and links the bundled `caffold` CLI.
+Homebrew-managed installations can check for updates from the menu bar app. Caffold uses the
+latest GitHub Release only for version discovery; an approved update is installed by Homebrew and
+the app restarts after verifying the replacement bundle.
 
 Build the application bundle with:
 

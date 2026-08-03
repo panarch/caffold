@@ -184,6 +184,9 @@ jobs:
       - name: Verify release contracts
         run: npm run test:release
 
+      - name: Verify application updater
+        run: npm run test:updater
+
       - name: Check Rust formatting
         run: cargo fmt --check
 

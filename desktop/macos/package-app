@@ -11,6 +11,8 @@ SWIFT_SOURCES=(
   "${SCRIPT_DIR}/CaffoldServer.swift"
   "${SCRIPT_DIR}/CaffoldServer/Runtime.swift"
   "${SCRIPT_DIR}/CaffoldServer/SystemStatus.swift"
+  "${SCRIPT_DIR}/CaffoldServer/UpdateModel.swift"
+  "${SCRIPT_DIR}/CaffoldServer/Updater.swift"
 )
 APP_DIR="${DIST_DIR}/Caffold Server.app"
 CONTENTS_DIR="${APP_DIR}/Contents"
@@ -63,6 +65,7 @@ prepare_bundle() {
 
   xcrun swiftc \
     -O \
+    -warnings-as-errors \
     -module-cache-path "${DIST_DIR}/swift-module-cache" \
     -framework AppKit \
     -o "${MACOS_DIR}/CaffoldServer" \

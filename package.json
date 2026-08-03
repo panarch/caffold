@@ -10,6 +10,7 @@
     "test:release": "node --test tests/macos-release.test.mjs tests/release-version.test.mjs",
     "test:routes": "node --test tests/navigation-routes.test.mjs",
     "test:task-state": "node --test tests/css-ownership.test.mjs tests/task-*.test.mjs",
+    "test:updater": "desktop/macos/test-updater",
     "test:watch": "node --test tests/watch.test.mjs",
     "test:e2e": "playwright test",
     "test:codex-live": "playwright test --config=playwright.live.config.mjs"
