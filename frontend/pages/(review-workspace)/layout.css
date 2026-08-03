@@ -4,10 +4,9 @@ caffold-review-workspace {
     calc(var(--interface-target-floor) + 0.75rem)
   );
   --review-pane-title-size: 0.82rem;
-  position: absolute;
-  inset: 0 0 var(--app-build-rail-height);
-  z-index: 20;
+  position: relative;
   display: block;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   overflow: hidden;

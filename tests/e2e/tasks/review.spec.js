@@ -84,27 +84,16 @@ test("keeps Files and Diff review state isolated from the conversation", async (
   await expect(tasksPage.locator(".tasks-master-resizer")).toBeHidden();
   const taskFilesLayout = await page.evaluate(() => {
     const codex = document.querySelector("caffold-codex-workspace");
-    const appHeader = document.querySelector("caffold-app-shell .app-header");
-    const pathbar = document.querySelector("caffold-pathbar");
+    const filesSurface = document.querySelector(".files-surface");
+    const appMain = document.querySelector("caffold-app-shell .app-main");
     const filesHeader = document.querySelector(".task-files-header");
     const filesView = document.querySelector(".task-files-view");
     const filesTitle = document.querySelector(".task-files-header h3");
     const browser = document.querySelector(".task-files-view caffold-file-browser");
     const fileList = document.querySelector(".task-files-view caffold-file-list");
 
-    const coveredByCodex = (element) => {
-      const rect = element.getBoundingClientRect();
-      const topElement = document.elementFromPoint(
-        rect.left + rect.width / 2,
-        rect.top + rect.height / 2,
-      );
-      return {
-        inCodex: Boolean(topElement?.closest("caffold-codex-workspace")),
-        inSelf: topElement === element || element.contains(topElement),
-      };
-    };
-
     const codexRect = codex.getBoundingClientRect();
+    const appMainRect = appMain.getBoundingClientRect();
     const filesHeaderRect = filesHeader.getBoundingClientRect();
     const filesViewRect = filesView.getBoundingClientRect();
     const browserRect = browser.getBoundingClientRect();
@@ -112,12 +101,10 @@ test("keeps Files and Diff review state isolated from the conversation", async (
 
     return {
       viewportWidth: window.innerWidth,
-      appHeaderCoveredByCodex:
-        coveredByCodex(appHeader).inCodex && !coveredByCodex(appHeader).inSelf,
-      pathbarCoveredByCodex:
-        coveredByCodex(pathbar).inCodex && !coveredByCodex(pathbar).inSelf,
+      filesSurfaceHidden: filesSurface.hidden,
       filesHeaderTop: filesHeaderRect.top,
       codexTop: codexRect.top,
+      appMainTop: appMainRect.top,
       filesViewLeft: filesViewRect.left,
       codexLeft: codexRect.left,
       filesViewRight: filesViewRect.right,
@@ -129,8 +116,8 @@ test("keeps Files and Diff review state isolated from the conversation", async (
       titleFits: filesTitle.clientWidth >= filesTitle.scrollWidth,
     };
   });
-  expect(taskFilesLayout.appHeaderCoveredByCodex).toBe(true);
-  expect(taskFilesLayout.pathbarCoveredByCodex).toBe(true);
+  expect(taskFilesLayout.filesSurfaceHidden).toBe(true);
+  expect(Math.abs(taskFilesLayout.codexTop - taskFilesLayout.appMainTop)).toBeLessThanOrEqual(1);
   expect(taskFilesLayout.filesHeaderTop).toBeLessThanOrEqual(taskFilesLayout.codexTop + 1);
   expect(
     Math.abs(taskFilesLayout.filesViewLeft - taskFilesLayout.codexLeft),
@@ -219,7 +206,7 @@ test("keeps Files and Diff review state isolated from the conversation", async (
     .toBe(true);
   await expect(page.locator("caffold-codex-workspace")).toBeVisible();
   await expect(
-    codexWorkspace.getByRole("button", { name: "Close Codex workspace" }),
+    codexWorkspace.getByRole("button", { name: "Back to tasks" }),
   ).toBeVisible();
 
   await tasksPage.locator('button[data-summary-action="toggle-files"]').click();
@@ -298,7 +285,7 @@ test("keeps Files and Diff review state isolated from the conversation", async (
     )
     .toBeLessThanOrEqual(2);
   await expect(
-    codexWorkspace.getByRole("button", { name: "Close Codex workspace" }),
+    codexWorkspace.getByRole("button", { name: "Back to tasks" }),
   ).toBeVisible();
 
 

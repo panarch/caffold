@@ -23,8 +23,8 @@ class CaffoldCodexWorkspace extends HTMLElement {
       <button
         type="button"
         class="codex-workspace-close"
-        aria-label="Close Codex workspace"
-        title="Close Codex workspace"
+        aria-label="Back to tasks"
+        title="Back to tasks"
       >
         ${renderInlineIcon("X", "Close", "codex-workspace-close-icon")}
       </button>
@@ -95,7 +95,8 @@ class CaffoldCodexWorkspace extends HTMLElement {
         !this.route.threadId,
     );
     this.closeButton.hidden = isGlobalTasksHome;
-    const label = isTaskSubview ? "Back to task" : "Close Codex workspace";
+    this.toggleAttribute("data-workspace-close-visible", !isGlobalTasksHome);
+    const label = isTaskSubview ? "Back to task" : "Back to tasks";
     this.closeButton.setAttribute("aria-label", label);
     this.closeButton.setAttribute("title", label);
   }

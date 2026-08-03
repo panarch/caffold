@@ -105,23 +105,27 @@ caffold-tasks-page {
     display: none;
   }
 
-  & .tasks-header h1,
-  & .tasks-header p {
-    margin: 0;
+  & .tasks-brand {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.4375rem;
+    min-width: 0;
+  }
+
+  & .tasks-brand-mark {
+    display: block;
+    width: 1.625rem;
+    height: 1.625rem;
   }
 
   & .tasks-header h1 {
+    margin: 0;
     overflow: hidden;
-    font-size: var(--interface-heading-font-size);
+    font-size: 0.95rem;
     line-height: 1.2;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  & .tasks-header p {
-    color: var(--muted);
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
   }
 
   & .tasks-header-actions {
@@ -205,20 +209,12 @@ caffold-tasks-page {
       padding: 0.4375rem 0.5rem 0.4375rem calc(0.5rem + var(--task-header-leading-space, 0rem));
     }
 
-    & .tasks-header > div:first-child {
+    & .tasks-brand {
       min-width: 0;
     }
 
     & .tasks-header h1 {
-      font-size: var(--interface-heading-font-size);
-    }
-
-    & .tasks-header p {
-      overflow: hidden;
-      font-size: var(--interface-meta-font-size);
-      line-height: 1.1;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      font-size: 0.95rem;
     }
 
     & .tasks-header-actions {

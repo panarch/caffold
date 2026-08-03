@@ -258,7 +258,7 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
   });
 
   await page.goto("/tasks?cwd=src");
-  await expect(page).toHaveURL("/tasks");
+  await expect(page).toHaveURL("/");
   const tasksPage = page.locator("caffold-tasks-page");
   const listPane = tasksPage.locator(".tasks-list-pane");
   const detailPane = tasksPage.locator(".tasks-detail-pane");
@@ -504,7 +504,7 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     await expect(detailPane).toContainText("Main root task detail response");
     await captureReviewScreenshot(page, testInfo, "tasks-single-pane-detail");
     await tasksPage.locator('[data-task-action="open-list"]').click();
-    await expect(page).toHaveURL("/tasks");
+    await expect(page).toHaveURL("/");
     await expect(listPane).toBeVisible();
     await expect(detailPane).toBeHidden();
   }
@@ -774,8 +774,10 @@ test("groups Tasks by repository without worktree accordions", async ({ page }, 
   await page.goto("/tasks");
   const tasksPage = page.locator("caffold-tasks-page");
   const groups = tasksPage.locator(".task-repository-group");
-  await expect(tasksPage.locator(".tasks-header")).toContainText(
-    "Caffold Tasks and Codex History",
+  await expect(tasksPage.locator(".tasks-brand h1")).toHaveText("Caffold");
+  await expect(tasksPage.locator(".tasks-brand-mark")).toHaveAttribute(
+    "src",
+    "/assets/icons/caffold-mark.svg",
   );
   await expect(
     tasksPage.locator('.tasks-header [data-task-action="open-settings"] svg'),

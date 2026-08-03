@@ -19,11 +19,12 @@ globalThis.window = {
 
 test("parses and serializes routes canonically", () => {
   const cases = [
+    ["/", { kind: "tasks", new: false, threadId: "", cwd: "" }, "/"],
     ["/settings", { kind: "settings" }, "/settings"],
     [
       "/tasks?cwd=Workspace%2Frust%2Fgluesql",
       { kind: "tasks", new: false, threadId: "", cwd: "" },
-      "/tasks",
+      "/",
     ],
     [
       "/tasks/new?cwd=src",
@@ -98,9 +99,9 @@ test("parses and serializes routes canonically", () => {
 test("derives deterministic parent routes", () => {
   const cases = [
     ["/settings", null],
-    ["/tasks", null],
-    ["/tasks/new?cwd=src", "/tasks"],
-    ["/tasks/thread?cwd=src", "/tasks"],
+    ["/", null],
+    ["/tasks/new?cwd=src", "/"],
+    ["/tasks/thread?cwd=src", "/"],
     ["/files?cwd=repo&file=src%2Flib.rs", "/files?cwd=repo"],
     ["/files?cwd=repo", null],
     ["/git/diff?cwd=repo&file=src%2Flib.rs", "/git/diff?cwd=repo"],
@@ -135,8 +136,8 @@ test("derives deterministic parent routes", () => {
 
 test("exposes surface, domain, mode, and target metadata", () => {
   const cases = [
+    ["/", "tasks", null, "tasks", "list"],
     ["/settings", "settings", null, "settings", "page"],
-    ["/tasks", "tasks", null, "tasks", "list"],
     ["/tasks/new", "tasks", null, "tasks", "new"],
     ["/tasks/thread", "tasks", null, "tasks", "detail"],
     ["/files?cwd=repo", "files", null, "files", "list"],
@@ -171,7 +172,6 @@ test("exposes surface, domain, mode, and target metadata", () => {
 
 test("rejects removed project routes and invalid app paths", () => {
   for (const url of [
-    "/",
     "/api/health",
     "/projects",
     "/projects/prj/files",

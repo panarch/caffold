@@ -63,8 +63,6 @@ class CaffoldReviewWorkspace extends HTMLElement {
     this.innerHTML = `
       <section
         class="review-workspace-panel"
-        role="dialog"
-        aria-modal="true"
         aria-label="Review workspace"
       >
         <header class="review-workspace-header">

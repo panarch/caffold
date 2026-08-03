@@ -58,29 +58,28 @@ test("creates a task with responsive composer controls and canonical approval st
   await page.goto(`/files?cwd=${encodeURIComponent(contextPath)}`);
   const codexPopover = await openHeaderActionGroup(page, "codex");
   await codexPopover.locator('button[data-action="open-tasks"]').click();
-  await expect(page).toHaveURL("/tasks");
+  await expect(page).toHaveURL("/");
   const codexWorkspace = page.locator("caffold-codex-workspace");
   await expect(codexWorkspace).toBeVisible();
   await expect
     .poll(() =>
       codexWorkspace.evaluate((element) => element.parentElement?.tagName.toLowerCase()),
     )
-    .toBe("caffold-app-shell");
-  const appShellBox = await page.locator("caffold-app-shell").boundingBox();
+    .toBe("main");
+  const appMainBox = await page.locator("caffold-app-shell .app-main").boundingBox();
   const codexWorkspaceBox = await codexWorkspace.boundingBox();
   const buildRailBox = await page.locator(".app-build-rail").boundingBox();
-  expect(Math.round(codexWorkspaceBox?.y ?? -1)).toBe(Math.round(appShellBox?.y ?? -2));
+  expect(Math.round(codexWorkspaceBox?.y ?? -1)).toBe(Math.round(appMainBox?.y ?? -2));
   expect(
     Math.round((codexWorkspaceBox?.y ?? -1) + (codexWorkspaceBox?.height ?? 0)),
-  ).toBe(Math.round(buildRailBox?.y ?? -2));
+  ).toBe(Math.round((appMainBox?.y ?? -2) + (appMainBox?.height ?? 0)));
   expect(
-    Math.round((buildRailBox?.y ?? -1) + (buildRailBox?.height ?? 0)),
-  ).toBe(
-    Math.round((appShellBox?.y ?? -2) + (appShellBox?.height ?? 0)),
-  );
+    Math.round(buildRailBox?.y ?? -1),
+  ).toBe(Math.round((appMainBox?.y ?? -2) + (appMainBox?.height ?? 0)));
+  await expect(page.locator(".files-surface")).toBeHidden();
   await expect(page.locator("caffold-files-page")).toBeHidden();
   await expect(
-    codexWorkspace.getByRole("button", { name: "Close Codex workspace" }),
+    codexWorkspace.getByRole("button", { name: "Back to tasks" }),
   ).toHaveCount(0);
   await expect(page.locator("caffold-tasks-page")).toHaveAttribute(
     "data-tasks-view",
@@ -133,6 +132,10 @@ test("creates a task with responsive composer controls and canonical approval st
   });
   await emptyNewTaskButton.click();
   await expect(page).toHaveURL(`/tasks/new?cwd=${encodeURIComponent(contextPath)}`);
+  await expect(codexWorkspace).toHaveAttribute(
+    "data-workspace-close-visible",
+    "",
+  );
   await expect(page.locator("caffold-tasks-page")).toHaveAttribute(
     "data-tasks-view",
     "new",
@@ -144,7 +147,7 @@ test("creates a task with responsive composer controls and canonical approval st
     page.locator('caffold-tasks-page .tasks-header [data-task-action="open-list"]'),
   ).toHaveCount(0);
   await expect(page.locator("caffold-tasks-page .tasks-header h1")).toHaveText(
-    "New Task",
+    "Caffold",
   );
   const newTaskHeaderMetrics = await page.evaluate(() => {
     const closeButton = document
@@ -156,21 +159,21 @@ test("creates a task with responsive composer controls and canonical approval st
     document.body.append(compactProbe);
     const compactHeight = compactProbe.getBoundingClientRect().height;
     compactProbe.remove();
-    const title = document
+    const brand = document
       .querySelector("caffold-tasks-page .tasks-header h1")
       .getBoundingClientRect();
     return {
       closeRight: closeButton.right,
       closeHeight: closeButton.height,
       compactHeight,
-      titleLeft: title.left,
+      brandLeft: brand.left,
     };
   });
   expect(newTaskHeaderMetrics.closeHeight).toBeCloseTo(
     newTaskHeaderMetrics.compactHeight,
     1,
   );
-  expect(newTaskHeaderMetrics.titleLeft).toBeGreaterThanOrEqual(
+  expect(newTaskHeaderMetrics.brandLeft).toBeGreaterThanOrEqual(
     newTaskHeaderMetrics.closeRight + 8,
   );
   const newTaskComposer = page.locator("caffold-tasks-page .task-new-form");

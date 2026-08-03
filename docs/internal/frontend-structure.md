@@ -28,74 +28,75 @@ The current runtime hierarchy is:
 
 ```text
 caffold-app-shell
-  app header
-    scaffold-app-menu
-    scaffold-header-actions
-      scaffold-git-header-action
-      scaffold-github-header-action
-      scaffold-codex-header-action
-  scaffold-pathbar
-  file browsing surface
-    scaffold-files-page
-      scaffold-file-browser
-        scaffold-file-list
-        scaffold-file-viewer
-  settings surface
-    scaffold-settings-page
-  codex workspace
-    scaffold-codex-workspace
-      scaffold-tasks-page
-        caffold-task-navigator
-        caffold-task-new
-          caffold-task-composer
-          scaffold-file-browser
-            scaffold-file-list
-            scaffold-file-viewer
-        caffold-task-detail
-          caffold-task-conversation
-          caffold-task-composer
-          caffold-task-review
+  app main route slot
+    file browsing surface
+      app header
+        scaffold-app-menu
+        scaffold-header-actions
+          scaffold-git-header-action
+          scaffold-github-header-action
+          scaffold-codex-header-action
+      scaffold-pathbar
+      scaffold-files-page
+        scaffold-file-browser
+          scaffold-file-list
+          scaffold-file-viewer
+    settings surface
+      scaffold-settings-page
+    codex workspace
+      scaffold-codex-workspace
+        scaffold-tasks-page
+          caffold-task-navigator
+          caffold-task-new
+            caffold-task-composer
             scaffold-file-browser
               scaffold-file-list
               scaffold-file-viewer
-            scaffold-git-diff-browser
-              scaffold-git-diff-changes-tree
-              scaffold-review-file-viewer
-            scaffold-git-compare-browser
-              scaffold-git-compare-tree
-              scaffold-review-file-viewer
-  scaffold-review-workspace
-    git
-      scaffold-git-review-layout
-        diff
-          scaffold-git-diff-page
-            scaffold-git-diff-browser
-              scaffold-git-diff-changes-tree
-              scaffold-review-file-viewer
-        compare
-          scaffold-git-compare-page
-            scaffold-git-compare-browser
-              scaffold-git-compare-tree
-              scaffold-review-file-viewer
-        log
-          scaffold-git-log-layout
-            scaffold-git-log-list-page
-            scaffold-git-log-commit-page
-              scaffold-commit-changes-tree
-              scaffold-review-file-viewer
-    github
-      scaffold-github-review-layout
-        issues
-          scaffold-github-issues-layout
-            scaffold-github-issues-list-page
-            scaffold-github-issue-detail-page
-        pulls
-          scaffold-github-pulls-layout
-            scaffold-github-pulls-list-page
-            scaffold-github-pull-detail-page
-            scaffold-github-pull-files-page
-              scaffold-github-pull-files-tree
-              scaffold-review-file-viewer
+          caffold-task-detail
+            caffold-task-conversation
+            caffold-task-composer
+            caffold-task-review
+              scaffold-file-browser
+                scaffold-file-list
+                scaffold-file-viewer
+              scaffold-git-diff-browser
+                scaffold-git-diff-changes-tree
+                scaffold-review-file-viewer
+              scaffold-git-compare-browser
+                scaffold-git-compare-tree
+                scaffold-review-file-viewer
+    scaffold-review-workspace
+      git
+        scaffold-git-review-layout
+          diff
+            scaffold-git-diff-page
+              scaffold-git-diff-browser
+                scaffold-git-diff-changes-tree
+                scaffold-review-file-viewer
+          compare
+            scaffold-git-compare-page
+              scaffold-git-compare-browser
+                scaffold-git-compare-tree
+                scaffold-review-file-viewer
+          log
+            scaffold-git-log-layout
+              scaffold-git-log-list-page
+              scaffold-git-log-commit-page
+                scaffold-commit-changes-tree
+                scaffold-review-file-viewer
+      github
+        scaffold-github-review-layout
+          issues
+            scaffold-github-issues-layout
+              scaffold-github-issues-list-page
+              scaffold-github-issue-detail-page
+          pulls
+            scaffold-github-pulls-layout
+              scaffold-github-pulls-list-page
+              scaffold-github-pull-detail-page
+              scaffold-github-pull-files-page
+                scaffold-github-pull-files-tree
+                scaffold-review-file-viewer
 ```
 
 `frontend/pages/layout.js` is the app root layout and defines
@@ -105,7 +106,7 @@ repeat the root hierarchy.
 
 `settings.js` owns browser-local preferences and applies their CSS variables
 before the app shell renders. `settings/page` is a global app surface opened
-from `scaffold-app-menu`; it persists device-
+from the Tasks header or the Files-only `scaffold-app-menu`; it persists device-
 specific UI preferences in `localStorage` rather than the server database.
 
 Appearance has three independent semantic axes:
@@ -162,9 +163,10 @@ The file browser also owns its live-update subscription and refreshes only its
 loaded directory cache and selected file. `watch.js` shares the SSE
 subscription with other consumers of the same filesystem scope.
 
-`(codex)/layout` is the app root's top-level Codex workspace. It renders as an
-app-shell overlay sibling of `app-main` and `(review-workspace)`, so Codex
-tasks do not inherit the file browser pathbar or pane shell. It is separate
+`(codex)/layout` is the app root's default Codex workspace and `/` is its
+canonical Tasks home. It fills the app main route slot, so Tasks do not inherit
+the Files-only app header, pathbar, or pane shell. The Tasks page header owns
+the Caffold brand and primary Settings/New Task actions. It is separate
 from `(review-workspace)` because Codex is a work/control surface, not only a
 review surface. The layout delegates its route-level work to a stable-mounted
 Tasks page. `(codex)/tasks/page` is only the route and master-detail
@@ -241,7 +243,7 @@ execution semantics.
 The two flows should not be hidden behind one generic helper because GitHub
 availability/status refresh has different semantics from Git review state.
 
-`scaffold-header-actions` owns header-only action status derivation. The app
+`scaffold-header-actions` owns Files-header-only action status derivation. The app
 root supplies only the loaded repository context plus raw Git/GitHub status
 payloads, and the header actions component maps those into Git/GitHub button
 availability, labels, messages, and badges. Codex app-server status is
@@ -249,7 +251,7 @@ header-local and is loaded directly by the header actions component, then
 passed to `scaffold-codex-header-action`. The app root should not fetch Codex
 status or assemble header display state.
 
-`(review-workspace)` is a pathless review container inside the app root. It owns
+`(review-workspace)` is a pathless review surface in the app main route slot. It owns
 the active review domain, shared review chrome, close/back behavior, panel
 resizing, and mobile list/detail transitions. It refreshes shared chrome by
 reading details from the active child layout rather than receiving chrome

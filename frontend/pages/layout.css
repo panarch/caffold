@@ -2,10 +2,37 @@ caffold-app-shell {
   --app-build-rail-height: calc(1rem + env(safe-area-inset-bottom));
   position: relative;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) var(--app-build-rail-height);
+  grid-template-rows: minmax(0, 1fr) var(--app-build-rail-height);
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
+
+  & .app-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  & .app-main > * {
+    grid-area: 1 / 1;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  & .files-surface {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  & .files-surface[hidden] {
+    display: none;
+  }
 
   & .app-header {
     display: grid;
@@ -25,10 +52,14 @@ caffold-app-shell {
     min-width: 0;
   }
 
-  & .app-main {
+  & .files-main {
     min-height: 0;
     min-width: 0;
     overflow: hidden;
+  }
+
+  & .files-main > caffold-files-page {
+    height: 100%;
   }
 
   & .app-build-rail {
@@ -63,12 +94,6 @@ caffold-app-shell {
     background: var(--danger-soft);
     color: var(--danger);
     opacity: 1;
-  }
-}
-
-@media (max-width: 860px) {
-  caffold-app-shell {
-    grid-template-rows: auto auto minmax(0, 1fr) var(--app-build-rail-height);
   }
 }
 

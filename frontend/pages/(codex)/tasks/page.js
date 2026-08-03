@@ -1,4 +1,3 @@
-import { escapeHtml } from "../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
 import "./components/detail.js";
 import "./components/navigator.js";
@@ -326,13 +325,15 @@ class CaffoldTasksPage extends HTMLElement {
     if (!region) {
       return;
     }
-    const title =
-      this.view === "new" ? "New Task" : this.view === "detail" ? "Task" : "Tasks";
     region.innerHTML = `
       <header class="tasks-header">
-        <div>
-          <h1>${escapeHtml(title)}</h1>
-          <p>Caffold Tasks and Codex History</p>
+        <div class="tasks-brand">
+          <img
+            class="tasks-brand-mark"
+            src="/assets/icons/caffold-mark.svg"
+            alt=""
+          />
+          <h1>Caffold</h1>
         </div>
         <div class="tasks-header-actions">
           <button type="button" class="task-icon-button" data-task-action="open-settings" title="Settings">

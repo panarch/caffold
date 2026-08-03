@@ -218,11 +218,30 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   });
 
   await page.goto("/");
-  await expect(page).toHaveURL("/tasks");
+  await expect(page).toHaveURL("/");
   const tasksPage = page.locator("caffold-tasks-page");
-  await expect(tasksPage.locator(".tasks-header")).toContainText(
+  const tasksBrand = tasksPage.locator(".tasks-brand");
+  await expect(tasksBrand.locator(".tasks-brand-mark")).toHaveAttribute(
+    "src",
+    "/assets/icons/caffold-mark.svg",
+  );
+  await expect(tasksBrand.getByRole("heading", { name: "Caffold" })).toBeVisible();
+  await expect(tasksPage.locator(".tasks-header")).not.toContainText(
     "Caffold Tasks and Codex History",
   );
+  await expect(page.locator("caffold-codex-workspace")).not.toHaveAttribute(
+    "data-workspace-close-visible",
+    "",
+  );
+  const homeBrandInset = await tasksBrand.evaluate((element) => {
+    const brand = element.getBoundingClientRect();
+    const header = element.closest(".tasks-header").getBoundingClientRect();
+    return brand.left - header.left;
+  });
+  expect(homeBrandInset).toBeLessThanOrEqual(16);
+  await expect(page.locator(".files-surface")).toBeHidden();
+  await expect(page.locator("caffold-app-menu")).toBeHidden();
+  await captureReviewScreenshot(page, testInfo, "tasks-home-brand");
   const taskActionTextSize = await page.evaluate(() => {
     const probe = document.createElement("span");
     probe.style.cssText =
@@ -243,27 +262,23 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   ).toBeHidden();
 
   await page.goto("/tasks?cwd=.");
-  await expect(page).toHaveURL("/tasks");
+  await expect(page).toHaveURL("/");
   await expect
     .poll(() => taskListQueries.at(-1))
     .toEqual({ cwd: null });
-  await expect(tasksPage.locator(".tasks-header")).toContainText(
-    "Caffold Tasks and Codex History",
-  );
+  await expect(tasksBrand.getByRole("heading", { name: "Caffold" })).toBeVisible();
   await expect(tasksPage).toContainText("No Caffold tasks yet.");
 
   await page.goto("/tasks");
-  await expect(page).toHaveURL("/tasks");
+  await expect(page).toHaveURL("/");
   await expect
     .poll(() => taskListQueries.at(-1))
     .toEqual({ cwd: null });
-  await expect(tasksPage.locator(".tasks-header")).toContainText(
-    "Caffold Tasks and Codex History",
-  );
+  await expect(tasksBrand.getByRole("heading", { name: "Caffold" })).toBeVisible();
   await expect(tasksPage).toContainText("No Caffold tasks yet.");
 
   await page.goto("/tasks?cwd=.");
-  await expect(page).toHaveURL("/tasks");
+  await expect(page).toHaveURL("/");
   await expect
     .poll(() => taskListQueries.at(-1))
     .toEqual({ cwd: null });
@@ -274,7 +289,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
     .click();
   await expect(page).toHaveURL("/tasks/new");
   await page.locator("caffold-codex-workspace .codex-workspace-close").click();
-  await expect(page).toHaveURL("/tasks");
+  await expect(page).toHaveURL("/");
   await tasksPage
     .locator(".tasks-empty")
     .getByRole("button", { name: "New Task", exact: true })

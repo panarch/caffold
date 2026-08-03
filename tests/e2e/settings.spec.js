@@ -3,6 +3,7 @@ import { installBrowserDefaults } from "./support/browser-defaults.js";
 import { FILES_HOME_URL } from "./support/file-browser-fixtures.js";
 import {
   captureReviewScreenshot,
+  installEventSourceMock,
   mockCodexModels,
 } from "./support/task-fixtures.js";
 
@@ -11,6 +12,28 @@ const SETTINGS_KEY = "caffold:settings";
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
   await mockCodexModels(page);
+});
+
+test("returns from Settings to the canonical Tasks home", async ({ page }) => {
+  await installEventSourceMock(page);
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [], nextCursor: null }),
+    }),
+  );
+
+  await page.goto("/settings");
+  const settingsPage = page.locator("caffold-settings-page");
+  await expect(settingsPage).toBeVisible();
+  await expect(page.locator(".files-surface")).toBeHidden();
+
+  await settingsPage.getByRole("button", { name: "Close settings" }).click();
+
+  await expect(page).toHaveURL("/");
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect(tasksPage.locator(".tasks-brand h1")).toHaveText("Caffold");
+  await expect(page.locator(".files-surface")).toBeHidden();
 });
 
 test("normalizes legacy settings into the three appearance axes", async ({
@@ -34,6 +57,9 @@ test("normalizes legacy settings into the three appearance axes", async ({
   await page.goto("/settings");
   const settingsPage = page.locator("caffold-settings-page");
   await expect(settingsPage).toBeVisible();
+  await expect(page.locator(".files-surface")).toBeHidden();
+  await expect(page.locator("caffold-app-menu")).toBeHidden();
+  await expect(settingsPage.locator(".settings-header")).toBeVisible();
   await expect(range(settingsPage, "interfaceScalePercent")).toHaveValue("100");
   await expect(range(settingsPage, "conversationTextPx")).toHaveValue("17");
   await expect(range(settingsPage, "codeTextPx")).toHaveValue("15");
@@ -91,6 +117,8 @@ test("updates independent ranges live without replacing their DOM", async ({
   await expect(page).toHaveURL("/settings");
   const settingsPage = page.locator("caffold-settings-page");
   await expect(settingsPage).toBeVisible();
+  await expect(page.locator(".files-surface")).toBeHidden();
+  await expect(page.locator("caffold-app-menu")).toBeHidden();
   await expect(page.locator("caffold-pathbar")).toBeHidden();
   await expect(page.locator("caffold-files-page")).toBeHidden();
 

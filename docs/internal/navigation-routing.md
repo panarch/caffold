@@ -2,10 +2,11 @@
 
 ## Default entrypoint
 
-`/` is an entrypoint alias, not a durable application surface. On startup the
-app replaces it with `/tasks` so browser history starts at the Codex-first Tasks
-home. The wide Tasks home keeps the task navigator visible and renders the New
-Task composer as its default detail surface. Narrow viewports keep the list as
+`/` is the canonical Codex-first Tasks home and the durable application
+entrypoint. The legacy `/tasks` list URL is accepted on direct entry and
+canonicalized to `/` with history replacement. The wide Tasks home keeps the
+task navigator visible and renders the New Task composer as its default detail
+surface. Narrow viewports keep the list as
 the first surface and open the composer through `/tasks/new`.
 
 Codex availability does not decide the top-level surface. Connection failures
@@ -21,7 +22,7 @@ encode mobile, foldable, or desktop layout state.
 
 ## Route Shape
 
-- `/tasks`
+- `/`
 - `/tasks/new?cwd=...`
 - `/tasks/:threadId`
 - `/files?cwd=...&file=...`
@@ -45,11 +46,12 @@ Files directory, then the server initial path. Review routes prefer the current
 live repository root when one is already loaded.
 
 Codex remains the content/runtime source of truth and Caffold does not require a
-local project registry. `/tasks` is the explicit all-threads route, split into
+local project registry. `/` is the explicit all-threads route, split into
 locally managed Caffold Tasks and unmanaged Codex History. History rows enter
 the managed set only through `Continue in Caffold`.
-Header `Tasks` always enters `/tasks`. Task rows are grouped by repository and
-worktree context derived from each thread cwd; cwd never filters the list.
+The Codex action in the Files surface always enters `/`. Task rows are grouped
+by repository and worktree context derived from each thread cwd; cwd never
+filters the list.
 `/tasks/new?cwd=...` is the only Tasks route that carries cwd, because it selects
 where the new thread starts. Legacy list and detail URLs containing cwd are
 canonicalized to their cwd-free forms.
@@ -96,7 +98,7 @@ Back and close controls use deterministic parent routes:
 - PR detail -> PR list
 - task detail -> task list
 - new task -> task list
-- global task list -> `/`
+- global task list -> no parent
 - standalone review workspace close -> standalone files at the same cwd
 
 Task detail routes use Codex app-server `threadId` values directly. Caffold does
@@ -146,8 +148,8 @@ independently reloadable even when no list cache exists.
 
 ## Server Fallback
 
-The Rust server serves the app shell for known frontend routes under `/files`,
-`/git`, `/github`, and `/tasks`. API and asset routes stay explicit
+The Rust server serves the app shell for `/`, `/settings`, and known frontend
+routes under `/files`, `/git`, `/github`, and `/tasks`. API and asset routes stay explicit
 and should continue returning their real errors when a path is missing.
 
 ## Test Contract

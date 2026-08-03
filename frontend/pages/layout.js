@@ -35,6 +35,7 @@ class CaffoldAppShell extends HTMLElement {
     this.pendingTaskResumeRoute = null;
     this.initialPath = "";
     this.render();
+    this.filesSurface = this.querySelector(".files-surface");
     this.filesPage = this.querySelector("caffold-files-page");
     this.filesPage.ensureRendered();
     this.settingsPage = this.querySelector("caffold-settings-page");
@@ -49,13 +50,7 @@ class CaffoldAppShell extends HTMLElement {
     this.githubLayout = this.reviewWorkspace.querySelector("caffold-github-review-layout");
     this.githubLayout.ensureRendered();
     this.installNavigationHandlers();
-    const initialRoute = parseRoute(window.location.href);
-    this.prepareRoute(
-      initialRoute ??
-        (window.location.pathname === "/"
-          ? { kind: "tasks", new: false, threadId: "", cwd: "" }
-          : null),
-    );
+    this.prepareRoute(parseRoute(window.location.href));
 
     this.addEventListener("caffold:navigate", (event) => {
       this.navigateToDirectoryRoute(event.detail.path) || this.loadDirectory(event.detail.path);
@@ -120,7 +115,7 @@ class CaffoldAppShell extends HTMLElement {
         return;
       }
 
-      window.location.assign("/");
+      this.navigateToHomeEntrypoint();
     });
     this.addEventListener("caffold:request-tasks-route", (event) => {
       this.navigateToRoute(event.detail.route);
@@ -183,19 +178,23 @@ class CaffoldAppShell extends HTMLElement {
 
   render() {
     this.innerHTML = `
-      <header class="app-header">
-        <div class="app-context">
-          <caffold-app-menu></caffold-app-menu>
-          <caffold-header-actions></caffold-header-actions>
-        </div>
-      </header>
-      <caffold-pathbar></caffold-pathbar>
       <main class="app-main" aria-label="Workspace">
-        <caffold-files-page></caffold-files-page>
+        <section class="files-surface" aria-label="Files workspace">
+          <header class="app-header">
+            <div class="app-context">
+              <caffold-app-menu></caffold-app-menu>
+              <caffold-header-actions></caffold-header-actions>
+            </div>
+          </header>
+          <caffold-pathbar></caffold-pathbar>
+          <div class="files-main">
+            <caffold-files-page></caffold-files-page>
+          </div>
+        </section>
         <caffold-settings-page hidden></caffold-settings-page>
+        <caffold-codex-workspace hidden></caffold-codex-workspace>
+        <caffold-review-workspace hidden></caffold-review-workspace>
       </main>
-      <caffold-codex-workspace hidden></caffold-codex-workspace>
-      <caffold-review-workspace hidden></caffold-review-workspace>
       <footer class="app-build-rail" aria-label="Build information">
         <span class="app-build" data-status="checking">build ${BUILD_INFO.label}</span>
       </footer>
@@ -868,7 +867,8 @@ class CaffoldAppShell extends HTMLElement {
     const surface = routeSurface(route);
     this.dataset.routeSurface = surface;
     delete this.dataset.routePending;
-    this.pathbar.hidden = surface === "settings";
+    this.filesSurface.hidden = surface !== "files";
+    this.pathbar.hidden = surface !== "files";
     this.settingsPage.hidden = surface !== "settings";
 
     if (surface === "review") {
