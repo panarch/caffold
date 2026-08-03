@@ -156,6 +156,15 @@ caffold-task-navigator {
     white-space: nowrap;
   }
 
+  & [data-task-action="load-more-tasks"],
+  & [data-task-action="load-more-task-history"] {
+    box-sizing: border-box;
+    height: var(--interface-compact-control-size);
+    min-height: var(--interface-compact-control-size);
+    padding-block: 0;
+    font-size: var(--interface-meta-font-size);
+  }
+
   & .task-continue-button:hover,
   & .task-continue-button:focus-visible {
     border-color: var(--border-strong);

@@ -109,13 +109,17 @@ caffold-settings-page {
 
   & .settings-reset-all,
   & .settings-range-control button {
+    box-sizing: border-box;
+    height: var(--interface-compact-control-size);
     min-height: var(--interface-compact-control-size);
     border: 1px solid var(--border);
     border-radius: 0.3125rem;
     background: var(--surface);
     color: var(--accent);
     cursor: pointer;
-    padding: 0.25rem 0.625rem;
+    padding: 0 var(--interface-space-5);
+    font-size: var(--interface-meta-font-size);
+    line-height: 1;
     white-space: nowrap;
   }
 
@@ -221,12 +225,16 @@ caffold-settings-page {
   }
 
   & .settings-interface-preview-header button {
+    box-sizing: border-box;
+    height: var(--interface-compact-control-size);
     min-height: var(--interface-compact-control-size);
     border: 1px solid var(--border);
     border-radius: 0.25rem;
     background: var(--surface);
     color: var(--accent);
-    padding: 0.1875rem 0.4375rem;
+    padding: 0 var(--interface-space-3);
+    font-size: var(--interface-meta-font-size);
+    line-height: 1;
     pointer-events: none;
   }
 

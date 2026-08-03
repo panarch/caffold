@@ -223,6 +223,18 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await expect(tasksPage.locator(".tasks-header")).toContainText(
     "Caffold Tasks and Codex History",
   );
+  const taskActionTextSize = await page.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.style.cssText =
+      "position:fixed;font-size:var(--interface-meta-font-size)";
+    document.body.append(probe);
+    const value = getComputedStyle(probe).fontSize;
+    probe.remove();
+    return value;
+  });
+  await expect(
+    tasksPage.locator('.tasks-header [data-task-action="open-new"]'),
+  ).toHaveCSS("font-size", taskActionTextSize);
   await expect
     .poll(() => taskListQueries.at(-1))
     .toEqual({ cwd: null });
@@ -322,6 +334,36 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await tasksPage
     .locator('.task-review-menu summary[aria-label="Open GitHub workspace"]')
     .click();
+  const githubMenuMetrics = await tasksPage
+    .locator('.task-review-menu[data-review-menu="github"]')
+    .evaluate((menu) => {
+      const probe = document.createElement("div");
+      probe.style.cssText = [
+        "position:fixed",
+        "height:var(--interface-compact-control-size)",
+        "font-size:var(--interface-meta-font-size)",
+      ].join(";");
+      document.body.append(probe);
+      const expected = {
+        fontSize: getComputedStyle(probe).fontSize,
+        height: probe.getBoundingClientRect().height,
+      };
+      probe.remove();
+      return {
+        expected,
+        items: [...menu.querySelectorAll(".task-review-menu-popover button")].map(
+          (button) => ({
+            fontSize: getComputedStyle(button).fontSize,
+            height: button.getBoundingClientRect().height,
+          }),
+        ),
+      };
+    });
+  expect(githubMenuMetrics.items).toHaveLength(2);
+  for (const item of githubMenuMetrics.items) {
+    expect(item.fontSize).toBe(githubMenuMetrics.expected.fontSize);
+    expect(item.height).toBeCloseTo(githubMenuMetrics.expected.height, 1);
+  }
   await captureReviewScreenshot(page, testInfo, "tasks-global-github-menu");
   await tasksPage
     .locator('button[data-summary-action="open-github-tool"][data-review-kind="issues"]')

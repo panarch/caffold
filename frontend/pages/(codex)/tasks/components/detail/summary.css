@@ -75,15 +75,24 @@ caffold-task-detail-summary {
     display: none;
   }
 
+  & .task-detail-actions .task-secondary-button {
+    box-sizing: border-box;
+    height: var(--interface-compact-control-size);
+    min-height: var(--interface-compact-control-size);
+    padding-block: 0;
+    border-radius: 4px;
+    font-size: var(--interface-meta-font-size);
+  }
+
   & .task-brand-button {
     position: relative;
     display: inline-grid;
-    width: var(--interface-control-size);
-    height: var(--interface-control-size);
+    width: var(--interface-compact-control-size);
+    height: var(--interface-compact-control-size);
     padding: 0;
     place-items: center;
     border: 1px solid var(--border);
-    border-radius: 5px;
+    border-radius: 4px;
     background: var(--surface);
     color: var(--text);
     cursor: pointer;
@@ -135,12 +144,16 @@ caffold-task-detail-summary {
   }
 
   & .task-review-menu-popover button {
-    min-height: var(--interface-control-size);
-    padding: 0.375rem 0.5rem;
+    box-sizing: border-box;
+    height: var(--interface-compact-control-size);
+    min-height: var(--interface-compact-control-size);
+    padding: 0 var(--interface-space-5);
     border: 0;
     border-radius: 4px;
     background: transparent;
     color: var(--text);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
     text-align: left;
     cursor: pointer;
   }
@@ -160,11 +173,11 @@ caffold-task-detail-summary {
   & .task-detail-info-button {
     display: grid;
     place-items: center;
-    width: var(--interface-control-size);
-    height: var(--interface-control-size);
+    width: var(--interface-compact-control-size);
+    height: var(--interface-compact-control-size);
     padding: 0;
     border: 1px solid var(--border);
-    border-radius: 5px;
+    border-radius: 4px;
     background: var(--surface);
     color: var(--accent);
     cursor: pointer;
@@ -267,9 +280,10 @@ caffold-task-detail-summary {
 
     & .task-detail-actions .task-secondary-button,
     & .task-detail-info-button {
-      width: var(--interface-control-size);
-      min-width: var(--interface-control-size);
-      min-height: var(--interface-control-size);
+      width: var(--interface-compact-control-size);
+      min-width: var(--interface-compact-control-size);
+      height: var(--interface-compact-control-size);
+      min-height: var(--interface-compact-control-size);
       padding: 0;
     }
 

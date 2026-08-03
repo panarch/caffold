@@ -20,6 +20,8 @@ caffold-tasks-page {
     background: var(--surface);
     color: var(--accent);
     cursor: pointer;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
   }
 
   & .task-primary-button {

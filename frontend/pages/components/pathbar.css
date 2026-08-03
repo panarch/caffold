@@ -56,6 +56,8 @@ caffold-pathbar {
     background: transparent;
     color: var(--text);
     cursor: pointer;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
     padding: 0 var(--interface-space-4);
     white-space: nowrap;
   }

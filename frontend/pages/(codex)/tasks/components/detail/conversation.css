@@ -36,6 +36,14 @@ caffold-task-conversation {
     gap: 0.5rem;
   }
 
+  & .task-approval-actions .task-secondary-button {
+    box-sizing: border-box;
+    height: var(--interface-compact-control-size);
+    min-height: var(--interface-compact-control-size);
+    padding: 0 var(--interface-space-5);
+    font-size: var(--interface-meta-font-size);
+  }
+
   & .task-conversation-scroll {
     min-height: 0;
     overflow: auto;

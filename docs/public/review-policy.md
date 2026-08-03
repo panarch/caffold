@@ -207,6 +207,19 @@ appearance axis. Pixel values remain valid for borders, breakpoints, image
 dimensions, and deliberate content bounds; the review question is whether the
 value represents user-scalable Interface, Conversation, or Code content.
 
+Choose Interface control tiers by action role rather than feature. Page-level,
+application-wide, and primary actions use the regular control tier;
+contextual-toolbar and inline secondary actions use the compact tier. A
+component-specific selector must not silently make an equivalent Tasks, Files,
+Git, or GitHub action larger. Regression coverage should compare the role
+group, not merely assert whichever token each selector already uses.
+
+Review target size and label size independently. A primary or page-level
+action can retain a regular hit target while using the shared Interface action
+text scale. Do not let menu items, breadcrumbs, or text-bearing toolbar
+controls inherit root body text merely because their height belongs to a
+regular tier.
+
 Shared appearance tokens do not grant shared selector ownership. Define root
 tokens centrally, but consume them inside the component that owns the DOM.
 When a stateful range applies live changes, patch its value and preview without

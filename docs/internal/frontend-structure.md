@@ -120,6 +120,21 @@ Appearance has three independent semantic axes:
   viewers, command/tool output, and inline or fenced code inside Tasks and
   GitHub prose.
 
+Interface controls use two semantic size tiers. Page-level navigation,
+application-wide actions, and primary submissions use
+`--interface-control-size`. Contextual toolbars and inline secondary actions
+use `--interface-compact-control-size`. Feature ownership does not choose the
+tier: equivalent actions in Tasks, Files, Git, and GitHub use the same tier.
+The responsive target floor still raises either tier to at least 40px on
+coarse pointers and narrow screens.
+
+Control geometry and label typography are separate contracts. A regular
+page-level target may keep `--interface-control-size` while its visible action
+label uses `--interface-meta-font-size`; making a target easier to hit must not
+silently turn its label into page-body text. Context menus, path navigation,
+and compact toolbar labels use the same Interface metadata scale unless their
+owner defines a distinct content-row typography.
+
 The shared root variables expose values; they do not transfer selector
 ownership to the root stylesheet. Each component consumes the semantic token
 inside its existing CSS boundary, including the Task and GitHub Markdown

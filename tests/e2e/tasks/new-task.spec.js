@@ -415,12 +415,12 @@ test("creates a task with responsive composer controls and canonical approval st
         borderWidth: "1px",
         color: "rgb(22, 124, 92)",
         display: "grid",
-        minHeight: touchInterface ? "40px" : "32px",
+        minHeight: touchInterface ? "40px" : "28px",
       }),
     );
     expectCssSpacing(
       approvalButton.padding,
-      [0.25, 0.625].map((value) => value * rootFontSize),
+      [0, 0.625].map((value) => value * rootFontSize),
     );
     const userMessage = await taskPresentation(
       tasksPage.locator(

@@ -209,6 +209,8 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
             controlBox.top + controlBox.height / 2 -
               (iconBox.top + iconBox.height / 2),
           ),
+          width: controlBox.width,
+          height: controlBox.height,
         };
       }),
     );
@@ -221,6 +223,21 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     expect(geometry.centerDeltaY).toBeLessThanOrEqual(0.5);
   }
   expect(new Set(detailActionGeometry.map(({ iconWidth }) => iconWidth)).size).toBe(1);
+  const contextualControlSize = await tasksPage.evaluate(() => {
+    const probe = document.createElement("div");
+    probe.style.cssText =
+      "position:fixed;height:var(--interface-compact-control-size)";
+    document.body.append(probe);
+    const value = probe.getBoundingClientRect().height;
+    probe.remove();
+    return value;
+  });
+  for (const geometry of detailActionGeometry) {
+    expect(geometry.height).toBeCloseTo(contextualControlSize, 1);
+    if (geometry.iconOnly) {
+      expect(geometry.width).toBeCloseTo(contextualControlSize, 1);
+    }
+  }
   if (testInfo.project.name === "phone") {
     const mobileHeaderMetrics = await tasksPage.evaluate((element) => {
       const header = element.querySelector(".tasks-header").getBoundingClientRect();

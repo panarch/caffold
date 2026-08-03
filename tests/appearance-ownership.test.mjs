@@ -200,23 +200,73 @@ test("the browser fixture renders every shared inline icon used by production", 
   );
 });
 
-test("representative icon-only controls use square semantic slots", () => {
-  const owners = [
+test("icon-only controls use square slots from their semantic control tier", () => {
+  const pageControls = [
     ["pages/components/header-actions.css", ".header-action-group-button", "--interface-control-size"],
     ["pages/settings/page.css", ".settings-close-button", "--interface-control-size"],
+    ["pages/(codex)/layout.css", ".codex-workspace-close", "--interface-control-size"],
+    ["pages/(codex)/tasks/components/composer.css", ".task-send-button", "--interface-control-size"],
+  ];
+  const contextualControls = [
     ["pages/(review-workspace)/layout.css", ".review-workspace-close", "--interface-compact-control-size"],
-    ["pages/(codex)/tasks/components/detail/summary.css", ".task-brand-button", "--interface-control-size"],
-    ["pages/(codex)/tasks/components/detail/summary.css", ".task-detail-info-button", "--interface-control-size"],
+    ["pages/(codex)/tasks/components/detail/summary.css", ".task-brand-button", "--interface-compact-control-size"],
+    ["pages/(codex)/tasks/components/detail/summary.css", ".task-detail-info-button", "--interface-compact-control-size"],
     ["components/file-browser/list.css", ".file-refresh-button", "--interface-compact-control-size"],
-    ["components/file-viewer.css", ".viewer-info-button", "--interface-control-size"],
+    ["components/file-viewer.css", ".viewer-info-button", "--interface-compact-control-size"],
+    ["components/file-viewer.css", ".viewer-refresh-button", "--interface-compact-control-size"],
     ["pages/(review-workspace)/(git)/components/controls.css", ".git-review-refresh", "--interface-compact-control-size"],
   ];
 
-  for (const [path, selector, token] of owners) {
+  for (const [path, selector, token] of [...pageControls, ...contextualControls]) {
     const block = cssBlockContaining(readFrontend(path), selector, "width:");
     assert.match(block, new RegExp(`width: var\\(${token}\\)`), `${path} ${selector}`);
     assert.match(block, new RegExp(`height: var\\(${token}\\)`), `${path} ${selector}`);
     assert.match(block, /place-items: center/, `${path} ${selector}`);
+  }
+});
+
+test("contextual and inline actions stay compact while page and primary actions stay regular", () => {
+  const regularControls = [
+    ["pages/(codex)/tasks/controls.css", ".task-primary-button"],
+    ["pages/(codex)/tasks/controls.css", ".task-icon-button"],
+  ];
+  const compactControls = [
+    ["pages/(codex)/tasks/components/detail/summary.css", ".task-detail-actions .task-secondary-button"],
+    ["pages/(codex)/tasks/components/detail/review.css", ".task-diff-header .task-icon-button"],
+    ["pages/(codex)/tasks/components/detail/conversation.css", ".task-approval-actions .task-secondary-button"],
+    ["pages/(codex)/tasks/components/navigator.css", '[data-task-action="load-more-tasks"]'],
+    ["pages/(codex)/tasks/components/navigator.css", '[data-task-action="load-more-task-history"]'],
+    ["pages/settings/page.css", ".settings-reset-all"],
+    ["pages/settings/page.css", ".settings-range-control button"],
+    ["pages/(review-workspace)/(github)/(pulls)/detail/page.css", ".github-pull-files-button"],
+  ];
+
+  for (const [path, selector] of regularControls) {
+    const block = cssBlockContaining(readFrontend(path), selector, "min-height:");
+    assert.match(block, /min-height: var\(--interface-control-size\)/, `${path} ${selector}`);
+  }
+  for (const [path, selector] of compactControls) {
+    const block = cssBlockContaining(readFrontend(path), selector, "height:");
+    assert.match(block, /height: var\(--interface-compact-control-size\)/, `${path} ${selector}`);
+  }
+});
+
+test("text actions use the shared Interface metadata scale instead of root body text", () => {
+  const owners = [
+    ["pages/components/app-menu.css", ".app-menu-popover button"],
+    ["pages/components/pathbar.css", ".path-crumbs button"],
+    ["pages/(codex)/tasks/controls.css", ".task-primary-button"],
+    ["pages/(codex)/tasks/components/detail/summary.css", ".task-review-menu-popover button"],
+    ["pages/(review-workspace)/(github)/(pulls)/detail/page.css", ".github-pull-commit a"],
+  ];
+
+  for (const [path, selector] of owners) {
+    const block = cssBlockContaining(readFrontend(path), selector, "font-size:");
+    assert.match(
+      block,
+      /font-size: var\(--interface-meta-font-size\)/,
+      `${path} ${selector}`,
+    );
   }
 });
 

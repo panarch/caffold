@@ -629,6 +629,20 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
   expect(pullDetailScroll.overflowY).toBe("auto");
   expect(pullDetailScroll.scrollHeight).toBeGreaterThan(pullDetailScroll.clientHeight);
   expect(pullDetailScroll.scrollTop).toBe(0);
+  const commitInterfaceText = await pullViewer.evaluate((element) => {
+    const probe = document.createElement("span");
+    probe.style.cssText =
+      "position:fixed;font-size:var(--interface-meta-font-size)";
+    document.body.append(probe);
+    const expected = getComputedStyle(probe).fontSize;
+    probe.remove();
+    return {
+      expected,
+      actual: getComputedStyle(element.querySelector(".github-pull-commit a"))
+        .fontSize,
+    };
+  });
+  expect(commitInterfaceText.actual).toBe(commitInterfaceText.expected);
 
   const pullDetailScrollBox = await pullViewer
     .locator(".github-pull-viewer-scroll")

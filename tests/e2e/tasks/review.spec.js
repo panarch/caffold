@@ -330,6 +330,29 @@ test("keeps Files and Diff review state isolated from the conversation", async (
   await expect(page.locator("caffold-review-workspace")).toBeHidden();
   const taskDiffView = tasksPage.locator(".task-diff-view");
   await expect(taskDiffView).toBeVisible();
+  const contextualControlHeights = await taskDiffView.evaluate((element) => {
+    const tokenProbe = document.createElement("div");
+    tokenProbe.style.cssText =
+      "position:fixed;height:var(--interface-compact-control-size)";
+    document.body.append(tokenProbe);
+    const compact = tokenProbe.getBoundingClientRect().height;
+    tokenProbe.remove();
+    return {
+      compact,
+      modeButtons: [...element.querySelectorAll(".task-diff-mode-switch button")].map(
+        (button) => button.getBoundingClientRect().height,
+      ),
+      refresh: element
+        .querySelector('[data-task-review-action="refresh"]')
+        .getBoundingClientRect().height,
+    };
+  });
+  for (const height of [
+    ...contextualControlHeights.modeButtons,
+    contextualControlHeights.refresh,
+  ]) {
+    expect(height).toBeCloseTo(contextualControlHeights.compact, 1);
+  }
   await expect(taskReview).toHaveAttribute("data-persist-probe", "kept");
   await expect
     .poll(() =>

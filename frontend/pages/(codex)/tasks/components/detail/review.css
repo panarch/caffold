@@ -73,13 +73,16 @@ caffold-task-review {
   }
 
   & .task-diff-mode-switch button {
+    box-sizing: border-box;
+    height: var(--interface-compact-control-size);
     min-height: var(--interface-compact-control-size);
-    padding: 0.1875rem 0.5rem;
+    padding: 0 0.5rem;
     border: 0;
     border-radius: 3px;
     background: transparent;
     color: var(--muted);
     font: inherit;
+    font-size: var(--interface-meta-font-size);
     cursor: pointer;
   }
 
@@ -157,6 +160,12 @@ caffold-task-review {
 
   & .task-diff-header .task-icon-button.is-unavailable {
     color: #8a5a00;
+  }
+
+  & .task-diff-header .task-icon-button {
+    width: var(--interface-compact-control-size);
+    height: var(--interface-compact-control-size);
+    min-height: var(--interface-compact-control-size);
   }
 
   & .task-refresh-icon {

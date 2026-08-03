@@ -67,11 +67,26 @@ test("updates independent ranges live without replacing their DOM", async ({
 }, testInfo) => {
   await page.goto(FILES_HOME_URL);
   const appMenu = page.locator("caffold-app-menu");
+  const sharedInterfaceTextSize = await page.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.style.cssText =
+      "position:fixed;font-size:var(--interface-meta-font-size)";
+    document.body.append(probe);
+    const value = getComputedStyle(probe).fontSize;
+    probe.remove();
+    return value;
+  });
+  await expect(page.locator("caffold-pathbar .path-crumbs button").first()).toHaveCSS(
+    "font-size",
+    sharedInterfaceTextSize,
+  );
   await appMenu.locator(".app-menu-button").click();
   const popover = appMenu.locator(".app-menu-popover");
   await expect(popover).toBeVisible();
   await expect(popover).toContainText("Settings");
-  await popover.locator('button[data-action="open-settings"]').click();
+  const openSettings = popover.locator('button[data-action="open-settings"]');
+  await expect(openSettings).toHaveCSS("font-size", sharedInterfaceTextSize);
+  await openSettings.click();
 
   await expect(page).toHaveURL("/settings");
   const settingsPage = page.locator("caffold-settings-page");
@@ -101,6 +116,37 @@ test("updates independent ranges live without replacing their DOM", async ({
   const touchInterface = responsiveDefaults.coarse || responsiveDefaults.narrow;
   expect(responsiveDefaults.rootFontSize).toBe(touchInterface ? "17px" : "16px");
   expect(responsiveDefaults.targetFloor).toBe(touchInterface ? "40px" : "0px");
+  const settingsControlTiers = await settingsPage.evaluate((element) => {
+    const tokenHeight = (token) => {
+      const probe = document.createElement("div");
+      probe.style.cssText = `position:fixed;height:var(${token})`;
+      document.body.append(probe);
+      const value = probe.getBoundingClientRect().height;
+      probe.remove();
+      return value;
+    };
+    const height = (selector) =>
+      element.querySelector(selector).getBoundingClientRect().height;
+    return {
+      regular: tokenHeight("--interface-control-size"),
+      compact: tokenHeight("--interface-compact-control-size"),
+      close: height(".settings-close-button"),
+      resetAll: height(".settings-reset-all"),
+      resetOne: height(".settings-range-control button"),
+    };
+  });
+  expect(settingsControlTiers.close).toBeCloseTo(
+    settingsControlTiers.regular,
+    1,
+  );
+  expect(settingsControlTiers.resetAll).toBeCloseTo(
+    settingsControlTiers.compact,
+    1,
+  );
+  expect(settingsControlTiers.resetOne).toBeCloseTo(
+    settingsControlTiers.compact,
+    1,
+  );
   await expect(
     settingsPage.locator(".settings-conversation-message p").first(),
   ).toHaveCSS("font-size", "15px");
@@ -235,6 +281,21 @@ test("applies extreme values to Files and Code without coupling the axes", async
     "font-size",
     "20px",
   );
+  const fileToolbarTiers = await page.evaluate(() => {
+    const tokenProbe = document.createElement("div");
+    tokenProbe.style.cssText =
+      "position:fixed;height:var(--interface-compact-control-size)";
+    document.body.append(tokenProbe);
+    const compact = tokenProbe.getBoundingClientRect().height;
+    tokenProbe.remove();
+    const height = (selector) =>
+      document.querySelector(selector).getBoundingClientRect().height;
+    return {
+      compact,
+      info: height("caffold-file-viewer .viewer-info-button"),
+    };
+  });
+  expect(fileToolbarTiers.info).toBeCloseTo(fileToolbarTiers.compact, 1);
 
   await page.locator("caffold-file-viewer").evaluate((viewer) => {
     viewer.setDiff({
