@@ -87,7 +87,7 @@ class CaffoldTaskNew extends HTMLElement {
             <p></p>
           </div>
           <div>
-            <button type="button" class="task-toolbar-button" data-task-new-action="cancel-cwd">Cancel</button>
+            <button type="button" class="task-secondary-button" data-task-new-action="cancel-cwd">Cancel</button>
             <button type="button" class="task-primary-button" data-task-new-action="choose-cwd">Use This Folder</button>
           </div>
         </header>

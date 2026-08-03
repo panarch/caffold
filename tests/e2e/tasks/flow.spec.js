@@ -299,8 +299,42 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await tasksPage.getByRole("button", { name: "Browse Files" }).click();
   const cwdBrowser = tasksPage.locator(".task-new-cwd-browser caffold-file-browser");
   await expect(cwdBrowser).toBeVisible();
+  const cancelCwd = tasksPage.getByRole("button", {
+    name: "Cancel",
+    exact: true,
+  });
+  const chooseCwd = tasksPage.getByRole("button", {
+    name: "Use This Folder",
+    exact: true,
+  });
+  const cwdActionGeometry = await Promise.all(
+    [cancelCwd, chooseCwd].map((control) =>
+      control.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          borderRadius: style.borderRadius,
+          display: style.display,
+          fontSize: style.fontSize,
+          height: element.getBoundingClientRect().height,
+        };
+      }),
+    ),
+  );
+  expect(cwdActionGeometry[0].borderRadius).toBe(
+    cwdActionGeometry[1].borderRadius,
+  );
+  expect(cwdActionGeometry[0].display).toBe(cwdActionGeometry[1].display);
+  expect(cwdActionGeometry[0].fontSize).toBe(cwdActionGeometry[1].fontSize);
+  expect(cwdActionGeometry[0].height).toBeCloseTo(cwdActionGeometry[1].height, 1);
+  await cancelCwd.click();
+  await expect(cwdBrowser).toBeHidden();
+  await expect(tasksPage.locator('textarea[name="prompt"]')).toHaveValue(
+    "Say hello globally",
+  );
+  await tasksPage.getByRole("button", { name: "Browse Files" }).click();
+  await expect(cwdBrowser).toBeVisible();
   await cwdBrowser.locator('button[data-entry-path="src"]').click();
-  await tasksPage.getByRole("button", { name: "Use This Folder" }).click();
+  await chooseCwd.click();
   await expect(page).toHaveURL("/tasks/new?cwd=src");
   await expect(tasksPage.locator('textarea[name="prompt"]')).toHaveValue(
     "Say hello globally",
