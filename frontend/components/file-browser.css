@@ -1,4 +1,4 @@
-@import "./file-browser/list.css";
+@import "./file-navigator.css";
 
 @import "./file-viewer.css";
 
@@ -11,8 +11,10 @@ caffold-file-browser {
   height: 100%;
   overflow: hidden;
 
-  & > caffold-file-list {
+  & > caffold-file-navigator {
     grid-column: 1;
+    min-width: 0;
+    min-height: 0;
   }
 
   & > caffold-file-viewer {
@@ -59,14 +61,14 @@ caffold-file-browser {
       background: var(--surface);
     }
 
-    & > caffold-file-list,
+    & > caffold-file-navigator,
     & > caffold-file-viewer {
       grid-column: 1;
       grid-row: 1;
     }
 
     &[data-browser-view="list"] > caffold-file-viewer,
-    &[data-browser-view="viewer"] > caffold-file-list {
+    &[data-browser-view="viewer"] > caffold-file-navigator {
       display: none;
     }
 

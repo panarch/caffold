@@ -112,6 +112,9 @@ test("scrolls long names horizontally in Files and Changes", async ({ page }) =>
 
 test("scrolls long source lines horizontally in the code viewer", async ({ page }) => {
   const longLine = "long-source-token-".repeat(48);
+  const content = Array.from({ length: 120 }, (_, index) =>
+    index === 49 ? longLine : `source line ${index + 1}`,
+  ).join("\n");
 
   await page.route(/\/api\/file(?:\?|$)/, async (route) => {
     const url = new URL(route.request().url());
@@ -125,10 +128,10 @@ test("scrolls long source lines horizontally in the code viewer", async ({ page 
       body: JSON.stringify({
         path: "README.md",
         name: "README.md",
-        size: longLine.length,
+        size: content.length,
         modifiedMs: null,
         languageHint: "markdown",
-        content: `# Fixture Home\n\n${longLine}\n`,
+        content,
       }),
     });
   });
@@ -138,6 +141,45 @@ test("scrolls long source lines horizontally in the code viewer", async ({ page 
   await expect(page.locator("caffold-code-viewer")).toContainText("long-source-token");
   await expectHorizontalScroller(page, "caffold-code-viewer .code-lines");
   await expectCodeViewerGutterSeparated(page);
+  await expect
+    .poll(() =>
+      page.locator("caffold-code-viewer").evaluate((viewer) => {
+        viewer.scrollToLine(60);
+        return viewer.visibleLine();
+      }),
+    )
+    .toBe(60);
+});
+
+test("maps diff scroll positions to source lines", async ({ page }) => {
+  await page.goto(FILES_HOME_URL);
+  await page.addStyleTag({
+    content: `
+      caffold-diff-viewer[data-line-anchor-test] {
+        display: block;
+        height: 12rem;
+      }
+    `,
+  });
+  await page.evaluate(() => {
+    const viewer = document.createElement("caffold-diff-viewer");
+    viewer.dataset.lineAnchorTest = "";
+    document.querySelector("caffold-files-page").append(viewer);
+    const lines = Array.from(
+      { length: 120 },
+      (_, index) => ` source line ${index + 1}`,
+    );
+    viewer.setDiff({ diff: `@@ -1,120 +1,120 @@\n${lines.join("\n")}` });
+  });
+
+  await expect
+    .poll(() =>
+      page.locator("caffold-diff-viewer[data-line-anchor-test]").evaluate((viewer) => {
+        viewer.scrollToLine(60);
+        return viewer.visibleLine();
+      }),
+    )
+    .toBe(60);
 });
 
 test("uses a single-pane file viewer on phone", async ({ page }, testInfo) => {

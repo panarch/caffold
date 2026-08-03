@@ -12,6 +12,7 @@ const ownership = new Map([
   ["components/code-viewer.css", ["caffold-code-viewer"]],
   ["components/diff-viewer.css", ["caffold-diff-viewer"]],
   ["components/file-browser.css", ["caffold-file-browser"]],
+  ["components/file-navigator.css", ["caffold-file-navigator"]],
   ["components/file-browser/list.css", ["caffold-file-list"]],
   [
     "components/file-viewer.css",
@@ -152,7 +153,11 @@ const componentChildren = new Map([
     ],
   ],
   ["caffold-files-page", ["caffold-file-browser"]],
-  ["caffold-file-browser", ["caffold-file-list", "caffold-file-viewer"]],
+  [
+    "caffold-file-browser",
+    ["caffold-file-navigator", "caffold-file-viewer"],
+  ],
+  ["caffold-file-navigator", ["caffold-file-list"]],
   ["caffold-file-viewer", ["caffold-code-viewer", "caffold-diff-viewer"]],
   ["caffold-review-file-viewer", ["caffold-code-viewer", "caffold-diff-viewer"]],
   ["caffold-codex-workspace", ["caffold-tasks-page"]],

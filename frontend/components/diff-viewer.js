@@ -10,10 +10,12 @@ class CaffoldDiffViewer extends HTMLElement {
   }
 
   setDiff(diff, options = {}) {
-    const scroll = options.scroll ?? (options.preserveScroll ? this.captureScroll() : null);
+    const scroll =
+      options.scroll ?? (options.preserveScroll ? this.captureScroll() : null);
+    const line = normalizeLine(options.line);
     this.diff = diff;
     this.render();
-    this.restoreScroll(scroll);
+    this.restorePosition(scroll, line);
   }
 
   captureScroll() {
@@ -27,6 +29,57 @@ class CaffoldDiffViewer extends HTMLElement {
     return this.captureScroll();
   }
 
+  visibleLine() {
+    const scroller = this.querySelector(".diff-lines");
+    if (!scroller) {
+      return null;
+    }
+    const scrollerTop = scroller.getBoundingClientRect().top;
+    const rows = Array.from(this.querySelectorAll(".diff-row"));
+    const firstVisibleIndex = rows.findIndex(
+      (row) => row.getBoundingClientRect().bottom > scrollerTop,
+    );
+    if (firstVisibleIndex < 0) {
+      return null;
+    }
+    for (let index = firstVisibleIndex; index < rows.length; index += 1) {
+      const line = normalizeLine(rows[index].dataset.sourceLine);
+      if (line) {
+        return line;
+      }
+    }
+    return null;
+  }
+
+  scrollToLine(line) {
+    const targetLine = normalizeLine(line);
+    const scroller = this.querySelector(".diff-lines");
+    if (!targetLine || !scroller) {
+      return false;
+    }
+    const rows = Array.from(
+      this.querySelectorAll(".diff-row[data-source-line]"),
+    );
+    const row = rows.reduce((nearest, candidate) => {
+      if (!nearest) {
+        return candidate;
+      }
+      const candidateDistance = Math.abs(
+        Number(candidate.dataset.sourceLine) - targetLine,
+      );
+      const nearestDistance = Math.abs(
+        Number(nearest.dataset.sourceLine) - targetLine,
+      );
+      return candidateDistance < nearestDistance ? candidate : nearest;
+    }, null);
+    if (!row) {
+      return false;
+    }
+    const firstRow = this.querySelector(".diff-row");
+    scroller.scrollTop = row.offsetTop - (firstRow?.offsetTop ?? 0) + 1;
+    return true;
+  }
+
   restoreScroll(scroll) {
     if (!scroll) {
       return;
@@ -36,6 +89,14 @@ class CaffoldDiffViewer extends HTMLElement {
       scroller.scrollTop = scroll.top;
       scroller.scrollLeft = scroll.left;
     }
+  }
+
+  restorePosition(scroll, line) {
+    if (scroll) {
+      this.restoreScroll(scroll);
+      return;
+    }
+    this.scrollToLine(line);
   }
 
   render() {
@@ -67,8 +128,11 @@ class CaffoldDiffViewer extends HTMLElement {
   }
 
   renderRow(row) {
+    const sourceLine = row.newLine ?? row.oldLine;
     return `
-      <div class="diff-row diff-row-${escapeHtml(row.type)}">
+      <div class="diff-row diff-row-${escapeHtml(row.type)}"${
+        sourceLine ? ` data-source-line="${sourceLine}"` : ""
+      }>
         <span class="diff-gutter">
           <span class="diff-old-line">${escapeHtml(row.oldLine ?? "")}</span>
           <span class="diff-new-line">${escapeHtml(row.newLine ?? "")}</span>
@@ -78,6 +142,11 @@ class CaffoldDiffViewer extends HTMLElement {
       </div>
     `;
   }
+}
+
+function normalizeLine(line) {
+  const value = Number(line);
+  return Number.isInteger(value) && value > 0 ? value : null;
 }
 
 customElements.define("caffold-diff-viewer", CaffoldDiffViewer);

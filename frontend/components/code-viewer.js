@@ -6,11 +6,13 @@ let highlighterPromise;
 
 class CaffoldCodeViewer extends HTMLElement {
   setFile(file, options = {}) {
-    const scroll = options.scroll ?? (options.preserveScroll ? this.captureScroll() : null);
+    const scroll =
+      options.scroll ?? (options.preserveScroll ? this.captureScroll() : null);
+    const line = normalizeLine(options.line);
     this.file = file;
     this.renderPlain();
-    this.restoreScroll(scroll);
-    this.renderHighlighted(scroll);
+    this.restorePosition(scroll, line);
+    this.renderHighlighted(scroll, line);
   }
 
   renderPlain() {
@@ -25,7 +27,7 @@ class CaffoldCodeViewer extends HTMLElement {
     `;
   }
 
-  async renderHighlighted(scroll = null) {
+  async renderHighlighted(scroll = null, line = null) {
     const renderToken = Symbol("highlight");
     this.renderToken = renderToken;
 
@@ -44,7 +46,7 @@ class CaffoldCodeViewer extends HTMLElement {
           ${renderCodeLines(highlighted, this.file.content)}
         </section>
       `;
-      this.restoreScroll(scroll);
+      this.restorePosition(scroll, line);
     } catch {
       // CDN import is an enhancement. The plain renderer above remains valid.
     }
@@ -61,6 +63,35 @@ class CaffoldCodeViewer extends HTMLElement {
     return this.captureScroll();
   }
 
+  visibleLine() {
+    const scroller = this.querySelector(".code-lines");
+    if (!scroller) {
+      return null;
+    }
+    const scrollerTop = scroller.getBoundingClientRect().top;
+    const row = Array.from(
+      this.querySelectorAll(".code-row[data-line-number]"),
+    ).find((candidate) => candidate.getBoundingClientRect().bottom > scrollerTop);
+    return normalizeLine(row?.dataset.lineNumber);
+  }
+
+  scrollToLine(line) {
+    const targetLine = normalizeLine(line);
+    const scroller = this.querySelector(".code-lines");
+    if (!targetLine || !scroller) {
+      return false;
+    }
+    const row = this.querySelector(
+      `.code-row[data-line-number="${targetLine}"]`,
+    );
+    if (!row) {
+      return false;
+    }
+    const firstRow = this.querySelector(".code-row[data-line-number]");
+    scroller.scrollTop = row.offsetTop - (firstRow?.offsetTop ?? 0) + 1;
+    return true;
+  }
+
   restoreScroll(scroll) {
     if (!scroll) {
       return;
@@ -70,6 +101,14 @@ class CaffoldCodeViewer extends HTMLElement {
       scroller.scrollTop = scroll.top;
       scroller.scrollLeft = scroll.left;
     }
+  }
+
+  restorePosition(scroll, line) {
+    if (scroll) {
+      this.restoreScroll(scroll);
+      return;
+    }
+    this.scrollToLine(line);
   }
 }
 
@@ -114,13 +153,18 @@ function renderLines(html) {
     .map((line, index) => {
       const content = line.length === 0 ? "&nbsp;" : line;
       return `
-        <div class="code-row">
+        <div class="code-row" data-line-number="${index + 1}">
           <span class="line-number">${index + 1}</span>
           <code class="line-code">${content}</code>
         </div>
       `;
     })
     .join("");
+}
+
+function normalizeLine(line) {
+  const value = Number(line);
+  return Number.isInteger(value) && value > 0 ? value : null;
 }
 
 function codeColumns(content) {

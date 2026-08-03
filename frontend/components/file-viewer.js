@@ -93,6 +93,16 @@ class CaffoldFileViewer extends HTMLElement {
     return viewer?.getScrollState?.() ?? null;
   }
 
+  visibleLine() {
+    const viewer = this.querySelector("caffold-code-viewer, caffold-diff-viewer");
+    return viewer?.visibleLine?.() ?? null;
+  }
+
+  scrollToLine(line) {
+    const viewer = this.querySelector("caffold-code-viewer, caffold-diff-viewer");
+    return viewer?.scrollToLine?.(line) ?? false;
+  }
+
   setCloseLabel(label) {
     this.closeLabel = label;
     if (this.state && this.state.status !== "empty") {

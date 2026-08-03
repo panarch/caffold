@@ -402,6 +402,33 @@ class CaffoldFileList extends HTMLElement {
     this.patchSelectedPath();
   }
 
+  async revealPath(path) {
+    this.setSelectedPath(path);
+    if (this.treeState) {
+      const directories = ancestorDirectories(path, this.treeState.rootPath);
+      for (const directory of directories) {
+        this.treeState.expanded.add(directory);
+        await this.loadTreeDirectory(directory);
+      }
+      this.render();
+    }
+
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
+    const scroller = this.querySelector(".file-list");
+    const button = this.entryButtonForPath(path);
+    if (!scroller || !button) {
+      return false;
+    }
+    const scrollerRect = scroller.getBoundingClientRect();
+    const buttonRect = button.getBoundingClientRect();
+    if (buttonRect.top < scrollerRect.top) {
+      scroller.scrollTop -= scrollerRect.top - buttonRect.top;
+    } else if (buttonRect.bottom > scrollerRect.bottom) {
+      scroller.scrollTop += buttonRect.bottom - scrollerRect.bottom;
+    }
+    return true;
+  }
+
   patchSelectedPath() {
     for (const button of this.querySelectorAll('button[data-entry-path][aria-current="true"]')) {
       button.setAttribute("aria-current", "false");
@@ -680,4 +707,17 @@ function isDirectChildPath(path, parentPath) {
   }
 
   return !path.slice(parentPath.length + 1).includes("/");
+}
+
+function ancestorDirectories(path, rootPath) {
+  const root = rootPath.split("/").filter(Boolean);
+  const parent = parentDirectory(path).split("/").filter(Boolean);
+  if (!root.every((segment, index) => parent[index] === segment)) {
+    return [];
+  }
+  const directories = [];
+  for (let length = root.length; length <= parent.length; length += 1) {
+    directories.push(parent.slice(0, length).join("/"));
+  }
+  return directories.filter(Boolean);
 }

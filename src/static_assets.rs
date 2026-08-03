@@ -92,6 +92,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "components/file-browser.js" => {
             Some(js(include_str!("../frontend/components/file-browser.js")))
         }
+        "components/file-navigator.css" => Some(css(include_str!(
+            "../frontend/components/file-navigator.css"
+        ))),
+        "components/file-navigator.js" => {
+            Some(js(include_str!("../frontend/components/file-navigator.js")))
+        }
         "components/file-browser/list.css" => Some(css(include_str!(
             "../frontend/components/file-browser/list.css"
         ))),
@@ -986,6 +992,28 @@ mod tests {
         assert_eq!(file_browser_css.content_type, "text/css; charset=utf-8");
         assert!(
             file_browser_css
+                .body
+                .starts_with(b"@import \"./file-navigator.css\"")
+        );
+
+        let file_navigator_component =
+            get("components/file-navigator.js").expect("file navigator component js asset");
+        assert_eq!(
+            file_navigator_component.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(file_navigator_component.body.starts_with(b"import "));
+        assert!(
+            file_navigator_component
+                .body
+                .windows(b"caffold-file-navigator".len())
+                .any(|window| window == b"caffold-file-navigator")
+        );
+        let file_navigator_css =
+            get("components/file-navigator.css").expect("file navigator component css asset");
+        assert_eq!(file_navigator_css.content_type, "text/css; charset=utf-8");
+        assert!(
+            file_navigator_css
                 .body
                 .starts_with(b"@import \"./file-browser/list.css\"")
         );

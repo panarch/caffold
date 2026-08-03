@@ -119,6 +119,20 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
   await captureReviewScreenshot(page, testInfo, "file-browser");
 });
 
+test("reveals a selected file through the shared navigator", async ({ page }) => {
+  await page.goto(FILES_HOME_URL);
+  await expect(page.locator('button[data-entry-path="src"]')).toBeVisible();
+
+  await page.locator("caffold-file-navigator").evaluate(async (navigator) => {
+    await navigator.loadDirectory("src");
+    await navigator.revealPath("src/planner/mod.rs");
+  });
+
+  const entry = page.locator('button[data-entry-path="src/planner/mod.rs"]');
+  await expect(entry).toBeVisible();
+  await expect(entry).toHaveAttribute("aria-current", "true");
+});
+
 test("preserves file route state and header DOM", async ({ page }, testInfo) => {
   let gitStatusRequests = 0;
   let listRequests = 0;
