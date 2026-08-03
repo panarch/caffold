@@ -1,5 +1,5 @@
 caffold-codex-workspace {
-  --task-header-leading-space: calc(var(--interface-control-size) + 0.625rem);
+  --task-header-leading-space: calc(var(--interface-compact-control-size) + 0.625rem);
   position: absolute;
   inset: 0 0 var(--app-build-rail-height);
   z-index: 15;
@@ -21,11 +21,11 @@ caffold-codex-workspace {
     z-index: 2;
     display: grid;
     place-items: center;
-    width: var(--interface-control-size);
-    height: var(--interface-control-size);
+    width: var(--interface-compact-control-size);
+    height: var(--interface-compact-control-size);
     padding: 0;
     border: 1px solid var(--border);
-    border-radius: 5px;
+    border-radius: 4px;
     background: var(--surface);
     color: var(--accent);
     font: inherit;
@@ -48,7 +48,7 @@ caffold-codex-workspace {
 
 @media (max-width: 520px) {
   caffold-codex-workspace {
-    --task-header-leading-space: calc(var(--interface-control-size) + 0.5rem);
+    --task-header-leading-space: calc(var(--interface-compact-control-size) + 0.5rem);
 
     & .codex-workspace-close {
       top: var(--interface-space-4);

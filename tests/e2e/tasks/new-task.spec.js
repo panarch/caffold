@@ -150,14 +150,26 @@ test("creates a task with responsive composer controls and canonical approval st
     const closeButton = document
       .querySelector("caffold-codex-workspace .codex-workspace-close")
       .getBoundingClientRect();
+    const compactProbe = document.createElement("div");
+    compactProbe.style.cssText =
+      "position:fixed;height:var(--interface-compact-control-size)";
+    document.body.append(compactProbe);
+    const compactHeight = compactProbe.getBoundingClientRect().height;
+    compactProbe.remove();
     const title = document
       .querySelector("caffold-tasks-page .tasks-header h1")
       .getBoundingClientRect();
     return {
       closeRight: closeButton.right,
+      closeHeight: closeButton.height,
+      compactHeight,
       titleLeft: title.left,
     };
   });
+  expect(newTaskHeaderMetrics.closeHeight).toBeCloseTo(
+    newTaskHeaderMetrics.compactHeight,
+    1,
+  );
   expect(newTaskHeaderMetrics.titleLeft).toBeGreaterThanOrEqual(
     newTaskHeaderMetrics.closeRight + 8,
   );

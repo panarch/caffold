@@ -204,11 +204,11 @@ test("icon-only controls use square slots from their semantic control tier", () 
   const pageControls = [
     ["pages/components/header-actions.css", ".header-action-group-button", "--interface-control-size"],
     ["pages/settings/page.css", ".settings-close-button", "--interface-control-size"],
-    ["pages/(codex)/layout.css", ".codex-workspace-close", "--interface-control-size"],
     ["pages/(codex)/tasks/components/composer.css", ".task-send-button", "--interface-control-size"],
   ];
   const contextualControls = [
     ["pages/(review-workspace)/layout.css", ".review-workspace-close", "--interface-compact-control-size"],
+    ["pages/(codex)/layout.css", ".codex-workspace-close", "--interface-compact-control-size"],
     ["pages/(codex)/tasks/components/detail/summary.css", ".task-brand-button", "--interface-compact-control-size"],
     ["pages/(codex)/tasks/components/detail/summary.css", ".task-detail-info-button", "--interface-compact-control-size"],
     ["components/file-browser/list.css", ".file-refresh-button", "--interface-compact-control-size"],
