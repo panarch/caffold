@@ -4,6 +4,10 @@
   min-height: 0;
   background: var(--bg);
 
+  & .empty-panel .task-secondary-button {
+    margin-top: var(--interface-space-5);
+  }
+
   & .viewer-panel {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);

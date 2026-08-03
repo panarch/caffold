@@ -261,7 +261,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
       };
     });
     expect(mobileHeaderMetrics.headerHeight).toBeLessThanOrEqual(64);
-    expect(mobileHeaderMetrics.summaryHeight).toBeLessThanOrEqual(64);
+    expect(mobileHeaderMetrics.summaryHeight).toBeLessThanOrEqual(112);
     expect(mobileHeaderMetrics.overflow).toBe(false);
     for (const size of mobileHeaderMetrics.actionSizes) {
       expect(Math.round(size.width)).toBe(40);

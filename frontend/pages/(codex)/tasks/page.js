@@ -118,13 +118,11 @@ class CaffoldTasksPage extends HTMLElement {
       event.stopPropagation();
       if (event.detail?.type === "continue-thread") {
         void this.taskNavigator()?.continueThread(event.detail.threadId);
+      } else if (event.detail?.type === "review-route" && event.detail.route) {
+        this.requestRoute(event.detail.route, {
+          replace: event.detail.replace,
+        });
       }
-    });
-    this.addEventListener("caffold:task-detail-view-change", (event) => {
-      this.setAttribute(
-        "data-task-detail-view",
-        event.detail?.view ?? "conversation",
-      );
     });
     this.addEventListener("caffold:task-continued", (event) => {
       event.stopPropagation();
@@ -175,7 +173,10 @@ class CaffoldTasksPage extends HTMLElement {
       this.adoptedThreadId === nextThreadId &&
       taskDetailThreadId(this.taskDetail()?.currentDetail()) === nextThreadId;
     const preserveLoadedTask =
-      Boolean(options.preserveLoadedTask) || preserveAdopted;
+      Boolean(options.preserveLoadedTask) ||
+      preserveAdopted ||
+      (this.selectedThreadId === nextThreadId &&
+        taskDetailThreadId(this.taskDetail()?.currentDetail()) === nextThreadId);
 
     this.view = nextView;
     this.selectedThreadId = nextThreadId;
@@ -185,7 +186,7 @@ class CaffoldTasksPage extends HTMLElement {
       this.taskDetail()?.deactivate();
     } else {
       this.taskNew()?.deactivate();
-      this.taskDetail()?.prepare(nextThreadId, { preserveLoadedTask });
+      this.taskDetail()?.prepare(nextThreadId, { preserveLoadedTask, route });
       this.taskDetail()?.setContinuationState(
         this.taskNavigator()?.continuationState(nextThreadId),
       );
@@ -212,6 +213,7 @@ class CaffoldTasksPage extends HTMLElement {
       void this.taskNavigator()?.activate();
       const result = await this.taskDetail()?.open(route.threadId, {
         preserveLoadedTask: prepared.preserveLoadedTask,
+        route,
       });
       if (this.adoptedThreadId === route.threadId) {
         this.adoptedThreadId = "";
@@ -290,11 +292,14 @@ class CaffoldTasksPage extends HTMLElement {
     }
   }
 
-  requestRoute(route) {
+  requestRoute(route, options = {}) {
     this.dispatchEvent(
       new CustomEvent("caffold:request-tasks-route", {
         bubbles: true,
-        detail: { route: { ...route } },
+        detail: {
+          route: { ...route },
+          replace: Boolean(options.replace),
+        },
       }),
     );
   }

@@ -8,16 +8,28 @@ export async function installTaskReviewFixture(page) {
   let includeLiveFile = false;
   let largeChangeSet = false;
   let edgeCaseFiles = false;
+  let cleanWorkingTree = false;
+  let cleanBranch = false;
+  let failNextGitStatus = false;
+  const compareDelays = new Map();
 
   await page.route(/\/api\/git\/status(?:\?|$)/, (route) => {
     gitStatusRequests += 1;
+    if (failNextGitStatus) {
+      failNextGitStatus = false;
+      return route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "fixture status unavailable" }),
+      });
+    }
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
         repository: { rootPath: "src", branch: "main", dirty: true },
-        additions: includeLiveFile ? 6 : largeChangeSet ? 185 : 5,
-        deletions: 4,
-        files: [
+        additions: cleanWorkingTree ? 0 : includeLiveFile ? 6 : largeChangeSet ? 185 : 5,
+        deletions: cleanWorkingTree ? 0 : 4,
+        files: cleanWorkingTree ? [] : [
           {
             path: "src/planner.rs",
             repoRelativePath: "planner.rs",
@@ -120,7 +132,7 @@ export async function installTaskReviewFixture(page) {
           "index 1111111..2222222 100644",
           `--- a/${relativePath}`,
           `+++ b/${relativePath}`,
-          "@@ -1 +1 @@",
+          "@@ -60 +60 @@",
           "-old planner behavior",
           "+new planner behavior",
         ].join("\n"),
@@ -150,12 +162,16 @@ export async function installTaskReviewFixture(page) {
       }),
     });
   });
-  await page.route(/\/api\/git\/compare(?:\?|$)/, (route) => {
+  await page.route(/\/api\/git\/compare(?:\?|$)/, async (route) => {
     gitCompareRequests += 1;
     const url = new URL(route.request().url());
     expect(url.searchParams.get("path")).toBe("src");
     expect(url.searchParams.get("head")).toBe("main");
     const baseRef = url.searchParams.get("base");
+    const delay = compareDelays.get(baseRef) ?? 0;
+    if (delay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
     const path = baseRef === "origin/release" ? "src/release.rs" : "src/planner.rs";
     return route.fulfill({
       contentType: "application/json",
@@ -163,9 +179,9 @@ export async function installTaskReviewFixture(page) {
         repository: { rootPath: "src", branch: "main", dirty: true },
         baseRef,
         headRef: "main",
-        additions: baseRef === "origin/release" ? 7 : 3,
-        deletions: baseRef === "origin/release" ? 2 : 1,
-        files: [
+        additions: cleanBranch ? 0 : baseRef === "origin/release" ? 7 : 3,
+        deletions: cleanBranch ? 0 : baseRef === "origin/release" ? 2 : 1,
+        files: cleanBranch ? [] : [
           {
             path,
             repoRelativePath: path.replace(/^src\//, ""),
@@ -193,7 +209,7 @@ export async function installTaskReviewFixture(page) {
           `diff --git a/${relativePath} b/${relativePath}`,
           `--- a/${relativePath}`,
           `+++ b/${relativePath}`,
-          "@@ -1 +1 @@",
+          "@@ -60 +60 @@",
           "-old branch behavior",
           "+new branch behavior",
         ].join("\n"),
@@ -222,6 +238,18 @@ export async function installTaskReviewFixture(page) {
     },
     set edgeCaseFiles(value) {
       edgeCaseFiles = value;
+    },
+    set cleanWorkingTree(value) {
+      cleanWorkingTree = value;
+    },
+    set cleanBranch(value) {
+      cleanBranch = value;
+    },
+    set failNextGitStatus(value) {
+      failNextGitStatus = value;
+    },
+    setCompareDelay(baseRef, delayMs) {
+      compareDelays.set(baseRef, delayMs);
     },
   };
 }

@@ -69,22 +69,17 @@ caffold-tasks-page {
     outline: none;
   }
 
-  &[data-task-detail-view="files"] .tasks-surface,
-  &[data-task-detail-view="diff"] .tasks-surface {
+  &[data-task-detail-view="review"] .tasks-surface {
     grid-template-rows: minmax(0, 1fr);
   }
 
-  &[data-task-detail-view="files"] .tasks-header-region,
-  &[data-task-detail-view="diff"] .tasks-header-region,
-  &[data-task-detail-view="files"] .tasks-list-pane,
-  &[data-task-detail-view="diff"] .tasks-list-pane,
-  &[data-task-detail-view="files"] .tasks-master-resizer,
-  &[data-task-detail-view="diff"] .tasks-master-resizer {
+  &[data-task-detail-view="review"] .tasks-header-region,
+  &[data-task-detail-view="review"] .tasks-list-pane,
+  &[data-task-detail-view="review"] .tasks-master-resizer {
     display: none;
   }
 
-  &[data-task-detail-view="files"] .tasks-master-detail,
-  &[data-task-detail-view="diff"] .tasks-master-detail {
+  &[data-task-detail-view="review"] .tasks-master-detail {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -100,8 +95,7 @@ caffold-tasks-page {
     background: var(--surface);
   }
 
-  &[data-task-detail-view="files"] .tasks-header,
-  &[data-task-detail-view="diff"] .tasks-header {
+  &[data-task-detail-view="review"] .tasks-header {
     display: none;
   }
 
@@ -184,8 +178,7 @@ caffold-tasks-page {
       display: none;
     }
 
-    &[data-task-detail-view="files"] .tasks-detail-pane,
-    &[data-task-detail-view="diff"] .tasks-detail-pane {
+    &[data-task-detail-view="review"] .tasks-detail-pane {
       display: block;
     }
   }

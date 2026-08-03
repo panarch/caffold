@@ -345,11 +345,18 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await expect.poll(() => createdTaskRequest?.prompt).toBe("Say hello globally");
   await expect(page).toHaveURL(`/tasks/${threadId}`);
   await expect(tasksPage).toContainText("Hello from a global Codex thread.");
-  const openDiff = tasksPage.getByRole("button", { name: "Open Diff" });
-  await expect(openDiff).toBeDisabled();
+  const openReview = tasksPage.getByRole("button", { name: "Review", exact: true });
+  await expect(openReview).toBeEnabled();
   await expect(tasksPage.getByRole("button", { name: "Git unavailable" })).toBeDisabled();
   await expect(tasksPage.getByRole("button", { name: "GitHub unavailable" })).toBeDisabled();
-  await expect(tasksPage).toContainText("Unavailable outside a Git worktree.");
+  await openReview.click();
+  await expect(page).toHaveURL(
+    `/tasks/${threadId}/review?nav=files&view=source`,
+  );
+  await expect(tasksPage).toContainText(
+    "Git review is unavailable for this task.",
+  );
+  await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
 
   Object.assign(task, {
     worktree: {
@@ -426,38 +433,38 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await expect(page).toHaveURL(`/tasks/${threadId}`);
   await expect(tasksPage).toContainText("Hello from a global Codex thread.");
 
-  await tasksPage.locator('button[data-summary-action="toggle-files"]').click();
+  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.locator('caffold-task-review button[data-review-axis="navigator"][data-review-value="files"]').click();
+  await tasksPage.locator('caffold-task-review button[data-review-axis="viewer"][data-review-value="source"]').click();
   await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
     "data-task-detail-view",
-    "files",
+    "review",
   );
-  const taskFiles = tasksPage.locator(".task-files-view");
+  const taskFiles = tasksPage.locator("caffold-task-review caffold-file-navigator");
   await expect(
     taskFiles.locator('button[data-entry-path="README.md"]'),
   ).toBeVisible();
-  await page.locator("caffold-codex-workspace .codex-workspace-close").click();
+  await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
     "data-task-detail-view",
     "conversation",
   );
 
-  await tasksPage.getByRole("button", { name: "Open Diff" }).click();
+  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
   await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
     "data-task-detail-view",
-    "diff",
+    "review",
   );
-  const taskDiff = tasksPage.locator(".task-diff-view");
+  const taskDiff = tasksPage.locator("caffold-task-review");
   const readmeChange = taskDiff.locator(
     'caffold-git-diff-changes-tree button[data-repo-relative-path="README.md"]',
   );
   await expect(readmeChange).toBeVisible();
   await readmeChange.click();
   await expect(
-    taskDiff.locator(
-      '.task-diff-panel[data-task-diff-panel="working"] caffold-review-file-viewer',
-    ),
+    taskDiff.locator("caffold-review-file-viewer"),
   ).toContainText("Global worktree review");
-  await page.locator("caffold-codex-workspace .codex-workspace-close").click();
+  await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
     "data-task-detail-view",
     "conversation",

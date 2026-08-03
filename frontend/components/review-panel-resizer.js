@@ -120,7 +120,7 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
     } else if (event.key === "ArrowRight") {
       nextValue += step;
     } else if (event.key === "Home") {
-      nextValue = PANEL_MIN_WIDTH;
+      nextValue = this.minimumValue();
     } else if (event.key === "End") {
       nextValue = this.maxValue();
     } else {
@@ -166,7 +166,7 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
     const ariaMax = this.canResize()
       ? maxValue
       : Math.max(maxValue, this.currentValue);
-    this.setAttribute("aria-valuemin", `${PANEL_MIN_WIDTH}`);
+    this.setAttribute("aria-valuemin", `${this.minimumValue()}`);
     this.setAttribute("aria-valuemax", `${ariaMax}`);
     this.setAttribute("aria-valuenow", `${this.currentValue}`);
   }
@@ -178,7 +178,7 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
       : REVIEW_PANEL_DEFAULT_WIDTH;
     const minimumClampedValue = Math.max(
       Math.round(normalizedValue),
-      PANEL_MIN_WIDTH,
+      this.minimumValue(),
     );
     return this.canResize()
       ? Math.min(minimumClampedValue, this.maxValue())
@@ -192,8 +192,17 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
     }
 
     const ratioMax = Math.round(width * PANEL_MAX_RATIO);
-    const viewerMax = Math.max(PANEL_MIN_WIDTH, width - VIEWER_MIN_WIDTH);
-    return Math.max(PANEL_MIN_WIDTH, Math.min(ratioMax, viewerMax));
+    const minimum = this.minimumValue();
+    const viewerMax = Math.max(minimum, width - this.viewerMinimumValue());
+    return Math.max(minimum, Math.min(ratioMax, viewerMax));
+  }
+
+  minimumValue() {
+    return numericAttribute(this, "panel-min", PANEL_MIN_WIDTH);
+  }
+
+  viewerMinimumValue() {
+    return numericAttribute(this, "viewer-min", VIEWER_MIN_WIDTH);
   }
 
   canResize() {
@@ -213,3 +222,8 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
 }
 
 customElements.define("caffold-review-panel-resizer", CaffoldReviewPanelResizer);
+
+function numericAttribute(element, name, fallback) {
+  const value = Number(element.getAttribute(name));
+  return Number.isFinite(value) && value > 0 ? Math.round(value) : fallback;
+}

@@ -118,7 +118,9 @@ class CaffoldAppShell extends HTMLElement {
       this.navigateToHomeEntrypoint();
     });
     this.addEventListener("caffold:request-tasks-route", (event) => {
-      this.navigateToRoute(event.detail.route);
+      this.navigateToRoute(event.detail.route, {
+        replace: Boolean(event.detail?.replace),
+      });
     });
     this.addEventListener("caffold:close-codex-workspace", () => {
       this.navigateToCodexParent() || (this.codexWorkspace.hidden = true);

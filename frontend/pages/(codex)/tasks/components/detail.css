@@ -155,16 +155,6 @@ caffold-task-detail {
     overflow: hidden;
   }
 
-  & .task-detail[data-task-detail-view="files"],
-  & .task-detail[data-task-detail-view="diff"] {
-    grid-template-rows: minmax(0, 1fr);
-  }
-
-  & .task-detail[data-task-detail-view="files"] > caffold-task-detail-summary,
-  & .task-detail[data-task-detail-view="diff"] > caffold-task-detail-summary {
-    display: none;
-  }
-
   & .task-conversation-pane {
     display: grid;
     grid-template-rows: minmax(0, 1fr) auto auto;
@@ -176,8 +166,18 @@ caffold-task-detail {
     display: contents;
   }
 
-  & .task-detail[data-task-detail-view="files"] .task-conversation-pane,
-  & .task-detail[data-task-detail-view="diff"] .task-conversation-pane {
+  & .task-review-slot {
     display: none;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  & .task-detail[data-task-detail-view="review"] .task-conversation-pane {
+    display: none;
+  }
+
+  & .task-detail[data-task-detail-view="review"] .task-review-slot {
+    display: block;
   }
 }

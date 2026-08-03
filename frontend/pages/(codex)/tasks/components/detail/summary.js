@@ -97,14 +97,12 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       return;
     }
     this.snapshot = { ...this.snapshot, reviewView };
-    this.querySelector('[data-summary-action="toggle-files"]')?.setAttribute(
-      "aria-pressed",
-      reviewView === "files" ? "true" : "false",
-    );
-    this.querySelector('[data-summary-action="open-diff"]')?.setAttribute(
-      "aria-pressed",
-      reviewView === "diff" ? "true" : "false",
-    );
+    for (const button of this.querySelectorAll("[data-summary-mode]")) {
+      button.setAttribute(
+        "aria-pressed",
+        button.dataset.summaryMode === reviewView ? "true" : "false",
+      );
+    }
   }
 
   deactivate() {
@@ -254,7 +252,6 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       transportState: this.snapshot.transportState,
     });
     const statusLabel = formatTaskStatus(task, this.snapshot.transportState);
-    const canOpenDiff = Boolean(task.worktree);
     const worktreeLabel = taskWorktreeLabel(task);
     const transportBlocked = isTaskTransportStale(
       this.snapshot.transportState,
@@ -270,26 +267,20 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       </div>
       <div class="task-detail-right">
         <div class="task-detail-actions">
-          <button
-            type="button"
-            class="task-secondary-button"
-            data-summary-action="toggle-files"
-            aria-pressed="${this.snapshot.reviewView === "files" ? "true" : "false"}"
-          >
-            ${renderInlineIcon("Folder", "Files", "task-action-icon")}
-            <span class="task-action-label">Files</span>
-          </button>
-          <button
-            type="button"
-            class="task-secondary-button"
-            data-summary-action="open-diff"
-            aria-pressed="${this.snapshot.reviewView === "diff" ? "true" : "false"}"
-            ${canOpenDiff ? "" : "disabled"}
-            title="${canOpenDiff ? "Open worktree diff" : "Diff is unavailable outside a Git worktree"}"
-          >
-            ${renderInlineIcon("FileDiff", "Open diff", "task-action-icon")}
-            <span class="task-action-label">Open Diff</span>
-          </button>
+          <div class="task-mode-switch" role="group" aria-label="Task view">
+            <button
+              type="button"
+              data-summary-action="open-conversation"
+              data-summary-mode="conversation"
+              aria-pressed="${this.snapshot.reviewView === "conversation" ? "true" : "false"}"
+            >Conversation</button>
+            <button
+              type="button"
+              data-summary-action="open-review"
+              data-summary-mode="review"
+              aria-pressed="${this.snapshot.reviewView === "review" ? "true" : "false"}"
+            >Review</button>
+          </div>
           ${this.renderReviewMenus(task)}
           ${
             task.activeTurn?.id
@@ -345,14 +336,6 @@ class CaffoldTaskDetailSummary extends HTMLElement {
                   <dd>${escapeHtml(taskWorktreeRef(task))}</dd>
                 </div>`
               : ""
-          }
-          ${
-            canOpenDiff
-              ? ""
-              : `<div>
-                  <dt>Diff review</dt>
-                  <dd>Unavailable outside a Git worktree.</dd>
-                </div>`
           }
         </dl>
       </div>
@@ -440,7 +423,7 @@ if (!customElements.get("caffold-task-detail-summary")) {
 }
 
 function normalizeReviewView(view) {
-  return view === "files" || view === "diff" ? view : "conversation";
+  return view === "review" ? "review" : "conversation";
 }
 
 function taskWorktreeRef(task) {

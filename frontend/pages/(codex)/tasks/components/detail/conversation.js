@@ -8,6 +8,7 @@ import { renderConversation } from "./conversation/render.js";
 class CaffoldTaskConversation extends HTMLElement {
   connectedCallback() {
     this.ensureState();
+    this.active = true;
     this.addEventListener("click", this.boundClick);
     this.addEventListener("scroll", this.boundScroll, true);
     this.addEventListener(
@@ -18,6 +19,8 @@ class CaffoldTaskConversation extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this.rememberScroll();
+    this.active = false;
     this.removeEventListener("click", this.boundClick);
     this.removeEventListener("scroll", this.boundScroll, true);
     this.removeEventListener(
@@ -129,6 +132,25 @@ class CaffoldTaskConversation extends HTMLElement {
   hasScrollSnapshot(threadId) {
     this.ensureState();
     return this.scrollByThread.has(`${threadId ?? ""}`);
+  }
+
+  setActive(active) {
+    this.ensureState();
+    const nextActive = Boolean(active);
+    if (this.active === nextActive) {
+      return;
+    }
+    if (!nextActive) {
+      this.rememberScroll();
+      this.active = false;
+      this.disconnectResizeObserver();
+      this.stopActiveTurnClock();
+      return;
+    }
+    this.active = true;
+    this.reconcileViewportResize();
+    this.bindResizeObserver();
+    this.syncActiveTurnClock();
   }
 
   reconcileViewportResize() {
@@ -403,6 +425,7 @@ class CaffoldTaskConversation extends HTMLElement {
     const column = scroller?.querySelector(".task-conversation-column");
     const threadId = this.snapshot.threadId;
     if (
+      !this.active ||
       !scroller ||
       !column ||
       !threadId ||

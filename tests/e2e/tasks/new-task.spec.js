@@ -393,12 +393,18 @@ test("creates a task with responsive composer controls and canonical approval st
         display: "grid",
       }),
     );
-    expectCssSpacing(
-      detailSummary.padding,
-      (phone ? [0.4375, 0.5] : [0.75, 0.875]).map(
-        (value) => value * rootFontSize,
-      ),
-    );
+    const summaryPadding = detailSummary.padding
+      .split(" ")
+      .map((value) => Number.parseFloat(value));
+    const [blockPadding, inlinePadding] = (phone
+      ? [0.4375, 0.5]
+      : [0.75, 0.875]
+    ).map((value) => value * rootFontSize);
+    expect(summaryPadding).toHaveLength(4);
+    expect(summaryPadding[0]).toBeCloseTo(blockPadding, 2);
+    expect(summaryPadding[1]).toBeCloseTo(inlinePadding, 2);
+    expect(summaryPadding[2]).toBeCloseTo(blockPadding, 2);
+    expect(summaryPadding[3]).toBeGreaterThan(inlinePadding);
     const statusPresentation = await taskPresentation(
       tasksPage.locator(
         '.task-detail-summary .task-status-chip[data-status="waiting_for_approval"]',

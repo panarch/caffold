@@ -5,6 +5,13 @@ const COMPARE_QUERY = [
 ];
 const CWD_QUERY = [{ name: "cwd", key: "cwd", defaultValue: "" }];
 const NEW_TASK_QUERY = [...CWD_QUERY];
+const TASK_REVIEW_QUERY = [
+  { name: "scope", key: "reviewScope", defaultValue: "working" },
+  { name: "nav", key: "reviewNavigator", defaultValue: "changes" },
+  { name: "view", key: "reviewViewer", defaultValue: "diff" },
+  { name: "file", key: "path", defaultValue: "" },
+  { name: "base", key: "baseRef", defaultValue: "" },
+];
 const FILE_QUERY = [...CWD_QUERY, { name: "file", key: "path", defaultValue: "" }];
 const STANDALONE_COMPARE_QUERY = [
   ...CWD_QUERY,
@@ -192,13 +199,38 @@ const ROUTE_DEFINITIONS = [
     parent: () => tasksRoute(),
   }),
   routeDefinition({
+    id: "global-tasks-review",
+    kind: "tasks",
+    pattern: "/tasks/[threadId]/review",
+    query: TASK_REVIEW_QUERY,
+    surface: "tasks",
+    target: (route) => (cleanPath(route.path) ? "review-file" : "review"),
+    params: { threadId: "string" },
+    toRoute: ({ threadId }, query) =>
+      tasksRoute({ ...query, threadId, review: true }),
+    matchesRoute: (route) =>
+      route?.kind === "tasks" && Boolean(route.threadId) && Boolean(route.review),
+    parent: (route) =>
+      route.path
+        ? tasksRoute({
+            threadId: route.threadId,
+            review: true,
+            reviewScope: route.reviewScope,
+            reviewNavigator: route.reviewNavigator,
+            reviewViewer: route.reviewViewer,
+            baseRef: route.baseRef,
+          })
+        : tasksRoute({ threadId: route.threadId }),
+  }),
+  routeDefinition({
     id: "global-tasks-detail",
     kind: "tasks",
     pattern: "/tasks/[threadId]",
     surface: "tasks",
     target: "detail",
     toRoute: ({ threadId }, query) => tasksRoute({ ...query, threadId }),
-    matchesRoute: (route) => route?.kind === "tasks" && Boolean(route.threadId),
+    matchesRoute: (route) =>
+      route?.kind === "tasks" && Boolean(route.threadId) && !route.review,
     parent: () => tasksRoute(),
   }),
 ];
@@ -437,11 +469,22 @@ function writeQuery(definition, route, searchParams) {
 }
 
 function tasksRoute(options = {}) {
+  const review = Boolean(options.review && options.threadId);
   return {
     kind: "tasks",
     new: Boolean(options.new),
     threadId: options.threadId ?? "",
     cwd: options.new ? taskCwd(options.cwd) : "",
+    ...(review
+      ? {
+          review: true,
+          reviewScope: enumValue(options.reviewScope, ["working", "branch"], "working"),
+          reviewNavigator: enumValue(options.reviewNavigator, ["changes", "files"], "changes"),
+          reviewViewer: enumValue(options.reviewViewer, ["diff", "source"], "diff"),
+          path: safeRelativePath(options.path),
+          baseRef: `${options.baseRef ?? ""}`,
+        }
+      : {}),
   };
 }
 
@@ -524,6 +567,18 @@ function cleanPath(path) {
     .split("/")
     .filter((segment) => segment && segment !== "." && segment !== "..")
     .join("/");
+}
+
+function safeRelativePath(path) {
+  const segments = `${path ?? ""}`.split("/");
+  if (segments.some((segment) => segment === "..")) {
+    return "";
+  }
+  return cleanPath(path);
+}
+
+function enumValue(value, allowed, fallback) {
+  return allowed.includes(value) ? value : fallback;
 }
 
 function positiveInteger(value) {

@@ -36,6 +36,7 @@ import {
 } from "../task-list-model.js";
 
 const CLEAN_COMPOSER_CACHE_LIMIT = 6;
+const CLEAN_REVIEW_CACHE_LIMIT = 6;
 
 class CaffoldTaskDetail extends HTMLElement {
   connectedCallback() {
@@ -86,6 +87,11 @@ class CaffoldTaskDetail extends HTMLElement {
     this.followUpComposerLastUsed = new Map();
     this.followUpComposerUseSequence = 0;
     this.activeFollowUpComposerThreadId = "";
+    this.reviewComponents = new Map();
+    this.reviewLastUsed = new Map();
+    this.reviewUseSequence = 0;
+    this.activeReviewThreadId = "";
+    this.taskRoute = null;
     this.reviewView = "conversation";
     this.boundIconsReady = () => {
       this.render();
@@ -147,13 +153,23 @@ class CaffoldTaskDetail extends HTMLElement {
       event.stopPropagation();
       this.conversationComponent()?.reconcileViewportResize();
     });
-    this.addEventListener("caffold:task-review-view-change", (event) => {
+    this.addEventListener("caffold:task-review-route-intent", (event) => {
       const review = closestElement(event.target, "caffold-task-review");
       if (!review || review !== this.taskReview()) {
         return;
       }
       event.stopPropagation();
-      this.applyReviewView(event.detail?.view);
+      this.dispatchEvent(
+        new CustomEvent("caffold:task-detail-intent", {
+          bubbles: true,
+          composed: true,
+          detail: {
+            type: "review-route",
+            route: event.detail?.route,
+            replace: Boolean(event.detail?.replace),
+          },
+        }),
+      );
     });
     this.addEventListener("caffold:task-detail-summary-intent", (event) => {
       const summary = closestElement(
@@ -173,6 +189,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.detachGlobalListeners();
     this.deactivate();
     this.disposeFollowUpComposers();
+    this.disposeReviews();
   }
 
   prepare(threadId, options = {}) {
@@ -189,6 +206,12 @@ class CaffoldTaskDetail extends HTMLElement {
     ) {
       this.view = "detail";
       this.hidden = false;
+      this.taskRoute = normalizeTaskRoute(options.route, targetThreadId);
+      const nextReviewView = this.taskRoute.review ? "review" : "conversation";
+      if (this.reviewView === "conversation" && nextReviewView === "review") {
+        this.conversationComponent()?.setActive(false);
+      }
+      this.reviewView = nextReviewView;
       this.detailLoadError = null;
       this.activateThreadEvents(targetThreadId);
       this.render();
@@ -202,13 +225,15 @@ class CaffoldTaskDetail extends HTMLElement {
       this.interruptActionToken += 1;
       this.approvalActionToken += 1;
       this.loadingOlderEvents = false;
-      this.taskReview()?.setTaskContext({ task: null, events: [] });
+      this.deactivateReview({ prune: false });
       this.reviewView = "conversation";
       this.detailStream.deactivate();
     }
     this.view = "detail";
     this.hidden = false;
     this.selectedThreadId = targetThreadId;
+    this.taskRoute = normalizeTaskRoute(options.route, targetThreadId);
+    this.reviewView = this.taskRoute.review ? "review" : "conversation";
     this.activateThreadEvents(targetThreadId);
     this.taskDetail =
       taskDetailThreadId(this.taskDetail) === targetThreadId
@@ -271,8 +296,8 @@ class CaffoldTaskDetail extends HTMLElement {
     this.initialConversationLoad = null;
     this.detailStream.deactivate();
     this.deactivateFollowUpComposer();
+    this.deactivateReview();
     this.taskSummary()?.deactivate();
-    this.taskReview()?.deactivate();
     this.hidden = true;
   }
 
@@ -625,27 +650,42 @@ class CaffoldTaskDetail extends HTMLElement {
       this.openTaskReviewRoute(action, intent.reviewKind);
       return;
     }
-    if (action === "open-diff") {
-      const review = this.taskReview();
-      if (review?.view === "diff") {
-        review.close();
-      } else {
-        review?.openDiff();
-      }
+    if (action === "open-review") {
+      this.requestReviewRoute({ review: true });
       return;
     }
-    if (action === "toggle-files") {
-      const review = this.taskReview();
-      if (review?.view === "files") {
-        review.close();
-      } else {
-        review?.openFiles();
-      }
+    if (action === "open-conversation") {
+      this.requestReviewRoute({ review: false });
       return;
     }
     if (action === "interrupt") {
       this.interruptSelectedTask();
     }
+  }
+
+  requestReviewRoute(options = {}) {
+    if (!this.selectedThreadId) {
+      return;
+    }
+    const route = options.review
+      ? {
+          kind: "tasks",
+          threadId: this.selectedThreadId,
+          review: true,
+          reviewScope: "working",
+          reviewNavigator: this.taskDetail?.task?.worktree ? "changes" : "files",
+          reviewViewer: this.taskDetail?.task?.worktree ? "diff" : "source",
+          path: "",
+          baseRef: "",
+        }
+      : { kind: "tasks", threadId: this.selectedThreadId };
+    this.dispatchEvent(
+      new CustomEvent("caffold:task-detail-intent", {
+        bubbles: true,
+        composed: true,
+        detail: { type: "review-route", route, replace: false },
+      }),
+    );
   }
 
   openTaskReviewRoute(action, kind) {
@@ -995,11 +1035,13 @@ class CaffoldTaskDetail extends HTMLElement {
     this.renderTaskContentRegion();
     this.syncTaskSummary();
     this.syncFollowUpComposer();
-    this.syncConversationSnapshot();
+    this.conversationComponent()?.setActive(
+      this.reviewView === "conversation",
+    );
+    if (this.reviewView === "conversation") {
+      this.syncConversationSnapshot();
+    }
     this.syncTaskReview();
-    this.applyReviewView(this.taskReview()?.view ?? this.reviewView, {
-      dispatch: false,
-    });
   }
 
   ensureTaskShell() {
@@ -1142,7 +1184,83 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   taskReview() {
-    return this.querySelector(".task-detail > caffold-task-review");
+    return this.activeReviewThreadId
+      ? this.reviewComponents.get(this.activeReviewThreadId) ?? null
+      : null;
+  }
+
+  reviewSlot() {
+    return this.querySelector(".task-detail > .task-review-slot");
+  }
+
+  ensureReview(threadId) {
+    let review = this.reviewComponents.get(threadId);
+    if (!review) {
+      review = document.createElement("caffold-task-review");
+      review.dataset.threadId = threadId;
+      this.reviewComponents.set(threadId, review);
+    }
+    this.reviewLastUsed.set(threadId, ++this.reviewUseSequence);
+    return review;
+  }
+
+  activateReview(threadId) {
+    const slot = this.reviewSlot();
+    if (!slot) {
+      return null;
+    }
+    if (this.activeReviewThreadId && this.activeReviewThreadId !== threadId) {
+      this.deactivateReview({ prune: false });
+    }
+    const review = this.ensureReview(threadId);
+    this.activeReviewThreadId = threadId;
+    if (review.parentElement !== slot) {
+      slot.replaceChildren(review);
+    }
+    this.pruneReviewCache();
+    return review;
+  }
+
+  deactivateReview({ prune = true } = {}) {
+    const threadId = this.activeReviewThreadId;
+    if (!threadId) {
+      return;
+    }
+    this.reviewComponents.get(threadId)?.remove();
+    this.reviewLastUsed.set(threadId, ++this.reviewUseSequence);
+    this.activeReviewThreadId = "";
+    if (prune) {
+      this.pruneReviewCache();
+    }
+  }
+
+  pruneReviewCache() {
+    const inactive = [...this.reviewComponents.keys()]
+      .filter((threadId) => threadId !== this.activeReviewThreadId)
+      .sort(
+        (left, right) =>
+          (this.reviewLastUsed.get(left) ?? 0) -
+          (this.reviewLastUsed.get(right) ?? 0),
+      );
+    const excess = Math.max(
+      0,
+      this.reviewComponents.size - CLEAN_REVIEW_CACHE_LIMIT,
+    );
+    for (let index = 0; index < excess; index += 1) {
+      const threadId = inactive[index];
+      this.reviewComponents.get(threadId)?.remove();
+      this.reviewComponents.delete(threadId);
+      this.reviewLastUsed.delete(threadId);
+    }
+  }
+
+  disposeReviews() {
+    for (const review of this.reviewComponents.values()) {
+      review.remove();
+    }
+    this.reviewComponents.clear();
+    this.reviewLastUsed.clear();
+    this.activeReviewThreadId = "";
   }
 
   syncTaskSummary() {
@@ -1196,12 +1314,21 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   syncTaskReview() {
-    const review = this.taskReview();
     const task = this.taskDetail?.task ?? null;
-    if (!review || !task || taskThreadId(task) !== this.selectedThreadId) {
+    if (
+      this.reviewView !== "review" ||
+      !task ||
+      taskThreadId(task) !== this.selectedThreadId
+    ) {
+      this.deactivateReview();
       return;
     }
-    review.setTaskContext({ task, events: this.events });
+    const review = this.activateReview(this.selectedThreadId);
+    review?.setTaskContext({
+      task,
+      events: this.events,
+      route: this.taskRoute,
+    });
   }
 
   isInitialConversationLoadPending(threadId = this.selectedThreadId) {
@@ -1337,14 +1464,14 @@ class CaffoldTaskDetail extends HTMLElement {
           }
         });
       }
-      const currentReview = currentDetail.querySelector(
-        ":scope > caffold-task-review",
+      const currentReviewSlot = currentDetail.querySelector(
+        ":scope > .task-review-slot",
       );
-      const nextReview = nextDetail.querySelector(
-        ":scope > caffold-task-review",
+      const nextReviewSlot = nextDetail.querySelector(
+        ":scope > .task-review-slot",
       );
-      if (!currentReview && nextReview) {
-        currentDetail.append(nextReview);
+      if (!currentReviewSlot && nextReviewSlot) {
+        currentDetail.append(nextReviewSlot);
       }
       currentDetail.dataset.threadId = threadId;
       currentDetail.dataset.taskDetailView = this.reviewView;
@@ -1366,31 +1493,15 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   get taskDetailView() {
-    return this.taskReview()?.view ?? this.reviewView;
+    return this.reviewView;
   }
 
   closeActiveSubview() {
-    return this.taskReview()?.close() ?? false;
-  }
-
-  applyReviewView(view, options = {}) {
-    const nextView = view === "files" || view === "diff" ? view : "conversation";
-    const changed = this.reviewView !== nextView;
-    this.reviewView = nextView;
-    this.setAttribute("data-task-detail-view", nextView);
-    const detail = this.querySelector(".task-detail");
-    if (detail) {
-      detail.dataset.taskDetailView = nextView;
+    if (this.reviewView !== "review") {
+      return false;
     }
-    this.taskSummary()?.setReviewView(nextView);
-    if (changed && options.dispatch !== false) {
-      this.dispatchEvent(
-        new CustomEvent("caffold:task-detail-view-change", {
-          bubbles: true,
-          detail: { view: nextView },
-        }),
-      );
-    }
+    this.requestReviewRoute({ review: false });
+    return true;
   }
 
   hasSelectedTaskDetail() {
@@ -1442,7 +1553,7 @@ class CaffoldTaskDetail extends HTMLElement {
           ${this.renderStreamState()}
           <div class="task-follow-up-composer-slot"></div>
         </section>
-        <caffold-task-review></caffold-task-review>
+        <div class="task-review-slot"></div>
       </div>
     `;
   }
@@ -1502,4 +1613,10 @@ function taskWorktreeRootPath(task) {
 
 function closestElement(target, selector) {
   return target instanceof Element ? target.closest(selector) : null;
+}
+
+function normalizeTaskRoute(route, threadId) {
+  return route?.kind === "tasks" && route.threadId === threadId
+    ? { ...route }
+    : { kind: "tasks", threadId };
 }

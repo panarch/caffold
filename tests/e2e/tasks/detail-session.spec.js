@@ -543,11 +543,18 @@ test("preserves stable detail children through another task load failure", async
   await expect(tasksPage).toContainText("Stable task A canonical response.");
   const prompt = tasksPage.getByRole("textbox", { name: "Follow-up prompt" });
   await prompt.fill("Draft retained for task A");
+  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  const review = tasksPage.locator("caffold-task-review");
+  await expect(review).toBeVisible();
+  await review.evaluate((element) => {
+    element.dataset.stableChild = "review";
+    window.__stableTaskReview = element;
+  });
+  await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
   await tasksPage.evaluate((element) => {
     const markers = new Map([
       ["conversation", "caffold-task-conversation"],
       ["composer", "caffold-task-detail caffold-task-composer"],
-      ["review", "caffold-task-review"],
     ]);
     for (const [name, selector] of markers) {
       element.querySelector(selector).dataset.stableChild = name;
@@ -586,9 +593,18 @@ test("preserves stable detail children through another task load failure", async
       }),
     )
     .toBe(true);
-  await expect(
-    tasksPage.locator('[data-stable-child="review"]'),
-  ).toHaveCount(1);
+  await expect
+    .poll(() =>
+      tasksPage.evaluate((element) => {
+        const detail = element.querySelector("caffold-task-detail");
+        return (
+          detail.reviewComponents?.get("thread-stable-a") ===
+            window.__stableTaskReview &&
+          !window.__stableTaskReview.isConnected
+        );
+      }),
+    )
+    .toBe(true);
   await expect
     .poll(() =>
       conversation.evaluate(

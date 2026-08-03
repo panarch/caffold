@@ -46,7 +46,6 @@ class CaffoldCodexWorkspace extends HTMLElement {
     });
     this.tasksPage = this.querySelector("caffold-tasks-page");
     this.tasksPage.ensureRendered();
-    this.addEventListener("caffold:task-detail-view-change", () => this.updateCloseButton());
     this.updateCloseButton();
   }
 

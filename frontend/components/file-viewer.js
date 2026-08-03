@@ -78,8 +78,13 @@ class CaffoldFileViewer extends HTMLElement {
     this.render({ ...options, scroll });
   }
 
-  setNotice(message) {
-    this.state = { status: "notice", message };
+  setNotice(message, options = {}) {
+    this.state = {
+      status: "notice",
+      message,
+      actionLabel: options.actionLabel ?? "",
+      action: options.action ?? "",
+    };
     this.render();
   }
 
@@ -151,6 +156,11 @@ class CaffoldFileViewer extends HTMLElement {
       this.innerHTML = `
         <section class="viewer-panel empty-panel">
           <p>${escapeHtml(this.state.message)}</p>
+          ${
+            this.state.actionLabel && this.state.action
+              ? `<button type="button" class="task-secondary-button" data-action="${escapeHtml(this.state.action)}">${escapeHtml(this.state.actionLabel)}</button>`
+              : ""
+          }
         </section>
       `;
       return;

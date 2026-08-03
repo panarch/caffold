@@ -12,124 +12,166 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("browses task files without leaving the task or leaking the file watch", async ({
+test("browses source through the shared Files navigator and one root watch", async ({
   page,
 }, testInfo) => {
   const { taskScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
-  const filesView = taskReview.locator(".task-files-view");
+  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+  await taskReview.getByRole("button", { name: "Source", exact: true }).click();
+  await expect(page).toHaveURL(
+    `/tasks/${taskScenario.threadId}/review?nav=files&view=source`,
+  );
 
-  await tasksPage.locator('button[data-summary-action="toggle-files"]').click();
-  await expect(page).toHaveURL(`/tasks/${taskScenario.threadId}`);
-  await expect(filesView).toBeVisible();
-  await expect(filesView.locator('button[data-entry-path="src/alpha.rs"]')).toBeVisible();
+  const navigator = taskReview.locator("caffold-file-navigator");
+  await expect(navigator.locator('button[data-entry-path="src/alpha.rs"]')).toBeVisible();
   await expect
     .poll(() =>
-      filesView
-        .locator("caffold-file-browser")
-        .evaluate((browser) => browser.watchActive && Boolean(browser.watchUnsubscribe)),
+      page.evaluate(
+        () =>
+          window.__caffoldMockEventSources.filter(
+            (source) => source.url.startsWith("/api/watch?") && source.readyState !== 2,
+          ).length,
+      ),
     )
-    .toBe(true);
+    .toBe(1);
 
   const liveName = `task-live-${testInfo.project.name}.txt`;
   const livePath = resolve("tests/fixtures/home/src", liveName);
   try {
-    await writeFile(livePath, "Codex Files live update\n");
+    await writeFile(livePath, "Caffold Review live update\n");
     await page.evaluate((logicalPath) => {
-      const source = window.__caffoldMockEventSources.find((candidate) =>
-        candidate.url.startsWith("/api/watch?"),
+      const source = window.__caffoldMockEventSources.find(
+        (candidate) => candidate.url.startsWith("/api/watch?") && candidate.readyState !== 2,
       );
       source?.emit("change", {
         revision: 2,
         paths: [logicalPath],
-        gitStatusChanged: true,
+        gitStatusChanged: false,
         gitRefsChanged: false,
         overflow: false,
       });
     }, `src/${liveName}`);
     await expect(
-      filesView.locator(`button[data-entry-path="src/${liveName}"]`),
+      navigator.locator(`button[data-entry-path="src/${liveName}"]`),
     ).toBeVisible();
   } finally {
     await rm(livePath, { force: true });
-    await page.evaluate((logicalPath) => {
-      const source = window.__caffoldMockEventSources.find((candidate) =>
-        candidate.url.startsWith("/api/watch?"),
-      );
-      source?.emit("change", {
-        revision: 3,
-        paths: [logicalPath],
-        gitStatusChanged: true,
-        gitRefsChanged: false,
-        overflow: false,
-      });
-    }, `src/${liveName}`);
   }
 
-  await stabilizeDynamicText(page);
-  await captureReviewScreenshot(page, testInfo, "tasks-file-browser-list");
-  await filesView.locator('button[data-entry-path="src/alpha.rs"]').click();
-  await expect(page).toHaveURL(`/tasks/${taskScenario.threadId}`);
-  await expect(filesView.locator("caffold-file-viewer")).toContainText("alpha.rs");
-  await expect(filesView.locator("caffold-file-viewer")).toContainText(
+  await navigator.locator('button[data-entry-path="src/alpha.rs"]').click();
+  await expect(page).toHaveURL(
+    `/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=alpha.rs`,
+  );
+  await expect(taskReview.locator("caffold-review-file-viewer")).toContainText(
     "pub const ALPHA",
   );
-  await expect(page.locator("caffold-files-page")).toBeHidden();
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-file-browser");
 
   if (testInfo.project.name === "phone") {
-    await filesView.getByRole("button", { name: "Back to files" }).click();
+    await taskReview.getByRole("button", { name: "Back to navigator" }).click();
+    await expect(page).toHaveURL(
+      `/tasks/${taskScenario.threadId}/review?nav=files&view=source`,
+    );
   }
-  await page.locator("caffold-codex-workspace .codex-workspace-close").click();
-  await expect(filesView).toBeHidden();
+  await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
+  await expect(page).toHaveURL(`/tasks/${taskScenario.threadId}`);
   await expect
     .poll(() =>
-      filesView
-        .locator("caffold-file-browser")
-        .evaluate((browser) => !browser.watchActive && !browser.watchUnsubscribe),
+      page.evaluate(
+        () =>
+          window.__caffoldMockEventSources.filter(
+            (source) => source.url.startsWith("/api/watch?") && source.readyState !== 2,
+          ).length,
+      ),
     )
-    .toBe(true);
+    .toBe(0);
 });
 
-test("keeps the embedded Files surface inside the Codex workspace", async ({
+test("previews images selected from the shared Files navigator", async ({
   page,
 }) => {
-  const { tasksPage } = await openCompletedTaskForReview(page);
-  await tasksPage.locator('button[data-summary-action="toggle-files"]').click();
+  const { taskScenario, tasksPage, taskReview } =
+    await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+  await taskReview.getByRole("button", { name: "Source", exact: true }).click();
+
+  const navigator = taskReview.locator("caffold-file-navigator");
+  await navigator.locator('button[data-entry-path="src/review-image.svg"]').click();
+  await expect(page).toHaveURL(
+    `/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=review-image.svg`,
+  );
+  const viewer = taskReview.locator("caffold-review-file-viewer");
+  await expect(viewer).toContainText("review-image.svg");
+  await expect(viewer).toContainText("SVG image");
+  await expect(viewer.locator("img.image-preview")).toHaveAttribute(
+    "src",
+    /\/api\/image\?path=src%2Freview-image\.svg&revision=\d+$/,
+  );
+});
+
+test("keeps the shared Review panes inside the Codex workspace", async ({ page }) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
 
   const layout = await page.evaluate(() => {
     const codex = document.querySelector("caffold-codex-workspace");
     const appMain = document.querySelector("caffold-app-shell .app-main");
-    const view = document.querySelector(".task-files-view");
-    const browser = view.querySelector("caffold-file-browser");
-    const list = view.querySelector("caffold-file-list");
-    const title = view.querySelector(".task-files-header h3");
+    const review = document.querySelector("caffold-task-review");
+    const reviewRect = review.getBoundingClientRect();
     const codexRect = codex.getBoundingClientRect();
-    const viewRect = view.getBoundingClientRect();
     return {
       viewportWidth: window.innerWidth,
       appMainTop: appMain.getBoundingClientRect().top,
       codexTop: codexRect.top,
-      viewLeft: viewRect.left,
-      viewRight: viewRect.right,
-      viewBottom: viewRect.bottom,
+      left: reviewRect.left,
+      right: reviewRect.right,
+      bottom: reviewRect.bottom,
       codexLeft: codexRect.left,
       codexRight: codexRect.right,
       codexBottom: codexRect.bottom,
-      browserHeight: browser.getBoundingClientRect().height,
-      listWidth: list.getBoundingClientRect().width,
-      titleFits: title.clientWidth >= title.scrollWidth,
+      navigatorWidth: review.querySelector(".task-review-navigator-pane").getBoundingClientRect().width,
+      overflow: review.scrollWidth > review.clientWidth,
     };
   });
 
   expect(Math.abs(layout.codexTop - layout.appMainTop)).toBeLessThanOrEqual(1);
-  expect(Math.abs(layout.viewLeft - layout.codexLeft)).toBeLessThanOrEqual(1);
-  expect(Math.abs(layout.viewRight - layout.codexRight)).toBeLessThanOrEqual(1);
-  expect(layout.viewBottom).toBeGreaterThanOrEqual(layout.codexBottom - 1);
-  expect(layout.browserHeight).toBeGreaterThan(400);
-  if (layout.viewportWidth >= 861) {
-    expect(layout.listWidth).toBeGreaterThanOrEqual(300);
+  expect(Math.abs(layout.left - layout.codexLeft)).toBeLessThanOrEqual(1);
+  expect(Math.abs(layout.right - layout.codexRight)).toBeLessThanOrEqual(1);
+  expect(layout.bottom).toBeGreaterThanOrEqual(layout.codexBottom - 1);
+  expect(layout.overflow).toBe(false);
+  if (layout.viewportWidth >= 561) {
+    expect(layout.navigatorWidth).toBeGreaterThanOrEqual(220);
   }
-  expect(layout.titleFits).toBe(true);
+});
+
+test("keeps browser Back aligned with the semantic Review parent", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name === "phone",
+    "Phone explicit Back covers the same file-to-navigator parent transition.",
+  );
+  const { taskScenario, tasksPage, taskReview } =
+    await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+  await taskReview.getByRole("button", { name: "Source", exact: true }).click();
+
+  const navigator = taskReview.locator("caffold-file-navigator");
+  await navigator.locator('button[data-entry-path="src/alpha.rs"]').click();
+  await navigator.locator('button[data-entry-path="src/planner.rs"]').click();
+  await expect(page).toHaveURL(
+    `/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=planner.rs`,
+  );
+
+  await page.goBack();
+  await expect(page).toHaveURL(
+    `/tasks/${taskScenario.threadId}/review?nav=files&view=source`,
+  );
+  await page.goBack();
+  await expect(page).toHaveURL(`/tasks/${taskScenario.threadId}`);
 });
