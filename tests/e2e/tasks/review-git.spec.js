@@ -116,6 +116,89 @@ test("keeps selectedPath while scope, navigator, and viewer switch independently
   await captureReviewScreenshot(page, testInfo, "tasks-branch-compare");
 });
 
+test("supports every scope navigator and viewer combination", async ({ page }) => {
+  const { taskScenario, tasksPage, taskReview } =
+    await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+
+  const workingTree = taskReview.locator("caffold-git-diff-changes-tree");
+  const branchTree = taskReview.locator("caffold-git-compare-tree");
+  const fileNavigator = taskReview.locator("caffold-file-navigator");
+  const viewer = taskReview.locator("caffold-review-file-viewer");
+  await workingTree.locator('button[data-repo-relative-path="planner.rs"]').click();
+
+  const combinations = [
+    ["working", "changes", "diff"],
+    ["working", "changes", "source"],
+    ["working", "files", "diff"],
+    ["working", "files", "source"],
+    ["branch", "changes", "diff"],
+    ["branch", "changes", "source"],
+    ["branch", "files", "diff"],
+    ["branch", "files", "source"],
+  ];
+
+  for (const [scope, navigator, representation] of combinations) {
+    await test.step(`${scope} / ${navigator} / ${representation}`, async () => {
+      await taskReview
+        .getByRole("button", {
+          name: scope === "branch" ? "Branch" : "Working Tree",
+          exact: true,
+        })
+        .click();
+      await taskReview
+        .getByRole("button", {
+          name: navigator === "files" ? "Files" : "Changes",
+          exact: true,
+        })
+        .click();
+      await taskReview
+        .getByRole("button", {
+          name: representation === "source" ? "Source" : "Diff",
+          exact: true,
+        })
+        .click();
+
+      if (scope === "branch") {
+        await expect(taskReview.locator("select[data-review-base]")).toHaveValue(
+          "origin/main",
+        );
+      }
+      await expect.poll(() => {
+        const url = new URL(page.url());
+        return {
+          scope: url.searchParams.get("scope") ?? "working",
+          navigator: url.searchParams.get("nav") ?? "changes",
+          viewer: url.searchParams.get("view") ?? "diff",
+          file: url.searchParams.get("file") ?? "",
+        };
+      }).toEqual({
+        scope,
+        navigator,
+        viewer: representation,
+        file: "planner.rs",
+      });
+      await expect(page).toHaveURL(new RegExp(`/tasks/${taskScenario.threadId}/review\\?`));
+
+      const selectedEntry =
+        navigator === "files"
+          ? fileNavigator.locator('button[data-entry-path="src/planner.rs"]')
+          : scope === "branch"
+            ? branchTree.locator('button[data-compare-path="src/planner.rs"]')
+            : workingTree.locator('button[data-repo-relative-path="planner.rs"]');
+      await expect(selectedEntry).toHaveAttribute("aria-current", "true");
+
+      if (representation === "source") {
+        await expect(viewer).toContainText("planner source");
+      } else if (scope === "branch") {
+        await expect(viewer).toContainText("new branch behavior");
+      } else {
+        await expect(viewer).toContainText("new planner behavior");
+      }
+    });
+  }
+});
+
 test("keeps compact review controls and available panes inside the workspace", async ({
   page,
 }, testInfo) => {
@@ -152,6 +235,12 @@ test("keeps compact review controls and available panes inside the workspace", a
   expect(layout.toolbarRows).toBeLessThanOrEqual(
     testInfo.project.name === "phone" ? 120 : 90,
   );
+
+  for (const axis of await taskReview.locator(".task-review-axis").all()) {
+    await expect(axis.locator(":scope > .task-review-axis-label")).toHaveCount(1);
+    await expect(axis.locator(":scope > .task-review-axis-options")).toHaveCount(1);
+    await expect(axis.locator(":scope > .task-review-axis-options > button")).toHaveCount(2);
+  }
 });
 
 test("keeps a 180-file change set inspectable without clipping its identity", async ({

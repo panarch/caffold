@@ -26,26 +26,40 @@ caffold-task-review {
   }
 
   & .task-review-axis {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--interface-space-2);
+    min-width: 0;
+  }
+
+  & .task-review-axis-options {
     display: inline-grid;
-    grid-template-columns: auto repeat(2, max-content);
+    grid-template-columns: repeat(2, max-content);
     align-items: center;
     gap: 0.125rem;
-    min-width: 0;
     padding: 0.125rem;
     border: 1px solid var(--border);
     border-radius: 5px;
     background: var(--surface-muted);
   }
 
-  & .task-review-axis > span,
+  & .task-review-axis-label,
   & .task-review-base > span {
-    padding: 0 var(--interface-space-3);
     color: var(--muted);
     font-size: var(--interface-meta-font-size);
     line-height: var(--interface-line-height);
+    white-space: nowrap;
   }
 
-  & .task-review-axis button {
+  & .task-review-axis-label {
+    padding: 0 var(--interface-space-1);
+  }
+
+  & .task-review-base > span {
+    padding: 0 var(--interface-space-3);
+  }
+
+  & .task-review-axis-options button {
     box-sizing: border-box;
     height: var(--interface-compact-control-size);
     min-height: var(--interface-compact-control-size);
@@ -59,13 +73,13 @@ caffold-task-review {
     cursor: pointer;
   }
 
-  & .task-review-axis button[aria-pressed="true"] {
+  & .task-review-axis-options button[aria-pressed="true"] {
     background: var(--surface);
     color: var(--text);
     box-shadow: 0 0 0 1px var(--border);
   }
 
-  & .task-review-axis button:disabled {
+  & .task-review-axis-options button:disabled {
     opacity: 0.4;
     cursor: default;
   }
@@ -247,12 +261,8 @@ caffold-task-review {
       grid-template-columns: repeat(3, max-content) minmax(0, 1fr) auto;
     }
 
-    & .task-review-axis > span {
+    & .task-review-axis-label {
       display: none;
-    }
-
-    & .task-review-axis {
-      grid-template-columns: repeat(2, max-content);
     }
   }
 }
@@ -272,10 +282,14 @@ caffold-task-review {
 
     & .task-review-axis {
       width: 100%;
+    }
+
+    & .task-review-axis-options {
+      width: 100%;
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    & .task-review-axis button {
+    & .task-review-axis-options button {
       min-width: 0;
       padding: 0 var(--interface-space-2);
       overflow: hidden;

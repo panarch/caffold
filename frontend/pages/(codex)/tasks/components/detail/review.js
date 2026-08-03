@@ -76,19 +76,25 @@ class CaffoldTaskReview extends HTMLElement {
       <section class="task-review-workspace" aria-label="Task review">
         <header class="task-review-toolbar">
           <div class="task-review-axis" role="group" aria-label="Review scope">
-            <span>Scope</span>
-            <button type="button" data-review-axis="scope" data-review-value="working">Working Tree</button>
-            <button type="button" data-review-axis="scope" data-review-value="branch">Branch</button>
+            <span class="task-review-axis-label">Scope</span>
+            <div class="task-review-axis-options">
+              <button type="button" data-review-axis="scope" data-review-value="working">Working Tree</button>
+              <button type="button" data-review-axis="scope" data-review-value="branch">Branch</button>
+            </div>
           </div>
           <div class="task-review-axis" role="group" aria-label="Review navigator">
-            <span>Navigator</span>
-            <button type="button" data-review-axis="navigator" data-review-value="changes">Changes</button>
-            <button type="button" data-review-axis="navigator" data-review-value="files">Files</button>
+            <span class="task-review-axis-label">Navigator</span>
+            <div class="task-review-axis-options">
+              <button type="button" data-review-axis="navigator" data-review-value="changes">Changes</button>
+              <button type="button" data-review-axis="navigator" data-review-value="files">Files</button>
+            </div>
           </div>
           <div class="task-review-axis" role="group" aria-label="Review viewer">
-            <span>Viewer</span>
-            <button type="button" data-review-axis="viewer" data-review-value="diff">Diff</button>
-            <button type="button" data-review-axis="viewer" data-review-value="source">Source</button>
+            <span class="task-review-axis-label">Viewer</span>
+            <div class="task-review-axis-options">
+              <button type="button" data-review-axis="viewer" data-review-value="diff">Diff</button>
+              <button type="button" data-review-axis="viewer" data-review-value="source">Source</button>
+            </div>
           </div>
           <label class="task-review-base">
             <span>Base</span>
