@@ -6,6 +6,8 @@ export async function installTaskReviewFixture(page) {
   let gitCompareRequests = 0;
   let gitCompareDiffRequests = 0;
   let includeLiveFile = false;
+  let largeChangeSet = false;
+  let edgeCaseFiles = false;
 
   await page.route(/\/api\/git\/status(?:\?|$)/, (route) => {
     gitStatusRequests += 1;
@@ -13,7 +15,7 @@ export async function installTaskReviewFixture(page) {
       contentType: "application/json",
       body: JSON.stringify({
         repository: { rootPath: "src", branch: "main", dirty: true },
-        additions: includeLiveFile ? 6 : 5,
+        additions: includeLiveFile ? 6 : largeChangeSet ? 185 : 5,
         deletions: 4,
         files: [
           {
@@ -65,6 +67,39 @@ export async function installTaskReviewFixture(page) {
                 },
               ]
             : []),
+          ...(edgeCaseFiles
+            ? [
+                {
+                  path: "src/deleted.rs",
+                  repoRelativePath: "deleted.rs",
+                  status: " D",
+                  category: "unstaged",
+                  staged: false,
+                  unstaged: true,
+                  untracked: false,
+                },
+                {
+                  path: "src/untracked.rs",
+                  repoRelativePath: "untracked.rs",
+                  status: "??",
+                  category: "untracked",
+                  staged: false,
+                  unstaged: false,
+                  untracked: true,
+                },
+              ]
+            : []),
+          ...(largeChangeSet
+            ? Array.from({ length: 180 }, (_, index) => ({
+                path: `src/generated/deep/review/file-${`${index + 1}`.padStart(3, "0")}-with-a-long-review-name.rs`,
+                repoRelativePath: `generated/deep/review/file-${`${index + 1}`.padStart(3, "0")}-with-a-long-review-name.rs`,
+                status: " M",
+                category: "unstaged",
+                staged: false,
+                unstaged: true,
+                untracked: false,
+              }))
+            : []),
         ],
       }),
     });
@@ -104,6 +139,10 @@ export async function installTaskReviewFixture(page) {
           { name: "main", kind: "local" },
           { name: "origin/main", kind: "remote" },
           { name: "origin/release", kind: "remote" },
+          {
+            name: "origin/feature/this-is-a-very-long-branch-name-used-for-responsive-review-testing",
+            kind: "remote",
+          },
         ],
         currentRef: "main",
         defaultBaseRef: "origin/main",
@@ -177,6 +216,12 @@ export async function installTaskReviewFixture(page) {
     },
     set includeLiveFile(value) {
       includeLiveFile = value;
+    },
+    set largeChangeSet(value) {
+      largeChangeSet = value;
+    },
+    set edgeCaseFiles(value) {
+      edgeCaseFiles = value;
     },
   };
 }
