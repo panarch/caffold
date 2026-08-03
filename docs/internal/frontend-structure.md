@@ -56,15 +56,11 @@ caffold-app-shell
             caffold-task-conversation
             caffold-task-composer
             caffold-task-review
-              scaffold-file-browser
+              scaffold-git-diff-changes-tree
+              scaffold-git-compare-tree
+              scaffold-file-navigator
                 scaffold-file-list
-                scaffold-file-viewer
-              scaffold-git-diff-browser
-                scaffold-git-diff-changes-tree
-                scaffold-review-file-viewer
-              scaffold-git-compare-browser
-                scaffold-git-compare-tree
-                scaffold-review-file-viewer
+              scaffold-review-file-viewer
     scaffold-review-workspace
       git
         scaffold-git-review-layout
@@ -153,15 +149,16 @@ focused control or lose pointer capture. User updates and resets publish one
 
 `files/page` is the app root's route-level file browsing page. It renders
 `scaffold-file-browser` and delegates the file browser API that app-shell uses.
-`components/file-browser` owns the reusable file browser surface: directory
-loading, file preview loading, files-route path materialization, list/viewer
-state, file-list scroll restoration, delayed loading indicators, mobile
-list/viewer switching, and the left file-panel resizer. The app root
-coordinates cwd context, URL navigation, pathbar, and header actions around
-that surface instead of owning file browser internals.
-The file browser also owns its live-update subscription and refreshes only its
-loaded directory cache and selected file. `watch.js` shares the SSE
-subscription with other consumers of the same filesystem scope.
+`components/file-navigator` owns reusable directory loading/cache, expanded
+tree state, selected-row presentation, list scroll, delayed loading feedback,
+and its optional live-update subscription. `components/file-browser` composes
+that navigator with the shared file viewer and owns file-preview loading,
+files-route path materialization, list/viewer mode, mobile switching, and the
+left file-panel resizer. The app root coordinates cwd context, URL navigation,
+pathbar, and header actions around that surface instead of owning file browser
+internals. `watch.js` shares an SSE subscription with other consumers of the
+same filesystem scope; integrated Task Review disables the navigator's own
+watch and supplies one Review-owned root watch instead.
 
 `(codex)/layout` is the app root's default Codex workspace and `/` is its
 canonical Tasks home. It fills the app main route slot, so Tasks do not inherit
@@ -170,8 +167,8 @@ the Caffold brand and primary Settings/New Task actions. It is separate
 from `(review-workspace)` because Codex is a work/control surface, not only a
 review surface. The layout delegates its route-level work to a stable-mounted
 Tasks page. `(codex)/tasks/page` is only the route and master-detail
-coordinator. It owns the selected route/thread, responsive visibility, list
-width, and the conversation/Files/Diff outer layout. It does not fetch task
+  coordinator. It owns the selected route/thread, responsive visibility, list
+  width, and the Conversation/Review outer layout. It does not fetch task
 data, subscribe to task streams, send Codex mutations, or render child
 internals.
 
@@ -203,9 +200,14 @@ lifetimes:
 - The follow-up `caffold-task-composer` owns thread-local drafts, images,
   focus/selection, textarea sizing, and explicit model/permission overrides.
   Detail still owns the prompt mutation and canonical reconciliation.
-- `caffold-task-review` owns Files/Diff/Compare selection, Git status,
-  filesystem watches, refresh coordination, and the reusable review browsers.
-  Task and event inputs are read-only context for that component.
+- `caffold-task-review` is the integrated Task Review owner. It owns one
+  selected path plus the independent Working Tree/Branch, Changes/Files, and
+  Diff/Source axes. It composes the two Git change-tree presentations, one
+  reusable file navigator, and one shared source/diff viewer instead of
+  mounting complete Files, Diff, and Compare browsers. It also owns Git
+  status/compare requests, the one root filesystem watch, refresh generations,
+  panel width, navigator/viewer scroll, and expanded file directories. Task and
+  event inputs are read-only context for that component.
 
 Navigator and Detail are independent browser projections. Each owns its own
 REST/SSE baseline and revision map; neither revision can invalidate the other.
@@ -220,16 +222,22 @@ child. Actions cross upward as intent events. Leaf components do not mutate
 sibling state or call Codex mutation APIs on behalf of their canonical owner.
 The Tasks page mounts Navigator, New Task, and Detail once and switches them
 with visibility and activation methods. Detail likewise preserves Summary,
-Conversation, Composer, and Review instances. Switching conversation/Files/Diff
-therefore does not require capture-and-restore code for header disclosure,
-drafts, transcript scroll, or review selection.
+Conversation, and Composer instances. It keeps up to six thread-local Review
+instances in an explicit LRU cache (`CLEAN_REVIEW_CACHE_LIMIT = 6`). An inactive
+Review is disconnected so its watcher and requests stop, while its DOM-local
+panel width, scroll, and disclosure state remain available for a quick return.
+Switching Conversation and Review therefore preserves the composer draft and
+transcript position without letting inactive review work continue in the
+background.
 
-Files opens the derived worktree root, falling back to the thread cwd outside
-Git. Diff uses the same reusable tree/viewer implementation as the Git review
-route and is available whenever a live worktree context exists. Live repository
-and worktree context is derived from each canonical thread cwd rather than
-stored by the frontend. The app root only routes cwd context into the Codex
-workspace.
+Task Review semantic state comes from `/tasks/:threadId/review`: selected path,
+scope, navigator, viewer, and branch base are route-owned. The Review component
+is the only writer that turns UI intents into changes to those route fields;
+the Tasks page and Detail only forward the route and intent. Scroll, expanded
+directories, and resizer width remain component-local and do not enter the URL.
+The worktree root is used when Git is available, with the thread cwd as the
+non-Git Files/Source root. Live repository and worktree context is derived from
+each canonical thread cwd rather than stored by the frontend.
 
 When a loaded directory enters or leaves a Git repository, the app root decides
 the current repository context and reloads the active review route if needed.

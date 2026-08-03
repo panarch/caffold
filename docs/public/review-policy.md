@@ -89,6 +89,31 @@ Frontend fixtures should include inconvenient examples, not only normal labels:
 - short content that does not fill the viewer
 - narrow foldable and phone widths
 
+### Integrated Review Navigation
+
+Treat review scope, navigator, viewer representation, and selected file as
+independent axes. Switching Working Tree/Branch, Changes/Files, or Diff/Source
+must not silently choose another file or representation merely to make the new
+surface non-empty. Empty or unavailable combinations should explain the state
+and offer an explicit action.
+
+One integrated review workspace must have one selected-path owner. Reusing
+change-tree, file-tree, source, and diff presentation components is preferred;
+mounting complete standalone Files, Diff, and Compare browsers inside another
+review surface creates duplicate selection, watcher, and request owners.
+
+The route owns reloadable semantic review state. Panel width, tree disclosure,
+and navigator/viewer scroll belong to the component instance. A cached inactive
+review may retain those DOM-local values, but it must release filesystem
+watches, pending requests, and other active lifecycle work.
+
+Responsive review tests must cover both list and viewer roles. Desktop and
+foldable layouts preserve a usable navigator and viewer simultaneously; phone
+layouts show one at a time and expose a semantic file-to-navigator Back action.
+Test deep paths, unchanged and deleted files, clean scopes, long refs, large
+change sets, appearance extremes, and browser zoom rather than validating only
+the default happy path.
+
 ## Web Components And CSS
 
 Caffold currently uses internal Web Components rendered in Light DOM. This keeps browser behavior, debugging, Playwright tests, shared theme variables, and small frontend modules straightforward. It also means CSS is still one global cascade.

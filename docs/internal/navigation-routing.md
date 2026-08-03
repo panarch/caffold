@@ -25,6 +25,7 @@ encode mobile, foldable, or desktop layout state.
 - `/`
 - `/tasks/new?cwd=...`
 - `/tasks/:threadId`
+- `/tasks/:threadId/review?scope=...&nav=...&view=...&file=...&base=...`
 - `/files?cwd=...&file=...`
 - `/git/diff?cwd=...&file=...`
 - `/git/compare?cwd=...&base=...&head=...&file=...`
@@ -55,6 +56,22 @@ filters the list.
 `/tasks/new?cwd=...` is the only Tasks route that carries cwd, because it selects
 where the new thread starts. Legacy list and detail URLs containing cwd are
 canonicalized to their cwd-free forms.
+
+Task Conversation keeps `/tasks/:threadId`. Integrated Task Review uses
+`/tasks/:threadId/review` and carries five independent semantic fields:
+
+- `scope=working|branch`
+- `nav=changes|files`
+- `view=diff|source`
+- `file=<task-root-relative-path>`
+- `base=<branch-base-ref>`
+
+The defaults (`working`, `changes`, `diff`, no file, no base) are omitted.
+Unknown enum values, parent traversal, and root-escaping file paths normalize
+to safe defaults with history replacement. If Branch has no explicit base,
+the Git refs response supplies the default and the resolved base is replaced
+into the URL. Async Git and filesystem responses fill the prepared Review but
+do not decide its selected path or axes.
 
 ## Route Definitions
 
@@ -97,6 +114,8 @@ Back and close controls use deterministic parent routes:
 - PR files -> PR detail
 - PR detail -> PR list
 - task detail -> task list
+- task Review file -> the same Review route without `file`
+- task Review list -> the same task Conversation
 - new task -> task list
 - global task list -> no parent
 - standalone review workspace close -> standalone files at the same cwd
@@ -108,6 +127,13 @@ subscribing to the thread.
 
 Browser back/forward should produce the same state transitions as the visible
 controls.
+
+Conversation -> Review pushes a history entry. Scope, navigator, viewer, and
+base changes replace the current Review entry because they refine one review
+workspace rather than open a new destination. The first file selection pushes
+the file parent boundary; later file selections replace that file entry. On
+phone, the visible Review Back control removes only `file`, matching the
+semantic parent returned by `parentRoute`.
 
 ## Browser API
 
