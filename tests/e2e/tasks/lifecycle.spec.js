@@ -13,6 +13,111 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
+test("background Task tabs release list and detail streams", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Browser connection lifecycle regression");
+  await page.addInitScript(() => {
+    window.__caffoldVisibilityState = "visible";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => window.__caffoldVisibilityState,
+    });
+  });
+  await installEventSourceMock(page, {
+    registryKey: "__taskLifecycleEventSources",
+    autoOpen: true,
+  });
+  await mockCodexModels(page);
+
+  const threadId = "thread_background_stream_lifecycle";
+  const now = 1_767_190_400_000;
+  const task = {
+    id: threadId,
+    threadId,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Background stream lifecycle",
+    preview: "Canonical detail loaded",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: "Canonical detail loaded",
+  };
+  let detailReads = 0;
+  let listReads = 0;
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    listReads += 1;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [task], nextCursor: null }),
+    });
+  });
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) => {
+    detailReads += 1;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        threadId,
+        syncState: "ready",
+        managed: true,
+        revision: detailReads,
+        task,
+        events: [],
+        eventsPage: { nextCursor: null },
+        pendingApprovals: [],
+      }),
+    });
+  });
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  await expect(page.locator("caffold-task-detail")).toContainText(
+    "Background stream lifecycle",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__taskLifecycleEventSources.filter(
+          (source) => source.readyState !== 2,
+        ).length,
+      ),
+    )
+    .toBe(2);
+
+  await page.evaluate(() => {
+    window.__caffoldVisibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__taskLifecycleEventSources.every(
+          (source) => source.readyState === 2,
+        ),
+      ),
+    )
+    .toBe(true);
+
+  await page.evaluate(() => {
+    window.__caffoldVisibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect.poll(() => listReads).toBeGreaterThan(1);
+  await expect.poll(() => detailReads).toBeGreaterThan(1);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__taskLifecycleEventSources.filter(
+          (source) => source.readyState !== 2,
+        ).length,
+      ),
+    )
+    .toBe(2);
+});
+
 test("reattaches Tasks component lifecycles without rebuilding stable children", async ({
   page,
 }, testInfo) => {

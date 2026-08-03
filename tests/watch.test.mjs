@@ -94,13 +94,26 @@ test("requests recovery after reconnect and visibility resume", () => {
   source.emit("ready", { revision: 1, scopePath: "recovery", repositoryRootPath: null });
   source.emit("error");
   source.emit("ready", { revision: 2, scopePath: "recovery", repositoryRootPath: null });
+  document.visibilityState = "hidden";
   documentListeners.get("visibilitychange")();
+  assert.equal(source.closed, true);
+
+  document.visibilityState = "visible";
+  documentListeners.get("visibilitychange")();
+  const resumedSource = MockEventSource.instances.at(-1);
+  assert.notEqual(resumedSource, source);
+  resumedSource.emit("ready", {
+    revision: 3,
+    scopePath: "recovery",
+    repositoryRootPath: null,
+  });
 
   assert.deepEqual(events, [
     ["ready", false],
     ["error"],
     ["ready", true],
     ["visible"],
+    ["ready", false],
   ]);
   unsubscribe();
 });

@@ -335,10 +335,11 @@ class CaffoldTaskDetail extends HTMLElement {
     this.detailLoadError = null;
     this.historyLoadError = null;
     this.render();
+    const detailRequest = getTask(threadId);
     this.detailStream.activate(threadId);
 
     try {
-      const detail = await getTask(threadId);
+      const detail = await detailRequest;
       if (loadGeneration !== this.detailLoadGeneration) {
         return null;
       }

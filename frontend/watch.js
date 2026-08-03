@@ -27,7 +27,7 @@ export function subscribeToWatch(path, listener) {
     if (scope.listeners.size > 0) {
       return;
     }
-    scope.source.close();
+    scope.source?.close();
     scopes.delete(key);
   };
 }
@@ -69,7 +69,7 @@ export function createRefreshCoordinator(refresh, onState = () => {}) {
 function createScope(path) {
   const scope = {
     path,
-    source: new EventSource(watchUrl(path)),
+    source: null,
     listeners: new Set(),
     ready: null,
     unavailable: false,
@@ -77,7 +77,22 @@ function createScope(path) {
     hasConnected: false,
   };
 
-  scope.source.addEventListener("ready", (event) => {
+  connectScope(scope);
+  return scope;
+}
+
+function connectScope(scope) {
+  if (scope.source || document.visibilityState !== "visible") {
+    return;
+  }
+
+  const source = new EventSource(watchUrl(scope.path));
+  scope.source = source;
+
+  source.addEventListener("ready", (event) => {
+    if (scope.source !== source) {
+      return;
+    }
     const ready = parsePayload(event);
     if (!ready) {
       return;
@@ -89,7 +104,10 @@ function createScope(path) {
     scope.error = null;
     notify(scope, "onReady", { ...ready, recovered });
   });
-  scope.source.addEventListener("change", (event) => {
+  source.addEventListener("change", (event) => {
+    if (scope.source !== source) {
+      return;
+    }
     const change = parsePayload(event);
     if (change) {
       if (scope.unavailable) {
@@ -100,15 +118,19 @@ function createScope(path) {
       notify(scope, "onChange", change);
     }
   });
-  scope.source.addEventListener("watch-error", (event) => {
+  source.addEventListener("watch-error", (event) => {
+    if (scope.source !== source) {
+      return;
+    }
     const payload = parsePayload(event);
     markUnavailable(scope, new Error(payload?.message ?? "Live updates are unavailable."));
   });
-  scope.source.addEventListener("error", () => {
+  source.addEventListener("error", () => {
+    if (scope.source !== source) {
+      return;
+    }
     markUnavailable(scope, new Error("Live updates are unavailable."));
   });
-
-  return scope;
 }
 
 function markUnavailable(scope, error) {
@@ -133,11 +155,16 @@ function parsePayload(event) {
 
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "visible") {
+    for (const scope of scopes.values()) {
+      scope.source?.close();
+      scope.source = null;
+    }
     return;
   }
   for (const scope of scopes.values()) {
     if (scope.ready) {
       notify(scope, "onRecover", scope.ready);
     }
+    connectScope(scope);
   }
 });

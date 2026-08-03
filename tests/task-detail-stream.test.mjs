@@ -87,6 +87,10 @@ function installBrowserHarness() {
 
   return {
     sources,
+    setVisibility(state) {
+      globalThis.document.visibilityState = state;
+      this.emitDocumentEvent("visibilitychange");
+    },
     emitDocumentEvent(type) {
       for (const listener of documentListeners.get(type) ?? []) {
         listener();
@@ -206,4 +210,35 @@ test("invalidates a pending refresh when the stream generation changes", async (
   assert.equal(isCurrentRefresh(), false);
   pendingRefresh.resolve();
   await pendingRefresh.promise;
+});
+
+test("releases the stream while hidden and refreshes before reconnecting", async () => {
+  const browser = installBrowserHarness();
+  const refresh = deferred();
+  let refreshCount = 0;
+  const stream = new TaskDetailStream({
+    onRefresh: () => {
+      refreshCount += 1;
+      return refresh.promise;
+    },
+  });
+
+  stream.activate("thread-a");
+  const initialSource = browser.sources[0];
+
+  browser.setVisibility("hidden");
+  assert.equal(initialSource.closed, true);
+  assert.equal(stream.stream, null);
+  assert.equal(stream.state, TASK_TRANSPORT_STATE.IDLE);
+
+  browser.setVisibility("visible");
+  await Promise.resolve();
+  assert.equal(refreshCount, 1);
+  assert.equal(browser.sources.length, 1);
+
+  refresh.resolve();
+  await refresh.promise;
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(browser.sources.length, 2);
+  assert.equal(browser.sources[1].url, "/api/tasks/thread-a/stream");
 });

@@ -24,7 +24,11 @@ export class TaskDetailStream {
 
   activate(threadId, { force = false } = {}) {
     const nextThreadId = `${threadId ?? ""}`.trim();
-    if (!force && this.stream && this.threadId === nextThreadId) {
+    if (
+      !force &&
+      this.threadId === nextThreadId &&
+      (this.stream || document.visibilityState !== "visible")
+    ) {
       return;
     }
 
@@ -36,15 +40,28 @@ export class TaskDetailStream {
     }
 
     this.attachVisibilityListener();
+    if (document.visibilityState !== "visible") {
+      return;
+    }
+    this.openConnection(nextThreadId, this.generation);
+  }
+
+  openConnection(threadId, generation) {
+    if (
+      this.stream ||
+      document.visibilityState !== "visible" ||
+      !this.isCurrentGeneration(threadId, generation)
+    ) {
+      return;
+    }
     if (!("EventSource" in window)) {
       this.setState(TASK_TRANSPORT_STATE.UNAVAILABLE);
       return;
     }
 
-    const generation = this.generation;
     let stream;
     try {
-      stream = new EventSource(taskStreamUrl(nextThreadId));
+      stream = new EventSource(taskStreamUrl(threadId));
     } catch {
       this.setState(TASK_TRANSPORT_STATE.UNAVAILABLE);
       return;
@@ -53,19 +70,19 @@ export class TaskDetailStream {
     this.stream = stream;
     this.setState(TASK_TRANSPORT_STATE.CONNECTING, { notify: false });
     stream.addEventListener("open", () => {
-      if (!this.isCurrent(stream, nextThreadId, generation)) {
+      if (!this.isCurrent(stream, threadId, generation)) {
         return;
       }
       const shouldRefresh = isTaskTransportStale(this.state);
       this.clearErrorTimer();
       if (shouldRefresh) {
-        this.requestRefresh(nextThreadId, generation);
+        this.requestRefresh(threadId, generation);
         return;
       }
       this.setState(TASK_TRANSPORT_STATE.READY);
     });
     stream.addEventListener("error", () => {
-      if (!this.isCurrent(stream, nextThreadId, generation)) {
+      if (!this.isCurrent(stream, threadId, generation)) {
         return;
       }
       this.clearErrorTimer();
@@ -76,7 +93,7 @@ export class TaskDetailStream {
       this.setState(TASK_TRANSPORT_STATE.RECONNECTING);
       this.errorTimer = window.setTimeout(() => {
         if (
-          this.isCurrent(stream, nextThreadId, generation) &&
+          this.isCurrent(stream, threadId, generation) &&
           this.state === TASK_TRANSPORT_STATE.RECONNECTING
         ) {
           this.errorTimer = null;
@@ -85,24 +102,24 @@ export class TaskDetailStream {
       }, STREAM_ERROR_DELAY_MS);
     });
     stream.addEventListener("task-sync", (event) => {
-      if (!this.isCurrent(stream, nextThreadId, generation)) {
+      if (!this.isCurrent(stream, threadId, generation)) {
         return;
       }
       const message = parseJson(event.data);
       if (
         message?.reason === "external-sync-start" ||
-        message?.threadId !== nextThreadId
+        message?.threadId !== threadId
       ) {
         return;
       }
       this.onTaskSync(message);
     });
     stream.addEventListener("task-event", (event) => {
-      if (!this.isCurrent(stream, nextThreadId, generation)) {
+      if (!this.isCurrent(stream, threadId, generation)) {
         return;
       }
       const message = parseJson(event.data);
-      if (message?.threadId !== nextThreadId) {
+      if (message?.threadId !== threadId) {
         return;
       }
       this.onTaskEvent(message);
@@ -165,10 +182,19 @@ export class TaskDetailStream {
   }
 
   visibilityChanged() {
-    if (document.visibilityState !== "visible" || !this.threadId) {
+    if (!this.threadId) {
       return;
     }
-    this.requestRefresh();
+    if (document.visibilityState !== "visible") {
+      this.closeConnection();
+      return;
+    }
+
+    const threadId = this.threadId;
+    const generation = this.generation;
+    void this.requestRefresh(threadId, generation).finally(() => {
+      this.openConnection(threadId, generation);
+    });
   }
 
   markCanonicalReady(threadId) {

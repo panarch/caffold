@@ -29,6 +29,7 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.ensureState();
     this.addEventListener("click", this.boundClick);
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
+    document.addEventListener("visibilitychange", this.boundVisibilityChange);
     this.render();
     if (this.active) {
       void this.activate({ force: true });
@@ -38,6 +39,7 @@ class CaffoldTaskNavigator extends HTMLElement {
   disconnectedCallback() {
     this.removeEventListener("click", this.boundClick);
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
+    document.removeEventListener("visibilitychange", this.boundVisibilityChange);
     this.taskListRequestId += 1;
     this.taskHistoryRequestId += 1;
     this.taskListLoading = false;
@@ -78,18 +80,36 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.active = false;
     this.boundClick = (event) => this.handleClick(event);
     this.boundIconsReady = () => this.render();
+    this.boundVisibilityChange = () => this.handleVisibilityChange();
     warmIcons();
   }
 
   async activate({ force = false } = {}) {
     this.ensureState();
     this.active = true;
-    this.connectStream();
     const [tasks, history] = await Promise.all([
       this.loadTasks({ force }),
       this.loadHistory({ force }),
     ]);
+    if (
+      this.active &&
+      this.isConnected &&
+      document.visibilityState === "visible"
+    ) {
+      this.connectStream();
+    }
     return { tasks, history };
+  }
+
+  handleVisibilityChange() {
+    if (!this.active) {
+      return;
+    }
+    if (document.visibilityState !== "visible") {
+      this.closeStream();
+      return;
+    }
+    void this.activate({ force: true });
   }
 
   setSelectedThreadId(threadId) {
@@ -387,7 +407,12 @@ class CaffoldTaskNavigator extends HTMLElement {
   }
 
   connectStream() {
-    if (!this.active || this.stream) {
+    if (
+      !this.active ||
+      !this.isConnected ||
+      document.visibilityState !== "visible" ||
+      this.stream
+    ) {
       return;
     }
     if (!("EventSource" in window)) {
