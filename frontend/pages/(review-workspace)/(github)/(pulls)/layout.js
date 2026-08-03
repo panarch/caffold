@@ -75,6 +75,9 @@ class CaffoldGithubPullsLayout extends HTMLElement {
     this.emitStateChange();
 
     if (options.skipReload) {
+      if (this.pulls) {
+        this.listPage.setPulls(this.pulls);
+      }
       return this.pulls;
     }
 
@@ -247,9 +250,15 @@ class CaffoldGithubPullsLayout extends HTMLElement {
     this.ensureRendered();
     this.page = normalizePage(route?.page ?? this.page);
     if (!route?.number) {
+      const keepCurrentContext = this.routeMatchesCurrentContext(route);
       this.selectedPullSummary = null;
       this.setView("list");
       this.listPage.setSelectedPull(null);
+      this.listPage.setLoading(
+        keepCurrentContext ? this.githubStatus : null,
+        keepCurrentContext ? this.pulls : null,
+        this.page,
+      );
       this.detailPage.setEmpty();
       this.filesPage.reset();
       this.emitStateChange();
@@ -270,6 +279,23 @@ class CaffoldGithubPullsLayout extends HTMLElement {
     } else {
       this.setView("detail");
       this.detailPage.setLoading(route.number);
+      this.filesPage.reset();
+    }
+    this.emitStateChange();
+  }
+
+  setRouteError(route, error) {
+    this.pullListRequestId += 1;
+    this.pullDetailRequestId += 1;
+    if (route?.files) {
+      this.filesPage.setError(error, this.repository, {
+        preserveView: Boolean(route.path),
+      });
+    } else if (route?.number) {
+      this.detailPage.setError(route.number, error);
+    } else {
+      this.listPage.setError(error, this.githubStatus);
+      this.detailPage.setEmpty();
       this.filesPage.reset();
     }
     this.emitStateChange();
@@ -383,6 +409,11 @@ class CaffoldGithubPullsLayout extends HTMLElement {
 
   currentPullNumber() {
     return this.selectedPullSummary?.number ?? this.filesPage.currentPullNumber();
+  }
+
+  routeMatchesCurrentContext(route) {
+    const routePath = route?.cwd ?? "";
+    return routePath === this.currentPath || routePath === this.repository?.rootPath;
   }
 
   isFileViewer(target) {

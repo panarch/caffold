@@ -349,6 +349,17 @@ class CaffoldGithubReviewLayout extends HTMLElement {
     return result;
   }
 
+  setRouteError(route, error) {
+    this.prepareRoute(route);
+    const mode = routeMode(route);
+    if (mode === "issues") {
+      this.issuesLayout.setRouteError(route, error);
+    } else if (mode === "pulls") {
+      this.pullsLayout.setRouteError(route, error);
+    }
+    this.emitStateChange();
+  }
+
   prepareRoute(route) {
     this.ensureRendered();
     const mode = routeMode(route);

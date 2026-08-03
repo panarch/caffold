@@ -184,6 +184,13 @@ class CaffoldReviewWorkspace extends HTMLElement {
     return result;
   }
 
+  setGithubRouteError(route, error) {
+    this.ensureRendered();
+    this.prepareRoute(route);
+    this.githubLayout.setRouteError(route, error);
+    this.refreshDetails();
+  }
+
   prepareRoute(route) {
     this.ensureRendered();
     const domain = routeDomain(route);

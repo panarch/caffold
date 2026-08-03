@@ -343,9 +343,9 @@ class CaffoldAppShell extends HTMLElement {
       this.replaceRoute(route);
     }
     this.prepareRoute(route);
+    const domain = routeDomain(route);
     try {
       const surface = routeSurface(route);
-      const domain = routeDomain(route);
       if (surface === "files") {
         await this.applyFilesRoute(route);
       } else if (surface === "tasks") {
@@ -360,7 +360,13 @@ class CaffoldAppShell extends HTMLElement {
 
       return true;
     } catch (error) {
-      this.filesPage.setError(error);
+      if (domain === "github") {
+        if (this.isCurrentRoute(route)) {
+          this.reviewWorkspace.setGithubRouteError(route, error);
+        }
+      } else {
+        this.filesPage.setError(error);
+      }
       return false;
     } finally {
       this.isApplyingRoute = false;
@@ -434,7 +440,7 @@ class CaffoldAppShell extends HTMLElement {
     this.codexWorkspace.hidden = true;
     this.filesPage.hidden = false;
     if (!(await this.ensureReviewContext(route.cwd))) {
-      return;
+      throw new Error(`No Git repository found for ${route.cwd || "this workspace"}.`);
     }
     route = this.canonicalReviewRoute(route);
     if (!this.isCurrentRoute(route)) {

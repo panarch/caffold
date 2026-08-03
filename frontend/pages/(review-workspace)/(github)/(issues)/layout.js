@@ -63,7 +63,10 @@ class CaffoldGithubIssuesLayout extends HTMLElement {
     this.emitStateChange();
 
     if (options.skipReload) {
-      return null;
+      if (this.issues) {
+        this.listPage.setIssues(this.issues);
+      }
+      return this.issues;
     }
 
     if (!this.githubStatus) {
@@ -132,9 +135,27 @@ class CaffoldGithubIssuesLayout extends HTMLElement {
       this.listPage.setSelectedIssue(route.number);
       this.detailPage.setLoading(route.number);
     } else {
+      const keepCurrentContext = this.routeMatchesCurrentContext(route);
       this.selectedIssueSummary = null;
       this.setView("list");
       this.listPage.setSelectedIssue(null);
+      this.listPage.setLoading(
+        keepCurrentContext ? this.githubStatus : null,
+        keepCurrentContext ? this.issues : null,
+        this.page,
+      );
+      this.detailPage.setEmpty();
+    }
+    this.emitStateChange();
+  }
+
+  setRouteError(route, error) {
+    this.issueListRequestId += 1;
+    this.issueDetailRequestId += 1;
+    if (route?.number) {
+      this.detailPage.setError(route.number, error);
+    } else {
+      this.listPage.setError(error, this.githubStatus);
       this.detailPage.setEmpty();
     }
     this.emitStateChange();
@@ -315,6 +336,11 @@ class CaffoldGithubIssuesLayout extends HTMLElement {
 
   currentIssueNumber() {
     return this.selectedIssueSummary?.number ?? null;
+  }
+
+  routeMatchesCurrentContext(route) {
+    const routePath = route?.cwd ?? "";
+    return routePath === this.currentPath || routePath === this.repository?.rootPath;
   }
 
   emitStateChange() {
