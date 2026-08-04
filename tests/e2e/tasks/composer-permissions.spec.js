@@ -325,7 +325,8 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
       const modelButton = element.querySelector(".task-model-button");
       const modelName = element.querySelector(".task-model-name");
       const permissionButton = element.querySelector(".task-permission-button");
-      const build = document.querySelector(".app-build");
+      const buildAlert = document.querySelector(".app-build-alert");
+      const shell = document.querySelector("caffold-app-shell");
       const workspace = document.querySelector("caffold-codex-workspace");
       const conversation = document.querySelector(".task-conversation-scroll");
       const rootStyle = getComputedStyle(document.documentElement);
@@ -335,7 +336,7 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
       const panelRect = panel.getBoundingClientRect();
       const modelButtonRect = modelButton.getBoundingClientRect();
       const permissionButtonRect = permissionButton.getBoundingClientRect();
-      const buildRect = build.getBoundingClientRect();
+      const shellRect = shell.getBoundingClientRect();
       const workspaceRect = workspace.getBoundingClientRect();
       return {
         borderTopWidth: formStyle.borderTopWidth,
@@ -355,8 +356,8 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
         ),
         sendDisabled: sendButton.disabled,
         sendBackground: sendStyle.backgroundColor,
-        buildPosition: getComputedStyle(build).position,
-        buildTop: buildRect.top,
+        buildAlertHidden: buildAlert.hidden,
+        shellBottom: shellRect.bottom,
         workspaceBottom: workspaceRect.bottom,
       };
     });
@@ -366,7 +367,7 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
     expect.objectContaining({
       borderTopWidth: "0px",
       sendDisabled: true,
-      buildPosition: "static",
+      buildAlertHidden: true,
     }),
   );
   expect(idle.panelHeight).toBeLessThanOrEqual(96);
@@ -374,8 +375,8 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
   expect(idle.modelNameClipped).toBe(false);
   expect(idle.chipGap).toBeGreaterThanOrEqual(0);
   expect(idle.chipGap).toBeLessThanOrEqual(8);
-  expect(idle.panelBottom).toBeLessThanOrEqual(idle.buildTop);
-  expect(idle.workspaceBottom).toBeLessThanOrEqual(idle.buildTop);
+  expect(idle.panelBottom).toBeLessThanOrEqual(idle.workspaceBottom);
+  expect(idle.workspaceBottom).toBeLessThanOrEqual(idle.shellBottom);
   if (testInfo.project.name === "phone") {
     expect(idle.formPaddingLeft / idle.rootFontSize).toBeCloseTo(0.75, 2);
     expect(idle.conversationPaddingLeft / idle.rootFontSize).toBeCloseTo(

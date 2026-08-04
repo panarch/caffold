@@ -59,6 +59,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/components/app-menu.js" => {
             Some(js(include_str!("../frontend/pages/components/app-menu.js")))
         }
+        "pages/components/about-dialog.css" => Some(css(include_str!(
+            "../frontend/pages/components/about-dialog.css"
+        ))),
+        "pages/components/about-dialog.js" => Some(js(include_str!(
+            "../frontend/pages/components/about-dialog.js"
+        ))),
         "pages/components/pathbar.css" => Some(css(include_str!(
             "../frontend/pages/components/pathbar.css"
         ))),
@@ -500,6 +506,10 @@ mod tests {
         let app_menu = get("pages/components/app-menu.js").expect("app menu js asset");
         assert_eq!(app_menu.content_type, "text/javascript; charset=utf-8");
         assert!(app_menu.body.starts_with(b"import "));
+
+        let about_dialog = get("pages/components/about-dialog.js").expect("about dialog js asset");
+        assert_eq!(about_dialog.content_type, "text/javascript; charset=utf-8");
+        assert!(about_dialog.body.starts_with(b"import "));
 
         let settings_module = get("settings.js").expect("settings module asset");
         assert_eq!(

@@ -110,6 +110,10 @@ test("updates independent ranges live without replacing their DOM", async ({
   const popover = appMenu.locator(".app-menu-popover");
   await expect(popover).toBeVisible();
   await expect(popover).toContainText("Settings");
+  await expect(popover.getByRole("menuitem", { name: "About Caffold" })).toHaveCSS(
+    "font-size",
+    sharedInterfaceTextSize,
+  );
   const openSettings = popover.locator('button[data-action="open-settings"]');
   await expect(openSettings).toHaveCSS("font-size", sharedInterfaceTextSize);
   await openSettings.click();

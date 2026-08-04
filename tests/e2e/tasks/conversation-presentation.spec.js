@@ -223,50 +223,70 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     expect(geometry.centerDeltaY).toBeLessThanOrEqual(0.5);
   }
   expect(new Set(detailActionGeometry.map(({ iconWidth }) => iconWidth)).size).toBe(1);
-  const contextualControlSize = await tasksPage.evaluate(() => {
-    const probe = document.createElement("div");
-    probe.style.cssText =
-      "position:fixed;height:var(--interface-compact-control-size)";
-    document.body.append(probe);
-    const value = probe.getBoundingClientRect().height;
-    probe.remove();
-    return value;
+  const contextualControlGeometry = await tasksPage.evaluate((element) => {
+    const modeSwitch = element.querySelector(".task-mode-switch");
+    const controls = [
+      modeSwitch,
+      ...element.querySelectorAll(
+        ".task-detail-actions > button, .task-detail-actions > details > summary, .task-detail-info-button",
+      ),
+    ];
+    const modeButtons = [...modeSwitch.querySelectorAll("button")];
+    const expandedTouchControls = [
+      ...element.querySelectorAll(
+        ".task-detail-actions > button, .task-detail-actions > details > summary, .task-detail-info-button",
+      ),
+    ];
+    return {
+      heights: controls.map((control) => control.getBoundingClientRect().height),
+      modeButtonHeights: modeButtons.map(
+        (control) => control.getBoundingClientRect().height,
+      ),
+      selectedInset: (() => {
+        const selected = modeSwitch.querySelector('button[aria-pressed="true"] > span');
+        const group = modeSwitch.getBoundingClientRect();
+        const visual = selected.getBoundingClientRect();
+        return {
+          bottom: group.bottom - visual.bottom,
+          top: visual.top - group.top,
+        };
+      })(),
+      expandedTouchHits: expandedTouchControls.map((control) => {
+        const bounds = control.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          bounds.left + bounds.width / 2,
+          bounds.top - 3,
+        );
+        return hit === control || control.contains(hit);
+      }),
+    };
   });
-  for (const geometry of detailActionGeometry) {
-    expect(geometry.height).toBeCloseTo(contextualControlSize, 1);
-    if (geometry.iconOnly) {
-      expect(geometry.width).toBeCloseTo(contextualControlSize, 1);
-    }
+  expect(
+    Math.max(...contextualControlGeometry.heights) -
+      Math.min(...contextualControlGeometry.heights),
+  ).toBeLessThanOrEqual(1);
+  expect(contextualControlGeometry.selectedInset.top).toBeGreaterThanOrEqual(0);
+  expect(contextualControlGeometry.selectedInset.bottom).toBeGreaterThanOrEqual(0);
+  expect(contextualControlGeometry.selectedInset.top).toBeLessThanOrEqual(2);
+  expect(contextualControlGeometry.selectedInset.bottom).toBeLessThanOrEqual(2);
+  if (testInfo.project.name !== "desktop") {
+    expect(Math.max(...contextualControlGeometry.heights)).toBeLessThanOrEqual(34);
+    expect(Math.min(...contextualControlGeometry.modeButtonHeights)).toBeGreaterThanOrEqual(40);
+    expect(contextualControlGeometry.expandedTouchHits.every(Boolean)).toBe(true);
   }
   if (testInfo.project.name === "phone") {
     const mobileHeaderMetrics = await tasksPage.evaluate((element) => {
       const header = element.querySelector(".tasks-header").getBoundingClientRect();
       const summary = element.querySelector(".task-detail-summary").getBoundingClientRect();
-      const actions = [
-        ...element.querySelectorAll(
-          ".task-detail-actions > button, .task-detail-actions > details > summary",
-        ),
-      ].map((control) => control.getBoundingClientRect());
-      const details = element
-        .querySelector(".task-detail-info-button")
-        .getBoundingClientRect();
       return {
         headerHeight: header.height,
         summaryHeight: summary.height,
         overflow: element.scrollWidth > element.clientWidth,
-        actionSizes: [...actions, details].map((box) => ({
-          height: box.height,
-          width: box.width,
-        })),
       };
     });
     expect(mobileHeaderMetrics.headerHeight).toBeLessThanOrEqual(64);
     expect(mobileHeaderMetrics.summaryHeight).toBeLessThanOrEqual(112);
     expect(mobileHeaderMetrics.overflow).toBe(false);
-    for (const size of mobileHeaderMetrics.actionSizes) {
-      expect(Math.round(size.width)).toBe(40);
-      expect(Math.round(size.height)).toBe(40);
-    }
     await stabilizeDynamicText(page);
     await captureReviewScreenshot(page, testInfo, "tasks-mobile-header-details");
   }

@@ -289,6 +289,13 @@ class CaffoldTasksPage extends HTMLElement {
           composed: true,
         }),
       );
+    } else if (action.dataset.taskAction === "open-about") {
+      this.dispatchEvent(
+        new CustomEvent("caffold:open-about", {
+          bubbles: true,
+          composed: true,
+        }),
+      );
     }
   }
 
@@ -332,14 +339,20 @@ class CaffoldTasksPage extends HTMLElement {
     }
     region.innerHTML = `
       <header class="tasks-header">
-        <div class="tasks-brand">
+        <button
+          type="button"
+          class="tasks-brand"
+          data-task-action="open-about"
+          title="About Caffold"
+          aria-label="About Caffold"
+        >
           <img
             class="tasks-brand-mark"
             src="/assets/icons/caffold-mark.svg"
             alt=""
           />
           <h1>Caffold</h1>
-        </div>
+        </button>
         <div class="tasks-header-actions">
           <button type="button" class="task-icon-button" data-task-action="open-settings" title="Settings">
             ${renderInlineIcon("Settings", "Settings", "task-action-icon")}

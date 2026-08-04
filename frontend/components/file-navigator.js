@@ -190,6 +190,11 @@ class CaffoldFileNavigator extends HTMLElement {
     this.storageKey = key ?? null;
   }
 
+  setRefreshVisible(visible) {
+    this.ensureRendered();
+    this.fileList.setRefreshVisible(visible);
+  }
+
   setError(error) {
     this.ensureRendered();
     this.loadedDirectoryPath = null;

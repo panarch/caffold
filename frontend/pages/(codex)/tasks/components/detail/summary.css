@@ -71,27 +71,44 @@ caffold-task-detail-summary {
   & .task-mode-switch {
     display: inline-grid;
     grid-template-columns: repeat(2, max-content);
-    padding: 0.125rem;
+    align-content: center;
+    box-sizing: border-box;
+    height: var(--interface-compact-visual-size);
+    padding: 0;
     border: 1px solid var(--border);
     border-radius: 5px;
     background: var(--surface-muted);
   }
 
   & .task-mode-switch button {
+    position: relative;
+    display: grid;
     box-sizing: border-box;
-    height: var(--interface-compact-control-size);
-    min-height: var(--interface-compact-control-size);
-    padding: 0 var(--interface-space-4);
+    height: var(--interface-compact-hit-size);
+    min-height: var(--interface-compact-hit-size);
+    margin-block: calc(0rem - var(--interface-compact-hit-outset));
+    padding: 0;
     border: 0;
     border-radius: 3px;
     background: transparent;
     color: var(--muted);
     font: inherit;
     font-size: var(--interface-meta-font-size);
+    place-items: center;
     cursor: pointer;
   }
 
-  & .task-mode-switch button[aria-pressed="true"] {
+  & .task-mode-switch button > span {
+    display: grid;
+    box-sizing: border-box;
+    width: 100%;
+    height: calc(var(--interface-compact-visual-size) - 2px);
+    padding: 0 var(--interface-space-4);
+    place-items: center;
+    border-radius: 3px;
+  }
+
+  & .task-mode-switch button[aria-pressed="true"] > span {
     background: var(--surface);
     color: var(--text);
     box-shadow: 0 0 0 1px var(--border);
@@ -111,9 +128,10 @@ caffold-task-detail-summary {
   }
 
   & .task-detail-actions .task-secondary-button {
+    position: relative;
     box-sizing: border-box;
-    height: var(--interface-compact-control-size);
-    min-height: var(--interface-compact-control-size);
+    height: var(--interface-compact-visual-size);
+    min-height: var(--interface-compact-visual-size);
     padding-block: 0;
     border-radius: 4px;
     font-size: var(--interface-meta-font-size);
@@ -122,8 +140,8 @@ caffold-task-detail-summary {
   & .task-brand-button {
     position: relative;
     display: inline-grid;
-    width: var(--interface-compact-control-size);
-    height: var(--interface-compact-control-size);
+    width: var(--interface-compact-visual-size);
+    height: var(--interface-compact-visual-size);
     padding: 0;
     place-items: center;
     border: 1px solid var(--border);
@@ -206,10 +224,11 @@ caffold-task-detail-summary {
   }
 
   & .task-detail-info-button {
+    position: relative;
     display: grid;
     place-items: center;
-    width: var(--interface-compact-control-size);
-    height: var(--interface-compact-control-size);
+    width: var(--interface-compact-visual-size);
+    height: var(--interface-compact-visual-size);
     padding: 0;
     border: 1px solid var(--border);
     border-radius: 4px;
@@ -217,6 +236,22 @@ caffold-task-detail-summary {
     color: var(--accent);
     cursor: pointer;
     flex: 0 0 auto;
+  }
+
+  & .task-detail-actions .task-secondary-button::before,
+  & .task-brand-button::before,
+  & .task-detail-info-button::before {
+    position: absolute;
+    content: "";
+  }
+
+  & .task-detail-actions .task-secondary-button::before {
+    inset: calc(0px - var(--interface-compact-hit-outset)) 0;
+  }
+
+  & .task-brand-button::before,
+  & .task-detail-info-button::before {
+    inset: calc(0px - var(--interface-compact-hit-outset));
   }
 
   & .task-detail-info-button:hover,
@@ -329,15 +364,18 @@ caffold-task-detail-summary {
 
     & .task-detail-actions,
     & .task-detail-right {
-      gap: 0.25rem;
+      gap: max(
+        0.25rem,
+        calc(var(--interface-compact-hit-outset) + var(--interface-compact-hit-outset))
+      );
     }
 
     & .task-detail-actions .task-secondary-button,
     & .task-detail-info-button {
-      width: var(--interface-compact-control-size);
-      min-width: var(--interface-compact-control-size);
-      height: var(--interface-compact-control-size);
-      min-height: var(--interface-compact-control-size);
+      width: var(--interface-compact-visual-size);
+      min-width: var(--interface-compact-visual-size);
+      height: var(--interface-compact-visual-size);
+      min-height: var(--interface-compact-visual-size);
       padding: 0;
     }
 

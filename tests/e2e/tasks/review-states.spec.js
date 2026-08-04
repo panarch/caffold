@@ -1,12 +1,18 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { openCompletedTaskForReview } from "../support/task-review-test.js";
+import {
+  captureReviewScreenshot,
+  stabilizeDynamicText,
+} from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("keeps a clean working tree explicit and offers branch review", async ({ page }) => {
+test("keeps a clean working tree explicit and offers branch review", async ({
+  page,
+}, testInfo) => {
   const { taskScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page, {
     configureReview(review) {
       review.cleanWorkingTree = true;
@@ -14,14 +20,21 @@ test("keeps a clean working tree explicit and offers branch review", async ({ pa
   });
   await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
   await expect(page).toHaveURL(`/tasks/${taskScenario.threadId}/review`);
-  await expect(taskReview).toContainText("The working tree has no changes.");
+  await expect(taskReview).toContainText("No changes.");
+  await expect(taskReview).toContainText(
+    "Review committed changes against the branch base.",
+  );
+  await stabilizeDynamicText(page);
+  await captureReviewScreenshot(page, testInfo, "tasks-review-clean-working-tree");
   await taskReview.getByRole("button", { name: "Review branch changes" }).click();
   await expect(page).toHaveURL(
     `/tasks/${taskScenario.threadId}/review?scope=branch&base=origin%2Fmain`,
   );
 });
 
-test("names the selected base when a branch comparison is clean", async ({ page }) => {
+test("names the selected base when a branch comparison is clean", async ({
+  page,
+}, testInfo) => {
   const { taskScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page, {
     configureReview(review) {
       review.cleanBranch = true;
@@ -32,10 +45,17 @@ test("names the selected base when a branch comparison is clean", async ({ page 
   await expect(page).toHaveURL(
     `/tasks/${taskScenario.threadId}/review?scope=branch&base=origin%2Fmain`,
   );
-  await expect(taskReview).toContainText("No changes compared with origin/main.");
+  await expect(
+    taskReview.getByText("No changes compared with origin/main.", { exact: true }),
+  ).toHaveCount(1);
+  await expect(taskReview).not.toContainText("No files changed.");
+  await stabilizeDynamicText(page);
+  await captureReviewScreenshot(page, testInfo, "tasks-review-clean-branch");
 });
 
-test("normalizes a non-Git task to Files and Source without hiding why", async ({ page }) => {
+test("normalizes a non-Git task to Files and Source without hiding why", async ({
+  page,
+}, testInfo) => {
   const { taskScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page);
   taskScenario.updateTask({ worktree: null });
   await page.reload();
@@ -46,9 +66,18 @@ test("normalizes a non-Git task to Files and Source without hiding why", async (
   await expect(taskReview).toContainText("Git review is unavailable for this task.");
   await expect(taskReview.getByRole("button", { name: "Changes", exact: true })).toBeDisabled();
   await expect(taskReview.getByRole("button", { name: "Diff", exact: true })).toBeDisabled();
+  await expect(
+    taskReview.locator("caffold-file-navigator").getByRole("button", {
+      name: /alpha\.rs file/,
+    }),
+  ).toBeAttached();
+  await stabilizeDynamicText(page);
+  await captureReviewScreenshot(page, testInfo, "tasks-review-no-git");
 });
 
-test("keeps unchanged and deleted file representations explicit", async ({ page }) => {
+test("keeps unchanged and deleted file representations explicit", async ({
+  page,
+}, testInfo) => {
   const { taskScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page, {
     configureReview(review) {
       review.edgeCaseFiles = true;
@@ -61,6 +90,13 @@ test("keeps unchanged and deleted file representations explicit", async ({ page 
   await expect(taskReview.locator("caffold-review-file-viewer")).toContainText("pub const ALPHA");
   await taskReview.getByRole("button", { name: "Diff", exact: true }).click();
   await expect(taskReview).toContainText("No changes in this scope.");
+  if (test.info().project.name === "phone") {
+    await expect(
+      taskReview.getByRole("button", { name: "Back to navigator" }),
+    ).toHaveCount(1);
+  }
+  await stabilizeDynamicText(page);
+  await captureReviewScreenshot(page, testInfo, "tasks-review-no-scope-changes");
   await taskReview.getByRole("button", { name: "View source" }).click();
   await expect(taskReview.locator("caffold-review-file-viewer")).toContainText("pub const ALPHA");
 
@@ -74,9 +110,18 @@ test("keeps unchanged and deleted file representations explicit", async ({ page 
     `/tasks/${taskScenario.threadId}/review?view=source&file=deleted.rs`,
   );
   await expect(taskReview).toContainText("This file was deleted in the selected scope.");
+  if (test.info().project.name === "phone") {
+    await expect(
+      taskReview.getByRole("button", { name: "Back to navigator" }),
+    ).toHaveCount(1);
+  }
+  await stabilizeDynamicText(page);
+  await captureReviewScreenshot(page, testInfo, "tasks-review-deleted-source");
 });
 
-test("keeps the last canonical working tree visible when refresh fails", async ({ page }) => {
+test("keeps the last canonical working tree visible when refresh fails", async ({
+  page,
+}, testInfo) => {
   const { reviewScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
@@ -87,4 +132,6 @@ test("keeps the last canonical working tree visible when refresh fails", async (
   await taskReview.getByRole("button", { name: "Refresh review" }).click();
   await expect(taskReview).toContainText("Working tree refresh failed:");
   await expect(changes.locator("button[data-change-path]")).toHaveCount(4);
+  await stabilizeDynamicText(page);
+  await captureReviewScreenshot(page, testInfo, "tasks-review-refresh-error");
 });

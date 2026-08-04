@@ -67,15 +67,15 @@ test("creates a task with responsive composer controls and canonical approval st
     )
     .toBe("main");
   const appMainBox = await page.locator("caffold-app-shell .app-main").boundingBox();
+  const appShellBox = await page.locator("caffold-app-shell").boundingBox();
   const codexWorkspaceBox = await codexWorkspace.boundingBox();
-  const buildRailBox = await page.locator(".app-build-rail").boundingBox();
   expect(Math.round(codexWorkspaceBox?.y ?? -1)).toBe(Math.round(appMainBox?.y ?? -2));
   expect(
     Math.round((codexWorkspaceBox?.y ?? -1) + (codexWorkspaceBox?.height ?? 0)),
   ).toBe(Math.round((appMainBox?.y ?? -2) + (appMainBox?.height ?? 0)));
   expect(
-    Math.round(buildRailBox?.y ?? -1),
-  ).toBe(Math.round((appMainBox?.y ?? -2) + (appMainBox?.height ?? 0)));
+    Math.round((appMainBox?.y ?? -2) + (appMainBox?.height ?? 0)),
+  ).toBe(Math.round((appShellBox?.y ?? -1) + (appShellBox?.height ?? 0)));
   await expect(page.locator(".files-surface")).toBeHidden();
   await expect(page.locator("caffold-files-page")).toBeHidden();
   await expect(

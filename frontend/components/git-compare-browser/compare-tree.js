@@ -81,6 +81,17 @@ class CaffoldGitCompareTree extends HTMLElement {
     this.patchSelectedPath();
   }
 
+  setEmptyMessage(message) {
+    const nextMessage = message || "No files changed.";
+    if (this.emptyMessage === nextMessage) {
+      return;
+    }
+    this.emptyMessage = nextMessage;
+    if (this.state?.status === "ready" && !this.state.comparePayload.files?.length) {
+      this.render();
+    }
+  }
+
   patchSelectedPath() {
     for (const button of this.querySelectorAll('button[data-compare-path][aria-current="true"]')) {
       button.setAttribute("aria-current", "false");
@@ -164,7 +175,7 @@ class CaffoldGitCompareTree extends HTMLElement {
         ${this.renderHeader(payload, files.length)}
         ${
           files.length === 0
-            ? `<p class="surface-message">No files changed.</p>`
+            ? `<p class="surface-message">${escapeHtml(this.emptyMessage || "No files changed.")}</p>`
             : `<ol class="compare-tree-list">${this.renderNodes(this.state.tree.children, 0)}</ol>`
         }
       </section>

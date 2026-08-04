@@ -10,6 +10,7 @@ import {
 } from "../navigation-routes.js";
 import "./components/pathbar.js";
 import "./components/app-menu.js";
+import "./components/about-dialog.js";
 import "./components/header-actions.js";
 import "./files/page.js";
 import "./settings/page.js";
@@ -43,6 +44,7 @@ class CaffoldAppShell extends HTMLElement {
     this.codexWorkspace.ensureRendered();
     this.pathbar = this.querySelector("caffold-pathbar");
     this.headerActions = this.querySelector("caffold-header-actions");
+    this.aboutDialog = this.querySelector("caffold-about-dialog");
     this.reviewWorkspace = this.querySelector("caffold-review-workspace");
     this.reviewWorkspace.ensureRendered();
     this.gitLayout = this.reviewWorkspace.querySelector("caffold-git-review-layout");
@@ -106,6 +108,9 @@ class CaffoldAppShell extends HTMLElement {
         this.settingsReturnRoute = this.currentRoute;
       }
       this.navigateToRoute({ kind: "settings" });
+    });
+    this.addEventListener("caffold:open-about", () => {
+      this.aboutDialog.open();
     });
     this.addEventListener("caffold:close-settings", () => {
       const returnRoute = this.settingsReturnRoute;
@@ -197,10 +202,16 @@ class CaffoldAppShell extends HTMLElement {
         <caffold-codex-workspace hidden></caffold-codex-workspace>
         <caffold-review-workspace hidden></caffold-review-workspace>
       </main>
-      <footer class="app-build-rail" aria-label="Build information">
-        <span class="app-build" data-status="checking">build ${BUILD_INFO.label}</span>
+      <caffold-about-dialog></caffold-about-dialog>
+      <footer class="app-build-alert" role="status" aria-live="polite" hidden>
+        <span data-build-alert-message></span>
+        <button type="button" data-action="reload-build">Reload</button>
       </footer>
     `;
+
+    this.querySelector('[data-action="reload-build"]')?.addEventListener("click", () => {
+      window.location.reload();
+    });
   }
 
   installNavigationHandlers() {
@@ -278,23 +289,20 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   updateBuildStatus(health) {
-    const indicator = this.querySelector(".app-build");
-    if (!indicator) {
+    const alert = this.querySelector(".app-build-alert");
+    const message = alert?.querySelector("[data-build-alert-message]");
+    this.aboutDialog?.setBuildStatus(health);
+    if (!alert || !message) {
       return;
     }
 
     const serverId = health?.buildId;
     const serverLabel = health?.buildLabel || serverId;
     const mismatch = Boolean(serverId && serverId !== BUILD_INFO.id);
-    indicator.dataset.status = mismatch ? "mismatch" : serverId ? "current" : "unknown";
-    indicator.textContent = mismatch
-      ? `UI ${BUILD_INFO.label} \u2260 server ${serverLabel}`
-      : `build ${BUILD_INFO.label}`;
-    indicator.title = mismatch
-      ? `Cached UI build: ${BUILD_INFO.id}\nServer build: ${serverId}\nReload to update the UI.`
-      : serverId
-        ? `UI and server build: ${BUILD_INFO.id}`
-        : `UI build: ${BUILD_INFO.id}\nServer build is unavailable.`;
+    alert.hidden = !mismatch;
+    message.textContent = mismatch
+      ? `New Caffold build available (${serverLabel}).`
+      : "";
   }
 
   navigateToRoute(route, options = {}) {

@@ -8,6 +8,26 @@
     margin-top: var(--interface-space-5);
   }
 
+  & .viewer-notice-content {
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: var(--interface-space-5);
+    min-height: 0;
+    padding: var(--interface-panel-padding);
+    color: var(--muted);
+    text-align: center;
+  }
+
+  & .viewer-notice-content p {
+    margin: 0;
+  }
+
+  & .empty-panel .viewer-notice-content {
+    grid-row: 1 / -1;
+    place-self: center;
+  }
+
   & .viewer-panel {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
@@ -33,6 +53,24 @@ caffold-review-file-viewer {
     overflow: hidden;
     padding-top: 0.25rem;
     padding-bottom: 0.25rem;
+  }
+}
+
+caffold-review-file-viewer[compact-chrome] {
+  & .viewer-info-button,
+  & .viewer-refresh-button,
+  & .viewer-close-button {
+    position: relative;
+    width: var(--interface-compact-visual-size);
+    height: var(--interface-compact-visual-size);
+  }
+
+  & .viewer-info-button::before,
+  & .viewer-refresh-button::before,
+  & .viewer-close-button::before {
+    position: absolute;
+    inset: calc(0px - var(--interface-compact-hit-outset));
+    content: "";
   }
 }
 
@@ -277,6 +315,12 @@ caffold-review-file-viewer {
   caffold-review-file-viewer {
     & .viewer-refresh-button {
       display: grid;
+    }
+  }
+
+  caffold-review-file-viewer[compact-chrome] {
+    & .viewer-title-row {
+      grid-template-columns: var(--interface-compact-visual-size) minmax(0, 1fr) auto;
     }
   }
 }

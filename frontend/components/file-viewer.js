@@ -84,6 +84,7 @@ class CaffoldFileViewer extends HTMLElement {
       message,
       actionLabel: options.actionLabel ?? "",
       action: options.action ?? "",
+      title: options.title ?? "",
     };
     this.render();
   }
@@ -110,6 +111,13 @@ class CaffoldFileViewer extends HTMLElement {
 
   setCloseLabel(label) {
     this.closeLabel = label;
+    if (this.state && this.state.status !== "empty") {
+      this.render();
+    }
+  }
+
+  setCloseMode(mode) {
+    this.closeMode = mode === "back" ? "back" : "close";
     if (this.state && this.state.status !== "empty") {
       this.render();
     }
@@ -153,14 +161,20 @@ class CaffoldFileViewer extends HTMLElement {
     }
 
     if (this.state.status === "notice") {
-      this.innerHTML = `
-        <section class="viewer-panel empty-panel">
+      const content = `
+        <div class="viewer-notice-content">
           <p>${escapeHtml(this.state.message)}</p>
           ${
             this.state.actionLabel && this.state.action
               ? `<button type="button" class="task-secondary-button" data-action="${escapeHtml(this.state.action)}">${escapeHtml(this.state.actionLabel)}</button>`
               : ""
           }
+        </div>
+      `;
+      this.innerHTML = `
+        <section class="viewer-panel notice-panel${this.state.title ? "" : " empty-panel"}">
+          ${this.state.title ? this.renderBasicHeader(this.state.title) : ""}
+          ${content}
         </section>
       `;
       return;
@@ -320,16 +334,19 @@ class CaffoldFileViewer extends HTMLElement {
 
   renderCloseButton() {
     const label = this.closeLabel ?? "Back to files";
+    const mode = this.closeMode ?? "close";
+    const icon = mode === "back" ? "ArrowLeft" : "X";
 
     return `
       <button
         type="button"
         class="viewer-close-button"
         data-action="close-browser-viewer"
+        data-close-mode="${mode}"
         aria-label="${escapeHtml(label)}"
         title="${escapeHtml(label)}"
       >
-        ${renderInlineIcon("X", label, "viewer-close-icon")}
+        ${renderInlineIcon(icon, label, "viewer-close-icon")}
       </button>
     `;
   }

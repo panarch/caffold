@@ -34,6 +34,17 @@ class CaffoldAppMenu extends HTMLElement {
           composed: true,
         }),
       );
+      return;
+    }
+
+    if (button.dataset.action === "open-about") {
+      this.closePopover();
+      this.dispatchEvent(
+        new CustomEvent("caffold:open-about", {
+          bubbles: true,
+          composed: true,
+        }),
+      );
     }
   }
 
@@ -65,6 +76,10 @@ class CaffoldAppMenu extends HTMLElement {
         <button type="button" role="menuitem" data-action="open-settings">
           ${renderInlineIcon("Settings", "Settings", "app-menu-item-icon")}
           <span>Settings</span>
+        </button>
+        <button type="button" role="menuitem" data-action="open-about">
+          ${renderInlineIcon("Info", "About Caffold", "app-menu-item-icon")}
+          <span>About Caffold</span>
         </button>
       </div>
     `;

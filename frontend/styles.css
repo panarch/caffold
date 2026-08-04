@@ -1,5 +1,6 @@
 @import "./pages/layout.css";
 @import "./pages/components/app-menu.css";
+@import "./pages/components/about-dialog.css";
 @import "./pages/components/pathbar.css";
 @import "./pages/components/header-actions.css";
 @import "./pages/components/header-actions/codex-status.css";
@@ -75,6 +76,15 @@
   --interface-badge-size: 0.875rem;
   --interface-control-size: max(2rem, var(--interface-target-floor));
   --interface-compact-control-size: max(1.75rem, var(--interface-target-floor));
+  --interface-compact-visual-size: 1.875rem;
+  --interface-compact-hit-size: max(
+    var(--interface-compact-visual-size),
+    var(--interface-target-floor)
+  );
+  --interface-compact-hit-outset: max(
+    0px,
+    calc((var(--interface-target-floor) - var(--interface-compact-visual-size)) / 2)
+  );
   --interface-row-size: max(2.25rem, var(--interface-target-floor));
   --interface-header-size: max(2.125rem, var(--interface-target-floor));
   --conversation-font-size: 15px;

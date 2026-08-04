@@ -220,6 +220,30 @@ test("keeps compact review controls and available panes inside the workspace", a
       toolbarRows: Math.round(
         element.querySelector(".task-review-toolbar").getBoundingClientRect().height,
       ),
+      controlHeights: [
+        ...element.querySelectorAll(
+          ".task-review-axis-options, .task-review-base:not([hidden]) select, .task-review-refresh",
+        ),
+      ].map((control) => control.getBoundingClientRect().height),
+      axisButtonHeights: [
+        ...element.querySelectorAll(".task-review-axis-options button"),
+      ].map((control) => control.getBoundingClientRect().height),
+      expandedTouchHits: [
+        ...element.querySelectorAll(
+          ".task-review-base:not([hidden]), .task-review-refresh",
+        ),
+      ].map((control) => {
+        const bounds = control.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          bounds.left + bounds.width / 2,
+          bounds.top - 3,
+        );
+        return {
+          control: control.className,
+          hit: hit?.getAttribute?.("data-review-value") ?? hit?.className ?? hit?.tagName,
+          matches: hit === control || control.contains(hit),
+        };
+      }),
     };
   });
 
@@ -235,6 +259,14 @@ test("keeps compact review controls and available panes inside the workspace", a
   expect(layout.toolbarRows).toBeLessThanOrEqual(
     testInfo.project.name === "phone" ? 120 : 90,
   );
+  expect(
+    Math.max(...layout.controlHeights) - Math.min(...layout.controlHeights),
+  ).toBeLessThanOrEqual(1);
+  if (testInfo.project.name !== "desktop") {
+    expect(Math.max(...layout.controlHeights)).toBeLessThanOrEqual(34);
+    expect(Math.min(...layout.axisButtonHeights)).toBeGreaterThanOrEqual(40);
+    expect(layout.expandedTouchHits.filter(({ matches }) => !matches)).toEqual([]);
+  }
 
   for (const axis of await taskReview.locator(".task-review-axis").all()) {
     await expect(axis.locator(":scope > .task-review-axis-label")).toHaveCount(1);

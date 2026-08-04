@@ -78,22 +78,22 @@ class CaffoldTaskReview extends HTMLElement {
           <div class="task-review-axis" role="group" aria-label="Review scope">
             <span class="task-review-axis-label">Scope</span>
             <div class="task-review-axis-options">
-              <button type="button" data-review-axis="scope" data-review-value="working">Working Tree</button>
-              <button type="button" data-review-axis="scope" data-review-value="branch">Branch</button>
+              <button type="button" data-review-axis="scope" data-review-value="working"><span>Working Tree</span></button>
+              <button type="button" data-review-axis="scope" data-review-value="branch"><span>Branch</span></button>
             </div>
           </div>
           <div class="task-review-axis" role="group" aria-label="Review navigator">
             <span class="task-review-axis-label">Navigator</span>
             <div class="task-review-axis-options">
-              <button type="button" data-review-axis="navigator" data-review-value="changes">Changes</button>
-              <button type="button" data-review-axis="navigator" data-review-value="files">Files</button>
+              <button type="button" data-review-axis="navigator" data-review-value="changes"><span>Changes</span></button>
+              <button type="button" data-review-axis="navigator" data-review-value="files"><span>Files</span></button>
             </div>
           </div>
           <div class="task-review-axis" role="group" aria-label="Review viewer">
             <span class="task-review-axis-label">Viewer</span>
             <div class="task-review-axis-options">
-              <button type="button" data-review-axis="viewer" data-review-value="diff">Diff</button>
-              <button type="button" data-review-axis="viewer" data-review-value="source">Source</button>
+              <button type="button" data-review-axis="viewer" data-review-value="diff"><span>Diff</span></button>
+              <button type="button" data-review-axis="viewer" data-review-value="source"><span>Source</span></button>
             </div>
           </div>
           <label class="task-review-base">
@@ -117,13 +117,12 @@ class CaffoldTaskReview extends HTMLElement {
             <div class="task-review-navigator" data-review-navigator="working">
               <caffold-git-diff-changes-tree></caffold-git-diff-changes-tree>
               <div class="task-review-empty-action" hidden>
-                <p>The working tree has no changes.</p>
+                <p>Review committed changes against the branch base.</p>
                 <button type="button" class="task-secondary-button" data-review-action="review-branch">Review branch changes</button>
               </div>
             </div>
             <div class="task-review-navigator" data-review-navigator="branch">
               <caffold-git-compare-tree></caffold-git-compare-tree>
-              <p class="task-review-branch-empty" hidden></p>
             </div>
             <div class="task-review-navigator" data-review-navigator="files">
               <caffold-file-navigator></caffold-file-navigator>
@@ -135,11 +134,7 @@ class CaffoldTaskReview extends HTMLElement {
             aria-label="Resize review navigator"
           ></caffold-review-panel-resizer>
           <section class="task-review-viewer-pane" aria-label="Review file">
-            <button type="button" class="task-review-mobile-back" data-review-action="back-to-navigator">
-              ${renderInlineIcon("ArrowLeft", "Back to navigator", "task-action-icon")}
-              <span>Back</span>
-            </button>
-            <caffold-review-file-viewer></caffold-review-file-viewer>
+            <caffold-review-file-viewer compact-chrome></caffold-review-file-viewer>
           </section>
         </div>
       </section>
@@ -147,6 +142,9 @@ class CaffoldTaskReview extends HTMLElement {
 
     this.fileNavigator()?.setStorageKey(null);
     this.fileNavigator()?.setWatchActive(false);
+    this.fileNavigator()?.setRefreshVisible(false);
+    this.viewer()?.setCloseLabel("Back to navigator");
+    this.viewer()?.setCloseMode("back");
     this.resizer()?.setValue(this.panelWidth);
     this.applyPanelWidth();
 
@@ -413,6 +411,9 @@ class CaffoldTaskReview extends HTMLElement {
       this.compare = compare;
       this.compareError = null;
       this.patchErrorState();
+      this.branchTree()?.setEmptyMessage(
+        `No changes compared with ${baseRef || "the selected base"}.`,
+      );
       if (hadCompare) {
         this.branchTree()?.updateCompare(compare);
       } else {
@@ -461,7 +462,10 @@ class CaffoldTaskReview extends HTMLElement {
     try {
       if (this.route.viewer === "source") {
         if (this.selectedChange()?.deleted) {
-          viewer?.setNotice("This file was deleted in the selected scope. Diff remains available.");
+          viewer?.setNotice(
+            "This file was deleted in the selected scope. Diff remains available.",
+            { title: fileNameFromPath(selectedPath) },
+          );
           return;
         }
         if (isPreviewableImagePath(selectedPath)) {
@@ -493,6 +497,7 @@ class CaffoldTaskReview extends HTMLElement {
           viewer?.setNotice("No changes in this scope.", {
             actionLabel: "View source",
             action: "view-source",
+            title: fileNameFromPath(selectedPath),
           });
           return;
         }
@@ -650,14 +655,6 @@ class CaffoldTaskReview extends HTMLElement {
   patchEmptyStates() {
     const workingEmpty = Boolean(this.status && (this.status.files?.length ?? 0) === 0);
     this.querySelector(".task-review-empty-action")?.toggleAttribute("hidden", !workingEmpty);
-    const branchEmpty = Boolean(this.compare && (this.compare.files?.length ?? 0) === 0);
-    const branch = this.querySelector(".task-review-branch-empty");
-    if (branch) {
-      branch.textContent = branchEmpty
-        ? `No changes compared with ${this.route.baseRef || "the selected base"}.`
-        : "";
-      branch.toggleAttribute("hidden", !branchEmpty);
-    }
   }
 
   syncSelection() {
@@ -675,8 +672,6 @@ class CaffoldTaskReview extends HTMLElement {
         void this.refresh();
       } else if (action.dataset.reviewAction === "review-branch") {
         this.updateAxis("scope", "branch");
-      } else if (action.dataset.reviewAction === "back-to-navigator") {
-        this.clearSelectedPath();
       }
       return;
     }

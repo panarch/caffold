@@ -106,6 +106,17 @@ class CaffoldFileList extends HTMLElement {
     this.patchRefreshButton();
   }
 
+  setRefreshVisible(visible) {
+    const nextVisible = Boolean(visible);
+    if (this.refreshVisible === nextVisible) {
+      return;
+    }
+    const scroll = this.captureListScroll();
+    this.refreshVisible = nextVisible;
+    this.render();
+    this.restoreListScroll(scroll);
+  }
+
   setError(error) {
     this.resetTreeState();
     this.state = { status: "error", error };
@@ -166,6 +177,9 @@ class CaffoldFileList extends HTMLElement {
   }
 
   renderRefreshButton() {
+    if (this.refreshVisible === false) {
+      return "";
+    }
     const refreshing = this.refreshState === "refreshing";
     const unavailable = this.refreshState === "unavailable";
     const title = unavailable

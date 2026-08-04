@@ -34,12 +34,8 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   const health = await healthResponse.json();
   expect(health.buildId).toBe(buildId);
   expect(health.buildLabel).toBe(buildId);
-  await expect(page.locator(".app-build")).toHaveText(`build ${buildId}`);
-  await expect(page.locator(".app-build")).toHaveAttribute("data-status", "current");
-  await expect(page.locator(".app-build")).toHaveAttribute(
-    "title",
-    `UI and server build: ${buildId}`,
-  );
+  await expect(page.locator(".app-build-rail")).toHaveCount(0);
+  await expect(page.locator(".app-build-alert")).toBeHidden();
 
   await page.locator("caffold-app-shell").evaluate((shell) => {
     shell.updateBuildStatus({
@@ -47,12 +43,18 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
       buildLabel: "stale-server-build",
     });
   });
-  await expect(page.locator(".app-build")).toHaveAttribute("data-status", "mismatch");
-  await expect(page.locator(".app-build")).toContainText("stale-server-build");
-  await expect(page.locator(".app-build")).toHaveAttribute(
-    "title",
-    new RegExp(`Cached UI build: ${buildId}.*Server build: stale-server-build`, "s"),
-  );
+  const buildAlert = page.locator(".app-build-alert");
+  await expect(buildAlert).toBeVisible();
+  await expect(buildAlert).toContainText("New Caffold build available");
+  await expect(buildAlert).toContainText("stale-server-build");
+  await expect(buildAlert.getByRole("button", { name: "Reload" })).toBeVisible();
+
+  const alertLayout = await page.locator("caffold-app-shell").evaluate((shell) => {
+    const main = shell.querySelector(".app-main").getBoundingClientRect();
+    const alert = shell.querySelector(".app-build-alert").getBoundingClientRect();
+    return { mainBottom: main.bottom, alertTop: alert.top };
+  });
+  expect(alertLayout.mainBottom).toBeLessThanOrEqual(alertLayout.alertTop + 1);
 
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute(
     "href",
@@ -147,6 +149,8 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain("/assets/settings.js");
   expect(serviceWorker).toContain("/assets/build-info.js");
   expect(serviceWorker).toContain("/assets/pages/components/app-menu.js");
+  expect(serviceWorker).toContain("/assets/pages/components/about-dialog.css");
+  expect(serviceWorker).toContain("/assets/pages/components/about-dialog.js");
   expect(serviceWorker).toContain("/assets/pages/settings/page.js");
   expect(serviceWorker).toContain("/assets/pages/components/pathbar.js");
   expect(serviceWorker).not.toContain("project-switcher");
@@ -296,6 +300,78 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
     return registration.scope;
   });
   expect(serviceWorkerScope).toBe("http://127.0.0.1:18765/");
+});
+
+test("keeps build metadata out of normal layout and exposes it in About", async ({
+  page,
+  context,
+  request,
+}, testInfo) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/");
+
+  const buildInfoSource = await (await request.get("/assets/build-info.js")).text();
+  const buildId = buildInfoSource.match(/id: "([^"]+)"/)?.[1];
+  const version = buildInfoSource.match(/version: "([^"]+)"/)?.[1];
+  const health = await (await request.get("/api/health")).json();
+  expect(buildId).toBeTruthy();
+  expect(version).toBeTruthy();
+
+  const normalLayout = await page.locator("caffold-app-shell").evaluate((shell) => {
+    const main = shell.querySelector(".app-main").getBoundingClientRect();
+    const shellRect = shell.getBoundingClientRect();
+    return {
+      mainBottom: Math.round(main.bottom),
+      shellBottom: Math.round(shellRect.bottom),
+    };
+  });
+  expect(normalLayout.mainBottom).toBe(normalLayout.shellBottom);
+
+  const tasksBrand = page.locator("caffold-tasks-page .tasks-brand");
+  const brandGeometry = await tasksBrand.evaluate((button) => {
+    const heading = button.querySelector("h1");
+    const headingText = document.createRange();
+    headingText.selectNodeContents(heading);
+    const bounds = button.getBoundingClientRect();
+    const style = getComputedStyle(button);
+    return {
+      buttonRight: bounds.right,
+      headingRight: headingText.getBoundingClientRect().right,
+      paddingLeft: Number.parseFloat(style.paddingLeft),
+      paddingRight: Number.parseFloat(style.paddingRight),
+    };
+  });
+  expect(brandGeometry.paddingLeft).toBeGreaterThanOrEqual(6);
+  expect(brandGeometry.paddingRight).toBeGreaterThanOrEqual(6);
+  expect(brandGeometry.paddingLeft).toBeLessThanOrEqual(12);
+  expect(brandGeometry.paddingRight).toBeLessThanOrEqual(12);
+  expect(brandGeometry.buttonRight - brandGeometry.headingRight).toBeLessThanOrEqual(12);
+  await tasksBrand.click();
+
+  const about = page.locator("caffold-about-dialog dialog");
+  await expect(about).toBeVisible();
+  await expect(about.getByRole("heading", { name: "Caffold" })).toBeVisible();
+  await expect(about.locator('[data-about-value="version"]')).toHaveText(version);
+  await expect(about.locator('[data-about-value="ui-build"]')).toHaveText(buildId);
+  await expect(about.locator('[data-about-value="server-build"]')).toHaveText(
+    health.buildId,
+  );
+  await expect(about.locator("time[data-about-built]")).toHaveAttribute(
+    "datetime",
+    /\d{4}-\d{2}-\d{2}T/,
+  );
+  await captureReviewScreenshot(page, testInfo, "about-caffold");
+
+  await about.getByRole("button", { name: "Copy diagnostics" }).click();
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toContain(`UI build: ${buildId}`);
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toContain(`Server build: ${health.buildId}`);
+
+  await about.getByRole("button", { name: "Done" }).click();
+  await expect(about).toBeHidden();
 });
 
 test("groups header review actions into Git, GitHub, and Codex popovers", async ({ page }, testInfo) => {

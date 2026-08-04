@@ -128,6 +128,7 @@ const ownership = new Map([
     ["caffold-github-review-layout"],
   ],
   ["pages/(review-workspace)/layout.css", ["caffold-review-workspace"]],
+  ["pages/components/about-dialog.css", ["caffold-about-dialog"]],
   ["pages/components/app-menu.css", ["caffold-app-menu"]],
   ["pages/components/header-actions.css", ["caffold-header-actions"]],
   [
@@ -144,6 +145,7 @@ const componentChildren = new Map([
     "caffold-app-shell",
     [
       "caffold-app-menu",
+      "caffold-about-dialog",
       "caffold-header-actions",
       "caffold-pathbar",
       "caffold-files-page",

@@ -273,13 +273,13 @@ class CaffoldTaskDetailSummary extends HTMLElement {
               data-summary-action="open-conversation"
               data-summary-mode="conversation"
               aria-pressed="${this.snapshot.reviewView === "conversation" ? "true" : "false"}"
-            >Conversation</button>
+            ><span>Conversation</span></button>
             <button
               type="button"
               data-summary-action="open-review"
               data-summary-mode="review"
               aria-pressed="${this.snapshot.reviewView === "review" ? "true" : "false"}"
-            >Review</button>
+            ><span>Review</span></button>
           </div>
           ${this.renderReviewMenus(task)}
           ${

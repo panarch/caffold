@@ -1,10 +1,11 @@
 caffold-app-shell {
-  --app-build-rail-height: calc(1rem + env(safe-area-inset-bottom));
+  box-sizing: border-box;
   position: relative;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) var(--app-build-rail-height);
+  grid-template-rows: minmax(0, 1fr) auto;
   height: 100vh;
   height: 100dvh;
+  padding-bottom: env(safe-area-inset-bottom);
   overflow: hidden;
 
   & .app-main {
@@ -62,38 +63,42 @@ caffold-app-shell {
     height: 100%;
   }
 
-  & .app-build-rail {
+  & .app-build-alert {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: center;
+    gap: var(--interface-space-4);
     min-width: 0;
-    min-height: var(--app-build-rail-height);
-    padding: 0 0.3125rem env(safe-area-inset-bottom);
+    min-height: var(--interface-compact-control-size);
+    padding: var(--interface-space-2) var(--interface-space-6);
     overflow: hidden;
-    background: var(--surface);
-  }
-
-  & .app-build {
-    position: static;
-    max-width: calc(100vw - 0.625rem);
-    overflow: hidden;
-    padding: 0.0625rem 0.1875rem;
-    border-radius: 2px;
-    background: rgb(255 255 255 / 82%);
-    color: var(--muted);
-    font-size: 0.5625rem;
-    line-height: 0.75rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    opacity: 0.62;
-    cursor: help;
-    user-select: text;
-  }
-
-  & .app-build[data-status="mismatch"] {
+    border-top: 1px solid var(--danger);
     background: var(--danger-soft);
     color: var(--danger);
-    opacity: 1;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .app-build-alert[hidden] {
+    display: none;
+  }
+
+  & .app-build-alert > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & .app-build-alert button {
+    min-height: var(--interface-compact-control-size);
+    padding: 0 var(--interface-control-padding-inline);
+    border: 1px solid currentcolor;
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--danger);
+    font: inherit;
+    cursor: pointer;
   }
 }
 

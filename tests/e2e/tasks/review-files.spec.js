@@ -20,6 +20,8 @@ test("browses source through the shared Files navigator and one root watch", asy
   await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
   await taskReview.getByRole("button", { name: "Files", exact: true }).click();
   await taskReview.getByRole("button", { name: "Source", exact: true }).click();
+  await expect(taskReview.getByRole("button", { name: "Refresh review" })).toHaveCount(1);
+  await expect(taskReview.getByRole("button", { name: "Refresh files" })).toHaveCount(0);
   await expect(page).toHaveURL(
     `/tasks/${taskScenario.threadId}/review?nav=files&view=source`,
   );
