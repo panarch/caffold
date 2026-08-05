@@ -20,6 +20,7 @@ pub(crate) const THREAD_LOADED_LIST: &str = "thread/loaded/list";
 pub(crate) const THREAD_START: &str = "thread/start";
 pub(crate) const THREAD_RESUME: &str = "thread/resume";
 pub(crate) const THREAD_ARCHIVE: &str = "thread/archive";
+pub(crate) const THREAD_UNARCHIVE: &str = "thread/unarchive";
 #[allow(dead_code)]
 pub(crate) const THREAD_UNSUBSCRIBE: &str = "thread/unsubscribe";
 pub(crate) const THREAD_TURNS_LIST: &str = "thread/turns/list";
@@ -176,6 +177,12 @@ pub struct ThreadListResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadReadResponse {
+    pub thread: CodexThread,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadUnarchiveResponse {
     pub thread: CodexThread,
 }
 
@@ -824,6 +831,10 @@ pub(crate) fn thread_loaded_list_params(
 }
 
 pub(crate) fn thread_archive_params(thread_id: &str) -> ThreadIdParams<'_> {
+    ThreadIdParams { thread_id }
+}
+
+pub(crate) fn thread_unarchive_params(thread_id: &str) -> ThreadIdParams<'_> {
     ThreadIdParams { thread_id }
 }
 

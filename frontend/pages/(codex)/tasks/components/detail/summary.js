@@ -4,6 +4,7 @@ import { renderInlineIcon, warmIcons } from "../../../../../components/icons.js"
 import {
   formatTaskStatus,
   isTaskTransportStale,
+  taskThreadStatusType,
 } from "../../runtime-state.js";
 import { cleanLogicalPath, shortId } from "../../task-format.js";
 import {
@@ -43,6 +44,7 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       transportState: "idle",
       reviewView: "conversation",
       contextPath: ".",
+      archiveState: { loading: false, error: null },
     };
     this.interruptError = null;
     this.githubStatus = null;
@@ -70,6 +72,10 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       transportState: snapshot.transportState ?? "idle",
       reviewView: normalizeReviewView(snapshot.reviewView),
       contextPath: `${snapshot.contextPath ?? "."}`,
+      archiveState: {
+        loading: Boolean(snapshot.archiveState?.loading),
+        error: snapshot.archiveState?.error ?? null,
+      },
     };
     this.active = true;
 
@@ -256,6 +262,9 @@ class CaffoldTaskDetailSummary extends HTMLElement {
     const transportBlocked = isTaskTransportStale(
       this.snapshot.transportState,
     );
+    const archiveBlocked =
+      transportBlocked || taskThreadStatusType(task) === "active";
+    const archiveState = this.snapshot.archiveState;
 
     this.innerHTML = `
       <div class="task-detail-heading">
@@ -338,6 +347,16 @@ class CaffoldTaskDetailSummary extends HTMLElement {
               : ""
           }
         </dl>
+        <div class="task-detail-archive-action">
+          <p>Archive removes this task from the active list. Its worktree and files are retained.</p>
+          <button
+            type="button"
+            class="task-secondary-button"
+            data-summary-action="archive"
+            ${archiveBlocked || archiveState.loading ? "disabled" : ""}
+          >${archiveState.loading ? "Archiving..." : "Archive task"}</button>
+          ${archiveState.error ? `<p class="task-detail-archive-error" role="alert">${escapeHtml(archiveState.error.message ?? archiveState.error)}</p>` : ""}
+        </div>
       </div>
     `;
     this.restoreDisclosure(disclosure);

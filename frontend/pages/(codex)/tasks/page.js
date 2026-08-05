@@ -118,6 +118,9 @@ class CaffoldTasksPage extends HTMLElement {
       event.stopPropagation();
       if (event.detail?.type === "continue-thread") {
         void this.taskNavigator()?.continueThread(event.detail.threadId);
+      } else if (event.detail?.type === "task-archived" && event.detail.task) {
+        this.taskNavigator()?.acceptArchivedTask(event.detail.task);
+        this.requestRoute({ kind: "tasks" }, { replace: true });
       } else if (event.detail?.type === "review-route" && event.detail.route) {
         this.requestRoute(event.detail.route, {
           replace: event.detail.replace,

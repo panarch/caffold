@@ -1,4 +1,5 @@
 import {
+  archiveTask,
   getTask,
   interruptTask,
   resolveTaskApproval,
@@ -77,9 +78,11 @@ class CaffoldTaskDetail extends HTMLElement {
     this.detailLoadGeneration = 0;
     this.historyRequestToken = 0;
     this.interruptActionToken = 0;
+    this.archiveActionToken = 0;
     this.approvalActionToken = 0;
     this.promptSubmissionSequence = 0;
     this.continuationStateValue = { loading: false, error: null };
+    this.archiveStateValue = { loading: false, error: null };
     this.conversationUpdateKind = null;
     this.initialConversationLoad = null;
     this.followUpRequests = new Map();
@@ -223,7 +226,9 @@ class CaffoldTaskDetail extends HTMLElement {
       this.detailLoadGeneration += 1;
       this.historyRequestToken += 1;
       this.interruptActionToken += 1;
+      this.archiveActionToken += 1;
       this.approvalActionToken += 1;
+      this.archiveStateValue = { loading: false, error: null };
       this.loadingOlderEvents = false;
       this.deactivateReview({ prune: false });
       this.reviewView = "conversation";
@@ -291,7 +296,9 @@ class CaffoldTaskDetail extends HTMLElement {
     this.detailLoadGeneration += 1;
     this.historyRequestToken += 1;
     this.interruptActionToken += 1;
+    this.archiveActionToken += 1;
     this.approvalActionToken += 1;
+    this.archiveStateValue = { loading: false, error: null };
     this.loadingOlderEvents = false;
     this.initialConversationLoad = null;
     this.detailStream.deactivate();
@@ -660,6 +667,10 @@ class CaffoldTaskDetail extends HTMLElement {
     }
     if (action === "interrupt") {
       this.interruptSelectedTask();
+      return;
+    }
+    if (action === "archive") {
+      void this.archiveSelectedTask();
     }
   }
 
@@ -932,6 +943,46 @@ class CaffoldTaskDetail extends HTMLElement {
         return;
       }
       this.taskSummary()?.setInterruptError(error);
+    }
+  }
+
+  async archiveSelectedTask() {
+    if (
+      !this.selectedThreadId ||
+      this.archiveStateValue.loading ||
+      isTaskTransportStale(this.detailStream.state)
+    ) {
+      return;
+    }
+    const actionToken = ++this.archiveActionToken;
+    const threadId = this.selectedThreadId;
+    this.archiveStateValue = { loading: true, error: null };
+    this.syncTaskSummary();
+    try {
+      const task = await archiveTask(threadId);
+      if (
+        actionToken !== this.archiveActionToken ||
+        threadId !== this.selectedThreadId
+      ) {
+        return;
+      }
+      this.archiveStateValue = { loading: false, error: null };
+      this.dispatchEvent(
+        new CustomEvent("caffold:task-detail-intent", {
+          bubbles: true,
+          composed: true,
+          detail: { type: "task-archived", task },
+        }),
+      );
+    } catch (error) {
+      if (
+        actionToken !== this.archiveActionToken ||
+        threadId !== this.selectedThreadId
+      ) {
+        return;
+      }
+      this.archiveStateValue = { loading: false, error };
+      this.syncTaskSummary();
     }
   }
 
@@ -1284,6 +1335,7 @@ class CaffoldTaskDetail extends HTMLElement {
       transportState: this.detailStream.state,
       reviewView: this.reviewView,
       contextPath: this.activeCwdPath(),
+      archiveState: this.archiveStateValue,
     });
   }
 

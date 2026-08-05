@@ -144,6 +144,14 @@ caffold-task-navigator {
     min-width: 0;
   }
 
+  & .task-archived-action-error {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--danger);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
   & .task-continue-button {
     min-height: var(--interface-compact-control-size);
     padding: 0.1875rem 0.4375rem;
@@ -157,6 +165,7 @@ caffold-task-navigator {
   }
 
   & [data-task-action="load-more-tasks"],
+  & [data-task-action="load-more-archived-tasks"],
   & [data-task-action="load-more-task-history"] {
     box-sizing: border-box;
     height: var(--interface-compact-control-size);

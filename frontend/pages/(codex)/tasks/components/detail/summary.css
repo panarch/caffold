@@ -311,6 +311,32 @@ caffold-task-detail-summary {
     line-height: var(--interface-line-height);
   }
 
+  & .task-detail-archive-action {
+    display: grid;
+    justify-items: start;
+    gap: var(--interface-space-3);
+    margin-top: var(--interface-space-6);
+    padding-top: var(--interface-space-5);
+    border-top: 1px solid var(--border);
+  }
+
+  & .task-detail-archive-action > p {
+    display: block;
+    max-width: 36rem;
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .task-detail-archive-action .task-secondary-button {
+    min-height: var(--interface-compact-control-size);
+    font-size: var(--interface-meta-font-size);
+  }
+
+  & .task-detail-archive-action .task-detail-archive-error {
+    color: var(--danger);
+  }
+
   & .task-detail-status {
     width: var(--interface-icon-slot-size);
     height: var(--interface-icon-slot-size);

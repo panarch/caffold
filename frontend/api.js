@@ -26,6 +26,12 @@ export async function getTaskHistory(cursor = null) {
   });
 }
 
+export async function getArchivedTasks(cursor = null) {
+  return requestJson("/api/tasks/archived", {
+    ...(cursor ? { cursor } : {}),
+  });
+}
+
 export async function continueTask(threadId) {
   return requestJson(`/api/tasks/${encodeURIComponent(threadId)}/continue`, {}, {
     method: "POST",
@@ -35,6 +41,18 @@ export async function continueTask(threadId) {
 export async function markTaskSeen(threadId) {
   return requestJson(`/api/tasks/${encodeURIComponent(threadId)}/seen`, {}, {
     method: "PUT",
+  });
+}
+
+export async function archiveTask(threadId) {
+  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}/archive`, {}, {
+    method: "POST",
+  });
+}
+
+export async function restoreTask(threadId) {
+  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}/restore`, {}, {
+    method: "POST",
   });
 }
 

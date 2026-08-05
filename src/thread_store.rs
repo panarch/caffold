@@ -16,6 +16,7 @@ use gluesql::{
 use thiserror::Error;
 
 const MANAGED_THREADS_TABLE: &str = "managed_threads";
+const ARCHIVED_THREADS_TABLE: &str = "archived_threads";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManagedThread {
@@ -175,6 +176,13 @@ impl ThreadStore {
         }
     }
 
+    pub(crate) fn get_archived(&self, thread_id: &str) -> Result<Option<ManagedThread>> {
+        match self {
+            Self::Memory(glue) => get_in(&mut *lock_glue(glue)?, ARCHIVED_THREADS_TABLE, thread_id),
+            Self::Redb(glue) => get_in(&mut *lock_glue(glue)?, ARCHIVED_THREADS_TABLE, thread_id),
+        }
+    }
+
     pub(crate) fn list(
         &self,
         cursor: Option<&str>,
@@ -184,6 +192,62 @@ impl ThreadStore {
         match self {
             Self::Memory(glue) => list(&mut *lock_glue(glue)?, cursor.as_ref(), limit),
             Self::Redb(glue) => list(&mut *lock_glue(glue)?, cursor.as_ref(), limit),
+        }
+    }
+
+    pub(crate) fn list_archived(
+        &self,
+        cursor: Option<&str>,
+        limit: usize,
+    ) -> Result<(Vec<ManagedThread>, Option<String>)> {
+        let cursor = decode_cursor(cursor)?;
+        match self {
+            Self::Memory(glue) => list_in(
+                &mut *lock_glue(glue)?,
+                ARCHIVED_THREADS_TABLE,
+                cursor.as_ref(),
+                limit,
+            ),
+            Self::Redb(glue) => list_in(
+                &mut *lock_glue(glue)?,
+                ARCHIVED_THREADS_TABLE,
+                cursor.as_ref(),
+                limit,
+            ),
+        }
+    }
+
+    pub(crate) fn archive(&self, thread_id: &str) -> Result<Option<ManagedThread>> {
+        match self {
+            Self::Memory(glue) => move_between(
+                &mut *lock_glue(glue)?,
+                MANAGED_THREADS_TABLE,
+                ARCHIVED_THREADS_TABLE,
+                thread_id,
+            ),
+            Self::Redb(glue) => move_between(
+                &mut *lock_glue(glue)?,
+                MANAGED_THREADS_TABLE,
+                ARCHIVED_THREADS_TABLE,
+                thread_id,
+            ),
+        }
+    }
+
+    pub(crate) fn restore(&self, thread_id: &str) -> Result<Option<ManagedThread>> {
+        match self {
+            Self::Memory(glue) => move_between(
+                &mut *lock_glue(glue)?,
+                ARCHIVED_THREADS_TABLE,
+                MANAGED_THREADS_TABLE,
+                thread_id,
+            ),
+            Self::Redb(glue) => move_between(
+                &mut *lock_glue(glue)?,
+                ARCHIVED_THREADS_TABLE,
+                MANAGED_THREADS_TABLE,
+                thread_id,
+            ),
         }
     }
 
@@ -199,6 +263,27 @@ impl ThreadStore {
             Self::Redb(glue) => {
                 update_observed_recency(&mut *lock_glue(glue)?, thread_id, activity_ms)
             }
+        }
+    }
+
+    pub(crate) fn update_archived_observed_recency(
+        &self,
+        thread_id: &str,
+        activity_ms: u64,
+    ) -> Result<Option<ManagedThread>> {
+        match self {
+            Self::Memory(glue) => update_observed_recency_in(
+                &mut *lock_glue(glue)?,
+                ARCHIVED_THREADS_TABLE,
+                thread_id,
+                activity_ms,
+            ),
+            Self::Redb(glue) => update_observed_recency_in(
+                &mut *lock_glue(glue)?,
+                ARCHIVED_THREADS_TABLE,
+                thread_id,
+                activity_ms,
+            ),
         }
     }
 
@@ -266,6 +351,16 @@ where
         .add_column("model TEXT NULL")
         .add_column("reasoning_effort TEXT NULL")
         .execute(glue)?;
+    table(ARCHIVED_THREADS_TABLE)
+        .create_table_if_not_exists()
+        .add_column("thread_id TEXT PRIMARY KEY")
+        .add_column("last_observed_recency_ms INTEGER NULL")
+        .add_column("claimed_at_ms INTEGER")
+        .add_column("last_opened_at_ms INTEGER NULL")
+        .add_column("last_seen_activity_ms INTEGER NULL")
+        .add_column("model TEXT NULL")
+        .add_column("reasoning_effort TEXT NULL")
+        .execute(glue)?;
     Ok(())
 }
 
@@ -300,7 +395,18 @@ fn get<S>(glue: &mut Glue<S>, thread_id: &str) -> Result<Option<ManagedThread>>
 where
     S: GStore + GStoreMut + Planner,
 {
-    let rows = table(MANAGED_THREADS_TABLE)
+    get_in(glue, MANAGED_THREADS_TABLE, thread_id)
+}
+
+fn get_in<S>(
+    glue: &mut Glue<S>,
+    table_name: &'static str,
+    thread_id: &str,
+) -> Result<Option<ManagedThread>>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    let rows = table(table_name)
         .select()
         .filter(col("thread_id").eq(text(thread_id.to_owned())))
         .project(managed_thread_columns())
@@ -322,10 +428,22 @@ fn list<S>(
 where
     S: GStore + GStoreMut + Planner,
 {
+    list_in(glue, MANAGED_THREADS_TABLE, cursor, limit)
+}
+
+fn list_in<S>(
+    glue: &mut Glue<S>,
+    table_name: &'static str,
+    cursor: Option<&ManagedThreadCursor>,
+    limit: usize,
+) -> Result<(Vec<ManagedThread>, Option<String>)>
+where
+    S: GStore + GStoreMut + Planner,
+{
     if limit == 0 {
         return Ok((Vec::new(), None));
     }
-    let rows = table(MANAGED_THREADS_TABLE)
+    let rows = table(table_name)
         .select()
         .project(managed_thread_columns())
         .execute(glue)
@@ -354,14 +472,26 @@ fn update_observed_recency<S>(
 where
     S: GStore + GStoreMut + Planner,
 {
-    let Some(existing) = get(glue, thread_id)? else {
+    update_observed_recency_in(glue, MANAGED_THREADS_TABLE, thread_id, activity_ms)
+}
+
+fn update_observed_recency_in<S>(
+    glue: &mut Glue<S>,
+    table_name: &'static str,
+    thread_id: &str,
+    activity_ms: u64,
+) -> Result<Option<ManagedThread>>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    let Some(existing) = get_in(glue, table_name, thread_id)? else {
         return Ok(None);
     };
     let activity_ms = existing
         .last_observed_recency_ms
         .unwrap_or_default()
         .max(activity_ms);
-    table(MANAGED_THREADS_TABLE)
+    table(table_name)
         .update()
         .filter(col("thread_id").eq(text(thread_id.to_owned())))
         .set(
@@ -369,7 +499,7 @@ where
             num(to_db_integer(activity_ms, "last_observed_recency_ms")?),
         )
         .execute(glue)?;
-    get(glue, thread_id)
+    get_in(glue, table_name, thread_id)
 }
 
 fn mark_seen<S>(
@@ -418,8 +548,15 @@ fn insert<S>(glue: &mut Glue<S>, thread: &ManagedThread) -> Result<()>
 where
     S: GStore + GStoreMut + Planner,
 {
+    insert_in(glue, MANAGED_THREADS_TABLE, thread)
+}
+
+fn insert_in<S>(glue: &mut Glue<S>, table_name: &'static str, thread: &ManagedThread) -> Result<()>
+where
+    S: GStore + GStoreMut + Planner,
+{
     let row = ManagedThreadRow::try_from(thread)?;
-    table(MANAGED_THREADS_TABLE)
+    table(table_name)
         .insert()
         .values_from(std::slice::from_ref(&row))?
         .execute(glue)?;
@@ -457,7 +594,14 @@ fn delete<S>(glue: &mut Glue<S>, thread_id: &str) -> Result<bool>
 where
     S: GStore + GStoreMut + Planner,
 {
-    let payload = table(MANAGED_THREADS_TABLE)
+    delete_in(glue, MANAGED_THREADS_TABLE, thread_id)
+}
+
+fn delete_in<S>(glue: &mut Glue<S>, table_name: &'static str, thread_id: &str) -> Result<bool>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    let payload = table(table_name)
         .delete()
         .filter(col("thread_id").eq(text(thread_id.to_owned())))
         .execute(glue)?;
@@ -465,6 +609,29 @@ where
         return Err(ThreadStoreError::UnexpectedPayload);
     };
     Ok(count > 0)
+}
+
+fn move_between<S>(
+    glue: &mut Glue<S>,
+    source_table: &'static str,
+    destination_table: &'static str,
+    thread_id: &str,
+) -> Result<Option<ManagedThread>>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    let Some(thread) = get_in(glue, source_table, thread_id)? else {
+        return Ok(None);
+    };
+    if get_in(glue, destination_table, thread_id)?.is_some() {
+        return Err(ThreadStoreError::UnexpectedPayload);
+    }
+    insert_in(glue, destination_table, &thread)?;
+    if !delete_in(glue, source_table, thread_id)? {
+        let _ = delete_in(glue, destination_table, thread_id);
+        return Err(ThreadStoreError::UnexpectedPayload);
+    }
+    Ok(Some(thread))
 }
 
 fn managed_thread_columns() -> Vec<ExprNode<'static>> {
@@ -629,6 +796,48 @@ mod tests {
         assert_eq!(seen.last_opened_at_ms, Some(150));
         assert_eq!(seen.last_seen_activity_ms, Some(40));
         assert!(!seen.unseen(40));
+    }
+
+    #[test]
+    fn archive_and_restore_move_membership_without_losing_metadata() {
+        let store = ThreadStore::memory().unwrap();
+        let mut managed = thread("task", 40);
+        managed.model = Some("gpt-test".to_string());
+        managed.reasoning_effort = Some("xhigh".to_string());
+        let claimed = store.claim(managed, 100).unwrap();
+
+        let archived = store.archive("task").unwrap().unwrap();
+        assert_eq!(archived, claimed);
+        assert!(store.get("task").unwrap().is_none());
+        assert_eq!(store.get_archived("task").unwrap(), Some(claimed.clone()));
+        assert_eq!(store.list(None, 30).unwrap().0, Vec::new());
+        assert_eq!(
+            store.list_archived(None, 30).unwrap().0,
+            vec![claimed.clone()]
+        );
+
+        let restored = store.restore("task").unwrap().unwrap();
+        assert_eq!(restored, claimed);
+        assert_eq!(store.get("task").unwrap(), Some(claimed));
+        assert!(store.get_archived("task").unwrap().is_none());
+        assert!(store.list_archived(None, 30).unwrap().0.is_empty());
+    }
+
+    #[test]
+    fn archived_membership_survives_redb_reopen() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("caffold.redb");
+        {
+            let store = ThreadStore::redb(&path).unwrap();
+            store.claim(thread("persisted", 20), 100).unwrap();
+            store.archive("persisted").unwrap().unwrap();
+        }
+        let store = ThreadStore::redb(&path).unwrap();
+        assert!(store.get("persisted").unwrap().is_none());
+        assert_eq!(
+            store.get_archived("persisted").unwrap().unwrap().thread_id,
+            "persisted"
+        );
     }
 
     #[test]

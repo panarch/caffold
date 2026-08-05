@@ -440,6 +440,275 @@ async fn managed_list_never_projects_pending_approval_onto_thread_status() {
 }
 
 #[tokio::test]
+async fn archive_and_restore_keep_caffold_membership_in_separate_lists() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-archive-round-trip";
+    let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
+    let client = CodexThreadClient::mock(vec![
+        crate::codex_app_server::MockCodexResponse::ok(
+            "thread/read",
+            json!({ "thread": thread.clone() }),
+        ),
+        crate::codex_app_server::MockCodexResponse::ok("thread/archive", json!({})),
+        crate::codex_app_server::MockCodexResponse::ok(
+            "thread/read",
+            json!({ "thread": thread.clone() }),
+        ),
+        crate::codex_app_server::MockCodexResponse::ok(
+            "thread/unarchive",
+            json!({ "thread": thread.clone() }),
+        ),
+        crate::codex_app_server::MockCodexResponse::ok(
+            "thread/read",
+            json!({ "thread": thread.clone() }),
+        ),
+    ]);
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+
+    let archived = task_archive(State(state.clone()), AxumPath(thread_id.to_string()))
+        .await
+        .expect("archive succeeds")
+        .0;
+    assert_eq!(archived.thread_id, thread_id);
+    assert!(thread_store_get(&state, thread_id).await.unwrap().is_none());
+    assert!(
+        thread_store_get_archived(&state, thread_id)
+            .await
+            .unwrap()
+            .is_some()
+    );
+
+    let archived_page =
+        list_archived_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
+            .await
+            .expect("archived list succeeds");
+    assert_eq!(archived_page.0.tasks[0].thread_id, thread_id);
+
+    let restored = task_restore(State(state.clone()), AxumPath(thread_id.to_string()))
+        .await
+        .expect("restore succeeds")
+        .0;
+    assert_eq!(restored.thread_id, thread_id);
+    assert!(thread_store_get(&state, thread_id).await.unwrap().is_some());
+    assert!(
+        thread_store_get_archived(&state, thread_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let active_page = list_managed_tasks(State(state), Query(TasksQuery { cursor: None }))
+        .await
+        .expect("active list succeeds");
+    assert_eq!(active_page.0.tasks[0].thread_id, thread_id);
+    assert_eq!(
+        client
+            .mock_requests()
+            .await
+            .into_iter()
+            .map(|(method, _)| method)
+            .collect::<Vec<_>>(),
+        [
+            "thread/read",
+            "thread/archive",
+            "thread/read",
+            "thread/unarchive",
+            "thread/read",
+        ]
+    );
+}
+
+#[tokio::test]
+async fn active_tasks_cannot_be_archived() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-active-archive";
+    let mut thread = task_thread_list(thread_id, root.path())["data"][0].clone();
+    thread["status"] = json!({ "type": "active", "activeFlags": [] });
+    let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+        "thread/read",
+        json!({ "thread": thread }),
+    )]);
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+
+    let result = task_archive(State(state.clone()), AxumPath(thread_id.to_string())).await;
+
+    assert!(matches!(
+        result,
+        Err(ApiError::BadRequest {
+            code: "task_active",
+            ..
+        })
+    ));
+    assert!(thread_store_get(&state, thread_id).await.unwrap().is_some());
+    assert!(
+        thread_store_get_archived(&state, thread_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        client
+            .mock_requests()
+            .await
+            .into_iter()
+            .map(|(method, _)| method)
+            .collect::<Vec<_>>(),
+        ["thread/read"]
+    );
+}
+
+#[tokio::test]
+async fn archive_failure_keeps_the_task_in_the_active_membership() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-archive-failure";
+    let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
+    let client = CodexThreadClient::mock(vec![
+        crate::codex_app_server::MockCodexResponse::ok("thread/read", json!({ "thread": thread })),
+        crate::codex_app_server::MockCodexResponse::error(
+            "thread/archive",
+            CodexThreadError::ProcessUnavailable,
+        ),
+    ]);
+    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+
+    let result = task_archive(State(state.clone()), AxumPath(thread_id.to_string())).await;
+
+    assert!(matches!(result, Err(ApiError::CodexThread(_))));
+    assert!(thread_store_get(&state, thread_id).await.unwrap().is_some());
+    assert!(
+        thread_store_get_archived(&state, thread_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn restore_failure_keeps_the_task_in_the_archived_membership() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-restore-failure";
+    let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::error(
+        "thread/unarchive",
+        CodexThreadError::ProcessUnavailable,
+    )]);
+    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+    thread_store_archive(&state, thread_id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let result = task_restore(State(state.clone()), AxumPath(thread_id.to_string())).await;
+
+    assert!(matches!(result, Err(ApiError::CodexThread(_))));
+    assert!(thread_store_get(&state, thread_id).await.unwrap().is_none());
+    assert!(
+        thread_store_get_archived(&state, thread_id)
+            .await
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[tokio::test]
+async fn archived_tasks_do_not_reappear_in_codex_history() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-archived-history";
+    let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+        "thread/list",
+        task_thread_list(thread_id, root.path()),
+    )]);
+    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+    thread_store_archive(&state, thread_id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let history = list_task_history(State(state), Query(TasksQuery { cursor: None }))
+        .await
+        .expect("history list succeeds");
+
+    assert!(history.0.tasks.is_empty());
+}
+
+#[tokio::test]
+async fn archived_threads_must_be_restored_instead_of_continued() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-archived-continue";
+    let client = CodexThreadClient::mock(Vec::new());
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+    thread_store_archive(&state, thread_id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let result = continue_task(State(state), AxumPath(thread_id.to_string())).await;
+
+    assert!(matches!(
+        result,
+        Err(ApiError::BadRequest {
+            code: "task_archived",
+            ..
+        })
+    ));
+    assert!(client.mock_requests().await.is_empty());
+}
+
+#[tokio::test]
+async fn archived_list_fails_as_a_whole_without_updating_recency_on_read_error() {
+    let root = tempfile::tempdir().unwrap();
+    let good_id = "thread-archived-good";
+    let failed_id = "thread-archived-failed";
+    let mut good_thread = task_thread_list(good_id, root.path())["data"][0].clone();
+    good_thread["updatedAt"] = json!(99.0);
+    let client = CodexThreadClient::mock(vec![
+        crate::codex_app_server::MockCodexResponse::ok(
+            "thread/read",
+            json!({ "thread": good_thread }),
+        ),
+        crate::codex_app_server::MockCodexResponse::error(
+            "thread/read",
+            CodexThreadError::ProcessUnavailable,
+        ),
+    ]);
+    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+    for thread_id in [good_id, failed_id] {
+        manage_test_thread(&state, thread_id, root.path()).await;
+        thread_store_archive(&state, thread_id)
+            .await
+            .unwrap()
+            .unwrap();
+    }
+    let before = thread_store_get_archived(&state, good_id)
+        .await
+        .unwrap()
+        .unwrap()
+        .last_observed_recency_ms;
+
+    let result =
+        list_archived_tasks(State(state.clone()), Query(TasksQuery { cursor: None })).await;
+
+    assert!(matches!(result, Err(ApiError::CodexThread(_))));
+    assert_eq!(
+        thread_store_get_archived(&state, good_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .last_observed_recency_ms,
+        before,
+        "a failed archived page must not partially update its recency cache"
+    );
+}
+
+#[tokio::test]
 async fn managed_list_fails_as_a_whole_without_updating_recency_on_read_error() {
     let root = tempfile::tempdir().unwrap();
     let good_id = "thread-good";

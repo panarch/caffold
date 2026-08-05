@@ -4,7 +4,7 @@ use axum::{
     Json, Router,
     body::{Body, Bytes},
     extract::{DefaultBodyLimit, Path as AxumPath, Query, State},
-    http::{HeaderValue, StatusCode, header},
+    http::{HeaderValue, header},
     response::Response,
     routing::{get, post},
 };
@@ -26,7 +26,7 @@ use crate::{
     app::error::ApiError,
     codex_app_server::{
         self, CodexPermissionMode, CodexStatusResponse, CodexThreadClient, CodexThreadError,
-        CodexTurnOptions,
+        CodexTurnOptions, ThreadStatus,
     },
     codex_thread_sessions::{PromptTarget, ThreadSessionsDiagnostics},
     fs::MAX_IMAGE_BYTES,
@@ -201,6 +201,7 @@ pub(super) fn router(state: TaskState) -> Router {
                 .layer(DefaultBodyLimit::max(MAX_TASK_REQUEST_BYTES)),
         )
         .route("/api/task-history", get(list_task_history))
+        .route("/api/tasks/archived", get(list_archived_tasks))
         .route("/api/tasks/stream", get(task_list_stream))
         .route("/api/tasks/{thread_id}", get(task_detail))
         .route("/api/tasks/{thread_id}/continue", post(continue_task))
@@ -210,6 +211,7 @@ pub(super) fn router(state: TaskState) -> Router {
         )
         .route("/api/tasks/{thread_id}/stream", get(task_stream))
         .route("/api/tasks/{thread_id}/archive", post(task_archive))
+        .route("/api/tasks/{thread_id}/restore", post(task_restore))
         .route(
             "/api/tasks/{thread_id}/prompts",
             post(task_prompt).layer(DefaultBodyLimit::max(MAX_TASK_REQUEST_BYTES)),
@@ -432,6 +434,46 @@ async fn list_managed_tasks(
     Ok(Json(TaskListResponse { tasks, next_cursor }))
 }
 
+async fn list_archived_tasks(
+    State(state): State<TaskState>,
+    Query(query): Query<TasksQuery>,
+) -> Result<Json<TaskListResponse>, ApiError> {
+    let (archived, next_cursor) =
+        thread_store_list_archived(&state, query.cursor.as_deref(), TASK_LIST_PAGE_SIZE).await?;
+    let connection = require_codex_thread_connection(&state).await?;
+    let reads = stream::iter(archived)
+        .map(|managed| {
+            let state = state.clone();
+            let client = connection.client.clone();
+            async move {
+                let thread = client.read_thread(&managed.thread_id).await?;
+                state
+                    .codex_sessions
+                    .observe_thread_metadata(thread.clone())
+                    .await;
+                let mut task = state.detail.record_from_codex_thread(&thread)?;
+                let activity_ms = task_activity_ms(&task);
+                task.unseen = managed.unseen(activity_ms);
+                Ok::<_, ApiError>((task, activity_ms))
+            }
+        })
+        .buffer_unordered(TASK_CANONICAL_READ_CONCURRENCY)
+        .collect::<Vec<_>>()
+        .await;
+    let mut tasks = reads.into_iter().collect::<Result<Vec<_>, ApiError>>()?;
+    for (task, activity_ms) in &tasks {
+        thread_store_update_archived_observed_recency(&state, &task.thread_id, *activity_ms)
+            .await?;
+    }
+    tasks.sort_by(|(left, _), (right, _)| {
+        task_activity_ms(right)
+            .cmp(&task_activity_ms(left))
+            .then_with(|| left.thread_id.cmp(&right.thread_id))
+    });
+    let tasks = tasks.into_iter().map(|(task, _)| task).collect();
+    Ok(Json(TaskListResponse { tasks, next_cursor }))
+}
+
 async fn list_task_history(
     State(state): State<TaskState>,
     Query(query): Query<TasksQuery>,
@@ -485,6 +527,19 @@ async fn thread_store_list(
         .map_err(thread_store_api_error)
 }
 
+async fn thread_store_list_archived(
+    state: &TaskState,
+    cursor: Option<&str>,
+    limit: usize,
+) -> Result<(Vec<ManagedThread>, Option<String>), ApiError> {
+    let store = state.thread_store.clone();
+    let cursor = cursor.map(ToOwned::to_owned);
+    tokio::task::spawn_blocking(move || store.list_archived(cursor.as_deref(), limit))
+        .await
+        .map_err(thread_store_join_error)?
+        .map_err(thread_store_api_error)
+}
+
 async fn thread_store_get(
     state: &TaskState,
     thread_id: &str,
@@ -492,6 +547,18 @@ async fn thread_store_get(
     let store = state.thread_store.clone();
     let thread_id = thread_id.to_string();
     tokio::task::spawn_blocking(move || store.get(&thread_id))
+        .await
+        .map_err(thread_store_join_error)?
+        .map_err(thread_store_api_error)
+}
+
+async fn thread_store_get_archived(
+    state: &TaskState,
+    thread_id: &str,
+) -> Result<Option<ManagedThread>, ApiError> {
+    let store = state.thread_store.clone();
+    let thread_id = thread_id.to_string();
+    tokio::task::spawn_blocking(move || store.get_archived(&thread_id))
         .await
         .map_err(thread_store_join_error)?
         .map_err(thread_store_api_error)
@@ -538,6 +605,21 @@ async fn thread_store_update_observed_recency(
     .map_err(thread_store_api_error)
 }
 
+async fn thread_store_update_archived_observed_recency(
+    state: &TaskState,
+    thread_id: &str,
+    canonical_activity_ms: u64,
+) -> Result<Option<ManagedThread>, ApiError> {
+    let store = state.thread_store.clone();
+    let thread_id = thread_id.to_string();
+    tokio::task::spawn_blocking(move || {
+        store.update_archived_observed_recency(&thread_id, canonical_activity_ms)
+    })
+    .await
+    .map_err(thread_store_join_error)?
+    .map_err(thread_store_api_error)
+}
+
 async fn thread_store_update_composer_settings(
     state: &TaskState,
     thread_id: &str,
@@ -556,10 +638,25 @@ async fn thread_store_update_composer_settings(
     .map_err(thread_store_api_error)
 }
 
-async fn thread_store_delete(state: &TaskState, thread_id: &str) -> Result<bool, ApiError> {
+async fn thread_store_archive(
+    state: &TaskState,
+    thread_id: &str,
+) -> Result<Option<ManagedThread>, ApiError> {
     let store = state.thread_store.clone();
     let thread_id = thread_id.to_string();
-    tokio::task::spawn_blocking(move || store.delete(&thread_id))
+    tokio::task::spawn_blocking(move || store.archive(&thread_id))
+        .await
+        .map_err(thread_store_join_error)?
+        .map_err(thread_store_api_error)
+}
+
+async fn thread_store_restore(
+    state: &TaskState,
+    thread_id: &str,
+) -> Result<Option<ManagedThread>, ApiError> {
+    let store = state.thread_store.clone();
+    let thread_id = thread_id.to_string();
+    tokio::task::spawn_blocking(move || store.restore(&thread_id))
         .await
         .map_err(thread_store_join_error)?
         .map_err(thread_store_api_error)
@@ -577,7 +674,7 @@ async fn filter_and_refresh_managed_history(
     let managed = tokio::task::spawn_blocking(move || {
         let mut managed = HashSet::new();
         for thread_id in thread_ids {
-            if store.get(&thread_id)?.is_some() {
+            if store.get(&thread_id)?.is_some() || store.get_archived(&thread_id)?.is_some() {
                 managed.insert(thread_id);
             }
         }
@@ -719,6 +816,15 @@ async fn continue_task(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<TaskRecord>, ApiError> {
+    if thread_store_get_archived(&state, &thread_id)
+        .await?
+        .is_some()
+    {
+        return Err(ApiError::BadRequest {
+            code: "task_archived",
+            message: "restore the archived task before continuing it".to_string(),
+        });
+    }
     let client = require_codex_thread_client(&state).await?;
     let thread = client.read_thread(&thread_id).await?;
     state
@@ -1125,19 +1231,74 @@ async fn task_interrupt(
 async fn task_archive(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
-) -> Result<StatusCode, ApiError> {
+) -> Result<Json<TaskRecord>, ApiError> {
     if thread_store_get(&state, &thread_id).await?.is_none() {
         return Err(task_not_managed_error());
     }
     let connection = require_codex_thread_connection(&state).await?;
+    let thread = connection.client.read_thread(&thread_id).await?;
+    if matches!(thread.status, ThreadStatus::Active { .. }) {
+        return Err(ApiError::BadRequest {
+            code: "task_active",
+            message: "active tasks cannot be archived".to_string(),
+        });
+    }
+    let task = state.detail.record_from_codex_thread(&thread)?;
     connection.client.archive_thread(&thread_id).await?;
-    thread_store_delete(&state, &thread_id).await?;
+    match thread_store_archive(&state, &thread_id).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            let _ = connection.client.unarchive_thread(&thread_id).await;
+            return Err(task_not_managed_error());
+        }
+        Err(error) => {
+            let _ = connection.client.unarchive_thread(&thread_id).await;
+            return Err(error);
+        }
+    }
     notify_task_removed(&state, &thread_id, "archived");
-    Ok(StatusCode::NO_CONTENT)
+    Ok(Json(task))
+}
+
+async fn task_restore(
+    State(state): State<TaskState>,
+    AxumPath(thread_id): AxumPath<String>,
+) -> Result<Json<TaskRecord>, ApiError> {
+    let Some(archived) = thread_store_get_archived(&state, &thread_id).await? else {
+        return Err(task_not_archived_error());
+    };
+    let connection = require_codex_thread_connection(&state).await?;
+    let thread = connection.client.unarchive_thread(&thread_id).await?;
+    state
+        .codex_sessions
+        .observe_thread_metadata(thread.clone())
+        .await;
+    let mut task = state.detail.record_from_codex_thread(&thread)?;
+    task.unseen = archived.unseen(task_activity_ms(&task));
+    match thread_store_restore(&state, &thread_id).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            let _ = connection.client.archive_thread(&thread_id).await;
+            return Err(task_not_archived_error());
+        }
+        Err(error) => {
+            let _ = connection.client.archive_thread(&thread_id).await;
+            return Err(error);
+        }
+    }
+    notify_task_updated(&state, task.clone());
+    Ok(Json(task))
 }
 
 fn notify_task_removed(state: &TaskState, thread_id: &str, reason: &'static str) {
     state.task_list_events.remove(thread_id, reason);
+}
+
+fn task_not_archived_error() -> ApiError {
+    ApiError::BadRequest {
+        code: "task_not_archived",
+        message: "thread is not archived in Caffold".to_string(),
+    }
 }
 
 async fn task_approval(

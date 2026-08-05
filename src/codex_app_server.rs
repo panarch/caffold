@@ -20,13 +20,13 @@ use protocol::{
     ACCOUNT_RATE_LIMITS_READ, ACCOUNT_READ, ACCOUNT_USAGE_READ, AccountReadResponse, CONFIG_READ,
     ConfigReadResponse, EmptyResponse, INITIALIZE, INITIALIZED, JsonRpcError, MODEL_LIST,
     PERMISSION_PROFILE_LIST, PermissionProfileListResponse, THREAD_ARCHIVE, THREAD_LIST,
-    THREAD_READ, THREAD_RESUME, THREAD_START, THREAD_TURNS_LIST, THREAD_UNSUBSCRIBE,
-    TURN_INTERRUPT, TURN_START, TURN_STEER, ThreadListResponse, ThreadReadResponse,
-    ThreadStartResponse, TurnStartResponse, TurnSteerResponse, account_read_params,
-    config_read_params, decode_response, model_list_params, permission_profile_list_params,
-    thread_archive_params, thread_list_params, thread_read_params, thread_resume_params,
-    thread_start_params, thread_turns_list_params, thread_unsubscribe_params,
-    turn_interrupt_params, turn_start_params, turn_steer_params,
+    THREAD_READ, THREAD_RESUME, THREAD_START, THREAD_TURNS_LIST, THREAD_UNARCHIVE,
+    THREAD_UNSUBSCRIBE, TURN_INTERRUPT, TURN_START, TURN_STEER, ThreadListResponse,
+    ThreadReadResponse, ThreadStartResponse, TurnStartResponse, TurnSteerResponse,
+    account_read_params, config_read_params, decode_response, model_list_params,
+    permission_profile_list_params, thread_archive_params, thread_list_params, thread_read_params,
+    thread_resume_params, thread_start_params, thread_turns_list_params, thread_unarchive_params,
+    thread_unsubscribe_params, turn_interrupt_params, turn_start_params, turn_steer_params,
 };
 pub use protocol::{
     CodexAccount, CodexAppServerInfo, CodexNotification, CodexPermissionMode, CodexServerRequest,
@@ -534,6 +534,13 @@ impl CodexThreadClient {
             .request_typed(THREAD_ARCHIVE, thread_archive_params(thread_id))
             .await?;
         Ok(())
+    }
+
+    pub async fn unarchive_thread(&self, thread_id: &str) -> Result<CodexThread, CodexThreadError> {
+        let response: protocol::ThreadUnarchiveResponse = self
+            .request_typed(THREAD_UNARCHIVE, thread_unarchive_params(thread_id))
+            .await?;
+        Ok(response.thread)
     }
 
     pub async fn start_turn(
@@ -1184,7 +1191,13 @@ mod tests {
 
     #[test]
     fn keeps_interactive_requests_on_the_short_timeout() {
-        for method in [TURN_START, TURN_STEER, TURN_INTERRUPT, THREAD_ARCHIVE] {
+        for method in [
+            TURN_START,
+            TURN_STEER,
+            TURN_INTERRUPT,
+            THREAD_ARCHIVE,
+            THREAD_UNARCHIVE,
+        ] {
             assert_eq!(
                 request_timeout(method),
                 Duration::from_secs(30),
@@ -1232,6 +1245,38 @@ mod tests {
                     "archived": false,
                     "useStateDbOnly": true
                 })
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn unarchives_threads_with_the_canonical_app_server_method() {
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            THREAD_UNARCHIVE,
+            json!({
+                "thread": {
+                    "id": "thread_1",
+                    "preview": "Restored task",
+                    "status": { "type": "idle" },
+                    "cwd": "/tmp/project",
+                    "createdAt": 1.0,
+                    "updatedAt": 2.0,
+                    "turns": []
+                }
+            }),
+        )]);
+
+        let thread = client
+            .unarchive_thread("thread_1")
+            .await
+            .expect("unarchive thread");
+
+        assert_eq!(thread.id, "thread_1");
+        assert_eq!(
+            client.mock_requests().await,
+            vec![(
+                THREAD_UNARCHIVE.to_string(),
+                json!({ "threadId": "thread_1" })
             )]
         );
     }

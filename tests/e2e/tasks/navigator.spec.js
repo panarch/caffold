@@ -18,7 +18,7 @@ test("loads additional task-list pages only after a cursor request", async ({ pa
   await installEventSourceMock(page);
   await mockCodexModels(page);
 
-  const task = (threadId, title, updatedMs) => ({
+  const task = (threadId, title, updatedMs, worktree = null) => ({
     id: threadId,
     threadId,
     ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
@@ -27,7 +27,7 @@ test("loads additional task-list pages only after a cursor request", async ({ pa
     cwd: "tests/fixtures/home",
     cwdPath: "tests/fixtures/home",
     relativeCwd: "tests/fixtures/home",
-    worktree: null,
+    worktree,
     createdMs: updatedMs,
     updatedMs,
     recencyMs: updatedMs,
@@ -61,6 +61,315 @@ test("loads additional task-list pages only after a cursor request", async ({ pa
   await expect(tasksPage.getByRole("button", { name: "Load more tasks" })).toHaveCount(0);
   expect(cursors).toEqual([null, "page-2"]);
 });
+
+test("archives and restores an idle Caffold task through the grouped Archived section", async ({
+  page,
+}, testInfo) => {
+  await installEventSourceMock(page);
+  await mockCodexModels(page);
+  const task = (threadId, title, updatedMs) => ({
+    id: threadId,
+    threadId,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title,
+    preview: `${title} preview`,
+    cwd: "tests/fixtures/home/project",
+    cwdPath: "tests/fixtures/home/project",
+    relativeCwd: "",
+    worktree: null,
+    createdMs: updatedMs,
+    updatedMs,
+    recencyMs: updatedMs,
+    lastEventSummary: `${title} summary`,
+    unseen: false,
+  });
+  const now = Date.now();
+  const activeTask = task("thread_archive", "Archive round trip", now, {
+    rootPath: "tests/fixtures/home/project",
+    repositoryRootPath: "tests/fixtures/home/project",
+    branch: "feature/archive-round-trip",
+    headSha: "1111111111111111111111111111111111111111",
+    relativeCwd: "",
+    linked: true,
+  });
+  const existingArchivedTask = task(
+    "thread_archived_existing",
+    "Earlier archive",
+    now - 1_000,
+  );
+  let activeTasks = [activeTask];
+  let archivedTasks = [existingArchivedTask];
+  const mutations = [];
+
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: archivedTasks, nextCursor: null }),
+    }),
+  );
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: activeTasks, nextCursor: null }),
+    }),
+  );
+  await page.route(/\/api\/task-history(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [], nextCursor: null }),
+    }),
+  );
+  await page.route(/\/api\/tasks\/thread_archive(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        threadId: activeTask.threadId,
+        task: activeTask,
+        events: [],
+        eventsPage: { nextCursor: null },
+        pendingApprovals: [],
+      }),
+    }),
+  );
+  await page.route(/\/api\/tasks\/thread_archive\/archive$/, (route) => {
+    mutations.push("archive");
+    activeTasks = [];
+    archivedTasks = [activeTask, existingArchivedTask];
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(activeTask),
+    });
+  });
+  await page.route(/\/api\/tasks\/thread_archive\/restore$/, (route) => {
+    mutations.push("restore");
+    activeTasks = [activeTask];
+    archivedTasks = [existingArchivedTask];
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(activeTask),
+    });
+  });
+
+  await page.goto("/tasks/thread_archive");
+  const navigator = page.locator("caffold-task-navigator");
+  await expect(
+    navigator.locator('.task-list-section[data-task-section="archived"]'),
+  ).toContainText("Earlier archive");
+  await page.getByRole("button", { name: /Task details/ }).click();
+  await expect(
+    page.getByText(
+      "Archive removes this task from the active list. Its worktree and files are retained.",
+    ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Archive task" }).click();
+
+  await expect(page).toHaveURL("/");
+  await expect(
+    navigator.locator('.task-list-section[data-task-section="managed"]'),
+  ).not.toContainText("Archive round trip");
+  const archivedSection = navigator.locator(
+    '.task-list-section[data-task-section="archived"]',
+  );
+  await expect(archivedSection).toContainText("Archive round trip");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+  await captureReviewScreenshot(page, testInfo, "tasks-archived-section");
+  await archivedSection
+    .getByRole("button", { name: "Restore Archive round trip" })
+    .click();
+
+  await expect(
+    navigator.locator('.task-list-section[data-task-section="managed"]'),
+  ).toContainText("Archive round trip");
+  await expect(archivedSection).not.toContainText("Archive round trip");
+  expect(mutations).toEqual(["archive", "restore"]);
+});
+
+test("keeps an idle task active when the archive request fails", async ({ page }) => {
+  await installEventSourceMock(page);
+  await mockCodexModels(page);
+  const task = {
+    id: "thread_archive_failure",
+    threadId: "thread_archive_failure",
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Archive failure stays active",
+    preview: "Archive failure fixture",
+    cwd: "tests/fixtures/home/project",
+    cwdPath: "tests/fixtures/home/project",
+    relativeCwd: "",
+    worktree: null,
+    createdMs: 10,
+    updatedMs: 20,
+    recencyMs: 20,
+    lastEventSummary: "Archive failure fixture",
+    unseen: false,
+  };
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [task], nextCursor: null }),
+    }),
+  );
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [], nextCursor: null }),
+    }),
+  );
+  await page.route(/\/api\/tasks\/thread_archive_failure(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        threadId: task.threadId,
+        task,
+        events: [],
+        eventsPage: { nextCursor: null },
+        pendingApprovals: [],
+      }),
+    }),
+  );
+  await page.route(/\/api\/tasks\/thread_archive_failure\/archive$/, (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: { code: "codex_unavailable", message: "Archive failed by fixture." },
+      }),
+    }),
+  );
+
+  await page.goto("/tasks/thread_archive_failure");
+  await page.getByRole("button", { name: /Task details/ }).click();
+  await page.getByRole("button", { name: "Archive task" }).click();
+
+  await expect(page).toHaveURL(/\/tasks\/thread_archive_failure$/);
+  await expect(page.getByRole("alert")).toHaveText("Archive failed by fixture.");
+  await expect(
+    page.locator(
+      'caffold-task-navigator .task-list-section[data-task-section="managed"]',
+    ),
+  ).toContainText("Archive failure stays active");
+  await expect(
+    page.locator(
+      'caffold-task-navigator .task-list-section[data-task-section="archived"]',
+    ),
+  ).not.toContainText("Archive failure stays active");
+});
+
+test("keeps a task archived when restore fails", async ({ page }) => {
+  await installEventSourceMock(page);
+  await mockCodexModels(page);
+  const task = {
+    id: "thread_restore_failure",
+    threadId: "thread_restore_failure",
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Restore failure stays archived",
+    preview: "Restore failure fixture",
+    cwd: "tests/fixtures/home/project",
+    cwdPath: "tests/fixtures/home/project",
+    relativeCwd: "",
+    worktree: null,
+    createdMs: 10,
+    updatedMs: 20,
+    recencyMs: 20,
+    lastEventSummary: "Restore failure fixture",
+    unseen: false,
+  };
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [], nextCursor: null }),
+    }),
+  );
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [task], nextCursor: null }),
+    }),
+  );
+  await page.route(/\/api\/tasks\/thread_restore_failure\/restore$/, (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: { code: "codex_unavailable", message: "Restore failed by fixture." },
+      }),
+    }),
+  );
+
+  await page.goto("/tasks");
+  const archivedSection = page.locator(
+    'caffold-task-navigator .task-list-section[data-task-section="archived"]',
+  );
+  await archivedSection
+    .getByRole("button", { name: "Restore Restore failure stays archived" })
+    .click();
+
+  await expect(archivedSection.getByRole("alert")).toHaveText(
+    "Restore failed by fixture.",
+  );
+  await expect(archivedSection).toContainText("Restore failure stays archived");
+  await expect(
+    page.locator(
+      'caffold-task-navigator .task-list-section[data-task-section="managed"]',
+    ),
+  ).not.toContainText("Restore failure stays archived");
+});
+
+test("does not offer archive while the canonical task is active", async ({ page }) => {
+  await installEventSourceMock(page);
+  await mockCodexModels(page);
+  const task = {
+    id: "thread_active_archive",
+    threadId: "thread_active_archive",
+    ...canonicalTaskState("active", {
+      turnId: "turn_active_archive",
+      startedAtMs: 20,
+      latestTurnStatus: "inProgress",
+    }),
+    title: "Active archive guard",
+    preview: "Active archive guard",
+    cwd: "tests/fixtures/home/project",
+    cwdPath: "tests/fixtures/home/project",
+    relativeCwd: "",
+    worktree: null,
+    createdMs: 10,
+    updatedMs: 20,
+    recencyMs: 20,
+    lastEventSummary: "Active archive guard",
+    unseen: false,
+  };
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [task], nextCursor: null }),
+    }),
+  );
+  await page.route(/\/api\/tasks\/thread_active_archive(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        threadId: task.threadId,
+        task,
+        events: [],
+        eventsPage: { nextCursor: null },
+        pendingApprovals: [],
+      }),
+    }),
+  );
+
+  await page.goto("/tasks/thread_active_archive");
+  await page.getByRole("button", { name: /Task details/ }).click();
+
+  await expect(page.getByRole("button", { name: "Archive task" })).toBeDisabled();
+});
+
 test("clears stale task rows when canonical list reload fails", async ({ page }) => {
   await page.addInitScript(() => {
     window.EventSource = class MockEventSource {
