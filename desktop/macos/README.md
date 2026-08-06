@@ -37,7 +37,8 @@ Maintainers preparing a distribution should follow the [internal release process
 
 ## Runtime dependencies
 
-- Codex CLI or Codex.app, already authenticated
+- the [official standalone Codex install](https://chatgpt.com/codex/install.sh),
+  already authenticated (the daemon command requires this installation layout)
 - Git
 - GitHub CLI for GitHub views
 - Tailscale for private remote access
@@ -56,6 +57,9 @@ Missing optional dependencies do not prevent the server from starting. The menu 
 - `Check for Updates…` installs an approved update through Homebrew, then relaunches Caffold and confirms that its owned local server becomes ready.
 - Data is stored in `~/Library/Application Support/Caffold/data`.
 - Logs are stored in `~/Library/Logs/Caffold/caffold.log`.
+- Caffold ensures the persistent Codex app-server daemon is running, then owns
+  only a disposable proxy connection. Caffold restarts and app replacements do
+  not stop the daemon or its active turns.
 
 `Server Settings...` controls the installed PWA name, bind mode, port, and automatic Tailscale Serve startup. Use a distinct name before installing the PWA to distinguish multiple Caffold servers; existing installations may need to be reinstalled after a name change. Local-only binding is the default. LAN binding is an explicit opt-in and is not required for Tailscale Serve.
 

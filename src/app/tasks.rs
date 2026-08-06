@@ -106,12 +106,14 @@ impl TasksApp {
         shutdown: broadcast::Sender<()>,
         database_path: PathBuf,
     ) -> anyhow::Result<Self> {
-        Ok(Self::new(
+        let app = Self::new(
             fs,
             default_cwd_path,
             shutdown,
             ThreadStore::redb(database_path)?,
-        ))
+        );
+        app.runtime.startup();
+        Ok(app)
     }
 
     pub(super) fn memory(

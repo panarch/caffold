@@ -26,7 +26,7 @@ The intended shape is:
 
 - a Rust backend running on each trusted host
 - a browser/PWA frontend served by that backend
-- Codex app-server managed as a child process
+- a persistent Codex app-server daemon reached through a disposable proxy child
 - JSON-RPC integration between the backend and Codex app-server
 - Codex threads as the source of truth for task history
 - git worktrees as the source of truth for code changes
@@ -68,6 +68,17 @@ The Cask installs `Caffold Server.app` in `/Applications` and links the bundled 
 Homebrew-managed installations can check for updates from the menu bar app. Caffold uses the
 latest GitHub Release only for version discovery; an approved update is installed by Homebrew and
 the app restarts after verifying the replacement bundle.
+
+Caffold's restart-safe Codex transport requires the official standalone Codex
+installation, already authenticated:
+
+```sh
+curl -fsSL https://chatgpt.com/codex/install.sh | sh
+```
+
+Caffold starts the user's persistent app-server daemon when needed and connects
+through a disposable proxy. Replacing or quitting Caffold closes only that proxy;
+it does not stop an active Codex turn in the daemon.
 
 Build the application bundle with:
 

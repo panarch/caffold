@@ -10,15 +10,17 @@ That instance serves the UI, manages Codex app-server, talks to the local filesy
 flowchart TD
     PWA["Browser / PWA"]
     Backend["Caffold Rust Backend"]
-    AppServer["Codex app-server"]
+    Proxy["Codex proxy child"]
+    AppServer["Persistent Codex app-server daemon"]
     Git["git worktree"]
     Commands["Command runner"]
 
     PWA -->|"HTTP / SSE / WebSocket as needed"| Backend
-    Backend -->|"JSON-RPC"| AppServer
+    Backend -->|"JSON-RPC / WebSocket"| Proxy
+    Proxy --> AppServer
     Backend --> Git
     Backend --> Commands
-    AppServer -->|"agent events / approvals / thread data"| Backend
+    AppServer -->|"agent events / approvals / thread data"| Proxy
     Commands -->|"exit code / output summary"| Backend
 ```
 
@@ -34,7 +36,7 @@ The backend owns:
 
 - host instance lifecycle
 - live file, git, and worktree-context lookup
-- Codex app-server child process lifecycle
+- Codex app-server daemon connection and disposable proxy lifecycle
 - JSON-RPC adapter
 - git status, diff, log, and file APIs
 - command runner
@@ -81,7 +83,9 @@ The worktree is the source of truth for code changes. Caffold reads from git and
 
 ## Process Model
 
-The initial model is one Caffold backend instance per host. That backend manages one Codex app-server process for the host unless implementation evidence later suggests a different process model.
+The initial model is one persistent Codex app-server daemon per user. A Caffold
+backend ensures that daemon is running and connects through a proxy child that
+may be replaced independently. Caffold owns and stops the proxy, not the daemon.
 
 Codex remains the source of truth for thread content and runtime state. Caffold
 keeps one local `managed_threads` table for the subset explicitly continued in

@@ -719,6 +719,35 @@ impl CodexThreadSessions {
             .await
     }
 
+    pub async fn recover_loaded_thread(
+        &self,
+        client: &CodexThreadClient,
+        generation: u64,
+        thread_id: &str,
+    ) -> Result<Option<ThreadSessionSnapshot>, CodexThreadError> {
+        let entry = self.entry(thread_id).await;
+        entry.state.lock().await.runtime_lease = true;
+
+        match self.ensure_subscribed(client, generation, thread_id).await {
+            Ok(snapshot)
+                if snapshot
+                    .thread
+                    .as_ref()
+                    .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. })) =>
+            {
+                Ok(Some(snapshot))
+            }
+            Ok(_) => {
+                self.cancel_runtime(thread_id).await;
+                Ok(None)
+            }
+            Err(error) => {
+                self.cancel_runtime(thread_id).await;
+                Err(error)
+            }
+        }
+    }
+
     pub async fn diagnostics(&self) -> ThreadSessionsDiagnostics {
         let entries = self
             .entries

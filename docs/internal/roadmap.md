@@ -31,7 +31,7 @@ This roadmap is ordered by product risk and workflow value, not by implementatio
 
 ## Phase 3: Codex App Server Integration
 
-- spawn app-server child process
+- ensure the persistent app-server daemon and connect through a proxy child
 - initialize JSON-RPC adapter
 - start or attach thread
 - send prompt

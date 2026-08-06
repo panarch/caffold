@@ -1,12 +1,10 @@
 #[cfg(test)]
 use std::collections::VecDeque;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     env,
     ffi::OsStr,
-    io::ErrorKind,
     path::{Path, PathBuf},
-    process::Stdio,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -14,7 +12,11 @@ use std::{
     time::Duration,
 };
 
+use futures_util::{SinkExt, StreamExt, stream::SplitSink, stream::SplitStream};
 mod protocol;
+#[cfg(test)]
+mod reconnect_spike;
+mod transport;
 
 pub(crate) use protocol::RENAME_CURRENT_THREAD_TOOL_NAME;
 use protocol::{
@@ -34,7 +36,6 @@ pub use protocol::{
     CodexThread, CodexTurn, ModelListResponse, PermissionProfileSummary, SortDirection,
     ThreadResumeResponse, ThreadStatus, ThreadUnsubscribeResponse, TurnStatus, TurnsPage,
 };
-#[cfg(test)]
 use protocol::{THREAD_LOADED_LIST, ThreadLoadedListResponse, thread_loaded_list_params};
 #[cfg(test)]
 use protocol::{ThreadListResponse, thread_list_params};
@@ -43,12 +44,14 @@ pub(crate) use protocol::{TurnItemsView, decode_notification, decode_server_requ
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncBufReadExt, BufReader},
     io::{AsyncRead, Lines},
-    process::{Child, ChildStdin, ChildStdout, Command},
+    process::Child,
     sync::{Mutex as AsyncMutex, broadcast, oneshot},
     time::timeout,
 };
+use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
+use transport::{ProxyStream, connect_managed_proxy};
 
 const INTERACTIVE_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const HISTORY_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
@@ -134,7 +137,9 @@ fn resolve_codex_executable() -> Result<PathBuf, CodexThreadError> {
 
 fn request_timeout(method: &str) -> Duration {
     match method {
-        THREAD_LIST | THREAD_READ | THREAD_RESUME | THREAD_TURNS_LIST => HISTORY_REQUEST_TIMEOUT,
+        THREAD_LIST | THREAD_LOADED_LIST | THREAD_READ | THREAD_RESUME | THREAD_TURNS_LIST => {
+            HISTORY_REQUEST_TIMEOUT
+        }
         _ => INTERACTIVE_REQUEST_TIMEOUT,
     }
 }
@@ -151,6 +156,20 @@ pub struct CodexStatusResponse {
     pub rate_limits: Option<Value>,
     pub usage: Option<Value>,
     pub app_server: Option<CodexAppServerInfo>,
+    pub daemon: Option<CodexDaemonInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexDaemonInfo {
+    pub status: String,
+    pub backend: Option<String>,
+    pub pid: Option<u32>,
+    pub managed_codex_path: Option<String>,
+    pub managed_codex_version: Option<String>,
+    pub socket_path: Option<String>,
+    pub cli_version: Option<String>,
+    pub app_server_version: Option<String>,
 }
 
 #[derive(Clone)]
@@ -209,12 +228,13 @@ impl MockCodexResponse {
 }
 
 struct CodexThreadClientInner {
-    stdin: AsyncMutex<ChildStdin>,
+    writer: AsyncMutex<SplitSink<WebSocketStream<ProxyStream>, Message>>,
     _child: AsyncMutex<Child>,
     pending: AsyncMutex<HashMap<u64, PendingRequest>>,
     next_id: AtomicU64,
     events: broadcast::Sender<CodexRuntimeEvent>,
     app_server: AsyncMutex<Option<CodexAppServerInfo>>,
+    daemon: CodexDaemonInfo,
 }
 
 struct PendingRequest {
@@ -299,43 +319,24 @@ impl CodexThreadError {
 impl CodexThreadClient {
     pub async fn start() -> Result<Self, CodexThreadError> {
         let codex_executable = resolve_codex_executable()?;
-        let mut child = Command::new(codex_executable)
-            .arg("app-server")
-            .arg("--stdio")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|error| {
-                if error.kind() == ErrorKind::NotFound {
-                    CodexThreadError::MissingCli
-                } else {
-                    CodexThreadError::StartFailed(error.to_string())
-                }
-            })?;
-
-        let stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| CodexThreadError::Protocol("failed to open stdin".to_string()))?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| CodexThreadError::Protocol("failed to open stdout".to_string()))?;
-        let stderr = child
-            .stderr
-            .take()
-            .ok_or_else(|| CodexThreadError::Protocol("failed to open stderr".to_string()))?;
+        let managed = connect_managed_proxy(&codex_executable).await?;
+        let transport::ManagedProxyConnection { proxy, daemon } = managed;
+        let transport::ProxyConnection {
+            socket,
+            child,
+            stderr,
+        } = proxy;
+        let (writer, reader) = socket.split();
         let (events, _) = broadcast::channel(256);
         let client = Self {
             inner: Some(Arc::new(CodexThreadClientInner {
-                stdin: AsyncMutex::new(stdin),
+                writer: AsyncMutex::new(writer),
                 _child: AsyncMutex::new(child),
                 pending: AsyncMutex::new(HashMap::new()),
                 next_id: AtomicU64::new(100),
                 events,
                 app_server: AsyncMutex::new(None),
+                daemon,
             })),
             #[cfg(test)]
             mock: None,
@@ -343,16 +344,13 @@ impl CodexThreadClient {
 
         let inner = client.inner();
 
-        tokio::spawn(read_thread_server_loop(
-            BufReader::new(stdout).lines(),
-            inner.clone(),
-        ));
+        tokio::spawn(read_thread_server_loop(reader, inner.clone()));
         tokio::spawn(read_thread_server_stderr(
             BufReader::new(stderr).lines(),
             inner.events.clone(),
         ));
 
-        let app_server = client
+        let app_server = match client
             .request_value(
                 INITIALIZE,
                 json!({
@@ -369,9 +367,18 @@ impl CodexThreadClient {
             .await
             .and_then(|value| {
                 decode_response(INITIALIZE, value).map_err(CodexThreadError::Protocol)
-            })?;
+            }) {
+            Ok(app_server) => app_server,
+            Err(error) => {
+                client.shutdown().await;
+                return Err(error);
+            }
+        };
         *inner.app_server.lock().await = Some(app_server);
-        client.notify(INITIALIZED, json!({})).await?;
+        if let Err(error) = client.notify(INITIALIZED, json!({})).await {
+            client.shutdown().await;
+            return Err(error);
+        }
         Ok(client)
     }
 
@@ -432,7 +439,7 @@ impl CodexThreadClient {
         }
         let inner = self.inner();
         fail_pending(inner, CodexThreadError::ProcessUnavailable).await;
-        let _ = inner.stdin.lock().await.shutdown().await;
+        let _ = timeout(SHUTDOWN_TIMEOUT, inner.writer.lock().await.close()).await;
         let mut child = inner._child.lock().await;
         let _ = child.start_kill();
         let _ = timeout(SHUTDOWN_TIMEOUT, child.wait()).await;
@@ -466,7 +473,6 @@ impl CodexThreadClient {
         Ok(())
     }
 
-    #[cfg(test)]
     pub async fn list_loaded_threads(
         &self,
         cursor: Option<&str>,
@@ -474,6 +480,31 @@ impl CodexThreadClient {
     ) -> Result<ThreadLoadedListResponse, CodexThreadError> {
         self.request_typed(THREAD_LOADED_LIST, thread_loaded_list_params(cursor, limit))
             .await
+    }
+
+    pub async fn list_all_loaded_threads(&self) -> Result<Vec<String>, CodexThreadError> {
+        let mut cursor = None;
+        let mut seen_cursors = HashSet::new();
+        let mut seen_threads = HashSet::new();
+        let mut thread_ids = Vec::new();
+
+        loop {
+            let page = self.list_loaded_threads(cursor.as_deref(), 100).await?;
+            for thread_id in page.data {
+                if seen_threads.insert(thread_id.clone()) {
+                    thread_ids.push(thread_id);
+                }
+            }
+            let Some(next_cursor) = page.next_cursor.filter(|cursor| !cursor.is_empty()) else {
+                return Ok(thread_ids);
+            };
+            if !seen_cursors.insert(next_cursor.clone()) {
+                return Err(CodexThreadError::Protocol(
+                    "Codex app-server repeated a thread/loaded/list cursor".to_string(),
+                ));
+            }
+            cursor = Some(next_cursor);
+        }
     }
 
     pub async fn list_thread_turns(
@@ -673,12 +704,13 @@ impl CodexThreadClient {
 
     pub async fn status(&self) -> CodexStatusResponse {
         let app_server = self.inner().app_server.lock().await.clone();
+        let daemon = Some(self.inner().daemon.clone());
         let (account, rate_limits, usage) = tokio::join!(
             self.request_typed::<AccountReadResponse, _>(ACCOUNT_READ, account_read_params()),
             self.request_typed::<Value, _>(ACCOUNT_RATE_LIMITS_READ, EmptyResponse::default()),
             self.request_typed::<Value, _>(ACCOUNT_USAGE_READ, EmptyResponse::default()),
         );
-        status_from_results(app_server, account, rate_limits.ok(), usage.ok())
+        status_from_results(app_server, daemon, account, rate_limits.ok(), usage.ok())
     }
 
     pub fn unavailable_status(error: &CodexThreadError) -> CodexStatusResponse {
@@ -806,38 +838,46 @@ impl CodexThreadClient {
     }
 
     async fn write_message(&self, value: Value) -> Result<(), CodexThreadError> {
-        let mut stdin = self.inner().stdin.lock().await;
-        stdin
-            .write_all(value.to_string().as_bytes())
+        self.inner()
+            .writer
+            .lock()
             .await
-            .map_err(|error| CodexThreadError::Protocol(error.to_string()))?;
-        stdin
-            .write_all(b"\n")
-            .await
-            .map_err(|error| CodexThreadError::Protocol(error.to_string()))?;
-        stdin
-            .flush()
+            .send(Message::Text(value.to_string().into()))
             .await
             .map_err(|error| CodexThreadError::Protocol(error.to_string()))
     }
 }
 
 async fn read_thread_server_loop(
-    mut lines: Lines<BufReader<ChildStdout>>,
+    mut reader: SplitStream<WebSocketStream<ProxyStream>>,
     inner: Arc<CodexThreadClientInner>,
 ) {
     loop {
-        let line = match lines.next_line().await {
-            Ok(Some(line)) => line,
-            Ok(None) => {
+        let value = match reader.next().await {
+            Some(Ok(Message::Text(text))) => serde_json::from_str::<Value>(&text).ok(),
+            Some(Ok(Message::Binary(bytes))) => serde_json::from_slice::<Value>(&bytes).ok(),
+            Some(Ok(Message::Ping(payload))) => {
+                if let Err(error) = inner.writer.lock().await.send(Message::Pong(payload)).await {
+                    let message = format!("Failed to reply to Codex app-server ping: {error}");
+                    let _ = inner.events.send(CodexRuntimeEvent::Error {
+                        message: message.clone(),
+                    });
+                    fail_pending(&inner, CodexThreadError::Protocol(message)).await;
+                    return;
+                }
+                continue;
+            }
+            Some(Ok(Message::Pong(_))) => continue,
+            Some(Ok(Message::Frame(_))) => continue,
+            Some(Ok(Message::Close(_))) | None => {
                 let _ = inner.events.send(CodexRuntimeEvent::Error {
-                    message: "Codex app-server closed stdout.".to_string(),
+                    message: "Codex app-server proxy closed its WebSocket connection.".to_string(),
                 });
                 fail_pending(&inner, CodexThreadError::ProcessUnavailable).await;
                 return;
             }
-            Err(error) => {
-                let message = format!("Failed to read Codex app-server output: {error}");
+            Some(Err(error)) => {
+                let message = format!("Failed to read Codex app-server proxy output: {error}");
                 let _ = inner.events.send(CodexRuntimeEvent::Error {
                     message: message.clone(),
                 });
@@ -846,9 +886,8 @@ async fn read_thread_server_loop(
             }
         };
 
-        let value = match serde_json::from_str::<Value>(&line) {
-            Ok(value) => value,
-            Err(_) => continue,
+        let Some(value) = value else {
+            continue;
         };
 
         if let Some(method) = value.get("method").and_then(Value::as_str) {
@@ -947,6 +986,7 @@ async fn fail_pending(inner: &CodexThreadClientInner, error: CodexThreadError) {
 
 fn status_from_results(
     app_server: Option<CodexAppServerInfo>,
+    daemon: Option<CodexDaemonInfo>,
     account_result: Result<AccountReadResponse, CodexThreadError>,
     rate_limits: Option<Value>,
     usage: Option<Value>,
@@ -964,6 +1004,7 @@ fn status_from_results(
                 rate_limits: rate_limits.as_ref().map(compact_rate_limits),
                 usage: usage.as_ref().map(compact_usage),
                 app_server,
+                daemon,
             };
         }
     };
@@ -989,6 +1030,7 @@ fn status_from_results(
             rate_limits: rate_limits.as_ref().map(compact_rate_limits),
             usage: usage.as_ref().map(compact_usage),
             app_server,
+            daemon,
         };
     };
 
@@ -1002,6 +1044,7 @@ fn status_from_results(
         rate_limits: rate_limits.as_ref().map(compact_rate_limits),
         usage: usage.as_ref().map(compact_usage),
         app_server,
+        daemon,
     }
 }
 
@@ -1054,12 +1097,14 @@ fn unavailable(
         rate_limits: None,
         usage: None,
         app_server: None,
+        daemon: None,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::io::AsyncWriteExt;
 
     fn write_executable(path: &Path) {
         std::fs::write(path, "#!/bin/sh\n").expect("write executable fixture");
@@ -1240,6 +1285,63 @@ mod tests {
                 "{method} should fail promptly when the app-server is unavailable"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn loaded_thread_listing_follows_cursors_and_deduplicates_threads() {
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                THREAD_LOADED_LIST,
+                json!({
+                    "data": ["thread-1", "thread-2"],
+                    "nextCursor": "page-2"
+                }),
+            ),
+            MockCodexResponse::ok(
+                THREAD_LOADED_LIST,
+                json!({
+                    "data": ["thread-2", "thread-3"],
+                    "nextCursor": null
+                }),
+            ),
+        ]);
+
+        assert_eq!(
+            client
+                .list_all_loaded_threads()
+                .await
+                .expect("loaded threads"),
+            ["thread-1", "thread-2", "thread-3"]
+        );
+        assert_eq!(
+            client.mock_requests().await,
+            [
+                (THREAD_LOADED_LIST.to_string(), json!({ "limit": 100 })),
+                (
+                    THREAD_LOADED_LIST.to_string(),
+                    json!({ "cursor": "page-2", "limit": 100 })
+                )
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn loaded_thread_listing_rejects_a_repeated_cursor() {
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                THREAD_LOADED_LIST,
+                json!({ "data": [], "nextCursor": "same" }),
+            ),
+            MockCodexResponse::ok(
+                THREAD_LOADED_LIST,
+                json!({ "data": [], "nextCursor": "same" }),
+            ),
+        ]);
+
+        assert!(matches!(
+            client.list_all_loaded_threads().await,
+            Err(CodexThreadError::Protocol(message)) if message.contains("repeated")
+        ));
     }
 
     #[test]
@@ -1461,6 +1563,7 @@ mod tests {
                 platform_family: Some("unix".to_string()),
                 platform_os: Some("macos".to_string()),
             }),
+            None,
             Ok(AccountReadResponse {
                 account: Some(CodexAccount {
                     account_type: "chatgpt".to_string(),
@@ -1531,6 +1634,7 @@ mod tests {
     fn keeps_account_available_when_usage_details_are_missing() {
         let status = status_from_results(
             None,
+            None,
             Ok(AccountReadResponse {
                 account: Some(CodexAccount {
                     account_type: "apiKey".to_string(),
@@ -1561,6 +1665,7 @@ mod tests {
     fn maps_account_error_to_unavailable_status() {
         let status = status_from_results(
             None,
+            None,
             Err(CodexThreadError::Protocol(
                 "not authenticated (code -32000)".to_string(),
             )),
@@ -1581,6 +1686,7 @@ mod tests {
     #[test]
     fn maps_missing_account_to_authentication_required() {
         let status = status_from_results(
+            None,
             None,
             Ok(AccountReadResponse {
                 account: None,

@@ -2055,6 +2055,54 @@ async fn connection_recovery_does_not_serialize_unrelated_thread_resumes() {
 }
 
 #[tokio::test]
+async fn loaded_active_thread_recovery_holds_a_runtime_lease() {
+    let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+        "thread/resume",
+        resume_response(
+            ThreadStatus::Active {
+                active_flags: Vec::new(),
+            },
+            vec![turn("turn-active", TurnStatus::InProgress)],
+            Vec::new(),
+        ),
+    )]);
+    let sessions = CodexThreadSessions::default();
+
+    let recovered = sessions
+        .recover_loaded_thread(&client, 3, "thread-1")
+        .await
+        .expect("recover active thread")
+        .expect("active thread remains subscribed");
+
+    assert!(recovered.runtime_lease);
+    assert_eq!(recovered.active_turn_id.as_deref(), Some("turn-active"));
+    assert_eq!(methods(&client).await, ["thread/resume"]);
+}
+
+#[tokio::test]
+async fn loaded_idle_thread_recovery_releases_its_runtime_lease() {
+    let client = CodexThreadClient::mock(vec![
+        MockCodexResponse::ok(
+            "thread/resume",
+            resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
+        ),
+        MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
+    ]);
+    let sessions = CodexThreadSessions::default();
+
+    assert!(
+        sessions
+            .recover_loaded_thread(&client, 3, "thread-1")
+            .await
+            .expect("recover idle thread")
+            .is_none()
+    );
+    let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
+    assert!(!snapshot.runtime_lease);
+    wait_for_unsubscribe(&client).await;
+}
+
+#[tokio::test]
 async fn registered_started_thread_is_subscribed_and_holds_runtime() {
     let client = CodexThreadClient::mock(Vec::new());
     let sessions = CodexThreadSessions::default();

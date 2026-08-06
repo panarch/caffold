@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use futures_util::{StreamExt, stream};
 use serde::Deserialize;
 use serde_json::{Value as JsonValue, json};
 use tokio::sync::{Mutex, broadcast};
@@ -124,6 +125,15 @@ impl CodexRuntime {
         self.signals.subscribe()
     }
 
+    pub(in crate::app) fn startup(&self) {
+        let runtime = self.clone();
+        tokio::spawn(async move {
+            if let Err(error) = runtime.connection().await {
+                eprintln!("failed to connect to the Codex app-server daemon: {error}");
+            }
+        });
+    }
+
     pub(in crate::app) async fn connection(&self) -> Result<CodexConnection, CodexThreadError> {
         {
             let process = self.process.state.lock().await;
@@ -152,7 +162,7 @@ impl CodexRuntime {
             CodexConnection { client, generation }
         };
 
-        self.restore_leased_sessions(connection.clone());
+        self.restore_connection_state(connection.clone());
         Ok(connection)
     }
 
@@ -340,16 +350,84 @@ impl CodexRuntime {
         });
     }
 
-    fn restore_leased_sessions(&self, connection: CodexConnection) {
-        let sessions = self.sessions.clone();
+    fn restore_connection_state(&self, connection: CodexConnection) {
+        let runtime = self.clone();
         tokio::spawn(async move {
-            for (thread_id, error) in sessions
+            for (thread_id, error) in runtime
+                .sessions
                 .resubscribe_leased(&connection.client, connection.generation)
                 .await
             {
                 eprintln!("failed to restore Codex thread subscription {thread_id}: {error}");
             }
+            runtime.recover_loaded_sessions(connection).await;
         });
+    }
+
+    async fn recover_loaded_sessions(&self, connection: CodexConnection) {
+        let loaded_thread_ids = match connection.client.list_all_loaded_threads().await {
+            Ok(thread_ids) => thread_ids,
+            Err(error) => {
+                eprintln!("failed to list loaded Codex threads during startup recovery: {error}");
+                return;
+            }
+        };
+        let thread_store = self.thread_store.clone();
+        let managed_thread_ids = match tokio::task::spawn_blocking(move || {
+            loaded_thread_ids
+                .into_iter()
+                .map(|thread_id| {
+                    thread_store
+                        .get(&thread_id)
+                        .map(|managed| managed.map(|_| thread_id))
+                })
+                .filter_map(|result| match result {
+                    Ok(thread_id) => thread_id.map(Ok),
+                    Err(error) => Some(Err(error)),
+                })
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .await
+        {
+            Ok(Ok(thread_ids)) => thread_ids,
+            Ok(Err(error)) => {
+                eprintln!("failed to read managed threads during startup recovery: {error}");
+                return;
+            }
+            Err(error) => {
+                eprintln!("managed thread recovery worker failed: {error}");
+                return;
+            }
+        };
+
+        stream::iter(managed_thread_ids)
+            .for_each_concurrent(8, |thread_id| {
+                let runtime = self.clone();
+                let connection = connection.clone();
+                async move {
+                    match runtime
+                        .sessions
+                        .recover_loaded_thread(
+                            &connection.client,
+                            connection.generation,
+                            &thread_id,
+                        )
+                        .await
+                    {
+                        Ok(Some(snapshot)) => {
+                            let _ = runtime.signals.send(CodexRuntimeSignal::SessionChanged {
+                                thread_id,
+                                snapshot: Box::new(snapshot),
+                            });
+                        }
+                        Ok(None) => {}
+                        Err(error) => {
+                            eprintln!("failed to recover loaded Codex thread {thread_id}: {error}");
+                        }
+                    }
+                }
+            })
+            .await;
     }
 
     fn handle_notification(&self, notification: CodexNotification) {
@@ -682,7 +760,12 @@ impl CodexRuntime {
 
     #[cfg(test)]
     pub(in crate::app) fn restore_test_sessions(&self, connection: CodexConnection) {
-        self.restore_leased_sessions(connection);
+        self.restore_connection_state(connection);
+    }
+
+    #[cfg(test)]
+    pub(in crate::app) async fn recover_test_loaded_sessions(&self, connection: CodexConnection) {
+        self.recover_loaded_sessions(connection).await;
     }
 
     #[cfg(test)]

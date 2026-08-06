@@ -88,7 +88,7 @@ shutdown lifecycle to `src/app.rs`.
 - `routes.rs` is the only Tasks module that imports Axum or receives
   `TaskState`. It owns browser request/response DTOs, validation, route
   registration, and REST/SSE adaptation.
-- `runtime.rs` owns the app-server process generation, connection recovery,
+- `runtime.rs` owns the app-server proxy generation, connection recovery,
   notification/server-request bridge, and pending approval lifecycle. Pending
   approvals remain JSON-RPC/card state and never become a thread-status writer.
 - `sync.rs` owns subscription counts, rollout invalidation, debounce,
@@ -108,8 +108,9 @@ Codex app-server remains the source of truth.
 
 ## Thread Subscription Lifecycle
 
-The app-server child process and a thread subscription are separate lifecycles.
-Starting the process does not make every Codex thread a notification source.
+The persistent app-server daemon, Caffold's proxy connection, and a thread
+subscription are separate lifecycles. Starting the daemon or proxy does not make
+every Codex thread a notification source.
 Caffold keeps an ephemeral `CodexThreadSessions` coordinator for that boundary;
 it does not persist a second task ledger.
 
@@ -137,11 +138,14 @@ it does not persist a second task ledger.
 - A completed runtime releases its lease and unsubscribes when no viewer
   remains.
 
-If the app-server child exits, Caffold marks sessions from that process
-generation as disconnected. A replacement process resumes only sessions with
-an open viewer or runtime lease. It never replays `turn/start`, `turn/steer`, or
-another user request automatically. The next canonical status determines what
-actually completed before the connection was lost.
+If the proxy connection exits, Caffold marks sessions from that connection
+generation as disconnected. A replacement proxy resumes in-memory sessions
+with an open viewer or runtime lease. On backend startup it also pages
+`thread/loaded/list`, intersects those IDs with Caffold's managed membership,
+and resumes the managed loaded threads. Only canonically active threads retain
+a runtime lease. Caffold never replays `turn/start`, `turn/steer`, or another
+user request automatically; app-server replays pending server requests on
+`thread/resume` with their original IDs.
 
 ## Incremental History
 
@@ -201,8 +205,8 @@ project/worktree records. Only threads created and managed through Caffold are
 part of the Tasks product surface. Unmanaged app-server threads are not listed,
 read through Task routes, or implicitly adopted from a direct URL.
 Caffold keeps pending approvals and SSE notifications as ephemeral in-memory
-state in this slice. Pending approval cards may disappear after a Caffold
-backend restart until app-server re-emits the request.
+state in this slice. After a backend restart, startup recovery resumes each
+managed loaded thread so app-server can re-emit a pending approval request.
 
 ## Browser Status Projection
 
@@ -274,12 +278,30 @@ disables stale canonical controls and exposes the transport/API failure.
 
 ## Cross-Process Reconciliation
 
-With Caffold's current process topology, its app-server child only delivers
-notifications for work visible to that connection. Codex desktop runs through
-a separate app-server process, so Caffold does not currently receive a direct
-notification when Codex desktop starts or updates a turn. This is a description
-of the current integration, not a protocol guarantee; shared daemon/proxy
-transports and explicit thread subscriptions must be evaluated separately.
+With Caffold's current process topology, a persistent app-server daemon outlives
+the Caffold backend. Caffold reaches it through a disposable WebSocket proxy and
+receives notifications only for threads visible to that connection. On startup,
+`thread/loaded/list` identifies daemon-loaded work and explicit `thread/resume`
+restores only the intersection with Caffold-managed membership. Rollout
+invalidation remains the best-effort reconciliation path for changes produced
+through another Codex connection.
+
+### Daemon/proxy reconnect spike
+
+The ignored live tests in `codex_app_server::reconnect_spike` exercise the same
+daemon-compatible transport boundary used by the product runtime.
+They keep an isolated `codex app-server --listen unix://...` process alive,
+connect through disposable `codex app-server proxy --sock ...` children, and
+replace the proxy connection while a turn is blocked on a server request.
+
+Against `codex-cli 0.146.0`, `thread/resume` on the replacement connection
+replayed both a pending `item/tool/call` and a pending
+`item/commandExecution/requestApproval` with their original request IDs. The
+replacement connection answered each request and observed the original turn
+complete; the dynamic-tool case also persisted the requested thread name. Each
+test archives its created thread and stops only its isolated app-server. This
+established the behavior now used by the persistent daemon, restartable proxy,
+and startup reconciliation implementation.
 
 Caffold watches the rollout path reported by Codex only while a task detail SSE
 viewer is active. The rollout file is an invalidation signal only: Caffold does
@@ -290,10 +312,10 @@ last viewer closing releases that watch.
 When a watched rollout changes, Caffold waits for a shared 600ms quiet period
 and then uses its single app-server connection to call `thread/read` with
 `includeTurns: false` and `thread/turns/list` for the latest eight summary turns.
-Cross-process reconciliation never calls `thread/resume` or
-`thread/unsubscribe`; those stateful methods remain part of explicit viewer and
-prompt lifecycles. Continuous writes reset the deadline, so a separate Codex
-process produces one canonical read after its write burst. Concurrent changes
+Rollout-driven reconciliation never calls `thread/resume` or
+`thread/unsubscribe`; those stateful methods remain part of viewer, prompt, and
+startup-recovery lifecycles. Continuous writes reset the deadline, so a separate
+Codex process produces one canonical read after its write burst. Concurrent changes
 coalesce into one active sync plus at most one trailing sync. The resulting
 revisioned snapshot is broadcast to every Caffold SSE client viewing that task.
 Tasks without an active detail subscriber do not trigger rollout-driven reads.
@@ -332,8 +354,9 @@ registry.
 Default assumption:
 
 - one Caffold backend instance per host
-- one app-server child process per host instance
-- multiple tasks/threads managed through that process
+- one persistent app-server daemon per user
+- one disposable proxy child per Caffold backend connection
+- multiple tasks/threads managed through that daemon
 
 If implementation evidence shows that app-server isolation works better per
 repository or per task, this can be revisited. The MVP should not start with
@@ -343,8 +366,10 @@ per-task app-server processes unless required.
 
 `GET /api/codex/status` preserves the public status fields and adds a
 `diagnostics` object for development and incident investigation. It reports the
-Codex CLI version derived from the initialized app-server user agent, the child
-process generation and connection state, and aggregate thread-session counts.
+Codex CLI version derived from the initialized app-server user agent, the proxy
+generation and connection state, and aggregate thread-session counts. The
+top-level status also reports daemon state, PID, socket path, managed Codex path,
+and caller/app-server versions returned by `codex app-server daemon start`.
 Only sessions with viewers, runtime leases, subscription transitions, or errors
 are included in the detailed active-session list. Each entry exposes its lease
 counts, lifecycle, revision, last canonical sync time, and last protocol error.
@@ -394,7 +419,6 @@ model usage.
 
 ## Open Questions
 
-- Exact app-server startup mode and transport to use first
 - How to represent partial failures and reconnects in the UI
 - Whether thread history pagination is enough for long task timelines
 - Whether optional Caffold annotations are useful after thread-backed tasks are

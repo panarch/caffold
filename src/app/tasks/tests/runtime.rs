@@ -17,6 +17,30 @@ fn test_runtime() -> CodexRuntime {
     runtime_with_events(TaskEvents::default())
 }
 
+fn active_resume(thread_id: &str) -> JsonValue {
+    json!({
+        "thread": {
+            "id": thread_id,
+            "preview": "Recovered task",
+            "status": { "type": "active", "activeFlags": [] },
+            "cwd": "/Users/example/project",
+            "createdAt": 1.0,
+            "updatedAt": 2.0,
+            "turns": [{
+                "id": "turn-active",
+                "items": [],
+                "status": "inProgress",
+                "startedAt": 2.0
+            }]
+        },
+        "initialTurnsPage": {
+            "data": [],
+            "nextCursor": null,
+            "backwardsCursor": null
+        }
+    })
+}
+
 fn dynamic_tool_request(
     thread_id: &str,
     tool: &str,
@@ -107,6 +131,65 @@ async fn protocol_failures_keep_a_healthy_codex_connection() {
         .await;
     assert_eq!(runtime.diagnostics().await, (9, true));
     runtime.shutdown().await;
+}
+
+#[tokio::test]
+async fn startup_recovery_resumes_only_loaded_threads_managed_by_caffold() {
+    let store = ThreadStore::memory().unwrap();
+    store
+        .claim(ManagedThread::new("managed", None, None, None), 10)
+        .unwrap();
+    let (shutdown, _) = broadcast::channel(1);
+    let runtime = CodexRuntime::new(
+        CodexThreadSessions::default(),
+        TaskEvents::default(),
+        store,
+        shutdown,
+    );
+    let client = CodexThreadClient::mock(vec![
+        crate::codex_app_server::MockCodexResponse::ok(
+            "thread/loaded/list",
+            json!({
+                "data": ["managed", "outside-caffold"],
+                "nextCursor": "next"
+            }),
+        ),
+        crate::codex_app_server::MockCodexResponse::ok(
+            "thread/loaded/list",
+            json!({ "data": ["managed"], "nextCursor": null }),
+        ),
+        crate::codex_app_server::MockCodexResponse::ok("thread/resume", active_resume("managed")),
+    ]);
+
+    runtime
+        .recover_test_loaded_sessions(CodexConnection {
+            client: client.clone(),
+            generation: 4,
+        })
+        .await;
+
+    assert_eq!(
+        client.mock_requests().await,
+        [
+            ("thread/loaded/list".to_string(), json!({ "limit": 100 })),
+            (
+                "thread/loaded/list".to_string(),
+                json!({ "cursor": "next", "limit": 100 })
+            ),
+            (
+                "thread/resume".to_string(),
+                json!({
+                    "threadId": "managed",
+                    "excludeTurns": true,
+                    "initialTurnsPage": {
+                        "limit": 8,
+                        "sortDirection": "desc",
+                        "itemsView": "summary"
+                    }
+                })
+            )
+        ]
+    );
 }
 
 #[test]

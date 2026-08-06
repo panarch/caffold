@@ -13,7 +13,6 @@ pub(crate) const ACCOUNT_RATE_LIMITS_READ: &str = "account/rateLimits/read";
 pub(crate) const ACCOUNT_USAGE_READ: &str = "account/usage/read";
 pub(crate) const THREAD_LIST: &str = "thread/list";
 pub(crate) const THREAD_READ: &str = "thread/read";
-#[cfg(test)]
 pub(crate) const THREAD_LOADED_LIST: &str = "thread/loaded/list";
 pub(crate) const THREAD_START: &str = "thread/start";
 pub(crate) const THREAD_NAME_SET: &str = "thread/name/set";
@@ -190,7 +189,6 @@ pub struct ThreadUnarchiveResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-#[cfg(test)]
 pub struct ThreadLoadedListResponse {
     #[serde(default)]
     pub data: Vec<String>,
@@ -336,7 +334,6 @@ pub struct ThreadReadParams<'a> {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-#[cfg(test)]
 pub struct ThreadLoadedListParams<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<&'a str>,
@@ -907,7 +904,6 @@ pub(crate) fn thread_read_params(thread_id: &str) -> ThreadReadParams<'_> {
     }
 }
 
-#[cfg(test)]
 pub(crate) fn thread_loaded_list_params(
     cursor: Option<&str>,
     limit: usize,
