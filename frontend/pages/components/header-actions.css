@@ -21,27 +21,42 @@ caffold-header-actions {
     position: relative;
     display: grid;
     place-items: center;
-    width: var(--interface-control-size);
-    height: var(--interface-control-size);
-    border: 1px solid transparent;
-    border-radius: 4px;
+    width: var(--interface-control-hit-size);
+    height: var(--interface-control-hit-size);
+    border: 0;
     background: transparent;
     color: var(--accent);
     cursor: pointer;
     padding: 0;
   }
 
+  & .header-action-group-button::before {
+    position: absolute;
+    inset: var(--interface-control-hit-outset);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    content: "";
+  }
+
   & .header-action-group-button:hover,
   & .header-action-group-button:focus-visible {
-    border-color: #d8e2db;
-    background: #f7fbf8;
     outline: none;
   }
 
+  & .header-action-group-button:hover::before,
+  & .header-action-group-button:focus-visible::before {
+    border-color: #d8e2db;
+    background: #f7fbf8;
+  }
+
   & .header-action-group-button[aria-expanded="true"] {
+    color: var(--accent);
+  }
+
+  & .header-action-group-button[aria-expanded="true"]::before {
     border-color: #b6c7bd;
     background: #edf4ef;
-    color: var(--accent);
   }
 
   & .header-action-group-button[data-state="unavailable"] {
@@ -55,6 +70,7 @@ caffold-header-actions {
   }
 
   & .header-action-icon {
+    position: relative;
     display: block;
     width: var(--interface-icon-size);
     height: var(--interface-icon-size);
@@ -62,6 +78,7 @@ caffold-header-actions {
   }
 
   & .header-action-brand-picture {
+    position: relative;
     display: block;
     width: var(--interface-icon-size);
     height: var(--interface-icon-size);
@@ -76,8 +93,8 @@ caffold-header-actions {
 
   & .header-action-badge {
     position: absolute;
-    inset-block-start: 0;
-    inset-inline-end: 0;
+    inset-block-start: var(--interface-control-hit-outset);
+    inset-inline-end: var(--interface-control-hit-outset);
     display: grid;
     min-width: var(--interface-badge-size);
     height: var(--interface-badge-size);
@@ -98,7 +115,7 @@ caffold-header-actions {
     --header-popover-arrow-left: 7.6875rem;
     position: absolute;
     z-index: 20;
-    inset: calc(var(--interface-control-size) + var(--header-popover-control-gap))
+    inset: calc(var(--interface-control-hit-size) + var(--header-popover-control-gap))
       auto auto -7rem;
     width: 16rem;
     max-height: min(24rem, calc(100dvh - 4rem));
@@ -232,7 +249,7 @@ caffold-header-actions {
     }
 
     & .header-action-group-button {
-      width: var(--interface-control-size);
+      width: var(--interface-control-hit-size);
     }
   }
 }
@@ -242,10 +259,10 @@ caffold-header-actions {
     & .header-actions-popover,
     & .header-actions-popover[data-action-group="github"] {
       position: fixed;
-      inset: calc(var(--interface-control-size) + 0.75rem)
+      inset: calc(var(--interface-control-hit-size) + 0.75rem)
         var(--interface-space-4) auto var(--interface-space-4);
       width: auto;
-      max-height: calc(100dvh - var(--interface-control-size) - 1.25rem);
+      max-height: calc(100dvh - var(--interface-control-hit-size) - 1.25rem);
       overflow: auto;
     }
 

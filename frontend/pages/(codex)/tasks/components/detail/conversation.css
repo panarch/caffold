@@ -38,10 +38,14 @@ caffold-task-conversation {
 
   & .task-approval-actions .task-secondary-button {
     box-sizing: border-box;
-    height: var(--interface-compact-control-size);
-    min-height: var(--interface-compact-control-size);
+    height: var(--interface-compact-visual-size);
+    min-height: var(--interface-compact-visual-size);
     padding: 0 var(--interface-space-5);
     font-size: var(--interface-meta-font-size);
+  }
+
+  & .task-approval-actions .task-secondary-button::before {
+    inset-block: calc(0px - var(--interface-compact-hit-outset));
   }
 
   & .task-conversation-scroll {
@@ -102,7 +106,8 @@ caffold-task-conversation {
   }
 
   & .task-history-error button {
-    min-height: var(--interface-compact-control-size);
+    position: relative;
+    min-height: var(--interface-compact-visual-size);
     padding: 0.125rem 0.4375rem;
     border: 1px solid currentColor;
     border-radius: 5px;
@@ -110,6 +115,12 @@ caffold-task-conversation {
     color: inherit;
     font: inherit;
     cursor: pointer;
+  }
+
+  & .task-history-error button::before {
+    position: absolute;
+    inset: calc(0px - var(--interface-compact-hit-outset)) 0;
+    content: "";
   }
 
   & .task-history-loading {

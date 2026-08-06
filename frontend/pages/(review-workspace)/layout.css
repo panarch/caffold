@@ -40,35 +40,55 @@ caffold-review-workspace {
   & .review-workspace-nav {
     display: grid;
     grid-auto-flow: column;
-    gap: var(--interface-control-gap);
+    gap: max(
+      var(--interface-control-gap),
+      calc(var(--interface-compact-hit-outset) * 2)
+    );
     align-items: center;
   }
 
   & .review-workspace-back,
   & .review-workspace-close {
+    position: relative;
     display: grid;
     place-items: center;
-    width: var(--interface-compact-control-size);
-    height: var(--interface-compact-control-size);
+    width: var(--interface-compact-hit-size);
+    height: var(--interface-compact-hit-size);
     padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--accent);
+    cursor: pointer;
+  }
+
+  & .review-workspace-back::before,
+  & .review-workspace-close::before {
+    position: absolute;
+    inset: var(--interface-compact-hit-outset);
     border: 1px solid var(--border);
     border-radius: 4px;
     background: var(--surface);
-    color: var(--accent);
-    cursor: pointer;
+    content: "";
   }
 
   & .review-workspace-back:hover,
   & .review-workspace-back:focus-visible,
   & .review-workspace-close:hover,
   & .review-workspace-close:focus-visible {
+    outline: none;
+  }
+
+  & .review-workspace-back:hover::before,
+  & .review-workspace-back:focus-visible::before,
+  & .review-workspace-close:hover::before,
+  & .review-workspace-close:focus-visible::before {
     border-color: #abcbbf;
     background: #f7fbf8;
-    outline: none;
   }
 
   & .review-workspace-back-icon,
   & .review-workspace-close-icon {
+    position: relative;
     display: block;
     width: var(--interface-icon-size);
     height: var(--interface-icon-size);

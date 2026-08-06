@@ -5,7 +5,10 @@ caffold-git-review-controls {
 
   & .git-review-controls {
     display: flex;
-    gap: var(--interface-control-gap);
+    gap: max(
+      var(--interface-control-gap),
+      calc(var(--interface-compact-hit-outset) * 2)
+    );
     align-items: center;
     justify-content: flex-end;
     min-width: 0;
@@ -13,24 +16,37 @@ caffold-git-review-controls {
   }
 
   & .git-review-refresh {
+    position: relative;
     display: grid;
-    flex: 0 0 var(--interface-compact-control-size);
-    width: var(--interface-compact-control-size);
-    height: var(--interface-compact-control-size);
+    flex: 0 0 var(--interface-compact-hit-size);
+    width: var(--interface-compact-hit-size);
+    height: var(--interface-compact-hit-size);
     place-items: center;
     padding: 0;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
+    border: 0;
+    background: transparent;
     color: var(--accent);
     cursor: pointer;
   }
 
+  & .git-review-refresh::before {
+    position: absolute;
+    inset: var(--interface-compact-hit-outset);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    content: "";
+  }
+
   & .git-review-refresh:hover,
   & .git-review-refresh:focus-visible {
+    outline: none;
+  }
+
+  & .git-review-refresh:hover::before,
+  & .git-review-refresh:focus-visible::before {
     border-color: #abcbbf;
     background: var(--accent-soft);
-    outline: none;
   }
 
   & .git-review-refresh.is-unavailable {
@@ -42,6 +58,7 @@ caffold-git-review-controls {
   }
 
   & .git-review-refresh-icon {
+    position: relative;
     display: block;
     width: var(--interface-icon-size);
     height: var(--interface-icon-size);

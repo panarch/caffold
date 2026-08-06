@@ -98,10 +98,10 @@ test("creates a task with responsive composer controls and canonical approval st
     expect(primaryPresentation).toEqual(
       expect.objectContaining({
         alignItems: "center",
-        backgroundColor: "rgb(221, 239, 232)",
-        borderColor: "rgb(159, 201, 187)",
-        borderRadius: "5px",
-        borderWidth: "1px",
+        visualBackgroundColor: "rgb(221, 239, 232)",
+        visualBorderColor: "rgb(159, 201, 187)",
+        visualBorderRadius: "5px",
+        visualBorderWidth: "1px",
         color: "rgb(22, 124, 92)",
         display: "inline-grid",
         minHeight: touchInterface ? "40px" : "32px",
@@ -120,9 +120,9 @@ test("creates a task with responsive composer controls and canonical approval st
       ),
     ).toEqual(
       expect.objectContaining({
-        backgroundColor: "rgb(255, 255, 255)",
-        borderRadius: "5px",
-        borderWidth: "1px",
+        visualBackgroundColor: "rgb(255, 255, 255)",
+        visualBorderRadius: "5px",
+        visualBorderWidth: "1px",
         display: "grid",
         height: touchInterface ? 40 : 32,
         padding: "0px",
@@ -155,7 +155,7 @@ test("creates a task with responsive composer controls and canonical approval st
       .getBoundingClientRect();
     const compactProbe = document.createElement("div");
     compactProbe.style.cssText =
-      "position:fixed;height:var(--interface-compact-control-size)";
+      "position:fixed;height:var(--interface-compact-hit-size)";
     document.body.append(compactProbe);
     const compactHeight = compactProbe.getBoundingClientRect().height;
     compactProbe.remove();
@@ -459,7 +459,7 @@ test("creates a task with responsive composer controls and canonical approval st
         borderWidth: "1px",
         color: "rgb(22, 124, 92)",
         display: "grid",
-        minHeight: touchInterface ? "40px" : "28px",
+        minHeight: `${rootFontSize * 1.875}px`,
       }),
     );
     expectCssSpacing(

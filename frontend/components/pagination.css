@@ -7,12 +7,12 @@ caffold-pagination {
   & .pagination-panel {
     display: grid;
     grid-template-columns:
-      var(--interface-compact-control-size)
-      var(--interface-compact-control-size)
+      var(--interface-compact-hit-size)
+      var(--interface-compact-hit-size)
       minmax(3.8rem, auto)
-      var(--interface-compact-control-size)
-      var(--interface-compact-control-size);
-    gap: 0.375rem;
+      var(--interface-compact-hit-size)
+      var(--interface-compact-hit-size);
+    gap: max(0.375rem, calc(var(--interface-compact-hit-outset) * 2));
     align-items: center;
     justify-content: center;
     min-width: 0;
@@ -20,23 +20,36 @@ caffold-pagination {
   }
 
   & .pagination-button {
+    position: relative;
     display: grid;
     place-items: center;
-    width: var(--interface-compact-control-size);
-    height: var(--interface-compact-control-size);
+    width: var(--interface-compact-hit-size);
+    height: var(--interface-compact-hit-size);
     padding: 0;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
+    border: 0;
+    background: transparent;
     color: var(--accent);
     cursor: pointer;
   }
 
+  & .pagination-button::before {
+    position: absolute;
+    inset: var(--interface-compact-hit-outset);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    content: "";
+  }
+
   & .pagination-button:hover,
   & .pagination-button:focus-visible {
+    outline: none;
+  }
+
+  & .pagination-button:hover::before,
+  & .pagination-button:focus-visible::before {
     border-color: #abcbbf;
     background: #f7fbf8;
-    outline: none;
   }
 
   & .pagination-button:disabled {
@@ -46,11 +59,17 @@ caffold-pagination {
   }
 
   & .pagination-button:disabled:hover {
+    background: transparent;
+  }
+
+  & .pagination-button:disabled::before,
+  & .pagination-button:disabled:hover::before {
     border-color: var(--border);
     background: var(--surface);
   }
 
   & .pagination-icon {
+    position: relative;
     display: block;
     width: var(--interface-icon-small-size);
     height: var(--interface-icon-small-size);

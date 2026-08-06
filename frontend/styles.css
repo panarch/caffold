@@ -74,7 +74,16 @@
   --interface-icon-large-size: 1.125rem;
   --interface-icon-slot-size: 1.25rem;
   --interface-badge-size: 0.875rem;
-  --interface-control-size: max(2rem, var(--interface-target-floor));
+  --interface-control-visual-size: 2rem;
+  --interface-control-hit-size: max(
+    var(--interface-control-visual-size),
+    var(--interface-target-floor)
+  );
+  --interface-control-hit-outset: max(
+    0px,
+    calc((var(--interface-target-floor) - var(--interface-control-visual-size)) / 2)
+  );
+  --interface-control-size: var(--interface-control-hit-size);
   --interface-compact-control-size: max(1.75rem, var(--interface-target-floor));
   --interface-compact-visual-size: 1.875rem;
   --interface-compact-hit-size: max(

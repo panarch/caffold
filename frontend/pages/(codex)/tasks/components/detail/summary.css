@@ -131,7 +131,10 @@ caffold-task-detail-summary {
 
   & .task-review-menu {
     position: relative;
+    display: grid;
     flex: 0 0 auto;
+    height: var(--interface-compact-visual-size);
+    place-items: center;
   }
 
   & .task-review-menu > summary {
@@ -161,13 +164,13 @@ caffold-task-detail-summary {
   & .task-brand-button {
     position: relative;
     display: inline-grid;
-    width: var(--interface-compact-visual-size);
-    height: var(--interface-compact-visual-size);
+    width: var(--interface-compact-hit-size);
+    height: var(--interface-compact-hit-size);
+    margin-block: calc(0rem - var(--interface-compact-hit-outset));
     padding: 0;
     place-items: center;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
+    border: 0;
+    background: transparent;
     color: var(--text);
     cursor: pointer;
   }
@@ -178,10 +181,13 @@ caffold-task-detail-summary {
   }
 
   & .task-brand-button img {
+    position: absolute;
+    inset: 50% auto auto 50%;
     display: block;
     width: var(--interface-icon-size);
     height: var(--interface-icon-size);
     object-fit: contain;
+    transform: translate(-50%, -50%);
   }
 
   & .task-brand-button.is-loading::after {
@@ -199,9 +205,12 @@ caffold-task-detail-summary {
   & .task-review-menu[open] > .task-brand-button,
   & .task-brand-button:hover,
   & .task-brand-button:focus-visible {
+    outline: none;
+  }
+
+  & .task-review-menu[open] > .task-brand-button::before {
     border-color: var(--border-strong);
     background: var(--surface-muted);
-    outline: none;
   }
 
   & .task-review-menu-popover {
@@ -248,12 +257,12 @@ caffold-task-detail-summary {
     position: relative;
     display: grid;
     place-items: center;
-    width: var(--interface-compact-visual-size);
-    height: var(--interface-compact-visual-size);
+    width: var(--interface-compact-hit-size);
+    height: var(--interface-compact-hit-size);
+    margin-block: calc(0rem - var(--interface-compact-hit-outset));
     padding: 0;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
+    border: 0;
+    background: transparent;
     color: var(--accent);
     cursor: pointer;
     flex: 0 0 auto;
@@ -272,18 +281,34 @@ caffold-task-detail-summary {
 
   & .task-brand-button::before,
   & .task-detail-info-button::before {
-    inset: calc(0px - var(--interface-compact-hit-outset));
+    inset: var(--interface-compact-hit-outset);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
   }
 
   & .task-detail-info-button:hover,
   & .task-detail-info-button:focus-visible {
-    border-color: var(--border-strong);
-    background: var(--surface-muted);
     outline: none;
   }
 
+  & .task-detail-info-button:hover::before,
+  & .task-detail-info-button:focus-visible::before,
+  & .task-brand-button:hover::before,
+  & .task-brand-button:focus-visible::before {
+    border-color: var(--border-strong);
+    background: var(--surface-muted);
+  }
+
   & .task-detail-info-button .task-status-chip {
+    grid-auto-flow: initial;
+    place-items: center;
     pointer-events: none;
+  }
+
+  & .task-detail-info-button .task-status-icon,
+  & .task-detail-info-button .task-status-spinner {
+    grid-area: 1 / 1;
   }
 
   & .task-detail-popover {
@@ -328,7 +353,7 @@ caffold-task-detail-summary {
     min-width: 0;
     margin: 0;
     overflow-wrap: anywhere;
-    font-size: var(--interface-font-size);
+    font-size: var(--interface-meta-font-size);
     line-height: var(--interface-line-height);
   }
 
@@ -350,8 +375,26 @@ caffold-task-detail-summary {
   }
 
   & .task-detail-archive-action .task-secondary-button {
-    min-height: var(--interface-compact-control-size);
+    position: relative;
+    min-height: var(--interface-compact-hit-size);
+    margin-block: calc(0rem - var(--interface-compact-hit-outset));
+    border: 0;
+    background: transparent;
     font-size: var(--interface-meta-font-size);
+  }
+
+  & .task-detail-archive-action .task-secondary-button::before {
+    position: absolute;
+    inset: var(--interface-compact-hit-outset) 0;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    content: "";
+  }
+
+  & .task-detail-archive-action .task-secondary-button:hover::before,
+  & .task-detail-archive-action .task-secondary-button:focus-visible::before {
+    border-color: var(--border-strong);
   }
 
   & .task-detail-archive-action .task-detail-archive-error {
@@ -379,7 +422,10 @@ caffold-task-detail-summary {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     min-height: max(3rem, var(--interface-target-floor));
-    gap: 0.375rem;
+    gap: max(
+      0.375rem,
+      calc(var(--interface-compact-hit-outset) + var(--interface-compact-hit-outset))
+    );
     padding: 0.4375rem 0.5rem 0.4375rem
       calc(0.5rem + var(--task-header-leading-space, 0rem));
 
@@ -412,12 +458,19 @@ caffold-task-detail-summary {
       );
     }
 
-    & .task-detail-actions .task-secondary-button,
-    & .task-detail-info-button {
+    & .task-detail-actions .task-secondary-button {
       width: var(--interface-compact-visual-size);
       min-width: var(--interface-compact-visual-size);
       height: var(--interface-compact-visual-size);
       min-height: var(--interface-compact-visual-size);
+      padding: 0;
+    }
+
+    & .task-detail-info-button {
+      width: var(--interface-compact-hit-size);
+      min-width: var(--interface-compact-hit-size);
+      height: var(--interface-compact-hit-size);
+      min-height: var(--interface-compact-hit-size);
       padding: 0;
     }
 

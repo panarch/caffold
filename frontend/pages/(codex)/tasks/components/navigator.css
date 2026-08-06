@@ -160,7 +160,8 @@ caffold-task-navigator {
   }
 
   & .task-restore-button {
-    min-height: var(--interface-compact-control-size);
+    position: relative;
+    min-height: var(--interface-compact-visual-size);
     padding: 0.1875rem 0.4375rem;
     border: 1px solid var(--border);
     border-radius: 4px;
@@ -171,13 +172,24 @@ caffold-task-navigator {
     white-space: nowrap;
   }
 
+  & .task-restore-button::before {
+    position: absolute;
+    inset: calc(0px - var(--interface-compact-hit-outset)) 0;
+    content: "";
+  }
+
   & [data-task-action="load-more-tasks"],
   & [data-task-action="load-more-archived-tasks"] {
     box-sizing: border-box;
-    height: var(--interface-compact-control-size);
-    min-height: var(--interface-compact-control-size);
+    height: var(--interface-compact-visual-size);
+    min-height: var(--interface-compact-visual-size);
     padding-block: 0;
     font-size: var(--interface-meta-font-size);
+  }
+
+  & [data-task-action="load-more-tasks"]::before,
+  & [data-task-action="load-more-archived-tasks"]::before {
+    inset-block: calc(0px - var(--interface-compact-hit-outset));
   }
 
   & .task-restore-button:hover,

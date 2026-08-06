@@ -1,0 +1,320 @@
+import { expect, test } from "@playwright/test";
+import { installBrowserDefaults } from "../support/browser-defaults.js";
+import {
+  installTaskApiFixture,
+  taskDetailFixture,
+} from "../support/task-api-fixture.js";
+
+test.beforeEach(async ({ page }) => {
+  await installBrowserDefaults(page);
+});
+
+test("scales visible Task controls without shrinking their touch targets", async ({
+  page,
+}) => {
+  await installScalingTask(page);
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "caffold:settings",
+      JSON.stringify({
+        appearanceVersion: 2,
+        interfaceScalePercent: 90,
+        conversationTextPx: 15,
+        codeTextPx: 13,
+      }),
+    );
+  });
+
+  await page.goto("/tasks/thread-1");
+  await expect(
+    page.locator(
+      "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden])",
+    ),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    const composer = document.querySelector(
+      "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden])",
+    );
+    composer.stateFor().images = [
+      {
+        id: "scale-audit-image",
+        name: "scale-audit.png",
+        dataUrl:
+          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      },
+    ];
+    composer.render();
+  });
+  const compactAttachment = await attachmentRemoveMetrics(page);
+  await page.getByRole("button", { name: /Task details/ }).click();
+  await page
+    .locator(
+      ".task-detail-popover:popover-open .task-detail-archive-action .task-secondary-button",
+    )
+    .scrollIntoViewIfNeeded();
+  const compact = await taskInterfaceMetrics(page);
+
+  await page.evaluate(async () => {
+    const { setAppearanceSetting } = await import("/assets/settings.js");
+    setAppearanceSetting("interfaceScalePercent", 120);
+  });
+  const detailsPopover = page.locator(".task-detail-popover");
+  if (await detailsPopover.evaluate((element) => element.matches(":popover-open"))) {
+    await detailsPopover.evaluate((element) => element.hidePopover());
+  }
+  const spaciousAttachment = await attachmentRemoveMetrics(page);
+  if (!(await detailsPopover.evaluate((element) => element.matches(":popover-open")))) {
+    await page.getByRole("button", { name: /Task details/ }).click();
+  }
+  await page
+    .locator(
+      ".task-detail-popover:popover-open .task-detail-archive-action .task-secondary-button",
+    )
+    .scrollIntoViewIfNeeded();
+  const spacious = await taskInterfaceMetrics(page);
+  const interfaceRatio = spacious.rootFontSize / compact.rootFontSize;
+  expect(interfaceRatio).toBeCloseTo(4 / 3, 2);
+
+  for (const key of [
+    "closeHeight",
+    "closeIconSize",
+    "infoHeight",
+    "archiveHeight",
+    "modelHeight",
+    "permissionHeight",
+    "sendHeight",
+    "popoverLabelFontSize",
+    "popoverValueFontSize",
+  ]) {
+    if (compact[key] === 0 || spacious[key] === 0) {
+      continue;
+    }
+    expect(
+      spacious[key] / compact[key],
+      `${key} must follow Interface scale`,
+    ).toBeCloseTo(interfaceRatio, 1);
+  }
+  expect(
+    spaciousAttachment.visualHeight / compactAttachment.visualHeight,
+    "attachment remove X must follow Interface scale",
+  ).toBeCloseTo(interfaceRatio, 1);
+  expect(
+    spaciousAttachment.iconSize / compactAttachment.iconSize,
+    "attachment remove icon must follow Interface scale",
+  ).toBeCloseTo(interfaceRatio, 1);
+  for (const metrics of [compact, spacious]) {
+    expect(
+      metrics.popoverValueFontSize,
+      "task detail values must use the compact Interface metadata tier",
+    ).toBeCloseTo(metrics.popoverLabelFontSize, 1);
+  }
+
+  for (const metrics of [compact, spacious]) {
+    expect(metrics.horizontalOverflow).toBe(false);
+    if (metrics.targetFloor >= 40) {
+      for (const [name, covered] of Object.entries(metrics.hitTargets)) {
+        expect(
+          covered,
+          `${name} must retain a 40px touch target: ${JSON.stringify(metrics.hitDebug[name])}`,
+        ).toBe(true);
+      }
+    }
+  }
+  for (const metrics of [compactAttachment, spaciousAttachment]) {
+    if (metrics.targetFloor >= 40) {
+      expect(metrics.hitTarget).toBe(true);
+    }
+  }
+});
+
+async function installScalingTask(page) {
+  await installTaskApiFixture(page);
+  const detail = taskDetailFixture();
+  detail.task.title = "Scale audit";
+  detail.task.cwd = "Users/taehoon/Workspace/rust/codger";
+  detail.task.cwdPath = detail.task.cwd;
+  detail.task.worktree = {
+    rootPath: detail.task.cwd,
+    branch: "main",
+    headSha: "0123456789abcdef",
+    relativeCwd: "",
+    linked: false,
+  };
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: { tasks: [detail.task], nextCursor: null } }),
+  );
+  await page.route(/\/api\/tasks\/thread-1(?:\?|$)/, (route) =>
+    route.fulfill({ json: detail }),
+  );
+  await page.route("**/api/tasks/thread-1/stream*", (route) =>
+    route.fulfill({ contentType: "text/event-stream", body: ": ready\n\n" }),
+  );
+  await page.route("**/api/github/status*", (route) =>
+    route.fulfill({
+      json: {
+        repository: {
+          rootPath: detail.task.cwd,
+          branch: "main",
+          dirty: false,
+        },
+        github: null,
+        ghAvailable: true,
+        authenticated: true,
+        issuesAvailable: false,
+        pullsAvailable: false,
+        message: "No GitHub remote",
+      },
+    }),
+  );
+}
+
+function attachmentRemoveMetrics(page) {
+  return page.evaluate(() => {
+    const button = document.querySelector(
+      "caffold-task-detail:not([hidden]) .task-composer-attachment button",
+    );
+    const icon = button.querySelector(".task-composer-attachment-remove-icon");
+    const box = button.getBoundingClientRect();
+    const inset = Number.parseFloat(
+      getComputedStyle(button, "::before").top,
+    );
+    const centerX = box.left + box.width / 2;
+    const centerY = box.top + box.height / 2;
+    const hitAt = (x, y) => {
+      const hit = document.elementFromPoint(x, y);
+      return hit === button || button.contains(hit);
+    };
+    return {
+      visualHeight: box.height - inset * 2,
+      iconSize: icon.getBoundingClientRect().height,
+      targetFloor:
+        Number.parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue(
+            "--interface-target-floor",
+          ),
+        ) || 0,
+      hitTarget: [
+        [centerX, centerY - 19],
+        [centerX, centerY + 19],
+        [centerX - 19, centerY],
+        [centerX + 19, centerY],
+      ].every(([x, y]) => hitAt(x, y)),
+    };
+  });
+}
+
+function taskInterfaceMetrics(page) {
+  return page.evaluate(() => {
+    const number = (value) => Number.parseFloat(value) || 0;
+    const rootStyle = getComputedStyle(document.documentElement);
+    const rootFontSize = number(rootStyle.fontSize);
+    const tokenPixels = (name) =>
+      number(rootStyle.getPropertyValue(name)) * rootFontSize;
+    const activeComposer = document.querySelector(
+      "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden])",
+    );
+    const activeDetail = document.querySelector(
+      "caffold-task-detail:not([hidden])",
+    );
+    const controls = {
+      close: document.querySelector(".codex-workspace-close"),
+      info: activeDetail.querySelector(".task-detail-info-button"),
+      archive: activeDetail.querySelector(
+        ".task-detail-popover:popover-open .task-detail-archive-action .task-secondary-button",
+      ),
+      model: activeComposer.querySelector(".task-model-button"),
+      permission: activeComposer.querySelector(".task-permission-button"),
+      send: activeComposer.querySelector(".task-send-button"),
+    };
+    const boxHeight = (element) => element.getBoundingClientRect().height;
+    const fontSize = (element) => number(getComputedStyle(element).fontSize);
+    const hitAt = (element, x, y) => {
+      const hit = document.elementFromPoint(x, y);
+      return hit === element || element.contains(hit);
+    };
+    const verticalHitTarget = (element) => {
+      const box = element.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) {
+        return true;
+      }
+      const x = box.left + box.width / 2;
+      const centerY = box.top + box.height / 2;
+      return (
+        hitAt(element, x, centerY - 19) &&
+        hitAt(element, x, centerY + 19)
+      );
+    };
+    const squareHitTarget = (element) => {
+      const box = element.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) {
+        return true;
+      }
+      const centerX = box.left + box.width / 2;
+      const centerY = box.top + box.height / 2;
+      return (
+        verticalHitTarget(element) &&
+        hitAt(element, centerX - 19, centerY) &&
+        hitAt(element, centerX + 19, centerY)
+      );
+    };
+    const hitDebug = (element) => {
+      const box = element.getBoundingClientRect();
+      const centerX = box.left + box.width / 2;
+      const centerY = box.top + box.height / 2;
+      return [
+        [centerX, centerY - 19],
+        [centerX, centerY + 19],
+        [centerX - 19, centerY],
+        [centerX + 19, centerY],
+      ].map(([x, y]) => {
+        const hit = document.elementFromPoint(x, y);
+        return {
+          x,
+          y,
+          tag: hit?.tagName,
+          className: hit?.className?.baseVal ?? hit?.className ?? "",
+        };
+      });
+    };
+
+    return {
+      rootFontSize,
+      targetFloor: number(
+        rootStyle.getPropertyValue("--interface-target-floor"),
+      ),
+      closeHeight: tokenPixels("--interface-compact-visual-size"),
+      closeIconSize: boxHeight(
+        controls.close.querySelector(".codex-workspace-close-icon"),
+      ),
+      infoHeight: tokenPixels("--interface-compact-visual-size"),
+      archiveHeight: tokenPixels("--interface-compact-visual-size"),
+      modelHeight: boxHeight(controls.model),
+      permissionHeight: boxHeight(controls.permission),
+      sendHeight: tokenPixels("--interface-control-visual-size"),
+      popoverLabelFontSize: fontSize(
+        document.querySelector(".task-detail-popover dt"),
+      ),
+      popoverValueFontSize: fontSize(
+        document.querySelector(".task-detail-popover dd"),
+      ),
+      horizontalOverflow:
+        document.documentElement.scrollWidth >
+        document.documentElement.clientWidth,
+      hitTargets: {
+        close: squareHitTarget(controls.close),
+        info: squareHitTarget(controls.info),
+        archive: verticalHitTarget(controls.archive),
+        model: verticalHitTarget(controls.model),
+        permission: verticalHitTarget(controls.permission),
+        send: squareHitTarget(controls.send),
+      },
+      hitDebug: Object.fromEntries(
+        Object.entries(controls).map(([name, element]) => [
+          name,
+          hitDebug(element),
+        ]),
+      ),
+    };
+  });
+}

@@ -146,13 +146,14 @@ caffold-git-log-list-page {
   }
 
   & .log-review-button {
+    position: relative;
     display: grid;
     grid-auto-flow: column;
     gap: 0.3125rem;
     align-items: center;
     justify-content: center;
     min-width: 0;
-    height: var(--interface-compact-control-size);
+    height: var(--interface-compact-visual-size);
     padding: 0 0.5rem;
     border: 1px solid var(--border);
     border-radius: 4px;
@@ -162,6 +163,12 @@ caffold-git-log-list-page {
     font: inherit;
     font-size: 0.72rem;
     line-height: 1;
+  }
+
+  & .log-review-button::before {
+    position: absolute;
+    inset: calc(0px - var(--interface-compact-hit-outset)) 0;
+    content: "";
   }
 
   & .log-review-icon {

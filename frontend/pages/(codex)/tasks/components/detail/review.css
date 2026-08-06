@@ -138,15 +138,16 @@ caffold-task-review {
 
   & .task-review-refresh {
     position: relative;
-    width: var(--interface-compact-visual-size);
-    height: var(--interface-compact-visual-size);
-    min-height: var(--interface-compact-visual-size);
+    width: var(--interface-compact-hit-size);
+    height: var(--interface-compact-hit-size);
+    min-height: var(--interface-compact-hit-size);
+    margin: calc(0rem - var(--interface-compact-hit-outset));
     flex: 0 0 auto;
   }
 
   & .task-review-refresh::before {
     position: absolute;
-    inset: calc(0px - var(--interface-compact-hit-outset));
+    inset: var(--interface-compact-hit-outset);
     content: "";
   }
 

@@ -1,9 +1,12 @@
 caffold-codex-workspace {
-  --task-workspace-header-size: calc(
-    var(--interface-compact-visual-size) +
-      var(--interface-space-4) +
-      var(--interface-space-4) +
-      1px
+  --task-workspace-header-size: max(
+    var(--interface-compact-hit-size),
+    calc(
+      var(--interface-compact-visual-size) +
+        var(--interface-space-4) +
+        var(--interface-space-4) +
+        1px
+    )
   );
   --task-header-leading-space: 0rem;
   position: relative;
@@ -20,37 +23,47 @@ caffold-codex-workspace {
   }
 
   &[data-workspace-close-visible] {
-    --task-header-leading-space: calc(var(--interface-compact-control-size) + 0.625rem);
+    --task-header-leading-space: calc(var(--interface-compact-hit-size) + 0.625rem);
   }
 
   & .codex-workspace-close {
     position: absolute;
-    top: calc(
-      (var(--task-workspace-header-size) - var(--interface-compact-control-size)) /
-        2
-    );
-    left: var(--interface-space-6);
+    top: calc(var(--interface-space-4) - var(--interface-compact-hit-outset));
+    left: calc(var(--interface-space-6) - var(--interface-compact-hit-outset));
     z-index: 2;
     display: grid;
     place-items: center;
-    width: var(--interface-compact-control-size);
-    height: var(--interface-compact-control-size);
+    width: var(--interface-compact-hit-size);
+    height: var(--interface-compact-hit-size);
     padding: 0;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
+    border: 0;
+    background: transparent;
     color: var(--accent);
     font: inherit;
     cursor: pointer;
   }
 
+  & .codex-workspace-close::before {
+    position: absolute;
+    inset: var(--interface-compact-hit-outset);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    content: "";
+  }
+
   & .codex-workspace-close:hover,
   & .codex-workspace-close:focus-visible {
-    border-color: var(--border-strong);
     outline: none;
   }
 
+  & .codex-workspace-close:hover::before,
+  & .codex-workspace-close:focus-visible::before {
+    border-color: var(--border-strong);
+  }
+
   & .codex-workspace-close-icon {
+    position: relative;
     display: block;
     width: var(--interface-icon-size);
     height: var(--interface-icon-size);
@@ -61,11 +74,12 @@ caffold-codex-workspace {
 @media (max-width: 520px) {
   caffold-codex-workspace {
     &[data-workspace-close-visible] {
-      --task-header-leading-space: calc(var(--interface-compact-control-size) + 0.5rem);
+      --task-header-leading-space: calc(var(--interface-compact-hit-size) + 0.5rem);
     }
 
     & .codex-workspace-close {
-      left: var(--interface-space-4);
+      top: calc(0.4375rem - var(--interface-compact-hit-outset));
+      left: calc(var(--interface-space-4) - var(--interface-compact-hit-outset));
     }
   }
 }

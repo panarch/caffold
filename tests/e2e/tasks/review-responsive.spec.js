@@ -108,20 +108,29 @@ test("keeps one compact file-navigation header on phone", async ({
     const closeRect = close.getBoundingClientRect();
     const infoRect = info.getBoundingClientRect();
     const titleBlockRect = titleBlock.getBoundingClientRect();
-    const hitOutset = Math.abs(
-      Number.parseFloat(getComputedStyle(close, "::before").top),
+    const closeInset = Number.parseFloat(
+      getComputedStyle(close, "::before").top,
+    );
+    const infoInset = Number.parseFloat(
+      getComputedStyle(info, "::after").top,
+    );
+    const refreshInset = Number.parseFloat(
+      getComputedStyle(refresh, "::before").top,
     );
     return {
-      closeHeight: closeRect.height,
-      closeWidth: closeRect.width,
+      closeVisualHeight: closeRect.height - closeInset * 2,
+      closeVisualWidth: closeRect.width - closeInset * 2,
       headerHeight: headerRect.height,
-      hitHeight: closeRect.height + hitOutset * 2,
-      infoHeight: infoRect.height,
-      infoWidth: infoRect.width,
+      hitHeight: closeRect.height,
+      infoVisualHeight: infoRect.height - infoInset * 2,
+      infoVisualWidth: infoRect.width - infoInset * 2,
       overflow: review.scrollWidth > review.clientWidth,
       refreshBottom: refreshRect.bottom,
+      refreshHitHeight: refreshRect.height,
       refreshRight: refreshRect.right,
       refreshTop: refreshRect.top,
+      refreshVisualHeight: refreshRect.height - refreshInset * 2,
+      refreshVisualWidth: refreshRect.width - refreshInset * 2,
       toolbarBottom: toolbarRect.bottom,
       toolbarRight: toolbarRect.right,
       toolbarTop: toolbarRect.top,
@@ -134,10 +143,13 @@ test("keeps one compact file-navigation header on phone", async ({
   expect(geometry.refreshTop).toBeGreaterThanOrEqual(geometry.toolbarTop);
   expect(geometry.refreshBottom).toBeLessThanOrEqual(geometry.toolbarBottom);
   expect(geometry.refreshRight).toBeLessThanOrEqual(geometry.toolbarRight);
-  expect(geometry.closeWidth).toBeLessThanOrEqual(36);
-  expect(geometry.closeHeight).toBeLessThanOrEqual(36);
-  expect(geometry.infoWidth).toBeCloseTo(geometry.closeWidth, 1);
-  expect(geometry.infoHeight).toBeCloseTo(geometry.closeHeight, 1);
+  expect(geometry.refreshVisualWidth).toBeLessThanOrEqual(36);
+  expect(geometry.refreshVisualHeight).toBeLessThanOrEqual(36);
+  expect(geometry.refreshHitHeight).toBeGreaterThanOrEqual(40);
+  expect(geometry.closeVisualWidth).toBeLessThanOrEqual(36);
+  expect(geometry.closeVisualHeight).toBeLessThanOrEqual(36);
+  expect(geometry.infoVisualWidth).toBeCloseTo(geometry.closeVisualWidth, 1);
+  expect(geometry.infoVisualHeight).toBeCloseTo(geometry.closeVisualHeight, 1);
   expect(geometry.hitHeight).toBeGreaterThanOrEqual(40);
   expect(geometry.headerHeight).toBeLessThanOrEqual(42);
   expect(Math.abs(geometry.titleCenter - geometry.headerCenter)).toBeLessThanOrEqual(1);

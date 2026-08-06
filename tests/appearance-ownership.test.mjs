@@ -175,6 +175,24 @@ test("icon-only controls do not fall back to baseline-dependent text glyphs", ()
   }
 });
 
+test("control paint layers do not pull screen-reader text into layout", () => {
+  const taskControls = readFrontend("pages/(codex)/tasks/controls.css");
+
+  assert.doesNotMatch(taskControls, /\.task-primary-button\s*>\s*\*\s*\{/);
+  assert.match(
+    taskControls,
+    /\.task-primary-button\s*>\s*:not\(\.sr-only\)\s*\{/,
+  );
+  assert.match(
+    taskControls,
+    /\.task-primary-button,[\s\S]*isolation: isolate;/,
+  );
+  assert.match(
+    taskControls,
+    /\.task-primary-button::before,[\s\S]*z-index: -1;/,
+  );
+});
+
 test("the browser fixture renders every shared inline icon used by production", () => {
   const usedNames = new Set(
     frontendSources().flatMap(([, source]) =>
@@ -205,59 +223,64 @@ test("icon-only controls use square slots from their semantic control tier", () 
     [
       "pages/components/header-actions.css",
       ".header-action-group-button",
-      "--interface-control-size",
+      "--interface-control-hit-size",
     ],
     [
       "pages/settings/page.css",
       ".settings-close-button",
-      "--interface-control-size",
+      "--interface-control-hit-size",
     ],
     [
       "pages/(codex)/tasks/components/composer.css",
       ".task-send-button",
-      "--interface-control-size",
+      "--interface-control-hit-size",
     ],
   ];
   const contextualControls = [
     [
       "pages/(review-workspace)/layout.css",
       ".review-workspace-close",
-      "--interface-compact-control-size",
+      "--interface-compact-hit-size",
     ],
     [
       "pages/(codex)/layout.css",
       ".codex-workspace-close",
-      "--interface-compact-control-size",
+      "--interface-compact-hit-size",
     ],
     [
       "pages/(codex)/tasks/components/detail/summary.css",
       ".task-brand-button",
-      "--interface-compact-visual-size",
+      "--interface-compact-hit-size",
     ],
     [
       "pages/(codex)/tasks/components/detail/summary.css",
       ".task-detail-info-button",
-      "--interface-compact-visual-size",
+      "--interface-compact-hit-size",
     ],
     [
       "components/file-browser/list.css",
       ".file-refresh-button",
-      "--interface-compact-control-size",
+      "--interface-compact-hit-size",
+    ],
+    [
+      "pages/(codex)/tasks/components/composer.css",
+      ".task-composer-attachment button",
+      "--interface-compact-hit-size",
     ],
     [
       "components/file-viewer.css",
       ".viewer-info-button",
-      "--interface-compact-control-size",
+      "--interface-compact-hit-size",
     ],
     [
       "components/file-viewer.css",
       ".viewer-refresh-button",
-      "--interface-compact-control-size",
+      "--interface-compact-hit-size",
     ],
     [
       "pages/(review-workspace)/(git)/components/controls.css",
       ".git-review-refresh",
-      "--interface-compact-control-size",
+      "--interface-compact-hit-size",
     ],
   ];
 
@@ -272,19 +295,57 @@ test("icon-only controls use square slots from their semantic control tier", () 
   const fileViewer = readFrontend("components/file-viewer.css");
   cssBlockMatching(fileViewer, ".viewer-info-button", [
     /position: relative/,
-    /width: var\(--interface-compact-visual-size\)/,
-    /height: var\(--interface-compact-visual-size\)/,
+    /width: var\(--interface-compact-hit-size\)/,
+    /height: var\(--interface-compact-hit-size\)/,
   ]);
-  cssBlockMatching(fileViewer, ".viewer-info-button::before", [
-    /inset: calc\(0px - var\(--interface-compact-hit-outset\)\)/,
+  cssBlockMatching(fileViewer, ".viewer-info-button::after", [
+    /inset: var\(--interface-compact-hit-outset\)/,
   ]);
 });
 
-test("contextual and inline actions stay compact while page and primary actions stay regular", () => {
-  const regularControls = [
-    ["pages/(codex)/tasks/controls.css", ".task-primary-button"],
-    ["pages/(codex)/tasks/controls.css", ".task-icon-button"],
+test("visible controls separate responsive geometry from coarse-pointer hit area", () => {
+  const tokens = readFrontend("styles.css");
+  for (const token of [
+    "--interface-control-visual-size",
+    "--interface-control-hit-size",
+    "--interface-control-hit-outset",
+    "--interface-compact-visual-size",
+    "--interface-compact-hit-size",
+    "--interface-compact-hit-outset",
+  ]) {
+    assert.match(tokens, new RegExp(`${token}:`));
+  }
+
+  const controls = [
+    ["pages/components/header-actions.css", ".header-action-group-button::before", "--interface-control-hit-outset"],
+    ["pages/settings/page.css", ".settings-close-button::before", "--interface-control-hit-outset"],
+    ["pages/(codex)/layout.css", ".codex-workspace-close::before", "--interface-compact-hit-outset"],
+    ["pages/(review-workspace)/layout.css", ".review-workspace-close::before", "--interface-compact-hit-outset"],
+    ["pages/(codex)/tasks/components/composer.css", ".task-send-button::before", "--interface-control-hit-outset"],
+    ["pages/(codex)/tasks/components/composer.css", ".task-composer-attachment button::before", "--interface-compact-hit-outset"],
+    ["pages/(codex)/tasks/components/composer.css", ".task-model-button::before", "--interface-compact-hit-outset"],
+    ["pages/(codex)/tasks/components/composer.css", ".task-permission-button::before", "--interface-compact-hit-outset"],
+    ["pages/settings/page.css", ".settings-reset-all::before", "--interface-compact-hit-outset"],
+    ["pages/settings/page.css", ".settings-range-control button::before", "--interface-compact-hit-outset"],
+    ["pages/(codex)/tasks/components/detail/summary.css", ".task-detail-archive-action .task-secondary-button::before", "--interface-compact-hit-outset"],
   ];
+
+  for (const [path, selector, token] of controls) {
+    const block = cssBlockContaining(readFrontend(path), selector, "inset:");
+    assert.match(block, new RegExp(token), `${path} ${selector}`);
+  }
+
+  cssBlockMatching(
+    readFrontend("pages/(codex)/tasks/controls.css"),
+    ".task-primary-button::before",
+    [
+      /inset-block: var\(--interface-control-hit-outset\)/,
+      /background: var\(--accent-soft\)/,
+    ],
+  );
+});
+
+test("contextual and inline actions stay compact while page and primary actions stay regular", () => {
   const compactControls = [
     [
       "pages/(codex)/tasks/components/detail/summary.css",
@@ -294,44 +355,57 @@ test("contextual and inline actions stay compact while page and primary actions 
     [
       "pages/(codex)/tasks/components/detail/review.css",
       ".task-review-refresh",
-      "--interface-compact-visual-size",
+      "--interface-compact-hit-size",
     ],
     [
       "pages/(codex)/tasks/components/detail/conversation.css",
       ".task-approval-actions .task-secondary-button",
-      "--interface-compact-control-size",
+      "--interface-compact-visual-size",
     ],
     [
       "pages/(codex)/tasks/components/navigator.css",
       '[data-task-action="load-more-tasks"]',
-      "--interface-compact-control-size",
+      "--interface-compact-visual-size",
     ],
     [
       "pages/(codex)/tasks/components/navigator.css",
       '[data-task-action="load-more-archived-tasks"]',
-      "--interface-compact-control-size",
+      "--interface-compact-visual-size",
     ],
     [
       "pages/settings/page.css",
       ".settings-reset-all",
-      "--interface-compact-control-size",
+      "--interface-compact-hit-size",
     ],
     [
       "pages/settings/page.css",
       ".settings-range-control button",
-      "--interface-compact-control-size",
+      "--interface-compact-hit-size",
     ],
     [
       "pages/(review-workspace)/(github)/(pulls)/detail/page.css",
       ".github-pull-files-button",
-      "--interface-compact-control-size",
+      "--interface-compact-visual-size",
     ],
   ];
 
-  for (const [path, selector] of regularControls) {
-    const block = cssBlockContaining(readFrontend(path), selector, "min-height:");
-    assert.match(block, /min-height: var\(--interface-control-size\)/, `${path} ${selector}`);
-  }
+  cssBlockMatching(
+    readFrontend("pages/(codex)/tasks/controls.css"),
+    ".task-primary-button",
+    [
+      /min-height: var\(--interface-control-hit-size\)/,
+      /background: transparent/,
+    ],
+  );
+  cssBlockMatching(
+    readFrontend("pages/(codex)/tasks/controls.css"),
+    ".task-icon-button",
+    [
+      /min-height: var\(--interface-control-hit-size\)/,
+      /width: var\(--interface-control-hit-size\)/,
+      /height: var\(--interface-control-hit-size\)/,
+    ],
+  );
   for (const [path, selector, token] of compactControls) {
     const block = cssBlockContaining(readFrontend(path), selector, "height:");
     assert.match(block, new RegExp(`height: var\\(${token}\\)`), `${path} ${selector}`);
@@ -366,7 +440,11 @@ test("dense contextual toolbars separate visual size from coarse-pointer hit are
   );
   assert.match(
     review,
-    /\.task-review-refresh::before[\s\S]*--interface-compact-hit-outset/,
+    /\.task-review-refresh \{[\s\S]*width: var\(--interface-compact-hit-size\)[\s\S]*height: var\(--interface-compact-hit-size\)[\s\S]*margin: calc\(0rem - var\(--interface-compact-hit-outset\)\)/,
+  );
+  assert.match(
+    review,
+    /\.task-review-refresh::before \{[\s\S]*inset: var\(--interface-compact-hit-outset\)/,
   );
 });
 
@@ -376,6 +454,7 @@ test("text actions use the shared Interface metadata scale instead of root body 
     ["pages/components/pathbar.css", ".path-crumbs button"],
     ["pages/(codex)/tasks/controls.css", ".task-primary-button"],
     ["pages/(codex)/tasks/components/detail/summary.css", ".task-review-menu-popover button"],
+    ["pages/(codex)/tasks/components/detail/summary.css", ".task-detail-popover dd"],
     ["pages/(review-workspace)/(github)/(pulls)/detail/page.css", ".github-pull-commit a"],
   ];
 
@@ -399,7 +478,7 @@ test("mixed surfaces keep content and controls on separate axes", () => {
   );
   assert.match(
     composer,
-    /\.task-model-button[\s\S]*min-height: var\(--interface-compact-control-size\)/,
+    /\.task-model-button[\s\S]*min-height: var\(--interface-compact-visual-size\)/,
   );
   assert.doesNotMatch(composer, /\.task-(?:model|permission)-(?:icon|caret)/);
   assert.match(

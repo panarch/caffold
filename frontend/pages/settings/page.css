@@ -37,30 +37,55 @@ caffold-settings-page {
   }
 
   & .settings-close-button {
+    position: relative;
     display: grid;
-    width: var(--interface-control-size);
-    height: var(--interface-control-size);
+    width: var(--interface-control-hit-size);
+    height: var(--interface-control-hit-size);
     place-items: center;
-    border: 1px solid var(--border);
-    border-radius: 0.25rem;
-    background: var(--surface);
+    border: 0;
+    background: transparent;
     color: var(--accent);
     cursor: pointer;
     padding: 0;
   }
 
-  & .settings-close-button:hover,
-  & .settings-close-button:focus-visible,
+  & .settings-close-button::before {
+    position: absolute;
+    inset: var(--interface-control-hit-outset);
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    background: var(--surface);
+    content: "";
+  }
+
   & .settings-reset-all:hover,
   & .settings-reset-all:focus-visible,
   & .settings-range-control button:hover,
   & .settings-range-control button:focus-visible {
-    border-color: var(--border-strong);
-    background: var(--accent-soft);
     outline: none;
   }
 
+  & .settings-reset-all:hover::before,
+  & .settings-reset-all:focus-visible::before,
+  & .settings-range-control button:hover::before,
+  & .settings-range-control button:focus-visible::before {
+    border-color: var(--border-strong);
+    background: var(--accent-soft);
+  }
+
+  & .settings-close-button:hover,
+  & .settings-close-button:focus-visible {
+    outline: none;
+  }
+
+  & .settings-close-button:hover::before,
+  & .settings-close-button:focus-visible::before {
+    border-color: var(--border-strong);
+    background: var(--accent-soft);
+  }
+
   & .settings-close-icon {
+    position: relative;
     display: block;
     width: var(--interface-icon-size);
     height: var(--interface-icon-size);
@@ -109,18 +134,30 @@ caffold-settings-page {
 
   & .settings-reset-all,
   & .settings-range-control button {
+    position: relative;
+    isolation: isolate;
     box-sizing: border-box;
-    height: var(--interface-compact-control-size);
-    min-height: var(--interface-compact-control-size);
-    border: 1px solid var(--border);
-    border-radius: 0.3125rem;
-    background: var(--surface);
+    height: var(--interface-compact-hit-size);
+    min-height: var(--interface-compact-hit-size);
+    border: 0;
+    background: transparent;
     color: var(--accent);
     cursor: pointer;
     padding: 0 var(--interface-space-5);
     font-size: var(--interface-meta-font-size);
     line-height: 1;
     white-space: nowrap;
+  }
+
+  & .settings-reset-all::before,
+  & .settings-range-control button::before {
+    position: absolute;
+    z-index: -1;
+    inset: var(--interface-compact-hit-outset) 0;
+    border: 1px solid var(--border);
+    border-radius: 0.3125rem;
+    background: var(--surface);
+    content: "";
   }
 
   & .settings-reset-all:disabled,
@@ -226,8 +263,8 @@ caffold-settings-page {
 
   & .settings-interface-preview-header button {
     box-sizing: border-box;
-    height: var(--interface-compact-control-size);
-    min-height: var(--interface-compact-control-size);
+    height: var(--interface-compact-visual-size);
+    min-height: var(--interface-compact-visual-size);
     border: 1px solid var(--border);
     border-radius: 0.25rem;
     background: var(--surface);

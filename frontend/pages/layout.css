@@ -91,7 +91,8 @@ caffold-app-shell {
   }
 
   & .app-build-alert button {
-    min-height: var(--interface-compact-control-size);
+    position: relative;
+    min-height: var(--interface-compact-visual-size);
     padding: 0 var(--interface-control-padding-inline);
     border: 1px solid currentcolor;
     border-radius: 5px;
@@ -99,6 +100,12 @@ caffold-app-shell {
     color: var(--danger);
     font: inherit;
     cursor: pointer;
+  }
+
+  & .app-build-alert button::before {
+    position: absolute;
+    inset: calc(0px - var(--interface-compact-hit-outset)) 0;
+    content: "";
   }
 }
 

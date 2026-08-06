@@ -237,13 +237,13 @@ caffold-tasks-page {
     }
 
     & .tasks-header-actions {
-      gap: 0.25rem;
+      gap: max(var(--interface-space-2), var(--interface-control-hit-outset));
     }
 
     & .tasks-header .task-primary-button {
       width: auto;
-      min-width: var(--interface-control-size);
-      min-height: var(--interface-control-size);
+      min-width: var(--interface-control-visual-size);
+      min-height: var(--interface-control-hit-size);
       padding: 0 0.5625rem;
     }
 

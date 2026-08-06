@@ -332,7 +332,7 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
       const rootStyle = getComputedStyle(document.documentElement);
       const formStyle = getComputedStyle(element);
       const conversationStyle = getComputedStyle(conversation);
-      const sendStyle = getComputedStyle(sendButton);
+      const sendStyle = getComputedStyle(sendButton, "::before");
       const panelRect = panel.getBoundingClientRect();
       const modelButtonRect = modelButton.getBoundingClientRect();
       const permissionButtonRect = permissionButton.getBoundingClientRect();

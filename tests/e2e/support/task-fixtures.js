@@ -28,7 +28,9 @@ export function canonicalTaskState(
 export async function taskPresentation(locator) {
   return locator.evaluate((element) => {
     const style = getComputedStyle(element);
+    const visualStyle = getComputedStyle(element, "::before");
     const box = element.getBoundingClientRect();
+    const visualInset = Number.parseFloat(visualStyle.top) || 0;
     return {
       alignItems: style.alignItems,
       animationName: style.animationName,
@@ -48,6 +50,11 @@ export async function taskPresentation(locator) {
       overflowWrap: style.overflowWrap,
       padding: style.padding,
       width: Math.round(box.width),
+      visualBackgroundColor: visualStyle.backgroundColor,
+      visualBorderColor: visualStyle.borderTopColor,
+      visualBorderRadius: visualStyle.borderRadius,
+      visualBorderWidth: visualStyle.borderTopWidth,
+      visualHeight: box.height - visualInset * 2,
     };
   });
 }

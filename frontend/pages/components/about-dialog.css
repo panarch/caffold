@@ -121,7 +121,8 @@ caffold-about-dialog {
   }
 
   & .about-actions button {
-    min-height: var(--interface-control-size);
+    position: relative;
+    min-height: var(--interface-control-visual-size);
     padding: 0 var(--interface-control-padding-inline);
     border: 1px solid var(--border);
     border-radius: 5px;
@@ -129,6 +130,12 @@ caffold-about-dialog {
     color: var(--text);
     font: inherit;
     cursor: pointer;
+  }
+
+  & .about-actions button::before {
+    position: absolute;
+    inset: calc(0px - var(--interface-control-hit-outset)) 0;
+    content: "";
   }
 
   & .about-actions button:last-child {

@@ -308,11 +308,34 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
     [cancelCwd, chooseCwd].map((control) =>
       control.evaluate((element) => {
         const style = getComputedStyle(element);
+        const visualStyle = getComputedStyle(element, "::before");
+        const bounds = element.getBoundingClientRect();
+        const visualTop = Number.parseFloat(visualStyle.top) || 0;
+        const visualBottom = Number.parseFloat(visualStyle.bottom) || 0;
+        const targetFloor = Number.parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue(
+            "--interface-target-floor",
+          ),
+        ) || 0;
+        const hitEdgeY =
+          targetFloor >= 39 && bounds.height < 39
+            ? bounds.top - 3
+            : bounds.top + 1;
+        const hit = document.elementFromPoint(
+          bounds.left + bounds.width / 2,
+          hitEdgeY,
+        );
         return {
           borderRadius: style.borderRadius,
           display: style.display,
           fontSize: style.fontSize,
-          height: element.getBoundingClientRect().height,
+          hitAtEdge: hit === element || element.contains(hit),
+          label: element.textContent.trim(),
+          hitLabel: hit?.textContent?.trim() || hit?.className || hit?.tagName || null,
+          visualHeight: Math.min(
+            bounds.height,
+            bounds.height - visualTop - visualBottom,
+          ),
         };
       }),
     ),
@@ -322,7 +345,14 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   );
   expect(cwdActionGeometry[0].display).toBe(cwdActionGeometry[1].display);
   expect(cwdActionGeometry[0].fontSize).toBe(cwdActionGeometry[1].fontSize);
-  expect(cwdActionGeometry[0].height).toBeCloseTo(cwdActionGeometry[1].height, 1);
+  expect(cwdActionGeometry[0].visualHeight).toBeCloseTo(
+    cwdActionGeometry[1].visualHeight,
+    1,
+  );
+  expect(
+    cwdActionGeometry.every(({ hitAtEdge }) => hitAtEdge),
+    JSON.stringify(cwdActionGeometry),
+  ).toBe(true);
   await cancelCwd.click();
   await expect(cwdBrowser).toBeHidden();
   await expect(tasksPage.locator('textarea[name="prompt"]')).toHaveValue(

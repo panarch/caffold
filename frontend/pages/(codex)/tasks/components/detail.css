@@ -70,7 +70,8 @@ caffold-task-detail {
   }
 
   & .task-stream-state button {
-    min-height: var(--interface-compact-control-size);
+    position: relative;
+    min-height: var(--interface-compact-visual-size);
     padding: 0.125rem 0.4375rem;
     border: 1px solid currentColor;
     border-radius: 5px;
@@ -78,6 +79,12 @@ caffold-task-detail {
     color: inherit;
     font: inherit;
     cursor: pointer;
+  }
+
+  & .task-stream-state button::before {
+    position: absolute;
+    inset: calc(0px - var(--interface-compact-hit-outset)) 0;
+    content: "";
   }
 
   & .task-stream-icon,

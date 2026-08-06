@@ -215,7 +215,7 @@ export async function expectHeaderGroupOpenVisualState(page, group) {
     );
     const buttonRect = button.getBoundingClientRect();
     const popoverRect = popover.getBoundingClientRect();
-    const buttonStyle = window.getComputedStyle(button);
+    const buttonVisualStyle = window.getComputedStyle(button, "::before");
     const arrowStyle = window.getComputedStyle(popover, "::before");
     const arrowLeft = Number.parseFloat(arrowStyle.left);
     const arrowTop = Number.parseFloat(arrowStyle.top);
@@ -229,9 +229,9 @@ export async function expectHeaderGroupOpenVisualState(page, group) {
       arrowDisplay: arrowStyle.display,
       arrowHeight: arrowStyle.height,
       arrowWidth: arrowStyle.width,
-      buttonBackground: buttonStyle.backgroundColor,
+      buttonBackground: buttonVisualStyle.backgroundColor,
       buttonBottom: buttonRect.bottom,
-      buttonBorderColor: buttonStyle.borderTopColor,
+      buttonBorderColor: buttonVisualStyle.borderTopColor,
       buttonCenter: buttonRect.left + buttonRect.width / 2,
       buttonToArrowGap: arrowVisualTop - buttonRect.bottom,
       isMobileLayout: window.matchMedia("(max-width: 520px)").matches,

@@ -8,12 +8,14 @@ caffold-tasks-page {
   & .task-primary-button,
   & .task-secondary-button,
   & .task-icon-button {
+    position: relative;
+    isolation: isolate;
     display: inline-grid;
     grid-auto-flow: column;
     align-items: center;
     justify-content: center;
     gap: var(--interface-control-gap);
-    min-height: var(--interface-control-size);
+    min-height: var(--interface-control-visual-size);
     padding: var(--interface-space-2) var(--interface-control-padding-inline);
     border: 1px solid var(--border);
     border-radius: 5px;
@@ -25,30 +27,84 @@ caffold-tasks-page {
   }
 
   & .task-primary-button {
-    border-color: #9fc9bb;
-    background: var(--accent-soft);
+    min-height: var(--interface-control-hit-size);
+    border-color: transparent;
+    background: transparent;
   }
 
   & .task-icon-button {
-    width: var(--interface-control-size);
+    width: var(--interface-control-hit-size);
+    height: var(--interface-control-hit-size);
+    min-height: var(--interface-control-hit-size);
     padding: 0;
+    border: 0;
+    background: transparent;
   }
 
-  & .task-primary-button:hover,
-  & .task-primary-button:focus-visible,
+  & .task-primary-button::before,
+  & .task-secondary-button::before,
+  & .task-icon-button::before {
+    position: absolute;
+    z-index: -1;
+    inset-inline: 0;
+    content: "";
+  }
+
+  & .task-primary-button::before {
+    inset-block: var(--interface-control-hit-outset);
+    border: 1px solid #9fc9bb;
+    border-radius: 5px;
+    background: var(--accent-soft);
+  }
+
+  & .task-secondary-button::before {
+    inset-block: calc(0px - var(--interface-control-hit-outset));
+  }
+
+  & .task-icon-button::before {
+    inset: var(--interface-control-hit-outset);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+  }
+
   & .task-secondary-button:hover,
   & .task-secondary-button:focus-visible,
   & .task-icon-button:hover,
   & .task-icon-button:focus-visible {
-    border-color: var(--border-strong);
     outline: none;
   }
 
+  & .task-icon-button:hover::before,
+  & .task-icon-button:focus-visible::before {
+    border-color: var(--border-strong);
+  }
+
+  & .task-secondary-button:hover,
+  & .task-secondary-button:focus-visible {
+    border-color: var(--border-strong);
+  }
+
+  & .task-primary-button:hover,
+  & .task-primary-button:focus-visible {
+    outline: none;
+  }
+
+  & .task-primary-button:hover::before,
+  & .task-primary-button:focus-visible::before {
+    border-color: var(--border-strong);
+  }
+
   & .task-action-icon {
+    position: relative;
     display: block;
     width: var(--interface-icon-size);
     height: var(--interface-icon-size);
     stroke-width: 2;
+  }
+
+  & .task-primary-button > :not(.sr-only) {
+    position: relative;
   }
 }
 

@@ -113,31 +113,45 @@ caffold-github-issue-detail-page {
   }
 
   caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-issue-detail-page .github-issue-viewer-title-row {
-    grid-template-columns: var(--interface-compact-control-size) minmax(0, 1fr) auto;
+    grid-template-columns: var(--interface-compact-hit-size) minmax(0, 1fr) auto;
     gap: 0.375rem;
   }
 
   caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-issue-detail-page .github-issue-close-button {
+    position: relative;
     display: grid;
     place-items: center;
-    width: var(--interface-compact-control-size);
-    height: var(--interface-compact-control-size);
+    width: var(--interface-compact-hit-size);
+    height: var(--interface-compact-hit-size);
     padding: 0;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
+    border: 0;
+    background: transparent;
     color: var(--accent);
     cursor: pointer;
   }
 
+  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-issue-detail-page .github-issue-close-button::before {
+    position: absolute;
+    inset: var(--interface-compact-hit-outset);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    content: "";
+  }
+
   caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-issue-detail-page .github-issue-close-button:hover,
   caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-issue-detail-page .github-issue-close-button:focus-visible {
-    border-color: #abcbbf;
-    background: #f7fbf8;
     outline: none;
   }
 
+  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-issue-detail-page .github-issue-close-button:hover::before,
+  caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-issue-detail-page .github-issue-close-button:focus-visible::before {
+    border-color: #abcbbf;
+    background: #f7fbf8;
+  }
+
   caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-issue-detail-page .github-issue-close-icon {
+    position: relative;
     display: block;
     width: var(--interface-icon-size);
     height: var(--interface-icon-size);

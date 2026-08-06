@@ -193,9 +193,15 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     .evaluateAll((controls) =>
       controls.map((control) => {
         const icon = control.querySelector("svg, img");
+        const chip = control.querySelector(".task-status-chip");
         const controlBox = control.getBoundingClientRect();
         const iconBox = icon.getBoundingClientRect();
+        const chipBox = chip?.getBoundingClientRect();
         return {
+          label:
+            control.getAttribute("aria-label") ||
+            control.getAttribute("title") ||
+            control.className,
           iconOnly:
             control.matches(".task-brand-button, .task-detail-info-button") ||
             control.classList.contains("task-icon-button"),
@@ -211,6 +217,10 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
           ),
           width: controlBox.width,
           height: controlBox.height,
+          controlTop: controlBox.top,
+          iconTop: iconBox.top,
+          chipTop: chipBox?.top ?? null,
+          chipHeight: chipBox?.height ?? null,
         };
       }),
     );
@@ -220,7 +230,10 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     if (geometry.iconOnly) {
       expect(geometry.centerDeltaX).toBeLessThanOrEqual(0.5);
     }
-    expect(geometry.centerDeltaY).toBeLessThanOrEqual(0.5);
+    expect(
+      geometry.centerDeltaY,
+      `${geometry.label} icon must stay vertically centered: ${JSON.stringify(geometry)}`,
+    ).toBeLessThanOrEqual(0.5);
   }
   expect(new Set(detailActionGeometry.map(({ iconWidth }) => iconWidth)).size).toBe(1);
   const contextualControlGeometry = await tasksPage.evaluate((element) => {
@@ -238,7 +251,16 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
       ),
     ];
     return {
-      heights: controls.map((control) => control.getBoundingClientRect().height),
+      visualHeights: controls.map((control) => {
+        const bounds = control.getBoundingClientRect();
+        if (control === modeSwitch) {
+          return bounds.height;
+        }
+        const visual = getComputedStyle(control, "::before");
+        const top = Number.parseFloat(visual.top) || 0;
+        const bottom = Number.parseFloat(visual.bottom) || 0;
+        return Math.min(bounds.height, bounds.height - top - bottom);
+      }),
       modeButtonHeights: modeButtons.map(
         (control) => control.getBoundingClientRect().height,
       ),
@@ -253,26 +275,42 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
       })(),
       expandedTouchHits: expandedTouchControls.map((control) => {
         const bounds = control.getBoundingClientRect();
+        const hitEdgeY = bounds.height >= 39 ? bounds.top + 1 : bounds.top - 3;
         const hit = document.elementFromPoint(
           bounds.left + bounds.width / 2,
-          bounds.top - 3,
+          hitEdgeY,
         );
-        return hit === control || control.contains(hit);
+        return {
+          label:
+            control.getAttribute("aria-label") ||
+            control.getAttribute("title") ||
+            control.className,
+          hit: hit === control || control.contains(hit),
+          hitLabel:
+            hit?.getAttribute?.("aria-label") ||
+            hit?.getAttribute?.("title") ||
+            hit?.className ||
+            hit?.tagName ||
+            null,
+        };
       }),
     };
   });
   expect(
-    Math.max(...contextualControlGeometry.heights) -
-      Math.min(...contextualControlGeometry.heights),
+    Math.max(...contextualControlGeometry.visualHeights) -
+      Math.min(...contextualControlGeometry.visualHeights),
   ).toBeLessThanOrEqual(1);
   expect(contextualControlGeometry.selectedInset.top).toBeGreaterThanOrEqual(0);
   expect(contextualControlGeometry.selectedInset.bottom).toBeGreaterThanOrEqual(0);
   expect(contextualControlGeometry.selectedInset.top).toBeLessThanOrEqual(2);
   expect(contextualControlGeometry.selectedInset.bottom).toBeLessThanOrEqual(2);
   if (testInfo.project.name !== "desktop") {
-    expect(Math.max(...contextualControlGeometry.heights)).toBeLessThanOrEqual(34);
+    expect(Math.max(...contextualControlGeometry.visualHeights)).toBeLessThanOrEqual(34);
     expect(Math.min(...contextualControlGeometry.modeButtonHeights)).toBeGreaterThanOrEqual(40);
-    expect(contextualControlGeometry.expandedTouchHits.every(Boolean)).toBe(true);
+    expect(
+      contextualControlGeometry.expandedTouchHits.every(({ hit }) => hit),
+      JSON.stringify(contextualControlGeometry.expandedTouchHits),
+    ).toBe(true);
   }
   const workspaceHeaderMetrics = await tasksPage.evaluate((element) => {
     const appHeader = element.querySelector(".tasks-header");
@@ -300,6 +338,14 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
         getComputedStyle(close).display !== "none" &&
         close.getBoundingClientRect().width > 0,
       overflow: element.scrollWidth > element.clientWidth,
+      actionHeight: actionBounds.height,
+      actionChildren: [...summary.querySelectorAll(
+        ".task-detail-actions > *, .task-detail-info-button",
+      )].map((control) => ({
+        className: control.className,
+        height: control.getBoundingClientRect().height,
+      })),
+      paddingBlock: getComputedStyle(summary).paddingBlock,
       sameRow:
         Math.abs(
           headingBounds.top + headingBounds.height / 2 -
@@ -331,7 +377,10 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     });
     expect(workspaceHeaderMetrics.closeVisible).toBe(false);
     expect(navigatorClearance.sectionTitleInset).toBeLessThanOrEqual(16);
-    expect(navigatorClearance.headerBottomDelta).toBeLessThanOrEqual(1);
+    expect(
+      navigatorClearance.headerBottomDelta,
+      JSON.stringify({ navigatorClearance, workspaceHeaderMetrics }),
+    ).toBeLessThanOrEqual(1);
   } else {
     expect(workspaceHeaderMetrics.closeVisible).toBe(true);
     expect(workspaceHeaderMetrics.closeSize).toBeGreaterThanOrEqual(40);

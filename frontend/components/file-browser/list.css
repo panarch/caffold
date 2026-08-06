@@ -53,28 +53,41 @@ caffold-file-list {
   & .file-list-actions {
     display: grid;
     grid-auto-flow: column;
-    gap: 0.375rem;
+    gap: max(0.375rem, calc(var(--interface-compact-hit-outset) * 2));
     align-items: center;
   }
 
   & .file-refresh-button {
+    position: relative;
     display: grid;
-    width: var(--interface-compact-control-size);
-    height: var(--interface-compact-control-size);
+    width: var(--interface-compact-hit-size);
+    height: var(--interface-compact-hit-size);
     place-items: center;
     padding: 0;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
+    border: 0;
+    background: transparent;
     color: var(--accent);
     cursor: pointer;
   }
 
+  & .file-refresh-button::before {
+    position: absolute;
+    inset: var(--interface-compact-hit-outset);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    content: "";
+  }
+
   & .file-refresh-button:hover,
   & .file-refresh-button:focus-visible {
+    outline: none;
+  }
+
+  & .file-refresh-button:hover::before,
+  & .file-refresh-button:focus-visible::before {
     border-color: var(--border);
     background: var(--accent-soft);
-    outline: none;
   }
 
   & .file-refresh-button.is-unavailable {
@@ -86,6 +99,7 @@ caffold-file-list {
   }
 
   & .file-refresh-icon {
+    position: relative;
     display: block;
     width: var(--interface-icon-size);
     height: var(--interface-icon-size);

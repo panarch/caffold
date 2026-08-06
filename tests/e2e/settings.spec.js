@@ -159,24 +159,32 @@ test("updates independent ranges live without replacing their DOM", async ({
     };
     const height = (selector) =>
       element.querySelector(selector).getBoundingClientRect().height;
+    const visualHeight = (selector) => {
+      const control = element.querySelector(selector);
+      const box = control.getBoundingClientRect();
+      const inset = Number.parseFloat(
+        getComputedStyle(control, "::before").top,
+      );
+      return box.height - inset * 2;
+    };
     return {
-      regular: tokenHeight("--interface-control-size"),
-      compact: tokenHeight("--interface-compact-control-size"),
+      regularHit: tokenHeight("--interface-control-hit-size"),
+      compactVisual: tokenHeight("--interface-compact-visual-size"),
       close: height(".settings-close-button"),
-      resetAll: height(".settings-reset-all"),
-      resetOne: height(".settings-range-control button"),
+      resetAllVisual: visualHeight(".settings-reset-all"),
+      resetOneVisual: visualHeight(".settings-range-control button"),
     };
   });
   expect(settingsControlTiers.close).toBeCloseTo(
-    settingsControlTiers.regular,
+    settingsControlTiers.regularHit,
     1,
   );
-  expect(settingsControlTiers.resetAll).toBeCloseTo(
-    settingsControlTiers.compact,
+  expect(settingsControlTiers.resetAllVisual).toBeCloseTo(
+    settingsControlTiers.compactVisual,
     1,
   );
-  expect(settingsControlTiers.resetOne).toBeCloseTo(
-    settingsControlTiers.compact,
+  expect(settingsControlTiers.resetOneVisual).toBeCloseTo(
+    settingsControlTiers.compactVisual,
     1,
   );
   await expect(
@@ -316,7 +324,7 @@ test("applies extreme values to Files and Code without coupling the axes", async
   const fileToolbarTiers = await page.evaluate(() => {
     const tokenProbe = document.createElement("div");
     tokenProbe.style.cssText =
-      "position:fixed;height:var(--interface-compact-control-size)";
+      "position:fixed;height:var(--interface-compact-hit-size)";
     document.body.append(tokenProbe);
     const compact = tokenProbe.getBoundingClientRect().height;
     tokenProbe.remove();
@@ -569,8 +577,8 @@ test("keeps model picker chrome compact and scales it only with Interface", asyn
   expect(spacious.modelButtonHeight).toBeGreaterThanOrEqual(
     compact.modelButtonHeight,
   );
-  expect(compact.modelButtonHeight).toBeGreaterThanOrEqual(compact.targetFloor);
-  expect(spacious.modelButtonHeight).toBeGreaterThanOrEqual(spacious.targetFloor);
+  expect(compact.modelButtonHeight).toBeCloseTo(compact.compactVisualSize, 1);
+  expect(spacious.modelButtonHeight).toBeCloseTo(spacious.compactVisualSize, 1);
   expect(spacious.optionHeight).toBeGreaterThanOrEqual(compact.optionHeight);
   expect(compact.optionHeight).toBeGreaterThanOrEqual(compact.targetFloor);
   expect(spacious.optionHeight).toBeGreaterThanOrEqual(spacious.targetFloor);
@@ -615,6 +623,14 @@ async function modelPickerMetrics(composer) {
     const modelButtonRect = modelButton.getBoundingClientRect();
     const permissionButtonRect = permissionButton.getBoundingClientRect();
     const number = (value) => Number.parseFloat(value) || 0;
+    const tokenHeight = (token) => {
+      const probe = document.createElement("div");
+      probe.style.cssText = `position:fixed;height:var(${token})`;
+      document.body.append(probe);
+      const height = probe.getBoundingClientRect().height;
+      probe.remove();
+      return height;
+    };
     const iconGeometry = [
       ["send", element.querySelector(".task-send-button"), element.querySelector(".task-send-icon")],
     ].map(([name, button, icon]) => {
@@ -640,6 +656,7 @@ async function modelPickerMetrics(composer) {
     return {
       rootFontSize: number(rootStyle.fontSize),
       targetFloor: number(rootStyle.getPropertyValue("--interface-target-floor")),
+      compactVisualSize: tokenHeight("--interface-compact-visual-size"),
       titleFontSize: number(getComputedStyle(title).fontSize),
       descriptionFontSize: number(getComputedStyle(description).fontSize),
       modelButtonFontSize: number(getComputedStyle(modelButton).fontSize),
