@@ -30,7 +30,7 @@ export default defineConfig({
     {
       name: "foldable",
       use: {
-        viewport: { width: 884, height: 1104 },
+        viewport: { width: 933, height: 704 },
         isMobile: true,
         hasTouch: true,
       },

@@ -701,7 +701,7 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
   expect(longTitleLayout.textOverflow).toBe("ellipsis");
   expect(longTitleLayout.whiteSpace).toBe("nowrap");
 
-  if (testInfo.project.name === "desktop") {
+  if (testInfo.project.name !== "phone") {
     expect(longTitleLayout.isTruncated).toBe(true);
     await expect(listPane).toBeVisible();
     await expect(detailPane).toBeVisible();
@@ -733,11 +733,20 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     await page.mouse.down();
     await page.mouse.move(separatorBox.x + separatorBox.width / 2 + 40, separatorBox.y + 20);
     await page.mouse.up();
-    await expect(resizer).toHaveAttribute("aria-valuenow", "420");
+    const maximumListWidth = Number(
+      await resizer.getAttribute("aria-valuemax"),
+    );
+    await expect(resizer).toHaveAttribute(
+      "aria-valuenow",
+      `${Math.min(420, maximumListWidth)}`,
+    );
 
     await resizer.focus();
     await resizer.press("End");
-    await expect(resizer).toHaveAttribute("aria-valuenow", "520");
+    await expect(resizer).toHaveAttribute(
+      "aria-valuenow",
+      `${maximumListWidth}`,
+    );
     await resizer.press("Home");
     await expect(resizer).toHaveAttribute("aria-valuenow", "280");
     await resizer.press("ArrowRight");
@@ -823,6 +832,84 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     await expect(listPane).toBeVisible();
     await expect(detailPane).toBeHidden();
   }
+});
+
+test("switches Tasks to master-detail at the Fold8 landscape boundary", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.EventSource = class MockEventSource {
+      addEventListener() {}
+
+      close() {}
+    };
+  });
+  await mockCodexModels(page);
+  const now = 1_767_300_000_000;
+  const task = {
+    id: "thread-fold8-boundary",
+    threadId: "thread-fold8-boundary",
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Fold8 landscape task",
+    preview: "Fold8 landscape task preview",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: "Fold8 landscape task summary",
+  };
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [task], nextCursor: null }),
+    }),
+  );
+  await page.route("**/api/tasks/thread-fold8-boundary", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        revision: 1,
+        threadId: task.threadId,
+        task,
+        model: "gpt-test",
+        reasoningEffort: "medium",
+        permissionMode: "askForApproval",
+        events: [],
+        eventsPage: { nextCursor: null },
+        pendingApprovals: [],
+      }),
+    }),
+  );
+
+  await page.setViewportSize({ width: 899, height: 704 });
+  await page.goto(`/tasks/${task.threadId}`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const listPane = tasksPage.locator(".tasks-list-pane");
+  const detailPane = tasksPage.locator(".tasks-detail-pane");
+  const resizer = tasksPage.locator(".tasks-master-resizer");
+  await expect(listPane).toBeHidden();
+  await expect(detailPane).toBeVisible();
+  await expect(resizer).toBeHidden();
+
+  await page.setViewportSize({ width: 900, height: 704 });
+  await expect(listPane).toBeVisible();
+  await expect(detailPane).toBeVisible();
+  await expect(resizer).toBeVisible();
+  const layout = await tasksPage.evaluate((element) => {
+    const list = element.querySelector(".tasks-list-pane").getBoundingClientRect();
+    const detail = element.querySelector(".tasks-detail-pane").getBoundingClientRect();
+    return {
+      detailWidth: detail.width,
+      listWidth: list.width,
+      overflow: element.scrollWidth > element.clientWidth,
+    };
+  });
+  expect(layout.overflow).toBe(false);
+  expect(layout.listWidth).toBeGreaterThanOrEqual(280);
+  expect(layout.detailWidth).toBeGreaterThanOrEqual(520);
 });
 test("keeps the Tasks list DOM stable while opening a managed task", async ({ page }) => {
   await page.addInitScript(() => {

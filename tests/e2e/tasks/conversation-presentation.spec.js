@@ -313,7 +313,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   expect(workspaceHeaderMetrics.appHeaderVisible).toBe(false);
   expect(workspaceHeaderMetrics.summaryTop).toBe(workspaceHeaderMetrics.surfaceTop);
   expect(workspaceHeaderMetrics.overflow).toBe(false);
-  if (testInfo.project.name === "desktop") {
+  if (testInfo.project.name !== "phone") {
     const navigatorClearance = await tasksPage.evaluate((element) => {
       const sectionTitle = element
         .querySelector(".task-list-section:first-child h2")
@@ -357,6 +357,9 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
         .querySelector(".task-detail-actions")
         .getBoundingClientRect();
       return {
+        closeVisible:
+          getComputedStyle(document.querySelector(".codex-workspace-close"))
+            .display !== "none",
         sameRow:
           Math.abs(
             heading.top + heading.height / 2 -
@@ -365,6 +368,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
         summaryHeight: summary.getBoundingClientRect().height,
       };
     });
+    expect(compactFoldableHeader.closeVisible).toBe(true);
     expect(compactFoldableHeader.sameRow).toBe(true);
     expect(compactFoldableHeader.summaryHeight).toBeLessThanOrEqual(64);
   }

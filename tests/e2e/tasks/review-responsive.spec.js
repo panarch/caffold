@@ -229,7 +229,7 @@ test("keeps compact Task segments pixel-aligned on Retina displays", async ({
 }, testInfo) => {
   const viewportByProject = {
     desktop: { width: 1280, height: 800 },
-    foldable: { width: 884, height: 1104 },
+    foldable: { width: 933, height: 704 },
     phone: { width: 390, height: 844 },
   };
   const isMobile = testInfo.project.name !== "desktop";

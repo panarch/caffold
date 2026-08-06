@@ -8,6 +8,7 @@ import { cleanLogicalPath } from "../task-format.js";
 
 const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const TASKS_SINGLE_PANE_MEDIA_QUERY = "(max-width: 899px)";
 const IMAGE_TYPES = new Set([
   "image/avif",
   "image/gif",
@@ -911,9 +912,7 @@ class CaffoldTaskComposer extends HTMLElement {
     popover.style.removeProperty("max-height");
     popover.style.removeProperty("left");
     popover.style.removeProperty("right");
-    if (
-      window.matchMedia("(max-width: 860px), (pointer: coarse)").matches
-    ) {
+    if (window.matchMedia(TASKS_SINGLE_PANE_MEDIA_QUERY).matches) {
       return;
     }
     const button = this.querySelector(
@@ -944,7 +943,7 @@ class CaffoldTaskComposer extends HTMLElement {
     }
 
     const paneRect = this.closest(".tasks-detail-pane")?.getBoundingClientRect();
-    const horizontalMargin = interfaceFontSize * 0.5;
+    const horizontalMargin = Math.ceil(interfaceFontSize * 0.5);
     const boundaryLeft = Math.max(0, paneRect?.left ?? 0) + horizontalMargin;
     const boundaryRight =
       Math.min(window.innerWidth, paneRect?.right ?? window.innerWidth) -

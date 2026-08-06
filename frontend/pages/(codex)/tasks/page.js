@@ -9,6 +9,7 @@ const TASK_LIST_MIN_WIDTH = 280;
 const TASK_LIST_MAX_WIDTH = 520;
 const TASK_DETAIL_MIN_WIDTH = 520;
 const TASK_LIST_RESIZER_WIDTH = 6;
+const TASKS_MASTER_DETAIL_MEDIA_QUERY = "(min-width: 900px)";
 
 class CaffoldTasksPage extends HTMLElement {
   connectedCallback() {
@@ -31,9 +32,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.taskListWidth = TASK_LIST_DEFAULT_WIDTH;
     this.adoptedThreadId = "";
     this.globalListenersAttached = false;
-    this.boundResize = () => {
-      this.clampTaskListWidth();
-    };
+    this.boundResize = () => this.syncTaskListWidth();
     this.boundIconsReady = () => this.renderHeader();
     this.boundPointerMove = (event) => this.resizeTaskList(event);
     this.boundPointerUp = () => this.stopTaskListResize();
@@ -307,7 +306,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.taskNew()?.toggleAttribute("hidden", !showNew);
     this.taskDetail()?.toggleAttribute("hidden", this.view !== "detail");
     this.renderHeader();
-    this.applyTaskListWidth();
+    this.syncTaskListWidth();
     this.taskNavigator()?.setSelectedThreadId(this.selectedThreadId);
   }
 
@@ -357,7 +356,10 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   startTaskListResize(event, separator) {
-    if (event.button !== 0 || !window.matchMedia("(min-width: 960px)").matches) {
+    if (
+      event.button !== 0 ||
+      !window.matchMedia(TASKS_MASTER_DETAIL_MEDIA_QUERY).matches
+    ) {
       return;
     }
     event.preventDefault();
@@ -396,7 +398,10 @@ class CaffoldTasksPage extends HTMLElement {
       event.target instanceof Element
         ? event.target.closest(".tasks-master-resizer")
         : null;
-    if (!separator || !window.matchMedia("(min-width: 960px)").matches) {
+    if (
+      !separator ||
+      !window.matchMedia(TASKS_MASTER_DETAIL_MEDIA_QUERY).matches
+    ) {
       return false;
     }
     let nextWidth = this.taskListWidth;
@@ -437,6 +442,19 @@ class CaffoldTasksPage extends HTMLElement {
 
   clampTaskListWidth() {
     this.setTaskListWidth(this.taskListWidth);
+  }
+
+  syncTaskListWidth() {
+    const shellWidth =
+      this.querySelector(".tasks-master-detail")?.clientWidth ?? 0;
+    if (
+      !window.matchMedia(TASKS_MASTER_DETAIL_MEDIA_QUERY).matches ||
+      shellWidth <= 0
+    ) {
+      this.applyTaskListWidth();
+      return;
+    }
+    this.clampTaskListWidth();
   }
 
   applyTaskListWidth() {

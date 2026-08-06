@@ -185,6 +185,7 @@ test("creates a task with responsive composer controls and canonical approval st
   const modelPopoverMetrics = await newTaskComposer.evaluate((form) => {
     const button = form.querySelector(".task-model-button").getBoundingClientRect();
     const panel = form.querySelector(".task-composer-panel").getBoundingClientRect();
+    const pane = form.closest(".tasks-detail-pane").getBoundingClientRect();
     const popover = form.querySelector(".task-model-popover").getBoundingClientRect();
     const firstDescription = form.querySelector(".task-model-option small");
     const descriptionStyle = firstDescription
@@ -196,6 +197,8 @@ test("creates a task with responsive composer controls and canonical approval st
       panelBottom: panel.bottom,
       panelLeft: panel.left,
       panelRight: panel.right,
+      paneLeft: pane.left,
+      paneRight: pane.right,
       backdropVisible: Boolean(
         form.querySelector(".task-model-backdrop") &&
           window.getComputedStyle(form.querySelector(".task-model-backdrop")).display !==
@@ -219,11 +222,19 @@ test("creates a task with responsive composer controls and canonical approval st
     modelPopoverMetrics.viewportHeight - 9,
   );
   expect(modelPopoverMetrics.descriptionWhiteSpace).not.toBe("nowrap");
-  if (testInfo.project.name === "desktop") {
+  if (testInfo.project.name !== "phone") {
     expect(modelPopoverMetrics.backdropVisible).toBe(false);
-    expect(
-      Math.abs(modelPopoverMetrics.popoverLeft - modelPopoverMetrics.buttonLeft),
-    ).toBeLessThanOrEqual(2);
+    expect(modelPopoverMetrics.popoverLeft).toBeGreaterThanOrEqual(
+      modelPopoverMetrics.paneLeft,
+    );
+    expect(modelPopoverMetrics.popoverRight).toBeLessThanOrEqual(
+      modelPopoverMetrics.paneRight,
+    );
+    if (testInfo.project.name === "desktop") {
+      expect(
+        Math.abs(modelPopoverMetrics.popoverLeft - modelPopoverMetrics.buttonLeft),
+      ).toBeLessThanOrEqual(2);
+    }
     expect(modelPopoverMetrics.popoverTop).toBeGreaterThanOrEqual(
       modelPopoverMetrics.buttonBottom + 6,
     );
@@ -412,7 +423,7 @@ test("creates a task with responsive composer controls and canonical approval st
     expect(summaryPadding[0]).toBeCloseTo(blockPadding, 2);
     expect(summaryPadding[1]).toBeCloseTo(inlinePadding, 2);
     expect(summaryPadding[2]).toBeCloseTo(blockPadding, 2);
-    if (testInfo.project.name === "desktop") {
+    if (testInfo.project.name !== "phone") {
       expect(summaryPadding[3]).toBeCloseTo(inlinePadding, 2);
     } else {
       expect(summaryPadding[3]).toBeGreaterThan(inlinePadding);

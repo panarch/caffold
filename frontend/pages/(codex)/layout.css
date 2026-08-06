@@ -70,7 +70,7 @@ caffold-codex-workspace {
   }
 }
 
-@media (min-width: 960px) {
+@media (min-width: 900px) {
   caffold-codex-workspace[data-workspace-close-responsive] {
     --task-header-leading-space: 0rem;
 

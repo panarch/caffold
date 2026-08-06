@@ -171,7 +171,7 @@ caffold-tasks-page {
   }
 }
 
-@media (min-width: 960px) {
+@media (min-width: 900px) {
   caffold-tasks-page {
     &[data-tasks-view="detail"]:not([data-task-detail-view="review"])
       .tasks-detail-pane {
@@ -184,7 +184,7 @@ caffold-tasks-page {
   }
 }
 
-@media (max-width: 959px) {
+@media (max-width: 899px) {
   caffold-tasks-page {
     & .tasks-master-detail {
       grid-template-columns: minmax(0, 1fr);
