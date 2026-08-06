@@ -80,6 +80,10 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
     "content",
     "default",
   );
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
+    "content",
+    "#ffffff",
+  );
 
   const manifestResponse = await request.get("/assets/manifest.webmanifest");
   expect(manifestResponse.headers()["content-type"]).toContain(
@@ -91,6 +95,8 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(manifest.start_url).toBe("/");
   expect(manifest.scope).toBe("/");
   expect(manifest.display).toBe("standalone");
+  expect(manifest.theme_color).toBe("#ffffff");
+  expect(manifest.background_color).toBe("#f4f6f3");
   expect(manifest.icons.map((icon) => icon.src)).toEqual(
     expect.arrayContaining([
       "/assets/icons/caffold.svg",

@@ -12,4 +12,7 @@ fn server_name_is_applied_to_install_metadata() {
     assert_eq!(manifest["name"], "Caffold Studio");
     assert_eq!(manifest["short_name"], "Caffold Studio");
     assert_eq!(manifest["id"], "/");
+    assert_eq!(manifest["display"], "standalone");
+    assert_eq!(manifest["theme_color"], "#ffffff");
+    assert_eq!(manifest["background_color"], "#f4f6f3");
 }

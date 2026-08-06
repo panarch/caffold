@@ -6,8 +6,8 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f7faf7",
-  "theme_color": "#f7faf7",
+  "background_color": "#f4f6f3",
+  "theme_color": "#ffffff",
   "icons": [
     {
       "src": "/assets/icons/caffold.svg",
