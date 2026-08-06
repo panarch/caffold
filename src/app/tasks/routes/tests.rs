@@ -375,47 +375,6 @@ async fn codex_turn_options_rejects_model_missing_from_server_list() {
 }
 
 #[tokio::test]
-async fn task_list_forwards_and_returns_pagination_cursors() {
-    let root = tempfile::tempdir().unwrap();
-    let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
-        "thread/list",
-        json!({
-            "data": [],
-            "nextCursor": "page-3",
-            "backwardsCursor": "page-1"
-        }),
-    )]);
-    let state =
-        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-
-    let response = list_tasks(
-        State(state),
-        Query(TasksQuery {
-            cursor: Some("page-2".to_string()),
-        }),
-    )
-    .await
-    .expect("task page succeeds");
-
-    assert!(response.0.tasks.is_empty());
-    assert_eq!(response.0.next_cursor.as_deref(), Some("page-3"));
-    assert_eq!(
-        client.mock_requests().await,
-        vec![(
-            "thread/list".to_string(),
-            json!({
-                "cursor": "page-2",
-                "limit": TASK_LIST_PAGE_SIZE,
-                "sortKey": "recency_at",
-                "sortDirection": "desc",
-                "archived": false,
-                "useStateDbOnly": true
-            })
-        )]
-    );
-}
-
-#[tokio::test]
 async fn managed_list_never_projects_pending_approval_onto_thread_status() {
     let root = tempfile::tempdir().unwrap();
     let thread = task_thread_list("thread-stale-approval", root.path())["data"][0].clone();
@@ -613,53 +572,6 @@ async fn restore_failure_keeps_the_task_in_the_archived_membership() {
             .unwrap()
             .is_some()
     );
-}
-
-#[tokio::test]
-async fn archived_tasks_do_not_reappear_in_codex_history() {
-    let root = tempfile::tempdir().unwrap();
-    let thread_id = "thread-archived-history";
-    let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
-        "thread/list",
-        task_thread_list(thread_id, root.path()),
-    )]);
-    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
-    manage_test_thread(&state, thread_id, root.path()).await;
-    thread_store_archive(&state, thread_id)
-        .await
-        .unwrap()
-        .unwrap();
-
-    let history = list_task_history(State(state), Query(TasksQuery { cursor: None }))
-        .await
-        .expect("history list succeeds");
-
-    assert!(history.0.tasks.is_empty());
-}
-
-#[tokio::test]
-async fn archived_threads_must_be_restored_instead_of_continued() {
-    let root = tempfile::tempdir().unwrap();
-    let thread_id = "thread-archived-continue";
-    let client = CodexThreadClient::mock(Vec::new());
-    let state =
-        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-    manage_test_thread(&state, thread_id, root.path()).await;
-    thread_store_archive(&state, thread_id)
-        .await
-        .unwrap()
-        .unwrap();
-
-    let result = continue_task(State(state), AxumPath(thread_id.to_string())).await;
-
-    assert!(matches!(
-        result,
-        Err(ApiError::BadRequest {
-            code: "task_archived",
-            ..
-        })
-    ));
-    assert!(client.mock_requests().await.is_empty());
 }
 
 #[tokio::test]
@@ -1034,66 +946,6 @@ async fn stale_steer_refreshes_canonical_status_before_starting_a_follow_up() {
 }
 
 #[tokio::test]
-async fn continue_moves_a_history_thread_into_the_managed_store() {
-    let root = tempfile::tempdir().unwrap();
-    let thread_id = "thread-continue";
-    let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
-    let client = CodexThreadClient::mock(vec![
-        crate::codex_app_server::MockCodexResponse::ok(
-            "thread/list",
-            task_thread_list(thread_id, root.path()),
-        ),
-        crate::codex_app_server::MockCodexResponse::ok(
-            "thread/read",
-            json!({ "thread": thread.clone() }),
-        ),
-        crate::codex_app_server::MockCodexResponse::ok("thread/read", json!({ "thread": thread })),
-        crate::codex_app_server::MockCodexResponse::ok(
-            "thread/list",
-            task_thread_list(thread_id, root.path()),
-        ),
-    ]);
-    let state =
-        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-
-    let managed = list_managed_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
-        .await
-        .unwrap();
-    assert!(managed.0.tasks.is_empty());
-    assert!(client.mock_requests().await.is_empty());
-
-    let history = list_task_history(State(state.clone()), Query(TasksQuery { cursor: None }))
-        .await
-        .unwrap();
-    assert_eq!(history.0.tasks.len(), 1);
-
-    let continued = continue_task(State(state.clone()), AxumPath(thread_id.to_string()))
-        .await
-        .unwrap();
-    assert_eq!(continued.0.thread_id, thread_id);
-    assert!(!continued.0.unseen);
-
-    let managed = list_managed_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
-        .await
-        .unwrap();
-    assert_eq!(managed.0.tasks.len(), 1);
-
-    let history = list_task_history(State(state), Query(TasksQuery { cursor: None }))
-        .await
-        .unwrap();
-    assert!(history.0.tasks.is_empty());
-    assert_eq!(
-        client
-            .mock_requests()
-            .await
-            .into_iter()
-            .map(|(method, _)| method)
-            .collect::<Vec<_>>(),
-        ["thread/list", "thread/read", "thread/read", "thread/list"]
-    );
-}
-
-#[tokio::test]
 async fn mark_seen_uses_canonical_activity_instead_of_cached_recency() {
     let root = tempfile::tempdir().unwrap();
     let thread_id = "thread-seen";
@@ -1125,36 +977,29 @@ async fn mark_seen_uses_canonical_activity_instead_of_cached_recency() {
 }
 
 #[tokio::test]
-async fn unmanaged_deep_link_reads_metadata_without_resuming() {
+async fn unmanaged_deep_link_is_rejected_without_reading_app_server_state() {
     let root = tempfile::tempdir().unwrap();
     let thread_id = "thread-unmanaged-deep-link";
-    let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
-    let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
-        "thread/read",
-        json!({ "thread": thread }),
-    )]);
+    let client = CodexThreadClient::mock(Vec::new());
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
 
-    let detail = task_detail(
+    let error = task_detail(
         State(state),
         AxumPath(thread_id.to_string()),
         Query(TaskDetailQuery { cursor: None }),
     )
     .await
-    .unwrap();
+    .expect_err("unmanaged task route must be rejected");
 
-    assert!(!detail.0.managed);
-    assert!(detail.0.events.is_empty());
-    assert_eq!(
-        client
-            .mock_requests()
-            .await
-            .into_iter()
-            .map(|(method, _)| method)
-            .collect::<Vec<_>>(),
-        ["thread/read"]
-    );
+    assert!(matches!(
+        error,
+        ApiError::BadRequest {
+            code: "task_not_managed",
+            ..
+        }
+    ));
+    assert!(client.mock_requests().await.is_empty());
 }
 
 #[test]

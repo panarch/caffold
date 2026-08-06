@@ -262,11 +262,22 @@ test("icon-only controls use square slots from their semantic control tier", () 
   ];
 
   for (const [path, selector, token] of [...pageControls, ...contextualControls]) {
-    const block = cssBlockContaining(readFrontend(path), selector, "width:");
-    assert.match(block, new RegExp(`width: var\\(${token}\\)`), `${path} ${selector}`);
-    assert.match(block, new RegExp(`height: var\\(${token}\\)`), `${path} ${selector}`);
-    assert.match(block, /place-items: center/, `${path} ${selector}`);
+    cssBlockMatching(readFrontend(path), selector, [
+      new RegExp(`width: var\\(${token}\\)`),
+      new RegExp(`height: var\\(${token}\\)`),
+      /place-items: center/,
+    ]);
   }
+
+  const fileViewer = readFrontend("components/file-viewer.css");
+  cssBlockMatching(fileViewer, ".viewer-info-button", [
+    /position: relative/,
+    /width: var\(--interface-compact-visual-size\)/,
+    /height: var\(--interface-compact-visual-size\)/,
+  ]);
+  cssBlockMatching(fileViewer, ".viewer-info-button::before", [
+    /inset: calc\(0px - var\(--interface-compact-hit-outset\)\)/,
+  ]);
 });
 
 test("contextual and inline actions stay compact while page and primary actions stay regular", () => {
@@ -297,7 +308,7 @@ test("contextual and inline actions stay compact while page and primary actions 
     ],
     [
       "pages/(codex)/tasks/components/navigator.css",
-      '[data-task-action="load-more-task-history"]',
+      '[data-task-action="load-more-archived-tasks"]',
       "--interface-compact-control-size",
     ],
     [
@@ -457,6 +468,22 @@ function cssBlockContaining(source, selector, requiredText) {
     offset = close + 1;
   }
   assert.fail(`missing ${requiredText} in selector ${selector}`);
+}
+
+function cssBlockMatching(source, selector, patterns) {
+  let offset = 0;
+  while (offset < source.length) {
+    const start = source.indexOf(selector, offset);
+    assert.notEqual(start, -1, `missing selector ${selector}`);
+    const open = source.indexOf("{", start);
+    const close = source.indexOf("}", open);
+    const block = source.slice(start, close + 1);
+    if (patterns.every((pattern) => pattern.test(block))) {
+      return block;
+    }
+    offset = close + 1;
+  }
+  assert.fail(`missing expected declarations in selector ${selector}`);
 }
 
 function walk(directory) {

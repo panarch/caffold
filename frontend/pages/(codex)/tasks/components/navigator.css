@@ -127,7 +127,7 @@ caffold-task-navigator {
     margin-left: var(--task-repository-indent);
   }
 
-  & .task-history-row {
+  & .task-archived-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
@@ -136,7 +136,7 @@ caffold-task-navigator {
     padding: 0.125rem 0.5625rem;
   }
 
-  & .task-history-copy {
+  & .task-archived-copy {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
@@ -152,7 +152,7 @@ caffold-task-navigator {
     line-height: var(--interface-line-height);
   }
 
-  & .task-continue-button {
+  & .task-restore-button {
     min-height: var(--interface-compact-control-size);
     padding: 0.1875rem 0.4375rem;
     border: 1px solid var(--border);
@@ -165,8 +165,7 @@ caffold-task-navigator {
   }
 
   & [data-task-action="load-more-tasks"],
-  & [data-task-action="load-more-archived-tasks"],
-  & [data-task-action="load-more-task-history"] {
+  & [data-task-action="load-more-archived-tasks"] {
     box-sizing: border-box;
     height: var(--interface-compact-control-size);
     min-height: var(--interface-compact-control-size);
@@ -174,13 +173,13 @@ caffold-task-navigator {
     font-size: var(--interface-meta-font-size);
   }
 
-  & .task-continue-button:hover,
-  & .task-continue-button:focus-visible {
+  & .task-restore-button:hover,
+  & .task-restore-button:focus-visible {
     border-color: var(--border-strong);
     outline: none;
   }
 
-  & .task-continue-button:disabled {
+  & .task-restore-button:disabled {
     cursor: wait;
     opacity: 0.65;
   }

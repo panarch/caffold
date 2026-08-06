@@ -81,7 +81,6 @@ class CaffoldTaskDetail extends HTMLElement {
     this.archiveActionToken = 0;
     this.approvalActionToken = 0;
     this.promptSubmissionSequence = 0;
-    this.continuationStateValue = { loading: false, error: null };
     this.archiveStateValue = { loading: false, error: null };
     this.conversationUpdateKind = null;
     this.initialConversationLoad = null;
@@ -308,16 +307,6 @@ class CaffoldTaskDetail extends HTMLElement {
     this.hidden = true;
   }
 
-  setContinuationState(state = {}) {
-    this.continuationStateValue = {
-      loading: Boolean(state.loading),
-      error: state.error ?? null,
-    };
-    if (this.taskDetail?.managed === false) {
-      this.render();
-    }
-  }
-
   currentDetail() {
     return this.taskDetail;
   }
@@ -386,12 +375,6 @@ class CaffoldTaskDetail extends HTMLElement {
       ) {
         this.finishInitialConversationLoad(threadId, loadGeneration);
         return null;
-      }
-      if (detail.managed === false) {
-        this.detailStream.deactivate();
-        this.render();
-        this.finishInitialConversationLoad(threadId, loadGeneration);
-        return detail;
       }
       this.finishInitialConversationLoad(threadId, loadGeneration);
       return detail;
@@ -616,19 +599,6 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   handleAction(action, element) {
-    if (action === "continue-history-task") {
-      this.dispatchEvent(
-        new CustomEvent("caffold:task-detail-intent", {
-          bubbles: true,
-          composed: true,
-          detail: {
-            type: "continue-thread",
-            threadId: element.dataset.threadId,
-          },
-        }),
-      );
-      return;
-    }
     if (action === "retry-stream") {
       if (this.selectedThreadId) {
         this.detailStream.activate(this.selectedThreadId, { force: true });
@@ -1597,9 +1567,6 @@ class CaffoldTaskDetail extends HTMLElement {
     if (!task) {
       return `<p class="surface-message">${this.loading ? "Loading task..." : "Select a task."}</p>`;
     }
-    if (this.taskDetail?.managed === false) {
-      return this.renderContinueGate(task);
-    }
     return `
       <div class="task-detail" data-thread-id="${escapeHtml(task.threadId ?? task.id)}" data-task-detail-view="${escapeHtml(this.reviewView)}">
         <caffold-task-detail-summary class="task-detail-summary" role="region" aria-label="Task summary"></caffold-task-detail-summary>
@@ -1610,22 +1577,6 @@ class CaffoldTaskDetail extends HTMLElement {
         </section>
         <div class="task-review-slot"></div>
       </div>
-    `;
-  }
-
-  renderContinueGate(task) {
-    const threadId = taskThreadId(task);
-    const continuation = this.continuationStateValue;
-    return `
-      <section class="task-continue-gate" data-thread-id="${escapeHtml(threadId)}">
-        <p class="task-continue-eyebrow">Codex History</p>
-        <h2>${escapeHtml(task.title)}</h2>
-        ${task.preview ? `<p class="task-continue-preview">${escapeHtml(task.preview)}</p>` : ""}
-        ${task.cwd ? `<p class="task-continue-cwd">${escapeHtml(task.cwd)}</p>` : ""}
-        <p>This thread is not managed by Caffold yet. Continue it before loading its conversation or runtime.</p>
-        ${continuation.error ? `<p class="task-detail-error-message" role="alert">${escapeHtml(continuation.error.message)}</p>` : ""}
-        <button type="button" class="task-primary-button" data-task-action="continue-history-task" data-thread-id="${escapeHtml(threadId)}" ${continuation.loading ? "disabled" : ""}>${continuation.loading ? "Continuing..." : "Continue in Caffold"}</button>
-      </section>
     `;
   }
 

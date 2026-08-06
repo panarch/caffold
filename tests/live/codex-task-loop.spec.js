@@ -127,50 +127,6 @@ async function threadViewerLeases(page, threadId) {
   );
 }
 
-function codexThreadId(stdout) {
-  for (const line of stdout.split(/\r?\n/)) {
-    if (!line.trim()) {
-      continue;
-    }
-    let event;
-    try {
-      event = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    const threadId =
-      event.thread_id ??
-      event.threadId ??
-      event.thread?.id ??
-      event.data?.thread_id ??
-      event.data?.threadId ??
-      event.data?.thread?.id;
-    if (typeof threadId === "string" && threadId) {
-      return threadId;
-    }
-  }
-  throw new Error(`Codex CLI did not report a thread id:\n${stdout}`);
-}
-
-async function createExternalTask(prompt) {
-  const result = await runCodex(
-    [
-      "exec",
-      "--skip-git-repo-check",
-      "--ignore-user-config",
-      "-m",
-      SPARK_MODEL,
-      "-c",
-      `model_reasoning_effort="${LIVE_REASONING_EFFORT}"`,
-      "-C",
-      process.cwd(),
-      "--json",
-      prompt,
-    ],
-  );
-  return codexThreadId(result.stdout);
-}
-
 async function archiveLiveThread(request, threadId) {
   const response = await request.post(`/api/tasks/${threadId}/archive`);
   if (response.status() === 204) {
@@ -179,12 +135,6 @@ async function archiveLiveThread(request, threadId) {
   }
 
   const body = await response.text();
-  if (body.includes("task_not_managed")) {
-    await runCodex(["archive", threadId]);
-    liveThreadIds.delete(threadId);
-    return;
-  }
-
   throw new Error(`failed to archive live thread ${threadId}: HTTP ${response.status()} ${body}`);
 }
 
@@ -490,9 +440,10 @@ test("sends image attachments through Caffold with a multimodal model", async ({
   await expect(activeTurn).toHaveCount(0);
 });
 
-test("opens an external completed Spark task and keeps follow-ups canonical", async ({
+test("opens a managed completed Spark task and keeps follow-ups canonical", async ({
   page,
 }) => {
+  const cwd = liveCwd();
   const marker = `${Date.now()}`;
   const initialReply = `caffold-external-initial-${marker}`;
   const clickReply = `caffold-external-click-${marker}`;
@@ -500,22 +451,24 @@ test("opens an external completed Spark task and keeps follow-ups canonical", as
   const runningReply = `caffold-external-running-${marker}`;
   const ambientRequest = `caffold-external-ambient-${marker}`;
   const ambientReply = `caffold-external-ambient-reply-${marker}`;
-  const threadId = await createExternalTask(
+  await page.goto(`/tasks/new?cwd=${encodeURIComponent(cwd)}`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
+  await chooseModel(newTaskForm, SPARK_MODEL);
+  const newTaskPrompt = newTaskForm.getByRole("textbox", { name: "New task prompt" });
+  await newTaskPrompt.fill(
     `Reply with exactly ${initialReply}. Do not modify files or run commands.`,
   );
+  await newTaskPrompt.press("Enter");
+  await expect(page).toHaveURL(/\/tasks\/[^?]+$/);
+  const threadId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
+  expect(threadId).toBeTruthy();
   liveThreadIds.add(threadId);
 
-  await page.goto(`/tasks/${threadId}`);
-  const tasksPage = page.locator("caffold-tasks-page");
   const assistantMessages = tasksPage.locator(
     '.task-message[data-message-role="assistant"][data-message-phase="final"]',
   );
   const userMessages = tasksPage.locator('.task-message[data-message-role="user"]');
-  const continueButton = tasksPage
-    .locator("caffold-task-detail")
-    .getByRole("button", { name: "Continue in Caffold" });
-  await expect(continueButton).toBeVisible();
-  await continueButton.click();
   await expect(assistantMessages.filter({ hasText: initialReply })).toBeVisible();
 
   const followUpForm = tasksPage.locator(

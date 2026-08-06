@@ -2,10 +2,7 @@ import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
 import "./components/detail.js";
 import "./components/navigator.js";
 import "./components/task-new.js";
-import {
-  taskDetailThreadId,
-  taskThreadId,
-} from "./task-list-model.js";
+import { taskDetailThreadId } from "./task-list-model.js";
 
 const TASK_LIST_DEFAULT_WIDTH = 380;
 const TASK_LIST_MIN_WIDTH = 280;
@@ -109,37 +106,19 @@ class CaffoldTasksPage extends HTMLElement {
     });
     this.addEventListener("caffold:task-snapshot", (event) => {
       event.stopPropagation();
-      const detail = event.detail?.detail;
-      if (detail?.managed !== false && event.detail?.task) {
+      if (event.detail?.task) {
         this.taskNavigator()?.upsertCanonicalTask(event.detail.task);
       }
     });
     this.addEventListener("caffold:task-detail-intent", (event) => {
       event.stopPropagation();
-      if (event.detail?.type === "continue-thread") {
-        void this.taskNavigator()?.continueThread(event.detail.threadId);
-      } else if (event.detail?.type === "task-archived" && event.detail.task) {
+      if (event.detail?.type === "task-archived" && event.detail.task) {
         this.taskNavigator()?.acceptArchivedTask(event.detail.task);
         this.requestRoute({ kind: "tasks" }, { replace: true });
       } else if (event.detail?.type === "review-route" && event.detail.route) {
         this.requestRoute(event.detail.route, {
           replace: event.detail.replace,
         });
-      }
-    });
-    this.addEventListener("caffold:task-continued", (event) => {
-      event.stopPropagation();
-      const threadId = taskThreadId(event.detail?.task);
-      if (threadId) {
-        this.requestRoute({ kind: "tasks", threadId });
-      }
-    });
-    this.addEventListener("caffold:task-continuation-change", (event) => {
-      event.stopPropagation();
-      if (event.detail?.threadId === this.selectedThreadId) {
-        this.taskDetail()?.setContinuationState(
-          this.taskNavigator()?.continuationState(this.selectedThreadId),
-        );
       }
     });
     this.render();
@@ -190,9 +169,6 @@ class CaffoldTasksPage extends HTMLElement {
     } else {
       this.taskNew()?.deactivate();
       this.taskDetail()?.prepare(nextThreadId, { preserveLoadedTask, route });
-      this.taskDetail()?.setContinuationState(
-        this.taskNavigator()?.continuationState(nextThreadId),
-      );
     }
     this.render();
     return { preserveLoadedTask };

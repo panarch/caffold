@@ -9,40 +9,6 @@ caffold-task-detail {
     line-height: var(--interface-line-height);
   }
 
-  & .task-continue-gate {
-    display: grid;
-    align-content: center;
-    justify-items: start;
-    gap: 0.75rem;
-    width: min(560px, calc(100% - 2.5rem));
-    min-height: 100%;
-    margin: 0 auto;
-  }
-
-  & .task-continue-gate h2,
-  & .task-continue-gate p {
-    margin: 0;
-  }
-
-  & .task-continue-eyebrow {
-    color: var(--muted);
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.045em;
-    text-transform: uppercase;
-  }
-
-  & .task-continue-preview {
-    color: var(--text);
-  }
-
-  & .task-continue-cwd {
-    overflow-wrap: anywhere;
-    color: var(--muted);
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-  }
-
   & .task-detail {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);

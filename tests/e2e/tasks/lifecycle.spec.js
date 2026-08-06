@@ -63,7 +63,6 @@ test("background Task tabs release list and detail streams", async ({
       body: JSON.stringify({
         threadId,
         syncState: "ready",
-        managed: true,
         revision: detailReads,
         task,
         events: [],

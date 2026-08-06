@@ -189,9 +189,9 @@ Caffold persists managed-thread membership, a recency-only ordering cache,
 Caffold-only open/seen timestamps, and optional composer settings in GlueSQL
 Redb. It does not persist thread status, active turn, title, preview, cwd, Codex
 timestamps, event summaries, turns, transcript items, approvals, or derived
-project/worktree records. Existing
-app-server threads remain in Codex History until the user explicitly chooses
-`Continue in Caffold`.
+project/worktree records. Only threads created and managed through Caffold are
+part of the Tasks product surface. Unmanaged app-server threads are not listed,
+read through Task routes, or implicitly adopted from a direct URL.
 Caffold keeps pending approvals and SSE notifications as ephemeral in-memory
 state in this slice. Pending approval cards may disappear after a Caffold
 backend restart until app-server re-emits the request.
@@ -292,19 +292,14 @@ Tasks without an active detail subscriber do not trigger rollout-driven reads.
 
 ## Thread List Pagination
 
-The Tasks surface has two independent paginated sections. Caffold Tasks reads
-30 managed IDs at a time from local Redb, then resolves every row with
-`thread/read` using at most eight concurrent requests. The page is returned only
-if every canonical read succeeds; it is sorted by canonical activity
-(`recencyAt ?? max(updatedAt, createdAt)`) and then refreshes the recency cache.
-Managed pagination uses an opaque recency-and-thread-ID keyset cursor so those
-cache refreshes cannot shift later pages through an offset.
-Codex History reads one
-30-thread `thread/list` page, ordered by `recency_at` descending and using
-`useStateDbOnly: true`, then excludes managed IDs. Caffold passes the opaque
-app-server `nextCursor` through its History API and requests another page only
-after an explicit browser action. An empty filtered page may therefore still
-offer Load more; Caffold must not drain additional pages automatically.
+The Tasks surface has two independent paginated sections: active Caffold Tasks
+and Archived. Each reads 30 managed IDs at a time from its local Redb membership
+table, then resolves every row with `thread/read` using at most eight concurrent
+requests. A page is returned only if every canonical read succeeds; it is
+sorted by canonical activity (`recencyAt ?? max(updatedAt, createdAt)`) and then
+refreshes that section's recency cache. Both sections use an opaque
+recency-and-thread-ID keyset cursor so cache refreshes cannot shift later pages
+through an offset.
 
 Thread state comes only from app-server `Thread.status` snapshots and
 `thread/status/changed`. `Turn.status` remains turn-local conversation state;

@@ -21,12 +21,12 @@ use protocol::{
     ConfigReadResponse, EmptyResponse, INITIALIZE, INITIALIZED, JsonRpcError, MODEL_LIST,
     PERMISSION_PROFILE_LIST, PermissionProfileListResponse, THREAD_ARCHIVE, THREAD_LIST,
     THREAD_READ, THREAD_RESUME, THREAD_START, THREAD_TURNS_LIST, THREAD_UNARCHIVE,
-    THREAD_UNSUBSCRIBE, TURN_INTERRUPT, TURN_START, TURN_STEER, ThreadListResponse,
-    ThreadReadResponse, ThreadStartResponse, TurnStartResponse, TurnSteerResponse,
-    account_read_params, config_read_params, decode_response, model_list_params,
-    permission_profile_list_params, thread_archive_params, thread_list_params, thread_read_params,
-    thread_resume_params, thread_start_params, thread_turns_list_params, thread_unarchive_params,
-    thread_unsubscribe_params, turn_interrupt_params, turn_start_params, turn_steer_params,
+    THREAD_UNSUBSCRIBE, TURN_INTERRUPT, TURN_START, TURN_STEER, ThreadReadResponse,
+    ThreadStartResponse, TurnStartResponse, TurnSteerResponse, account_read_params,
+    config_read_params, decode_response, model_list_params, permission_profile_list_params,
+    thread_archive_params, thread_read_params, thread_resume_params, thread_start_params,
+    thread_turns_list_params, thread_unarchive_params, thread_unsubscribe_params,
+    turn_interrupt_params, turn_start_params, turn_steer_params,
 };
 pub use protocol::{
     CodexAccount, CodexAppServerInfo, CodexNotification, CodexPermissionMode, CodexServerRequest,
@@ -35,6 +35,8 @@ pub use protocol::{
 };
 #[cfg(test)]
 use protocol::{THREAD_LOADED_LIST, ThreadLoadedListResponse, thread_loaded_list_params};
+#[cfg(test)]
+use protocol::{ThreadListResponse, thread_list_params};
 #[cfg(test)]
 pub(crate) use protocol::{TurnItemsView, decode_notification, decode_server_request};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -422,6 +424,7 @@ impl CodexThreadClient {
         let _ = timeout(SHUTDOWN_TIMEOUT, child.wait()).await;
     }
 
+    #[cfg(test)]
     pub async fn list_threads(
         &self,
         cursor: Option<&str>,

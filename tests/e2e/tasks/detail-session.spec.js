@@ -71,7 +71,6 @@ test("loading detail accepts a canonical task sync without a synthetic task", as
       json: {
         threadId: "thread-1",
         syncState: "loading",
-        managed: true,
         revision: 0,
         task: null,
         events: [],
@@ -100,18 +99,6 @@ test("loading detail accepts a canonical task sync without a synthetic task", as
   await expect(page.getByRole("heading", { name: "New task" })).toBeVisible();
   await expect(page.getByText("Loading task...")).toHaveCount(0);
 
-  await page.evaluate((detail) => {
-    window.__taskListSource.emit("task-sync", {
-      threadId: detail.threadId,
-      revision: detail.revision,
-      detail: { ...detail, managed: false },
-      reason: "late-sync-after-removal",
-    });
-  }, detail);
-  await expect(
-    page.locator('.task-row[data-thread-id="thread-1"]'),
-  ).toHaveCount(0);
-
   await page.evaluate(() => {
     const message = {
       threadId: "thread-1",
@@ -119,7 +106,6 @@ test("loading detail accepts a canonical task sync without a synthetic task", as
       detail: {
         threadId: "thread-1",
         syncState: "loading",
-        managed: true,
         revision: 3,
         task: null,
         events: [],
@@ -1353,13 +1339,6 @@ test("accepts canonical task sync after stream revisions restart", async ({ page
       body: JSON.stringify({ tasks: [task], nextCursor: null }),
     });
   });
-  await page.route(/\/api\/task-history(?:\?|$)/, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ tasks: [], nextCursor: null }),
-    }),
-  );
-
   await page.goto("/tasks");
   const row = page.locator(
     `caffold-tasks-page .task-row[data-thread-id="${threadId}"]`,
@@ -1645,12 +1624,6 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ tasks: [task], nextCursor: null }),
-    }),
-  );
-  await page.route(/\/api\/task-history(?:\?|$)/, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ tasks: [], nextCursor: null }),
     }),
   );
   await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), async (route) => {

@@ -20,21 +20,9 @@ export async function getTasks(cursor = null) {
   });
 }
 
-export async function getTaskHistory(cursor = null) {
-  return requestJson("/api/task-history", {
-    ...(cursor ? { cursor } : {}),
-  });
-}
-
 export async function getArchivedTasks(cursor = null) {
   return requestJson("/api/tasks/archived", {
     ...(cursor ? { cursor } : {}),
-  });
-}
-
-export async function continueTask(threadId) {
-  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}/continue`, {}, {
-    method: "POST",
   });
 }
 

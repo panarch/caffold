@@ -11,10 +11,6 @@ async fn rollout_invalidation_never_synthesizes_thread_activity() {
     std::fs::write(&rollout_path, "").unwrap();
     let client = CodexThreadClient::mock(vec![
         crate::codex_app_server::MockCodexResponse::ok(
-            "thread/list",
-            task_thread_list(thread_id, root.path()),
-        ),
-        crate::codex_app_server::MockCodexResponse::ok(
             "thread/resume",
             json!({
                 "thread": {
@@ -64,9 +60,7 @@ async fn rollout_invalidation_never_synthesizes_thread_activity() {
     ]);
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-    let _ = test_load_tasks(state.clone(), None)
-        .await
-        .expect("task list succeeds");
+    manage_test_thread(&state, thread_id, root.path()).await;
 
     let response = test_task_stream(state.clone(), thread_id.to_string())
         .await

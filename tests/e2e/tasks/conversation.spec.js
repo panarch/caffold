@@ -686,7 +686,6 @@ test("orders separate turns by message chronology when a newer start marker is s
   const detail = {
     threadId,
     syncState: "ready",
-    managed: true,
     revision: 1,
     task,
     events,
@@ -1163,7 +1162,6 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
   const taskDetail = {
     threadId,
     syncState: "ready",
-    managed: true,
     revision: 1,
     task,
     events,

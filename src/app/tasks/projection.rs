@@ -1,13 +1,6 @@
-use std::{
-    collections::HashMap,
-    future::Future,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
-
-use futures_util::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
+use std::path::{Path, PathBuf};
 
 use super::events::{
     TaskEventRecord, non_empty_string, seconds_to_ms, seconds_to_ms_value, thread_cwd, thread_id,
@@ -18,8 +11,6 @@ use crate::{
     fs::RootedFs,
     git,
 };
-
-pub(in crate::app) const TASK_CWD_RESOLVE_CONCURRENCY: usize = 8;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -81,95 +72,6 @@ pub(in crate::app) fn thread_with_turns(
     };
     object.insert("turns".to_string(), JsonValue::Array(turns));
     Ok(thread)
-}
-
-#[cfg(test)]
-pub(in crate::app) fn thread_list_response(fs: &RootedFs, response: &JsonValue) -> Vec<TaskRecord> {
-    let mut resolved_cwds = HashMap::<String, Option<ResolvedTaskCwd>>::new();
-    for cwd in response
-        .get("data")
-        .and_then(JsonValue::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(thread_cwd)
-    {
-        resolved_cwds
-            .entry(cwd.to_string())
-            .or_insert_with(|| resolve_task_cwd(fs, cwd));
-    }
-    thread_list_response_with_resolved(response, &resolved_cwds)
-}
-
-pub(in crate::app) async fn resolve_task_cwds(
-    fs: Arc<RootedFs>,
-    response: &JsonValue,
-) -> HashMap<String, Option<ResolvedTaskCwd>> {
-    let mut cwds = response
-        .get("data")
-        .and_then(JsonValue::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(thread_cwd)
-        .map(ToOwned::to_owned)
-        .collect::<Vec<_>>();
-    cwds.sort();
-    cwds.dedup();
-
-    resolve_task_cwds_with(cwds, move |cwd| {
-        let fs = fs.clone();
-        async move {
-            let resolve_cwd = cwd.clone();
-            let resolved =
-                tokio::task::spawn_blocking(move || resolve_task_cwd(fs.as_ref(), &resolve_cwd))
-                    .await
-                    .ok()
-                    .flatten();
-            (cwd, resolved)
-        }
-    })
-    .await
-}
-
-pub(in crate::app) async fn resolve_task_cwds_with<T, F, Fut>(
-    cwds: Vec<String>,
-    resolver: F,
-) -> HashMap<String, Option<T>>
-where
-    T: Send,
-    F: Fn(String) -> Fut,
-    Fut: Future<Output = (String, Option<T>)>,
-{
-    stream::iter(cwds)
-        .map(resolver)
-        .buffer_unordered(TASK_CWD_RESOLVE_CONCURRENCY)
-        .collect()
-        .await
-}
-
-pub(in crate::app) fn thread_list_response_with_resolved(
-    response: &JsonValue,
-    resolved_cwds: &HashMap<String, Option<ResolvedTaskCwd>>,
-) -> Vec<TaskRecord> {
-    let mut tasks = response
-        .get("data")
-        .and_then(JsonValue::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|thread| {
-            let resolved_cwd = thread_cwd(thread)
-                .and_then(|cwd| resolved_cwds.get(cwd))
-                .and_then(Option::as_ref);
-            task_record_from_thread(thread, &[], resolved_cwd).ok()
-        })
-        .collect::<Vec<_>>();
-    tasks.sort_by(|left, right| {
-        right
-            .recency_ms
-            .unwrap_or(right.updated_ms)
-            .cmp(&left.recency_ms.unwrap_or(left.updated_ms))
-            .then_with(|| right.updated_ms.cmp(&left.updated_ms))
-    });
-    tasks
 }
 
 pub(in crate::app) fn task_record_from_thread(

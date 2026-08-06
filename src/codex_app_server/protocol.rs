@@ -63,6 +63,7 @@ pub enum SortDirection {
     Desc,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[allow(clippy::enum_variant_names)]
@@ -163,6 +164,7 @@ impl CodexThread {
     }
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadListResponse {
@@ -312,6 +314,7 @@ pub struct AccountReadParams {
     pub refresh_token: bool,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadListParams<'a> {
@@ -801,6 +804,7 @@ pub(crate) fn thread_resume_params<'a>(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn thread_list_params(cursor: Option<&str>, limit: usize) -> ThreadListParams<'_> {
     ThreadListParams {
         cursor: cursor.filter(|cursor| !cursor.is_empty()),

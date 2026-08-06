@@ -72,6 +72,17 @@ pub(in crate::app::tasks) async fn manage_test_thread(
         .expect("test thread is managed");
 }
 
+pub(in crate::app::tasks) async fn cache_and_manage_test_thread(
+    state: &TaskState,
+    thread_id: &str,
+    cwd: &Path,
+) {
+    let thread = serde_json::from_value(task_thread_list(thread_id, cwd)["data"][0].clone())
+        .expect("canonical test thread");
+    state.codex_sessions.observe_thread_metadata(thread).await;
+    manage_test_thread(state, thread_id, cwd).await;
+}
+
 pub(in crate::app::tasks) fn resumed_task(thread_id: &str, cwd: &Path) -> JsonValue {
     json!({
         "thread": {

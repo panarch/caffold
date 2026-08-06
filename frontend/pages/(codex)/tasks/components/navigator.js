@@ -1,7 +1,5 @@
 import {
-  continueTask,
   getArchivedTasks,
-  getTaskHistory,
   getTasks,
   restoreTask,
   taskListStreamUrl,
@@ -44,13 +42,10 @@ class CaffoldTaskNavigator extends HTMLElement {
     document.removeEventListener("visibilitychange", this.boundVisibilityChange);
     this.taskListRequestId += 1;
     this.archivedTaskRequestId += 1;
-    this.taskHistoryRequestId += 1;
     this.taskListLoading = false;
     this.taskListLoadingMore = false;
     this.archivedTaskLoading = false;
     this.archivedTaskLoadingMore = false;
-    this.taskHistoryLoading = false;
-    this.taskHistoryLoadingMore = false;
     this.closeStream();
   }
 
@@ -75,16 +70,6 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.archivedTaskLoadMoreError = null;
     this.archivedTaskNextCursor = null;
     this.archivedTaskRequestId = 0;
-    this.taskHistory = [];
-    this.taskHistoryLoading = false;
-    this.taskHistoryLoadingMore = false;
-    this.taskHistoryLoaded = false;
-    this.taskHistoryError = null;
-    this.taskHistoryLoadMoreError = null;
-    this.taskHistoryNextCursor = null;
-    this.taskHistoryRequestId = 0;
-    this.continuingThreadIds = new Set();
-    this.continuationErrors = new Map();
     this.restoringThreadIds = new Set();
     this.restoreErrors = new Map();
     this.selectedThreadId = "";
@@ -102,10 +87,9 @@ class CaffoldTaskNavigator extends HTMLElement {
   async activate({ force = false } = {}) {
     this.ensureState();
     this.active = true;
-    const [tasks, archived, history] = await Promise.all([
+    const [tasks, archived] = await Promise.all([
       this.loadTasks({ force }),
       this.loadArchived({ force }),
-      this.loadHistory({ force }),
     ]);
     if (
       this.active &&
@@ -114,7 +98,7 @@ class CaffoldTaskNavigator extends HTMLElement {
     ) {
       this.connectStream();
     }
-    return { tasks, archived, history };
+    return { tasks, archived };
   }
 
   handleVisibilityChange() {
@@ -202,51 +186,6 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.render();
   }
 
-  async continueThread(threadId) {
-    this.ensureState();
-    if (
-      !threadId ||
-      this.continuingThreadIds.has(threadId) ||
-      isTaskTransportStale(this.streamState)
-    ) {
-      return null;
-    }
-    this.continuingThreadIds.add(threadId);
-    this.continuationErrors.delete(threadId);
-    this.taskHistoryError = null;
-    this.render();
-    this.dispatchContinuationChange(threadId);
-
-    try {
-      const task = await continueTask(threadId);
-      this.taskHistory = this.taskHistory.filter(
-        (candidate) => taskThreadId(candidate) !== threadId,
-      );
-      this.tasks = upsertTask(this.tasks, task);
-      this.taskListLoaded = true;
-      this.render();
-      this.dispatchEvent(
-        new CustomEvent("caffold:task-continued", {
-          bubbles: true,
-          composed: true,
-          detail: { task },
-        }),
-      );
-      return task;
-    } catch (error) {
-      const normalized = error instanceof Error ? error : new Error(`${error}`);
-      this.taskHistoryError = normalized;
-      this.continuationErrors.set(threadId, normalized);
-      this.render();
-      this.dispatchContinuationChange(threadId);
-      return null;
-    } finally {
-      this.continuingThreadIds.delete(threadId);
-      this.render();
-      this.dispatchContinuationChange(threadId);
-    }
-  }
-
   async restoreThread(threadId) {
     this.ensureState();
     if (
@@ -281,24 +220,6 @@ class CaffoldTaskNavigator extends HTMLElement {
     }
   }
 
-  continuationState(threadId) {
-    this.ensureState();
-    return {
-      loading: this.continuingThreadIds.has(threadId),
-      error: this.continuationErrors.get(threadId) ?? null,
-    };
-  }
-
-  dispatchContinuationChange(threadId) {
-    this.dispatchEvent(
-      new CustomEvent("caffold:task-continuation-change", {
-        bubbles: true,
-        composed: true,
-        detail: { threadId },
-      }),
-    );
-  }
-
   isTransportAvailable() {
     this.ensureState();
     return !isTaskTransportStale(this.streamState);
@@ -319,18 +240,12 @@ class CaffoldTaskNavigator extends HTMLElement {
       this.dispatchIntent("new-task");
     } else if (action.dataset.taskAction === "load-more-tasks") {
       void this.loadMoreTasks();
-    } else if (action.dataset.taskAction === "load-more-task-history") {
-      void this.loadMoreHistory();
     } else if (action.dataset.taskAction === "load-more-archived-tasks") {
       void this.loadMoreArchived();
     } else if (action.dataset.taskAction === "retry-archived-task-list") {
       void this.loadArchived({ force: true });
-    } else if (action.dataset.taskAction === "retry-task-history-list") {
-      void this.loadHistory({ force: true });
     } else if (action.dataset.taskAction === "retry-task-list") {
       void this.loadTasks({ force: true });
-    } else if (action.dataset.taskAction === "continue-history-task") {
-      void this.continueThread(threadId);
     } else if (action.dataset.taskAction === "restore-archived-task") {
       void this.restoreThread(threadId);
     }
@@ -483,70 +398,6 @@ class CaffoldTaskNavigator extends HTMLElement {
     }
   }
 
-  async loadHistory({ force = false } = {}) {
-    if (this.taskHistoryLoaded && !force) {
-      return { tasks: this.taskHistory, nextCursor: this.taskHistoryNextCursor };
-    }
-
-    const requestId = ++this.taskHistoryRequestId;
-    this.taskHistoryLoading = true;
-    this.taskHistoryLoadingMore = false;
-    this.taskHistoryError = null;
-    this.taskHistoryLoadMoreError = null;
-    this.render();
-    try {
-      const response = await getTaskHistory();
-      if (requestId !== this.taskHistoryRequestId) {
-        return null;
-      }
-      this.taskHistory = response.tasks ?? [];
-      this.taskHistoryNextCursor = response.nextCursor ?? null;
-      this.taskHistoryLoading = false;
-      this.taskHistoryLoaded = true;
-      this.render();
-      return response;
-    } catch (error) {
-      if (requestId !== this.taskHistoryRequestId) {
-        return null;
-      }
-      this.taskHistoryLoading = false;
-      this.taskHistoryError = error;
-      this.render();
-      return null;
-    }
-  }
-
-  async loadMoreHistory() {
-    const cursor = this.taskHistoryNextCursor;
-    if (!cursor || this.taskHistoryLoading || this.taskHistoryLoadingMore) {
-      return null;
-    }
-
-    const requestId = ++this.taskHistoryRequestId;
-    this.taskHistoryLoadingMore = true;
-    this.taskHistoryLoadMoreError = null;
-    this.render();
-    try {
-      const response = await getTaskHistory(cursor);
-      if (requestId !== this.taskHistoryRequestId) {
-        return null;
-      }
-      this.taskHistory = mergeTaskListPage(this.taskHistory, response.tasks ?? []);
-      this.taskHistoryNextCursor = response.nextCursor ?? null;
-      this.taskHistoryLoadingMore = false;
-      this.render();
-      return response;
-    } catch (error) {
-      if (requestId !== this.taskHistoryRequestId) {
-        return null;
-      }
-      this.taskHistoryLoadingMore = false;
-      this.taskHistoryLoadMoreError = error;
-      this.render();
-      return null;
-    }
-  }
-
   connectStream() {
     if (
       !this.active ||
@@ -623,17 +474,12 @@ class CaffoldTaskNavigator extends HTMLElement {
       if (!threadId) {
         return;
       }
-      const historyLength = this.taskHistory.length;
       const archivedLength = this.archivedTasks.length;
-      this.taskHistory = this.taskHistory.filter(
-        (candidate) => taskThreadId(candidate) !== threadId,
-      );
       this.archivedTasks = this.archivedTasks.filter(
         (candidate) => taskThreadId(candidate) !== threadId,
       );
       this.upsertCanonicalTask(task);
       if (
-        this.taskHistory.length !== historyLength ||
         this.archivedTasks.length !== archivedLength
       ) {
         this.render();
@@ -650,10 +496,6 @@ class CaffoldTaskNavigator extends HTMLElement {
         this.taskListLoaded = false;
         this.taskListError = new Error(message.error);
         this.render();
-        return;
-      }
-      if (detail?.managed === false && message?.threadId) {
-        this.removeTask(message.threadId);
         return;
       }
       if (
@@ -726,7 +568,6 @@ class CaffoldTaskNavigator extends HTMLElement {
       <div class="task-list-scroll">
         ${this.renderSection("Caffold Tasks", this.tasks, "managed")}
         ${this.renderSection("Archived", this.archivedTasks, "archived")}
-        ${this.renderSection("Codex History", this.taskHistory, "history")}
       </div>
     `;
     const scroller = this.querySelector(".task-list-scroll");
@@ -737,18 +578,13 @@ class CaffoldTaskNavigator extends HTMLElement {
   }
 
   renderSection(title, entries, kind) {
-    const history = kind === "history";
     const archived = kind === "archived";
-    const loading = history
-      ? this.taskHistoryLoading
-      : archived
-        ? this.archivedTaskLoading
-        : this.taskListLoading;
-    const error = history
-      ? this.taskHistoryError
-      : archived
-        ? this.archivedTaskError
-        : this.taskListError;
+    const loading = archived
+      ? this.archivedTaskLoading
+      : this.taskListLoading;
+    const error = archived
+      ? this.archivedTaskError
+      : this.taskListError;
     const availability =
       kind === "managed" && isTaskTransportStale(this.streamState)
         ? `<p class="task-list-availability" data-task-list-availability="${escapeHtml(this.streamState)}" role="status">${
@@ -758,11 +594,9 @@ class CaffoldTaskNavigator extends HTMLElement {
           }</p>`
         : "";
     const tasks = sortTasksByRecency(entries);
-    const pagination = history
-      ? this.renderHistoryPagination()
-      : archived
-        ? this.renderArchivedPagination()
-        : this.renderTaskPagination();
+    const pagination = archived
+      ? this.renderArchivedPagination()
+      : this.renderTaskPagination();
     let content;
 
     if (loading && !tasks.length) {
@@ -771,15 +605,13 @@ class CaffoldTaskNavigator extends HTMLElement {
       content = `
         <div class="task-section-message" role="alert">
           <p>${escapeHtml(error.message)}</p>
-          <button type="button" class="task-secondary-button" data-task-action="${history ? "retry-task-history-list" : archived ? "retry-archived-task-list" : "retry-task-list"}">Retry</button>
+          <button type="button" class="task-secondary-button" data-task-action="${archived ? "retry-archived-task-list" : "retry-task-list"}">Retry</button>
         </div>
       `;
     } else if (!tasks.length) {
-      content = history
-        ? `<p class="task-section-message">No unmanaged Codex threads in this page.</p>`
-        : archived
-          ? `<p class="task-section-message">No archived Caffold tasks.</p>`
-          : `<div class="tasks-empty">
+      content = archived
+        ? `<p class="task-section-message">No archived Caffold tasks.</p>`
+        : `<div class="tasks-empty">
               <p>No Caffold tasks yet.</p>
               <button type="button" class="task-primary-button" data-task-action="open-new">New Task</button>
             </div>`;
@@ -841,27 +673,6 @@ class CaffoldTaskNavigator extends HTMLElement {
     `;
   }
 
-  renderHistoryPagination() {
-    if (
-      !this.taskHistoryNextCursor &&
-      !this.taskHistoryLoadingMore &&
-      !this.taskHistoryLoadMoreError
-    ) {
-      return "";
-    }
-    const label = this.taskHistoryLoadingMore
-      ? "Loading more history..."
-      : this.taskHistoryLoadMoreError
-        ? "Retry loading more history"
-        : "Load more history";
-    return `
-      <div class="task-list-pagination">
-        ${this.taskHistoryLoadMoreError ? `<p class="task-list-pagination-error">${escapeHtml(this.taskHistoryLoadMoreError.message)}</p>` : ""}
-        <button type="button" class="task-secondary-button" data-task-action="load-more-task-history" ${this.taskHistoryLoadingMore ? "disabled" : ""}>${label}</button>
-      </div>
-    `;
-  }
-
   renderRepositoryGroup(group, kind) {
     const icon = group.repository ? "FolderGit2" : "Folder";
     const iconLabel = group.repository ? "Git repository" : "Directory";
@@ -873,28 +684,8 @@ class CaffoldTaskNavigator extends HTMLElement {
           <span class="task-repository-count">${group.tasks.length}</span>
         </div>
         <ol class="task-list">
-          ${group.tasks.map((task) => kind === "history" ? this.renderHistoryTaskRow(task, group.key) : kind === "archived" ? this.renderArchivedTaskRow(task, group.key) : this.renderTaskRow(task, group.key)).join("")}
+          ${group.tasks.map((task) => kind === "archived" ? this.renderArchivedTaskRow(task, group.key) : this.renderTaskRow(task, group.key)).join("")}
         </ol>
-      </li>
-    `;
-  }
-
-  renderHistoryTaskRow(task, repositoryKey = taskRepositoryKey(task)) {
-    const threadId = taskThreadId(task);
-    const continuing = this.continuingThreadIds.has(threadId);
-    const transportBlocked = isTaskTransportStale(this.streamState);
-    const worktree = task?.worktree?.linked
-      ? `<span class="task-row-worktree" title="${escapeHtml(taskWorktreeLabel(task))}">
-          ${renderInlineIcon("GitBranch", "Linked worktree", "task-row-worktree-icon")}
-        </span>`
-      : "";
-    return `
-      <li class="task-history-row" data-thread-id="${escapeHtml(threadId)}" data-task-list-key="${escapeHtml(repositoryKey)}">
-        <div class="task-history-copy" title="${escapeHtml(task.title)}">
-          <span class="task-row-title">${escapeHtml(task.title)}</span>
-          <span class="task-row-indicators">${worktree}${renderTaskRowMeta(task, false)}</span>
-        </div>
-        <button type="button" class="task-continue-button" data-task-action="continue-history-task" data-thread-id="${escapeHtml(threadId)}" ${continuing || transportBlocked ? "disabled" : ""}>${continuing ? "Continuing..." : "Continue in Caffold"}</button>
       </li>
     `;
   }
@@ -910,12 +701,12 @@ class CaffoldTaskNavigator extends HTMLElement {
         </span>`
       : "";
     return `
-      <li class="task-history-row task-archived-row" data-thread-id="${escapeHtml(threadId)}" data-task-list-key="${escapeHtml(repositoryKey)}">
-        <div class="task-history-copy" title="${escapeHtml(task.title)}">
+      <li class="task-archived-row" data-thread-id="${escapeHtml(threadId)}" data-task-list-key="${escapeHtml(repositoryKey)}">
+        <div class="task-archived-copy" title="${escapeHtml(task.title)}">
           <span class="task-row-title">${escapeHtml(task.title)}</span>
           <span class="task-row-indicators">${worktree}${renderTaskRowMeta(task, false)}</span>
         </div>
-        <button type="button" class="task-continue-button" data-task-action="restore-archived-task" data-thread-id="${escapeHtml(threadId)}" aria-label="Restore ${escapeHtml(task.title)}" title="${restoreError ? escapeHtml(restoreError.message) : "Restore task; its worktree was retained"}" ${restoring || transportBlocked ? "disabled" : ""}>${restoring ? "Restoring..." : restoreError ? "Retry" : "Restore"}</button>
+        <button type="button" class="task-restore-button" data-task-action="restore-archived-task" data-thread-id="${escapeHtml(threadId)}" aria-label="Restore ${escapeHtml(task.title)}" title="${restoreError ? escapeHtml(restoreError.message) : "Restore task; its worktree was retained"}" ${restoring || transportBlocked ? "disabled" : ""}>${restoring ? "Restoring..." : restoreError ? "Retry" : "Restore"}</button>
         ${restoreError ? `<p class="task-archived-action-error" role="alert">${escapeHtml(restoreError.message)}</p>` : ""}
       </li>
     `;

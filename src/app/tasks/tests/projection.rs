@@ -221,121 +221,6 @@ fn only_the_latest_turn_can_be_active() {
 }
 
 #[test]
-fn thread_list_response_keeps_all_cwds_and_sorts_by_recency() {
-    let temp = tempfile::tempdir().unwrap();
-    let project_root = temp.path().join("project");
-    std::fs::create_dir_all(project_root.join("src")).unwrap();
-    let fs = RootedFs::new(temp.path()).unwrap();
-    let response = json!({
-        "data": [
-            {
-                "id": "thread_old",
-                "preview": "Old thread",
-                "cwd": project_root.display().to_string(),
-                "createdAt": 1.0,
-                "updatedAt": 2.0,
-                "recencyAt": 3.0,
-                "status": { "type": "idle" }
-            },
-            {
-                "id": "thread_new",
-                "preview": "New thread",
-                "cwd": project_root.join("src").display().to_string(),
-                "createdAt": 4.0,
-                "updatedAt": 5.0,
-                "recencyAt": 6.0,
-                "status": { "type": "active" },
-                "turns": [{ "id": "turn_1", "status": "inProgress" }]
-            },
-            {
-                "id": "thread_outside",
-                "preview": "Outside thread",
-                "cwd": temp.path().join("other").display().to_string(),
-                "createdAt": 7.0,
-                "updatedAt": 8.0,
-                "recencyAt": 9.0,
-                "status": { "type": "idle" }
-            }
-        ]
-    });
-
-    let tasks = thread_list_response(&fs, &response);
-    assert_eq!(
-        tasks
-            .iter()
-            .map(|task| task.thread_id.as_str())
-            .collect::<Vec<_>>(),
-        ["thread_outside", "thread_new", "thread_old"]
-    );
-}
-
-#[test]
-fn thread_list_response_all_threads_keeps_unregistered_directories() {
-    let temp = tempfile::tempdir().unwrap();
-    let fs = RootedFs::new(temp.path()).unwrap();
-    let project_root = temp.path().join("project");
-    std::fs::create_dir_all(project_root.join("src")).unwrap();
-    std::fs::create_dir(temp.path().join("outside")).unwrap();
-    let response = json!({
-        "data": [
-            {
-                "id": "thread_project",
-                "preview": "Repository thread",
-                "cwd": temp.path().join("project/src").display().to_string(),
-                "createdAt": 1.0,
-                "updatedAt": 2.0,
-                "status": { "type": "idle" }
-            },
-            {
-                "id": "thread_global",
-                "preview": "Global thread",
-                "cwd": temp.path().join("outside").display().to_string(),
-                "createdAt": 3.0,
-                "updatedAt": 4.0,
-                "status": { "type": "idle" }
-            }
-        ]
-    });
-
-    let tasks = thread_list_response(&fs, &response);
-
-    assert_eq!(tasks.len(), 2);
-    assert_eq!(tasks[0].thread_id, "thread_global");
-    assert_eq!(tasks[1].thread_id, "thread_project");
-    assert_eq!(tasks[1].relative_cwd, "project/src");
-}
-
-#[tokio::test]
-async fn task_cwd_resolution_is_bounded_and_concurrent() {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    let active = Arc::new(AtomicUsize::new(0));
-    let peak = Arc::new(AtomicUsize::new(0));
-    let started = std::time::Instant::now();
-    let values = resolve_task_cwds_with((0..16).map(|index| format!("cwd-{index}")).collect(), {
-        let active = active.clone();
-        let peak = peak.clone();
-        move |cwd| {
-            let active = active.clone();
-            let peak = peak.clone();
-            async move {
-                let current = active.fetch_add(1, Ordering::SeqCst) + 1;
-                peak.fetch_max(current, Ordering::SeqCst);
-                tokio::time::sleep(Duration::from_millis(40)).await;
-                active.fetch_sub(1, Ordering::SeqCst);
-                (cwd, Some(current))
-            }
-        }
-    })
-    .await;
-
-    assert_eq!(values.len(), 16);
-    assert!(peak.load(Ordering::SeqCst) > 1);
-    assert!(peak.load(Ordering::SeqCst) <= TASK_CWD_RESOLVE_CONCURRENCY);
-    assert!(started.elapsed() < Duration::from_millis(200));
-}
-
-#[test]
 fn task_record_uses_canonical_active_turn_state() {
     let temp = tempfile::tempdir().unwrap();
     let thread = json!({
@@ -460,41 +345,6 @@ fn active_thread_without_a_confirmed_turn_keeps_raw_status_without_controls() {
     assert!(matches!(task.thread_status, ThreadStatus::Active { .. }));
     assert_eq!(task.latest_turn_status, None);
     assert_eq!(task.active_turn, None);
-}
-
-#[test]
-fn thread_list_response_includes_nested_directories() {
-    let temp = tempfile::tempdir().unwrap();
-    let fs = RootedFs::new(temp.path()).unwrap();
-    let project_root = temp.path().join("project");
-    let src_root = project_root.join("src");
-    std::fs::create_dir_all(&src_root).unwrap();
-    let response = json!({
-        "data": [
-            {
-                "id": "thread_project_root",
-                "preview": "Root thread",
-                "cwd": project_root.display().to_string(),
-                "createdAt": 1.0,
-                "updatedAt": 2.0,
-                "status": { "type": "idle" }
-            },
-            {
-                "id": "thread_src",
-                "preview": "Src thread",
-                "cwd": src_root.display().to_string(),
-                "createdAt": 3.0,
-                "updatedAt": 4.0,
-                "status": { "type": "idle" }
-            }
-        ]
-    });
-
-    let tasks = thread_list_response(&fs, &response);
-
-    assert_eq!(tasks.len(), 2);
-    assert_eq!(tasks[0].thread_id, "thread_src");
-    assert_eq!(tasks[1].thread_id, "thread_project_root");
 }
 
 #[test]
@@ -1181,40 +1031,6 @@ fn task_repository_context_includes_linked_worktrees() {
     assert_eq!(linked_context.branch.as_deref(), Some("feature/review"));
     assert_eq!(linked_context.relative_cwd, "nested");
     assert!(linked_context.linked);
-
-    let response = json!({
-        "data": [
-            {
-                "id": "thread_main_root",
-                "cwd": main_root.display().to_string(),
-                "createdAt": 1.0,
-                "updatedAt": 1.0,
-                "status": { "type": "idle" }
-            },
-            {
-                "id": "thread_main_src",
-                "cwd": main_root.join("src").display().to_string(),
-                "createdAt": 2.0,
-                "updatedAt": 2.0,
-                "status": { "type": "idle" }
-            },
-            {
-                "id": "thread_linked",
-                "cwd": linked_root.join("nested").display().to_string(),
-                "createdAt": 3.0,
-                "updatedAt": 3.0,
-                "status": { "type": "idle" }
-            }
-        ]
-    });
-    let tasks = thread_list_response(&fs, &response);
-    assert_eq!(
-        tasks
-            .iter()
-            .map(|task| task.thread_id.as_str())
-            .collect::<Vec<_>>(),
-        vec!["thread_linked", "thread_main_src", "thread_main_root"]
-    );
 
     run_test_git(&linked_root, &["checkout", "--detach", "HEAD"]);
     let detached = resolve_task_cwd(&fs, linked_root.to_str().unwrap()).unwrap();

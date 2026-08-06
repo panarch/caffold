@@ -47,9 +47,9 @@ Files directory, then the server initial path. Review routes prefer the current
 live repository root when one is already loaded.
 
 Codex remains the content/runtime source of truth and Caffold does not require a
-local project registry. `/` is the explicit all-threads route, split into
-locally managed Caffold Tasks and unmanaged Codex History. History rows enter
-the managed set only through `Continue in Caffold`.
+local project registry. `/` is the explicit Caffold Tasks route, split into
+active and Archived Caffold-managed threads. Unmanaged app-server threads are
+outside this navigation model; direct Task URLs do not import them implicitly.
 The Codex action in the Files surface always enters `/`. Task rows are grouped
 by repository and worktree context derived from each thread cwd; cwd never
 filters the list.

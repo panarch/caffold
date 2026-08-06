@@ -45,7 +45,6 @@ pub(in crate::app) struct DetailContext {
 pub(in crate::app) struct TaskDetailResponse {
     pub(in crate::app) thread_id: String,
     pub(in crate::app) sync_state: TaskSyncState,
-    pub(in crate::app) managed: bool,
     pub(in crate::app) revision: u64,
     pub(in crate::app) task: Option<TaskRecord>,
     pub(in crate::app) events: Vec<TaskEventRecord>,
@@ -143,10 +142,7 @@ impl DetailContext {
     ) -> Result<TaskDetailResponse, ApiError> {
         let cursor = cursor.map(str::trim).filter(|cursor| !cursor.is_empty());
         if self.store_get(thread_id).await?.is_none() {
-            if cursor.is_some() {
-                return Err(not_managed_error());
-            }
-            return self.unmanaged(thread_id).await;
+            return Err(not_managed_error());
         }
         if let Some(cursor) = cursor {
             let connection = self.connection().await?;
@@ -487,7 +483,6 @@ impl DetailContext {
             return Ok(TaskDetailResponse {
                 thread_id,
                 sync_state: TaskSyncState::Ready,
-                managed: true,
                 revision,
                 task: Some(task),
                 events,
@@ -499,43 +494,7 @@ impl DetailContext {
                 reasoning_effort,
             });
         }
-        Ok(TaskDetailResponse {
-            thread_id,
-            sync_state: TaskSyncState::Ready,
-            managed: false,
-            revision,
-            task: Some(task),
-            events,
-            events_page: TaskEventsPage { next_cursor },
-            pending_approvals,
-            history_loading,
-            permission_mode,
-            model: session_model,
-            reasoning_effort: session_reasoning_effort,
-        })
-    }
-
-    pub(in crate::app) async fn unmanaged(
-        &self,
-        thread_id: &str,
-    ) -> Result<TaskDetailResponse, ApiError> {
-        let client = self.client().await?;
-        let thread = client.read_thread(thread_id).await?;
-        let task = self.record_from_codex_thread(&thread)?;
-        Ok(TaskDetailResponse {
-            thread_id: thread_id.to_string(),
-            sync_state: TaskSyncState::Ready,
-            managed: false,
-            revision: 0,
-            task: Some(task),
-            events: Vec::new(),
-            events_page: TaskEventsPage { next_cursor: None },
-            pending_approvals: Vec::new(),
-            history_loading: false,
-            permission_mode: None,
-            model: None,
-            reasoning_effort: None,
-        })
+        Err(not_managed_error())
     }
 
     pub(in crate::app) fn record_from_codex_thread(
@@ -770,7 +729,6 @@ pub(in crate::app) fn loading_detail(
     TaskDetailResponse {
         thread_id: thread_id.to_string(),
         sync_state: TaskSyncState::Loading,
-        managed: true,
         revision,
         task: None,
         events: Vec::new(),
@@ -786,7 +744,7 @@ pub(in crate::app) fn loading_detail(
 pub(in crate::app) fn not_managed_error() -> ApiError {
     ApiError::BadRequest {
         code: "task_not_managed",
-        message: "thread must be continued in Caffold first".to_string(),
+        message: "task is not managed by Caffold".to_string(),
     }
 }
 

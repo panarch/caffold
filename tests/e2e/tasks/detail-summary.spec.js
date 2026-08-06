@@ -38,7 +38,6 @@ function summaryDetail(task, revision = 1) {
   return {
     threadId: task.threadId,
     syncState: "ready",
-    managed: true,
     revision,
     task,
     events: [],
@@ -60,11 +59,6 @@ async function installSummaryFixture(page, tasks) {
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       json: { tasks, nextCursor: null },
-    }),
-  );
-  await page.route(/\/api\/task-history(?:\?|$)/, (route) =>
-    route.fulfill({
-      json: { tasks: [], nextCursor: null },
     }),
   );
   for (const task of tasks) {

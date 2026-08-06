@@ -226,9 +226,6 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
     "/assets/icons/caffold-mark.svg",
   );
   await expect(tasksBrand.getByRole("heading", { name: "Caffold" })).toBeVisible();
-  await expect(tasksPage.locator(".tasks-header")).not.toContainText(
-    "Caffold Tasks and Codex History",
-  );
   await expect(page.locator("caffold-codex-workspace")).not.toHaveAttribute(
     "data-workspace-close-visible",
     "",

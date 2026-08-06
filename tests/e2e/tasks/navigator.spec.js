@@ -67,6 +67,10 @@ test("archives and restores an idle Caffold task through the grouped Archived se
 }, testInfo) => {
   await installEventSourceMock(page);
   await mockCodexModels(page);
+  const requestedPaths = [];
+  page.on("request", (request) => {
+    requestedPaths.push(new URL(request.url()).pathname);
+  });
   const task = (threadId, title, updatedMs) => ({
     id: threadId,
     threadId,
@@ -113,12 +117,6 @@ test("archives and restores an idle Caffold task through the grouped Archived se
       body: JSON.stringify({ tasks: activeTasks, nextCursor: null }),
     }),
   );
-  await page.route(/\/api\/task-history(?:\?|$)/, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ tasks: [], nextCursor: null }),
-    }),
-  );
   await page.route(/\/api\/tasks\/thread_archive(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -152,6 +150,12 @@ test("archives and restores an idle Caffold task through the grouped Archived se
 
   await page.goto("/tasks/thread_archive");
   const navigator = page.locator("caffold-task-navigator");
+  await expect(navigator.locator(".task-list-section")).toHaveCount(2);
+  await expect(navigator.locator(".task-list-section-header h2")).toHaveText([
+    "Caffold Tasks",
+    "Archived",
+  ]);
+  expect(requestedPaths).not.toContain("/api/task-history");
   await expect(
     navigator.locator('.task-list-section[data-task-section="archived"]'),
   ).toContainText("Earlier archive");
@@ -885,12 +889,6 @@ test("keeps the Tasks list DOM stable while opening a managed task", async ({ pa
       body: JSON.stringify({ tasks, nextCursor: null }),
     }),
   );
-  await page.route(/\/api\/task-history(?:\?|$)/, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ tasks: [], nextCursor: null }),
-    }),
-  );
   await page.route(/\/api\/tasks\/thread_dom_stability\/seen$/, (route) => {
     seenRequests += 1;
     return route.fulfill({
@@ -906,7 +904,6 @@ test("keeps the Tasks list DOM stable while opening a managed task", async ({ pa
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        managed: true,
         revision: 1,
         task,
         events: [
@@ -1269,78 +1266,4 @@ test("groups Tasks by repository without worktree accordions", async ({ page }, 
   await expect(
     tasksPage.locator('.task-repository-group[data-task-repository-key="directory:notes"]'),
   ).toHaveCount(0);
-});
-test("continues a Codex History thread into Caffold Tasks", async ({ page }) => {
-  await page.addInitScript(() => {
-    window.EventSource = class MockEventSource {
-      addEventListener() {}
-      close() {}
-    };
-  });
-  await mockCodexModels(page);
-  const task = {
-    id: "thread_history_continue",
-    threadId: "thread_history_continue",
-    ...canonicalTaskState("idle"),
-    title: "History task",
-    preview: "History metadata only",
-    cwd: "/tmp/project",
-    cwdPath: "tmp/project",
-    relativeCwd: "tmp/project",
-    worktree: null,
-    createdMs: 10,
-    updatedMs: 20,
-    recencyMs: 20,
-    lastEventSummary: "History metadata only",
-    unseen: false,
-  };
-
-  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ tasks: [], nextCursor: null }),
-    }),
-  );
-  await page.route(/\/api\/task-history(?:\?|$)/, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ tasks: [task], nextCursor: null }),
-    }),
-  );
-  await page.route(/\/api\/tasks\/thread_history_continue\/continue$/, (route) =>
-    route.fulfill({ contentType: "application/json", body: JSON.stringify(task) }),
-  );
-  await page.route(/\/api\/tasks\/thread_history_continue(?:\?|$)/, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        managed: true,
-        revision: 1,
-        task,
-        events: [],
-        eventsPage: { nextCursor: null },
-        pendingApprovals: [],
-        historyLoading: false,
-      }),
-    }),
-  );
-  await page.route(/\/api\/tasks\/thread_history_continue\/seen$/, (route) =>
-    route.fulfill({ contentType: "application/json", body: JSON.stringify(task) }),
-  );
-
-  await page.goto("/tasks");
-  const tasksPage = page.locator("caffold-tasks-page");
-  const managed = tasksPage.locator('[data-task-section="managed"]');
-  const history = tasksPage.locator('[data-task-section="history"]');
-  await expect(managed.locator('li[data-thread-id="thread_history_continue"]')).toHaveCount(0);
-  await expect(history.locator('li[data-thread-id="thread_history_continue"]')).toHaveCount(1);
-
-  await history
-    .locator('[data-thread-id="thread_history_continue"] [data-task-action="continue-history-task"]')
-    .click();
-
-  await expect(page).toHaveURL("/tasks/thread_history_continue");
-  await expect(managed.locator('li[data-thread-id="thread_history_continue"]')).toHaveCount(1);
-  await expect(history.locator('li[data-thread-id="thread_history_continue"]')).toHaveCount(0);
-  await expect(tasksPage.locator(".tasks-detail-region")).toContainText("History task");
 });

@@ -90,9 +90,6 @@ export async function installTaskApiFixture(page) {
   await page.route("**/api/tasks", (route) =>
     route.fulfill({ json: { tasks: [], nextCursor: null } }),
   );
-  await page.route("**/api/task-history*", (route) =>
-    route.fulfill({ json: { tasks: [], nextCursor: null } }),
-  );
   await page.route("**/api/tasks/stream*", (route) =>
     route.fulfill({
       contentType: "text/event-stream",
@@ -109,7 +106,6 @@ export function taskDetailFixture({
   return {
     threadId: "thread-1",
     syncState: "ready",
-    managed: true,
     revision: 1,
     task: {
       id: "thread-1",

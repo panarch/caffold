@@ -82,13 +82,6 @@ export async function installBrowserDefaults(page) {
     }),
   );
 
-  await page.route(/\/api\/task-history(?:\?|$)/, (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ tasks: [], nextCursor: null }),
-    }),
-  );
-
   await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",

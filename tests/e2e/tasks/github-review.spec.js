@@ -58,15 +58,11 @@ async function installLinkedWorktreeGithubFixture(page, repositoryContextHandler
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({ json: { tasks: [task], nextCursor: null } }),
   );
-  await page.route(/\/api\/task-history(?:\?|$)/, (route) =>
-    route.fulfill({ json: { tasks: [], nextCursor: null } }),
-  );
   await page.route(new RegExp(`/api/tasks/${THREAD_ID}(?:\\?|$)`), (route) =>
     route.fulfill({
       json: {
         threadId: THREAD_ID,
         syncState: "ready",
-        managed: true,
         revision: 1,
         task,
         events: [],

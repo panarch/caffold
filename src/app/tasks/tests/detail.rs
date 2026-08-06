@@ -74,7 +74,7 @@ async fn canonical_resume_refreshes_cached_model_settings() {
 }
 
 #[tokio::test]
-async fn canonical_snapshot_without_membership_is_not_managed() {
+async fn canonical_snapshot_without_membership_is_rejected() {
     let root = tempfile::tempdir().unwrap();
     let state = task_state_with_codex_client(
         RootedFs::new(root.path()).unwrap(),
@@ -92,17 +92,19 @@ async fn canonical_snapshot_without_membership_is_not_managed() {
         .await
         .expect("canonical snapshot");
 
-    let detail = state
+    let error = state
         .detail
         .assemble_snapshot(snapshot, None)
         .await
-        .expect("canonical detail");
+        .expect_err("unmanaged canonical detail must not be exposed");
 
-    assert!(!detail.managed);
-    assert_eq!(
-        detail.task.as_ref().map(|task| task.thread_id.as_str()),
-        Some("thread-unmanaged")
-    );
+    assert!(matches!(
+        error,
+        ApiError::BadRequest {
+            code: "task_not_managed",
+            ..
+        }
+    ));
 }
 
 #[tokio::test]
@@ -110,10 +112,6 @@ async fn task_detail_returns_cached_metadata_before_slow_resume_finishes() {
     let root = tempfile::tempdir().unwrap();
     let thread_id = "thread-slow-detail-bootstrap";
     let client = CodexThreadClient::mock(vec![
-        crate::codex_app_server::MockCodexResponse::ok(
-            "thread/list",
-            task_thread_list(thread_id, root.path()),
-        ),
         crate::codex_app_server::MockCodexResponse::delayed_ok(
             "thread/resume",
             resumed_task(thread_id, root.path()),
@@ -127,10 +125,7 @@ async fn task_detail_returns_cached_metadata_before_slow_resume_finishes() {
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
 
-    let task_count = test_load_tasks(state.clone(), None)
-        .await
-        .expect("task list succeeds");
-    assert_eq!(task_count, 1);
+    cache_and_manage_test_thread(&state, thread_id, root.path()).await;
 
     let response = tokio::time::timeout(
         Duration::from_millis(50),
@@ -152,10 +147,6 @@ async fn blank_history_cursor_returns_cached_task_detail_without_app_server_wait
     let root = tempfile::tempdir().unwrap();
     let thread_id = "thread-blank-history-cursor";
     let client = CodexThreadClient::mock(vec![
-        crate::codex_app_server::MockCodexResponse::ok(
-            "thread/list",
-            task_thread_list(thread_id, root.path()),
-        ),
         crate::codex_app_server::MockCodexResponse::delayed_ok(
             "thread/resume",
             resumed_task(thread_id, root.path()),
@@ -169,10 +160,7 @@ async fn blank_history_cursor_returns_cached_task_detail_without_app_server_wait
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
 
-    let task_count = test_load_tasks(state.clone(), None)
-        .await
-        .expect("task list succeeds");
-    assert_eq!(task_count, 1);
+    cache_and_manage_test_thread(&state, thread_id, root.path()).await;
 
     let response = tokio::time::timeout(
         Duration::from_millis(50),
@@ -319,10 +307,6 @@ async fn task_stream_starts_before_slow_resume_finishes() {
     let root = tempfile::tempdir().unwrap();
     let thread_id = "thread-slow-stream-bootstrap";
     let client = CodexThreadClient::mock(vec![
-        crate::codex_app_server::MockCodexResponse::ok(
-            "thread/list",
-            task_thread_list(thread_id, root.path()),
-        ),
         crate::codex_app_server::MockCodexResponse::delayed_ok(
             "thread/resume",
             resumed_task(thread_id, root.path()),
@@ -335,9 +319,7 @@ async fn task_stream_starts_before_slow_resume_finishes() {
     ]);
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-    let _ = test_load_tasks(state.clone(), None)
-        .await
-        .expect("task list succeeds");
+    manage_test_thread(&state, thread_id, root.path()).await;
 
     let response = tokio::time::timeout(
         Duration::from_millis(50),
@@ -484,21 +466,13 @@ async fn direct_task_stream_starts_while_connection_is_busy() {
 async fn resume_failure_makes_cached_task_detail_unavailable() {
     let root = tempfile::tempdir().unwrap();
     let thread_id = "thread-failed-detail-bootstrap";
-    let client = CodexThreadClient::mock(vec![
-        crate::codex_app_server::MockCodexResponse::ok(
-            "thread/list",
-            task_thread_list(thread_id, root.path()),
-        ),
-        crate::codex_app_server::MockCodexResponse::error(
-            "thread/resume",
-            crate::codex_app_server::CodexThreadError::Protocol("resume unavailable".to_string()),
-        ),
-    ]);
+    let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::error(
+        "thread/resume",
+        crate::codex_app_server::CodexThreadError::Protocol("resume unavailable".to_string()),
+    )]);
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-    let _ = test_load_tasks(state.clone(), None)
-        .await
-        .expect("task list succeeds");
+    cache_and_manage_test_thread(&state, thread_id, root.path()).await;
 
     let response = tokio::time::timeout(
         Duration::from_millis(50),
@@ -528,25 +502,17 @@ async fn resume_failure_makes_cached_task_detail_unavailable() {
 async fn resume_timeout_makes_task_detail_unavailable_but_keeps_the_connection() {
     let root = tempfile::tempdir().unwrap();
     let thread_id = "thread-timeout-detail-bootstrap";
-    let client = CodexThreadClient::mock(vec![
-        crate::codex_app_server::MockCodexResponse::ok(
-            "thread/list",
-            task_thread_list(thread_id, root.path()),
-        ),
-        crate::codex_app_server::MockCodexResponse::error(
-            "thread/resume",
-            crate::codex_app_server::CodexThreadError::RequestTimeout {
-                method: "thread/resume",
-                request_id: 17,
-                timeout_ms: 120_000,
-            },
-        ),
-    ]);
+    let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::error(
+        "thread/resume",
+        crate::codex_app_server::CodexThreadError::RequestTimeout {
+            method: "thread/resume",
+            request_id: 17,
+            timeout_ms: 120_000,
+        },
+    )]);
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-    let _ = test_load_tasks(state.clone(), None)
-        .await
-        .expect("task list succeeds");
+    cache_and_manage_test_thread(&state, thread_id, root.path()).await;
 
     let first = tokio::time::timeout(
         Duration::from_millis(50),
@@ -880,7 +846,6 @@ fn task_stream_bootstrap_replays_the_canonical_detail_snapshot() {
         detail: TaskDetailResponse {
             thread_id: thread_id.to_string(),
             sync_state: TaskSyncState::Ready,
-            managed: true,
             revision: 7,
             task: Some(TaskRecord {
                 id: thread_id.to_string(),
