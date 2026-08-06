@@ -800,7 +800,9 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     await expect(detailPane).toContainText("Main root task detail response");
     await expect(detailPane).not.toContainText("Main core task detail response");
 
-    await tasksPage.locator('[data-task-action="open-new"]').first().click();
+    await tasksPage
+      .locator('caffold-task-detail-summary [data-task-action="open-new"]')
+      .click();
     await expect(page).toHaveURL("/tasks/new?cwd=src");
     await expect(listPane).toBeVisible();
     await expect(detailPane.locator(".task-new-form")).toBeVisible();
@@ -816,7 +818,7 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     await expect(detailPane).toBeVisible();
     await expect(detailPane).toContainText("Main root task detail response");
     await captureReviewScreenshot(page, testInfo, "tasks-single-pane-detail");
-    await tasksPage.locator('[data-task-action="open-list"]').click();
+    await page.locator("caffold-codex-workspace .codex-workspace-close").click();
     await expect(page).toHaveURL("/");
     await expect(listPane).toBeVisible();
     await expect(detailPane).toBeHidden();

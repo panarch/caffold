@@ -38,16 +38,27 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
   }
 
   const summaryClearance = await page.evaluate(() => {
-    const close = document.querySelector(".codex-workspace-close").getBoundingClientRect();
+    const closeButton = document.querySelector(".codex-workspace-close");
+    const close = closeButton.getBoundingClientRect();
     const heading = document
-      .querySelector("caffold-task-detail-summary .task-detail-heading")
+      .querySelector("caffold-task-detail-summary .task-detail-heading h2")
       .getBoundingClientRect();
     return {
+      closeLabel: closeButton.getAttribute("aria-label"),
       closeRight: close.right,
+      closeTitleCenterDelta: Math.abs(
+        close.top + close.height / 2 -
+          (heading.top + heading.height / 2),
+      ),
+      closeVisible:
+        getComputedStyle(closeButton).display !== "none" && close.width > 0,
       headingLeft: heading.left,
       headingWidth: heading.width,
     };
   });
+  expect(summaryClearance.closeVisible).toBe(true);
+  expect(summaryClearance.closeLabel).toBe("Back to task");
+  expect(summaryClearance.closeTitleCenterDelta).toBeLessThanOrEqual(2);
   expect(summaryClearance.headingLeft).toBeGreaterThanOrEqual(
     summaryClearance.closeRight,
   );

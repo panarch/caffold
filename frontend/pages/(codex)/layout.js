@@ -93,8 +93,17 @@ class CaffoldCodexWorkspace extends HTMLElement {
         !this.route.new &&
         !this.route.threadId,
     );
+    const isTaskConversation = Boolean(
+      this.route?.kind === "tasks" &&
+        this.route.threadId &&
+        !isTaskSubview,
+    );
     this.closeButton.hidden = isGlobalTasksHome;
     this.toggleAttribute("data-workspace-close-visible", !isGlobalTasksHome);
+    this.toggleAttribute(
+      "data-workspace-close-responsive",
+      isTaskConversation,
+    );
     const label = isTaskSubview ? "Back to task" : "Back to tasks";
     this.closeButton.setAttribute("aria-label", label);
     this.closeButton.setAttribute("title", label);

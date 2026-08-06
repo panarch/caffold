@@ -1,13 +1,15 @@
 caffold-task-detail-summary {
+  box-sizing: border-box;
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--interface-space-6);
+  min-height: var(--task-workspace-header-size, auto);
   padding:
-    var(--interface-space-6)
+    var(--interface-space-4)
     var(--interface-space-7)
-    var(--interface-space-6)
+    var(--interface-space-4)
     calc(
       var(--interface-space-7) + var(--task-header-leading-space, 0rem)
     );
@@ -34,12 +36,25 @@ caffold-task-detail-summary {
   }
 
   & .task-detail-heading {
+    display: flex;
+    align-items: baseline;
+    gap: var(--interface-space-5);
+    min-width: 0;
+  }
+
+  & .task-detail-heading h2 {
+    flex: 0 1 auto;
     min-width: 0;
   }
 
   & .task-detail-meta {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
     font-size: var(--interface-meta-font-size);
     line-height: var(--interface-line-height);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   & .task-detail-right {
@@ -135,6 +150,12 @@ caffold-task-detail-summary {
     padding-block: 0;
     border-radius: 4px;
     font-size: var(--interface-meta-font-size);
+  }
+
+  & .task-detail-actions .task-summary-new-task {
+    width: var(--interface-compact-visual-size);
+    min-width: var(--interface-compact-visual-size);
+    padding-inline: 0;
   }
 
   & .task-brand-button {
@@ -345,15 +366,10 @@ caffold-task-detail-summary {
   }
 }
 
-@media (max-width: 860px) {
+@media (max-width: 959px) {
   caffold-task-detail-summary {
-    grid-template-columns: minmax(0, 1fr);
-    align-items: start;
-    padding: 0.5rem 0.625rem 0.5rem
-      calc(0.625rem + var(--task-header-leading-space, 0rem));
-
-    & .task-detail-actions {
-      justify-content: start;
+    & .task-detail-meta {
+      display: none;
     }
   }
 }
@@ -407,10 +423,6 @@ caffold-task-detail-summary {
 
     & h2 {
       font-size: var(--interface-heading-font-size);
-    }
-
-    & .task-detail-meta {
-      display: none;
     }
 
     & .task-detail-popover {

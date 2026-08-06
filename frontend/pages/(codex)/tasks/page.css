@@ -69,11 +69,19 @@ caffold-tasks-page {
     outline: none;
   }
 
-  &[data-task-detail-view="review"] .tasks-surface {
+  &[data-tasks-view="detail"] .tasks-surface {
     grid-template-rows: minmax(0, 1fr);
   }
 
-  &[data-task-detail-view="review"] .tasks-header-region,
+  &[data-tasks-view="detail"] .tasks-header-region {
+    display: none;
+  }
+
+  &[data-tasks-view="detail"] .tasks-list-pane {
+    --task-navigator-top-header-size: var(--task-workspace-header-size);
+    --task-navigator-scroll-padding-top: 0rem;
+  }
+
   &[data-task-detail-view="review"] .tasks-list-pane,
   &[data-task-detail-view="review"] .tasks-master-resizer {
     display: none;
@@ -93,10 +101,6 @@ caffold-tasks-page {
       calc(var(--interface-space-7) + var(--task-header-leading-space, 0rem));
     border-bottom: 1px solid var(--border);
     background: var(--surface);
-  }
-
-  &[data-task-detail-view="review"] .tasks-header {
-    display: none;
   }
 
   & .tasks-brand {
@@ -169,6 +173,11 @@ caffold-tasks-page {
 
 @media (min-width: 960px) {
   caffold-tasks-page {
+    &[data-tasks-view="detail"]:not([data-task-detail-view="review"])
+      .tasks-detail-pane {
+      --task-header-leading-space: 0rem;
+    }
+
     & .tasks-header [data-task-action="open-list"] {
       display: none;
     }

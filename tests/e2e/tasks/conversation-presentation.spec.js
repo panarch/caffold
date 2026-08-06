@@ -274,24 +274,105 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     expect(Math.min(...contextualControlGeometry.modeButtonHeights)).toBeGreaterThanOrEqual(40);
     expect(contextualControlGeometry.expandedTouchHits.every(Boolean)).toBe(true);
   }
-  if (testInfo.project.name === "phone") {
-    const mobileHeaderMetrics = await tasksPage.evaluate((element) => {
-      const header = element.querySelector(".tasks-header").getBoundingClientRect();
-      const summary = element.querySelector(".task-detail-summary").getBoundingClientRect();
+  const workspaceHeaderMetrics = await tasksPage.evaluate((element) => {
+    const appHeader = element.querySelector(".tasks-header");
+    const close = document.querySelector(".codex-workspace-close");
+    const summary = element.querySelector(".task-detail-summary");
+    const summaryBounds = summary.getBoundingClientRect();
+    const headingBounds = summary
+      .querySelector(".task-detail-heading")
+      .getBoundingClientRect();
+    const actionBounds = summary
+      .querySelector(".task-detail-actions")
+      .getBoundingClientRect();
+    const closeBounds = close.getBoundingClientRect();
+    const titleBounds = summary.querySelector("h2").getBoundingClientRect();
+    return {
+      appHeaderVisible:
+        getComputedStyle(appHeader).display !== "none" &&
+        appHeader.getBoundingClientRect().height > 0,
+      closeSize: closeBounds.width,
+      closeTitleCenterDelta: Math.abs(
+        closeBounds.top + closeBounds.height / 2 -
+          (titleBounds.top + titleBounds.height / 2),
+      ),
+      closeVisible:
+        getComputedStyle(close).display !== "none" &&
+        close.getBoundingClientRect().width > 0,
+      overflow: element.scrollWidth > element.clientWidth,
+      sameRow:
+        Math.abs(
+          headingBounds.top + headingBounds.height / 2 -
+            (actionBounds.top + actionBounds.height / 2),
+        ) <= 1,
+      summaryHeight: summaryBounds.height,
+      summaryTop: Math.round(summaryBounds.top),
+      surfaceTop: Math.round(element.getBoundingClientRect().top),
+    };
+  });
+  expect(workspaceHeaderMetrics.appHeaderVisible).toBe(false);
+  expect(workspaceHeaderMetrics.summaryTop).toBe(workspaceHeaderMetrics.surfaceTop);
+  expect(workspaceHeaderMetrics.overflow).toBe(false);
+  if (testInfo.project.name === "desktop") {
+    const navigatorClearance = await tasksPage.evaluate((element) => {
+      const sectionTitle = element
+        .querySelector(".task-list-section:first-child h2")
+        .getBoundingClientRect();
+      const sectionHeader = element
+        .querySelector(".task-list-section:first-child .task-list-section-header")
+        .getBoundingClientRect();
+      const summary = element
+        .querySelector(".task-detail-summary")
+        .getBoundingClientRect();
       return {
-        headerHeight: header.height,
-        summaryHeight: summary.height,
-        overflow: element.scrollWidth > element.clientWidth,
+        headerBottomDelta: Math.abs(sectionHeader.bottom - summary.bottom),
+        sectionTitleInset: sectionTitle.left - sectionHeader.left,
       };
     });
-    expect(mobileHeaderMetrics.headerHeight).toBeLessThanOrEqual(64);
-    expect(mobileHeaderMetrics.summaryHeight).toBeLessThanOrEqual(112);
-    expect(mobileHeaderMetrics.overflow).toBe(false);
+    expect(workspaceHeaderMetrics.closeVisible).toBe(false);
+    expect(navigatorClearance.sectionTitleInset).toBeLessThanOrEqual(16);
+    expect(navigatorClearance.headerBottomDelta).toBeLessThanOrEqual(1);
+  } else {
+    expect(workspaceHeaderMetrics.closeVisible).toBe(true);
+    expect(workspaceHeaderMetrics.closeSize).toBeGreaterThanOrEqual(40);
+    expect(workspaceHeaderMetrics.closeTitleCenterDelta).toBeLessThanOrEqual(2);
+  }
+  if (testInfo.project.name === "phone") {
+    expect(workspaceHeaderMetrics.sameRow).toBe(false);
+    expect(workspaceHeaderMetrics.summaryHeight).toBeLessThanOrEqual(112);
     await stabilizeDynamicText(page);
     await captureReviewScreenshot(page, testInfo, "tasks-mobile-header-details");
+  } else {
+    expect(workspaceHeaderMetrics.sameRow).toBe(true);
+    expect(workspaceHeaderMetrics.summaryHeight).toBeLessThanOrEqual(64);
+  }
+  if (testInfo.project.name === "foldable") {
+    await page.setViewportSize({ width: 800, height: 1100 });
+    const compactFoldableHeader = await tasksPage.evaluate((element) => {
+      const summary = element.querySelector(".task-detail-summary");
+      const heading = summary
+        .querySelector(".task-detail-heading")
+        .getBoundingClientRect();
+      const actions = summary
+        .querySelector(".task-detail-actions")
+        .getBoundingClientRect();
+      return {
+        sameRow:
+          Math.abs(
+            heading.top + heading.height / 2 -
+              (actions.top + actions.height / 2),
+          ) <= 1,
+        summaryHeight: summary.getBoundingClientRect().height,
+      };
+    });
+    expect(compactFoldableHeader.sameRow).toBe(true);
+    expect(compactFoldableHeader.summaryHeight).toBeLessThanOrEqual(64);
   }
   await taskDetailsButton.click();
   await expect(taskDetailsPopover).toBeHidden();
   await stabilizeDynamicText(page);
+  if (testInfo.project.name === "foldable") {
+    await captureReviewScreenshot(page, testInfo, "tasks-foldable-compact-header");
+  }
   await captureReviewScreenshot(page, testInfo, "tasks-conversation");
 });

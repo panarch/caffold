@@ -1,4 +1,10 @@
 caffold-codex-workspace {
+  --task-workspace-header-size: calc(
+    var(--interface-compact-visual-size) +
+      var(--interface-space-4) +
+      var(--interface-space-4) +
+      1px
+  );
   --task-header-leading-space: 0rem;
   position: relative;
   display: grid;
@@ -19,7 +25,10 @@ caffold-codex-workspace {
 
   & .codex-workspace-close {
     position: absolute;
-    top: var(--interface-space-6);
+    top: calc(
+      (var(--task-workspace-header-size) - var(--interface-compact-control-size)) /
+        2
+    );
     left: var(--interface-space-6);
     z-index: 2;
     display: grid;
@@ -56,8 +65,17 @@ caffold-codex-workspace {
     }
 
     & .codex-workspace-close {
-      top: var(--interface-space-4);
       left: var(--interface-space-4);
+    }
+  }
+}
+
+@media (min-width: 960px) {
+  caffold-codex-workspace[data-workspace-close-responsive] {
+    --task-header-leading-space: 0rem;
+
+    & .codex-workspace-close {
+      display: none;
     }
   }
 }

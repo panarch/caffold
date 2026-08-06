@@ -16,7 +16,8 @@ caffold-task-navigator {
     height: 100%;
     overflow: auto;
     overscroll-behavior: contain;
-    padding: 0.3125rem 0 calc(1.5rem + env(safe-area-inset-bottom));
+    padding: var(--task-navigator-scroll-padding-top, 0.3125rem) 0
+      calc(1.5rem + env(safe-area-inset-bottom));
     scroll-padding-block: var(--interface-space-2)
       calc(var(--interface-space-12) + env(safe-area-inset-bottom));
     font-size: var(--task-list-font-size);
@@ -35,6 +36,12 @@ caffold-task-navigator {
     gap: 0.5rem;
     padding: 0.25rem 0.75rem 0.4375rem;
     color: var(--muted);
+  }
+
+  & .task-list-section:first-child .task-list-section-header {
+    box-sizing: border-box;
+    min-height: var(--task-navigator-top-header-size, auto);
+    padding-left: calc(0.75rem + var(--task-header-leading-space, 0rem));
   }
 
   & .task-list-section-header h2 {

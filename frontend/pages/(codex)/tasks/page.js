@@ -251,7 +251,7 @@ class CaffoldTasksPage extends HTMLElement {
     const action =
       event.target instanceof Element
         ? event.target.closest(
-            ".tasks-header-region [data-task-action]",
+            ".tasks-header-region [data-task-action], caffold-task-detail-summary [data-task-action]",
           )
         : null;
     if (!action || !this.contains(action)) {
