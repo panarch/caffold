@@ -226,6 +226,14 @@ async fn create_task_keeps_explicit_permission_mode_for_the_first_turn() {
     let requests = client.mock_requests().await;
     assert_eq!(requests[0].0, "thread/start");
     assert_eq!(requests[0].1["approvalsReviewer"], "auto_review");
+    assert_eq!(
+        requests[0].1["dynamicTools"][0]["name"],
+        "rename_current_thread"
+    );
+    assert_eq!(
+        requests[0].1["dynamicTools"][0]["inputSchema"]["required"],
+        json!(["name"])
+    );
     assert_eq!(requests[1].0, "turn/start");
     assert_eq!(requests[1].1["approvalsReviewer"], "auto_review");
 }

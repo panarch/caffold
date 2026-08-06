@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use serde::Deserialize;
 use serde_json::{Value as JsonValue, json};
 use tokio::sync::{Mutex, broadcast};
 
@@ -10,9 +11,10 @@ use super::events::{
 use crate::{
     codex_app_server::{
         CodexNotification, CodexRuntimeEvent, CodexServerRequest, CodexThreadClient,
-        CodexThreadError, ThreadStatus, TurnStatus,
+        CodexThreadError, RENAME_CURRENT_THREAD_TOOL_NAME, ThreadStatus, TurnStatus,
     },
     codex_thread_sessions::{CodexThreadSessions, ThreadSessionSnapshot},
+    thread_store::ThreadStore,
 };
 
 #[derive(Clone)]
@@ -20,6 +22,7 @@ pub(in crate::app) struct CodexRuntime {
     process: Arc<CodexProcess>,
     sessions: CodexThreadSessions,
     events: TaskEvents,
+    thread_store: ThreadStore,
     approvals: Arc<Mutex<HashMap<String, PendingApproval>>>,
     signals: broadcast::Sender<CodexRuntimeSignal>,
     shutdown: broadcast::Sender<()>,
@@ -77,6 +80,12 @@ struct PendingApproval {
     sort_index: Option<u32>,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RenameCurrentThreadArguments {
+    name: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ApprovalKind {
     Command,
@@ -96,6 +105,7 @@ impl CodexRuntime {
     pub(in crate::app) fn new(
         sessions: CodexThreadSessions,
         events: TaskEvents,
+        thread_store: ThreadStore,
         shutdown: broadcast::Sender<()>,
     ) -> Self {
         let (signals, _) = broadcast::channel(64);
@@ -103,6 +113,7 @@ impl CodexRuntime {
             process: Arc::new(CodexProcess::default()),
             sessions,
             events,
+            thread_store,
             approvals: Arc::new(Mutex::new(HashMap::new())),
             signals,
             shutdown,
@@ -301,7 +312,7 @@ impl CodexRuntime {
                                 }
                             }
                             CodexRuntimeEvent::ServerRequest(request) => {
-                                runtime.handle_server_request(request).await;
+                                runtime.handle_server_request(&client, request).await;
                             }
                             CodexRuntimeEvent::Diagnostic { message } => {
                                 eprintln!("{message}");
@@ -382,6 +393,7 @@ impl CodexRuntime {
                     now_ms(),
                 ));
             }
+            CodexNotification::ThreadNameUpdated { .. } => {}
             CodexNotification::ItemStarted {
                 thread_id,
                 turn_id,
@@ -472,8 +484,20 @@ impl CodexRuntime {
         }
     }
 
-    async fn handle_server_request(&self, request: CodexServerRequest) {
+    async fn handle_server_request(&self, client: &CodexThreadClient, request: CodexServerRequest) {
         let (request_id, thread_id, params, kind) = match request {
+            CodexServerRequest::DynamicToolCall {
+                id,
+                thread_id,
+                tool,
+                namespace,
+                arguments,
+                ..
+            } => {
+                self.handle_dynamic_tool_call(client, id, thread_id, tool, namespace, arguments)
+                    .await;
+                return;
+            }
             CodexServerRequest::CommandExecutionApproval {
                 id,
                 thread_id,
@@ -519,6 +543,81 @@ impl CodexRuntime {
             },
         );
         self.events.broadcast(event);
+    }
+
+    async fn handle_dynamic_tool_call(
+        &self,
+        client: &CodexThreadClient,
+        request_id: JsonValue,
+        thread_id: String,
+        tool: String,
+        namespace: Option<String>,
+        arguments: JsonValue,
+    ) {
+        let result = self
+            .execute_dynamic_tool(client, &thread_id, &tool, namespace.as_deref(), arguments)
+            .await;
+        let (success, text) = match result {
+            Ok(text) => (true, text),
+            Err(message) => (false, message),
+        };
+        if let Err(error) = client
+            .respond_to_server_request(
+                request_id,
+                json!({
+                    "contentItems": [{
+                        "type": "inputText",
+                        "text": text
+                    }],
+                    "success": success
+                }),
+            )
+            .await
+        {
+            eprintln!("failed to respond to Codex dynamic tool call: {error}");
+        }
+    }
+
+    async fn execute_dynamic_tool(
+        &self,
+        client: &CodexThreadClient,
+        thread_id: &str,
+        tool: &str,
+        namespace: Option<&str>,
+        arguments: JsonValue,
+    ) -> Result<String, String> {
+        if namespace.is_some() || tool != RENAME_CURRENT_THREAD_TOOL_NAME {
+            let qualified_tool = namespace
+                .map(|namespace| format!("{namespace}.{tool}"))
+                .unwrap_or_else(|| tool.to_string());
+            return Err(format!(
+                "Caffold does not support the dynamic tool `{qualified_tool}`."
+            ));
+        }
+        let RenameCurrentThreadArguments { name } = serde_json::from_value(arguments)
+            .map_err(|_| "The new task name must be a non-empty string.".to_string())?;
+        let name = name.trim();
+        if name.is_empty() {
+            return Err("The new task name must be a non-empty string.".to_string());
+        }
+        if !self.manages_thread(thread_id).await? {
+            return Err("Caffold can only rename tasks that it manages.".to_string());
+        }
+        client
+            .set_thread_name(thread_id, name)
+            .await
+            .map_err(|error| format!("Caffold could not rename the current task: {error}"))?;
+        Ok(format!("Renamed the current Caffold task to `{name}`."))
+    }
+
+    async fn manages_thread(&self, thread_id: &str) -> Result<bool, String> {
+        let store = self.thread_store.clone();
+        let thread_id = thread_id.to_string();
+        tokio::task::spawn_blocking(move || store.get(&thread_id))
+            .await
+            .map_err(|error| format!("Caffold could not verify the current task: {error}"))?
+            .map(|thread| thread.is_some())
+            .map_err(|error| format!("Caffold could not verify the current task: {error}"))
     }
 
     async fn expire_stale_approvals_for_notification(&self, notification: &CodexNotification) {
@@ -592,8 +691,12 @@ impl CodexRuntime {
     }
 
     #[cfg(test)]
-    pub(in crate::app) async fn handle_test_server_request(&self, request: CodexServerRequest) {
-        self.handle_server_request(request).await;
+    pub(in crate::app) async fn handle_test_server_request(
+        &self,
+        client: &CodexThreadClient,
+        request: CodexServerRequest,
+    ) {
+        self.handle_server_request(client, request).await;
     }
 
     #[cfg(test)]
@@ -641,6 +744,7 @@ fn notification_thread_id(notification: &CodexNotification) -> Option<&str> {
     match notification {
         CodexNotification::ThreadStarted { thread } => Some(&thread.id),
         CodexNotification::ThreadStatusChanged { thread_id, .. }
+        | CodexNotification::ThreadNameUpdated { thread_id, .. }
         | CodexNotification::TurnStarted { thread_id, .. }
         | CodexNotification::TurnCompleted { thread_id, .. }
         | CodexNotification::ItemStarted { thread_id, .. }

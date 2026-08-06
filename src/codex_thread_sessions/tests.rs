@@ -177,6 +177,73 @@ async fn turn_completed_notification_does_not_change_canonical_thread_status() {
 }
 
 #[tokio::test]
+async fn thread_name_notification_updates_the_canonical_session_metadata() {
+    let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+        "thread/resume",
+        resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
+    )]);
+    let sessions = CodexThreadSessions::default();
+    let initial = sessions
+        .ensure_subscribed(&client, 1, "thread-1")
+        .await
+        .expect("subscribe");
+
+    let revision = sessions
+        .apply_notification(
+            1,
+            &CodexNotification::ThreadNameUpdated {
+                thread_id: "thread-1".to_string(),
+                thread_name: Some("Whisper voice input".to_string()),
+            },
+        )
+        .await;
+
+    assert_eq!(revision, Some(initial.revision + 1));
+    let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
+    assert_eq!(
+        snapshot.thread.expect("canonical thread").name.as_deref(),
+        Some("Whisper voice input")
+    );
+}
+
+#[tokio::test]
+async fn stale_canonical_refresh_does_not_overwrite_a_newer_thread_name() {
+    let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+        "thread/resume",
+        resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
+    )]);
+    let sessions = CodexThreadSessions::default();
+    sessions
+        .ensure_subscribed(&client, 1, "thread-1")
+        .await
+        .expect("subscribe");
+    let syncing = sessions.begin_external_sync("thread-1").await;
+
+    sessions
+        .apply_notification(
+            1,
+            &CodexNotification::ThreadNameUpdated {
+                thread_id: "thread-1".to_string(),
+                thread_name: Some("Newer name".to_string()),
+            },
+        )
+        .await;
+    let snapshot = sessions
+        .apply_external_read_sync(
+            "thread-1",
+            syncing.revision,
+            thread(ThreadStatus::Idle, Vec::new()),
+            page(Vec::new(), None, None),
+        )
+        .await;
+
+    assert_eq!(
+        snapshot.thread.expect("canonical thread").name.as_deref(),
+        Some("Newer name")
+    );
+}
+
+#[tokio::test]
 async fn initial_subscription_bootstraps_only_from_resume() {
     let initial_turns = (0..INITIAL_TURNS_PAGE_SIZE)
         .map(|index| {

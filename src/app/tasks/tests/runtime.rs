@@ -1,14 +1,39 @@
 use super::super::{events::*, runtime::*};
 use super::*;
 use crate::codex_app_server::CodexThreadError;
+use crate::thread_store::ManagedThread;
 
 fn runtime_with_events(events: TaskEvents) -> CodexRuntime {
     let (shutdown, _) = broadcast::channel(1);
-    CodexRuntime::new(CodexThreadSessions::default(), events, shutdown)
+    CodexRuntime::new(
+        CodexThreadSessions::default(),
+        events,
+        ThreadStore::memory().unwrap(),
+        shutdown,
+    )
 }
 
 fn test_runtime() -> CodexRuntime {
     runtime_with_events(TaskEvents::default())
+}
+
+fn dynamic_tool_request(
+    thread_id: &str,
+    tool: &str,
+    arguments: JsonValue,
+) -> codex_app_server::CodexServerRequest {
+    codex_app_server::decode_server_request(
+        json!(31),
+        "item/tool/call",
+        json!({
+            "threadId": thread_id,
+            "turnId": "turn_1",
+            "callId": "call_1",
+            "tool": tool,
+            "arguments": arguments
+        }),
+    )
+    .unwrap()
 }
 
 #[test]
@@ -239,6 +264,7 @@ async fn server_requests_store_live_pending_approvals_without_local_task_ledger(
 
     runtime
         .handle_test_server_request(
+            &CodexThreadClient::mock(Vec::new()),
             codex_app_server::decode_server_request(
                 json!(11),
                 "item/commandExecution/requestApproval",
@@ -280,6 +306,177 @@ async fn server_requests_store_live_pending_approvals_without_local_task_ledger(
 }
 
 #[tokio::test]
+async fn rename_dynamic_tool_updates_only_the_current_managed_thread() {
+    let store = ThreadStore::memory().unwrap();
+    store
+        .claim(
+            ManagedThread::new("thread_1", None, None, None),
+            1_750_000_000_000,
+        )
+        .unwrap();
+    let (shutdown, _) = broadcast::channel(1);
+    let runtime = CodexRuntime::new(
+        CodexThreadSessions::default(),
+        TaskEvents::default(),
+        store,
+        shutdown,
+    );
+    let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+        "thread/name/set",
+        json!({}),
+    )]);
+
+    runtime
+        .handle_test_server_request(
+            &client,
+            dynamic_tool_request(
+                "thread_1",
+                codex_app_server::RENAME_CURRENT_THREAD_TOOL_NAME,
+                json!({ "name": "  Whisper voice input  " }),
+            ),
+        )
+        .await;
+
+    assert_eq!(
+        client.mock_requests().await,
+        [(
+            "thread/name/set".to_string(),
+            json!({
+                "threadId": "thread_1",
+                "name": "Whisper voice input"
+            })
+        )]
+    );
+    assert_eq!(
+        client.mock_server_responses().await,
+        [(
+            json!(31),
+            json!({
+                "contentItems": [{
+                    "type": "inputText",
+                    "text": "Renamed the current Caffold task to `Whisper voice input`."
+                }],
+                "success": true
+            })
+        )]
+    );
+}
+
+#[tokio::test]
+async fn rename_dynamic_tool_rejects_threads_outside_caffold_management() {
+    let client = CodexThreadClient::mock(Vec::new());
+    let runtime = test_runtime();
+
+    runtime
+        .handle_test_server_request(
+            &client,
+            dynamic_tool_request(
+                "external_thread",
+                codex_app_server::RENAME_CURRENT_THREAD_TOOL_NAME,
+                json!({ "name": "Must not change" }),
+            ),
+        )
+        .await;
+
+    assert!(client.mock_requests().await.is_empty());
+    assert_eq!(
+        client.mock_server_responses().await[0].1,
+        json!({
+            "contentItems": [{
+                "type": "inputText",
+                "text": "Caffold can only rename tasks that it manages."
+            }],
+            "success": false
+        })
+    );
+}
+
+#[tokio::test]
+async fn rename_dynamic_tool_rejects_invalid_names_and_unknown_tools() {
+    let store = ThreadStore::memory().unwrap();
+    store
+        .claim(ManagedThread::new("thread_1", None, None, None), 1)
+        .unwrap();
+    let (shutdown, _) = broadcast::channel(1);
+    let runtime = CodexRuntime::new(
+        CodexThreadSessions::default(),
+        TaskEvents::default(),
+        store,
+        shutdown,
+    );
+    let client = CodexThreadClient::mock(Vec::new());
+
+    runtime
+        .handle_test_server_request(
+            &client,
+            dynamic_tool_request(
+                "thread_1",
+                codex_app_server::RENAME_CURRENT_THREAD_TOOL_NAME,
+                json!({ "name": "   " }),
+            ),
+        )
+        .await;
+    runtime
+        .handle_test_server_request(
+            &client,
+            dynamic_tool_request("thread_1", "future_tool", json!({})),
+        )
+        .await;
+
+    assert!(client.mock_requests().await.is_empty());
+    let responses = client.mock_server_responses().await;
+    assert_eq!(responses.len(), 2);
+    assert_eq!(responses[0].1["success"], false);
+    assert_eq!(
+        responses[0].1["contentItems"][0]["text"],
+        "The new task name must be a non-empty string."
+    );
+    assert_eq!(responses[1].1["success"], false);
+    assert_eq!(
+        responses[1].1["contentItems"][0]["text"],
+        "Caffold does not support the dynamic tool `future_tool`."
+    );
+}
+
+#[tokio::test]
+async fn rename_dynamic_tool_returns_a_failed_result_when_app_server_rejects_the_name() {
+    let store = ThreadStore::memory().unwrap();
+    store
+        .claim(ManagedThread::new("thread_1", None, None, None), 1)
+        .unwrap();
+    let (shutdown, _) = broadcast::channel(1);
+    let runtime = CodexRuntime::new(
+        CodexThreadSessions::default(),
+        TaskEvents::default(),
+        store,
+        shutdown,
+    );
+    let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::error(
+        "thread/name/set",
+        CodexThreadError::InvalidParams("name rejected".to_string()),
+    )]);
+
+    runtime
+        .handle_test_server_request(
+            &client,
+            dynamic_tool_request(
+                "thread_1",
+                codex_app_server::RENAME_CURRENT_THREAD_TOOL_NAME,
+                json!({ "name": "Rejected name" }),
+            ),
+        )
+        .await;
+
+    assert_eq!(client.mock_requests().await.len(), 1);
+    let response = &client.mock_server_responses().await[0].1;
+    assert_eq!(response["success"], false);
+    assert_eq!(
+        response["contentItems"][0]["text"],
+        "Caffold could not rename the current task: Codex app-server rejected invalid parameters: name rejected"
+    );
+}
+
+#[tokio::test]
 async fn completed_turn_expires_live_pending_approval() {
     let events = TaskEvents::default();
     let mut receiver = events.subscribe();
@@ -287,6 +484,7 @@ async fn completed_turn_expires_live_pending_approval() {
 
     runtime
         .handle_test_server_request(
+            &CodexThreadClient::mock(Vec::new()),
             codex_app_server::decode_server_request(
                 json!(11),
                 "item/commandExecution/requestApproval",

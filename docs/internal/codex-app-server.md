@@ -118,6 +118,14 @@ it does not persist a second task ledger.
 - Additional browser viewers share the same subscribed session and do not
   repeat the resume bootstrap.
 - A new thread returned by `thread/start` is registered as already subscribed.
+- Caffold injects the experimental `rename_current_thread` dynamic tool only
+  when it creates a new thread. App-server persists that tool with the thread
+  and restores it on resume; existing threads are not retrofitted. When
+  app-server sends the corresponding `item/tool/call`, Caffold verifies the
+  current thread against managed membership, calls `thread/name/set`, and
+  returns the tool result. The resulting `thread/name/updated` notification
+  updates the canonical session and browser title; Redb does not store the
+  title.
 - A completed thread starts a follow-up with `turn/start`. An active thread is
   steered only when canonical thread status and an active turn ID agree.
 - If app-server rejects that pointer because the turn ended before

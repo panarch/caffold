@@ -1,9 +1,7 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use serde_json::Value;
-#[cfg(test)]
-use serde_json::json;
+use serde_json::{Value, json};
 
 #[allow(dead_code)]
 pub const MINIMUM_SUPPORTED_CODEX_CLI_VERSION: &str = "0.146.0";
@@ -18,6 +16,7 @@ pub(crate) const THREAD_READ: &str = "thread/read";
 #[cfg(test)]
 pub(crate) const THREAD_LOADED_LIST: &str = "thread/loaded/list";
 pub(crate) const THREAD_START: &str = "thread/start";
+pub(crate) const THREAD_NAME_SET: &str = "thread/name/set";
 pub(crate) const THREAD_RESUME: &str = "thread/resume";
 pub(crate) const THREAD_ARCHIVE: &str = "thread/archive";
 pub(crate) const THREAD_UNARCHIVE: &str = "thread/unarchive";
@@ -30,6 +29,7 @@ pub(crate) const TURN_INTERRUPT: &str = "turn/interrupt";
 pub(crate) const MODEL_LIST: &str = "model/list";
 pub(crate) const PERMISSION_PROFILE_LIST: &str = "permissionProfile/list";
 pub(crate) const CONFIG_READ: &str = "config/read";
+pub(crate) const RENAME_CURRENT_THREAD_TOOL_NAME: &str = "rename_current_thread";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -475,12 +475,36 @@ enum ApprovalsReviewer {
 pub struct ThreadStartParams<'a> {
     pub cwd: &'a str,
     pub runtime_workspace_roots: [&'a str; 1],
+    pub dynamic_tools: [DynamicToolSpec; 1],
     #[serde(skip_serializing_if = "Option::is_none")]
     approval_policy: Option<ApprovalPolicy>,
     #[serde(skip_serializing_if = "Option::is_none")]
     approvals_reviewer: Option<ApprovalsReviewer>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub permissions: Option<&'static str>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DynamicToolSpec {
+    #[serde(rename = "type")]
+    pub kind: DynamicToolType,
+    pub name: &'static str,
+    pub description: &'static str,
+    pub input_schema: Value,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+pub enum DynamicToolType {
+    #[serde(rename = "function")]
+    Function,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadSetNameParams<'a> {
+    pub thread_id: &'a str,
+    pub name: &'a str,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -572,6 +596,10 @@ pub enum CodexNotification {
         thread_id: String,
         status: ThreadStatus,
     },
+    ThreadNameUpdated {
+        thread_id: String,
+        thread_name: Option<String>,
+    },
     TurnStarted {
         thread_id: String,
         turn: CodexTurn,
@@ -619,6 +647,15 @@ pub enum CodexServerRequest {
         thread_id: String,
         params: Value,
     },
+    DynamicToolCall {
+        id: Value,
+        thread_id: String,
+        turn_id: String,
+        call_id: String,
+        tool: String,
+        namespace: Option<String>,
+        arguments: Value,
+    },
     Unknown {
         id: Value,
         method: String,
@@ -663,6 +700,23 @@ pub(crate) fn decode_notification(
             }
             let Params { thread_id, status } = decode_params(method, params)?;
             Ok(CodexNotification::ThreadStatusChanged { thread_id, status })
+        }
+        "thread/name/updated" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Params {
+                thread_id: String,
+                #[serde(default)]
+                thread_name: Option<String>,
+            }
+            let Params {
+                thread_id,
+                thread_name,
+            } = decode_params(method, params)?;
+            Ok(CodexNotification::ThreadNameUpdated {
+                thread_id,
+                thread_name,
+            })
         }
         "turn/started" | "turn/completed" => {
             #[derive(Deserialize)]
@@ -752,6 +806,36 @@ pub(crate) fn decode_server_request(
     method: &str,
     params: Value,
 ) -> Result<CodexServerRequest, String> {
+    if method == "item/tool/call" {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Params {
+            arguments: Value,
+            call_id: String,
+            thread_id: String,
+            tool: String,
+            turn_id: String,
+            #[serde(default)]
+            namespace: Option<String>,
+        }
+        let Params {
+            arguments,
+            call_id,
+            thread_id,
+            tool,
+            turn_id,
+            namespace,
+        } = decode_params(method, params)?;
+        return Ok(CodexServerRequest::DynamicToolCall {
+            id,
+            thread_id,
+            turn_id,
+            call_id,
+            tool,
+            namespace,
+            arguments,
+        });
+    }
     let thread_id = params
         .get("threadId")
         .and_then(Value::as_str)
@@ -876,10 +960,38 @@ pub(crate) fn thread_start_params(
     ThreadStartParams {
         cwd,
         runtime_workspace_roots: [cwd],
+        dynamic_tools: [rename_current_thread_tool()],
         approval_policy: permission_mode.map(CodexPermissionMode::approval_policy),
         approvals_reviewer: permission_mode.map(CodexPermissionMode::approvals_reviewer),
         permissions: permission_mode.map(CodexPermissionMode::profile_id),
     }
+}
+
+fn rename_current_thread_tool() -> DynamicToolSpec {
+    DynamicToolSpec {
+        kind: DynamicToolType::Function,
+        name: RENAME_CURRENT_THREAD_TOOL_NAME,
+        description: "Rename the current Caffold task when the user explicitly asks to rename this thread or task. Never use this tool to rename a different thread.",
+        input_schema: json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "The new user-facing name for the current Caffold task.",
+                    "minLength": 1
+                }
+            },
+            "required": ["name"]
+        }),
+    }
+}
+
+pub(crate) fn thread_set_name_params<'a>(
+    thread_id: &'a str,
+    name: &'a str,
+) -> ThreadSetNameParams<'a> {
+    ThreadSetNameParams { thread_id, name }
 }
 
 pub(crate) fn turn_start_params<'a>(
@@ -1002,6 +1114,19 @@ mod tests {
             }
         ));
 
+        let name = decode_notification(
+            "thread/name/updated",
+            json!({ "threadId": "thread_1", "threadName": "Readable name" }),
+        )
+        .expect("thread name notification");
+        assert_eq!(
+            name,
+            CodexNotification::ThreadNameUpdated {
+                thread_id: "thread_1".to_string(),
+                thread_name: Some("Readable name".to_string()),
+            }
+        );
+
         let unknown = decode_notification("future/event", json!({ "value": 1 }))
             .expect("unknown notifications are forward compatible");
         assert!(matches!(unknown, CodexNotification::Unknown { .. }));
@@ -1012,6 +1137,35 @@ mod tests {
         let error = decode_notification("turn/started", json!({ "threadId": "thread_1" }))
             .expect_err("turn is required");
         assert!(error.contains("invalid turn/started params"));
+    }
+
+    #[test]
+    fn decodes_dynamic_tool_calls_with_their_current_thread() {
+        let request = decode_server_request(
+            json!(31),
+            "item/tool/call",
+            json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "callId": "call_1",
+                "tool": RENAME_CURRENT_THREAD_TOOL_NAME,
+                "arguments": { "name": "Readable name" }
+            }),
+        )
+        .expect("dynamic tool request");
+
+        assert_eq!(
+            request,
+            CodexServerRequest::DynamicToolCall {
+                id: json!(31),
+                thread_id: "thread_1".to_string(),
+                turn_id: "turn_1".to_string(),
+                call_id: "call_1".to_string(),
+                tool: RENAME_CURRENT_THREAD_TOOL_NAME.to_string(),
+                namespace: None,
+                arguments: json!({ "name": "Readable name" }),
+            }
+        );
     }
 
     #[test]
@@ -1061,6 +1215,15 @@ mod tests {
                 }),
             ),
             (
+                THREAD_NAME_SET,
+                serde_json::to_value(thread_set_name_params("thread_1", "Readable name"))
+                    .expect("thread name params"),
+                json!({
+                    "threadId": "thread_1",
+                    "name": "Readable name"
+                }),
+            ),
+            (
                 THREAD_START,
                 serde_json::to_value(thread_start_params(
                     "/workspace/project",
@@ -1070,6 +1233,23 @@ mod tests {
                 json!({
                     "cwd": "/workspace/project",
                     "runtimeWorkspaceRoots": ["/workspace/project"],
+                    "dynamicTools": [{
+                        "type": "function",
+                        "name": "rename_current_thread",
+                        "description": "Rename the current Caffold task when the user explicitly asks to rename this thread or task. Never use this tool to rename a different thread.",
+                        "inputSchema": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "name": {
+                                    "type": "string",
+                                    "description": "The new user-facing name for the current Caffold task.",
+                                    "minLength": 1
+                                }
+                            },
+                            "required": ["name"]
+                        }
+                    }],
                     "approvalPolicy": "on-request",
                     "approvalsReviewer": "auto_review",
                     "permissions": ":workspace"
@@ -1305,7 +1485,24 @@ mod tests {
                 .expect("thread start params"),
             json!({
                 "cwd": "/workspace/project",
-                "runtimeWorkspaceRoots": ["/workspace/project"]
+                "runtimeWorkspaceRoots": ["/workspace/project"],
+                "dynamicTools": [{
+                    "type": "function",
+                    "name": "rename_current_thread",
+                    "description": "Rename the current Caffold task when the user explicitly asks to rename this thread or task. Never use this tool to rename a different thread.",
+                    "inputSchema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "The new user-facing name for the current Caffold task.",
+                                "minLength": 1
+                            }
+                        },
+                        "required": ["name"]
+                    }
+                }]
             })
         );
         assert_eq!(

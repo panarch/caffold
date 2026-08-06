@@ -97,6 +97,7 @@ struct ThreadSessionState {
     generation: u64,
     revision: u64,
     status_revision: u64,
+    name_revision: u64,
     pending_thread_status: Option<ThreadStatus>,
     last_sync_ms: Option<u64>,
     last_error: Option<String>,
@@ -121,6 +122,7 @@ impl Default for ThreadSessionState {
             generation: 0,
             revision: 0,
             status_revision: 0,
+            name_revision: 0,
             pending_thread_status: None,
             last_sync_ms: None,
             last_error: None,
@@ -171,6 +173,7 @@ impl CodexThreadSessions {
         state.thread = Some(thread);
         state.pending_thread_status = None;
         state.revision = state.revision.saturating_add(1);
+        state.name_revision = state.revision;
         if status_changed {
             state.status_revision = state.revision;
         }
@@ -196,13 +199,16 @@ impl CodexThreadSessions {
     ) -> ThreadSessionSnapshot {
         let entry = self.entry(thread_id).await;
         let mut state = entry.state.lock().await;
-        let status_applied =
+        let applied =
             merge_external_snapshot(&mut state, thread, Some(latest_turns), base_revision);
         state.external_syncing = false;
         state.external_sync_started_ms = None;
         state.revision = state.revision.saturating_add(1);
-        if status_applied {
+        if applied.status {
             state.status_revision = state.revision;
+        }
+        if applied.name {
+            state.name_revision = state.revision;
         }
         state.last_sync_ms = Some(now_unix_ms());
         state.last_error = None;
@@ -392,6 +398,7 @@ impl CodexThreadSessions {
         state.runtime_lease = true;
         state.revision = state.revision.saturating_add(1);
         state.status_revision = state.revision;
+        state.name_revision = state.revision;
         state.last_sync_ms = Some(now_unix_ms());
         state.last_error = None;
     }
@@ -609,6 +616,9 @@ impl CodexThreadSessions {
                 state.revision = state.revision.saturating_add(1);
                 if notification_changes_status(notification) {
                     state.status_revision = state.revision;
+                }
+                if notification_changes_name(notification) {
+                    state.name_revision = state.revision;
                 }
             }
             (
@@ -889,7 +899,7 @@ fn merge_external_resume_response(
     state: &mut ThreadSessionState,
     response: crate::codex_app_server::ThreadResumeResponse,
     base_revision: u64,
-) -> bool {
+) -> MetadataMergeOutcome {
     apply_thread_settings(state, &response.extra);
     merge_external_snapshot(
         state,
@@ -904,9 +914,11 @@ fn merge_external_snapshot(
     mut incoming_thread: CodexThread,
     latest_turns: Option<TurnsPage>,
     base_revision: u64,
-) -> bool {
+) -> MetadataMergeOutcome {
     let newer_status = newer_thread_status(state, base_revision);
     let preserve_newer_status = newer_status.is_some();
+    let newer_name = newer_thread_name(state, base_revision);
+    let preserve_newer_name = newer_name.is_some();
     let preserve_newer_turns = state.revision > base_revision;
     let newer_active_turn_id = preserve_newer_turns
         .then(|| state.active_turn_id.clone())
@@ -919,6 +931,9 @@ fn merge_external_snapshot(
     if let Some(status) = newer_status {
         incoming_thread.status = status;
     }
+    if let Some(name) = newer_name {
+        incoming_thread.name = name;
+    }
     if let Some(page) = latest_turns {
         merge_external_turns_page(&mut state.turns_page, page, preserve_newer_turns);
     }
@@ -930,7 +945,16 @@ fn merge_external_snapshot(
     }
     state.thread = Some(incoming_thread);
     state.pending_thread_status = None;
-    !preserve_newer_status
+    MetadataMergeOutcome {
+        status: !preserve_newer_status,
+        name: !preserve_newer_name,
+    }
+}
+
+#[derive(Clone, Copy)]
+struct MetadataMergeOutcome {
+    status: bool,
+    name: bool,
 }
 
 fn merge_external_turns(
@@ -1011,6 +1035,7 @@ fn apply_resume_response(
     }
     state.revision = state.revision.saturating_add(1);
     state.status_revision = state.revision;
+    state.name_revision = state.revision;
     state.last_sync_ms = Some(now_unix_ms());
     state.last_error = None;
 }
@@ -1025,6 +1050,8 @@ fn apply_stale_refresh_response(
     apply_thread_settings(state, &response.extra);
     let newer_status = newer_thread_status(state, base_revision);
     let status_applied = newer_status.is_none();
+    let newer_name = newer_thread_name(state, base_revision);
+    let name_applied = newer_name.is_none();
     let preserve_newer_turns = state.revision > base_revision;
     let newer_active_turn_id = preserve_newer_turns
         .then(|| state.active_turn_id.clone())
@@ -1037,6 +1064,9 @@ fn apply_stale_refresh_response(
     }
     if let Some(status) = newer_status {
         thread.status = status;
+    }
+    if let Some(name) = newer_name {
+        thread.name = name;
     }
     if let Some(incoming) = response.initial_turns_page {
         merge_stale_turns_page(&mut state.turns_page, incoming);
@@ -1058,6 +1088,9 @@ fn apply_stale_refresh_response(
     if status_applied {
         state.status_revision = state.revision;
     }
+    if name_applied {
+        state.name_revision = state.revision;
+    }
     state.last_sync_ms = Some(now_unix_ms());
     state.last_error = None;
 }
@@ -1069,14 +1102,17 @@ fn apply_prompt_resume_response(
     response: crate::codex_app_server::ThreadResumeResponse,
     base_revision: u64,
 ) {
-    let status_applied = merge_external_resume_response(state, response, base_revision);
+    let applied = merge_external_resume_response(state, response, base_revision);
     state.lifecycle = ThreadSessionLifecycle::Subscribed;
     state.client = Some(client.clone());
     state.generation = generation;
     state.runtime_lease = true;
     state.revision = state.revision.saturating_add(1);
-    if status_applied {
+    if applied.status {
         state.status_revision = state.revision;
+    }
+    if applied.name {
+        state.name_revision = state.revision;
     }
     state.last_sync_ms = Some(now_unix_ms());
     state.last_error = None;
@@ -1120,6 +1156,12 @@ fn newer_thread_status(state: &ThreadSessionState, base_revision: u64) -> Option
                 .map(|thread| thread.status.clone())
                 .or_else(|| state.pending_thread_status.clone())
         })
+        .flatten()
+}
+
+fn newer_thread_name(state: &ThreadSessionState, base_revision: u64) -> Option<Option<String>> {
+    (state.name_revision > base_revision)
+        .then(|| state.thread.as_ref().map(|thread| thread.name.clone()))
         .flatten()
 }
 
@@ -1202,6 +1244,7 @@ fn notification_thread_id(notification: &CodexNotification) -> Option<&str> {
     match notification {
         CodexNotification::ThreadStarted { thread } => Some(&thread.id),
         CodexNotification::ThreadStatusChanged { thread_id, .. }
+        | CodexNotification::ThreadNameUpdated { thread_id, .. }
         | CodexNotification::TurnStarted { thread_id, .. }
         | CodexNotification::TurnCompleted { thread_id, .. }
         | CodexNotification::ItemStarted { thread_id, .. }
@@ -1216,6 +1259,13 @@ fn notification_changes_status(notification: &CodexNotification) -> bool {
     matches!(
         notification,
         CodexNotification::ThreadStarted { .. } | CodexNotification::ThreadStatusChanged { .. }
+    )
+}
+
+fn notification_changes_name(notification: &CodexNotification) -> bool {
+    matches!(
+        notification,
+        CodexNotification::ThreadStarted { .. } | CodexNotification::ThreadNameUpdated { .. }
     )
 }
 
@@ -1241,6 +1291,16 @@ fn apply_notification_state(
                 state.active_turn_id = None;
                 state.runtime_lease = false;
             }
+            true
+        }
+        CodexNotification::ThreadNameUpdated { thread_name, .. } => {
+            let Some(thread) = state.thread.as_mut() else {
+                return false;
+            };
+            if thread.name == *thread_name {
+                return false;
+            }
+            thread.name = thread_name.clone();
             true
         }
         CodexNotification::TurnStarted { turn, .. } => {

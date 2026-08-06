@@ -600,7 +600,12 @@ async fn app_server_recovery_does_not_block_on_leased_thread_restoration() {
         generation: 2,
     };
     let (shutdown, _) = broadcast::channel(1);
-    let runtime = CodexRuntime::new(sessions.clone(), TaskEvents::default(), shutdown);
+    let runtime = CodexRuntime::new(
+        sessions.clone(),
+        TaskEvents::default(),
+        ThreadStore::memory().unwrap(),
+        shutdown,
+    );
 
     let started = tokio::time::Instant::now();
     runtime.restore_test_sessions(connection);

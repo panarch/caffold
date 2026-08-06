@@ -159,6 +159,7 @@ test(
       const clientRequests = readFileSync(join(outputDirectory, "ClientRequest.ts"), "utf8");
       for (const method of [
         "thread/start",
+        "thread/name/set",
         "thread/read",
         "thread/resume",
         "thread/unsubscribe",
@@ -249,6 +250,33 @@ test(
       assert.match(threadStartParams, /approvalPolicy/);
       assert.match(threadStartParams, /approvalsReviewer/);
       assert.match(threadStartParams, /permissions/);
+      assert.match(threadStartParams, /dynamicTools/);
+
+      const serverRequests = readFileSync(join(outputDirectory, "ServerRequest.ts"), "utf8");
+      assert.ok(
+        serverRequests.includes('"method": "item/tool/call"'),
+        "missing dynamic tool server request",
+      );
+      const dynamicToolParams = readFileSync(
+        join(outputDirectory, "v2", "DynamicToolCallParams.ts"),
+        "utf8",
+      );
+      assert.match(dynamicToolParams, /threadId: string/);
+      assert.match(dynamicToolParams, /tool: string/);
+      assert.match(dynamicToolParams, /arguments/);
+      const dynamicToolResponse = readFileSync(
+        join(outputDirectory, "v2", "DynamicToolCallResponse.ts"),
+        "utf8",
+      );
+      assert.match(dynamicToolResponse, /contentItems/);
+      assert.match(dynamicToolResponse, /success: boolean/);
+
+      const threadNameUpdated = readFileSync(
+        join(outputDirectory, "v2", "ThreadNameUpdatedNotification.ts"),
+        "utf8",
+      );
+      assert.match(threadNameUpdated, /threadId: string/);
+      assert.match(threadNameUpdated, /threadName/);
 
       const turnStartParams = readFileSync(
         join(outputDirectory, "v2", "TurnStartParams.ts"),

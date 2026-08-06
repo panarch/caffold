@@ -16,17 +16,18 @@ use std::{
 
 mod protocol;
 
+pub(crate) use protocol::RENAME_CURRENT_THREAD_TOOL_NAME;
 use protocol::{
     ACCOUNT_RATE_LIMITS_READ, ACCOUNT_READ, ACCOUNT_USAGE_READ, AccountReadResponse, CONFIG_READ,
     ConfigReadResponse, EmptyResponse, INITIALIZE, INITIALIZED, JsonRpcError, MODEL_LIST,
     PERMISSION_PROFILE_LIST, PermissionProfileListResponse, THREAD_ARCHIVE, THREAD_LIST,
-    THREAD_READ, THREAD_RESUME, THREAD_START, THREAD_TURNS_LIST, THREAD_UNARCHIVE,
+    THREAD_NAME_SET, THREAD_READ, THREAD_RESUME, THREAD_START, THREAD_TURNS_LIST, THREAD_UNARCHIVE,
     THREAD_UNSUBSCRIBE, TURN_INTERRUPT, TURN_START, TURN_STEER, ThreadReadResponse,
     ThreadStartResponse, TurnStartResponse, TurnSteerResponse, account_read_params,
     config_read_params, decode_response, model_list_params, permission_profile_list_params,
-    thread_archive_params, thread_read_params, thread_resume_params, thread_start_params,
-    thread_turns_list_params, thread_unarchive_params, thread_unsubscribe_params,
-    turn_interrupt_params, turn_start_params, turn_steer_params,
+    thread_archive_params, thread_read_params, thread_resume_params, thread_set_name_params,
+    thread_start_params, thread_turns_list_params, thread_unarchive_params,
+    thread_unsubscribe_params, turn_interrupt_params, turn_start_params, turn_steer_params,
 };
 pub use protocol::{
     CodexAccount, CodexAppServerInfo, CodexNotification, CodexPermissionMode, CodexServerRequest,
@@ -163,6 +164,7 @@ pub struct CodexThreadClient {
 struct MockCodexThreadClient {
     responses: AsyncMutex<VecDeque<MockCodexResponse>>,
     requests: AsyncMutex<Vec<(String, Value)>>,
+    server_responses: AsyncMutex<Vec<(Value, Value)>>,
     events: broadcast::Sender<CodexRuntimeEvent>,
 }
 
@@ -387,6 +389,7 @@ impl CodexThreadClient {
             mock: Some(Arc::new(MockCodexThreadClient {
                 responses: AsyncMutex::new(responses.into()),
                 requests: AsyncMutex::new(Vec::new()),
+                server_responses: AsyncMutex::new(Vec::new()),
                 events,
             })),
         }
@@ -398,6 +401,17 @@ impl CodexThreadClient {
             .as_ref()
             .expect("mock Codex client is required")
             .requests
+            .lock()
+            .await
+            .clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn mock_server_responses(&self) -> Vec<(Value, Value)> {
+        self.mock
+            .as_ref()
+            .expect("mock Codex client is required")
+            .server_responses
             .lock()
             .await
             .clone()
@@ -439,6 +453,17 @@ impl CodexThreadClient {
             .request_typed(THREAD_READ, thread_read_params(thread_id))
             .await?;
         Ok(response.thread)
+    }
+
+    pub async fn set_thread_name(
+        &self,
+        thread_id: &str,
+        name: &str,
+    ) -> Result<(), CodexThreadError> {
+        let _: EmptyResponse = self
+            .request_typed(THREAD_NAME_SET, thread_set_name_params(thread_id, name))
+            .await?;
+        Ok(())
     }
 
     #[cfg(test)]
@@ -605,6 +630,14 @@ impl CodexThreadClient {
         request_id: Value,
         result: Value,
     ) -> Result<(), CodexThreadError> {
+        #[cfg(test)]
+        if let Some(mock) = &self.mock {
+            mock.server_responses
+                .lock()
+                .await
+                .push((request_id, result));
+            return Ok(());
+        }
         self.write_message(server_response_message(request_id, result))
             .await
     }

@@ -45,6 +45,7 @@ impl TaskState {
         let codex_runtime = CodexRuntime::new(
             codex_sessions.clone(),
             task_events.clone(),
+            thread_store.clone(),
             shutdown.clone(),
         );
         let codex_runtime_signals = codex_runtime.subscribe();

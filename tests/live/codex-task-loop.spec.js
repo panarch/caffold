@@ -129,7 +129,7 @@ async function threadViewerLeases(page, threadId) {
 
 async function archiveLiveThread(request, threadId) {
   const response = await request.post(`/api/tasks/${threadId}/archive`);
-  if (response.status() === 204) {
+  if (response.status() === 200) {
     liveThreadIds.delete(threadId);
     return;
   }
@@ -370,6 +370,70 @@ test("creates and resumes a real Codex task through Caffold with Spark", async (
   ).toHaveCount(0, { timeout: 5_000 });
   await page.goto("/tasks");
   await expect(tasksPage.locator(`.task-row[data-thread-id="${threadId}"]`)).toHaveCount(0);
+});
+
+test("renames a newly created Caffold task through the dynamic tool", async ({
+  page,
+}) => {
+  const cwd = liveCwd();
+  const marker = `${Date.now()}`;
+  const requestedName = `Caffold dynamic rename ${marker}`;
+  const reply = `caffold-live-renamed-${marker}`;
+
+  await page.goto(`/tasks/new?cwd=${encodeURIComponent(cwd)}`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
+  await expect(newTaskForm).toBeVisible();
+  await chooseModel(newTaskForm, SPARK_MODEL);
+
+  const newTaskPrompt = newTaskForm.getByRole("textbox", { name: "New task prompt" });
+  await newTaskPrompt.fill(
+    `Rename the current Caffold task to exactly "${requestedName}" using the rename_current_thread tool. You must call the tool; do not merely say it was renamed. After the tool succeeds, reply with exactly ${reply}. Do not modify files or run commands.`,
+  );
+  await newTaskPrompt.press("Enter");
+  await expect(page).toHaveURL(/\/tasks\/[^?]+$/);
+  const threadId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
+  expect(threadId).toBeTruthy();
+  liveThreadIds.add(threadId);
+
+  await expect(
+    tasksPage
+      .locator('.task-message[data-message-role="assistant"][data-message-phase="final"]')
+      .filter({ hasText: reply }),
+  ).toBeVisible({ timeout: 60_000 });
+  await expect
+    .poll(async () => {
+      const response = await page.request.get(`/api/tasks/${threadId}`);
+      if (!response.ok()) {
+        return false;
+      }
+      const detail = await response.json();
+      return detail.events?.some(
+        (event) =>
+          event.type === "work_status" &&
+          event.payload?.itemType === "dynamicToolCall" &&
+          event.payload?.lifecycle === "completed",
+      );
+    })
+    .toBe(true);
+  await expect(tasksPage.locator(".task-detail-heading h2")).toHaveText(requestedName);
+
+  await page.goto("/tasks");
+  const renamedTask = tasksPage.locator(`.task-row[data-thread-id="${threadId}"]`);
+  await expect(renamedTask.locator(".task-row-title")).toHaveText(requestedName);
+
+  await archiveLiveThread(page.request, threadId);
+  await page.goto("/tasks");
+  await expect(
+    tasksPage
+      .locator('.task-list-section[data-task-section="managed"]')
+      .locator(`.task-row[data-thread-id="${threadId}"]`),
+  ).toHaveCount(0);
+  await expect(
+    tasksPage
+      .locator('.task-list-section[data-task-section="archived"]')
+      .locator(`.task-archived-row[data-thread-id="${threadId}"] .task-row-title`),
+  ).toHaveText(requestedName);
 });
 
 test("sends image attachments through Caffold with a multimodal model", async ({
