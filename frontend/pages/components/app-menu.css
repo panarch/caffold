@@ -37,9 +37,11 @@ caffold-app-menu {
 
   & .app-menu-popover {
     position: fixed;
-    inset: 2.625rem auto auto var(--interface-space-6);
+    inset: auto;
+    position-area: block-end center;
+    position-try-fallbacks: flip-block;
     width: min(14rem, calc(100vw - 1.5rem));
-    margin: 0;
+    margin: var(--interface-space-3) var(--interface-space-5);
     border: 1px solid var(--border);
     border-radius: 6px;
     background: var(--surface);
@@ -92,8 +94,11 @@ caffold-app-menu {
     }
 
     & .app-menu-popover {
-      inset-inline: var(--interface-space-5);
+      position-area: none;
+      inset: auto var(--interface-space-5);
+      top: calc(anchor(bottom) + var(--interface-space-3));
       width: auto;
+      margin: 0;
     }
   }
 }

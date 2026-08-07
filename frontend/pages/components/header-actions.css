@@ -1,5 +1,4 @@
 caffold-header-actions {
-  --header-popover-control-gap: var(--interface-space-4);
   display: grid;
   min-width: 0;
 
@@ -69,6 +68,18 @@ caffold-header-actions {
     opacity: 0.72;
   }
 
+  & .header-action-group-button[data-action-group="git"] {
+    anchor-name: --header-action-git;
+  }
+
+  & .header-action-group-button[data-action-group="github"] {
+    anchor-name: --header-action-github;
+  }
+
+  & .header-action-group-button[data-action-group="codex"] {
+    anchor-name: --header-action-codex;
+  }
+
   & .header-action-icon {
     position: relative;
     display: block;
@@ -112,15 +123,14 @@ caffold-header-actions {
   }
 
   & .header-actions-popover {
-    --header-popover-arrow-left: 7.6875rem;
-    position: absolute;
+    position: fixed;
     z-index: 20;
-    inset: calc(var(--interface-control-hit-size) + var(--header-popover-control-gap))
-      auto auto -7rem;
+    inset: auto;
+    position-area: block-end center;
     width: 16rem;
     max-height: min(24rem, calc(100dvh - 4rem));
     overflow: visible;
-    margin: 0;
+    margin: var(--interface-space-4) var(--interface-space-5);
     border: 1px solid var(--border);
     border-radius: 6px;
     background: var(--surface);
@@ -129,18 +139,16 @@ caffold-header-actions {
     box-shadow: 0 12px 28px rgb(24 32 27 / 18%);
   }
 
-  & .header-actions-popover::before {
-    position: absolute;
-    inset-block-start: -0.375rem;
-    inset-inline-start: var(--header-popover-arrow-left);
-    width: 0.625rem;
-    height: 0.625rem;
-    border: 1px solid var(--border);
-    border-inline-end: 0;
-    border-block-end: 0;
-    background: var(--surface-muted);
-    content: "";
-    transform: rotate(45deg);
+  & .header-actions-popover[data-action-group="git"] {
+    position-anchor: --header-action-git;
+  }
+
+  & .header-actions-popover[data-action-group="github"] {
+    position-anchor: --header-action-github;
+  }
+
+  & .header-actions-popover[data-action-group="codex"] {
+    position-anchor: --header-action-codex;
   }
 
   & .header-actions-popover-header {
@@ -236,12 +244,6 @@ caffold-header-actions {
   }
 }
 
-@media (pointer: coarse) {
-  caffold-header-actions {
-    --header-popover-control-gap: 0.5rem;
-  }
-}
-
 @media (max-width: 520px) {
   caffold-header-actions {
     & .header-actions {
@@ -258,16 +260,13 @@ caffold-header-actions {
   caffold-header-actions {
     & .header-actions-popover,
     & .header-actions-popover[data-action-group="github"] {
-      position: fixed;
-      inset: calc(var(--interface-control-hit-size) + 0.75rem)
-        var(--interface-space-4) auto var(--interface-space-4);
+      position-area: none;
+      inset: auto var(--interface-space-4);
+      top: calc(anchor(bottom) + var(--interface-space-4));
       width: auto;
       max-height: calc(100dvh - var(--interface-control-hit-size) - 1.25rem);
+      margin: 0;
       overflow: auto;
-    }
-
-    & .header-actions-popover::before {
-      display: none;
     }
   }
 }

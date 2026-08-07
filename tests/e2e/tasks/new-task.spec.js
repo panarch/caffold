@@ -228,7 +228,7 @@ test("creates a task with responsive composer controls and canonical approval st
     if (testInfo.project.name === "desktop") {
       expect(
         Math.abs(modelPopoverMetrics.popoverLeft - modelPopoverMetrics.buttonLeft),
-      ).toBeLessThanOrEqual(2);
+      ).toBeLessThanOrEqual(11);
     }
     expect(modelPopoverMetrics.popoverTop).toBeGreaterThanOrEqual(
       modelPopoverMetrics.buttonBottom + 6,

@@ -228,30 +228,15 @@ export async function expectHeaderGroupOpenVisualState(page, group) {
     const buttonRect = button.getBoundingClientRect();
     const popoverRect = popover.getBoundingClientRect();
     const buttonVisualStyle = window.getComputedStyle(button, "::before");
-    const arrowStyle = window.getComputedStyle(popover, "::before");
-    const arrowLeft = Number.parseFloat(arrowStyle.left);
-    const arrowTop = Number.parseFloat(arrowStyle.top);
-    const arrowWidth = Number.parseFloat(arrowStyle.width);
-    const arrowVisualTop =
-      popoverRect.top + arrowTop + arrowWidth / 2 - (Math.SQRT2 * arrowWidth) / 2;
 
     return {
-      arrowCenter: popoverRect.left + arrowLeft + arrowWidth / 2,
-      arrowContent: arrowStyle.content,
-      arrowDisplay: arrowStyle.display,
-      arrowHeight: arrowStyle.height,
-      arrowWidth: arrowStyle.width,
       buttonBackground: buttonVisualStyle.backgroundColor,
       buttonBottom: buttonRect.bottom,
       buttonBorderColor: buttonVisualStyle.borderTopColor,
       buttonCenter: buttonRect.left + buttonRect.width / 2,
-      buttonToArrowGap: arrowVisualTop - buttonRect.bottom,
-      isMobileLayout: window.matchMedia("(max-width: 520px)").matches,
       popoverLeft: popoverRect.left,
       popoverRight: popoverRect.right,
-      rootFontSize: Number.parseFloat(
-        getComputedStyle(document.documentElement).fontSize,
-      ),
+      popoverTop: popoverRect.top,
       viewportWidth: window.innerWidth,
     };
   }, group);
@@ -259,23 +244,10 @@ export async function expectHeaderGroupOpenVisualState(page, group) {
   expect(metrics.buttonBackground).toBe("rgb(237, 244, 239)");
   expect(metrics.buttonBorderColor).toBe("rgb(182, 199, 189)");
 
-  if (metrics.isMobileLayout) {
-    expect(metrics.arrowDisplay).toBe("none");
-    expect(metrics.popoverLeft).toBeGreaterThanOrEqual(7);
-    expect(metrics.popoverRight).toBeLessThanOrEqual(metrics.viewportWidth - 7);
-    return;
-  }
-
-  expect(metrics.arrowContent).toBe('""');
-  expect(Number.parseFloat(metrics.arrowWidth)).toBeCloseTo(
-    metrics.rootFontSize * 0.625,
-    2,
-  );
-  expect(Number.parseFloat(metrics.arrowHeight)).toBeCloseTo(
-    metrics.rootFontSize * 0.625,
-    2,
-  );
-  expect(Math.abs(metrics.arrowCenter - metrics.buttonCenter)).toBeLessThanOrEqual(4);
-  expect(metrics.buttonToArrowGap).toBeGreaterThanOrEqual(-1);
-  expect(metrics.buttonToArrowGap).toBeLessThanOrEqual(3);
+  expect(metrics.popoverLeft).toBeGreaterThanOrEqual(7);
+  expect(metrics.popoverRight).toBeLessThanOrEqual(metrics.viewportWidth - 7);
+  expect(metrics.buttonCenter).toBeGreaterThanOrEqual(metrics.popoverLeft - 1);
+  expect(metrics.buttonCenter).toBeLessThanOrEqual(metrics.popoverRight + 1);
+  expect(metrics.popoverTop).toBeGreaterThanOrEqual(metrics.buttonBottom + 5);
+  expect(metrics.popoverTop).toBeLessThanOrEqual(metrics.buttonBottom + 12);
 }

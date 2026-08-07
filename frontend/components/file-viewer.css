@@ -221,11 +221,13 @@ caffold-review-file-viewer {
 
   & .viewer-meta-popover {
     position: fixed;
-    inset: 4.5rem var(--interface-space-6) auto auto;
-    width: fit-content;
-    max-width: min(34rem, calc(100vw - 1.5rem));
+    inset: auto;
+    position-area: block-end center;
+    position-try-fallbacks: flip-block;
+    width: max-content;
+    max-width: min(42rem, calc(100vw - 1.5rem));
     max-height: min(60vh, 420px);
-    margin: 0;
+    margin: var(--interface-space-3) var(--interface-space-5);
     overflow: auto;
     overscroll-behavior: contain;
     padding: 0.75rem;
@@ -257,7 +259,6 @@ caffold-review-file-viewer {
   & .viewer-meta-popover [data-field="modified"],
   & .viewer-meta-popover [data-field="repository"] {
     grid-column: 1;
-    max-width: min(26rem, calc(100vw - 12rem));
   }
 
   & .viewer-meta-popover [data-field="size"],
@@ -381,8 +382,11 @@ caffold-review-file-viewer {
     }
 
     & .viewer-meta-popover {
-      inset: 4rem var(--interface-space-4) auto var(--interface-space-4);
+      position-area: none;
+      inset: auto var(--interface-space-4);
+      top: calc(anchor(bottom) + var(--interface-space-3));
       width: auto;
+      margin: 0;
     }
 
     & .viewer-meta-popover dl {

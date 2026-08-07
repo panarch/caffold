@@ -114,6 +114,28 @@ test("updates independent ranges live without replacing their DOM", async ({
   await appMenu.locator(".app-menu-button").click();
   const popover = appMenu.locator(".app-menu-popover");
   await expect(popover).toBeVisible();
+  const [appMenuButtonBox, appMenuPopoverBox] = await Promise.all([
+    appMenu.locator(".app-menu-button").boundingBox(),
+    popover.boundingBox(),
+  ]);
+  expect(appMenuButtonBox).not.toBeNull();
+  expect(appMenuPopoverBox).not.toBeNull();
+  expect(appMenuPopoverBox.x).toBeGreaterThanOrEqual(7);
+  expect(appMenuPopoverBox.x + appMenuPopoverBox.width).toBeLessThanOrEqual(
+    page.viewportSize().width - 7,
+  );
+  expect(appMenuPopoverBox.y).toBeGreaterThanOrEqual(
+    appMenuButtonBox.y + appMenuButtonBox.height + 4,
+  );
+  expect(appMenuPopoverBox.y).toBeLessThanOrEqual(
+    appMenuButtonBox.y + appMenuButtonBox.height + 9,
+  );
+  expect(appMenuButtonBox.x + appMenuButtonBox.width / 2).toBeGreaterThanOrEqual(
+    appMenuPopoverBox.x - 1,
+  );
+  expect(appMenuButtonBox.x + appMenuButtonBox.width / 2).toBeLessThanOrEqual(
+    appMenuPopoverBox.x + appMenuPopoverBox.width + 1,
+  );
   await expect(popover).toContainText("Settings");
   await expect(popover.getByRole("menuitem", { name: "About Caffold" })).toHaveCSS(
     "font-size",

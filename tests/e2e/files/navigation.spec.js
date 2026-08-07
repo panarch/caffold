@@ -131,11 +131,72 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
   await expect(page.getByRole("button", { name: "Refresh file", exact: true })).toBeVisible();
   await expectGlobalScrollLocked(page);
   await expectPanelScrollContainers(page);
-  await page.getByRole("button", { name: "Show details for example.rs" }).click();
+  const repositoryPath = "Users/taehoon/Workspace/rust/codger";
+  const filePath = `${repositoryPath}/frontend/components/file-viewer.css`;
+  await page.locator("caffold-file-viewer").evaluate(
+    (viewer, { filePath, repositoryPath }) => {
+      viewer.setDiff({
+        path: filePath,
+        repoRelativePath: "frontend/components/file-viewer.css",
+        kind: "unstaged",
+        repository: { rootPath: repositoryPath },
+        diff: "@@ -1 +1 @@\n-old line\n+new line",
+      });
+    },
+    { filePath, repositoryPath },
+  );
+  const fileDetailsButton = page.getByRole("button", {
+    name: "Show details for frontend/components/file-viewer.css",
+  });
+  await fileDetailsButton.click();
   const details = page.locator("caffold-file-viewer .viewer-meta-popover");
   await expect(details).toBeVisible();
-  await expect(details.locator('[data-field="path"] dd')).toHaveText("src/example.rs");
-  await expect(details.locator('[data-field="language"] dd')).toHaveText("Rust");
+  const [fileDetailsButtonBox, fileDetailsBox] = await Promise.all([
+    fileDetailsButton.boundingBox(),
+    details.boundingBox(),
+  ]);
+  expect(fileDetailsButtonBox).not.toBeNull();
+  expect(fileDetailsBox).not.toBeNull();
+  expect(fileDetailsBox.x).toBeGreaterThanOrEqual(7);
+  expect(fileDetailsBox.x + fileDetailsBox.width).toBeLessThanOrEqual(
+    page.viewportSize().width - 7,
+  );
+  expect(fileDetailsBox.y).toBeGreaterThanOrEqual(
+    fileDetailsButtonBox.y + fileDetailsButtonBox.height + 4,
+  );
+  expect(fileDetailsButtonBox.x + fileDetailsButtonBox.width / 2).toBeGreaterThanOrEqual(
+    fileDetailsBox.x - 1,
+  );
+  expect(fileDetailsButtonBox.x + fileDetailsButtonBox.width / 2).toBeLessThanOrEqual(
+    fileDetailsBox.x + fileDetailsBox.width + 1,
+  );
+  await expect(details.locator('[data-field="path"] dd')).toHaveText(filePath);
+  await expect(details.locator('[data-field="repository"] dd')).toHaveText(repositoryPath);
+  await expect(details.locator('[data-field="kind"] dd')).toHaveText("unstaged");
+  if (testInfo.project.name !== "phone") {
+    const metadataLayout = await details.evaluate((popover) => {
+      const lineCount = (element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return [...range.getClientRects()].filter(({ width, height }) => width > 0 && height > 0)
+          .length;
+      };
+      const rootFontSize = Number.parseFloat(
+        getComputedStyle(document.documentElement).fontSize,
+      );
+      return {
+        maxWidth: Math.min(42 * rootFontSize, innerWidth - 1.5 * rootFontSize),
+        pathLines: lineCount(popover.querySelector('[data-field="path"] dd')),
+        repositoryLines: lineCount(
+          popover.querySelector('[data-field="repository"] dd'),
+        ),
+        width: popover.getBoundingClientRect().width,
+      };
+    });
+    expect(metadataLayout.width).toBeLessThan(metadataLayout.maxWidth);
+    expect(metadataLayout.pathLines).toBe(1);
+    expect(metadataLayout.repositoryLines).toBe(1);
+  }
   await page.keyboard.press("Escape");
   await expect(details).toBeHidden();
   if (testInfo.project.name === "phone") {

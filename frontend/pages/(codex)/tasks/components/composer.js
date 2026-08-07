@@ -17,7 +17,6 @@ import {
 const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const DEFAULT_MAX_RECORDING_SECONDS = 5 * 60;
-const TASKS_SINGLE_PANE_MEDIA_QUERY = "(max-width: 899px)";
 const IMAGE_TYPES = new Set([
   "image/avif",
   "image/gif",
@@ -58,7 +57,6 @@ class CaffoldTaskComposer extends HTMLElement {
     this.addEventListener("paste", this.boundPaste, true);
     this.addEventListener("submit", this.boundSubmit, true);
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
-    window.addEventListener("resize", this.boundResize);
     document.addEventListener("click", this.boundDocumentClick);
     this.render();
     void this.loadModels();
@@ -81,7 +79,6 @@ class CaffoldTaskComposer extends HTMLElement {
     this.removeEventListener("paste", this.boundPaste, true);
     this.removeEventListener("submit", this.boundSubmit, true);
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
-    window.removeEventListener("resize", this.boundResize);
     document.removeEventListener("click", this.boundDocumentClick);
     this.modelRequestId += 1;
     this.permissionRequestId += 1;
@@ -181,7 +178,6 @@ class CaffoldTaskComposer extends HTMLElement {
     };
     this.boundSubmit = (event) => this.handleSubmit(event);
     this.boundIconsReady = () => this.render();
-    this.boundResize = () => this.fitOpenPicker();
     this.boundDocumentClick = (event) => {
       if (!this.openPicker || this.contains(event.target)) {
         return;
@@ -1156,7 +1152,6 @@ class CaffoldTaskComposer extends HTMLElement {
       </form>
     `;
     this.restoreFocus(previousFocus);
-    this.fitOpenPicker();
     this.notifyLayoutChange();
   }
 
@@ -1361,67 +1356,6 @@ class CaffoldTaskComposer extends HTMLElement {
     textarea?.setSelectionRange(focus.start, focus.end);
   }
 
-  fitOpenPicker() {
-    const modelPopover = this.querySelector(
-      ".task-model-picker.is-open .task-model-popover",
-    );
-    const permissionPopover = this.querySelector(
-      ".task-permission-picker.is-open .task-permission-popover",
-    );
-    const popover = modelPopover ?? permissionPopover;
-    if (!popover) {
-      return;
-    }
-    popover.style.removeProperty("max-height");
-    popover.style.removeProperty("left");
-    popover.style.removeProperty("right");
-    if (window.matchMedia(TASKS_SINGLE_PANE_MEDIA_QUERY).matches) {
-      return;
-    }
-    const button = this.querySelector(
-      modelPopover ? ".task-model-button" : ".task-permission-button",
-    );
-    if (!button) {
-      return;
-    }
-    const buttonRect = button.getBoundingClientRect();
-    const interfaceFontSize =
-      Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-    const pickerViewportMargin = interfaceFontSize * 1.125;
-    if (modelPopover) {
-      const availableHeight =
-        this.context.mode === "follow-up"
-          ? buttonRect.top -
-            Math.max(
-              0,
-              this.closest(".task-conversation-pane")?.getBoundingClientRect()
-                .top ?? 0,
-            ) -
-            pickerViewportMargin
-          : window.innerHeight - buttonRect.bottom - pickerViewportMargin;
-      popover.style.maxHeight = `${Math.max(
-        0,
-        Math.floor(availableHeight),
-      )}px`;
-    }
-
-    const paneRect = this.closest(".tasks-detail-pane")?.getBoundingClientRect();
-    const horizontalMargin = Math.ceil(interfaceFontSize * 0.5);
-    const boundaryLeft = Math.max(0, paneRect?.left ?? 0) + horizontalMargin;
-    const boundaryRight =
-      Math.min(window.innerWidth, paneRect?.right ?? window.innerWidth) -
-      horizontalMargin;
-    const maximumLeft = Math.max(
-      boundaryLeft,
-      boundaryRight - popover.getBoundingClientRect().width,
-    );
-    const popoverLeft = Math.min(
-      Math.max(buttonRect.left, boundaryLeft),
-      maximumLeft,
-    );
-    popover.style.left = `${popoverLeft - buttonRect.left}px`;
-    popover.style.right = "auto";
-  }
 }
 
 function renderImages(images) {

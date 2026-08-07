@@ -398,9 +398,34 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await expect(tasksPage.locator(".task-detail-meta")).toContainText("main");
   await expect(tasksPage.locator(".task-review-menu")).toHaveCount(2);
 
-  await tasksPage
-    .locator('.task-review-menu summary[aria-label="Open Git workspace"]')
-    .click();
+  const gitReviewMenu = tasksPage.locator(
+    '.task-review-menu:has(summary[aria-label="Open Git workspace"])',
+  );
+  const gitReviewMenuButton = gitReviewMenu.locator("summary");
+  await gitReviewMenuButton.click();
+  const gitReviewMenuPopover = gitReviewMenu.locator(".task-review-menu-popover");
+  await expect(gitReviewMenuPopover).toBeVisible();
+  const [gitReviewMenuButtonBox, gitReviewMenuPopoverBox] = await Promise.all([
+    gitReviewMenuButton.boundingBox(),
+    gitReviewMenuPopover.boundingBox(),
+  ]);
+  expect(gitReviewMenuButtonBox).not.toBeNull();
+  expect(gitReviewMenuPopoverBox).not.toBeNull();
+  expect(gitReviewMenuPopoverBox.x).toBeGreaterThanOrEqual(7);
+  expect(
+    gitReviewMenuPopoverBox.x + gitReviewMenuPopoverBox.width,
+  ).toBeLessThanOrEqual(page.viewportSize().width - 7);
+  expect(gitReviewMenuPopoverBox.y).toBeGreaterThanOrEqual(
+    gitReviewMenuButtonBox.y + gitReviewMenuButtonBox.height + 4,
+  );
+  expect(
+    gitReviewMenuButtonBox.x + gitReviewMenuButtonBox.width / 2,
+  ).toBeGreaterThanOrEqual(gitReviewMenuPopoverBox.x - 1);
+  expect(
+    gitReviewMenuButtonBox.x + gitReviewMenuButtonBox.width / 2,
+  ).toBeLessThanOrEqual(
+    gitReviewMenuPopoverBox.x + gitReviewMenuPopoverBox.width + 1,
+  );
   await captureReviewScreenshot(page, testInfo, "tasks-global-git-menu");
   await tasksPage
     .locator('button[data-summary-action="open-git-tool"][data-review-kind="diff"]')

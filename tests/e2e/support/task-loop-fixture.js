@@ -4,7 +4,13 @@ import {
   mockCodexModels,
 } from "./task-fixtures.js";
 
-export async function installTaskLoopFixture(page) {
+export async function installTaskLoopFixture(
+  page,
+  {
+    contextPath = "src",
+    threadId = "thread_12345678",
+  } = {},
+) {
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.addInitScript(() => {
@@ -47,7 +53,6 @@ export async function installTaskLoopFixture(page) {
     };
   });
 
-  const contextPath = "src";
   await mockCodexModels(page);
   const now = 1_767_000_000_000;
   let task = null;
@@ -73,7 +78,6 @@ export async function installTaskLoopFixture(page) {
   const canonicalFollowUpResponseReleased = new Promise((resolve) => {
     releaseCanonicalFollowUpResponse = resolve;
   });
-  const threadId = "thread_12345678";
   const completedAssistantResponse = [
     "## Review ready",
     "",
@@ -133,7 +137,7 @@ export async function installTaskLoopFixture(page) {
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        repository: { rootPath: "src", branch: "main", dirty: false },
+        repository: { rootPath: contextPath, branch: "main", dirty: false },
         github: null,
         ghAvailable: true,
         authenticated: true,
@@ -187,11 +191,11 @@ export async function installTaskLoopFixture(page) {
         }),
         title: "Inspect the planner changes",
         preview: "Inspect the planner changes",
-        cwd: "src",
-        cwdPath: "src",
+        cwd: contextPath,
+        cwdPath: contextPath,
         relativeCwd: "",
         worktree: {
-          rootPath: "src",
+          rootPath: contextPath,
           branch: "main",
           headSha: "0123456789abcdef0123456789abcdef01234567",
           relativeCwd: "",
@@ -244,7 +248,7 @@ export async function installTaskLoopFixture(page) {
           "event_2",
           "thread_started",
           "Thread started",
-          { threadId: "thread_12345678" },
+          { threadId },
           3,
         ),
         eventRecord("event_3", "turn_started", "Turn started", { turnId: "turn_1" }, 4),
