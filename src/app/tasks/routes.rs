@@ -10,9 +10,11 @@ use axum::{
 };
 use futures_util::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value as JsonValue, json};
+use serde_json::Value as JsonValue;
 use tokio::sync::broadcast;
 
+#[cfg(test)]
+use serde_json::json;
 #[cfg(test)]
 use std::time::Duration;
 
@@ -24,7 +26,7 @@ use super::{
 use crate::{
     app::error::ApiError,
     codex_app_server::{
-        self, CodexPermissionMode, CodexStatusResponse, CodexThreadClient, CodexThreadError,
+        CodexPermissionMode, CodexStatusResponse, CodexThreadClient, CodexThreadError,
         CodexTurnOptions, ThreadStatus,
     },
     codex_thread_sessions::{PromptTarget, ThreadSessionsDiagnostics},
@@ -263,7 +265,9 @@ fn codex_version_from_user_agent(user_agent: &str) -> Option<String> {
 async fn codex_models(State(state): State<TaskState>) -> Result<Json<JsonValue>, ApiError> {
     let client = require_codex_thread_client(&state).await?;
     let response = client.list_models(100).await.map_err(ApiError::from)?;
-    codex_models_payload(response).map(Json)
+    serde_json::to_value(response)
+        .map(Json)
+        .map_err(|error| ApiError::CodexThread(error.to_string()))
 }
 
 async fn codex_permissions(
@@ -313,83 +317,12 @@ async fn codex_permissions(
     }))
 }
 
-fn codex_models_payload(
-    response: codex_app_server::ModelListResponse,
-) -> Result<JsonValue, ApiError> {
-    let mut payload =
-        serde_json::to_value(response).map_err(|error| ApiError::CodexThread(error.to_string()))?;
-    let Some(models) = payload.get_mut("data").and_then(JsonValue::as_array_mut) else {
-        return Ok(payload);
-    };
-
-    for model in models {
-        let Some(efforts) = model
-            .get_mut("supportedReasoningEfforts")
-            .and_then(JsonValue::as_array_mut)
-        else {
-            continue;
-        };
-        for effort in efforts {
-            add_codex_reasoning_label(effort);
-        }
-    }
-
-    Ok(payload)
-}
-
-fn add_codex_reasoning_label(effort: &mut JsonValue) {
-    let value = codex_reasoning_effort_value(effort).map(str::to_string);
-    let Some(value) = value else {
-        return;
-    };
-    let label = codex_reasoning_label(&value);
-
-    if let Some(object) = effort.as_object_mut() {
-        object
-            .entry("value".to_string())
-            .or_insert_with(|| JsonValue::String(value));
-        object
-            .entry("label".to_string())
-            .or_insert_with(|| JsonValue::String(label));
-        return;
-    }
-
-    *effort = json!({
-        "value": value,
-        "label": label,
-    });
-}
-
 fn codex_reasoning_effort_value(effort: &JsonValue) -> Option<&str> {
     effort
         .get("value")
         .and_then(JsonValue::as_str)
         .or_else(|| effort.get("reasoningEffort").and_then(JsonValue::as_str))
         .or_else(|| effort.as_str())
-}
-
-fn codex_reasoning_label(effort: &str) -> String {
-    match effort {
-        "minimal" => "Minimal".to_string(),
-        "low" => "Light".to_string(),
-        "medium" => "Medium".to_string(),
-        "high" => "High".to_string(),
-        "xhigh" => "Extra High".to_string(),
-        "max" => "Max".to_string(),
-        "ultra" => "Ultra".to_string(),
-        effort => effort
-            .split(['-', '_'])
-            .filter(|part| !part.is_empty())
-            .map(|part| {
-                let mut chars = part.chars();
-                chars
-                    .next()
-                    .map(|first| first.to_uppercase().chain(chars).collect::<String>())
-                    .unwrap_or_default()
-            })
-            .collect::<Vec<_>>()
-            .join(" "),
-    }
 }
 
 async fn list_managed_tasks(

@@ -78,7 +78,7 @@ fn task_state_preserves_the_configured_default_cwd() {
 }
 
 #[tokio::test]
-async fn codex_models_adds_backend_owned_reasoning_labels() {
+async fn codex_models_preserves_app_server_reasoning_efforts() {
     let root = tempfile::tempdir().unwrap();
     let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
         "model/list",
@@ -110,12 +110,13 @@ async fn codex_models_adds_backend_owned_reasoning_labels() {
         .as_array()
         .unwrap();
 
-    assert_eq!(efforts[0]["value"], "low");
-    assert_eq!(efforts[0]["label"], "Light");
-    assert_eq!(efforts[1]["value"], "xhigh");
-    assert_eq!(efforts[1]["label"], "Extra High");
-    assert_eq!(efforts[2]["label"], "Max");
-    assert_eq!(efforts[3]["label"], "Ultra");
+    assert_eq!(efforts[0]["reasoningEffort"], "low");
+    assert_eq!(efforts[0]["description"], "Fast responses");
+    assert!(efforts[0].get("value").is_none());
+    assert!(efforts[0].get("label").is_none());
+    assert_eq!(efforts[1]["reasoningEffort"], "xhigh");
+    assert_eq!(efforts[2]["reasoningEffort"], "max");
+    assert_eq!(efforts[3]["reasoningEffort"], "ultra");
 }
 
 #[tokio::test]

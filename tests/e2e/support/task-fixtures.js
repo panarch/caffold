@@ -183,38 +183,26 @@ export async function mockCodexModels(page) {
             defaultReasoningEffort: "low",
             supportedReasoningEfforts: [
               {
-                value: "low",
-                label: "Light",
                 reasoningEffort: "low",
                 description: "Fast responses with lighter reasoning",
               },
               {
-                value: "medium",
-                label: "Medium",
                 reasoningEffort: "medium",
                 description: "Balances speed and reasoning depth for everyday tasks",
               },
               {
-                value: "high",
-                label: "High",
                 reasoningEffort: "high",
                 description: "Greater reasoning depth for complex problems",
               },
               {
-                value: "xhigh",
-                label: "Extra High",
                 reasoningEffort: "xhigh",
                 description: "Extra high reasoning depth for complex problems",
               },
               {
-                value: "max",
-                label: "Max",
                 reasoningEffort: "max",
                 description: "Maximum reasoning depth for the hardest problems",
               },
               {
-                value: "ultra",
-                label: "Ultra",
                 reasoningEffort: "ultra",
                 description: "Maximum reasoning with automatic task delegation",
               },

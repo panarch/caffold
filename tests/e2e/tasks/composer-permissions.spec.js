@@ -444,11 +444,11 @@ test("managed tasks restore their last applied model and reasoning effort", asyn
   const picker = form.getByRole("button", {
     name: "Choose model and reasoning",
   });
-  await expect(picker).toContainText("GPT Test");
-  await expect(picker).toContainText("XHigh");
+  await expect(picker.locator(".task-model-name")).toHaveText("Test");
+  await expect(picker.locator(".task-model-effort")).toContainText("xhigh");
   await page.reload();
-  await expect(picker).toContainText("GPT Test");
-  await expect(picker).toContainText("XHigh");
+  await expect(picker.locator(".task-model-name")).toHaveText("Test");
+  await expect(picker.locator(".task-model-effort")).toContainText("xhigh");
   await form.getByRole("textbox", { name: "Follow-up prompt" }).fill("Continue");
   await form.getByRole("textbox", { name: "Follow-up prompt" }).press("Enter");
 
@@ -522,8 +522,8 @@ test("keeps a tall follow-up model menu inside the conversation pane", async ({
           description: `Test model ${index} with enough detail to make the menu tall`,
           hidden: false,
           supportedReasoningEfforts: [
-            { value: "medium", label: "Medium" },
-            { value: "xhigh", label: "XHigh" },
+            { reasoningEffort: "medium", description: "Balanced depth" },
+            { reasoningEffort: "xhigh", description: "Extra depth" },
           ],
           defaultReasoningEffort: "medium",
           inputModalities: ["text"],

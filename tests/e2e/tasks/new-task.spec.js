@@ -187,10 +187,6 @@ test("creates a task with responsive composer controls and canonical approval st
     const panel = form.querySelector(".task-composer-panel").getBoundingClientRect();
     const pane = form.closest(".tasks-detail-pane").getBoundingClientRect();
     const popover = form.querySelector(".task-model-popover").getBoundingClientRect();
-    const firstDescription = form.querySelector(".task-model-option small");
-    const descriptionStyle = firstDescription
-      ? window.getComputedStyle(firstDescription)
-      : null;
     return {
       buttonBottom: button.bottom,
       buttonLeft: button.left,
@@ -210,7 +206,6 @@ test("creates a task with responsive composer controls and canonical approval st
       popoverTop: popover.top,
       viewportHeight: window.innerHeight,
       viewportWidth: window.innerWidth,
-      descriptionWhiteSpace: descriptionStyle?.whiteSpace ?? "",
     };
   });
   expect(modelPopoverMetrics.popoverLeft).toBeGreaterThanOrEqual(9);
@@ -221,7 +216,7 @@ test("creates a task with responsive composer controls and canonical approval st
   expect(modelPopoverMetrics.popoverBottom).toBeLessThanOrEqual(
     modelPopoverMetrics.viewportHeight - 9,
   );
-  expect(modelPopoverMetrics.descriptionWhiteSpace).not.toBe("nowrap");
+  await expect(modelPopover.locator("small")).toHaveCount(0);
   if (testInfo.project.name !== "phone") {
     expect(modelPopoverMetrics.backdropVisible).toBe(false);
     expect(modelPopoverMetrics.popoverLeft).toBeGreaterThanOrEqual(
@@ -258,6 +253,12 @@ test("creates a task with responsive composer controls and canonical approval st
     await expect(modelPopover).toBeVisible();
   }
   await captureReviewScreenshot(page, testInfo, "tasks-model-popover");
+  await expect(modelPopover.locator('[data-effort="low"] strong')).toHaveText(
+    "low",
+  );
+  await expect(modelPopover.locator('[data-effort="xhigh"] strong')).toHaveText(
+    "xhigh",
+  );
   await expect(modelPopover.locator('[data-effort="xhigh"]')).toBeVisible();
   await expect(modelPopover.locator('[data-effort="max"]')).toBeVisible();
   await expect(modelPopover.locator('[data-effort="ultra"]')).toBeVisible();

@@ -74,8 +74,8 @@ export async function installTaskApiFixture(page) {
             description: "Test model",
             hidden: false,
             supportedReasoningEfforts: [
-              { value: "medium", label: "Medium" },
-              { value: "xhigh", label: "XHigh" },
+              { reasoningEffort: "medium", description: "Balanced depth" },
+              { reasoningEffort: "xhigh", description: "Extra depth" },
             ],
             defaultReasoningEffort: "medium",
             inputModalities: ["text"],

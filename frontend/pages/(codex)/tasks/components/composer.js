@@ -1176,13 +1176,9 @@ class CaffoldTaskComposer extends HTMLElement {
     const reasoningOptions = model?.supportedReasoningEfforts ?? [];
     const modelLabel =
       model?.displayName ?? (this.modelLoading ? "Loading model" : "Model");
-    const effortLabel =
-      reasoningOptions.find((option) => option.value === effort)?.label ||
-      effort ||
-      "Reasoning";
-    const summaryLabel = `${modelLabel} · ${effortLabel}`;
+    const effortValue = effort || "Reasoning";
+    const summaryLabel = `${modelLabel} · ${effortValue}`;
     const compactModel = compactModelLabel(modelLabel);
-    const compactEffort = effort || effortLabel;
     const open = !disabled && this.openPicker === "model";
     return `
       <div class="task-model-picker${open ? " is-open" : ""}">
@@ -1196,7 +1192,7 @@ class CaffoldTaskComposer extends HTMLElement {
           ${disabled ? "disabled" : ""}
         >
           <span class="task-model-name">${escapeHtml(compactModel)}</span>
-          <span class="task-model-effort"> · ${escapeHtml(compactEffort)}</span>
+          <span class="task-model-effort"> · ${escapeHtml(effortValue)}</span>
         </button>
         ${
           open
@@ -1401,7 +1397,6 @@ function normalizeModelOptions(response) {
       return {
         model: modelValue,
         displayName: `${model?.displayName ?? modelValue}`.trim(),
-        description: `${model?.description ?? ""}`.trim(),
         isDefault: Boolean(model?.isDefault),
         defaultReasoningEffort: `${model?.defaultReasoningEffort ?? ""}`.trim(),
         supportedReasoningEfforts: normalizeReasoningOptions(
@@ -1434,8 +1429,6 @@ function normalizeReasoningOptions(options) {
       }
       return {
         value,
-        label: `${option?.label ?? value}`.trim(),
-        description: `${option?.description ?? ""}`.trim(),
       };
     })
     .filter(Boolean);
@@ -1472,7 +1465,6 @@ function renderModelOption(option, selectedModel) {
     >
       <span>
         <strong>${escapeHtml(option.displayName)}</strong>
-        ${option.description ? `<small>${escapeHtml(option.description)}</small>` : ""}
       </span>
       ${selected ? renderInlineIcon("Check", "Selected", "task-model-check") : ""}
     </button>
@@ -1490,8 +1482,7 @@ function renderReasoningOption(option, selectedEffort) {
       aria-pressed="${selected ? "true" : "false"}"
     >
       <span>
-        <strong>${escapeHtml(option.label)}</strong>
-        ${option.description ? `<small>${escapeHtml(option.description)}</small>` : ""}
+        <strong>${escapeHtml(option.value)}</strong>
       </span>
       ${selected ? renderInlineIcon("Check", "Selected", "task-model-check") : ""}
     </button>
