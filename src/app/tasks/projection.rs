@@ -29,6 +29,7 @@ pub(in crate::app) struct TaskRecord {
     pub(in crate::app) created_ms: u64,
     pub(in crate::app) updated_ms: u64,
     pub(in crate::app) recency_ms: Option<u64>,
+    pub(in crate::app) last_completed_ms: Option<u64>,
     pub(in crate::app) last_event_summary: Option<String>,
     pub(in crate::app) unseen: bool,
 }
@@ -117,6 +118,7 @@ pub(in crate::app) fn task_record_from_thread(
             .get("recencyAt")
             .and_then(JsonValue::as_f64)
             .map(seconds_to_ms_value),
+        last_completed_ms: None,
         last_event_summary,
         unseen: false,
     })
@@ -135,6 +137,12 @@ pub(in crate::app) fn apply_canonical_turn_projection(
         .last()
         .map(|turn| decode_turn_status(turn.get("status")))
         .transpose()?;
+    task.last_completed_ms = turns
+        .iter()
+        .filter_map(|turn| turn.get("completedAt").and_then(JsonValue::as_f64))
+        .map(seconds_to_ms_value)
+        .filter(|value| *value > 0)
+        .max();
     task.active_turn = if matches!(task.thread_status, ThreadStatus::Active { .. }) {
         turns
             .last()

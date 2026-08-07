@@ -315,6 +315,7 @@ version = "0.1.5"
 dependencies = [
  "anyhow",
  "axum",
+ "chrono",
  "clap",
  "futures-util",
  "gluesql",

@@ -195,8 +195,8 @@ fn only_the_latest_turn_can_be_active() {
         "status": { "type": "active", "activeFlags": [] },
         "cwd": "/tmp",
         "turns": [
-            { "id": "stale", "status": "inProgress" },
-            { "id": "latest", "status": "completed" }
+            { "id": "stale", "status": "completed", "completedAt": 3.0 },
+            { "id": "latest", "status": "completed", "completedAt": 4.0 }
         ]
     });
     let running_thread = json!({
@@ -204,7 +204,7 @@ fn only_the_latest_turn_can_be_active() {
         "status": { "type": "active", "activeFlags": [] },
         "cwd": "/tmp",
         "turns": [
-            { "id": "completed", "status": "completed" },
+            { "id": "completed", "status": "completed", "completedAt": 3.0 },
             { "id": "latest", "status": "inProgress" }
         ]
     });
@@ -213,11 +213,13 @@ fn only_the_latest_turn_can_be_active() {
     apply_canonical_turn_projection(&mut completed, &completed_thread).unwrap();
     assert_eq!(completed.latest_turn_status, Some(TurnStatus::Completed));
     assert_eq!(completed.active_turn, None);
+    assert_eq!(completed.last_completed_ms, Some(4_000));
 
     let mut running = task_record_from_thread(&running_thread, &[], None).unwrap();
     apply_canonical_turn_projection(&mut running, &running_thread).unwrap();
     assert_eq!(running.latest_turn_status, Some(TurnStatus::InProgress));
     assert_eq!(running.active_turn.unwrap().id, "latest");
+    assert_eq!(running.last_completed_ms, Some(3_000));
 }
 
 #[test]

@@ -456,9 +456,16 @@ impl DetailContext {
         let mut task = task_record_from_thread(&thread, &events, resolved_cwd.as_ref())?;
         apply_canonical_turn_projection(&mut task, &thread)?;
         let activity_ms = task_activity_ms(&task);
-        let mut managed = self
+        let mut managed = if let Some(last_completed_ms) = task.last_completed_ms {
+            self.store_update_completed_at(&thread_id, last_completed_ms)
+                .await?
+        } else {
+            None
+        };
+        managed = self
             .store_update_observed_recency(&thread_id, activity_ms)
-            .await?;
+            .await?
+            .or(managed);
         if session_model.is_some() || session_reasoning_effort.is_some() {
             managed = self
                 .store_update_composer_settings(
@@ -477,7 +484,8 @@ impl DetailContext {
             {
                 current = seen;
             }
-            task.unseen = current.unseen(activity_ms);
+            task.last_completed_ms = current.last_completed_at_ms;
+            task.unseen = current.unseen();
             let model = session_model.or(current.model);
             let reasoning_effort = session_reasoning_effort.or(current.reasoning_effort);
             return Ok(TaskDetailResponse {
@@ -687,6 +695,19 @@ impl DetailContext {
         .await
         .map_err(store_join_error)?
         .map_err(store_error)
+    }
+
+    async fn store_update_completed_at(
+        &self,
+        thread_id: &str,
+        completed_at_ms: u64,
+    ) -> Result<Option<ManagedThread>, ApiError> {
+        let store = self.store.clone();
+        let thread_id = thread_id.to_string();
+        tokio::task::spawn_blocking(move || store.update_completed_at(&thread_id, completed_at_ms))
+            .await
+            .map_err(store_join_error)?
+            .map_err(store_error)
     }
 
     async fn store_update_composer_settings(

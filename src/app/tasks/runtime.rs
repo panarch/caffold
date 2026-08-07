@@ -538,6 +538,12 @@ impl CodexRuntime {
                     .map(seconds_to_ms_value)
                     .filter(|value| *value > 0)
                     .unwrap_or_else(now_ms);
+                if let Err(error) = self
+                    .thread_store
+                    .update_completed_at(&thread_id, completed_ms)
+                {
+                    eprintln!("failed to persist completed turn for {thread_id}: {error}");
+                }
                 let params = json!({ "threadId": thread_id, "turn": turn });
                 self.events.publish(task_event_record(
                     &thread_id,
@@ -771,6 +777,11 @@ impl CodexRuntime {
     #[cfg(test)]
     pub(in crate::app) fn handle_test_notification(&self, notification: CodexNotification) {
         self.handle_notification(notification);
+    }
+
+    #[cfg(test)]
+    pub(in crate::app) fn test_thread_store(&self) -> ThreadStore {
+        self.thread_store.clone()
     }
 
     #[cfg(test)]

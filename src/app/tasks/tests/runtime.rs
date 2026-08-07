@@ -17,6 +17,37 @@ fn test_runtime() -> CodexRuntime {
     runtime_with_events(TaskEvents::default())
 }
 
+#[test]
+fn completed_turn_notification_persists_the_latest_completion_time() {
+    let runtime = test_runtime();
+    let store = runtime.test_thread_store();
+    store
+        .claim(
+            ManagedThread::new("thread_1", Some(1_000), None, None),
+            1_000,
+        )
+        .unwrap();
+
+    runtime.handle_test_notification(
+        codex_app_server::decode_notification(
+            "turn/completed",
+            json!({
+                "threadId": "thread_1",
+                "turn": {
+                    "id": "turn_1",
+                    "status": "completed",
+                    "completedAt": 1_750_000_004.5
+                }
+            }),
+        )
+        .unwrap(),
+    );
+
+    let stored = store.get("thread_1").unwrap().unwrap();
+    assert_eq!(stored.last_completed_at_ms, Some(1_750_000_004_500));
+    assert!(stored.unseen());
+}
+
 fn active_resume(thread_id: &str) -> JsonValue {
     json!({
         "thread": {

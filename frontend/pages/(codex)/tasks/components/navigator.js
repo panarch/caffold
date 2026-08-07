@@ -807,7 +807,7 @@ function renderTaskRowMeta(
     `;
   }
 
-  const ms = task.recencyMs ?? task.updatedMs;
+  const ms = task.lastCompletedMs ?? task.recencyMs ?? task.updatedMs;
   const date = new Date(Number(ms));
   const dateTime = Number.isNaN(date.getTime()) ? "" : date.toISOString();
   return `

@@ -344,7 +344,7 @@ async fn list_managed_tasks(
                     .await;
                 let mut task = state.detail.record_from_codex_thread(&thread)?;
                 let activity_ms = task_activity_ms(&task);
-                task.unseen = managed.unseen(activity_ms);
+                apply_managed_thread_metadata(&mut task, &managed);
                 Ok::<_, ApiError>((task, activity_ms))
             }
         })
@@ -383,7 +383,7 @@ async fn list_archived_tasks(
                     .await;
                 let mut task = state.detail.record_from_codex_thread(&thread)?;
                 let activity_ms = task_activity_ms(&task);
-                task.unseen = managed.unseen(activity_ms);
+                apply_managed_thread_metadata(&mut task, &managed);
                 Ok::<_, ApiError>((task, activity_ms))
             }
         })
@@ -534,7 +534,7 @@ async fn thread_store_archive(
 ) -> Result<Option<ManagedThread>, ApiError> {
     let store = state.thread_store.clone();
     let thread_id = thread_id.to_string();
-    tokio::task::spawn_blocking(move || store.archive(&thread_id))
+    tokio::task::spawn_blocking(move || store.archive(&thread_id, now_ms()))
         .await
         .map_err(thread_store_join_error)?
         .map_err(thread_store_api_error)
@@ -693,7 +693,7 @@ async fn mark_task_seen(
     let Some(managed) = thread_store_mark_seen(&state, &thread_id, activity_ms).await? else {
         return Err(task_not_managed_error());
     };
-    task.unseen = managed.unseen(activity_ms);
+    apply_managed_thread_metadata(&mut task, &managed);
     notify_task_updated(&state, task.clone());
     Ok(Json(task))
 }
@@ -1110,7 +1110,7 @@ async fn task_restore(
         .observe_thread_metadata(thread.clone())
         .await;
     let mut task = state.detail.record_from_codex_thread(&thread)?;
-    task.unseen = archived.unseen(task_activity_ms(&task));
+    apply_managed_thread_metadata(&mut task, &archived);
     match thread_store_restore(&state, &thread_id).await {
         Ok(Some(_)) => {}
         Ok(None) => {
@@ -1189,12 +1189,19 @@ fn managed_thread_from_task_record(
     model: Option<String>,
     reasoning_effort: Option<String>,
 ) -> ManagedThread {
-    ManagedThread::new(
+    let mut managed = ManagedThread::new(
         task.thread_id.clone(),
         Some(task_activity_ms(task)),
         model,
         reasoning_effort,
-    )
+    );
+    managed.last_completed_at_ms = task.last_completed_ms;
+    managed
+}
+
+fn apply_managed_thread_metadata(task: &mut TaskRecord, managed: &ManagedThread) {
+    task.last_completed_ms = managed.last_completed_at_ms;
+    task.unseen = managed.unseen();
 }
 
 fn task_cwd(state: &TaskState, relative: Option<&str>) -> Result<String, ApiError> {

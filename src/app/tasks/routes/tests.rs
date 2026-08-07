@@ -408,6 +408,35 @@ async fn managed_list_never_projects_pending_approval_onto_thread_status() {
 }
 
 #[tokio::test]
+async fn managed_list_projects_persisted_completion_time_and_unseen_state() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-completed-in-background";
+    let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
+    let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+        "thread/read",
+        json!({ "thread": thread.clone() }),
+    )]);
+    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+    let resolved = resolve_thread_cwd(&state.fs, &thread);
+    let task = task_record_from_thread(&thread, &[], resolved.as_ref()).unwrap();
+    thread_store_claim(&state, managed_thread_from_task_record(&task, None, None))
+        .await
+        .unwrap();
+    state
+        .thread_store
+        .update_completed_at(thread_id, 5_000)
+        .unwrap();
+
+    let response = list_managed_tasks(State(state), Query(TasksQuery { cursor: None }))
+        .await
+        .unwrap();
+
+    assert_eq!(response.0.tasks.len(), 1);
+    assert_eq!(response.0.tasks[0].last_completed_ms, Some(5_000));
+    assert!(response.0.tasks[0].unseen);
+}
+
+#[tokio::test]
 async fn archive_and_restore_keep_caffold_membership_in_separate_lists() {
     let root = tempfile::tempdir().unwrap();
     let thread_id = "thread-archive-round-trip";
@@ -955,7 +984,7 @@ async fn stale_steer_refreshes_canonical_status_before_starting_a_follow_up() {
 }
 
 #[tokio::test]
-async fn mark_seen_uses_canonical_activity_instead_of_cached_recency() {
+async fn mark_seen_tracks_completion_separately_from_canonical_recency() {
     let root = tempfile::tempdir().unwrap();
     let thread_id = "thread-seen";
     let mut thread = task_thread_list(thread_id, root.path())["data"][0].clone();
@@ -966,13 +995,17 @@ async fn mark_seen_uses_canonical_activity_instead_of_cached_recency() {
     )]);
     let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
     manage_test_thread(&state, thread_id, root.path()).await;
+    state
+        .thread_store
+        .update_completed_at(thread_id, 9_000)
+        .unwrap();
     assert_eq!(
         thread_store_get(&state, thread_id)
             .await
             .unwrap()
             .unwrap()
             .last_seen_activity_ms,
-        Some(2_000)
+        None
     );
 
     let task = mark_task_seen(State(state.clone()), AxumPath(thread_id.to_string()))
@@ -981,7 +1014,8 @@ async fn mark_seen_uses_canonical_activity_instead_of_cached_recency() {
 
     assert!(!task.0.unseen);
     let managed = thread_store_get(&state, thread_id).await.unwrap().unwrap();
-    assert_eq!(managed.last_seen_activity_ms, Some(10_000));
+    assert_eq!(managed.last_seen_activity_ms, Some(9_000));
+    assert_eq!(managed.last_completed_at_ms, Some(9_000));
     assert_eq!(managed.last_observed_recency_ms, Some(10_000));
 }
 

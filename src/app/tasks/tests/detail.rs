@@ -74,6 +74,87 @@ async fn canonical_resume_refreshes_cached_model_settings() {
 }
 
 #[tokio::test]
+async fn canonical_turn_history_recovers_missed_completion_and_marks_it_seen_when_viewed() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-missed-completion";
+    let state = task_state_with_codex_client(
+        RootedFs::new(root.path()).unwrap(),
+        CodexThreadClient::mock(Vec::new()),
+    )
+    .await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+    let thread = serde_json::from_value(json!({
+        "id": thread_id,
+        "preview": "Recovered completion",
+        "status": { "type": "idle" },
+        "cwd": root.path().display().to_string(),
+        "createdAt": 1.0,
+        "updatedAt": 2.0,
+        "recencyAt": 2.5,
+        "turns": []
+    }))
+    .unwrap();
+    let turns_page = serde_json::from_value(json!({
+        "data": [
+            {
+                "id": "turn-newest",
+                "items": [],
+                "status": "completed",
+                "completedAt": 5.0
+            },
+            {
+                "id": "turn-older",
+                "items": [],
+                "status": "completed",
+                "completedAt": 4.0
+            }
+        ],
+        "nextCursor": null,
+        "backwardsCursor": null
+    }))
+    .unwrap();
+    let mut snapshot = crate::codex_thread_sessions::ThreadSessionSnapshot {
+        lifecycle: ThreadSessionLifecycle::Subscribed,
+        thread: Some(thread),
+        turns_page: Some(turns_page),
+        active_turn_id: None,
+        viewer_leases: 0,
+        runtime_lease: false,
+        generation: 1,
+        revision: 1,
+        last_sync_ms: Some(5_000),
+        last_error: None,
+        external_syncing: false,
+        external_sync_started_ms: None,
+        permission_mode: None,
+        model: None,
+        reasoning_effort: None,
+    };
+
+    let background = state
+        .detail
+        .assemble_snapshot(snapshot.clone(), None)
+        .await
+        .unwrap();
+    let task = background.task.unwrap();
+    assert_eq!(task.last_completed_ms, Some(5_000));
+    assert!(task.unseen);
+    let stored = test_store_get(&state, thread_id).await.unwrap().unwrap();
+    assert_eq!(stored.last_completed_at_ms, Some(5_000));
+    assert_eq!(stored.last_seen_activity_ms, None);
+
+    snapshot.viewer_leases = 1;
+    let viewed = state
+        .detail
+        .assemble_snapshot(snapshot, None)
+        .await
+        .unwrap();
+    assert!(!viewed.task.unwrap().unseen);
+    let stored = test_store_get(&state, thread_id).await.unwrap().unwrap();
+    assert_eq!(stored.last_seen_activity_ms, Some(5_000));
+}
+
+#[tokio::test]
 async fn canonical_snapshot_without_membership_is_rejected() {
     let root = tempfile::tempdir().unwrap();
     let state = task_state_with_codex_client(
@@ -867,6 +948,7 @@ fn task_stream_bootstrap_replays_the_canonical_detail_snapshot() {
                 created_ms: 1,
                 updated_ms: 2,
                 recency_ms: None,
+                last_completed_ms: None,
                 last_event_summary: Some("canonical assistant response".to_string()),
                 unseen: false,
             }),

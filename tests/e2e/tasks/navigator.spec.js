@@ -62,6 +62,46 @@ test("loads additional task-list pages only after a cursor request", async ({ pa
   expect(cursors).toEqual([null, "page-2"]);
 });
 
+test("shows relative age from the latest completion instead of thread recency", async ({
+  page,
+}) => {
+  await installEventSourceMock(page);
+  await mockCodexModels(page);
+  const now = Date.now();
+  const lastCompletedMs = now - 5 * 60 * 1_000;
+  const task = {
+    id: "thread-completion-age",
+    threadId: "thread-completion-age",
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Completion age",
+    preview: "Completion age",
+    cwd: "tests/fixtures/home",
+    cwdPath: "tests/fixtures/home",
+    relativeCwd: "",
+    worktree: null,
+    createdMs: now - 3 * 60 * 60 * 1_000,
+    updatedMs: now - 2 * 60 * 60 * 1_000,
+    recencyMs: now - 2 * 60 * 60 * 1_000,
+    lastCompletedMs,
+    lastEventSummary: "Completed recently",
+    unseen: false,
+  };
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [task], nextCursor: null }),
+    }),
+  );
+
+  await page.goto("/tasks");
+
+  const time = page.locator(
+    '.task-row[data-thread-id="thread-completion-age"] .task-row-time',
+  );
+  await expect(time).toHaveText("5m");
+  await expect(time).toHaveAttribute("datetime", new Date(lastCompletedMs).toISOString());
+});
+
 test("archives and restores an idle Caffold task through the grouped Archived section", async ({
   page,
 }, testInfo) => {
