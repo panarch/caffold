@@ -16,6 +16,11 @@ caffold-code-viewer {
   }
 
   & .code-lines {
+    --code-line-number-padding: 0.625rem;
+    --code-line-number-width: calc(
+      var(--code-line-number-columns) + var(--code-line-number-padding) +
+        var(--code-line-number-padding)
+    );
     display: grid;
     min-width: 0;
     min-height: 0;
@@ -32,7 +37,7 @@ caffold-code-viewer {
     left: 0;
     z-index: 1;
     grid-area: 1 / 1;
-    width: var(--line-gutter-width);
+    width: var(--code-line-number-width);
     min-height: 100%;
     border-right: 1px solid var(--border);
     background: var(--code-gutter);
@@ -41,13 +46,16 @@ caffold-code-viewer {
 
   & .code-table {
     grid-area: 1 / 1;
-    width: max(100%, calc(var(--line-gutter-width) + var(--code-content-width) + 24px));
+    width: max(
+      100%,
+      calc(var(--code-line-number-width) + var(--code-content-width) + 24px)
+    );
     min-height: 100%;
   }
 
   & .code-row {
     display: grid;
-    grid-template-columns: var(--line-gutter-width) minmax(0, 1fr);
+    grid-template-columns: var(--code-line-number-width) minmax(0, 1fr);
     width: 100%;
     min-width: 0;
     background: var(--code-bg);
@@ -61,7 +69,7 @@ caffold-code-viewer {
     background: var(--code-gutter);
     border-right: 1px solid var(--border);
     color: #78867d;
-    padding: 0 0.625rem;
+    padding: 0 var(--code-line-number-padding);
     text-align: right;
   }
 
@@ -109,8 +117,8 @@ caffold-code-viewer {
 
 @media (max-width: 520px) {
   caffold-code-viewer {
-    & .line-number {
-      padding: 0 0.5rem;
+    & .code-lines {
+      --code-line-number-padding: 0.5rem;
     }
   }
 }

@@ -16,8 +16,15 @@ caffold-diff-viewer {
   }
 
   & .diff-lines {
-    --diff-old-width: 3.25rem;
-    --diff-new-width: 3.25rem;
+    --diff-line-number-padding: 0.5rem;
+    --diff-old-width: calc(
+      var(--diff-old-number-columns) + var(--diff-line-number-padding) +
+        var(--diff-line-number-padding)
+    );
+    --diff-new-width: calc(
+      var(--diff-new-number-columns) + var(--diff-line-number-padding) +
+        var(--diff-line-number-padding)
+    );
     --diff-prefix-width: 1.5rem;
     --diff-gutter-width: calc(
       var(--diff-old-width) + var(--diff-new-width) + var(--diff-prefix-width)
@@ -79,7 +86,7 @@ caffold-diff-viewer {
 
   & .diff-old-line,
   & .diff-new-line {
-    padding: 0 0.5rem;
+    padding: 0 var(--diff-line-number-padding);
     text-align: right;
   }
 
@@ -136,8 +143,6 @@ caffold-diff-viewer {
 @media (max-width: 520px) {
   caffold-diff-viewer {
     & .diff-lines {
-      --diff-old-width: 2.75rem;
-      --diff-new-width: 2.75rem;
       --diff-prefix-width: 1.25rem;
     }
   }

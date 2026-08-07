@@ -102,9 +102,14 @@ class CaffoldDiffViewer extends HTMLElement {
   render() {
     const rows = parseUnifiedDiff(this.diff?.diff ?? "");
     const codeWidth = `${diffCodeColumns(rows)}ch`;
+    const oldLineColumns = `${diffLineNumberDigits(rows, "oldLine")}ch`;
+    const newLineColumns = `${diffLineNumberDigits(rows, "newLine")}ch`;
     this.innerHTML = `
       <section class="diff-viewer" aria-label="Git diff">
-        <div class="diff-lines">
+        <div
+          class="diff-lines"
+          style="--diff-old-number-columns: ${oldLineColumns}; --diff-new-number-columns: ${newLineColumns};"
+        >
           <div class="diff-gutter-backdrop" aria-hidden="true"></div>
           <div class="diff-table" style="--diff-code-width: ${codeWidth};">
             ${rows.length === 0 ? this.renderEmpty() : rows.map((row) => this.renderRow(row)).join("")}
@@ -157,6 +162,11 @@ function diffCodeColumns(rows) {
   }, 0);
 
   return Math.max(columns, "No diff for this file.".length, 1);
+}
+
+function diffLineNumberDigits(rows, field) {
+  const maximum = rows.reduce((max, row) => Math.max(max, row[field] ?? 0), 0);
+  return Math.max(String(maximum).length, 2);
 }
 
 function monospaceColumns(text) {

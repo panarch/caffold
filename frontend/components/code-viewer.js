@@ -127,9 +127,15 @@ async function getHighlighter() {
 
 function renderCodeLines(html, rawContent) {
   const codeWidth = `${codeColumns(rawContent)}ch`;
+  const lineNumberColumns = `${lineNumberDigits(rawContent)}ch`;
 
   return `
-    <div class="code-lines" role="region" aria-label="File content">
+    <div
+      class="code-lines"
+      role="region"
+      aria-label="File content"
+      style="--code-line-number-columns: ${lineNumberColumns};"
+    >
       <div class="code-gutter-backdrop" aria-hidden="true"></div>
       <div class="code-table" style="--code-content-width: ${codeWidth};">
         ${renderLines(html)}
@@ -165,6 +171,11 @@ function codeColumns(content) {
   }, 0);
 
   return Math.max(columns, 1);
+}
+
+function lineNumberDigits(content) {
+  const lineCount = content.split(/\r?\n/).length;
+  return Math.max(String(lineCount).length, 2);
 }
 
 function monospaceColumns(text) {

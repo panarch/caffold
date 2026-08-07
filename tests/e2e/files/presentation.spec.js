@@ -207,6 +207,75 @@ test("scrolls long source lines horizontally in the code viewer", async ({ page 
     .toBe(60);
 });
 
+test("sizes source and diff gutters from their longest rendered line numbers", async ({
+  page,
+}) => {
+  await page.goto(FILES_HOME_URL);
+
+  const widths = await page.evaluate(async () => {
+    await Promise.all([
+      customElements.whenDefined("caffold-code-viewer"),
+      customElements.whenDefined("caffold-diff-viewer"),
+    ]);
+
+    const stage = document.createElement("div");
+    stage.style.cssText = "position: fixed; inset: 0 auto auto 0; width: 600px; height: 200px;";
+    document.body.append(stage);
+
+    const codeViewer = document.createElement("caffold-code-viewer");
+    codeViewer.style.cssText = "width: 600px; height: 100px;";
+    stage.append(codeViewer);
+
+    const sourceWidth = (lineCount) => {
+      const content = Array.from({ length: lineCount }, (_, index) => `line ${index + 1}`).join(
+        "\n",
+      );
+      codeViewer.setFile({ content, languageHint: "text" });
+      return codeViewer.querySelector(".line-number").getBoundingClientRect().width;
+    };
+
+    const source = {
+      oneDigit: sourceWidth(9),
+      twoDigits: sourceWidth(99),
+      fourDigits: sourceWidth(1_000),
+    };
+
+    const diffViewer = document.createElement("caffold-diff-viewer");
+    diffViewer.style.cssText = "width: 600px; height: 100px;";
+    stage.append(diffViewer);
+
+    const diffWidths = (oldLine, newLine) => {
+      diffViewer.setDiff({ diff: `@@ -${oldLine},1 +${newLine},1 @@\n context` });
+      const row = diffViewer.querySelector(".diff-row-context");
+      return {
+        old: row.querySelector(".diff-old-line").getBoundingClientRect().width,
+        new: row.querySelector(".diff-new-line").getBoundingClientRect().width,
+      };
+    };
+
+    const diff = {
+      shortOldLongNew: diffWidths(9, 999),
+      longOldShortNew: diffWidths(10_000, 8),
+    };
+
+    stage.remove();
+    return { diff, source };
+  });
+
+  expect(widths.source.oneDigit).toBeCloseTo(widths.source.twoDigits, 0);
+  expect(widths.source.fourDigits).toBeGreaterThan(widths.source.twoDigits);
+  expect(widths.diff.shortOldLongNew.new).toBeGreaterThan(
+    widths.diff.shortOldLongNew.old,
+  );
+  expect(widths.diff.longOldShortNew.old).toBeGreaterThan(
+    widths.diff.longOldShortNew.new,
+  );
+  expect(widths.diff.shortOldLongNew.old).toBeCloseTo(
+    widths.diff.longOldShortNew.new,
+    0,
+  );
+});
+
 test("maps diff scroll positions to source lines", async ({ page }) => {
   await page.goto(FILES_HOME_URL);
   await page.addStyleTag({
