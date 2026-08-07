@@ -57,15 +57,45 @@ caffold-task-command-dialog {
 
   & .task-command-dialog-close {
     flex: 0 0 auto;
-    min-height: var(--interface-control-visual-size);
+    position: relative;
+    display: grid;
+    width: var(--interface-control-hit-size);
+    height: var(--interface-control-hit-size);
+    place-items: center;
     margin-left: auto;
-    padding: 0 var(--interface-control-padding-inline);
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    background: var(--surface);
-    color: var(--text);
-    font: inherit;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--accent);
     cursor: pointer;
+  }
+
+  & .task-command-dialog-close::before {
+    position: absolute;
+    inset: var(--interface-control-hit-outset);
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    background: var(--surface);
+    content: "";
+  }
+
+  & .task-command-dialog-close:hover,
+  & .task-command-dialog-close:focus-visible {
+    outline: none;
+  }
+
+  & .task-command-dialog-close:hover::before,
+  & .task-command-dialog-close:focus-visible::before {
+    border-color: var(--border-strong);
+    background: var(--accent-soft);
+  }
+
+  & .task-command-dialog-close-icon {
+    position: relative;
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+    stroke-width: 2;
   }
 
   & .task-command-dialog-body {

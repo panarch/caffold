@@ -149,7 +149,21 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   );
   await completedCommandButton.click();
   const commandDialog = tasksPage.locator("caffold-task-command-dialog dialog");
+  const commandDialogClose = commandDialog.getByRole("button", {
+    name: "Close command output",
+  });
   await expect(commandDialog).toHaveAttribute("open", "");
+  await expect(
+    commandDialogClose.locator(".task-command-dialog-close-icon"),
+  ).toBeVisible();
+  await expect
+    .poll(() =>
+      commandDialogClose.evaluate((button) => {
+        const { width, height } = button.getBoundingClientRect();
+        return Math.abs(width - height);
+      }),
+    )
+    .toBeLessThan(1);
   await expect(commandDialog).toContainText("cargo test");
   await expect(commandDialog).toContainText("Working directory");
   await expect(commandDialog).toContainText("src");
@@ -190,7 +204,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     )
     .toEqual(conversationScrollBeforeDialog);
   await captureReviewScreenshot(page, testInfo, "tasks-command-output");
-  await commandDialog.getByRole("button", { name: "Close command output" }).click();
+  await commandDialogClose.click();
   await expect(commandDialog).not.toHaveAttribute("open", "");
   await expect
     .poll(() => commandDialogBody.evaluate((element) => element.scrollTop))
@@ -229,7 +243,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     await expect
       .poll(() => commandDialogBody.evaluate((element) => element.scrollTop))
       .toBeGreaterThan(0);
-    await commandDialog.getByRole("button", { name: "Close command output" }).click();
+    await commandDialogClose.click();
     await completedCommandButton.click();
     await expect
       .poll(() => commandDialogBody.evaluate((element) => element.scrollTop))
@@ -237,7 +251,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     await commandDialogBody.evaluate((element) => {
       delete element.scrollTop;
     });
-    await commandDialog.getByRole("button", { name: "Close command output" }).click();
+    await commandDialogClose.click();
   });
 
   const failedCommand = tasksPage.locator(

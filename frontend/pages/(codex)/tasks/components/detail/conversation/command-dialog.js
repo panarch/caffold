@@ -1,9 +1,15 @@
 import { escapeHtml } from "../../../../../../components/dom.js";
+import {
+  renderInlineIcon,
+  warmIcons,
+} from "../../../../../../components/icons.js";
 import { formatDate, formatDuration } from "../../../task-format.js";
 
 class CaffoldTaskCommandDialog extends HTMLElement {
   connectedCallback() {
+    this.attachIconListener();
     if (this.initialized) {
+      this.refreshCloseIcon();
       return;
     }
 
@@ -13,6 +19,24 @@ class CaffoldTaskCommandDialog extends HTMLElement {
     this.addEventListener("click", (event) => this.handleClick(event));
     this.render();
     this.dialog().addEventListener("close", () => this.handleClose());
+    warmIcons();
+  }
+
+  disconnectedCallback() {
+    if (!this.iconsReadyListening) {
+      return;
+    }
+    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
+    this.iconsReadyListening = false;
+  }
+
+  attachIconListener() {
+    this.boundIconsReady ??= () => this.refreshCloseIcon();
+    if (this.iconsReadyListening) {
+      return;
+    }
+    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
+    this.iconsReadyListening = true;
   }
 
   dialog() {
@@ -105,13 +129,31 @@ class CaffoldTaskCommandDialog extends HTMLElement {
               type="button"
               class="task-command-dialog-close"
               data-command-dialog-action="close"
+              title="Close command output"
               aria-label="Close command output"
-            >Close</button>
+            >${renderInlineIcon(
+              "X",
+              "Close command output",
+              "task-command-dialog-close-icon",
+            )}</button>
           </header>
           <div class="task-command-dialog-body" data-command-dialog-body></div>
         </article>
       </dialog>
     `;
+  }
+
+  refreshCloseIcon() {
+    const closeButton = this.querySelector(
+      '[data-command-dialog-action="close"]',
+    );
+    if (closeButton) {
+      closeButton.innerHTML = renderInlineIcon(
+        "X",
+        "Close command output",
+        "task-command-dialog-close-icon",
+      );
+    }
   }
 
   renderCommand(command) {

@@ -256,6 +256,11 @@ test("icon-only controls use square slots from their semantic control tier", () 
       "--interface-control-hit-size",
     ],
     [
+      "pages/(codex)/tasks/components/detail/conversation/command-dialog.css",
+      ".task-command-dialog-close",
+      "--interface-control-hit-size",
+    ],
+    [
       "pages/(codex)/tasks/components/composer.css",
       ".task-send-button",
       "--interface-control-hit-size",
@@ -344,6 +349,11 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
   const controls = [
     ["pages/components/header-actions.css", ".header-action-group-button::before", "--interface-control-hit-outset"],
     ["pages/settings/page.css", ".settings-close-button::before", "--interface-control-hit-outset"],
+    [
+      "pages/(codex)/tasks/components/detail/conversation/command-dialog.css",
+      ".task-command-dialog-close::before",
+      "--interface-control-hit-outset",
+    ],
     ["pages/(codex)/layout.css", ".codex-workspace-close::before", "--interface-compact-hit-outset"],
     ["pages/(review-workspace)/layout.css", ".review-workspace-close::before", "--interface-compact-hit-outset"],
     ["pages/(codex)/tasks/components/composer.css", ".task-send-button::before", "--interface-control-hit-outset"],
