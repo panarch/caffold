@@ -1614,7 +1614,7 @@ class CaffoldTaskDetail extends HTMLElement {
   renderBody() {
     const hasSelectedTaskDetail = this.hasSelectedTaskDetail();
     if (this.loading && !hasSelectedTaskDetail && this.view === "detail") {
-      return `<p class="surface-message">Loading task...</p>`;
+      return `<p class="surface-message task-detail-state-message">Loading task...</p>`;
     }
     if (this.detailLoadError && !hasSelectedTaskDetail && this.view === "detail") {
       return this.renderTaskDetailLoadError();
@@ -1639,7 +1639,7 @@ class CaffoldTaskDetail extends HTMLElement {
   renderTaskDetail() {
     const task = this.taskDetail?.task;
     if (!task) {
-      return `<p class="surface-message">${this.loading ? "Loading task..." : "Select a task."}</p>`;
+      return `<p class="surface-message task-detail-state-message">${this.loading ? "Loading task..." : "Select a task."}</p>`;
     }
     return `
       <div class="task-detail" data-thread-id="${escapeHtml(task.threadId ?? task.id)}" data-task-detail-view="${escapeHtml(this.reviewView)}">

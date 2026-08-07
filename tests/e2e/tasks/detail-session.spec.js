@@ -290,7 +290,25 @@ test("loading detail accepts a canonical task sync without a synthetic task", as
   );
 
   await page.goto("/tasks/thread-1?cwd=src");
-  await expect(page.getByText("Loading task...")).toBeVisible();
+  const loadingMessage = page.getByText("Loading task...");
+  await expect(loadingMessage).toBeVisible();
+  const loadingClearance = await loadingMessage.evaluate((message) => {
+    const close = document.querySelector(".codex-workspace-close");
+    const closeBounds = close.getBoundingClientRect();
+    const textRange = document.createRange();
+    textRange.selectNodeContents(message);
+    return {
+      closeVisible:
+        getComputedStyle(close).display !== "none" && closeBounds.width > 0,
+      closeRight: closeBounds.right,
+      textLeft: textRange.getBoundingClientRect().left,
+    };
+  });
+  if (loadingClearance.closeVisible) {
+    expect(loadingClearance.textLeft).toBeGreaterThanOrEqual(
+      loadingClearance.closeRight + 4,
+    );
+  }
   await expect(page.locator(".task-detail")).toHaveCount(0);
 
   const detail = taskDetailFixture();
