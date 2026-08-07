@@ -687,7 +687,7 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     );
     expect(await taskPresentation(runningChip)).toEqual(
       expect.objectContaining({
-        backgroundColor: "rgb(231, 244, 238)",
+        backgroundColor: "rgba(0, 0, 0, 0)",
         borderRadius: "999px",
         borderWidth: "0px",
         color: "rgb(22, 124, 92)",

@@ -301,7 +301,7 @@ caffold-task-navigator {
   }
 
   & .task-row .task-status-chip[data-status="running"] {
-    background: #e7f4ee;
+    background: transparent;
   }
 
   & .task-row .task-status-chip[data-status="waiting_for_approval"],
