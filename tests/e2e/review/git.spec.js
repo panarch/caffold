@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   captureReviewScreenshot,
+  installEventSourceMock,
   scrollTop,
 } from "../support/task-fixtures.js";
 import {
@@ -30,13 +31,24 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
+  await installEventSourceMock(page, {
+    registryKey: "__caffoldMockEventSources",
+    autoOpen: true,
+  });
   const longContextLine = ` context line ${"long-diff-token-".repeat(36)}`;
   const repository = { rootPath: "src", branch: "main", dirty: true };
   let delayNextStatus = false;
+  let delayNextDiff = false;
+  let statusRequests = 0;
+  let diffRequests = 0;
+  let currentDiffLine = "new line";
   let resolveStatusStarted;
   let releaseStatus;
+  let resolveDiffStarted;
+  let releaseDiff;
 
   await page.route(/\/api\/git\/status(?:\?|$)/, async (route) => {
+    statusRequests += 1;
     if (delayNextStatus) {
       delayNextStatus = false;
       resolveStatusStarted?.();
@@ -83,7 +95,15 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
     });
   });
 
-  await page.route(/\/api\/git\/diff(?:\?|$)/, (route) => {
+  await page.route(/\/api\/git\/diff(?:\?|$)/, async (route) => {
+    diffRequests += 1;
+    if (delayNextDiff) {
+      delayNextDiff = false;
+      resolveDiffStarted?.();
+      await new Promise((resolve) => {
+        releaseDiff = resolve;
+      });
+    }
     const url = new URL(route.request().url());
     const file = url.searchParams.get("file");
     const kind = url.searchParams.get("kind");
@@ -115,7 +135,7 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
                 "@@ -10,4 +10,5 @@ pub fn sample()",
                 longContextLine,
                 "-old line",
-                "+new line",
+                `+${currentDiffLine}`,
                 "+another line",
                 " trailing line",
               ].join("\n"),
@@ -228,6 +248,28 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   await expect(page.locator("caffold-diff-viewer")).toContainText("@@ -10,4 +10,5 @@");
   await expect(page.locator("caffold-diff-viewer")).toContainText("old line");
   await expect(page.locator("caffold-diff-viewer")).toContainText("new line");
+  const visibleDiff = page.locator("caffold-diff-viewer");
+  await visibleDiff.evaluate((element) => {
+    element.dataset.unrelatedWatchProbe = "kept";
+  });
+  const statusBeforeUnrelatedWatch = statusRequests;
+  const diffBeforeUnrelatedWatch = diffRequests;
+  await page.evaluate(() => {
+    const source = window.__caffoldMockEventSources.find(
+      (candidate) =>
+        candidate.url.startsWith("/api/watch?") && candidate.readyState !== 2,
+    );
+    source?.emit("change", {
+      revision: 8,
+      paths: ["src/deleted.rs"],
+      gitStatusChanged: true,
+      gitRefsChanged: false,
+      overflow: false,
+    });
+  });
+  await expect.poll(() => statusRequests).toBeGreaterThan(statusBeforeUnrelatedWatch);
+  expect(diffRequests).toBe(diffBeforeUnrelatedWatch);
+  await expect(visibleDiff).toHaveAttribute("data-unrelated-watch-probe", "kept");
   await expectHorizontalScroller(page, "caffold-diff-viewer .diff-lines");
   await expectUnifiedDiffRowsShareScrollWidth(page);
   await expectDiffScrollerFillsViewer(page);
@@ -250,6 +292,30 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   const trailingRow = page.locator(".diff-row-context").filter({ hasText: "trailing line" });
   await expect(trailingRow.locator(".diff-old-line")).toHaveText("12");
   await expect(trailingRow.locator(".diff-new-line")).toHaveText("13");
+
+  const diffStarted = new Promise((resolve) => {
+    resolveDiffStarted = resolve;
+  });
+  currentDiffLine = "refreshed line";
+  delayNextDiff = true;
+  await page.evaluate(() => {
+    const source = window.__caffoldMockEventSources.find(
+      (candidate) =>
+        candidate.url.startsWith("/api/watch?") && candidate.readyState !== 2,
+    );
+    source?.emit("change", {
+      revision: 9,
+      paths: ["src/example.rs"],
+      gitStatusChanged: true,
+      gitRefsChanged: false,
+      overflow: false,
+    });
+  });
+  await diffStarted;
+  await expect(visibleDiff).toContainText("new line");
+  await expect(page.locator(".git-mode-diff .surface-message")).toHaveCount(0);
+  releaseDiff();
+  await expect(page.locator("caffold-diff-viewer")).toContainText("refreshed line");
 
   if (testInfo.project.name === "phone") {
     await page.getByRole("button", { name: "Back to changes" }).click();

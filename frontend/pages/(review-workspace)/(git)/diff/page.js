@@ -49,6 +49,10 @@ class CaffoldGitDiffPage extends HTMLElement {
   get detailView() {
     return this.browser?.detailView ?? "list";
   }
+
+  get selectedPath() {
+    return this.browser?.changesTree?.selectedPath ?? "";
+  }
 }
 
 for (const method of DELEGATED_METHODS) {

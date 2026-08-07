@@ -2,6 +2,7 @@ import { expect } from "@playwright/test";
 
 export async function installTaskReviewFixture(page) {
   let gitStatusRequests = 0;
+  let gitDiffRequests = 0;
   let gitRefsRequests = 0;
   let gitCompareRequests = 0;
   let gitCompareDiffRequests = 0;
@@ -11,6 +12,8 @@ export async function installTaskReviewFixture(page) {
   let cleanWorkingTree = false;
   let cleanBranch = false;
   let failNextGitStatus = false;
+  let gitDiffDelayMs = 0;
+  let workingDiffText = "new planner behavior";
   const compareDelays = new Map();
 
   await page.route(/\/api\/git\/status(?:\?|$)/, (route) => {
@@ -116,7 +119,11 @@ export async function installTaskReviewFixture(page) {
       }),
     });
   });
-  await page.route(/\/api\/git\/diff(?:\?|$)/, (route) => {
+  await page.route(/\/api\/git\/diff(?:\?|$)/, async (route) => {
+    gitDiffRequests += 1;
+    if (gitDiffDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, gitDiffDelayMs));
+    }
     const url = new URL(route.request().url());
     const file = url.searchParams.get("file");
     const relativePath = file.replace(/^src\//, "");
@@ -134,7 +141,7 @@ export async function installTaskReviewFixture(page) {
           `+++ b/${relativePath}`,
           "@@ -60 +60 @@",
           "-old planner behavior",
-          "+new planner behavior",
+          `+${workingDiffText}`,
         ].join("\n"),
       }),
     });
@@ -221,6 +228,9 @@ export async function installTaskReviewFixture(page) {
     get gitStatusRequests() {
       return gitStatusRequests;
     },
+    get gitDiffRequests() {
+      return gitDiffRequests;
+    },
     get gitRefsRequests() {
       return gitRefsRequests;
     },
@@ -247,6 +257,12 @@ export async function installTaskReviewFixture(page) {
     },
     set failNextGitStatus(value) {
       failNextGitStatus = value;
+    },
+    set gitDiffDelayMs(value) {
+      gitDiffDelayMs = value;
+    },
+    set workingDiffText(value) {
+      workingDiffText = value;
     },
     setCompareDelay(baseRef, delayMs) {
       compareDelays.set(baseRef, delayMs);

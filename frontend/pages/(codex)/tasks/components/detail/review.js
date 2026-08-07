@@ -17,7 +17,10 @@ import {
 } from "../../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../../components/icons.js";
 import "../../../../../components/review-panel-resizer.js";
-import { subscribeToWatch } from "../../../../../watch.js";
+import {
+  subscribeToWatch,
+  watchChangeAffectsPath,
+} from "../../../../../watch.js";
 import { latestTaskRelatedWorktreePaths } from "../../task-events.js";
 import { cleanLogicalPath } from "../../task-format.js";
 import { taskThreadId } from "../../task-list-model.js";
@@ -63,6 +66,7 @@ class CaffoldTaskReview extends HTMLElement {
     this.watchUnsubscribe = null;
     this.watchPath = "";
     this.watchUnavailable = false;
+    this.pendingWatchViewerRefresh = false;
     this.refreshing = false;
     this.panelWidth = REVIEW_PANEL_DEFAULT_WIDTH;
     this.navigatorScroll = new Map();
@@ -253,6 +257,7 @@ class CaffoldTaskReview extends HTMLElement {
     this.refs = null;
     this.statusError = null;
     this.compareError = null;
+    this.pendingWatchViewerRefresh = false;
     this.previousRouteKey = "";
     this.workingTree()?.reset();
     this.branchTree()?.reset();
@@ -293,16 +298,15 @@ class CaffoldTaskReview extends HTMLElement {
         void this.ensureBranchData({ force: options.reactivated });
       }
     }
-    if (
-      this.route.path &&
-      (options.contextChanged ||
-        options.routeChanged ||
-        options.reactivated ||
-        ["empty", "error"].includes(this.viewer()?.state?.status))
+    if (!this.route.path) {
+      this.viewer()?.setEmpty();
+    } else if (
+      options.contextChanged ||
+      options.routeChanged ||
+      options.reactivated ||
+      ["empty", "error"].includes(this.viewer()?.state?.status)
     ) {
       void this.loadViewer();
-    } else {
-      this.viewer()?.setEmpty();
     }
     this.restoreNavigatorScroll();
   }
@@ -330,7 +334,7 @@ class CaffoldTaskReview extends HTMLElement {
     }
   }
 
-  async refreshWorking() {
+  async refreshWorking(options = {}) {
     const rootPath = taskWorktreeRootPath(this.task);
     if (!rootPath) {
       return null;
@@ -361,8 +365,14 @@ class CaffoldTaskReview extends HTMLElement {
       );
       this.syncSelection();
       this.patchEmptyStates();
-      if (this.route.path && this.route.scope === "working") {
-        void this.loadViewer();
+      const canRefreshViewer = this.route.path && this.route.scope === "working";
+      const pendingWatchViewerRefresh = this.pendingWatchViewerRefresh;
+      this.pendingWatchViewerRefresh = false;
+      const refreshViewer = options.background
+        ? canRefreshViewer && pendingWatchViewerRefresh
+        : canRefreshViewer;
+      if (refreshViewer) {
+        void this.loadViewer({ background: Boolean(options.background) });
       }
       return status;
     } catch (error) {
@@ -449,7 +459,7 @@ class CaffoldTaskReview extends HTMLElement {
     );
   }
 
-  async loadViewer() {
+  async loadViewer(options = {}) {
     const selectedPath = this.logicalSelectedPath();
     if (!selectedPath || !this.active) {
       this.viewer()?.setEmpty();
@@ -458,7 +468,13 @@ class CaffoldTaskReview extends HTMLElement {
     const generation = ++this.viewerGeneration;
     const viewer = this.viewer();
     const saved = this.viewerScroll.get(this.viewerStateKey());
-    viewer?.setLoading(selectedPath);
+    const background = Boolean(options.background);
+    if (!background) {
+      viewer?.setLoading(selectedPath);
+    }
+    const viewerOptions = background
+      ? { preserveScroll: true }
+      : { scroll: saved?.scroll ?? null };
     try {
       if (this.route.viewer === "source") {
         if (this.selectedChange()?.deleted) {
@@ -484,7 +500,7 @@ class CaffoldTaskReview extends HTMLElement {
         if (!this.acceptViewer(generation, selectedPath)) {
           return;
         }
-        viewer?.setFile(file, { scroll: saved?.scroll ?? null });
+        viewer?.setFile(file, viewerOptions);
       } else {
         if (
           (this.route.scope === "working" && !this.status) ||
@@ -516,9 +532,11 @@ class CaffoldTaskReview extends HTMLElement {
         if (!this.acceptViewer(generation, selectedPath)) {
           return;
         }
-        viewer?.setDiff(diff, { scroll: saved?.scroll ?? null });
+        viewer?.setDiff(diff, viewerOptions);
       }
-      this.restoreViewerPosition(saved);
+      if (!background) {
+        this.restoreViewerPosition(saved);
+      }
     } catch (error) {
       if (this.acceptViewer(generation, selectedPath)) {
         viewer?.setError(selectedPath, error);
@@ -801,13 +819,16 @@ class CaffoldTaskReview extends HTMLElement {
           ),
           revision: change.revision,
         });
-        if (this.task?.worktree && (change.gitStatusChanged || change.overflow)) {
-          void this.refreshWorking();
+        if (this.task?.worktree && change.gitStatusChanged) {
+          this.pendingWatchViewerRefresh ||=
+            this.route.scope === "working" &&
+            watchChangeAffectsPath(change, this.logicalSelectedPath());
+          void this.refreshWorking({ background: true });
         }
         if (
           this.task?.worktree &&
           this.route.scope === "branch" &&
-          (change.gitRefsChanged || change.overflow)
+          change.gitRefsChanged
         ) {
           void this.ensureBranchData({ force: true });
         }

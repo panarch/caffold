@@ -1,5 +1,9 @@
 import { getGitStatus } from "../../../api.js";
-import { createRefreshCoordinator, subscribeToWatch } from "../../../watch.js";
+import {
+  createRefreshCoordinator,
+  subscribeToWatch,
+  watchChangeAffectsPath,
+} from "../../../watch.js";
 import { routeMode } from "../../../navigation-routes.js";
 import "./compare/page.js";
 import "./diff/page.js";
@@ -49,7 +53,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
     this.repository ??= null;
     this.gitStatus ??= null;
     this.gitStatusRequestId ??= 0;
-    this.pendingRefresh ??= { status: false, refs: false };
+    this.pendingRefresh ??= { status: false, refs: false, viewer: false };
     this.watchUnavailable ??= false;
     this.refreshCoordinator = createRefreshCoordinator(
       () => this.performPendingRefresh(),
@@ -242,7 +246,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
     }
   }
 
-  async refreshStatus() {
+  async refreshStatus(options = {}) {
     if (!this.repository) {
       return null;
     }
@@ -253,7 +257,7 @@ class CaffoldGitReviewLayout extends HTMLElement {
         return null;
       }
       this.setGitStatus(status, { preserveState: true });
-      if (this.mode === "diff") {
+      if (this.mode === "diff" && options.refreshViewer !== false) {
         await this.diffPage.refreshSelectedDiff(status);
       }
       return status;
@@ -286,16 +290,22 @@ class CaffoldGitReviewLayout extends HTMLElement {
         this.watchUnavailable = false;
         this.setRefreshState("idle");
         if (recovered) {
-          this.requestRefresh({ status: true, refs: true });
+          this.requestRefresh({ status: true, refs: true, viewer: true });
         }
       },
       onChange: (change) => {
+        const statusChanged = Boolean(change.gitStatusChanged);
         this.requestRefresh({
-          status: Boolean(change.gitStatusChanged || change.overflow),
-          refs: Boolean(change.gitRefsChanged || change.overflow),
+          status: statusChanged,
+          refs: Boolean(change.gitRefsChanged),
+          viewer:
+            statusChanged &&
+            this.mode === "diff" &&
+            watchChangeAffectsPath(change, this.diffPage.selectedPath),
         });
       },
-      onRecover: () => this.requestRefresh({ status: true, refs: true }),
+      onRecover: () =>
+        this.requestRefresh({ status: true, refs: true, viewer: true }),
       onError: () => {
         this.watchUnavailable = true;
         this.setRefreshState("unavailable");
@@ -307,13 +317,19 @@ class CaffoldGitReviewLayout extends HTMLElement {
     return this.requestRefresh({
       status: true,
       refs: this.mode === "compare" || this.mode === "log",
+      viewer: true,
     });
   }
 
   requestRefresh(options = {}) {
     this.pendingRefresh.status ||= Boolean(options.status);
     this.pendingRefresh.refs ||= Boolean(options.refs);
-    if (!this.pendingRefresh.status && !this.pendingRefresh.refs) {
+    this.pendingRefresh.viewer ||= Boolean(options.viewer);
+    if (
+      !this.pendingRefresh.status &&
+      !this.pendingRefresh.refs &&
+      !this.pendingRefresh.viewer
+    ) {
       return Promise.resolve();
     }
     return this.refreshCoordinator.request();
@@ -321,9 +337,9 @@ class CaffoldGitReviewLayout extends HTMLElement {
 
   async performPendingRefresh() {
     const pending = this.pendingRefresh;
-    this.pendingRefresh = { status: false, refs: false };
+    this.pendingRefresh = { status: false, refs: false, viewer: false };
     if (pending.status) {
-      await this.refreshStatus();
+      await this.refreshStatus({ refreshViewer: pending.viewer });
     }
     if (pending.refs && this.mode === "compare") {
       await this.comparePage.refresh();

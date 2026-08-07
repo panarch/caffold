@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{Arc, Mutex, Weak},
     time::Duration,
@@ -354,7 +354,7 @@ fn normalize_batch(
     config: &ScopeConfig,
     events: Vec<notify::Result<Event>>,
 ) -> Result<Option<WatchChange>, String> {
-    let mut paths = BTreeSet::new();
+    let mut paths = BTreeMap::new();
     let mut repo_relative_paths = BTreeSet::new();
     let mut git_status_changed = false;
     let mut git_refs_changed = false;
@@ -388,47 +388,63 @@ fn normalize_batch(
                 git_status_changed |= config.repository.is_some();
                 continue;
             };
-            if paths.len() < MAX_BATCH_PATHS {
-                paths.insert(logical_path);
-            } else {
-                overflow = true;
-                git_status_changed |= config.repository.is_some();
-            }
 
-            if let Some(repository) = config.repository.as_ref()
+            let repo_relative_path = if let Some(repository) = config.repository.as_ref()
                 && let Ok(relative) = path.strip_prefix(&repository.root)
             {
                 let relative = slash_path(relative);
                 if relative.is_empty() {
                     git_status_changed = true;
-                } else if repo_relative_paths.len() < MAX_BATCH_PATHS
-                    || repo_relative_paths.contains(&relative)
-                {
-                    repo_relative_paths.insert(relative);
                 } else {
-                    overflow = true;
-                    git_status_changed = true;
+                    repo_relative_paths.insert(relative.clone());
                 }
-            }
+                Some(relative)
+            } else {
+                None
+            };
+            paths.entry(logical_path).or_insert(repo_relative_path);
         }
     }
 
-    if let Some(repository) = config.repository.as_ref()
-        && !repo_relative_paths.is_empty()
-    {
-        let ignored = git::ignored_paths(repository, repo_relative_paths.iter().cloned());
+    let ignored = config
+        .repository
+        .as_ref()
+        .filter(|_| !repo_relative_paths.is_empty())
+        .map(|repository| git::ignored_paths(repository, repo_relative_paths.iter().cloned()))
+        .unwrap_or_default();
+    if !repo_relative_paths.is_empty() {
         git_status_changed |= repo_relative_paths
             .iter()
             .any(|path| !ignored.contains(path));
     }
 
-    if paths.is_empty() && !git_status_changed && !git_refs_changed && !overflow {
+    let mut visible_paths = Vec::new();
+    let mut ignored_paths = Vec::new();
+    for (logical_path, repo_relative_path) in paths {
+        if repo_relative_path
+            .as_ref()
+            .is_some_and(|path| !path.is_empty() && ignored.contains(path))
+        {
+            ignored_paths.push(logical_path);
+        } else {
+            visible_paths.push(logical_path);
+        }
+    }
+    overflow |= visible_paths.len() > MAX_BATCH_PATHS;
+    let mut outgoing_paths = visible_paths
+        .into_iter()
+        .take(MAX_BATCH_PATHS)
+        .collect::<Vec<_>>();
+    let remaining = MAX_BATCH_PATHS.saturating_sub(outgoing_paths.len());
+    outgoing_paths.extend(ignored_paths.into_iter().take(remaining));
+
+    if outgoing_paths.is_empty() && !git_status_changed && !git_refs_changed && !overflow {
         return Ok(None);
     }
 
     Ok(Some(WatchChange {
         revision: 0,
-        paths: paths.into_iter().collect(),
+        paths: outgoing_paths,
         git_status_changed,
         git_refs_changed,
         overflow,
@@ -569,14 +585,15 @@ mod tests {
     fn ignored_worktree_changes_do_not_invalidate_git_status() {
         let root = TempDir::new().unwrap();
         let repository = repository(root.path());
+        let repository_root = repository.root.clone();
         fs::write(root.path().join(".gitignore"), "ignored.log\n").unwrap();
-        let config = config(root.path(), Some(repository));
+        let config = config(&repository_root, Some(repository));
 
         let change = normalize_batch(
             &config,
             vec![event(
                 EventKind::Modify(ModifyKind::Any),
-                root.path().join("ignored.log"),
+                repository_root.join("ignored.log"),
             )],
         )
         .unwrap()
@@ -588,23 +605,54 @@ mod tests {
     }
 
     #[test]
-    fn overflowing_ignored_paths_conservatively_invalidates_git_status() {
+    fn ignored_path_overflow_does_not_request_a_global_refresh() {
         let root = TempDir::new().unwrap();
         let repository = repository(root.path());
+        let repository_root = repository.root.clone();
         fs::write(root.path().join(".gitignore"), "ignored-*\n").unwrap();
-        let config = config(root.path(), Some(repository));
+        let config = config(&repository_root, Some(repository));
         let events = (0..MAX_BATCH_PATHS + 1)
             .map(|index| {
                 event(
                     EventKind::Modify(ModifyKind::Any),
-                    root.path().join(format!("ignored-{index}.log")),
+                    repository_root.join(format!("ignored-{index}.log")),
                 )
             })
             .collect();
 
         let change = normalize_batch(&config, events).unwrap().unwrap();
 
-        assert!(change.overflow);
+        assert_eq!(change.paths.len(), MAX_BATCH_PATHS);
+        assert!(!change.overflow);
+        assert!(!change.git_status_changed);
+    }
+
+    #[test]
+    fn large_mixed_batch_prioritizes_the_non_ignored_path() {
+        let root = TempDir::new().unwrap();
+        let repository = repository(root.path());
+        let repository_root = repository.root.clone();
+        fs::write(root.path().join(".gitignore"), "ignored-*\n").unwrap();
+        fs::write(root.path().join("visible.rs"), "tracked\n").unwrap();
+        git(root.path(), &["add", "visible.rs"]);
+        let config = config(&repository_root, Some(repository));
+        let mut events = (0..MAX_BATCH_PATHS + 1)
+            .map(|index| {
+                event(
+                    EventKind::Modify(ModifyKind::Any),
+                    repository_root.join(format!("ignored-{index}.log")),
+                )
+            })
+            .collect::<Vec<_>>();
+        events.push(event(
+            EventKind::Modify(ModifyKind::Any),
+            repository_root.join("visible.rs"),
+        ));
+
+        let change = normalize_batch(&config, events).unwrap().unwrap();
+
+        assert!(change.paths.iter().any(|path| path == "visible.rs"));
+        assert!(!change.overflow);
         assert!(change.git_status_changed);
     }
 

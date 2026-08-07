@@ -33,8 +33,13 @@ test("reviews working tree changes through the canonical Review route", async ({
     changes.locator('button[data-repo-relative-path="planner.rs"]'),
   ).toHaveAttribute("aria-current", "true");
   await expect(viewer).toContainText("new planner behavior");
+  const visibleDiff = viewer.locator("caffold-diff-viewer");
+  await visibleDiff.evaluate((element) => {
+    element.dataset.unrelatedWatchProbe = "kept";
+  });
 
   const beforeWatch = reviewScenario.gitStatusRequests;
+  const beforeUnrelatedDiff = reviewScenario.gitDiffRequests;
   reviewScenario.includeLiveFile = true;
   await page.evaluate(() => {
     const source = window.__caffoldMockEventSources.find(
@@ -53,7 +58,32 @@ test("reviews working tree changes through the canonical Review route", async ({
   await expect(
     changes.locator('button[data-repo-relative-path="live-update.rs"]'),
   ).toHaveCount(1);
+  expect(reviewScenario.gitDiffRequests).toBe(beforeUnrelatedDiff);
+  await expect(visibleDiff).toHaveAttribute("data-unrelated-watch-probe", "kept");
   await expect(viewer).toContainText("new planner behavior");
+
+  reviewScenario.gitDiffDelayMs = 500;
+  reviewScenario.workingDiffText = "refreshed planner behavior";
+  const beforeRelatedDiff = reviewScenario.gitDiffRequests;
+  await page.evaluate(() => {
+    const source = window.__caffoldMockEventSources.find(
+      (candidate) =>
+        candidate.url.startsWith("/api/watch?") && candidate.readyState !== 2,
+    );
+    source?.emit("change", {
+      revision: 5,
+      paths: ["src/planner.rs"],
+      gitStatusChanged: true,
+      gitRefsChanged: false,
+      overflow: false,
+    });
+  });
+  await expect
+    .poll(() => reviewScenario.gitDiffRequests)
+    .toBeGreaterThan(beforeRelatedDiff);
+  await expect(viewer).toContainText("new planner behavior");
+  await expect(viewer.locator(".surface-message")).toHaveCount(0);
+  await expect(viewer).toContainText("refreshed planner behavior");
 
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-related-diff");

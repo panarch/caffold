@@ -66,6 +66,31 @@ export function createRefreshCoordinator(refresh, onState = () => {}) {
   };
 }
 
+export function watchChangeAffectsPath(change, path) {
+  const target = normalizeWatchPath(path);
+  if (!target) {
+    return false;
+  }
+  if (change?.overflow) {
+    return true;
+  }
+
+  const paths = Array.isArray(change?.paths) ? change.paths : [];
+  if (paths.length === 0) {
+    return true;
+  }
+
+  return paths.some((path) => {
+    const changed = normalizeWatchPath(path);
+    return (
+      !changed ||
+      changed === target ||
+      target.startsWith(`${changed}/`) ||
+      changed.startsWith(`${target}/`)
+    );
+  });
+}
+
 function createScope(path) {
   const scope = {
     path,
@@ -151,6 +176,14 @@ function parsePayload(event) {
   } catch {
     return null;
   }
+}
+
+function normalizeWatchPath(path) {
+  return `${path ?? ""}`
+    .replaceAll("\\", "/")
+    .split("/")
+    .filter((segment) => segment && segment !== ".")
+    .join("/");
 }
 
 document.addEventListener("visibilitychange", () => {

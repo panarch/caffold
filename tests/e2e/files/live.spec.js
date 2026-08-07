@@ -128,6 +128,46 @@ test("refreshes Files and Git after external filesystem changes", async ({ page 
   }
 });
 
+test("keeps Files stable during a large ignored watcher batch", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Native watcher stress runs once on desktop.");
+
+  const relativeRoot = "tests/fixtures/home/src";
+  const probePath = resolve(
+    relativeRoot,
+    `ignored-output/watch-storm-${process.pid}-${Date.now()}`,
+  );
+  let listRequests = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/list") {
+      listRequests += 1;
+    }
+  });
+
+  await rm(probePath, { recursive: true, force: true });
+  try {
+    await page.goto(`/files?cwd=${encodeURIComponent(relativeRoot)}`);
+    await page.waitForTimeout(500);
+    const panel = page.locator("caffold-file-list .file-list-panel");
+    await panel.evaluate((element) => {
+      element.dataset.ignoredStormProbe = "kept";
+    });
+    const requestsBeforeStorm = listRequests;
+
+    await mkdir(probePath, { recursive: true });
+    await Promise.all(
+      Array.from({ length: 160 }, (_, index) =>
+        writeFile(resolve(probePath, `event-${index}.txt`), "ignored watcher event\n"),
+      ),
+    );
+    await page.waitForTimeout(1_750);
+
+    expect(listRequests).toBe(requestsBeforeStorm);
+    await expect(panel).toHaveAttribute("data-ignored-storm-probe", "kept");
+  } finally {
+    await rm(probePath, { recursive: true, force: true });
+  }
+});
+
 test("keeps manual Files refresh available when live updates fail", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Watcher fallback visual runs once on desktop.");
   let listRequests = 0;

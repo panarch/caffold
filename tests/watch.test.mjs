@@ -38,7 +38,11 @@ globalThis.window = {
 };
 globalThis.EventSource = MockEventSource;
 
-const { createRefreshCoordinator, subscribeToWatch } = await import(
+const {
+  createRefreshCoordinator,
+  subscribeToWatch,
+  watchChangeAffectsPath,
+} = await import(
   "../frontend/watch.js"
 );
 
@@ -80,6 +84,35 @@ test("coalesces an event burst into one trailing refresh", async () => {
 
   assert.equal(calls, 2);
   assert.equal(coordinator.active, false);
+});
+
+test("matches watch changes to the selected path without treating siblings as related", () => {
+  assert.equal(
+    watchChangeAffectsPath({ paths: ["src/lib.rs"], overflow: false }, "src/lib.rs"),
+    true,
+  );
+  assert.equal(
+    watchChangeAffectsPath({ paths: ["src"], overflow: false }, "src/lib.rs"),
+    true,
+  );
+  assert.equal(
+    watchChangeAffectsPath(
+      { paths: ["src/other.rs"], overflow: false },
+      "src/lib.rs",
+    ),
+    false,
+  );
+  assert.equal(
+    watchChangeAffectsPath({ paths: [], overflow: false }, "src/lib.rs"),
+    true,
+  );
+  assert.equal(
+    watchChangeAffectsPath(
+      { paths: ["target/output"], overflow: true },
+      "src/lib.rs",
+    ),
+    true,
+  );
 });
 
 test("requests recovery after reconnect and visibility resume", () => {

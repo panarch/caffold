@@ -104,6 +104,48 @@ test("reopens Review at its last semantic route after returning to Conversation"
   ).toHaveAttribute("aria-current", "true");
 });
 
+test("keeps the selected Review viewer mounted during canonical task sync", async ({
+  page,
+}) => {
+  const { taskScenario, tasksPage, taskReview } =
+    await openCompletedTaskForReview(page);
+
+  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await taskReview
+    .locator('caffold-git-diff-changes-tree button[data-repo-relative-path="planner.rs"]')
+    .click();
+  const visibleDiff = taskReview.locator("caffold-diff-viewer");
+  await expect(visibleDiff).toContainText("new planner behavior");
+  await visibleDiff.evaluate((element) => {
+    element.dataset.canonicalSyncProbe = "kept";
+  });
+
+  taskScenario.updateTask({ lastEventSummary: "Command started" });
+  await page.evaluate(
+    ({ detail, threadId }) => {
+      const source = window.__caffoldMockEventSources.find(
+        (candidate) =>
+          candidate.url === `/api/tasks/${threadId}/stream` &&
+          candidate.readyState !== 2,
+      );
+      source?.emit("task-sync", {
+        threadId,
+        revision: 20,
+        reason: "canonical-sync",
+        detail,
+      });
+    },
+    {
+      threadId: taskScenario.threadId,
+      detail: taskScenario.detailResponse({ revision: 20 }),
+    },
+  );
+
+  await expect(visibleDiff).toHaveAttribute("data-canonical-sync-probe", "kept");
+  await expect(visibleDiff).toContainText("new planner behavior");
+  await expect(taskReview.locator(".surface-message")).toHaveCount(0);
+});
+
 test("rejects a late file navigator response while Review is inactive", async ({
   page,
 }) => {
