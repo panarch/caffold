@@ -1,4 +1,4 @@
-const CACHE_NAME = "caffold-shell-v126";
+const CACHE_NAME = "caffold-shell-v127";
 
 const APP_SHELL_ASSETS = [
   "/",

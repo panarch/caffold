@@ -23,6 +23,7 @@ const codeOwners = new Set([
   "components/code-viewer.css",
   "components/diff-viewer.css",
   "pages/(codex)/tasks/components/detail/conversation.css",
+  "pages/(codex)/tasks/components/detail/conversation/command-dialog.css",
   "pages/(codex)/tasks/components/detail/conversation/markdown.js",
   "pages/(review-workspace)/(github)/components/markdown.js",
   "pages/settings/page.css",

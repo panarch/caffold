@@ -111,6 +111,20 @@ test("scales visible Task controls without shrinking their touch targets", async
 
   for (const metrics of [compact, spacious]) {
     expect(metrics.horizontalOverflow).toBe(false);
+    expect(metrics.headerActionGaps.newTaskToGit).toBeCloseTo(
+      metrics.headerActionGap,
+      1,
+    );
+    expect(metrics.headerActionGaps.gitToGithub).toBeCloseTo(
+      metrics.headerActionGap,
+      1,
+    );
+    if (metrics.headerActionGaps.githubToInfo !== null) {
+      expect(metrics.headerActionGaps.githubToInfo).toBeCloseTo(
+        metrics.headerGroupGap,
+        1,
+      );
+    }
     if (metrics.targetFloor >= 40) {
       for (const [name, covered] of Object.entries(metrics.hitTargets)) {
         expect(
@@ -158,12 +172,17 @@ async function installScalingTask(page) {
           branch: "main",
           dirty: false,
         },
-        github: null,
+        github: {
+          owner: "openai",
+          name: "codger",
+          nameWithOwner: "openai/codger",
+          url: "https://github.com/openai/codger",
+        },
         ghAvailable: true,
         authenticated: true,
-        issuesAvailable: false,
-        pullsAvailable: false,
-        message: "No GitHub remote",
+        issuesAvailable: true,
+        pullsAvailable: true,
+        message: null,
       },
     }),
   );
@@ -220,6 +239,9 @@ function taskInterfaceMetrics(page) {
     const controls = {
       close: document.querySelector(".codex-workspace-close"),
       info: activeDetail.querySelector(".task-detail-info-button"),
+      newTask: activeDetail.querySelector(".task-summary-new-task"),
+      git: activeDetail.querySelectorAll(".task-brand-button")[0],
+      github: activeDetail.querySelectorAll(".task-brand-button")[1],
       archive: activeDetail.querySelector(
         ".task-detail-popover:popover-open .task-detail-archive-action .task-secondary-button",
       ),
@@ -260,23 +282,61 @@ function taskInterfaceMetrics(page) {
     };
     const hitDebug = (element) => {
       const box = element.getBoundingClientRect();
+      const parentBox = element.parentElement?.getBoundingClientRect();
       const centerX = box.left + box.width / 2;
       const centerY = box.top + box.height / 2;
-      return [
-        [centerX, centerY - 19],
-        [centerX, centerY + 19],
-        [centerX - 19, centerY],
-        [centerX + 19, centerY],
-      ].map(([x, y]) => {
-        const hit = document.elementFromPoint(x, y);
-        return {
-          x,
-          y,
-          tag: hit?.tagName,
-          className: hit?.className?.baseVal ?? hit?.className ?? "",
-        };
-      });
+      return {
+        box: {
+          left: box.left,
+          right: box.right,
+          width: box.width,
+        },
+        parentBox: parentBox
+          ? {
+              left: parentBox.left,
+              right: parentBox.right,
+              width: parentBox.width,
+            }
+          : null,
+        viewportWidth: window.innerWidth,
+        points: [
+          [centerX, centerY - 19],
+          [centerX, centerY + 19],
+          [centerX - 19, centerY],
+          [centerX + 19, centerY],
+        ].map(([x, y]) => {
+          const hit = document.elementFromPoint(x, y);
+          return {
+            x,
+            y,
+            tag: hit?.tagName,
+            className: hit?.className?.baseVal ?? hit?.className ?? "",
+          };
+        }),
+      };
     };
+    const visualBounds = (element) => {
+      const box = element.getBoundingClientRect();
+      const paint = getComputedStyle(element, "::before");
+      return {
+        left: box.left + number(paint.left),
+        right: box.right - number(paint.right),
+        centerY: box.top + box.height / 2,
+      };
+    };
+    const horizontalGap = (left, right) => {
+      const leftBounds = visualBounds(left);
+      const rightBounds = visualBounds(right);
+      if (Math.abs(leftBounds.centerY - rightBounds.centerY) > 1) {
+        return null;
+      }
+      return rightBounds.left - leftBounds.right;
+    };
+    const taskDetailActions = activeDetail.querySelector(".task-detail-actions");
+    const taskDetailRight = activeDetail.querySelector(".task-detail-right");
+    const compactInset = number(
+      getComputedStyle(controls.git, "::before").left,
+    );
 
     return {
       rootFontSize,
@@ -301,9 +361,25 @@ function taskInterfaceMetrics(page) {
       horizontalOverflow:
         document.documentElement.scrollWidth >
         document.documentElement.clientWidth,
+      headerActionGap: Math.max(
+        tokenPixels("--interface-toolbar-gap"),
+        compactInset * 2,
+      ),
+      headerGroupGap: Math.max(
+        tokenPixels("--interface-space-5"),
+        compactInset * 2,
+      ),
+      headerActionGaps: {
+        newTaskToGit: horizontalGap(controls.newTask, controls.git),
+        gitToGithub: horizontalGap(controls.git, controls.github),
+        githubToInfo: horizontalGap(controls.github, controls.info),
+      },
       hitTargets: {
         close: squareHitTarget(controls.close),
         info: squareHitTarget(controls.info),
+        newTask: squareHitTarget(controls.newTask),
+        git: squareHitTarget(controls.git),
+        github: squareHitTarget(controls.github),
         archive: verticalHitTarget(controls.archive),
         model: verticalHitTarget(controls.model),
         permission: verticalHitTarget(controls.permission),

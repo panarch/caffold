@@ -1,4 +1,20 @@
 caffold-task-detail-summary {
+  --task-detail-control-layout-gap: max(
+    0rem,
+    calc(
+      var(--interface-toolbar-gap) -
+        var(--interface-compact-hit-outset) -
+        var(--interface-compact-hit-outset)
+    )
+  );
+  --task-detail-group-layout-gap: max(
+    0rem,
+    calc(
+      var(--interface-space-5) -
+        var(--interface-compact-hit-outset) -
+        var(--interface-compact-hit-outset)
+    )
+  );
   box-sizing: border-box;
   position: relative;
   display: grid;
@@ -61,7 +77,7 @@ caffold-task-detail-summary {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: var(--interface-space-5);
+    gap: var(--task-detail-group-layout-gap);
     min-width: 0;
   }
 
@@ -80,7 +96,7 @@ caffold-task-detail-summary {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: var(--interface-toolbar-gap);
+    gap: var(--task-detail-control-layout-gap);
   }
 
   & .task-mode-switch {
@@ -93,6 +109,7 @@ caffold-task-detail-summary {
     border: 1px solid var(--border);
     border-radius: 5px;
     background: var(--surface-muted);
+    margin-inline-end: var(--interface-compact-hit-outset);
   }
 
   & .task-mode-switch button {
@@ -156,9 +173,14 @@ caffold-task-detail-summary {
   }
 
   & .task-detail-actions .task-summary-new-task {
-    width: var(--interface-compact-visual-size);
-    min-width: var(--interface-compact-visual-size);
+    width: var(--interface-compact-hit-size);
+    min-width: var(--interface-compact-hit-size);
+    height: var(--interface-compact-hit-size);
+    min-height: var(--interface-compact-hit-size);
+    margin-block: calc(0rem - var(--interface-compact-hit-outset));
     padding-inline: 0;
+    border: 0;
+    background: transparent;
   }
 
   & .task-brand-button {
@@ -279,6 +301,7 @@ caffold-task-detail-summary {
     inset: calc(0px - var(--interface-compact-hit-outset)) 0;
   }
 
+  & .task-detail-actions .task-summary-new-task::before,
   & .task-brand-button::before,
   & .task-detail-info-button::before {
     inset: var(--interface-compact-hit-outset);
@@ -292,12 +315,18 @@ caffold-task-detail-summary {
     outline: none;
   }
 
+  & .task-detail-actions .task-summary-new-task:hover::before,
+  & .task-detail-actions .task-summary-new-task:focus-visible::before,
   & .task-detail-info-button:hover::before,
   & .task-detail-info-button:focus-visible::before,
   & .task-brand-button:hover::before,
   & .task-brand-button:focus-visible::before {
     border-color: var(--border-strong);
     background: var(--surface-muted);
+  }
+
+  & .task-detail-actions [data-summary-action="interrupt"] {
+    margin-inline: var(--interface-compact-hit-outset);
   }
 
   & .task-detail-info-button .task-status-chip {
@@ -450,12 +479,12 @@ caffold-task-detail-summary {
       grid-column: 2;
     }
 
-    & .task-detail-actions,
+    & .task-detail-actions {
+      gap: var(--task-detail-control-layout-gap);
+    }
+
     & .task-detail-right {
-      gap: max(
-        0.25rem,
-        calc(var(--interface-compact-hit-outset) + var(--interface-compact-hit-outset))
-      );
+      gap: var(--task-detail-group-layout-gap);
     }
 
     & .task-detail-actions .task-secondary-button {
@@ -466,12 +495,12 @@ caffold-task-detail-summary {
       padding: 0;
     }
 
-    & .task-detail-info-button {
+    & .task-detail-actions .task-summary-new-task {
       width: var(--interface-compact-hit-size);
       min-width: var(--interface-compact-hit-size);
       height: var(--interface-compact-hit-size);
       min-height: var(--interface-compact-hit-size);
-      padding: 0;
+      margin-block: calc(0rem - var(--interface-compact-hit-outset));
     }
 
     & h2 {
