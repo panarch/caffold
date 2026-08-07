@@ -3,7 +3,8 @@ import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import { captureReviewScreenshot } from "../support/task-fixtures.js";
 
-const MODEL_BYTES = 487_601_967;
+const MODEL_ID = "large-v3-turbo";
+const MODEL_BYTES = 1_624_555_275;
 
 test.use({
   launchOptions: {
@@ -222,7 +223,7 @@ test("requires explicit confirmation before the one-time model install", async (
   });
   page.once("dialog", async (dialog) => {
     expect(dialog.type()).toBe("confirm");
-    expect(dialog.message()).toContain("Whisper small model (465 MB)");
+    expect(dialog.message()).toContain("Whisper large-v3-turbo model (1.5 GB)");
     await dialog.accept();
   });
 
@@ -454,7 +455,7 @@ function voiceStatus(installed, maxRecordingSeconds = 300) {
   return {
     supported: true,
     model: {
-      id: "small",
+      id: MODEL_ID,
       bytes: MODEL_BYTES,
       installed,
       loaded: false,

@@ -84,7 +84,7 @@ The worktree is the source of truth for code changes. Caffold reads from git and
 The shared task composer captures microphone samples with an AudioWorklet and
 creates a bounded 16 kHz mono 16-bit PCM WAV in the browser. It sends that WAV
 over the existing same-origin Caffold connection. The backend validates and
-decodes it in memory, lazily loads the pinned multilingual Whisper `small`
+decodes it in memory, lazily loads the pinned multilingual Whisper `large-v3-turbo`
 model, serializes inference, and returns text for insertion at the selection
 saved when recording began. It never stores raw recordings or calls an external
 speech-to-text service. The model remains loaded for the backend process

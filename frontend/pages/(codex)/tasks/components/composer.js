@@ -134,6 +134,7 @@ class CaffoldTaskComposer extends HTMLElement {
     this.voice = {
       phase: "checking",
       error: "",
+      modelId: "",
       modelInstalled: false,
       modelBytes: 0,
       maxRecordingSeconds: DEFAULT_MAX_RECORDING_SECONDS,
@@ -466,6 +467,7 @@ class CaffoldTaskComposer extends HTMLElement {
   }
 
   applyVoiceStatus(response) {
+    this.voice.modelId = `${response?.model?.id ?? ""}`;
     this.voice.modelInstalled = Boolean(response?.model?.installed);
     this.voice.modelBytes = Number(response?.model?.bytes ?? 0);
     const maxRecordingSeconds = Number(
@@ -675,9 +677,10 @@ class CaffoldTaskComposer extends HTMLElement {
 
   async installVoiceModel() {
     const size = formatBytes(this.voice.modelBytes);
+    const model = this.voice.modelId || "configured";
     if (
       !window.confirm(
-        `Download the multilingual Whisper small model (${size}) to this Caffold host?`,
+        `Download the multilingual Whisper ${model} model (${size}) to this Caffold host?`,
       )
     ) {
       return;
@@ -1635,7 +1638,8 @@ function voiceActionLabel(phase, modelInstalled) {
 
 function voiceStatusMessage(voice) {
   if (voice.phase === "downloading") {
-    return "Downloading the Whisper small model to this Caffold host...";
+    const model = voice.modelId ? `Whisper ${voice.modelId}` : "Whisper";
+    return `Downloading the ${model} model to this Caffold host...`;
   }
   if (["error", "unavailable"].includes(voice.phase)) {
     return voice.error || "Voice input is unavailable.";
@@ -1659,7 +1663,7 @@ function voiceCaptureError(error) {
 function formatBytes(bytes) {
   const value = Number(bytes);
   if (!Number.isFinite(value) || value <= 0) {
-    return "about 465 MB";
+    return "unknown size";
   }
   if (value < 1024 * 1024 * 1024) {
     return `${Math.round(value / (1024 * 1024))} MB`;

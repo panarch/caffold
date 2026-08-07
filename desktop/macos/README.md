@@ -64,7 +64,7 @@ Missing optional dependencies do not prevent the server from starting. The menu 
 - `Check for Updates…` installs an approved update through Homebrew, then relaunches Caffold and confirms that its owned local server becomes ready.
 - Data is stored in `~/Library/Application Support/Caffold/data`.
 - The first voice-input use asks before downloading the pinned multilingual
-  Whisper `small` model (about 465 MiB) under
+  Whisper `large-v3-turbo` model (about 1.5 GiB) under
   `~/Library/Application Support/Caffold/data/models/whisper`. Caffold verifies
   the download checksum before publishing it, then loads it lazily on the first
   transcription and retains it until the backend exits.

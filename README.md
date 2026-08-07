@@ -89,8 +89,8 @@ through a disposable proxy. Replacing or quitting Caffold closes only that proxy
 it does not stop an active Codex turn in the daemon.
 
 The task composer also supports keyboard-independent voice input. On first use,
-Caffold asks before downloading the pinned multilingual Whisper `small` model
-(487,601,967 bytes, about 465 MiB) to the host data directory and verifies its
+Caffold asks before downloading the pinned multilingual Whisper `large-v3-turbo` model
+(1,624,555,275 bytes, about 1.5 GiB) to the host data directory and verifies its
 SHA-256 checksum. Microphone audio is sent only to the same Caffold host, decoded
 in memory, and never saved. The model loads on the first transcription and stays
 loaded until the Caffold backend exits. Localhost works directly; Tailscale only

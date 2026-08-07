@@ -40,7 +40,7 @@ private func voiceResponse(
     WhisperStatusResponse(
         supported: supported,
         model: WhisperStatusResponse.Model(
-            id: "small",
+            id: "large-v3-turbo",
             installed: installed,
             loaded: loaded,
             downloading: downloading
@@ -58,7 +58,10 @@ private func runTests() throws {
     try require(setup.name == "Whisper", "voice status must use the Whisper integration name")
     try require(setup.state == .attention, "a missing model must need attention")
     try require(setup.status == "Setup required", "a missing model must require setup")
-    try require(detail("Model", in: setup) == "small", "the model ID must remain visible")
+    try require(
+        detail("Model", in: setup) == "large-v3-turbo",
+        "the model ID must remain visible"
+    )
     try require(detail("State", in: setup) == "Not installed", "setup must explain the model state")
     try require(detail("Limit", in: setup) == "5 minutes", "the recording limit must be readable")
 
@@ -86,7 +89,7 @@ private func runTests() throws {
     configuration.protocolClasses = [MockURLProtocol.self]
     let session = URLSession(configuration: configuration)
     let readyData = Data(
-        #"{"supported":true,"model":{"id":"small","bytes":487601967,"installed":true,"loaded":false,"downloading":false},"maxRecordingSeconds":300}"#.utf8
+        #"{"supported":true,"model":{"id":"large-v3-turbo","bytes":1624555275,"installed":true,"loaded":false,"downloading":false},"maxRecordingSeconds":300}"#.utf8
     )
     MockURLProtocol.handler = { request in
         try require(request.url == statusURL, "the menu must probe the local voice endpoint")

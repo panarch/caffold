@@ -28,11 +28,11 @@ use whisper_rs::{
     FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, install_logging_hooks,
 };
 
-const MODEL_ID: &str = "small";
-const MODEL_FILENAME: &str = "ggml-small.bin";
+const MODEL_ID: &str = "large-v3-turbo";
+const MODEL_FILENAME: &str = "ggml-large-v3-turbo.bin";
 const MODEL_REVISION: &str = "5359861c739e955e79d9a303bcbc70fb988958b1";
-const MODEL_SHA256: &str = "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b";
-const MODEL_BYTES: u64 = 487_601_967;
+const MODEL_SHA256: &str = "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69";
+const MODEL_BYTES: u64 = 1_624_555_275;
 const MAX_AUDIO_BYTES: usize = 10 * 1024 * 1024;
 const AUDIO_SAMPLE_RATE: u32 = 16_000;
 const MAX_AUDIO_SECONDS: usize = 5 * 60;
@@ -48,7 +48,7 @@ struct ModelSpec {
 }
 
 impl ModelSpec {
-    fn small() -> Self {
+    fn large_v3_turbo() -> Self {
         Self {
             id: MODEL_ID.to_string(),
             filename: MODEL_FILENAME.to_string(),
@@ -163,7 +163,7 @@ impl VoiceService {
     fn new(model_dir: PathBuf) -> Self {
         Self::with_dependencies(
             model_dir,
-            ModelSpec::small(),
+            ModelSpec::large_v3_turbo(),
             reqwest::Client::new(),
             Arc::new(WhisperVoiceEngine),
         )
@@ -334,7 +334,10 @@ impl VoiceService {
             return Err(VoiceApiError::new(
                 StatusCode::CONFLICT,
                 "voice_model_unavailable",
-                "Download the Whisper small model before using voice input.",
+                format!(
+                    "Download the Whisper {} model before using voice input.",
+                    self.inner.spec.id
+                ),
             ));
         }
         let engine = self.inner.engine.clone();
@@ -837,9 +840,9 @@ mod tests {
 
     #[test]
     #[ignore = "requires CAFFOLD_WHISPER_MODEL and CAFFOLD_WHISPER_WAV"]
-    fn live_small_model_transcribes_a_real_wav() {
+    fn live_pinned_model_transcribes_a_real_wav() {
         let model_path = std::env::var("CAFFOLD_WHISPER_MODEL")
-            .expect("set CAFFOLD_WHISPER_MODEL to ggml-small.bin");
+            .expect("set CAFFOLD_WHISPER_MODEL to a pinned Whisper GGML model");
         let wav_path =
             std::env::var("CAFFOLD_WHISPER_WAV").expect("set CAFFOLD_WHISPER_WAV to a WAV file");
         let wav = std::fs::read(wav_path).unwrap();
