@@ -726,6 +726,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Task chronology regression");
+  await page.setViewportSize({ width: 1280, height: 560 });
   await page.addInitScript(() => {
     window.__taskEventSources = [];
     window.EventSource = class MockEventSource {
@@ -856,6 +857,8 @@ test("keeps task event chronology stable through approval, completion, and reloa
       command: "cargo test",
       cwd: "src",
       status: "completed",
+      exitCode: 0,
+      durationMs: 1_600,
       aggregatedOutput: "test result: ok",
     },
   );
@@ -1020,7 +1023,28 @@ test("keeps task event chronology stable through approval, completion, and reloa
   );
   await expect(tasksPage.locator(".task-turn-work")).toHaveCount(1);
   const completedWorkDetails = tasksPage.locator(".task-turn-work > details");
-  await completedWorkDetails.locator(":scope > summary").click();
+  const completedWorkSummary = completedWorkDetails.locator(":scope > summary");
+  const conversationScroller = tasksPage.locator(".task-conversation-scroll");
+  await conversationScroller.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    element.dispatchEvent(new Event("scroll"));
+  });
+  await expect.poll(() => isScrolledToBottom(conversationScroller)).toBe(true);
+  const disclosureOffset = await completedWorkSummary.evaluate((summary) => {
+    const scroller = summary.closest(".task-conversation-scroll");
+    return summary.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+  });
+  await completedWorkSummary.click();
+  await expect(completedWorkDetails).toHaveAttribute("open", "");
+  await expect
+    .poll(() =>
+      completedWorkSummary.evaluate((summary) => {
+        const scroller = summary.closest(".task-conversation-scroll");
+        return summary.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+      }),
+    )
+    .toBeCloseTo(disclosureOffset, 1);
+  await expect.poll(() => isScrolledToBottom(conversationScroller)).toBe(false);
   const completedWorkOrder = () =>
     tasksPage.locator(".task-work-item").evaluateAll((items) =>
       items.map((item) => item.dataset.eventType),
@@ -1033,19 +1057,51 @@ test("keeps task event chronology stable through approval, completion, and reloa
     "command_execution",
     "plan",
   ]);
-  const completedCommandDetails = tasksPage.locator(
-    '.task-work-item[data-event-type="command_execution"] > details',
+  const liveWhileExpanded = event(
+    "event_live_while_expanded",
+    "assistant_message",
+    now + 900,
+    {
+      turnId: "turn_2",
+      phase: "commentary",
+      text: "New work arrived while older logs are open.",
+    },
   );
-  await expect(completedCommandDetails).not.toHaveAttribute("open", "");
-  await completedCommandDetails.locator("summary").click();
-  await expect(completedWorkDetails).toHaveAttribute("open", "");
-  await expect(completedCommandDetails).toHaveAttribute("open", "");
-
-  await test.step("keeps opened work disclosures expanded through a live rerender", async () => {
-    await emitTaskEvent(turnCompleted, 13);
-    await expect(completedWorkDetails).toHaveAttribute("open", "");
-    await expect(completedCommandDetails).toHaveAttribute("open", "");
+  const disclosureOffsetBeforeLive = await completedWorkSummary.evaluate((summary) => {
+    const scroller = summary.closest(".task-conversation-scroll");
+    return summary.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
   });
+  await emitTaskEvent(liveWhileExpanded, 13);
+  await expect(tasksPage).toContainText("New work arrived while older logs are open.");
+  await expect(completedWorkDetails).toHaveAttribute("open", "");
+  await expect
+    .poll(() =>
+      completedWorkSummary.evaluate((summary) => {
+        const scroller = summary.closest(".task-conversation-scroll");
+        return summary.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+      }),
+    )
+    .toBeCloseTo(disclosureOffsetBeforeLive, 1);
+  await expect.poll(() => isScrolledToBottom(conversationScroller)).toBe(false);
+  const completedCommandButton = tasksPage.locator(
+    '.task-work-item[data-event-type="command_execution"] > .task-command-summary',
+  );
+  await expect(completedCommandButton).toContainText("Completed");
+  await completedCommandButton.click();
+  const commandDialog = tasksPage.locator("caffold-task-command-dialog dialog");
+  await expect(completedWorkDetails).toHaveAttribute("open", "");
+  await expect(commandDialog).toHaveAttribute("open", "");
+  await expect(commandDialog).toContainText("cargo test");
+  await expect(commandDialog).toContainText("test result: ok");
+
+  await test.step("keeps the command dialog and work disclosure stable through a live rerender", async () => {
+    await emitTaskEvent(turnCompleted, 14);
+    await expect(completedWorkDetails).toHaveAttribute("open", "");
+    await expect(commandDialog).toHaveAttribute("open", "");
+    await expect(commandDialog).toContainText("test result: ok");
+  });
+  await commandDialog.getByRole("button", { name: "Close command output" }).click();
+  await expect(completedCommandButton).toBeFocused();
   await expect
     .poll(() =>
       tasksPage.evaluate((element) => {

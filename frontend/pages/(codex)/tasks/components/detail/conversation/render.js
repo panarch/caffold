@@ -784,6 +784,13 @@ function renderTurnWorkItem(event) {
     const cwd = `${payload.cwd ?? ""}`.trim();
     const status = `${payload.status ?? ""}`.trim();
     const output = `${payload.aggregatedOutput ?? ""}`.trim();
+    if (isTerminalCommandStatus(status)) {
+      return `
+        <article class="task-work-item task-work-command" data-event-type="command_execution" data-command-status="${escapeHtml(commandResultStatus(payload))}" data-command-terminal="true">
+          ${renderTerminalCommandSummary(event)}
+        </article>
+      `;
+    }
     const open = status && status !== "completed" ? " open" : "";
     return `
       <article class="task-work-item task-work-command" data-event-type="command_execution" data-command-status="${escapeHtml(status || "unknown")}">
@@ -880,6 +887,13 @@ function renderCommandEvent(event) {
   const cwd = `${payload.cwd ?? ""}`.trim();
   const status = `${payload.status ?? ""}`.trim();
   const output = `${payload.aggregatedOutput ?? ""}`.trim();
+  if (isTerminalCommandStatus(status)) {
+    return `
+      <li class="task-event task-command"${eventIdentityAttribute(event)} data-event-type="${escapeHtml(event.type)}" data-command-status="${escapeHtml(commandResultStatus(payload))}" data-command-terminal="true">
+        ${renderTerminalCommandSummary(event)}
+      </li>
+    `;
+  }
   const details = [
     command ? `$ ${command}` : "",
     cwd ? `cwd: ${cwd}` : "",
@@ -901,6 +915,47 @@ function renderCommandEvent(event) {
       </details>
     </li>
   `;
+}
+
+function renderTerminalCommandSummary(event) {
+  const payload = event.payload ?? {};
+  const command = `${payload.command ?? ""}`.trim() || "(command unavailable)";
+  const status = commandResultStatus(payload);
+  const duration = finiteNumber(payload.durationMs);
+  const exitCode = finiteNumber(payload.exitCode);
+  const metadata = [
+    duration !== null ? formatDuration(duration) : "",
+    status === "failed" && exitCode !== null ? `Exit ${exitCode}` : "",
+  ].filter(Boolean);
+  return `
+    <button
+      type="button"
+      class="task-command-summary"
+      data-conversation-action="view-command-output"
+      data-command-key="${escapeHtml(eventIdentityKey(event))}"
+      aria-haspopup="dialog"
+    >
+      <span class="task-command-summary-status" data-command-result="${escapeHtml(status)}">${status === "failed" ? "Failed" : "Completed"}</span>
+      <code class="task-command-summary-label">${escapeHtml(command)}</code>
+      ${metadata.length ? `<span class="task-command-summary-meta">${escapeHtml(metadata.join(" · "))}</span>` : ""}
+      <span class="task-command-summary-action">View output</span>
+    </button>
+  `;
+}
+
+function isTerminalCommandStatus(status) {
+  return ["completed", "failed"].includes(`${status ?? ""}`);
+}
+
+function commandResultStatus(payload) {
+  const exitCode = finiteNumber(payload.exitCode);
+  return payload.status === "failed" || (exitCode !== null && exitCode !== 0)
+    ? "failed"
+    : "completed";
+}
+
+function finiteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function renderFileChangeEvent(event) {

@@ -9,6 +9,7 @@ import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import "./composer.js";
 import "./detail/conversation.js";
+import "./detail/conversation/command-dialog.js";
 import "./detail/review.js";
 import "./detail/summary.js";
 import { TaskDetailStream } from "./detail/stream.js";
@@ -133,6 +134,18 @@ class CaffoldTaskDetail extends HTMLElement {
           event.detail.approvalId,
           event.detail.decision,
         );
+      } else if (event.detail?.type === "command-output") {
+        this.commandDialog()?.openCommand(
+          event.detail.command,
+          event.detail.commandKey,
+        );
+      }
+    });
+    this.addEventListener("caffold:task-command-dialog-closed", (event) => {
+      event.stopPropagation();
+      const returnFocusKey = `${event.detail?.returnFocusKey ?? ""}`;
+      if (returnFocusKey) {
+        this.conversationComponent()?.focusCommandSummary(returnFocusKey);
       }
     });
     this.addEventListener("caffold:task-composer-submit", (event) => {
@@ -306,6 +319,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.deactivateFollowUpComposer();
     this.deactivateReview();
     this.taskSummary()?.deactivate();
+    this.commandDialog()?.dismiss({ restoreFocus: false });
     this.hidden = true;
   }
 
@@ -1071,6 +1085,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.setAttribute("data-task-detail-view", this.reviewView);
     this.ensureTaskShell();
     this.renderTaskContentRegion();
+    this.commandDialog()?.setThreadId(this.selectedThreadId);
     this.syncTaskSummary();
     this.syncFollowUpComposer();
     this.conversationComponent()?.setActive(
@@ -1096,6 +1111,12 @@ class CaffoldTaskDetail extends HTMLElement {
   conversationComponent() {
     return this.querySelector(
       ".task-conversation-pane caffold-task-conversation",
+    );
+  }
+
+  commandDialog() {
+    return this.querySelector(
+      ".task-conversation-pane caffold-task-command-dialog",
     );
   }
 
@@ -1481,6 +1502,12 @@ class CaffoldTaskDetail extends HTMLElement {
             ),
           ],
           [
+            "command-dialog",
+            currentConversation.querySelector(
+              ":scope > caffold-task-command-dialog",
+            ),
+          ],
+          [
             "composer-slot",
             currentConversation.querySelector(
               ":scope > .task-follow-up-composer-slot",
@@ -1490,9 +1517,11 @@ class CaffoldTaskDetail extends HTMLElement {
         const stableChildKey = (child) =>
           child.matches("caffold-task-conversation")
             ? "conversation"
-            : child.matches(".task-follow-up-composer-slot")
-              ? "composer-slot"
-              : "";
+            : child.matches("caffold-task-command-dialog")
+              ? "command-dialog"
+              : child.matches(".task-follow-up-composer-slot")
+                ? "composer-slot"
+                : "";
         [...currentConversation.children].forEach((child) => {
           if (![...stableChildren.values()].includes(child)) {
             child.remove();
@@ -1617,6 +1646,7 @@ class CaffoldTaskDetail extends HTMLElement {
         <caffold-task-detail-summary class="task-detail-summary" role="region" aria-label="Task summary"></caffold-task-detail-summary>
         <section class="task-conversation-pane" aria-label="Task conversation">
           <caffold-task-conversation></caffold-task-conversation>
+          <caffold-task-command-dialog></caffold-task-command-dialog>
           ${this.renderStreamState()}
           <div class="task-follow-up-composer-slot"></div>
         </section>

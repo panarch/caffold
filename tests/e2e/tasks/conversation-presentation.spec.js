@@ -88,7 +88,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     "I am checking the planner diff",
   );
   await expect(tasksPage.locator(".task-turn-work")).toContainText("Worked for");
-  await expect(tasksPage.locator(".task-turn-work")).toContainText("6 updates");
+  await expect(tasksPage.locator(".task-turn-work")).toContainText("7 updates");
   await expect(tasksPage.locator(".task-turn-work > details")).not.toHaveAttribute("open", "");
   await expect
     .poll(() =>
@@ -100,9 +100,25 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
       }),
     )
     .toBe(true);
-  await expect(tasksPage.locator(".task-work-item")).toHaveCount(6);
+  await expect(tasksPage.locator(".task-work-item")).toHaveCount(7);
   await expect(tasksPage.locator(".task-work-item").first()).not.toBeVisible();
-  await tasksPage.locator(".task-turn-work > details > summary").click();
+  const workDetails = tasksPage.locator(".task-turn-work > details");
+  const workSummary = workDetails.locator(":scope > summary");
+  await workSummary.scrollIntoViewIfNeeded();
+  const workSummaryOffset = await workSummary.evaluate((summary) => {
+    const scroller = summary.closest(".task-conversation-scroll");
+    return summary.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+  });
+  await workSummary.click();
+  await expect(workDetails).toHaveAttribute("open", "");
+  await expect
+    .poll(() =>
+      workSummary.evaluate((summary) => {
+        const scroller = summary.closest(".task-conversation-scroll");
+        return summary.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+      }),
+    )
+    .toBeCloseTo(workSummaryOffset, 1);
   await expect(
     tasksPage.locator('.task-work-item[data-event-type="assistant_message"]'),
   ).toContainText("I am checking the planner diff");
@@ -113,18 +129,35 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     "Run focused tests",
   );
   const completedCommand = tasksPage.locator(
-    '.task-work-item[data-event-type="command_execution"]',
+    '.task-work-item[data-event-type="command_execution"][data-command-status="completed"]',
   );
-  await expect(tasksPage.locator(".task-turn-work").last()).toContainText("Command");
-  await expect(completedCommand.locator("details")).not.toHaveAttribute("open", "");
-  await completedCommand.locator("summary").click();
-  await expect(completedCommand).toContainText("cargo test");
-  await expect(completedCommand).toContainText("cwd: src");
-  await expect(completedCommand).toContainText("completed");
-  await expect(completedCommand).toContainText(
-    "test result: ok",
+  const completedCommandButton = completedCommand.locator(".task-command-summary");
+  await expect(completedCommand.locator("details")).toHaveCount(0);
+  await expect(completedCommandButton).toContainText("Completed");
+  await expect(completedCommandButton).toContainText("cargo test");
+  await expect(completedCommandButton).toContainText("1s");
+  await expect(completedCommandButton).not.toContainText("test result: ok");
+  await completedCommandButton.scrollIntoViewIfNeeded();
+  const conversationScrollBeforeDialog = await tasksPage
+    .locator(".task-conversation-scroll")
+    .evaluate((element) => ({
+      scrollHeight: element.scrollHeight,
+      scrollTop: element.scrollTop,
+    }));
+  const commandRowHeight = await completedCommand.evaluate(
+    (element) => element.getBoundingClientRect().height,
   );
-  const completedCommandOutput = completedCommand.locator("pre");
+  await completedCommandButton.click();
+  const commandDialog = tasksPage.locator("caffold-task-command-dialog dialog");
+  await expect(commandDialog).toHaveAttribute("open", "");
+  await expect(commandDialog).toContainText("cargo test");
+  await expect(commandDialog).toContainText("Working directory");
+  await expect(commandDialog).toContainText("src");
+  await expect(commandDialog).toContainText("Completed");
+  await expect(commandDialog).toContainText("1s");
+  await expect(commandDialog).toContainText("Exit code");
+  await expect(commandDialog).toContainText("test result: ok");
+  const completedCommandOutput = commandDialog.locator(".task-command-dialog-output pre");
   await expect
     .poll(() =>
       completedCommandOutput.evaluate(
@@ -132,6 +165,105 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
       ),
     )
     .toBe(true);
+  await expect
+    .poll(() =>
+      commandDialog.locator(".task-command-dialog-body").evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    )
+    .toBe(true);
+  const commandDialogBody = commandDialog.locator(".task-command-dialog-body");
+  await expect
+    .poll(() =>
+      commandDialogBody.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+        return element.scrollTop;
+      }),
+    )
+    .toBeGreaterThan(0);
+  await expect
+    .poll(() =>
+      tasksPage.locator(".task-conversation-scroll").evaluate((element) => ({
+        scrollHeight: element.scrollHeight,
+        scrollTop: element.scrollTop,
+      })),
+    )
+    .toEqual(conversationScrollBeforeDialog);
+  await captureReviewScreenshot(page, testInfo, "tasks-command-output");
+  await commandDialog.getByRole("button", { name: "Close command output" }).click();
+  await expect(commandDialog).not.toHaveAttribute("open", "");
+  await expect
+    .poll(() => commandDialogBody.evaluate((element) => element.scrollTop))
+    .toBe(0);
+  await expect(completedCommandButton).toBeFocused();
+  await expect
+    .poll(() => completedCommand.evaluate((element) => element.getBoundingClientRect().height))
+    .toBeCloseTo(commandRowHeight, 1);
+
+  await test.step("resets after opening when a hidden scroller ignores reset", async () => {
+    await completedCommandButton.click();
+    await commandDialogBody.evaluate((element) => {
+      let prototype = Object.getPrototypeOf(element);
+      let descriptor = null;
+      while (prototype && !descriptor) {
+        descriptor = Object.getOwnPropertyDescriptor(prototype, "scrollTop");
+        prototype = Object.getPrototypeOf(prototype);
+      }
+      if (!descriptor?.get || !descriptor?.set) {
+        throw new Error("scrollTop accessors are unavailable");
+      }
+      Object.defineProperty(element, "scrollTop", {
+        configurable: true,
+        get() {
+          return descriptor.get.call(this);
+        },
+        set(value) {
+          if (Number(value) === 0 && !this.closest("dialog")?.open) {
+            return;
+          }
+          descriptor.set.call(this, value);
+        },
+      });
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect
+      .poll(() => commandDialogBody.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    await commandDialog.getByRole("button", { name: "Close command output" }).click();
+    await completedCommandButton.click();
+    await expect
+      .poll(() => commandDialogBody.evaluate((element) => element.scrollTop))
+      .toBe(0);
+    await commandDialogBody.evaluate((element) => {
+      delete element.scrollTop;
+    });
+    await commandDialog.getByRole("button", { name: "Close command output" }).click();
+  });
+
+  const failedCommand = tasksPage.locator(
+    '.task-work-item[data-event-type="command_execution"][data-command-status="failed"]',
+  );
+  const failedCommandButton = failedCommand.locator(".task-command-summary");
+  await expect(failedCommandButton).toContainText("Failed");
+  await expect(failedCommandButton).toContainText("Exit 101");
+  await failedCommandButton.click();
+  await expect(commandDialog).toHaveAttribute("data-command-status", "failed");
+  await expect
+    .poll(() => commandDialogBody.evaluate((element) => element.scrollTop))
+    .toBe(0);
+  await expect(commandDialog).toContainText("cargo test --package missing");
+  await expect(commandDialog).toContainText("2s");
+  await expect(commandDialog).toContainText("101");
+  await expect(commandDialog).toContainText("package `missing` was not found");
+  await page.keyboard.press("Escape");
+  await expect(commandDialog).not.toHaveAttribute("open", "");
+  await expect(failedCommandButton).toBeFocused();
+
+  await failedCommandButton.click();
+  await expect(commandDialog).toHaveAttribute("open", "");
+  await page.mouse.click(1, 1);
+  await expect(commandDialog).not.toHaveAttribute("open", "");
+  await expect(failedCommandButton).toBeFocused();
   await expect
     .poll(() =>
       tasksPage.evaluate(
@@ -148,6 +280,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     "approval_resolved",
     "reasoning",
     "plan",
+    "command_execution",
     "command_execution",
     "file_change",
     "assistant_message",

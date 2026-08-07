@@ -1,0 +1,160 @@
+caffold-task-command-dialog {
+  position: absolute;
+
+  & dialog {
+    width: min(58rem, calc(100vw - 2rem));
+    max-width: none;
+    max-height: calc(100dvh - 2rem);
+    margin: auto;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 18px 48px rgb(24 32 27 / 24%);
+  }
+
+  & dialog::backdrop {
+    background: rgb(24 32 27 / 32%);
+  }
+
+  & .task-command-dialog-card {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    max-height: calc(100dvh - 2rem);
+  }
+
+  & .task-command-dialog-header {
+    display: flex;
+    align-items: center;
+    gap: var(--interface-space-8);
+    padding: var(--interface-space-8) var(--interface-space-10);
+    border-bottom: 1px solid var(--border);
+  }
+
+  & .task-command-dialog-header > div {
+    min-width: 0;
+  }
+
+  & .task-command-dialog-header h2,
+  & .task-command-dialog-header p,
+  & .task-command-dialog-output h3 {
+    margin: 0;
+  }
+
+  & .task-command-dialog-header h2 {
+    font-size: 1rem;
+    line-height: 1.25;
+  }
+
+  & .task-command-dialog-header p {
+    margin-top: var(--interface-space-1);
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .task-command-dialog-close {
+    flex: 0 0 auto;
+    min-height: var(--interface-control-visual-size);
+    margin-left: auto;
+    padding: 0 var(--interface-control-padding-inline);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  & .task-command-dialog-body {
+    display: grid;
+    gap: var(--interface-space-10);
+    min-height: 0;
+    overflow: auto;
+    padding: var(--interface-space-10);
+    overscroll-behavior: contain;
+  }
+
+  & .task-command-dialog-details {
+    display: grid;
+    gap: var(--interface-space-4);
+    margin: 0;
+  }
+
+  & .task-command-dialog-details > div {
+    display: grid;
+    grid-template-columns: 9rem minmax(0, 1fr);
+    gap: var(--interface-space-4);
+  }
+
+  & .task-command-dialog-details dt,
+  & .task-command-dialog-details dd {
+    min-width: 0;
+    margin: 0;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .task-command-dialog-details dt {
+    color: var(--muted);
+  }
+
+  & .task-command-dialog-details code {
+    overflow-wrap: anywhere;
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
+    user-select: text;
+  }
+
+  & .task-command-dialog-output {
+    display: grid;
+    gap: var(--interface-space-4);
+    min-width: 0;
+  }
+
+  & .task-command-dialog-output h3 {
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .task-command-dialog-output pre {
+    max-width: 100%;
+    margin: 0;
+    overflow: auto;
+    padding: var(--interface-space-6);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--code-bg);
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
+    white-space: pre;
+    user-select: text;
+  }
+}
+
+@media (max-width: 620px) {
+  caffold-task-command-dialog {
+    & dialog {
+      width: calc(100vw - 0.5rem);
+      height: calc(100dvh - 0.5rem);
+      max-height: none;
+    }
+
+    & .task-command-dialog-card {
+      height: 100%;
+      max-height: none;
+    }
+
+    & .task-command-dialog-header,
+    & .task-command-dialog-body {
+      padding: var(--interface-space-8);
+    }
+
+    & .task-command-dialog-details > div {
+      grid-template-columns: 1fr;
+      gap: var(--interface-space-1);
+    }
+  }
+}

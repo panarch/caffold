@@ -1,6 +1,10 @@
 import { escapeHtml } from "../../../../../components/dom.js";
 import { formatDuration } from "../../task-format.js";
-import { pendingApprovals } from "../../task-events.js";
+import {
+  dedupeCanonicalEvents,
+  eventIdentityKey,
+  pendingApprovals,
+} from "../../task-events.js";
 import { isTaskTransportStale } from "../../runtime-state.js";
 import "./conversation/markdown.js";
 import { renderConversation } from "./conversation/render.js";
@@ -21,6 +25,7 @@ class CaffoldTaskConversation extends HTMLElement {
   disconnectedCallback() {
     this.rememberScroll();
     this.active = false;
+    this.pendingDisclosureAnchorByThread.delete(this.snapshot.threadId);
     this.removeEventListener("click", this.boundClick);
     this.removeEventListener("scroll", this.boundScroll, true);
     this.removeEventListener(
@@ -51,6 +56,7 @@ class CaffoldTaskConversation extends HTMLElement {
     this.approvalErrors = new Map();
     this.scrollByThread = new Map();
     this.disclosureByThread = new Map();
+    this.pendingDisclosureAnchorByThread = new Map();
     this.resizeObserver = null;
     this.activeTurnClockTimer = null;
     this.boundClick = (event) => this.handleClick(event);
@@ -99,6 +105,7 @@ class CaffoldTaskConversation extends HTMLElement {
     const nextThreadId = nextSnapshot.threadId;
     if (previousThreadId !== nextThreadId) {
       this.approvalErrors.clear();
+      this.pendingDisclosureAnchorByThread.delete(previousThreadId);
     }
     this.snapshot = nextSnapshot;
     this.pruneApprovalErrors();
@@ -160,6 +167,7 @@ class CaffoldTaskConversation extends HTMLElement {
     if (!nextActive) {
       this.rememberScroll();
       this.active = false;
+      this.pendingDisclosureAnchorByThread.delete(this.snapshot.threadId);
       this.disconnectResizeObserver();
       this.stopActiveTurnClock();
       return;
@@ -189,6 +197,7 @@ class CaffoldTaskConversation extends HTMLElement {
     this.dataset.transportState = this.snapshot.transportState;
     const { task } = this.snapshot;
     if (!task) {
+      this.pendingDisclosureAnchorByThread.delete(this.snapshot.threadId);
       this.innerHTML = "";
       this.disconnectResizeObserver();
       this.stopActiveTurnClock();
@@ -242,6 +251,10 @@ class CaffoldTaskConversation extends HTMLElement {
     `;
     this.restoreDisclosureState();
     this.restoreScroll(previousScroll);
+    this.restorePendingDisclosureAnchor(
+      this.scroller(),
+      this.snapshot.threadId,
+    );
     this.bindResizeObserver();
     this.syncActiveTurnClock();
     this.rememberScroll();
@@ -258,12 +271,14 @@ class CaffoldTaskConversation extends HTMLElement {
     if (disclosure instanceof HTMLDetailsElement) {
       const key = `${disclosure.dataset.disclosureKey ?? ""}`.trim();
       if (key && this.snapshot.threadId) {
+        const nextOpen = !disclosure.open;
+        this.captureDisclosureAnchor(key, disclosureSummary, nextOpen);
         let state = this.disclosureByThread.get(this.snapshot.threadId);
         if (!state) {
           state = new Map();
           this.disclosureByThread.set(this.snapshot.threadId, state);
         }
-        state.set(key, !disclosure.open);
+        state.set(key, nextOpen);
       }
     }
 
@@ -286,7 +301,25 @@ class CaffoldTaskConversation extends HTMLElement {
       this.dispatchIntent("older-history", { retry: true });
     } else if (action.dataset.conversationAction === "retry-detail") {
       this.dispatchIntent("retry-detail");
+    } else if (action.dataset.conversationAction === "view-command-output") {
+      const commandKey = `${action.dataset.commandKey ?? ""}`;
+      const command = dedupeCanonicalEvents(this.snapshot.events).find(
+        (entry) =>
+          entry.type === "command_execution" &&
+          eventIdentityKey(entry) === commandKey,
+      );
+      if (command) {
+        this.dispatchIntent("command-output", { command, commandKey });
+      }
     }
+  }
+
+  focusCommandSummary(commandKey) {
+    const button = [...this.querySelectorAll(".task-command-summary")].find(
+      (entry) => entry.dataset.commandKey === commandKey,
+    );
+    button?.focus();
+    return Boolean(button);
   }
 
   handleScroll() {
@@ -421,6 +454,62 @@ class CaffoldTaskConversation extends HTMLElement {
     return true;
   }
 
+  captureDisclosureAnchor(key, summary, open) {
+    const scroller = this.scroller();
+    const threadId = this.snapshot.threadId;
+    if (!scroller || !threadId || !scroller.contains(summary)) {
+      return;
+    }
+    const offset =
+      summary.getBoundingClientRect().top -
+      scroller.getBoundingClientRect().top;
+    this.pendingDisclosureAnchorByThread.set(threadId, {
+      key,
+      open,
+      offset,
+    });
+    window.requestAnimationFrame(() => {
+      const currentScroller = this.scroller();
+      if (
+        this.snapshot.threadId === threadId &&
+        this.restorePendingDisclosureAnchor(currentScroller, threadId)
+      ) {
+        this.rememberScroll(threadId);
+      }
+    });
+  }
+
+  restorePendingDisclosureAnchor(scroller, threadId) {
+    const pending = this.pendingDisclosureAnchorByThread.get(threadId);
+    if (!scroller || !pending) {
+      return false;
+    }
+    const disclosure = [
+      ...scroller.querySelectorAll("details[data-disclosure-key]"),
+    ].find((entry) => entry.dataset.disclosureKey === pending.key);
+    if (!disclosure) {
+      this.pendingDisclosureAnchorByThread.delete(threadId);
+      return false;
+    }
+    if (disclosure.open !== pending.open) {
+      return false;
+    }
+    const summary = disclosure.querySelector(":scope > summary");
+    if (!summary) {
+      this.pendingDisclosureAnchorByThread.delete(threadId);
+      return false;
+    }
+    const currentOffset =
+      summary.getBoundingClientRect().top -
+      scroller.getBoundingClientRect().top;
+    scroller.scrollTop = Math.min(
+      Math.max(0, scroller.scrollTop + currentOffset - pending.offset),
+      maxScrollTop(scroller),
+    );
+    this.pendingDisclosureAnchorByThread.delete(threadId);
+    return true;
+  }
+
   restoreDisclosureState() {
     const state = this.disclosureByThread.get(this.snapshot.threadId);
     if (!state) {
@@ -458,7 +547,9 @@ class CaffoldTaskConversation extends HTMLElement {
       if (!previousScroll) {
         return;
       }
-      if (previousScroll.atBottom) {
+      if (this.restorePendingDisclosureAnchor(scroller, threadId)) {
+        // A user-controlled disclosure owns this one layout change.
+      } else if (previousScroll.atBottom) {
         scroller.scrollTop = maxScrollTop(scroller);
       } else {
         this.restoreAnchor(scroller, previousScroll);

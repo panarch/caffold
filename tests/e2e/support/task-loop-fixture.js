@@ -496,9 +496,32 @@ export async function installTaskLoopFixture(page) {
             command: "cargo test",
             cwd: "src",
             status: "completed",
+            exitCode: 0,
+            durationMs: 1_250,
             aggregatedOutput:
               "test result: ok. 12 passed.\n" +
+              Array.from(
+                { length: 80 },
+                (_, index) => `output line ${index + 1}: planner fixture completed`,
+              ).join("\n") +
+              "\n" +
               "command-output-with-an-intentionally-long-unbroken-token-".repeat(18),
+          },
+          9,
+        ),
+        eventRecord(
+          "event_9_command_failed",
+          "command_execution",
+          "Command failed",
+          {
+            turnId: "turn_1",
+            itemId: "command_2",
+            command: "cargo test --package missing",
+            cwd: "src",
+            status: "failed",
+            exitCode: 101,
+            durationMs: 2_400,
+            aggregatedOutput: "error: package `missing` was not found",
           },
           9,
         ),
