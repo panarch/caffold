@@ -9,6 +9,8 @@ These documents explain what Caffold is and why it exists. They should avoid ove
 - [Vision](public/vision.md)
 - [Architecture](public/architecture.md)
 - [Review Policy](public/review-policy.md)
+  - [Frontend Review](public/review-policy/frontend.md)
+  - [Backend and API Review](public/review-policy/backend.md)
 
 ## Internal Planning
 
