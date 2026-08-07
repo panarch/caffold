@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
+WORK_DIR="${REPO_DIR}/target/caffold-system-status-tests"
+mkdir -p "${WORK_DIR}/swift-module-cache"
+
+xcrun swiftc \
+  -warnings-as-errors \
+  -module-cache-path "${WORK_DIR}/swift-module-cache" \
+  -framework AppKit \
+  -o "${WORK_DIR}/caffold-system-status-tests" \
+  "${SCRIPT_DIR}/CaffoldServer/Runtime.swift" \
+  "${SCRIPT_DIR}/CaffoldServer/SystemStatus.swift" \
+  "${REPO_DIR}/tests/macos-system-status/main.swift"
+
+"${WORK_DIR}/caffold-system-status-tests"

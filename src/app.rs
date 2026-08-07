@@ -7,6 +7,7 @@ use tracing::info;
 mod error;
 mod shell;
 mod tasks;
+mod voice;
 mod workspace;
 
 use crate::{fs::RootedFs, server_settings::ServerSettingsStore};
@@ -38,13 +39,14 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let root = fs.root().to_path_buf();
     let shell_router = shell::router(fs.clone(), server_settings, initial_path.clone(), home_path);
     let workspace_router = workspace::router(fs.clone(), shutdown.clone());
+    let voice_router = voice::router(data_dir.join("models/whisper"));
     let tasks = tasks::TasksApp::persistent(
         fs,
         initial_path.clone(),
         shutdown.clone(),
         data_dir.join("caffold.redb"),
     )?;
-    let app = router_with_states(shell_router, workspace_router, tasks.router());
+    let app = router_with_states(shell_router, workspace_router, tasks.router(), voice_router);
     let listener = TcpListener::bind((config.host, config.port)).await?;
     let addr = listener.local_addr()?;
 
@@ -82,11 +84,13 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         None,
     );
     let workspace_router = workspace::router(fs.clone(), shutdown.clone());
+    let voice_router = voice::router(fs.root().join(".caffold-test/models/whisper"));
     let tasks = tasks::TasksApp::memory(fs, String::new(), shutdown)?;
     Ok(router_with_states(
         shell_router,
         workspace_router,
         tasks.router(),
+        voice_router,
     ))
 }
 
@@ -94,8 +98,12 @@ fn router_with_states(
     shell_router: Router,
     workspace_router: Router,
     tasks_router: Router,
+    voice_router: Router,
 ) -> Router {
-    shell_router.merge(workspace_router).merge(tasks_router)
+    shell_router
+        .merge(workspace_router)
+        .merge(tasks_router)
+        .merge(voice_router)
 }
 
 fn default_data_dir() -> anyhow::Result<PathBuf> {

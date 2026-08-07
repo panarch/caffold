@@ -14,6 +14,23 @@ export async function getCodexPermissions(cwd = "") {
   return requestJson("/api/codex/permissions", cwd ? { cwd } : {});
 }
 
+export async function getVoiceStatus() {
+  return requestJson("/api/voice/status");
+}
+
+export async function installVoiceModel() {
+  return requestJson("/api/voice/model/install", {}, { method: "POST" });
+}
+
+export async function transcribeVoice(recording, signal) {
+  return requestJson("/api/voice/transcribe", {}, {
+    method: "POST",
+    rawBody: recording,
+    contentType: "audio/wav",
+    signal,
+  });
+}
+
 export async function getTasks(cursor = null) {
   return requestJson("/api/tasks", {
     ...(cursor ? { cursor } : {}),
@@ -193,11 +210,16 @@ async function requestJson(endpoint, params = {}, options = {}) {
     ? window.setTimeout(() => controller.abort(), options.timeoutMs)
     : null;
 
-  if (controller) {
-    fetchOptions.signal = controller.signal;
+  if (options.signal || controller) {
+    fetchOptions.signal = options.signal ?? controller.signal;
   }
 
-  if (options.body !== undefined) {
+  if (options.rawBody !== undefined) {
+    fetchOptions.headers = {
+      "content-type": options.contentType ?? "application/octet-stream",
+    };
+    fetchOptions.body = options.rawBody;
+  } else if (options.body !== undefined) {
     fetchOptions.headers = {
       "content-type": "application/json",
     };

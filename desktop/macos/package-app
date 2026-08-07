@@ -146,6 +146,8 @@ verify_bundle() {
   fi
   verify_binary_architecture "${macos_dir}/CaffoldServer"
   verify_binary_architecture "${resources_dir}/caffold"
+  verify_portable_dependencies "${macos_dir}/CaffoldServer"
+  verify_portable_dependencies "${resources_dir}/caffold"
   codesign --verify --deep --strict "${app_dir}"
   plutil -lint "${plist}" >/dev/null
 }
@@ -186,6 +188,23 @@ verify_binary_architecture() {
     echo "${binary} does not contain the expected ${ARCH} architecture." >&2
     return 1
   fi
+}
+
+verify_portable_dependencies() {
+  local binary="$1"
+  local dependency
+
+  while IFS= read -r dependency; do
+    [[ -n "${dependency}" ]] || continue
+    case "${dependency}" in
+      /System/Library/*|/usr/lib/*)
+        ;;
+      *)
+        echo "${binary} has a non-system dynamic dependency: ${dependency}" >&2
+        return 1
+        ;;
+    esac
+  done < <(otool -L "${binary}" | tail -n +2 | awk '{print $1}')
 }
 
 verify_archive() {

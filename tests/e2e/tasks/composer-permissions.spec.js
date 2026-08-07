@@ -371,7 +371,7 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
     }),
   );
   expect(idle.panelHeight).toBeLessThanOrEqual(96);
-  expect(idle.modelLabel).toBe("GPT Test · Medium");
+  expect(idle.modelLabel).toBe("Test · medium");
   expect(idle.modelNameClipped).toBe(false);
   expect(idle.chipGap).toBeGreaterThanOrEqual(0);
   expect(idle.chipGap).toBeLessThanOrEqual(8);

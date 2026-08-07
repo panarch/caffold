@@ -529,7 +529,7 @@ test("isolates task detail responses and conversation scroll by thread", async (
   });
   await expect(
     followUp.getByRole("button", { name: "Choose model and reasoning" }),
-  ).toContainText("Light");
+  ).toContainText("low");
   await expect(
     followUp.getByRole("button", { name: "Choose approval mode" }),
   ).toContainText("Auto review");
@@ -562,7 +562,7 @@ test("isolates task detail responses and conversation scroll by thread", async (
   await expect(followUpPrompt).toHaveValue("");
   await expect(
     followUp.getByRole("button", { name: "Choose model and reasoning" }),
-  ).toContainText("Extra High");
+  ).toContainText("xhigh");
   await expect(
     followUp.getByRole("button", { name: "Choose approval mode" }),
   ).toContainText("Ask approval");
@@ -591,7 +591,7 @@ test("isolates task detail responses and conversation scroll by thread", async (
   await expect(followUp.locator(".task-composer-attachment")).toHaveCount(0);
   await expect(
     followUp.getByRole("button", { name: "Choose model and reasoning" }),
-  ).toContainText("Light");
+  ).toContainText("low");
   await expect(
     followUp.getByRole("button", { name: "Choose approval mode" }),
   ).toContainText("Auto review");
@@ -604,7 +604,7 @@ test("isolates task detail responses and conversation scroll by thread", async (
   await expect(followUp.locator(".task-composer-attachment")).toHaveCount(1);
   await expect(
     followUp.getByRole("button", { name: "Choose model and reasoning" }),
-  ).toContainText("Extra High");
+  ).toContainText("xhigh");
   await expect(
     followUp.getByRole("button", { name: "Choose approval mode" }),
   ).toContainText("Ask approval");

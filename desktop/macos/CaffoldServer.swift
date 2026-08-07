@@ -21,6 +21,7 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var codexStatusMenuItem: NSMenuItem?
     private var gitStatusMenuItem: NSMenuItem?
     private var githubStatusMenuItem: NSMenuItem?
+    private var whisperStatusMenuItem: NSMenuItem?
     private var updateMenuItem: NSMenuItem?
     private var updater: ApplicationUpdater?
     private var preferences = ServerRuntimePreferences.load()
@@ -45,6 +46,10 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var codexStatusURL: URL {
         localURL.appendingPathComponent("api/codex/status")
+    }
+
+    private var whisperStatusURL: URL {
+        localURL.appendingPathComponent("api/voice/status")
     }
 
     private var tailscaleTarget: String {
@@ -168,6 +173,10 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let githubStatus = makeIntegrationItem("GitHub CLI")
         menu.addItem(githubStatus)
         githubStatusMenuItem = githubStatus
+
+        let whisperStatus = makeIntegrationItem("Whisper")
+        menu.addItem(whisperStatus)
+        whisperStatusMenuItem = whisperStatus
 
         menu.addItem(.separator())
         menu.addItem(sectionItem("Application"))
@@ -319,6 +328,7 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         applyIntegrationStatus(.checking("Codex"), to: codexStatusMenuItem)
         applyIntegrationStatus(.checking("Git"), to: gitStatusMenuItem)
         applyIntegrationStatus(.checking("GitHub CLI"), to: githubStatusMenuItem)
+        applyIntegrationStatus(.checking("Whisper"), to: whisperStatusMenuItem)
         tailscaleStatusMenuItem?.title = "Tailscale · Checking..."
         tailscaleToggleMenuItem?.isEnabled = false
         tailnetURLMenuItem?.isEnabled = false
@@ -344,6 +354,9 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         probeGithubStatus { [weak self] status in
             self?.applyIntegrationStatus(status, to: self?.githubStatusMenuItem)
+        }
+        probeWhisperStatus(url: whisperStatusURL) { [weak self] status in
+            self?.applyIntegrationStatus(status, to: self?.whisperStatusMenuItem)
         }
         probeTailscaleStatus(localTarget: tailscaleTarget) { [weak self] status in
             self?.applyTailscaleStatus(status)

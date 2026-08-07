@@ -7,6 +7,7 @@ import test from "node:test";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packageApp = resolve(repoRoot, "desktop/macos/package-app");
+const systemStatusTest = resolve(repoRoot, "desktop/macos/test-system-status");
 const updaterTest = resolve(repoRoot, "desktop/macos/test-updater");
 const release = resolve(repoRoot, "desktop/macos/release");
 const renderCask = resolve(repoRoot, "desktop/macos/render-cask");
@@ -68,6 +69,8 @@ test("macOS packaging locks dependencies and verifies the distributed archive", 
   assert.match(source, /cargo build --release --locked/);
   assert.match(source, /ditto -x -k/);
   assert.match(source, /codesign --verify --deep --strict/);
+  assert.match(source, /otool -L/);
+  assert.match(source, /non-system dynamic dependency/);
   assert.match(source, /shasum -a 256/);
   assert.match(source, /CFBundleShortVersionString/);
   assert.match(source, /--expected-version/);
@@ -76,6 +79,7 @@ test("macOS packaging locks dependencies and verifies the distributed archive", 
   assert.match(source, /io\.panarch\.caffold\.server/);
   assert.match(source, /CaffoldServer\/UpdateModel\.swift/);
   assert.match(source, /CaffoldServer\/Updater\.swift/);
+  run("bash", ["-n", systemStatusTest]);
   run("bash", ["-n", updaterTest]);
 });
 

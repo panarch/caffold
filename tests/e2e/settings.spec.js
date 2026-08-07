@@ -509,7 +509,7 @@ test("keeps model picker chrome compact and scales it only with Interface", asyn
   const modelButton = composer.getByRole("button", {
     name: "Choose model and reasoning",
   });
-  await expect(modelButton).toContainText("GPT-5.6-Sol");
+  await expect(modelButton).toContainText("5.6 Sol");
 
   await setRange(interfaceRange, 90);
   await setRange(conversationRange, 13);
@@ -520,7 +520,7 @@ test("keeps model picker chrome compact and scales it only with Interface", asyn
   });
   await expect(popover).toBeVisible();
   const compact = await modelPickerMetrics(composer);
-  await expect(modelButton).toHaveText("GPT-5.6-Sol · Light");
+  await expect(modelButton).toHaveText("5.6 Sol · low");
   await expect(
     composer.getByRole("button", { name: "Choose approval mode" }),
   ).toHaveText("Auto review");

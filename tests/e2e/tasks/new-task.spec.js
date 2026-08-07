@@ -177,8 +177,8 @@ test("creates a task with responsive composer controls and canonical approval st
     newTaskHeaderMetrics.closeRight + 8,
   );
   const newTaskComposer = page.locator("caffold-tasks-page .task-new-form");
-  await expect(newTaskComposer.locator(".task-model-button")).toContainText("GPT-5.6-Sol");
-  await expect(newTaskComposer.locator(".task-model-button")).toContainText("Light");
+  await expect(newTaskComposer.locator(".task-model-button")).toContainText("5.6 Sol");
+  await expect(newTaskComposer.locator(".task-model-button")).toContainText("low");
   await newTaskComposer.locator(".task-model-button").click();
   const modelPopover = page.locator("caffold-tasks-page .task-model-popover");
   await expect(modelPopover).toBeVisible();
@@ -262,7 +262,7 @@ test("creates a task with responsive composer controls and canonical approval st
   await expect(modelPopover.locator('[data-effort="max"]')).toBeVisible();
   await expect(modelPopover.locator('[data-effort="ultra"]')).toBeVisible();
   await modelPopover.locator('[data-effort="xhigh"]').click();
-  await expect(newTaskComposer.locator(".task-model-button")).toContainText("Extra High");
+  await expect(newTaskComposer.locator(".task-model-button")).toContainText("xhigh");
   const newPromptTextarea = newTaskComposer.locator('textarea[name="prompt"]');
   const initialTextareaMetrics = await newPromptTextarea.evaluate((textarea) => {
     const styles = getComputedStyle(textarea);

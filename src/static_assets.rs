@@ -152,6 +152,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(codex)/tasks/components/composer.js" => Some(js(include_str!(
             "../frontend/pages/(codex)/tasks/components/composer.js"
         ))),
+        "pages/(codex)/tasks/components/voice-recorder.js" => Some(js(include_str!(
+            "../frontend/pages/(codex)/tasks/components/voice-recorder.js"
+        ))),
+        "pages/(codex)/tasks/components/voice-worklet.js" => Some(js(include_str!(
+            "../frontend/pages/(codex)/tasks/components/voice-worklet.js"
+        ))),
         "pages/(codex)/tasks/components/detail.css" => Some(css(include_str!(
             "../frontend/pages/(codex)/tasks/components/detail.css"
         ))),
@@ -757,6 +763,25 @@ mod tests {
             let asset = get(path).expect("tasks component js");
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
             assert!(asset.body.windows(tag.len()).any(|window| window == tag));
+        }
+        for (path, marker) in [
+            (
+                "pages/(codex)/tasks/components/voice-recorder.js",
+                b"VoiceRecorder".as_slice(),
+            ),
+            (
+                "pages/(codex)/tasks/components/voice-worklet.js",
+                b"caffold-voice-capture".as_slice(),
+            ),
+        ] {
+            let asset = get(path).expect("voice input js");
+            assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
+            assert!(
+                asset
+                    .body
+                    .windows(marker.len())
+                    .any(|window| window == marker)
+            );
         }
         for (path, prefix) in [
             (

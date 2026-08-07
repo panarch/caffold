@@ -179,8 +179,11 @@ lifetimes:
   list revisions, Continue requests, repository grouping, list DOM, and list
   scroll.
 - `caffold-task-new` owns cwd selection and the create request.
-  `caffold-task-composer` owns its create draft, images, focus, and option
-  pickers.
+  `caffold-task-composer` owns its create draft, images, focus, option pickers,
+  and voice capture state. Voice capture saves the current selection before it
+  releases textarea focus, locks prompt submission while recording or
+  transcribing, and inserts returned text without submitting or restoring
+  focus.
 - `caffold-task-detail` owns the selected thread's canonical REST read and
   application, detail revisions, event cache, history requests, prompt
   reconciliation, approvals, interrupt actions, and review-route coordination.
@@ -198,7 +201,8 @@ lifetimes:
   scroll anchors, Markdown reflow handling, and the canonical active-turn
   clock.
 - The follow-up `caffold-task-composer` owns thread-local drafts, images,
-  focus/selection, textarea sizing, and explicit model/permission overrides.
+  focus/selection, textarea sizing, voice capture, and explicit
+  model/permission overrides.
   Detail still owns the prompt mutation and canonical reconciliation.
 - `caffold-task-review` is the integrated Task Review owner. It owns one
   selected path plus the independent Working Tree/Branch, Changes/Files, and

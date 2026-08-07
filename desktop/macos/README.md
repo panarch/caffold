@@ -14,6 +14,13 @@ The Cask installs `Caffold Server.app` in `/Applications` and links the bundled 
 
 ## Build
 
+Source builds require CMake and the Xcode Command Line Tools:
+
+```sh
+brew install cmake
+xcode-select --install
+```
+
 ```sh
 desktop/macos/package-app build
 ```
@@ -56,6 +63,15 @@ Missing optional dependencies do not prevent the server from starting. The menu 
 - The app checks the latest stable GitHub Release at launch and when its menu is reopened after six hours.
 - `Check for Updates…` installs an approved update through Homebrew, then relaunches Caffold and confirms that its owned local server becomes ready.
 - Data is stored in `~/Library/Application Support/Caffold/data`.
+- The first voice-input use asks before downloading the pinned multilingual
+  Whisper `small` model (about 465 MiB) under
+  `~/Library/Application Support/Caffold/data/models/whisper`. Caffold verifies
+  the download checksum before publishing it, then loads it lazily on the first
+  transcription and retains it until the backend exits.
+- Voice recordings are captured as 16 kHz mono PCM WAV, sent to this Caffold
+  host, processed in memory, and never persisted or sent to an external speech
+  service. Localhost needs no Tailscale; remote mobile access uses the same
+  tailnet-only HTTPS Serve URL as the rest of Caffold.
 - Logs are stored in `~/Library/Logs/Caffold/caffold.log`.
 - Caffold ensures the persistent Codex app-server daemon is running, then owns
   only a disposable proxy connection. Caffold restarts and app replacements do
@@ -63,7 +79,7 @@ Missing optional dependencies do not prevent the server from starting. The menu 
 
 `Server Settings...` controls the installed PWA name, bind mode, port, and automatic Tailscale Serve startup. Use a distinct name before installing the PWA to distinguish multiple Caffold servers; existing installations may need to be reinstalled after a name change. Local-only binding is the default. LAN binding is an explicit opt-in and is not required for Tailscale Serve.
 
-The menu reports stable status rows for Codex, Git, GitHub CLI, Tailscale connectivity, and the Caffold Serve URL. Missing integrations disable only their related features; the file browser and server remain available.
+The menu reports stable status rows for Codex, Git, GitHub CLI, Whisper model readiness, Tailscale connectivity, and the Caffold Serve URL. Missing integrations disable only their related features; the file browser and server remain available.
 
 The app only restarts a server process that it started. When it connects to an existing Caffold process, choosing a different port starts a separate app-managed server and leaves the external process untouched. Changing only the bind mode on the occupied port remains blocked.
 

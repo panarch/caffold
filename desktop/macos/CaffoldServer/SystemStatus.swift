@@ -7,7 +7,7 @@ struct TailscaleStatus {
     let tailnetURL: URL?
 }
 
-enum IntegrationState {
+enum IntegrationState: Equatable {
     case checking
     case ready
     case attention
@@ -41,6 +41,19 @@ private struct CodexStatusResponse: Decodable {
     let appServerAvailable: Bool
     let message: String?
     let account: Account?
+}
+
+struct WhisperStatusResponse: Decodable {
+    struct Model: Decodable {
+        let id: String
+        let installed: Bool
+        let loaded: Bool
+        let downloading: Bool
+    }
+
+    let supported: Bool
+    let model: Model
+    let maxRecordingSeconds: Int
 }
 
 private struct GithubStatusResponse: Decodable {
@@ -211,6 +224,91 @@ func probeCodexStatus(
             completion(statusResult)
         }
     }.resume()
+}
+
+func whisperIntegrationStatus(_ response: WhisperStatusResponse) -> IntegrationStatus {
+    guard response.supported else {
+        return IntegrationStatus(
+            name: "Whisper",
+            state: .unavailable,
+            status: "Unsupported",
+            details: []
+        )
+    }
+
+    let modelState: String
+    let state: IntegrationState
+    let status: String
+    if response.model.downloading {
+        modelState = "Downloading"
+        state = .attention
+        status = "Downloading model"
+    } else if !response.model.installed {
+        modelState = "Not installed"
+        state = .attention
+        status = "Setup required"
+    } else if response.model.loaded {
+        modelState = "Loaded"
+        state = .ready
+        status = "Ready"
+    } else {
+        modelState = "Installed · loads on first use"
+        state = .ready
+        status = "Ready"
+    }
+
+    return IntegrationStatus(
+        name: "Whisper",
+        state: state,
+        status: status,
+        details: [
+            IntegrationDetail(label: "Model", value: response.model.id),
+            IntegrationDetail(label: "State", value: modelState),
+            IntegrationDetail(
+                label: "Limit",
+                value: formatWhisperRecordingLimit(response.maxRecordingSeconds)
+            ),
+        ]
+    )
+}
+
+func probeWhisperStatus(
+    url: URL,
+    session: URLSession = .shared,
+    completion: @escaping (IntegrationStatus) -> Void
+) {
+    var request = URLRequest(url: url)
+    request.timeoutInterval = 4
+    session.dataTask(with: request) { data, response, _ in
+        let statusResult: IntegrationStatus
+        if
+            let response = response as? HTTPURLResponse,
+            response.statusCode == 200,
+            let data,
+            let voice = try? JSONDecoder().decode(WhisperStatusResponse.self, from: data)
+        {
+            statusResult = whisperIntegrationStatus(voice)
+        } else {
+            statusResult = IntegrationStatus(
+                name: "Whisper",
+                state: .unavailable,
+                status: "Server unavailable",
+                details: []
+            )
+        }
+        DispatchQueue.main.async {
+            completion(statusResult)
+        }
+    }.resume()
+}
+
+private func formatWhisperRecordingLimit(_ seconds: Int) -> String {
+    guard seconds > 0 else { return "Unavailable" }
+    if seconds.isMultiple(of: 60) {
+        let minutes = seconds / 60
+        return "\(minutes) \(minutes == 1 ? "minute" : "minutes")"
+    }
+    return "\(seconds) seconds"
 }
 
 func probeTailscaleStatus(

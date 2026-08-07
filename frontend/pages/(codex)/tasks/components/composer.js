@@ -1,13 +1,22 @@
 import {
   getCodexModels,
   getCodexPermissions,
+  getVoiceStatus,
+  installVoiceModel,
+  transcribeVoice,
 } from "../../../../api.js";
 import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import { cleanLogicalPath } from "../task-format.js";
+import {
+  formatRecordingDuration,
+  VoiceRecorder,
+  voiceCaptureSupport,
+} from "./voice-recorder.js";
 
 const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const DEFAULT_MAX_RECORDING_SECONDS = 5 * 60;
 const TASKS_SINGLE_PANE_MEDIA_QUERY = "(max-width: 899px)";
 const IMAGE_TYPES = new Set([
   "image/avif",
@@ -40,6 +49,7 @@ class CaffoldTaskComposer extends HTMLElement {
       return;
     }
     this.listenersAttached = true;
+    this.addEventListener("pointerdown", this.boundPointerdown);
     this.addEventListener("click", this.boundClick);
     this.addEventListener("input", this.boundInput);
     this.addEventListener("keydown", this.boundKeydown);
@@ -51,6 +61,7 @@ class CaffoldTaskComposer extends HTMLElement {
     this.render();
     void this.loadModels();
     void this.loadPermissions(this.context.cwd);
+    void this.loadVoiceStatus();
   }
 
   disconnectedCallback() {
@@ -59,6 +70,7 @@ class CaffoldTaskComposer extends HTMLElement {
       return;
     }
     this.listenersAttached = false;
+    this.removeEventListener("pointerdown", this.boundPointerdown);
     this.removeEventListener("click", this.boundClick);
     this.removeEventListener("input", this.boundInput);
     this.removeEventListener("keydown", this.boundKeydown);
@@ -69,6 +81,12 @@ class CaffoldTaskComposer extends HTMLElement {
     document.removeEventListener("click", this.boundDocumentClick);
     this.modelRequestId += 1;
     this.permissionRequestId += 1;
+    this.voiceStatusRequestId += 1;
+    this.voiceOperationId += 1;
+    this.voiceRequest?.abort();
+    this.voiceRequest = null;
+    void this.voiceRecorder?.cancel();
+    this.voiceRecorder = null;
     this.modelLoading = false;
     this.permissionLoading = false;
   }
@@ -105,7 +123,22 @@ class CaffoldTaskComposer extends HTMLElement {
     this.permissionError = null;
     this.permissionRequestId = 0;
     this.defaultPermissionMode = "askForApproval";
+    this.voice = {
+      phase: "checking",
+      error: "",
+      modelInstalled: false,
+      modelBytes: 0,
+      maxRecordingSeconds: DEFAULT_MAX_RECORDING_SECONDS,
+      elapsedSeconds: 0,
+      recordingLimitReached: false,
+    };
+    this.voiceStatusRequestId = 0;
+    this.voiceOperationId = 0;
+    this.voiceRecorder = null;
+    this.voiceRequest = null;
+    this.voiceInsertion = null;
     this.openPicker = "";
+    this.boundPointerdown = (event) => this.handlePointerdown(event);
     this.boundClick = (event) => this.handleClick(event);
     this.boundInput = (event) => this.handleInput(event);
     this.boundKeydown = (event) => this.handleKeydown(event);
@@ -349,6 +382,47 @@ class CaffoldTaskComposer extends HTMLElement {
     }
   }
 
+  async loadVoiceStatus() {
+    const support = voiceCaptureSupport();
+    if (!support.supported) {
+      this.voice.phase = "unavailable";
+      this.voice.error = support.message;
+      this.render();
+      return;
+    }
+    const requestId = ++this.voiceStatusRequestId;
+    this.voice.phase = "checking";
+    this.voice.error = "";
+    this.render();
+    try {
+      const response = await getVoiceStatus();
+      if (requestId !== this.voiceStatusRequestId) {
+        return;
+      }
+      this.applyVoiceStatus(response);
+      this.voice.phase = response?.model?.downloading ? "downloading" : "idle";
+    } catch (error) {
+      if (requestId !== this.voiceStatusRequestId) {
+        return;
+      }
+      this.voice.phase = "error";
+      this.voice.error = `${error?.message ?? "Voice input is unavailable."}`;
+    }
+    this.render();
+  }
+
+  applyVoiceStatus(response) {
+    this.voice.modelInstalled = Boolean(response?.model?.installed);
+    this.voice.modelBytes = Number(response?.model?.bytes ?? 0);
+    const maxRecordingSeconds = Number(
+      response?.maxRecordingSeconds ?? DEFAULT_MAX_RECORDING_SECONDS,
+    );
+    this.voice.maxRecordingSeconds =
+      Number.isFinite(maxRecordingSeconds) && maxRecordingSeconds > 0
+        ? maxRecordingSeconds
+        : DEFAULT_MAX_RECORDING_SECONDS;
+  }
+
   applyDefaultModelSelection() {
     if (!this.modelOptions.length) {
       return;
@@ -409,6 +483,9 @@ class CaffoldTaskComposer extends HTMLElement {
     submit.disabled = Boolean(
       this.activeSubmissionFor() ||
         this.context.disabled ||
+        ["requesting", "recording", "transcribing"].includes(
+          this.voice.phase,
+        ) ||
         (!state.prompt.trim() && !state.images.length),
     );
   }
@@ -444,6 +521,14 @@ class CaffoldTaskComposer extends HTMLElement {
     }
     event.stopPropagation();
     const type = action.dataset.composerAction;
+    if (type === "voice") {
+      void this.handleVoiceAction();
+      return;
+    }
+    if (type === "cancel-voice") {
+      void this.cancelVoiceInput();
+      return;
+    }
     if (type === "browse-cwd" || type === "cancel") {
       this.dispatchIntent(type);
       return;
@@ -489,6 +574,227 @@ class CaffoldTaskComposer extends HTMLElement {
     if (type === "select-permission") {
       this.selectPermission(action.dataset.permissionMode);
     }
+  }
+
+  handlePointerdown(event) {
+    const action = closestElement(event.target, "[data-composer-action]");
+    if (
+      !action ||
+      !this.contains(action) ||
+      action.dataset.composerAction !== "voice" ||
+      !this.voice.modelInstalled ||
+      !["idle", "error"].includes(this.voice.phase)
+    ) {
+      return;
+    }
+    const textarea = this.querySelector("textarea[name='prompt']");
+    if (!textarea) {
+      return;
+    }
+    const state = this.stateFor();
+    state.prompt = textarea.value;
+    if (document.activeElement === textarea) {
+      state.selectionStart = textarea.selectionStart;
+      state.selectionEnd = textarea.selectionEnd;
+    }
+    this.voiceInsertion = {
+      prompt: state.prompt,
+      start: state.selectionStart,
+      end: state.selectionEnd,
+    };
+  }
+
+  async handleVoiceAction() {
+    if (this.voice.phase === "recording") {
+      await this.stopVoiceRecording();
+      return;
+    }
+    if (!["idle", "error"].includes(this.voice.phase)) {
+      return;
+    }
+    if (!this.voice.modelInstalled) {
+      await this.installVoiceModel();
+      return;
+    }
+    await this.startVoiceRecording();
+  }
+
+  async installVoiceModel() {
+    const size = formatBytes(this.voice.modelBytes);
+    if (
+      !window.confirm(
+        `Download the multilingual Whisper small model (${size}) to this Caffold host?`,
+      )
+    ) {
+      return;
+    }
+    const operationId = ++this.voiceOperationId;
+    this.voice.phase = "downloading";
+    this.voice.error = "";
+    this.render();
+    try {
+      const response = await installVoiceModel();
+      if (operationId !== this.voiceOperationId) {
+        return;
+      }
+      this.applyVoiceStatus(response);
+      this.voice.phase = "idle";
+    } catch (error) {
+      if (operationId !== this.voiceOperationId) {
+        return;
+      }
+      this.voice.phase = "error";
+      this.voice.error = `${error?.message ?? "Could not download the voice model."}`;
+    }
+    this.render();
+  }
+
+  async startVoiceRecording() {
+    const state = this.stateFor();
+    if (!this.voiceInsertion) {
+      this.voiceInsertion = {
+        prompt: state.prompt,
+        start: state.selectionStart,
+        end: state.selectionEnd,
+      };
+    }
+    const operationId = ++this.voiceOperationId;
+    this.voice.elapsedSeconds = 0;
+    this.voice.recordingLimitReached = false;
+    const recorder = new VoiceRecorder({
+      maxSeconds: this.voice.maxRecordingSeconds,
+      onElapsed: (elapsedSeconds) => {
+        if (operationId !== this.voiceOperationId) {
+          return;
+        }
+        this.updateVoiceElapsed(elapsedSeconds);
+      },
+      onLimit: () => {
+        if (operationId === this.voiceOperationId) {
+          void this.stopVoiceRecording();
+        }
+      },
+    });
+    this.voiceRecorder = recorder;
+    this.voice.phase = "requesting";
+    this.voice.error = "";
+    this.render();
+    try {
+      await recorder.start();
+      if (operationId !== this.voiceOperationId) {
+        await recorder.cancel();
+        return;
+      }
+      this.voice.phase = "recording";
+      this.render();
+    } catch (error) {
+      if (operationId !== this.voiceOperationId) {
+        return;
+      }
+      this.voiceRecorder = null;
+      this.voice.phase = "error";
+      this.voice.error = voiceCaptureError(error);
+      this.render();
+    }
+  }
+
+  updateVoiceElapsed(elapsedSeconds) {
+    this.voice.elapsedSeconds = elapsedSeconds;
+    this.voice.recordingLimitReached =
+      elapsedSeconds >= this.voice.maxRecordingSeconds;
+    const timer = this.querySelector(".task-voice-elapsed");
+    if (!timer) {
+      return;
+    }
+    const duration = formatRecordingDuration(elapsedSeconds);
+    timer.textContent = duration;
+    timer.setAttribute("aria-label", `Recording duration ${duration}`);
+    timer.classList.toggle("is-limit", this.voice.recordingLimitReached);
+  }
+
+  async stopVoiceRecording({ submitAfterTranscription = false } = {}) {
+    if (this.voice.phase !== "recording" || !this.voiceRecorder) {
+      return;
+    }
+    const operationId = this.voiceOperationId;
+    const recorder = this.voiceRecorder;
+    this.voiceRecorder = null;
+    this.voice.phase = "transcribing";
+    this.render();
+    let shouldSubmit = false;
+    try {
+      const recording = await recorder.stop();
+      if (operationId !== this.voiceOperationId) {
+        return;
+      }
+      const request = new AbortController();
+      this.voiceRequest = request;
+      const response = await transcribeVoice(recording, request.signal);
+      if (operationId !== this.voiceOperationId) {
+        return;
+      }
+      this.voiceRequest = null;
+      const transcript = `${response?.text ?? ""}`.trim();
+      if (!transcript) {
+        throw new Error("No speech was detected in the recording.");
+      }
+      this.insertVoiceTranscript(transcript);
+      this.voice.phase = "idle";
+      this.voice.error = "";
+      this.voice.elapsedSeconds = 0;
+      this.voice.recordingLimitReached = false;
+      this.voiceInsertion = null;
+      shouldSubmit = submitAfterTranscription;
+    } catch (error) {
+      if (operationId !== this.voiceOperationId) {
+        return;
+      }
+      this.voiceRequest = null;
+      this.voice.phase = "error";
+      this.voice.error = `${error?.message ?? "Could not transcribe the recording."}`;
+      this.voice.elapsedSeconds = 0;
+      this.voice.recordingLimitReached = false;
+    }
+    this.render();
+    if (shouldSubmit) {
+      const send = this.querySelector(".task-send-button");
+      send?.form?.requestSubmit(send);
+    }
+  }
+
+  async cancelVoiceInput() {
+    this.voiceOperationId += 1;
+    this.voiceRequest?.abort();
+    this.voiceRequest = null;
+    const recorder = this.voiceRecorder;
+    this.voiceRecorder = null;
+    await recorder?.cancel();
+    this.voice.phase = "idle";
+    this.voice.error = "";
+    this.voice.elapsedSeconds = 0;
+    this.voice.recordingLimitReached = false;
+    this.voiceInsertion = null;
+    this.render();
+  }
+
+  insertVoiceTranscript(transcript) {
+    const state = this.stateFor();
+    const insertion = this.voiceInsertion ?? {
+      prompt: state.prompt,
+      start: state.prompt.length,
+      end: state.prompt.length,
+    };
+    const prompt = insertion.prompt;
+    const start = Math.max(0, Math.min(insertion.start, prompt.length));
+    const end = Math.max(start, Math.min(insertion.end, prompt.length));
+    const prefix = prompt.slice(0, start);
+    const suffix = prompt.slice(end);
+    const before = prefix && !/\s$/.test(prefix) ? " " : "";
+    const after = suffix && !/^\s/.test(suffix) ? " " : "";
+    const inserted = `${before}${transcript}${after}`;
+    state.prompt = `${prefix}${inserted}${suffix}`;
+    state.selectionStart = start + inserted.length;
+    state.selectionEnd = state.selectionStart;
   }
 
   selectModel(modelValue) {
@@ -604,7 +910,21 @@ class CaffoldTaskComposer extends HTMLElement {
       return;
     }
     event.preventDefault();
-    if (this.activeSubmissionFor() || this.context.disabled) {
+    if (this.voice.phase === "recording") {
+      if (
+        !this.activeSubmissionFor() &&
+        !this.context.disabled &&
+        event.submitter?.classList.contains("task-send-button")
+      ) {
+        void this.stopVoiceRecording({ submitAfterTranscription: true });
+      }
+      return;
+    }
+    if (
+      this.activeSubmissionFor() ||
+      this.context.disabled ||
+      ["requesting", "recording", "transcribing"].includes(this.voice.phase)
+    ) {
       return;
     }
     this.captureCurrentState();
@@ -681,13 +1001,25 @@ class CaffoldTaskComposer extends HTMLElement {
     const model = this.selectedModel();
     const effort = this.selectedEffort();
     const submitting = Boolean(this.activeSubmissionFor());
+    const voiceBusy = ["requesting", "recording", "transcribing"].includes(
+      this.voice.phase,
+    );
     const fieldDisabled =
       this.context.disabled ||
+      voiceBusy ||
       (submitting && this.context.mode === "create");
-    const requestLocked = submitting || this.context.disabled;
-    const submitDisabled =
-      requestLocked || (!state.prompt.trim() && !state.images.length);
+    const requestLocked = submitting || this.context.disabled || voiceBusy;
+    const voiceSendReady =
+      this.voice.phase === "recording" &&
+      !submitting &&
+      !this.context.disabled;
+    const submitDisabled = voiceSendReady
+      ? false
+      : requestLocked || (!state.prompt.trim() && !state.images.length);
     const settingsLocked = requestLocked || this.context.settingsLocked;
+    const sendLabel = voiceSendReady
+      ? "Finish voice input and send"
+      : this.context.submitLabel;
     const permissionMode =
       state.permissionMode || this.defaultPermissionMode;
     const permission = this.permissionOptions.find(
@@ -697,8 +1029,9 @@ class CaffoldTaskComposer extends HTMLElement {
       <form
         class="task-composer ${escapeHtml(this.context.className ?? "")}"
         data-task-form="${escapeHtml(this.context.mode)}"
+        data-voice-state="${escapeHtml(this.voice.phase)}"
         ${this.context.threadId ? `data-thread-id="${escapeHtml(this.context.threadId)}"` : ""}
-        aria-busy="${submitting ? "true" : "false"}"
+        aria-busy="${submitting || voiceBusy ? "true" : "false"}"
       >
         <div class="task-composer-panel">
           ${
@@ -718,6 +1051,7 @@ class CaffoldTaskComposer extends HTMLElement {
             placeholder="${escapeHtml(this.context.placeholder)}"
             ${fieldDisabled ? "disabled" : ""}
           >${escapeHtml(state.prompt)}</textarea>
+          ${this.renderVoiceStatus()}
           ${
             state.imageError
               ? `<p class="task-composer-image-error" role="alert">${escapeHtml(state.imageError)}</p>`
@@ -741,15 +1075,18 @@ class CaffoldTaskComposer extends HTMLElement {
               ${this.renderModelPicker(model, effort, settingsLocked)}
               ${this.renderPermissionPicker(permission, permissionMode, settingsLocked)}
             </div>
-            <button
-              type="submit"
-              class="task-send-button"
-              aria-label="${escapeHtml(this.context.submitLabel)}"
-              title="${escapeHtml(this.context.disabled ? "Caffold server is reconnecting." : this.context.submitLabel)}"
-              ${submitDisabled ? "disabled" : ""}
-            >
-              ${renderInlineIcon("ArrowUp", "Send", "task-send-icon")}
-            </button>
+            <div class="task-composer-actions">
+              ${this.renderVoiceControls(submitting)}
+              <button
+                type="submit"
+                class="task-send-button"
+                aria-label="${escapeHtml(sendLabel)}"
+                title="${escapeHtml(this.context.disabled ? "Caffold server is reconnecting." : sendLabel)}"
+                ${submitDisabled ? "disabled" : ""}
+              >
+                ${renderInlineIcon("ArrowUp", "Send", "task-send-icon")}
+              </button>
+            </div>
           </div>
         </div>
       </form>
@@ -757,6 +1094,70 @@ class CaffoldTaskComposer extends HTMLElement {
     this.restoreFocus(previousFocus);
     this.fitOpenPicker();
     this.notifyLayoutChange();
+  }
+
+  renderVoiceControls(submitting) {
+    const phase = this.voice.phase;
+    const recording = phase === "recording";
+    const showElapsed =
+      recording ||
+      (phase === "transcribing" && this.voice.recordingLimitReached);
+    const cancellable = ["requesting", "recording", "transcribing"].includes(
+      phase,
+    );
+    const disabled =
+      submitting ||
+      this.context.disabled ||
+      ["checking", "requesting", "downloading", "transcribing", "unavailable"].includes(
+        phase,
+      );
+    const label = voiceActionLabel(phase, this.voice.modelInstalled);
+    const icon = recording
+      ? "Square"
+      : ["checking", "downloading", "requesting", "transcribing"].includes(phase)
+          ? "LoaderCircle"
+          : "Mic";
+    return `
+      ${
+        showElapsed
+          ? `<span
+              class="task-voice-elapsed ${this.voice.recordingLimitReached ? "is-limit" : ""}"
+              role="timer"
+              aria-label="Recording duration ${escapeHtml(formatRecordingDuration(this.voice.elapsedSeconds))}"
+            >${escapeHtml(formatRecordingDuration(this.voice.elapsedSeconds))}</span>`
+          : ""
+      }
+      ${
+        cancellable
+          ? `<button
+              type="button"
+              class="task-voice-cancel-button"
+              data-composer-action="cancel-voice"
+              aria-label="Cancel voice input"
+              title="Cancel voice input"
+            >${renderInlineIcon("X", "Cancel voice input", "task-voice-cancel-icon")}</button>`
+          : ""
+      }
+      <button
+        type="button"
+        class="task-voice-button ${recording ? "is-recording" : ""} ${["checking", "requesting", "downloading", "transcribing"].includes(phase) ? "is-busy" : ""}"
+        data-composer-action="voice"
+        aria-label="${escapeHtml(label)}"
+        title="${escapeHtml(label)}"
+        ${disabled && !recording ? "disabled" : ""}
+      >
+        ${renderInlineIcon(icon, label, "task-voice-icon")}
+      </button>
+    `;
+  }
+
+  renderVoiceStatus() {
+    const message = voiceStatusMessage(this.voice);
+    if (!message) {
+      return "";
+    }
+    const alert = ["error", "unavailable"].includes(this.voice.phase);
+    return `<p class="task-composer-voice-status ${alert ? "is-error" : ""}" role="${alert ? "alert" : "status"}">${escapeHtml(message)}</p>`;
   }
 
   notifyLayoutChange() {
@@ -780,6 +1181,8 @@ class CaffoldTaskComposer extends HTMLElement {
       effort ||
       "Reasoning";
     const summaryLabel = `${modelLabel} · ${effortLabel}`;
+    const compactModel = compactModelLabel(modelLabel);
+    const compactEffort = effort || effortLabel;
     const open = !disabled && this.openPicker === "model";
     return `
       <div class="task-model-picker${open ? " is-open" : ""}">
@@ -792,8 +1195,8 @@ class CaffoldTaskComposer extends HTMLElement {
           title="${escapeHtml(disabled ? "Model and reasoning can be changed after the active turn finishes." : summaryLabel)}"
           ${disabled ? "disabled" : ""}
         >
-          <span class="task-model-name">${escapeHtml(modelLabel)}</span>
-          <span class="task-model-effort"> · ${escapeHtml(effortLabel)}</span>
+          <span class="task-model-name">${escapeHtml(compactModel)}</span>
+          <span class="task-model-effort"> · ${escapeHtml(compactEffort)}</span>
         </button>
         ${
           open
@@ -1009,6 +1412,13 @@ function normalizeModelOptions(response) {
     .filter(Boolean);
 }
 
+function compactModelLabel(label) {
+  return `${label ?? ""}`
+    .trim()
+    .replace(/^GPT(?:-|\s)+/i, "")
+    .replaceAll("-", " ");
+}
+
 function normalizeReasoningOptions(options) {
   if (!Array.isArray(options)) {
     return [];
@@ -1147,6 +1557,62 @@ function compactPermissionModeLabel(mode) {
     return "Full access";
   }
   return "Ask approval";
+}
+
+function voiceActionLabel(phase, modelInstalled) {
+  if (phase === "recording") {
+    return "Stop recording";
+  }
+  if (phase === "downloading") {
+    return "Downloading voice model";
+  }
+  if (phase === "transcribing") {
+    return "Transcribing recording";
+  }
+  if (phase === "requesting") {
+    return "Waiting for microphone access";
+  }
+  if (phase === "checking") {
+    return "Checking voice input";
+  }
+  if (phase === "unavailable") {
+    return "Voice input unavailable";
+  }
+  return modelInstalled ? "Start voice input" : "Set up voice input";
+}
+
+function voiceStatusMessage(voice) {
+  if (voice.phase === "downloading") {
+    return "Downloading the Whisper small model to this Caffold host...";
+  }
+  if (["error", "unavailable"].includes(voice.phase)) {
+    return voice.error || "Voice input is unavailable.";
+  }
+  return "";
+}
+
+function voiceCaptureError(error) {
+  if (error?.name === "NotAllowedError") {
+    return "Microphone access was denied. Allow it in the browser settings and try again.";
+  }
+  if (error?.name === "NotFoundError") {
+    return "No microphone was found on this device.";
+  }
+  if (error?.name === "NotReadableError") {
+    return "The microphone is busy or unavailable.";
+  }
+  return `${error?.message ?? "Could not start microphone capture."}`;
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes);
+  if (!Number.isFinite(value) || value <= 0) {
+    return "about 465 MB";
+  }
+  if (value < 1024 * 1024 * 1024) {
+    return `${Math.round(value / (1024 * 1024))} MB`;
+  }
+  return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
 function readFileAsDataUrl(file) {

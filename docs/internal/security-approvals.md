@@ -55,3 +55,14 @@ MVP should prefer no automatic deletion.
 Tailscale reduces exposure but is not a full product security model.
 
 For personal use, it is a practical deployment assumption. If Caffold becomes more broadly used, authentication, authorization, and audit controls need a separate design.
+
+## Voice Input
+
+- Model installation is an explicit first-use action and uses a pinned URL,
+  byte length, and SHA-256 checksum.
+- The browser sends microphone audio only to its same-origin Caffold host.
+- The backend bounds duration and request size, accepts only the browser's
+  16 kHz mono 16-bit PCM WAV contract, processes samples in memory, and never
+  persists raw recordings.
+- Transcription is host-local. Tailscale protects remote transport but is not a
+  speech service or inference dependency.

@@ -177,6 +177,11 @@ jobs:
           node-version: 22
           package-manager-cache: false
 
+      - name: Verify native build tools
+        run: |
+          cmake --version
+          xcrun --find clang
+
       - name: Read release metadata
         id: release_metadata
         run: desktop/macos/package-app metadata >>"${GITHUB_OUTPUT}"
@@ -186,6 +191,9 @@ jobs:
 
       - name: Verify application updater
         run: npm run test:updater
+
+      - name: Verify menu bar integration status
+        run: npm run test:system-status
 
       - name: Check Rust formatting
         run: cargo fmt --check

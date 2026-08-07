@@ -40,6 +40,14 @@ It should not try to become VS Code, a full git GUI, or a native mobile app.
 
 ## Run
 
+Building Caffold from source requires Rust, CMake, and the Xcode Command Line
+Tools. On macOS, install the native build prerequisites with:
+
+```sh
+brew install cmake
+xcode-select --install
+```
+
 Start the first read-only file browser slice:
 
 ```sh
@@ -80,13 +88,21 @@ Caffold starts the user's persistent app-server daemon when needed and connects
 through a disposable proxy. Replacing or quitting Caffold closes only that proxy;
 it does not stop an active Codex turn in the daemon.
 
+The task composer also supports keyboard-independent voice input. On first use,
+Caffold asks before downloading the pinned multilingual Whisper `small` model
+(487,601,967 bytes, about 465 MiB) to the host data directory and verifies its
+SHA-256 checksum. Microphone audio is sent only to the same Caffold host, decoded
+in memory, and never saved. The model loads on the first transcription and stays
+loaded until the Caffold backend exits. Localhost works directly; Tailscale only
+provides the existing private HTTPS path when the browser is on another device.
+
 Build the application bundle with:
 
 ```sh
 desktop/macos/package-app build
 ```
 
-The app is written to `target/caffold-server/Caffold Server.app`. Its menu reports Codex, Git, GitHub CLI, and Tailscale status and controls the server name, bind mode, port, restart behavior, and tailnet-only Tailscale Serve access. Missing integrations disable only their related features.
+The app is written to `target/caffold-server/Caffold Server.app`. Its menu reports Codex, Git, GitHub CLI, Whisper, and Tailscale status and controls the server name, bind mode, port, restart behavior, and tailnet-only Tailscale Serve access. Missing integrations disable only their related features.
 
 See [Caffold Server for macOS](desktop/macos/README.md) for installation, runtime dependencies, storage paths, and packaging details.
 
