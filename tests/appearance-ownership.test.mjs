@@ -31,6 +31,16 @@ const codeOwners = new Set([
   "styles.css",
 ]);
 
+const typefaceOwners = new Set([
+  "components/code-viewer.css",
+  "components/diff-viewer.css",
+  "fonts.js",
+  "pages/(codex)/tasks/components/detail/conversation/markdown.js",
+  "pages/(review-workspace)/(github)/components/markdown.js",
+  "pages/settings/page.css",
+  "styles.css",
+]);
+
 test("legacy appearance writers and selectors stay removed", () => {
   const sources = frontendSources();
   const forbidden = [
@@ -76,6 +86,20 @@ test("conversation and code tokens stay within semantic content owners", () => {
   assert.deepEqual(
     tokenConsumers(sources, /--code-(?:font-size|line-height)/),
     [...codeOwners].sort(),
+  );
+});
+
+test("UI and code typeface roles stay within semantic owners", () => {
+  const sources = frontendSources();
+
+  assert.deepEqual(
+    tokenConsumers(sources, /--font-(?:ui|code)/),
+    [...typefaceOwners].sort(),
+  );
+  assert.equal(
+    sources.some(([, source]) => source.includes("--font-mono")),
+    false,
+    "The legacy shared typeface token must not collapse UI and code roles",
   );
 });
 

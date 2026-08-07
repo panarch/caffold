@@ -2,10 +2,12 @@ import { renderInlineIcon, warmIcons } from "../../components/icons.js";
 import {
   APPEARANCE_SETTINGS,
   DEFAULT_SETTINGS,
+  TYPEFACE_PRESETS,
   getSettings,
   resetAppearanceSetting,
   resetAppearanceSettings,
   setAppearanceSetting,
+  setTypefacePreset,
 } from "../../settings.js";
 
 const SETTING_DESCRIPTIONS = Object.freeze({
@@ -25,6 +27,7 @@ class CaffoldSettingsPage extends HTMLElement {
     this.initialized = true;
     this.addEventListener("click", (event) => this.handleClick(event));
     this.addEventListener("input", (event) => this.handleInput(event));
+    this.addEventListener("change", (event) => this.handleChange(event));
     this.boundSettingsChange = (event) =>
       this.syncControls(event.detail?.settings ?? getSettings());
     this.boundIconsReady = () => this.refreshIcons();
@@ -53,6 +56,15 @@ class CaffoldSettingsPage extends HTMLElement {
     setAppearanceSetting(range.dataset.setting, range.valueAsNumber);
   }
 
+  handleChange(event) {
+    const select = event.target.closest("select[data-typeface-setting]");
+    if (!select) {
+      return;
+    }
+
+    setTypefacePreset(select.value);
+  }
+
   handleClick(event) {
     const button = event.target.closest("button[data-action]");
     if (!button) {
@@ -71,6 +83,11 @@ class CaffoldSettingsPage extends HTMLElement {
 
     if (button.dataset.action === "reset-setting") {
       resetAppearanceSetting(button.dataset.setting);
+      return;
+    }
+
+    if (button.dataset.action === "reset-typeface") {
+      setTypefacePreset(DEFAULT_SETTINGS.typefacePreset);
       return;
     }
 
@@ -103,12 +120,13 @@ class CaffoldSettingsPage extends HTMLElement {
           <header>
             <div>
               <h2 id="settings-appearance-title">Appearance</h2>
-              <p>Three independent controls keep interface, reading, and code density consistent.</p>
+              <p>Typeface and independent sizing controls keep every surface consistent.</p>
             </div>
             <button type="button" class="settings-reset-all" data-action="reset-appearance">
               Reset appearance
             </button>
           </header>
+          ${renderTypefaceSetting()}
           ${renderSetting(
             "interfaceScalePercent",
             `
@@ -160,6 +178,19 @@ class CaffoldSettingsPage extends HTMLElement {
   }
 
   syncControls(settings) {
+    const typefaceSelect = this.querySelector("select[data-typeface-setting]");
+    const typefaceReset = this.querySelector(
+      'button[data-action="reset-typeface"]',
+    );
+    if (typefaceSelect) {
+      typefaceSelect.value = settings.typefacePreset;
+      this.syncTypefaceSummary(settings.typefacePreset);
+    }
+    if (typefaceReset) {
+      typefaceReset.disabled =
+        settings.typefacePreset === DEFAULT_SETTINGS.typefacePreset;
+    }
+
     for (const [name, definition] of Object.entries(APPEARANCE_SETTINGS)) {
       const value = settings[name];
       const range = this.querySelector(`input[data-setting="${name}"]`);
@@ -180,9 +211,23 @@ class CaffoldSettingsPage extends HTMLElement {
 
     const resetAll = this.querySelector('button[data-action="reset-appearance"]');
     if (resetAll) {
-      resetAll.disabled = Object.keys(APPEARANCE_SETTINGS).every(
-        (name) => settings[name] === DEFAULT_SETTINGS[name],
-      );
+      resetAll.disabled =
+        settings.typefacePreset === DEFAULT_SETTINGS.typefacePreset &&
+        Object.keys(APPEARANCE_SETTINGS).every(
+          (name) => settings[name] === DEFAULT_SETTINGS[name],
+        );
+    }
+  }
+
+  syncTypefaceSummary(typefacePreset) {
+    const preset = TYPEFACE_PRESETS[typefacePreset];
+    const description = this.querySelector("[data-typeface-description]");
+    const availability = this.querySelector("[data-typeface-availability]");
+    if (description) {
+      description.textContent = preset?.description ?? "";
+    }
+    if (availability) {
+      availability.textContent = preset?.availability ?? "";
     }
   }
 
@@ -205,6 +250,43 @@ class CaffoldSettingsPage extends HTMLElement {
       );
     }
   }
+}
+
+function renderTypefaceSetting() {
+  const options = Object.values(TYPEFACE_PRESETS)
+    .map(
+      (preset) => `
+        <option value="${preset.id}">
+          ${preset.label} · ${preset.availability}
+        </option>
+      `,
+    )
+    .join("");
+
+  return `
+    <div class="settings-appearance-group settings-typeface-group">
+      <div class="settings-field settings-typeface-field">
+        <div class="settings-field-copy">
+          <label for="settings-typeface-preset">Typeface</label>
+          <span data-typeface-description></span>
+        </div>
+        <div class="settings-typeface-control">
+          <select
+            id="settings-typeface-preset"
+            data-typeface-setting
+          >
+            ${options}
+          </select>
+          <button type="button" data-action="reset-typeface">Reset</button>
+        </div>
+      </div>
+      <span class="settings-typeface-meta" data-typeface-availability></span>
+      <div class="settings-typeface-preview" aria-label="Typeface preview">
+        <span>Caffold 한글 ABC</span>
+        <code>const tree = "├─ 漢字";</code>
+      </div>
+    </div>
+  `;
 }
 
 function renderSetting(name, preview) {

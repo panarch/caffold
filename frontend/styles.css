@@ -43,6 +43,22 @@
 @import "./components/code-viewer.css";
 @import "./components/diff-viewer.css";
 
+@font-face {
+  font-family: "Caffold D2 Coding";
+  src: url("./fonts/D2Coding-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Caffold D2 Coding";
+  src: url("./fonts/D2Coding-Bold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light;
   --interface-scale: 1;
@@ -130,8 +146,8 @@
   --task-group-font-size: 0.75rem;
   --task-group-row-height: max(1.75rem, var(--interface-target-floor));
   --task-list-icon-size: 0.9375rem;
-  --font-mono: ui-monospace, monospace;
-  --font-sans: system-ui, sans-serif;
+  --font-ui: "Caffold D2 Coding", ui-monospace, monospace;
+  --font-code: "Caffold D2 Coding", ui-monospace, monospace;
   font-size: calc(var(--interface-base-font-size) * var(--interface-scale));
 }
 
@@ -151,11 +167,18 @@ body {
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
 }
 
 button {
   font: inherit;
+}
+
+code,
+kbd,
+pre,
+samp {
+  font-family: var(--font-code);
 }
 
 [hidden] {

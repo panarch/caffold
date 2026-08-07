@@ -16,8 +16,18 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "styles.css" => Some(css(include_str!("../frontend/styles.css"))),
         "app.js" => Some(js(include_str!("../frontend/app.js"))),
         "api.js" => Some(js(include_str!("../frontend/api.js"))),
+        "fonts.js" => Some(js(include_str!("../frontend/fonts.js"))),
         "navigation-routes.js" => Some(js(include_str!("../frontend/navigation-routes.js"))),
         "settings.js" => Some(js(include_str!("../frontend/settings.js"))),
+        "fonts/D2Coding-Regular.woff2" => Some(woff2(include_bytes!(
+            "../frontend/assets/fonts/D2Coding-Regular.woff2"
+        ))),
+        "fonts/D2Coding-Bold.woff2" => Some(woff2(include_bytes!(
+            "../frontend/assets/fonts/D2Coding-Bold.woff2"
+        ))),
+        "fonts/D2Coding-OFL.txt" => Some(plain_text(include_str!(
+            "../frontend/assets/fonts/D2Coding-OFL.txt"
+        ))),
         "icons/caffold.svg" => Some(svg(include_str!("../frontend/assets/icons/caffold.svg"))),
         "icons/caffold-mark.svg" => Some(svg(include_str!(
             "../frontend/assets/icons/caffold-mark.svg"
@@ -434,6 +444,20 @@ fn png(body: &'static [u8]) -> StaticAsset {
     }
 }
 
+fn woff2(body: &'static [u8]) -> StaticAsset {
+    StaticAsset {
+        content_type: "font/woff2",
+        body,
+    }
+}
+
+fn plain_text(body: &'static str) -> StaticAsset {
+    StaticAsset {
+        content_type: "text/plain; charset=utf-8",
+        body: body.as_bytes(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::get;
@@ -532,7 +556,24 @@ mod tests {
             settings_module.content_type,
             "text/javascript; charset=utf-8"
         );
-        assert!(settings_module.body.starts_with(b"const STORAGE_KEY"));
+        assert!(settings_module.body.starts_with(b"import "));
+
+        let fonts_module = get("fonts.js").expect("fonts module asset");
+        assert_eq!(fonts_module.content_type, "text/javascript; charset=utf-8");
+        assert!(fonts_module.body.starts_with(b"export const"));
+
+        let regular_font =
+            get("fonts/D2Coding-Regular.woff2").expect("D2 Coding regular font asset");
+        assert_eq!(regular_font.content_type, "font/woff2");
+        assert!(regular_font.body.starts_with(b"wOF2"));
+
+        let bold_font = get("fonts/D2Coding-Bold.woff2").expect("D2 Coding bold font asset");
+        assert_eq!(bold_font.content_type, "font/woff2");
+        assert!(bold_font.body.starts_with(b"wOF2"));
+
+        let font_license = get("fonts/D2Coding-OFL.txt").expect("D2 Coding license asset");
+        assert_eq!(font_license.content_type, "text/plain; charset=utf-8");
+        assert!(font_license.body.starts_with(b"Copyright"));
 
         let settings_page = get("pages/settings/page.js").expect("settings page js asset");
         assert_eq!(settings_page.content_type, "text/javascript; charset=utf-8");

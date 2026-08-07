@@ -1,6 +1,14 @@
+import {
+  DEFAULT_TYPEFACE_PRESET,
+  TYPEFACE_PRESETS,
+  applyTypefacePreset,
+  normalizeTypefacePreset,
+} from "./fonts.js";
+
 const STORAGE_KEY = "caffold:settings";
 
-export const APPEARANCE_VERSION = 2;
+export const APPEARANCE_VERSION = 3;
+export { TYPEFACE_PRESETS };
 
 export const APPEARANCE_SETTINGS = Object.freeze({
   interfaceScalePercent: Object.freeze({
@@ -31,6 +39,7 @@ export const APPEARANCE_SETTINGS = Object.freeze({
 
 export const DEFAULT_SETTINGS = Object.freeze({
   appearanceVersion: APPEARANCE_VERSION,
+  typefacePreset: DEFAULT_TYPEFACE_PRESET,
   interfaceScalePercent: APPEARANCE_SETTINGS.interfaceScalePercent.defaultValue,
   conversationTextPx: APPEARANCE_SETTINGS.conversationTextPx.defaultValue,
   codeTextPx: APPEARANCE_SETTINGS.codeTextPx.defaultValue,
@@ -59,6 +68,16 @@ export function setAppearanceSetting(name, value) {
   const settings = normalizeSettings({
     ...currentSettings,
     [name]: value,
+  });
+  persistApplyAndPublish(settings);
+  return getSettings();
+}
+
+export function setTypefacePreset(value) {
+  const typefacePreset = normalizeTypefacePreset(value);
+  const settings = normalizeSettings({
+    ...currentSettings,
+    typefacePreset,
   });
   persistApplyAndPublish(settings);
   return getSettings();
@@ -94,6 +113,7 @@ export function applySettings(settings = currentSettings) {
     `${normalized.conversationTextPx}px`,
   );
   root.style.setProperty("--code-font-size", `${normalized.codeTextPx}px`);
+  applyTypefacePreset(normalized.typefacePreset);
 }
 
 export function normalizeSettings(value) {
@@ -108,6 +128,7 @@ export function normalizeSettings(value) {
 
   return {
     appearanceVersion: APPEARANCE_VERSION,
+    typefacePreset: normalizeTypefacePreset(value?.typefacePreset),
     interfaceScalePercent: normalizeSettingValue(
       value?.interfaceScalePercent,
       APPEARANCE_SETTINGS.interfaceScalePercent,

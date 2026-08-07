@@ -106,7 +106,7 @@ class CaffoldGithubMarkdown extends HTMLElement {
           border-radius: 4px;
           background: var(--code-gutter);
           color: var(--code-text);
-          font-family: var(--font-mono);
+          font-family: var(--font-code);
           font-size: var(--code-font-size);
           line-height: var(--code-line-height);
         }

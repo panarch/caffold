@@ -35,7 +35,7 @@ caffold-code-viewer {
     overflow: auto;
     overscroll-behavior: contain;
     background: var(--code-bg);
-    font-family: var(--font-mono);
+    font-family: var(--font-code);
     font-size: var(--code-font-size);
     line-height: var(--code-line-height);
   }

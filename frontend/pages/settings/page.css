@@ -133,6 +133,7 @@ caffold-settings-page {
   }
 
   & .settings-reset-all,
+  & .settings-typeface-control button,
   & .settings-range-control button {
     position: relative;
     isolation: isolate;
@@ -150,6 +151,7 @@ caffold-settings-page {
   }
 
   & .settings-reset-all::before,
+  & .settings-typeface-control button::before,
   & .settings-range-control button::before {
     position: absolute;
     z-index: -1;
@@ -161,6 +163,7 @@ caffold-settings-page {
   }
 
   & .settings-reset-all:disabled,
+  & .settings-typeface-control button:disabled,
   & .settings-range-control button:disabled {
     cursor: default;
     opacity: 0.45;
@@ -207,6 +210,41 @@ caffold-settings-page {
     min-width: 0;
   }
 
+  & .settings-typeface-control {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+  }
+
+  & .settings-typeface-control select {
+    width: 100%;
+    min-width: 0;
+    min-height: var(--interface-control-size);
+    border: 1px solid var(--border);
+    border-radius: 0.3125rem;
+    background: var(--surface);
+    color: var(--text);
+    padding: 0 var(--interface-space-5);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  & .settings-typeface-control select:focus-visible {
+    border-color: var(--accent);
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  & .settings-typeface-meta {
+    display: block;
+    width: min(100%, 35rem);
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
   & .settings-range-control input {
     width: 100%;
     min-width: 0;
@@ -231,12 +269,38 @@ caffold-settings-page {
 
   & .settings-interface-preview,
   & .settings-conversation-preview,
-  & .settings-code-preview {
+  & .settings-code-preview,
+  & .settings-typeface-preview {
     width: min(100%, 35rem);
     overflow: hidden;
     border: 1px solid var(--border);
     border-radius: 0.3125rem;
     background: var(--surface);
+  }
+
+  & .settings-typeface-preview {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+    gap: var(--interface-space-6);
+    padding: 0.6875rem 0.75rem;
+    font-size: var(--task-list-font-size);
+  }
+
+  & .settings-typeface-preview span,
+  & .settings-typeface-preview code {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & .settings-typeface-preview span {
+    font-family: var(--font-ui);
+  }
+
+  & .settings-typeface-preview code {
+    color: var(--code-text);
+    font-family: var(--font-code);
   }
 
   & .settings-interface-preview {
@@ -350,6 +414,7 @@ caffold-settings-page {
     grid-template-columns: var(--line-gutter-width) minmax(0, 1fr);
     background: var(--code-bg);
     color: var(--code-text);
+    font-family: var(--font-code);
     font-size: var(--code-font-size);
     line-height: var(--code-line-height);
   }
@@ -412,6 +477,10 @@ caffold-settings-page {
     & .settings-range-control button {
       grid-column: 1 / -1;
       justify-self: start;
+    }
+
+    & .settings-typeface-preview {
+      grid-template-columns: minmax(0, 1fr);
     }
   }
 }

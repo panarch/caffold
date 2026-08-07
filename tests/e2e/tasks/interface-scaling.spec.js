@@ -17,7 +17,8 @@ test("scales visible Task controls without shrinking their touch targets", async
     localStorage.setItem(
       "caffold:settings",
       JSON.stringify({
-        appearanceVersion: 2,
+        appearanceVersion: 3,
+        typefacePreset: "d2-coding",
         interfaceScalePercent: 90,
         conversationTextPx: 15,
         codeTextPx: 13,

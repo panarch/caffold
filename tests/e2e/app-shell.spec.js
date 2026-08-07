@@ -24,6 +24,20 @@ test.beforeEach(async ({ page }) => {
 test("serves PWA manifest and icon assets", async ({ page, request }) => {
   await page.goto("/");
 
+  const defaultTypeface = await page.evaluate(async () => {
+    await document.fonts.load('400 16px "Caffold D2 Coding"');
+    return {
+      activePreset: document.documentElement.dataset.typefacePreset,
+      bodyFamily: getComputedStyle(document.body).fontFamily,
+      d2Loaded: document.fonts.check('400 16px "Caffold D2 Coding"'),
+    };
+  });
+  expect(defaultTypeface).toEqual({
+    activePreset: "d2-coding",
+    bodyFamily: '"Caffold D2 Coding", ui-monospace, monospace',
+    d2Loaded: true,
+  });
+
   const buildInfoResponse = await request.get("/assets/build-info.js");
   expect(buildInfoResponse.headers()["content-type"]).toContain("text/javascript");
   const buildInfo = await buildInfoResponse.text();
@@ -68,6 +82,7 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
     "href",
     "/assets/icons/apple-touch-icon.png",
   );
+  await expect(page.locator('link[rel="preload"][as="font"]')).toHaveCount(2);
   await expect(page.locator('meta[name="mobile-web-app-capable"]')).toHaveAttribute(
     "content",
     "yes",
@@ -140,6 +155,28 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   const png = await pngResponse.body();
   expect([...png.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
 
+  for (const weight of ["Regular", "Bold"]) {
+    const fontResponse = await request.get(
+      `/assets/fonts/D2Coding-${weight}.woff2`,
+    );
+    expect(fontResponse.headers()["content-type"]).toContain("font/woff2");
+    const font = await fontResponse.body();
+    expect(font.subarray(0, 4).toString()).toBe("wOF2");
+  }
+
+  const fontLicenseResponse = await request.get(
+    "/assets/fonts/D2Coding-OFL.txt",
+  );
+  expect(fontLicenseResponse.ok()).toBe(true);
+  expect(fontLicenseResponse.headers()["content-type"]).toContain("text/plain");
+  expect(await fontLicenseResponse.text()).toContain("SIL OPEN FONT LICENSE");
+
+  const fontsModuleResponse = await request.get("/assets/fonts.js");
+  expect(fontsModuleResponse.headers()["content-type"]).toContain(
+    "text/javascript",
+  );
+  expect(await fontsModuleResponse.text()).toContain("TYPEFACE_PRESETS");
+
   const serviceWorkerResponse = await request.get("/service-worker.js");
   expect(serviceWorkerResponse.headers()["content-type"]).toContain("text/javascript");
   expect(serviceWorkerResponse.headers()["cache-control"]).toContain("no-cache");
@@ -153,6 +190,10 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain("/assets/pages/layout.js");
   expect(serviceWorker).toContain("/assets/pages/layout.css");
   expect(serviceWorker).toContain("/assets/settings.js");
+  expect(serviceWorker).toContain("/assets/fonts.js");
+  expect(serviceWorker).toContain("/assets/fonts/D2Coding-Regular.woff2");
+  expect(serviceWorker).toContain("/assets/fonts/D2Coding-Bold.woff2");
+  expect(serviceWorker).not.toContain("caffold-fonts");
   expect(serviceWorker).toContain("/assets/build-info.js");
   expect(serviceWorker).toContain("/assets/pages/components/app-menu.js");
   expect(serviceWorker).toContain("/assets/pages/components/about-dialog.css");

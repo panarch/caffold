@@ -87,7 +87,7 @@ caffold-git-review-controls {
 
   & .review-compare-ref-controls select {
     field-sizing: content;
-    min-width: 10ch;
+    min-width: max(10ch, 5rem);
     max-width: 100%;
     flex: 0 1 auto;
     width: auto;

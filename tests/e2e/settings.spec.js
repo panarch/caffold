@@ -36,7 +36,7 @@ test("returns from Settings to the canonical Tasks home", async ({ page }) => {
   await expect(page.locator(".files-surface")).toBeHidden();
 });
 
-test("normalizes legacy settings into the three appearance axes", async ({
+test("normalizes legacy settings into the current appearance contract", async ({
   page,
 }) => {
   await page.addInitScript(
@@ -63,13 +63,17 @@ test("normalizes legacy settings into the three appearance axes", async ({
   await expect(range(settingsPage, "interfaceScalePercent")).toHaveValue("100");
   await expect(range(settingsPage, "conversationTextPx")).toHaveValue("17");
   await expect(range(settingsPage, "codeTextPx")).toHaveValue("15");
+  await expect(settingsPage.locator("select[data-typeface-setting]")).toHaveValue(
+    "d2-coding",
+  );
 
   await expect
     .poll(() =>
       page.evaluate((key) => JSON.parse(localStorage.getItem(key)), SETTINGS_KEY),
     )
     .toEqual({
-      appearanceVersion: 2,
+      appearanceVersion: 3,
+      typefacePreset: "d2-coding",
       interfaceScalePercent: 100,
       conversationTextPx: 17,
       codeTextPx: 15,
@@ -102,6 +106,7 @@ test("updates independent ranges live without replacing their DOM", async ({
     probe.remove();
     return value;
   });
+
   await expect(page.locator("caffold-pathbar .path-crumbs button").first()).toHaveCSS(
     "font-size",
     sharedInterfaceTextSize,
@@ -280,6 +285,45 @@ test("updates independent ranges live without replacing their DOM", async ({
   await expect(interfaceRange).toHaveValue("100");
   await expect(conversationRange).toHaveValue("15");
   await expect(codeRange).toHaveValue("13");
+});
+
+test("switches and persists the local typeface presets", async ({ page }) => {
+  await page.goto("/settings");
+
+  const settingsPage = page.locator("caffold-settings-page");
+  const select = settingsPage.locator("select[data-typeface-setting]");
+  await expect(select.locator("option")).toHaveCount(2);
+  await expect(select).not.toContainText("Noto Sans Mono CJK KR");
+  await expect(select).toHaveValue("d2-coding");
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-typeface-preset",
+    "d2-coding",
+  );
+
+  await select.selectOption("system-mono");
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-typeface-preset",
+    "system-mono",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate((key) => JSON.parse(localStorage.getItem(key)), SETTINGS_KEY),
+    )
+    .toMatchObject({ typefacePreset: "system-mono" });
+
+  await settingsPage.locator('button[data-action="reset-typeface"]').click();
+  await expect(select).toHaveValue("d2-coding");
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-typeface-preset",
+    "d2-coding",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate((key) => JSON.parse(localStorage.getItem(key)), SETTINGS_KEY),
+    )
+    .toMatchObject({
+      typefacePreset: "d2-coding",
+    });
 });
 
 test("applies extreme values to Files and Code without coupling the axes", async ({
@@ -533,7 +577,6 @@ test("keeps model picker chrome compact and scales it only with Interface", asyn
     2,
   );
   expect(compact.titleFontSize / compact.rootFontSize).toBeCloseTo(0.875, 2);
-  expect(compact.descriptionFontSize / compact.rootFontSize).toBeCloseTo(0.75, 2);
   expect(compact.toolbarPadding / compact.rootFontSize).toBeCloseTo(0.25, 2);
   expect(compact.toolbarGap / compact.rootFontSize).toBeCloseTo(0.5, 2);
   expect(compact.popoverPadding / compact.rootFontSize).toBeCloseTo(0.5, 2);
@@ -565,7 +608,6 @@ test("keeps model picker chrome compact and scales it only with Interface", asyn
     "modelButtonFontSize",
     "permissionButtonFontSize",
     "titleFontSize",
-    "descriptionFontSize",
     "toolbarPadding",
     "toolbarGap",
     "popoverPadding",
@@ -613,7 +655,6 @@ async function modelPickerMetrics(composer) {
     const popover = element.querySelector(".task-model-popover");
     const option = popover.querySelector(".task-model-option");
     const title = option.querySelector("strong");
-    const description = option.querySelector("small");
     const toolbarStyle = getComputedStyle(toolbar);
     const popoverStyle = getComputedStyle(popover);
     const optionStyle = getComputedStyle(option);
@@ -658,7 +699,6 @@ async function modelPickerMetrics(composer) {
       targetFloor: number(rootStyle.getPropertyValue("--interface-target-floor")),
       compactVisualSize: tokenHeight("--interface-compact-visual-size"),
       titleFontSize: number(getComputedStyle(title).fontSize),
-      descriptionFontSize: number(getComputedStyle(description).fontSize),
       modelButtonFontSize: number(getComputedStyle(modelButton).fontSize),
       permissionButtonFontSize: number(
         getComputedStyle(permissionButton).fontSize,
