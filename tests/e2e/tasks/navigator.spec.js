@@ -180,6 +180,28 @@ test("archives and restores an idle Caffold task through the grouped Archived se
       () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
     ),
   ).toBe(true);
+  const archivedTreeLayout = await archivedSection
+    .locator(".task-repository-group")
+    .first()
+    .evaluate((group) => {
+      const icon = group.querySelector(".task-repository-icon");
+      const title = group.querySelector(".task-row-title");
+      return {
+        rootFontSize: Number.parseFloat(
+          getComputedStyle(document.documentElement).fontSize,
+        ),
+        titleInset:
+          title.getBoundingClientRect().left - group.getBoundingClientRect().left,
+        titleOffsetFromIcon:
+          title.getBoundingClientRect().left - icon.getBoundingClientRect().left,
+      };
+    });
+  expect(archivedTreeLayout.titleInset).toBeCloseTo(
+    archivedTreeLayout.rootFontSize,
+    1,
+  );
+  expect(archivedTreeLayout.titleOffsetFromIcon).toBeGreaterThan(0);
+  expect(archivedTreeLayout.titleOffsetFromIcon).toBeLessThanOrEqual(5);
   await captureReviewScreenshot(page, testInfo, "tasks-archived-section");
   await archivedSection
     .getByRole("button", { name: "Restore Archive round trip" })
@@ -685,7 +707,7 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
   expect(rowHeights[0]).toBeLessThanOrEqual(44);
   expect(new Set(rowLayout.map(({ titleWidth }) => titleWidth)).size).toBe(1);
   expect(new Set(rowLayout.map(({ indicatorWidth }) => indicatorWidth))).toEqual(
-    new Set([Math.round(rootFontSize * 3.5)]),
+    new Set([Math.round(rootFontSize * 3)]),
   );
   expect(rowLayout.every(({ hasHorizontalOverflow }) => !hasHorizontalOverflow)).toBe(true);
   const longTitleLayout = await tasksPage
@@ -778,6 +800,36 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     await expect(
       tasksPage.locator('.task-row[data-thread-id="thread_main_root"]'),
     ).toHaveAttribute("aria-current", "true");
+    const selectedRowLayout = await tasksPage.evaluate(() => {
+      const navigator = document.querySelector("caffold-task-navigator");
+      const selected = navigator.querySelector(
+        '.task-row[data-thread-id="thread_main_root"]',
+      );
+      const peer = navigator.querySelector(
+        '.task-row[data-thread-id="thread_main_core"]',
+      );
+      const navigatorRect = navigator.getBoundingClientRect();
+      const selectedRect = selected.getBoundingClientRect();
+      const selectedTitleRect = selected
+        .querySelector(".task-row-title")
+        .getBoundingClientRect();
+      const selectedIndicatorsRect = selected
+        .querySelector(".task-row-indicators")
+        .getBoundingClientRect();
+      const peerTitleRect = peer
+        .querySelector(".task-row-title")
+        .getBoundingClientRect();
+      return {
+        indicatorGap: selectedIndicatorsRect.left - selectedTitleRect.right,
+        indicatorWidth: selectedIndicatorsRect.width,
+        leftInset: selectedRect.left - navigatorRect.left,
+        titleOffset: selectedTitleRect.left - peerTitleRect.left,
+      };
+    });
+    expect(selectedRowLayout.indicatorGap).toBeCloseTo(rootFontSize * 0.25, 1);
+    expect(selectedRowLayout.indicatorWidth).toBeCloseTo(rootFontSize * 3, 1);
+    expect(selectedRowLayout.leftInset).toBeCloseTo(0, 1);
+    expect(selectedRowLayout.titleOffset).toBeCloseTo(0, 1);
     await expect(
       tasksPage
         .locator('.task-list-section[data-task-section="managed"] .task-list')
@@ -1309,26 +1361,47 @@ test("groups Tasks by repository without worktree accordions", async ({ page }, 
     const headerLabel = header.querySelector(".task-repository-label");
     const row = group.querySelector(".task-row");
     const rowTitle = row.querySelector(".task-row-title");
+    const nextGroup = group.nextElementSibling;
+    const lastRowTitle = group.querySelector(".task-list > li:last-child .task-row-title");
+    const nextHeaderLabel = nextGroup.querySelector(".task-repository-label");
     return {
       bottomPadding: Number.parseFloat(getComputedStyle(scroller).paddingBottom),
+      betweenGroupTextGap:
+        nextHeaderLabel.getBoundingClientRect().top -
+        lastRowTitle.getBoundingClientRect().bottom,
       headerBackground: getComputedStyle(header).backgroundColor,
-      rowBorderBottom: getComputedStyle(row).borderBottomWidth,
-      rowTitleOffset: Math.round(
-        rowTitle.getBoundingClientRect().left - headerLabel.getBoundingClientRect().left,
+      headerHeight: header.getBoundingClientRect().height,
+      rootFontSize: Number.parseFloat(
+        getComputedStyle(document.documentElement).fontSize,
       ),
+      rowBorderBottom: getComputedStyle(row).borderBottomWidth,
+      rowHeight: row.getBoundingClientRect().height,
+      rowTitleInset:
+        rowTitle.getBoundingClientRect().left - group.getBoundingClientRect().left,
+      rowTitleOffsetFromIcon:
+        rowTitle.getBoundingClientRect().left - headerIcon.getBoundingClientRect().left,
       titleIsIndentedPastIcon:
         rowTitle.getBoundingClientRect().left > headerIcon.getBoundingClientRect().left,
+      withinGroupTextGap:
+        rowTitle.getBoundingClientRect().top -
+        headerLabel.getBoundingClientRect().bottom,
     };
   });
   expect(treeLayout.bottomPadding).toBeGreaterThanOrEqual(20);
   expect(treeLayout.headerBackground).toBe("rgba(0, 0, 0, 0)");
+  expect(treeLayout.headerHeight).toBeLessThan(treeLayout.rowHeight);
   expect(treeLayout.rowBorderBottom).toBe("0px");
-  expect(Math.abs(treeLayout.rowTitleOffset)).toBeLessThanOrEqual(4);
+  expect(treeLayout.rowTitleInset).toBeCloseTo(treeLayout.rootFontSize, 1);
+  expect(treeLayout.rowTitleOffsetFromIcon).toBeGreaterThan(0);
+  expect(treeLayout.rowTitleOffsetFromIcon).toBeLessThanOrEqual(5);
   expect(treeLayout.titleIsIndentedPastIcon).toBe(true);
+  expect(treeLayout.betweenGroupTextGap).toBeGreaterThan(
+    treeLayout.withinGroupTextGap + treeLayout.rootFontSize * 0.5,
+  );
   const secondGroupGap = await groups.nth(1).evaluate((group) =>
     Number.parseFloat(getComputedStyle(group).marginTop),
   );
-  expect(secondGroupGap).toBeGreaterThanOrEqual(6);
+  expect(secondGroupGap).toBeCloseTo(treeLayout.rootFontSize * 0.75, 1);
   if (testInfo.project.name === "phone") {
     const newTaskButton = tasksPage.locator(
       '.tasks-header [data-task-action="open-new"]',

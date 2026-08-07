@@ -91,7 +91,7 @@ caffold-task-navigator {
   }
 
   & .task-repository-group + .task-repository-group {
-    margin-top: 0.4375rem;
+    margin-top: var(--interface-space-6);
   }
 
   & .task-repository-header {
@@ -99,7 +99,7 @@ caffold-task-navigator {
     grid-template-columns: var(--task-list-icon-size) minmax(0, 1fr) auto;
     align-items: center;
     gap: 0.4375rem;
-    min-height: var(--task-group-row-height);
+    min-height: var(--interface-space-14);
     padding: 0.1875rem 0.5625rem;
     border-left: 3px solid transparent;
     background: transparent;
@@ -139,8 +139,11 @@ caffold-task-navigator {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 0.375rem;
+    width: calc(100% + var(--task-repository-indent));
     min-height: var(--task-row-height);
+    margin-inline-start: calc(0rem - var(--task-repository-indent));
     padding: 0.125rem 0.5625rem;
+    padding-inline-start: var(--interface-space-8);
   }
 
   & .task-archived-copy {
@@ -206,15 +209,16 @@ caffold-task-navigator {
   & .task-row {
     position: relative;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 56px;
+    grid-template-columns: minmax(0, 1fr) 3rem;
     align-items: center;
-    gap: 0.5rem;
-    width: 100%;
+    gap: 0.25rem;
+    width: calc(100% + var(--task-repository-indent));
     min-width: 0;
     min-height: var(--task-list-row-height);
+    margin-inline-start: calc(0rem - var(--task-repository-indent));
     padding: 0.1875rem 0.5625rem;
+    padding-inline-start: var(--interface-space-8);
     border: 0;
-    border-left: 3px solid transparent;
     background: transparent;
     color: var(--text);
     text-align: left;
@@ -223,13 +227,11 @@ caffold-task-navigator {
 
   & .task-row:hover,
   & .task-row:focus-visible {
-    border-left-color: #bdd7cc;
     background: #f1f6f3;
     outline: none;
   }
 
   & .task-row[aria-current="true"] {
-    border-left-color: var(--accent);
     background: var(--accent-soft);
     outline: none;
   }
@@ -246,7 +248,7 @@ caffold-task-navigator {
     align-items: center;
     justify-content: flex-end;
     gap: 0.375rem;
-    width: 3.5rem;
+    width: 3rem;
     min-width: 0;
   }
 

@@ -483,6 +483,64 @@ test("dense contextual toolbars separate visual size from coarse-pointer hit are
   );
 });
 
+test("task rows use full-width selection and compact repository grouping", () => {
+  const navigator = readFrontend(
+    "pages/(codex)/tasks/components/navigator.css",
+  );
+  const row = cssBlock(navigator, "& .task-row {");
+  const archivedRow = cssBlock(navigator, "& .task-archived-row {");
+  const repositoryGap = cssBlock(
+    navigator,
+    "& .task-repository-group + .task-repository-group {",
+  );
+  const repositoryHeader = cssBlock(
+    navigator,
+    "& .task-repository-header {",
+  );
+  const hover = cssBlock(navigator, "& .task-row:hover,");
+  const selected = cssBlock(
+    navigator,
+    '& .task-row[aria-current="true"]',
+  );
+  const title = cssBlock(navigator, "& .task-row-title");
+
+  assert.doesNotMatch(row, /border-left/);
+  assert.doesNotMatch(hover, /border-left/);
+  assert.doesNotMatch(selected, /border-left/);
+  assert.match(row, /width: calc\(100% \+ var\(--task-repository-indent\)\)/);
+  assert.match(
+    row,
+    /margin-inline-start: calc\(0rem - var\(--task-repository-indent\)\)/,
+  );
+  assert.match(
+    row,
+    /padding-inline-start: var\(--interface-space-8\)/,
+  );
+  assert.match(
+    archivedRow,
+    /width: calc\(100% \+ var\(--task-repository-indent\)\)/,
+  );
+  assert.match(
+    archivedRow,
+    /margin-inline-start: calc\(0rem - var\(--task-repository-indent\)\)/,
+  );
+  assert.match(
+    archivedRow,
+    /padding-inline-start: var\(--interface-space-8\)/,
+  );
+  assert.match(repositoryGap, /margin-top: var\(--interface-space-6\)/);
+  assert.match(repositoryHeader, /min-height: var\(--interface-space-14\)/);
+  assert.match(row, /grid-template-columns: minmax\(0, 1fr\) 3rem/);
+  assert.match(row, /gap: 0\.25rem/);
+  assert.match(selected, /background: var\(--accent-soft\)/);
+  assert.doesNotMatch(selected, /color-mix/);
+  assert.match(title, /font-weight: 500/);
+
+  const indicators = cssBlock(navigator, "& .task-row-indicators");
+  assert.match(indicators, /width: 3rem/);
+  assert.match(indicators, /min-width: 0/);
+});
+
 test("text actions use the shared Interface metadata scale instead of root body text", () => {
   const owners = [
     ["pages/components/app-menu.css", ".app-menu-popover button"],
