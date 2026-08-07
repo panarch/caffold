@@ -126,6 +126,7 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
   await expect(page.locator("caffold-file-viewer")).toContainText("example.rs");
   await expect(page.locator("caffold-code-viewer")).toContainText("pub fn sample");
   await expect(page.locator("caffold-code-viewer")).not.toContainText("Highlighted");
+  await expect(page.locator("caffold-code-viewer header")).toHaveCount(0);
   await expect(page.locator(".line-number").first()).toHaveText("1");
   await expect(page.getByRole("button", { name: "Refresh file", exact: true })).toBeVisible();
   await expectGlobalScrollLocked(page);

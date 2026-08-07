@@ -1,4 +1,4 @@
-import { escapeHtml, languageLabel } from "./dom.js";
+import { escapeHtml } from "./dom.js";
 
 const HIGHLIGHT_IMPORT = "https://esm.sh/highlight.js@11.11.1/lib/common";
 
@@ -16,12 +16,8 @@ class CaffoldCodeViewer extends HTMLElement {
   }
 
   renderPlain() {
-    const language = languageLabel(this.file.languageHint);
     this.innerHTML = `
       <section class="code-viewer" data-highlighted="false">
-        <header>
-          <span>${escapeHtml(language)}</span>
-        </header>
         ${renderCodeLines(escapeHtml(this.file.content), this.file.content)}
       </section>
     `;
@@ -37,12 +33,8 @@ class CaffoldCodeViewer extends HTMLElement {
         return;
       }
 
-      const language = languageLabel(this.file.languageHint);
       this.innerHTML = `
         <section class="code-viewer" data-highlighted="true">
-          <header>
-            <span>${escapeHtml(language)}</span>
-          </header>
           ${renderCodeLines(highlighted, this.file.content)}
         </section>
       `;

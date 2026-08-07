@@ -373,6 +373,7 @@ test("maps the visible source line when Diff and Source representations switch",
 
   const viewer = taskReview.locator("caffold-review-file-viewer");
   await expect(viewer.locator("caffold-code-viewer")).toBeVisible();
+  await expect(viewer.locator("caffold-code-viewer header")).toHaveCount(0);
   expect(await viewer.evaluate((element) => element.scrollToLine(60))).toBe(true);
   await expect
     .poll(() => viewer.evaluate((element) => element.visibleLine()))
