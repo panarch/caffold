@@ -45,7 +45,17 @@ test("refreshes Files and Git after external filesystem changes", async ({ page 
     const nestedPath = `${repositoryRelativePath}/nested`;
     const nestedFixturePath = `${nestedPath}/fixture.txt`;
     await page.locator(`button[data-entry-path="${nestedPath}"]`).click();
-    await expect(page.locator(`button[data-entry-path="${nestedFixturePath}"]`)).toBeVisible();
+    const nestedFixture = page.locator(
+      `button[data-entry-path="${nestedFixturePath}"]`,
+    );
+    await expect(nestedFixture).toBeVisible();
+    const fileList = page.locator("caffold-file-list .file-list");
+    await fileList.evaluate((element) => {
+      element.dataset.liveRefreshProbe = "kept";
+    });
+    await nestedFixture.evaluate((button) => {
+      button.closest("li").liveRefreshProbe = true;
+    });
     const resizeHandle = page.locator("caffold-file-browser > .panel-resizer");
     await dragHorizontalResizer(page, resizeHandle, 72);
     const resizedPanelWidth = await elementWidth(page, "caffold-file-list");
@@ -61,6 +71,12 @@ test("refreshes Files and Git after external filesystem changes", async ({ page 
     await writeFile(firstPath, `${initialContent}\n`);
     const firstEntry = page.locator(`button[data-entry-path="${firstLogicalPath}"]`);
     await expect(firstEntry).toBeVisible();
+    await expect(fileList).toHaveAttribute("data-live-refresh-probe", "kept");
+    expect(
+      await nestedFixture.evaluate(
+        (button) => button.closest("li").liveRefreshProbe === true,
+      ),
+    ).toBe(true);
     await expect(headerActions).toHaveAttribute(
       "data-live-refresh-probe",
       "kept",

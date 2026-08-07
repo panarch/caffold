@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { openCompletedTaskForReview } from "../support/task-review-test.js";
+import { scrollTop } from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
@@ -120,30 +121,197 @@ test("keeps the selected Review viewer mounted during canonical task sync", asyn
     element.dataset.canonicalSyncProbe = "kept";
   });
 
-  taskScenario.updateTask({ lastEventSummary: "Command started" });
-  await page.evaluate(
-    ({ detail, threadId }) => {
-      const source = window.__caffoldMockEventSources.find(
-        (candidate) =>
-          candidate.url === `/api/tasks/${threadId}/stream` &&
-          candidate.readyState !== 2,
-      );
-      source?.emit("task-sync", {
-        threadId,
-        revision: 20,
-        reason: "canonical-sync",
-        detail,
-      });
-    },
-    {
-      threadId: taskScenario.threadId,
-      detail: taskScenario.detailResponse({ revision: 20 }),
-    },
-  );
+  await emitTaskSync(page, taskScenario, 20, "Command started");
 
   await expect(visibleDiff).toHaveAttribute("data-canonical-sync-probe", "kept");
   await expect(visibleDiff).toContainText("new planner behavior");
   await expect(taskReview.locator(".surface-message")).toHaveCount(0);
+});
+
+test("does not reveal the selected Files entry again during canonical task sync", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name === "phone",
+    "Phone hides the navigator while a file is selected.",
+  );
+  const { taskScenario, tasksPage, taskReview } =
+    await openCompletedTaskForReview(page);
+  await page.addStyleTag({
+    content: `
+      caffold-task-review .task-review-navigator-pane,
+      caffold-task-review .task-review-navigator {
+        height: 180px !important;
+      }
+    `,
+  });
+
+  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+  const fileList = taskReview.locator(".file-list");
+  const selected = fileList.locator('button[data-entry-path="src/alpha.rs"]');
+  await selected.click();
+  await expect(selected).toHaveAttribute("aria-current", "true");
+
+  const fileScroll = await scrollAwayFromTop(fileList);
+  expect(fileScroll).toBeGreaterThan(0);
+  expect(
+    await selected.evaluate((button) => {
+      const scroller = button.closest(".file-list");
+      return button.getBoundingClientRect().top < scroller.getBoundingClientRect().top;
+    }),
+  ).toBe(true);
+
+  await emitTaskSync(page, taskScenario, 20, "Unrelated command progress");
+  await expectScrollUnchanged(fileList, fileScroll);
+});
+
+test("keeps both Review navigator scroll positions during unrelated live updates", async ({
+  page,
+}) => {
+  const { reviewScenario, taskScenario, tasksPage, taskReview } =
+    await openCompletedTaskForReview(page, {
+      configureReview(review) {
+        review.largeChangeSet = true;
+      },
+    });
+  await page.addStyleTag({
+    content: `
+      caffold-task-review .task-review-navigator-pane,
+      caffold-task-review .task-review-navigator {
+        height: 180px !important;
+      }
+    `,
+  });
+  let directoryRequests = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/list") {
+      directoryRequests += 1;
+    }
+  });
+
+  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  const changesList = taskReview.locator(".changes-tree-list");
+  await expect(
+    taskReview.locator("caffold-git-diff-changes-tree button[data-change-path]"),
+  ).toHaveCount(184);
+
+  // Populate both route-state slots at their initial position before the user scrolls.
+  await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+  await expect(
+    taskReview.locator('caffold-file-navigator button[data-entry-path="src/alpha.rs"]'),
+  ).toBeVisible();
+  await taskReview.getByRole("button", { name: "Changes", exact: true }).click();
+
+  const changesScroll = await scrollAwayFromTop(changesList);
+  expect(changesScroll).toBeGreaterThan(0);
+  await emitTaskSync(page, taskScenario, 20, "Unrelated command progress");
+  await expectScrollUnchanged(changesList, changesScroll);
+
+  const statusRequests = reviewScenario.gitStatusRequests;
+  reviewScenario.includeLiveFile = true;
+  await emitWatchChange(page, {
+    revision: 4,
+    paths: ["src/live-update.rs"],
+    gitStatusChanged: true,
+    gitRefsChanged: false,
+    overflow: false,
+  });
+  await expect.poll(() => reviewScenario.gitStatusRequests).toBeGreaterThan(statusRequests);
+  await expectScrollUnchanged(changesList, changesScroll);
+
+  await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+  const fileList = taskReview.locator(".file-list");
+  let injectVisibleDirectoryChange = false;
+  await page.route(/\/api\/list(?:\?|$)/, async (route) => {
+    if (!injectVisibleDirectoryChange) {
+      return route.continue();
+    }
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("path") !== "src") {
+      return route.continue();
+    }
+    const response = await route.fetch();
+    const directory = await response.json();
+    directory.entries = [
+      {
+        name: "00-live.rs",
+        path: "src/00-live.rs",
+        kind: "file",
+        isSymlink: false,
+        supported: true,
+        gitIgnored: false,
+        size: 12,
+        modifiedMs: 1_767_000_123_000,
+        git: null,
+      },
+      ...directory.entries,
+    ];
+    return route.fulfill({
+      response,
+      contentType: "application/json",
+      body: JSON.stringify(directory),
+    });
+  });
+  const fileScroll = await scrollAwayFromTop(fileList);
+  expect(fileScroll).toBeGreaterThan(0);
+  await fileList.evaluate((element) => {
+    element.dataset.stableRefreshProbe = "kept";
+  });
+  await emitTaskSync(page, taskScenario, 21, "Another unrelated command update");
+  await expectScrollUnchanged(fileList, fileScroll);
+
+  const previousDirectoryRequests = directoryRequests;
+  await emitWatchChange(page, {
+    revision: 5,
+    paths: ["src/alpha.rs"],
+    gitStatusChanged: false,
+    gitRefsChanged: false,
+    overflow: false,
+  });
+  await expect.poll(() => directoryRequests).toBeGreaterThan(previousDirectoryRequests);
+  await expect(fileList).toHaveAttribute("data-stable-refresh-probe", "kept");
+  await expectScrollUnchanged(fileList, fileScroll);
+
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent("caffold:icons-ready"));
+  });
+  await expectScrollUnchanged(fileList, fileScroll);
+
+  const visibleAnchor = await captureVisibleAnchor(fileList);
+  await fileList
+    .locator(`button[data-entry-path="${visibleAnchor.path}"]`)
+    .evaluate((button) => {
+      button.closest("li").stableRefreshProbe = true;
+    });
+  injectVisibleDirectoryChange = true;
+  const requestsBeforeVisibleChange = directoryRequests;
+  await emitWatchChange(page, {
+    revision: 6,
+    paths: ["src/00-live.rs"],
+    gitStatusChanged: false,
+    gitRefsChanged: false,
+    overflow: false,
+  });
+  await expect
+    .poll(() => directoryRequests)
+    .toBeGreaterThan(requestsBeforeVisibleChange);
+  await expect(fileList.locator('button[data-entry-path="src/00-live.rs"]')).toBeVisible();
+  await expect(fileList).toHaveAttribute("data-stable-refresh-probe", "kept");
+  expect(
+    await fileList
+      .locator(`button[data-entry-path="${visibleAnchor.path}"]`)
+      .evaluate((button) => button.closest("li").stableRefreshProbe === true),
+  ).toBe(true);
+  const visibleAnchorAfterChange = await captureVisibleAnchor(fileList);
+  expect(visibleAnchorAfterChange.path).toBe(visibleAnchor.path);
+  expect(Math.abs(visibleAnchorAfterChange.offset - visibleAnchor.offset)).toBeLessThanOrEqual(2);
+
+  const fileScrollAfterChange = await scrollTop(fileList);
+  await taskReview.getByRole("button", { name: "Changes", exact: true }).click();
+  await expectScrollUnchanged(changesList, changesScroll);
+  await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+  await expectScrollUnchanged(fileList, fileScrollAfterChange);
 });
 
 test("rejects a late file navigator response while Review is inactive", async ({
@@ -197,3 +365,81 @@ test("rejects a late file navigator response while Review is inactive", async ({
     ),
   ).toBeVisible();
 });
+
+async function scrollAwayFromTop(locator) {
+  return locator.evaluate(async (element) => {
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
+    const max = Math.max(0, element.scrollHeight - element.clientHeight);
+    element.scrollTop = Math.max(1, Math.floor(max * 0.6));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    return element.scrollTop;
+  });
+}
+
+async function expectScrollUnchanged(locator, expected) {
+  await locator.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+  expect(Math.abs((await scrollTop(locator)) - expected)).toBeLessThanOrEqual(2);
+}
+
+async function captureVisibleAnchor(locator) {
+  return locator.evaluate((element) => {
+    const scrollerTop = element.getBoundingClientRect().top;
+    const anchor = Array.from(element.querySelectorAll("button[data-entry-path]")).find(
+      (button) => button.getBoundingClientRect().bottom > scrollerTop,
+    );
+    if (!anchor) {
+      throw new Error("No visible file tree anchor");
+    }
+    return {
+      path: anchor.dataset.entryPath,
+      offset: anchor.getBoundingClientRect().top - scrollerTop,
+    };
+  });
+}
+
+async function emitTaskSync(page, taskScenario, revision, summary) {
+  taskScenario.updateTask({ lastEventSummary: summary });
+  await page.evaluate(
+    ({ detail, threadId, revision }) => {
+      const source = window.__caffoldMockEventSources.find(
+        (candidate) =>
+          candidate.url === `/api/tasks/${threadId}/stream` &&
+          candidate.readyState !== 2,
+      );
+      if (!source) {
+        throw new Error(`Task detail stream not found for ${threadId}`);
+      }
+      source.emit("task-sync", {
+        threadId,
+        revision,
+        reason: "canonical-sync",
+        detail,
+      });
+    },
+    {
+      threadId: taskScenario.threadId,
+      revision,
+      detail: taskScenario.detailResponse({ revision }),
+    },
+  );
+}
+
+async function emitWatchChange(page, change) {
+  await page.evaluate((payload) => {
+    const source = window.__caffoldMockEventSources.find(
+      (candidate) =>
+        candidate.url.startsWith("/api/watch?") && candidate.readyState !== 2,
+    );
+    if (!source) {
+      throw new Error("Active filesystem watch stream not found");
+    }
+    source.emit("change", payload);
+  }, change);
+}

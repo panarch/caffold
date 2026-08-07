@@ -220,6 +220,13 @@ class CaffoldTaskReview extends HTMLElement {
     const routeChanged = Boolean(
       this.previousRouteKey && this.previousRouteKey !== nextRouteKey,
     );
+    const revealFileSelection = Boolean(
+      nextRoute.navigator === "files" &&
+        nextRoute.path &&
+        (contextChanged ||
+          previousRoute.navigator !== "files" ||
+          previousRoute.path !== nextRoute.path),
+    );
     if (
       this.active &&
       !contextChanged &&
@@ -250,7 +257,7 @@ class CaffoldTaskReview extends HTMLElement {
       this.requestRoute(normalizedForTask, { replace: true });
       return true;
     }
-    this.syncReview({ contextChanged, routeChanged });
+    this.syncReview({ contextChanged, routeChanged, revealFileSelection });
     return true;
   }
 
@@ -291,7 +298,10 @@ class CaffoldTaskReview extends HTMLElement {
     this.patchToolbar();
     this.patchLayout();
     this.syncSelection();
-    this.ensureFileNavigator({ refresh: options.reactivated });
+    this.ensureFileNavigator({
+      refresh: options.reactivated,
+      revealSelection: options.revealFileSelection,
+    });
     this.subscribeWatch(taskRootPath(this.task));
     if (this.task.worktree) {
       if (this.status) {
@@ -321,10 +331,12 @@ class CaffoldTaskReview extends HTMLElement {
     ) {
       void this.loadViewer();
     }
-    this.restoreNavigatorScroll();
+    if (options.contextChanged || options.routeChanged || options.reactivated) {
+      this.restoreNavigatorScroll();
+    }
   }
 
-  ensureFileNavigator({ refresh = false } = {}) {
+  ensureFileNavigator({ refresh = false, revealSelection = false } = {}) {
     const navigator = this.fileNavigator();
     const rootPath = taskRootPath(this.task);
     if (!navigator || !rootPath) {
@@ -333,7 +345,11 @@ class CaffoldTaskReview extends HTMLElement {
     navigator.setWatchActive(false);
     if (!navigator.hasLoadedDirectory(rootPath)) {
       void navigator.loadDirectory(rootPath, { allowFailure: true }).then(() => {
-        if (this.route.path) {
+        if (
+          revealSelection &&
+          this.route.navigator === "files" &&
+          this.route.path
+        ) {
           void navigator.revealPath(this.logicalSelectedPath());
         }
       });
@@ -341,7 +357,11 @@ class CaffoldTaskReview extends HTMLElement {
       if (refresh) {
         void navigator.requestRefresh({ allDirectories: true });
       }
-      if (this.route.navigator === "files" && this.route.path) {
+      if (
+        revealSelection &&
+        this.route.navigator === "files" &&
+        this.route.path
+      ) {
         void navigator.revealPath(this.logicalSelectedPath());
       }
     }

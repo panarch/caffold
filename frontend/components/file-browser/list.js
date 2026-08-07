@@ -68,26 +68,35 @@ class CaffoldFileList extends HTMLElement {
     this.prepareTreeState(directory);
     this.state = { status: "ready", directory };
     this.render();
+    const scroller = this.querySelector(".file-list");
+    if (scroller) {
+      scroller.scrollTop = 0;
+      scroller.scrollLeft = 0;
+    }
   }
 
   updateDirectories(directories) {
     if (!directories.length || this.state?.status !== "ready") {
       return;
     }
-    const scroll = this.captureListScroll();
     const currentPath = this.state.directory.path;
     const current = directories.find((directory) => directory.path === currentPath);
+    let changed = false;
     if (current) {
+      changed ||= !sameDirectoryPresentation(this.state.directory, current);
       this.prepareTreeState(current);
       this.state = { status: "ready", directory: current };
     }
     if (this.treeState) {
       for (const directory of directories) {
+        changed ||=
+          !sameDirectoryPresentation(this.treeState.cache.get(directory.path), directory);
         this.treeState.cache.set(directory.path, directory);
       }
     }
-    this.render();
-    this.restoreListScroll(scroll);
+    if (changed) {
+      this.render();
+    }
   }
 
   cachedDirectoryPaths() {
@@ -111,10 +120,12 @@ class CaffoldFileList extends HTMLElement {
     if (this.refreshVisible === nextVisible) {
       return;
     }
-    const scroll = this.captureListScroll();
     this.refreshVisible = nextVisible;
-    this.render();
-    this.restoreListScroll(scroll);
+    if (this.state?.status === "ready" && this.readyHeader()) {
+      this.patchReadyHeader(this.state.directory);
+    } else {
+      this.render();
+    }
   }
 
   setError(error) {
@@ -156,23 +167,55 @@ class CaffoldFileList extends HTMLElement {
 
     const { directory } = this.state;
     const repoMode = Boolean(directory.git);
+    const panel = this.querySelector(":scope > .file-list-panel");
+    const list = panel?.querySelector(":scope > .file-list");
+    if (panel && list && this.readyHeader()) {
+      this.patchReadyHeader(directory);
+      list.className = `file-list${repoMode ? " repo-tree" : ""}`;
+      reconcileListRows(list, this.renderReadyRows(directory));
+      return;
+    }
+
     this.innerHTML = `
       <section class="file-list-panel">
         <header>
-          <div class="file-list-title-row">
-            <h2>Files</h2>
-            <div class="file-list-actions">
-              <span class="entry-count">${directory.entries.length} entries</span>
-              ${this.renderRefreshButton()}
-            </div>
-          </div>
-          ${this.renderGitSummary(directory.git)}
+          ${this.renderReadyHeader(directory)}
         </header>
         <ol class="file-list${repoMode ? " repo-tree" : ""}">
-          ${this.renderParentEntry(directory.path)}
-          ${repoMode ? this.renderTreeRoot(directory) : this.renderFlatEntries(directory)}
+          ${this.renderReadyRows(directory)}
         </ol>
       </section>
+    `;
+  }
+
+  readyHeader() {
+    return this.querySelector(":scope > .file-list-panel > header");
+  }
+
+  patchReadyHeader(directory) {
+    const header = this.readyHeader();
+    if (header) {
+      header.innerHTML = this.renderReadyHeader(directory);
+    }
+  }
+
+  renderReadyHeader(directory) {
+    return `
+      <div class="file-list-title-row">
+        <h2>Files</h2>
+        <div class="file-list-actions">
+          <span class="entry-count">${directory.entries.length} entries</span>
+          ${this.renderRefreshButton()}
+        </div>
+      </div>
+      ${this.renderGitSummary(directory.git)}
+    `;
+  }
+
+  renderReadyRows(directory) {
+    return `
+      ${this.renderParentEntry(directory.path)}
+      ${directory.git ? this.renderTreeRoot(directory) : this.renderFlatEntries(directory)}
     `;
   }
 
@@ -212,26 +255,6 @@ class CaffoldFileList extends HTMLElement {
     button.classList.toggle("is-unavailable", unavailable);
     button.setAttribute("aria-label", title);
     button.title = title;
-  }
-
-  captureListScroll() {
-    const scroller = this.querySelector(".file-list");
-    return scroller
-      ? { top: scroller.scrollTop, left: scroller.scrollLeft }
-      : null;
-  }
-
-  restoreListScroll(scroll) {
-    if (!scroll) {
-      return;
-    }
-    requestAnimationFrame(() => {
-      const scroller = this.querySelector(".file-list");
-      if (scroller) {
-        scroller.scrollTop = scroll.top;
-        scroller.scrollLeft = scroll.left;
-      }
-    });
   }
 
   renderFlatEntries(directory) {
@@ -736,4 +759,63 @@ function ancestorDirectories(path, rootPath) {
     directories.push(parent.slice(0, length).join("/"));
   }
   return directories.filter(Boolean);
+}
+
+function sameDirectoryPresentation(left, right) {
+  if (
+    !left ||
+    !right ||
+    left.path !== right.path ||
+    left.git?.rootPath !== right.git?.rootPath ||
+    left.git?.branch !== right.git?.branch ||
+    Boolean(left.git?.dirty) !== Boolean(right.git?.dirty) ||
+    left.entries.length !== right.entries.length
+  ) {
+    return false;
+  }
+  return left.entries.every((entry, index) => {
+    const other = right.entries[index];
+    return (
+      entry.name === other.name &&
+      entry.path === other.path &&
+      entry.kind === other.kind &&
+      Boolean(entry.isSymlink) === Boolean(other.isSymlink) &&
+      Boolean(entry.supported) === Boolean(other.supported) &&
+      Boolean(entry.gitIgnored) === Boolean(other.gitIgnored)
+    );
+  });
+}
+
+function reconcileListRows(list, html) {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  const currentRows = new Map(
+    Array.from(list.children).map((row, index) => [listRowKey(row, index), row]),
+  );
+  let cursor = list.firstElementChild;
+  Array.from(template.content.children).forEach((row, index) => {
+    const current = currentRows.get(listRowKey(row, index));
+    const next = current?.outerHTML === row.outerHTML ? current : row;
+    if (current && next !== current) {
+      const replacesCursor = current === cursor;
+      current.replaceWith(next);
+      if (replacesCursor) {
+        cursor = next;
+      }
+    }
+    if (next !== cursor) {
+      list.insertBefore(next, cursor);
+    }
+    cursor = next.nextElementSibling;
+  });
+  while (cursor) {
+    const stale = cursor;
+    cursor = cursor.nextElementSibling;
+    stale.remove();
+  }
+}
+
+function listRowKey(row, index) {
+  const entry = row.querySelector(":scope > button[data-entry-path]");
+  return entry ? `entry:${entry.dataset.entryPath}` : `row:${index}`;
 }
