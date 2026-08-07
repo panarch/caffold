@@ -23,6 +23,94 @@ async function expectLastPath(calls, path) {
   await expect.poll(() => calls.at(-1) ?? "").toBe(path);
 }
 
+test("keeps every review file tree selection full-width and rail-free", async ({
+  page,
+}, testInfo) => {
+  await installStandaloneReviewRouteMocks(page);
+
+  const cases = [
+    {
+      route: "/git/diff?cwd=src",
+      tree: "caffold-git-diff-changes-tree",
+      scroller: ".changes-tree-list",
+      entry: 'button[data-change-path="src/example.rs"]',
+      rows: ".changes-tree-rows",
+      path: "src/example.rs",
+    },
+    {
+      route: "/git/compare?cwd=src&base=origin%2Fmain&head=feature%2Freview",
+      tree: "caffold-git-compare-tree",
+      scroller: ".compare-tree-list",
+      entry: 'button[data-compare-path="src/example.rs"]',
+      rows: ".compare-tree-rows",
+      path: "src/example.rs",
+    },
+    {
+      route: `/git/log?cwd=src&page=2&sha=${ROUTE_COMMIT.sha}`,
+      tree: "caffold-commit-changes-tree",
+      scroller: ".commit-tree-list",
+      entry: 'button[data-commit-path="src/planner/mod.rs"]',
+      rows: ".commit-tree-rows",
+      path: "src/planner/mod.rs",
+    },
+    {
+      route: "/github/pulls/12/files?cwd=src&page=2",
+      tree: "caffold-github-pull-files-tree",
+      scroller: ".github-pull-files-list",
+      entry: 'button[data-pull-file-path="src/planner/mod.rs"]',
+      rows: ".github-pull-files-rows",
+      path: "src/planner/mod.rs",
+    },
+  ];
+
+  for (const treeCase of cases) {
+    await page.goto(treeCase.route);
+    const tree = page.locator(treeCase.tree);
+    const entry = tree.locator(treeCase.entry);
+    await expect(entry).toBeVisible();
+    await tree.evaluate((element, path) => element.setSelectedPath(path), treeCase.path);
+    await expect(entry).toHaveAttribute("aria-current", "true");
+    await expect(entry).toHaveCSS("background-color", "rgb(221, 239, 232)");
+
+    const fittedMetrics = await entry.evaluate((element, scrollerSelector) => {
+      const scroller = element.closest(scrollerSelector);
+      const style = getComputedStyle(element);
+      return {
+        borderLeftWidth: style.borderLeftWidth,
+        clientWidth: scroller.clientWidth,
+        rowHeight: element.getBoundingClientRect().height,
+        rowWidth: element.getBoundingClientRect().width,
+        scrollWidth: scroller.scrollWidth,
+      };
+    }, treeCase.scroller);
+    expect(fittedMetrics.borderLeftWidth).toBe("0px");
+    expect(Math.abs(fittedMetrics.rowWidth - fittedMetrics.scrollWidth)).toBeLessThanOrEqual(1);
+    if (testInfo.project.name === "desktop") {
+      expect(fittedMetrics.rowHeight).toBeCloseTo(24, 0);
+    } else {
+      expect(fittedMetrics.rowHeight).toBeCloseTo(36, 0);
+    }
+
+    const wideStyle = await page.addStyleTag({
+      content: `${treeCase.tree} ${treeCase.rows} { width: 1400px; }`,
+    });
+    const overflowMetrics = await entry.evaluate((element, scrollerSelector) => {
+      const scroller = element.closest(scrollerSelector);
+      scroller.scrollLeft = scroller.scrollWidth;
+      return {
+        clientWidth: scroller.clientWidth,
+        rowWidth: element.getBoundingClientRect().width,
+        scrollLeft: scroller.scrollLeft,
+        scrollWidth: scroller.scrollWidth,
+      };
+    }, treeCase.scroller);
+    expect(overflowMetrics.scrollWidth).toBeGreaterThan(overflowMetrics.clientWidth);
+    expect(overflowMetrics.scrollLeft).toBeGreaterThan(0);
+    expect(Math.abs(overflowMetrics.rowWidth - overflowMetrics.scrollWidth)).toBeLessThanOrEqual(1);
+    await wideStyle.evaluate((element) => element.remove());
+  }
+});
+
 test("restores standalone Changes routes without rebuilding list state", async ({ page }) => {
   const { counts, delays } = await installStandaloneReviewRouteMocks(page);
   const delayedListStarted = delays.list.holdNext();

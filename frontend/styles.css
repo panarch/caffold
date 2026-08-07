@@ -211,5 +211,6 @@ samp {
   :root {
     --interface-base-font-size: 17px;
     --interface-target-floor: 40px;
+    --file-tree-row-height: 36px;
   }
 }

@@ -139,7 +139,9 @@ class CaffoldFileList extends HTMLElement {
       this.innerHTML = `
         <section class="file-list-panel">
           <header><h2>Files</h2></header>
-          <ol class="file-list"></ol>
+          <div class="file-list">
+            <ol class="file-list-rows"></ol>
+          </div>
         </section>
       `;
       return;
@@ -168,10 +170,11 @@ class CaffoldFileList extends HTMLElement {
     const { directory } = this.state;
     const repoMode = Boolean(directory.git);
     const panel = this.querySelector(":scope > .file-list-panel");
-    const list = panel?.querySelector(":scope > .file-list");
-    if (panel && list && this.readyHeader()) {
+    const scroller = panel?.querySelector(":scope > .file-list");
+    const list = scroller?.querySelector(":scope > .file-list-rows");
+    if (panel && scroller && list && this.readyHeader()) {
       this.patchReadyHeader(directory);
-      list.className = `file-list${repoMode ? " repo-tree" : ""}`;
+      scroller.className = `file-list${repoMode ? " repo-tree" : ""}`;
       reconcileListRows(list, this.renderReadyRows(directory));
       return;
     }
@@ -181,9 +184,11 @@ class CaffoldFileList extends HTMLElement {
         <header>
           ${this.renderReadyHeader(directory)}
         </header>
-        <ol class="file-list${repoMode ? " repo-tree" : ""}">
-          ${this.renderReadyRows(directory)}
-        </ol>
+        <div class="file-list${repoMode ? " repo-tree" : ""}">
+          <ol class="file-list-rows">
+            ${this.renderReadyRows(directory)}
+          </ol>
+        </div>
       </section>
     `;
   }

@@ -52,19 +52,29 @@ export async function expectFileTreeDensity(page, entry) {
     const entryStyle = getComputedStyle(element);
     const iconStyle = getComputedStyle(element.querySelector(".entry-icon-svg"));
     const status = element.querySelector('[class*="status-code"]');
+    const owner = element.closest(
+      [
+        "caffold-git-diff-changes-tree",
+        "caffold-git-compare-tree",
+        "caffold-commit-changes-tree",
+        "caffold-github-pull-files-tree",
+      ].join(", "),
+    );
     const probe = document.createElement("span");
     probe.style.cssText = `
       position: fixed;
       inset: auto;
       visibility: hidden;
+      box-sizing: content-box;
       font-size: var(--file-tree-font-size);
       min-height: var(--file-tree-row-height);
       width: var(--file-tree-icon-size);
       column-gap: var(--file-tree-column-gap);
       padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
-        var(--file-tree-padding-y) var(--file-tree-padding-left);
+        var(--file-tree-padding-y)
+        calc(0.1875rem + var(--file-tree-padding-left));
     `;
-    document.body.append(probe);
+    (owner ?? document.body).append(probe);
     const expectedStyle = getComputedStyle(probe);
 
     const result = {
@@ -85,6 +95,7 @@ export async function expectFileTreeDensity(page, entry) {
         paddingTop: entryStyle.paddingTop,
         paddingRight: entryStyle.paddingRight,
         paddingLeft: entryStyle.paddingLeft,
+        borderLeftWidth: entryStyle.borderLeftWidth,
         statusFontSize: status ? getComputedStyle(status).fontSize : null,
       },
     };
@@ -99,6 +110,7 @@ export async function expectFileTreeDensity(page, entry) {
   expect(metrics.actual.paddingTop).toBe(metrics.expected.paddingTop);
   expect(metrics.actual.paddingRight).toBe(metrics.expected.paddingRight);
   expect(metrics.actual.paddingLeft).toBe(metrics.expected.paddingLeft);
+  expect(metrics.actual.borderLeftWidth).toBe("0px");
   expect(metrics.actual.statusFontSize).toBe(metrics.expected.fontSize);
 }
 

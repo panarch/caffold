@@ -122,16 +122,25 @@ caffold-file-list {
   & .file-list {
     display: block;
     min-height: 0;
-    margin: 0;
     overflow: auto;
     overscroll-behavior: contain;
+  }
+
+  & .file-list-rows {
+    display: grid;
+    grid-template-columns: auto;
+    align-content: start;
+    width: max-content;
+    min-width: 100%;
+    min-height: 0;
+    margin: 0;
     padding: 0.25rem 0;
     list-style: none;
   }
 
-  & .file-list > li {
-    width: max-content;
-    min-width: 100%;
+  & .file-list-rows > li {
+    width: auto;
+    min-width: 0;
   }
 
   & .repo-tree {
@@ -142,26 +151,27 @@ caffold-file-list {
     display: grid;
     grid-template-columns: var(--file-tree-icon-slot-size) max-content;
     gap: var(--file-tree-column-gap);
-    width: max-content;
-    min-width: 100%;
+    width: 100%;
+    min-width: 0;
     min-height: var(--file-tree-row-height);
     align-items: center;
     border: 0;
-    border-left: 3px solid transparent;
     border-radius: 0;
     background: transparent;
     color: var(--text);
     cursor: pointer;
     font-size: var(--file-tree-font-size);
     padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
-      var(--file-tree-padding-y) var(--file-tree-padding-left);
+      var(--file-tree-padding-y)
+      calc(0.1875rem + var(--file-tree-padding-left));
     text-align: left;
   }
 
   & .tree-entry {
     grid-template-columns: var(--file-tree-icon-slot-size) max-content;
     padding-left: calc(
-      var(--file-tree-padding-left) + var(--tree-depth, 0) * var(--tree-indent)
+      0.1875rem + var(--file-tree-padding-left) + var(--tree-depth, 0) *
+        var(--tree-indent)
     );
   }
 
@@ -189,14 +199,8 @@ caffold-file-list {
     color: #9aa59e;
   }
 
-  & .file-entry:focus-visible,
-  & .file-entry:hover {
-    border-left-color: #bdd7cc;
-  }
-
   & .file-entry:not(.parent-entry)[aria-current="true"],
   & .file-entry:not(.parent-entry).is-selected {
-    border-left-color: var(--accent);
     background: var(--accent-soft);
   }
 
@@ -228,8 +232,8 @@ caffold-file-list {
   }
 
   & .tree-status {
-    width: max-content;
-    min-width: 100%;
+    width: 100%;
+    min-width: 0;
     min-height: var(--file-tree-row-height);
     padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
       var(--file-tree-padding-y)

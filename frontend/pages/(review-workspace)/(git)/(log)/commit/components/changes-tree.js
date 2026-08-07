@@ -124,7 +124,9 @@ class CaffoldCommitChangesTree extends HTMLElement {
       this.innerHTML = `
         <section class="commit-tree-panel">
           ${this.renderHeader(null, null, null)}
-          <ol class="commit-tree-list"></ol>
+          <div class="commit-tree-list">
+            <ol class="commit-tree-rows"></ol>
+          </div>
         </section>
       `;
       return;
@@ -158,7 +160,9 @@ class CaffoldCommitChangesTree extends HTMLElement {
         ${
           files.length === 0
             ? `<p class="surface-message">No files changed.</p>`
-            : `<ol class="commit-tree-list">${this.renderNodes(this.state.tree.children, 0)}</ol>`
+            : `<div class="commit-tree-list">
+                <ol class="commit-tree-rows">${this.renderNodes(this.state.tree.children, 0)}</ol>
+              </div>`
         }
       </section>
     `;

@@ -98,6 +98,62 @@ test("resizes the left file panel", async ({ page }, testInfo) => {
   await captureReviewScreenshot(page, testInfo, "file-panel-resized");
 });
 
+test(
+  "fills horizontally scrolled file rows without a selection rail",
+  async ({ page }, testInfo) => {
+    await page.goto(FILES_HOME_URL);
+
+    await expect(page.locator(`button[data-entry-path="${LONG_ROOT_FILE}"]`)).toBeVisible();
+    const selectedFile = page.locator('button[data-entry-path="README.md"]');
+    await selectedFile.click();
+    if (testInfo.project.name === "phone") {
+      await page.getByRole("button", { name: "Back to files" }).click();
+    }
+
+    const fileRowMetrics = await selectedFile.evaluate((element) => {
+      const scroller = element.closest(".file-list");
+      scroller.scrollLeft = scroller.scrollWidth;
+      const styles = window.getComputedStyle(element);
+
+      return {
+        borderLeftWidth: styles.borderLeftWidth,
+        clientWidth: scroller.clientWidth,
+        rowHeight: element.getBoundingClientRect().height,
+        rowWidth: element.getBoundingClientRect().width,
+        scrollLeft: scroller.scrollLeft,
+        scrollWidth: scroller.scrollWidth,
+      };
+    });
+
+    expect(fileRowMetrics.borderLeftWidth).toBe("0px");
+    expect(fileRowMetrics.scrollWidth).toBeGreaterThan(fileRowMetrics.clientWidth);
+    expect(fileRowMetrics.scrollLeft).toBeGreaterThan(0);
+    expect(Math.abs(fileRowMetrics.rowWidth - fileRowMetrics.scrollWidth)).toBeLessThanOrEqual(1);
+    if (testInfo.project.name === "desktop") {
+      expect(fileRowMetrics.rowHeight).toBeCloseTo(24, 0);
+    } else {
+      expect(fileRowMetrics.rowHeight).toBeCloseTo(36, 0);
+    }
+
+    await page.addStyleTag({
+      content: `button[data-entry-path="${LONG_ROOT_FILE}"] { display: none; }`,
+    });
+    const fittedRowMetrics = await selectedFile.evaluate((element) => {
+      const scroller = element.closest(".file-list");
+      return {
+        clientWidth: scroller.clientWidth,
+        rowWidth: element.getBoundingClientRect().width,
+        scrollWidth: scroller.scrollWidth,
+      };
+    });
+
+    expect(fittedRowMetrics.scrollWidth).toBe(fittedRowMetrics.clientWidth);
+    expect(Math.abs(fittedRowMetrics.rowWidth - fittedRowMetrics.clientWidth)).toBeLessThanOrEqual(
+      1,
+    );
+  },
+);
+
 test("scrolls long names horizontally in Files and Changes", async ({ page }) => {
   await page.goto(FILES_HOME_URL);
 

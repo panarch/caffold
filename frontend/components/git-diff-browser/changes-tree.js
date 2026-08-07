@@ -168,7 +168,9 @@ class CaffoldGitDiffChangesTree extends HTMLElement {
       this.innerHTML = `
         <section class="changes-tree-panel">
           ${this.renderHeader(null, null)}
-          <ol class="changes-tree-list"></ol>
+          <div class="changes-tree-list">
+            <ol class="changes-tree-rows"></ol>
+          </div>
         </section>
       `;
       return;
@@ -201,7 +203,9 @@ class CaffoldGitDiffChangesTree extends HTMLElement {
         ${
           files.length === 0
             ? `<p class="surface-message">No changes.</p>`
-            : `<ol class="changes-tree-list">${this.renderSections()}</ol>`
+            : `<div class="changes-tree-list">
+                <ol class="changes-tree-rows">${this.renderSections()}</ol>
+              </div>`
         }
       </section>
     `;

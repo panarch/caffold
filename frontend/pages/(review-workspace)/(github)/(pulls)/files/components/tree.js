@@ -99,7 +99,9 @@ class CaffoldGithubPullFilesTree extends HTMLElement {
       this.innerHTML = `
         <section class="github-pull-files-panel">
           ${this.renderHeader(null)}
-          <ol class="github-pull-files-list"></ol>
+          <div class="github-pull-files-list">
+            <ol class="github-pull-files-rows"></ol>
+          </div>
         </section>
       `;
       return;
@@ -133,7 +135,9 @@ class CaffoldGithubPullFilesTree extends HTMLElement {
         ${
           files.length === 0
             ? `<p class="surface-message">No files changed.</p>`
-            : `<ol class="github-pull-files-list">${this.renderNodes(this.state.tree.children, 0)}</ol>`
+            : `<div class="github-pull-files-list">
+                <ol class="github-pull-files-rows">${this.renderNodes(this.state.tree.children, 0)}</ol>
+              </div>`
         }
       </section>
     `;

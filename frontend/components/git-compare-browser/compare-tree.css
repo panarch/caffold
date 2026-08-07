@@ -74,47 +74,54 @@ caffold-git-compare-tree {
     --tree-indent: var(--file-tree-indent);
     display: block;
     min-height: 0;
-    margin: 0;
     overflow: auto;
     overscroll-behavior: contain;
+  }
+
+  & .compare-tree-rows {
+    display: grid;
+    grid-template-columns: auto;
+    align-content: start;
+    width: max-content;
+    min-width: 100%;
+    min-height: 0;
+    margin: 0;
     padding: 0.25rem 0;
     list-style: none;
   }
 
-  & .compare-tree-list > li {
-    width: max-content;
-    min-width: 100%;
+  & .compare-tree-rows > li {
+    width: auto;
+    min-width: 0;
   }
 
   & .compare-entry {
     display: grid;
     grid-template-columns: var(--file-tree-icon-slot-size) max-content;
     gap: var(--file-tree-column-gap);
-    width: max-content;
-    min-width: 100%;
+    width: 100%;
+    min-width: 0;
     min-height: var(--file-tree-row-height);
     align-items: center;
     border: 0;
-    border-left: 3px solid transparent;
     border-radius: 0;
     background: transparent;
     color: var(--text);
     cursor: pointer;
     font-size: var(--file-tree-font-size);
     padding: var(--file-tree-padding-y) var(--file-tree-padding-right)
-      var(--file-tree-padding-y) var(--file-tree-padding-left);
+      var(--file-tree-padding-y)
+      calc(0.1875rem + var(--file-tree-padding-left));
     text-align: left;
   }
 
   & .compare-entry:hover,
   & .compare-entry:focus-visible {
-    border-left-color: #bdd7cc;
     background: #f1f6f3;
     outline: none;
   }
 
   & .compare-file[aria-current="true"] {
-    border-left-color: var(--accent);
     background: var(--accent-soft);
   }
 

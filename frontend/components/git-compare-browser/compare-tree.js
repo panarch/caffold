@@ -142,7 +142,9 @@ class CaffoldGitCompareTree extends HTMLElement {
       this.innerHTML = `
         <section class="compare-tree-panel">
           ${this.renderHeader(null, null)}
-          <ol class="compare-tree-list"></ol>
+          <div class="compare-tree-list">
+            <ol class="compare-tree-rows"></ol>
+          </div>
         </section>
       `;
       return;
@@ -176,7 +178,9 @@ class CaffoldGitCompareTree extends HTMLElement {
         ${
           files.length === 0
             ? `<p class="surface-message">${escapeHtml(this.emptyMessage || "No files changed.")}</p>`
-            : `<ol class="compare-tree-list">${this.renderNodes(this.state.tree.children, 0)}</ol>`
+            : `<div class="compare-tree-list">
+                <ol class="compare-tree-rows">${this.renderNodes(this.state.tree.children, 0)}</ol>
+              </div>`
         }
       </section>
     `;
