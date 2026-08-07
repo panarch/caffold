@@ -81,11 +81,15 @@ class CaffoldAppShell extends HTMLElement {
     });
     this.addEventListener("caffold:open-github-issues-workspace", () => {
       this.clearTaskReviewReturnRoute();
-      this.navigateOrOpenGithubRoute(this.githubLayout.routeForAction("issues"));
+      this.navigateOrOpenGithubRoute(this.githubLayout.routeForAction("issues"), {
+        skipReload: false,
+      });
     });
     this.addEventListener("caffold:open-github-pulls-workspace", () => {
       this.clearTaskReviewReturnRoute();
-      this.navigateOrOpenGithubRoute(this.githubLayout.routeForAction("pulls"));
+      this.navigateOrOpenGithubRoute(this.githubLayout.routeForAction("pulls"), {
+        skipReload: false,
+      });
     });
     this.addEventListener("caffold:open-tasks", () => {
       this.navigateToRoute({
@@ -311,7 +315,7 @@ class CaffoldAppShell extends HTMLElement {
     }
 
     if (this.currentRoute && routeEquals(this.currentRoute, route)) {
-      this.applyRoute(route);
+      this.applyRoute(route, options);
       return true;
     }
 
@@ -321,7 +325,7 @@ class CaffoldAppShell extends HTMLElement {
       window.navigation.navigate(url, {
         history: options.replace ? "replace" : "push",
       });
-      this.applyRoute(route);
+      this.applyRoute(route, options);
       return true;
     }
 
@@ -331,7 +335,7 @@ class CaffoldAppShell extends HTMLElement {
     } else {
       window.history.pushState(state, "", url);
     }
-    this.applyRoute(route);
+    this.applyRoute(route, options);
     return true;
   }
 
@@ -344,7 +348,7 @@ class CaffoldAppShell extends HTMLElement {
     window.history.replaceState({ caffoldRoute: route }, "", routeUrl(route));
   }
 
-  async applyRoute(route) {
+  async applyRoute(route, options = {}) {
     route = this.routeWithResolvedContext(route);
     this.isApplyingRoute = true;
     this.currentRoute = route;
@@ -364,7 +368,7 @@ class CaffoldAppShell extends HTMLElement {
       } else if (domain === "git") {
         await this.applyGitRoute(route);
       } else if (domain === "github") {
-        await this.applyGithubRoute(route);
+        await this.applyGithubRoute(route, options);
       }
 
       return true;
@@ -445,7 +449,7 @@ class CaffoldAppShell extends HTMLElement {
     });
   }
 
-  async applyGithubRoute(route) {
+  async applyGithubRoute(route, options = {}) {
     this.codexWorkspace.hidden = true;
     this.filesPage.hidden = false;
     if (!(await this.ensureReviewContext(route.cwd))) {
@@ -459,7 +463,9 @@ class CaffoldAppShell extends HTMLElement {
     await this.openGithubRoute(route, {
       resolvePath: (path) =>
         joinLogicalPath(this.gitRepository?.rootPath ?? route.cwd, path),
-      skipReload: this.canApplyLoadedGithubRoute(route),
+      skipReload: Object.prototype.hasOwnProperty.call(options, "skipReload")
+        ? Boolean(options.skipReload)
+        : this.canApplyLoadedGithubRoute(route),
     });
   }
 
@@ -501,7 +507,7 @@ class CaffoldAppShell extends HTMLElement {
     const { fallbackRoute, ...openOptions } = options;
     const navigationRoute = this.navigationReviewRoute(route);
     return navigationRoute
-      ? this.navigateToRoute(navigationRoute)
+      ? this.navigateToRoute(navigationRoute, openOptions)
       : this.openGithubRoute(fallbackRoute ?? route, openOptions);
   }
 

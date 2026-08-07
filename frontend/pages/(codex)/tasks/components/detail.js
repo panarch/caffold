@@ -699,6 +699,7 @@ class CaffoldTaskDetail extends HTMLElement {
     const options = {
       returnRoute,
       taskRelatedPaths: [task?.worktree?.rootPath, task?.cwdPath || task?.cwd].filter(Boolean),
+      ...(action === "open-github-tool" ? { skipReload: false } : {}),
     };
     const route =
       kind === "diff"

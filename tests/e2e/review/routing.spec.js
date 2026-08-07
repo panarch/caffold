@@ -283,6 +283,64 @@ test("restores standalone GitHub pull file routes before parent state loads", as
   );
 });
 
+test("refreshes GitHub lists on header re-entry without reloading on internal back", async ({
+  page,
+}) => {
+  const { counts } = await installStandaloneReviewRouteMocks(page);
+
+  await page.goto("/github/issues?cwd=src&page=2");
+  await expect(page.locator('button[data-issue-number="42"]')).toBeVisible();
+  const issueRequestsBeforeHeaderEntry = counts.githubIssues;
+
+  await page.getByRole("button", { name: "Close review workspace" }).click();
+  await expect(page).toHaveURL("/files?cwd=src");
+  await clickHeaderAction(page, "github", "open-github-issues-workspace");
+  await expect.poll(() => counts.githubIssues).toBe(issueRequestsBeforeHeaderEntry + 1);
+  await expect(page).toHaveURL("/github/issues?cwd=src&page=2");
+
+  const issueRequestsBeforeSameRouteEntry = counts.githubIssues;
+  await page.locator("caffold-header-actions").evaluate((headerActions) => {
+    headerActions.dispatchEvent(
+      new CustomEvent("caffold:open-github-issues-workspace", { bubbles: true }),
+    );
+  });
+  await expect.poll(() => counts.githubIssues).toBe(issueRequestsBeforeSameRouteEntry + 1);
+  await expect(page).toHaveURL("/github/issues?cwd=src&page=2");
+
+  await page.locator('button[data-issue-number="42"]').click();
+  await expect(page).toHaveURL("/github/issues/42?cwd=src&page=2");
+  const issueRequestsBeforeBack = counts.githubIssues;
+  await page.getByRole("button", { name: "Back to issues" }).click();
+  await expect(page).toHaveURL("/github/issues?cwd=src&page=2");
+  expect(counts.githubIssues).toBe(issueRequestsBeforeBack);
+
+  await page.goto("/github/pulls?cwd=src&page=2");
+  await expect(page.locator('button[data-pull-number="12"]')).toBeVisible();
+  const pullRequestsBeforeHeaderEntry = counts.githubPulls;
+
+  await page.getByRole("button", { name: "Close review workspace" }).click();
+  await expect(page).toHaveURL("/files?cwd=src");
+  await clickHeaderAction(page, "github", "open-github-pulls-workspace");
+  await expect.poll(() => counts.githubPulls).toBe(pullRequestsBeforeHeaderEntry + 1);
+  await expect(page).toHaveURL("/github/pulls?cwd=src&page=2");
+
+  const pullRequestsBeforeSameRouteEntry = counts.githubPulls;
+  await page.locator("caffold-header-actions").evaluate((headerActions) => {
+    headerActions.dispatchEvent(
+      new CustomEvent("caffold:open-github-pulls-workspace", { bubbles: true }),
+    );
+  });
+  await expect.poll(() => counts.githubPulls).toBe(pullRequestsBeforeSameRouteEntry + 1);
+  await expect(page).toHaveURL("/github/pulls?cwd=src&page=2");
+
+  await page.locator('button[data-pull-number="12"]').click();
+  await expect(page).toHaveURL("/github/pulls/12?cwd=src&page=2");
+  const pullRequestsBeforeBack = counts.githubPulls;
+  await page.getByRole("button", { name: "Back to pull requests" }).click();
+  await expect(page).toHaveURL("/github/pulls?cwd=src&page=2");
+  expect(counts.githubPulls).toBe(pullRequestsBeforeBack);
+});
+
 test("switches directly between standalone review route owners", async ({ page }) => {
   await installStandaloneReviewRouteMocks(page);
 

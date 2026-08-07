@@ -54,6 +54,10 @@ async function installLinkedWorktreeGithubFixture(page, repositoryContextHandler
     nameWithOwner: "gluesql/gluesql",
     url: "https://github.com/gluesql/gluesql",
   };
+  const counts = {
+    issues: 0,
+    pulls: 0,
+  };
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({ json: { tasks: [task], nextCursor: null } }),
@@ -107,6 +111,7 @@ async function installLinkedWorktreeGithubFixture(page, repositoryContextHandler
     });
   });
   await page.route(/\/api\/github\/pulls(?:\?|$)/, (route) => {
+    counts.pulls += 1;
     const url = new URL(route.request().url());
     expect(url.searchParams.get("path")).toBe(WORKTREE_ROOT);
     expect(url.searchParams.get("state")).toBe("open");
@@ -139,11 +144,43 @@ async function installLinkedWorktreeGithubFixture(page, repositoryContextHandler
     });
   });
 
-  return { task, repository, github };
+  await page.route(/\/api\/github\/issues(?:\?|$)/, (route) => {
+    counts.issues += 1;
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("path")).toBe(WORKTREE_ROOT);
+    expect(url.searchParams.get("state")).toBe("open");
+    expect(url.searchParams.get("perPage")).toBe("50");
+    return route.fulfill({
+      json: {
+        repository,
+        github,
+        state: "open",
+        issues: [
+          {
+            number: 1984,
+            title: "Keep task GitHub lists fresh",
+            state: "open",
+            author: "panarch",
+            labels: [],
+            comments: 0,
+            updatedAt: "2026-08-07T03:00:00Z",
+            url: "https://github.com/gluesql/gluesql/issues/1984",
+          },
+        ],
+        page: 1,
+        perPage: 50,
+        totalIssues: 1,
+        totalPages: 1,
+        hasPrevious: false,
+        hasNext: false,
+      },
+    });
+  });
+
+  return { task, repository, github, counts };
 }
 
-async function openLinkedWorktreePullRequests(page) {
-  await page.goto(`/tasks/${THREAD_ID}`);
+async function chooseLinkedWorktreeGithubList(page, kind) {
   const summary = page.locator("caffold-task-detail-summary");
   await expect(summary).toContainText("query-plan-limit-offset · gluesql");
   await summary
@@ -151,13 +188,57 @@ async function openLinkedWorktreePullRequests(page) {
     .click();
   await summary
     .locator(
-      'button[data-summary-action="open-github-tool"][data-review-kind="pulls"]',
+      `button[data-summary-action="open-github-tool"][data-review-kind="${kind}"]`,
     )
     .click();
+}
+
+async function openLinkedWorktreePullRequests(page) {
+  await page.goto(`/tasks/${THREAD_ID}`);
+  await chooseLinkedWorktreeGithubList(page, "pulls");
   await expect(page).toHaveURL(
     `/github/pulls?cwd=${encodeURIComponent(WORKTREE_ROOT)}`,
   );
 }
+
+test("refreshes GitHub lists when reopened from the task menu", async ({ page }) => {
+  let repository;
+  const fixture = await installLinkedWorktreeGithubFixture(page, (route) =>
+    route.fulfill({
+      json: {
+        root: "Users/taehoon",
+        path: WORKTREE_ROOT,
+        git: repository,
+        entries: [],
+      },
+    }),
+  );
+  repository = fixture.repository;
+
+  await openLinkedWorktreePullRequests(page);
+  await expect(page.locator("caffold-github-pulls-list-page")).toContainText(
+    "Reject unsupported table function arguments",
+  );
+  expect(fixture.counts.pulls).toBe(1);
+
+  await page.getByRole("button", { name: "Close review workspace" }).click();
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}`);
+  await chooseLinkedWorktreeGithubList(page, "pulls");
+  await expect.poll(() => fixture.counts.pulls).toBe(2);
+
+  await page.getByRole("button", { name: "Close review workspace" }).click();
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}`);
+  await chooseLinkedWorktreeGithubList(page, "issues");
+  await expect(page.locator("caffold-github-issues-list-page")).toContainText(
+    "Keep task GitHub lists fresh",
+  );
+  expect(fixture.counts.issues).toBe(1);
+
+  await page.getByRole("button", { name: "Close review workspace" }).click();
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}`);
+  await chooseLinkedWorktreeGithubList(page, "issues");
+  await expect.poll(() => fixture.counts.issues).toBe(2);
+});
 
 test("loads pull requests after linked worktree context resolves", async ({ page }) => {
   let resolveContextRequest;
