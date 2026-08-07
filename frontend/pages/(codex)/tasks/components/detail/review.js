@@ -211,12 +211,24 @@ class CaffoldTaskReview extends HTMLElement {
     this.ensureRendered();
     const contextKey = reviewContextKey(task);
     const contextChanged = contextKey !== this.contextKey;
+    const nextEvents = Array.isArray(events) ? events : [];
+    const taskChanged = this.task !== task;
+    const eventsChanged = !sameEventList(this.events, nextEvents);
     const previousRoute = this.route;
     const nextRoute = normalizeReviewRoute(route, task);
     const nextRouteKey = reviewRouteKey(nextRoute);
     const routeChanged = Boolean(
       this.previousRouteKey && this.previousRouteKey !== nextRouteKey,
     );
+    if (
+      this.active &&
+      !contextChanged &&
+      !routeChanged &&
+      !taskChanged &&
+      !eventsChanged
+    ) {
+      return false;
+    }
     if (contextChanged) {
       this.resetContext();
       this.contextKey = contextKey;
@@ -229,16 +241,17 @@ class CaffoldTaskReview extends HTMLElement {
     }
     this.active = true;
     this.task = task;
-    this.events = Array.isArray(events) ? events : [];
+    this.events = nextEvents;
     this.route = nextRoute;
     this.previousRouteKey = nextRouteKey;
 
     const normalizedForTask = normalizeForTask(nextRoute, task);
     if (reviewRouteKey(normalizedForTask) !== nextRouteKey) {
       this.requestRoute(normalizedForTask, { replace: true });
-      return;
+      return true;
     }
     this.syncReview({ contextChanged, routeChanged });
+    return true;
   }
 
   currentTaskRoute() {
@@ -1029,6 +1042,13 @@ function restoreNavigatorScroll(navigator, scroll) {
   } else {
     navigator?.restoreListScroll?.(scroll);
   }
+}
+
+function sameEventList(left = [], right = []) {
+  return (
+    left.length === right.length &&
+    left.every((event, index) => event === right[index])
+  );
 }
 
 function escapeText(value) {

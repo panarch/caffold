@@ -53,6 +53,8 @@ class CaffoldTaskComposer extends HTMLElement {
     this.addEventListener("click", this.boundClick);
     this.addEventListener("input", this.boundInput);
     this.addEventListener("keydown", this.boundKeydown);
+    this.addEventListener("compositionstart", this.boundCompositionStart);
+    this.addEventListener("compositionend", this.boundCompositionEnd);
     this.addEventListener("paste", this.boundPaste, true);
     this.addEventListener("submit", this.boundSubmit, true);
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
@@ -74,6 +76,8 @@ class CaffoldTaskComposer extends HTMLElement {
     this.removeEventListener("click", this.boundClick);
     this.removeEventListener("input", this.boundInput);
     this.removeEventListener("keydown", this.boundKeydown);
+    this.removeEventListener("compositionstart", this.boundCompositionStart);
+    this.removeEventListener("compositionend", this.boundCompositionEnd);
     this.removeEventListener("paste", this.boundPaste, true);
     this.removeEventListener("submit", this.boundSubmit, true);
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
@@ -87,6 +91,10 @@ class CaffoldTaskComposer extends HTMLElement {
     this.voiceRequest = null;
     void this.voiceRecorder?.cancel();
     this.voiceRecorder = null;
+    this.compositionActive = false;
+    this.pendingRender = false;
+    window.clearTimeout(this.compositionRenderTimer);
+    this.compositionRenderTimer = null;
     this.modelLoading = false;
     this.permissionLoading = false;
   }
@@ -138,10 +146,35 @@ class CaffoldTaskComposer extends HTMLElement {
     this.voiceRequest = null;
     this.voiceInsertion = null;
     this.openPicker = "";
+    this.compositionActive = false;
+    this.pendingRender = false;
+    this.compositionRenderTimer = null;
     this.boundPointerdown = (event) => this.handlePointerdown(event);
     this.boundClick = (event) => this.handleClick(event);
     this.boundInput = (event) => this.handleInput(event);
     this.boundKeydown = (event) => this.handleKeydown(event);
+    this.boundCompositionStart = (event) => {
+      if (closestElement(event.target, "textarea[name='prompt']")) {
+        window.clearTimeout(this.compositionRenderTimer);
+        this.compositionRenderTimer = null;
+        this.compositionActive = true;
+      }
+    };
+    this.boundCompositionEnd = (event) => {
+      if (!closestElement(event.target, "textarea[name='prompt']")) {
+        return;
+      }
+      this.compositionActive = false;
+      window.clearTimeout(this.compositionRenderTimer);
+      this.compositionRenderTimer = window.setTimeout(() => {
+        this.compositionRenderTimer = null;
+        if (!this.isConnected || this.compositionActive || !this.pendingRender) {
+          return;
+        }
+        this.captureCurrentState();
+        this.render();
+      }, 0);
+    };
     this.boundPaste = (event) => {
       void this.handlePaste(event);
     };
@@ -172,7 +205,7 @@ class CaffoldTaskComposer extends HTMLElement {
       this.boundThreadId = nextThreadId;
     }
     this.captureCurrentState();
-    this.context = {
+    const nextContext = {
       ...this.context,
       ...context,
       mode: nextMode,
@@ -184,28 +217,49 @@ class CaffoldTaskComposer extends HTMLElement {
         ? `${context.requestError ?? ""}`
         : this.context.requestError,
     };
-    this.setAttribute("data-composer-mode", this.context.mode);
+    const contextChanged = !shallowEqual(this.context, nextContext);
+    this.context = nextContext;
     const state = this.stateFor();
-    if (context.model && !state.modelExplicit) {
+    let stateChanged = false;
+    if (
+      context.model &&
+      !state.modelExplicit &&
+      state.model !== `${context.model}`
+    ) {
       state.model = `${context.model}`;
+      stateChanged = true;
     }
-    if (context.effort && !state.modelExplicit) {
+    if (
+      context.effort &&
+      !state.modelExplicit &&
+      state.effort !== `${context.effort}`
+    ) {
       state.effort = `${context.effort}`;
+      stateChanged = true;
     }
     if (
       context.permissionMode &&
-      !state.permissionExplicit
+      !state.permissionExplicit &&
+      state.permissionMode !== `${context.permissionMode}`
     ) {
       state.permissionMode = `${context.permissionMode}`;
+      stateChanged = true;
     }
+    let pickerChanged = false;
     if (this.context.disabled || this.context.settingsLocked) {
+      pickerChanged = Boolean(this.openPicker);
       this.openPicker = "";
     }
+    if (!contextChanged && !stateChanged && !pickerChanged) {
+      return false;
+    }
+    this.setAttribute("data-composer-mode", this.context.mode);
     this.render();
     if (this.isConnected) {
       void this.loadModels();
       void this.loadPermissions(this.context.cwd);
     }
+    return true;
   }
 
   resolveSubmission(submissionId, result = {}) {
@@ -996,6 +1050,13 @@ class CaffoldTaskComposer extends HTMLElement {
 
   render() {
     this.ensureState();
+    // IME composition belongs to the current textarea node. Replacing it here
+    // would commit or split the in-progress text before compositionend.
+    if (this.compositionActive) {
+      this.pendingRender = true;
+      return;
+    }
+    this.pendingRender = false;
     const previousFocus = this.captureFocus();
     const state = this.stateFor();
     const model = this.selectedModel();
@@ -1629,6 +1690,17 @@ function imageExtension(type) {
     "image/png": "png",
     "image/webp": "webp",
   }[type] ?? "png";
+}
+
+function shallowEqual(left, right) {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key) => Object.hasOwn(right, key) && Object.is(left[key], right[key]),
+    )
+  );
 }
 
 function closestElement(target, selector) {

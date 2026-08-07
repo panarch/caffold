@@ -65,16 +65,12 @@ class CaffoldTaskConversation extends HTMLElement {
 
   setSnapshot(snapshot = {}) {
     this.ensureState();
-    const previousThreadId = this.snapshot.threadId;
-    const previousScroll = this.rememberScroll(previousThreadId);
-    const nextThreadId = `${snapshot.threadId ?? ""}`;
-    if (previousThreadId !== nextThreadId) {
-      this.approvalErrors.clear();
-    }
-    this.snapshot = {
-      ...this.snapshot,
+    const previousSnapshot = this.snapshot;
+    const previousThreadId = previousSnapshot.threadId;
+    const nextSnapshot = {
+      ...previousSnapshot,
       ...snapshot,
-      threadId: nextThreadId,
+      threadId: `${snapshot.threadId ?? ""}`,
       task: snapshot.task ?? null,
       events: [...(snapshot.events ?? [])],
       eventsPage: snapshot.eventsPage ?? { nextCursor: null },
@@ -85,6 +81,26 @@ class CaffoldTaskConversation extends HTMLElement {
       transportState: snapshot.transportState ?? "idle",
       updateKind: snapshot.updateKind ?? null,
     };
+    if (sameConversationSnapshot(previousSnapshot, nextSnapshot)) {
+      this.snapshot = {
+        ...previousSnapshot,
+        updateKind: nextSnapshot.updateKind,
+      };
+      if (nextSnapshot.updateKind === "bottom") {
+        const scroller = this.scroller();
+        if (scroller) {
+          scroller.scrollTop = maxScrollTop(scroller);
+          this.rememberScroll();
+        }
+      }
+      return false;
+    }
+    const previousScroll = this.rememberScroll(previousThreadId);
+    const nextThreadId = nextSnapshot.threadId;
+    if (previousThreadId !== nextThreadId) {
+      this.approvalErrors.clear();
+    }
+    this.snapshot = nextSnapshot;
     this.pruneApprovalErrors();
     const storedScroll = this.scrollByThread.get(this.snapshot.threadId) ?? null;
     this.render(
@@ -92,6 +108,7 @@ class CaffoldTaskConversation extends HTMLElement {
         ? previousScroll ?? storedScroll
         : storedScroll,
     );
+    return true;
   }
 
   setApprovalError(approvalId, error) {
@@ -522,6 +539,29 @@ function isScrolledToBottom(element) {
 
 function maxScrollTop(element) {
   return Math.max(0, element.scrollHeight - element.clientHeight);
+}
+
+function sameConversationSnapshot(left, right) {
+  return Boolean(
+    left &&
+      right &&
+      left.threadId === right.threadId &&
+      left.task === right.task &&
+      sameEventList(left.events, right.events) &&
+      left.eventsPage?.nextCursor === right.eventsPage?.nextCursor &&
+      left.loading === right.loading &&
+      left.loadingOlder === right.loadingOlder &&
+      left.detailError === right.detailError &&
+      left.historyError === right.historyError &&
+      left.transportState === right.transportState
+  );
+}
+
+function sameEventList(left = [], right = []) {
+  return (
+    left.length === right.length &&
+    left.every((event, index) => event === right[index])
+  );
 }
 
 if (!customElements.get("caffold-task-conversation")) {

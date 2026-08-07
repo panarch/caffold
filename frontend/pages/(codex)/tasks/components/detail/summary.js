@@ -60,14 +60,15 @@ class CaffoldTaskDetailSummary extends HTMLElement {
 
   setSnapshot(snapshot = {}) {
     this.ensureState();
-    const previousThreadId = taskThreadId(this.snapshot.task);
+    const previousSnapshot = this.snapshot;
+    const previousThreadId = taskThreadId(previousSnapshot.task);
     const task = snapshot.task ?? null;
     const nextThreadId = taskThreadId(task);
     const nextRootPath = taskWorktreeRootPath(task);
     if (previousThreadId !== nextThreadId || !task?.activeTurn?.id) {
       this.interruptError = null;
     }
-    this.snapshot = {
+    const nextSnapshot = {
       task,
       transportState: snapshot.transportState ?? "idle",
       reviewView: normalizeReviewView(snapshot.reviewView),
@@ -77,6 +78,16 @@ class CaffoldTaskDetailSummary extends HTMLElement {
         error: snapshot.archiveState?.error ?? null,
       },
     };
+    const snapshotChanged = !sameSummarySnapshot(
+      previousSnapshot,
+      nextSnapshot,
+    );
+    const onlyReviewViewChanged =
+      snapshotChanged &&
+      sameSummarySnapshot(previousSnapshot, nextSnapshot, {
+        ignoreReviewView: true,
+      });
+    this.snapshot = nextSnapshot;
     this.active = true;
 
     if (!nextRootPath) {
@@ -85,8 +96,19 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       this.resetGithubStatus(nextRootPath);
     }
 
+    if (!snapshotChanged) {
+      this.ensureGithubStatus();
+      return false;
+    }
+    if (onlyReviewViewChanged) {
+      this.patchReviewView(nextSnapshot.reviewView);
+      this.ensureGithubStatus();
+      return true;
+    }
+
     this.render({ preserveDisclosure: previousThreadId === nextThreadId });
     this.ensureGithubStatus();
+    return true;
   }
 
   setInterruptError(error) {
@@ -103,6 +125,10 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       return;
     }
     this.snapshot = { ...this.snapshot, reviewView };
+    this.patchReviewView(reviewView);
+  }
+
+  patchReviewView(reviewView) {
     for (const button of this.querySelectorAll("[data-summary-mode]")) {
       button.setAttribute(
         "aria-pressed",
@@ -460,6 +486,19 @@ function taskWorktreeRef(task) {
 function taskWorktreeRootPath(task) {
   const path = `${task?.worktree?.rootPath ?? ""}`.trim();
   return path === "." ? path : cleanLogicalPath(path);
+}
+
+function sameSummarySnapshot(left, right, options = {}) {
+  return Boolean(
+    left &&
+      right &&
+      left.task === right.task &&
+      left.transportState === right.transportState &&
+      (options.ignoreReviewView || left.reviewView === right.reviewView) &&
+      left.contextPath === right.contextPath &&
+      left.archiveState?.loading === right.archiveState?.loading &&
+      left.archiveState?.error === right.archiveState?.error
+  );
 }
 
 function closestElement(target, selector) {

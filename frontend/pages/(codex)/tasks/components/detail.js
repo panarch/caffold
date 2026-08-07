@@ -96,8 +96,10 @@ class CaffoldTaskDetail extends HTMLElement {
     this.taskRoute = null;
     this.reviewView = "conversation";
     this.boundIconsReady = () => {
+      this.taskContentRenderKey = "";
       this.render();
     };
+    this.taskContentRenderKey = "";
     warmIcons();
 
     this.addEventListener(
@@ -416,12 +418,18 @@ class CaffoldTaskDetail extends HTMLElement {
 
   setThreadEvents(threadId, events) {
     const nextEvents = [...events];
-    this.eventsByThread.set(threadId, nextEvents);
+    const currentEvents = this.eventsByThread.get(threadId) ?? [];
+    // Canonical sync rebuilds JSON records even when their visible state is
+    // unchanged. Preserve identity so each child can keep its render boundary.
+    const stableEvents = sameStructuredValue(currentEvents, nextEvents)
+      ? currentEvents
+      : nextEvents;
+    this.eventsByThread.set(threadId, stableEvents);
     if (threadId !== this.selectedThreadId) {
       return;
     }
     this.eventsThreadId = threadId;
-    this.events = nextEvents;
+    this.events = stableEvents;
   }
 
   applyTaskStreamSync(message) {
@@ -486,12 +494,17 @@ class CaffoldTaskDetail extends HTMLElement {
       taskDetailThreadId(this.taskDetail) === threadId
         ? this.taskDetail?.task
         : null;
-    this.taskDetail = preserveCurrentTask
-      ? {
-          ...detail,
-          task: currentTask ?? detail.task,
-        }
-      : detail;
+    const nextTask = preserveCurrentTask
+      ? currentTask ?? detail.task
+      : detail.task;
+    const stableTask =
+      currentTask && sameStructuredValue(currentTask, nextTask)
+        ? currentTask
+        : nextTask;
+    this.taskDetail = {
+      ...detail,
+      task: stableTask,
+    };
     const currentEvents = this.eventsByThread.get(threadId) ?? [];
     const incomingEvents = detail.events ?? [];
     this.setThreadEvents(
@@ -1076,6 +1089,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.innerHTML = `
       <div class="tasks-detail-region"></div>
     `;
+    this.taskContentRenderKey = "";
   }
 
   conversationComponent() {
@@ -1417,6 +1431,11 @@ class CaffoldTaskDetail extends HTMLElement {
     if (!region) {
       return;
     }
+    const renderKey = this.taskContentKey();
+    if (renderKey === this.taskContentRenderKey) {
+      return;
+    }
+    this.taskContentRenderKey = renderKey;
     const currentDetail = region.querySelector(":scope > .task-detail");
     const threadId = this.taskDetail?.task?.threadId ?? this.taskDetail?.task?.id ?? "";
     if (this.view === "detail" && currentDetail) {
@@ -1504,6 +1523,31 @@ class CaffoldTaskDetail extends HTMLElement {
     }
 
     region.innerHTML = this.renderBody();
+  }
+
+  taskContentKey() {
+    if (this.view !== "detail") {
+      return `view:${this.view}`;
+    }
+    if (!this.hasSelectedTaskDetail()) {
+      if (this.loading) {
+        return `loading:${this.selectedThreadId}`;
+      }
+      if (this.detailLoadError) {
+        return `error:${this.selectedThreadId}:${this.detailLoadError.message ?? this.detailLoadError}`;
+      }
+      return `empty:${this.selectedThreadId}`;
+    }
+    const task = this.taskDetail.task;
+    const streamState = isVisibleStreamState(this.detailStream.state)
+      ? this.detailStream.state
+      : "ready";
+    return [
+      "detail",
+      taskThreadId(task),
+      this.reviewView,
+      streamState,
+    ].join(":");
   }
 
 
@@ -1615,6 +1659,38 @@ function isVisibleStreamState(state) {
 function taskWorktreeRootPath(task) {
   const path = `${task?.worktree?.rootPath ?? ""}`.trim();
   return path === "." ? path : cleanLogicalPath(path);
+}
+
+function sameStructuredValue(left, right) {
+  if (Object.is(left, right)) {
+    return true;
+  }
+  if (
+    !left ||
+    !right ||
+    typeof left !== "object" ||
+    typeof right !== "object"
+  ) {
+    return false;
+  }
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => sameStructuredValue(value, right[index]))
+    );
+  }
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key) =>
+        Object.hasOwn(right, key) &&
+        sameStructuredValue(left[key], right[key]),
+    )
+  );
 }
 
 function closestElement(target, selector) {

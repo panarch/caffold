@@ -62,6 +62,214 @@ test("active task without a canonical turn omits controls and elapsed time", asy
   await expect(active.locator(".task-turn-active-duration")).toHaveText("Working");
 });
 
+test("updates only affected detail regions and preserves an active IME composition", async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  const detail = taskDetailFixture({
+    running: true,
+    model: "gpt-test",
+    reasoningEffort: "medium",
+  });
+  const liveEvent = {
+    id: "event-live-render-boundary",
+    threadId: "thread-1",
+    type: "assistant_message",
+    summary: "Assistant response",
+    payload: {
+      turnId: "turn-1",
+      text: "Only the conversation changed.",
+    },
+    createdMs: 3,
+  };
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: detail }),
+  );
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  const tasksPage = page.locator("caffold-tasks-page");
+  const form = tasksPage.locator(".task-follow-up-form");
+  const prompt = form.locator('textarea[name="prompt"]');
+  await expect(form.locator(".task-model-button")).toContainText("Test");
+  await expect(form.locator(".task-permission-button")).toContainText(
+    "Auto review",
+  );
+  await expect
+    .poll(() => page.evaluate(() => Boolean(window.__taskDetailSource)))
+    .toBe(true);
+
+  await prompt.focus();
+  await prompt.evaluate((textarea) => {
+    textarea.value = "한";
+    textarea.setSelectionRange(1, 1);
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    textarea.dispatchEvent(
+      new CompositionEvent("compositionstart", {
+        bubbles: true,
+        data: "ㅎ",
+      }),
+    );
+    const detailElement = textarea.closest("caffold-task-detail");
+    window.__detailRegionNodes = {
+      summaryHeading: detailElement.querySelector(
+        "caffold-task-detail-summary h2",
+      ),
+      conversationScroller: detailElement.querySelector(
+        ".task-conversation-scroll",
+      ),
+      prompt: textarea,
+    };
+  });
+
+  await page.evaluate((event) => {
+    window.__taskDetailSource.emit("task-event", {
+      threadId: "thread-1",
+      revision: 2,
+      event,
+    });
+  }, liveEvent);
+
+  await expect(tasksPage).toContainText("Only the conversation changed.");
+  expect(
+    await tasksPage.evaluate((element) => {
+      const nodes = window.__detailRegionNodes;
+      return {
+        summaryPreserved:
+          element.querySelector("caffold-task-detail-summary h2") ===
+          nodes.summaryHeading,
+        conversationUpdated:
+          element.querySelector(".task-conversation-scroll") !==
+          nodes.conversationScroller,
+        promptPreserved:
+          element.querySelector(
+            '.task-follow-up-form textarea[name="prompt"]',
+          ) === nodes.prompt,
+        promptValue: nodes.prompt.value,
+        promptFocused: document.activeElement === nodes.prompt,
+      };
+    }),
+  ).toEqual({
+    summaryPreserved: true,
+    conversationUpdated: true,
+    promptPreserved: true,
+    promptValue: "한",
+    promptFocused: true,
+  });
+
+  await tasksPage.evaluate((element) => {
+    const detailElement = element.querySelector("caffold-task-detail");
+    window.__detailRegionNodes = {
+      summaryHeading: detailElement.querySelector(
+        "caffold-task-detail-summary h2",
+      ),
+      conversationScroller: detailElement.querySelector(
+        ".task-conversation-scroll",
+      ),
+      prompt: detailElement.querySelector(
+        '.task-follow-up-form textarea[name="prompt"]',
+      ),
+    };
+  });
+  await page.evaluate((nextDetail) => {
+    window.__taskDetailSource.emit("task-sync", {
+      threadId: "thread-1",
+      revision: nextDetail.revision,
+      detail: nextDetail,
+      reason: "equivalent-canonical-detail",
+    });
+  }, {
+    ...detail,
+    revision: 3,
+    task: { ...detail.task },
+    events: [liveEvent],
+  });
+  expect(
+    await tasksPage.evaluate((element) => {
+      const nodes = window.__detailRegionNodes;
+      return {
+        summaryPreserved:
+          element.querySelector("caffold-task-detail-summary h2") ===
+          nodes.summaryHeading,
+        conversationPreserved:
+          element.querySelector(".task-conversation-scroll") ===
+          nodes.conversationScroller,
+        promptPreserved:
+          element.querySelector(
+            '.task-follow-up-form textarea[name="prompt"]',
+          ) === nodes.prompt,
+      };
+    }),
+  ).toEqual({
+    summaryPreserved: true,
+    conversationPreserved: true,
+    promptPreserved: true,
+  });
+
+  const completedDetail = {
+    ...detail,
+    revision: 4,
+    task: {
+      ...detail.task,
+      ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+      updatedMs: 4,
+      recencyMs: 4,
+    },
+    events: [liveEvent],
+  };
+  await page.evaluate((nextDetail) => {
+    window.__taskDetailSource.emit("task-sync", {
+      threadId: "thread-1",
+      revision: nextDetail.revision,
+      detail: nextDetail,
+      reason: "composition-boundary",
+    });
+  }, completedDetail);
+
+  await expect(
+    tasksPage.getByRole("button", { name: "Task details, idle" }),
+  ).toBeVisible();
+  expect(
+    await tasksPage.evaluate((element) => {
+      const composer = element.querySelector(
+        ".task-follow-up-composer-slot > caffold-task-composer",
+      );
+      return {
+        promptPreserved:
+          element.querySelector(
+            '.task-follow-up-form textarea[name="prompt"]',
+          ) ===
+          window.__detailRegionNodes.prompt,
+        renderDeferred: composer.pendingRender,
+      };
+    }),
+  ).toEqual({ promptPreserved: true, renderDeferred: true });
+
+  await prompt.evaluate((textarea) => {
+    textarea.value = "한글";
+    textarea.setSelectionRange(2, 2);
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    textarea.dispatchEvent(
+      new CompositionEvent("compositionend", {
+        bubbles: true,
+        data: "한글",
+      }),
+    );
+  });
+
+  await expect(prompt).toHaveValue("한글");
+  await expect(prompt).toBeFocused();
+  await expect
+    .poll(() =>
+      tasksPage.evaluate((element) => {
+        const composer = element.querySelector(
+          ".task-follow-up-composer-slot > caffold-task-composer",
+        );
+        return !composer.compositionActive && !composer.pendingRender;
+      }),
+    )
+    .toBe(true);
+});
+
 test("loading detail accepts a canonical task sync without a synthetic task", async ({
   page,
 }) => {
