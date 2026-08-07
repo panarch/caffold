@@ -8,6 +8,10 @@ import {
 } from "../../../../../api.js";
 import "../../../../../components/file-navigator.js";
 import "../../../../../components/file-viewer.js";
+import {
+  diffViewerPresentation,
+  sourceViewerPresentation,
+} from "../../../../../components/file-viewer-presentation.js";
 import "../../../../../components/git-compare-browser/compare-tree.js";
 import "../../../../../components/git-diff-browser/changes-tree.js";
 import {
@@ -499,57 +503,62 @@ class CaffoldTaskReview extends HTMLElement {
       return;
     }
     const generation = ++this.viewerGeneration;
+    const sourceMode = this.route.viewer === "source";
+    if (
+      !sourceMode &&
+      ((this.route.scope === "working" && !this.status) ||
+        (this.route.scope === "branch" && !this.compare))
+    ) {
+      return;
+    }
+    const change = this.selectedChange();
+    if (sourceMode && change?.deleted) {
+      this.viewer()?.setNotice(
+        "This file was deleted in the selected scope. Diff remains available.",
+        { title: fileNameFromPath(selectedPath) },
+      );
+      return;
+    }
+    if (sourceMode && isPreviewableImagePath(selectedPath)) {
+      const entry = this.fileNavigator()?.entryForPath(selectedPath);
+      this.viewer()?.setImage({
+        path: selectedPath,
+        name: fileNameFromPath(selectedPath),
+        imageType: imageTypeLabel(selectedPath),
+        size: entry?.size,
+        modifiedMs: entry?.modifiedMs,
+        revision: ++this.imageRevision,
+      });
+      return;
+    }
+    if (!sourceMode && !change) {
+      this.viewer()?.setNotice("No changes in this scope.", {
+        actionLabel: "View source",
+        action: "view-source",
+        title: fileNameFromPath(selectedPath),
+      });
+      return;
+    }
     const viewer = this.viewer();
     const saved = this.viewerScroll.get(this.viewerStateKey());
     const background = Boolean(options.background);
+    const presentation = sourceMode
+      ? sourceViewerPresentation({ path: selectedPath })
+      : this.diffPresentation(selectedPath, change);
     if (!background) {
-      viewer?.setLoading(selectedPath);
+      viewer?.setLoading(presentation);
     }
     const viewerOptions = background
       ? { preserveScroll: true }
       : { scroll: saved?.scroll ?? null };
     try {
-      if (this.route.viewer === "source") {
-        if (this.selectedChange()?.deleted) {
-          viewer?.setNotice(
-            "This file was deleted in the selected scope. Diff remains available.",
-            { title: fileNameFromPath(selectedPath) },
-          );
-          return;
-        }
-        if (isPreviewableImagePath(selectedPath)) {
-          const entry = this.fileNavigator()?.entryForPath(selectedPath);
-          viewer?.setImage({
-            path: selectedPath,
-            name: fileNameFromPath(selectedPath),
-            imageType: imageTypeLabel(selectedPath),
-            size: entry?.size,
-            modifiedMs: entry?.modifiedMs,
-            revision: ++this.imageRevision,
-          });
-          return;
-        }
+      if (sourceMode) {
         const file = await readFile(selectedPath);
         if (!this.acceptViewer(generation, selectedPath)) {
           return;
         }
         viewer?.setFile(file, viewerOptions);
       } else {
-        if (
-          (this.route.scope === "working" && !this.status) ||
-          (this.route.scope === "branch" && !this.compare)
-        ) {
-          return;
-        }
-        const change = this.selectedChange();
-        if (!change) {
-          viewer?.setNotice("No changes in this scope.", {
-            actionLabel: "View source",
-            action: "view-source",
-            title: fileNameFromPath(selectedPath),
-          });
-          return;
-        }
         const diff = this.route.scope === "branch"
           ? await getGitCompareDiff(
               taskWorktreeRootPath(this.task),
@@ -565,16 +574,29 @@ class CaffoldTaskReview extends HTMLElement {
         if (!this.acceptViewer(generation, selectedPath)) {
           return;
         }
-        viewer?.setDiff(diff, viewerOptions);
+        viewer?.setDiff(diff, { ...viewerOptions, presentation });
       }
       if (!background) {
         this.restoreViewerPosition(saved);
       }
     } catch (error) {
       if (this.acceptViewer(generation, selectedPath)) {
-        viewer?.setError(selectedPath, error);
+        viewer?.setError(presentation, error);
       }
     }
+  }
+
+  diffPresentation(selectedPath, change) {
+    return diffViewerPresentation({
+      repository: { rootPath: taskWorktreeRootPath(this.task) },
+      path: selectedPath,
+      repoRelativePath: this.route.path,
+      kind:
+        this.route.scope === "branch"
+          ? `${this.route.baseRef}...${taskCompareHeadRef(this.task, this.refs)}`
+          : change?.kind ?? "",
+      status: change?.file?.status ?? "",
+    });
   }
 
   acceptViewer(generation, selectedPath) {

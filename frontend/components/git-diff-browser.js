@@ -1,4 +1,5 @@
 import { getGitDiff } from "../api.js";
+import { diffViewerPresentation } from "./file-viewer-presentation.js";
 import "./file-viewer.js";
 import "./git-diff-browser/changes-tree.js";
 
@@ -63,6 +64,7 @@ class CaffoldGitDiffBrowser extends HTMLElement {
     this.diffRequestId += 1;
     this.currentPath = "";
     this.repository = null;
+    this.gitStatus = null;
     this.changesScrollTop = 0;
     this.changesTree.reset();
     this.viewer.setEmpty();
@@ -82,6 +84,7 @@ class CaffoldGitDiffBrowser extends HTMLElement {
 
   setStatus(gitStatus, options = {}) {
     this.ensureRendered();
+    this.gitStatus = gitStatus;
     this.setContext({ repository: gitStatus?.repository });
     if (options.preserveState) {
       this.changesTree.updateStatus(gitStatus);
@@ -130,7 +133,8 @@ class CaffoldGitDiffBrowser extends HTMLElement {
     this.rememberChangesScroll();
     this.changesTree.setSelectedPath(path);
     this.setView("viewer");
-    const loadingTimer = this.showLoadingAfterDelay(`Diff ${path}`, requestId);
+    const presentation = this.diffPresentation(path, kind, status);
+    const loadingTimer = this.showLoadingAfterDelay(presentation, requestId);
 
     try {
       const diff = await getGitDiff(this.currentPath ?? "", path, kind);
@@ -138,14 +142,17 @@ class CaffoldGitDiffBrowser extends HTMLElement {
         return null;
       }
 
-      this.viewer.setDiff({ ...diff, status });
+      this.viewer.setDiff(
+        { ...diff, status },
+        { presentation },
+      );
       return diff;
     } catch (error) {
       if (requestId !== this.diffRequestId) {
         return null;
       }
 
-      this.viewer.setError(path, error);
+      this.viewer.setError(presentation, error);
       return null;
     } finally {
       window.clearTimeout(loadingTimer);
@@ -176,11 +183,22 @@ class CaffoldGitDiffBrowser extends HTMLElement {
       if (requestId !== this.diffRequestId || path !== this.changesTree.selectedPath) {
         return null;
       }
-      this.viewer.setDiff({ ...diff, status: file.status ?? "" }, { preserveScroll: true });
+      const presentation = this.diffPresentation(path, kind, file.status ?? "");
+      this.viewer.setDiff(
+        { ...diff, status: file.status ?? "" },
+        { preserveScroll: true, presentation },
+      );
       return diff;
     } catch (error) {
       if (requestId === this.diffRequestId) {
-        this.viewer.setError(path, error);
+        this.viewer.setError(
+          this.diffPresentation(
+            path,
+            file.untracked ? "untracked" : file.category ?? "unstaged",
+            file.status ?? "",
+          ),
+          error,
+        );
       }
       return null;
     }
@@ -206,10 +224,21 @@ class CaffoldGitDiffBrowser extends HTMLElement {
     }
   }
 
-  showLoadingAfterDelay(path, requestId) {
+  diffPresentation(path, kind = "", status = "") {
+    const file = this.gitStatus?.files?.find((entry) => entry.path === path);
+    return diffViewerPresentation({
+      repository: this.repository,
+      path,
+      repoRelativePath: file?.repoRelativePath,
+      kind: kind || (file?.untracked ? "untracked" : file?.category ?? ""),
+      status: status || file?.status || "",
+    });
+  }
+
+  showLoadingAfterDelay(presentation, requestId) {
     return window.setTimeout(() => {
       if (requestId === this.diffRequestId) {
-        this.viewer.setLoading(path);
+        this.viewer.setLoading(presentation);
       }
     }, LOADING_DELAY_MS);
   }

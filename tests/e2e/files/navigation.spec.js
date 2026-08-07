@@ -53,6 +53,40 @@ test("delays file list loading feedback", async ({ page }) => {
   await expect(page.locator("caffold-file-list")).toContainText("src");
 });
 
+test("keeps the selected source header stable while file content loads", async ({
+  page,
+}) => {
+  let signalFileRequest;
+  let releaseFileResponse;
+  const fileRequested = new Promise((resolve) => {
+    signalFileRequest = resolve;
+  });
+  const fileReleased = new Promise((resolve) => {
+    releaseFileResponse = resolve;
+  });
+
+  await page.route(/\/api\/file(?:\?|$)/, async (route) => {
+    signalFileRequest();
+    await fileReleased;
+    await route.continue();
+  });
+
+  await page.goto(FILES_HOME_URL);
+  await page.locator('button[data-entry-path="src"]').click();
+  await page.locator('button[data-entry-path="src/example.rs"]').click();
+  await fileRequested;
+
+  const viewer = page.locator("caffold-file-viewer");
+  await expect(viewer.locator(".surface-message")).toHaveText("Loading file...");
+  await expect(viewer.locator(".viewer-title-block h2")).toHaveText("example.rs");
+  await expect(viewer.locator(".viewer-subtitle")).toHaveCount(0);
+
+  releaseFileResponse();
+  await expect(viewer.locator("caffold-code-viewer")).toContainText("pub fn sample");
+  await expect(viewer.locator(".viewer-title-block h2")).toHaveText("example.rs");
+  await expect(viewer.locator(".viewer-subtitle")).toHaveCount(0);
+});
+
 test("browses directories and opens a source file", async ({ page }, testInfo) => {
   await page.goto(FILES_HOME_URL);
 

@@ -1,4 +1,5 @@
 import { getGitHubPullFile, getGitHubPullFiles } from "../../../../../api.js";
+import { diffViewerPresentation } from "../../../../../components/file-viewer-presentation.js";
 import "../../../../../components/file-viewer.js";
 import { REVIEW_PANEL_DEFAULT_WIDTH } from "../../../../../components/review-panel-resizer.js";
 import "./components/tree.js";
@@ -29,6 +30,7 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
     this.fileViewer.setCloseLabel("Back to PR files");
     this.filesRequestId ??= 0;
     this.fileRequestId ??= 0;
+    this.viewerPresentation ??= null;
     this.detailView ??= "list";
     this.panelWidth ??= REVIEW_PANEL_DEFAULT_WIDTH;
     this.panelResizer.addEventListener("caffold:review-panel-resize", (event) => {
@@ -64,6 +66,7 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
     this.fileRequestId += 1;
     this.pullFiles = null;
     this.pullNumber = null;
+    this.viewerPresentation = null;
     this.scrollTop = 0;
     this.setView("list");
     this.tree.reset();
@@ -88,6 +91,7 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
       this.fileRequestId += 1;
       this.pullFiles = null;
       this.pullNumber = null;
+      this.viewerPresentation = null;
       this.scrollTop = 0;
       this.setView("list");
       this.tree.reset();
@@ -151,6 +155,7 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
       });
     }
     if (!options.preserveViewer && viewerRequestId === this.fileRequestId) {
+      this.viewerPresentation = null;
       this.fileViewer.setEmpty();
     }
     this.emitStateChange();
@@ -182,8 +187,12 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
       this.setError(error, this.repository, {
         preserveView: Boolean(options.preserveViewer),
       });
-      if (viewerRequestId === this.fileRequestId) {
-        this.fileViewer.setError(`PR #${pullNumber}`, error);
+      if (
+        options.preserveViewer &&
+        viewerRequestId === this.fileRequestId &&
+        this.viewerPresentation
+      ) {
+        this.fileViewer.setError(this.viewerPresentation, error);
       }
       this.emitStateChange();
       return null;
@@ -201,7 +210,9 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
     this.rememberScroll();
     this.setView("viewer");
     this.emitStateChange();
-    const loadingTimer = this.showFileLoadingAfterDelay(path, requestId);
+    const presentation = this.diffPresentation(path, status);
+    this.viewerPresentation = presentation;
+    const loadingTimer = this.showFileLoadingAfterDelay(presentation, requestId);
 
     try {
       const diff = await getGitHubPullFile(this.currentPath, number, path);
@@ -210,9 +221,12 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
       }
 
       if (diff.diffUnavailable) {
-        this.fileViewer.setError(path, new Error(diff.message ?? "Diff unavailable."));
+        this.fileViewer.setError(
+          presentation,
+          new Error(diff.message ?? "Diff unavailable."),
+        );
       } else {
-        this.fileViewer.setDiff({ ...diff, status });
+        this.fileViewer.setDiff({ ...diff, status }, { presentation });
       }
       return diff;
     } catch (error) {
@@ -220,7 +234,7 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
         return null;
       }
 
-      this.fileViewer.setError(path, error);
+      this.fileViewer.setError(presentation, error);
       return null;
     } finally {
       window.clearTimeout(loadingTimer);
@@ -231,6 +245,7 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
     this.fileRequestId += 1;
     this.setView("list");
     this.setSelectedPath("");
+    this.viewerPresentation = null;
     this.fileViewer.setEmpty();
     this.restoreScroll();
     this.emitStateChange();
@@ -248,10 +263,12 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
     if (options.path) {
       this.setSelectedPath(options.path);
       this.setView("viewer");
-      this.fileViewer.setLoading(options.path);
+      this.viewerPresentation = this.diffPresentation(options.path, "", pullNumber);
+      this.fileViewer.setLoading(this.viewerPresentation);
     } else {
       this.setSelectedPath("");
       this.setView("list");
+      this.viewerPresentation = null;
       this.fileViewer.setEmpty();
     }
     this.emitStateChange();
@@ -259,6 +276,7 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
 
   clearViewer() {
     this.fileRequestId += 1;
+    this.viewerPresentation = null;
     this.fileViewer.setEmpty();
   }
 
@@ -268,6 +286,17 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
 
   findFile(path) {
     return this.pullFiles?.files?.find((entry) => entry.path === path) ?? null;
+  }
+
+  diffPresentation(path, status = "", number = this.currentPullNumber()) {
+    const file = this.findFile(path);
+    return diffViewerPresentation({
+      repository: this.repository,
+      path,
+      repoRelativePath: file?.repoRelativePath,
+      kind: Number.isFinite(number) ? `PR #${number}` : "",
+      status: status || file?.status || "",
+    });
   }
 
   currentPullNumber() {
@@ -307,10 +336,10 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
     });
   }
 
-  showFileLoadingAfterDelay(path, requestId) {
+  showFileLoadingAfterDelay(presentation, requestId) {
     return window.setTimeout(() => {
       if (requestId === this.fileRequestId) {
-        this.fileViewer.setLoading(path);
+        this.fileViewer.setLoading(presentation);
       }
     }, LOADING_DELAY_MS);
   }

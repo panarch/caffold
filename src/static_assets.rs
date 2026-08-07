@@ -391,6 +391,9 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "components/file-viewer.js" => {
             Some(js(include_str!("../frontend/components/file-viewer.js")))
         }
+        "components/file-viewer-presentation.js" => Some(js(include_str!(
+            "../frontend/components/file-viewer-presentation.js"
+        ))),
         "components/icons.js" => Some(js(include_str!("../frontend/components/icons.js"))),
         "components/pagination.css" => {
             Some(css(include_str!("../frontend/components/pagination.css")))

@@ -23,6 +23,11 @@ async function expectLastPath(calls, path) {
   await expect.poll(() => calls.at(-1) ?? "").toBe(path);
 }
 
+async function expectViewerHeader(viewer, title, subtitle) {
+  await expect(viewer.locator(".viewer-title-block h2")).toHaveText(title);
+  await expect(viewer.locator(".viewer-subtitle")).toHaveText(subtitle);
+}
+
 test("keeps every review file tree selection full-width and rail-free", async ({
   page,
 }, testInfo) => {
@@ -108,6 +113,65 @@ test("keeps every review file tree selection full-width and rail-free", async ({
     expect(overflowMetrics.scrollLeft).toBeGreaterThan(0);
     expect(Math.abs(overflowMetrics.rowWidth - overflowMetrics.scrollWidth)).toBeLessThanOrEqual(1);
     await wideStyle.evaluate((element) => element.remove());
+  }
+});
+
+test("keeps diff headers stable while every review surface loads", async ({ page }) => {
+  const { delays } = await installStandaloneReviewRouteMocks(page);
+  const cases = [
+    {
+      route: "/git/diff?cwd=src",
+      entry: 'button[data-change-path="src/example.rs"]',
+      delay: delays.gitDiff,
+      viewer: ".git-mode-diff caffold-review-file-viewer",
+      title: "example.rs",
+      subtitle: "Modified · Unstaged",
+      body: "new route line",
+    },
+    {
+      route: "/git/compare?cwd=src&base=origin%2Fmain&head=feature%2Freview",
+      entry: 'button[data-compare-path="src/example.rs"]',
+      delay: delays.compareDiff,
+      viewer: ".git-mode-compare caffold-review-file-viewer",
+      title: "example.rs",
+      subtitle: "Modified · origin/main...feature/review",
+      body: "new compare route line",
+    },
+    {
+      route: `/git/log?cwd=src&page=2&sha=${ROUTE_COMMIT.sha}`,
+      entry: 'button[data-commit-path="src/planner/mod.rs"]',
+      delay: delays.commitDiff,
+      viewer: ".git-mode-log caffold-review-file-viewer",
+      title: "planner/mod.rs",
+      subtitle: "Modified · Commit abcdef1",
+      body: "new commit route line",
+    },
+    {
+      route: "/github/pulls/12/files?cwd=src&page=2",
+      entry: 'button[data-pull-file-path="src/planner/mod.rs"]',
+      delay: delays.pullFile,
+      viewer: ".github-mode-pulls caffold-review-file-viewer",
+      title: "planner/mod.rs",
+      subtitle: "Modified · PR #12",
+      body: "new PR route line",
+    },
+  ];
+
+  for (const routeCase of cases) {
+    await test.step(routeCase.title + " on " + routeCase.route, async () => {
+      await page.goto(routeCase.route);
+      const requestStarted = routeCase.delay.holdNext();
+      await page.locator(routeCase.entry).click();
+      await requestStarted;
+
+      const viewer = page.locator(routeCase.viewer);
+      await expect(viewer.locator(".surface-message")).toHaveText("Loading file...");
+      await expectViewerHeader(viewer, routeCase.title, routeCase.subtitle);
+
+      routeCase.delay.release();
+      await expect(viewer.locator("caffold-diff-viewer")).toContainText(routeCase.body);
+      await expectViewerHeader(viewer, routeCase.title, routeCase.subtitle);
+    });
   }
 });
 

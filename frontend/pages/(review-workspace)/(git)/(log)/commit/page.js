@@ -1,4 +1,5 @@
 import { getGitCommit, getGitCommitDiff } from "../../../../../api.js";
+import { diffViewerPresentation } from "../../../../../components/file-viewer-presentation.js";
 import "../../../../../components/file-viewer.js";
 import { REVIEW_PANEL_DEFAULT_WIDTH } from "../../../../../components/review-panel-resizer.js";
 import "./components/changes-tree.js";
@@ -29,6 +30,7 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     this.fileViewer.setCloseLabel("Back to commit");
     this.commitRequestId ??= 0;
     this.fileRequestId ??= 0;
+    this.viewerPresentation ??= null;
     this.detailView ??= "list";
     this.scrollPositions ??= {};
     this.panelWidth ??= REVIEW_PANEL_DEFAULT_WIDTH;
@@ -67,6 +69,7 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     this.repository = null;
     this.commitPayload = null;
     this.selectedCommitSummary = null;
+    this.viewerPresentation = null;
     this.scrollPositions = {};
     this.setDetailView("list");
     this.commitTree.reset();
@@ -79,6 +82,7 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     this.commitRequestId += 1;
     this.fileRequestId += 1;
     this.selectedCommitSummary = null;
+    this.viewerPresentation = null;
     this.setDetailView("list");
     this.commitTree.setSelectedPath("");
     this.fileViewer.setEmpty();
@@ -109,9 +113,11 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     }
     if (options.path) {
       this.setDetailView("viewer");
-      this.fileViewer.setLoading(`Commit diff ${options.path}`);
+      this.viewerPresentation = this.diffPresentation(options.path, sha);
+      this.fileViewer.setLoading(this.viewerPresentation);
     } else {
       this.setDetailView("list");
+      this.viewerPresentation = null;
       this.fileViewer.setEmpty();
     }
     this.emitStateChange();
@@ -136,6 +142,7 @@ class CaffoldGitLogCommitPage extends HTMLElement {
       this.setDetailView(options.preserveViewer ? this.detailView : "list");
       if (!options.preserveViewer) {
         this.commitTree.setSelectedPath("");
+        this.viewerPresentation = null;
         this.fileViewer.setEmpty();
       }
       this.emitStateChange();
@@ -150,9 +157,14 @@ class CaffoldGitLogCommitPage extends HTMLElement {
       subject: "",
     };
     this.setDetailView(options.preserveViewer ? "viewer" : "list");
-    this.commitTree.setSelectedPath("");
+    if (!options.preserveViewer) {
+      this.commitTree.setSelectedPath("");
+    }
     this.commitTree.setLoading(this.repository, this.selectedCommitSummary);
-    this.fileViewer.setLoading(`Commit ${sha.slice(0, 7)}`);
+    if (!options.preserveViewer) {
+      this.viewerPresentation = null;
+      this.fileViewer.setEmpty();
+    }
     this.emitStateChange();
 
     try {
@@ -164,7 +176,7 @@ class CaffoldGitLogCommitPage extends HTMLElement {
       this.commitPayload = commit;
       this.commitTree.setCommit(commit);
       this.selectedCommitSummary = commit.commit;
-      if (viewerRequestId === this.fileRequestId) {
+      if (!options.preserveViewer && viewerRequestId === this.fileRequestId) {
         this.fileViewer.setEmpty();
       }
       this.emitStateChange();
@@ -175,8 +187,12 @@ class CaffoldGitLogCommitPage extends HTMLElement {
       }
 
       this.commitTree.setError(error, this.repository, this.selectedCommitSummary);
-      if (viewerRequestId === this.fileRequestId) {
-        this.fileViewer.setError(`Commit ${sha.slice(0, 7)}`, error);
+      if (
+        options.preserveViewer &&
+        viewerRequestId === this.fileRequestId &&
+        this.viewerPresentation
+      ) {
+        this.fileViewer.setError(this.viewerPresentation, error);
       }
       this.emitStateChange();
       return null;
@@ -197,7 +213,9 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     this.rememberScroller("commit", this.commitTree, ".commit-tree-list");
     this.setDetailView("viewer");
     this.emitStateChange();
-    const loadingTimer = this.showFileLoadingAfterDelay(`Commit diff ${path}`, requestId);
+    const presentation = this.diffPresentation(path, sha, options.status);
+    this.viewerPresentation = presentation;
+    const loadingTimer = this.showFileLoadingAfterDelay(presentation, requestId);
 
     try {
       const diff = await getGitCommitDiff(this.currentPath, sha, path);
@@ -205,14 +223,17 @@ class CaffoldGitLogCommitPage extends HTMLElement {
         return null;
       }
 
-      this.fileViewer.setDiff({ ...diff, status: options.status ?? "" });
+      this.fileViewer.setDiff(
+        { ...diff, status: options.status ?? "" },
+        { presentation },
+      );
       return diff;
     } catch (error) {
       if (requestId !== this.fileRequestId) {
         return null;
       }
 
-      this.fileViewer.setError(path, error);
+      this.fileViewer.setError(presentation, error);
       return null;
     } finally {
       window.clearTimeout(loadingTimer);
@@ -262,16 +283,21 @@ class CaffoldGitLogCommitPage extends HTMLElement {
       return null;
     }
     const requestId = ++this.fileRequestId;
+    const presentation = this.diffPresentation(path, sha, file.status);
+    this.viewerPresentation = presentation;
     try {
       const diff = await getGitCommitDiff(this.currentPath, sha, path);
       if (requestId !== this.fileRequestId || path !== this.commitTree.selectedPath) {
         return null;
       }
-      this.fileViewer.setDiff({ ...diff, status: file.status ?? "" }, { preserveScroll: true });
+      this.fileViewer.setDiff(
+        { ...diff, status: file.status ?? "" },
+        { preserveScroll: true, presentation },
+      );
       return diff;
     } catch (error) {
       if (requestId === this.fileRequestId) {
-        this.fileViewer.setError(path, error);
+        this.fileViewer.setError(presentation, error);
       }
       return null;
     }
@@ -281,6 +307,7 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     this.ensureRendered();
     this.setDetailView("list");
     this.commitTree.setSelectedPath("");
+    this.viewerPresentation = null;
     this.fileViewer.setEmpty();
     this.restoreScroller("commit", this.commitTree, ".commit-tree-list");
     this.emitStateChange();
@@ -296,6 +323,17 @@ class CaffoldGitLogCommitPage extends HTMLElement {
 
   findFile(path) {
     return this.commitPayload?.files?.find((entry) => entry.path === path) ?? null;
+  }
+
+  diffPresentation(path, sha = this.currentCommitSha(), status = "") {
+    const file = this.findFile(path);
+    return diffViewerPresentation({
+      repository: this.repository,
+      path,
+      repoRelativePath: file?.repoRelativePath,
+      kind: sha ? `commit ${sha.slice(0, 7)}` : "",
+      status: status || file?.status || "",
+    });
   }
 
   setSelectedPath(path) {
@@ -350,10 +388,10 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     });
   }
 
-  showFileLoadingAfterDelay(path, requestId) {
+  showFileLoadingAfterDelay(presentation, requestId) {
     return window.setTimeout(() => {
       if (requestId === this.fileRequestId) {
-        this.fileViewer.setLoading(path);
+        this.fileViewer.setLoading(presentation);
       }
     }, LOADING_DELAY_MS);
   }

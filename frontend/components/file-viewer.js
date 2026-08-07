@@ -1,4 +1,8 @@
-import { escapeHtml, formatBytes, formatModified, languageLabel } from "./dom.js";
+import { escapeHtml, formatBytes, formatModified } from "./dom.js";
+import {
+  diffViewerPresentation,
+  sourceViewerPresentation,
+} from "./file-viewer-presentation.js";
 import { renderInlineIcon, warmIcons } from "./icons.js";
 import { imageUrl } from "../api.js";
 import "./code-viewer.js";
@@ -51,14 +55,18 @@ class CaffoldFileViewer extends HTMLElement {
     this.render();
   }
 
-  setLoading(path) {
-    this.state = { status: "loading", path };
+  setLoading(presentation) {
+    this.state = { status: "loading", presentation };
     this.render();
   }
 
   setFile(file, options = {}) {
     const scroll = options.preserveScroll ? this.captureContentScroll() : null;
-    this.state = { status: "file", file };
+    this.state = {
+      status: "file",
+      file,
+      presentation: sourceViewerPresentation(file),
+    };
     this.render({ ...options, scroll });
   }
 
@@ -74,8 +82,13 @@ class CaffoldFileViewer extends HTMLElement {
 
   setDiff(diff, options = {}) {
     const scroll = options.preserveScroll ? this.captureContentScroll() : null;
-    this.state = { status: "diff", diff };
-    this.render({ ...options, scroll });
+    const { presentation = diffViewerPresentation(diff), ...viewerOptions } = options;
+    this.state = {
+      status: "diff",
+      diff,
+      presentation,
+    };
+    this.render({ ...viewerOptions, scroll });
   }
 
   setNotice(message, options = {}) {
@@ -89,8 +102,8 @@ class CaffoldFileViewer extends HTMLElement {
     this.render();
   }
 
-  setError(path, error) {
-    this.state = { status: "error", path, error };
+  setError(presentation, error) {
+    this.state = { status: "error", presentation, error };
     this.render();
   }
 
@@ -143,7 +156,7 @@ class CaffoldFileViewer extends HTMLElement {
     if (this.state.status === "loading") {
       this.innerHTML = `
         <section class="viewer-panel" aria-busy="true">
-          ${this.renderBasicHeader(this.state.path)}
+          ${this.renderPresentationHeader(this.state.presentation)}
           <p class="surface-message">Loading file...</p>
         </section>
       `;
@@ -153,7 +166,7 @@ class CaffoldFileViewer extends HTMLElement {
     if (this.state.status === "error") {
       this.innerHTML = `
         <section class="viewer-panel error-panel">
-          ${this.renderBasicHeader(this.state.path || "File")}
+          ${this.renderPresentationHeader(this.state.presentation)}
           <p class="surface-message">${escapeHtml(this.state.error.message)}</p>
         </section>
       `;
@@ -190,20 +203,10 @@ class CaffoldFileViewer extends HTMLElement {
       return;
     }
 
-    const { file } = this.state;
-    const language = languageLabel(file.languageHint);
+    const { file, presentation } = this.state;
     this.innerHTML = `
       <section class="viewer-panel file-panel">
-        ${this.renderHeader(file.name, [
-          { field: "path", label: "Path", value: file.path },
-          { field: "size", label: "Size", value: formatBytes(file.size) },
-          {
-            field: "modified",
-            label: "Modified",
-            value: formatModified(file.modifiedMs) || "Unknown",
-          },
-          { field: "language", label: "Language", value: language },
-        ])}
+        ${this.renderPresentationHeader(presentation)}
         <caffold-code-viewer></caffold-code-viewer>
       </section>
     `;
@@ -242,22 +245,19 @@ class CaffoldFileViewer extends HTMLElement {
     `;
 
     this.querySelector(".image-preview").addEventListener("error", () => {
-      this.setError(image.path, new Error("Image preview failed to load."));
+      this.setError(
+        sourceViewerPresentation(image),
+        new Error("Image preview failed to load."),
+      );
     });
   }
 
   renderDiff(options = {}) {
-    const { diff } = this.state;
+    const { diff, presentation } = this.state;
 
     this.innerHTML = `
       <section class="viewer-panel file-panel diff-panel">
-        ${this.renderHeader(diff.repoRelativePath, [
-          { field: "path", label: "Path", value: diff.path },
-          { field: "kind", label: "Diff", value: diff.kind },
-          { field: "repository", label: "Repository", value: diff.repository.rootPath || "/" },
-        ], {
-          subtitle: diffSubtitle(diff),
-        })}
+        ${this.renderPresentationHeader(presentation)}
         <caffold-diff-viewer></caffold-diff-viewer>
       </section>
     `;
@@ -316,6 +316,21 @@ class CaffoldFileViewer extends HTMLElement {
         </div>
       </header>
     `;
+  }
+
+  renderPresentationHeader(presentation) {
+    const title = presentation?.title || "File";
+    const subtitle = presentation?.subtitle ?? "";
+    const metadata = presentation?.metadata ?? [];
+    if (!subtitle && metadata.length === 0) {
+      return this.renderBasicHeader(title);
+    }
+
+    return this.renderHeader(
+      title,
+      metadata,
+      { subtitle },
+    );
   }
 
   renderBasicHeader(title) {
@@ -405,62 +420,10 @@ customElements.define(
   class CaffoldReviewFileViewer extends CaffoldFileViewer {},
 );
 
-function diffSubtitle(diff) {
-  const labels = [diffStatusLabel(diff.status), diffKindLabel(diff.kind)].filter(Boolean);
-
-  return labels
-    .filter((label, index) => labels.indexOf(label) === index)
-    .join(" · ");
-}
-
 function imageUrlWithRevision(path, revision) {
   const url = new URL(imageUrl(path));
   if (revision !== undefined && revision !== null) {
     url.searchParams.set("revision", `${revision}`);
   }
   return url.toString();
-}
-
-function diffKindLabel(kind) {
-  if (!kind) {
-    return "";
-  }
-
-  if (kind.startsWith("commit ")) {
-    return `Commit ${kind.slice("commit ".length)}`;
-  }
-
-  const labels = {
-    staged: "Staged",
-    unstaged: "Unstaged",
-    untracked: "Added",
-  };
-
-  return labels[kind] ?? kind;
-}
-
-function diffStatusLabel(status) {
-  if (!status) {
-    return "";
-  }
-
-  const code = String(status).trim() === "??"
-    ? "??"
-    : Array.from(String(status)).find((character) => character !== " ");
-
-  if (code === "??") {
-    return "Added";
-  }
-
-  const labels = {
-    A: "Added",
-    C: "Copied",
-    D: "Deleted",
-    M: "Modified",
-    R: "Renamed",
-    T: "Type changed",
-    U: "Unmerged",
-  };
-
-  return labels[code] ?? String(status).trim();
 }

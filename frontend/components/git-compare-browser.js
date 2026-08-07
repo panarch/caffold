@@ -1,4 +1,5 @@
 import { getGitCompare, getGitCompareDiff, getGitRefs } from "../api.js";
+import { diffViewerPresentation } from "./file-viewer-presentation.js";
 import "./file-viewer.js";
 import "./git-compare-browser/compare-tree.js";
 
@@ -266,7 +267,8 @@ class CaffoldGitCompareBrowser extends HTMLElement {
     this.rememberCompareScroll();
     this.compareTree.setSelectedPath(path);
     this.setView("viewer");
-    const loadingTimer = this.showLoadingAfterDelay(`Compare diff ${path}`, requestId);
+    const presentation = this.diffPresentation(path, status);
+    const loadingTimer = this.showLoadingAfterDelay(presentation, requestId);
 
     try {
       const diff = await getGitCompareDiff(
@@ -279,14 +281,17 @@ class CaffoldGitCompareBrowser extends HTMLElement {
         return null;
       }
 
-      this.viewer.setDiff({ ...diff, status });
+      this.viewer.setDiff(
+        { ...diff, status },
+        { presentation },
+      );
       return diff;
     } catch (error) {
       if (requestId !== this.diffRequestId) {
         return null;
       }
 
-      this.viewer.setError(path, error);
+      this.viewer.setError(presentation, error);
       return null;
     } finally {
       window.clearTimeout(loadingTimer);
@@ -361,11 +366,18 @@ class CaffoldGitCompareBrowser extends HTMLElement {
       if (requestId !== this.diffRequestId || path !== this.compareTree.selectedPath) {
         return null;
       }
-      this.viewer.setDiff({ ...diff, status: file.status ?? "" }, { preserveScroll: true });
+      const presentation = this.diffPresentation(path, file.status ?? "");
+      this.viewer.setDiff(
+        { ...diff, status: file.status ?? "" },
+        { preserveScroll: true, presentation },
+      );
       return diff;
     } catch (error) {
       if (requestId === this.diffRequestId) {
-        this.viewer.setError(path, error);
+        this.viewer.setError(
+          this.diffPresentation(path, file.status ?? ""),
+          error,
+        );
       }
       return null;
     }
@@ -487,10 +499,24 @@ class CaffoldGitCompareBrowser extends HTMLElement {
     }
   }
 
-  showLoadingAfterDelay(path, requestId) {
+  diffPresentation(path, status = "") {
+    const file = this.fileForPath(path);
+    return diffViewerPresentation({
+      repository: this.repository,
+      path,
+      repoRelativePath: file?.repoRelativePath,
+      kind:
+        this.compare?.baseRef && this.compare?.headRef
+          ? `${this.compare.baseRef}...${this.compare.headRef}`
+          : "",
+      status: status || file?.status || "",
+    });
+  }
+
+  showLoadingAfterDelay(presentation, requestId) {
     return window.setTimeout(() => {
       if (requestId === this.diffRequestId) {
-        this.viewer.setLoading(path);
+        this.viewer.setLoading(presentation);
       }
     }, LOADING_DELAY_MS);
   }

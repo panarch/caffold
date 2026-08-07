@@ -69,6 +69,10 @@ export async function installStandaloneReviewRouteMocks(page) {
     list: createRequestGate(),
     issue: createRequestGate(),
     pullFiles: createRequestGate(),
+    gitDiff: createRequestGate(),
+    compareDiff: createRequestGate(),
+    commitDiff: createRequestGate(),
+    pullFile: createRequestGate(),
   };
 
   await page.route(/\/api\/list(?:\?|$)/, async (route) => {
@@ -96,9 +100,10 @@ export async function installStandaloneReviewRouteMocks(page) {
       }),
     });
   });
-  await page.route(/\/api\/git\/diff(?:\?|$)/, (route) => {
+  await page.route(/\/api\/git\/diff(?:\?|$)/, async (route) => {
     const url = new URL(route.request().url());
     expect(url.searchParams.get("file")).toBe("src/example.rs");
+    await delays.gitDiff.waitIfArmed();
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -161,11 +166,12 @@ export async function installStandaloneReviewRouteMocks(page) {
       }),
     });
   });
-  await page.route(/\/api\/git\/compare-diff(?:\?|$)/, (route) => {
+  await page.route(/\/api\/git\/compare-diff(?:\?|$)/, async (route) => {
     const url = new URL(route.request().url());
     expect(url.searchParams.get("base")).toBe("origin/main");
     expect(url.searchParams.get("head")).toBe("feature/review");
     expect(url.searchParams.get("file")).toBe("src/example.rs");
+    await delays.compareDiff.waitIfArmed();
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -214,10 +220,11 @@ export async function installStandaloneReviewRouteMocks(page) {
       }),
     });
   });
-  await page.route(/\/api\/git\/commit-diff(?:\?|$)/, (route) => {
+  await page.route(/\/api\/git\/commit-diff(?:\?|$)/, async (route) => {
     const url = new URL(route.request().url());
     expect(url.searchParams.get("sha")).toBe(ROUTE_COMMIT.sha);
     expect(url.searchParams.get("file")).toBe("src/planner/mod.rs");
+    await delays.commitDiff.waitIfArmed();
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -429,10 +436,11 @@ export async function installStandaloneReviewRouteMocks(page) {
       }),
     });
   });
-  await page.route(/\/api\/github\/pull-file(?:\?|$)/, (route) => {
+  await page.route(/\/api\/github\/pull-file(?:\?|$)/, async (route) => {
     const url = new URL(route.request().url());
     expect(url.searchParams.get("number")).toBe("12");
     expect(url.searchParams.get("file")).toBe("src/planner/mod.rs");
+    await delays.pullFile.waitIfArmed();
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({

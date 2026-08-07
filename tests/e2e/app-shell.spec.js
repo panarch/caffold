@@ -177,6 +177,14 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   );
   expect(await fontsModuleResponse.text()).toContain("TYPEFACE_PRESETS");
 
+  const viewerPresentationResponse = await request.get(
+    "/assets/components/file-viewer-presentation.js",
+  );
+  expect(viewerPresentationResponse.ok()).toBe(true);
+  expect(viewerPresentationResponse.headers()["content-type"]).toContain(
+    "text/javascript",
+  );
+
   const serviceWorkerResponse = await request.get("/service-worker.js");
   expect(serviceWorkerResponse.headers()["content-type"]).toContain("text/javascript");
   expect(serviceWorkerResponse.headers()["cache-control"]).toContain("no-cache");
@@ -207,6 +215,7 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).not.toContain("/assets/components/header-actions.js");
   expect(serviceWorker).toContain("/assets/components/file-browser.js");
   expect(serviceWorker).toContain("/assets/components/file-browser.css");
+  expect(serviceWorker).toContain("/assets/components/file-viewer-presentation.js");
   expect(serviceWorker).toContain("/assets/components/file-browser/list.js");
   expect(serviceWorker).toContain("/assets/components/file-browser/list.css");
   expect(serviceWorker).toContain("/assets/components/review-panel-resizer.js");

@@ -5,6 +5,7 @@ import {
   isPreviewableImagePath,
 } from "./dom.js";
 import "./file-navigator.js";
+import { sourceViewerPresentation } from "./file-viewer-presentation.js";
 import "./file-viewer.js";
 
 const LOADING_DELAY_MS = 180;
@@ -152,7 +153,8 @@ class CaffoldFileBrowser extends HTMLElement {
       return true;
     }
 
-    const loadingTimer = this.showFileLoadingAfterDelay(path, requestId);
+    const presentation = sourceViewerPresentation({ path });
+    const loadingTimer = this.showFileLoadingAfterDelay(presentation, requestId);
     try {
       const file = await readFile(path);
       if (requestId !== this.fileRequestId) {
@@ -165,7 +167,7 @@ class CaffoldFileBrowser extends HTMLElement {
         return false;
       }
       this.lastError = error;
-      this.fileViewer.setError(path, error);
+      this.fileViewer.setError(presentation, error);
       return false;
     } finally {
       window.clearTimeout(loadingTimer);
@@ -213,7 +215,7 @@ class CaffoldFileBrowser extends HTMLElement {
     this.ensureRendered();
     this.lastError = error;
     this.navigator.setError(error);
-    this.fileViewer.setError("", error);
+    this.fileViewer.setError(sourceViewerPresentation(), error);
   }
 
   setWatchScope(path) {
@@ -261,7 +263,7 @@ class CaffoldFileBrowser extends HTMLElement {
       }
     } catch (error) {
       if (path === this.selectedFilePath) {
-        this.fileViewer.setError(path, error);
+        this.fileViewer.setError(sourceViewerPresentation({ path }), error);
       }
     }
   }
@@ -374,10 +376,10 @@ class CaffoldFileBrowser extends HTMLElement {
     );
   }
 
-  showFileLoadingAfterDelay(path, requestId) {
+  showFileLoadingAfterDelay(presentation, requestId) {
     return window.setTimeout(() => {
       if (requestId === this.fileRequestId) {
-        this.fileViewer.setLoading(path);
+        this.fileViewer.setLoading(presentation);
       }
     }, LOADING_DELAY_MS);
   }

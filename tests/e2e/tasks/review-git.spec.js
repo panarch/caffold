@@ -10,6 +10,43 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
+test("keeps the selected Review file identity stable while content loads", async ({
+  page,
+}) => {
+  const { reviewScenario, tasksPage, taskReview } =
+    await openCompletedTaskForReview(page);
+  reviewScenario.gitDiffDelayMs = 500;
+  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+
+  const changes = taskReview.locator("caffold-git-diff-changes-tree");
+  const viewer = taskReview.locator("caffold-review-file-viewer");
+  await changes.locator('button[data-repo-relative-path="planner.rs"]').click();
+  await expect(viewer.locator(".surface-message")).toHaveText("Loading file...");
+  await expect(viewer.locator(".viewer-title-block h2")).toHaveText("planner.rs");
+  await expect(viewer.locator(".viewer-subtitle")).toHaveText(
+    "Modified · Unstaged",
+  );
+  await expect(viewer.locator("caffold-diff-viewer")).toContainText(
+    "new planner behavior",
+  );
+  await expect(viewer.locator(".viewer-title-block h2")).toHaveText("planner.rs");
+  await expect(viewer.locator(".viewer-subtitle")).toHaveText(
+    "Modified · Unstaged",
+  );
+
+  await page.route(/\/api\/file(?:\?|$)/, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await route.continue();
+  });
+  await taskReview.getByRole("button", { name: "Source", exact: true }).click();
+  await expect(viewer.locator(".surface-message")).toHaveText("Loading file...");
+  await expect(viewer.locator(".viewer-title-block h2")).toHaveText("planner.rs");
+  await expect(viewer.locator(".viewer-subtitle")).toHaveCount(0);
+  await expect(viewer.locator("caffold-code-viewer")).toContainText("planner");
+  await expect(viewer.locator(".viewer-title-block h2")).toHaveText("planner.rs");
+  await expect(viewer.locator(".viewer-subtitle")).toHaveCount(0);
+});
+
 test("reviews working tree changes through the canonical Review route", async ({
   page,
 }, testInfo) => {
