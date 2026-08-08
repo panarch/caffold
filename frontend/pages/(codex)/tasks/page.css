@@ -23,8 +23,9 @@ caffold-tasks-page {
   }
 
   & .tasks-master-detail {
+    position: relative;
     display: grid;
-    grid-template-columns: var(--tasks-list-width, 380px) 0.375rem minmax(520px, 1fr);
+    grid-template-columns: var(--tasks-list-width, 380px) minmax(520px, 1fr);
     height: 100%;
     overflow: hidden;
   }
@@ -33,36 +34,43 @@ caffold-tasks-page {
   & .tasks-detail-pane,
   & caffold-task-navigator {
     height: 100%;
+  }
+
+  & .tasks-detail-pane,
+  & caffold-task-navigator {
     overflow: hidden;
   }
 
   & .tasks-list-pane {
+    position: relative;
+    z-index: 2;
+    overflow: visible;
+    border-right: 1px solid var(--border);
     background: var(--surface);
   }
 
+  & .tasks-list-pane::after {
+    position: absolute;
+    inset: 0 -1.125rem 0 auto;
+    width: 1.125rem;
+    background: var(--structural-shadow-inline-end);
+    content: "";
+    pointer-events: none;
+  }
+
   & .tasks-master-resizer {
-    position: relative;
-    z-index: 1;
+    position: absolute;
+    inset: 0 auto 0 calc(var(--tasks-list-width, 380px) - 0.1875rem);
+    z-index: 3;
     width: 0.375rem;
-    min-height: 0;
-    margin-left: 0;
-    border-left: 1px solid transparent;
-    border-right: 1px solid transparent;
     cursor: col-resize;
     touch-action: none;
   }
 
-  & .tasks-master-resizer::after {
-    position: absolute;
-    inset: 0 calc(50% - 0.5px);
-    background: var(--border);
-    content: "";
-  }
-
-  & .tasks-master-resizer:hover::after,
-  & .tasks-master-resizer:focus-visible::after,
-  &.is-resizing-task-list .tasks-master-resizer::after {
-    background: var(--resizer-hover-bg);
+  & .tasks-master-detail:has(.tasks-master-resizer:hover) .tasks-list-pane,
+  & .tasks-master-detail:has(.tasks-master-resizer:focus-visible) .tasks-list-pane,
+  &.is-resizing-task-list .tasks-list-pane {
+    border-right-color: var(--resizer-hover-bg);
   }
 
   & .tasks-master-resizer:focus-visible {
@@ -92,6 +100,8 @@ caffold-tasks-page {
   }
 
   & .tasks-header {
+    position: relative;
+    z-index: 1;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
@@ -101,6 +111,7 @@ caffold-tasks-page {
       calc(var(--interface-space-7) + var(--task-header-leading-space, 0rem));
     border-bottom: 1px solid var(--border);
     background: var(--surface);
+    box-shadow: var(--structural-shadow-block-end);
   }
 
   & .tasks-brand {

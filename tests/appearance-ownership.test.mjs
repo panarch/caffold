@@ -214,7 +214,6 @@ test("color roles keep neutral chrome, interactions, and semantic feedback separ
     "components/git-diff-browser.css",
     "components/review-panel-resizer.css",
     "pages/(codex)/tasks/components/detail/review.css",
-    "pages/(codex)/tasks/page.css",
   ]) {
     assert.match(
       readFrontend(path),
@@ -222,10 +221,87 @@ test("color roles keep neutral chrome, interactions, and semantic feedback separ
       `${path} must use the neutral resizer interaction role`,
     );
   }
+  assert.match(
+    readFrontend("pages/(codex)/tasks/page.css"),
+    /border-right-color: var\(--resizer-hover-bg\)/,
+    "The Tasks resize hit area must highlight its owning panel border",
+  );
 
   const diffViewer = readFrontend("components/diff-viewer.css");
   assert.match(diffViewer, /background: var\(--diff-added-bg\)/);
   assert.match(diffViewer, /background: var\(--diff-removed-bg\)/);
+});
+
+test("structural shadows separate fixed regions from floating elevation", () => {
+  const sources = frontendSources();
+  const root = readFrontend("styles.css");
+
+  assert.match(
+    root,
+    /--structural-shadow-panel: 0 4px 18px rgb\(var\(--shadow-rgb\) \/ 6%\)/,
+  );
+  assert.match(
+    root,
+    /--structural-shadow-block-end: 0 3px 10px rgb\(var\(--shadow-rgb\) \/ 3%\)/,
+  );
+  assert.match(
+    root,
+    /--structural-shadow-inline-end: linear-gradient\([\s\S]*to right,[\s\S]*rgb\(var\(--shadow-rgb\) \/ 2\.5%\) 0%,[\s\S]*rgb\(var\(--shadow-rgb\) \/ 1\.25%\) 35%,[\s\S]*rgb\(var\(--shadow-rgb\) \/ 0\.5%\) 70%,[\s\S]*transparent 100%[\s\S]*\)/,
+  );
+  assert.deepEqual(
+    tokenConsumers(sources, /var\(--structural-shadow-panel\)/),
+    ["pages/(codex)/tasks/components/composer.css"],
+  );
+  assert.deepEqual(
+    tokenConsumers(sources, /var\(--structural-shadow-block-end\)/),
+    [
+      "pages/(codex)/tasks/components/detail/summary.css",
+      "pages/(codex)/tasks/page.css",
+    ],
+  );
+  assert.deepEqual(
+    tokenConsumers(sources, /var\(--structural-shadow-inline-end\)/),
+    ["pages/(codex)/tasks/page.css"],
+  );
+
+  const taskPage = readFrontend("pages/(codex)/tasks/page.css");
+  cssBlockMatching(taskPage, ".tasks-master-detail", [
+    /position: relative/,
+    /grid-template-columns: var\(--tasks-list-width, 380px\) minmax\(520px, 1fr\)/,
+  ]);
+  cssBlockMatching(taskPage, ".tasks-list-pane", [
+    /overflow: visible/,
+    /border-right: 1px solid var\(--border\)/,
+  ]);
+  assert.doesNotMatch(cssBlock(taskPage, ".tasks-list-pane"), /box-shadow/);
+  cssBlockMatching(taskPage, ".tasks-list-pane::after", [
+    /inset: 0 -1\.125rem 0 auto/,
+    /width: 1\.125rem/,
+    /background: var\(--structural-shadow-inline-end\)/,
+    /pointer-events: none/,
+  ]);
+  cssBlockMatching(taskPage, ".tasks-master-resizer", [
+    /position: absolute/,
+    /inset: 0 auto 0 calc\(var\(--tasks-list-width, 380px\) - 0\.1875rem\)/,
+    /z-index: 3/,
+    /width: 0\.375rem/,
+  ]);
+  assert.doesNotMatch(cssBlock(taskPage, ".tasks-master-resizer"), /border-/);
+  assert.doesNotMatch(taskPage, /\.tasks-master-resizer::after/);
+  cssBlockMatching(
+    taskPage,
+    ".tasks-master-detail:has(.tasks-master-resizer:hover) .tasks-list-pane",
+    [/border-right-color: var\(--resizer-hover-bg\)/],
+  );
+
+  const composer = readFrontend("pages/(codex)/tasks/components/composer.css");
+  cssBlockMatching(composer, ".task-composer-panel", [
+    /box-shadow: var\(--structural-shadow-panel\)/,
+  ]);
+  assert.doesNotMatch(
+    cssBlock(composer, ".task-composer.task-follow-up-form"),
+    /box-shadow/,
+  );
 });
 
 test("component styles do not own literal colors", () => {

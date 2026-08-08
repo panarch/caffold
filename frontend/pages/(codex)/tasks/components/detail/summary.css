@@ -17,6 +17,7 @@ caffold-task-detail-summary {
   );
   box-sizing: border-box;
   position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -30,6 +31,7 @@ caffold-task-detail-summary {
       var(--interface-space-7) + var(--task-header-leading-space, 0rem)
     );
   border-bottom: 1px solid var(--border);
+  box-shadow: var(--structural-shadow-block-end);
 
   & h2,
   & p {

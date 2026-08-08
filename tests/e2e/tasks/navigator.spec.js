@@ -790,17 +790,23 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     await expect(tasksPage.locator('textarea[name="prompt"]')).toBeVisible();
     const initialLayout = await tasksPage.evaluate((element) => {
       const list = element.querySelector(".tasks-list-pane").getBoundingClientRect();
+      const detail = element.querySelector(".tasks-detail-pane").getBoundingClientRect();
       const separator = element
         .querySelector(".tasks-master-resizer")
         .getBoundingClientRect();
       return {
+        detailOffsetFromList: detail.left - list.right,
         hasHorizontalOverflow: element.scrollWidth > element.clientWidth,
         listWidth: list.width,
+        separatorCenterOffsetFromList:
+          separator.left + separator.width / 2 - list.right,
         separatorWidth: separator.width,
       };
     });
+    expect(initialLayout.detailOffsetFromList).toBe(0);
     expect(initialLayout.hasHorizontalOverflow).toBe(false);
     expect(Math.round(initialLayout.listWidth)).toBe(380);
+    expect(initialLayout.separatorCenterOffsetFromList).toBe(0);
     expect(Math.round(initialLayout.separatorWidth)).toBe(6);
     await stabilizeDynamicText(page);
     await captureReviewScreenshot(page, testInfo, "tasks-master-detail-home-composer");

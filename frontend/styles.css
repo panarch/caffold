@@ -184,6 +184,15 @@
   --danger-faint-border: #d9a2a2;
   --danger-chip-bg: #ffebe8;
   --shadow-rgb: 0 0 0;
+  --structural-shadow-panel: 0 4px 18px rgb(var(--shadow-rgb) / 6%);
+  --structural-shadow-block-end: 0 3px 10px rgb(var(--shadow-rgb) / 3%);
+  --structural-shadow-inline-end: linear-gradient(
+    to right,
+    rgb(var(--shadow-rgb) / 2.5%) 0%,
+    rgb(var(--shadow-rgb) / 1.25%) 35%,
+    rgb(var(--shadow-rgb) / 0.5%) 70%,
+    transparent 100%
+  );
   --overlay-rgb: 31 31 31;
   --scrim-rgb: 0 0 0;
   --overlay-border: rgb(255 255 255 / 70%);

@@ -36,7 +36,7 @@ caffold-task-composer {
     border: 1px solid var(--border);
     border-radius: 14px;
     background: var(--surface);
-    box-shadow: 0 4px 18px rgb(var(--shadow-rgb) / 6%);
+    box-shadow: var(--structural-shadow-panel);
   }
 
   & .task-composer-context {

@@ -8,7 +8,6 @@ const TASK_LIST_DEFAULT_WIDTH = 380;
 const TASK_LIST_MIN_WIDTH = 280;
 const TASK_LIST_MAX_WIDTH = 520;
 const TASK_DETAIL_MIN_WIDTH = 520;
-const TASK_LIST_RESIZER_WIDTH = 6;
 const TASKS_MASTER_DETAIL_MEDIA_QUERY = "(min-width: 900px)";
 
 class CaffoldTasksPage extends HTMLElement {
@@ -423,8 +422,7 @@ class CaffoldTasksPage extends HTMLElement {
 
   taskListMaximumWidth() {
     const shellWidth = this.querySelector(".tasks-master-detail")?.clientWidth ?? 0;
-    const available =
-      shellWidth - TASK_LIST_RESIZER_WIDTH - TASK_DETAIL_MIN_WIDTH;
+    const available = shellWidth - TASK_DETAIL_MIN_WIDTH;
     return Math.max(
       TASK_LIST_MIN_WIDTH,
       Math.min(TASK_LIST_MAX_WIDTH, available),
