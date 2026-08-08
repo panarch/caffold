@@ -310,6 +310,7 @@ test("visible inline icons have explicit block geometry from their UI owner", ()
     ["pages/(codex)/tasks/components/detail/review.css", ".task-refresh-icon", "--interface-icon-size"],
     ["pages/(codex)/tasks/components/navigator.css", ".task-repository-icon", "--task-list-icon-size"],
     ["pages/(codex)/tasks/components/navigator.css", ".task-row-worktree-icon", "--task-list-icon-size"],
+    ["pages/(codex)/tasks/components/navigator.css", ".task-restore-icon", "--interface-icon-size"],
     ["components/file-browser/list.css", ".file-refresh-icon", "--interface-icon-size"],
     ["components/file-browser/list.css", ".entry-icon-svg", "--file-tree-icon-size"],
     ["components/file-viewer.css", ".viewer-refresh-icon", "--interface-icon-size"],
@@ -428,6 +429,11 @@ test("icon-only controls use square slots from their semantic control tier", () 
       "--interface-compact-hit-size",
     ],
     [
+      "pages/(codex)/tasks/components/navigator.css",
+      ".task-restore-button",
+      "--interface-compact-hit-size",
+    ],
+    [
       "components/file-browser/list.css",
       ".file-refresh-button",
       "--interface-compact-hit-size",
@@ -470,6 +476,22 @@ test("icon-only controls use square slots from their semantic control tier", () 
   ]);
   cssBlockMatching(fileViewer, ".viewer-info-button::after", [
     /inset: var\(--interface-compact-hit-outset\)/,
+  ]);
+});
+
+test("archived restore actions stay visually secondary until interaction", () => {
+  const navigator = readFrontend("pages/(codex)/tasks/components/navigator.css");
+
+  cssBlockMatching(navigator, ".task-restore-button", [
+    /color: var\(--border-strong\)/,
+  ]);
+  cssBlockMatching(navigator, ".task-restore-button::before", [
+    /border: 1px solid transparent/,
+    /background: transparent/,
+  ]);
+  cssBlockMatching(navigator, ".task-restore-button:not\(:disabled\):hover::before", [
+    /border-color: var\(--border\)/,
+    /background: var\(--control-subtle-hover-bg\)/,
   ]);
 });
 

@@ -695,6 +695,15 @@ class CaffoldTaskNavigator extends HTMLElement {
     const restoring = this.restoringThreadIds.has(threadId);
     const transportBlocked = isTaskTransportStale(this.streamState);
     const restoreError = this.restoreErrors.get(threadId);
+    const restoreLabel = restoring
+      ? `Restoring ${task.title}`
+      : restoreError
+        ? `Retry restoring ${task.title}`
+        : `Restore ${task.title}`;
+    const restoreTitle = restoring
+      ? "Restoring task"
+      : restoreError?.message ?? "Restore task; its worktree was retained";
+    const restoreIcon = restoring ? "LoaderCircle" : "ArchiveRestore";
     const worktree = task?.worktree?.linked
       ? `<span class="task-row-worktree" title="${escapeHtml(taskWorktreeLabel(task))}">
           ${renderInlineIcon("GitBranch", "Linked worktree retained", "task-row-worktree-icon")}
@@ -706,7 +715,7 @@ class CaffoldTaskNavigator extends HTMLElement {
           <span class="task-row-title">${escapeHtml(task.title)}</span>
           <span class="task-row-indicators">${worktree}${renderTaskRowMeta(task, false)}</span>
         </div>
-        <button type="button" class="task-restore-button" data-task-action="restore-archived-task" data-thread-id="${escapeHtml(threadId)}" aria-label="Restore ${escapeHtml(task.title)}" title="${restoreError ? escapeHtml(restoreError.message) : "Restore task; its worktree was retained"}" ${restoring || transportBlocked ? "disabled" : ""}>${restoring ? "Restoring..." : restoreError ? "Retry" : "Restore"}</button>
+        <button type="button" class="task-restore-button${restoring ? " is-restoring" : ""}" data-task-action="restore-archived-task" data-thread-id="${escapeHtml(threadId)}" aria-label="${escapeHtml(restoreLabel)}" title="${escapeHtml(restoreTitle)}" ${restoring || transportBlocked ? "disabled" : ""}>${renderInlineIcon(restoreIcon, restoreLabel, "task-restore-icon")}</button>
         ${restoreError ? `<p class="task-archived-action-error" role="alert">${escapeHtml(restoreError.message)}</p>` : ""}
       </li>
     `;

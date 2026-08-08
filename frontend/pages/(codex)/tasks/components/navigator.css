@@ -164,21 +164,35 @@ caffold-task-navigator {
 
   & .task-restore-button {
     position: relative;
-    min-height: var(--interface-compact-visual-size);
-    padding: 0.1875rem 0.4375rem;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
-    color: var(--control-fg);
+    display: grid;
+    width: var(--interface-compact-hit-size);
+    height: var(--interface-compact-hit-size);
+    place-items: center;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--border-strong);
     cursor: pointer;
-    font-size: 0.6875rem;
-    white-space: nowrap;
   }
 
   & .task-restore-button::before {
     position: absolute;
-    inset: calc(0px - var(--interface-compact-hit-outset)) 0;
+    inset: var(--interface-compact-hit-outset);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
     content: "";
+  }
+
+  & .task-restore-icon {
+    position: relative;
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+  }
+
+  & .task-restore-button.is-restoring .task-restore-icon {
+    animation: task-status-spin 800ms linear infinite;
   }
 
   & [data-task-action="load-more-tasks"],
@@ -195,10 +209,16 @@ caffold-task-navigator {
     inset-block: calc(0px - var(--interface-compact-hit-outset));
   }
 
-  & .task-restore-button:hover,
+  & .task-restore-button:not(:disabled):hover,
   & .task-restore-button:focus-visible {
-    border-color: var(--border-strong);
+    color: var(--control-fg);
     outline: none;
+  }
+
+  & .task-restore-button:not(:disabled):hover::before,
+  & .task-restore-button:focus-visible::before {
+    border-color: var(--border);
+    background: var(--control-subtle-hover-bg);
   }
 
   & .task-restore-button:disabled {
@@ -328,5 +348,13 @@ caffold-task-navigator {
     color: var(--warning-strong);
     font-size: var(--interface-meta-font-size);
     line-height: var(--interface-line-height);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  caffold-task-navigator {
+    & .task-restore-button.is-restoring .task-restore-icon {
+      animation: none;
+    }
   }
 }

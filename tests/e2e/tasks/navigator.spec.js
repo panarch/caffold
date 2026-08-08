@@ -144,6 +144,10 @@ test("archives and restores an idle Caffold task through the grouped Archived se
   let activeTasks = [activeTask];
   let archivedTasks = [existingArchivedTask];
   const mutations = [];
+  let releaseRestore;
+  const restoreGate = new Promise((resolve) => {
+    releaseRestore = resolve;
+  });
 
   await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
     route.fulfill({
@@ -178,8 +182,9 @@ test("archives and restores an idle Caffold task through the grouped Archived se
       body: JSON.stringify(activeTask),
     });
   });
-  await page.route(/\/api\/tasks\/thread_archive\/restore$/, (route) => {
+  await page.route(/\/api\/tasks\/thread_archive\/restore$/, async (route) => {
     mutations.push("restore");
+    await restoreGate;
     activeTasks = [activeTask];
     archivedTasks = [existingArchivedTask];
     return route.fulfill({
@@ -243,9 +248,18 @@ test("archives and restores an idle Caffold task through the grouped Archived se
   expect(archivedTreeLayout.titleOffsetFromIcon).toBeGreaterThan(0);
   expect(archivedTreeLayout.titleOffsetFromIcon).toBeLessThanOrEqual(5);
   await captureReviewScreenshot(page, testInfo, "tasks-archived-section");
-  await archivedSection
-    .getByRole("button", { name: "Restore Archive round trip" })
-    .click();
+  const restoreButton = archivedSection.getByRole("button", {
+    name: "Restore Archive round trip",
+  });
+  await expect(restoreButton.locator(".task-restore-icon")).toBeVisible();
+  await restoreButton.click();
+  const restoringButton = archivedSection.getByRole("button", {
+    name: "Restoring Archive round trip",
+  });
+  await expect(restoringButton).toBeDisabled();
+  await expect(restoringButton).toHaveClass(/is-restoring/);
+  await expect(restoringButton.locator(".task-restore-icon")).toBeVisible();
+  releaseRestore();
 
   await expect(
     navigator.locator('.task-list-section[data-task-section="managed"]'),
@@ -379,6 +393,11 @@ test("keeps a task archived when restore fails", async ({ page }) => {
   await expect(archivedSection.getByRole("alert")).toHaveText(
     "Restore failed by fixture.",
   );
+  await expect(
+    archivedSection.getByRole("button", {
+      name: "Retry restoring Restore failure stays archived",
+    }),
+  ).toBeVisible();
   await expect(archivedSection).toContainText("Restore failure stays archived");
   await expect(
     page.locator(
