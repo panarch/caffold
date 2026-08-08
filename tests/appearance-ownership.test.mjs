@@ -103,6 +103,146 @@ test("UI and code typeface roles stay within semantic owners", () => {
   );
 });
 
+test("color roles keep neutral chrome, interactions, and semantic feedback separate", () => {
+  const root = readFrontend("styles.css");
+  for (const token of [
+    "--surface-subtle",
+    "--border-subtle",
+    "--focus-ring",
+    "--control-fg",
+    "--control-selected-fg",
+    "--tap-highlight-color",
+    "--row-hover-bg",
+    "--control-hover-bg",
+    "--selection-bg",
+    "--link-fg",
+    "--primary-action-fg",
+    "--primary-action-bg",
+    "--primary-action-border",
+    "--success",
+    "--related-file-fg",
+    "--related-file-marker-bg",
+    "--warning",
+    "--danger",
+    "--diff-added-bg",
+    "--diff-removed-bg",
+  ]) {
+    assert.match(root, new RegExp(`${token}:`));
+  }
+
+  assert.match(root, /--bg: #f5f5f5/);
+  assert.match(root, /--surface-muted: #f1f1f1/);
+  assert.match(root, /--border: #d4d4d4/);
+  assert.match(root, /--text: #1f1f1f/);
+  assert.match(root, /--code-gutter: #f2f2f2/);
+  assert.match(root, /--focus-ring: #525252/);
+  assert.match(root, /--row-hover-bg: #f5f5f5/);
+  assert.match(root, /--control-hover-bg: #e5e5e5/);
+  assert.match(root, /--selection-bg: #e5e5e5/);
+  assert.match(root, /--selection-indicator: #737373/);
+  assert.match(root, /--success: #167c5c/);
+  assert.match(
+    root,
+    /html\s*\{[\s\S]*-webkit-tap-highlight-color: var\(--tap-highlight-color\)/,
+    "Touch feedback must stay visible and use the shared neutral highlight role",
+  );
+  assert.doesNotMatch(
+    root,
+    /-webkit-tap-highlight-color:\s*transparent/,
+    "Touch feedback must not be removed for visual styling",
+  );
+  assert.doesNotMatch(
+    root,
+    /--activity-fg:/,
+    "Progress spinners must use neutral control color rather than a green activity role",
+  );
+  for (const path of [
+    "pages/(codex)/tasks/components/task-status.css",
+    "pages/(codex)/tasks/components/detail/conversation.css",
+  ]) {
+    assert.match(
+      readFrontend(path),
+      /task-status-spinner[\s\S]*color: var\(--control-fg\)/,
+      `${path} must keep progress spinners neutral`,
+    );
+  }
+  assert.doesNotMatch(
+    root,
+    /--accent(?:-strong|-soft|-border)?:/,
+    "The generic accent palette must not collapse semantic color roles",
+  );
+
+  for (const [path, source] of frontendSources()) {
+    assert.doesNotMatch(
+      source,
+      /var\(--accent(?:-strong|-soft|-border)?\)/,
+      `${path} must consume a color token named for its semantic role`,
+    );
+  }
+
+  const selectedOwners = [
+    "components/file-browser/list.css",
+    "components/git-compare-browser/compare-tree.css",
+    "components/git-diff-browser/changes-tree.css",
+    "pages/(codex)/tasks/components/navigator.css",
+    "pages/(review-workspace)/(git)/(log)/commit/components/changes-tree.css",
+    "pages/(review-workspace)/(github)/(pulls)/files/components/tree.css",
+  ];
+  for (const path of selectedOwners) {
+    assert.match(
+      readFrontend(path),
+      /background: var\(--selection-bg\)/,
+      `${path} must use the selection role instead of the accent palette directly`,
+    );
+  }
+
+  for (const path of [
+    "pages/(review-workspace)/(github)/(issues)/list/page.css",
+    "pages/(review-workspace)/(github)/(pulls)/list/page.css",
+    "pages/settings/page.css",
+  ]) {
+    assert.match(
+      readFrontend(path),
+      /var\(--selection-indicator\)/,
+      `${path} must keep generic selection indicators neutral`,
+    );
+  }
+
+  for (const path of [
+    "components/file-browser.css",
+    "components/git-compare-browser.css",
+    "components/git-diff-browser.css",
+    "components/review-panel-resizer.css",
+    "pages/(codex)/tasks/components/detail/review.css",
+    "pages/(codex)/tasks/page.css",
+  ]) {
+    assert.match(
+      readFrontend(path),
+      /background: var\(--resizer-hover-bg\)/,
+      `${path} must use the neutral resizer interaction role`,
+    );
+  }
+
+  const diffViewer = readFrontend("components/diff-viewer.css");
+  assert.match(diffViewer, /background: var\(--diff-added-bg\)/);
+  assert.match(diffViewer, /background: var\(--diff-removed-bg\)/);
+});
+
+test("component styles do not own literal colors", () => {
+  const literalColor = /#[0-9a-fA-F]{3,8}\b|rgb\(\s*\d/;
+  const owners = frontendSources().filter(
+    ([path]) => path.endsWith(".css") && path !== "styles.css",
+  );
+
+  for (const [path, source] of owners) {
+    assert.doesNotMatch(
+      source,
+      literalColor,
+      `${path} must consume semantic color tokens from styles.css`,
+    );
+  }
+});
+
 test("interface spacing scales instead of bypassing the appearance axis", () => {
   const declarations = frontendSources()
     .filter(([path]) => path.endsWith(".css"))
@@ -375,7 +515,7 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
     ".task-primary-button::before",
     [
       /inset-block: var\(--interface-control-hit-outset\)/,
-      /background: var\(--accent-soft\)/,
+      /background: var\(--primary-action-bg\)/,
     ],
   );
 });
@@ -532,7 +672,7 @@ test("task rows use full-width selection and compact repository grouping", () =>
   assert.match(repositoryHeader, /min-height: var\(--interface-space-14\)/);
   assert.match(row, /grid-template-columns: minmax\(0, 1fr\) 3rem/);
   assert.match(row, /gap: 0\.25rem/);
-  assert.match(selected, /background: var\(--accent-soft\)/);
+  assert.match(selected, /background: var\(--selection-bg\)/);
   assert.doesNotMatch(selected, /color-mix/);
   assert.match(title, /font-weight: 500/);
 

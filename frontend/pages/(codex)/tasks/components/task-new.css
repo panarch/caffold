@@ -24,10 +24,10 @@ caffold-task-new {
     width: min(calc(100% - 1.75rem), 952px);
     margin: 0 auto;
     padding: 0.625rem 0.75rem;
-    border: 1px solid #d9b86c;
+    border: 1px solid var(--warning-border);
     border-radius: 6px;
-    background: #fffaf0;
-    color: #7b5400;
+    background: var(--warning-subtle);
+    color: var(--warning-strong);
     font-size: 0.82rem;
     line-height: 1.4;
   }

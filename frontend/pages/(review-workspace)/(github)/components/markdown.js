@@ -97,7 +97,7 @@ class CaffoldGithubMarkdown extends HTMLElement {
         }
 
         a {
-          color: var(--accent);
+          color: var(--link-fg);
         }
 
         code {

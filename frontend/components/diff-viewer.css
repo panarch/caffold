@@ -81,7 +81,7 @@ caffold-diff-viewer {
   & .diff-old-line,
   & .diff-new-line,
   & .diff-prefix {
-    color: #78867d;
+    color: var(--code-gutter-text);
   }
 
   & .diff-old-line,
@@ -102,36 +102,36 @@ caffold-diff-viewer {
   }
 
   & .diff-row-metadata {
-    background: #f8faf8;
-    color: #65746a;
+    background: var(--diff-meta-bg);
+    color: var(--diff-meta-text);
   }
 
   & .diff-row-hunk {
-    background: #e7eee9;
-    color: #0d5f47;
+    background: var(--diff-hunk-bg);
+    color: var(--diff-hunk-text);
   }
 
   & .diff-row-added {
-    background: #e7f5ec;
+    background: var(--diff-added-bg);
   }
 
   & .diff-row-added .diff-prefix,
   & .diff-row-added .diff-new-line {
-    color: #167c5c;
+    color: var(--diff-added-text);
   }
 
   & .diff-row-removed {
-    background: #f9e5e2;
+    background: var(--diff-removed-bg);
   }
 
   & .diff-row-removed .diff-prefix,
   & .diff-row-removed .diff-old-line {
-    color: #9b2c2c;
+    color: var(--diff-removed-text);
   }
 
   & .diff-row-note {
-    background: #f8faf8;
-    color: #65746a;
+    background: var(--diff-meta-bg);
+    color: var(--diff-meta-text);
     font-style: italic;
   }
 

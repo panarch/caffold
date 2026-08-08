@@ -30,12 +30,15 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
       activePreset: document.documentElement.dataset.typefacePreset,
       bodyFamily: getComputedStyle(document.body).fontFamily,
       d2Loaded: document.fonts.check('400 16px "Caffold D2 Coding"'),
+      tapHighlightColor: getComputedStyle(document.documentElement)
+        .getPropertyValue("-webkit-tap-highlight-color"),
     };
   });
   expect(defaultTypeface).toEqual({
     activePreset: "d2-coding",
     bodyFamily: '"Caffold D2 Coding", ui-monospace, monospace',
     d2Loaded: true,
+    tapHighlightColor: "rgba(31, 31, 31, 0.08)",
   });
 
   const buildInfoResponse = await request.get("/assets/build-info.js");
@@ -111,7 +114,7 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(manifest.scope).toBe("/");
   expect(manifest.display).toBe("standalone");
   expect(manifest.theme_color).toBe("#ffffff");
-  expect(manifest.background_color).toBe("#f4f6f3");
+  expect(manifest.background_color).toBe("#f5f5f5");
   expect(manifest.icons.map((icon) => icon.src)).toEqual(
     expect.arrayContaining([
       "/assets/icons/caffold.svg",

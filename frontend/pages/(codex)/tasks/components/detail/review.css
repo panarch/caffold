@@ -152,7 +152,7 @@ caffold-task-review {
   }
 
   & .task-review-refresh.is-unavailable {
-    color: #8a5a00;
+    color: var(--warning);
   }
 
   & .task-refresh-icon {
@@ -178,12 +178,12 @@ caffold-task-review {
   }
 
   & .task-review-git-notice {
-    background: #fff8e7;
+    background: var(--warning-soft);
   }
 
   & .task-review-error {
-    background: #fff2f0;
-    color: #8b2922;
+    background: var(--danger-subtle);
+    color: var(--danger-strong);
   }
 
   & .task-review-git-notice[hidden],
@@ -248,7 +248,7 @@ caffold-task-review {
     border: 1px solid var(--border);
     border-radius: 6px;
     background: var(--surface);
-    box-shadow: 0 8px 24px rgb(20 36 29 / 10%);
+    box-shadow: 0 8px 24px rgb(var(--shadow-rgb) / 10%);
     color: var(--muted);
     font-size: var(--interface-meta-font-size);
   }
@@ -280,7 +280,7 @@ caffold-task-review {
   & caffold-review-panel-resizer:hover::after,
   & caffold-review-panel-resizer:focus-visible::after,
   & caffold-review-panel-resizer[data-resizing]::after {
-    background: var(--accent);
+    background: var(--resizer-hover-bg);
   }
 
   & .task-review-viewer-pane {

@@ -48,9 +48,9 @@ caffold-task-detail {
     justify-self: stretch;
     margin: 0;
     padding: 0.5625rem 0.625rem;
-    border: 1px solid #dfc58f;
+    border: 1px solid var(--warning-border);
     border-radius: 5px;
-    background: #fff8e7;
+    background: var(--warning-soft);
   }
 
   & .task-detail-error-message {
@@ -66,13 +66,13 @@ caffold-task-detail {
     gap: 0.4375rem;
     min-height: var(--interface-compact-control-size);
     padding: 0.3125rem 0.75rem;
-    border-top: 1px solid #dfc58f;
-    background: #fff8e7;
+    border-top: 1px solid var(--warning-border);
+    background: var(--warning-soft);
     color: var(--muted);
   }
 
   & .task-stream-state[data-stream-state="unavailable"] {
-    color: #8a5b00;
+    color: var(--warning);
   }
 
   & .task-stream-state button {

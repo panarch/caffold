@@ -38,7 +38,7 @@ caffold-codex-workspace {
     padding: 0;
     border: 0;
     background: transparent;
-    color: var(--accent);
+    color: var(--control-fg);
     font: inherit;
     cursor: pointer;
   }

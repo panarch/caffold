@@ -24,7 +24,7 @@ caffold-git-compare-browser {
   & > .git-compare-panel-resizer:hover,
   & > .git-compare-panel-resizer:focus-visible,
   &.is-resizing-panel > .git-compare-panel-resizer {
-    background: #d9e6df;
+    background: var(--resizer-hover-bg);
     outline: none;
   }
 

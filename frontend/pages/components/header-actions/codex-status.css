@@ -98,7 +98,7 @@ caffold-header-actions {
 
   & .header-status-message {
     margin: 0.125rem 0 0;
-    border-top: 1px solid #eef3ef;
+    border-top: 1px solid var(--border-subtle);
     color: var(--muted);
     font-size: 0.7rem;
     line-height: 1.35;

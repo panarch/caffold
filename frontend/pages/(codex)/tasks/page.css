@@ -62,7 +62,7 @@ caffold-tasks-page {
   & .tasks-master-resizer:hover::after,
   & .tasks-master-resizer:focus-visible::after,
   &.is-resizing-task-list .tasks-master-resizer::after {
-    background: var(--accent);
+    background: var(--resizer-hover-bg);
   }
 
   & .tasks-master-resizer:focus-visible {

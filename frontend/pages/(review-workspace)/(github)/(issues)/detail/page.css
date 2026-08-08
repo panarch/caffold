@@ -46,7 +46,7 @@ caffold-github-issue-detail-page {
   }
 
   & .github-issue-link {
-    color: var(--accent);
+    color: var(--link-fg);
     font-size: 0.72rem;
     line-height: 1;
     text-decoration: none;
@@ -78,7 +78,7 @@ caffold-github-issue-detail-page {
     max-width: 12rem;
     overflow: hidden;
     padding: 0.0625rem 0.3125rem;
-    border: 1px solid #c8d8d0;
+    border: 1px solid var(--tag-border);
     border-radius: 999px;
     color: var(--muted);
     font-size: 0.66rem;
@@ -126,7 +126,7 @@ caffold-github-issue-detail-page {
     padding: 0;
     border: 0;
     background: transparent;
-    color: var(--accent);
+    color: var(--control-fg);
     cursor: pointer;
   }
 
@@ -146,8 +146,8 @@ caffold-github-issue-detail-page {
 
   caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-issue-detail-page .github-issue-close-button:hover::before,
   caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-issue-detail-page .github-issue-close-button:focus-visible::before {
-    border-color: #abcbbf;
-    background: #f7fbf8;
+    border-color: var(--control-emphasis-border);
+    background: var(--control-subtle-hover-bg);
   }
 
   caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-issue-detail-page .github-issue-close-icon {

@@ -51,7 +51,7 @@ caffold-github-pull-detail-page {
 
   & h3 {
     padding: 0.5rem 0.75rem 0.375rem;
-    border-bottom: 1px solid #e3ebe5;
+    border-bottom: 1px solid var(--list-divider);
     color: var(--muted);
     font-size: 0.78rem;
     font-weight: 600;
@@ -60,7 +60,7 @@ caffold-github-pull-detail-page {
 
   & .github-pull-link,
   & .github-pull-comment-meta a {
-    color: var(--accent);
+    color: var(--link-fg);
     font-size: 0.72rem;
     line-height: 1;
     text-decoration: none;
@@ -84,7 +84,7 @@ caffold-github-pull-detail-page {
     border: 1px solid var(--border);
     border-radius: 4px;
     background: var(--surface);
-    color: var(--accent);
+    color: var(--control-fg);
     cursor: pointer;
     font: inherit;
     font-size: 0.72rem;
@@ -98,8 +98,8 @@ caffold-github-pull-detail-page {
 
   & .github-pull-files-button:hover,
   & .github-pull-files-button:focus-visible {
-    border-color: #abcbbf;
-    background: #f7fbf8;
+    border-color: var(--control-emphasis-border);
+    background: var(--control-subtle-hover-bg);
     outline: none;
   }
 
@@ -131,7 +131,7 @@ caffold-github-pull-detail-page {
     max-width: 12rem;
     overflow: hidden;
     padding: 0.0625rem 0.3125rem;
-    border: 1px solid #c8d8d0;
+    border: 1px solid var(--tag-border);
     border-radius: 999px;
     color: var(--muted);
     font-size: 0.66rem;
@@ -188,7 +188,7 @@ caffold-github-pull-detail-page {
   & .github-pull-commit {
     display: grid;
     min-width: 0;
-    border-top: 1px solid #e3ebe5;
+    border-top: 1px solid var(--list-divider);
   }
 
   & .github-pull-comment:first-child,
@@ -274,7 +274,7 @@ caffold-github-pull-detail-page {
     padding: 0;
     border: 0;
     background: transparent;
-    color: var(--accent);
+    color: var(--control-fg);
     cursor: pointer;
   }
 
@@ -294,8 +294,8 @@ caffold-github-pull-detail-page {
 
   caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-pull-detail-page .github-pull-close-button:hover::before,
   caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-pull-detail-page .github-pull-close-button:focus-visible::before {
-    border-color: #abcbbf;
-    background: #f7fbf8;
+    border-color: var(--control-emphasis-border);
+    background: var(--control-subtle-hover-bg);
   }
 
   caffold-review-workspace[data-mobile-detail="true"][data-workspace-mode="github"] caffold-github-pull-detail-page .github-pull-close-icon {

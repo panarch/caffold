@@ -55,9 +55,16 @@ test("active task without a canonical turn omits controls and elapsed time", asy
   await expect(
     page.locator('.task-detail-summary .task-status-chip[data-status="running"]'),
   ).toBeVisible();
+  await expect(
+    page.locator(".task-detail-info-button .task-status-spinner"),
+  ).toHaveCSS("color", "rgb(74, 74, 74)");
   await expect(page.getByRole("button", { name: "Interrupt" })).toHaveCount(0);
   const active = page.locator(".task-turn-active");
   await expect(active).toBeVisible();
+  await expect(active.locator(".task-status-spinner")).toHaveCSS(
+    "color",
+    "rgb(74, 74, 74)",
+  );
   await expect(active).not.toHaveAttribute("data-active-turn-started-ms");
   await expect(active.locator(".task-turn-active-duration")).toHaveText("Working");
 });

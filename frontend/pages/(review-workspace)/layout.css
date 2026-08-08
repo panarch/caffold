@@ -57,7 +57,7 @@ caffold-review-workspace {
     padding: 0;
     border: 0;
     background: transparent;
-    color: var(--accent);
+    color: var(--control-fg);
     cursor: pointer;
   }
 
@@ -82,8 +82,8 @@ caffold-review-workspace {
   & .review-workspace-back:focus-visible::before,
   & .review-workspace-close:hover::before,
   & .review-workspace-close:focus-visible::before {
-    border-color: #abcbbf;
-    background: #f7fbf8;
+    border-color: var(--control-emphasis-border);
+    background: var(--control-subtle-hover-bg);
   }
 
   & .review-workspace-back-icon,

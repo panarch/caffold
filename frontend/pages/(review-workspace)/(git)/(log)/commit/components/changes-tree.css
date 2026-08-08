@@ -63,7 +63,7 @@ caffold-commit-changes-tree {
   }
 
   & .commit-line-stats .is-addition {
-    color: #167c5c;
+    color: var(--success);
   }
 
   & .commit-line-stats .is-deletion {
@@ -117,17 +117,17 @@ caffold-commit-changes-tree {
 
   & .commit-entry:hover,
   & .commit-entry:focus-visible {
-    background: #f1f6f3;
+    background: var(--row-hover-bg);
     outline: none;
   }
 
   & .commit-file[aria-current="true"] {
-    background: var(--accent-soft);
+    background: var(--selection-bg);
   }
 
   & .commit-status-code {
     align-self: center;
-    color: #764600;
+    color: var(--warning-strong);
     font-size: var(--file-tree-font-size);
     justify-self: start;
     white-space: pre;

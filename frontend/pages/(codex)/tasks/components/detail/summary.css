@@ -225,7 +225,7 @@ caffold-task-detail-summary {
     inset: auto var(--interface-space-1) var(--interface-space-1) auto;
     width: 0.4375rem;
     height: 0.4375rem;
-    border: 1px solid #6f7d75;
+    border: 1px solid var(--control-active-border);
     border-top-color: transparent;
     border-radius: 50%;
     animation: task-spin 700ms linear infinite;
@@ -256,7 +256,7 @@ caffold-task-detail-summary {
     border: 1px solid var(--border);
     border-radius: 6px;
     background: var(--surface);
-    box-shadow: 0 12px 30px rgb(20 36 29 / 16%);
+    box-shadow: 0 12px 30px rgb(var(--shadow-rgb) / 16%);
   }
 
   & .task-review-menu[data-review-menu="git"] > .task-review-menu-popover {
@@ -284,7 +284,7 @@ caffold-task-detail-summary {
 
   & .task-review-menu-popover button:hover,
   & .task-review-menu-popover button:focus-visible {
-    background: var(--accent-soft);
+    background: var(--control-hover-bg);
     outline: none;
   }
 
@@ -304,7 +304,7 @@ caffold-task-detail-summary {
     padding: 0;
     border: 0;
     background: transparent;
-    color: var(--accent);
+    color: var(--control-fg);
     cursor: pointer;
     flex: 0 0 auto;
   }
@@ -375,7 +375,7 @@ caffold-task-detail-summary {
     border-radius: 6px;
     background: var(--surface);
     color: var(--text);
-    box-shadow: 0 14px 34px rgb(20 36 29 / 18%);
+    box-shadow: 0 14px 34px rgb(var(--shadow-rgb) / 18%);
   }
 
   & .task-detail-popover::backdrop {

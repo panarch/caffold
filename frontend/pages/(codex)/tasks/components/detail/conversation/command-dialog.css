@@ -12,11 +12,11 @@ caffold-task-command-dialog {
     border-radius: 10px;
     background: var(--surface);
     color: var(--text);
-    box-shadow: 0 18px 48px rgb(24 32 27 / 24%);
+    box-shadow: 0 18px 48px rgb(var(--shadow-rgb) / 24%);
   }
 
   & dialog::backdrop {
-    background: rgb(24 32 27 / 32%);
+    background: rgb(var(--scrim-rgb) / 32%);
   }
 
   & .task-command-dialog-card {
@@ -66,7 +66,7 @@ caffold-task-command-dialog {
     padding: 0;
     border: 0;
     background: transparent;
-    color: var(--accent);
+    color: var(--control-fg);
     cursor: pointer;
   }
 
@@ -87,7 +87,7 @@ caffold-task-command-dialog {
   & .task-command-dialog-close:hover::before,
   & .task-command-dialog-close:focus-visible::before {
     border-color: var(--border-strong);
-    background: var(--accent-soft);
+    background: var(--control-hover-bg);
   }
 
   & .task-command-dialog-close-icon {

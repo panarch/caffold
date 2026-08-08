@@ -690,7 +690,7 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
         backgroundColor: "rgba(0, 0, 0, 0)",
         borderRadius: "999px",
         borderWidth: "0px",
-        color: "rgb(22, 124, 92)",
+        color: "rgb(74, 74, 74)",
         display: "grid",
         height: expectedSlotSize,
         padding: "0px",

@@ -40,7 +40,7 @@ caffold-file-browser {
   & > .panel-resizer:hover,
   & > .panel-resizer:focus-visible,
   &.is-resizing-left-panel > .panel-resizer {
-    background: #d9e6df;
+    background: var(--resizer-hover-bg);
     outline: none;
   }
 }

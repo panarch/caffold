@@ -112,7 +112,7 @@ class CaffoldTaskMarkdown extends HTMLElement {
         }
 
         a {
-          color: var(--accent);
+          color: var(--link-fg);
           text-underline-offset: 2px;
         }
 

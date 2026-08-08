@@ -20,7 +20,7 @@ caffold-tasks-page {
     border: 1px solid var(--border);
     border-radius: 5px;
     background: var(--surface);
-    color: var(--accent);
+    color: var(--control-fg);
     cursor: pointer;
     font-size: var(--interface-meta-font-size);
     line-height: var(--interface-line-height);
@@ -30,6 +30,7 @@ caffold-tasks-page {
     min-height: var(--interface-control-hit-size);
     border-color: transparent;
     background: transparent;
+    color: var(--primary-action-fg);
   }
 
   & .task-icon-button {
@@ -52,9 +53,9 @@ caffold-tasks-page {
 
   & .task-primary-button::before {
     inset-block: var(--interface-control-hit-outset);
-    border: 1px solid #9fc9bb;
+    border: 1px solid var(--primary-action-border);
     border-radius: 5px;
-    background: var(--accent-soft);
+    background: var(--primary-action-bg);
   }
 
   & .task-secondary-button::before {

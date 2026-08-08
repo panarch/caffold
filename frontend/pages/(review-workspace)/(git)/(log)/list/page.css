@@ -56,7 +56,7 @@ caffold-git-log-list-page {
     display: block;
     min-width: 0;
     overflow: hidden;
-    color: var(--accent);
+    color: var(--muted);
     font-size: 0.74rem;
     line-height: 1.1;
     text-overflow: ellipsis;
@@ -106,11 +106,11 @@ caffold-git-log-list-page {
 
   & .log-summary-toggle:hover .log-subject,
   & .log-summary-toggle:focus-visible .log-subject {
-    color: var(--accent);
+    color: var(--link-fg);
   }
 
   & .log-summary-toggle:focus-visible {
-    outline: 1px solid #abcbbf;
+    outline: 1px solid var(--control-emphasis-border);
     outline-offset: 2px;
   }
 
@@ -137,9 +137,9 @@ caffold-git-log-list-page {
     min-width: 0;
     margin: 0.1875rem 0 0.4375rem 0.25rem;
     padding: 0.1875rem 0 0.1875rem 0.7rem;
-    border-left: 2px solid #d3dfd8;
+    border-left: 2px solid var(--border);
     overflow: hidden;
-    color: #52635b;
+    color: var(--muted);
     font-size: 0.74rem;
     line-height: 1.35;
     white-space: pre-wrap;
@@ -158,7 +158,7 @@ caffold-git-log-list-page {
     border: 1px solid var(--border);
     border-radius: 4px;
     background: var(--surface);
-    color: var(--accent);
+    color: var(--control-fg);
     cursor: pointer;
     font: inherit;
     font-size: 0.72rem;
@@ -184,8 +184,8 @@ caffold-git-log-list-page {
 
   & .log-review-button:hover,
   & .log-review-button:focus-visible {
-    border-color: #abcbbf;
-    background: #f7fbf8;
+    border-color: var(--control-emphasis-border);
+    background: var(--control-subtle-hover-bg);
     outline: none;
   }
 

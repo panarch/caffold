@@ -68,7 +68,7 @@ caffold-code-viewer {
     user-select: none;
     background: var(--code-gutter);
     border-right: 1px solid var(--border);
-    color: #78867d;
+    color: var(--code-gutter-text);
     padding: 0 var(--code-line-number-padding);
     text-align: right;
   }
@@ -81,13 +81,13 @@ caffold-code-viewer {
 
   & .hljs-comment,
   & .hljs-quote {
-    color: #65746a;
+    color: var(--syntax-comment);
   }
 
   & .hljs-keyword,
   & .hljs-selector-tag,
   & .hljs-subst {
-    color: #005ea8;
+    color: var(--syntax-keyword);
   }
 
   & .hljs-literal,
@@ -95,23 +95,23 @@ caffold-code-viewer {
   & .hljs-tag .hljs-attr,
   & .hljs-template-variable,
   & .hljs-variable {
-    color: #8a5200;
+    color: var(--syntax-literal);
   }
 
   & .hljs-doctag,
   & .hljs-string {
-    color: #216e39;
+    color: var(--syntax-string);
   }
 
   & .hljs-section,
   & .hljs-selector-id,
   & .hljs-title {
-    color: #9a4d00;
+    color: var(--syntax-title);
   }
 
   & .hljs-type,
   & .hljs-class .hljs-title {
-    color: #00736b;
+    color: var(--syntax-type);
   }
 }
 

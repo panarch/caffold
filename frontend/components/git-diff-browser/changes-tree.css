@@ -72,7 +72,7 @@ caffold-git-diff-changes-tree {
   }
 
   & .change-line-stats .is-addition {
-    color: #167c5c;
+    color: var(--success);
   }
 
   & .change-line-stats .is-deletion {
@@ -83,13 +83,13 @@ caffold-git-diff-changes-tree {
     display: block;
     min-width: 0;
     overflow: hidden;
-    color: var(--accent);
+    color: var(--muted);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   & .changes-branch.is-dirty {
-    color: #8a5200;
+    color: var(--warning);
   }
 
   & .changes-tree-list {
@@ -151,17 +151,17 @@ caffold-git-diff-changes-tree {
 
   & .change-entry:hover,
   & .change-entry:focus-visible {
-    background: #f1f6f3;
+    background: var(--row-hover-bg);
     outline: none;
   }
 
   & .change-file[aria-current="true"] {
-    background: var(--accent-soft);
+    background: var(--selection-bg);
   }
 
   & .change-status-code {
     align-self: center;
-    color: #764600;
+    color: var(--warning-strong);
     font-size: var(--file-tree-font-size);
     justify-self: start;
     white-space: pre;
@@ -186,7 +186,7 @@ caffold-git-diff-changes-tree {
   }
 
   & .change-file[data-task-related="true"] .entry-icon {
-    color: var(--accent);
+    color: var(--related-file-fg);
   }
 
   & .change-file[data-task-related="true"] .entry-icon::after {
@@ -198,7 +198,7 @@ caffold-git-diff-changes-tree {
     height: var(--interface-space-3);
     border: 1px solid var(--surface);
     border-radius: 50%;
-    background: var(--accent);
+    background: var(--related-file-marker-bg);
     content: "";
   }
 

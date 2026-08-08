@@ -147,7 +147,7 @@ caffold-review-file-viewer {
     padding: 0;
     border: 0;
     background: transparent;
-    color: var(--accent);
+    color: var(--control-fg);
     cursor: pointer;
   }
 
@@ -176,12 +176,12 @@ caffold-review-file-viewer {
   & .viewer-info-button:focus-visible::after,
   & .viewer-refresh-button:hover::before,
   & .viewer-refresh-button:focus-visible::before {
-    border-color: var(--accent-soft);
-    background: var(--accent-soft);
+    border-color: var(--control-hover-bg);
+    background: var(--control-hover-bg);
   }
 
   & .viewer-refresh-button.is-unavailable {
-    color: #8a5200;
+    color: var(--warning);
   }
 
   & .viewer-refresh-button.is-refreshing .viewer-refresh-icon {
@@ -235,7 +235,7 @@ caffold-review-file-viewer {
     border-radius: 6px;
     background: var(--surface);
     color: var(--text);
-    box-shadow: 0 14px 34px rgb(20 36 29 / 18%);
+    box-shadow: 0 14px 34px rgb(var(--shadow-rgb) / 18%);
   }
 
   & .viewer-meta-popover::backdrop {
@@ -329,7 +329,7 @@ caffold-review-file-viewer {
       padding: 0;
       border: 0;
       background: transparent;
-      color: var(--accent);
+      color: var(--control-fg);
       cursor: pointer;
     }
 
@@ -349,8 +349,8 @@ caffold-review-file-viewer {
 
     & .viewer-close-button:hover::before,
     & .viewer-close-button:focus-visible::before {
-      border-color: #abcbbf;
-      background: #f7fbf8;
+      border-color: var(--control-emphasis-border);
+      background: var(--control-subtle-hover-bg);
     }
 
     & .viewer-close-icon {

@@ -98,17 +98,17 @@ caffold-github-pull-files-tree {
 
   & .github-pull-file-entry:hover,
   & .github-pull-file-entry:focus-visible {
-    background: #f1f6f3;
+    background: var(--row-hover-bg);
     outline: none;
   }
 
   & .github-pull-file[aria-current="true"] {
-    background: var(--accent-soft);
+    background: var(--selection-bg);
   }
 
   & .github-pull-file-status-code {
     align-self: center;
-    color: #764600;
+    color: var(--warning-strong);
     font-size: var(--file-tree-font-size);
     justify-self: start;
     white-space: pre;

@@ -25,7 +25,7 @@ caffold-git-review-controls {
     padding: 0;
     border: 0;
     background: transparent;
-    color: var(--accent);
+    color: var(--control-fg);
     cursor: pointer;
   }
 
@@ -45,12 +45,12 @@ caffold-git-review-controls {
 
   & .git-review-refresh:hover::before,
   & .git-review-refresh:focus-visible::before {
-    border-color: #abcbbf;
-    background: var(--accent-soft);
+    border-color: var(--control-emphasis-border);
+    background: var(--control-hover-bg);
   }
 
   & .git-review-refresh.is-unavailable {
-    color: #8a5200;
+    color: var(--warning);
   }
 
   & .git-review-refresh.is-refreshing .git-review-refresh-icon {

@@ -44,7 +44,7 @@ caffold-settings-page {
     place-items: center;
     border: 0;
     background: transparent;
-    color: var(--accent);
+    color: var(--control-fg);
     cursor: pointer;
     padding: 0;
   }
@@ -70,7 +70,7 @@ caffold-settings-page {
   & .settings-range-control button:hover::before,
   & .settings-range-control button:focus-visible::before {
     border-color: var(--border-strong);
-    background: var(--accent-soft);
+    background: var(--control-hover-bg);
   }
 
   & .settings-close-button:hover,
@@ -81,7 +81,7 @@ caffold-settings-page {
   & .settings-close-button:hover::before,
   & .settings-close-button:focus-visible::before {
     border-color: var(--border-strong);
-    background: var(--accent-soft);
+    background: var(--control-hover-bg);
   }
 
   & .settings-close-icon {
@@ -142,7 +142,7 @@ caffold-settings-page {
     min-height: var(--interface-compact-hit-size);
     border: 0;
     background: transparent;
-    color: var(--accent);
+    color: var(--control-fg);
     cursor: pointer;
     padding: 0 var(--interface-space-5);
     font-size: var(--interface-meta-font-size);
@@ -175,7 +175,7 @@ caffold-settings-page {
   }
 
   & .settings-appearance-group + .settings-appearance-group {
-    border-top: 1px solid #e6ebe6;
+    border-top: 1px solid var(--border-subtle);
     padding-top: 1.75rem;
   }
 
@@ -232,8 +232,8 @@ caffold-settings-page {
   }
 
   & .settings-typeface-control select:focus-visible {
-    border-color: var(--accent);
-    outline: 2px solid var(--accent);
+    border-color: var(--focus-ring);
+    outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
   }
 
@@ -250,12 +250,12 @@ caffold-settings-page {
     min-width: 0;
     min-height: var(--interface-control-size);
     margin: 0;
-    accent-color: var(--accent);
+    accent-color: var(--control-selected-fg);
     cursor: pointer;
   }
 
   & .settings-range-control input:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
   }
 
@@ -332,7 +332,7 @@ caffold-settings-page {
     border: 1px solid var(--border);
     border-radius: 0.25rem;
     background: var(--surface);
-    color: var(--accent);
+    color: var(--control-fg);
     padding: 0 var(--interface-space-3);
     font-size: var(--interface-meta-font-size);
     line-height: 1;
@@ -349,8 +349,8 @@ caffold-settings-page {
     grid-template-columns: minmax(0, 1fr) 4ch;
     min-height: var(--task-list-row-height);
     margin-left: calc(0.5625rem + var(--task-list-icon-size));
-    border-left: 3px solid var(--accent);
-    background: var(--accent-soft);
+    border-left: 3px solid var(--selection-indicator);
+    background: var(--selection-bg);
     padding: 0 0.5625rem;
   }
 
@@ -422,7 +422,7 @@ caffold-settings-page {
   & .settings-code-preview-line-number {
     border-right: 1px solid var(--border);
     background: var(--code-gutter);
-    color: #78867d;
+    color: var(--code-gutter-text);
     padding: 0 0.5rem;
     text-align: right;
     user-select: none;
@@ -438,7 +438,7 @@ caffold-settings-page {
   }
 
   & .settings-code-preview code span {
-    color: #005ea8;
+    color: var(--syntax-keyword);
   }
 }
 

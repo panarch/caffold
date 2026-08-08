@@ -24,7 +24,7 @@ caffold-header-actions {
     height: var(--interface-control-hit-size);
     border: 0;
     background: transparent;
-    color: var(--accent);
+    color: var(--control-fg);
     cursor: pointer;
     padding: 0;
   }
@@ -45,17 +45,17 @@ caffold-header-actions {
 
   & .header-action-group-button:hover::before,
   & .header-action-group-button:focus-visible::before {
-    border-color: #d8e2db;
-    background: #f7fbf8;
+    border-color: var(--control-subtle-hover-border);
+    background: var(--control-subtle-hover-bg);
   }
 
   & .header-action-group-button[aria-expanded="true"] {
-    color: var(--accent);
+    color: var(--control-selected-fg);
   }
 
   & .header-action-group-button[aria-expanded="true"]::before {
-    border-color: #b6c7bd;
-    background: #edf4ef;
+    border-color: var(--control-active-border);
+    background: var(--control-active-bg);
   }
 
   & .header-action-group-button[data-state="unavailable"] {
@@ -111,8 +111,8 @@ caffold-header-actions {
     height: var(--interface-badge-size);
     border: 1px solid var(--surface);
     border-radius: 999px;
-    background: #dfe7e1;
-    color: #4d5d54;
+    background: var(--badge-bg);
+    color: var(--badge-text);
     font-size: 0.52rem;
     font-variant-numeric: tabular-nums;
     line-height: 1;
@@ -136,7 +136,7 @@ caffold-header-actions {
     background: var(--surface);
     color: var(--text);
     padding: 0;
-    box-shadow: 0 12px 28px rgb(24 32 27 / 18%);
+    box-shadow: 0 12px 28px rgb(var(--shadow-rgb) / 18%);
   }
 
   & .header-actions-popover[data-action-group="git"] {
@@ -200,7 +200,7 @@ caffold-header-actions {
     column-gap: var(--interface-toolbar-gap);
     min-height: var(--interface-header-size);
     border: 0;
-    border-bottom: 1px solid #eef3ef;
+    border-bottom: 1px solid var(--border-subtle);
     background: transparent;
     color: var(--text);
     cursor: pointer;
@@ -214,7 +214,7 @@ caffold-header-actions {
 
   & .header-menu-item:hover,
   & .header-menu-item:focus-visible {
-    background: var(--accent-soft);
+    background: var(--control-hover-bg);
     outline: none;
   }
 
@@ -222,7 +222,7 @@ caffold-header-actions {
     display: block;
     width: var(--interface-icon-size);
     height: var(--interface-icon-size);
-    color: var(--accent);
+    color: var(--control-fg);
     stroke-width: 1.9;
   }
 

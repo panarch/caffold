@@ -10,7 +10,7 @@ caffold-review-panel-resizer {
   &:hover,
   &:focus-visible,
   &[data-resizing] {
-    background: #d9e6df;
+    background: var(--resizer-hover-bg);
     outline: none;
   }
 }

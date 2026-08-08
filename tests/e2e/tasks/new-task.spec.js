@@ -458,7 +458,7 @@ test("creates a task with responsive composer controls and canonical approval st
         backgroundColor: "rgb(255, 255, 255)",
         borderRadius: "5px",
         borderWidth: "1px",
-        color: "rgb(22, 124, 92)",
+        color: "rgb(74, 74, 74)",
         display: "grid",
         minHeight: `${rootFontSize * 1.875}px`,
       }),
@@ -474,7 +474,7 @@ test("creates a task with responsive composer controls and canonical approval st
     );
     expect(userMessage).toEqual(
       expect.objectContaining({
-        backgroundColor: "rgb(238, 242, 239)",
+        backgroundColor: "rgb(241, 241, 241)",
         borderRadius: "18px",
         fontSize: "15px",
         lineHeight: "22.05px",

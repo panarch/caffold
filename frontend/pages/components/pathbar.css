@@ -1,7 +1,7 @@
 caffold-pathbar {
   display: block;
   min-width: 0;
-  border-top: 1px solid #e3e9e4;
+  border-top: 1px solid var(--border-subtle);
   border-bottom: 1px solid var(--border);
   background: var(--surface-muted);
 
@@ -42,7 +42,7 @@ caffold-pathbar {
     content: "/";
     display: inline-grid;
     align-items: center;
-    color: #a9b6ad;
+    color: var(--muted-subtle);
     font-size: 0.78rem;
     padding: 0 0.125rem;
   }
@@ -63,13 +63,13 @@ caffold-pathbar {
   }
 
   & .path-crumbs button:hover {
-    background: #e7eee9;
-    color: #0d5f47;
+    background: var(--control-pressed-bg);
+    color: var(--control-active-text);
   }
 
   & .path-crumbs button:focus-visible {
-    background: #e7eee9;
-    outline: 2px solid #abcbbf;
+    background: var(--control-pressed-bg);
+    outline: 2px solid var(--control-emphasis-border);
     outline-offset: -2px;
   }
 
@@ -79,7 +79,7 @@ caffold-pathbar {
 
   & .path-crumbs button[aria-current="page"] {
     background: transparent;
-    color: #0d5f47;
+    color: var(--control-active-text);
     font-weight: 500;
   }
 }

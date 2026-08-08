@@ -47,7 +47,7 @@ caffold-app-menu {
     background: var(--surface);
     color: var(--text);
     padding: var(--interface-space-2);
-    box-shadow: 0 12px 28px rgb(24 32 27 / 18%);
+    box-shadow: 0 12px 28px rgb(var(--shadow-rgb) / 18%);
   }
 
   & .app-menu-popover button {
@@ -70,8 +70,8 @@ caffold-app-menu {
 
   & .app-menu-popover button:hover,
   & .app-menu-popover button:focus-visible {
-    background: var(--accent-soft);
-    color: #0d5f47;
+    background: var(--control-hover-bg);
+    color: var(--control-active-text);
     outline: none;
   }
 

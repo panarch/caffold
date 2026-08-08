@@ -77,7 +77,7 @@ caffold-task-navigator {
 
   & .task-list-pagination-error {
     margin: 0;
-    color: var(--danger, #a33);
+    color: var(--danger);
     font-size: var(--interface-meta-font-size);
     text-align: center;
   }
@@ -111,7 +111,7 @@ caffold-task-navigator {
     display: block;
     width: var(--task-list-icon-size);
     height: var(--task-list-icon-size);
-    color: #718078;
+    color: var(--muted);
     stroke-width: 1.8;
   }
 
@@ -169,7 +169,7 @@ caffold-task-navigator {
     border: 1px solid var(--border);
     border-radius: 4px;
     background: var(--surface);
-    color: var(--accent);
+    color: var(--control-fg);
     cursor: pointer;
     font-size: 0.6875rem;
     white-space: nowrap;
@@ -227,12 +227,12 @@ caffold-task-navigator {
 
   & .task-row:hover,
   & .task-row:focus-visible {
-    background: #f1f6f3;
+    background: var(--row-hover-bg);
     outline: none;
   }
 
   & .task-row[aria-current="true"] {
-    background: var(--accent-soft);
+    background: var(--selection-bg);
     outline: none;
   }
 
@@ -262,7 +262,7 @@ caffold-task-navigator {
     justify-content: center;
     padding: 0;
     border: 0;
-    background: #edf3ef;
+    background: var(--surface-muted);
   }
 
   & .task-unseen-complete {
@@ -276,7 +276,7 @@ caffold-task-navigator {
     width: var(--interface-space-5);
     height: var(--interface-space-5);
     border-radius: 50%;
-    background: var(--accent);
+    background: var(--success);
     content: "";
   }
 
@@ -291,7 +291,7 @@ caffold-task-navigator {
     width: var(--task-list-icon-size);
     height: var(--task-list-icon-size);
     place-items: center;
-    color: #7d8a82;
+    color: var(--muted-subtle);
   }
 
   & .task-row-worktree-icon {
@@ -306,12 +306,12 @@ caffold-task-navigator {
 
   & .task-row .task-status-chip[data-status="waiting_for_approval"],
   & .task-row .task-status-chip[data-status="waiting_on_user_input"] {
-    background: #fff4d9;
+    background: var(--warning-chip-bg);
   }
 
   & .task-row .task-status-chip[data-status="failed"],
   & .task-row .task-status-chip[data-status="interrupted"] {
-    background: #ffebe8;
+    background: var(--danger-chip-bg);
   }
 
   & .tasks-empty {
@@ -323,9 +323,9 @@ caffold-task-navigator {
   & .task-list-availability {
     margin: 0;
     padding: 0.375rem 0.625rem;
-    border-bottom: 1px solid #dfc58f;
-    background: #fff8e7;
-    color: #7f5600;
+    border-bottom: 1px solid var(--warning-border);
+    background: var(--warning-soft);
+    color: var(--warning-strong);
     font-size: var(--interface-meta-font-size);
     line-height: var(--interface-line-height);
   }

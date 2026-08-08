@@ -75,7 +75,7 @@ test("keeps every review file tree selection full-width and rail-free", async ({
     await expect(entry).toBeVisible();
     await tree.evaluate((element, path) => element.setSelectedPath(path), treeCase.path);
     await expect(entry).toHaveAttribute("aria-current", "true");
-    await expect(entry).toHaveCSS("background-color", "rgb(221, 239, 232)");
+    await expect(entry).toHaveCSS("background-color", "rgb(229, 229, 229)");
 
     const fittedMetrics = await entry.evaluate((element, scrollerSelector) => {
       const scroller = element.closest(scrollerSelector);

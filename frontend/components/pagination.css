@@ -28,7 +28,7 @@ caffold-pagination {
     padding: 0;
     border: 0;
     background: transparent;
-    color: var(--accent);
+    color: var(--control-fg);
     cursor: pointer;
   }
 
@@ -48,12 +48,12 @@ caffold-pagination {
 
   & .pagination-button:hover::before,
   & .pagination-button:focus-visible::before {
-    border-color: #abcbbf;
-    background: #f7fbf8;
+    border-color: var(--control-emphasis-border);
+    background: var(--control-subtle-hover-bg);
   }
 
   & .pagination-button:disabled {
-    color: #a4b0aa;
+    color: var(--disabled-text);
     cursor: default;
     opacity: 0.55;
   }

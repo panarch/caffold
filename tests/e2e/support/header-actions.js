@@ -241,8 +241,8 @@ export async function expectHeaderGroupOpenVisualState(page, group) {
     };
   }, group);
 
-  expect(metrics.buttonBackground).toBe("rgb(237, 244, 239)");
-  expect(metrics.buttonBorderColor).toBe("rgb(182, 199, 189)");
+  expect(metrics.buttonBackground).toBe("rgb(229, 229, 229)");
+  expect(metrics.buttonBorderColor).toBe("rgb(163, 163, 163)");
 
   expect(metrics.popoverLeft).toBeGreaterThanOrEqual(7);
   expect(metrics.popoverRight).toBeLessThanOrEqual(metrics.viewportWidth - 7);

@@ -66,7 +66,7 @@ caffold-file-list {
     padding: 0;
     border: 0;
     background: transparent;
-    color: var(--accent);
+    color: var(--control-fg);
     cursor: pointer;
   }
 
@@ -87,11 +87,11 @@ caffold-file-list {
   & .file-refresh-button:hover::before,
   & .file-refresh-button:focus-visible::before {
     border-color: var(--border);
-    background: var(--accent-soft);
+    background: var(--control-hover-bg);
   }
 
   & .file-refresh-button.is-unavailable {
-    color: #8a5200;
+    color: var(--warning);
   }
 
   & .file-refresh-button.is-refreshing .file-refresh-icon {
@@ -109,14 +109,14 @@ caffold-file-list {
     display: block;
     min-width: 0;
     overflow: hidden;
-    color: var(--accent);
+    color: var(--muted);
     font-size: var(--interface-meta-font-size);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   & .git-summary.is-dirty {
-    color: #8a5200;
+    color: var(--warning);
   }
 
   & .file-list {
@@ -177,7 +177,7 @@ caffold-file-list {
 
   & .file-entry:hover,
   & .file-entry:focus-visible {
-    background: #f1f6f3;
+    background: var(--row-hover-bg);
     outline: none;
   }
 
@@ -188,20 +188,20 @@ caffold-file-list {
 
   & .parent-entry,
   & .file-entry.is-ignored {
-    color: #77857c;
+    color: var(--muted-subtle);
   }
 
   & .file-entry.is-hidden {
-    color: #9aa59e;
+    color: var(--disabled-text);
   }
 
   & .file-entry.is-hidden .entry-kind {
-    color: #9aa59e;
+    color: var(--disabled-text);
   }
 
   & .file-entry:not(.parent-entry)[aria-current="true"],
   & .file-entry:not(.parent-entry).is-selected {
-    background: var(--accent-soft);
+    background: var(--selection-bg);
   }
 
   & .entry-kind {

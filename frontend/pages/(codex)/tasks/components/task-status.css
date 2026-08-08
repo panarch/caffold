@@ -5,9 +5,9 @@ caffold-tasks-page {
     align-items: center;
     gap: 0.3125rem;
     padding: 0.125rem 0.5rem;
-    border: 1px solid #d9e2d9;
+    border: 1px solid var(--border-subtle);
     border-radius: 999px;
-    background: #f8fbf9;
+    background: var(--surface-subtle);
     color: var(--muted);
     font-size: var(--interface-meta-font-size);
     line-height: var(--interface-line-height);
@@ -32,22 +32,22 @@ caffold-tasks-page {
   & .task-status-chip[data-status="running"],
   & .task-status-chip[data-status="syncing"],
   & .task-status-chip[data-status="reconnecting"] {
-    color: var(--accent);
+    color: var(--control-fg);
   }
 
   & .task-status-chip[data-status="waiting_for_approval"],
   & .task-status-chip[data-status="waiting_on_user_input"] {
-    border-color: #dfc58f;
-    background: #fff8e7;
-    color: #7f5600;
+    border-color: var(--warning-border);
+    background: var(--warning-soft);
+    color: var(--warning-strong);
   }
 
   & .task-status-chip[data-status="failed"],
   & .task-status-chip[data-status="interrupted"],
   & .task-status-chip[data-status="unavailable"] {
-    border-color: #e6b5b0;
-    background: #fff2f0;
-    color: #9f2f25;
+    border-color: var(--danger-border);
+    background: var(--danger-subtle);
+    color: var(--danger-strong);
   }
 }
 
@@ -73,6 +73,6 @@ caffold-tasks-page {
 
   & [data-status="waiting_for_approval"],
   & [data-status="waiting_on_user_input"] {
-    color: #956000;
+    color: var(--warning);
   }
 }
