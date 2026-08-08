@@ -304,6 +304,28 @@ test("structural shadows separate fixed regions from floating elevation", () => 
   );
 });
 
+test("unseen completion attention blinks the marker without hiding it", () => {
+  const navigator = readFrontend("pages/(codex)/tasks/components/navigator.css");
+  const navigatorView = readFrontend("pages/(codex)/tasks/components/navigator.js");
+
+  cssBlockMatching(navigator, ".task-unseen-complete::before", [
+    /animation: task-unseen-complete-blink 2\.4s ease-in-out infinite/,
+    /animation-delay: var\(--task-unseen-attention-delay, 0ms\)/,
+  ]);
+  assert.match(
+    navigator,
+    /@keyframes task-unseen-complete-blink[\s\S]*opacity: 1[\s\S]*opacity: 0\.35/,
+  );
+  assert.match(
+    navigator,
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.task-unseen-complete::before[\s\S]*animation: none[\s\S]*opacity: 1/,
+  );
+  assert.match(
+    navigatorView,
+    /style="--task-unseen-attention-delay: \$\{attentionDelayMs\}ms"/,
+  );
+});
+
 test("component styles do not own literal colors", () => {
   const literalColor = /#[0-9a-fA-F]{3,8}\b|rgb\(\s*\d/;
   const owners = frontendSources().filter(

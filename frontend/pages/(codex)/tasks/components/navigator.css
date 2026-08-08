@@ -298,6 +298,8 @@ caffold-task-navigator {
     border-radius: 50%;
     background: var(--success);
     content: "";
+    animation: task-unseen-complete-blink 2.4s ease-in-out infinite;
+    animation-delay: var(--task-unseen-attention-delay, 0ms);
   }
 
   & .task-row-time {
@@ -351,10 +353,26 @@ caffold-task-navigator {
   }
 }
 
+@keyframes task-unseen-complete-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   caffold-task-navigator {
     & .task-restore-button.is-restoring .task-restore-icon {
       animation: none;
+    }
+
+    & .task-unseen-complete::before {
+      animation: none;
+      opacity: 1;
     }
   }
 }

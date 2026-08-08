@@ -102,6 +102,87 @@ test("shows relative age from the latest completion instead of thread recency", 
   await expect(time).toHaveAttribute("datetime", new Date(lastCompletedMs).toISOString());
 });
 
+test("keeps unseen completion markers blinking, phase-shifted, and motion-safe", async ({
+  page,
+}, testInfo) => {
+  await installEventSourceMock(page);
+  await mockCodexModels(page);
+  const now = Date.now();
+  const tasks = ["alpha", "bravo", "charlie"].map((suffix, index) => ({
+    id: `thread-unseen-${suffix}`,
+    threadId: `thread-unseen-${suffix}`,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: `Unseen completion ${suffix}`,
+    preview: `Unseen completion ${suffix}`,
+    cwd: "tests/fixtures/home",
+    cwdPath: "tests/fixtures/home",
+    relativeCwd: "",
+    worktree: null,
+    createdMs: now - index * 1_000,
+    updatedMs: now - index * 1_000,
+    recencyMs: now - index * 1_000,
+    lastCompletedMs: now - index * 1_000,
+    lastEventSummary: `Completed ${suffix}`,
+    unseen: true,
+  }));
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks, nextCursor: null }),
+    }),
+  );
+
+  await page.goto("/tasks");
+  const markers = page.locator(".task-unseen-complete");
+  await expect(markers).toHaveCount(3);
+  const animated = await markers.evaluateAll((elements) =>
+    elements.map((element) => {
+      const marker = getComputedStyle(element, "::before");
+      return {
+        animationName: marker.animationName,
+        backgroundColor: marker.backgroundColor,
+        delay: marker.animationDelay,
+        duration: marker.animationDuration,
+        phase: element.style.getPropertyValue("--task-unseen-attention-delay"),
+      };
+    }),
+  );
+  for (const marker of animated) {
+    expect(marker).toEqual(
+      expect.objectContaining({
+        animationName: "task-unseen-complete-blink",
+        backgroundColor: "rgb(22, 124, 92)",
+        duration: "2.4s",
+      }),
+    );
+  }
+  expect(new Set(animated.map(({ delay }) => delay)).size).toBe(3);
+  expect(new Set(animated.map(({ phase }) => phase)).size).toBe(3);
+  await captureReviewScreenshot(page, testInfo, "tasks-unseen-attention");
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const staticMarkers = await markers.evaluateAll((elements) =>
+    elements.map((element) => {
+      const marker = getComputedStyle(element, "::before");
+      return {
+        animationName: marker.animationName,
+        backgroundColor: marker.backgroundColor,
+        opacity: marker.opacity,
+      };
+    }),
+  );
+  for (const marker of staticMarkers) {
+    expect(marker).toEqual(
+      expect.objectContaining({
+        animationName: "none",
+        backgroundColor: "rgb(22, 124, 92)",
+        opacity: "1",
+      }),
+    );
+  }
+  await captureReviewScreenshot(page, testInfo, "tasks-unseen-attention-reduced-motion");
+});
+
 test("archives and restores an idle Caffold task through the grouped Archived section", async ({
   page,
 }, testInfo) => {

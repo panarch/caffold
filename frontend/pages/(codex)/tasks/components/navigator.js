@@ -24,6 +24,9 @@ import {
 } from "../task-list-model.js";
 import { renderTaskStatusChip } from "./task-status.js";
 
+const UNSEEN_ATTENTION_PHASE_COUNT = 8;
+const UNSEEN_ATTENTION_PHASE_INTERVAL_MS = 300;
+
 class CaffoldTaskNavigator extends HTMLElement {
   connectedCallback() {
     this.ensureState();
@@ -811,8 +814,9 @@ function renderTaskRowMeta(
     });
   }
   if (unseen) {
+    const attentionDelayMs = unseenAttentionDelayMs(taskThreadId(task));
     return `
-      <span class="task-row-meta task-unseen-complete" title="Completed - not viewed" aria-label="Completed - not viewed"></span>
+      <span class="task-row-meta task-unseen-complete" title="Completed - not viewed" aria-label="Completed - not viewed" style="--task-unseen-attention-delay: ${attentionDelayMs}ms"></span>
     `;
   }
 
@@ -824,6 +828,15 @@ function renderTaskRowMeta(
       ${escapeHtml(formatRelativeAge(ms))}
     </time>
   `;
+}
+
+function unseenAttentionDelayMs(threadId) {
+  let checksum = 0;
+  for (const [index, character] of [...threadId].entries()) {
+    checksum += character.codePointAt(0) * (index + 1);
+  }
+  const phase = checksum % UNSEEN_ATTENTION_PHASE_COUNT;
+  return 0 - phase * UNSEEN_ATTENTION_PHASE_INTERVAL_MS;
 }
 
 function patchTaskListRow(row, nextRow) {
