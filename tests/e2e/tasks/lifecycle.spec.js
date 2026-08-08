@@ -134,8 +134,11 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
   const tasksPage = page.locator("caffold-tasks-page");
   await expect(tasksPage.locator("caffold-task-navigator")).toBeVisible();
   await expect(
-    tasksPage.locator(".task-new-cwd-browser caffold-file-browser"),
-  ).toHaveCount(0);
+    tasksPage.locator("caffold-task-directory-picker"),
+  ).toHaveCount(1);
+  await expect(
+    tasksPage.locator("caffold-task-directory-picker dialog"),
+  ).not.toHaveAttribute("open", "");
 
   const lifecycle = await tasksPage.evaluate((element) => {
     const parent = element.parentNode;

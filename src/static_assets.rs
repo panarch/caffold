@@ -193,6 +193,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/composer.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/composer.js"
         ))),
+        "pages/(task-workspace)/tasks/components/directory-picker.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/directory-picker.css"
+        ))),
+        "pages/(task-workspace)/tasks/components/directory-picker.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/directory-picker.js"
+        ))),
         "pages/(task-workspace)/tasks/components/image-preview-dialog.css" => {
             Some(css(include_str!(
                 "../frontend/pages/(task-workspace)/tasks/components/image-preview-dialog.css"
@@ -878,6 +884,10 @@ mod tests {
                 b"caffold-task-composer".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/components/directory-picker.js",
+                b"caffold-task-directory-picker".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/components/image-preview-dialog.js",
                 b"caffold-task-image-preview-dialog".as_slice(),
             ),
@@ -933,6 +943,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/components/composer.css",
                 b"caffold-task-composer".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/components/directory-picker.css",
+                b"caffold-task-directory-picker".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/components/image-preview-dialog.css",

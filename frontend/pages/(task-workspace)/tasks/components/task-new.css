@@ -39,68 +39,6 @@ caffold-task-new {
     height: var(--interface-icon-size);
   }
 
-  & .task-new-cwd-browser {
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
-    height: 100%;
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  & .task-new-cwd-browser > header {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.5rem 0.75rem;
-    border-bottom: 1px solid var(--border);
-  }
-
-  & .task-new-cwd-browser > header h2,
-  & .task-new-cwd-browser > header p {
-    overflow: hidden;
-    margin: 0;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  & .task-new-cwd-browser > header h2 {
-    font-size: 0.95rem;
-  }
-
-  & .task-new-cwd-browser > header p {
-    color: var(--muted);
-    font-size: 0.76rem;
-  }
-
-  & .task-new-cwd-browser > header > div:last-child {
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-  }
-
-  & .task-new-cwd-browser > header .task-secondary-button {
-    min-height: var(--interface-control-hit-size);
-    border-color: transparent;
-    background: transparent;
-  }
-
-  & .task-new-cwd-browser > header .task-secondary-button::before {
-    inset-block: var(--interface-control-hit-outset);
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    background: var(--surface);
-  }
-
-  & .task-new-cwd-browser > header .task-secondary-button:hover,
-  & .task-new-cwd-browser > header .task-secondary-button:focus-visible {
-    border-color: transparent;
-  }
-
-  & .task-new-cwd-browser > header .task-secondary-button:hover::before,
-  & .task-new-cwd-browser > header .task-secondary-button:focus-visible::before {
-    border-color: var(--border-strong);
-  }
 }
 
 @media (max-width: 959px) {

@@ -1,9 +1,9 @@
 import { createTask } from "../../../../api.js";
-import "../../../../components/file-browser.js";
 import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import { cleanLogicalPath } from "../task-format.js";
 import "./composer.js";
+import "./directory-picker.js";
 
 const AUTO_FOCUS_PROMPT_MEDIA =
   "(hover: hover) and (pointer: fine) and (min-width: 521px)";
@@ -11,7 +11,6 @@ const AUTO_FOCUS_PROMPT_MEDIA =
 class CaffoldTaskNew extends HTMLElement {
   connectedCallback() {
     this.ensureState();
-    this.addEventListener("click", this.boundClick);
     this.addEventListener(
       "caffold:task-composer-intent",
       this.boundComposerIntent,
@@ -19,13 +18,16 @@ class CaffoldTaskNew extends HTMLElement {
     this.addEventListener(
       "caffold:task-composer-submit",
       this.boundComposerSubmit,
+    );
+    this.addEventListener(
+      "caffold:directory-picked",
+      this.boundDirectoryPicked,
     );
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     this.ensureRendered();
   }
 
   disconnectedCallback() {
-    this.removeEventListener("click", this.boundClick);
     this.removeEventListener(
       "caffold:task-composer-intent",
       this.boundComposerIntent,
@@ -33,6 +35,10 @@ class CaffoldTaskNew extends HTMLElement {
     this.removeEventListener(
       "caffold:task-composer-submit",
       this.boundComposerSubmit,
+    );
+    this.removeEventListener(
+      "caffold:directory-picked",
+      this.boundDirectoryPicked,
     );
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
     this.requestGeneration += 1;
@@ -54,17 +60,15 @@ class CaffoldTaskNew extends HTMLElement {
     }
     this.stateReady = true;
     this.cwd = ".";
-    this.defaultCwdPath = ".";
-    this.browsing = false;
     this.transportAvailable = true;
     this.error = null;
     this.requestGeneration = 0;
     this.activeSubmissionId = "";
-    this.boundClick = (event) => this.handleClick(event);
     this.boundComposerIntent = (event) => this.handleComposerIntent(event);
     this.boundComposerSubmit = (event) => {
       void this.handleComposerSubmit(event);
     };
+    this.boundDirectoryPicked = (event) => this.handleDirectoryPicked(event);
     this.boundIconsReady = () => this.renderError();
     warmIcons();
   }
@@ -79,36 +83,27 @@ class CaffoldTaskNew extends HTMLElement {
         <div class="task-new-error-region"></div>
         <caffold-task-composer></caffold-task-composer>
       </section>
-      <section class="task-new-cwd-browser" aria-label="Choose task directory" hidden>
-        <header>
-          <div>
-            <h2>Browse Files</h2>
-            <p></p>
-          </div>
-          <div>
-            <button type="button" class="task-secondary-button" data-task-new-action="cancel-cwd">Cancel</button>
-            <button type="button" class="task-primary-button" data-task-new-action="choose-cwd">Use This Folder</button>
-          </div>
-        </header>
-      </section>
+      <caffold-task-directory-picker></caffold-task-directory-picker>
     `;
-    this.syncView();
+    this.renderError();
+    this.syncComposer();
   }
 
   prepare({ cwd = "", defaultCwdPath = "" } = {}) {
     this.ensureState();
     this.cwd = cleanLogicalPath(cwd || defaultCwdPath || ".");
-    this.defaultCwdPath = cleanLogicalPath(defaultCwdPath || ".");
-    this.browsing = false;
     this.error = null;
     this.ensureRendered();
-    this.syncView();
+    this.directoryPicker()?.dismiss();
+    this.renderError();
+    this.syncComposer();
   }
 
   open() {
     this.ensureState();
     this.hidden = false;
-    this.syncView();
+    this.renderError();
+    this.syncComposer();
     if (window.matchMedia(AUTO_FOCUS_PROMPT_MEDIA).matches) {
       this.composer()?.focus();
     }
@@ -116,8 +111,7 @@ class CaffoldTaskNew extends HTMLElement {
 
   deactivate() {
     this.hidden = true;
-    this.browsing = false;
-    this.syncView();
+    this.directoryPicker()?.dismiss();
   }
 
   setTransportAvailable(available) {
@@ -132,11 +126,15 @@ class CaffoldTaskNew extends HTMLElement {
 
   selectedContextPath() {
     this.ensureState();
-    return cleanLogicalPath(this.cwd || this.defaultCwdPath || ".");
+    return cleanLogicalPath(this.cwd);
   }
 
   composer() {
     return this.querySelector(":scope > .task-new-workspace caffold-task-composer");
+  }
+
+  directoryPicker() {
+    return this.querySelector(":scope > caffold-task-directory-picker");
   }
 
   handleComposerIntent(event) {
@@ -145,9 +143,23 @@ class CaffoldTaskNew extends HTMLElement {
     }
     event.stopPropagation();
     if (event.detail?.type === "browse-cwd") {
-      this.browsing = true;
-      this.syncView();
+      this.directoryPicker()?.open(this.selectedContextPath(), {
+        opener:
+          document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null,
+      });
     }
+  }
+
+  handleDirectoryPicked(event) {
+    if (event.target !== this.directoryPicker()) {
+      return;
+    }
+    event.stopPropagation();
+    this.cwd = cleanLogicalPath(event.detail?.path ?? "");
+    this.syncComposer();
+    this.dispatchRoute({ kind: "tasks", new: true, cwd: this.cwd });
   }
 
   async handleComposerSubmit(event) {
@@ -205,84 +217,6 @@ class CaffoldTaskNew extends HTMLElement {
         error: this.error,
       });
       this.renderError();
-    }
-  }
-
-  handleClick(event) {
-    const action =
-      event.target instanceof Element
-        ? event.target.closest("[data-task-new-action]")
-        : null;
-    if (!action || !this.contains(action)) {
-      return;
-    }
-    event.stopPropagation();
-    if (action.dataset.taskNewAction === "cancel-cwd") {
-      this.browsing = false;
-      this.syncView();
-      return;
-    }
-    if (action.dataset.taskNewAction === "choose-cwd") {
-      const browser = this.querySelector(
-        ":scope > .task-new-cwd-browser caffold-file-browser",
-      );
-      this.cwd = cleanLogicalPath(
-        browser?.currentPath ?? this.selectedContextPath(),
-      );
-      this.browsing = false;
-      this.syncView();
-      this.dispatchRoute({ kind: "tasks", new: true, cwd: this.cwd });
-    }
-  }
-
-  syncView() {
-    this.ensureRendered();
-    const workspace = this.querySelector(":scope > .task-new-workspace");
-    const browserSection = this.querySelector(
-      ":scope > .task-new-cwd-browser",
-    );
-    if (!workspace || !browserSection) {
-      return;
-    }
-    workspace.hidden = this.browsing;
-    browserSection.hidden = !this.browsing;
-    browserSection.querySelector("header p").textContent =
-      this.selectedContextPath();
-    let browser = browserSection.querySelector(":scope > caffold-file-browser");
-    if (this.browsing) {
-      browser = this.ensureCwdBrowser();
-    }
-    browser?.setWatchActive(this.browsing);
-    this.renderError();
-    this.syncComposer();
-    if (this.browsing) {
-      this.syncBrowser();
-    }
-  }
-
-  ensureCwdBrowser() {
-    const section = this.querySelector(":scope > .task-new-cwd-browser");
-    if (!section) {
-      return null;
-    }
-    let browser = section.querySelector(":scope > caffold-file-browser");
-    if (!browser) {
-      browser = document.createElement("caffold-file-browser");
-      section.append(browser);
-    }
-    return browser;
-  }
-
-  syncBrowser() {
-    const browser = this.ensureCwdBrowser();
-    const targetPath = this.selectedContextPath();
-    if (!browser) {
-      return;
-    }
-    browser.ensureRendered();
-    browser.setStorageKey(null);
-    if (!browser.hasLoadedDirectory(targetPath)) {
-      browser.loadDirectory(targetPath, { allowFailure: true });
     }
   }
 

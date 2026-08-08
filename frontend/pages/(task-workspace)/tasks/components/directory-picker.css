@@ -1,0 +1,149 @@
+caffold-task-directory-picker {
+  position: absolute;
+
+  & dialog {
+    width: min(42rem, calc(100vw - 2rem));
+    max-width: none;
+    height: min(38rem, calc(100dvh - 2rem));
+    max-height: none;
+    margin: auto;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 18px 48px rgb(var(--shadow-rgb) / 24%);
+  }
+
+  & dialog::backdrop {
+    background: rgb(var(--scrim-rgb) / 32%);
+  }
+
+  & .task-directory-picker-card {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    width: 100%;
+    height: 100%;
+  }
+
+  & .task-directory-picker-header {
+    display: flex;
+    align-items: center;
+    gap: var(--interface-space-8);
+    min-width: 0;
+    padding: var(--interface-space-8) var(--interface-space-10);
+    border-bottom: 1px solid var(--border);
+  }
+
+  & .task-directory-picker-header > div {
+    min-width: 0;
+  }
+
+  & .task-directory-picker-header h2,
+  & .task-directory-picker-header p {
+    overflow: hidden;
+    margin: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & .task-directory-picker-header h2 {
+    font-size: var(--interface-heading-font-size);
+    line-height: 1.25;
+  }
+
+  & .task-directory-picker-header p {
+    margin-top: var(--interface-space-1);
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .task-directory-picker-close {
+    flex: 0 0 auto;
+    margin-left: auto;
+  }
+
+  & .task-directory-picker-body {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--surface);
+  }
+
+  & caffold-file-tree {
+    width: 100%;
+    height: 100%;
+  }
+
+  & .task-directory-picker-error {
+    position: absolute;
+    z-index: 1;
+    inset: var(--interface-space-6) var(--interface-space-6) auto;
+    margin: 0;
+    padding: var(--interface-space-5) var(--interface-space-6);
+    border: 1px solid var(--danger-border);
+    border-radius: 5px;
+    background: var(--danger-subtle);
+    color: var(--danger-strong);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .task-directory-picker-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--interface-control-gap);
+    padding: var(--interface-space-8) var(--interface-space-10);
+    border-top: 1px solid var(--border);
+  }
+
+  & .task-directory-picker-footer .task-secondary-button {
+    min-height: var(--interface-control-hit-size);
+    border-color: transparent;
+    background: transparent;
+  }
+
+  & .task-directory-picker-footer .task-secondary-button::before {
+    inset-block: var(--interface-control-hit-outset);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+  }
+
+  & .task-directory-picker-footer .task-secondary-button:hover,
+  & .task-directory-picker-footer .task-secondary-button:focus-visible {
+    border-color: transparent;
+  }
+
+  & .task-directory-picker-footer .task-secondary-button:hover::before,
+  & .task-directory-picker-footer .task-secondary-button:focus-visible::before {
+    border-color: var(--border-strong);
+  }
+
+  & [data-directory-picker-action="choose"]:disabled {
+    color: var(--disabled-text);
+    cursor: default;
+  }
+
+  & [data-directory-picker-action="choose"]:disabled::before {
+    border-color: var(--border);
+    background: var(--surface-muted);
+  }
+}
+
+@media (max-width: 620px) {
+  caffold-task-directory-picker {
+    & dialog {
+      width: calc(100vw - 0.5rem);
+      height: calc(100dvh - 0.5rem);
+    }
+
+    & .task-directory-picker-header,
+    & .task-directory-picker-footer {
+      padding: var(--interface-space-8);
+    }
+  }
+}

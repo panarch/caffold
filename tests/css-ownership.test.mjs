@@ -48,6 +48,10 @@ const ownership = new Map([
     ["caffold-task-command-dialog"],
   ],
   [
+    "pages/(task-workspace)/tasks/components/directory-picker.css",
+    ["caffold-task-directory-picker"],
+  ],
+  [
     "pages/(task-workspace)/tasks/components/image-preview-dialog.css",
     ["caffold-task-image-preview-dialog"],
   ],
@@ -205,7 +209,11 @@ const componentChildren = new Map([
       "caffold-task-image-preview-dialog",
     ],
   ],
-  ["caffold-task-new", ["caffold-task-composer"]],
+  [
+    "caffold-task-new",
+    ["caffold-task-composer", "caffold-task-directory-picker"],
+  ],
+  ["caffold-task-directory-picker", ["caffold-file-tree"]],
   [
     "caffold-task-detail",
     [
@@ -287,7 +295,9 @@ const sharedDescendantClasses = new Map([
     "caffold-tasks-page",
     new Set([
       "task-icon-button",
+      "task-primary-button",
       "task-secondary-button",
+      "task-action-icon",
       "task-status-chip",
       "task-status-spinner",
     ]),

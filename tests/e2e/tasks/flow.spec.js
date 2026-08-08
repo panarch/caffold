@@ -19,6 +19,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
 
   const threadId = "thread_global_fixture";
   let createdTaskRequest = null;
+  let fileReads = 0;
   const task = {
     id: threadId,
     threadId,
@@ -128,6 +129,10 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
         ],
       }),
     });
+  });
+  await page.route(/\/api\/file(?:\?|$)/, (route) => {
+    fileReads += 1;
+    return route.continue();
   });
   await page.route(/\/api\/git\/status(?:\?|$)/, (route) =>
     route.fulfill({
@@ -265,15 +270,29 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await expect(page).toHaveURL("/");
   await page.goto("/tasks/new");
   await expect(page).toHaveURL("/tasks/new");
-  await tasksPage.locator('textarea[name="prompt"]').fill("Say hello globally");
-  await tasksPage.getByRole("button", { name: "Browse Files" }).click();
-  const cwdBrowser = tasksPage.locator(".task-new-cwd-browser caffold-file-browser");
-  await expect(cwdBrowser).toBeVisible();
-  const cancelCwd = tasksPage.getByRole("button", {
+  const prompt = tasksPage.locator('textarea[name="prompt"]');
+  const browseCwd = tasksPage.getByRole("button", { name: "Browse Files" });
+  const directoryPicker = tasksPage.locator("caffold-task-directory-picker");
+  const directoryDialog = directoryPicker.locator("dialog");
+  await prompt.fill("Say hello globally");
+  await browseCwd.click();
+  await expect(directoryDialog).toBeVisible();
+  await expect(prompt).toBeVisible();
+  await expect(directoryPicker.locator("caffold-file-browser")).toHaveCount(0);
+  await expect(
+    directoryPicker.locator('button[data-file-tree-path="README.md"]'),
+  ).toBeDisabled();
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "tasks-new-directory-picker",
+  );
+  expect(fileReads).toBe(0);
+  const cancelCwd = directoryPicker.getByRole("button", {
     name: "Cancel",
     exact: true,
   });
-  const chooseCwd = tasksPage.getByRole("button", {
+  const chooseCwd = directoryPicker.getByRole("button", {
     name: "Use This Folder",
     exact: true,
   });
@@ -327,20 +346,30 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
     JSON.stringify(cwdActionGeometry),
   ).toBe(true);
   await cancelCwd.click();
-  await expect(cwdBrowser).toBeHidden();
-  await expect(tasksPage.locator('textarea[name="prompt"]')).toHaveValue(
-    "Say hello globally",
+  await expect(directoryDialog).toBeHidden();
+  await expect(prompt).toHaveValue("Say hello globally");
+  await expect(browseCwd).toBeFocused();
+
+  await browseCwd.click();
+  await expect(directoryDialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(directoryDialog).toBeHidden();
+  await expect(prompt).toHaveValue("Say hello globally");
+  await expect(browseCwd).toBeFocused();
+
+  await browseCwd.click();
+  await expect(directoryDialog).toBeVisible();
+  await directoryPicker.locator('button[data-file-tree-path="src"]').click();
+  await expect(directoryPicker.locator("[data-directory-picker-path]")).toContainText(
+    "/src",
   );
-  await tasksPage.getByRole("button", { name: "Browse Files" }).click();
-  await expect(cwdBrowser).toBeVisible();
-  await cwdBrowser.locator('button[data-file-tree-path="src"]').click();
+  expect(fileReads).toBe(0);
   await chooseCwd.click();
+  await expect(directoryDialog).toBeHidden();
   await expect(page).toHaveURL("/tasks/new?cwd=src");
-  await expect(tasksPage.locator('textarea[name="prompt"]')).toHaveValue(
-    "Say hello globally",
-  );
+  await expect(prompt).toHaveValue("Say hello globally");
   await expect(tasksPage.locator(".task-composer-context")).toContainText("src");
-  await tasksPage.locator('textarea[name="prompt"]').press("Enter");
+  await prompt.press("Enter");
 
   await expect.poll(() => createdTaskRequest?.prompt).toBe("Say hello globally");
   await expect(page).toHaveURL(`/tasks/${threadId}`);
