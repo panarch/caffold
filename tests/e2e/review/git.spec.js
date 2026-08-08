@@ -816,10 +816,48 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
   const resizeHandle = workspace.locator(
     "caffold-git-log-commit-page > caffold-review-panel-resizer",
   );
-  if (testInfo.project.name === "desktop") {
+  if (testInfo.project.name !== "phone") {
     await expect(resizeHandle).toBeVisible();
     await expect(resizeHandle).not.toHaveAttribute("resize-target");
     await expect(resizeHandle).toHaveAttribute("aria-valuemin", "180");
+  } else {
+    await expect(resizeHandle).toBeHidden();
+    await expect(page.locator("caffold-git-log-commit-page")).toHaveCSS(
+      "--git-log-commit-panel-width",
+      "320px",
+    );
+  }
+  if (testInfo.project.name === "foldable") {
+    const splitLayout = await page
+      .locator("caffold-git-log-commit-page")
+      .evaluate((page) => {
+        const tree = page.querySelector("caffold-commit-changes-tree");
+        const resizer = page.querySelector("caffold-review-panel-resizer");
+        const viewer = page.querySelector("caffold-review-file-viewer");
+        const treeRect = tree.getBoundingClientRect();
+        const resizerRect = resizer.getBoundingClientRect();
+        const viewerRect = viewer.getBoundingClientRect();
+        return {
+          resizerLeft: resizerRect.left,
+          resizerRight: resizerRect.right,
+          treeBottom: treeRect.bottom,
+          treeRight: treeRect.right,
+          treeTop: treeRect.top,
+          viewerBottom: viewerRect.bottom,
+          viewerLeft: viewerRect.left,
+          viewerTop: viewerRect.top,
+        };
+      });
+    expect(splitLayout.resizerLeft).toBeGreaterThanOrEqual(
+      splitLayout.treeRight - 1,
+    );
+    expect(splitLayout.viewerLeft).toBeGreaterThanOrEqual(
+      splitLayout.resizerRight - 1,
+    );
+    expect(Math.abs(splitLayout.treeTop - splitLayout.viewerTop)).toBeLessThanOrEqual(1);
+    expect(Math.abs(splitLayout.treeBottom - splitLayout.viewerBottom)).toBeLessThanOrEqual(1);
+  }
+  if (testInfo.project.name === "desktop") {
     const beforeReviewWidth = await elementWidth(
       page,
       "caffold-review-workspace caffold-git-log-commit-page > caffold-commit-changes-tree",
@@ -857,14 +895,6 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
     });
     expect(widthOwnership.pageWidth).toBe("204px");
     expect(widthOwnership.workspaceWidth).toBe("");
-  } else {
-    await expect(resizeHandle).toBeHidden();
-    if (testInfo.project.name === "phone") {
-      await expect(page.locator("caffold-git-log-commit-page")).toHaveCSS(
-        "--git-log-commit-panel-width",
-        "320px",
-      );
-    }
   }
 
   await commitFileButton.click();

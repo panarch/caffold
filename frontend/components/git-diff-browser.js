@@ -2,6 +2,7 @@ import { getGitDiff } from "../api.js";
 import { diffViewerPresentation } from "./file-viewer-presentation.js";
 import "./file-viewer.js";
 import "./git-diff-browser/changes-tree.js";
+import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "./review-responsive.js";
 
 const LOADING_DELAY_MS = 180;
 const PANEL_DEFAULT_WIDTH = 320;
@@ -168,7 +169,7 @@ class CaffoldGitDiffBrowser extends HTMLElement {
     const file = gitStatus?.files?.find((entry) => entry.path === path);
     if (!file) {
       this.changesTree.setSelectedPath("");
-      if (window.matchMedia("(max-width: 860px)").matches) {
+      if (window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches) {
         this.showList();
       } else {
         this.viewer.setNotice("This file no longer has uncommitted changes.");

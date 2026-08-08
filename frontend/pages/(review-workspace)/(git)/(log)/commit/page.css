@@ -28,32 +28,6 @@ caffold-git-log-commit-page {
   }
 }
 
-@media (max-width: 1100px) {
-  caffold-git-log-commit-page {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 32dvh) minmax(0, 1fr);
-
-    & > caffold-commit-changes-tree {
-      grid-column: 1;
-      grid-row: 1;
-    }
-
-    & > caffold-review-file-viewer {
-      grid-column: 1;
-      grid-row: 2;
-    }
-
-    & > caffold-review-panel-resizer {
-      display: none;
-    }
-
-    & caffold-commit-changes-tree {
-      border-right: 0;
-      border-bottom: 1px solid var(--border);
-    }
-  }
-}
-
 @media (max-width: 860px) {
   caffold-git-log-commit-page {
     grid-template-columns: 1fr;
@@ -67,6 +41,10 @@ caffold-git-log-commit-page {
 
     &[data-detail-view="list"] > caffold-review-file-viewer,
     &[data-detail-view="viewer"] > caffold-commit-changes-tree {
+      display: none;
+    }
+
+    & > caffold-review-panel-resizer {
       display: none;
     }
   }

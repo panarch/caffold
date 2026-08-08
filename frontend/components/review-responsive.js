@@ -1,0 +1,3 @@
+export const REVIEW_SINGLE_PANE_MAX_WIDTH_PX = 860;
+export const REVIEW_SINGLE_PANE_MEDIA_QUERY =
+  `(max-width: ${REVIEW_SINGLE_PANE_MAX_WIDTH_PX}px)`;

@@ -2,6 +2,7 @@ import { getGitCommit, getGitCommitDiff } from "../../../../../api.js";
 import { diffViewerPresentation } from "../../../../../components/file-viewer-presentation.js";
 import "../../../../../components/file-viewer.js";
 import { REVIEW_PANEL_DEFAULT_WIDTH } from "../../../../../components/review-panel-resizer.js";
+import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "../../../../../components/review-responsive.js";
 import "./components/changes-tree.js";
 
 const LOADING_DELAY_MS = 180;
@@ -275,7 +276,7 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     const file = this.findFile(path);
     if (!file) {
       this.commitTree.setSelectedPath("");
-      if (window.matchMedia("(max-width: 860px)").matches) {
+      if (window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches) {
         this.showFileList();
       } else {
         this.fileViewer.setNotice("This file is no longer part of the commit.");

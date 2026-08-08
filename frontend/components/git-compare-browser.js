@@ -2,6 +2,7 @@ import { getGitCompare, getGitCompareDiff, getGitRefs } from "../api.js";
 import { diffViewerPresentation } from "./file-viewer-presentation.js";
 import "./file-viewer.js";
 import "./git-compare-browser/compare-tree.js";
+import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "./review-responsive.js";
 
 const LOADING_DELAY_MS = 180;
 const PANEL_DEFAULT_WIDTH = 320;
@@ -347,7 +348,7 @@ class CaffoldGitCompareBrowser extends HTMLElement {
     const file = this.fileForPath(path);
     if (!file) {
       this.compareTree.setSelectedPath("");
-      if (window.matchMedia("(max-width: 860px)").matches) {
+      if (window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches) {
         this.showList();
       } else {
         this.viewer.setNotice("This file is no longer part of the comparison.");

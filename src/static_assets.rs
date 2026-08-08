@@ -126,6 +126,9 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "components/review-panel-resizer.js" => Some(js(include_str!(
             "../frontend/components/review-panel-resizer.js"
         ))),
+        "components/review-responsive.js" => Some(js(include_str!(
+            "../frontend/components/review-responsive.js"
+        ))),
         "watch.js" => Some(js(include_str!("../frontend/watch.js"))),
         "pages/files/page.css" => Some(css(include_str!("../frontend/pages/files/page.css"))),
         "pages/files/page.js" => Some(js(include_str!("../frontend/pages/files/page.js"))),
@@ -518,6 +521,18 @@ mod tests {
             get("pages/components/header-actions/git-status.js").expect("git status js asset");
         assert_eq!(git_status_js.content_type, "text/javascript; charset=utf-8");
         assert!(git_status_js.body.starts_with(b"import "));
+
+        let review_responsive_js =
+            get("components/review-responsive.js").expect("review responsive js asset");
+        assert_eq!(
+            review_responsive_js.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(
+            review_responsive_js
+                .body
+                .starts_with(b"export const REVIEW_SINGLE_PANE_MAX_WIDTH_PX")
+        );
 
         let github_status_js = get("pages/components/header-actions/github-status.js")
             .expect("github status js asset");

@@ -223,6 +223,7 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain("/assets/components/file-browser/list.css");
   expect(serviceWorker).toContain("/assets/components/review-panel-resizer.js");
   expect(serviceWorker).toContain("/assets/components/review-panel-resizer.css");
+  expect(serviceWorker).toContain("/assets/components/review-responsive.js");
   expect(serviceWorker).toContain("/assets/watch.js");
   expect(serviceWorker).toContain("/assets/pages/files/page.js");
   expect(serviceWorker).not.toContain("/assets/pages/files/components/list.js");
