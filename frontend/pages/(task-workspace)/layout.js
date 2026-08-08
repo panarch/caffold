@@ -21,7 +21,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
 
     this.rendered = true;
     this.lastTaskRoute = { kind: "tasks", new: false, threadId: "", cwd: "" };
-    this.lastSettingsRoute = { kind: "settings", section: "appearance" };
     this.innerHTML = `
       <button
         type="button"
@@ -73,7 +72,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
         }
         const route = button.dataset.workspaceMode === "tasks"
           ? this.lastTaskRoute
-          : this.lastSettingsRoute;
+          : { kind: "settings", section: "" };
         this.dispatchEvent(
           new CustomEvent("caffold:request-workspace-route", {
             bubbles: true,
@@ -117,9 +116,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
       this.lastTaskRoute = { ...route };
       this.tasksPage.prepareRoute(route, options);
     } else {
-      if (route.section) {
-        this.lastSettingsRoute = { ...route };
-      }
       this.settingsWorkspace.prepareRoute(route);
     }
     this.tasksPage.hidden = this.mode !== "tasks";

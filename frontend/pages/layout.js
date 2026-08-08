@@ -106,7 +106,7 @@ class CaffoldAppShell extends HTMLElement {
     this.addEventListener("caffold:open-settings", (event) => {
       this.navigateToRoute({
         kind: "settings",
-        section: event.detail?.section ?? "appearance",
+        section: event.detail?.section ?? "",
       });
     });
     this.addEventListener("caffold:open-about", () => {

@@ -9,16 +9,19 @@ const TITLES = {
   codex: "Codex",
   about: "About Caffold",
 };
+const SETTINGS_MASTER_DETAIL_MEDIA_QUERY = "(min-width: 900px)";
 
 class CaffoldSettingsWorkspace extends HTMLElement {
   connectedCallback() {
     this.boundIconsReady ??= () => this.renderBackIcon();
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     this.ensureRendered();
+    this.attachResponsiveListener();
   }
 
   disconnectedCallback() {
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
+    this.detachResponsiveListener();
   }
 
   ensureRendered() {
@@ -27,6 +30,11 @@ class CaffoldSettingsWorkspace extends HTMLElement {
     }
     this.rendered = true;
     this.section = "";
+    this.masterDetailMedia = window.matchMedia(
+      SETTINGS_MASTER_DETAIL_MEDIA_QUERY,
+    );
+    this.boundResponsiveChange = () => this.syncPresentation();
+    this.responsiveListenerAttached = false;
     this.innerHTML = `
       <section class="settings-workspace-surface" aria-label="Settings">
         <div class="settings-workspace-master-detail">
@@ -47,9 +55,6 @@ class CaffoldSettingsWorkspace extends HTMLElement {
               </button>
               <h1></h1>
             </header>
-            <div class="settings-workspace-empty">
-              <p>Select a setting to inspect it.</p>
-            </div>
             <caffold-settings-appearance-page hidden></caffold-settings-appearance-page>
             <caffold-settings-codex-page hidden></caffold-settings-codex-page>
             <caffold-settings-about-page hidden></caffold-settings-about-page>
@@ -69,6 +74,28 @@ class CaffoldSettingsWorkspace extends HTMLElement {
     this.prepareRoute({ kind: "settings", section: "" });
   }
 
+  attachResponsiveListener() {
+    if (this.responsiveListenerAttached) {
+      return;
+    }
+    this.responsiveListenerAttached = true;
+    this.masterDetailMedia.addEventListener(
+      "change",
+      this.boundResponsiveChange,
+    );
+  }
+
+  detachResponsiveListener() {
+    if (!this.responsiveListenerAttached) {
+      return;
+    }
+    this.responsiveListenerAttached = false;
+    this.masterDetailMedia.removeEventListener(
+      "change",
+      this.boundResponsiveChange,
+    );
+  }
+
   renderBackIcon() {
     const target = this.querySelector("[data-settings-back-icon]");
     if (target) {
@@ -83,13 +110,21 @@ class CaffoldSettingsWorkspace extends HTMLElement {
   prepareRoute(route) {
     this.ensureRendered();
     this.section = route?.kind === "settings" ? route.section ?? "" : "";
-    this.dataset.settingsView = this.section ? "detail" : "list";
-    this.querySelector("caffold-settings-navigator")?.setSelectedSection(this.section);
+    this.syncPresentation();
+  }
+
+  syncPresentation() {
+    const presentedSection =
+      this.section || (this.masterDetailMedia.matches ? "appearance" : "");
+    this.dataset.settingsView = presentedSection ? "detail" : "list";
+    this.querySelector("caffold-settings-navigator")?.setSelectedSection(
+      presentedSection,
+    );
 
     const header = this.querySelector(".settings-workspace-detail-header");
-    header.hidden = !this.section;
-    header.querySelector("h1").textContent = TITLES[this.section] ?? "Settings";
-    this.querySelector(".settings-workspace-empty").hidden = Boolean(this.section);
+    header.hidden = !presentedSection;
+    header.querySelector("h1").textContent =
+      TITLES[presentedSection] ?? "Settings";
 
     const pages = {
       appearance: this.querySelector("caffold-settings-appearance-page"),
@@ -97,7 +132,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
       about: this.querySelector("caffold-settings-about-page"),
     };
     for (const [section, page] of Object.entries(pages)) {
-      page.hidden = section !== this.section;
+      page.hidden = section !== presentedSection;
     }
     pages.appearance?.prepareRoute?.();
   }

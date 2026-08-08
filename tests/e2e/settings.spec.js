@@ -150,8 +150,15 @@ test("updates independent ranges live without replacing their DOM", async ({
   await expect(openSettings).toHaveCSS("font-size", sharedInterfaceTextSize);
   await openSettings.click();
 
-  await expect(page).toHaveURL("/settings/appearance");
+  await expect(page).toHaveURL("/settings");
   const settingsPage = page.locator("caffold-settings-appearance-page");
+  if (testInfo.project.name === "phone") {
+    await expect(settingsPage).toBeHidden();
+    await page
+      .locator('button[data-settings-section="appearance"]')
+      .click();
+    await expect(page).toHaveURL("/settings/appearance");
+  }
   await expect(settingsPage).toBeVisible();
   await expect(page.locator(".files-surface")).toBeHidden();
   await expect(page.locator("caffold-app-menu")).toBeHidden();

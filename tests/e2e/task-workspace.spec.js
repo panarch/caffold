@@ -24,13 +24,20 @@ test("navigates Settings as responsive master-detail pages with browser history"
     'button[data-settings-section="appearance"]',
   );
 
-  await expect(workspace).toHaveAttribute("data-settings-view", "list");
   await expect(listPane).toBeVisible();
   if (testInfo.project.name === "phone") {
+    await expect(workspace).toHaveAttribute("data-settings-view", "list");
     await expect(detailPane).toBeHidden();
+    await expect(
+      workspace.locator("caffold-settings-appearance-page"),
+    ).toBeHidden();
   } else {
+    await expect(workspace).toHaveAttribute("data-settings-view", "detail");
     await expect(detailPane).toBeVisible();
-    await expect(workspace.locator(".settings-workspace-empty")).toBeVisible();
+    await expect(
+      workspace.locator("caffold-settings-appearance-page"),
+    ).toBeVisible();
+    await expect(appearance).toHaveAttribute("aria-current", "");
   }
 
   await appearance.click();
@@ -48,7 +55,15 @@ test("navigates Settings as responsive master-detail pages with browser history"
 
   await page.goBack();
   await expect(page).toHaveURL("/settings");
-  await expect(workspace).toHaveAttribute("data-settings-view", "list");
+  if (testInfo.project.name === "phone") {
+    await expect(workspace).toHaveAttribute("data-settings-view", "list");
+    await expect(listPane).toBeVisible();
+  } else {
+    await expect(workspace).toHaveAttribute("data-settings-view", "detail");
+    await expect(
+      workspace.locator("caffold-settings-appearance-page"),
+    ).toBeVisible();
+  }
   await page.goForward();
   await expect(page).toHaveURL("/settings/appearance");
   await expect(workspace.locator("caffold-settings-appearance-page")).toBeVisible();
@@ -57,11 +72,62 @@ test("navigates Settings as responsive master-detail pages with browser history"
   await expect(workspace.locator("caffold-settings-codex-page")).toBeVisible();
   await page.goto("/settings/about");
   await expect(workspace.locator("caffold-settings-about-page")).toBeVisible();
+
+  await page
+    .locator('.task-workspace-navigation [data-workspace-mode="settings"]')
+    .click();
+  await expect(page).toHaveURL("/settings");
+  if (testInfo.project.name === "phone") {
+    await expect(listPane).toBeVisible();
+    await expect(detailPane).toBeHidden();
+  } else {
+    await expect(
+      workspace.locator("caffold-settings-appearance-page"),
+    ).toBeVisible();
+  }
+});
+
+test("reflows the Settings root without changing its route", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop",
+    "One browser project covers the responsive root transition.",
+  );
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/settings");
+
+  const workspace = page.locator("caffold-settings-workspace");
+  const listPane = workspace.locator(".settings-workspace-list-pane");
+  const detailPane = workspace.locator(".settings-workspace-detail-pane");
+  const appearancePage = workspace.locator(
+    "caffold-settings-appearance-page",
+  );
+
+  await expect(workspace).toHaveAttribute("data-settings-view", "list");
+  await expect(listPane).toBeVisible();
+  await expect(detailPane).toBeHidden();
+  await expect(page).toHaveURL("/settings");
+
+  await page.setViewportSize({ width: 933, height: 704 });
+  await expect(workspace).toHaveAttribute("data-settings-view", "detail");
+  await expect(listPane).toBeVisible();
+  await expect(detailPane).toBeVisible();
+  await expect(appearancePage).toBeVisible();
+  await expect(page).toHaveURL("/settings");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(workspace).toHaveAttribute("data-settings-view", "list");
+  await expect(listPane).toBeVisible();
+  await expect(detailPane).toBeHidden();
+  await expect(appearancePage).toBeHidden();
+  await expect(page).toHaveURL("/settings");
 });
 
 test("preserves Tasks and Settings DOM while hidden task updates arrive", async ({
   page,
-}) => {
+}, testInfo) => {
   await installEventSourceMock(page, {
     sourceKey: "__taskWorkspaceEventSource",
     autoOpen: true,
@@ -92,6 +158,20 @@ test("preserves Tasks and Settings DOM while hidden task updates arrive", async 
   );
   await settingsButton.focus();
   await settingsButton.press("Enter");
+  await expect(page).toHaveURL("/settings");
+  if (testInfo.project.name === "phone") {
+    await expect(
+      taskWorkspace.locator("caffold-settings-appearance-page"),
+    ).toBeHidden();
+  } else {
+    await expect(
+      taskWorkspace.locator("caffold-settings-appearance-page"),
+    ).toBeVisible();
+  }
+
+  await taskWorkspace
+    .locator('button[data-settings-section="appearance"]')
+    .click();
   await expect(page).toHaveURL("/settings/appearance");
 
   const appearancePage = taskWorkspace.locator(

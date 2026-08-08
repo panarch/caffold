@@ -67,22 +67,6 @@ caffold-settings-workspace {
     font-size: 0.95rem;
   }
 
-  & .settings-workspace-empty {
-    display: grid;
-    place-items: center;
-    height: 100%;
-    color: var(--muted);
-    padding: var(--interface-space-8);
-  }
-
-  & .settings-workspace-empty[hidden] {
-    display: none;
-  }
-
-  & .settings-workspace-empty p {
-    margin: 0;
-  }
-
 }
 
 @media (max-width: 899px) {
