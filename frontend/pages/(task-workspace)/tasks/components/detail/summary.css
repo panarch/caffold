@@ -182,17 +182,6 @@ caffold-task-detail-summary {
     font-size: var(--interface-meta-font-size);
   }
 
-  & .task-detail-actions .task-summary-new-task {
-    width: var(--interface-compact-hit-size);
-    min-width: var(--interface-compact-hit-size);
-    height: var(--interface-compact-hit-size);
-    min-height: var(--interface-compact-hit-size);
-    margin-block: calc(0rem - var(--interface-compact-hit-outset));
-    padding-inline: 0;
-    border: 0;
-    background: transparent;
-  }
-
   & .task-brand-button {
     position: relative;
     display: inline-grid;
@@ -322,7 +311,6 @@ caffold-task-detail-summary {
     inset: calc(0px - var(--interface-compact-hit-outset)) 0;
   }
 
-  & .task-detail-actions .task-summary-new-task::before,
   & .task-brand-button::before,
   & .task-detail-info-button::before {
     inset: var(--interface-compact-hit-outset);
@@ -336,8 +324,6 @@ caffold-task-detail-summary {
     outline: none;
   }
 
-  & .task-detail-actions .task-summary-new-task:hover::before,
-  & .task-detail-actions .task-summary-new-task:focus-visible::before,
   & .task-detail-info-button:hover::before,
   & .task-detail-info-button:focus-visible::before,
   & .task-brand-button:hover::before,
@@ -516,14 +502,6 @@ caffold-task-detail-summary {
       height: var(--interface-compact-visual-size);
       min-height: var(--interface-compact-visual-size);
       padding: 0;
-    }
-
-    & .task-detail-actions .task-summary-new-task {
-      width: var(--interface-compact-hit-size);
-      min-width: var(--interface-compact-hit-size);
-      height: var(--interface-compact-hit-size);
-      min-height: var(--interface-compact-hit-size);
-      margin-block: calc(0rem - var(--interface-compact-hit-outset));
     }
 
     & h2 {

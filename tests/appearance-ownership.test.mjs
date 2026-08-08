@@ -253,7 +253,6 @@ test("structural shadows separate fixed regions from floating elevation", () => 
     [
       "pages/(task-workspace)/settings/layout.css",
       "pages/(task-workspace)/tasks/components/detail/summary.css",
-      "pages/(task-workspace)/tasks/page.css",
     ],
   );
   assert.deepEqual(

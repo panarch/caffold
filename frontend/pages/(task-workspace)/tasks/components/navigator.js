@@ -81,6 +81,7 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.streamState = TASK_TRANSPORT_STATE.IDLE;
     this.revisionByThread = new Map();
     this.active = false;
+    this.lastPublishedListState = "";
     this.boundClick = (event) => this.handleClick(event);
     this.boundIconsReady = () => this.render();
     this.boundVisibilityChange = () => this.handleVisibilityChange();
@@ -578,6 +579,36 @@ class CaffoldTaskNavigator extends HTMLElement {
       scroller.scrollTop = scrollTop;
     }
     this.syncSelection();
+    this.publishListState();
+  }
+
+  listState() {
+    this.ensureState();
+    return {
+      count: this.tasks.length + this.archivedTasks.length,
+      activeCount: this.tasks.length,
+      archivedCount: this.archivedTasks.length,
+      loaded: this.taskListLoaded && this.archivedTaskLoaded,
+      loading: this.taskListLoading || this.archivedTaskLoading,
+      error:
+        this.taskListError?.message ?? this.archivedTaskError?.message ?? "",
+    };
+  }
+
+  publishListState() {
+    const detail = this.listState();
+    const signature = JSON.stringify(detail);
+    if (signature === this.lastPublishedListState) {
+      return;
+    }
+    this.lastPublishedListState = signature;
+    this.dispatchEvent(
+      new CustomEvent("caffold:task-navigator-list-state", {
+        bubbles: true,
+        composed: true,
+        detail,
+      }),
+    );
   }
 
   renderSection(title, entries, kind) {
@@ -600,6 +631,15 @@ class CaffoldTaskNavigator extends HTMLElement {
     const pagination = archived
       ? this.renderArchivedPagination()
       : this.renderTaskPagination();
+    const headerAction = archived
+      ? `<span>${tasks.length}</span>`
+      : `<button
+          type="button"
+          class="task-list-new-task"
+          data-task-action="open-new"
+          aria-label="New Task"
+          title="New Task"
+        >${renderInlineIcon("Plus", "New task", "task-action-icon")}</button>`;
     let content;
 
     if (loading && !tasks.length) {
@@ -614,10 +654,7 @@ class CaffoldTaskNavigator extends HTMLElement {
     } else if (!tasks.length) {
       content = archived
         ? `<p class="task-section-message">No archived Caffold tasks.</p>`
-        : `<div class="tasks-empty">
-              <p>No Caffold tasks yet.</p>
-              <button type="button" class="task-primary-button" data-task-action="open-new">New Task</button>
-            </div>`;
+        : `<p class="task-section-message">No Caffold tasks yet.</p>`;
     } else {
       const groups = groupTasksByRepository(tasks);
       content = `<ol class="task-repository-groups" data-task-section="${escapeHtml(kind)}">
@@ -629,7 +666,7 @@ class CaffoldTaskNavigator extends HTMLElement {
       <section class="task-list-section" data-task-section="${escapeHtml(kind)}">
         <header class="task-list-section-header">
           <h2>${escapeHtml(title)}</h2>
-          <span>${tasks.length}</span>
+          ${headerAction}
         </header>
         ${availability}
         ${content}

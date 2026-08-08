@@ -15,24 +15,30 @@ test.beforeEach(async ({ page }) => {
 test("focuses a new task prompt automatically only on desktop", async ({
   page,
 }, testInfo) => {
-  await installTaskLoopFixture(page);
-  await page.goto("/tasks");
+  const scenario = await installTaskLoopFixture(page);
+  await page.goto("/");
 
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect(tasksPage).toHaveAttribute("data-tasks-view", "home");
+  await expect(tasksPage).toHaveAttribute("data-task-list-state", "empty");
   const homePrompt = page.locator(
     'caffold-tasks-page .task-new-form textarea[name="prompt"]',
   );
+  await expect(homePrompt).toBeVisible();
   if (testInfo.project.name === "desktop") {
     await expect(homePrompt).toBeFocused();
   } else {
     await expect(homePrompt).not.toBeFocused();
   }
 
-  const openNewTask = page.locator(
-    'caffold-tasks-page .tasks-header [data-task-action="open-new"]',
-  );
-  await expect(openNewTask).toBeVisible();
-  await openNewTask.click();
-  await expect(page).toHaveURL(/\/tasks\/new/);
+  await expect(tasksPage.locator(".tasks-header")).toHaveCount(0);
+  await expect(tasksPage.locator(".tasks-empty")).toHaveCount(0);
+  await expect(
+    page.locator('caffold-app-menu button[data-action="new-task"]'),
+  ).toHaveCount(0);
+
+  await page.goto(`/tasks/new?cwd=${encodeURIComponent(scenario.contextPath)}`);
+  await expect(tasksPage).toHaveAttribute("data-tasks-view", "new");
 
   const prompt = page.locator(
     'caffold-tasks-page .task-new-form textarea[name="prompt"]',
@@ -84,35 +90,21 @@ test("creates a task with responsive composer controls and canonical approval st
   ).toHaveCount(0);
   await expect(page.locator("caffold-tasks-page")).toHaveAttribute(
     "data-tasks-view",
-    "list",
+    "home",
+  );
+  await expect(page.locator("caffold-tasks-page")).toHaveAttribute(
+    "data-task-list-state",
+    "empty",
   );
   await expect(page.locator("caffold-tasks-page")).toContainText("No Caffold tasks yet.");
+  const newTaskComposer = page.locator("caffold-tasks-page .task-new-form");
+  await expect(newTaskComposer).toBeVisible();
+  await expect(
+    newTaskComposer.locator(".task-composer-context span:not(.sr-only)"),
+  ).toHaveText(contextPath);
+  await expect(newTaskComposer.getByRole("button", { name: "Cancel" })).toHaveCount(0);
 
-  const emptyNewTaskButton = page
-    .locator("caffold-tasks-page .tasks-empty")
-    .getByRole("button", { name: "New Task", exact: true });
   await test.step("keeps shared task controls stable", async () => {
-    const rootFontSize = await page.evaluate(() =>
-      Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
-    );
-    const primaryPresentation = await taskPresentation(emptyNewTaskButton);
-    expect(primaryPresentation).toEqual(
-      expect.objectContaining({
-        alignItems: "center",
-        visualBackgroundColor: "rgb(221, 239, 232)",
-        visualBorderColor: "rgb(159, 201, 187)",
-        visualBorderRadius: "5px",
-        visualBorderWidth: "1px",
-        color: "rgb(22, 124, 92)",
-        display: "inline-grid",
-        minHeight: touchInterface ? "40px" : "32px",
-      }),
-    );
-    const [paddingBlock, paddingInline] = primaryPresentation.padding
-      .split(" ")
-      .map(Number.parseFloat);
-    expect(paddingBlock).toBeCloseTo(rootFontSize * 0.25, 2);
-    expect(paddingInline).toBeCloseTo(rootFontSize * 0.625, 2);
     const settingsNavigation = taskWorkspace.locator(
       '.task-workspace-navigation [data-workspace-mode="settings"]',
     );
@@ -127,53 +119,6 @@ test("creates a task with responsive composer controls and canonical approval st
       }),
     );
   });
-  await emptyNewTaskButton.click();
-  await expect(page).toHaveURL(`/tasks/new?cwd=${encodeURIComponent(contextPath)}`);
-  await expect(taskWorkspace).toHaveAttribute(
-    "data-workspace-close-visible",
-    "",
-  );
-  await expect(page.locator("caffold-tasks-page")).toHaveAttribute(
-    "data-tasks-view",
-    "new",
-  );
-  await expect(
-    page.locator('caffold-tasks-page .tasks-header [data-task-action="open-new"]'),
-  ).toHaveCount(0);
-  await expect(
-    page.locator('caffold-tasks-page .tasks-header [data-task-action="open-list"]'),
-  ).toHaveCount(0);
-  await expect(page.locator("caffold-tasks-page .tasks-header h1")).toHaveText(
-    "Caffold",
-  );
-  const newTaskHeaderMetrics = await page.evaluate(() => {
-    const closeButton = document
-      .querySelector("caffold-task-workspace .task-workspace-close")
-      .getBoundingClientRect();
-    const compactProbe = document.createElement("div");
-    compactProbe.style.cssText =
-      "position:fixed;height:var(--interface-compact-hit-size)";
-    document.body.append(compactProbe);
-    const compactHeight = compactProbe.getBoundingClientRect().height;
-    compactProbe.remove();
-    const brand = document
-      .querySelector("caffold-tasks-page .tasks-header h1")
-      .getBoundingClientRect();
-    return {
-      closeRight: closeButton.right,
-      closeHeight: closeButton.height,
-      compactHeight,
-      brandLeft: brand.left,
-    };
-  });
-  expect(newTaskHeaderMetrics.closeHeight).toBeCloseTo(
-    newTaskHeaderMetrics.compactHeight,
-    1,
-  );
-  expect(newTaskHeaderMetrics.brandLeft).toBeGreaterThanOrEqual(
-    newTaskHeaderMetrics.closeRight + 8,
-  );
-  const newTaskComposer = page.locator("caffold-tasks-page .task-new-form");
   await expect(newTaskComposer.locator(".task-model-button")).toContainText("5.6 Sol");
   await expect(newTaskComposer.locator(".task-model-button")).toContainText("low");
   await newTaskComposer.locator(".task-model-button").click();

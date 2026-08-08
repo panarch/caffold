@@ -107,16 +107,19 @@ test("updates only affected detail regions and preserves an active IME compositi
 
   await prompt.focus();
   await prompt.evaluate((textarea) => {
-    textarea.value = "한";
-    textarea.setSelectionRange(1, 1);
-    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    const detailElement = textarea.closest("caffold-task-detail");
+    if (!detailElement) {
+      throw new Error("Follow-up prompt is outside the task detail owner");
+    }
     textarea.dispatchEvent(
       new CompositionEvent("compositionstart", {
         bubbles: true,
         data: "ㅎ",
       }),
     );
-    const detailElement = textarea.closest("caffold-task-detail");
+    textarea.value = "한";
+    textarea.setSelectionRange(1, 1);
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
     window.__detailRegionNodes = {
       summaryHeading: detailElement.querySelector(
         "caffold-task-detail-summary h2",
@@ -1759,7 +1762,7 @@ test("opens a running conversation at the latest message when stream sync wins t
 });
 test("makes disconnected task state unavailable and reconciles an uncertain prompt", async ({
   page,
-}) => {
+}, testInfo) => {
   await page.addInitScript(() => {
     window.__taskEventSources = [];
     window.EventSource = class MockEventSource {
@@ -2023,6 +2026,12 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
     );
     listSource.emitError();
   });
+  if (testInfo.project.name === "phone") {
+    await page
+      .locator("caffold-task-workspace .task-workspace-close")
+      .click();
+    await expect(page).toHaveURL("/");
+  }
   await tasksPage.getByRole("button", { name: "New Task" }).click();
   const newTaskForm = tasksPage.locator(".task-new-form");
   await expect(newTaskForm.locator('textarea[name="prompt"]')).toBeDisabled();

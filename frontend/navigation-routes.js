@@ -207,7 +207,7 @@ const ROUTE_DEFINITIONS = [
     kind: "tasks",
     pattern: "/",
     surface: "task-workspace",
-    target: "list",
+    target: "home",
     toRoute: (_, query) => tasksRoute(query),
     matchesRoute: (route) => route?.kind === "tasks" && !route.new && !route.threadId,
     parent: () => null,
@@ -218,7 +218,7 @@ const ROUTE_DEFINITIONS = [
     pattern: "/tasks",
     canonical: false,
     surface: "task-workspace",
-    target: "list",
+    target: "home",
     toRoute: (_, query) => tasksRoute(query),
   }),
   routeDefinition({

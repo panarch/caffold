@@ -1,4 +1,5 @@
 import { renderInlineIcon, warmIcons } from "../../components/icons.js";
+import { routeTarget } from "../../navigation-routes.js";
 import "./tasks/page.js";
 import "./settings/layout.js";
 
@@ -20,7 +21,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
     }
 
     this.rendered = true;
-    this.lastTaskRoute = { kind: "tasks", new: false, threadId: "", cwd: "" };
+    this.lastTaskRoute = { kind: "tasks" };
     this.innerHTML = `
       <button
         type="button"
@@ -153,27 +154,27 @@ class CaffoldTaskWorkspace extends HTMLElement {
       return;
     }
     const taskRoute = this.mode === "tasks" ? this.route : null;
+    const target = taskRoute ? routeTarget(taskRoute) : null;
     const isTaskSubview =
       this.tasksPage?.taskDetailView &&
       this.tasksPage.taskDetailView !== "conversation";
-    const isGlobalTasksHome = Boolean(
-      taskRoute && !taskRoute.new && !taskRoute.threadId,
-    );
-    const isTaskConversation = Boolean(
-      taskRoute?.threadId && !isTaskSubview,
-    );
+    const isGlobalTasksHome = target === "home";
+    const isTaskConversation = target === "detail" && !isTaskSubview;
     const showClose = Boolean(taskRoute && !isGlobalTasksHome);
 
     this.closeButton.hidden = !showClose;
     this.toggleAttribute("data-workspace-close-visible", showClose);
-    this.toggleAttribute("data-workspace-close-responsive", isTaskConversation);
+    this.toggleAttribute(
+      "data-workspace-close-responsive",
+      isTaskConversation || target === "new",
+    );
     this.toggleAttribute(
       "data-hide-navigation",
       Boolean(taskRoute && isTaskSubview),
     );
     this.toggleAttribute(
       "data-hide-navigation-on-compact",
-      Boolean(taskRoute?.threadId),
+      Boolean(taskRoute && (target === "detail" || isTaskSubview)),
     );
     this.dataset.workspaceMode = this.mode ?? "tasks";
 

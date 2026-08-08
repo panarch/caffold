@@ -80,6 +80,7 @@ test("scales visible Task controls without shrinking their touch targets", async
     "closeHeight",
     "closeIconSize",
     "infoHeight",
+    "newTaskVisualHeight",
     "archiveHeight",
     "modelHeight",
     "permissionHeight",
@@ -112,10 +113,6 @@ test("scales visible Task controls without shrinking their touch targets", async
 
   for (const metrics of [compact, spacious]) {
     expect(metrics.horizontalOverflow).toBe(false);
-    expect(metrics.headerActionGaps.newTaskToGit).toBeCloseTo(
-      metrics.headerActionGap,
-      1,
-    );
     expect(metrics.headerActionGaps.gitToGithub).toBeCloseTo(
       metrics.headerActionGap,
       1,
@@ -240,7 +237,9 @@ function taskInterfaceMetrics(page) {
     const controls = {
       close: document.querySelector(".task-workspace-close"),
       info: activeDetail.querySelector(".task-detail-info-button"),
-      newTask: activeDetail.querySelector(".task-summary-new-task"),
+      newTask: document.querySelector(
+        "caffold-task-navigator .task-list-new-task",
+      ),
       git: activeDetail.querySelectorAll(".task-brand-button")[0],
       github: activeDetail.querySelectorAll(".task-brand-button")[1],
       archive: activeDetail.querySelector(
@@ -251,6 +250,13 @@ function taskInterfaceMetrics(page) {
       send: activeComposer.querySelector(".task-send-button"),
     };
     const boxHeight = (element) => element.getBoundingClientRect().height;
+    const paintedHeight = (element) => {
+      const box = element.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) {
+        return 0;
+      }
+      return box.height - number(getComputedStyle(element, "::before").top) * 2;
+    };
     const fontSize = (element) => number(getComputedStyle(element).fontSize);
     const hitAt = (element, x, y) => {
       const hit = document.elementFromPoint(x, y);
@@ -360,6 +366,7 @@ function taskInterfaceMetrics(page) {
         controls.close.querySelector(".task-workspace-close-icon"),
       ),
       infoHeight: tokenPixels("--interface-compact-visual-size"),
+      newTaskVisualHeight: paintedHeight(controls.newTask),
       archiveHeight: tokenPixels("--interface-compact-visual-size"),
       modelHeight: boxHeight(controls.model),
       permissionHeight: boxHeight(controls.permission),
@@ -378,7 +385,6 @@ function taskInterfaceMetrics(page) {
         compactInset * 2,
       ),
       headerActionGaps: {
-        newTaskToGit: horizontalGap(controls.newTask, controls.git),
         gitToGithub: horizontalGap(controls.git, controls.github),
         githubToInfo: horizontalGap(controls.github, controls.info),
       },

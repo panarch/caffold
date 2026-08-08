@@ -345,9 +345,9 @@ and recency-first pagination. There is no offline Tasks rendering: if Codex
 metadata is unavailable, the Tasks API returns an explicit error rather than a
 stored row or a partial page.
 
-The Tasks surface uses the current cwd as its filter and New Task default.
-Files, Git, and GitHub use the same logical cwd context without a local project
-registry.
+The Tasks surface is a global list rather than a cwd filter. New Task inherits
+the current task or file context as its initial cwd. Files, Git, and GitHub use
+the same logical cwd context without a local project registry.
 
 ## Process Ownership
 

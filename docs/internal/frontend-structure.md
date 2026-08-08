@@ -241,7 +241,13 @@ Data crosses these boundaries as snapshots or method calls from parent to
 child. Actions cross upward as intent events. Leaf components do not mutate
 sibling state or call Codex mutation APIs on behalf of their canonical owner.
 The Tasks page mounts Navigator, New Task, and Detail once and switches them
-with visibility and activation methods. Detail likewise preserves Summary,
+with visibility and activation methods. Tasks home owns Navigator plus New Task
+as its default detail; on compact layouts the combined loaded active-and-archived
+state chooses the list when either section has tasks and New Task only when both
+are empty. Navigator owns the New Task action in its active-section header; the
+active-task count is not a separate control. The explicit `/tasks/new` route
+selects the same New Task instance and inherits the selected task context when
+one exists. Detail likewise preserves Summary,
 Conversation, and Composer instances. It keeps up to six thread-local Review
 instances in an explicit LRU cache (`CLEAN_REVIEW_CACHE_LIMIT = 6`). An inactive
 Review is disconnected so its watcher and requests stop, while its DOM-local

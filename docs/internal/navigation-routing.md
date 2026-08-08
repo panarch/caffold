@@ -6,8 +6,10 @@
 entrypoint. The legacy `/tasks` list URL is accepted on direct entry and
 canonicalized to `/` with history replacement. The wide Tasks home keeps the
 task navigator visible and renders the New Task composer as its default detail
-surface. Narrow viewports keep the list as
-the first surface and open the composer through `/tasks/new`.
+surface. Narrow viewports keep the list as the first surface while active or
+archived tasks exist. Once both lists are loaded and empty, the same Tasks home
+shows New Task as its default detail instead of requiring a separate empty-state
+action.
 
 Codex availability does not decide the top-level surface. Connection failures
 remain visible inside Tasks, where the user can retry or browse local files;
@@ -56,6 +58,15 @@ filters the list.
 `/tasks/new?cwd=...` is the only Tasks route that carries cwd, because it selects
 where the new thread starts. Legacy list and detail URLs containing cwd are
 canonicalized to their cwd-free forms.
+
+Tasks route targets describe semantic detail ownership rather than responsive
+layout: `/` is `home`, `/tasks/new` is `new`, and a thread route is `detail` or
+`review`. The `home` target owns both the task navigator and the default New Task
+detail. Viewport and the combined active-and-archived list state decide which of
+those two panes is visible on compact layouts; they never change the URL. The
+Navigator header owns the New Task action. Its explicit `new` target preserves
+cwd from an existing task context when one is selected, so both context and
+browser history remain durable.
 
 Task Conversation keeps `/tasks/:threadId`. Integrated Task Review uses
 `/tasks/:threadId/review` and carries five independent semantic fields:
@@ -113,11 +124,11 @@ Back and close controls use deterministic parent routes:
 - PR file -> PR files
 - PR files -> PR detail
 - PR detail -> PR list
-- task detail -> task list
+- task detail -> Tasks home
 - task Review file -> the same Review route without `file`
 - task Review list -> the same task Conversation
-- new task -> task list
-- global task list -> no parent
+- new task -> Tasks home
+- Tasks home -> no parent
 - standalone review workspace close -> standalone files at the same cwd
 
 Task detail routes use Codex app-server `threadId` values directly. Caffold does

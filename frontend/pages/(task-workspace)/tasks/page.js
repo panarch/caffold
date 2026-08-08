@@ -1,4 +1,4 @@
-import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
+import { routeTarget } from "../../../navigation-routes.js";
 import "./components/detail.js";
 import {
   TASK_IMAGE_PREVIEW_EVENT,
@@ -29,20 +29,18 @@ class CaffoldTasksPage extends HTMLElement {
       return;
     }
     this.rendered = true;
-    this.view = "list";
+    this.view = "home";
+    this.taskListState = "loading";
     this.selectedThreadId = "";
     this.taskListWidth = TASK_LIST_DEFAULT_WIDTH;
     this.adoptedThreadId = "";
     this.globalListenersAttached = false;
     this.boundResize = () => this.syncTaskListWidth();
-    this.boundIconsReady = () => this.renderHeader();
     this.boundPointerMove = (event) => this.resizeTaskList(event);
     this.boundPointerUp = () => this.stopTaskListResize();
-    warmIcons();
 
     this.innerHTML = `
       <section class="tasks-surface" aria-label="Tasks">
-        <div class="tasks-header-region"></div>
         <div class="tasks-master-detail">
           <aside class="tasks-list-pane" aria-label="Tasks list">
             <caffold-task-navigator class="tasks-list-region"></caffold-task-navigator>
@@ -66,7 +64,6 @@ class CaffoldTasksPage extends HTMLElement {
       <caffold-task-image-preview-dialog></caffold-task-image-preview-dialog>
     `;
 
-    this.addEventListener("click", (event) => this.handleClick(event));
     this.addEventListener("pointerdown", (event) => {
       const separator =
         event.target instanceof Element
@@ -91,6 +88,10 @@ class CaffoldTasksPage extends HTMLElement {
       } else if (event.detail?.type === "new-task") {
         this.requestNewTaskRoute();
       }
+    });
+    this.addEventListener("caffold:task-navigator-list-state", (event) => {
+      event.stopPropagation();
+      this.syncTaskListState(event.detail);
     });
     this.addEventListener("caffold:task-navigator-transport-change", (event) => {
       event.stopPropagation();
@@ -127,6 +128,7 @@ class CaffoldTasksPage extends HTMLElement {
       event.stopPropagation();
       this.imagePreviewDialog()?.openImage(event.detail);
     });
+    this.syncTaskListState(this.taskNavigator()?.listState());
     this.render();
   }
 
@@ -136,7 +138,6 @@ class CaffoldTasksPage extends HTMLElement {
     }
     this.globalListenersAttached = true;
     window.addEventListener("resize", this.boundResize);
-    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
   detachGlobalListeners() {
@@ -145,16 +146,13 @@ class CaffoldTasksPage extends HTMLElement {
     }
     this.globalListenersAttached = false;
     window.removeEventListener("resize", this.boundResize);
-    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
   prepareRoute(route, options = {}) {
     this.ensureRendered();
-    const nextView = route?.new
-      ? "new"
-      : route?.threadId
-        ? "detail"
-        : "list";
+    const target = routeTarget(route);
+    const nextView =
+      target === "new" ? "new" : target === "home" ? "home" : "detail";
     const nextThreadId = `${route?.threadId ?? ""}`;
     if (nextView !== this.view || nextThreadId !== this.selectedThreadId) {
       this.imagePreviewDialog()?.dismiss();
@@ -185,18 +183,18 @@ class CaffoldTasksPage extends HTMLElement {
 
   async openRoute(route, options = {}) {
     const prepared = this.prepareRoute(route, options);
-    if (route?.new) {
+    const target = routeTarget(route);
+    if (target === "new") {
       this.taskNew()?.prepare({
         cwd: route.cwd ?? "",
         defaultCwdPath: options.defaultCwdPath ?? "",
-        home: false,
       });
-      this.taskNew()?.open({ home: false });
+      this.taskNew()?.open();
       void this.taskNavigator()?.activate();
       this.render();
       return null;
     }
-    if (route?.threadId) {
+    if (["detail", "review", "review-file"].includes(target)) {
       this.taskNew()?.deactivate();
       void this.taskNavigator()?.activate();
       const result = await this.taskDetail()?.open(route.threadId, {
@@ -210,9 +208,8 @@ class CaffoldTasksPage extends HTMLElement {
     }
     this.taskNew()?.prepare({
       defaultCwdPath: options.defaultCwdPath ?? "",
-      home: true,
     });
-    this.taskNew()?.open({ home: true });
+    this.taskNew()?.open();
     this.render();
     return await this.taskNavigator()?.activate({ force: true });
   }
@@ -262,21 +259,22 @@ class CaffoldTasksPage extends HTMLElement {
     );
   }
 
-  handleClick(event) {
-    const action =
-      event.target instanceof Element
-        ? event.target.closest(
-            ".tasks-header-region [data-task-action], caffold-task-detail-summary [data-task-action]",
-          )
-        : null;
-    if (!action || !this.contains(action)) {
+  syncTaskListState(state = {}) {
+    const count = Number(state.count ?? 0);
+    const nextState = state.loaded
+      ? count > 0
+        ? "available"
+        : "empty"
+      : state.error
+        ? "error"
+        : count > 0
+          ? "available"
+          : "loading";
+    if (this.taskListState === nextState) {
       return;
     }
-    if (action.dataset.taskAction === "open-list") {
-      this.requestRoute({ kind: "tasks" });
-    } else if (action.dataset.taskAction === "open-new") {
-      this.requestNewTaskRoute();
-    }
+    this.taskListState = nextState;
+    this.render();
   }
 
   requestRoute(route, options = {}) {
@@ -303,49 +301,13 @@ class CaffoldTasksPage extends HTMLElement {
   render() {
     this.ensureRendered();
     this.setAttribute("data-tasks-view", this.view);
+    this.setAttribute("data-task-list-state", this.taskListState);
     this.setAttribute("data-task-detail-view", this.taskDetailView);
-    const showNew = this.view === "new" || this.view === "list";
+    const showNew = this.view === "new" || this.view === "home";
     this.taskNew()?.toggleAttribute("hidden", !showNew);
     this.taskDetail()?.toggleAttribute("hidden", this.view !== "detail");
-    this.renderHeader();
     this.syncTaskListWidth();
     this.taskNavigator()?.setSelectedThreadId(this.selectedThreadId);
-  }
-
-  renderHeader() {
-    const region = this.querySelector(".tasks-header-region");
-    if (!region) {
-      return;
-    }
-    region.innerHTML = `
-      <header class="tasks-header">
-        <div class="tasks-brand">
-          <img
-            class="tasks-brand-mark"
-            src="/assets/icons/caffold-mark.svg"
-            alt=""
-          />
-          <h1>Caffold</h1>
-        </div>
-        <div class="tasks-header-actions">
-          ${
-            this.view === "detail"
-              ? `<button type="button" class="task-icon-button" data-task-action="open-list" title="Open tasks">
-                  ${renderInlineIcon("ListTodo", "Open tasks", "task-action-icon")}
-                </button>`
-              : ""
-          }
-          ${
-            this.view !== "new"
-              ? `<button type="button" class="task-primary-button" data-task-action="open-new">
-                  ${renderInlineIcon("Plus", "New task", "task-action-icon")}
-                  <span class="task-action-label">New Task</span>
-                </button>`
-              : ""
-          }
-        </div>
-      </header>
-    `;
   }
 
   startTaskListResize(event, separator) {

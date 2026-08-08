@@ -147,13 +147,6 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
     composer.modelLoading = true;
     composer.permissionLoading = true;
 
-    let headerRenders = 0;
-    const renderHeader = element.renderHeader.bind(element);
-    element.renderHeader = (...args) => {
-      headerRenders += 1;
-      return renderHeader(...args);
-    };
-
     element.remove();
     const detached = !element.globalListenersAttached;
     parent.insertBefore(element, nextSibling);
@@ -163,7 +156,6 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
     return {
       attached,
       detached,
-      headerRenders,
       sameNavigator: navigator === element.querySelector("caffold-task-navigator"),
       sameTaskNew: taskNew === element.querySelector("caffold-task-new"),
       sameDetail: detail === element.querySelector("caffold-task-detail"),
@@ -175,7 +167,6 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
   expect(lifecycle).toEqual({
     attached: true,
     detached: true,
-    headerRenders: 1,
     sameNavigator: true,
     sameTaskNew: true,
     sameDetail: true,

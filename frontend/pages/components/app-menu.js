@@ -28,7 +28,6 @@ class CaffoldAppMenu extends HTMLElement {
 
     const workspaceEvent = {
       "open-tasks": "caffold:open-tasks",
-      "new-task": "caffold:new-task",
       "open-settings": "caffold:open-settings",
       "open-about": "caffold:open-about",
     }[button.dataset.action];
@@ -73,10 +72,6 @@ class CaffoldAppMenu extends HTMLElement {
         <button type="button" role="menuitem" data-action="open-tasks">
           ${renderInlineIcon("ListTodo", "", "app-menu-item-icon")}
           <span>Tasks</span>
-        </button>
-        <button type="button" role="menuitem" data-action="new-task">
-          ${renderInlineIcon("Plus", "", "app-menu-item-icon")}
-          <span>New Task</span>
         </button>
         <button type="button" role="menuitem" data-action="open-settings">
           ${renderInlineIcon("Settings", "", "app-menu-item-icon")}

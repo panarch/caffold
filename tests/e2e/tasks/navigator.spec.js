@@ -739,9 +739,48 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
   const detailPane = tasksPage.locator(".tasks-detail-pane");
   const resizer = tasksPage.locator(".tasks-master-resizer");
   const rows = tasksPage.locator(".task-row");
+  const managedHeader = tasksPage.locator(
+    '.task-list-section[data-task-section="managed"] .task-list-section-header',
+  );
+  const archivedHeader = tasksPage.locator(
+    '.task-list-section[data-task-section="archived"] .task-list-section-header',
+  );
+  const newTaskButton = managedHeader.getByRole("button", {
+    name: "New Task",
+  });
 
   await expect(tasksPage.locator(".task-repository-group")).toHaveCount(2);
   await expect(rows).toHaveCount(4);
+  await expect(newTaskButton).toBeVisible();
+  await expect(managedHeader.locator(":scope > span")).toHaveCount(0);
+  await expect(archivedHeader.locator(":scope > span")).toHaveText("0");
+  const headerActionAlignment = await tasksPage.evaluate(() => {
+    const button = document.querySelector(".task-list-new-task");
+    const header = button.closest(".task-list-section-header");
+    const headerBounds = header.getBoundingClientRect();
+    const buttonBounds = button.getBoundingClientRect();
+    const buttonPaint = getComputedStyle(button, "::before");
+    const icon = button.querySelector(".task-action-icon");
+    const iconBounds = icon.getBoundingClientRect();
+    const iconSize = Number.parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue(
+        "--interface-icon-size",
+      ),
+    ) * Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+    const topInset =
+      buttonBounds.top + Number.parseFloat(buttonPaint.top) - headerBounds.top;
+    const rightInset =
+      headerBounds.right -
+      (buttonBounds.right - Number.parseFloat(buttonPaint.right));
+    return {
+      edgeInsetDelta: Math.abs(topInset - rightInset),
+      iconWidthDelta: Math.abs(iconBounds.width - iconSize),
+      iconHeightDelta: Math.abs(iconBounds.height - iconSize),
+    };
+  });
+  expect(headerActionAlignment.edgeInsetDelta).toBeLessThanOrEqual(1);
+  expect(headerActionAlignment.iconWidthDelta).toBeLessThanOrEqual(0.1);
+  expect(headerActionAlignment.iconHeightDelta).toBeLessThanOrEqual(0.1);
   await expect(rows.nth(0)).toContainText("Feature worktree task");
   await expect(rows.nth(1)).toContainText("Main root task");
   await expect(rows.nth(2)).toContainText("Main core task");
@@ -905,6 +944,9 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     expect(Math.round(initialLayout.listWidth)).toBe(380);
     expect(initialLayout.separatorCenterOffsetFromList).toBe(0);
     expect(Math.round(initialLayout.separatorWidth)).toBe(6);
+    const homeHeaderHeight = await managedHeader.evaluate(
+      (element) => element.getBoundingClientRect().height,
+    );
     await stabilizeDynamicText(page);
     await captureReviewScreenshot(page, testInfo, "tasks-master-detail-home-composer");
 
@@ -1022,14 +1064,25 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     await expect(page).toHaveURL("/tasks/thread_main_root");
     await expect(detailPane).toContainText("Main root task detail response");
     await expect(detailPane).not.toContainText("Main core task detail response");
+    await expect(
+      tasksPage.locator(
+        'caffold-task-detail-summary [data-task-action="open-new"]',
+      ),
+    ).toHaveCount(0);
+    const detailHeaderHeight = await managedHeader.evaluate(
+      (element) => element.getBoundingClientRect().height,
+    );
+    expect(detailHeaderHeight).toBeCloseTo(homeHeaderHeight, 1);
 
-    await tasksPage
-      .locator('caffold-task-detail-summary [data-task-action="open-new"]')
-      .click();
+    await newTaskButton.click();
     await expect(page).toHaveURL("/tasks/new?cwd=src");
     await expect(listPane).toBeVisible();
     await expect(detailPane.locator(".task-new-form")).toBeVisible();
     await expect(resizer).toHaveAttribute("aria-valuenow", "296");
+    const newTaskHeaderHeight = await managedHeader.evaluate(
+      (element) => element.getBoundingClientRect().height,
+    );
+    expect(newTaskHeaderHeight).toBeCloseTo(homeHeaderHeight, 1);
     await captureReviewScreenshot(page, testInfo, "tasks-master-detail-new");
   } else {
     await expect(listPane).toBeVisible();
@@ -1383,11 +1436,7 @@ test("groups Tasks by repository without worktree accordions", async ({ page }, 
   await page.goto("/tasks");
   const tasksPage = page.locator("caffold-tasks-page");
   const groups = tasksPage.locator(".task-repository-group");
-  await expect(tasksPage.locator(".tasks-brand h1")).toHaveText("Caffold");
-  await expect(tasksPage.locator(".tasks-brand-mark")).toHaveAttribute(
-    "src",
-    "/assets/icons/caffold-mark.svg",
-  );
+  await expect(tasksPage).toHaveAttribute("data-tasks-view", "home");
   await expect(
     page.locator(
       'caffold-task-workspace .task-workspace-navigation [data-workspace-mode="settings"] svg',
@@ -1567,15 +1616,8 @@ test("groups Tasks by repository without worktree accordions", async ({ page }, 
   );
   expect(secondGroupGap).toBeCloseTo(treeLayout.rootFontSize * 0.75, 1);
   if (testInfo.project.name === "phone") {
-    const newTaskButton = tasksPage.locator(
-      '.tasks-header [data-task-action="open-new"]',
-    );
-    await expect(newTaskButton).toContainText("New Task");
-    await expect
-      .poll(() =>
-        newTaskButton.evaluate((element) => element.getBoundingClientRect().width > 32),
-      )
-      .toBe(true);
+    await expect(tasksPage.locator(".tasks-list-pane")).toBeVisible();
+    await expect(tasksPage.locator(".tasks-detail-pane")).toBeHidden();
   }
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-all-repository-groups");

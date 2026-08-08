@@ -35,7 +35,8 @@ test("returns from Settings to the canonical Tasks home", async ({ page }) => {
 
   await expect(page).toHaveURL("/");
   const tasksPage = page.locator("caffold-tasks-page");
-  await expect(tasksPage.locator(".tasks-brand h1")).toHaveText("Caffold");
+  await expect(tasksPage).toHaveAttribute("data-tasks-view", "home");
+  await expect(tasksPage.locator(".task-new-form")).toBeVisible();
   await expect(page.locator(".files-surface")).toBeHidden();
 });
 

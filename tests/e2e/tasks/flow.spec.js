@@ -219,37 +219,17 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await page.goto("/");
   await expect(page).toHaveURL("/");
   const tasksPage = page.locator("caffold-tasks-page");
-  const tasksBrand = tasksPage.locator(".tasks-brand");
-  await expect(tasksBrand.locator(".tasks-brand-mark")).toHaveAttribute(
-    "src",
-    "/assets/icons/caffold-mark.svg",
-  );
-  await expect(tasksBrand.getByRole("heading", { name: "Caffold" })).toBeVisible();
+  await expect(tasksPage).toHaveAttribute("data-tasks-view", "home");
+  await expect(tasksPage).toHaveAttribute("data-task-list-state", "empty");
+  await expect(tasksPage.locator(".task-new-form")).toBeVisible();
+  await expect(tasksPage.locator(".tasks-header")).toHaveCount(0);
   await expect(page.locator("caffold-task-workspace")).not.toHaveAttribute(
     "data-workspace-close-visible",
     "",
   );
-  const homeBrandInset = await tasksBrand.evaluate((element) => {
-    const brand = element.getBoundingClientRect();
-    const header = element.closest(".tasks-header").getBoundingClientRect();
-    return brand.left - header.left;
-  });
-  expect(homeBrandInset).toBeLessThanOrEqual(16);
   await expect(page.locator(".files-surface")).toBeHidden();
   await expect(page.locator("caffold-app-menu")).toBeHidden();
-  await captureReviewScreenshot(page, testInfo, "tasks-home-brand");
-  const taskActionTextSize = await page.evaluate(() => {
-    const probe = document.createElement("span");
-    probe.style.cssText =
-      "position:fixed;font-size:var(--interface-meta-font-size)";
-    document.body.append(probe);
-    const value = getComputedStyle(probe).fontSize;
-    probe.remove();
-    return value;
-  });
-  await expect(
-    tasksPage.locator('.tasks-header [data-task-action="open-new"]'),
-  ).toHaveCSS("font-size", taskActionTextSize);
+  await captureReviewScreenshot(page, testInfo, "tasks-home-new-task-detail");
   await expect
     .poll(() => taskListQueries.at(-1))
     .toEqual({ cwd: null });
@@ -262,7 +242,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await expect
     .poll(() => taskListQueries.at(-1))
     .toEqual({ cwd: null });
-  await expect(tasksBrand.getByRole("heading", { name: "Caffold" })).toBeVisible();
+  await expect(tasksPage).toHaveAttribute("data-tasks-view", "home");
   await expect(tasksPage).toContainText("No Caffold tasks yet.");
 
   await page.goto("/tasks");
@@ -270,7 +250,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await expect
     .poll(() => taskListQueries.at(-1))
     .toEqual({ cwd: null });
-  await expect(tasksBrand.getByRole("heading", { name: "Caffold" })).toBeVisible();
+  await expect(tasksPage).toHaveAttribute("data-tasks-view", "home");
   await expect(tasksPage).toContainText("No Caffold tasks yet.");
 
   await page.goto("/tasks?cwd=.");
@@ -279,17 +259,11 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
     .poll(() => taskListQueries.at(-1))
     .toEqual({ cwd: null });
 
-  await tasksPage
-    .locator(".tasks-empty")
-    .getByRole("button", { name: "New Task", exact: true })
-    .click();
+  await page.goto("/tasks/new");
   await expect(page).toHaveURL("/tasks/new");
-  await page.locator("caffold-task-workspace .task-workspace-close").click();
+  await page.goBack();
   await expect(page).toHaveURL("/");
-  await tasksPage
-    .locator(".tasks-empty")
-    .getByRole("button", { name: "New Task", exact: true })
-    .click();
+  await page.goto("/tasks/new");
   await expect(page).toHaveURL("/tasks/new");
   await tasksPage.locator('textarea[name="prompt"]').fill("Say hello globally");
   await tasksPage.getByRole("button", { name: "Browse Files" }).click();
@@ -533,13 +507,11 @@ test("runs a minimal task from creation through follow-up", async ({ page }) => 
     .click();
 
   const tasksPage = page.locator("caffold-tasks-page");
-  await expect(tasksPage).toHaveAttribute("data-tasks-view", "list");
-  await tasksPage
-    .locator(".tasks-empty")
-    .getByRole("button", { name: "New Task", exact: true })
-    .click();
+  await expect(tasksPage).toHaveAttribute("data-tasks-view", "home");
+  await expect(tasksPage).toHaveAttribute("data-task-list-state", "empty");
 
   const composer = tasksPage.locator(".task-new-form");
+  await expect(composer).toBeVisible();
   await composer.locator(".task-model-button").click();
   await composer.locator(".task-model-popover [data-effort=\"xhigh\"]").click();
   const prompt = composer.locator('textarea[name="prompt"]');

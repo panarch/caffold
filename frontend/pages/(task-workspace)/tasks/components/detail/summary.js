@@ -316,13 +316,6 @@ class CaffoldTaskDetailSummary extends HTMLElement {
               aria-pressed="${this.snapshot.reviewView === "review" ? "true" : "false"}"
             ><span>Review</span></button>
           </div>
-          <button
-            type="button"
-            class="task-secondary-button task-summary-new-task"
-            data-task-action="open-new"
-            aria-label="New Task"
-            title="New Task in this workspace"
-          >${renderInlineIcon("Plus", "New task", "task-action-icon")}</button>
           ${this.renderReviewMenus(task)}
           ${
             task.activeTurn?.id

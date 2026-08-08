@@ -402,11 +402,9 @@ test("keeps build metadata out of normal layout and exposes it in About", async 
   });
   expect(normalLayout.mainBottom).toBe(normalLayout.shellBottom);
 
-  const tasksBrand = page.locator("caffold-tasks-page .tasks-brand");
-  await expect(tasksBrand).toBeVisible();
-  await expect(tasksBrand).toHaveCSS("padding-left", "0px");
-  await expect(tasksBrand).toHaveCSS("padding-right", "0px");
-  await expect(tasksBrand).not.toHaveAttribute("role", "button");
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect(tasksPage).toHaveAttribute("data-tasks-view", "home");
+  await expect(tasksPage.locator(".tasks-header")).toHaveCount(0);
   await page.goto("/settings/about");
 
   const about = page.locator("caffold-settings-about-page");

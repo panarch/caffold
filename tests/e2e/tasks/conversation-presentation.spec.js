@@ -513,7 +513,6 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     ).toBe(true);
   }
   const workspaceHeaderMetrics = await tasksPage.evaluate((element) => {
-    const appHeader = element.querySelector(".tasks-header");
     const close = document.querySelector(".task-workspace-close");
     const summary = element.querySelector(".task-detail-summary");
     const summaryBounds = summary.getBoundingClientRect();
@@ -526,9 +525,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     const closeBounds = close.getBoundingClientRect();
     const titleBounds = summary.querySelector("h2").getBoundingClientRect();
     return {
-      appHeaderVisible:
-        getComputedStyle(appHeader).display !== "none" &&
-        appHeader.getBoundingClientRect().height > 0,
+      appHeaderCount: element.querySelectorAll(".tasks-header").length,
       closeSize: closeBounds.width,
       closeTitleCenterDelta: Math.abs(
         closeBounds.top + closeBounds.height / 2 -
@@ -556,7 +553,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
       surfaceTop: Math.round(element.getBoundingClientRect().top),
     };
   });
-  expect(workspaceHeaderMetrics.appHeaderVisible).toBe(false);
+  expect(workspaceHeaderMetrics.appHeaderCount).toBe(0);
   expect(workspaceHeaderMetrics.summaryTop).toBe(workspaceHeaderMetrics.surfaceTop);
   expect(workspaceHeaderMetrics.overflow).toBe(false);
   if (testInfo.project.name !== "phone") {

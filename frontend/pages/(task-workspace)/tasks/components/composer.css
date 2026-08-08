@@ -505,6 +505,7 @@ caffold-task-composer {
   & .task-permission-popover {
     position-anchor: --task-permission-picker;
     position-area: block-end center;
+    justify-self: start;
     width: min(410px, calc(100vw - 2rem));
   }
 

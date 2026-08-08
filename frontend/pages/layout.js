@@ -6,6 +6,7 @@ import {
   routeDomain,
   routeEquals,
   routeSurface,
+  routeTarget,
   routeUrl,
 } from "../navigation-routes.js";
 import "./components/pathbar.js";
@@ -88,20 +89,7 @@ class CaffoldAppShell extends HTMLElement {
       });
     });
     this.addEventListener("caffold:open-tasks", () => {
-      this.navigateToRoute({
-        kind: "tasks",
-        new: false,
-        threadId: "",
-        cwd: "",
-      });
-    });
-    this.addEventListener("caffold:new-task", () => {
-      this.navigateToRoute({
-        kind: "tasks",
-        new: true,
-        threadId: "",
-        cwd: this.newTaskContextPath(),
-      });
+      this.navigateToRoute({ kind: "tasks" });
     });
     this.addEventListener("caffold:open-settings", (event) => {
       this.navigateToRoute({
@@ -282,7 +270,7 @@ class CaffoldAppShell extends HTMLElement {
       }
 
       this.navigateToRoute(
-        { kind: "tasks", new: false, threadId: "", cwd: "" },
+        { kind: "tasks" },
         { replace: true },
       );
     } catch (error) {
@@ -418,7 +406,10 @@ class CaffoldAppShell extends HTMLElement {
     this.filesPage.hidden = true;
     this.taskWorkspace.hidden = false;
     const defaultCwdPath = this.defaultTaskCwdPath();
-    this.pathbar.path = route.new ? route.cwd || defaultCwdPath : defaultCwdPath;
+    this.pathbar.path =
+      routeTarget(route) === "new"
+        ? route.cwd || defaultCwdPath
+        : defaultCwdPath;
     if (!this.isCurrentRoute(route)) {
       return;
     }
@@ -427,8 +418,12 @@ class CaffoldAppShell extends HTMLElement {
       preserveLoadedTask,
       defaultCwdPath,
     });
-    if (route.threadId && this.isCurrentRoute(route)) {
-      this.pathbar.path = this.taskWorkspace.selectedTaskContextPath() || defaultCwdPath;
+    if (
+      ["detail", "review", "review-file"].includes(routeTarget(route)) &&
+      this.isCurrentRoute(route)
+    ) {
+      this.pathbar.path =
+        this.taskWorkspace.selectedTaskContextPath() || defaultCwdPath;
     }
   }
 
@@ -615,12 +610,7 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   navigateToHomeEntrypoint() {
-    return this.navigateToRoute({
-      kind: "tasks",
-      new: false,
-      threadId: "",
-      cwd: "",
-    });
+    return this.navigateToRoute({ kind: "tasks" });
   }
 
   async loadDirectory(path, options = {}) {
@@ -869,16 +859,6 @@ class CaffoldAppShell extends HTMLElement {
         this.initialPath ||
         ".",
     );
-  }
-
-  newTaskContextPath() {
-    if (this.currentRoute?.kind === "tasks" && this.currentRoute.threadId) {
-      const taskPath = cleanPath(this.taskWorkspace?.selectedTaskContextPath?.());
-      if (taskPath) {
-        return taskPath;
-      }
-    }
-    return this.defaultTaskCwdPath();
   }
 
   preferredReviewContextPath() {

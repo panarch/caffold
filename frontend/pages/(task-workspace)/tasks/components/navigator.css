@@ -51,8 +51,17 @@ caffold-task-navigator {
 
   & .task-list-section:first-child .task-list-section-header {
     box-sizing: border-box;
-    min-height: var(--task-navigator-top-header-size, auto);
+    height: var(--task-navigator-top-header-size, auto);
+    padding-block: 0;
     padding-left: calc(0.75rem + var(--task-header-leading-space, 0rem));
+    padding-inline-end: calc(
+      (
+          var(
+              --task-navigator-top-header-size,
+              var(--interface-compact-visual-size)
+            ) - var(--interface-compact-visual-size)
+        ) / 2
+    );
   }
 
   & .task-list-section-header h2 {
@@ -66,6 +75,50 @@ caffold-task-navigator {
   & .task-list-section-header span {
     font-size: 0.75rem;
     font-variant-numeric: tabular-nums;
+  }
+
+  & .task-list-new-task {
+    position: relative;
+    isolation: isolate;
+    display: grid;
+    flex: 0 0 auto;
+    width: var(--interface-compact-hit-size);
+    height: var(--interface-compact-hit-size);
+    margin-block: calc(0rem - var(--interface-compact-hit-outset));
+    margin-inline-end: calc(0rem - var(--interface-compact-hit-outset));
+    padding: 0;
+    place-items: center;
+    border: 0;
+    background: transparent;
+    color: var(--control-fg);
+    cursor: pointer;
+  }
+
+  & .task-list-new-task::before {
+    position: absolute;
+    z-index: -1;
+    inset: var(--interface-compact-hit-outset);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    content: "";
+  }
+
+  & .task-list-new-task .task-action-icon {
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+    stroke-width: 1.9;
+  }
+
+  & .task-list-new-task:hover,
+  & .task-list-new-task:focus-visible {
+    outline: none;
+  }
+
+  & .task-list-new-task:hover::before,
+  & .task-list-new-task:focus-visible::before {
+    border-color: var(--border-strong);
+    background: var(--surface-muted);
   }
 
   & .task-section-message {
@@ -345,12 +398,6 @@ caffold-task-navigator {
   & .task-row .task-status-chip[data-status="failed"],
   & .task-row .task-status-chip[data-status="interrupted"] {
     background: var(--danger-chip-bg);
-  }
-
-  & .tasks-empty {
-    margin: 0 auto;
-    width: min(100%, 960px);
-    padding: 0.875rem;
   }
 
   & .task-list-availability {

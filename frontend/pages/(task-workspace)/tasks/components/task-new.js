@@ -55,7 +55,6 @@ class CaffoldTaskNew extends HTMLElement {
     this.stateReady = true;
     this.cwd = ".";
     this.defaultCwdPath = ".";
-    this.home = false;
     this.browsing = false;
     this.transportAvailable = true;
     this.error = null;
@@ -96,20 +95,18 @@ class CaffoldTaskNew extends HTMLElement {
     this.syncView();
   }
 
-  prepare({ cwd = "", defaultCwdPath = "", home = false } = {}) {
+  prepare({ cwd = "", defaultCwdPath = "" } = {}) {
     this.ensureState();
     this.cwd = cleanLogicalPath(cwd || defaultCwdPath || ".");
     this.defaultCwdPath = cleanLogicalPath(defaultCwdPath || ".");
-    this.home = Boolean(home);
     this.browsing = false;
     this.error = null;
     this.ensureRendered();
     this.syncView();
   }
 
-  open({ home = this.home } = {}) {
+  open() {
     this.ensureState();
-    this.home = Boolean(home);
     this.hidden = false;
     this.syncView();
     if (window.matchMedia(AUTO_FOCUS_PROMPT_MEDIA).matches) {
@@ -150,8 +147,6 @@ class CaffoldTaskNew extends HTMLElement {
     if (event.detail?.type === "browse-cwd") {
       this.browsing = true;
       this.syncView();
-    } else if (event.detail?.type === "cancel") {
-      this.dispatchRoute({ kind: "tasks" });
     }
   }
 
@@ -250,7 +245,6 @@ class CaffoldTaskNew extends HTMLElement {
       return;
     }
     workspace.hidden = this.browsing;
-    workspace.classList.toggle("is-home", this.home);
     browserSection.hidden = !this.browsing;
     browserSection.querySelector("header p").textContent =
       this.selectedContextPath();
@@ -300,7 +294,7 @@ class CaffoldTaskNew extends HTMLElement {
       placeholder: "Ask Codex to work from the current directory",
       ariaLabel: "New task prompt",
       submitLabel: "Start task",
-      cancel: !this.home,
+      cancel: false,
       disabled: !this.transportAvailable || Boolean(this.activeSubmissionId),
       requestError: this.error?.message ?? "",
     });

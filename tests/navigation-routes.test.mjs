@@ -191,7 +191,7 @@ test("derives deterministic parent routes", () => {
 
 test("exposes surface, domain, mode, and target metadata", () => {
   const cases = [
-    ["/", "task-workspace", null, "tasks", "list"],
+    ["/", "task-workspace", null, "tasks", "home"],
     ["/settings", "task-workspace", null, "settings", "list"],
     ["/settings/appearance", "task-workspace", null, "settings", "appearance"],
     ["/settings/codex", "task-workspace", null, "settings", "codex"],
