@@ -1,6 +1,11 @@
 import { expect } from "@playwright/test";
 
 export function headerActionGroupButton(page, group) {
+  if (group === "codex") {
+    return page.locator(
+      'caffold-header-actions button[data-action="open-codex-settings"]',
+    );
+  }
   return page.locator(`caffold-header-actions button[data-action-group="${group}"]`);
 }
 
@@ -138,7 +143,7 @@ export async function expectHeaderActionsFit(page) {
       'caffold-header-actions button[data-action-group="github"]',
     );
     const codex = document.querySelector(
-      'caffold-header-actions button[data-action-group="codex"]',
+      'caffold-header-actions button[data-action="open-codex-settings"]',
     );
     const badge = git?.querySelector(".header-action-badge");
 

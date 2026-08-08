@@ -1,0 +1,137 @@
+caffold-settings-codex-page {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+
+  & .settings-content-scroll {
+    height: 100%;
+    min-height: 0;
+    overflow: auto;
+    padding: 1.75rem 1.5rem 3rem;
+  }
+
+  & .settings-content-section {
+    display: grid;
+    width: min(100%, 48rem);
+    margin: 0 auto;
+  }
+
+  & .settings-content-section > header {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: var(--interface-space-7);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: var(--interface-space-6);
+  }
+
+  & .settings-content-section > header h2,
+  & .settings-content-section > header p {
+    margin: 0;
+  }
+
+  & .settings-content-section > header h2 {
+    font-size: 1rem;
+  }
+
+  & .settings-content-section > header p {
+    color: var(--muted);
+    font-size: 0.75rem;
+  }
+
+  & .settings-details {
+    display: grid;
+    margin: 0;
+  }
+
+  & .settings-details > div,
+  & .settings-usage-row {
+    display: grid;
+    grid-template-columns: minmax(8rem, 0.55fr) minmax(0, 1fr);
+    gap: var(--interface-space-7);
+    align-items: baseline;
+    min-width: 0;
+    border-bottom: 1px solid var(--border-subtle);
+    padding: var(--interface-space-6) 0;
+  }
+
+  & .settings-details dt,
+  & .settings-usage-row > span:first-child {
+    color: var(--muted);
+  }
+
+  & .settings-details dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  & .settings-details dd[data-state="available"] {
+    color: var(--success);
+  }
+
+  & .settings-details dd[data-state="unavailable"] {
+    color: var(--danger);
+  }
+
+  & .settings-usage {
+    display: grid;
+    margin-top: var(--interface-space-10);
+  }
+
+  & .settings-usage h3 {
+    margin: 0;
+    font-size: 0.86rem;
+  }
+
+  & .settings-usage-row {
+    grid-template-columns: minmax(8rem, 0.55fr) auto minmax(5rem, 1fr);
+  }
+
+  & .settings-usage-row strong {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  & .settings-usage-row time,
+  & .settings-usage-row > span:last-child {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  & .settings-status-message {
+    margin: var(--interface-space-8) 0 0;
+    color: var(--muted);
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 520px) {
+  caffold-settings-codex-page {
+    & .settings-content-scroll {
+      padding: 1.25rem var(--interface-space-5)
+        calc(3rem + var(--task-workspace-navigation-size) + env(safe-area-inset-bottom));
+    }
+
+    & .settings-content-section > header {
+      align-items: start;
+      flex-direction: column;
+    }
+
+    & .settings-details > div {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--interface-space-2);
+    }
+
+    & .settings-usage-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    & .settings-usage-row time,
+    & .settings-usage-row > span:last-child {
+      grid-column: 1 / -1;
+    }
+  }
+}

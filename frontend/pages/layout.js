@@ -10,11 +10,9 @@ import {
 } from "../navigation-routes.js";
 import "./components/pathbar.js";
 import "./components/app-menu.js";
-import "./components/about-dialog.js";
 import "./components/header-actions.js";
 import "./files/page.js";
-import "./settings/page.js";
-import "./(codex)/layout.js";
+import "./(task-workspace)/layout.js";
 import "./(review-workspace)/(git)/layout.js";
 import "./(review-workspace)/(github)/layout.js";
 import "./(review-workspace)/layout.js";
@@ -39,12 +37,10 @@ class CaffoldAppShell extends HTMLElement {
     this.filesSurface = this.querySelector(".files-surface");
     this.filesPage = this.querySelector("caffold-files-page");
     this.filesPage.ensureRendered();
-    this.settingsPage = this.querySelector("caffold-settings-page");
-    this.codexWorkspace = this.querySelector("caffold-codex-workspace");
-    this.codexWorkspace.ensureRendered();
+    this.taskWorkspace = this.querySelector("caffold-task-workspace");
+    this.taskWorkspace.ensureRendered();
     this.pathbar = this.querySelector("caffold-pathbar");
     this.headerActions = this.querySelector("caffold-header-actions");
-    this.aboutDialog = this.querySelector("caffold-about-dialog");
     this.reviewWorkspace = this.querySelector("caffold-review-workspace");
     this.reviewWorkspace.ensureRendered();
     this.gitLayout = this.reviewWorkspace.querySelector("caffold-git-review-layout");
@@ -107,32 +103,37 @@ class CaffoldAppShell extends HTMLElement {
         cwd: this.newTaskContextPath(),
       });
     });
-    this.addEventListener("caffold:open-settings", () => {
-      if (this.currentRoute?.kind !== "settings") {
-        this.settingsReturnRoute = this.currentRoute;
-      }
-      this.navigateToRoute({ kind: "settings" });
+    this.addEventListener("caffold:open-settings", (event) => {
+      this.navigateToRoute({
+        kind: "settings",
+        section: event.detail?.section ?? "appearance",
+      });
     });
     this.addEventListener("caffold:open-about", () => {
-      this.aboutDialog.open();
+      this.navigateToRoute({ kind: "settings", section: "about" });
     });
-    this.addEventListener("caffold:close-settings", () => {
-      const returnRoute = this.settingsReturnRoute;
-      this.settingsReturnRoute = null;
-      if (returnRoute) {
-        this.navigateToRoute(returnRoute);
-        return;
-      }
-
-      this.navigateToHomeEntrypoint();
+    this.addEventListener("caffold:open-codex-settings", () => {
+      this.navigateToRoute({ kind: "settings", section: "codex" });
     });
     this.addEventListener("caffold:request-tasks-route", (event) => {
       this.navigateToRoute(event.detail.route, {
         replace: Boolean(event.detail?.replace),
       });
     });
-    this.addEventListener("caffold:close-codex-workspace", () => {
-      this.navigateToCodexParent() || (this.codexWorkspace.hidden = true);
+    this.addEventListener("caffold:request-settings-route", (event) => {
+      this.navigateToRoute(event.detail.route);
+    });
+    this.addEventListener("caffold:request-workspace-route", (event) => {
+      this.navigateToRoute(event.detail.route);
+    });
+    this.addEventListener("caffold:codex-status-change", (event) => {
+      this.taskWorkspace.setCodexStatus(event.detail?.status ?? null);
+    });
+    this.addEventListener("caffold:refresh-codex-status", () => {
+      void this.headerActions.loadCodexStatus();
+    });
+    this.addEventListener("caffold:close-task-workspace", () => {
+      this.navigateToCodexParent() || (this.taskWorkspace.hidden = true);
     });
     this.addEventListener("caffold:close-review-workspace", () => {
       this.navigateToReviewParent({ closeWorkspace: true }) || this.closeReviewWorkspace();
@@ -202,11 +203,9 @@ class CaffoldAppShell extends HTMLElement {
             <caffold-files-page></caffold-files-page>
           </div>
         </section>
-        <caffold-settings-page hidden></caffold-settings-page>
-        <caffold-codex-workspace hidden></caffold-codex-workspace>
+        <caffold-task-workspace hidden></caffold-task-workspace>
         <caffold-review-workspace hidden></caffold-review-workspace>
       </main>
-      <caffold-about-dialog></caffold-about-dialog>
       <footer class="app-build-alert" role="status" aria-live="polite" hidden>
         <span data-build-alert-message></span>
         <button type="button" data-action="reload-build">Reload</button>
@@ -295,7 +294,7 @@ class CaffoldAppShell extends HTMLElement {
   updateBuildStatus(health) {
     const alert = this.querySelector(".app-build-alert");
     const message = alert?.querySelector("[data-build-alert-message]");
-    this.aboutDialog?.setBuildStatus(health);
+    this.taskWorkspace?.setBuildStatus(health);
     if (!alert || !message) {
       return;
     }
@@ -361,10 +360,12 @@ class CaffoldAppShell extends HTMLElement {
       const surface = routeSurface(route);
       if (surface === "files") {
         await this.applyFilesRoute(route);
-      } else if (surface === "tasks") {
-        await this.applyTasksRoute(route);
-      } else if (surface === "settings") {
-        this.settingsPage.prepareRoute();
+      } else if (surface === "task-workspace") {
+        if (route.kind === "settings") {
+          await this.applySettingsRoute(route);
+        } else {
+          await this.applyTasksRoute(route);
+        }
       } else if (domain === "git") {
         await this.applyGitRoute(route);
       } else if (domain === "github") {
@@ -388,7 +389,7 @@ class CaffoldAppShell extends HTMLElement {
 
   async applyFilesRoute(route) {
     this.clearTaskReviewReturnRoute();
-    this.codexWorkspace.hidden = true;
+    this.taskWorkspace.hidden = true;
     this.filesPage.hidden = false;
     this.closeReviewWorkspace();
     this.reviewWorkspace.prepareForFileBrowserOpen();
@@ -412,24 +413,32 @@ class CaffoldAppShell extends HTMLElement {
     this.closeReviewWorkspace();
     this.reviewWorkspace.prepareForFileBrowserOpen();
     this.filesPage.hidden = true;
-    this.codexWorkspace.hidden = false;
+    this.taskWorkspace.hidden = false;
     const defaultCwdPath = this.defaultTaskCwdPath();
     this.pathbar.path = route.new ? route.cwd || defaultCwdPath : defaultCwdPath;
     if (!this.isCurrentRoute(route)) {
       return;
     }
     const preserveLoadedTask = this.shouldPreserveLoadedTask(route);
-    await this.codexWorkspace.openRoute(route, {
+    await this.taskWorkspace.openRoute(route, {
       preserveLoadedTask,
       defaultCwdPath,
     });
     if (route.threadId && this.isCurrentRoute(route)) {
-      this.pathbar.path = this.codexWorkspace.selectedTaskContextPath() || defaultCwdPath;
+      this.pathbar.path = this.taskWorkspace.selectedTaskContextPath() || defaultCwdPath;
     }
   }
 
+  async applySettingsRoute(route) {
+    this.closeReviewWorkspace();
+    this.reviewWorkspace.prepareForFileBrowserOpen();
+    this.filesPage.hidden = true;
+    this.taskWorkspace.hidden = false;
+    await this.taskWorkspace.openRoute(route);
+  }
+
   async applyGitRoute(route) {
-    this.codexWorkspace.hidden = true;
+    this.taskWorkspace.hidden = true;
     this.filesPage.hidden = false;
     if (!(await this.ensureReviewContext(route.cwd))) {
       return;
@@ -450,7 +459,7 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   async applyGithubRoute(route, options = {}) {
-    this.codexWorkspace.hidden = true;
+    this.taskWorkspace.hidden = true;
     this.filesPage.hidden = false;
     if (!(await this.ensureReviewContext(route.cwd))) {
       throw new Error(`No Git repository found for ${route.cwd || "this workspace"}.`);
@@ -826,7 +835,7 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   routeWithResolvedContext(route) {
-    if (!route || routeSurface(route) === "tasks" || route.kind === "settings") {
+    if (!route || routeSurface(route) === "task-workspace") {
       return route;
     }
     if (cleanContextPath(route.cwd)) {
@@ -842,7 +851,7 @@ class CaffoldAppShell extends HTMLElement {
 
   preferredContextPath() {
     return cleanPath(
-      this.codexWorkspace?.selectedTaskContextPath?.() ||
+      this.taskWorkspace?.selectedTaskContextPath?.() ||
         this.filesPage?.currentPath ||
         this.filesPage?.loadStoredDirectoryPath?.() ||
         this.initialPath ||
@@ -861,7 +870,7 @@ class CaffoldAppShell extends HTMLElement {
 
   newTaskContextPath() {
     if (this.currentRoute?.kind === "tasks" && this.currentRoute.threadId) {
-      const taskPath = cleanPath(this.codexWorkspace?.selectedTaskContextPath?.());
+      const taskPath = cleanPath(this.taskWorkspace?.selectedTaskContextPath?.());
       if (taskPath) {
         return taskPath;
       }
@@ -871,7 +880,7 @@ class CaffoldAppShell extends HTMLElement {
 
   preferredReviewContextPath() {
     return cleanContextPath(
-      this.codexWorkspace?.selectedTaskContextPath?.() ||
+      this.taskWorkspace?.selectedTaskContextPath?.() ||
         this.gitRepository?.rootPath ||
         this.filesPage?.currentPath ||
         this.initialPath ||
@@ -885,32 +894,24 @@ class CaffoldAppShell extends HTMLElement {
     delete this.dataset.routePending;
     this.filesSurface.hidden = surface !== "files";
     this.pathbar.hidden = surface !== "files";
-    this.settingsPage.hidden = surface !== "settings";
 
     if (surface === "review") {
       this.reviewWorkspace?.prepareRoute(route);
       return;
     }
 
-    if (surface === "tasks") {
+    if (surface === "task-workspace") {
       this.closeReviewWorkspace();
       this.filesPage.hidden = true;
-      this.codexWorkspace.hidden = false;
-      this.codexWorkspace.prepareRoute(route, {
+      this.taskWorkspace.hidden = false;
+      this.taskWorkspace.prepareRoute(route, {
         preserveLoadedTask: this.canPreserveLoadedTask(route),
       });
       return;
     }
 
-    if (surface === "settings") {
-      this.closeReviewWorkspace();
-      this.codexWorkspace.hidden = true;
-      this.filesPage.hidden = true;
-      return;
-    }
-
     this.closeReviewWorkspace();
-    this.codexWorkspace.hidden = true;
+    this.taskWorkspace.hidden = true;
     this.filesPage.hidden = false;
   }
 }

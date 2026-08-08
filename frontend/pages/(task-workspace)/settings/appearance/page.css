@@ -1,6 +1,6 @@
-caffold-settings-page {
+caffold-settings-appearance-page {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -8,55 +8,6 @@ caffold-settings-page {
   background: var(--surface);
   font-size: var(--interface-font-size);
   line-height: var(--interface-line-height);
-
-  & .settings-header {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-    gap: 0.625rem;
-    min-height: max(3.375rem, var(--interface-target-floor));
-    border-bottom: 1px solid var(--border);
-    padding: 0.4375rem 0.875rem;
-  }
-
-  & .settings-header > div {
-    display: grid;
-    gap: 0.0625rem;
-    min-width: 0;
-  }
-
-  & .settings-header h1 {
-    margin: 0;
-    font-size: 0.95rem;
-    line-height: 1.15;
-  }
-
-  & .settings-header span {
-    color: var(--muted);
-    font-size: 0.72rem;
-  }
-
-  & .settings-close-button {
-    position: relative;
-    display: grid;
-    width: var(--interface-control-hit-size);
-    height: var(--interface-control-hit-size);
-    place-items: center;
-    border: 0;
-    background: transparent;
-    color: var(--control-fg);
-    cursor: pointer;
-    padding: 0;
-  }
-
-  & .settings-close-button::before {
-    position: absolute;
-    inset: var(--interface-control-hit-outset);
-    border: 1px solid var(--border);
-    border-radius: 0.25rem;
-    background: var(--surface);
-    content: "";
-  }
 
   & .settings-reset-all:hover,
   & .settings-reset-all:focus-visible,
@@ -71,24 +22,6 @@ caffold-settings-page {
   & .settings-range-control button:focus-visible::before {
     border-color: var(--border-strong);
     background: var(--control-hover-bg);
-  }
-
-  & .settings-close-button:hover,
-  & .settings-close-button:focus-visible {
-    outline: none;
-  }
-
-  & .settings-close-button:hover::before,
-  & .settings-close-button:focus-visible::before {
-    border-color: var(--border-strong);
-    background: var(--control-hover-bg);
-  }
-
-  & .settings-close-icon {
-    position: relative;
-    display: block;
-    width: var(--interface-icon-size);
-    height: var(--interface-icon-size);
   }
 
   & .settings-scroll {
@@ -442,8 +375,19 @@ caffold-settings-page {
   }
 }
 
+@media (max-width: 899px) {
+  caffold-settings-appearance-page {
+    & .settings-scroll {
+      padding-bottom: calc(
+        3rem + var(--task-workspace-navigation-size) +
+          env(safe-area-inset-bottom)
+      );
+    }
+  }
+}
+
 @media (max-width: 700px) {
-  caffold-settings-page {
+  caffold-settings-appearance-page {
     & .settings-scroll {
       padding: 1.25rem 1rem 2.25rem;
     }
@@ -456,11 +400,7 @@ caffold-settings-page {
 }
 
 @media (max-width: 520px) {
-  caffold-settings-page {
-    & .settings-header {
-      padding-inline: 0.625rem;
-    }
-
+  caffold-settings-appearance-page {
     & .settings-scroll {
       padding-inline: 0.625rem;
     }

@@ -20,7 +20,7 @@ test("appearance settings assets stay in the application shell", () => {
   assert.match(readFrontend("app.js"), /import "\.\/settings\.js";/);
   assert.match(
     readFrontend("styles.css"),
-    /@import "\.\/pages\/settings\/page\.css";/,
+    /@import "\.\/pages\/\(task-workspace\)\/settings\/appearance\/page\.css";/,
   );
 
   const serviceWorker = readFrontend("service-worker.js");
@@ -28,8 +28,14 @@ test("appearance settings assets stay in the application shell", () => {
   assert.match(serviceWorker, /"\/assets\/settings\.js"/);
   assert.match(serviceWorker, /"\/assets\/fonts\/D2Coding-Regular\.woff2"/);
   assert.match(serviceWorker, /"\/assets\/fonts\/D2Coding-Bold\.woff2"/);
-  assert.match(serviceWorker, /"\/assets\/pages\/settings\/page\.js"/);
-  assert.match(serviceWorker, /"\/assets\/pages\/settings\/page\.css"/);
+  assert.match(
+    serviceWorker,
+    /"\/assets\/pages\/\(task-workspace\)\/settings\/appearance\/page\.js"/,
+  );
+  assert.match(
+    serviceWorker,
+    /"\/assets\/pages\/\(task-workspace\)\/settings\/appearance\/page\.css"/,
+  );
 });
 
 test("normalizes v3 values, malformed input, ranges, and steps", async () => {

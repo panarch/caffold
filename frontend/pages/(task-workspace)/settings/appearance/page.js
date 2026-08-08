@@ -1,4 +1,4 @@
-import { renderInlineIcon, warmIcons } from "../../components/icons.js";
+import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import {
   APPEARANCE_SETTINGS,
   DEFAULT_SETTINGS,
@@ -8,7 +8,7 @@ import {
   resetAppearanceSettings,
   setAppearanceSetting,
   setTypefacePreset,
-} from "../../settings.js";
+} from "../../../../settings.js";
 
 const SETTING_DESCRIPTIONS = Object.freeze({
   interfaceScalePercent:
@@ -18,7 +18,7 @@ const SETTING_DESCRIPTIONS = Object.freeze({
   codeTextPx: "Adjusts source, diff, command output, and embedded code text.",
 });
 
-class CaffoldSettingsPage extends HTMLElement {
+class CaffoldSettingsAppearancePage extends HTMLElement {
   connectedCallback() {
     if (this.initialized) {
       return;
@@ -71,16 +71,6 @@ class CaffoldSettingsPage extends HTMLElement {
       return;
     }
 
-    if (button.dataset.action === "close-settings") {
-      this.dispatchEvent(
-        new CustomEvent("caffold:close-settings", {
-          bubbles: true,
-          composed: true,
-        }),
-      );
-      return;
-    }
-
     if (button.dataset.action === "reset-setting") {
       resetAppearanceSetting(button.dataset.setting);
       return;
@@ -98,23 +88,6 @@ class CaffoldSettingsPage extends HTMLElement {
 
   render() {
     this.innerHTML = `
-      <header class="settings-header">
-        <button
-          class="settings-close-button"
-          type="button"
-          data-action="close-settings"
-          title="Close settings"
-          aria-label="Close settings"
-        >
-          <span data-settings-icon="close">
-            ${renderInlineIcon("X", "Close settings", "settings-close-icon")}
-          </span>
-        </button>
-        <div>
-          <h1>Settings</h1>
-          <span>Local to this browser</span>
-        </div>
-      </header>
       <div class="settings-scroll">
         <section class="settings-section" aria-labelledby="settings-appearance-title">
           <header>
@@ -232,15 +205,6 @@ class CaffoldSettingsPage extends HTMLElement {
   }
 
   refreshIcons() {
-    const closeIcon = this.querySelector('[data-settings-icon="close"]');
-    if (closeIcon) {
-      closeIcon.innerHTML = renderInlineIcon(
-        "X",
-        "Close settings",
-        "settings-close-icon",
-      );
-    }
-
     const previewIcon = this.querySelector('[data-settings-icon="preview"]');
     if (previewIcon) {
       previewIcon.innerHTML = renderInlineIcon(
@@ -330,4 +294,7 @@ function toKebabCase(value) {
   return value.replace(/[A-Z]/g, (character) => `-${character.toLowerCase()}`);
 }
 
-customElements.define("caffold-settings-page", CaffoldSettingsPage);
+customElements.define(
+  "caffold-settings-appearance-page",
+  CaffoldSettingsAppearancePage,
+);

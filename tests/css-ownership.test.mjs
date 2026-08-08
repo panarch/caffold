@@ -34,40 +34,40 @@ const ownership = new Map([
     "components/review-panel-resizer.css",
     ["caffold-review-panel-resizer"],
   ],
-  ["pages/(codex)/layout.css", ["caffold-codex-workspace"]],
+  ["pages/(task-workspace)/layout.css", ["caffold-task-workspace"]],
   [
-    "pages/(codex)/tasks/components/composer.css",
+    "pages/(task-workspace)/tasks/components/composer.css",
     ["caffold-task-composer"],
   ],
   [
-    "pages/(codex)/tasks/components/detail/conversation.css",
+    "pages/(task-workspace)/tasks/components/detail/conversation.css",
     ["caffold-task-conversation"],
   ],
   [
-    "pages/(codex)/tasks/components/detail/conversation/command-dialog.css",
+    "pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css",
     ["caffold-task-command-dialog"],
   ],
   [
-    "pages/(codex)/tasks/components/image-preview-dialog.css",
+    "pages/(task-workspace)/tasks/components/image-preview-dialog.css",
     ["caffold-task-image-preview-dialog"],
   ],
-  ["pages/(codex)/tasks/components/detail.css", ["caffold-task-detail"]],
+  ["pages/(task-workspace)/tasks/components/detail.css", ["caffold-task-detail"]],
   [
-    "pages/(codex)/tasks/components/detail/summary.css",
+    "pages/(task-workspace)/tasks/components/detail/summary.css",
     ["caffold-task-detail-summary"],
   ],
   [
-    "pages/(codex)/tasks/components/navigator.css",
+    "pages/(task-workspace)/tasks/components/navigator.css",
     ["caffold-task-navigator"],
   ],
   [
-    "pages/(codex)/tasks/components/detail/review.css",
+    "pages/(task-workspace)/tasks/components/detail/review.css",
     ["caffold-task-review"],
   ],
-  ["pages/(codex)/tasks/components/task-new.css", ["caffold-task-new"]],
-  ["pages/(codex)/tasks/components/task-status.css", ["caffold-tasks-page"]],
-  ["pages/(codex)/tasks/controls.css", ["caffold-tasks-page"]],
-  ["pages/(codex)/tasks/page.css", ["caffold-tasks-page"]],
+  ["pages/(task-workspace)/tasks/components/task-new.css", ["caffold-task-new"]],
+  ["pages/(task-workspace)/tasks/components/task-status.css", ["caffold-tasks-page"]],
+  ["pages/(task-workspace)/tasks/controls.css", ["caffold-tasks-page"]],
+  ["pages/(task-workspace)/tasks/page.css", ["caffold-tasks-page"]],
   [
     "pages/(review-workspace)/(git)/(log)/commit/components/changes-tree.css",
     ["caffold-commit-changes-tree"],
@@ -137,30 +137,42 @@ const ownership = new Map([
     ["caffold-github-review-layout"],
   ],
   ["pages/(review-workspace)/layout.css", ["caffold-review-workspace"]],
-  ["pages/components/about-dialog.css", ["caffold-about-dialog"]],
+  [
+    "pages/(task-workspace)/settings/layout.css",
+    ["caffold-settings-workspace"],
+  ],
+  [
+    "pages/(task-workspace)/settings/navigator.css",
+    ["caffold-settings-navigator"],
+  ],
+  [
+    "pages/(task-workspace)/settings/appearance/page.css",
+    ["caffold-settings-appearance-page"],
+  ],
+  [
+    "pages/(task-workspace)/settings/codex/page.css",
+    ["caffold-settings-codex-page"],
+  ],
+  [
+    "pages/(task-workspace)/settings/about/page.css",
+    ["caffold-settings-about-page"],
+  ],
   ["pages/components/app-menu.css", ["caffold-app-menu"]],
   ["pages/components/header-actions.css", ["caffold-header-actions"]],
-  [
-    "pages/components/header-actions/codex-status.css",
-    ["caffold-header-actions"],
-  ],
   ["pages/components/pathbar.css", ["caffold-pathbar"]],
   ["pages/files/page.css", ["caffold-files-page"]],
   ["pages/layout.css", ["caffold-app-shell"]],
-  ["pages/settings/page.css", ["caffold-settings-page"]],
 ]);
 const componentChildren = new Map([
   [
     "caffold-app-shell",
     [
       "caffold-app-menu",
-      "caffold-about-dialog",
       "caffold-header-actions",
       "caffold-pathbar",
       "caffold-files-page",
-      "caffold-codex-workspace",
+      "caffold-task-workspace",
       "caffold-review-workspace",
-      "caffold-settings-page",
     ],
   ],
   ["caffold-files-page", ["caffold-file-browser"]],
@@ -171,7 +183,19 @@ const componentChildren = new Map([
   ["caffold-file-navigator", ["caffold-file-list"]],
   ["caffold-file-viewer", ["caffold-code-viewer", "caffold-diff-viewer"]],
   ["caffold-review-file-viewer", ["caffold-code-viewer", "caffold-diff-viewer"]],
-  ["caffold-codex-workspace", ["caffold-tasks-page"]],
+  [
+    "caffold-task-workspace",
+    ["caffold-tasks-page", "caffold-settings-workspace"],
+  ],
+  [
+    "caffold-settings-workspace",
+    [
+      "caffold-settings-navigator",
+      "caffold-settings-appearance-page",
+      "caffold-settings-codex-page",
+      "caffold-settings-about-page",
+    ],
+  ],
   [
     "caffold-tasks-page",
     [

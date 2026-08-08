@@ -207,9 +207,13 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).not.toContain("caffold-fonts");
   expect(serviceWorker).toContain("/assets/build-info.js");
   expect(serviceWorker).toContain("/assets/pages/components/app-menu.js");
-  expect(serviceWorker).toContain("/assets/pages/components/about-dialog.css");
-  expect(serviceWorker).toContain("/assets/pages/components/about-dialog.js");
-  expect(serviceWorker).toContain("/assets/pages/settings/page.js");
+  expect(serviceWorker).not.toContain("/assets/pages/components/about-dialog.css");
+  expect(serviceWorker).not.toContain("/assets/pages/components/about-dialog.js");
+  expect(serviceWorker).toContain("/assets/pages/(task-workspace)/settings/layout.js");
+  expect(serviceWorker).toContain("/assets/pages/(task-workspace)/settings/navigator.js");
+  expect(serviceWorker).toContain("/assets/pages/(task-workspace)/settings/appearance/page.js");
+  expect(serviceWorker).toContain("/assets/pages/(task-workspace)/settings/codex/page.js");
+  expect(serviceWorker).toContain("/assets/pages/(task-workspace)/settings/about/page.js");
   expect(serviceWorker).toContain("/assets/pages/components/pathbar.js");
   expect(serviceWorker).not.toContain("project-switcher");
   expect(serviceWorker).toContain("/assets/pages/components/header-actions.js");
@@ -230,18 +234,18 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain("/assets/pages/files/page.js");
   expect(serviceWorker).not.toContain("/assets/pages/files/components/list.js");
   expect(serviceWorker).not.toContain("/assets/components/file-list.js");
-  expect(serviceWorker).toContain("/assets/pages/(codex)/layout.js");
-  expect(serviceWorker).toContain("/assets/pages/(codex)/layout.css");
-  expect(serviceWorker).toContain("/assets/pages/(codex)/tasks/page.js");
+  expect(serviceWorker).toContain("/assets/pages/(task-workspace)/layout.js");
+  expect(serviceWorker).toContain("/assets/pages/(task-workspace)/layout.css");
+  expect(serviceWorker).toContain("/assets/pages/(task-workspace)/tasks/page.js");
   expect(serviceWorker).toContain(
-    "/assets/pages/(codex)/tasks/components/detail/conversation/command-dialog.js",
+    "/assets/pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.js",
   );
   expect(serviceWorker).toContain(
-    "/assets/pages/(codex)/tasks/components/detail/conversation/command-dialog.css",
+    "/assets/pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css",
   );
-  expect(serviceWorker).toContain("/assets/pages/(codex)/tasks/page.css");
+  expect(serviceWorker).toContain("/assets/pages/(task-workspace)/tasks/page.css");
   expect(serviceWorker).toContain(
-    "/assets/pages/(codex)/tasks/components/detail/conversation/markdown.js",
+    "/assets/pages/(task-workspace)/tasks/components/detail/conversation/markdown.js",
   );
   expect(serviceWorker).not.toContain("/assets/pages/tasks/page.js");
   expect(serviceWorker).not.toContain("/assets/pages/tasks/page.css");
@@ -335,11 +339,14 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).not.toContain("/assets/components/github-markdown.js");
   expect(serviceWorker).not.toContain("/assets/components/app-shell.js");
   expect(serviceWorker).not.toContain("/assets/components/review-workspace.js");
-  expect(serviceWorker).toContain(
+  expect(serviceWorker).not.toContain(
     "/assets/pages/components/header-actions/codex-status.css",
   );
   expect(serviceWorker).toContain(
     "/assets/pages/components/header-actions/codex-status.js",
+  );
+  expect(serviceWorker).toContain(
+    "/assets/pages/components/header-actions/codex-status-model.js",
   );
   expect(serviceWorker).toContain(
     "/assets/pages/components/header-actions/git-status.js",
@@ -396,35 +403,19 @@ test("keeps build metadata out of normal layout and exposes it in About", async 
   expect(normalLayout.mainBottom).toBe(normalLayout.shellBottom);
 
   const tasksBrand = page.locator("caffold-tasks-page .tasks-brand");
-  const brandGeometry = await tasksBrand.evaluate((button) => {
-    const heading = button.querySelector("h1");
-    const headingText = document.createRange();
-    headingText.selectNodeContents(heading);
-    const bounds = button.getBoundingClientRect();
-    const style = getComputedStyle(button);
-    return {
-      buttonRight: bounds.right,
-      headingRight: headingText.getBoundingClientRect().right,
-      paddingLeft: Number.parseFloat(style.paddingLeft),
-      paddingRight: Number.parseFloat(style.paddingRight),
-    };
-  });
-  expect(brandGeometry.paddingLeft).toBeGreaterThanOrEqual(6);
-  expect(brandGeometry.paddingRight).toBeGreaterThanOrEqual(6);
-  expect(brandGeometry.paddingLeft).toBeLessThanOrEqual(12);
-  expect(brandGeometry.paddingRight).toBeLessThanOrEqual(12);
-  expect(brandGeometry.buttonRight - brandGeometry.headingRight).toBeLessThanOrEqual(12);
-  await tasksBrand.click();
+  await expect(tasksBrand).toBeVisible();
+  await expect(tasksBrand).toHaveCSS("padding-left", "0px");
+  await expect(tasksBrand).toHaveCSS("padding-right", "0px");
+  await expect(tasksBrand).not.toHaveAttribute("role", "button");
+  await page.goto("/settings/about");
 
-  const about = page.locator("caffold-about-dialog dialog");
+  const about = page.locator("caffold-settings-about-page");
   await expect(about).toBeVisible();
-  await expect(about.getByRole("heading", { name: "Caffold" })).toBeVisible();
-  await expect(about.locator('[data-about-value="version"]')).toHaveText(version);
-  await expect(about.locator('[data-about-value="ui-build"]')).toHaveText(buildId);
-  await expect(about.locator('[data-about-value="server-build"]')).toHaveText(
-    health.buildId,
-  );
-  await expect(about.locator("time[data-about-built]")).toHaveAttribute(
+  await expect(about.getByRole("heading", { name: "About Caffold" })).toBeVisible();
+  await expect(about.locator(".settings-details")).toContainText(version);
+  await expect(about.locator(".settings-details")).toContainText(buildId);
+  await expect(about.locator(".settings-details")).toContainText(health.buildId);
+  await expect(about.locator("time")).toHaveAttribute(
     "datetime",
     /\d{4}-\d{2}-\d{2}T/,
   );
@@ -438,11 +429,13 @@ test("keeps build metadata out of normal layout and exposes it in About", async 
     .poll(() => page.evaluate(() => navigator.clipboard.readText()))
     .toContain(`Server build: ${health.buildId}`);
 
-  await about.getByRole("button", { name: "Done" }).click();
-  await expect(about).toBeHidden();
+  await page
+    .locator('.task-workspace-navigation button[data-workspace-mode="tasks"]')
+    .click();
+  await expect(page).toHaveURL("/");
 });
 
-test("groups header review actions into Git, GitHub, and Codex popovers", async ({ page }, testInfo) => {
+test("groups Git and GitHub actions and routes Codex status to Settings", async ({ page }, testInfo) => {
   const repository = { rootPath: "src", branch: "main", dirty: true };
   let gitFileCount = 0;
   const githubStatus = {
@@ -610,33 +603,21 @@ test("groups header review actions into Git, GitHub, and Codex popovers", async 
   await expectHeaderPopoverFits(page, "github");
   await captureReviewScreenshot(page, testInfo, "header-actions-github-popover");
 
-  const codexPopover = await openHeaderActionGroup(page, "codex");
-  await expectHeaderGroupOpenVisualState(page, "codex");
-  await expect(codexPopover.locator(".header-actions-popover-header")).toContainText(
-    "Connected",
-  );
-  await expect(codexPopover.locator(".header-status-panel")).toContainText(
-    "user@example.com",
-  );
-  await expect(codexPopover.locator(".header-status-panel")).toContainText("pro");
-  await expect(codexPopover.locator(".header-status-panel")).toContainText(
-    "Remaining usage",
-  );
-  await expect(codexPopover.locator(".header-status-panel")).toContainText("5 hours");
-  await expect(codexPopover.locator(".header-status-panel")).toContainText("17%");
-  await expect(codexPopover.locator(".header-status-panel")).toContainText("1 week");
-  await expect(codexPopover.locator(".header-status-panel")).toContainText("69%");
-  await expect(codexPopover.locator(".header-status-panel")).toContainText("3 available");
-  await expect(codexPopover.locator('button[data-action="open-tasks"]')).toContainText(
-    "Tasks",
-  );
-  await expect(codexPopover.locator('button[data-action="open-all-tasks"]')).toHaveCount(0);
-  await expect(codexPopover.locator('button[data-action="new-task"]')).toContainText(
-    "New Task",
-  );
   await expectHeaderActionsFit(page);
-  await expectHeaderPopoverFits(page, "codex");
-  await captureReviewScreenshot(page, testInfo, "header-actions-codex-popover");
+  await headerActionGroupButton(page, "codex").click();
+  await expect(page).toHaveURL("/settings/codex");
+  const codexSettings = page.locator("caffold-settings-codex-page");
+  await expect(codexSettings).toBeVisible();
+  await expect(codexSettings).toContainText("Connected");
+  await expect(codexSettings).toContainText("user@example.com");
+  await expect(codexSettings).toContainText("pro");
+  await expect(codexSettings).toContainText("Remaining usage");
+  await expect(codexSettings).toContainText("5 hours");
+  await expect(codexSettings).toContainText("17%");
+  await expect(codexSettings).toContainText("1 week");
+  await expect(codexSettings).toContainText("69%");
+  await expect(codexSettings).toContainText("3 available");
+  await captureReviewScreenshot(page, testInfo, "settings-codex");
 });
 
 test("keeps header action slots stable while status checks resolve", async ({ page }) => {

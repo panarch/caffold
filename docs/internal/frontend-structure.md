@@ -31,68 +31,74 @@ caffold-app-shell
   app main route slot
     file browsing surface
       app header
-        scaffold-app-menu
-        scaffold-header-actions
-          scaffold-git-header-action
-          scaffold-github-header-action
-          scaffold-codex-header-action
-      scaffold-pathbar
-      scaffold-files-page
-        scaffold-file-browser
-          scaffold-file-list
-          scaffold-file-viewer
-    settings surface
-      scaffold-settings-page
-    codex workspace
-      scaffold-codex-workspace
-        scaffold-tasks-page
+        caffold-app-menu
+        caffold-header-actions
+          caffold-git-header-action
+          caffold-github-header-action
+          caffold-codex-header-action
+      caffold-pathbar
+      caffold-files-page
+        caffold-file-browser
+          caffold-file-list
+          caffold-file-viewer
+    task workspace
+      caffold-task-workspace
+        workspace navigation
+          Tasks
+          Settings
+        caffold-tasks-page
           caffold-task-navigator
           caffold-task-new
             caffold-task-composer
-            scaffold-file-browser
-              scaffold-file-list
-              scaffold-file-viewer
+            caffold-file-browser
+              caffold-file-list
+              caffold-file-viewer
           caffold-task-detail
             caffold-task-conversation
             caffold-task-composer
             caffold-task-review
-              scaffold-git-diff-changes-tree
-              scaffold-git-compare-tree
-              scaffold-file-navigator
-                scaffold-file-list
-              scaffold-review-file-viewer
-    scaffold-review-workspace
+              caffold-git-diff-changes-tree
+              caffold-git-compare-tree
+              caffold-file-navigator
+                caffold-file-list
+              caffold-review-file-viewer
+        caffold-settings-workspace
+          caffold-settings-navigator
+          caffold-settings-appearance-page
+          caffold-settings-codex-page
+          caffold-settings-about-page
+    caffold-review-workspace
       git
-        scaffold-git-review-layout
+        caffold-git-review-layout
           diff
-            scaffold-git-diff-page
-              scaffold-git-diff-browser
-                scaffold-git-diff-changes-tree
-                scaffold-review-file-viewer
+            caffold-git-diff-page
+              caffold-git-diff-browser
+                caffold-git-diff-changes-tree
+                caffold-review-file-viewer
           compare
-            scaffold-git-compare-page
-              scaffold-git-compare-browser
-                scaffold-git-compare-tree
-                scaffold-review-file-viewer
+            caffold-git-compare-page
+              caffold-git-compare-browser
+                caffold-git-compare-tree
+                caffold-review-file-viewer
           log
-            scaffold-git-log-layout
-              scaffold-git-log-list-page
-              scaffold-git-log-commit-page
-                scaffold-commit-changes-tree
-                scaffold-review-file-viewer
+            caffold-git-log-layout
+              caffold-git-log-list-page
+              caffold-git-log-commit-page
+                caffold-commit-changes-tree
+                caffold-review-file-viewer
       github
-        scaffold-github-review-layout
+        caffold-github-review-layout
           issues
-            scaffold-github-issues-layout
-              scaffold-github-issues-list-page
-              scaffold-github-issue-detail-page
+            caffold-github-issues-layout
+              caffold-github-issues-list-page
+              caffold-github-issue-detail-page
           pulls
-            scaffold-github-pulls-layout
-              scaffold-github-pulls-list-page
-              scaffold-github-pull-detail-page
-              scaffold-github-pull-files-page
-                scaffold-github-pull-files-tree
-                scaffold-review-file-viewer
+            caffold-github-pulls-layout
+              caffold-github-pulls-list-page
+              caffold-github-pull-detail-page
+              caffold-github-pull-files-page
+                caffold-github-pull-files-tree
+                caffold-review-file-viewer
 ```
 
 `frontend/pages/layout.js` is the app root layout and defines
@@ -101,9 +107,12 @@ parenthesized grouping rule because wrapping the root app shell would only
 repeat the root hierarchy.
 
 `settings.js` owns browser-local preferences and applies their CSS variables
-before the app shell renders. `settings/page` is a global app surface opened
-from the Tasks header or the Files-only `scaffold-app-menu`; it persists device-
-specific UI preferences in `localStorage` rather than the server database.
+before the app shell renders. `(task-workspace)/settings` is a routed
+master-detail surface reached from the task-workspace navigation, the
+Files-only `caffold-app-menu`, or the compact Codex status action. Its
+Appearance page persists device-specific UI preferences in `localStorage`
+rather than the server database. Codex and About Caffold are sibling Settings
+pages, not popovers or global dialogs.
 
 Appearance has three independent semantic axes:
 
@@ -148,7 +157,7 @@ focused control or lose pointer capture. User updates and resets publish one
 `caffold:settings-change` snapshot.
 
 `files/page` is the app root's route-level file browsing page. It renders
-`scaffold-file-browser` and delegates the file browser API that app-shell uses.
+`caffold-file-browser` and delegates the file browser API that app-shell uses.
 `components/file-navigator` owns reusable directory loading/cache, expanded
 tree state, selected-row presentation, list scroll, delayed loading feedback,
 and its optional live-update subscription. `components/file-browser` composes
@@ -160,17 +169,24 @@ internals. `watch.js` shares an SSE subscription with other consumers of the
 same filesystem scope; integrated Task Review disables the navigator's own
 watch and supplies one Review-owned root watch instead.
 
-`(codex)/layout` is the app root's default Codex workspace and `/` is its
-canonical Tasks home. It fills the app main route slot, so Tasks do not inherit
-the Files-only app header, pathbar, or pane shell. The Tasks page header owns
-the Caffold brand and primary Settings/New Task actions. It is separate
-from `(review-workspace)` because Codex is a work/control surface, not only a
-review surface. The layout delegates its route-level work to a stable-mounted
-Tasks page. `(codex)/tasks/page` is only the route and master-detail
-  coordinator. It owns the selected route/thread, responsive visibility, list
-  width, and the Conversation/Review outer layout. It does not fetch task
-data, subscribe to task streams, send Codex mutations, or render child
-internals.
+`(task-workspace)/layout` is the app root's default task workspace and `/` is
+its canonical Tasks home. It fills the app main route slot, so Tasks and
+Settings do not inherit the Files-only app header, pathbar, or pane shell. Its
+bottom navigation switches between two stable-mounted children: the Tasks page
+and the Settings workspace. The layout remembers the last route in each mode,
+preserves both DOM trees while the other mode is visible, and hides the bottom
+navigation on compact task-detail routes where conversation space is primary.
+It is separate from `(review-workspace)` because task control is not only a
+review surface.
+
+`(task-workspace)/tasks/page` is only the task route and master-detail
+coordinator. It owns the selected route/thread, responsive visibility, list
+width, and the Conversation/Review outer layout. It does not fetch task data,
+subscribe to task streams, send Codex mutations, or render child internals.
+`(task-workspace)/settings/layout` owns the Settings list/detail transition and
+keeps Appearance, Codex, and About pages mounted while selecting one with the
+route. On compact screens `/settings` is the list and a selected section is a
+detail with a back control; wide screens keep both panes visible.
 
 The Tasks runtime hierarchy deliberately separates state with different
 lifetimes:
@@ -255,13 +271,15 @@ execution semantics.
 The two flows should not be hidden behind one generic helper because GitHub
 availability/status refresh has different semantics from Git review state.
 
-`scaffold-header-actions` owns Files-header-only action status derivation. The app
+`caffold-header-actions` owns Files-header-only action status derivation. The app
 root supplies only the loaded repository context plus raw Git/GitHub status
 payloads, and the header actions component maps those into Git/GitHub button
 availability, labels, messages, and badges. Codex app-server status is
 header-local and is loaded directly by the header actions component, then
-passed to `scaffold-codex-header-action`. The app root should not fetch Codex
-status or assemble header display state.
+passed to `caffold-codex-header-action`. The compact action navigates to
+Settings/Codex; it does not own a details popover. The app root forwards the
+raw status snapshot to the stable Settings/Codex page but does not fetch Codex
+status or assemble its display state.
 
 `(review-workspace)` is a pathless review surface in the app main route slot. It owns
 the active review domain, shared review chrome, close/back behavior, panel
@@ -306,6 +324,8 @@ screen where a flow was first tested:
 ```text
 tests/e2e/
   app-shell.spec.js
+  settings.spec.js
+  task-workspace.spec.js
   files/
     navigation.spec.js
     live.spec.js
@@ -362,13 +382,13 @@ frontend/pages/
       git-status.js
       github-status.js
       codex-status.js
-      codex-status.css
+      codex-status-model.js
 
   files/
     page.js
     page.css
 
-  (codex)/
+  (task-workspace)/
     layout.js
     layout.css
     tasks/
@@ -400,6 +420,20 @@ frontend/pages/
             markdown.js
           review.js
           review.css
+    settings/
+      layout.js
+      layout.css
+      navigator.js
+      navigator.css
+      appearance/
+        page.js
+        page.css
+      codex/
+        page.js
+        page.css
+      about/
+        page.js
+        page.css
 
   (review-workspace)/
     layout.js
@@ -476,7 +510,7 @@ ownership boundary. For example, the Git log list belongs only to
 `(github)/(pulls)/files/page`. GitHub-only helpers shared by GitHub pages,
 such as the Markdown renderer, belong under `(github)/components`. The file
 browser is different: it is now a reusable surface used by `files/page` and
-future Codex workspace integrations, so it lives under `frontend/components`
+task-workspace integrations, so it lives under `frontend/components`
 with its list implementation in `frontend/components/file-browser/`.
 Layout-specific helper components follow the same rule. App chrome such as the
 pathbar and header actions belongs to `frontend/pages/layout`.

@@ -20,7 +20,22 @@ globalThis.window = {
 test("parses and serializes routes canonically", () => {
   const cases = [
     ["/", { kind: "tasks", new: false, threadId: "", cwd: "" }, "/"],
-    ["/settings", { kind: "settings" }, "/settings"],
+    ["/settings", { kind: "settings", section: "" }, "/settings"],
+    [
+      "/settings/appearance",
+      { kind: "settings", section: "appearance" },
+      "/settings/appearance",
+    ],
+    [
+      "/settings/codex",
+      { kind: "settings", section: "codex" },
+      "/settings/codex",
+    ],
+    [
+      "/settings/about",
+      { kind: "settings", section: "about" },
+      "/settings/about",
+    ],
     [
       "/tasks?cwd=Workspace%2Frust%2Fgluesql",
       { kind: "tasks", new: false, threadId: "", cwd: "" },
@@ -131,6 +146,9 @@ test("parses and serializes routes canonically", () => {
 test("derives deterministic parent routes", () => {
   const cases = [
     ["/settings", null],
+    ["/settings/appearance", "/settings"],
+    ["/settings/codex", "/settings"],
+    ["/settings/about", "/settings"],
     ["/", null],
     ["/tasks/new?cwd=src", "/"],
     ["/tasks/thread?cwd=src", "/"],
@@ -173,14 +191,17 @@ test("derives deterministic parent routes", () => {
 
 test("exposes surface, domain, mode, and target metadata", () => {
   const cases = [
-    ["/", "tasks", null, "tasks", "list"],
-    ["/settings", "settings", null, "settings", "page"],
-    ["/tasks/new", "tasks", null, "tasks", "new"],
-    ["/tasks/thread", "tasks", null, "tasks", "detail"],
-    ["/tasks/thread/review", "tasks", null, "tasks", "review"],
+    ["/", "task-workspace", null, "tasks", "list"],
+    ["/settings", "task-workspace", null, "settings", "list"],
+    ["/settings/appearance", "task-workspace", null, "settings", "appearance"],
+    ["/settings/codex", "task-workspace", null, "settings", "codex"],
+    ["/settings/about", "task-workspace", null, "settings", "about"],
+    ["/tasks/new", "task-workspace", null, "tasks", "new"],
+    ["/tasks/thread", "task-workspace", null, "tasks", "detail"],
+    ["/tasks/thread/review", "task-workspace", null, "tasks", "review"],
     [
       "/tasks/thread/review?file=src%2Flib.rs",
-      "tasks",
+      "task-workspace",
       null,
       "tasks",
       "review-file",

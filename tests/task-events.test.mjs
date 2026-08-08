@@ -6,7 +6,7 @@ import {
   dedupeCanonicalEvents,
   mergeEvents,
   optimisticUserMessageEvent,
-} from "../frontend/pages/(codex)/tasks/task-events.js";
+} from "../frontend/pages/(task-workspace)/tasks/task-events.js";
 
 function event(id, type, createdMs, payload = {}, overrides = {}) {
   return {

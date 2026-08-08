@@ -69,12 +69,6 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/components/app-menu.js" => {
             Some(js(include_str!("../frontend/pages/components/app-menu.js")))
         }
-        "pages/components/about-dialog.css" => Some(css(include_str!(
-            "../frontend/pages/components/about-dialog.css"
-        ))),
-        "pages/components/about-dialog.js" => Some(js(include_str!(
-            "../frontend/pages/components/about-dialog.js"
-        ))),
         "pages/components/pathbar.css" => Some(css(include_str!(
             "../frontend/pages/components/pathbar.css"
         ))),
@@ -87,11 +81,11 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/components/header-actions.js" => Some(js(include_str!(
             "../frontend/pages/components/header-actions.js"
         ))),
-        "pages/components/header-actions/codex-status.css" => Some(css(include_str!(
-            "../frontend/pages/components/header-actions/codex-status.css"
-        ))),
         "pages/components/header-actions/codex-status.js" => Some(js(include_str!(
             "../frontend/pages/components/header-actions/codex-status.js"
+        ))),
+        "pages/components/header-actions/codex-status-model.js" => Some(js(include_str!(
+            "../frontend/pages/components/header-actions/codex-status-model.js"
         ))),
         "pages/components/header-actions/git-status.js" => Some(js(include_str!(
             "../frontend/pages/components/header-actions/git-status.js"
@@ -136,111 +130,151 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "watch.js" => Some(js(include_str!("../frontend/watch.js"))),
         "pages/files/page.css" => Some(css(include_str!("../frontend/pages/files/page.css"))),
         "pages/files/page.js" => Some(js(include_str!("../frontend/pages/files/page.js"))),
-        "pages/settings/page.css" => Some(css(include_str!("../frontend/pages/settings/page.css"))),
-        "pages/settings/page.js" => Some(js(include_str!("../frontend/pages/settings/page.js"))),
-        "pages/(codex)/layout.css" => {
-            Some(css(include_str!("../frontend/pages/(codex)/layout.css")))
-        }
-        "pages/(codex)/layout.js" => Some(js(include_str!("../frontend/pages/(codex)/layout.js"))),
-        "pages/(codex)/tasks/page.css" => Some(css(include_str!(
-            "../frontend/pages/(codex)/tasks/page.css"
+        "pages/(task-workspace)/settings/appearance/page.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/settings/appearance/page.css"
         ))),
-        "pages/(codex)/tasks/controls.css" => Some(css(include_str!(
-            "../frontend/pages/(codex)/tasks/controls.css"
+        "pages/(task-workspace)/settings/appearance/page.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/settings/appearance/page.js"
         ))),
-        "pages/(codex)/tasks/page.js" => {
-            Some(js(include_str!("../frontend/pages/(codex)/tasks/page.js")))
-        }
-        "pages/(codex)/tasks/runtime-state.js" => Some(js(include_str!(
-            "../frontend/pages/(codex)/tasks/runtime-state.js"
+        "pages/(task-workspace)/settings/layout.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/settings/layout.css"
         ))),
-        "pages/(codex)/tasks/task-events.js" => Some(js(include_str!(
-            "../frontend/pages/(codex)/tasks/task-events.js"
+        "pages/(task-workspace)/settings/layout.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/settings/layout.js"
         ))),
-        "pages/(codex)/tasks/task-format.js" => Some(js(include_str!(
-            "../frontend/pages/(codex)/tasks/task-format.js"
+        "pages/(task-workspace)/settings/navigator.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/settings/navigator.css"
         ))),
-        "pages/(codex)/tasks/task-list-model.js" => Some(js(include_str!(
-            "../frontend/pages/(codex)/tasks/task-list-model.js"
+        "pages/(task-workspace)/settings/navigator.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/settings/navigator.js"
         ))),
-        "pages/(codex)/tasks/components/composer.css" => Some(css(include_str!(
-            "../frontend/pages/(codex)/tasks/components/composer.css"
+        "pages/(task-workspace)/settings/codex/page.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/settings/codex/page.css"
         ))),
-        "pages/(codex)/tasks/components/composer.js" => Some(js(include_str!(
-            "../frontend/pages/(codex)/tasks/components/composer.js"
+        "pages/(task-workspace)/settings/codex/page.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/settings/codex/page.js"
         ))),
-        "pages/(codex)/tasks/components/image-preview-dialog.css" => Some(css(include_str!(
-            "../frontend/pages/(codex)/tasks/components/image-preview-dialog.css"
+        "pages/(task-workspace)/settings/about/page.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/settings/about/page.css"
         ))),
-        "pages/(codex)/tasks/components/image-preview-dialog.js" => Some(js(include_str!(
-            "../frontend/pages/(codex)/tasks/components/image-preview-dialog.js"
+        "pages/(task-workspace)/settings/about/page.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/settings/about/page.js"
         ))),
-        "pages/(codex)/tasks/components/voice-recorder.js" => Some(js(include_str!(
-            "../frontend/pages/(codex)/tasks/components/voice-recorder.js"
+        "pages/(task-workspace)/layout.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/layout.css"
         ))),
-        "pages/(codex)/tasks/components/voice-worklet.js" => Some(js(include_str!(
-            "../frontend/pages/(codex)/tasks/components/voice-worklet.js"
+        "pages/(task-workspace)/layout.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/layout.js"
         ))),
-        "pages/(codex)/tasks/components/detail.css" => Some(css(include_str!(
-            "../frontend/pages/(codex)/tasks/components/detail.css"
+        "pages/(task-workspace)/tasks/page.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/page.css"
         ))),
-        "pages/(codex)/tasks/components/detail.js" => Some(js(include_str!(
-            "../frontend/pages/(codex)/tasks/components/detail.js"
+        "pages/(task-workspace)/tasks/controls.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/controls.css"
         ))),
-        "pages/(codex)/tasks/components/detail/stream.js" => Some(js(include_str!(
-            "../frontend/pages/(codex)/tasks/components/detail/stream.js"
+        "pages/(task-workspace)/tasks/page.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/page.js"
         ))),
-        "pages/(codex)/tasks/components/detail/summary.css" => Some(css(include_str!(
-            "../frontend/pages/(codex)/tasks/components/detail/summary.css"
+        "pages/(task-workspace)/tasks/runtime-state.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/runtime-state.js"
         ))),
-        "pages/(codex)/tasks/components/detail/summary.js" => Some(js(include_str!(
-            "../frontend/pages/(codex)/tasks/components/detail/summary.js"
+        "pages/(task-workspace)/tasks/task-events.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/task-events.js"
         ))),
-        "pages/(codex)/tasks/components/detail/conversation.css" => Some(css(include_str!(
-            "../frontend/pages/(codex)/tasks/components/detail/conversation.css"
+        "pages/(task-workspace)/tasks/task-format.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/task-format.js"
         ))),
-        "pages/(codex)/tasks/components/detail/conversation.js" => Some(js(include_str!(
-            "../frontend/pages/(codex)/tasks/components/detail/conversation.js"
+        "pages/(task-workspace)/tasks/task-list-model.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/task-list-model.js"
         ))),
-        "pages/(codex)/tasks/components/detail/conversation/command-dialog.css" => {
+        "pages/(task-workspace)/tasks/components/composer.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/composer.css"
+        ))),
+        "pages/(task-workspace)/tasks/components/composer.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/composer.js"
+        ))),
+        "pages/(task-workspace)/tasks/components/image-preview-dialog.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(codex)/tasks/components/detail/conversation/command-dialog.css"
+                "../frontend/pages/(task-workspace)/tasks/components/image-preview-dialog.css"
             )))
         }
-        "pages/(codex)/tasks/components/detail/conversation/command-dialog.js" => {
+        "pages/(task-workspace)/tasks/components/image-preview-dialog.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(codex)/tasks/components/detail/conversation/command-dialog.js"
+                "../frontend/pages/(task-workspace)/tasks/components/image-preview-dialog.js"
             )))
         }
-        "pages/(codex)/tasks/components/detail/conversation/markdown.js" => Some(js(include_str!(
-            "../frontend/pages/(codex)/tasks/components/detail/conversation/markdown.js"
+        "pages/(task-workspace)/tasks/components/voice-recorder.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/voice-recorder.js"
         ))),
-        "pages/(codex)/tasks/components/detail/conversation/render.js" => Some(js(include_str!(
-            "../frontend/pages/(codex)/tasks/components/detail/conversation/render.js"
+        "pages/(task-workspace)/tasks/components/voice-worklet.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/voice-worklet.js"
         ))),
-        "pages/(codex)/tasks/components/detail/review.css" => Some(css(include_str!(
-            "../frontend/pages/(codex)/tasks/components/detail/review.css"
+        "pages/(task-workspace)/tasks/components/detail.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/detail.css"
         ))),
-        "pages/(codex)/tasks/components/detail/review.js" => Some(js(include_str!(
-            "../frontend/pages/(codex)/tasks/components/detail/review.js"
+        "pages/(task-workspace)/tasks/components/detail.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/detail.js"
         ))),
-        "pages/(codex)/tasks/components/navigator.css" => Some(css(include_str!(
-            "../frontend/pages/(codex)/tasks/components/navigator.css"
+        "pages/(task-workspace)/tasks/components/detail/stream.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/detail/stream.js"
         ))),
-        "pages/(codex)/tasks/components/navigator.js" => Some(js(include_str!(
-            "../frontend/pages/(codex)/tasks/components/navigator.js"
+        "pages/(task-workspace)/tasks/components/detail/summary.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/detail/summary.css"
         ))),
-        "pages/(codex)/tasks/components/task-new.css" => Some(css(include_str!(
-            "../frontend/pages/(codex)/tasks/components/task-new.css"
+        "pages/(task-workspace)/tasks/components/detail/summary.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/detail/summary.js"
         ))),
-        "pages/(codex)/tasks/components/task-new.js" => Some(js(include_str!(
-            "../frontend/pages/(codex)/tasks/components/task-new.js"
+        "pages/(task-workspace)/tasks/components/detail/conversation.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/conversation.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/detail/conversation.js"
         ))),
-        "pages/(codex)/tasks/components/task-status.css" => Some(css(include_str!(
-            "../frontend/pages/(codex)/tasks/components/task-status.css"
+        "pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/conversation/markdown.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/markdown.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/conversation/render.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/render.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/review.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/detail/review.css"
         ))),
-        "pages/(codex)/tasks/components/task-status.js" => Some(js(include_str!(
-            "../frontend/pages/(codex)/tasks/components/task-status.js"
+        "pages/(task-workspace)/tasks/components/detail/review.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/detail/review.js"
+        ))),
+        "pages/(task-workspace)/tasks/components/navigator.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/navigator.css"
+        ))),
+        "pages/(task-workspace)/tasks/components/navigator.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/navigator.js"
+        ))),
+        "pages/(task-workspace)/tasks/components/task-new.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/task-new.css"
+        ))),
+        "pages/(task-workspace)/tasks/components/task-new.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/task-new.js"
+        ))),
+        "pages/(task-workspace)/tasks/components/task-status.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/task-status.css"
+        ))),
+        "pages/(task-workspace)/tasks/components/task-status.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/task-status.js"
         ))),
         "pages/(review-workspace)/layout.css" => Some(css(include_str!(
             "../frontend/pages/(review-workspace)/layout.css"
@@ -522,10 +556,15 @@ mod tests {
         );
         assert!(codex_status_js.body.starts_with(b"import "));
 
-        let codex_status_css = get("pages/components/header-actions/codex-status.css")
-            .expect("codex status css asset");
-        assert_eq!(codex_status_css.content_type, "text/css; charset=utf-8");
-        assert!(codex_status_css.body.starts_with(b"caffold-header-actions"));
+        assert!(get("pages/components/header-actions/codex-status.css").is_none());
+
+        let codex_status_model = get("pages/components/header-actions/codex-status-model.js")
+            .expect("codex status model asset");
+        assert_eq!(
+            codex_status_model.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(codex_status_model.body.starts_with(b"export "));
 
         let git_status_js =
             get("pages/components/header-actions/git-status.js").expect("git status js asset");
@@ -575,9 +614,8 @@ mod tests {
         assert_eq!(app_menu.content_type, "text/javascript; charset=utf-8");
         assert!(app_menu.body.starts_with(b"import "));
 
-        let about_dialog = get("pages/components/about-dialog.js").expect("about dialog js asset");
-        assert_eq!(about_dialog.content_type, "text/javascript; charset=utf-8");
-        assert!(about_dialog.body.starts_with(b"import "));
+        assert!(get("pages/components/about-dialog.js").is_none());
+        assert!(get("pages/components/about-dialog.css").is_none());
 
         let settings_module = get("settings.js").expect("settings module asset");
         assert_eq!(
@@ -603,9 +641,21 @@ mod tests {
         assert_eq!(font_license.content_type, "text/plain; charset=utf-8");
         assert!(font_license.body.starts_with(b"Copyright"));
 
-        let settings_page = get("pages/settings/page.js").expect("settings page js asset");
+        let settings_page = get("pages/(task-workspace)/settings/appearance/page.js")
+            .expect("settings appearance page js asset");
         assert_eq!(settings_page.content_type, "text/javascript; charset=utf-8");
         assert!(settings_page.body.starts_with(b"import "));
+
+        for path in [
+            "pages/(task-workspace)/settings/layout.js",
+            "pages/(task-workspace)/settings/navigator.js",
+            "pages/(task-workspace)/settings/codex/page.js",
+            "pages/(task-workspace)/settings/about/page.js",
+        ] {
+            let asset = get(path).unwrap_or_else(|| panic!("missing settings asset {path}"));
+            assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
+            assert!(asset.body.starts_with(b"import "));
+        }
 
         let app_shell_layout = get("pages/layout.js").expect("app shell layout js asset");
         assert_eq!(
@@ -718,24 +768,32 @@ mod tests {
         );
         assert!(get("pages/(review-workspace)/(git)/compare/components/compare-tree.js").is_none());
 
-        let codex_layout = get("pages/(codex)/layout.js").expect("codex layout js");
-        assert_eq!(codex_layout.content_type, "text/javascript; charset=utf-8");
-        assert!(codex_layout.body.starts_with(b"import "));
-        assert!(
-            codex_layout
-                .body
-                .windows(b"caffold-codex-workspace".len())
-                .any(|window| window == b"caffold-codex-workspace")
+        let task_workspace_layout =
+            get("pages/(task-workspace)/layout.js").expect("task workspace layout js");
+        assert_eq!(
+            task_workspace_layout.content_type,
+            "text/javascript; charset=utf-8"
         );
-        let codex_layout_css = get("pages/(codex)/layout.css").expect("codex layout css");
-        assert_eq!(codex_layout_css.content_type, "text/css; charset=utf-8");
+        assert!(task_workspace_layout.body.starts_with(b"import "));
         assert!(
-            codex_layout_css
+            task_workspace_layout
                 .body
-                .starts_with(b"caffold-codex-workspace")
+                .windows(b"caffold-task-workspace".len())
+                .any(|window| window == b"caffold-task-workspace")
+        );
+        let task_workspace_layout_css =
+            get("pages/(task-workspace)/layout.css").expect("task workspace layout css");
+        assert_eq!(
+            task_workspace_layout_css.content_type,
+            "text/css; charset=utf-8"
+        );
+        assert!(
+            task_workspace_layout_css
+                .body
+                .starts_with(b"caffold-task-workspace")
         );
 
-        let tasks_page = get("pages/(codex)/tasks/page.js").expect("tasks page js");
+        let tasks_page = get("pages/(task-workspace)/tasks/page.js").expect("tasks page js");
         assert_eq!(tasks_page.content_type, "text/javascript; charset=utf-8");
         assert!(tasks_page.body.starts_with(b"import "));
         assert!(
@@ -745,32 +803,33 @@ mod tests {
                 .any(|window| window == b"caffold-tasks-page")
         );
         let tasks_runtime_state =
-            get("pages/(codex)/tasks/runtime-state.js").expect("tasks runtime state js");
+            get("pages/(task-workspace)/tasks/runtime-state.js").expect("tasks runtime state js");
         assert_eq!(
             tasks_runtime_state.content_type,
             "text/javascript; charset=utf-8"
         );
         assert!(tasks_runtime_state.body.starts_with(b"export "));
         for path in [
-            "pages/(codex)/tasks/task-events.js",
-            "pages/(codex)/tasks/task-format.js",
-            "pages/(codex)/tasks/task-list-model.js",
-            "pages/(codex)/tasks/components/task-status.js",
-            "pages/(codex)/tasks/components/detail/conversation/render.js",
+            "pages/(task-workspace)/tasks/task-events.js",
+            "pages/(task-workspace)/tasks/task-format.js",
+            "pages/(task-workspace)/tasks/task-list-model.js",
+            "pages/(task-workspace)/tasks/components/task-status.js",
+            "pages/(task-workspace)/tasks/components/detail/conversation/render.js",
         ] {
             let asset = get(path).expect("tasks state module");
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
             assert!(asset.body.starts_with(b"export ") || asset.body.starts_with(b"import "));
         }
-        let tasks_page_css = get("pages/(codex)/tasks/page.css").expect("tasks page css");
+        let tasks_page_css = get("pages/(task-workspace)/tasks/page.css").expect("tasks page css");
         assert_eq!(tasks_page_css.content_type, "text/css; charset=utf-8");
         assert!(tasks_page_css.body.starts_with(b"caffold-tasks-page"));
         let tasks_controls_css =
-            get("pages/(codex)/tasks/controls.css").expect("tasks controls css");
+            get("pages/(task-workspace)/tasks/controls.css").expect("tasks controls css");
         assert_eq!(tasks_controls_css.content_type, "text/css; charset=utf-8");
         assert!(tasks_controls_css.body.starts_with(b"caffold-tasks-page"));
-        let tasks_markdown = get("pages/(codex)/tasks/components/detail/conversation/markdown.js")
-            .expect("tasks markdown component js");
+        let tasks_markdown =
+            get("pages/(task-workspace)/tasks/components/detail/conversation/markdown.js")
+                .expect("tasks markdown component js");
         assert_eq!(
             tasks_markdown.content_type,
             "text/javascript; charset=utf-8"
@@ -781,7 +840,7 @@ mod tests {
                 .windows(b"caffold-task-markdown".len())
                 .any(|window| window == b"caffold-task-markdown")
         );
-        let tasks_navigator = get("pages/(codex)/tasks/components/navigator.js")
+        let tasks_navigator = get("pages/(task-workspace)/tasks/components/navigator.js")
             .expect("tasks navigator component js");
         assert_eq!(
             tasks_navigator.content_type,
@@ -793,7 +852,7 @@ mod tests {
                 .windows(b"caffold-task-navigator".len())
                 .any(|window| window == b"caffold-task-navigator")
         );
-        let tasks_navigator_css = get("pages/(codex)/tasks/components/navigator.css")
+        let tasks_navigator_css = get("pages/(task-workspace)/tasks/components/navigator.css")
             .expect("tasks navigator component css");
         assert_eq!(tasks_navigator_css.content_type, "text/css; charset=utf-8");
         assert!(
@@ -801,8 +860,8 @@ mod tests {
                 .body
                 .starts_with(b"caffold-task-navigator")
         );
-        let task_detail_stream =
-            get("pages/(codex)/tasks/components/detail/stream.js").expect("task detail stream js");
+        let task_detail_stream = get("pages/(task-workspace)/tasks/components/detail/stream.js")
+            .expect("task detail stream js");
         assert_eq!(
             task_detail_stream.content_type,
             "text/javascript; charset=utf-8"
@@ -815,35 +874,35 @@ mod tests {
         );
         for (path, tag) in [
             (
-                "pages/(codex)/tasks/components/composer.js",
+                "pages/(task-workspace)/tasks/components/composer.js",
                 b"caffold-task-composer".as_slice(),
             ),
             (
-                "pages/(codex)/tasks/components/image-preview-dialog.js",
+                "pages/(task-workspace)/tasks/components/image-preview-dialog.js",
                 b"caffold-task-image-preview-dialog".as_slice(),
             ),
             (
-                "pages/(codex)/tasks/components/detail/conversation.js",
+                "pages/(task-workspace)/tasks/components/detail/conversation.js",
                 b"caffold-task-conversation".as_slice(),
             ),
             (
-                "pages/(codex)/tasks/components/detail/conversation/command-dialog.js",
+                "pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.js",
                 b"caffold-task-command-dialog".as_slice(),
             ),
             (
-                "pages/(codex)/tasks/components/task-new.js",
+                "pages/(task-workspace)/tasks/components/task-new.js",
                 b"caffold-task-new".as_slice(),
             ),
             (
-                "pages/(codex)/tasks/components/detail.js",
+                "pages/(task-workspace)/tasks/components/detail.js",
                 b"caffold-task-detail".as_slice(),
             ),
             (
-                "pages/(codex)/tasks/components/detail/summary.js",
+                "pages/(task-workspace)/tasks/components/detail/summary.js",
                 b"caffold-task-detail-summary".as_slice(),
             ),
             (
-                "pages/(codex)/tasks/components/detail/review.js",
+                "pages/(task-workspace)/tasks/components/detail/review.js",
                 b"caffold-task-review".as_slice(),
             ),
         ] {
@@ -853,11 +912,11 @@ mod tests {
         }
         for (path, marker) in [
             (
-                "pages/(codex)/tasks/components/voice-recorder.js",
+                "pages/(task-workspace)/tasks/components/voice-recorder.js",
                 b"VoiceRecorder".as_slice(),
             ),
             (
-                "pages/(codex)/tasks/components/voice-worklet.js",
+                "pages/(task-workspace)/tasks/components/voice-worklet.js",
                 b"caffold-voice-capture".as_slice(),
             ),
         ] {
@@ -872,39 +931,39 @@ mod tests {
         }
         for (path, prefix) in [
             (
-                "pages/(codex)/tasks/components/composer.css",
+                "pages/(task-workspace)/tasks/components/composer.css",
                 b"caffold-task-composer".as_slice(),
             ),
             (
-                "pages/(codex)/tasks/components/image-preview-dialog.css",
+                "pages/(task-workspace)/tasks/components/image-preview-dialog.css",
                 b"caffold-task-image-preview-dialog".as_slice(),
             ),
             (
-                "pages/(codex)/tasks/components/detail/conversation.css",
+                "pages/(task-workspace)/tasks/components/detail/conversation.css",
                 b"caffold-task-conversation".as_slice(),
             ),
             (
-                "pages/(codex)/tasks/components/detail/conversation/command-dialog.css",
+                "pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css",
                 b"caffold-task-command-dialog".as_slice(),
             ),
             (
-                "pages/(codex)/tasks/components/task-new.css",
+                "pages/(task-workspace)/tasks/components/task-new.css",
                 b"caffold-task-new".as_slice(),
             ),
             (
-                "pages/(codex)/tasks/components/detail.css",
+                "pages/(task-workspace)/tasks/components/detail.css",
                 b"caffold-task-detail".as_slice(),
             ),
             (
-                "pages/(codex)/tasks/components/detail/summary.css",
+                "pages/(task-workspace)/tasks/components/detail/summary.css",
                 b"caffold-task-detail-summary".as_slice(),
             ),
             (
-                "pages/(codex)/tasks/components/detail/review.css",
+                "pages/(task-workspace)/tasks/components/detail/review.css",
                 b"caffold-task-review".as_slice(),
             ),
             (
-                "pages/(codex)/tasks/components/task-status.css",
+                "pages/(task-workspace)/tasks/components/task-status.css",
                 b"caffold-tasks-page".as_slice(),
             ),
         ] {

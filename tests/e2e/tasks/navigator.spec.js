@@ -1041,7 +1041,7 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     await expect(detailPane).toBeVisible();
     await expect(detailPane).toContainText("Main root task detail response");
     await captureReviewScreenshot(page, testInfo, "tasks-single-pane-detail");
-    await page.locator("caffold-codex-workspace .codex-workspace-close").click();
+    await page.locator("caffold-task-workspace .task-workspace-close").click();
     await expect(page).toHaveURL("/");
     await expect(listPane).toBeVisible();
     await expect(detailPane).toBeHidden();
@@ -1389,7 +1389,9 @@ test("groups Tasks by repository without worktree accordions", async ({ page }, 
     "/assets/icons/caffold-mark.svg",
   );
   await expect(
-    tasksPage.locator('.tasks-header [data-task-action="open-settings"] svg'),
+    page.locator(
+      'caffold-task-workspace .task-workspace-navigation [data-workspace-mode="settings"] svg',
+    ),
   ).toBeVisible();
   await expect(groups).toHaveCount(3);
   await expect(groups.nth(0).locator(".task-repository-header")).toContainText("gluesql");

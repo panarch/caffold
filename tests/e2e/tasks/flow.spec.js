@@ -6,7 +6,6 @@ import {
   captureReviewScreenshot,
   installEventSourceMock,
   mockCodexModels,
-  openHeaderActionGroup,
   pasteImage,
 } from "../support/task-fixtures.js";
 
@@ -226,7 +225,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
     "/assets/icons/caffold-mark.svg",
   );
   await expect(tasksBrand.getByRole("heading", { name: "Caffold" })).toBeVisible();
-  await expect(page.locator("caffold-codex-workspace")).not.toHaveAttribute(
+  await expect(page.locator("caffold-task-workspace")).not.toHaveAttribute(
     "data-workspace-close-visible",
     "",
   );
@@ -255,7 +254,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
     .poll(() => taskListQueries.at(-1))
     .toEqual({ cwd: null });
   await expect(
-    page.locator("caffold-codex-workspace .codex-workspace-close"),
+    page.locator("caffold-task-workspace .task-workspace-close"),
   ).toBeHidden();
 
   await page.goto("/tasks?cwd=.");
@@ -285,7 +284,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
     .getByRole("button", { name: "New Task", exact: true })
     .click();
   await expect(page).toHaveURL("/tasks/new");
-  await page.locator("caffold-codex-workspace .codex-workspace-close").click();
+  await page.locator("caffold-task-workspace .task-workspace-close").click();
   await expect(page).toHaveURL("/");
   await tasksPage
     .locator(".tasks-empty")
@@ -528,8 +527,10 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
 test("runs a minimal task from creation through follow-up", async ({ page }) => {
   const scenario = await installTaskLoopFixture(page);
   await page.goto(`/files?cwd=${encodeURIComponent(scenario.contextPath)}`);
-  const codexPopover = await openHeaderActionGroup(page, "codex");
-  await codexPopover.locator('button[data-action="open-tasks"]').click();
+  await page.locator("caffold-app-menu .app-menu-button").click();
+  await page
+    .locator('caffold-app-menu button[data-action="open-tasks"]')
+    .click();
 
   const tasksPage = page.locator("caffold-tasks-page");
   await expect(tasksPage).toHaveAttribute("data-tasks-view", "list");

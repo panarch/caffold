@@ -7,7 +7,7 @@ import {
   sortTasksByRecency,
   taskDetailThreadId,
   upsertTask,
-} from "../frontend/pages/(codex)/tasks/task-list-model.js";
+} from "../frontend/pages/(task-workspace)/tasks/task-list-model.js";
 
 function task(threadId, recencyMs, overrides = {}) {
   return {

@@ -24,11 +24,14 @@ test("returns from Settings to the canonical Tasks home", async ({ page }) => {
   );
 
   await page.goto("/settings");
-  const settingsPage = page.locator("caffold-settings-page");
-  await expect(settingsPage).toBeVisible();
+  const settingsWorkspace = page.locator("caffold-settings-workspace");
+  await expect(settingsWorkspace).toBeVisible();
+  await expect(settingsWorkspace.locator("caffold-settings-navigator")).toBeVisible();
   await expect(page.locator(".files-surface")).toBeHidden();
 
-  await settingsPage.getByRole("button", { name: "Close settings" }).click();
+  await page
+    .locator('.task-workspace-navigation [data-workspace-mode="tasks"]')
+    .click();
 
   await expect(page).toHaveURL("/");
   const tasksPage = page.locator("caffold-tasks-page");
@@ -54,12 +57,14 @@ test("normalizes legacy settings into the current appearance contract", async ({
     { key: SETTINGS_KEY },
   );
 
-  await page.goto("/settings");
-  const settingsPage = page.locator("caffold-settings-page");
+  await page.goto("/settings/appearance");
+  const settingsPage = page.locator("caffold-settings-appearance-page");
   await expect(settingsPage).toBeVisible();
   await expect(page.locator(".files-surface")).toBeHidden();
   await expect(page.locator("caffold-app-menu")).toBeHidden();
-  await expect(settingsPage.locator(".settings-header")).toBeVisible();
+  await expect(
+    page.locator("caffold-settings-workspace .settings-workspace-detail-header"),
+  ).toBeVisible();
   await expect(range(settingsPage, "interfaceScalePercent")).toHaveValue("100");
   await expect(range(settingsPage, "conversationTextPx")).toHaveValue("17");
   await expect(range(settingsPage, "codeTextPx")).toHaveValue("15");
@@ -145,8 +150,8 @@ test("updates independent ranges live without replacing their DOM", async ({
   await expect(openSettings).toHaveCSS("font-size", sharedInterfaceTextSize);
   await openSettings.click();
 
-  await expect(page).toHaveURL("/settings");
-  const settingsPage = page.locator("caffold-settings-page");
+  await expect(page).toHaveURL("/settings/appearance");
+  const settingsPage = page.locator("caffold-settings-appearance-page");
   await expect(settingsPage).toBeVisible();
   await expect(page.locator(".files-surface")).toBeHidden();
   await expect(page.locator("caffold-app-menu")).toBeHidden();
@@ -197,15 +202,10 @@ test("updates independent ranges live without replacing their DOM", async ({
     return {
       regularHit: tokenHeight("--interface-control-hit-size"),
       compactVisual: tokenHeight("--interface-compact-visual-size"),
-      close: height(".settings-close-button"),
       resetAllVisual: visualHeight(".settings-reset-all"),
       resetOneVisual: visualHeight(".settings-range-control button"),
     };
   });
-  expect(settingsControlTiers.close).toBeCloseTo(
-    settingsControlTiers.regularHit,
-    1,
-  );
   expect(settingsControlTiers.resetAllVisual).toBeCloseTo(
     settingsControlTiers.compactVisual,
     1,
@@ -278,7 +278,6 @@ test("updates independent ranges live without replacing their DOM", async ({
 
   if (touchInterface) {
     for (const control of [
-      settingsPage.locator(".settings-close-button"),
       settingsPage.locator(".settings-reset-all"),
       settingsPage.locator(".settings-range-control button").first(),
       settingsPage.locator(".settings-interface-preview-row"),
@@ -310,9 +309,9 @@ test("updates independent ranges live without replacing their DOM", async ({
 });
 
 test("switches and persists the local typeface presets", async ({ page }) => {
-  await page.goto("/settings");
+  await page.goto("/settings/appearance");
 
-  const settingsPage = page.locator("caffold-settings-page");
+  const settingsPage = page.locator("caffold-settings-appearance-page");
   const select = settingsPage.locator("select[data-typeface-setting]");
   await expect(select.locator("option")).toHaveCount(2);
   await expect(select).not.toContainText("Noto Sans Mono CJK KR");
@@ -351,8 +350,8 @@ test("switches and persists the local typeface presets", async ({ page }) => {
 test("applies extreme values to Files and Code without coupling the axes", async ({
   page,
 }) => {
-  await page.goto("/settings");
-  const settingsPage = page.locator("caffold-settings-page");
+  await page.goto("/settings/appearance");
+  const settingsPage = page.locator("caffold-settings-appearance-page");
   await setRange(range(settingsPage, "interfaceScalePercent"), 120);
   await setRange(range(settingsPage, "conversationTextPx"), 13);
   await setRange(range(settingsPage, "codeTextPx"), 20);
@@ -430,8 +429,8 @@ test("applies extreme values to Files and Code without coupling the axes", async
 test("keeps mixed surfaces reflowed across appearance extremes", async ({
   page,
 }, testInfo) => {
-  await page.goto("/settings");
-  const settingsPage = page.locator("caffold-settings-page");
+  await page.goto("/settings/appearance");
+  const settingsPage = page.locator("caffold-settings-appearance-page");
   const combinations = [
     [100, 15, 13],
     [90, 13, 12],
@@ -552,8 +551,8 @@ test("keeps mixed surfaces reflowed across appearance extremes", async ({
 test("keeps model picker chrome compact and scales it only with Interface", async ({
   page,
 }) => {
-  await page.goto("/settings");
-  const settingsPage = page.locator("caffold-settings-page");
+  await page.goto("/settings/appearance");
+  const settingsPage = page.locator("caffold-settings-appearance-page");
   const interfaceRange = range(settingsPage, "interfaceScalePercent");
   const conversationRange = range(settingsPage, "conversationTextPx");
   const codeRange = range(settingsPage, "codeTextPx");

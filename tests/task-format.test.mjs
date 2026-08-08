@@ -8,7 +8,7 @@ import {
   formatRelativeAge,
   normalizeTaskPath,
   shortId,
-} from "../frontend/pages/(codex)/tasks/task-format.js";
+} from "../frontend/pages/(task-workspace)/tasks/task-format.js";
 
 test("task paths normalize separators without allowing parent traversal", () => {
   assert.equal(normalizeTaskPath(".\\workspace//project/"), "workspace/project");

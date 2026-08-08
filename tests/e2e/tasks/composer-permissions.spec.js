@@ -327,7 +327,7 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
       const permissionButton = element.querySelector(".task-permission-button");
       const buildAlert = document.querySelector(".app-build-alert");
       const shell = document.querySelector("caffold-app-shell");
-      const workspace = document.querySelector("caffold-codex-workspace");
+      const workspace = document.querySelector("caffold-task-workspace");
       const conversation = document.querySelector(".task-conversation-scroll");
       const rootStyle = getComputedStyle(document.documentElement);
       const formStyle = getComputedStyle(element);

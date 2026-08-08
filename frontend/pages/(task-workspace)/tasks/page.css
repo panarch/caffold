@@ -123,20 +123,10 @@ caffold-tasks-page {
     width: fit-content;
     max-width: 100%;
     min-width: 0;
-    padding: 0.25rem 0.5rem;
-    border: 0;
-    border-radius: 4px;
-    background: transparent;
+    padding: 0.25rem 0;
     color: var(--text);
     font: inherit;
     text-align: left;
-    cursor: pointer;
-  }
-
-  & .tasks-brand:hover,
-  & .tasks-brand:focus-visible {
-    background: var(--surface-muted);
-    outline: none;
   }
 
   & .tasks-brand-mark {

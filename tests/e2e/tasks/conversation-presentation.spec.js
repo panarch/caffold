@@ -514,7 +514,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   }
   const workspaceHeaderMetrics = await tasksPage.evaluate((element) => {
     const appHeader = element.querySelector(".tasks-header");
-    const close = document.querySelector(".codex-workspace-close");
+    const close = document.querySelector(".task-workspace-close");
     const summary = element.querySelector(".task-detail-summary");
     const summaryBounds = summary.getBoundingClientRect();
     const headingBounds = summary
@@ -607,7 +607,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
         .getBoundingClientRect();
       return {
         closeVisible:
-          getComputedStyle(document.querySelector(".codex-workspace-close"))
+          getComputedStyle(document.querySelector(".task-workspace-close"))
             .display !== "none",
         sameRow:
           Math.abs(

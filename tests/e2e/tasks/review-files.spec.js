@@ -115,12 +115,12 @@ test("previews images selected from the shared Files navigator", async ({
   );
 });
 
-test("keeps the shared Review panes inside the Codex workspace", async ({ page }) => {
+test("keeps the shared Review panes inside the task workspace", async ({ page }) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
 
   const layout = await page.evaluate(() => {
-    const codex = document.querySelector("caffold-codex-workspace");
+    const codex = document.querySelector("caffold-task-workspace");
     const appMain = document.querySelector("caffold-app-shell .app-main");
     const review = document.querySelector("caffold-task-review");
     const reviewRect = review.getBoundingClientRect();

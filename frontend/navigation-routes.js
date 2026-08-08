@@ -33,13 +33,47 @@ const STANDALONE_PULL_FILES_QUERY = [
 
 const ROUTE_DEFINITIONS = [
   routeDefinition({
-    id: "settings",
+    id: "settings-home",
     kind: "settings",
     pattern: "/settings",
-    surface: "settings",
-    target: "page",
-    toRoute: () => ({ kind: "settings" }),
+    surface: "task-workspace",
+    target: "list",
+    toRoute: () => settingsRoute(),
+    matchesRoute: (route) => route?.kind === "settings" && !route.section,
     parent: () => null,
+  }),
+  routeDefinition({
+    id: "settings-appearance",
+    kind: "settings",
+    pattern: "/settings/appearance",
+    surface: "task-workspace",
+    target: "appearance",
+    toRoute: () => settingsRoute("appearance"),
+    matchesRoute: (route) =>
+      route?.kind === "settings" && route.section === "appearance",
+    parent: () => settingsRoute(),
+  }),
+  routeDefinition({
+    id: "settings-codex",
+    kind: "settings",
+    pattern: "/settings/codex",
+    surface: "task-workspace",
+    target: "codex",
+    toRoute: () => settingsRoute("codex"),
+    matchesRoute: (route) =>
+      route?.kind === "settings" && route.section === "codex",
+    parent: () => settingsRoute(),
+  }),
+  routeDefinition({
+    id: "settings-about",
+    kind: "settings",
+    pattern: "/settings/about",
+    surface: "task-workspace",
+    target: "about",
+    toRoute: () => settingsRoute("about"),
+    matchesRoute: (route) =>
+      route?.kind === "settings" && route.section === "about",
+    parent: () => settingsRoute(),
   }),
   routeDefinition({
     id: "standalone-files",
@@ -172,7 +206,7 @@ const ROUTE_DEFINITIONS = [
     id: "global-tasks-home",
     kind: "tasks",
     pattern: "/",
-    surface: "tasks",
+    surface: "task-workspace",
     target: "list",
     toRoute: (_, query) => tasksRoute(query),
     matchesRoute: (route) => route?.kind === "tasks" && !route.new && !route.threadId,
@@ -183,7 +217,7 @@ const ROUTE_DEFINITIONS = [
     kind: "tasks",
     pattern: "/tasks",
     canonical: false,
-    surface: "tasks",
+    surface: "task-workspace",
     target: "list",
     toRoute: (_, query) => tasksRoute(query),
   }),
@@ -192,7 +226,7 @@ const ROUTE_DEFINITIONS = [
     kind: "tasks",
     pattern: "/tasks/new",
     query: NEW_TASK_QUERY,
-    surface: "tasks",
+    surface: "task-workspace",
     target: "new",
     toRoute: (_, query) => tasksRoute({ ...query, new: true }),
     matchesRoute: (route) => route?.kind === "tasks" && Boolean(route.new),
@@ -203,7 +237,7 @@ const ROUTE_DEFINITIONS = [
     kind: "tasks",
     pattern: "/tasks/[threadId]/review",
     query: TASK_REVIEW_QUERY,
-    surface: "tasks",
+    surface: "task-workspace",
     target: (route) => (cleanPath(route.path) ? "review-file" : "review"),
     params: { threadId: "string" },
     toRoute: ({ threadId }, query) =>
@@ -226,7 +260,7 @@ const ROUTE_DEFINITIONS = [
     id: "global-tasks-detail",
     kind: "tasks",
     pattern: "/tasks/[threadId]",
-    surface: "tasks",
+    surface: "task-workspace",
     target: "detail",
     toRoute: ({ threadId }, query) => tasksRoute({ ...query, threadId }),
     matchesRoute: (route) =>
@@ -485,6 +519,15 @@ function tasksRoute(options = {}) {
           baseRef: `${options.baseRef ?? ""}`,
         }
       : {}),
+  };
+}
+
+function settingsRoute(section = "") {
+  return {
+    kind: "settings",
+    section: ["appearance", "codex", "about"].includes(section)
+      ? section
+      : "",
   };
 }
 

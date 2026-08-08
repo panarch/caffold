@@ -1,0 +1,177 @@
+caffold-task-workspace {
+  --task-workspace-navigation-size: max(
+    3rem,
+    calc(var(--interface-compact-hit-size) + var(--interface-space-4))
+  );
+  --tasks-list-width: 380px;
+  --task-workspace-header-size: max(
+    var(--interface-compact-hit-size),
+    calc(
+      var(--interface-compact-visual-size) +
+        var(--interface-space-4) +
+        var(--interface-space-4) +
+        1px
+    )
+  );
+  --task-header-leading-space: 0rem;
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface);
+
+  & > caffold-tasks-page {
+    min-height: 0;
+  }
+
+  & > caffold-settings-workspace {
+    min-height: 0;
+  }
+
+  & .task-workspace-navigation {
+    position: absolute;
+    z-index: 5;
+    inset: auto auto 0 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: var(--tasks-list-width);
+    min-height: var(--task-workspace-navigation-size);
+    border-top: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  &[data-hide-navigation] .task-workspace-navigation {
+    display: none;
+  }
+
+  & .task-workspace-navigation button {
+    display: grid;
+    grid-template-columns: auto auto;
+    place-content: center;
+    align-items: center;
+    padding: 0;
+    gap: var(--interface-space-3);
+    min-width: 0;
+    min-height: var(--interface-compact-hit-size);
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: var(--interface-meta-font-size);
+    cursor: pointer;
+  }
+
+  & .task-workspace-navigation button:hover,
+  & .task-workspace-navigation button:focus-visible {
+    background: var(--row-hover-bg);
+    color: var(--text);
+    outline: none;
+  }
+
+  & .task-workspace-navigation button[aria-current] {
+    background: var(--selection-bg);
+    color: var(--text);
+  }
+
+  & [data-workspace-navigation-icon] {
+    display: grid;
+    place-items: center;
+  }
+
+  & .task-workspace-navigation-icon {
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+  }
+
+  &[data-workspace-close-visible] {
+    --task-header-leading-space: calc(var(--interface-compact-hit-size) + 0.625rem);
+  }
+
+  & .task-workspace-close {
+    position: absolute;
+    top: calc(var(--interface-space-4) - var(--interface-compact-hit-outset));
+    left: calc(var(--interface-space-6) - var(--interface-compact-hit-outset));
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    width: var(--interface-compact-hit-size);
+    height: var(--interface-compact-hit-size);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--control-fg);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  & .task-workspace-close::before {
+    position: absolute;
+    inset: var(--interface-compact-hit-outset);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    content: "";
+  }
+
+  & .task-workspace-close:hover,
+  & .task-workspace-close:focus-visible {
+    outline: none;
+  }
+
+  & .task-workspace-close:hover::before,
+  & .task-workspace-close:focus-visible::before {
+    border-color: var(--border-strong);
+  }
+
+  & .task-workspace-close-icon {
+    position: relative;
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+    stroke-width: 2;
+  }
+}
+
+@media (max-width: 520px) {
+  caffold-task-workspace {
+    &[data-workspace-close-visible] {
+      --task-header-leading-space: calc(var(--interface-compact-hit-size) + 0.5rem);
+    }
+
+    & .task-workspace-close {
+      top: calc(0.4375rem - var(--interface-compact-hit-outset));
+      left: calc(var(--interface-space-4) - var(--interface-compact-hit-outset));
+    }
+  }
+}
+
+@media (max-width: 899px) {
+  caffold-task-workspace {
+    & .task-workspace-navigation {
+      position: fixed;
+      inset: auto 0 0;
+      width: auto;
+      border-right: 0;
+    }
+
+    &[data-hide-navigation-on-compact] .task-workspace-navigation {
+      display: none;
+    }
+  }
+}
+
+@media (min-width: 900px) {
+  caffold-task-workspace[data-workspace-close-responsive] {
+    --task-header-leading-space: 0rem;
+
+    & .task-workspace-close {
+      display: none;
+    }
+  }
+}

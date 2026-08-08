@@ -68,6 +68,7 @@ pub(super) fn router(
         .route("/assets/manifest.webmanifest", get(manifest))
         .route("/assets/{*path}", get(asset))
         .route("/settings", get(index))
+        .route("/settings/{*path}", get(index))
         .route("/tasks", get(index))
         .route("/tasks/{*path}", get(index))
         .route("/files", get(index))

@@ -276,20 +276,6 @@ class CaffoldTasksPage extends HTMLElement {
       this.requestRoute({ kind: "tasks" });
     } else if (action.dataset.taskAction === "open-new") {
       this.requestNewTaskRoute();
-    } else if (action.dataset.taskAction === "open-settings") {
-      this.dispatchEvent(
-        new CustomEvent("caffold:open-settings", {
-          bubbles: true,
-          composed: true,
-        }),
-      );
-    } else if (action.dataset.taskAction === "open-about") {
-      this.dispatchEvent(
-        new CustomEvent("caffold:open-about", {
-          bubbles: true,
-          composed: true,
-        }),
-      );
     }
   }
 
@@ -333,24 +319,15 @@ class CaffoldTasksPage extends HTMLElement {
     }
     region.innerHTML = `
       <header class="tasks-header">
-        <button
-          type="button"
-          class="tasks-brand"
-          data-task-action="open-about"
-          title="About Caffold"
-          aria-label="About Caffold"
-        >
+        <div class="tasks-brand">
           <img
             class="tasks-brand-mark"
             src="/assets/icons/caffold-mark.svg"
             alt=""
           />
           <h1>Caffold</h1>
-        </button>
+        </div>
         <div class="tasks-header-actions">
-          <button type="button" class="task-icon-button" data-task-action="open-settings" title="Settings">
-            ${renderInlineIcon("Settings", "Settings", "task-action-icon")}
-          </button>
           ${
             this.view === "detail"
               ? `<button type="button" class="task-icon-button" data-task-action="open-list" title="Open tasks">
@@ -473,7 +450,11 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   applyTaskListWidth() {
-    this.style.setProperty("--tasks-list-width", `${this.taskListWidth}px`);
+    const workspace = this.closest("caffold-task-workspace");
+    (workspace ?? this).style.setProperty(
+      "--tasks-list-width",
+      `${this.taskListWidth}px`,
+    );
     const separator = this.querySelector(".tasks-master-resizer");
     if (!separator) {
       return;

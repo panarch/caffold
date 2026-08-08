@@ -300,7 +300,7 @@ test("loading detail accepts a canonical task sync without a synthetic task", as
   const loadingMessage = page.getByText("Loading task...");
   await expect(loadingMessage).toBeVisible();
   const loadingClearance = await loadingMessage.evaluate((message) => {
-    const close = document.querySelector(".codex-workspace-close");
+    const close = document.querySelector(".task-workspace-close");
     const closeBounds = close.getBoundingClientRect();
     const textRange = document.createRange();
     textRange.selectNodeContents(message);

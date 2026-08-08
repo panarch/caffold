@@ -76,10 +76,6 @@ caffold-header-actions {
     anchor-name: --header-action-github;
   }
 
-  & .header-action-group-button[data-action-group="codex"] {
-    anchor-name: --header-action-codex;
-  }
-
   & .header-action-icon {
     position: relative;
     display: block;
@@ -145,10 +141,6 @@ caffold-header-actions {
 
   & .header-actions-popover[data-action-group="github"] {
     position-anchor: --header-action-github;
-  }
-
-  & .header-actions-popover[data-action-group="codex"] {
-    position-anchor: --header-action-codex;
   }
 
   & .header-actions-popover-header {

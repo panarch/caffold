@@ -3,7 +3,6 @@ import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import {
   captureReviewScreenshot,
-  openHeaderActionGroup,
   pasteImage,
   stabilizeDynamicText,
   taskPresentation,
@@ -56,22 +55,24 @@ test("creates a task with responsive composer controls and canonical approval st
   const { contextPath, threadId } = scenario;
   const touchInterface = testInfo.project.name !== "desktop";
   await page.goto(`/files?cwd=${encodeURIComponent(contextPath)}`);
-  const codexPopover = await openHeaderActionGroup(page, "codex");
-  await codexPopover.locator('button[data-action="open-tasks"]').click();
+  await page.locator("caffold-app-menu .app-menu-button").click();
+  await page
+    .locator('caffold-app-menu button[data-action="open-tasks"]')
+    .click();
   await expect(page).toHaveURL("/");
-  const codexWorkspace = page.locator("caffold-codex-workspace");
-  await expect(codexWorkspace).toBeVisible();
+  const taskWorkspace = page.locator("caffold-task-workspace");
+  await expect(taskWorkspace).toBeVisible();
   await expect
     .poll(() =>
-      codexWorkspace.evaluate((element) => element.parentElement?.tagName.toLowerCase()),
+      taskWorkspace.evaluate((element) => element.parentElement?.tagName.toLowerCase()),
     )
     .toBe("main");
   const appMainBox = await page.locator("caffold-app-shell .app-main").boundingBox();
   const appShellBox = await page.locator("caffold-app-shell").boundingBox();
-  const codexWorkspaceBox = await codexWorkspace.boundingBox();
-  expect(Math.round(codexWorkspaceBox?.y ?? -1)).toBe(Math.round(appMainBox?.y ?? -2));
+  const taskWorkspaceBox = await taskWorkspace.boundingBox();
+  expect(Math.round(taskWorkspaceBox?.y ?? -1)).toBe(Math.round(appMainBox?.y ?? -2));
   expect(
-    Math.round((codexWorkspaceBox?.y ?? -1) + (codexWorkspaceBox?.height ?? 0)),
+    Math.round((taskWorkspaceBox?.y ?? -1) + (taskWorkspaceBox?.height ?? 0)),
   ).toBe(Math.round((appMainBox?.y ?? -2) + (appMainBox?.height ?? 0)));
   expect(
     Math.round((appMainBox?.y ?? -2) + (appMainBox?.height ?? 0)),
@@ -79,7 +80,7 @@ test("creates a task with responsive composer controls and canonical approval st
   await expect(page.locator(".files-surface")).toBeHidden();
   await expect(page.locator("caffold-files-page")).toBeHidden();
   await expect(
-    codexWorkspace.getByRole("button", { name: "Back to tasks" }),
+    taskWorkspace.getByRole("button", { name: "Back to tasks" }),
   ).toHaveCount(0);
   await expect(page.locator("caffold-tasks-page")).toHaveAttribute(
     "data-tasks-view",
@@ -112,27 +113,23 @@ test("creates a task with responsive composer controls and canonical approval st
       .map(Number.parseFloat);
     expect(paddingBlock).toBeCloseTo(rootFontSize * 0.25, 2);
     expect(paddingInline).toBeCloseTo(rootFontSize * 0.625, 2);
-    expect(
-      await taskPresentation(
-        page.locator(
-          'caffold-tasks-page .tasks-header [data-task-action="open-settings"]',
-        ),
-      ),
-    ).toEqual(
+    const settingsNavigation = taskWorkspace.locator(
+      '.task-workspace-navigation [data-workspace-mode="settings"]',
+    );
+    await expect(settingsNavigation).toHaveAccessibleName("Settings");
+    await expect(settingsNavigation.locator("svg")).toBeVisible();
+    expect(await taskPresentation(settingsNavigation)).toEqual(
       expect.objectContaining({
-        visualBackgroundColor: "rgb(255, 255, 255)",
-        visualBorderRadius: "5px",
-        visualBorderWidth: "1px",
+        borderWidth: "0px",
         display: "grid",
-        height: touchInterface ? 40 : 32,
+        minHeight: touchInterface ? "40px" : "30px",
         padding: "0px",
-        width: touchInterface ? 40 : 32,
       }),
     );
   });
   await emptyNewTaskButton.click();
   await expect(page).toHaveURL(`/tasks/new?cwd=${encodeURIComponent(contextPath)}`);
-  await expect(codexWorkspace).toHaveAttribute(
+  await expect(taskWorkspace).toHaveAttribute(
     "data-workspace-close-visible",
     "",
   );
@@ -151,7 +148,7 @@ test("creates a task with responsive composer controls and canonical approval st
   );
   const newTaskHeaderMetrics = await page.evaluate(() => {
     const closeButton = document
-      .querySelector("caffold-codex-workspace .codex-workspace-close")
+      .querySelector("caffold-task-workspace .task-workspace-close")
       .getBoundingClientRect();
     const compactProbe = document.createElement("div");
     compactProbe.style.cssText =

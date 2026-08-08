@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { renderTaskStatusChip } from "../frontend/pages/(codex)/tasks/components/task-status.js";
-import { TASK_TRANSPORT_STATE } from "../frontend/pages/(codex)/tasks/runtime-state.js";
+import { renderTaskStatusChip } from "../frontend/pages/(task-workspace)/tasks/components/task-status.js";
+import { TASK_TRANSPORT_STATE } from "../frontend/pages/(task-workspace)/tasks/runtime-state.js";
 
 function activeTask(activeFlags = []) {
   return {

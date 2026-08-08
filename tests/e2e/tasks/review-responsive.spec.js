@@ -38,7 +38,7 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
   }
 
   const summaryClearance = await page.evaluate(() => {
-    const closeButton = document.querySelector(".codex-workspace-close");
+    const closeButton = document.querySelector(".task-workspace-close");
     const close = closeButton.getBoundingClientRect();
     const heading = document
       .querySelector("caffold-task-detail-summary .task-detail-heading h2")

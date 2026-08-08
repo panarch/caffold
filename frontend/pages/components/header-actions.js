@@ -30,8 +30,7 @@ class CaffoldHeaderActions extends HTMLElement {
         "open-diff-workspace": "caffold:open-diff-workspace",
         "open-github-issues-workspace": "caffold:open-github-issues-workspace",
         "open-github-pulls-workspace": "caffold:open-github-pulls-workspace",
-        "open-tasks": "caffold:open-tasks",
-        "new-task": "caffold:new-task",
+        "open-codex-settings": "caffold:open-codex-settings",
       }[button.dataset.action];
       if (!eventName) {
         return;
@@ -104,6 +103,12 @@ class CaffoldHeaderActions extends HTMLElement {
 
     this.codexStatusValue = nextValue;
     this.syncActionStatuses();
+    this.dispatchEvent(
+      new CustomEvent("caffold:codex-status-change", {
+        bubbles: true,
+        detail: { status: nextValue },
+      }),
+    );
   }
 
   get codexStatus() {

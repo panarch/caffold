@@ -11,7 +11,7 @@ import {
   taskActiveFlags,
   taskStatusView,
   taskThreadStatusType,
-} from "../frontend/pages/(codex)/tasks/runtime-state.js";
+} from "../frontend/pages/(task-workspace)/tasks/runtime-state.js";
 
 function task(type, activeFlags = []) {
   return {

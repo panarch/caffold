@@ -26,26 +26,23 @@ class CaffoldAppMenu extends HTMLElement {
       return;
     }
 
-    if (button.dataset.action === "open-settings") {
-      this.closePopover();
-      this.dispatchEvent(
-        new CustomEvent("caffold:open-settings", {
-          bubbles: true,
-          composed: true,
-        }),
-      );
+    const workspaceEvent = {
+      "open-tasks": "caffold:open-tasks",
+      "new-task": "caffold:new-task",
+      "open-settings": "caffold:open-settings",
+      "open-about": "caffold:open-about",
+    }[button.dataset.action];
+    if (!workspaceEvent) {
       return;
     }
 
-    if (button.dataset.action === "open-about") {
-      this.closePopover();
-      this.dispatchEvent(
-        new CustomEvent("caffold:open-about", {
-          bubbles: true,
-          composed: true,
-        }),
-      );
-    }
+    this.closePopover();
+    this.dispatchEvent(
+      new CustomEvent(workspaceEvent, {
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   closePopover() {
@@ -73,12 +70,20 @@ class CaffoldAppMenu extends HTMLElement {
         <strong class="app-menu-name">Caffold</strong>
       </button>
       <div class="app-menu-popover" id="${POPOVER_ID}" popover role="menu">
+        <button type="button" role="menuitem" data-action="open-tasks">
+          ${renderInlineIcon("ListTodo", "", "app-menu-item-icon")}
+          <span>Tasks</span>
+        </button>
+        <button type="button" role="menuitem" data-action="new-task">
+          ${renderInlineIcon("Plus", "", "app-menu-item-icon")}
+          <span>New Task</span>
+        </button>
         <button type="button" role="menuitem" data-action="open-settings">
-          ${renderInlineIcon("Settings", "Settings", "app-menu-item-icon")}
+          ${renderInlineIcon("Settings", "", "app-menu-item-icon")}
           <span>Settings</span>
         </button>
         <button type="button" role="menuitem" data-action="open-about">
-          ${renderInlineIcon("Info", "About Caffold", "app-menu-item-icon")}
+          ${renderInlineIcon("Info", "", "app-menu-item-icon")}
           <span>About Caffold</span>
         </button>
       </div>
