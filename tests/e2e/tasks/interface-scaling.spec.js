@@ -192,7 +192,7 @@ async function installScalingTask(page) {
 function attachmentRemoveMetrics(page) {
   return page.evaluate(() => {
     const button = document.querySelector(
-      "caffold-task-detail:not([hidden]) .task-composer-attachment button",
+      "caffold-task-detail:not([hidden]) .task-composer-attachment-remove",
     );
     const icon = button.querySelector(".task-composer-attachment-remove-icon");
     const box = button.getBoundingClientRect();
@@ -338,6 +338,17 @@ function taskInterfaceMetrics(page) {
     const compactInset = number(
       getComputedStyle(controls.git, "::before").left,
     );
+    const popoverLabelFontSize = fontSize(
+      document.querySelector(".task-detail-popover dt"),
+    );
+    const popoverValueFontSize = fontSize(
+      document.querySelector(".task-detail-popover dd"),
+    );
+    const archiveHitTarget = verticalHitTarget(controls.archive);
+    const archiveHitDebug = hitDebug(controls.archive);
+    activeDetail
+      .querySelector(".task-detail-popover:popover-open")
+      ?.hidePopover();
 
     return {
       rootFontSize,
@@ -353,12 +364,8 @@ function taskInterfaceMetrics(page) {
       modelHeight: boxHeight(controls.model),
       permissionHeight: boxHeight(controls.permission),
       sendHeight: tokenPixels("--interface-control-visual-size"),
-      popoverLabelFontSize: fontSize(
-        document.querySelector(".task-detail-popover dt"),
-      ),
-      popoverValueFontSize: fontSize(
-        document.querySelector(".task-detail-popover dd"),
-      ),
+      popoverLabelFontSize,
+      popoverValueFontSize,
       horizontalOverflow:
         document.documentElement.scrollWidth >
         document.documentElement.clientWidth,
@@ -381,17 +388,19 @@ function taskInterfaceMetrics(page) {
         newTask: squareHitTarget(controls.newTask),
         git: squareHitTarget(controls.git),
         github: squareHitTarget(controls.github),
-        archive: verticalHitTarget(controls.archive),
+        archive: archiveHitTarget,
         model: verticalHitTarget(controls.model),
         permission: verticalHitTarget(controls.permission),
         send: squareHitTarget(controls.send),
       },
-      hitDebug: Object.fromEntries(
-        Object.entries(controls).map(([name, element]) => [
-          name,
-          hitDebug(element),
-        ]),
-      ),
+      hitDebug: {
+        ...Object.fromEntries(
+          Object.entries(controls)
+            .filter(([name]) => name !== "archive")
+            .map(([name, element]) => [name, hitDebug(element)]),
+        ),
+        archive: archiveHitDebug,
+      },
     };
   });
 }

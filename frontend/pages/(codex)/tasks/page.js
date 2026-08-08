@@ -1,5 +1,8 @@
 import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
 import "./components/detail.js";
+import {
+  TASK_IMAGE_PREVIEW_EVENT,
+} from "./components/image-preview-dialog.js";
 import "./components/navigator.js";
 import "./components/task-new.js";
 import { taskDetailThreadId } from "./task-list-model.js";
@@ -60,6 +63,7 @@ class CaffoldTasksPage extends HTMLElement {
           </main>
         </div>
       </section>
+      <caffold-task-image-preview-dialog></caffold-task-image-preview-dialog>
     `;
 
     this.addEventListener("click", (event) => this.handleClick(event));
@@ -119,6 +123,10 @@ class CaffoldTasksPage extends HTMLElement {
         });
       }
     });
+    this.addEventListener(TASK_IMAGE_PREVIEW_EVENT, (event) => {
+      event.stopPropagation();
+      this.imagePreviewDialog()?.openImage(event.detail);
+    });
     this.render();
   }
 
@@ -148,6 +156,9 @@ class CaffoldTasksPage extends HTMLElement {
         ? "detail"
         : "list";
     const nextThreadId = `${route?.threadId ?? ""}`;
+    if (nextView !== this.view || nextThreadId !== this.selectedThreadId) {
+      this.imagePreviewDialog()?.dismiss();
+    }
     const preserveAdopted =
       nextThreadId &&
       this.adoptedThreadId === nextThreadId &&
@@ -243,6 +254,12 @@ class CaffoldTasksPage extends HTMLElement {
 
   taskDetail() {
     return this.querySelector(":scope > .tasks-surface caffold-task-detail");
+  }
+
+  imagePreviewDialog() {
+    return this.querySelector(
+      ":scope > caffold-task-image-preview-dialog",
+    );
   }
 
   handleClick(event) {

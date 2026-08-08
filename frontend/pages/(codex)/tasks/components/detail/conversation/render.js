@@ -579,9 +579,16 @@ function renderMessageAttachments(attachments) {
           (attachment) => `
             <figure class="task-message-attachment">
               ${attachment.src ? `
-                <div class="task-message-attachment-preview">
-                  <img src="${escapeHtml(attachment.src)}" alt="${escapeHtml(attachment.name)}" loading="lazy">
-                </div>
+                <button
+                  type="button"
+                  class="task-message-attachment-preview"
+                  data-conversation-action="preview-image"
+                  data-image-name="${escapeHtml(attachment.name)}"
+                  aria-label="Preview ${escapeHtml(attachment.name)}"
+                  title="Preview image"
+                >
+                  <img src="${escapeHtml(attachment.src)}" alt="" loading="lazy">
+                </button>
               ` : `
                 <div class="task-message-attachment-preview task-message-attachment-unavailable">
                   ${renderInlineIcon("ImageOff", "Image preview unavailable", "task-message-attachment-placeholder-icon")}

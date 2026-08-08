@@ -500,6 +500,11 @@ test("icon-only controls use square slots from their semantic control tier", () 
       "--interface-control-hit-size",
     ],
     [
+      "pages/(codex)/tasks/components/image-preview-dialog.css",
+      ".task-image-preview-close",
+      "--interface-control-hit-size",
+    ],
+    [
       "pages/(codex)/tasks/components/composer.css",
       ".task-send-button",
       "--interface-control-hit-size",
@@ -538,7 +543,7 @@ test("icon-only controls use square slots from their semantic control tier", () 
     ],
     [
       "pages/(codex)/tasks/components/composer.css",
-      ".task-composer-attachment button",
+      ".task-composer-attachment-remove",
       "--interface-compact-hit-size",
     ],
     [
@@ -614,10 +619,15 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
       ".task-command-dialog-close::before",
       "--interface-control-hit-outset",
     ],
+    [
+      "pages/(codex)/tasks/components/image-preview-dialog.css",
+      ".task-image-preview-close::before",
+      "--interface-control-hit-outset",
+    ],
     ["pages/(codex)/layout.css", ".codex-workspace-close::before", "--interface-compact-hit-outset"],
     ["pages/(review-workspace)/layout.css", ".review-workspace-close::before", "--interface-compact-hit-outset"],
     ["pages/(codex)/tasks/components/composer.css", ".task-send-button::before", "--interface-control-hit-outset"],
-    ["pages/(codex)/tasks/components/composer.css", ".task-composer-attachment button::before", "--interface-compact-hit-outset"],
+    ["pages/(codex)/tasks/components/composer.css", ".task-composer-attachment-remove::before", "--interface-compact-hit-outset"],
     ["pages/(codex)/tasks/components/composer.css", ".task-model-button::before", "--interface-compact-hit-outset"],
     ["pages/(codex)/tasks/components/composer.css", ".task-permission-button::before", "--interface-compact-hit-outset"],
     ["pages/settings/page.css", ".settings-reset-all::before", "--interface-compact-hit-outset"],

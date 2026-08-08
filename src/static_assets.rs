@@ -165,6 +165,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(codex)/tasks/components/composer.js" => Some(js(include_str!(
             "../frontend/pages/(codex)/tasks/components/composer.js"
         ))),
+        "pages/(codex)/tasks/components/image-preview-dialog.css" => Some(css(include_str!(
+            "../frontend/pages/(codex)/tasks/components/image-preview-dialog.css"
+        ))),
+        "pages/(codex)/tasks/components/image-preview-dialog.js" => Some(js(include_str!(
+            "../frontend/pages/(codex)/tasks/components/image-preview-dialog.js"
+        ))),
         "pages/(codex)/tasks/components/voice-recorder.js" => Some(js(include_str!(
             "../frontend/pages/(codex)/tasks/components/voice-recorder.js"
         ))),
@@ -809,6 +815,10 @@ mod tests {
                 b"caffold-task-composer".as_slice(),
             ),
             (
+                "pages/(codex)/tasks/components/image-preview-dialog.js",
+                b"caffold-task-image-preview-dialog".as_slice(),
+            ),
+            (
                 "pages/(codex)/tasks/components/detail/conversation.js",
                 b"caffold-task-conversation".as_slice(),
             ),
@@ -860,6 +870,10 @@ mod tests {
             (
                 "pages/(codex)/tasks/components/composer.css",
                 b"caffold-task-composer".as_slice(),
+            ),
+            (
+                "pages/(codex)/tasks/components/image-preview-dialog.css",
+                b"caffold-task-image-preview-dialog".as_slice(),
             ),
             (
                 "pages/(codex)/tasks/components/detail/conversation.css",

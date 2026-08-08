@@ -325,12 +325,29 @@ caffold-task-conversation {
   & .task-message-attachment-preview {
     display: grid;
     place-items: center;
+    width: 100%;
     min-height: 96px;
     max-height: 280px;
+    padding: 0;
     overflow: hidden;
     border: 1px solid var(--border);
     border-radius: 8px;
     background: var(--surface-subtle);
+    color: inherit;
+  }
+
+  & button.task-message-attachment-preview {
+    cursor: zoom-in;
+  }
+
+  & button.task-message-attachment-preview:hover,
+  & button.task-message-attachment-preview:focus-visible {
+    border-color: var(--border-strong);
+    outline: none;
+  }
+
+  & button.task-message-attachment-preview:focus-visible {
+    box-shadow: inset 0 0 0 1px var(--focus-ring);
   }
 
   & .task-message-attachment img {

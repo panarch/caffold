@@ -6,6 +6,7 @@ import {
   pendingApprovals,
 } from "../../task-events.js";
 import { isTaskTransportStale } from "../../runtime-state.js";
+import { requestTaskImagePreview } from "../image-preview-dialog.js";
 import "./conversation/markdown.js";
 import { renderConversation } from "./conversation/render.js";
 
@@ -301,6 +302,12 @@ class CaffoldTaskConversation extends HTMLElement {
       this.dispatchIntent("older-history", { retry: true });
     } else if (action.dataset.conversationAction === "retry-detail") {
       this.dispatchIntent("retry-detail");
+    } else if (action.dataset.conversationAction === "preview-image") {
+      const image = action.querySelector("img");
+      requestTaskImagePreview(this, {
+        src: image?.getAttribute("src"),
+        name: action.dataset.imageName,
+      });
     } else if (action.dataset.conversationAction === "view-command-output") {
       const commandKey = `${action.dataset.commandKey ?? ""}`;
       const command = dedupeCanonicalEvents(this.snapshot.events).find(

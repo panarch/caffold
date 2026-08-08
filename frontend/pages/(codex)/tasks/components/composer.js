@@ -8,6 +8,7 @@ import {
 import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import { cleanLogicalPath } from "../task-format.js";
+import { requestTaskImagePreview } from "./image-preview-dialog.js";
 import {
   formatRecordingDuration,
   VoiceRecorder,
@@ -583,6 +584,18 @@ class CaffoldTaskComposer extends HTMLElement {
     }
     if (type === "browse-cwd" || type === "cancel") {
       this.dispatchIntent(type);
+      return;
+    }
+    if (type === "preview-image") {
+      const image = this.stateFor().images.find(
+        (candidate) => candidate.id === action.dataset.imageId,
+      );
+      if (image) {
+        requestTaskImagePreview(this, {
+          src: image.dataUrl,
+          name: image.name,
+        });
+      }
       return;
     }
     if (type === "remove-image") {
@@ -1368,9 +1381,17 @@ function renderImages(images) {
         .map(
           (image) => `
             <figure class="task-composer-attachment" title="${escapeHtml(image.name)}">
-              <img src="${escapeHtml(image.dataUrl)}" alt="${escapeHtml(image.name)}">
               <button
                 type="button"
+                class="task-composer-attachment-preview"
+                data-composer-action="preview-image"
+                data-image-id="${escapeHtml(image.id)}"
+                aria-label="Preview ${escapeHtml(image.name)}"
+                title="Preview image"
+              ><img src="${escapeHtml(image.dataUrl)}" alt=""></button>
+              <button
+                type="button"
+                class="task-composer-attachment-remove"
                 data-composer-action="remove-image"
                 data-image-id="${escapeHtml(image.id)}"
                 aria-label="Remove ${escapeHtml(image.name)}"

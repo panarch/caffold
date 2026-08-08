@@ -108,16 +108,34 @@ caffold-task-composer {
     background: var(--surface-muted);
   }
 
-  & .task-composer-attachment img {
+  & .task-composer-attachment-preview {
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    border-radius: inherit;
+    background: transparent;
+    cursor: zoom-in;
+  }
+
+  & .task-composer-attachment-preview:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+
+  & .task-composer-attachment-preview img {
     display: block;
     width: 100%;
     height: 100%;
     object-fit: cover;
   }
 
-  & .task-composer-attachment button {
+  & .task-composer-attachment-remove {
     display: grid;
     position: absolute;
+    z-index: 1;
     top: var(--interface-space-2);
     right: var(--interface-space-2);
     place-items: center;
@@ -130,7 +148,7 @@ caffold-task-composer {
     cursor: pointer;
   }
 
-  & .task-composer-attachment button::before {
+  & .task-composer-attachment-remove::before {
     position: absolute;
     inset: var(--interface-compact-hit-outset);
     border: 1px solid var(--overlay-border);
@@ -139,13 +157,13 @@ caffold-task-composer {
     content: "";
   }
 
-  & .task-composer-attachment button:hover,
-  & .task-composer-attachment button:focus-visible {
+  & .task-composer-attachment-remove:hover,
+  & .task-composer-attachment-remove:focus-visible {
     outline: none;
   }
 
-  & .task-composer-attachment button:hover::before,
-  & .task-composer-attachment button:focus-visible::before {
+  & .task-composer-attachment-remove:hover::before,
+  & .task-composer-attachment-remove:focus-visible::before {
     background: var(--text);
     outline: 2px solid var(--focus-ring);
     outline-offset: 1px;
