@@ -184,7 +184,8 @@ caffold-task-composer {
     line-height: var(--interface-line-height);
   }
 
-  & .task-composer-request-error {
+  & .task-composer-request-error,
+  & .task-composer-interrupt-error {
     margin: 0;
     padding: 0 1.125rem 0.25rem;
     color: var(--danger);
@@ -229,7 +230,7 @@ caffold-task-composer {
     color: var(--muted-subtle);
   }
 
-  & .task-composer[aria-busy="true"] .task-send-button:disabled {
+  & .task-composer[aria-busy="true"] .task-primary-action-button:disabled {
     cursor: wait;
     opacity: 0.55;
   }
@@ -427,7 +428,7 @@ caffold-task-composer {
     animation: task-voice-spin 0.9s linear infinite;
   }
 
-  & .task-send-button {
+  & .task-primary-action-button {
     position: relative;
     display: grid;
     place-items: center;
@@ -439,7 +440,7 @@ caffold-task-composer {
     cursor: pointer;
   }
 
-  & .task-send-button::before {
+  & .task-primary-action-button::before {
     position: absolute;
     inset: var(--interface-control-hit-outset);
     border-radius: 999px;
@@ -447,36 +448,36 @@ caffold-task-composer {
     content: "";
   }
 
-  & .task-send-button:hover,
-  & .task-send-button:focus-visible {
+  & .task-primary-action-button:hover,
+  & .task-primary-action-button:focus-visible {
     outline: none;
   }
 
-  & .task-send-button:hover::before,
-  & .task-send-button:focus-visible::before {
+  & .task-primary-action-button:hover::before,
+  & .task-primary-action-button:focus-visible::before {
     background: var(--primary-control-hover-bg);
   }
 
-  & .task-send-button:disabled {
+  & .task-primary-action-button:disabled {
     color: var(--muted);
     cursor: default;
     opacity: 0.72;
   }
 
-  & .task-send-button:disabled::before {
+  & .task-primary-action-button:disabled::before {
     border: 1px solid var(--border);
     background: var(--surface-muted);
   }
 
-  & .task-send-button:disabled:hover {
+  & .task-primary-action-button:disabled:hover {
     background: transparent;
   }
 
-  & .task-send-button:disabled:hover::before {
+  & .task-primary-action-button:disabled:hover::before {
     background: var(--surface-muted);
   }
 
-  & .task-send-icon {
+  & .task-primary-action-icon {
     position: relative;
     display: block;
     width: var(--interface-icon-size);

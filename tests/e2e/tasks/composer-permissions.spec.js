@@ -321,7 +321,7 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
     form.evaluate((element) => {
       const panel = element.querySelector(".task-composer-panel");
       const textarea = element.querySelector("textarea[name='prompt']");
-      const sendButton = element.querySelector(".task-send-button");
+      const sendButton = element.querySelector(".task-primary-action-button");
       const modelButton = element.querySelector(".task-model-button");
       const modelName = element.querySelector(".task-model-name");
       const permissionButton = element.querySelector(".task-permission-button");
@@ -600,7 +600,15 @@ test("active turns lock the approval mode until the next turn", async ({ page })
 
   await page.goto("/tasks/thread-1?cwd=src");
 
+  const summary = page.locator("caffold-task-detail-summary");
   const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
+  const primaryAction = form.locator(".task-primary-action-button");
+  await expect(summary.getByRole("button", { name: /Interrupt/ })).toHaveCount(0);
+  const initialSummaryHeight = await summary.evaluate(
+    (element) => element.getBoundingClientRect().height,
+  );
+  await expect(primaryAction).toHaveAttribute("data-primary-action", "stop");
+  await expect(primaryAction).toBeEnabled();
   const picker = form.getByRole("button", { name: "Choose approval mode" });
   await expect(picker).toContainText("Auto review");
   await expect(picker).toBeDisabled();
@@ -617,6 +625,12 @@ test("active turns lock the approval mode until the next turn", async ({ page })
     "Model and reasoning can be changed after the active turn finishes.",
   );
   await form.getByRole("textbox", { name: "Follow-up prompt" }).fill("Steer this turn");
+  await expect(primaryAction).toHaveAttribute("data-primary-action", "send");
+  await expect
+    .poll(() =>
+      summary.evaluate((element) => element.getBoundingClientRect().height),
+    )
+    .toBe(initialSummaryHeight);
   await form.getByRole("textbox", { name: "Follow-up prompt" }).press("Enter");
 
   await expect.poll(() => submittedBody).not.toBeNull();
@@ -627,6 +641,12 @@ test("active turns lock the approval mode until the next turn", async ({ page })
   expect(submittedBody).not.toHaveProperty("permissionMode");
   expect(submittedBody).not.toHaveProperty("model");
   expect(submittedBody).not.toHaveProperty("effort");
+  await expect(primaryAction).toHaveAttribute("data-primary-action", "stop");
+  await expect
+    .poll(() =>
+      summary.evaluate((element) => element.getBoundingClientRect().height),
+    )
+    .toBe(initialSummaryHeight);
 });
 
 test("steering an active turn preserves its existing work clock", async ({ page }) => {

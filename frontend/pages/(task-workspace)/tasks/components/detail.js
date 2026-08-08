@@ -79,6 +79,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.detailLoadGeneration = 0;
     this.historyRequestToken = 0;
     this.interruptActionToken = 0;
+    this.interruptStateValue = { loading: false, error: null };
     this.archiveActionToken = 0;
     this.approvalActionToken = 0;
     this.promptSubmissionSequence = 0;
@@ -162,6 +163,18 @@ class CaffoldTaskDetail extends HTMLElement {
         });
       });
     });
+    this.addEventListener("caffold:task-composer-intent", (event) => {
+      const composer = closestElement(event.target, "caffold-task-composer");
+      if (
+        !composer ||
+        composer !== this.followUpComposer() ||
+        event.detail?.type !== "interrupt"
+      ) {
+        return;
+      }
+      event.stopPropagation();
+      void this.interruptSelectedTask();
+    });
     this.addEventListener("caffold:task-composer-layout-change", (event) => {
       const composer = closestElement(event.target, "caffold-task-composer");
       if (!composer || composer !== this.followUpComposer()) {
@@ -240,6 +253,7 @@ class CaffoldTaskDetail extends HTMLElement {
       this.detailLoadGeneration += 1;
       this.historyRequestToken += 1;
       this.interruptActionToken += 1;
+      this.interruptStateValue = { loading: false, error: null };
       this.archiveActionToken += 1;
       this.approvalActionToken += 1;
       this.archiveStateValue = { loading: false, error: null };
@@ -290,6 +304,8 @@ class CaffoldTaskDetail extends HTMLElement {
       return false;
     }
     this.detailLoadGeneration += 1;
+    this.interruptActionToken += 1;
+    this.interruptStateValue = { loading: false, error: null };
     this.selectedThreadId = threadId;
     this.view = "detail";
     this.hidden = false;
@@ -310,6 +326,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.detailLoadGeneration += 1;
     this.historyRequestToken += 1;
     this.interruptActionToken += 1;
+    this.interruptStateValue = { loading: false, error: null };
     this.archiveActionToken += 1;
     this.approvalActionToken += 1;
     this.archiveStateValue = { loading: false, error: null };
@@ -515,6 +532,9 @@ class CaffoldTaskDetail extends HTMLElement {
       currentTask && sameStructuredValue(currentTask, nextTask)
         ? currentTask
         : nextTask;
+    if (!isTaskActivelyWorking(stableTask) || !stableTask?.activeTurn?.id) {
+      this.interruptStateValue = { loading: false, error: null };
+    }
     this.taskDetail = {
       ...detail,
       task: stableTask,
@@ -660,10 +680,6 @@ class CaffoldTaskDetail extends HTMLElement {
     }
     if (action === "open-conversation") {
       this.requestReviewRoute({ review: false });
-      return;
-    }
-    if (action === "interrupt") {
-      this.interruptSelectedTask();
       return;
     }
     if (action === "archive") {
@@ -908,8 +924,12 @@ class CaffoldTaskDetail extends HTMLElement {
 
 
   async interruptSelectedTask() {
+    const task = this.taskDetail?.task ?? null;
     if (
       !this.selectedThreadId ||
+      this.interruptStateValue.loading ||
+      !isTaskActivelyWorking(task) ||
+      !task?.activeTurn?.id ||
       isTaskTransportStale(this.detailStream.state)
     ) {
       return;
@@ -917,7 +937,8 @@ class CaffoldTaskDetail extends HTMLElement {
 
     const actionToken = ++this.interruptActionToken;
     const threadId = this.selectedThreadId;
-    this.taskSummary()?.setInterruptError(null);
+    this.interruptStateValue = { loading: true, error: null };
+    this.syncFollowUpComposer();
     try {
       const detail = await interruptTask(threadId);
       if (
@@ -926,11 +947,13 @@ class CaffoldTaskDetail extends HTMLElement {
       ) {
         return;
       }
+      this.interruptStateValue = { loading: false, error: null };
       if (
         !this.applyCanonicalTaskDetail(threadId, detail, {
           updateKind: "live",
         })
       ) {
+        this.syncFollowUpComposer();
         return;
       }
     } catch (error) {
@@ -940,7 +963,8 @@ class CaffoldTaskDetail extends HTMLElement {
       ) {
         return;
       }
-      this.taskSummary()?.setInterruptError(error);
+      this.interruptStateValue = { loading: false, error };
+      this.syncFollowUpComposer();
     }
   }
 
@@ -1367,6 +1391,14 @@ class CaffoldTaskDetail extends HTMLElement {
       submitLabel: "Send prompt",
       disabled: isTaskTransportStale(this.detailStream.state),
       settingsLocked: isTaskActivelyWorking(task),
+      turnActive: isTaskActivelyWorking(task),
+      activeTurnId: `${task?.activeTurn?.id ?? ""}`,
+      interrupting: this.interruptStateValue.loading,
+      interruptError: `${
+        this.interruptStateValue.error?.message ??
+        this.interruptStateValue.error ??
+        ""
+      }`,
       model: `${this.taskDetail?.model ?? ""}`.trim(),
       effort: `${this.taskDetail?.reasoningEffort ?? ""}`.trim(),
       permissionMode: `${this.taskDetail?.permissionMode ?? ""}`.trim(),

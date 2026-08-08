@@ -247,7 +247,7 @@ function taskInterfaceMetrics(page) {
       ),
       model: activeComposer.querySelector(".task-model-button"),
       permission: activeComposer.querySelector(".task-permission-button"),
-      send: activeComposer.querySelector(".task-send-button"),
+      send: activeComposer.querySelector(".task-primary-action-button"),
     };
     const boxHeight = (element) => element.getBoundingClientRect().height;
     const paintedHeight = (element) => {

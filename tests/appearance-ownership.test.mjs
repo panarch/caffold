@@ -411,7 +411,7 @@ test("visible inline icons have explicit block geometry from their UI owner", ()
     ["pages/(task-workspace)/layout.css", ".task-workspace-close-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/components/navigation.css", ".task-workspace-navigation-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/tasks/controls.css", ".task-action-icon", "--interface-icon-size"],
-    ["pages/(task-workspace)/tasks/components/composer.css", ".task-send-icon", "--interface-icon-size"],
+    ["pages/(task-workspace)/tasks/components/composer.css", ".task-primary-action-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/tasks/components/detail/review.css", ".task-refresh-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/tasks/components/navigator.css", ".task-repository-icon", "--task-list-icon-size"],
     ["pages/(task-workspace)/tasks/components/navigator.css", ".task-row-worktree-icon", "--task-list-icon-size"],
@@ -513,7 +513,7 @@ test("icon-only controls use square slots from their semantic control tier", () 
     ],
     [
       "pages/(task-workspace)/tasks/components/composer.css",
-      ".task-send-button",
+      ".task-primary-action-button",
       "--interface-control-hit-size",
     ],
   ];
@@ -632,7 +632,7 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
     ],
     ["pages/(task-workspace)/layout.css", ".task-workspace-close::before", "--interface-compact-hit-outset"],
     ["pages/(review-workspace)/layout.css", ".review-workspace-close::before", "--interface-compact-hit-outset"],
-    ["pages/(task-workspace)/tasks/components/composer.css", ".task-send-button::before", "--interface-control-hit-outset"],
+    ["pages/(task-workspace)/tasks/components/composer.css", ".task-primary-action-button::before", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-composer-attachment-remove::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-model-button::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-permission-button::before", "--interface-compact-hit-outset"],

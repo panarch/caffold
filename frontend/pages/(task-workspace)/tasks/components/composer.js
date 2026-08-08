@@ -112,6 +112,10 @@ class CaffoldTaskComposer extends HTMLElement {
       disabled: false,
       settingsLocked: false,
       requestError: "",
+      turnActive: false,
+      activeTurnId: "",
+      interrupting: false,
+      interruptError: "",
     };
     this.state = createComposerState();
     this.boundThreadId = "";
@@ -211,9 +215,15 @@ class CaffoldTaskComposer extends HTMLElement {
       cwd: cleanLogicalPath(context.cwd ?? this.context.cwd ?? "."),
       disabled: Boolean(context.disabled),
       settingsLocked: Boolean(context.settingsLocked),
+      turnActive: Boolean(context.turnActive),
+      activeTurnId: `${context.activeTurnId ?? ""}`.trim(),
+      interrupting: Boolean(context.interrupting),
       requestError: Object.hasOwn(context, "requestError")
         ? `${context.requestError ?? ""}`
         : this.context.requestError,
+      interruptError: Object.hasOwn(context, "interruptError")
+        ? `${context.interruptError ?? ""}`
+        : this.context.interruptError,
     };
     const contextChanged = !shallowEqual(this.context, nextContext);
     this.context = nextContext;
@@ -330,6 +340,62 @@ class CaffoldTaskComposer extends HTMLElement {
     return submissionId
       ? this.activeSubmissions.get(submissionId) ?? null
       : null;
+  }
+
+  primaryActionView() {
+    const state = this.stateFor();
+    const submitting = Boolean(this.activeSubmissionFor());
+    const hasDraft = Boolean(state.prompt.trim() || state.images.length);
+    const voicePhase = this.voice.phase;
+    const transportBlocked = this.context.disabled;
+    const send = (
+      { disabled = false, label = this.context.submitLabel } = {},
+    ) => ({
+      kind: "send",
+      icon: "ArrowUp",
+      label,
+      title: transportBlocked
+        ? "Caffold server is reconnecting."
+        : disabled && submitting
+          ? "Sending prompt"
+          : label,
+      disabled: transportBlocked || disabled,
+    });
+    const stop = ({ disabled = false, title = "Stop current turn" } = {}) => ({
+      kind: "stop",
+      icon: "Square",
+      label: "Stop current turn",
+      title: transportBlocked ? "Caffold server is reconnecting." : title,
+      disabled: transportBlocked || disabled,
+    });
+
+    if (voicePhase === "recording") {
+      return send({
+        disabled: submitting,
+        label: "Finish voice input and send",
+      });
+    }
+    if (submitting) {
+      return send({ disabled: true });
+    }
+    if (["requesting", "transcribing"].includes(voicePhase)) {
+      return send({ disabled: true });
+    }
+    if (this.context.interrupting) {
+      return stop({ disabled: true, title: "Stopping current turn" });
+    }
+    if (hasDraft) {
+      return send();
+    }
+    if (this.context.mode === "follow-up" && this.context.turnActive) {
+      return stop({
+        disabled: !this.context.activeTurnId,
+        title: this.context.activeTurnId
+          ? "Stop current turn"
+          : "Stop is unavailable until the active turn is identified.",
+      });
+    }
+    return send({ disabled: true });
   }
 
   captureCurrentState() {
@@ -524,23 +590,33 @@ class CaffoldTaskComposer extends HTMLElement {
     state.selectionStart = textarea.selectionStart;
     state.selectionEnd = textarea.selectionEnd;
     this.notifyLayoutChange();
-    this.syncSubmitAvailability();
+    this.syncPrimaryAction();
   }
 
-  syncSubmitAvailability() {
-    const state = this.stateFor();
-    const submit = this.querySelector(".task-send-button");
-    if (!submit) {
+  syncPrimaryAction() {
+    const button = this.querySelector(".task-primary-action-button");
+    if (!button) {
       return;
     }
-    submit.disabled = Boolean(
-      this.activeSubmissionFor() ||
-        this.context.disabled ||
-        ["requesting", "recording", "transcribing"].includes(
-          this.voice.phase,
-        ) ||
-        (!state.prompt.trim() && !state.images.length),
-    );
+    const action = this.primaryActionView();
+    button.type = action.kind === "send" ? "submit" : "button";
+    button.disabled = action.disabled;
+    button.dataset.primaryAction = action.kind;
+    if (action.kind === "stop") {
+      button.dataset.composerAction = "interrupt";
+    } else {
+      delete button.dataset.composerAction;
+    }
+    button.setAttribute("aria-label", action.label);
+    button.title = action.title;
+    if (button.dataset.primaryActionIcon !== action.icon) {
+      button.dataset.primaryActionIcon = action.icon;
+      button.innerHTML = renderInlineIcon(
+        action.icon,
+        action.label,
+        "task-primary-action-icon",
+      );
+    }
   }
 
   handleKeydown(event) {
@@ -583,6 +659,10 @@ class CaffoldTaskComposer extends HTMLElement {
       return;
     }
     if (type === "browse-cwd" || type === "cancel") {
+      this.dispatchIntent(type);
+      return;
+    }
+    if (type === "interrupt") {
       this.dispatchIntent(type);
       return;
     }
@@ -823,7 +903,7 @@ class CaffoldTaskComposer extends HTMLElement {
     }
     this.render();
     if (shouldSubmit) {
-      const send = this.querySelector(".task-send-button");
+      const send = this.querySelector(".task-primary-action-button");
       send?.form?.requestSubmit(send);
     }
   }
@@ -980,7 +1060,7 @@ class CaffoldTaskComposer extends HTMLElement {
       if (
         !this.activeSubmissionFor() &&
         !this.context.disabled &&
-        event.submitter?.classList.contains("task-send-button")
+        event.submitter?.classList.contains("task-primary-action-button")
       ) {
         void this.stopVoiceRecording({ submitAfterTranscription: true });
       }
@@ -1077,22 +1157,15 @@ class CaffoldTaskComposer extends HTMLElement {
     const voiceBusy = ["requesting", "recording", "transcribing"].includes(
       this.voice.phase,
     );
+    const interrupting = Boolean(this.context.interrupting);
     const fieldDisabled =
       this.context.disabled ||
       voiceBusy ||
       (submitting && this.context.mode === "create");
-    const requestLocked = submitting || this.context.disabled || voiceBusy;
-    const voiceSendReady =
-      this.voice.phase === "recording" &&
-      !submitting &&
-      !this.context.disabled;
-    const submitDisabled = voiceSendReady
-      ? false
-      : requestLocked || (!state.prompt.trim() && !state.images.length);
+    const requestLocked =
+      submitting || this.context.disabled || voiceBusy || interrupting;
     const settingsLocked = requestLocked || this.context.settingsLocked;
-    const sendLabel = voiceSendReady
-      ? "Finish voice input and send"
-      : this.context.submitLabel;
+    const primaryAction = this.primaryActionView();
     const permissionMode =
       state.permissionMode || this.defaultPermissionMode;
     const permission = this.permissionOptions.find(
@@ -1104,7 +1177,7 @@ class CaffoldTaskComposer extends HTMLElement {
         data-task-form="${escapeHtml(this.context.mode)}"
         data-voice-state="${escapeHtml(this.voice.phase)}"
         ${this.context.threadId ? `data-thread-id="${escapeHtml(this.context.threadId)}"` : ""}
-        aria-busy="${submitting || voiceBusy ? "true" : "false"}"
+        aria-busy="${submitting || voiceBusy || interrupting ? "true" : "false"}"
       >
         <div class="task-composer-panel">
           ${
@@ -1125,6 +1198,11 @@ class CaffoldTaskComposer extends HTMLElement {
             ${fieldDisabled ? "disabled" : ""}
           >${escapeHtml(state.prompt)}</textarea>
           ${this.renderVoiceStatus()}
+          ${
+            this.context.interruptError
+              ? `<p class="task-composer-interrupt-error" role="alert">${escapeHtml(this.context.interruptError)}</p>`
+              : ""
+          }
           ${
             state.imageError
               ? `<p class="task-composer-image-error" role="alert">${escapeHtml(state.imageError)}</p>`
@@ -1151,13 +1229,16 @@ class CaffoldTaskComposer extends HTMLElement {
             <div class="task-composer-actions">
               ${this.renderVoiceControls(submitting)}
               <button
-                type="submit"
-                class="task-send-button"
-                aria-label="${escapeHtml(sendLabel)}"
-                title="${escapeHtml(this.context.disabled ? "Caffold server is reconnecting." : sendLabel)}"
-                ${submitDisabled ? "disabled" : ""}
+                type="${primaryAction.kind === "send" ? "submit" : "button"}"
+                class="task-primary-action-button"
+                data-primary-action="${primaryAction.kind}"
+                data-primary-action-icon="${primaryAction.icon}"
+                ${primaryAction.kind === "stop" ? 'data-composer-action="interrupt"' : ""}
+                aria-label="${escapeHtml(primaryAction.label)}"
+                title="${escapeHtml(primaryAction.title)}"
+                ${primaryAction.disabled ? "disabled" : ""}
               >
-                ${renderInlineIcon("ArrowUp", "Send", "task-send-icon")}
+                ${renderInlineIcon(primaryAction.icon, primaryAction.label, "task-primary-action-icon")}
               </button>
             </div>
           </div>
@@ -1180,6 +1261,7 @@ class CaffoldTaskComposer extends HTMLElement {
     const disabled =
       submitting ||
       this.context.disabled ||
+      this.context.interrupting ||
       ["checking", "requesting", "downloading", "transcribing", "unavailable"].includes(
         phase,
       );

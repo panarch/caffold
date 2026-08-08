@@ -83,17 +83,6 @@ caffold-task-detail-summary {
     min-width: 0;
   }
 
-  & .task-summary-action-error {
-    grid-column: 1 / -1;
-    justify-self: end;
-    max-width: min(100%, 520px);
-    color: var(--danger);
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-    overflow-wrap: anywhere;
-    text-align: right;
-  }
-
   & .task-detail-actions {
     display: flex;
     align-items: center;
@@ -330,10 +319,6 @@ caffold-task-detail-summary {
   & .task-brand-button:focus-visible::before {
     border-color: var(--border-strong);
     background: var(--surface-muted);
-  }
-
-  & .task-detail-actions [data-summary-action="interrupt"] {
-    margin-inline: var(--interface-compact-hit-outset);
   }
 
   & .task-detail-info-button .task-status-chip {

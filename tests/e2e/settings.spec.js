@@ -519,7 +519,7 @@ test("keeps mixed surfaces reflowed across appearance extremes", async ({
     const approvalText = approval.querySelector("p");
     const approvalCode = approval.querySelector("pre");
     const textarea = composer.querySelector("textarea");
-    const send = composer.querySelector(".task-send-button");
+    const send = composer.querySelector(".task-primary-action-button");
     const githubText = github.shadowRoot.querySelector("p");
     const githubCode = github.shadowRoot.querySelector("code");
     const metric = (element) => {
@@ -719,7 +719,7 @@ async function modelPickerMetrics(composer) {
       return height;
     };
     const iconGeometry = [
-      ["send", element.querySelector(".task-send-button"), element.querySelector(".task-send-icon")],
+      ["send", element.querySelector(".task-primary-action-button"), element.querySelector(".task-primary-action-icon")],
     ].map(([name, button, icon]) => {
       const buttonBox = button.getBoundingClientRect();
       const iconBox = icon?.getBoundingClientRect();

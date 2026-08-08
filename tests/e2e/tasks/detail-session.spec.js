@@ -39,7 +39,7 @@ test("raw active flags prioritize approval over user input", async ({ page }) =>
   );
 });
 
-test("active task without a canonical turn omits controls and elapsed time", async ({
+test("active task without a canonical turn keeps a disabled composer Stop action", async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -59,6 +59,9 @@ test("active task without a canonical turn omits controls and elapsed time", asy
     page.locator(".task-detail-info-button .task-status-spinner"),
   ).toHaveCSS("color", "rgb(74, 74, 74)");
   await expect(page.getByRole("button", { name: "Interrupt" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Stop current turn", exact: true }),
+  ).toBeDisabled();
   const active = page.locator(".task-turn-active");
   await expect(active).toBeVisible();
   await expect(active.locator(".task-status-spinner")).toHaveCSS(
@@ -67,6 +70,55 @@ test("active task without a canonical turn omits controls and elapsed time", asy
   );
   await expect(active).not.toHaveAttribute("data-active-turn-started-ms");
   await expect(active.locator(".task-turn-active-duration")).toHaveText("Working");
+});
+
+test("keeps the composer Stop action stable while an interrupt request is pending", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop",
+    "Interrupt request state is viewport-independent",
+  );
+  await installTaskApiFixture(page);
+  const runningDetail = taskDetailFixture({ running: true });
+  const stoppedDetail = taskDetailFixture();
+  stoppedDetail.revision = 2;
+  stoppedDetail.task.title = runningDetail.task.title;
+  let interruptRequests = 0;
+  let releaseInterrupt;
+  const interruptGate = new Promise((resolve) => {
+    releaseInterrupt = resolve;
+  });
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: runningDetail }),
+  );
+  await page.route("**/api/tasks/thread-1/interrupt", async (route) => {
+    interruptRequests += 1;
+    await interruptGate;
+    return route.fulfill({ json: stoppedDetail });
+  });
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
+  const prompt = form.getByRole("textbox", { name: "Follow-up prompt" });
+  const primaryAction = form.locator(".task-primary-action-button");
+  await expect(primaryAction).toHaveAttribute("data-primary-action", "stop");
+
+  await primaryAction.click();
+  await expect.poll(() => interruptRequests).toBe(1);
+  await expect(form).toHaveAttribute("aria-busy", "true");
+  await expect(primaryAction).toHaveAttribute("data-primary-action", "stop");
+  await expect(primaryAction).toBeDisabled();
+
+  await prompt.fill("Continue after the current turn stops");
+  await expect(primaryAction).toHaveAttribute("data-primary-action", "stop");
+  await expect(primaryAction).toBeDisabled();
+  expect(interruptRequests).toBe(1);
+
+  releaseInterrupt();
+  await expect(form).toHaveAttribute("aria-busy", "false");
+  await expect(primaryAction).toHaveAttribute("data-primary-action", "send");
+  await expect(primaryAction).toBeEnabled();
 });
 
 test("updates only affected detail regions and preserves an active IME composition", async ({
@@ -572,7 +624,7 @@ test("recovers task detail and prompt submission across bootstrap races", async 
   let form = tasksPage.locator(".task-follow-up-form");
   let prompt = form.locator('textarea[name="prompt"]');
   await prompt.fill("Submitted after the delayed failure");
-  await form.locator('button[type="submit"]').click();
+  await form.locator(".task-primary-action-button").click();
   await expect.poll(() => submittedPrompts).toEqual([
     {
       threadId: taskBeforeFailure.threadId,
@@ -1085,15 +1137,17 @@ test("keeps prompt, interrupt, and approval request errors with their owning con
 
   await page.goto("/tasks/thread-1?cwd=src");
   const tasksPage = page.locator("caffold-tasks-page");
-  const summaryError = tasksPage.locator(".task-summary-action-error");
+  const interruptError = tasksPage.locator(".task-composer-interrupt-error");
   const approvalCard = tasksPage.locator(
     '.task-approval-card:has([data-approval-id="approval-request-error"])',
   );
   const approvalError = approvalCard.locator(".task-approval-error");
   const composerError = tasksPage.locator(".task-composer-request-error");
 
-  await tasksPage.locator('[data-summary-action="interrupt"]').click();
-  await expect(summaryError).toHaveText("Interrupt failed by fixture.");
+  await tasksPage
+    .getByRole("button", { name: "Stop current turn", exact: true })
+    .click();
+  await expect(interruptError).toHaveText("Interrupt failed by fixture.");
   await expect(approvalError).toHaveCount(0);
   await expect(composerError).toHaveCount(0);
 
@@ -1101,16 +1155,16 @@ test("keeps prompt, interrupt, and approval request errors with their owning con
     .locator('[data-task-action="approval"][data-decision="accept"]')
     .click();
   await expect(approvalError).toHaveText("Approval failed by fixture.");
-  await expect(summaryError).toHaveText("Interrupt failed by fixture.");
+  await expect(interruptError).toHaveText("Interrupt failed by fixture.");
   await expect(composerError).toHaveCount(0);
 
   const composer = tasksPage.locator(".task-follow-up-form");
   await composer
     .getByRole("textbox", { name: "Follow-up prompt" })
     .fill("Keep prompt errors in this composer");
-  await composer.locator('button[type="submit"]').click();
+  await composer.locator(".task-primary-action-button").click();
   await expect(composerError).toHaveText("Prompt rejected by fixture.");
-  await expect(summaryError).toHaveText("Interrupt failed by fixture.");
+  await expect(interruptError).toHaveText("Interrupt failed by fixture.");
   await expect(approvalError).toHaveText("Approval failed by fixture.");
 
   const ownedErrors = await tasksPage.evaluate((element) => {
@@ -1122,7 +1176,8 @@ test("keeps prompt, interrupt, and approval request errors with their owning con
       detailErrorFields: ["error", "interruptError", "approvalErrors"].filter(
         (field) => Object.hasOwn(detail, field),
       ),
-      interrupt: summary.interruptError?.message ?? "",
+      summaryOwnsInterruptError: Object.hasOwn(summary, "interruptError"),
+      interrupt: composer.context.interruptError,
       approval:
         conversation.approvalErrors
           .get("approval-request-error")
@@ -1132,6 +1187,7 @@ test("keeps prompt, interrupt, and approval request errors with their owning con
   });
   expect(ownedErrors).toEqual({
     detailErrorFields: [],
+    summaryOwnsInterruptError: false,
     interrupt: "Interrupt failed by fixture.",
     approval: "Approval failed by fixture.",
     prompt: "Prompt rejected by fixture.",
@@ -1201,7 +1257,7 @@ test("canonical refresh clears errors and reconciles prompts without trusting ol
   await composer
     .getByRole("textbox", { name: "Follow-up prompt" })
     .fill(promptText);
-  await composer.locator('button[type="submit"]').click();
+  await composer.locator(".task-primary-action-button").click();
   await expect
     .poll(() =>
       tasksPage.evaluate((element) => {
@@ -1343,13 +1399,17 @@ test("canonical action responses reject foreign tasks and preserve history curso
 
   await page.goto("/tasks/thread-1?cwd=src");
   const tasksPage = page.locator("caffold-tasks-page");
-  await tasksPage.locator('[data-summary-action="interrupt"]').click();
+  await tasksPage
+    .getByRole("button", { name: "Stop current turn", exact: true })
+    .click();
   await expect.poll(() => interruptRequests).toBe(1);
   await expect(
     tasksPage.getByRole("heading", { name: "Running task" }),
   ).toBeVisible();
 
-  await tasksPage.locator('[data-summary-action="interrupt"]').click();
+  await tasksPage
+    .getByRole("button", { name: "Stop current turn", exact: true })
+    .click();
   await expect.poll(() => interruptRequests).toBe(2);
   await expect(
     tasksPage.getByRole("heading", { name: "Canonical interrupt response" }),
@@ -1968,7 +2028,7 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
     ),
   ).toHaveCount(0);
   await expect(
-    tasksPage.locator('[data-summary-action="interrupt"]'),
+    tasksPage.getByRole("button", { name: "Stop current turn", exact: true }),
   ).toBeDisabled();
   await expect(textarea).toBeDisabled();
   await expect(taskRow).toHaveAttribute("data-task-status", "reconnecting");

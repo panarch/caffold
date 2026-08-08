@@ -46,7 +46,6 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       contextPath: ".",
       archiveState: { loading: false, error: null },
     };
-    this.interruptError = null;
     this.githubStatus = null;
     this.githubStatusPath = "";
     this.githubStatusState = "idle";
@@ -65,9 +64,6 @@ class CaffoldTaskDetailSummary extends HTMLElement {
     const task = snapshot.task ?? null;
     const nextThreadId = taskThreadId(task);
     const nextRootPath = taskWorktreeRootPath(task);
-    if (previousThreadId !== nextThreadId || !task?.activeTurn?.id) {
-      this.interruptError = null;
-    }
     const nextSnapshot = {
       task,
       transportState: snapshot.transportState ?? "idle",
@@ -109,13 +105,6 @@ class CaffoldTaskDetailSummary extends HTMLElement {
     this.render({ preserveDisclosure: previousThreadId === nextThreadId });
     this.ensureGithubStatus();
     return true;
-  }
-
-  setInterruptError(error) {
-    this.ensureState();
-    this.interruptError =
-      error && this.snapshot.task?.activeTurn?.id ? error : null;
-    this.render();
   }
 
   setReviewView(view) {
@@ -317,14 +306,6 @@ class CaffoldTaskDetailSummary extends HTMLElement {
             ><span>Review</span></button>
           </div>
           ${this.renderReviewMenus(task)}
-          ${
-            task.activeTurn?.id
-              ? `<button type="button" class="task-secondary-button" data-summary-action="interrupt" ${transportBlocked ? 'disabled title="Caffold server connection is unavailable."' : ""}>
-                  ${renderInlineIcon("Square", "Interrupt", "task-action-icon")}
-                  <span class="task-action-label">Interrupt</span>
-                </button>`
-              : ""
-          }
         </div>
         <button
           type="button"
@@ -336,11 +317,6 @@ class CaffoldTaskDetailSummary extends HTMLElement {
           ${status || renderInlineIcon("Info", "Task details", "task-action-icon")}
         </button>
       </div>
-      ${
-        this.interruptError
-          ? `<p class="task-summary-action-error" role="alert">${escapeHtml(this.interruptError.message ?? this.interruptError)}</p>`
-          : ""
-      }
       <div
         id="task-detail-info"
         class="task-detail-popover"

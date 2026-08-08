@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import {
+  installTaskApiFixture,
+  taskDetailFixture,
+} from "../support/task-api-fixture.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import { captureReviewScreenshot } from "../support/task-fixtures.js";
 
@@ -61,7 +65,7 @@ test("records without focusing the prompt and inserts a host transcript at the s
   });
   const idleActionLayout = await composer.evaluate((form) => {
     const voice = form.querySelector(".task-voice-button").getBoundingClientRect();
-    const send = form.querySelector(".task-send-button").getBoundingClientRect();
+    const send = form.querySelector(".task-primary-action-button").getBoundingClientRect();
     return {
       voiceCenter: voice.left + voice.width / 2,
       sendCenter: send.left + send.width / 2,
@@ -112,7 +116,7 @@ test("records without focusing the prompt and inserts a host transcript at the s
     const cancel = form
       .querySelector(".task-voice-cancel-button")
       .getBoundingClientRect();
-    const send = form.querySelector(".task-send-button").getBoundingClientRect();
+    const send = form.querySelector(".task-primary-action-button").getBoundingClientRect();
     return {
       modelNameClipped: modelName.scrollWidth > modelName.clientWidth + 1,
       overlaps: items.some(
@@ -319,6 +323,71 @@ test("finishes transcription before sending when Send is tapped during recording
     await page.evaluate(() => window.__caffoldVoiceSubmissions[0].prompt),
   ).toBe("기존 초안 바로 전송");
   expect(scenario.createTaskRequests).toBe(0);
+});
+
+test("keeps recording Stop separate while voice steers an active turn", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop",
+    "Active-turn voice state is viewport-independent",
+  );
+  await installTaskApiFixture(page);
+  await mockVoiceStatus(page, true);
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: taskDetailFixture({ running: true }) }),
+  );
+  let submittedBody = null;
+  await page.route("**/api/tasks/thread-1/prompts", (route) => {
+    submittedBody = route.request().postDataJSON();
+    return route.fulfill({
+      json: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        steered: true,
+      },
+    });
+  });
+  await page.route("**/api/voice/transcribe", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ text: "음성으로 이어서 작업해" }),
+    }),
+  );
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  const composer = page.locator(
+    'caffold-task-detail:not([hidden]) form[data-task-form="follow-up"]',
+  );
+  const primaryAction = composer.locator(".task-primary-action-button");
+  await expect(primaryAction).toHaveAttribute("data-primary-action", "stop");
+  await composer.getByRole("button", { name: "Start voice input" }).click();
+  await expect(composer).toHaveAttribute("data-voice-state", "recording");
+  await expect
+    .poll(() =>
+      composer.evaluate(
+        (form) =>
+          form.closest("caffold-task-composer")?.voiceRecorder?.sampleCount ?? 0,
+      ),
+    )
+    .toBeGreaterThan(0);
+
+  await expect(
+    composer.getByRole("button", { name: "Stop recording" }),
+  ).toBeEnabled();
+  await expect(primaryAction).toHaveAttribute("data-primary-action", "send");
+  await expect(primaryAction).toHaveAccessibleName(
+    "Finish voice input and send",
+  );
+  await primaryAction.click();
+
+  await expect.poll(() => submittedBody).not.toBeNull();
+  expect(submittedBody).toMatchObject({
+    prompt: "음성으로 이어서 작업해",
+    activeTurnId: "turn-1",
+  });
+  await expect(primaryAction).toHaveAttribute("data-primary-action", "stop");
+  await expect(primaryAction).toHaveAccessibleName("Stop current turn");
 });
 
 test("keeps the draft unsent when send-triggered transcription fails", async ({
