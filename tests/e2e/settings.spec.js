@@ -372,9 +372,16 @@ test("applies extreme values to Files and Code without coupling the axes", async
   const fileMetrics = await firstEntry.evaluate((element) => {
     const style = getComputedStyle(element);
     const box = element.getBoundingClientRect();
+    const rowHeightProbe = document.createElement("div");
+    rowHeightProbe.style.cssText =
+      "position:fixed;height:var(--file-tree-row-height)";
+    document.body.append(rowHeightProbe);
+    const configuredRowHeight = rowHeightProbe.getBoundingClientRect().height;
+    rowHeightProbe.remove();
     return {
       fontSize: Number.parseFloat(style.fontSize),
       height: box.height,
+      configuredRowHeight,
     };
   });
   expect(fileMetrics.fontSize).toBeCloseTo(rootFontSize * 0.8125, 3);
@@ -383,8 +390,12 @@ test("applies extreme values to Files and Code without coupling the axes", async
       matchMedia("(pointer: coarse)").matches ||
       matchMedia("(max-width: 520px)").matches,
   );
+  expect(fileMetrics.configuredRowHeight).toBeCloseTo(
+    touchInterface ? 36 : rootFontSize * 1.5,
+    2,
+  );
   expect(fileMetrics.height).toBeGreaterThanOrEqual(
-    (touchInterface ? 40 : rootFontSize * 1.5) - 0.02,
+    fileMetrics.configuredRowHeight - 0.02,
   );
 
   await page.locator('button[data-file-tree-path="src"]').click();

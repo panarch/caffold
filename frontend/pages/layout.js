@@ -403,6 +403,9 @@ class CaffoldAppShell extends HTMLElement {
     const result = await this.filesPage.openPath(fullPath, {
       fallbackPath: rootPath,
     });
+    if (!this.isCurrentRoute(route)) {
+      return;
+    }
     this.pathbar.path = this.currentPath;
     if (result?.directory) {
       await this.syncDirectoryContext(result.directory);

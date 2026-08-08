@@ -180,9 +180,18 @@ test("shows the elapsed duration and automatically transcribes at the recording 
   await installTaskLoopFixture(page);
   await mockVoiceStatus(page, true, 1);
   let transcriptionRequests = 0;
+  let markTranscriptionStarted;
+  let releaseTranscription;
+  const transcriptionStarted = new Promise((resolve) => {
+    markTranscriptionStarted = resolve;
+  });
+  const transcriptionReleased = new Promise((resolve) => {
+    releaseTranscription = resolve;
+  });
   await page.route("**/api/voice/transcribe", async (route) => {
     transcriptionRequests += 1;
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    markTranscriptionStarted();
+    await transcriptionReleased;
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ text: "제한 자동 전사" }),
@@ -198,10 +207,12 @@ test("shows the elapsed duration and automatically transcribes at the recording 
   await expect(composer).toHaveAttribute("data-voice-state", "recording");
   await expect(composer.getByRole("timer")).toHaveText("0:00");
 
+  await transcriptionStarted;
   await expect(composer).toHaveAttribute("data-voice-state", "transcribing");
   await expect(composer.getByRole("timer")).toHaveText("0:01");
   await expect(composer.getByRole("timer")).toHaveClass(/is-limit/);
   await expect(composer.locator(".task-composer-voice-status")).toHaveCount(0);
+  releaseTranscription();
   await expect(composer).toHaveAttribute("data-voice-state", "idle");
   await expect(prompt).toHaveValue("제한 자동 전사");
   expect(transcriptionRequests).toBe(1);

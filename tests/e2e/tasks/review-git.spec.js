@@ -287,18 +287,18 @@ test("keeps compact review controls and available panes inside the workspace", a
       toolbarRows: Math.round(
         element.querySelector(".task-review-toolbar").getBoundingClientRect().height,
       ),
-      controlHeights: [
+      visualControlHeights: [
         ...element.querySelectorAll(
-          ".task-review-axis-options, .task-review-base:not([hidden]) select, .task-review-refresh",
+          ".task-review-axis-options, .task-review-base:not([hidden]) select",
         ),
       ].map((control) => control.getBoundingClientRect().height),
-      axisButtonHeights: [
-        ...element.querySelectorAll(".task-review-axis-options button"),
+      directTouchControlHeights: [
+        ...element.querySelectorAll(
+          ".task-review-axis-options button, .task-review-refresh",
+        ),
       ].map((control) => control.getBoundingClientRect().height),
       expandedTouchHits: [
-        ...element.querySelectorAll(
-          ".task-review-base:not([hidden]), .task-review-refresh",
-        ),
+        ...element.querySelectorAll(".task-review-base:not([hidden])"),
       ].map((control) => {
         const bounds = control.getBoundingClientRect();
         const hit = document.elementFromPoint(
@@ -327,11 +327,12 @@ test("keeps compact review controls and available panes inside the workspace", a
     testInfo.project.name === "phone" ? 120 : 90,
   );
   expect(
-    Math.max(...layout.controlHeights) - Math.min(...layout.controlHeights),
+    Math.max(...layout.visualControlHeights) -
+      Math.min(...layout.visualControlHeights),
   ).toBeLessThanOrEqual(1);
   if (testInfo.project.name !== "desktop") {
-    expect(Math.max(...layout.controlHeights)).toBeLessThanOrEqual(34);
-    expect(Math.min(...layout.axisButtonHeights)).toBeGreaterThanOrEqual(40);
+    expect(Math.max(...layout.visualControlHeights)).toBeLessThanOrEqual(34);
+    expect(Math.min(...layout.directTouchControlHeights)).toBeGreaterThanOrEqual(40);
     expect(layout.expandedTouchHits.filter(({ matches }) => !matches)).toEqual([]);
   }
 
