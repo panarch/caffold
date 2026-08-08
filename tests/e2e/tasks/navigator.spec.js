@@ -862,6 +862,22 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     });
   expect(longTitleLayout.textOverflow).toBe("ellipsis");
   expect(longTitleLayout.whiteSpace).toBe("nowrap");
+  const taskScrollerPresentation = await tasksPage
+    .locator(".task-list-scroll")
+    .evaluate((element) => {
+      const style = getComputedStyle(element);
+      const webkitScrollbar = getComputedStyle(element, "::-webkit-scrollbar");
+      return {
+        overflowY: style.overflowY,
+        scrollbarWidth: style.scrollbarWidth,
+        webkitScrollbarDisplay: webkitScrollbar.display,
+      };
+    });
+  expect(taskScrollerPresentation).toEqual({
+    overflowY: "auto",
+    scrollbarWidth: "none",
+    webkitScrollbarDisplay: "none",
+  });
 
   if (testInfo.project.name !== "phone") {
     expect(longTitleLayout.isTruncated).toBe(true);
