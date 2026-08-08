@@ -31,7 +31,7 @@ test.beforeEach(async ({ page }) => {
 test("previews image files in the viewer", async ({ page }, testInfo) => {
   await page.goto(FILES_HOME_URL);
 
-  await page.locator('button[data-entry-path="preview-image.svg"]').click();
+  await page.locator('button[data-file-tree-path="preview-image.svg"]').click();
   await expect(page.locator("caffold-file-viewer")).toContainText("preview-image.svg");
   await expect(page.locator("caffold-file-viewer")).toContainText("SVG image");
   await page.getByRole("button", { name: "Show details for preview-image.svg" }).click();
@@ -57,18 +57,19 @@ test("keeps the toggled tree row anchored while expanding", async ({ page }) => 
   await page.goto(FILES_HOME_URL);
   await page.addStyleTag({
     content: `
-      caffold-file-list .file-list {
+      caffold-file-list .file-tree-scroll {
         max-height: 150px;
       }
     `,
   });
 
-  await page.locator('button[data-entry-path="src"]').click();
-  const planner = page.locator('button[data-entry-path="src/planner"]');
+  const fileTree = page.locator("caffold-file-list");
+  await fileTree.locator('button[data-file-tree-path="src"]').click();
+  const planner = fileTree.locator('button[data-file-tree-path="src/planner"]');
   await expect(planner).toBeVisible();
 
   const beforeTop = await planner.evaluate(async (element) => {
-    const scroller = element.closest(".file-list");
+    const scroller = element.closest(".file-tree-scroll");
     const scrollerTop = scroller.getBoundingClientRect().top;
     scroller.scrollTop += element.getBoundingClientRect().top - scrollerTop - 8;
     await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -76,7 +77,9 @@ test("keeps the toggled tree row anchored while expanding", async ({ page }) => 
   });
 
   await planner.click();
-  await expect(page.locator('button[data-entry-path="src/planner/mod.rs"]')).toBeVisible();
+  await expect(
+    fileTree.locator('button[data-file-tree-path="src/planner/mod.rs"]'),
+  ).toBeVisible();
   await page.waitForTimeout(50);
 
   const afterTop = await planner.evaluate((element) => element.getBoundingClientRect().top);
@@ -103,15 +106,15 @@ test(
   async ({ page }, testInfo) => {
     await page.goto(FILES_HOME_URL);
 
-    await expect(page.locator(`button[data-entry-path="${LONG_ROOT_FILE}"]`)).toBeVisible();
-    const selectedFile = page.locator('button[data-entry-path="README.md"]');
+    await expect(page.locator(`button[data-file-tree-path="${LONG_ROOT_FILE}"]`)).toBeVisible();
+    const selectedFile = page.locator('button[data-file-tree-path="README.md"]');
     await selectedFile.click();
     if (testInfo.project.name === "phone") {
       await page.getByRole("button", { name: "Back to files" }).click();
     }
 
     const fileRowMetrics = await selectedFile.evaluate((element) => {
-      const scroller = element.closest(".file-list");
+      const scroller = element.closest(".file-tree-scroll");
       scroller.scrollLeft = scroller.scrollWidth;
       const styles = window.getComputedStyle(element);
 
@@ -136,10 +139,10 @@ test(
     }
 
     await page.addStyleTag({
-      content: `button[data-entry-path="${LONG_ROOT_FILE}"] { display: none; }`,
+      content: `button[data-file-tree-path="${LONG_ROOT_FILE}"] { display: none; }`,
     });
     const fittedRowMetrics = await selectedFile.evaluate((element) => {
-      const scroller = element.closest(".file-list");
+      const scroller = element.closest(".file-tree-scroll");
       return {
         clientWidth: scroller.clientWidth,
         rowWidth: element.getBoundingClientRect().width,
@@ -157,13 +160,22 @@ test(
 test("scrolls long names horizontally in Files and Changes", async ({ page }) => {
   await page.goto(FILES_HOME_URL);
 
-  await expect(page.locator(`button[data-entry-path="${LONG_ROOT_FILE}"]`)).toBeVisible();
-  await expectHorizontalScroller(page, ".file-list");
+  const fileTree = page.locator("caffold-file-list");
+  await expect(
+    fileTree.locator(`button[data-file-tree-path="${LONG_ROOT_FILE}"]`),
+  ).toBeVisible();
+  await expectHorizontalScroller(page, "caffold-file-list .file-tree-scroll");
 
-  await page.locator('button[data-entry-path="src"]').click();
+  await fileTree.locator('button[data-file-tree-path="src"]').click();
   await clickHeaderAction(page, "git", "open-diff-workspace");
-  await expect(page.locator(`button[data-change-path="${LONG_CHANGE_FILE}"]`)).toBeVisible();
-  await expectHorizontalScroller(page, ".changes-tree-list");
+  const changesTree = page.locator("caffold-git-diff-changes-tree");
+  await expect(
+    changesTree.locator(`button[data-file-tree-path="${LONG_CHANGE_FILE}"]`),
+  ).toBeVisible();
+  await expectHorizontalScroller(
+    page,
+    "caffold-git-diff-changes-tree .file-tree-scroll",
+  );
 });
 
 test("scrolls long source lines horizontally in the code viewer", async ({ page }) => {
@@ -193,7 +205,7 @@ test("scrolls long source lines horizontally in the code viewer", async ({ page 
   });
 
   await page.goto(FILES_HOME_URL);
-  await page.locator('button[data-entry-path="README.md"]').click();
+  await page.locator('button[data-file-tree-path="README.md"]').click();
   await expect(page.locator("caffold-code-viewer")).toContainText("long-source-token");
   await expectHorizontalScroller(page, "caffold-code-viewer .code-lines");
   await expectCodeViewerGutterSeparated(page);
@@ -313,15 +325,15 @@ test("uses a single-pane file viewer on phone", async ({ page }, testInfo) => {
   await page.goto(FILES_HOME_URL);
   await page.addStyleTag({
     content: `
-      caffold-file-list .file-list {
+      caffold-file-list .file-tree-scroll {
         max-height: 140px;
       }
     `,
   });
 
   const fileBrowser = page.locator("caffold-file-browser");
-  const fileList = page.locator("caffold-file-list .file-list");
-  const fileTarget = page.locator(`button[data-entry-path="${LONG_ROOT_FILE}"]`);
+  const fileList = page.locator("caffold-file-list .file-tree-scroll");
+  const fileTarget = page.locator(`button[data-file-tree-path="${LONG_ROOT_FILE}"]`);
   await expect(fileBrowser).toHaveAttribute("data-browser-view", "list");
   await expect(page.locator("caffold-file-list")).toBeVisible();
   await expect(page.locator("caffold-file-viewer")).toBeHidden();
@@ -353,15 +365,15 @@ test("keeps list scroll positions when selecting files and changes", async ({ pa
   await page.goto(FILES_HOME_URL);
   await page.addStyleTag({
     content: `
-      caffold-file-list .file-list,
-      caffold-git-diff-page .changes-tree-list {
+      caffold-file-list .file-tree-scroll,
+      caffold-git-diff-page .file-tree-scroll {
         max-height: 72px;
       }
     `,
   });
 
-  const fileList = page.locator("caffold-file-list .file-list");
-  const fileTarget = page.locator('button[data-entry-path="README.md"]');
+  const fileList = page.locator("caffold-file-list .file-tree-scroll");
+  const fileTarget = page.locator('button[data-file-tree-path="README.md"]');
   await fileTarget.scrollIntoViewIfNeeded();
   const beforeFileScroll = await scrollTop(fileList);
   expect(beforeFileScroll).toBeGreaterThan(0);
@@ -374,11 +386,11 @@ test("keeps list scroll positions when selecting files and changes", async ({ pa
   }
   await expectPreservedScroll(fileList, beforeFileScroll);
 
-  await page.locator('button[data-entry-path="src"]').click();
+  await page.locator('button[data-file-tree-path="src"]').click();
   await clickHeaderAction(page, "git", "open-diff-workspace");
 
-  const changesList = page.locator("caffold-git-diff-page .changes-tree-list");
-  const changeTarget = page.locator(`button[data-change-path="${LONG_CHANGE_FILE}"]`);
+  const changesList = page.locator("caffold-git-diff-page .file-tree-scroll");
+  const changeTarget = page.locator(`button[data-file-tree-path="${LONG_CHANGE_FILE}"]`);
   await changeTarget.scrollIntoViewIfNeeded();
   const beforeChangesScroll = await scrollTop(changesList);
   expect(beforeChangesScroll).toBeGreaterThan(0);
@@ -399,7 +411,7 @@ test("keeps list scroll positions when selecting files and changes", async ({ pa
 test("extends the line-number gutter for short files", async ({ page }, testInfo) => {
   await page.goto(FILES_HOME_URL);
 
-  await page.locator('button[data-entry-path="README.md"]').click();
+  await page.locator('button[data-file-tree-path="README.md"]').click();
   await expect(page.locator("caffold-file-viewer")).toContainText("README.md");
   await expect(page.locator("caffold-code-viewer")).toContainText("Fixture Home");
   await expect(page.locator(".line-number").first()).toHaveText("1");

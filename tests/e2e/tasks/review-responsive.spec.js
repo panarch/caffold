@@ -64,7 +64,7 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
   );
   expect(summaryClearance.headingWidth).toBeGreaterThanOrEqual(100);
 
-  await taskReview.locator('button[data-repo-relative-path="planner.rs"]').click();
+  await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
   const after = await taskReview.evaluate((review) => {
     const navigator = review.querySelector(".task-review-navigator-pane");
     const viewer = review.querySelector(".task-review-viewer-pane");
@@ -85,7 +85,7 @@ test("keeps one compact file-navigation header on phone", async ({
   test.skip(testInfo.project.name !== "phone", "Phone owns the single-pane back control.");
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
-  await taskReview.locator('button[data-repo-relative-path="planner.rs"]').click();
+  await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
 
   const backButtons = taskReview.getByRole("button", { name: "Back to navigator" });
   await expect(backButtons).toHaveCount(1);
@@ -181,7 +181,7 @@ test("clamps the navigator so the shared viewer keeps its minimum width", async 
 test("keeps Review reflowed at the appearance extremes", async ({ page }, testInfo) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
-  await taskReview.locator('button[data-repo-relative-path="planner.rs"]').click();
+  await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
 
   for (const settings of [
     { interfaceScalePercent: 90, conversationTextPx: 13, codeTextPx: 12 },

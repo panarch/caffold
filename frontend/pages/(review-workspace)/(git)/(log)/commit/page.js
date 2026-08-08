@@ -211,7 +211,7 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     this.currentPath = options.currentPath ?? this.currentPath ?? "";
     const requestId = ++this.fileRequestId;
     this.commitTree.setSelectedPath(path);
-    this.rememberScroller("commit", this.commitTree, ".commit-tree-list");
+    this.rememberScroller("commit", this.commitTree, ".file-tree-scroll");
     this.setDetailView("viewer");
     this.emitStateChange();
     const presentation = this.diffPresentation(path, sha, options.status);
@@ -310,7 +310,7 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     this.commitTree.setSelectedPath("");
     this.viewerPresentation = null;
     this.fileViewer.setEmpty();
-    this.restoreScroller("commit", this.commitTree, ".commit-tree-list");
+    this.restoreScroller("commit", this.commitTree, ".file-tree-scroll");
     this.emitStateChange();
   }
 

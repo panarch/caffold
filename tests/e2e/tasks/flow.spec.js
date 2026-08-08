@@ -360,7 +360,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   );
   await tasksPage.getByRole("button", { name: "Browse Files" }).click();
   await expect(cwdBrowser).toBeVisible();
-  await cwdBrowser.locator('button[data-entry-path="src"]').click();
+  await cwdBrowser.locator('button[data-file-tree-path="src"]').click();
   await chooseCwd.click();
   await expect(page).toHaveURL("/tasks/new?cwd=src");
   await expect(tasksPage.locator('textarea[name="prompt"]')).toHaveValue(
@@ -494,7 +494,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   );
   const taskFiles = tasksPage.locator("caffold-task-review caffold-file-navigator");
   await expect(
-    taskFiles.locator('button[data-entry-path="README.md"]'),
+    taskFiles.locator('button[data-file-tree-path="README.md"]'),
   ).toBeVisible();
   await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
@@ -512,7 +512,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await taskDiff.getByRole("button", { name: "Changes", exact: true }).click();
   await taskDiff.getByRole("button", { name: "Diff", exact: true }).click();
   const readmeChange = taskDiff.locator(
-    'caffold-git-diff-changes-tree button[data-repo-relative-path="README.md"]',
+    'caffold-git-diff-changes-tree button[data-file-tree-relative-path="README.md"]',
   );
   await expect(readmeChange).toBeVisible();
   await readmeChange.click();

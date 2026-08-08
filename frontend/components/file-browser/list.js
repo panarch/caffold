@@ -1,54 +1,60 @@
 import { listDirectory } from "../../api.js";
 import { entryKindLabel, escapeHtml } from "../dom.js";
-import { renderEntryIcon, renderInlineIcon, warmIcons } from "../icons.js";
+import {
+  errorFileTreeChildren,
+  FILE_TREE_LOAD_EVENT,
+  FILE_TREE_SELECT_EVENT,
+  loadingFileTreeChildren,
+  readyFileTreeChildren,
+  unloadedFileTreeChildren,
+} from "../file-tree.js";
+import { renderInlineIcon } from "../icons.js";
 
 const TREE_LOADING_DELAY_MS = 180;
 
 class CaffoldFileList extends HTMLElement {
   connectedCallback() {
-    if (!this.initialized) {
-      this.initialized = true;
-      this.addEventListener("click", (event) => {
-        const refreshButton = event.target.closest('button[data-action="refresh-files"]');
-        if (refreshButton) {
-          this.dispatchEvent(
-            new CustomEvent("caffold:refresh-file-list", { bubbles: true }),
-          );
-          return;
-        }
-
-        const button = event.target.closest("button[data-entry-path]");
-        if (!button || button.disabled) {
-          return;
-        }
-
-        if (button.dataset.action === "toggle-directory") {
-          this.toggleTreeDirectory(button.dataset.entryPath, button);
-          return;
-        }
-
-        const path = button.dataset.entryPath;
-        const eventName =
-          button.dataset.kind === "directory"
-            ? "caffold:open-directory"
-            : "caffold:open-file";
-
-        this.dispatchEvent(
-          new CustomEvent(eventName, {
-            bubbles: true,
-            detail: { path, entry: this.entryForPath(path) },
-          }),
-        );
-      });
-      this.boundIconsReady = () => this.render();
-      this.setIdle();
+    if (this.initialized) {
+      return;
     }
-    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
-    warmIcons();
+    this.initialized = true;
+    this.addEventListener("click", (event) => {
+      if (!event.target.closest('button[data-action="refresh-files"]')) {
+        return;
+      }
+      this.dispatchEvent(new CustomEvent("caffold:refresh-file-list", { bubbles: true }));
+    });
+    this.addEventListener(FILE_TREE_SELECT_EVENT, (event) => {
+      if (event.target !== this.fileTree()) {
+        return;
+      }
+      event.stopPropagation();
+      const entry = event.detail.node.source;
+      if (!entry) {
+        return;
+      }
+      const eventName = entry.kind === "directory" ? "caffold:open-directory" : "caffold:open-file";
+      this.dispatchEvent(
+        new CustomEvent(eventName, {
+          bubbles: true,
+          detail: { path: entry.path, entry: this.entryForPath(entry.path) ?? entry },
+        }),
+      );
+    });
+    this.addEventListener(FILE_TREE_LOAD_EVENT, (event) => {
+      if (event.target !== this.fileTree()) {
+        return;
+      }
+      event.stopPropagation();
+      const path = event.detail.path;
+      this.treeState?.errors.delete(path);
+      this.updateTreeModel();
+      void this.loadTreeDirectory(path);
+    });
+    this.setIdle();
   }
 
   disconnectedCallback() {
-    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
     this.clearTreeLoadingTimers();
   }
 
@@ -68,7 +74,7 @@ class CaffoldFileList extends HTMLElement {
     this.prepareTreeState(directory);
     this.state = { status: "ready", directory };
     this.render();
-    const scroller = this.querySelector(".file-list");
+    const scroller = this.fileTree()?.scroller();
     if (scroller) {
       scroller.scrollTop = 0;
       scroller.scrollLeft = 0;
@@ -89,8 +95,7 @@ class CaffoldFileList extends HTMLElement {
     }
     if (this.treeState) {
       for (const directory of directories) {
-        changed ||=
-          !sameDirectoryPresentation(this.treeState.cache.get(directory.path), directory);
+        changed ||= !sameDirectoryPresentation(this.treeState.cache.get(directory.path), directory);
         this.treeState.cache.set(directory.path, directory);
       }
     }
@@ -135,66 +140,46 @@ class CaffoldFileList extends HTMLElement {
   }
 
   render() {
-    if (!this.state || this.state.status === "idle") {
+    const state = this.state ?? { status: "idle" };
+    if (state.status !== "ready") {
+      const message =
+        state.status === "loading"
+          ? "Loading files..."
+          : state.status === "error"
+            ? escapeHtml(state.error.message)
+            : "";
       this.innerHTML = `
-        <section class="file-list-panel">
+        <section class="file-list-panel${state.status === "error" ? " error-panel" : ""}"${
+          state.status === "loading" ? ' aria-busy="true"' : ""
+        }>
           <header><h2>Files</h2></header>
-          <div class="file-list">
-            <ol class="file-list-rows"></ol>
-          </div>
+          ${message ? `<p class="surface-message">${message}</p>` : "<caffold-file-tree></caffold-file-tree>"}
         </section>
       `;
       return;
     }
 
-    if (this.state.status === "loading") {
+    const { directory } = state;
+    let panel = this.querySelector(":scope > .file-list-panel[data-content='ready']");
+    if (!panel) {
       this.innerHTML = `
-        <section class="file-list-panel" aria-busy="true">
-          <header><h2>Files</h2></header>
-          <p class="surface-message">Loading files...</p>
+        <section class="file-list-panel" data-content="ready">
+          <header></header>
+          <caffold-file-tree></caffold-file-tree>
         </section>
       `;
-      return;
+      panel = this.querySelector(":scope > .file-list-panel");
     }
-
-    if (this.state.status === "error") {
-      this.innerHTML = `
-        <section class="file-list-panel error-panel">
-          <header><h2>Files</h2></header>
-          <p class="surface-message">${escapeHtml(this.state.error.message)}</p>
-        </section>
-      `;
-      return;
-    }
-
-    const { directory } = this.state;
-    const repoMode = Boolean(directory.git);
-    const panel = this.querySelector(":scope > .file-list-panel");
-    const scroller = panel?.querySelector(":scope > .file-list");
-    const list = scroller?.querySelector(":scope > .file-list-rows");
-    if (panel && scroller && list && this.readyHeader()) {
-      this.patchReadyHeader(directory);
-      scroller.className = `file-list${repoMode ? " repo-tree" : ""}`;
-      reconcileListRows(list, this.renderReadyRows(directory));
-      return;
-    }
-
-    this.innerHTML = `
-      <section class="file-list-panel">
-        <header>
-          ${this.renderReadyHeader(directory)}
-        </header>
-        <div class="file-list${repoMode ? " repo-tree" : ""}">
-          <ol class="file-list-rows">
-            ${this.renderReadyRows(directory)}
-          </ol>
-        </div>
-      </section>
-    `;
+    this.patchReadyHeader(directory);
+    this.updateTreeModel();
   }
 
   readyHeader() {
     return this.querySelector(":scope > .file-list-panel > header");
+  }
+
+  fileTree() {
+    return this.querySelector("caffold-file-tree");
   }
 
   patchReadyHeader(directory) {
@@ -217,22 +202,13 @@ class CaffoldFileList extends HTMLElement {
     `;
   }
 
-  renderReadyRows(directory) {
-    return `
-      ${this.renderParentEntry(directory.path)}
-      ${directory.git ? this.renderTreeRoot(directory) : this.renderFlatEntries(directory)}
-    `;
-  }
-
   renderRefreshButton() {
     if (this.refreshVisible === false) {
       return "";
     }
     const refreshing = this.refreshState === "refreshing";
     const unavailable = this.refreshState === "unavailable";
-    const title = unavailable
-      ? "Live updates unavailable. Refresh manually."
-      : "Refresh files";
+    const title = unavailable ? "Live updates unavailable. Refresh manually." : "Refresh files";
     return `
       <button
         type="button"
@@ -253,182 +229,22 @@ class CaffoldFileList extends HTMLElement {
     }
     const refreshing = this.refreshState === "refreshing";
     const unavailable = this.refreshState === "unavailable";
-    const title = unavailable
-      ? "Live updates unavailable. Refresh manually."
-      : "Refresh files";
+    const title = unavailable ? "Live updates unavailable. Refresh manually." : "Refresh files";
     button.classList.toggle("is-refreshing", refreshing);
     button.classList.toggle("is-unavailable", unavailable);
     button.setAttribute("aria-label", title);
     button.title = title;
   }
 
-  renderFlatEntries(directory) {
-    return directory.entries.map((entry) => this.renderEntry(entry)).join("");
-  }
-
-  renderTreeRoot(directory) {
-    const treeState = this.treeState;
-    if (!treeState) {
-      return this.renderFlatEntries(directory);
-    }
-
-    const rootDirectory = treeState.cache.get(treeState.rootPath);
-    if (!rootDirectory) {
-      return this.renderTreeStatus("Loading repository...", 0);
-    }
-
-    return this.renderTreeEntries(rootDirectory.path, 0);
-  }
-
-  renderTreeEntries(path, depth) {
-    const directory = this.treeState.cache.get(path);
-    if (!directory) {
-      return "";
-    }
-
-    return directory.entries
-      .map((entry) => {
-        const children = this.renderTreeChildren(entry, depth + 1);
-        return `${this.renderTreeEntry(entry, depth)}${children}`;
-      })
-      .join("");
-  }
-
-  renderTreeChildren(entry, depth) {
-    if (!isExpandableDirectory(entry) || !this.treeState.expanded.has(entry.path)) {
-      return "";
-    }
-
-    if (this.treeState.loading.has(entry.path)) {
-      return this.renderTreeStatus("Loading...", depth);
-    }
-
-    const error = this.treeState.errors.get(entry.path);
-    if (error) {
-      return this.renderTreeStatus(error.message, depth, " is-error");
-    }
-
-    return this.renderTreeEntries(entry.path, depth);
-  }
-
-  renderParentEntry(path) {
-    if (!path) {
-      return "";
-    }
-
-    const parentPath = parentDirectory(path);
-    const parentEntry = {
-      name: "..",
-      path: parentPath,
-      kind: "directory",
-      isSymlink: false,
-      supported: true,
-    };
-
-    return `
-      <li>
-        <button
-          type="button"
-          class="file-entry parent-entry"
-          data-kind="directory"
-          data-entry-path="${escapeHtml(parentPath)}"
-          aria-label="Parent directory"
-          title="Go to parent directory"
-        >
-          ${renderEntryIcon(parentEntry)}
-          <span class="entry-name">..</span>
-        </button>
-      </li>
-    `;
-  }
-
-  renderEntry(entry) {
-    const kind = entryKindLabel(entry);
-    const disabled = entry.supported ? "" : "disabled";
-    const entryTitle = titleAttributeForEntry(entry);
-    const className = fileEntryClassName(entry);
-    const ignoredLabel = entry.gitIgnored ? " ignored by Git" : "";
-
-    return `
-      <li>
-        <button
-          type="button"
-          class="${escapeHtml(className)}"
-          data-kind="${escapeHtml(entry.kind)}"
-          data-entry-path="${escapeHtml(entry.path)}"
-          aria-current="${entry.path === this.selectedPath ? "true" : "false"}"
-          aria-label="${escapeHtml(`${entry.name} ${kind}${ignoredLabel}`)}"
-          ${disabled}
-          ${entryTitle}
-        >
-          ${renderEntryIcon(entry)}
-          <span class="entry-name">${escapeHtml(entry.name)}</span>
-        </button>
-      </li>
-    `;
-  }
-
-  renderTreeEntry(entry, depth) {
-    const kind = entryKindLabel(entry);
-    const disabled = entry.supported ? "" : "disabled";
-    const entryTitle = titleAttributeForEntry(entry);
-    const className = fileEntryClassName(entry, "tree-entry");
-    const expandable = isExpandableDirectory(entry);
-    const expanded = expandable && this.treeState.expanded.has(entry.path);
-    const action = expandable ? 'data-action="toggle-directory"' : "";
-    const ariaExpanded = expandable ? `aria-expanded="${expanded ? "true" : "false"}"` : "";
-    const toggleLabel = expandable ? (expanded ? "Collapse" : "Expand") : "";
-    const ignoredLabel = entry.gitIgnored ? " ignored by Git" : "";
-    const ariaLabel = toggleLabel
-      ? `${toggleLabel} ${entry.name} ${kind}${ignoredLabel}`
-      : `${entry.name} ${kind}${ignoredLabel}`;
-    const iconEntry = expandable ? { ...entry, expanded } : entry;
-
-    return `
-      <li>
-        <button
-          type="button"
-          class="${escapeHtml(className)}"
-          style="--tree-depth: ${depth}"
-          data-kind="${escapeHtml(entry.kind)}"
-          data-entry-path="${escapeHtml(entry.path)}"
-          aria-current="${entry.path === this.selectedPath ? "true" : "false"}"
-          aria-label="${escapeHtml(ariaLabel)}"
-          ${ariaExpanded}
-          ${action}
-          ${disabled}
-          ${entryTitle}
-        >
-          ${renderEntryIcon(iconEntry)}
-          <span class="entry-name">${escapeHtml(entry.name)}</span>
-        </button>
-      </li>
-    `;
-  }
-
-  renderTreeStatus(message, depth, className = "") {
-    return `
-      <li
-        class="tree-status${className}"
-        style="--tree-depth: ${depth}"
-      >
-        ${escapeHtml(message)}
-      </li>
-    `;
-  }
-
   renderGitSummary(git) {
     if (!git) {
       return "";
     }
-
     const branch = git.branch ?? "detached";
     const state = git.dirty ? "changes" : "clean";
-    const dirtyClass = git.dirty ? " is-dirty" : "";
-
     return `
       <span
-        class="git-summary${dirtyClass}"
+        class="git-summary${git.dirty ? " is-dirty" : ""}"
         title="${escapeHtml(`Git ${branch}, ${state}`)}"
       >
         ${escapeHtml(branch)}${git.dirty ? " *" : ""}
@@ -436,14 +252,37 @@ class CaffoldFileList extends HTMLElement {
     `;
   }
 
-  setSelectedPath(path) {
-    const nextPath = path ?? "";
-    if (this.selectedPath === nextPath) {
+  updateTreeModel() {
+    if (this.state?.status !== "ready" || !this.fileTree()) {
       return;
     }
+    const { directory } = this.state;
+    const { nodes, keyByPath } = directory.git
+      ? repositoryTreeNodes(directory, this.treeState)
+      : flatDirectoryNodes(directory);
+    this.keyByPath = keyByPath;
+    const tree = this.fileTree();
+    tree.setModel({
+      entityKey: directory.git?.rootPath ?? `directory:${directory.path}`,
+      nodes,
+      selectedKey: keyByPath.get(this.selectedPath) ?? "",
+      statusColumn: false,
+      expandNewDirectories: false,
+    });
+    if (this.treeState?.pendingExpandedPaths.size) {
+      const keys = [...this.treeState.pendingExpandedPaths].map(fileNodeKey);
+      tree.expandKeys(keys);
+      for (const path of [...this.treeState.pendingExpandedPaths]) {
+        if (tree.hasKey(fileNodeKey(path))) {
+          this.treeState.pendingExpandedPaths.delete(path);
+        }
+      }
+    }
+  }
 
-    this.selectedPath = nextPath;
-    this.patchSelectedPath();
+  setSelectedPath(path) {
+    this.selectedPath = path ?? "";
+    this.fileTree()?.setSelectedKey(this.keyByPath?.get(this.selectedPath) ?? "");
   }
 
   async revealPath(path) {
@@ -451,41 +290,14 @@ class CaffoldFileList extends HTMLElement {
     if (this.treeState) {
       const directories = ancestorDirectories(path, this.treeState.rootPath);
       for (const directory of directories) {
-        this.treeState.expanded.add(directory);
+        this.treeState.pendingExpandedPaths.add(directory);
         await this.loadTreeDirectory(directory);
       }
-      this.render();
+      this.updateTreeModel();
     }
-
-    await new Promise((resolve) => window.requestAnimationFrame(resolve));
-    const scroller = this.querySelector(".file-list");
-    const button = this.entryButtonForPath(path);
-    if (!scroller || !button) {
-      return false;
-    }
-    const scrollerRect = scroller.getBoundingClientRect();
-    const buttonRect = button.getBoundingClientRect();
-    if (buttonRect.top < scrollerRect.top) {
-      scroller.scrollTop -= scrollerRect.top - buttonRect.top;
-    } else if (buttonRect.bottom > scrollerRect.bottom) {
-      scroller.scrollTop += buttonRect.bottom - scrollerRect.bottom;
-    }
-    return true;
-  }
-
-  patchSelectedPath() {
-    for (const button of this.querySelectorAll('button[data-entry-path][aria-current="true"]')) {
-      button.setAttribute("aria-current", "false");
-    }
-
-    if (!this.selectedPath) {
-      return;
-    }
-
-    const button = this.entryButtonForPath(this.selectedPath);
-    if (button) {
-      button.setAttribute("aria-current", "true");
-    }
+    const key = this.keyByPath?.get(path) ?? "";
+    this.fileTree()?.setSelectedKey(key);
+    return key ? this.fileTree().revealKey(key) : false;
   }
 
   prepareTreeState(directory) {
@@ -493,74 +305,33 @@ class CaffoldFileList extends HTMLElement {
       this.resetTreeState();
       return;
     }
-
     const rootPath = directory.git.rootPath;
     if (!this.treeState || this.treeState.rootPath !== rootPath) {
       this.resetTreeState();
       this.treeState = {
         rootPath,
         cache: new Map(),
-        expanded: new Set(),
         loading: new Set(),
         errors: new Map(),
         timers: new Map(),
         requests: new Map(),
+        pendingExpandedPaths: new Set(),
       };
     }
-
     this.treeState.cache.set(directory.path, directory);
-    this.expandAncestors(directory.path);
-
+    for (const path of ancestorDirectories(`${directory.path}/__current__`, rootPath)) {
+      this.treeState.pendingExpandedPaths.add(path);
+    }
     if (!this.treeState.cache.has(rootPath)) {
-      this.loadTreeDirectory(rootPath);
+      void this.loadTreeDirectory(rootPath);
     }
   }
 
-  expandAncestors(path) {
-    if (!this.treeState || path === this.treeState.rootPath) {
-      return;
-    }
-
-    this.treeState.expanded.add(path);
-
-    let current = path;
-    while (current && current !== this.treeState.rootPath) {
-      current = parentDirectory(current);
-      if (current) {
-        this.treeState.expanded.add(current);
-      }
-    }
-  }
-
-  async toggleTreeDirectory(path, button) {
-    if (!this.treeState) {
-      return;
-    }
-
-    const scrollAnchor = this.captureScrollAnchor(button);
-    if (this.treeState.expanded.has(path)) {
-      this.treeState.expanded.delete(path);
-      this.render();
-      this.restoreScrollAnchor(scrollAnchor);
-      return;
-    }
-
-    this.treeState.expanded.add(path);
-    this.treeState.errors.delete(path);
-    this.render();
-    this.restoreScrollAnchor(scrollAnchor, { revealPath: path });
-
-    if (!this.treeState.cache.has(path)) {
-      await this.loadTreeDirectory(path, { scrollAnchor, revealPath: path });
-    }
-  }
-
-  async loadTreeDirectory(path, options = {}) {
+  async loadTreeDirectory(path) {
     const treeState = this.treeState;
     if (!treeState || treeState.requests.has(path) || treeState.cache.has(path)) {
       return;
     }
-
     const requestId = Symbol(path);
     treeState.requests.set(path, requestId);
     treeState.timers.set(
@@ -568,125 +339,47 @@ class CaffoldFileList extends HTMLElement {
       window.setTimeout(() => {
         if (this.treeState?.requests.get(path) === requestId) {
           this.treeState.loading.add(path);
-          this.render();
+          this.updateTreeModel();
         }
       }, TREE_LOADING_DELAY_MS),
     );
-
     try {
       const directory = await listDirectory(path);
       if (this.treeState?.requests.get(path) !== requestId) {
         return;
       }
-
       this.treeState.cache.set(path, directory);
       this.treeState.errors.delete(path);
     } catch (error) {
       if (this.treeState?.requests.get(path) !== requestId) {
         return;
       }
-
       this.treeState.errors.set(path, error);
     } finally {
       if (this.treeState?.requests.get(path) === requestId) {
-        const timer = this.treeState.timers.get(path);
-        window.clearTimeout(timer);
+        window.clearTimeout(this.treeState.timers.get(path));
         this.treeState.timers.delete(path);
         this.treeState.requests.delete(path);
         this.treeState.loading.delete(path);
-        this.render();
-        this.restoreScrollAnchor(options.scrollAnchor, { revealPath: options.revealPath });
+        this.updateTreeModel();
       }
     }
-  }
-
-  captureScrollAnchor(button) {
-    const scroller = this.querySelector(".file-list");
-    if (!button || !scroller) {
-      return null;
-    }
-
-    return {
-      path: button.dataset.entryPath,
-      top: button.getBoundingClientRect().top,
-    };
-  }
-
-  restoreScrollAnchor(anchor, options = {}) {
-    if (!anchor) {
-      return;
-    }
-
-    requestAnimationFrame(() => {
-      const scroller = this.querySelector(".file-list");
-      const button = this.entryButtonForPath(anchor.path);
-      if (!scroller || !button) {
-        return;
-      }
-
-      const currentTop = button.getBoundingClientRect().top;
-      scroller.scrollTop += currentTop - anchor.top;
-      this.revealFirstChildIfHidden(scroller, options.revealPath);
-    });
-  }
-
-  revealFirstChildIfHidden(scroller, parentPath) {
-    if (!parentPath) {
-      return;
-    }
-
-    const firstChild = Array.from(this.querySelectorAll("button[data-entry-path]")).find(
-      (button) => isDirectChildPath(button.dataset.entryPath, parentPath),
-    );
-    if (!firstChild) {
-      return;
-    }
-
-    const scrollerRect = scroller.getBoundingClientRect();
-    const childRect = firstChild.getBoundingClientRect();
-    const visibleTop = Math.max(scrollerRect.top, childRect.top);
-    const visibleBottom = Math.min(scrollerRect.bottom, childRect.bottom);
-
-    if (visibleBottom > visibleTop) {
-      return;
-    }
-
-    const bottomOverflow = childRect.bottom - scrollerRect.bottom;
-    const topOverflow = childRect.top - scrollerRect.top;
-    if (bottomOverflow > 0) {
-      scroller.scrollTop += bottomOverflow;
-    } else if (topOverflow < 0) {
-      scroller.scrollTop += topOverflow;
-    }
-  }
-
-  entryButtonForPath(path) {
-    return Array.from(this.querySelectorAll("button[data-entry-path]")).find(
-      (button) => button.dataset.entryPath === path,
-    );
   }
 
   entryForPath(path) {
     if (!path) {
       return null;
     }
-
     const currentEntry = this.state?.directory?.entries.find((entry) => entry.path === path);
     if (currentEntry) {
       return currentEntry;
     }
-
-    if (!this.treeState) {
-      return null;
-    }
-
-    for (const directory of this.treeState.cache.values()) {
+    for (const directory of this.treeState?.cache.values() ?? []) {
       const entry = directory.entries.find((candidate) => candidate.path === path);
       if (entry) {
         return entry;
       }
     }
-
     return null;
   }
 
@@ -696,11 +389,7 @@ class CaffoldFileList extends HTMLElement {
   }
 
   clearTreeLoadingTimers() {
-    if (!this.treeState) {
-      return;
-    }
-
-    for (const timer of this.treeState.timers.values()) {
+    for (const timer of this.treeState?.timers.values() ?? []) {
       window.clearTimeout(timer);
     }
   }
@@ -708,8 +397,118 @@ class CaffoldFileList extends HTMLElement {
 
 customElements.define("caffold-file-list", CaffoldFileList);
 
+function repositoryTreeNodes(directory, treeState) {
+  const keyByPath = new Map();
+  const nodes = parentNode(directory.path);
+  const rootDirectory = treeState?.cache.get(treeState.rootPath);
+  if (rootDirectory) {
+    nodes.push(...directoryEntryNodes(rootDirectory, treeState, keyByPath, true));
+  } else {
+    const error = treeState?.errors.get(treeState.rootPath);
+    nodes.push({
+      key: "files:repository-state",
+      kind: "status",
+      name: error?.message ?? "Loading repository...",
+      tone: error ? "error" : "muted",
+    });
+  }
+  addParentKey(nodes, keyByPath);
+  return { nodes, keyByPath };
+}
+
+function flatDirectoryNodes(directory) {
+  const keyByPath = new Map();
+  const nodes = [
+    ...parentNode(directory.path),
+    ...directory.entries.map((entry) => entryNode(entry, null, keyByPath, false)),
+  ];
+  addParentKey(nodes, keyByPath);
+  return { nodes, keyByPath };
+}
+
+function directoryEntryNodes(directory, treeState, keyByPath, lazy) {
+  return directory.entries.map((entry) => entryNode(entry, treeState, keyByPath, lazy));
+}
+
+function entryNode(entry, treeState, keyByPath, lazy) {
+  const key = fileNodeKey(entry.path);
+  if (!keyByPath.has(entry.path)) {
+    keyByPath.set(entry.path, key);
+  }
+  const ignoredLabel = entry.gitIgnored ? " ignored by Git" : "";
+  const node = {
+    key,
+    kind: entry.kind,
+    name: entry.name,
+    path: entry.path,
+    isSymlink: Boolean(entry.isSymlink),
+    git: entry.git,
+    supported: entry.supported !== false,
+    disabled: entry.supported === false,
+    hidden: isHiddenEntry(entry),
+    ignored: Boolean(entry.gitIgnored),
+    title: titleForEntry(entry),
+    ariaLabel: `${entry.name} ${entryKindLabel(entry)}${ignoredLabel}`,
+    source: entry,
+  };
+  if (lazy && isExpandableDirectory(entry)) {
+    node.children = childrenForDirectory(entry.path, treeState, keyByPath);
+  }
+  return node;
+}
+
+function childrenForDirectory(path, treeState, keyByPath) {
+  const directory = treeState.cache.get(path);
+  if (directory) {
+    return readyFileTreeChildren(directoryEntryNodes(directory, treeState, keyByPath, true));
+  }
+  if (treeState.loading.has(path)) {
+    return loadingFileTreeChildren();
+  }
+  const error = treeState.errors.get(path);
+  if (error) {
+    return errorFileTreeChildren(error.message);
+  }
+  return unloadedFileTreeChildren();
+}
+
+function parentNode(path) {
+  if (!path) {
+    return [];
+  }
+  const parentPath = parentDirectory(path);
+  return [{
+    key: `files:parent:${path}`,
+    kind: "directory",
+    name: "..",
+    path: parentPath,
+    variant: "parent",
+    selection: false,
+    title: "Go to parent directory",
+    ariaLabel: "Parent directory",
+    source: {
+      name: "..",
+      path: parentPath,
+      kind: "directory",
+      isSymlink: false,
+      supported: true,
+    },
+  }];
+}
+
+function addParentKey(nodes, keyByPath) {
+  const parent = nodes.find((node) => node.variant === "parent");
+  if (parent && !keyByPath.has(parent.path)) {
+    keyByPath.set(parent.path, parent.key);
+  }
+}
+
+function fileNodeKey(path) {
+  return `files:entry:${path}`;
+}
+
 function parentDirectory(path) {
-  const parts = path.split("/").filter(Boolean);
+  const parts = `${path ?? ""}`.split("/").filter(Boolean);
   parts.pop();
   return parts.join("/");
 }
@@ -718,26 +517,13 @@ function isHiddenEntry(entry) {
   return entry.name.startsWith(".") && entry.name !== "." && entry.name !== "..";
 }
 
-function fileEntryClassName(entry, ...extraClassNames) {
-  return [
-    "file-entry",
-    ...extraClassNames,
-    isHiddenEntry(entry) ? "is-hidden" : "",
-    entry.gitIgnored ? "is-ignored" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
-function titleAttributeForEntry(entry) {
+function titleForEntry(entry) {
   if (!entry.supported) {
-    return 'title="This path resolves outside the root"';
+    return "This path resolves outside the root";
   }
-
   if (entry.gitIgnored) {
-    return 'title="Ignored by Git"';
+    return "Ignored by Git";
   }
-
   return "";
 }
 
@@ -745,16 +531,8 @@ function isExpandableDirectory(entry) {
   return entry.kind === "directory" && entry.supported;
 }
 
-function isDirectChildPath(path, parentPath) {
-  if (!path || !parentPath || !path.startsWith(`${parentPath}/`)) {
-    return false;
-  }
-
-  return !path.slice(parentPath.length + 1).includes("/");
-}
-
 function ancestorDirectories(path, rootPath) {
-  const root = rootPath.split("/").filter(Boolean);
+  const root = `${rootPath ?? ""}`.split("/").filter(Boolean);
   const parent = parentDirectory(path).split("/").filter(Boolean);
   if (!root.every((segment, index) => parent[index] === segment)) {
     return [];
@@ -789,38 +567,4 @@ function sameDirectoryPresentation(left, right) {
       Boolean(entry.gitIgnored) === Boolean(other.gitIgnored)
     );
   });
-}
-
-function reconcileListRows(list, html) {
-  const template = document.createElement("template");
-  template.innerHTML = html;
-  const currentRows = new Map(
-    Array.from(list.children).map((row, index) => [listRowKey(row, index), row]),
-  );
-  let cursor = list.firstElementChild;
-  Array.from(template.content.children).forEach((row, index) => {
-    const current = currentRows.get(listRowKey(row, index));
-    const next = current?.outerHTML === row.outerHTML ? current : row;
-    if (current && next !== current) {
-      const replacesCursor = current === cursor;
-      current.replaceWith(next);
-      if (replacesCursor) {
-        cursor = next;
-      }
-    }
-    if (next !== cursor) {
-      list.insertBefore(next, cursor);
-    }
-    cursor = next.nextElementSibling;
-  });
-  while (cursor) {
-    const stale = cursor;
-    cursor = cursor.nextElementSibling;
-    stale.remove();
-  }
-}
-
-function listRowKey(row, index) {
-  const entry = row.querySelector(":scope > button[data-entry-path]");
-  return entry ? `entry:${entry.dataset.entryPath}` : `row:${index}`;
 }

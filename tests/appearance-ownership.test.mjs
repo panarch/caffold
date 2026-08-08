@@ -181,12 +181,8 @@ test("color roles keep neutral chrome, interactions, and semantic feedback separ
   }
 
   const selectedOwners = [
-    "components/file-browser/list.css",
-    "components/git-compare-browser/compare-tree.css",
-    "components/git-diff-browser/changes-tree.css",
+    "components/file-tree.css",
     "pages/(codex)/tasks/components/navigator.css",
-    "pages/(review-workspace)/(git)/(log)/commit/components/changes-tree.css",
-    "pages/(review-workspace)/(github)/(pulls)/files/components/tree.css",
   ];
   for (const path of selectedOwners) {
     assert.match(
@@ -410,7 +406,7 @@ test("visible inline icons have explicit block geometry from their UI owner", ()
     ["pages/(codex)/tasks/components/navigator.css", ".task-row-worktree-icon", "--task-list-icon-size"],
     ["pages/(codex)/tasks/components/navigator.css", ".task-restore-icon", "--interface-icon-size"],
     ["components/file-browser/list.css", ".file-refresh-icon", "--interface-icon-size"],
-    ["components/file-browser/list.css", ".entry-icon-svg", "--file-tree-icon-size"],
+    ["components/file-tree.css", ".entry-icon-svg", "--file-tree-icon-size"],
     ["components/file-viewer.css", ".viewer-refresh-icon", "--interface-icon-size"],
     ["components/file-viewer.css", ".viewer-info-icon", "--interface-icon-size"],
     ["components/pagination.css", ".pagination-icon", "--interface-icon-small-size"],

@@ -1,319 +1,155 @@
 import { escapeHtml } from "../dom.js";
-import { renderEntryIcon, warmIcons } from "../icons.js";
+import {
+  buildFileTreeNodes,
+  FILE_TREE_SELECT_EVENT,
+} from "../file-tree.js";
 
 class CaffoldGitCompareTree extends HTMLElement {
   connectedCallback() {
-    this.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-node-key], button[data-compare-path]");
-      if (!button || button.disabled) {
+    if (this.initialized) {
+      return;
+    }
+    this.initialized = true;
+    this.addEventListener(FILE_TREE_SELECT_EVENT, (event) => {
+      const file = event.detail.node.source;
+      if (!file) {
         return;
       }
-
-      if (button.dataset.nodeKey) {
-        this.toggleDirectory(button.dataset.nodeKey, button);
-        return;
-      }
-
-      this.setSelectedPath(button.dataset.comparePath);
+      this.selectedPath = file.path;
       this.dispatchEvent(
         new CustomEvent("caffold:open-compare-diff", {
           bubbles: true,
-          detail: {
-            path: button.dataset.comparePath,
-            status: button.dataset.compareStatus,
-          },
+          detail: { path: file.path, status: file.status },
         }),
       );
     });
-    this.boundIconsReady = () => this.render();
-    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
-    warmIcons();
-
     if (!this.state) {
       this.reset();
     }
   }
 
-  disconnectedCallback() {
-    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
-  }
-
   setLoading(repository) {
     this.state = { status: "loading", repository };
-    this.render();
+    this.renderState();
   }
 
   setCompare(comparePayload) {
-    const tree = buildCompareTree(comparePayload.files ?? []);
-    this.knownDirectoryKeys = new Set(tree.directoryKeys);
-    this.expandedKeys = new Set(this.knownDirectoryKeys);
-    this.state = { status: "ready", comparePayload, tree };
-    this.render();
+    this.state = { status: "ready", comparePayload };
+    this.renderState();
   }
 
   updateCompare(comparePayload) {
-    const scroll = this.captureListScroll();
-    const tree = buildCompareTree(comparePayload.files ?? []);
-    const nextKeys = new Set(tree.directoryKeys);
-    const previousKeys = this.knownDirectoryKeys ?? new Set();
-    this.expandedKeys = new Set([
-      ...Array.from(this.expandedKeys ?? []).filter((key) => nextKeys.has(key)),
-      ...Array.from(nextKeys).filter((key) => !previousKeys.has(key)),
-    ]);
-    this.knownDirectoryKeys = nextKeys;
-    this.state = { status: "ready", comparePayload, tree };
-    this.render();
-    this.restoreListScroll(scroll);
+    this.state = { status: "ready", comparePayload };
+    this.renderState();
   }
 
   setError(error, repository = null) {
     this.state = { status: "error", error, repository };
-    this.render();
+    this.renderState();
   }
 
   setSelectedPath(path) {
-    const nextPath = path ?? "";
-    if (this.selectedPath === nextPath) {
-      return;
-    }
-
-    this.selectedPath = nextPath;
-    this.patchSelectedPath();
+    this.selectedPath = path ?? "";
+    this.fileTree()?.setSelectedKey(this.selectedKey());
   }
 
   setEmptyMessage(message) {
-    const nextMessage = message || "No files changed.";
-    if (this.emptyMessage === nextMessage) {
-      return;
-    }
-    this.emptyMessage = nextMessage;
+    this.emptyMessage = message || "No files changed.";
     if (this.state?.status === "ready" && !this.state.comparePayload.files?.length) {
-      this.render();
-    }
-  }
-
-  patchSelectedPath() {
-    for (const button of this.querySelectorAll('button[data-compare-path][aria-current="true"]')) {
-      button.setAttribute("aria-current", "false");
-    }
-
-    if (!this.selectedPath) {
-      return;
-    }
-
-    const button = this.querySelector(
-      `button[data-compare-path="${CSS.escape(this.selectedPath)}"]`,
-    );
-    if (button) {
-      button.setAttribute("aria-current", "true");
+      this.renderState();
     }
   }
 
   reset() {
     this.selectedPath = "";
-    this.expandedKeys = new Set();
-    this.knownDirectoryKeys = new Set();
     this.state = { status: "idle" };
-    this.render();
+    this.renderState();
   }
 
   captureListScroll() {
-    const scroller = this.querySelector(".compare-tree-list");
-    return scroller
-      ? { top: scroller.scrollTop, left: scroller.scrollLeft }
-      : null;
+    return this.fileTree()?.captureScroll() ?? null;
   }
 
   restoreListScroll(scroll) {
-    if (!scroll) {
+    this.fileTree()?.restoreScroll(scroll);
+  }
+
+  fileTree() {
+    return this.querySelector("caffold-file-tree");
+  }
+
+  selectedKey() {
+    return this.fileKeyByPath?.get(this.selectedPath) ?? "";
+  }
+
+  renderState() {
+    const state = this.state ?? { status: "idle" };
+    if (state.status !== "ready") {
+      const message =
+        state.status === "loading"
+          ? "Loading compare..."
+          : state.status === "error"
+            ? escapeHtml(state.error.message)
+            : "";
+      this.innerHTML = `
+        <section class="compare-tree-panel${state.status === "error" ? " error-panel" : ""}"${
+          state.status === "loading" ? ' aria-busy="true"' : ""
+        }>
+          ${this.renderHeader(state.repository, null)}
+          ${message ? `<p class="surface-message">${message}</p>` : "<caffold-file-tree></caffold-file-tree>"}
+        </section>
+      `;
       return;
     }
-    requestAnimationFrame(() => {
-      const scroller = this.querySelector(".compare-tree-list");
-      if (scroller) {
-        scroller.scrollTop = scroll.top;
-        scroller.scrollLeft = scroll.left;
-      }
+
+    const payload = state.comparePayload;
+    const files = payload.files ?? [];
+    this.ensureReadyPanel(files.length > 0);
+    this.querySelector(":scope > .compare-tree-panel > header").innerHTML =
+      this.renderHeaderContent(payload, files.length);
+    if (files.length === 0) {
+      this.querySelector(":scope > .compare-tree-panel > .surface-message").textContent =
+        this.emptyMessage || "No files changed.";
+      return;
+    }
+
+    const { nodes, fileKeyByPath } = compareNodes(files);
+    this.fileKeyByPath = fileKeyByPath;
+    this.fileTree().setModel({
+      entityKey: compareEntityKey(payload),
+      nodes,
+      selectedKey: this.selectedKey(),
+      statusColumn: true,
     });
   }
 
-  render() {
-    if (!this.state || this.state.status === "idle") {
-      this.innerHTML = `
-        <section class="compare-tree-panel">
-          ${this.renderHeader(null, null)}
-          <div class="compare-tree-list">
-            <ol class="compare-tree-rows"></ol>
-          </div>
-        </section>
-      `;
+  ensureReadyPanel(hasFiles) {
+    const expected = hasFiles ? "tree" : "empty";
+    const panel = this.querySelector(":scope > .compare-tree-panel");
+    if (panel?.dataset.content === expected) {
       return;
     }
-
-    if (this.state.status === "loading") {
-      this.innerHTML = `
-        <section class="compare-tree-panel" aria-busy="true">
-          ${this.renderHeader(this.state.repository, null)}
-          <p class="surface-message">Loading compare...</p>
-        </section>
-      `;
-      return;
-    }
-
-    if (this.state.status === "error") {
-      this.innerHTML = `
-        <section class="compare-tree-panel error-panel">
-          ${this.renderHeader(this.state.repository, null)}
-          <p class="surface-message">${escapeHtml(this.state.error.message)}</p>
-        </section>
-      `;
-      return;
-    }
-
-    const payload = this.state.comparePayload;
-    const files = payload.files ?? [];
     this.innerHTML = `
-      <section class="compare-tree-panel">
-        ${this.renderHeader(payload, files.length)}
-        ${
-          files.length === 0
-            ? `<p class="surface-message">${escapeHtml(this.emptyMessage || "No files changed.")}</p>`
-            : `<div class="compare-tree-list">
-                <ol class="compare-tree-rows">${this.renderNodes(this.state.tree.children, 0)}</ol>
-              </div>`
-        }
+      <section class="compare-tree-panel" data-content="${expected}">
+        <header></header>
+        ${hasFiles ? "<caffold-file-tree></caffold-file-tree>" : '<p class="surface-message"></p>'}
       </section>
     `;
   }
 
   renderHeader(payload, count) {
+    return `<header>${this.renderHeaderContent(payload, count)}</header>`;
+  }
+
+  renderHeaderContent(payload, count) {
     const countLabel = count === null || count === undefined ? "" : `${count} files`;
-
     return `
-      <header>
-        <div class="compare-tree-title-row">
-          <h2>Files</h2>
-          <span class="compare-file-count">${escapeHtml(countLabel)}</span>
-        </div>
-        ${renderDiffStats(payload)}
-      </header>
+      <div class="compare-tree-title-row">
+        <h2>Files</h2>
+        <span class="compare-file-count">${escapeHtml(countLabel)}</span>
+      </div>
+      ${renderDiffStats(payload)}
     `;
-  }
-
-  renderNodes(children, depth) {
-    return sortedNodes(children)
-      .map((node) =>
-        node.kind === "directory"
-          ? this.renderDirectory(node, depth)
-          : this.renderFile(node.file, depth),
-      )
-      .join("");
-  }
-
-  renderDirectory(node, depth) {
-    const expanded = this.expandedKeys.has(node.key);
-    const entry = {
-      name: node.name,
-      path: node.key,
-      kind: "directory",
-      isSymlink: false,
-      supported: true,
-      expanded,
-    };
-
-    return `
-      <li>
-        <button
-          type="button"
-          class="compare-entry compare-directory"
-          style="--tree-depth: ${depth}"
-          data-node-key="${escapeHtml(node.key)}"
-          aria-expanded="${expanded ? "true" : "false"}"
-          aria-label="${escapeHtml(`${expanded ? "Collapse" : "Expand"} ${node.name}`)}"
-        >
-          <span class="compare-status-code" aria-hidden="true"></span>
-          <span class="compare-node-label">
-            ${renderEntryIcon(entry)}
-            <span class="compare-name">${escapeHtml(node.name)}</span>
-          </span>
-        </button>
-      </li>
-      ${expanded ? this.renderNodes(node.children, depth + 1) : ""}
-    `;
-  }
-
-  renderFile(file, depth) {
-    const name = file.repoRelativePath.split("/").filter(Boolean).pop() ?? file.repoRelativePath;
-    const selected = file.path === this.selectedPath;
-    const entry = {
-      name,
-      path: file.path,
-      kind: "file",
-      isSymlink: false,
-      supported: true,
-    };
-
-    return `
-      <li>
-        <button
-          type="button"
-          class="compare-entry compare-file"
-          style="--tree-depth: ${depth}"
-          data-compare-path="${escapeHtml(file.path)}"
-          data-compare-status="${escapeHtml(file.status)}"
-          aria-current="${selected ? "true" : "false"}"
-          aria-label="${escapeHtml(`Show compare diff for ${file.repoRelativePath}`)}"
-          title="${escapeHtml(file.repoRelativePath)}"
-        >
-          <span class="compare-status-code">${escapeHtml(file.status)}</span>
-          <span class="compare-node-label">
-            ${renderEntryIcon(entry)}
-            <span class="compare-name">${escapeHtml(name)}</span>
-          </span>
-        </button>
-      </li>
-    `;
-  }
-
-  toggleDirectory(key, button) {
-    const anchor = this.captureScrollAnchor(button);
-    if (this.expandedKeys.has(key)) {
-      this.expandedKeys.delete(key);
-    } else {
-      this.expandedKeys.add(key);
-    }
-
-    this.render();
-    this.restoreScrollAnchor(anchor);
-  }
-
-  captureScrollAnchor(button) {
-    const scroller = this.querySelector(".compare-tree-list");
-    if (!button || !scroller) {
-      return null;
-    }
-
-    return {
-      key: button.dataset.nodeKey,
-      top: button.getBoundingClientRect().top,
-    };
-  }
-
-  restoreScrollAnchor(anchor) {
-    if (!anchor) {
-      return;
-    }
-
-    requestAnimationFrame(() => {
-      const scroller = this.querySelector(".compare-tree-list");
-      const button = this.querySelector(`button[data-node-key="${CSS.escape(anchor.key)}"]`);
-      if (!scroller || !button) {
-        return;
-      }
-
-      const currentTop = button.getBoundingClientRect().top;
-      scroller.scrollTop += currentTop - anchor.top;
-    });
   }
 }
 
@@ -323,7 +159,6 @@ function renderDiffStats(payload) {
   if (!Number.isFinite(payload?.additions) || !Number.isFinite(payload?.deletions)) {
     return "";
   }
-
   const additions = new Intl.NumberFormat("en-US").format(payload.additions);
   const deletions = new Intl.NumberFormat("en-US").format(payload.deletions);
   return `
@@ -336,54 +171,37 @@ function renderDiffStats(payload) {
   `;
 }
 
-function buildCompareTree(files) {
-  const root = { kind: "root", children: new Map() };
-  const directoryKeys = [];
-
-  for (const file of files) {
-    const parts = file.repoRelativePath.split("/").filter(Boolean);
-    if (parts.length === 0) {
-      continue;
+function compareNodes(files) {
+  const fileKeyByPath = new Map();
+  const leaves = files.map((file) => {
+    const key = `compare:file:${file.repoRelativePath}`;
+    if (!fileKeyByPath.has(file.path)) {
+      fileKeyByPath.set(file.path, key);
     }
-
-    let children = root.children;
-    let directoryPath = "";
-
-    for (const part of parts.slice(0, -1)) {
-      directoryPath = directoryPath ? `${directoryPath}/${part}` : part;
-      const key = `compare:${directoryPath}`;
-      let directory = children.get(key);
-
-      if (!directory) {
-        directory = {
-          kind: "directory",
-          name: part,
-          key,
-          children: new Map(),
-        };
-        children.set(key, directory);
-        directoryKeys.push(key);
-      }
-
-      children = directory.children;
-    }
-
-    children.set(`compare:file:${file.repoRelativePath}`, {
+    return {
+      key,
       kind: "file",
-      name: parts[parts.length - 1],
-      file,
-    });
-  }
-
-  return { children: root.children, directoryKeys };
+      path: file.path,
+      treePath: file.repoRelativePath,
+      status: file.status,
+      title: file.repoRelativePath,
+      ariaLabel: `Show compare diff for ${file.repoRelativePath}`,
+      source: file,
+    };
+  });
+  return {
+    nodes: buildFileTreeNodes(leaves, { namespace: "compare" }),
+    fileKeyByPath,
+  };
 }
 
-function sortedNodes(children) {
-  return Array.from(children.values()).sort((left, right) => {
-    if (left.kind !== right.kind) {
-      return left.kind === "directory" ? -1 : 1;
-    }
-
-    return left.name.localeCompare(right.name);
-  });
+function compareEntityKey(payload) {
+  return [
+    payload?.repository?.rootPath ??
+      payload?.repository?.root ??
+      payload?.repository?.path ??
+      "",
+    payload?.baseRef ?? "",
+    payload?.headRef ?? "",
+  ].join("\u0000");
 }

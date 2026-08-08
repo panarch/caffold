@@ -523,7 +523,7 @@ class CaffoldGitCompareBrowser extends HTMLElement {
   }
 
   rememberCompareScroll() {
-    const scroller = this.querySelector(".compare-tree-list");
+    const scroller = this.querySelector(".file-tree-scroll");
     if (!scroller) {
       return;
     }
@@ -538,7 +538,7 @@ class CaffoldGitCompareBrowser extends HTMLElement {
     }
 
     window.requestAnimationFrame(() => {
-      const scroller = this.querySelector(".compare-tree-list");
+      const scroller = this.querySelector(".file-tree-scroll");
       if (!scroller) {
         return;
       }

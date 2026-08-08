@@ -156,7 +156,7 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
   });
 
   await page.goto(FILES_HOME_URL);
-  await page.locator('button[data-entry-path="src"]').click();
+  await page.locator('button[data-file-tree-path="src"]').click();
 
   const githubPopover = await openHeaderActionGroup(page, "github");
   const issuesButton = githubPopover.locator(
@@ -572,7 +572,7 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
   });
 
   await page.goto(FILES_HOME_URL);
-  await page.locator('button[data-entry-path="src"]').click();
+  await page.locator('button[data-file-tree-path="src"]').click();
   await expect(page.locator("caffold-pathbar")).toContainText("src");
 
   const githubPopover = await openHeaderActionGroup(page, "github");
@@ -701,10 +701,10 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
     "files",
   );
   await expect(page.locator("caffold-github-pull-files-tree")).toContainText("2 files");
-  await expect(page.locator('button[data-pull-file-path="src/planner/mod.rs"]')).toBeVisible();
+  await expect(page.locator('button[data-file-tree-path="src/planner/mod.rs"]')).toBeVisible();
   await expectFileTreeDensity(
     page,
-    page.locator('button[data-pull-file-path="src/planner/mod.rs"]'),
+    page.locator('button[data-file-tree-path="src/planner/mod.rs"]'),
   );
   await expect(page.locator(".github-mode-pulls caffold-review-file-viewer")).toContainText(
     "Select a file to inspect it.",
@@ -759,7 +759,7 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
 
   const listRequestsBeforeFileClick = listRequests;
   const pullFilesRequestsBeforeFileClick = pullFilesRequests;
-  await page.locator('button[data-pull-file-path="src/planner/mod.rs"]').click();
+  await page.locator('button[data-file-tree-path="src/planner/mod.rs"]').click();
   await expect(page).toHaveURL(
     "/github/pulls/12/files?cwd=src&file=planner%2Fmod.rs",
   );
@@ -791,7 +791,7 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
     await expect(page).toHaveURL("/github/pulls/12/files?cwd=src");
     await expect(page.locator("caffold-github-pull-files-page")).toBeVisible();
     await expect(page.locator(".github-mode-pulls caffold-review-file-viewer")).toBeHidden();
-    await page.locator('button[data-pull-file-path="src/planner/mod.rs"]').click();
+    await page.locator('button[data-file-tree-path="src/planner/mod.rs"]').click();
     await expect(page).toHaveURL(
       "/github/pulls/12/files?cwd=src&file=planner%2Fmod.rs",
     );

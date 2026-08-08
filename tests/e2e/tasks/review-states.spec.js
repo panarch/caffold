@@ -86,7 +86,7 @@ test("keeps unchanged and deleted file representations explicit", async ({
   await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
   await taskReview.getByRole("button", { name: "Files", exact: true }).click();
   await taskReview.getByRole("button", { name: "Source", exact: true }).click();
-  await taskReview.locator('button[data-entry-path="src/alpha.rs"]').click();
+  await taskReview.locator('button[data-file-tree-path="src/alpha.rs"]').click();
   await expect(taskReview.locator("caffold-review-file-viewer")).toContainText("pub const ALPHA");
   await taskReview.getByRole("button", { name: "Diff", exact: true }).click();
   await expect(taskReview).toContainText("No changes in this scope.");
@@ -104,7 +104,7 @@ test("keeps unchanged and deleted file representations explicit", async ({
   if (test.info().project.name === "phone") {
     await taskReview.getByRole("button", { name: "Back to navigator" }).click();
   }
-  await taskReview.locator('button[data-repo-relative-path="deleted.rs"]').click();
+  await taskReview.locator('button[data-file-tree-relative-path="deleted.rs"]').click();
   await taskReview.getByRole("button", { name: "Source", exact: true }).click();
   await expect(page).toHaveURL(
     `/tasks/${taskScenario.threadId}/review?view=source&file=deleted.rs`,
@@ -126,12 +126,12 @@ test("keeps the last canonical working tree visible when refresh fails", async (
     await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
   const changes = taskReview.locator("caffold-git-diff-changes-tree");
-  await expect(changes.locator("button[data-change-path]")).toHaveCount(4);
+  await expect(changes.locator('button[data-file-tree-kind="file"]')).toHaveCount(4);
 
   reviewScenario.failNextGitStatus = true;
   await taskReview.getByRole("button", { name: "Refresh review" }).click();
   await expect(taskReview).toContainText("Working tree refresh failed:");
-  await expect(changes.locator("button[data-change-path]")).toHaveCount(4);
+  await expect(changes.locator('button[data-file-tree-kind="file"]')).toHaveCount(4);
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-review-refresh-error");
 });

@@ -1,5 +1,9 @@
 import { escapeHtml } from "../dom.js";
-import { renderEntryIcon, warmIcons } from "../icons.js";
+import {
+  buildFileTreeNodes,
+  FILE_TREE_SELECT_EVENT,
+  readyFileTreeChildren,
+} from "../file-tree.js";
 
 const SECTIONS = [
   ["unstaged", "Unstaged"],
@@ -8,372 +12,216 @@ const SECTIONS = [
 
 class CaffoldGitDiffChangesTree extends HTMLElement {
   connectedCallback() {
-    this.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-node-key], button[data-change-path]");
-      if (!button || button.disabled) {
+    if (this.initialized) {
+      return;
+    }
+    this.initialized = true;
+    this.addEventListener(FILE_TREE_SELECT_EVENT, (event) => {
+      const file = event.detail.node.source;
+      if (!file) {
         return;
       }
-
-      if (button.dataset.nodeKey) {
-        this.toggleDirectory(button.dataset.nodeKey, button);
-        return;
-      }
-
-      this.setSelectedPath(button.dataset.changePath);
+      this.selectedPath = file.path;
       this.dispatchEvent(
         new CustomEvent("caffold:open-git-diff", {
           bubbles: true,
           detail: {
-            path: button.dataset.changePath,
-            kind: button.dataset.changeKind,
-            status: button.dataset.changeStatus,
+            path: file.path,
+            kind: file.untracked ? "untracked" : file.category,
+            status: displayStatus(file),
           },
         }),
       );
     });
-
-    this.boundIconsReady = () => this.render();
-    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
-    warmIcons();
-
     if (!this.state) {
       this.reset();
     }
   }
 
-  disconnectedCallback() {
-    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
-  }
-
   setLoading(repository) {
     this.state = { status: "loading", repository };
-    this.render();
+    this.renderState();
   }
 
   setStatus(gitStatus) {
-    const tree = buildChangeTree(gitStatus.files);
-    this.knownDirectoryKeys = new Set(tree.directoryKeys);
-    this.expandedKeys = new Set(this.knownDirectoryKeys);
-    this.state = { status: "ready", gitStatus, tree };
-    this.render();
+    this.state = { status: "ready", gitStatus };
+    this.renderState();
   }
 
   updateStatus(gitStatus) {
-    const scroll = this.captureListScroll();
-    const tree = buildChangeTree(gitStatus.files);
-    const nextKeys = new Set(tree.directoryKeys);
-    const previousKeys = this.knownDirectoryKeys ?? new Set();
-    this.expandedKeys = new Set([
-      ...Array.from(this.expandedKeys ?? []).filter((key) => nextKeys.has(key)),
-      ...Array.from(nextKeys).filter((key) => !previousKeys.has(key)),
-    ]);
-    this.knownDirectoryKeys = nextKeys;
-    this.state = { status: "ready", gitStatus, tree };
-    this.render();
-    this.restoreListScroll(scroll);
+    this.state = { status: "ready", gitStatus };
+    this.renderState();
   }
 
   setError(error, repository = null) {
     this.state = { status: "error", error, repository };
-    this.render();
+    this.renderState();
   }
 
   setSelectedPath(path) {
-    const nextPath = path ?? "";
-    if (this.selectedPath === nextPath) {
-      return;
-    }
-
-    this.selectedPath = nextPath;
-    this.patchSelectedPath();
+    this.selectedPath = path ?? "";
+    this.fileTree()?.setSelectedKey(this.selectedKey());
   }
 
   setTaskRelatedPaths(paths) {
-    const nextPaths = new Set(
-      (paths ?? []).map(normalizeRepoPath).filter(Boolean),
-    );
+    const nextPaths = new Set((paths ?? []).map(normalizeRepoPath).filter(Boolean));
     if (setsEqual(this.taskRelatedPaths, nextPaths)) {
       return;
     }
-
     this.taskRelatedPaths = nextPaths;
-    this.patchTaskRelatedPaths();
-  }
-
-  patchTaskRelatedPaths() {
-    for (const button of this.querySelectorAll("button[data-repo-relative-path]")) {
-      const path = normalizeRepoPath(button.dataset.repoRelativePath);
-      const related = this.taskRelatedPaths.has(path);
-      if (related) {
-        button.dataset.taskRelated = "true";
-      } else {
-        delete button.dataset.taskRelated;
-      }
-      button.setAttribute(
-        "aria-label",
-        `${related ? "Task-related change. " : ""}Show diff for ${path}`,
-      );
-      button.title = related ? `Task-related change · ${path}` : path;
-    }
-  }
-
-  patchSelectedPath() {
-    for (const button of this.querySelectorAll('button[data-change-path][aria-current="true"]')) {
-      button.setAttribute("aria-current", "false");
-    }
-
-    if (!this.selectedPath) {
-      return;
-    }
-
-    const button = this.querySelector(
-      `button[data-change-path="${CSS.escape(this.selectedPath)}"]`,
-    );
-    if (button) {
-      button.setAttribute("aria-current", "true");
+    if (this.state?.status === "ready" && this.state.gitStatus.files.length > 0) {
+      this.updateTreeModel();
     }
   }
 
   captureListScroll() {
-    const scroller = this.querySelector(".changes-tree-list");
-    return scroller
-      ? { top: scroller.scrollTop, left: scroller.scrollLeft }
-      : null;
+    return this.fileTree()?.captureScroll() ?? null;
   }
 
   restoreListScroll(scroll) {
-    if (!scroll) {
-      return;
-    }
-    requestAnimationFrame(() => {
-      const scroller = this.querySelector(".changes-tree-list");
-      if (scroller) {
-        scroller.scrollTop = scroll.top;
-        scroller.scrollLeft = scroll.left;
-      }
-    });
+    this.fileTree()?.restoreScroll(scroll);
   }
 
   reset() {
     this.selectedPath = "";
     this.taskRelatedPaths = new Set();
-    this.expandedKeys = new Set();
-    this.knownDirectoryKeys = new Set();
     this.state = { status: "idle" };
-    this.render();
+    this.renderState();
   }
 
-  render() {
-    if (!this.state || this.state.status === "idle") {
+  fileTree() {
+    return this.querySelector("caffold-file-tree");
+  }
+
+  selectedKey() {
+    return this.fileKeyByPath?.get(this.selectedPath) ?? "";
+  }
+
+  renderState() {
+    const state = this.state ?? { status: "idle" };
+    if (state.status !== "ready") {
+      const message =
+        state.status === "loading"
+          ? "Loading changes..."
+          : state.status === "error"
+            ? escapeHtml(state.error.message)
+            : "";
       this.innerHTML = `
-        <section class="changes-tree-panel">
-          ${this.renderHeader(null, null)}
-          <div class="changes-tree-list">
-            <ol class="changes-tree-rows"></ol>
-          </div>
+        <section class="changes-tree-panel${state.status === "error" ? " error-panel" : ""}"${
+          state.status === "loading" ? ' aria-busy="true"' : ""
+        }>
+          ${this.renderHeader(state.repository, null)}
+          ${message ? `<p class="surface-message">${message}</p>` : "<caffold-file-tree></caffold-file-tree>"}
         </section>
       `;
       return;
     }
 
-    if (this.state.status === "loading") {
-      this.innerHTML = `
-        <section class="changes-tree-panel" aria-busy="true">
-          ${this.renderHeader(this.state.repository, null)}
-          <p class="surface-message">Loading changes...</p>
-        </section>
-      `;
+    const files = state.gitStatus.files;
+    this.ensureReadyPanel(files.length > 0);
+    this.querySelector(":scope > .changes-tree-panel > header").innerHTML =
+      this.renderHeaderContent(state.gitStatus.repository, files.length, state.gitStatus);
+    if (files.length === 0) {
+      this.querySelector(":scope > .changes-tree-panel > .surface-message").textContent =
+        "No changes.";
       return;
     }
+    this.updateTreeModel();
+  }
 
-    if (this.state.status === "error") {
-      this.innerHTML = `
-        <section class="changes-tree-panel error-panel">
-          ${this.renderHeader(this.state.repository, null)}
-          <p class="surface-message">${escapeHtml(this.state.error.message)}</p>
-        </section>
-      `;
+  ensureReadyPanel(hasFiles) {
+    const expected = hasFiles ? "tree" : "empty";
+    const panel = this.querySelector(":scope > .changes-tree-panel");
+    if (panel?.dataset.content === expected) {
       return;
     }
-
-    const files = this.state.gitStatus.files;
     this.innerHTML = `
-      <section class="changes-tree-panel">
-        ${this.renderHeader(this.state.gitStatus.repository, files.length, this.state.gitStatus)}
-        ${
-          files.length === 0
-            ? `<p class="surface-message">No changes.</p>`
-            : `<div class="changes-tree-list">
-                <ol class="changes-tree-rows">${this.renderSections()}</ol>
-              </div>`
-        }
+      <section class="changes-tree-panel" data-content="${expected}">
+        <header></header>
+        ${hasFiles ? "<caffold-file-tree></caffold-file-tree>" : '<p class="surface-message"></p>'}
       </section>
     `;
   }
 
+  updateTreeModel() {
+    const { nodes, fileKeyByPath } = changeNodes(
+      this.state.gitStatus.files,
+      this.taskRelatedPaths,
+    );
+    this.fileKeyByPath = fileKeyByPath;
+    this.fileTree().setModel({
+      entityKey:
+        this.state.gitStatus.repository?.rootPath ??
+        this.state.gitStatus.repository?.path ??
+        "working-tree",
+      nodes,
+      selectedKey: this.selectedKey(),
+      statusColumn: true,
+    });
+  }
+
   renderHeader(repository, count, stats = null) {
+    return `<header>${this.renderHeaderContent(repository, count, stats)}</header>`;
+  }
+
+  renderHeaderContent(repository, count, stats = null) {
     const branch = repository?.branch ?? "HEAD";
     const countLabel = count === null || count === undefined ? "" : `${count} changes`;
-
     return `
-      <header>
-        <div class="changes-tree-title-row">
-          <h2>Changes</h2>
-          <span class="change-count">${escapeHtml(countLabel)}</span>
-        </div>
-        <div class="changes-tree-meta-row">
-          ${
-            repository
-              ? `<span class="changes-branch${repository.dirty ? " is-dirty" : ""}">
-                  ${escapeHtml(branch)}${repository.dirty ? " *" : ""}
-                </span>`
-              : "<span></span>"
-          }
-          ${renderDiffStats(stats)}
-        </div>
-      </header>
+      <div class="changes-tree-title-row">
+        <h2>Changes</h2>
+        <span class="change-count">${escapeHtml(countLabel)}</span>
+      </div>
+      <div class="changes-tree-meta-row">
+        ${repository
+          ? `<span class="changes-branch${repository.dirty ? " is-dirty" : ""}">${escapeHtml(branch)}${repository.dirty ? " *" : ""}</span>`
+          : "<span></span>"}
+        ${renderDiffStats(stats)}
+      </div>
     `;
-  }
-
-  renderSections() {
-    return SECTIONS.map(([category, label]) => {
-      const section = this.state.tree.sections.get(category);
-      if (!section || section.children.size === 0) {
-        return "";
-      }
-
-      return `
-        <li class="change-section-label">${escapeHtml(label)}</li>
-        ${this.renderNodes(section.children, 0)}
-      `;
-    }).join("");
-  }
-
-  renderNodes(children, depth) {
-    return sortedNodes(children)
-      .map((node) =>
-        node.kind === "directory"
-          ? this.renderDirectory(node, depth)
-          : this.renderFile(node.file, depth),
-      )
-      .join("");
-  }
-
-  renderDirectory(node, depth) {
-    const expanded = this.expandedKeys.has(node.key);
-    const entry = {
-      name: node.name,
-      path: node.key,
-      kind: "directory",
-      isSymlink: false,
-      supported: true,
-      expanded,
-    };
-
-    return `
-      <li>
-        <button
-          type="button"
-          class="change-entry change-directory"
-          style="--tree-depth: ${depth}"
-          data-node-key="${escapeHtml(node.key)}"
-          aria-expanded="${expanded ? "true" : "false"}"
-          aria-label="${escapeHtml(`${expanded ? "Collapse" : "Expand"} ${node.name}`)}"
-        >
-          <span class="change-status-code" aria-hidden="true"></span>
-          <span class="change-node-label">
-            ${renderEntryIcon(entry)}
-            <span class="change-name">${escapeHtml(node.name)}</span>
-          </span>
-        </button>
-      </li>
-      ${expanded ? this.renderNodes(node.children, depth + 1) : ""}
-    `;
-  }
-
-  renderFile(file, depth) {
-    const name = file.repoRelativePath.split("/").filter(Boolean).pop() ?? file.repoRelativePath;
-    const kind = file.untracked ? "untracked" : file.category;
-    const status = displayStatus(file);
-    const selected = file.path === this.selectedPath;
-    const repoRelativePath = normalizeRepoPath(file.repoRelativePath);
-    const taskRelated = this.taskRelatedPaths.has(repoRelativePath);
-    const entry = {
-      name,
-      path: file.path,
-      kind: "file",
-      isSymlink: false,
-      supported: true,
-    };
-
-    return `
-      <li>
-        <button
-          type="button"
-          class="change-entry change-file"
-          style="--tree-depth: ${depth}"
-          data-change-path="${escapeHtml(file.path)}"
-          data-change-kind="${escapeHtml(kind)}"
-          data-change-status="${escapeHtml(status)}"
-          data-repo-relative-path="${escapeHtml(repoRelativePath)}"
-          ${taskRelated ? 'data-task-related="true"' : ""}
-          aria-current="${selected ? "true" : "false"}"
-          aria-label="${escapeHtml(`${taskRelated ? "Task-related change. " : ""}Show diff for ${repoRelativePath}`)}"
-          title="${escapeHtml(taskRelated ? `Task-related change · ${repoRelativePath}` : repoRelativePath)}"
-        >
-          <span class="change-status-code">${escapeHtml(status)}</span>
-          <span class="change-node-label">
-            ${renderEntryIcon(entry)}
-            <span class="change-name">${escapeHtml(name)}</span>
-          </span>
-        </button>
-      </li>
-    `;
-  }
-
-  toggleDirectory(key, button) {
-    const anchor = this.captureScrollAnchor(button);
-    if (this.expandedKeys.has(key)) {
-      this.expandedKeys.delete(key);
-    } else {
-      this.expandedKeys.add(key);
-    }
-
-    this.render();
-    this.restoreScrollAnchor(anchor);
-  }
-
-  captureScrollAnchor(button) {
-    const scroller = this.querySelector(".changes-tree-list");
-    if (!button || !scroller) {
-      return null;
-    }
-
-    return {
-      key: button.dataset.nodeKey,
-      top: button.getBoundingClientRect().top,
-    };
-  }
-
-  restoreScrollAnchor(anchor) {
-    if (!anchor) {
-      return;
-    }
-
-    requestAnimationFrame(() => {
-      const scroller = this.querySelector(".changes-tree-list");
-      const button = this.querySelector(`button[data-node-key="${CSS.escape(anchor.key)}"]`);
-      if (!scroller || !button) {
-        return;
-      }
-
-      const currentTop = button.getBoundingClientRect().top;
-      scroller.scrollTop += currentTop - anchor.top;
-    });
   }
 }
 
 customElements.define("caffold-git-diff-changes-tree", CaffoldGitDiffChangesTree);
+
+function changeNodes(files, taskRelatedPaths) {
+  const fileKeyByPath = new Map();
+  const nodes = SECTIONS.flatMap(([category, label], order) => {
+    const categoryFiles = files.filter((file) => displayCategory(file) === category);
+    if (categoryFiles.length === 0) {
+      return [];
+    }
+    const leaves = categoryFiles.map((file) => {
+      const repoRelativePath = normalizeRepoPath(file.repoRelativePath);
+      const key = `${category}:file:${repoRelativePath}`;
+      const related = taskRelatedPaths.has(repoRelativePath);
+      if (!fileKeyByPath.has(file.path)) {
+        fileKeyByPath.set(file.path, key);
+      }
+      return {
+        key,
+        kind: "file",
+        path: file.path,
+        treePath: repoRelativePath,
+        status: displayStatus(file),
+        marker: related ? "task-related" : "",
+        title: related ? `Task-related change · ${repoRelativePath}` : repoRelativePath,
+        ariaLabel: `${related ? "Task-related change. " : ""}Show diff for ${repoRelativePath}`,
+        source: file,
+      };
+    });
+    return [{
+      key: `changes:group:${category}`,
+      kind: "group",
+      name: label,
+      order,
+      children: readyFileTreeChildren(
+        buildFileTreeNodes(leaves, { namespace: category }),
+      ),
+    }];
+  });
+  return { nodes, fileKeyByPath };
+}
 
 function normalizeRepoPath(path) {
   return `${path ?? ""}`
@@ -394,7 +242,6 @@ function renderDiffStats(payload) {
   if (!Number.isFinite(payload?.additions) || !Number.isFinite(payload?.deletions)) {
     return "";
   }
-
   const additions = new Intl.NumberFormat("en-US").format(payload.additions);
   const deletions = new Intl.NumberFormat("en-US").format(payload.deletions);
   return `
@@ -407,70 +254,10 @@ function renderDiffStats(payload) {
   `;
 }
 
-function buildChangeTree(files) {
-  const sections = new Map(
-    SECTIONS.map(([category]) => [category, { kind: "section", children: new Map() }]),
-  );
-  const directoryKeys = [];
-
-  for (const file of files) {
-    const category = displayCategory(file);
-    const section = sections.get(category);
-    if (!section) {
-      continue;
-    }
-
-    const parts = file.repoRelativePath.split("/").filter(Boolean);
-    if (parts.length === 0) {
-      continue;
-    }
-
-    let children = section.children;
-    let directoryPath = "";
-
-    for (const part of parts.slice(0, -1)) {
-      directoryPath = directoryPath ? `${directoryPath}/${part}` : part;
-      const key = `${category}:${directoryPath}`;
-      let directory = children.get(key);
-
-      if (!directory) {
-        directory = {
-          kind: "directory",
-          name: part,
-          key,
-          children: new Map(),
-        };
-        children.set(key, directory);
-        directoryKeys.push(key);
-      }
-
-      children = directory.children;
-    }
-
-    children.set(`${category}:file:${file.repoRelativePath}`, {
-      kind: "file",
-      name: parts[parts.length - 1],
-      file,
-    });
-  }
-
-  return { sections, directoryKeys };
-}
-
 function displayCategory(file) {
   return file.untracked ? "unstaged" : file.category;
 }
 
 function displayStatus(file) {
   return file.untracked ? "A" : file.status;
-}
-
-function sortedNodes(children) {
-  return Array.from(children.values()).sort((left, right) => {
-    if (left.kind !== right.kind) {
-      return left.kind === "directory" ? -1 : 1;
-    }
-
-    return left.name.toLowerCase().localeCompare(right.name.toLowerCase());
-  });
 }

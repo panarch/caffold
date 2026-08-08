@@ -37,33 +37,33 @@ test("keeps every review file tree selection full-width and rail-free", async ({
     {
       route: "/git/diff?cwd=src",
       tree: "caffold-git-diff-changes-tree",
-      scroller: ".changes-tree-list",
-      entry: 'button[data-change-path="src/example.rs"]',
-      rows: ".changes-tree-rows",
+      scroller: ".file-tree-scroll",
+      entry: 'button[data-file-tree-path="src/example.rs"]',
+      rows: ".file-tree-rows",
       path: "src/example.rs",
     },
     {
       route: "/git/compare?cwd=src&base=origin%2Fmain&head=feature%2Freview",
       tree: "caffold-git-compare-tree",
-      scroller: ".compare-tree-list",
-      entry: 'button[data-compare-path="src/example.rs"]',
-      rows: ".compare-tree-rows",
+      scroller: ".file-tree-scroll",
+      entry: 'button[data-file-tree-path="src/example.rs"]',
+      rows: ".file-tree-rows",
       path: "src/example.rs",
     },
     {
       route: `/git/log?cwd=src&page=2&sha=${ROUTE_COMMIT.sha}`,
       tree: "caffold-commit-changes-tree",
-      scroller: ".commit-tree-list",
-      entry: 'button[data-commit-path="src/planner/mod.rs"]',
-      rows: ".commit-tree-rows",
+      scroller: ".file-tree-scroll",
+      entry: 'button[data-file-tree-path="src/planner/mod.rs"]',
+      rows: ".file-tree-rows",
       path: "src/planner/mod.rs",
     },
     {
       route: "/github/pulls/12/files?cwd=src&page=2",
       tree: "caffold-github-pull-files-tree",
-      scroller: ".github-pull-files-list",
-      entry: 'button[data-pull-file-path="src/planner/mod.rs"]',
-      rows: ".github-pull-files-rows",
+      scroller: ".file-tree-scroll",
+      entry: 'button[data-file-tree-path="src/planner/mod.rs"]',
+      rows: ".file-tree-rows",
       path: "src/planner/mod.rs",
     },
   ];
@@ -121,7 +121,8 @@ test("keeps diff headers stable while every review surface loads", async ({ page
   const cases = [
     {
       route: "/git/diff?cwd=src",
-      entry: 'button[data-change-path="src/example.rs"]',
+      tree: "caffold-git-diff-changes-tree",
+      entry: 'button[data-file-tree-path="src/example.rs"]',
       delay: delays.gitDiff,
       viewer: ".git-mode-diff caffold-review-file-viewer",
       title: "example.rs",
@@ -130,7 +131,8 @@ test("keeps diff headers stable while every review surface loads", async ({ page
     },
     {
       route: "/git/compare?cwd=src&base=origin%2Fmain&head=feature%2Freview",
-      entry: 'button[data-compare-path="src/example.rs"]',
+      tree: "caffold-git-compare-tree",
+      entry: 'button[data-file-tree-path="src/example.rs"]',
       delay: delays.compareDiff,
       viewer: ".git-mode-compare caffold-review-file-viewer",
       title: "example.rs",
@@ -139,7 +141,8 @@ test("keeps diff headers stable while every review surface loads", async ({ page
     },
     {
       route: `/git/log?cwd=src&page=2&sha=${ROUTE_COMMIT.sha}`,
-      entry: 'button[data-commit-path="src/planner/mod.rs"]',
+      tree: "caffold-commit-changes-tree",
+      entry: 'button[data-file-tree-path="src/planner/mod.rs"]',
       delay: delays.commitDiff,
       viewer: ".git-mode-log caffold-review-file-viewer",
       title: "planner/mod.rs",
@@ -148,7 +151,8 @@ test("keeps diff headers stable while every review surface loads", async ({ page
     },
     {
       route: "/github/pulls/12/files?cwd=src&page=2",
-      entry: 'button[data-pull-file-path="src/planner/mod.rs"]',
+      tree: "caffold-github-pull-files-tree",
+      entry: 'button[data-file-tree-path="src/planner/mod.rs"]',
       delay: delays.pullFile,
       viewer: ".github-mode-pulls caffold-review-file-viewer",
       title: "planner/mod.rs",
@@ -161,7 +165,7 @@ test("keeps diff headers stable while every review surface loads", async ({ page
     await test.step(routeCase.title + " on " + routeCase.route, async () => {
       await page.goto(routeCase.route);
       const requestStarted = routeCase.delay.holdNext();
-      await page.locator(routeCase.entry).click();
+      await page.locator(routeCase.tree).locator(routeCase.entry).click();
       await requestStarted;
 
       const viewer = page.locator(routeCase.viewer);
@@ -198,9 +202,10 @@ test("restores standalone Changes routes without rebuilding list state", async (
 
   await expect(page.locator("caffold-diff-viewer")).toContainText("new route line");
   await page.goto("/git/diff?cwd=src");
-  await expect(page.locator('button[data-change-path="src/example.rs"]')).toBeVisible();
+  const changesTree = page.locator("caffold-git-diff-changes-tree");
+  await expect(changesTree.locator('button[data-file-tree-path="src/example.rs"]')).toBeVisible();
   const statusRequestsBeforeClick = counts.gitStatus;
-  await page.locator('button[data-change-path="src/example.rs"]').click();
+  await changesTree.locator('button[data-file-tree-path="src/example.rs"]').click();
   await expect(page).toHaveURL("/git/diff?cwd=src&file=example.rs");
   await expect(page.locator("caffold-diff-viewer")).toContainText("new route line");
   expect(counts.gitStatus).toBe(statusRequestsBeforeClick);
@@ -232,7 +237,8 @@ test("restores standalone Compare routes and preserves header actions", async ({
   );
 
   await page.goto("/git/compare?cwd=src&base=origin%2Fmain&head=feature%2Freview");
-  await expect(page.locator('button[data-compare-path="src/example.rs"]')).toBeVisible();
+  const compareTree = page.locator("caffold-git-compare-tree");
+  await expect(compareTree.locator('button[data-file-tree-path="src/example.rs"]')).toBeVisible();
   const headerSnapshot = await page.locator("caffold-header-actions").evaluate((element) => {
     window.__caffoldCompareGitGroupButton = element.querySelector(
       'button[data-action-group="git"]',
@@ -273,9 +279,9 @@ test("restores standalone Compare routes and preserves header actions", async ({
   await expect(page).toHaveURL(
     "/git/compare?cwd=src&base=origin%2Fmain&head=feature%2Freview",
   );
-  await expect(page.locator('button[data-compare-path="src/example.rs"]')).toBeVisible();
+  await expect(compareTree.locator('button[data-file-tree-path="src/example.rs"]')).toBeVisible();
   const compareRequestsBeforeClick = counts.gitCompare;
-  await page.locator('button[data-compare-path="src/example.rs"]').click();
+  await compareTree.locator('button[data-file-tree-path="src/example.rs"]').click();
   await expect(page).toHaveURL(
     "/git/compare?cwd=src&base=origin%2Fmain&head=feature%2Freview&file=example.rs",
   );
@@ -309,9 +315,10 @@ test("restores standalone Log routes without rebuilding commit state", async ({ 
   await expect(page.locator("caffold-diff-viewer")).toContainText("new commit route line");
 
   await page.goto(commitRoute);
-  await expect(page.locator('button[data-commit-path="src/planner/mod.rs"]')).toBeVisible();
+  const commitTree = page.locator("caffold-commit-changes-tree");
+  await expect(commitTree.locator('button[data-file-tree-path="src/planner/mod.rs"]')).toBeVisible();
   const commitRequestsBeforeClick = counts.gitCommit;
-  await page.locator('button[data-commit-path="src/planner/mod.rs"]').click();
+  await commitTree.locator('button[data-file-tree-path="src/planner/mod.rs"]').click();
   await expect(page).toHaveURL(`${commitRoute}&file=planner%2Fmod.rs`);
   await expect(page.locator("caffold-diff-viewer")).toContainText("new commit route line");
   expect(counts.gitCommit).toBe(commitRequestsBeforeClick);
@@ -404,10 +411,15 @@ test("restores standalone GitHub pull file routes before parent state loads", as
     page.locator(".github-mode-pulls caffold-review-file-viewer"),
   ).toContainText("Select a file to inspect it.");
   await expect(
-    page.locator('button[data-pull-file-path="src/planner/mod.rs"]'),
+    page
+      .locator("caffold-github-pull-files-tree")
+      .locator('button[data-file-tree-path="src/planner/mod.rs"]'),
   ).toBeVisible();
   const pullFilesBeforeClick = counts.githubPullFiles;
-  await page.locator('button[data-pull-file-path="src/planner/mod.rs"]').click();
+  await page
+    .locator("caffold-github-pull-files-tree")
+    .locator('button[data-file-tree-path="src/planner/mod.rs"]')
+    .click();
   await expect(page).toHaveURL(
     "/github/pulls/12/files?cwd=src&page=2&file=planner%2Fmod.rs",
   );
@@ -543,7 +555,8 @@ test("reloads Changes when the directory context changes", async ({ page }) => {
   await loadDirectory(page, "src");
   await expectLastPath(paths.gitStatus, "src");
   await clickHeaderAction(page, "git", "open-diff-workspace");
-  await expect(page.locator('button[data-change-path="src/example.rs"]')).toBeVisible();
+  const changesTree = page.locator("caffold-git-diff-changes-tree");
+  await expect(changesTree.locator('button[data-file-tree-path="src/example.rs"]')).toBeVisible();
 
   await loadDirectory(page, "src/planner");
   await expectLastPath(paths.gitStatus, "src/planner");
@@ -552,7 +565,7 @@ test("reloads Changes when the directory context changes", async ({ page }) => {
     "diff",
   );
   await expect(
-    page.locator('button[data-change-path="src/planner/mod.rs"]'),
+    changesTree.locator('button[data-file-tree-path="src/planner/mod.rs"]'),
   ).toBeVisible();
 });
 
@@ -564,7 +577,8 @@ test("reloads Compare when the directory context changes", async ({ page }) => {
   await clickHeaderAction(page, "git", "open-compare-workspace");
   await expectLastPath(paths.gitRefs, "src");
   await expectLastPath(paths.gitCompare, "src");
-  await expect(page.locator('button[data-compare-path="src/example.rs"]')).toBeVisible();
+  const compareTree = page.locator("caffold-git-compare-tree");
+  await expect(compareTree.locator('button[data-file-tree-path="src/example.rs"]')).toBeVisible();
 
   await loadDirectory(page, "src/planner");
   await expectLastPath(paths.gitRefs, "src/planner");
@@ -574,7 +588,7 @@ test("reloads Compare when the directory context changes", async ({ page }) => {
     "compare",
   );
   await expect(
-    page.locator('button[data-compare-path="src/planner/mod.rs"]'),
+    compareTree.locator('button[data-file-tree-path="src/planner/mod.rs"]'),
   ).toBeVisible();
 });
 

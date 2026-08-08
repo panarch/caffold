@@ -216,6 +216,8 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).not.toContain("/assets/components/pathbar.js");
   expect(serviceWorker).not.toContain("/assets/components/project-switcher.js");
   expect(serviceWorker).not.toContain("/assets/components/header-actions.js");
+  expect(serviceWorker).toContain("/assets/components/file-tree.js");
+  expect(serviceWorker).toContain("/assets/components/file-tree.css");
   expect(serviceWorker).toContain("/assets/components/file-browser.js");
   expect(serviceWorker).toContain("/assets/components/file-browser.css");
   expect(serviceWorker).toContain("/assets/components/file-viewer-presentation.js");
@@ -496,7 +498,7 @@ test("groups header review actions into Git, GitHub, and Codex popovers", async 
           return "git";
         }
 
-        if (document.querySelector('button[data-entry-path="src"]')) {
+        if (document.querySelector('button[data-file-tree-path="src"]')) {
           return "src";
         }
 
@@ -505,7 +507,7 @@ test("groups header review actions into Git, GitHub, and Codex popovers", async 
       .then((handle) => handle.jsonValue());
 
     if (entryPoint === "src") {
-      const sourceDirectory = page.locator('button[data-entry-path="src"]');
+      const sourceDirectory = page.locator('button[data-file-tree-path="src"]');
       await expect(sourceDirectory).toBeVisible();
       await sourceDirectory.click();
     }
@@ -664,7 +666,7 @@ test("keeps header action slots stable while status checks resolve", async ({ pa
   });
 
   await page.goto(FILES_HOME_URL);
-  const sourceDirectory = page.locator('button[data-entry-path="src"]');
+  const sourceDirectory = page.locator('button[data-file-tree-path="src"]');
   await expect(sourceDirectory).toBeVisible();
   await sourceDirectory.click();
 

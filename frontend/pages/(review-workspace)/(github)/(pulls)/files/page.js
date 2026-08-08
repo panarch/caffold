@@ -309,7 +309,7 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
   }
 
   rememberScroll() {
-    const scroller = this.querySelector(".github-pull-files-list");
+    const scroller = this.querySelector(".file-tree-scroll");
     if (scroller) {
       this.scrollTop = scroller.scrollTop;
     }
@@ -322,7 +322,7 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
     }
 
     window.requestAnimationFrame(() => {
-      const scroller = this.querySelector(".github-pull-files-list");
+      const scroller = this.querySelector(".file-tree-scroll");
       if (!scroller) {
         return;
       }

@@ -643,13 +643,13 @@ test("isolates task detail responses and conversation scroll by thread", async (
     "caffold-task-review caffold-git-diff-changes-tree",
   );
   await expect(
-    reviewTree.locator('button[data-repo-relative-path="thread-b.rs"]'),
+    reviewTree.locator('button[data-file-tree-relative-path="thread-b.rs"]'),
   ).toBeVisible();
   releaseThreadAGitStatus();
   await expect(
-    reviewTree.locator('button[data-repo-relative-path="thread-a.rs"]'),
+    reviewTree.locator('button[data-file-tree-relative-path="thread-a.rs"]'),
   ).toHaveCount(0);
   await expect(
-    reviewTree.locator('button[data-repo-relative-path="thread-b.rs"]'),
+    reviewTree.locator('button[data-file-tree-relative-path="thread-b.rs"]'),
   ).toBeVisible();
 });

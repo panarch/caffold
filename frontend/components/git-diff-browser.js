@@ -245,7 +245,7 @@ class CaffoldGitDiffBrowser extends HTMLElement {
   }
 
   rememberChangesScroll() {
-    const scroller = this.querySelector(".changes-tree-list");
+    const scroller = this.querySelector(".file-tree-scroll");
     if (!scroller) {
       return;
     }
@@ -260,7 +260,7 @@ class CaffoldGitDiffBrowser extends HTMLElement {
     }
 
     window.requestAnimationFrame(() => {
-      const scroller = this.querySelector(".changes-tree-list");
+      const scroller = this.querySelector(".file-tree-scroll");
       if (!scroller) {
         return;
       }

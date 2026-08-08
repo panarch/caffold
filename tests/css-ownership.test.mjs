@@ -14,6 +14,7 @@ const ownership = new Map([
   ["components/file-browser.css", ["caffold-file-browser"]],
   ["components/file-navigator.css", ["caffold-file-navigator"]],
   ["components/file-browser/list.css", ["caffold-file-list"]],
+  ["components/file-tree.css", ["caffold-file-tree"]],
   [
     "components/file-viewer.css",
     ["caffold-file-viewer", "caffold-review-file-viewer"],

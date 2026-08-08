@@ -102,6 +102,10 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/components/header-actions/shared.js" => Some(js(include_str!(
             "../frontend/pages/components/header-actions/shared.js"
         ))),
+        "components/file-tree.css" => {
+            Some(css(include_str!("../frontend/components/file-tree.css")))
+        }
+        "components/file-tree.js" => Some(js(include_str!("../frontend/components/file-tree.js"))),
         "components/file-browser.css" => {
             Some(css(include_str!("../frontend/components/file-browser.css")))
         }
@@ -1157,6 +1161,22 @@ mod tests {
                 .windows(b"caffold-file-list".len())
                 .any(|window| window == b"caffold-file-list")
         );
+        let file_tree_component =
+            get("components/file-tree.js").expect("file tree component js asset");
+        assert_eq!(
+            file_tree_component.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(file_tree_component.body.starts_with(b"import "));
+        assert!(
+            file_tree_component
+                .body
+                .windows(b"caffold-file-tree".len())
+                .any(|window| window == b"caffold-file-tree")
+        );
+        let file_tree_css = get("components/file-tree.css").expect("file tree component css asset");
+        assert_eq!(file_tree_css.content_type, "text/css; charset=utf-8");
+        assert!(file_tree_css.body.starts_with(b"caffold-file-tree"));
         assert!(get("pages/files/components/list.js").is_none());
         assert!(get("pages/files/components/list.css").is_none());
         let watch_module = get("watch.js").expect("watch js asset");

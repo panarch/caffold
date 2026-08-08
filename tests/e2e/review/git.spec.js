@@ -144,7 +144,7 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   });
 
   await page.goto(FILES_HOME_URL);
-  await page.locator('button[data-entry-path="src"]').click();
+  await page.locator('caffold-file-list button[data-file-tree-path="src"]').click();
 
   const gitButton = headerActionGroupButton(page, "git");
   await expect(gitButton).toBeVisible();
@@ -193,12 +193,13 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   await expect(
     page.locator("caffold-git-diff-changes-tree .change-line-stats .is-deletion"),
   ).toHaveText("-19,618");
-  await expect(page.locator('button[data-change-path="src/new-file.rs"] .change-status-code')).toHaveText(
+  const changesTree = page.locator("caffold-git-diff-changes-tree");
+  await expect(changesTree.locator('button[data-file-tree-path="src/new-file.rs"] .file-tree-status-code')).toHaveText(
     "A",
   );
   await expectFileTreeDensity(
     page,
-    page.locator('button[data-change-path="src/new-file.rs"]'),
+    changesTree.locator('button[data-file-tree-path="src/new-file.rs"]'),
   );
   await captureReviewScreenshot(page, testInfo, "diff-changes-summary");
   if (testInfo.project.name !== "phone") {
@@ -216,7 +217,7 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
     expect(afterReviewWidth).toBeGreaterThan(beforeReviewWidth + 48);
   }
 
-  await page.locator('button[data-change-path="src/example.rs"]').click();
+  await changesTree.locator('button[data-file-tree-path="src/example.rs"]').click();
   await expect(page.locator(".git-mode-diff caffold-review-file-viewer")).toContainText(
     "example.rs",
   );
@@ -249,8 +250,18 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   await expect(page.locator("caffold-diff-viewer")).toContainText("old line");
   await expect(page.locator("caffold-diff-viewer")).toContainText("new line");
   const visibleDiff = page.locator("caffold-diff-viewer");
+  const changesScroller = changesTree.locator(".file-tree-scroll");
+  const unchangedRow = changesTree.locator(
+    'button[data-file-tree-path="src/example.rs"]',
+  );
   await visibleDiff.evaluate((element) => {
     element.dataset.unrelatedWatchProbe = "kept";
+  });
+  await changesScroller.evaluate((element) => {
+    element.dataset.unrelatedWatchProbe = "kept";
+  });
+  await unchangedRow.evaluate((button) => {
+    button.closest("li").unrelatedWatchProbe = true;
   });
   const statusBeforeUnrelatedWatch = statusRequests;
   const diffBeforeUnrelatedWatch = diffRequests;
@@ -270,6 +281,12 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   await expect.poll(() => statusRequests).toBeGreaterThan(statusBeforeUnrelatedWatch);
   expect(diffRequests).toBe(diffBeforeUnrelatedWatch);
   await expect(visibleDiff).toHaveAttribute("data-unrelated-watch-probe", "kept");
+  await expect(changesScroller).toHaveAttribute("data-unrelated-watch-probe", "kept");
+  expect(
+    await unchangedRow.evaluate(
+      (button) => button.closest("li").unrelatedWatchProbe === true,
+    ),
+  ).toBe(true);
   await expectHorizontalScroller(page, "caffold-diff-viewer .diff-lines");
   await expectUnifiedDiffRowsShareScrollWidth(page);
   await expectDiffScrollerFillsViewer(page);
@@ -323,7 +340,7 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
     await expect(page.locator("caffold-git-diff-page")).toBeVisible();
     await expect(page.locator(".git-mode-diff caffold-review-file-viewer")).toBeHidden();
   }
-  await page.locator('button[data-change-path="src/deleted.rs"]').click();
+  await page.locator('button[data-file-tree-path="src/deleted.rs"]').click();
   await expect(page.locator(".git-mode-diff .viewer-subtitle")).toHaveText(
     "Deleted · Unstaged",
   );
@@ -336,13 +353,13 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
     );
     await expect(page.locator("caffold-git-diff-page")).toBeVisible();
     await expect(page.locator(".git-mode-diff caffold-review-file-viewer")).toBeHidden();
-    await expect(page.locator('button[data-change-path="src/deleted.rs"]')).toHaveAttribute(
+    await expect(page.locator('button[data-file-tree-path="src/deleted.rs"]')).toHaveAttribute(
       "aria-current",
       "false",
     );
   }
 
-  await page.locator('button[data-change-path="src/new-file.rs"]').click();
+  await page.locator('button[data-file-tree-path="src/new-file.rs"]').click();
   await expect(page.locator(".git-mode-diff .viewer-subtitle")).toHaveText("Added");
   await expect(page.locator("caffold-diff-viewer")).toContainText("pub fn new_file");
   if (testInfo.project.name === "phone") {
@@ -451,7 +468,7 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
   });
 
   await page.goto(FILES_HOME_URL);
-  await page.locator('button[data-entry-path="src"]').click();
+  await page.locator('button[data-file-tree-path="src"]').click();
 
   const gitPopover = await openHeaderActionGroup(page, "git");
   const compareButton = gitPopover.locator('button[data-action="open-compare-workspace"]');
@@ -565,11 +582,11 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
   await expect(page.locator("caffold-git-compare-page")).toContainText("release.rs");
   await expectFileTreeDensity(
     page,
-    page.locator('button[data-compare-path="src/runtime/release.rs"]'),
+    page.locator('button[data-file-tree-path="src/runtime/release.rs"]'),
   );
 
-  await page.locator('button[data-compare-path="src/runtime/release.rs"]').click();
-  await expect(page.locator('button[data-compare-path="src/runtime/release.rs"]')).toHaveAttribute(
+  await page.locator('button[data-file-tree-path="src/runtime/release.rs"]').click();
+  await expect(page.locator('button[data-file-tree-path="src/runtime/release.rs"]')).toHaveAttribute(
     "aria-current",
     "true",
   );
@@ -722,7 +739,7 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
   });
 
   await page.goto(FILES_HOME_URL);
-  await page.locator('button[data-entry-path="src"]').click();
+  await page.locator('button[data-file-tree-path="src"]').click();
 
   const gitPopover = await openHeaderActionGroup(page, "git");
   const logButton = gitPopover.locator('button[data-action="open-log-workspace"]');
@@ -798,7 +815,7 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
   await expect(commitTree).not.toContainText("Update planner function");
   await expect(commitTree).toContainText("planner");
   await expect(commitTree).toContainText("function.rs");
-  const commitFileButton = page.locator('button[data-commit-path="src/planner/function.rs"]');
+  const commitFileButton = page.locator('button[data-file-tree-path="src/planner/function.rs"]');
   await expect(commitFileButton).toHaveAttribute("aria-current", "false");
   await expectFileTreeDensity(page, commitFileButton);
   await expect(page.locator(".git-mode-log caffold-review-file-viewer")).toContainText(

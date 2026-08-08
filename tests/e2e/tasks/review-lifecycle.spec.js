@@ -84,7 +84,7 @@ test("reopens Review at its last semantic route after returning to Conversation"
 
   await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
   await taskReview
-    .locator('caffold-git-diff-changes-tree button[data-repo-relative-path="planner.rs"]')
+    .locator('caffold-git-diff-changes-tree button[data-file-tree-relative-path="planner.rs"]')
     .click();
   await taskReview.getByRole("button", { name: "Branch", exact: true }).click();
   await taskReview.getByRole("button", { name: "Source", exact: true }).click();
@@ -101,7 +101,7 @@ test("reopens Review at its last semantic route after returning to Conversation"
     `/tasks/${taskScenario.threadId}/review?scope=branch&nav=files&view=source&file=planner.rs&base=origin%2Fmain`,
   );
   await expect(
-    taskReview.locator('caffold-file-navigator button[data-entry-path="src/planner.rs"]'),
+    taskReview.locator('caffold-file-navigator button[data-file-tree-path="src/planner.rs"]'),
   ).toHaveAttribute("aria-current", "true");
 });
 
@@ -113,7 +113,7 @@ test("keeps the selected Review viewer mounted during canonical task sync", asyn
 
   await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
   await taskReview
-    .locator('caffold-git-diff-changes-tree button[data-repo-relative-path="planner.rs"]')
+    .locator('caffold-git-diff-changes-tree button[data-file-tree-relative-path="planner.rs"]')
     .click();
   const visibleDiff = taskReview.locator("caffold-diff-viewer");
   await expect(visibleDiff).toContainText("new planner behavior");
@@ -148,8 +148,8 @@ test("does not reveal the selected Files entry again during canonical task sync"
 
   await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
   await taskReview.getByRole("button", { name: "Files", exact: true }).click();
-  const fileList = taskReview.locator(".file-list");
-  const selected = fileList.locator('button[data-entry-path="src/alpha.rs"]');
+  const fileList = taskReview.locator("caffold-file-navigator .file-tree-scroll");
+  const selected = fileList.locator('button[data-file-tree-path="src/alpha.rs"]');
   await selected.click();
   await expect(selected).toHaveAttribute("aria-current", "true");
 
@@ -157,7 +157,7 @@ test("does not reveal the selected Files entry again during canonical task sync"
   expect(fileScroll).toBeGreaterThan(0);
   expect(
     await selected.evaluate((button) => {
-      const scroller = button.closest(".file-list");
+      const scroller = button.closest(".file-tree-scroll");
       return button.getBoundingClientRect().top < scroller.getBoundingClientRect().top;
     }),
   ).toBe(true);
@@ -191,15 +191,15 @@ test("keeps both Review navigator scroll positions during unrelated live updates
   });
 
   await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
-  const changesList = taskReview.locator(".changes-tree-list");
+  const changesList = taskReview.locator("caffold-git-diff-changes-tree .file-tree-scroll");
   await expect(
-    taskReview.locator("caffold-git-diff-changes-tree button[data-change-path]"),
+    taskReview.locator('caffold-git-diff-changes-tree button[data-file-tree-kind="file"]'),
   ).toHaveCount(184);
 
   // Populate both route-state slots at their initial position before the user scrolls.
   await taskReview.getByRole("button", { name: "Files", exact: true }).click();
   await expect(
-    taskReview.locator('caffold-file-navigator button[data-entry-path="src/alpha.rs"]'),
+    taskReview.locator('caffold-file-navigator button[data-file-tree-path="src/alpha.rs"]'),
   ).toBeVisible();
   await taskReview.getByRole("button", { name: "Changes", exact: true }).click();
 
@@ -221,7 +221,7 @@ test("keeps both Review navigator scroll positions during unrelated live updates
   await expectScrollUnchanged(changesList, changesScroll);
 
   await taskReview.getByRole("button", { name: "Files", exact: true }).click();
-  const fileList = taskReview.locator(".file-list");
+  const fileList = taskReview.locator("caffold-file-navigator .file-tree-scroll");
   let injectVisibleDirectoryChange = false;
   await page.route(/\/api\/list(?:\?|$)/, async (route) => {
     if (!injectVisibleDirectoryChange) {
@@ -280,7 +280,7 @@ test("keeps both Review navigator scroll positions during unrelated live updates
 
   const visibleAnchor = await captureVisibleAnchor(fileList);
   await fileList
-    .locator(`button[data-entry-path="${visibleAnchor.path}"]`)
+    .locator(`button[data-file-tree-path="${visibleAnchor.path}"]`)
     .evaluate((button) => {
       button.closest("li").stableRefreshProbe = true;
     });
@@ -296,11 +296,11 @@ test("keeps both Review navigator scroll positions during unrelated live updates
   await expect
     .poll(() => directoryRequests)
     .toBeGreaterThan(requestsBeforeVisibleChange);
-  await expect(fileList.locator('button[data-entry-path="src/00-live.rs"]')).toBeVisible();
+  await expect(fileList.locator('button[data-file-tree-path="src/00-live.rs"]')).toBeVisible();
   await expect(fileList).toHaveAttribute("data-stable-refresh-probe", "kept");
   expect(
     await fileList
-      .locator(`button[data-entry-path="${visibleAnchor.path}"]`)
+      .locator(`button[data-file-tree-path="${visibleAnchor.path}"]`)
       .evaluate((button) => button.closest("li").stableRefreshProbe === true),
   ).toBe(true);
   const visibleAnchorAfterChange = await captureVisibleAnchor(fileList);
@@ -361,7 +361,7 @@ test("rejects a late file navigator response while Review is inactive", async ({
   await tasksPage.getByRole("button", { name: "Files", exact: true }).click();
   await expect(
     tasksPage.locator(
-      'caffold-task-review caffold-file-navigator button[data-entry-path="src/alpha.rs"]',
+      'caffold-task-review caffold-file-navigator button[data-file-tree-path="src/alpha.rs"]',
     ),
   ).toBeVisible();
 });
@@ -391,14 +391,14 @@ async function expectScrollUnchanged(locator, expected) {
 async function captureVisibleAnchor(locator) {
   return locator.evaluate((element) => {
     const scrollerTop = element.getBoundingClientRect().top;
-    const anchor = Array.from(element.querySelectorAll("button[data-entry-path]")).find(
+    const anchor = Array.from(element.querySelectorAll("button[data-file-tree-path]")).find(
       (button) => button.getBoundingClientRect().bottom > scrollerTop,
     );
     if (!anchor) {
       throw new Error("No visible file tree anchor");
     }
     return {
-      path: anchor.dataset.entryPath,
+      path: anchor.dataset.fileTreePath,
       offset: anchor.getBoundingClientRect().top - scrollerTop,
     };
   });

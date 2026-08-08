@@ -20,7 +20,7 @@ export async function expectGlobalScrollLocked(page) {
 
 export async function expectPanelScrollContainers(page) {
   const scrollState = await page.evaluate(() => {
-    const fileList = document.querySelector(".file-list");
+    const fileList = document.querySelector(".file-tree-scroll");
     const codeLines = document.querySelector(".code-lines");
 
     return {

@@ -1,302 +1,152 @@
 import { escapeHtml } from "../../../../../../components/dom.js";
-import { renderEntryIcon, warmIcons } from "../../../../../../components/icons.js";
+import {
+  buildFileTreeNodes,
+  FILE_TREE_SELECT_EVENT,
+} from "../../../../../../components/file-tree.js";
 
 class CaffoldCommitChangesTree extends HTMLElement {
   connectedCallback() {
-    this.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-node-key], button[data-commit-path]");
-      if (!button || button.disabled) {
+    if (this.initialized) {
+      return;
+    }
+    this.initialized = true;
+    this.addEventListener(FILE_TREE_SELECT_EVENT, (event) => {
+      const file = event.detail.node.source;
+      if (!file) {
         return;
       }
-
-      if (button.dataset.nodeKey) {
-        this.toggleDirectory(button.dataset.nodeKey, button);
-        return;
-      }
-
-      this.setSelectedPath(button.dataset.commitPath);
+      this.selectedPath = file.path;
       this.dispatchEvent(
         new CustomEvent("caffold:open-commit-diff", {
           bubbles: true,
           detail: {
-            sha: button.dataset.commitSha,
-            path: button.dataset.commitPath,
-            status: button.dataset.commitStatus,
+            sha: this.state.commitPayload.commit.sha,
+            path: file.path,
+            status: file.status,
           },
         }),
       );
     });
-
-    this.boundIconsReady = () => this.render();
-    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
-    warmIcons();
-
     if (!this.state) {
       this.reset();
     }
   }
 
-  disconnectedCallback() {
-    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
-  }
-
   setLoading(repository, commit = null) {
     this.state = { status: "loading", repository, commit };
-    this.render();
+    this.renderState();
   }
 
   setCommit(commitPayload) {
-    const tree = buildCommitTree(commitPayload.files ?? []);
-    this.knownDirectoryKeys = new Set(tree.directoryKeys);
-    this.expandedKeys = new Set(this.knownDirectoryKeys);
-    this.state = { status: "ready", commitPayload, tree };
-    this.render();
+    this.state = { status: "ready", commitPayload };
+    this.renderState();
   }
 
   updateCommit(commitPayload) {
-    const scroller = this.querySelector(".commit-tree-list");
-    const scroll = scroller
-      ? { top: scroller.scrollTop, left: scroller.scrollLeft }
-      : null;
-    const tree = buildCommitTree(commitPayload.files ?? []);
-    const nextKeys = new Set(tree.directoryKeys);
-    const previousKeys = this.knownDirectoryKeys ?? new Set();
-    this.expandedKeys = new Set([
-      ...Array.from(this.expandedKeys ?? []).filter((key) => nextKeys.has(key)),
-      ...Array.from(nextKeys).filter((key) => !previousKeys.has(key)),
-    ]);
-    this.knownDirectoryKeys = nextKeys;
-    this.state = { status: "ready", commitPayload, tree };
-    this.render();
-    if (scroll) {
-      requestAnimationFrame(() => {
-        const nextScroller = this.querySelector(".commit-tree-list");
-        if (nextScroller) {
-          nextScroller.scrollTop = scroll.top;
-          nextScroller.scrollLeft = scroll.left;
-        }
-      });
-    }
+    this.state = { status: "ready", commitPayload };
+    this.renderState();
   }
 
   setError(error, repository = null, commit = null) {
     this.state = { status: "error", error, repository, commit };
-    this.render();
+    this.renderState();
   }
 
   setSelectedPath(path) {
-    const nextPath = path ?? "";
-    if (this.selectedPath === nextPath) {
-      return;
-    }
-
-    this.selectedPath = nextPath;
-    this.patchSelectedPath();
-  }
-
-  patchSelectedPath() {
-    for (const button of this.querySelectorAll('button[data-commit-path][aria-current="true"]')) {
-      button.setAttribute("aria-current", "false");
-    }
-
-    if (!this.selectedPath) {
-      return;
-    }
-
-    const button = this.querySelector(
-      `button[data-commit-path="${CSS.escape(this.selectedPath)}"]`,
-    );
-    if (button) {
-      button.setAttribute("aria-current", "true");
-    }
+    this.selectedPath = path ?? "";
+    this.fileTree()?.setSelectedKey(this.selectedKey());
   }
 
   reset() {
     this.selectedPath = "";
-    this.expandedKeys = new Set();
-    this.knownDirectoryKeys = new Set();
     this.state = { status: "idle" };
-    this.render();
+    this.renderState();
   }
 
-  render() {
-    if (!this.state || this.state.status === "idle") {
+  captureListScroll() {
+    return this.fileTree()?.captureScroll() ?? null;
+  }
+
+  restoreListScroll(scroll) {
+    this.fileTree()?.restoreScroll(scroll);
+  }
+
+  fileTree() {
+    return this.querySelector("caffold-file-tree");
+  }
+
+  selectedKey() {
+    return this.fileKeyByPath?.get(this.selectedPath) ?? "";
+  }
+
+  renderState() {
+    const state = this.state ?? { status: "idle" };
+    if (state.status !== "ready") {
+      const message =
+        state.status === "loading"
+          ? "Loading commit..."
+          : state.status === "error"
+            ? escapeHtml(state.error.message)
+            : "";
       this.innerHTML = `
-        <section class="commit-tree-panel">
-          ${this.renderHeader(null, null, null)}
-          <div class="commit-tree-list">
-            <ol class="commit-tree-rows"></ol>
-          </div>
+        <section class="commit-tree-panel${state.status === "error" ? " error-panel" : ""}"${
+          state.status === "loading" ? ' aria-busy="true"' : ""
+        }>
+          ${this.renderHeader(null, null)}
+          ${message ? `<p class="surface-message">${message}</p>` : "<caffold-file-tree></caffold-file-tree>"}
         </section>
       `;
       return;
     }
 
-    if (this.state.status === "loading") {
-      this.innerHTML = `
-        <section class="commit-tree-panel" aria-busy="true">
-          ${this.renderHeader(this.state.repository, this.state.commit, null)}
-          <p class="surface-message">Loading commit...</p>
-        </section>
-      `;
-      return;
-    }
-
-    if (this.state.status === "error") {
-      this.innerHTML = `
-        <section class="commit-tree-panel error-panel">
-          ${this.renderHeader(this.state.repository, this.state.commit, null)}
-          <p class="surface-message">${escapeHtml(this.state.error.message)}</p>
-        </section>
-      `;
-      return;
-    }
-
-    const payload = this.state.commitPayload;
+    const payload = state.commitPayload;
     const files = payload.files ?? [];
+    this.ensureReadyPanel(files.length > 0);
+    this.querySelector(":scope > .commit-tree-panel > header").innerHTML =
+      this.renderHeaderContent(files.length, payload);
+    if (files.length === 0) {
+      this.querySelector(":scope > .commit-tree-panel > .surface-message").textContent =
+        "No files changed.";
+      return;
+    }
+
+    const { nodes, fileKeyByPath } = commitNodes(files);
+    this.fileKeyByPath = fileKeyByPath;
+    this.fileTree().setModel({
+      entityKey: commitEntityKey(payload),
+      nodes,
+      selectedKey: this.selectedKey(),
+      statusColumn: true,
+    });
+  }
+
+  ensureReadyPanel(hasFiles) {
+    const expected = hasFiles ? "tree" : "empty";
+    const panel = this.querySelector(":scope > .commit-tree-panel");
+    if (panel?.dataset.content === expected) {
+      return;
+    }
     this.innerHTML = `
-      <section class="commit-tree-panel">
-        ${this.renderHeader(payload.repository, payload.commit, files.length, payload)}
-        ${
-          files.length === 0
-            ? `<p class="surface-message">No files changed.</p>`
-            : `<div class="commit-tree-list">
-                <ol class="commit-tree-rows">${this.renderNodes(this.state.tree.children, 0)}</ol>
-              </div>`
-        }
+      <section class="commit-tree-panel" data-content="${expected}">
+        <header></header>
+        ${hasFiles ? "<caffold-file-tree></caffold-file-tree>" : '<p class="surface-message"></p>'}
       </section>
     `;
   }
 
-  renderHeader(_repository, _commit, count, stats = null) {
+  renderHeader(_payload, count) {
+    return `<header>${this.renderHeaderContent(count, null)}</header>`;
+  }
+
+  renderHeaderContent(count, stats) {
     const countLabel = count === null || count === undefined ? "" : `${count} files`;
-
     return `
-      <header>
-        <div class="commit-tree-title-row">
-          <h2>Commit</h2>
-          <span class="commit-file-count">${escapeHtml(countLabel)}</span>
-        </div>
-        ${renderDiffStats(stats)}
-      </header>
+      <div class="commit-tree-title-row">
+        <h2>Commit</h2>
+        <span class="commit-file-count">${escapeHtml(countLabel)}</span>
+      </div>
+      ${renderDiffStats(stats)}
     `;
-  }
-
-  renderNodes(children, depth) {
-    return sortedNodes(children)
-      .map((node) =>
-        node.kind === "directory"
-          ? this.renderDirectory(node, depth)
-          : this.renderFile(node.file, depth),
-      )
-      .join("");
-  }
-
-  renderDirectory(node, depth) {
-    const expanded = this.expandedKeys.has(node.key);
-    const entry = {
-      name: node.name,
-      path: node.key,
-      kind: "directory",
-      isSymlink: false,
-      supported: true,
-      expanded,
-    };
-
-    return `
-      <li>
-        <button
-          type="button"
-          class="commit-entry commit-directory"
-          style="--tree-depth: ${depth}"
-          data-node-key="${escapeHtml(node.key)}"
-          aria-expanded="${expanded ? "true" : "false"}"
-          aria-label="${escapeHtml(`${expanded ? "Collapse" : "Expand"} ${node.name}`)}"
-        >
-          <span class="commit-status-code" aria-hidden="true"></span>
-          <span class="commit-node-label">
-            ${renderEntryIcon(entry)}
-            <span class="commit-name">${escapeHtml(node.name)}</span>
-          </span>
-        </button>
-      </li>
-      ${expanded ? this.renderNodes(node.children, depth + 1) : ""}
-    `;
-  }
-
-  renderFile(file, depth) {
-    const name = file.repoRelativePath.split("/").filter(Boolean).pop() ?? file.repoRelativePath;
-    const selected = file.path === this.selectedPath;
-    const entry = {
-      name,
-      path: file.path,
-      kind: "file",
-      isSymlink: false,
-      supported: true,
-    };
-
-    return `
-      <li>
-        <button
-          type="button"
-          class="commit-entry commit-file"
-          style="--tree-depth: ${depth}"
-          data-commit-sha="${escapeHtml(this.state.commitPayload.commit.sha)}"
-          data-commit-path="${escapeHtml(file.path)}"
-          data-commit-status="${escapeHtml(file.status)}"
-          aria-current="${selected ? "true" : "false"}"
-          aria-label="${escapeHtml(`Show commit diff for ${file.repoRelativePath}`)}"
-          title="${escapeHtml(file.repoRelativePath)}"
-        >
-          <span class="commit-status-code">${escapeHtml(file.status)}</span>
-          <span class="commit-node-label">
-            ${renderEntryIcon(entry)}
-            <span class="commit-name">${escapeHtml(name)}</span>
-          </span>
-        </button>
-      </li>
-    `;
-  }
-
-  toggleDirectory(key, button) {
-    const anchor = this.captureScrollAnchor(button);
-    if (this.expandedKeys.has(key)) {
-      this.expandedKeys.delete(key);
-    } else {
-      this.expandedKeys.add(key);
-    }
-
-    this.render();
-    this.restoreScrollAnchor(anchor);
-  }
-
-  captureScrollAnchor(button) {
-    const scroller = this.querySelector(".commit-tree-list");
-    if (!button || !scroller) {
-      return null;
-    }
-
-    return {
-      key: button.dataset.nodeKey,
-      top: button.getBoundingClientRect().top,
-    };
-  }
-
-  restoreScrollAnchor(anchor) {
-    if (!anchor) {
-      return;
-    }
-
-    requestAnimationFrame(() => {
-      const scroller = this.querySelector(".commit-tree-list");
-      const button = this.querySelector(`button[data-node-key="${CSS.escape(anchor.key)}"]`);
-      if (!scroller || !button) {
-        return;
-      }
-
-      const currentTop = button.getBoundingClientRect().top;
-      scroller.scrollTop += currentTop - anchor.top;
-    });
   }
 }
 
@@ -306,7 +156,6 @@ function renderDiffStats(payload) {
   if (!Number.isFinite(payload?.additions) || !Number.isFinite(payload?.deletions)) {
     return "";
   }
-
   const additions = new Intl.NumberFormat("en-US").format(payload.additions);
   const deletions = new Intl.NumberFormat("en-US").format(payload.deletions);
   return `
@@ -319,54 +168,36 @@ function renderDiffStats(payload) {
   `;
 }
 
-function buildCommitTree(files) {
-  const root = { kind: "root", children: new Map() };
-  const directoryKeys = [];
-
-  for (const file of files) {
-    const parts = file.repoRelativePath.split("/").filter(Boolean);
-    if (parts.length === 0) {
-      continue;
+function commitNodes(files) {
+  const fileKeyByPath = new Map();
+  const leaves = files.map((file) => {
+    const key = `commit:file:${file.repoRelativePath}`;
+    if (!fileKeyByPath.has(file.path)) {
+      fileKeyByPath.set(file.path, key);
     }
-
-    let children = root.children;
-    let directoryPath = "";
-
-    for (const part of parts.slice(0, -1)) {
-      directoryPath = directoryPath ? `${directoryPath}/${part}` : part;
-      const key = `commit:${directoryPath}`;
-      let directory = children.get(key);
-
-      if (!directory) {
-        directory = {
-          kind: "directory",
-          name: part,
-          key,
-          children: new Map(),
-        };
-        children.set(key, directory);
-        directoryKeys.push(key);
-      }
-
-      children = directory.children;
-    }
-
-    children.set(`commit:file:${file.repoRelativePath}`, {
+    return {
+      key,
       kind: "file",
-      name: parts[parts.length - 1],
-      file,
-    });
-  }
-
-  return { children: root.children, directoryKeys };
+      path: file.path,
+      treePath: file.repoRelativePath,
+      status: file.status,
+      title: file.repoRelativePath,
+      ariaLabel: `Show commit diff for ${file.repoRelativePath}`,
+      source: file,
+    };
+  });
+  return {
+    nodes: buildFileTreeNodes(leaves, { namespace: "commit" }),
+    fileKeyByPath,
+  };
 }
 
-function sortedNodes(children) {
-  return Array.from(children.values()).sort((left, right) => {
-    if (left.kind !== right.kind) {
-      return left.kind === "directory" ? -1 : 1;
-    }
-
-    return left.name.toLowerCase().localeCompare(right.name.toLowerCase());
-  });
+function commitEntityKey(payload) {
+  return [
+    payload?.repository?.rootPath ??
+      payload?.repository?.root ??
+      payload?.repository?.path ??
+      "",
+    payload?.commit?.sha ?? "",
+  ].join("\u0000");
 }

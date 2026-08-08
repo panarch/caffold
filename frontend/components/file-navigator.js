@@ -158,7 +158,7 @@ class CaffoldFileNavigator extends HTMLElement {
   }
 
   captureScroll() {
-    const scroller = this.fileList?.querySelector(".file-list");
+    const scroller = this.fileList?.querySelector(".file-tree-scroll");
     return scroller
       ? { top: scroller.scrollTop, left: scroller.scrollLeft }
       : null;
@@ -169,7 +169,7 @@ class CaffoldFileNavigator extends HTMLElement {
       return;
     }
     window.requestAnimationFrame(() => {
-      const scroller = this.fileList?.querySelector(".file-list");
+      const scroller = this.fileList?.querySelector(".file-tree-scroll");
       if (scroller) {
         scroller.scrollTop = scroll.top;
         scroller.scrollLeft = scroll.left;

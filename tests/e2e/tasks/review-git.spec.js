@@ -20,7 +20,7 @@ test("keeps the selected Review file identity stable while content loads", async
 
   const changes = taskReview.locator("caffold-git-diff-changes-tree");
   const viewer = taskReview.locator("caffold-review-file-viewer");
-  await changes.locator('button[data-repo-relative-path="planner.rs"]').click();
+  await changes.locator('button[data-file-tree-relative-path="planner.rs"]').click();
   await expect(viewer.locator(".surface-message")).toHaveText("Loading file...");
   await expect(viewer.locator(".viewer-title-block h2")).toHaveText("planner.rs");
   await expect(viewer.locator(".viewer-subtitle")).toHaveText(
@@ -59,15 +59,15 @@ test("reviews working tree changes through the canonical Review route", async ({
   const changes = taskReview.locator("caffold-git-diff-changes-tree");
   const viewer = taskReview.locator("caffold-review-file-viewer");
   await expect(taskReview).toBeVisible();
-  await expect(changes.locator("button[data-change-path]")).toHaveCount(4);
-  await expect(changes.locator('button[data-task-related="true"]')).toHaveCount(3);
+  await expect(changes.locator('button[data-file-tree-kind="file"]')).toHaveCount(4);
+  await expect(changes.locator('button[data-marker="task-related"]')).toHaveCount(3);
 
-  await changes.locator('button[data-repo-relative-path="planner.rs"]').click();
+  await changes.locator('button[data-file-tree-relative-path="planner.rs"]').click();
   await expect(page).toHaveURL(
     `/tasks/${taskScenario.threadId}/review?file=planner.rs`,
   );
   await expect(
-    changes.locator('button[data-repo-relative-path="planner.rs"]'),
+    changes.locator('button[data-file-tree-relative-path="planner.rs"]'),
   ).toHaveAttribute("aria-current", "true");
   await expect(viewer).toContainText("new planner behavior");
   const visibleDiff = viewer.locator("caffold-diff-viewer");
@@ -93,7 +93,7 @@ test("reviews working tree changes through the canonical Review route", async ({
   });
   await expect.poll(() => reviewScenario.gitStatusRequests).toBeGreaterThan(beforeWatch);
   await expect(
-    changes.locator('button[data-repo-relative-path="live-update.rs"]'),
+    changes.locator('button[data-file-tree-relative-path="live-update.rs"]'),
   ).toHaveCount(1);
   expect(reviewScenario.gitDiffRequests).toBe(beforeUnrelatedDiff);
   await expect(visibleDiff).toHaveAttribute("data-unrelated-watch-probe", "kept");
@@ -134,7 +134,7 @@ test("keeps selectedPath while scope, navigator, and viewer switch independently
   await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
 
   const workingTree = taskReview.locator("caffold-git-diff-changes-tree");
-  await workingTree.locator('button[data-repo-relative-path="planner.rs"]').click();
+  await workingTree.locator('button[data-file-tree-relative-path="planner.rs"]').click();
   await expect(taskReview.locator("caffold-review-file-viewer")).toContainText(
     "new planner behavior",
   );
@@ -153,7 +153,7 @@ test("keeps selectedPath while scope, navigator, and viewer switch independently
 
   const compareTree = taskReview.locator("caffold-git-compare-tree");
   await expect(
-    compareTree.locator('button[data-compare-path="src/planner.rs"]'),
+    compareTree.locator('button[data-file-tree-path="src/planner.rs"]'),
   ).toHaveAttribute("aria-current", "true");
   await expect(taskReview.locator("caffold-review-file-viewer")).toContainText(
     "new branch behavior",
@@ -172,12 +172,12 @@ test("keeps selectedPath while scope, navigator, and viewer switch independently
     `/tasks/${taskScenario.threadId}/review?scope=branch&nav=files&view=source&file=planner.rs&base=origin%2Fmain`,
   );
   await expect(
-    taskReview.locator('caffold-file-navigator button[data-entry-path="src/planner.rs"]'),
+    taskReview.locator('caffold-file-navigator button[data-file-tree-path="src/planner.rs"]'),
   ).toHaveAttribute("aria-current", "true");
 
   await taskReview.locator("select[data-review-base]").selectOption("origin/release");
   await expect(
-    compareTree.locator('button[data-compare-path="src/release.rs"]'),
+    compareTree.locator('button[data-file-tree-path="src/release.rs"]'),
   ).toBeAttached();
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-branch-compare");
@@ -192,7 +192,7 @@ test("supports every scope navigator and viewer combination", async ({ page }) =
   const branchTree = taskReview.locator("caffold-git-compare-tree");
   const fileNavigator = taskReview.locator("caffold-file-navigator");
   const viewer = taskReview.locator("caffold-review-file-viewer");
-  await workingTree.locator('button[data-repo-relative-path="planner.rs"]').click();
+  await workingTree.locator('button[data-file-tree-relative-path="planner.rs"]').click();
 
   const combinations = [
     ["working", "changes", "diff"],
@@ -249,10 +249,10 @@ test("supports every scope navigator and viewer combination", async ({ page }) =
 
       const selectedEntry =
         navigator === "files"
-          ? fileNavigator.locator('button[data-entry-path="src/planner.rs"]')
+          ? fileNavigator.locator('button[data-file-tree-path="src/planner.rs"]')
           : scope === "branch"
-            ? branchTree.locator('button[data-compare-path="src/planner.rs"]')
-            : workingTree.locator('button[data-repo-relative-path="planner.rs"]');
+            ? branchTree.locator('button[data-file-tree-path="src/planner.rs"]')
+            : workingTree.locator('button[data-file-tree-relative-path="planner.rs"]');
       await expect(selectedEntry).toHaveAttribute("aria-current", "true");
 
       if (representation === "source") {
@@ -352,9 +352,9 @@ test("keeps a 180-file change set inspectable without clipping its identity", as
   });
   await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
   const changes = taskReview.locator("caffold-git-diff-changes-tree");
-  await expect(changes.locator("button[data-change-path]")).toHaveCount(184);
+  await expect(changes.locator('button[data-file-tree-kind="file"]')).toHaveCount(184);
   const longPath = changes.locator(
-    'button[data-repo-relative-path="generated/deep/review/file-180-with-a-long-review-name.rs"]',
+    'button[data-file-tree-relative-path="generated/deep/review/file-180-with-a-long-review-name.rs"]',
   );
   await expect(longPath).toHaveAttribute(
     "title",
@@ -369,7 +369,9 @@ test("maps the visible source line when Diff and Source representations switch",
   await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
   await taskReview.getByRole("button", { name: "Files", exact: true }).click();
   await taskReview.getByRole("button", { name: "Source", exact: true }).click();
-  await taskReview.locator('button[data-entry-path="src/planner.rs"]').click();
+  await taskReview
+    .locator('caffold-file-navigator button[data-file-tree-path="src/planner.rs"]')
+    .click();
 
   const viewer = taskReview.locator("caffold-review-file-viewer");
   await expect(viewer.locator("caffold-code-viewer")).toBeVisible();
@@ -403,10 +405,10 @@ test("rejects a late branch response after the base changes", async ({ page }) =
 
   const compareTree = taskReview.locator("caffold-git-compare-tree");
   await expect(
-    compareTree.locator('button[data-compare-path="src/release.rs"]'),
+    compareTree.locator('button[data-file-tree-path="src/release.rs"]'),
   ).toBeAttached();
   await page.waitForTimeout(300);
   await expect(
-    compareTree.locator('button[data-compare-path="src/planner.rs"]'),
+    compareTree.locator('button[data-file-tree-path="src/planner.rs"]'),
   ).toHaveCount(0);
 });

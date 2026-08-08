@@ -44,12 +44,13 @@ test("refreshes Files and Git after external filesystem changes", async ({ page 
 
     const nestedPath = `${repositoryRelativePath}/nested`;
     const nestedFixturePath = `${nestedPath}/fixture.txt`;
-    await page.locator(`button[data-entry-path="${nestedPath}"]`).click();
-    const nestedFixture = page.locator(
-      `button[data-entry-path="${nestedFixturePath}"]`,
+    const fileTree = page.locator("caffold-file-list");
+    await fileTree.locator(`button[data-file-tree-path="${nestedPath}"]`).click();
+    const nestedFixture = fileTree.locator(
+      `button[data-file-tree-path="${nestedFixturePath}"]`,
     );
     await expect(nestedFixture).toBeVisible();
-    const fileList = page.locator("caffold-file-list .file-list");
+    const fileList = page.locator("caffold-file-list .file-tree-scroll");
     await fileList.evaluate((element) => {
       element.dataset.liveRefreshProbe = "kept";
     });
@@ -69,7 +70,9 @@ test("refreshes Files and Git after external filesystem changes", async ({ page 
       (_, index) => `first live line ${index + 1} ${"wide-content-".repeat(16)}`,
     ).join("\n");
     await writeFile(firstPath, `${initialContent}\n`);
-    const firstEntry = page.locator(`button[data-entry-path="${firstLogicalPath}"]`);
+    const firstEntry = fileTree.locator(
+      `button[data-file-tree-path="${firstLogicalPath}"]`,
+    );
     await expect(firstEntry).toBeVisible();
     await expect(fileList).toHaveAttribute("data-live-refresh-probe", "kept");
     expect(
@@ -81,7 +84,9 @@ test("refreshes Files and Git after external filesystem changes", async ({ page 
       "data-live-refresh-probe",
       "kept",
     );
-    await expect(page.locator(`button[data-entry-path="${nestedFixturePath}"]`)).toBeVisible();
+    await expect(
+      fileTree.locator(`button[data-file-tree-path="${nestedFixturePath}"]`),
+    ).toBeVisible();
     expect(await elementWidth(page, "caffold-file-list")).toBeCloseTo(resizedPanelWidth, 0);
     await firstEntry.click();
     await expect(page.locator("caffold-code-viewer")).toContainText("first live line 80");
@@ -105,16 +110,22 @@ test("refreshes Files and Git after external filesystem changes", async ({ page 
     expect(afterScroll.left).toBeGreaterThanOrEqual(beforeScroll.left - 2);
 
     await rename(firstPath, renamedPath);
-    await expect(page.locator(`button[data-entry-path="${renamedLogicalPath}"]`)).toBeVisible();
+    await expect(
+      fileTree.locator(`button[data-file-tree-path="${renamedLogicalPath}"]`),
+    ).toBeVisible();
     await expect(page.locator("caffold-file-viewer")).toContainText("path was not found");
 
-    const renamedEntry = page.locator(`button[data-entry-path="${renamedLogicalPath}"]`);
+    const renamedEntry = fileTree.locator(
+      `button[data-file-tree-path="${renamedLogicalPath}"]`,
+    );
     await renamedEntry.click();
     await expect(page.locator("caffold-code-viewer")).toContainText("second live line");
 
     const gitPopover = await openHeaderActionGroup(page, "git");
     await gitPopover.locator('button[data-action="open-diff-workspace"]').click();
-    const diffEntry = page.locator(`button[data-change-path="${renamedLogicalPath}"]`);
+    const diffEntry = page
+      .locator("caffold-git-diff-changes-tree")
+      .locator(`button[data-file-tree-path="${renamedLogicalPath}"]`);
     await expect(diffEntry).toBeVisible();
     await diffEntry.click();
     await expect(page.locator("caffold-diff-viewer")).toContainText("second live line");
@@ -217,7 +228,7 @@ test("invalidates the browser cache when an open image changes", async ({ page }
     await page.goto(FILES_HOME_URL);
     await page.waitForTimeout(500);
     await writeFile(path, svg("#0b7a5f"));
-    const entry = page.locator(`button[data-entry-path="${name}"]`);
+    const entry = page.locator(`button[data-file-tree-path="${name}"]`);
     await expect(entry).toBeVisible();
     await entry.click();
     const image = page.locator("caffold-file-viewer .image-preview");

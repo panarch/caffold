@@ -72,8 +72,10 @@ test("keeps the selected source header stable while file content loads", async (
   });
 
   await page.goto(FILES_HOME_URL);
-  await page.locator('button[data-entry-path="src"]').click();
-  await page.locator('button[data-entry-path="src/example.rs"]').click();
+  await page.locator('caffold-file-list button[data-file-tree-path="src"]').click();
+  await page
+    .locator('caffold-file-list button[data-file-tree-path="src/example.rs"]')
+    .click();
   await fileRequested;
 
   const viewer = page.locator("caffold-file-viewer");
@@ -93,35 +95,35 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
   await expect(page.getByText("Loading files...")).toHaveCount(0);
   await expect(page.locator("caffold-file-list")).toContainText(".caffold-hidden");
   await expect(page.locator("caffold-file-list")).toContainText("src");
-  await expect(page.locator('button[data-entry-path="src"] .entry-icon')).toHaveAttribute(
-    "title",
-    "Git repository",
-  );
-  await expect(page.locator('button[data-entry-path=".caffold-hidden"]')).toHaveClass(
-    /is-hidden/,
-  );
-  await expect(page.locator(".parent-entry")).toHaveCount(0);
+  await expect(
+    page.locator('caffold-file-list button[data-file-tree-path="src"] .entry-icon'),
+  ).toHaveAttribute("title", "Git repository");
+  await expect(
+    page.locator('caffold-file-list button[data-file-tree-path=".caffold-hidden"]'),
+  ).toHaveAttribute("data-hidden-entry", "");
+  await expect(page.locator('caffold-file-list button[data-variant="parent"]')).toHaveCount(0);
 
-  await page.locator('button[data-entry-path="src"]').click();
+  await page.locator('caffold-file-list button[data-file-tree-path="src"]').click();
   await expect(page.locator("caffold-pathbar")).toContainText("src");
-  await expect(page.locator(".parent-entry")).toBeVisible();
+  await expect(page.locator('caffold-file-list button[data-variant="parent"]')).toBeVisible();
   await expect(page.locator("caffold-file-list .git-summary")).toBeVisible();
   await expect(page.locator("caffold-file-list .git-summary")).toHaveClass(/is-dirty/);
-  await expect(page.locator('button[data-entry-path="src/ignored.log"]')).toHaveClass(
-    /is-ignored/,
-  );
-  await expect(page.locator('button[data-entry-path="src/ignored.log"]')).toHaveAttribute(
-    "title",
-    "Ignored by Git",
-  );
-  await expect(page.locator('button[data-entry-path="src/ignored-output"]')).toHaveClass(
-    /is-ignored/,
-  );
-  await expect(page.locator('button[data-entry-path="src/planner/mod.rs"]')).toHaveCount(0);
+  await expect(
+    page.locator('caffold-file-list button[data-file-tree-path="src/ignored.log"]'),
+  ).toHaveAttribute("data-ignored-entry", "");
+  await expect(
+    page.locator('caffold-file-list button[data-file-tree-path="src/ignored.log"]'),
+  ).toHaveAttribute("title", "Ignored by Git");
+  await expect(
+    page.locator('caffold-file-list button[data-file-tree-path="src/ignored-output"]'),
+  ).toHaveAttribute("data-ignored-entry", "");
+  await expect(
+    page.locator('caffold-file-list button[data-file-tree-path="src/planner/mod.rs"]'),
+  ).toHaveCount(0);
   await expect(page.locator("caffold-file-list .entry-icon-svg").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Refresh files" })).toBeVisible();
 
-  await page.locator('button[data-entry-path="src/example.rs"]').click();
+  await page.locator('caffold-file-list button[data-file-tree-path="src/example.rs"]').click();
   await expect(page.getByText("Loading file...")).toHaveCount(0);
   await expect(page.locator("caffold-file-viewer")).toContainText("example.rs");
   await expect(page.locator("caffold-code-viewer")).toContainText("pub fn sample");
@@ -204,9 +206,13 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
     await expect(page.locator("caffold-file-list")).toBeVisible();
     await expect(page.locator("caffold-file-viewer")).toBeHidden();
   }
-  await page.locator('button[data-entry-path="src/planner"]').click();
-  await expect(page.locator('button[data-entry-path="src/planner/mod.rs"]')).toBeVisible();
-  await page.locator('button[data-entry-path="src/planner/mod.rs"]').click();
+  await page.locator('caffold-file-list button[data-file-tree-path="src/planner"]').click();
+  await expect(
+    page.locator('caffold-file-list button[data-file-tree-path="src/planner/mod.rs"]'),
+  ).toBeVisible();
+  await page
+    .locator('caffold-file-list button[data-file-tree-path="src/planner/mod.rs"]')
+    .click();
   await expect(page.locator("caffold-file-viewer")).toContainText("mod.rs");
   await expect(page.locator("caffold-code-viewer")).toContainText("plan_review");
   await expect(page.locator(".line-number").first()).toHaveText("1");
@@ -215,16 +221,76 @@ test("browses directories and opens a source file", async ({ page }, testInfo) =
   await captureReviewScreenshot(page, testInfo, "file-browser");
 });
 
+test("retries a failed lazy directory without rebuilding the file tree", async ({ page }) => {
+  let plannerRequests = 0;
+  await page.route(/\/api\/list(?:\?|$)/, async (route) => {
+    const path = new URL(route.request().url()).searchParams.get("path");
+    if (path !== "src/planner") {
+      await route.continue();
+      return;
+    }
+
+    plannerRequests += 1;
+    if (plannerRequests === 1) {
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: {
+            code: "directory_unavailable",
+            message: "Planner directory is temporarily unavailable.",
+          },
+        }),
+      });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.goto(FILES_HOME_URL);
+  await page.locator('caffold-file-list button[data-file-tree-path="src"]').click();
+  const fileTree = page.locator("caffold-file-list caffold-file-tree");
+  const planner = fileTree.locator('button[data-file-tree-path="src/planner"]');
+  await expect(planner).toBeVisible();
+  await fileTree.evaluate((tree) => {
+    window.__caffoldLazyTree = tree;
+  });
+  await planner.evaluate((entry) => {
+    window.__caffoldLazyDirectory = entry;
+  });
+
+  await planner.click();
+  await expect(fileTree.getByText("Planner directory is temporarily unavailable.")).toBeVisible();
+  await expect(planner).toHaveAttribute("aria-expanded", "true");
+
+  await planner.click();
+  await planner.click();
+  await expect(
+    fileTree.locator('button[data-file-tree-path="src/planner/mod.rs"]'),
+  ).toBeVisible();
+  expect(plannerRequests).toBe(2);
+  await expect
+    .poll(() => fileTree.evaluate((tree) => tree === window.__caffoldLazyTree))
+    .toBe(true);
+  await expect
+    .poll(() => planner.evaluate((entry) => entry === window.__caffoldLazyDirectory))
+    .toBe(true);
+});
+
 test("reveals a selected file through the shared navigator", async ({ page }) => {
   await page.goto(FILES_HOME_URL);
-  await expect(page.locator('button[data-entry-path="src"]')).toBeVisible();
+  await expect(
+    page.locator('caffold-file-list button[data-file-tree-path="src"]'),
+  ).toBeVisible();
 
   await page.locator("caffold-file-navigator").evaluate(async (navigator) => {
     await navigator.loadDirectory("src");
     await navigator.revealPath("src/planner/mod.rs");
   });
 
-  const entry = page.locator('button[data-entry-path="src/planner/mod.rs"]');
+  const entry = page.locator(
+    'caffold-file-list button[data-file-tree-path="src/planner/mod.rs"]',
+  );
   await expect(entry).toBeVisible();
   await expect(entry).toHaveAttribute("aria-current", "true");
 });
@@ -274,7 +340,7 @@ test("preserves file route state and header DOM", async ({ page }, testInfo) => 
   });
   const listRequestsBeforeFileClick = listRequests;
   const gitStatusRequestsBeforeFileClick = gitStatusRequests;
-  await page.locator('button[data-entry-path="src/example.rs"]').click();
+  await page.locator('caffold-file-list button[data-file-tree-path="src/example.rs"]').click();
   await expect(page).toHaveURL("/files?cwd=src&file=example.rs");
   await expect(page.locator("caffold-file-viewer")).toContainText("example.rs");
   expect(listRequests).toBe(listRequestsBeforeFileClick);
@@ -300,11 +366,15 @@ test("preserves file route state and header DOM", async ({ page }, testInfo) => 
 
   await page.goto("/files?cwd=src%2Fplanner");
   await expect(page).toHaveURL("/files?cwd=src%2Fplanner");
-  await expect(page.locator('button[data-entry-path="src/planner/mod.rs"]')).toBeVisible();
+  await expect(
+    page.locator('caffold-file-list button[data-file-tree-path="src/planner/mod.rs"]'),
+  ).toBeVisible();
 
   await page.goBack();
   await expect(page).toHaveURL("/files?cwd=src");
-  await expect(page.locator('button[data-entry-path="src/example.rs"]')).toBeVisible();
+  await expect(
+    page.locator('caffold-file-list button[data-file-tree-path="src/example.rs"]'),
+  ).toBeVisible();
 });
 
 test("restores standalone file routes and browser navigation", async ({ page }, testInfo) => {
@@ -326,7 +396,7 @@ test("restores standalone file routes and browser navigation", async ({ page }, 
   }
 
   await page.goto("/files?cwd=src");
-  await page.locator('button[data-entry-path="src/example.rs"]').click();
+  await page.locator('caffold-file-list button[data-file-tree-path="src/example.rs"]').click();
   await expect(page).toHaveURL("/files?cwd=src&file=example.rs");
   await page.goBack();
   await expect(page).toHaveURL("/files?cwd=src");
@@ -335,7 +405,7 @@ test("restores standalone file routes and browser navigation", async ({ page }, 
 
 test("restores the last opened directory after reload", async ({ page }) => {
   await page.goto(FILES_HOME_URL);
-  await page.locator('button[data-entry-path="src"]').click();
+  await page.locator('caffold-file-list button[data-file-tree-path="src"]').click();
   await expect(page.locator("caffold-pathbar")).toContainText("src");
   await expect(page.locator("caffold-file-list .git-summary")).toBeVisible();
 
@@ -357,7 +427,7 @@ test("falls back when the stored directory no longer opens", async ({ page }) =>
 
   await page.goto(FILES_HOME_URL);
   await expect(page.locator("caffold-file-list")).toContainText("src");
-  await expect(page.locator(".parent-entry")).toHaveCount(0);
+  await expect(page.locator('caffold-file-list button[data-variant="parent"]')).toHaveCount(0);
   await expect(page.evaluate((key) => localStorage.getItem(key), LAST_DIRECTORY_KEY)).resolves.toBe(
     "",
   );

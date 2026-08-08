@@ -5,6 +5,7 @@
 @import "./pages/components/header-actions.css";
 @import "./pages/components/header-actions/codex-status.css";
 @import "./components/pagination.css";
+@import "./components/file-tree.css";
 @import "./components/file-browser.css";
 @import "./components/review-panel-resizer.css";
 @import "./pages/files/page.css";

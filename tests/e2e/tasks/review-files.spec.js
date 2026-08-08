@@ -27,7 +27,7 @@ test("browses source through the shared Files navigator and one root watch", asy
   );
 
   const navigator = taskReview.locator("caffold-file-navigator");
-  await expect(navigator.locator('button[data-entry-path="src/alpha.rs"]')).toBeVisible();
+  await expect(navigator.locator('button[data-file-tree-path="src/alpha.rs"]')).toBeVisible();
   await expect
     .poll(() =>
       page.evaluate(
@@ -56,13 +56,13 @@ test("browses source through the shared Files navigator and one root watch", asy
       });
     }, `src/${liveName}`);
     await expect(
-      navigator.locator(`button[data-entry-path="src/${liveName}"]`),
+      navigator.locator(`button[data-file-tree-path="src/${liveName}"]`),
     ).toBeVisible();
   } finally {
     await rm(livePath, { force: true });
   }
 
-  await navigator.locator('button[data-entry-path="src/alpha.rs"]').click();
+  await navigator.locator('button[data-file-tree-path="src/alpha.rs"]').click();
   await expect(page).toHaveURL(
     `/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=alpha.rs`,
   );
@@ -102,7 +102,7 @@ test("previews images selected from the shared Files navigator", async ({
   await taskReview.getByRole("button", { name: "Source", exact: true }).click();
 
   const navigator = taskReview.locator("caffold-file-navigator");
-  await navigator.locator('button[data-entry-path="src/review-image.svg"]').click();
+  await navigator.locator('button[data-file-tree-path="src/review-image.svg"]').click();
   await expect(page).toHaveURL(
     `/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=review-image.svg`,
   );
@@ -164,8 +164,8 @@ test("keeps browser Back aligned with the semantic Review parent", async ({
   await taskReview.getByRole("button", { name: "Source", exact: true }).click();
 
   const navigator = taskReview.locator("caffold-file-navigator");
-  await navigator.locator('button[data-entry-path="src/alpha.rs"]').click();
-  await navigator.locator('button[data-entry-path="src/planner.rs"]').click();
+  await navigator.locator('button[data-file-tree-path="src/alpha.rs"]').click();
+  await navigator.locator('button[data-file-tree-path="src/planner.rs"]').click();
   await expect(page).toHaveURL(
     `/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=planner.rs`,
   );

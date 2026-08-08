@@ -361,7 +361,7 @@ test("applies extreme values to Files and Code without coupling the axes", async
   const rootFontSize = await page.evaluate(() =>
     Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
   );
-  const firstEntry = page.locator("caffold-file-list .file-entry").first();
+  const firstEntry = page.locator("caffold-file-list .file-tree-entry").first();
   await expect(firstEntry).toBeVisible();
   const fileMetrics = await firstEntry.evaluate((element) => {
     const style = getComputedStyle(element);
@@ -381,8 +381,8 @@ test("applies extreme values to Files and Code without coupling the axes", async
     (touchInterface ? 40 : rootFontSize * 1.5) - 0.02,
   );
 
-  await page.locator('button[data-entry-path="src"]').click();
-  await page.locator('button[data-entry-path="src/example.rs"]').click();
+  await page.locator('button[data-file-tree-path="src"]').click();
+  await page.locator('button[data-file-tree-path="src/example.rs"]').click();
   await expect(page.locator("caffold-code-viewer .code-lines")).toHaveCSS(
     "font-size",
     "20px",
