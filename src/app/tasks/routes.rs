@@ -23,6 +23,8 @@ use super::{
     TaskRecord, TaskState, accepted_user_message_event, now_ms, task_activity_ms,
 };
 
+use super::generated_images::GeneratedImageError;
+
 use crate::{
     app::error::ApiError,
     codex_app_server::{
@@ -209,6 +211,10 @@ pub(super) fn router(state: TaskState) -> Router {
             axum::routing::put(mark_task_seen),
         )
         .route("/api/tasks/{thread_id}/stream", get(task_stream))
+        .route(
+            "/api/tasks/{thread_id}/generated-images/{item_id}",
+            get(task_generated_image),
+        )
         .route("/api/tasks/{thread_id}/archive", post(task_archive))
         .route("/api/tasks/{thread_id}/restore", post(task_restore))
         .route(
@@ -673,6 +679,49 @@ async fn task_detail(
         .get(&thread_id, query.cursor.as_deref())
         .await
         .map(Json)
+}
+
+async fn task_generated_image(
+    State(state): State<TaskState>,
+    AxumPath((thread_id, item_id)): AxumPath<(String, String)>,
+) -> Result<Response, ApiError> {
+    let bytes = state
+        .task_events
+        .generated_images()
+        .load(&thread_id, &item_id)
+        .await
+        .map_err(|error| generated_image_api_error(error, &thread_id, &item_id))?;
+    let mut response = Response::new(Body::from(bytes));
+    response
+        .headers_mut()
+        .insert(header::CONTENT_TYPE, HeaderValue::from_static("image/png"));
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response.headers_mut().insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    Ok(response)
+}
+
+fn generated_image_api_error(
+    error: GeneratedImageError,
+    thread_id: &str,
+    item_id: &str,
+) -> ApiError {
+    let message = match error {
+        GeneratedImageError::NotFound => {
+            format!("generated image was not found for task {thread_id}: {item_id}")
+        }
+        GeneratedImageError::Unavailable => {
+            format!("generated image is no longer available for task {thread_id}: {item_id}")
+        }
+    };
+    ApiError::NotFound {
+        code: "generated_image_unavailable",
+        message,
+    }
 }
 
 async fn mark_task_seen(

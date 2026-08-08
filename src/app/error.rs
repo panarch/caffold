@@ -18,6 +18,7 @@ pub(super) enum ApiError {
     Watch(String),
     Internal(String),
     Timeout { code: &'static str, message: String },
+    NotFound { code: &'static str, message: String },
     BadRequest { code: &'static str, message: String },
 }
 
@@ -159,6 +160,7 @@ impl IntoResponse for ApiError {
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", message)
             }
             ApiError::Timeout { code, message } => (StatusCode::GATEWAY_TIMEOUT, code, message),
+            ApiError::NotFound { code, message } => (StatusCode::NOT_FOUND, code, message),
             ApiError::BadRequest { code, message } => (StatusCode::BAD_REQUEST, code, message),
         };
 

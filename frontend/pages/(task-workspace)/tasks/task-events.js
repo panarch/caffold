@@ -63,7 +63,9 @@ function conversationGroupCreatedMs(group) {
     return group.event?.createdMs ?? 0;
   }
   const message = group.events.find((event) =>
-    ["user_message", "assistant_message"].includes(event.type),
+    ["user_message", "assistant_message", "generated_image"].includes(
+      event.type,
+    ),
   );
   const substantive =
     message ??
@@ -97,7 +99,10 @@ export function isTurnContinuationEvent(event) {
 }
 
 export function isImplicitTurnEvent(event) {
-  return event.type === "assistant_message" || isTurnContinuationEvent(event);
+  return (
+    ["assistant_message", "generated_image"].includes(event.type) ||
+    isTurnContinuationEvent(event)
+  );
 }
 
 export function canAcceptTurnContinuation(group) {

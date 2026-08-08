@@ -135,6 +135,34 @@ test("turn grouping keeps implicit continuation causal and closes terminal turns
   assert.deepEqual(groups[1].events.map(({ id }) => id), ["assistant-2"]);
 });
 
+test("generated images remain in their completed conversation turn", () => {
+  const events = [
+    event("user-1", "user_message", 1, { turnId: "turn-1", text: "Draw it" }),
+    event("image-1", "generated_image", 2, {
+      turnId: "turn-1",
+      itemId: "image-1",
+    }),
+    event("assistant-1", "assistant_message", 3, {
+      turnId: "turn-1",
+      text: "Done",
+    }),
+    event("turn-end", "turn_completed", 4, {
+      turnId: "turn-1",
+      status: "completed",
+    }),
+  ];
+
+  const groups = conversationGroups(events);
+
+  assert.equal(groups.length, 1);
+  assert.deepEqual(groups[0].events.map(({ id }) => id), [
+    "user-1",
+    "image-1",
+    "assistant-1",
+    "turn-end",
+  ]);
+});
+
 test("turn grouping follows visible message chronology instead of a stale start marker", () => {
   const events = [
     event("new-start", "turn_started", 1, { turnId: "turn-new" }),

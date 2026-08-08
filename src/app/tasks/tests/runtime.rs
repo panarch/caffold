@@ -215,7 +215,7 @@ async fn startup_recovery_resumes_only_loaded_threads_managed_by_caffold() {
                     "initialTurnsPage": {
                         "limit": 8,
                         "sortDirection": "desc",
-                        "itemsView": "summary"
+                        "itemsView": "full"
                     }
                 })
             )

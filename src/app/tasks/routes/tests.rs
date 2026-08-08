@@ -1,8 +1,10 @@
 use super::super::{projection::*, tests::support::*};
 use super::*;
+use crate::app::tasks::events::task_event_from_thread_item;
 use crate::codex_app_server::ThreadStatus;
 use crate::{fs::RootedFs, thread_store::ThreadStore};
 use std::{path::PathBuf, sync::Arc};
+use tower::ServiceExt;
 
 fn current_model_list_response() -> JsonValue {
     json!({
@@ -1090,4 +1092,70 @@ fn task_input_limits_image_count() {
             ..
         })
     ));
+}
+
+#[tokio::test]
+async fn generated_image_route_serves_only_the_registered_task_item() {
+    const ONE_PIXEL_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+    let root = tempfile::tempdir().unwrap();
+    let client = CodexThreadClient::mock(Vec::new());
+    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+    state.task_events.publish(
+        task_event_from_thread_item(
+            "thread_1",
+            1,
+            &json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "item": {
+                    "type": "imageGeneration",
+                    "id": "image_1",
+                    "status": "completed",
+                    "result": ONE_PIXEL_PNG,
+                    "savedPath": null
+                }
+            }),
+        )
+        .expect("generated image event"),
+    );
+
+    let response = router(state.clone())
+        .oneshot(
+            axum::http::Request::get("/api/tasks/thread_1/generated-images/image_1")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("generated image response");
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    assert_eq!(
+        response.headers().get(header::CONTENT_TYPE).unwrap(),
+        "image/png"
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get(header::X_CONTENT_TYPE_OPTIONS)
+            .unwrap(),
+        "nosniff"
+    );
+    let bytes = axum::body::to_bytes(response.into_body(), MAX_IMAGE_BYTES as usize)
+        .await
+        .expect("generated image body");
+    assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+
+    let response = router(state)
+        .oneshot(
+            axum::http::Request::get("/api/tasks/thread_2/generated-images/image_1")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("wrong task response");
+    assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+    let body = axum::body::to_bytes(response.into_body(), 4096)
+        .await
+        .expect("wrong task error body");
+    let body: JsonValue = serde_json::from_slice(&body).expect("wrong task error json");
+    assert_eq!(body["error"]["code"], "generated_image_unavailable");
 }

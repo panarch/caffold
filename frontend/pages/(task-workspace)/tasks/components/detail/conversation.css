@@ -314,6 +314,12 @@ caffold-task-conversation {
     min-width: 0;
   }
 
+  & .task-message[data-message-role="assistant"] .task-message-attachments {
+    justify-content: flex-start;
+    justify-self: start;
+    width: min(100%, 700px);
+  }
+
   & .task-message-attachment {
     display: grid;
     gap: 0.375rem;

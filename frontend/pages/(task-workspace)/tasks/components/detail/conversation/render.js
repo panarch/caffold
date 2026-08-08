@@ -178,6 +178,9 @@ function renderCompletedTurnGroup(
       isWorkEvent(event) ||
       (event.type === "assistant_message" && event !== finalAssistantEvent),
   );
+  const generatedImages = group.events.filter(
+    (event) => event.type === "generated_image",
+  );
   const approvals = group.events.filter(
     (event) =>
       event.type === "approval_requested" &&
@@ -189,6 +192,9 @@ function renderCompletedTurnGroup(
   }
   if (workEvents.length > 0) {
     output.push(renderTurnWorkSummary(group, workEvents, terminalEvent));
+  }
+  for (const event of generatedImages) {
+    output.push(renderConversationEvent(event, task, { active: false }));
   }
   if (approvals.length > 0) {
     output.push(
@@ -228,6 +234,7 @@ function renderActiveTurnTimelineEvent(
   if (
     event.type === "user_message" ||
     event.type === "assistant_message" ||
+    event.type === "generated_image" ||
     isWorkEvent(event)
   ) {
     return renderConversationEvent(event, task, {
@@ -369,6 +376,11 @@ export function renderConversationEvent(event, task, eventState) {
       phase: eventState?.messagePhase ?? assistantMessagePhase(payload.phase),
     });
   }
+  if (event.type === "generated_image") {
+    return renderMessageEvent(event, "assistant", "", {
+      attachments: [generatedImagePresentation(event)],
+    });
+  }
   if (event.type === "reasoning") {
     const summary = Array.isArray(payload.summary)
       ? payload.summary.filter(Boolean).join("\n\n")
@@ -485,6 +497,20 @@ function userMessagePresentation(payload) {
       src: taskImageSource(item),
       name: item.name ?? names[index] ?? `Attached image ${index + 1}`,
     })),
+  };
+}
+
+function generatedImagePresentation(event) {
+  const payload = event?.payload ?? {};
+  const threadId = `${event?.threadId ?? payload.threadId ?? ""}`.trim();
+  const itemId = `${payload.itemId ?? ""}`.trim();
+  const src =
+    threadId && itemId
+      ? `/api/tasks/${encodeURIComponent(threadId)}/generated-images/${encodeURIComponent(itemId)}`
+      : "";
+  return {
+    src,
+    name: `${payload.name ?? "Generated image.png"}`.trim(),
   };
 }
 

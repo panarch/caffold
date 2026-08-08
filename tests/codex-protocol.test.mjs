@@ -200,6 +200,36 @@ test(
       assert.match(turnsResponse, /nextCursor/);
       assert.match(turnsResponse, /backwardsCursor/);
 
+      const turnItemsView = readFileSync(
+        join(outputDirectory, "v2", "TurnItemsView.ts"),
+        "utf8",
+      );
+      assert.match(turnItemsView, /"full"/);
+
+      const threadItem = readFileSync(
+        join(outputDirectory, "v2", "ThreadItem.ts"),
+        "utf8",
+      );
+      assert.match(threadItem, /"type": "imageGeneration"/);
+
+      const imageGenerationItem = readFileSync(
+        join(outputDirectory, "ImageGenerationItem.ts"),
+        "utf8",
+      );
+      assert.match(imageGenerationItem, /id: string/);
+      assert.match(imageGenerationItem, /status: string/);
+      assert.match(imageGenerationItem, /revisedPrompt: string \| null/);
+      assert.match(imageGenerationItem, /result: string/);
+      assert.match(imageGenerationItem, /savedPath\?: AbsolutePathBuf/);
+
+      const responseItem = readFileSync(
+        join(outputDirectory, "ResponseItem.ts"),
+        "utf8",
+      );
+      assert.match(responseItem, /"type": "image_generation_call"/);
+      assert.match(responseItem, /revised_prompt\?: string/);
+      assert.match(responseItem, /result: string/);
+
       const threadStatus = readFileSync(
         join(outputDirectory, "v2", "ThreadStatus.ts"),
         "utf8",

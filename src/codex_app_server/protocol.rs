@@ -880,7 +880,7 @@ pub(crate) fn thread_resume_params<'a>(
         initial_turns_page: initial_turns_page.then_some(InitialTurnsPageParams {
             limit: 8,
             sort_direction: SortDirection::Desc,
-            items_view: TurnItemsView::Summary,
+            items_view: TurnItemsView::Full,
         }),
     }
 }
@@ -1059,7 +1059,7 @@ pub(crate) fn thread_turns_list_params<'a>(
         cursor: cursor.filter(|cursor| !cursor.is_empty()),
         limit,
         sort_direction,
-        items_view: TurnItemsView::Summary,
+        items_view: TurnItemsView::Full,
     }
 }
 
@@ -1174,7 +1174,7 @@ mod tests {
                 "initialTurnsPage": {
                     "limit": 8,
                     "sortDirection": "desc",
-                    "itemsView": "summary"
+                    "itemsView": "full"
                 }
             })
         );
@@ -1323,7 +1323,7 @@ mod tests {
                     "cursor": "cursor_1",
                     "limit": 8,
                     "sortDirection": "asc",
-                    "itemsView": "summary"
+                    "itemsView": "full"
                 }),
             ),
             (

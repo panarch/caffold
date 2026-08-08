@@ -1,5 +1,6 @@
 mod detail;
 mod events;
+mod generated_images;
 mod projection;
 mod routes;
 mod runtime;

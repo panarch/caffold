@@ -135,6 +135,75 @@ test("keeps one sent-image dialog stable through live conversation updates", asy
   await expect(dialog).toBeHidden();
 });
 
+test("renders and previews assistant-generated images after history reload", async ({
+  page,
+}) => {
+  const scenario = await installTaskLoopFixture(page);
+  await scenario.seedCompletedTask();
+  scenario.events = [
+    ...scenario.events.filter((event) => event.id !== "event_generated_image"),
+    scenario.eventRecord(
+      "thread_12345678:turn_1:image_1",
+      "generated_image",
+      "Image generated",
+      {
+        threadId: scenario.threadId,
+        turnId: "turn_1",
+        itemId: "image_1",
+        status: "completed",
+        revisedPrompt: "A compact green architecture diagram",
+        name: "Generated image.png",
+      },
+      10.5,
+    ),
+  ];
+  await page.route(
+    `/api/tasks/${scenario.threadId}/generated-images/image_1`,
+    (route) =>
+      route.fulfill({
+        contentType: "image/png",
+        body: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+          "base64",
+        ),
+      }),
+  );
+
+  await page.goto(`/tasks/${scenario.threadId}`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const preview = tasksPage.getByRole("button", {
+    name: "Preview Generated image.png",
+  });
+  const dialog = tasksPage.locator(
+    ":scope > caffold-task-image-preview-dialog > dialog",
+  );
+
+  await expect(preview).toBeVisible();
+  await expect(preview.locator("img")).toHaveAttribute(
+    "src",
+    `/api/tasks/${scenario.threadId}/generated-images/image_1`,
+  );
+  await expect(
+    tasksPage.locator(".task-work-details", {
+      has: preview,
+    }),
+  ).toHaveCount(0);
+  await preview.click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator("[data-task-image-preview-name]")).toHaveText(
+    "Generated image.png",
+  );
+  await dialog.getByRole("button", { name: "Close image preview" }).click();
+
+  await page.reload();
+  const restoredPreview = tasksPage.getByRole("button", {
+    name: "Preview Generated image.png",
+  });
+  await expect(restoredPreview).toBeVisible();
+  await restoredPreview.click();
+  await expect(dialog).toBeVisible();
+});
+
 async function clickComposerPreview(previewTrigger) {
   const box = await previewTrigger.boundingBox();
   if (!box) {

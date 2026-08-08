@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
 use tokio::sync::broadcast;
 
+use super::generated_images::{GeneratedImageObservation, GeneratedImageStore};
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(in crate::app) struct TaskEventRecord {
@@ -21,6 +23,8 @@ pub(in crate::app) struct TaskEventRecord {
     pub(in crate::app) updated_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(in crate::app) sort_index: Option<u32>,
+    #[serde(skip)]
+    pub(in crate::app) generated_image: Option<GeneratedImageObservation>,
 }
 
 #[derive(Clone, Default)]
@@ -32,6 +36,7 @@ pub(in crate::app) const LIVE_TASK_EVENT_LIMIT_PER_THREAD: usize = 256;
 pub(in crate::app) const LIVE_TASK_THREAD_LIMIT: usize = 128;
 
 impl LiveTaskEventCache {
+    #[cfg(test)]
     pub(in crate::app) fn observe(&self, events: &[TaskEventRecord]) {
         for event in events {
             self.record(event.clone());
@@ -109,6 +114,7 @@ impl LiveTaskEventCache {
 pub(in crate::app) struct TaskEvents {
     sender: broadcast::Sender<TaskEventRecord>,
     cache: LiveTaskEventCache,
+    generated_images: GeneratedImageStore,
 }
 
 impl Default for TaskEvents {
@@ -117,6 +123,7 @@ impl Default for TaskEvents {
         Self {
             sender,
             cache: LiveTaskEventCache::default(),
+            generated_images: GeneratedImageStore::default(),
         }
     }
 }
@@ -132,7 +139,9 @@ impl TaskEvents {
         event
     }
 
-    pub(in crate::app) fn record(&self, event: TaskEventRecord) -> TaskEventRecord {
+    pub(in crate::app) fn record(&self, mut event: TaskEventRecord) -> TaskEventRecord {
+        self.generated_images.observe(&event);
+        event.generated_image = None;
         self.cache.record(event)
     }
 
@@ -141,7 +150,12 @@ impl TaskEvents {
     }
 
     pub(in crate::app) fn observe(&self, events: &[TaskEventRecord]) {
-        self.cache.observe(events);
+        for event in events {
+            self.generated_images.observe(event);
+            let mut cached = event.clone();
+            cached.generated_image = None;
+            self.cache.record(cached);
+        }
     }
 
     pub(in crate::app) fn for_thread(&self, thread_id: &str) -> Vec<TaskEventRecord> {
@@ -150,6 +164,10 @@ impl TaskEvents {
 
     pub(in crate::app) fn cache(&self) -> &LiveTaskEventCache {
         &self.cache
+    }
+
+    pub(in crate::app) fn generated_images(&self) -> &GeneratedImageStore {
+        &self.generated_images
     }
 }
 
@@ -201,6 +219,7 @@ pub(in crate::app) fn merge_task_event_record(
     };
     latest.created_ms = created_ms;
     latest.sort_index = sort_index;
+    latest.generated_image = latest.generated_image.or(earlier.generated_image);
     let updated_ms = existing_updated_ms.max(incoming_updated_ms);
     latest.updated_ms = (updated_ms > created_ms).then_some(updated_ms);
     latest
@@ -350,6 +369,7 @@ pub(in crate::app) fn task_event_record(
         created_ms,
         updated_ms: None,
         sort_index: None,
+        generated_image: None,
     }
 }
 
@@ -542,6 +562,13 @@ pub(in crate::app) fn task_event_from_item_activity(
                 "Image viewed"
             }
         }
+        "imageGeneration" => {
+            if started {
+                "Generating image"
+            } else {
+                "Image generated"
+            }
+        }
         "sleep" => {
             if started {
                 "Waiting"
@@ -584,7 +611,7 @@ pub(in crate::app) fn task_event_from_thread_item(
     let turn_id = params.get("turnId").and_then(JsonValue::as_str);
     let item_id = item.get("id").and_then(JsonValue::as_str);
 
-    let (event_type, summary, payload) = match item_type {
+    let (event_type, summary, payload, generated_image) = match item_type {
         "userMessage" => {
             let text = user_message_text(item).unwrap_or_default();
             if text.is_empty() && !user_message_has_images(item) {
@@ -600,6 +627,7 @@ pub(in crate::app) fn task_event_from_thread_item(
                     "text": text,
                     "content": item.get("content"),
                 }),
+                None,
             )
         }
         "agentMessage" => {
@@ -614,6 +642,7 @@ pub(in crate::app) fn task_event_from_thread_item(
                     "phase": item.get("phase").and_then(JsonValue::as_str),
                     "text": text,
                 }),
+                None,
             )
         }
         "reasoning" => {
@@ -632,6 +661,7 @@ pub(in crate::app) fn task_event_from_thread_item(
                     "summary": summary,
                     "content": content,
                 }),
+                None,
             )
         }
         "plan" => {
@@ -645,6 +675,7 @@ pub(in crate::app) fn task_event_from_thread_item(
                     "itemId": item_id,
                     "text": text,
                 }),
+                None,
             )
         }
         "commandExecution" => (
@@ -661,6 +692,7 @@ pub(in crate::app) fn task_event_from_thread_item(
                 "exitCode": item.get("exitCode"),
                 "durationMs": item.get("durationMs"),
             }),
+            None,
         ),
         "fileChange" => {
             let change_count = item
@@ -679,19 +711,38 @@ pub(in crate::app) fn task_event_from_thread_item(
                     "status": item.get("status").and_then(JsonValue::as_str),
                     "changes": item.get("changes"),
                 }),
+                None,
+            )
+        }
+        "imageGeneration" => {
+            let generated_image = GeneratedImageObservation::from_item(item)?;
+            (
+                "generated_image",
+                "Image generated".to_string(),
+                json!({
+                    "threadId": thread_id,
+                    "turnId": turn_id,
+                    "itemId": item_id,
+                    "status": item.get("status").and_then(JsonValue::as_str),
+                    "revisedPrompt": item.get("revisedPrompt").and_then(JsonValue::as_str),
+                    "name": "Generated image.png",
+                }),
+                Some(generated_image),
             )
         }
         _ => return None,
     };
     let event_id = turn_item_event_id(turn_id, item_id, event_type);
-    Some(task_event_record(
+    let mut event = task_event_record(
         thread_id,
         &event_id,
         event_type,
         &summary,
         Some(payload),
         created_ms,
-    ))
+    );
+    event.generated_image = generated_image;
+    Some(event)
 }
 
 pub(in crate::app) fn task_event_from_raw_response_item(
@@ -704,7 +755,7 @@ pub(in crate::app) fn task_event_from_raw_response_item(
     let turn_id = params.get("turnId").and_then(JsonValue::as_str);
     let item_id = item.get("id").and_then(JsonValue::as_str);
 
-    let (event_type, summary, payload) = match item_type {
+    let (event_type, summary, payload, generated_image) = match item_type {
         "message" => {
             let role = item.get("role").and_then(JsonValue::as_str).unwrap_or("");
             if role != "assistant" {
@@ -721,6 +772,7 @@ pub(in crate::app) fn task_event_from_raw_response_item(
                     "phase": item.get("phase").and_then(JsonValue::as_str),
                     "text": text,
                 }),
+                None,
             )
         }
         "reasoning" => {
@@ -739,19 +791,38 @@ pub(in crate::app) fn task_event_from_raw_response_item(
                     "summary": summary,
                     "content": content,
                 }),
+                None,
+            )
+        }
+        "image_generation_call" => {
+            let generated_image = GeneratedImageObservation::from_item(item)?;
+            (
+                "generated_image",
+                "Image generated".to_string(),
+                json!({
+                    "threadId": thread_id,
+                    "turnId": turn_id,
+                    "itemId": item_id,
+                    "status": item.get("status").and_then(JsonValue::as_str),
+                    "revisedPrompt": item.get("revised_prompt").and_then(JsonValue::as_str),
+                    "name": "Generated image.png",
+                }),
+                Some(generated_image),
             )
         }
         _ => return None,
     };
     let event_id = turn_item_event_id(turn_id, item_id, event_type);
-    Some(task_event_record(
+    let mut event = task_event_record(
         thread_id,
         &event_id,
         event_type,
         &summary,
         Some(payload),
         created_ms,
-    ))
+    );
+    event.generated_image = generated_image;
+    Some(event)
 }
 
 pub(in crate::app) fn user_message_text(item: &JsonValue) -> Option<String> {
@@ -922,4 +993,85 @@ pub(in crate::app) fn now_ms() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_millis() as u64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generated_images_normalize_without_exposing_raw_assets() {
+        let event = task_event_from_thread_item(
+            "thread_1",
+            1,
+            &json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "item": {
+                    "type": "imageGeneration",
+                    "id": "image_1",
+                    "status": "completed",
+                    "result": "iVBORw0KGgo=",
+                    "revisedPrompt": "A clearer diagram",
+                    "savedPath": "/tmp/generated_images/thread_1/image_1.png"
+                }
+            }),
+        )
+        .expect("generated image event");
+
+        assert_eq!(event.id, "thread_1:turn_1:image_1");
+        assert_eq!(event.event_type, "generated_image");
+        assert_eq!(event.payload.as_ref().unwrap()["itemId"], "image_1");
+        assert_eq!(
+            event.payload.as_ref().unwrap()["revisedPrompt"],
+            "A clearer diagram"
+        );
+        assert!(event.generated_image.is_some());
+        let serialized = serde_json::to_string(&event).expect("serialize generated image event");
+        assert!(!serialized.contains("savedPath"));
+        assert!(!serialized.contains("iVBORw0KGgo="));
+    }
+
+    #[test]
+    fn raw_and_canonical_generated_images_share_the_same_event_identity() {
+        let raw = task_event_from_raw_response_item(
+            "thread_1",
+            1,
+            &json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "item": {
+                    "type": "image_generation_call",
+                    "id": "image_1",
+                    "status": "completed",
+                    "result": "iVBORw0KGgo=",
+                    "revised_prompt": "A clearer diagram"
+                }
+            }),
+        )
+        .expect("raw generated image event");
+        let canonical = task_event_from_thread_item(
+            "thread_1",
+            2,
+            &json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "item": {
+                    "type": "imageGeneration",
+                    "id": "image_1",
+                    "status": "completed",
+                    "result": "iVBORw0KGgo=",
+                    "savedPath": "/tmp/generated_images/thread_1/image_1.png"
+                }
+            }),
+        )
+        .expect("canonical generated image event");
+
+        assert_eq!(raw.id, canonical.id);
+        assert_eq!(raw.event_type, canonical.event_type);
+        assert_eq!(
+            merge_task_event_records(vec![raw], vec![canonical]).len(),
+            1
+        );
+    }
 }
