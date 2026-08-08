@@ -105,8 +105,7 @@ caffold-settings-about-page {
 @media (max-width: 520px) {
   caffold-settings-about-page {
     & .settings-content-scroll {
-      padding: 1.25rem var(--interface-space-5)
-        calc(3rem + var(--task-workspace-navigation-size) + env(safe-area-inset-bottom));
+      padding: 1.25rem var(--interface-space-5) 2.25rem;
     }
 
     & .settings-details > div {

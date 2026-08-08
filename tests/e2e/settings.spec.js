@@ -14,7 +14,9 @@ test.beforeEach(async ({ page }) => {
   await mockCodexModels(page);
 });
 
-test("returns from Settings to the canonical Tasks home", async ({ page }) => {
+test("returns from Settings to the canonical Tasks home", async ({
+  page,
+}, testInfo) => {
   await installEventSourceMock(page);
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
@@ -25,8 +27,12 @@ test("returns from Settings to the canonical Tasks home", async ({ page }) => {
 
   await page.goto("/settings");
   const settingsWorkspace = page.locator("caffold-settings-workspace");
-  await expect(settingsWorkspace).toBeVisible();
-  await expect(settingsWorkspace.locator("caffold-settings-navigator")).toBeVisible();
+  if (testInfo.project.name === "phone") {
+    await expect(settingsWorkspace).toBeHidden();
+  } else {
+    await expect(settingsWorkspace).toBeVisible();
+  }
+  await expect(page.locator("caffold-settings-navigator")).toBeVisible();
   await expect(page.locator(".files-surface")).toBeHidden();
 
   await page

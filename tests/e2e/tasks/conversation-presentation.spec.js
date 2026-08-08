@@ -557,21 +557,23 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   expect(workspaceHeaderMetrics.summaryTop).toBe(workspaceHeaderMetrics.surfaceTop);
   expect(workspaceHeaderMetrics.overflow).toBe(false);
   if (testInfo.project.name !== "phone") {
-    const navigatorClearance = await tasksPage.evaluate((element) => {
-      const sectionTitle = element
-        .querySelector(".task-list-section:first-child h2")
-        .getBoundingClientRect();
-      const sectionHeader = element
-        .querySelector(".task-list-section:first-child .task-list-section-header")
-        .getBoundingClientRect();
-      const summary = element
-        .querySelector(".task-detail-summary")
-        .getBoundingClientRect();
-      return {
-        headerBottomDelta: Math.abs(sectionHeader.bottom - summary.bottom),
-        sectionTitleInset: sectionTitle.left - sectionHeader.left,
-      };
-    });
+    const navigatorClearance = await page
+      .locator("caffold-task-workspace")
+      .evaluate((element) => {
+        const sectionTitle = element
+          .querySelector(".task-list-section:first-child h2")
+          .getBoundingClientRect();
+        const sectionHeader = element
+          .querySelector(".task-list-section:first-child .task-list-section-header")
+          .getBoundingClientRect();
+        const summary = element
+          .querySelector(".task-detail-summary")
+          .getBoundingClientRect();
+        return {
+          headerBottomDelta: Math.abs(sectionHeader.bottom - summary.bottom),
+          sectionTitleInset: sectionTitle.left - sectionHeader.left,
+        };
+      });
     expect(workspaceHeaderMetrics.closeVisible).toBe(false);
     expect(navigatorClearance.sectionTitleInset).toBeLessThanOrEqual(16);
     expect(

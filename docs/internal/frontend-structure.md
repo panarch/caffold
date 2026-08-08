@@ -43,11 +43,14 @@ caffold-app-shell
           caffold-file-viewer
     task workspace
       caffold-task-workspace
-        workspace navigation
-          Tasks
-          Settings
-        caffold-tasks-page
+        master pane
           caffold-task-navigator
+          caffold-settings-navigator
+          caffold-task-workspace-navigation
+            Tasks
+            Settings
+        detail pane
+          caffold-tasks-page
           caffold-task-new
             caffold-task-composer
             caffold-file-browser
@@ -62,11 +65,10 @@ caffold-app-shell
               caffold-file-navigator
                 caffold-file-list
               caffold-review-file-viewer
-        caffold-settings-workspace
-          caffold-settings-navigator
-          caffold-settings-appearance-page
-          caffold-settings-codex-page
-          caffold-settings-about-page
+          caffold-settings-workspace
+            caffold-settings-appearance-page
+            caffold-settings-codex-page
+            caffold-settings-about-page
     caffold-review-workspace
       git
         caffold-git-review-layout
@@ -172,21 +174,26 @@ watch and supplies one Review-owned root watch instead.
 `(task-workspace)/layout` is the app root's default task workspace and `/` is
 its canonical Tasks home. It fills the app main route slot, so Tasks and
 Settings do not inherit the Files-only app header, pathbar, or pane shell. Its
-bottom navigation switches between two stable-mounted children: the Tasks page
-and the Settings workspace. The layout remembers the last route in each mode,
-preserves both DOM trees while the other mode is visible, and hides the bottom
-navigation on compact task-detail routes where conversation space is primary.
-It is separate from `(review-workspace)` because task control is not only a
-review surface.
+declarative master-detail shell owns the shared master pane, its resizer, the
+single bottom navigation, and the shared detail pane. Task and Settings
+navigators are stable-mounted siblings in the master pane; their corresponding
+detail controllers are stable-mounted siblings in the detail pane. Mode and
+compact-route presentation only select among those existing children. No child
+reparents navigation at runtime. The layout remembers the last route in each
+mode and hides the master pane on compact detail routes where content space is
+primary. It is separate from `(review-workspace)` because task control is not
+only a review surface.
 
-`(task-workspace)/tasks/page` is only the task route and master-detail
-coordinator. It owns the selected route/thread, responsive visibility, list
-width, and the Conversation/Review outer layout. It does not fetch task data,
-subscribe to task streams, send Codex mutations, or render child internals.
-`(task-workspace)/settings/layout` owns the Settings list/detail transition and
-keeps Appearance, Codex, and About pages mounted while selecting one with the
-route. On compact screens `/settings` is the list and a selected section is a
-detail with a back control; wide screens keep both panes visible.
+`(task-workspace)/tasks/page` is the task detail-route controller. It owns the
+selected route/thread and the Conversation/Review outer layout, while receiving
+its sibling `caffold-task-navigator` from the workspace for list state and
+navigation intents. It does not own master-pane geometry, fetch task-list data,
+subscribe to list streams, send Codex mutations, or render child internals.
+`(task-workspace)/settings/layout` similarly owns Settings detail selection and
+keeps Appearance, Codex, and About pages mounted while receiving its sibling
+navigator from the workspace. On compact screens `/settings` presents the
+master list and a selected section presents the detail with a back control;
+wide screens keep both panes visible.
 
 The Tasks runtime hierarchy deliberately separates state with different
 lifetimes:

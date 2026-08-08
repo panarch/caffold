@@ -45,8 +45,7 @@ caffold-settings-navigator {
     align-content: start;
     min-height: 0;
     overflow: auto;
-    padding: var(--interface-space-4) 0
-      calc(var(--task-workspace-navigation-size) + var(--interface-space-5) + env(safe-area-inset-bottom));
+    padding: var(--interface-space-4) 0 var(--interface-space-5);
     scrollbar-width: none;
   }
 

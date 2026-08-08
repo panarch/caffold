@@ -375,17 +375,6 @@ caffold-settings-appearance-page {
   }
 }
 
-@media (max-width: 899px) {
-  caffold-settings-appearance-page {
-    & .settings-scroll {
-      padding-bottom: calc(
-        3rem + var(--task-workspace-navigation-size) +
-          env(safe-area-inset-bottom)
-      );
-    }
-  }
-}
-
 @media (max-width: 700px) {
   caffold-settings-appearance-page {
     & .settings-scroll {

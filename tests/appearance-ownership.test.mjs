@@ -218,7 +218,7 @@ test("color roles keep neutral chrome, interactions, and semantic feedback separ
     );
   }
   assert.match(
-    readFrontend("pages/(task-workspace)/tasks/page.css"),
+    readFrontend("pages/(task-workspace)/layout.css"),
     /border-right-color: var\(--resizer-hover-bg\)/,
     "The Tasks resize hit area must highlight its owning panel border",
   );
@@ -258,38 +258,45 @@ test("structural shadows separate fixed regions from floating elevation", () => 
   assert.deepEqual(
     tokenConsumers(sources, /var\(--structural-shadow-inline-end\)/),
     [
-      "pages/(task-workspace)/settings/layout.css",
-      "pages/(task-workspace)/tasks/page.css",
+      "pages/(task-workspace)/layout.css",
     ],
   );
 
-  const taskPage = readFrontend("pages/(task-workspace)/tasks/page.css");
-  cssBlockMatching(taskPage, ".tasks-master-detail", [
+  const taskWorkspace = readFrontend("pages/(task-workspace)/layout.css");
+  cssBlockMatching(taskWorkspace, ".task-workspace-master-detail", [
     /position: relative/,
-    /grid-template-columns: var\(--tasks-list-width, 380px\) minmax\(520px, 1fr\)/,
+    /var\(--task-workspace-master-width, 380px\)/,
+    /minmax\(520px, 1fr\)/,
   ]);
-  cssBlockMatching(taskPage, ".tasks-list-pane", [
+  cssBlockMatching(taskWorkspace, ".task-workspace-master-pane", [
     /overflow: visible/,
     /border-right: 1px solid var\(--border\)/,
   ]);
-  assert.doesNotMatch(cssBlock(taskPage, ".tasks-list-pane"), /box-shadow/);
-  cssBlockMatching(taskPage, ".tasks-list-pane::after", [
+  assert.doesNotMatch(
+    cssBlock(taskWorkspace, ".task-workspace-master-pane"),
+    /box-shadow/,
+  );
+  cssBlockMatching(taskWorkspace, ".task-workspace-master-pane::after", [
     /inset: 0 -1\.125rem 0 auto/,
     /width: 1\.125rem/,
     /background: var\(--structural-shadow-inline-end\)/,
     /pointer-events: none/,
   ]);
-  cssBlockMatching(taskPage, ".tasks-master-resizer", [
+  cssBlockMatching(taskWorkspace, ".task-workspace-master-resizer", [
     /position: absolute/,
-    /inset: 0 auto 0 calc\(var\(--tasks-list-width, 380px\) - 0\.1875rem\)/,
+    /var\(--task-workspace-master-width, 380px\)/,
+    /0\.1875rem/,
     /z-index: 3/,
     /width: 0\.375rem/,
   ]);
-  assert.doesNotMatch(cssBlock(taskPage, ".tasks-master-resizer"), /border-/);
-  assert.doesNotMatch(taskPage, /\.tasks-master-resizer::after/);
+  assert.doesNotMatch(
+    cssBlock(taskWorkspace, ".task-workspace-master-resizer"),
+    /border-/,
+  );
+  assert.doesNotMatch(taskWorkspace, /\.task-workspace-master-resizer::after/);
   cssBlockMatching(
-    taskPage,
-    ".tasks-master-detail:has(.tasks-master-resizer:hover) .tasks-list-pane",
+    taskWorkspace,
+    ":has(.task-workspace-master-resizer:hover) .task-workspace-master-pane",
     [/border-right-color: var\(--resizer-hover-bg\)/],
   );
 
@@ -402,6 +409,7 @@ test("visible inline icons have explicit block geometry from their UI owner", ()
     ["pages/(task-workspace)/settings/layout.css", ".settings-workspace-back-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/settings/appearance/page.css", ".settings-preview-icon", "--task-list-icon-size"],
     ["pages/(task-workspace)/layout.css", ".task-workspace-close-icon", "--interface-icon-size"],
+    ["pages/(task-workspace)/components/navigation.css", ".task-workspace-navigation-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/tasks/controls.css", ".task-action-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-send-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/tasks/components/detail/review.css", ".task-refresh-icon", "--interface-icon-size"],

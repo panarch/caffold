@@ -8,34 +8,10 @@ caffold-settings-workspace {
   background: var(--surface);
 
   & .settings-workspace-surface,
-  & .settings-workspace-master-detail,
-  & .settings-workspace-list-pane,
   & .settings-workspace-detail-pane {
     min-width: 0;
     min-height: 0;
     height: 100%;
-  }
-
-  & .settings-workspace-master-detail {
-    display: grid;
-    grid-template-columns: var(--tasks-list-width, 380px) minmax(520px, 1fr);
-    overflow: hidden;
-  }
-
-  & .settings-workspace-list-pane {
-    position: relative;
-    z-index: 2;
-    border-right: 1px solid var(--border);
-    background: var(--surface);
-  }
-
-  & .settings-workspace-list-pane::after {
-    position: absolute;
-    inset: 0 -1.125rem 0 auto;
-    width: 1.125rem;
-    background: var(--structural-shadow-inline-end);
-    content: "";
-    pointer-events: none;
   }
 
   & .settings-workspace-detail-pane {
@@ -71,23 +47,6 @@ caffold-settings-workspace {
 
 @media (max-width: 899px) {
   caffold-settings-workspace {
-    & .settings-workspace-master-detail {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    &[data-settings-view="list"] .settings-workspace-detail-pane,
-    &[data-settings-view="detail"] .settings-workspace-list-pane {
-      display: none;
-    }
-
-    & .settings-workspace-list-pane {
-      border-right: 0;
-    }
-
-    & .settings-workspace-list-pane::after {
-      display: none;
-    }
-
     & .settings-workspace-detail-header button {
       display: grid;
       place-items: center;

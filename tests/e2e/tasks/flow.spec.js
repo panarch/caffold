@@ -248,7 +248,9 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
     .poll(() => taskListQueries.at(-1))
     .toEqual({ cwd: null });
   await expect(tasksPage).toHaveAttribute("data-tasks-view", "home");
-  await expect(tasksPage).toContainText("No Caffold tasks yet.");
+  await expect(page.locator("caffold-task-navigator")).toContainText(
+    "No Caffold tasks yet.",
+  );
 
   await page.goto("/tasks");
   await expect(page).toHaveURL("/");
@@ -256,7 +258,9 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
     .poll(() => taskListQueries.at(-1))
     .toEqual({ cwd: null });
   await expect(tasksPage).toHaveAttribute("data-tasks-view", "home");
-  await expect(tasksPage).toContainText("No Caffold tasks yet.");
+  await expect(page.locator("caffold-task-navigator")).toContainText(
+    "No Caffold tasks yet.",
+  );
 
   await page.goto("/tasks?cwd=.");
   await expect(page).toHaveURL("/");

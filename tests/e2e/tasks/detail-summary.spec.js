@@ -169,6 +169,7 @@ test("rejects a stale GitHub availability response after switching tasks", async
 
   await page.goto(`/tasks/${taskA.threadId}`);
   const tasksPage = page.locator("caffold-tasks-page");
+  const taskNavigator = page.locator("caffold-task-navigator");
   const summary = tasksPage.locator("caffold-task-detail-summary");
   await expect(summary).toBeVisible();
   await expect.poll(() => Boolean(pendingTaskARoute)).toBe(true);
@@ -176,7 +177,7 @@ test("rejects a stale GitHub availability response after switching tasks", async
     window.__taskSummaryOwner = element;
   });
 
-  await tasksPage
+  await taskNavigator
     .locator(`.task-row[data-thread-id="${taskB.threadId}"]`)
     .click();
   await expect(summary.locator("h2")).toHaveText("Summary B");

@@ -293,7 +293,9 @@ test("keeps the visible conversation anchor while loading older events by cursor
 
   await page.goto("/tasks?cwd=src");
   const tasksPage = page.locator("caffold-tasks-page");
-  const taskRow = tasksPage.locator(".task-row", { hasText: "Long running thread" });
+  const taskRow = page.locator("caffold-task-navigator .task-row", {
+    hasText: "Long running thread",
+  });
   await expect(taskRow.locator(".task-row-time")).toBeVisible();
   await expect(taskRow).not.toContainText("notLoaded");
   await taskRow.click();

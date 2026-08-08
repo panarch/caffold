@@ -672,13 +672,14 @@ test("keeps task context and retries after an initial detail timeout", async ({
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
   const tasksPage = page.locator("caffold-tasks-page");
+  const taskNavigator = page.locator("caffold-task-navigator");
   await expect(tasksPage.locator(".task-detail-load-error")).toContainText(
     "Task details are temporarily unavailable.",
   );
   await expect(tasksPage.locator(".task-detail-load-error")).toContainText(
     "Codex app-server request timed out.",
   );
-  await expect(tasksPage).toContainText("Recover delayed task detail");
+  await expect(taskNavigator).toContainText("Recover delayed task detail");
 
   await tasksPage.locator('[data-task-action="retry-task-detail"]').click();
   await expect.poll(() => detailRequests).toBe(2);
@@ -762,6 +763,7 @@ test("preserves stable detail children through another task load failure", async
 
   await page.goto("/tasks/thread-stable-a?cwd=src");
   const tasksPage = page.locator("caffold-tasks-page");
+  const taskNavigator = page.locator("caffold-task-navigator");
   await expect(tasksPage).toContainText("Stable task A canonical response.");
   const prompt = tasksPage.getByRole("textbox", { name: "Follow-up prompt" });
   await prompt.fill("Draft retained for task A");
@@ -796,7 +798,7 @@ test("preserves stable detail children through another task load failure", async
     )
     .toBe(true);
 
-  await tasksPage
+  await taskNavigator
     .locator('.task-row[data-thread-id="thread-stable-b"]')
     .click();
   await expect(tasksPage.locator(".task-detail-load-error")).toContainText(
@@ -840,7 +842,7 @@ test("preserves stable detail children through another task load failure", async
   await expect(tasksPage).toContainText("Recover task B canonical response.");
   await expect(conversation).toBeVisible();
 
-  await tasksPage
+  await taskNavigator
     .locator('.task-row[data-thread-id="thread-stable-a"]')
     .click();
   await expect(tasksPage).toContainText("Stable task A canonical response.");
@@ -1577,7 +1579,7 @@ test("accepts canonical task sync after stream revisions restart", async ({ page
   });
   await page.goto("/tasks");
   const row = page.locator(
-    `caffold-tasks-page .task-row[data-thread-id="${threadId}"]`,
+    `caffold-task-navigator .task-row[data-thread-id="${threadId}"]`,
   );
   await expect(row).toHaveAttribute("data-task-status", "idle");
 
@@ -1913,8 +1915,8 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
   const tasksPage = page.locator("caffold-tasks-page");
   const form = tasksPage.locator(".task-follow-up-form");
   const textarea = form.locator('textarea[name="prompt"]');
-  const taskRow = tasksPage.locator(
-    `.task-row[data-thread-id="${threadId}"]`,
+  const taskRow = page.locator(
+    `caffold-task-navigator .task-row[data-thread-id="${threadId}"]`,
   );
   await expect(tasksPage).toContainText("Work is active before the restart.");
 
@@ -2032,7 +2034,10 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
       .click();
     await expect(page).toHaveURL("/");
   }
-  await tasksPage.getByRole("button", { name: "New Task" }).click();
+  await page
+    .locator("caffold-task-navigator")
+    .getByRole("button", { name: "New Task" })
+    .click();
   const newTaskForm = tasksPage.locator(".task-new-form");
   await expect(newTaskForm.locator('textarea[name="prompt"]')).toBeDisabled();
   await expect(

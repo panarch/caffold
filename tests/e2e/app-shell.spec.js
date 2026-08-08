@@ -236,6 +236,12 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).not.toContain("/assets/components/file-list.js");
   expect(serviceWorker).toContain("/assets/pages/(task-workspace)/layout.js");
   expect(serviceWorker).toContain("/assets/pages/(task-workspace)/layout.css");
+  expect(serviceWorker).toContain(
+    "/assets/pages/(task-workspace)/components/navigation.js",
+  );
+  expect(serviceWorker).toContain(
+    "/assets/pages/(task-workspace)/components/navigation.css",
+  );
   expect(serviceWorker).toContain("/assets/pages/(task-workspace)/tasks/page.js");
   expect(serviceWorker).toContain(
     "/assets/pages/(task-workspace)/tasks/components/directory-picker.js",
@@ -433,8 +439,15 @@ test("keeps build metadata out of normal layout and exposes it in About", async 
     .poll(() => page.evaluate(() => navigator.clipboard.readText()))
     .toContain(`Server build: ${health.buildId}`);
 
-  await page
-    .locator('.task-workspace-navigation button[data-workspace-mode="tasks"]')
+  const workspaceNavigation = page.locator(".task-workspace-navigation");
+  if (testInfo.project.name === "phone") {
+    await expect(workspaceNavigation).toBeHidden();
+    await page.getByRole("button", { name: "Back to settings" }).click();
+    await expect(page).toHaveURL("/settings");
+    await expect(workspaceNavigation).toBeVisible();
+  }
+  await workspaceNavigation
+    .locator('button[data-workspace-mode="tasks"]')
     .click();
   await expect(page).toHaveURL("/");
 });

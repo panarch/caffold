@@ -166,6 +166,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/layout.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/layout.js"
         ))),
+        "pages/(task-workspace)/components/navigation.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/components/navigation.css"
+        ))),
+        "pages/(task-workspace)/components/navigation.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/components/navigation.js"
+        ))),
         "pages/(task-workspace)/tasks/page.css" => Some(css(include_str!(
             "../frontend/pages/(task-workspace)/tasks/page.css"
         ))),
@@ -797,6 +803,33 @@ mod tests {
             task_workspace_layout_css
                 .body
                 .starts_with(b"caffold-task-workspace")
+        );
+        let task_workspace_navigation = get(
+            "pages/(task-workspace)/components/navigation.js",
+        )
+        .expect("task workspace navigation js");
+        assert_eq!(
+            task_workspace_navigation.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(
+            task_workspace_navigation
+                .body
+                .windows(b"caffold-task-workspace-navigation".len())
+                .any(|window| window == b"caffold-task-workspace-navigation")
+        );
+        let task_workspace_navigation_css = get(
+            "pages/(task-workspace)/components/navigation.css",
+        )
+        .expect("task workspace navigation css");
+        assert_eq!(
+            task_workspace_navigation_css.content_type,
+            "text/css; charset=utf-8"
+        );
+        assert!(
+            task_workspace_navigation_css
+                .body
+                .starts_with(b"caffold-task-workspace-navigation")
         );
 
         let tasks_page = get("pages/(task-workspace)/tasks/page.js").expect("tasks page js");

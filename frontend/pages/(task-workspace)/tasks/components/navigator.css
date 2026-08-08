@@ -17,16 +17,9 @@ caffold-task-navigator {
     overflow: auto;
     overscroll-behavior: contain;
     scrollbar-width: none;
-    padding: var(--task-navigator-scroll-padding-top, 0.3125rem) 0
-      calc(
-        1.5rem + var(--task-workspace-navigation-size, 0rem) +
-          env(safe-area-inset-bottom)
-      );
+    padding: var(--task-navigator-scroll-padding-top, 0.3125rem) 0 1.5rem;
     scroll-padding-block: var(--interface-space-2)
-      calc(
-        var(--interface-space-12) + var(--task-workspace-navigation-size, 0rem) +
-          env(safe-area-inset-bottom)
-      );
+      var(--interface-space-12);
     font-size: var(--task-list-font-size);
   }
 

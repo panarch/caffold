@@ -1,4 +1,5 @@
-caffold-tasks-page {
+caffold-tasks-page,
+caffold-task-navigator {
   & .task-status-chip {
     display: inline-grid;
     grid-auto-flow: column;
@@ -58,14 +59,16 @@ caffold-tasks-page {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  caffold-tasks-page {
+  caffold-tasks-page,
+  caffold-task-navigator {
     & .task-status-spinner {
       animation: none;
     }
   }
 }
 
-caffold-tasks-page {
+caffold-tasks-page,
+caffold-task-navigator {
   & [data-status="failed"],
   & [data-status="interrupted"] {
     color: var(--danger);

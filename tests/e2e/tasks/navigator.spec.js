@@ -49,7 +49,7 @@ test("loads additional task-list pages only after a cursor request", async ({ pa
   });
 
   await page.goto("/tasks");
-  const tasksPage = page.locator("caffold-tasks-page");
+  const tasksPage = page.locator("caffold-task-workspace");
   await expect(tasksPage.locator(".task-row")).toHaveCount(1);
   await expect(tasksPage).toContainText("Newest paged task");
   await expect(tasksPage).not.toContainText("Older paged task");
@@ -734,10 +734,13 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
 
   await page.goto("/tasks?cwd=src");
   await expect(page).toHaveURL("/");
-  const tasksPage = page.locator("caffold-tasks-page");
-  const listPane = tasksPage.locator(".tasks-list-pane");
+  const tasksPage = page.locator("caffold-task-workspace");
+  const listPane = tasksPage.locator(".task-workspace-master-pane");
   const detailPane = tasksPage.locator(".tasks-detail-pane");
-  const resizer = tasksPage.locator(".tasks-master-resizer");
+  const resizer = tasksPage.locator(".task-workspace-master-resizer");
+  const workspaceNavigation = page.locator(
+    "caffold-task-workspace .task-workspace-navigation",
+  );
   const rows = tasksPage.locator(".task-row");
   const managedHeader = tasksPage.locator(
     '.task-list-section[data-task-section="managed"] .task-list-section-header',
@@ -925,10 +928,12 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     await expect(resizer).toBeVisible();
     await expect(tasksPage.locator('textarea[name="prompt"]')).toBeVisible();
     const initialLayout = await tasksPage.evaluate((element) => {
-      const list = element.querySelector(".tasks-list-pane").getBoundingClientRect();
+      const list = element
+        .querySelector(".task-workspace-master-pane")
+        .getBoundingClientRect();
       const detail = element.querySelector(".tasks-detail-pane").getBoundingClientRect();
       const separator = element
-        .querySelector(".tasks-master-resizer")
+        .querySelector(".task-workspace-master-resizer")
         .getBoundingClientRect();
       return {
         detailOffsetFromList: detail.left - list.right,
@@ -977,16 +982,41 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     await expect(resizer).toHaveAttribute("aria-valuenow", "280");
     await resizer.press("ArrowRight");
     await expect(resizer).toHaveAttribute("aria-valuenow", "296");
+    const resizedNavigationLayout = await tasksPage.evaluate((element) => {
+      const list = element.querySelector(".task-workspace-master-pane");
+      const navigation = list.querySelector(
+        "caffold-task-workspace-navigation",
+      );
+      const listRect = list.getBoundingClientRect();
+      const navigationRect = navigation.getBoundingClientRect();
+      return {
+        ownedByList: navigation.parentElement === list,
+        listWidth: Math.round(listRect.width),
+        navigationMatchesListContent:
+          Math.abs(navigationRect.width - list.clientWidth) <= 1,
+        navigationEndsWithList:
+          Math.abs(navigationRect.bottom - listRect.bottom) <= 1,
+      };
+    });
+    expect(resizedNavigationLayout).toEqual({
+      ownedByList: true,
+      listWidth: 296,
+      navigationMatchesListContent: true,
+      navigationEndsWithList: true,
+    });
+    await expect(workspaceNavigation).toBeVisible();
 
     const listScrollBeforeSelection = await tasksPage.evaluate(() => {
-      const scroller = document.querySelector("caffold-tasks-page .task-list-scroll");
+      const scroller = document.querySelector(
+        "caffold-task-navigator .task-list-scroll",
+      );
       scroller.style.height = "90px";
       scroller.scrollTop = 40;
       scroller.querySelector(
         '.task-list-section[data-task-section="managed"] .task-list',
       ).dataset.domProbe = "preserved";
       const row = document.querySelector(
-        'caffold-tasks-page .task-row[data-thread-id="thread_main_core"]',
+        'caffold-task-navigator .task-row[data-thread-id="thread_main_core"]',
       );
       row.dataset.domProbe = "preserved";
       row.closest("li").dataset.domProbe = "preserved";
@@ -995,7 +1025,7 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     expect(listScrollBeforeSelection).toBeGreaterThan(0);
     await tasksPage.evaluate(() =>
       document
-        .querySelector('caffold-tasks-page .task-row[data-thread-id="thread_main_root"]')
+        .querySelector('caffold-task-navigator .task-row[data-thread-id="thread_main_root"]')
         .click(),
     );
     await expect(page).toHaveURL("/tasks/thread_main_root");
@@ -1153,10 +1183,10 @@ test("switches Tasks to master-detail at the Fold8 landscape boundary", async ({
 
   await page.setViewportSize({ width: 899, height: 704 });
   await page.goto(`/tasks/${task.threadId}`);
-  const tasksPage = page.locator("caffold-tasks-page");
-  const listPane = tasksPage.locator(".tasks-list-pane");
+  const tasksPage = page.locator("caffold-task-workspace");
+  const listPane = tasksPage.locator(".task-workspace-master-pane");
   const detailPane = tasksPage.locator(".tasks-detail-pane");
-  const resizer = tasksPage.locator(".tasks-master-resizer");
+  const resizer = tasksPage.locator(".task-workspace-master-resizer");
   await expect(listPane).toBeHidden();
   await expect(detailPane).toBeVisible();
   await expect(resizer).toBeHidden();
@@ -1166,7 +1196,9 @@ test("switches Tasks to master-detail at the Fold8 landscape boundary", async ({
   await expect(detailPane).toBeVisible();
   await expect(resizer).toBeVisible();
   const layout = await tasksPage.evaluate((element) => {
-    const list = element.querySelector(".tasks-list-pane").getBoundingClientRect();
+    const list = element
+      .querySelector(".task-workspace-master-pane")
+      .getBoundingClientRect();
     const detail = element.querySelector(".tasks-detail-pane").getBoundingClientRect();
     return {
       detailWidth: detail.width,
@@ -1279,7 +1311,7 @@ test("keeps the Tasks list DOM stable while opening a managed task", async ({ pa
   });
 
   await page.goto("/tasks");
-  const tasksPage = page.locator("caffold-tasks-page");
+  const tasksPage = page.locator("caffold-task-workspace");
   const target = tasksPage.locator(
     '.task-row[data-thread-id="thread_dom_stability"]',
   );
@@ -1434,9 +1466,12 @@ test("groups Tasks by repository without worktree accordions", async ({ page }, 
   );
 
   await page.goto("/tasks");
-  const tasksPage = page.locator("caffold-tasks-page");
+  const tasksPage = page.locator("caffold-task-workspace");
   const groups = tasksPage.locator(".task-repository-group");
-  await expect(tasksPage).toHaveAttribute("data-tasks-view", "home");
+  await expect(tasksPage.locator("caffold-tasks-page")).toHaveAttribute(
+    "data-tasks-view",
+    "home",
+  );
   await expect(
     page.locator(
       'caffold-task-workspace .task-workspace-navigation [data-workspace-mode="settings"] svg',
@@ -1616,7 +1651,7 @@ test("groups Tasks by repository without worktree accordions", async ({ page }, 
   );
   expect(secondGroupGap).toBeCloseTo(treeLayout.rootFontSize * 0.75, 1);
   if (testInfo.project.name === "phone") {
-    await expect(tasksPage.locator(".tasks-list-pane")).toBeVisible();
+    await expect(tasksPage.locator(".task-workspace-master-pane")).toBeVisible();
     await expect(tasksPage.locator(".tasks-detail-pane")).toBeHidden();
   }
   await stabilizeDynamicText(page);

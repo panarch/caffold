@@ -131,8 +131,9 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
   );
 
   await page.goto("/tasks");
+  const taskWorkspace = page.locator("caffold-task-workspace");
   const tasksPage = page.locator("caffold-tasks-page");
-  await expect(tasksPage.locator("caffold-task-navigator")).toBeVisible();
+  await expect(taskWorkspace.locator("caffold-task-navigator")).toBeVisible();
   await expect(
     tasksPage.locator("caffold-task-directory-picker"),
   ).toHaveCount(1);
@@ -140,10 +141,11 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
     tasksPage.locator("caffold-task-directory-picker dialog"),
   ).not.toHaveAttribute("open", "");
 
-  const lifecycle = await tasksPage.evaluate((element) => {
+  const lifecycle = await taskWorkspace.evaluate((workspace) => {
+    const element = workspace.querySelector("caffold-tasks-page");
     const parent = element.parentNode;
     const nextSibling = element.nextSibling;
-    const navigator = element.querySelector("caffold-task-navigator");
+    const navigator = workspace.querySelector("caffold-task-navigator");
     const taskNew = element.querySelector("caffold-task-new");
     const detail = element.querySelector("caffold-task-detail");
     const composer = taskNew.querySelector("caffold-task-composer");
@@ -151,15 +153,16 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
     composer.permissionLoading = true;
 
     element.remove();
-    const detached = !element.globalListenersAttached;
+    const detached = !element.isConnected;
     parent.insertBefore(element, nextSibling);
-    const attached = element.globalListenersAttached;
+    const attached = element.isConnected;
     window.dispatchEvent(new CustomEvent("caffold:icons-ready"));
 
     return {
       attached,
       detached,
-      sameNavigator: navigator === element.querySelector("caffold-task-navigator"),
+      sameNavigator: navigator === workspace.querySelector("caffold-task-navigator"),
+      navigatorStillConnected: element.taskNavigator() === navigator,
       sameTaskNew: taskNew === element.querySelector("caffold-task-new"),
       sameDetail: detail === element.querySelector("caffold-task-detail"),
       composerRequestsReleased:
@@ -171,6 +174,7 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
     attached: true,
     detached: true,
     sameNavigator: true,
+    navigatorStillConnected: true,
     sameTaskNew: true,
     sameDetail: true,
     composerRequestsReleased: true,
@@ -512,6 +516,7 @@ test("isolates task detail responses and conversation scroll by thread", async (
 
   await page.goto(`/tasks/${taskB.threadId}?cwd=src`);
   const tasksPage = page.locator("caffold-tasks-page");
+  const taskNavigator = page.locator("caffold-task-navigator");
   const scroller = tasksPage.locator(".task-conversation-scroll");
   await expect(tasksPage).toContainText("Thread B response 20.");
   await expect
@@ -537,8 +542,8 @@ test("isolates task detail responses and conversation scroll by thread", async (
   threadAResponseGate = new Promise((resolve) => {
     releaseThreadA = resolve;
   });
-  await tasksPage.locator(`.task-row[data-thread-id="${taskA.threadId}"]`).click();
-  await tasksPage.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
+  await taskNavigator.locator(`.task-row[data-thread-id="${taskA.threadId}"]`).click();
+  await taskNavigator.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
   releaseThreadA();
   await expect(page).toHaveURL(`/tasks/${taskB.threadId}`);
   await expect(tasksPage).toContainText("Thread B response 20.");
@@ -548,7 +553,7 @@ test("isolates task detail responses and conversation scroll by thread", async (
     .toBe(140);
 
   delayThreadA = false;
-  await tasksPage.locator(`.task-row[data-thread-id="${taskA.threadId}"]`).click();
+  await taskNavigator.locator(`.task-row[data-thread-id="${taskA.threadId}"]`).click();
   await expect(tasksPage).toContainText("Thread A response 20.");
   await expect(
     tasksPage.locator('caffold-task-markdown[data-render-state="markdown"]'),
@@ -579,7 +584,7 @@ test("isolates task detail responses and conversation scroll by thread", async (
     };
   });
   expect(taskAAnchor.eventId).not.toBe("");
-  await tasksPage.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
+  await taskNavigator.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
   await expect(tasksPage).toContainText("Thread B response 20.");
   await expect(followUpPrompt).toHaveValue("Draft for thread B");
   await expect(followUp.locator(".task-composer-attachment")).toHaveCount(0);
@@ -592,7 +597,7 @@ test("isolates task detail responses and conversation scroll by thread", async (
   await expect
     .poll(() => scroller.evaluate((element) => Math.round(element.scrollTop)))
     .toBe(140);
-  await tasksPage.locator(`.task-row[data-thread-id="${taskA.threadId}"]`).click();
+  await taskNavigator.locator(`.task-row[data-thread-id="${taskA.threadId}"]`).click();
   await expect(tasksPage).toContainText("Thread A response 20.");
   await expect(followUpPrompt).toHaveValue("Draft for thread A");
   await expect(followUp.locator(".task-composer-attachment")).toHaveCount(1);
@@ -631,7 +636,7 @@ test("isolates task detail responses and conversation scroll by thread", async (
     "review",
   );
   await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
-  await tasksPage.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
+  await taskNavigator.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
   await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
   const reviewTree = tasksPage.locator(
     "caffold-task-review caffold-git-diff-changes-tree",

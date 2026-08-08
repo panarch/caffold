@@ -3,25 +3,12 @@ import "./components/detail.js";
 import {
   TASK_IMAGE_PREVIEW_EVENT,
 } from "./components/image-preview-dialog.js";
-import "./components/navigator.js";
 import "./components/task-new.js";
 import { taskDetailThreadId } from "./task-list-model.js";
-
-const TASK_LIST_DEFAULT_WIDTH = 380;
-const TASK_LIST_MIN_WIDTH = 280;
-const TASK_LIST_MAX_WIDTH = 520;
-const TASK_DETAIL_MIN_WIDTH = 520;
-const TASKS_MASTER_DETAIL_MEDIA_QUERY = "(min-width: 900px)";
 
 class CaffoldTasksPage extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
-    this.attachGlobalListeners();
-  }
-
-  disconnectedCallback() {
-    this.stopTaskListResize();
-    this.detachGlobalListeners();
   }
 
   ensureRendered() {
@@ -32,53 +19,8 @@ class CaffoldTasksPage extends HTMLElement {
     this.view = "home";
     this.taskListState = "loading";
     this.selectedThreadId = "";
-    this.taskListWidth = TASK_LIST_DEFAULT_WIDTH;
     this.adoptedThreadId = "";
-    this.globalListenersAttached = false;
-    this.boundResize = () => this.syncTaskListWidth();
-    this.boundPointerMove = (event) => this.resizeTaskList(event);
-    this.boundPointerUp = () => this.stopTaskListResize();
-
-    this.innerHTML = `
-      <section class="tasks-surface" aria-label="Tasks">
-        <div class="tasks-master-detail">
-          <aside class="tasks-list-pane" aria-label="Tasks list">
-            <caffold-task-navigator class="tasks-list-region"></caffold-task-navigator>
-          </aside>
-          <div
-            class="tasks-master-resizer"
-            role="separator"
-            tabindex="0"
-            aria-label="Resize tasks list"
-            aria-orientation="vertical"
-            aria-valuemin="${TASK_LIST_MIN_WIDTH}"
-            aria-valuemax="${TASK_LIST_MAX_WIDTH}"
-            aria-valuenow="${this.taskListWidth}"
-          ></div>
-          <main class="tasks-detail-pane" aria-label="Task content">
-            <caffold-task-new hidden></caffold-task-new>
-            <caffold-task-detail hidden></caffold-task-detail>
-          </main>
-        </div>
-      </section>
-      <caffold-task-image-preview-dialog></caffold-task-image-preview-dialog>
-    `;
-
-    this.addEventListener("pointerdown", (event) => {
-      const separator =
-        event.target instanceof Element
-          ? event.target.closest(".tasks-master-resizer")
-          : null;
-      if (separator) {
-        this.startTaskListResize(event, separator);
-      }
-    });
-    this.addEventListener("keydown", (event) => {
-      if (this.handleTaskListResizeKeydown(event)) {
-        event.stopPropagation();
-      }
-    });
-    this.addEventListener("caffold:task-navigator-intent", (event) => {
+    this.boundTaskNavigatorIntent = (event) => {
       event.stopPropagation();
       if (event.detail?.type === "select-task") {
         this.requestRoute({
@@ -88,15 +30,25 @@ class CaffoldTasksPage extends HTMLElement {
       } else if (event.detail?.type === "new-task") {
         this.requestNewTaskRoute();
       }
-    });
-    this.addEventListener("caffold:task-navigator-list-state", (event) => {
+    };
+    this.boundTaskNavigatorListState = (event) => {
       event.stopPropagation();
       this.syncTaskListState(event.detail);
-    });
-    this.addEventListener("caffold:task-navigator-transport-change", (event) => {
+    };
+    this.boundTaskNavigatorTransportChange = (event) => {
       event.stopPropagation();
       this.taskNew()?.setTransportAvailable(event.detail?.available);
-    });
+    };
+
+    this.innerHTML = `
+      <section class="tasks-surface" aria-label="Tasks">
+        <main class="tasks-detail-pane" aria-label="Task content">
+          <caffold-task-new hidden></caffold-task-new>
+          <caffold-task-detail hidden></caffold-task-detail>
+        </main>
+      </section>
+      <caffold-task-image-preview-dialog></caffold-task-image-preview-dialog>
+    `;
     this.addEventListener("caffold:task-new-route-intent", (event) => {
       event.stopPropagation();
       if (event.detail?.route) {
@@ -128,24 +80,44 @@ class CaffoldTasksPage extends HTMLElement {
       event.stopPropagation();
       this.imagePreviewDialog()?.openImage(event.detail);
     });
-    this.syncTaskListState(this.taskNavigator()?.listState());
     this.render();
   }
 
-  attachGlobalListeners() {
-    if (this.globalListenersAttached) {
+  connectTaskNavigator(navigator) {
+    this.ensureRendered();
+    if (this.connectedTaskNavigator === navigator) {
       return;
     }
-    this.globalListenersAttached = true;
-    window.addEventListener("resize", this.boundResize);
-  }
-
-  detachGlobalListeners() {
-    if (!this.globalListenersAttached) {
-      return;
-    }
-    this.globalListenersAttached = false;
-    window.removeEventListener("resize", this.boundResize);
+    this.connectedTaskNavigator?.removeEventListener(
+      "caffold:task-navigator-intent",
+      this.boundTaskNavigatorIntent,
+    );
+    this.connectedTaskNavigator?.removeEventListener(
+      "caffold:task-navigator-list-state",
+      this.boundTaskNavigatorListState,
+    );
+    this.connectedTaskNavigator?.removeEventListener(
+      "caffold:task-navigator-transport-change",
+      this.boundTaskNavigatorTransportChange,
+    );
+    this.connectedTaskNavigator = navigator ?? null;
+    this.connectedTaskNavigator?.addEventListener(
+      "caffold:task-navigator-intent",
+      this.boundTaskNavigatorIntent,
+    );
+    this.connectedTaskNavigator?.addEventListener(
+      "caffold:task-navigator-list-state",
+      this.boundTaskNavigatorListState,
+    );
+    this.connectedTaskNavigator?.addEventListener(
+      "caffold:task-navigator-transport-change",
+      this.boundTaskNavigatorTransportChange,
+    );
+    this.syncTaskListState(this.connectedTaskNavigator?.listState());
+    this.taskNew()?.setTransportAvailable(
+      this.connectedTaskNavigator?.isTransportAvailable?.(),
+    );
+    this.connectedTaskNavigator?.setSelectedThreadId(this.selectedThreadId);
   }
 
   prepareRoute(route, options = {}) {
@@ -242,7 +214,7 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   taskNavigator() {
-    return this.querySelector(":scope > .tasks-surface caffold-task-navigator");
+    return this.connectedTaskNavigator ?? null;
   }
 
   taskNew() {
@@ -306,126 +278,10 @@ class CaffoldTasksPage extends HTMLElement {
     const showNew = this.view === "new" || this.view === "home";
     this.taskNew()?.toggleAttribute("hidden", !showNew);
     this.taskDetail()?.toggleAttribute("hidden", this.view !== "detail");
-    this.syncTaskListWidth();
     this.taskNavigator()?.setSelectedThreadId(this.selectedThreadId);
-  }
-
-  startTaskListResize(event, separator) {
-    if (
-      event.button !== 0 ||
-      !window.matchMedia(TASKS_MASTER_DETAIL_MEDIA_QUERY).matches
-    ) {
-      return;
-    }
-    event.preventDefault();
-    this.taskListResizeStart = {
-      pointerX: event.clientX,
-      width: this.taskListWidth,
-    };
-    this.classList.add("is-resizing-task-list");
-    separator.setPointerCapture?.(event.pointerId);
-    window.addEventListener("pointermove", this.boundPointerMove);
-    window.addEventListener("pointerup", this.boundPointerUp, { once: true });
-    window.addEventListener("pointercancel", this.boundPointerUp, { once: true });
-  }
-
-  resizeTaskList(event) {
-    if (!this.taskListResizeStart) {
-      return;
-    }
-    this.setTaskListWidth(
-      this.taskListResizeStart.width +
-        event.clientX -
-        this.taskListResizeStart.pointerX,
+    this.dispatchEvent(
+      new CustomEvent("caffold:tasks-presentation-change", { bubbles: true }),
     );
-  }
-
-  stopTaskListResize() {
-    this.taskListResizeStart = null;
-    this.classList.remove("is-resizing-task-list");
-    window.removeEventListener("pointermove", this.boundPointerMove);
-    window.removeEventListener("pointerup", this.boundPointerUp);
-    window.removeEventListener("pointercancel", this.boundPointerUp);
-  }
-
-  handleTaskListResizeKeydown(event) {
-    const separator =
-      event.target instanceof Element
-        ? event.target.closest(".tasks-master-resizer")
-        : null;
-    if (
-      !separator ||
-      !window.matchMedia(TASKS_MASTER_DETAIL_MEDIA_QUERY).matches
-    ) {
-      return false;
-    }
-    let nextWidth = this.taskListWidth;
-    if (event.key === "ArrowLeft") {
-      nextWidth -= event.shiftKey ? 40 : 16;
-    } else if (event.key === "ArrowRight") {
-      nextWidth += event.shiftKey ? 40 : 16;
-    } else if (event.key === "Home") {
-      nextWidth = TASK_LIST_MIN_WIDTH;
-    } else if (event.key === "End") {
-      nextWidth = this.taskListMaximumWidth();
-    } else {
-      return false;
-    }
-    event.preventDefault();
-    this.setTaskListWidth(nextWidth);
-    return true;
-  }
-
-  taskListMaximumWidth() {
-    const shellWidth = this.querySelector(".tasks-master-detail")?.clientWidth ?? 0;
-    const available = shellWidth - TASK_DETAIL_MIN_WIDTH;
-    return Math.max(
-      TASK_LIST_MIN_WIDTH,
-      Math.min(TASK_LIST_MAX_WIDTH, available),
-    );
-  }
-
-  setTaskListWidth(width) {
-    const maximum = this.taskListMaximumWidth();
-    this.taskListWidth = Math.max(
-      TASK_LIST_MIN_WIDTH,
-      Math.min(maximum, width),
-    );
-    this.applyTaskListWidth();
-  }
-
-  clampTaskListWidth() {
-    this.setTaskListWidth(this.taskListWidth);
-  }
-
-  syncTaskListWidth() {
-    const shellWidth =
-      this.querySelector(".tasks-master-detail")?.clientWidth ?? 0;
-    if (
-      !window.matchMedia(TASKS_MASTER_DETAIL_MEDIA_QUERY).matches ||
-      shellWidth <= 0
-    ) {
-      this.applyTaskListWidth();
-      return;
-    }
-    this.clampTaskListWidth();
-  }
-
-  applyTaskListWidth() {
-    const workspace = this.closest("caffold-task-workspace");
-    (workspace ?? this).style.setProperty(
-      "--tasks-list-width",
-      `${this.taskListWidth}px`,
-    );
-    const separator = this.querySelector(".tasks-master-resizer");
-    if (!separator) {
-      return;
-    }
-    separator.setAttribute(
-      "aria-valuemax",
-      `${this.taskListMaximumWidth()}`,
-    );
-    separator.setAttribute("aria-valuenow", `${Math.round(this.taskListWidth)}`);
   }
 }
 

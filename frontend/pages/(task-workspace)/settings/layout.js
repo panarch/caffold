@@ -1,5 +1,4 @@
 import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
-import "./navigator.js";
 import "./appearance/page.js";
 import "./codex/page.js";
 import "./about/page.js";
@@ -35,43 +34,55 @@ class CaffoldSettingsWorkspace extends HTMLElement {
     );
     this.boundResponsiveChange = () => this.syncPresentation();
     this.responsiveListenerAttached = false;
-    this.innerHTML = `
-      <section class="settings-workspace-surface" aria-label="Settings">
-        <div class="settings-workspace-master-detail">
-          <aside class="settings-workspace-list-pane" aria-label="Settings list">
-            <caffold-settings-navigator></caffold-settings-navigator>
-          </aside>
-          <main class="settings-workspace-detail-pane" aria-label="Settings content">
-            <header class="settings-workspace-detail-header" hidden>
-              <button
-                type="button"
-                data-action="back-to-settings"
-                title="Back to settings"
-                aria-label="Back to settings"
-              >
-                <span data-settings-back-icon>
-                  ${renderInlineIcon("ArrowLeft", "Back to settings", "settings-workspace-back-icon")}
-                </span>
-              </button>
-              <h1></h1>
-            </header>
-            <caffold-settings-appearance-page hidden></caffold-settings-appearance-page>
-            <caffold-settings-codex-page hidden></caffold-settings-codex-page>
-            <caffold-settings-about-page hidden></caffold-settings-about-page>
-          </main>
-        </div>
-      </section>
-    `;
-    this.addEventListener("caffold:settings-navigator-intent", (event) => {
+    this.boundSettingsNavigatorIntent = (event) => {
       event.stopPropagation();
       this.requestSection(event.detail?.section);
-    });
+    };
+    this.innerHTML = `
+      <section class="settings-workspace-surface" aria-label="Settings">
+        <main class="settings-workspace-detail-pane" aria-label="Settings content">
+          <header class="settings-workspace-detail-header" hidden>
+            <button
+              type="button"
+              data-action="back-to-settings"
+              title="Back to settings"
+              aria-label="Back to settings"
+            >
+              <span data-settings-back-icon>
+                ${renderInlineIcon("ArrowLeft", "Back to settings", "settings-workspace-back-icon")}
+              </span>
+            </button>
+            <h1></h1>
+          </header>
+          <caffold-settings-appearance-page hidden></caffold-settings-appearance-page>
+          <caffold-settings-codex-page hidden></caffold-settings-codex-page>
+          <caffold-settings-about-page hidden></caffold-settings-about-page>
+        </main>
+      </section>
+    `;
     this.querySelector('[data-action="back-to-settings"]')?.addEventListener(
       "click",
       () => this.requestSection(""),
     );
     warmIcons();
     this.prepareRoute({ kind: "settings", section: "" });
+  }
+
+  connectSettingsNavigator(navigator) {
+    this.ensureRendered();
+    if (this.connectedSettingsNavigator === navigator) {
+      return;
+    }
+    this.connectedSettingsNavigator?.removeEventListener(
+      "caffold:settings-navigator-intent",
+      this.boundSettingsNavigatorIntent,
+    );
+    this.connectedSettingsNavigator = navigator ?? null;
+    this.connectedSettingsNavigator?.addEventListener(
+      "caffold:settings-navigator-intent",
+      this.boundSettingsNavigatorIntent,
+    );
+    this.connectedSettingsNavigator?.setSelectedSection(this.section);
   }
 
   attachResponsiveListener() {
@@ -117,7 +128,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
     const presentedSection =
       this.section || (this.masterDetailMedia.matches ? "appearance" : "");
     this.dataset.settingsView = presentedSection ? "detail" : "list";
-    this.querySelector("caffold-settings-navigator")?.setSelectedSection(
+    this.connectedSettingsNavigator?.setSelectedSection(
       presentedSection,
     );
 
@@ -135,6 +146,11 @@ class CaffoldSettingsWorkspace extends HTMLElement {
       page.hidden = section !== presentedSection;
     }
     pages.appearance?.prepareRoute?.();
+    this.dispatchEvent(
+      new CustomEvent("caffold:settings-presentation-change", {
+        bubbles: true,
+      }),
+    );
   }
 
   requestSection(section) {

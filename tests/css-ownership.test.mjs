@@ -36,6 +36,10 @@ const ownership = new Map([
   ],
   ["pages/(task-workspace)/layout.css", ["caffold-task-workspace"]],
   [
+    "pages/(task-workspace)/components/navigation.css",
+    ["caffold-task-workspace-navigation"],
+  ],
+  [
     "pages/(task-workspace)/tasks/components/composer.css",
     ["caffold-task-composer"],
   ],
@@ -69,7 +73,10 @@ const ownership = new Map([
     ["caffold-task-review"],
   ],
   ["pages/(task-workspace)/tasks/components/task-new.css", ["caffold-task-new"]],
-  ["pages/(task-workspace)/tasks/components/task-status.css", ["caffold-tasks-page"]],
+  [
+    "pages/(task-workspace)/tasks/components/task-status.css",
+    ["caffold-tasks-page", "caffold-task-navigator"],
+  ],
   ["pages/(task-workspace)/tasks/controls.css", ["caffold-tasks-page"]],
   ["pages/(task-workspace)/tasks/page.css", ["caffold-tasks-page"]],
   [
@@ -189,12 +196,16 @@ const componentChildren = new Map([
   ["caffold-review-file-viewer", ["caffold-code-viewer", "caffold-diff-viewer"]],
   [
     "caffold-task-workspace",
-    ["caffold-tasks-page", "caffold-settings-workspace"],
+    [
+      "caffold-task-navigator",
+      "caffold-settings-navigator",
+      "caffold-tasks-page",
+      "caffold-settings-workspace",
+    ],
   ],
   [
     "caffold-settings-workspace",
     [
-      "caffold-settings-navigator",
       "caffold-settings-appearance-page",
       "caffold-settings-codex-page",
       "caffold-settings-about-page",
@@ -203,7 +214,6 @@ const componentChildren = new Map([
   [
     "caffold-tasks-page",
     [
-      "caffold-task-navigator",
       "caffold-task-new",
       "caffold-task-detail",
       "caffold-task-image-preview-dialog",
@@ -488,6 +498,26 @@ test("container styles add no untracked descendant ownership debt", () => {
 test("global styles remain parseable without claiming a component owner", () => {
   const css = readFileSync(`${frontendRoot}styles.css`, "utf8");
   assert.ok(effectiveSelectors(css).length > 0);
+});
+
+test("workspace navigation uses in-flow pane ownership without padding compensation", () => {
+  const paths = [
+    "pages/(task-workspace)/layout.css",
+    "pages/(task-workspace)/components/navigation.css",
+    "pages/(task-workspace)/tasks/components/navigator.css",
+    "pages/(task-workspace)/settings/navigator.css",
+    "pages/(task-workspace)/settings/appearance/page.css",
+    "pages/(task-workspace)/settings/codex/page.css",
+    "pages/(task-workspace)/settings/about/page.css",
+  ];
+  for (const path of paths) {
+    const css = readFileSync(`${frontendRoot}${path}`, "utf8");
+    assert.equal(
+      css.includes("--task-workspace-navigation-size"),
+      false,
+      `${path} must not reserve space for an overlaid workspace navigation`,
+    );
+  }
 });
 
 function discoverCssFiles(directory, prefix = "") {

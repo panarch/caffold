@@ -811,6 +811,7 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
 
   await page.goto(`/tasks/${taskA.threadId}?cwd=src`);
   const tasksPage = page.locator("caffold-tasks-page");
+  const taskNavigator = page.locator("caffold-task-navigator");
   let form = tasksPage.locator(".task-follow-up-form");
   let prompt = form.locator('textarea[name="prompt"]');
   let send = form.locator('button[type="submit"]');
@@ -849,7 +850,7 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
   ]);
   revisions.set(taskA.threadId, 2);
 
-  await tasksPage.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
+  await taskNavigator.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
   await expect(tasksPage).toContainText("External running update 24");
   await expect(
     tasksPage.locator('.task-detail-summary .task-status-chip[data-status="running"]'),
@@ -869,7 +870,7 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
   const savedScrollTop = await conversation.evaluate((element) => element.scrollTop);
   expect(savedScrollTop).toBeGreaterThan(0);
 
-  await tasksPage.locator(`.task-row[data-thread-id="${taskA.threadId}"]`).click();
+  await taskNavigator.locator(`.task-row[data-thread-id="${taskA.threadId}"]`).click();
   await expect(tasksPage).toContainText("Canonical A response");
   form = tasksPage.locator(".task-follow-up-form");
   prompt = form.locator('textarea[name="prompt"]');
@@ -895,7 +896,7 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
     "Enter after canonical unlock",
   ]);
 
-  await tasksPage.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
+  await taskNavigator.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
   await expect(
     tasksPage.locator('.task-detail-summary .task-status-chip[data-status="running"]'),
   ).toBeVisible();

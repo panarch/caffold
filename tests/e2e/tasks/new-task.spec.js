@@ -96,7 +96,9 @@ test("creates a task with responsive composer controls and canonical approval st
     "data-task-list-state",
     "empty",
   );
-  await expect(page.locator("caffold-tasks-page")).toContainText("No Caffold tasks yet.");
+  await expect(page.locator("caffold-task-navigator")).toContainText(
+    "No Caffold tasks yet.",
+  );
   const newTaskComposer = page.locator("caffold-tasks-page .task-new-form");
   await expect(newTaskComposer).toBeVisible();
   await expect(
@@ -108,6 +110,12 @@ test("creates a task with responsive composer controls and canonical approval st
     const settingsNavigation = taskWorkspace.locator(
       '.task-workspace-navigation [data-workspace-mode="settings"]',
     );
+    if (testInfo.project.name === "phone") {
+      await expect(
+        taskWorkspace.locator(".task-workspace-navigation"),
+      ).toBeHidden();
+      return;
+    }
     await expect(settingsNavigation).toHaveAccessibleName("Settings");
     await expect(settingsNavigation.locator("svg")).toBeVisible();
     expect(await taskPresentation(settingsNavigation)).toEqual(
