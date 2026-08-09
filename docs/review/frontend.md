@@ -1,6 +1,6 @@
 # Frontend Review Policy
 
-This policy extends the common [Review Policy](../review-policy.md) for changes
+This policy extends the common [Review Policy](policy.md) for changes
 to browser UI, layout, navigation, styling, and frontend component state.
 
 ## Frontend Review

@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes Caffold's current architecture. It is not a public
+This document describes Caffold's current architecture. It is not a
 compatibility contract.
 
 Caffold is organized around one control instance per trusted host.

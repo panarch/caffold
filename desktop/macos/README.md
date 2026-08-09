@@ -4,13 +4,13 @@
 
 ## Install
 
-The current preview requires an Apple silicon Mac running macOS 14 or later. Install it with:
+The macOS application requires an Apple silicon Mac running macOS 14 or later. Install it with:
 
 ```sh
 brew install --cask panarch/tap/caffold
 ```
 
-The Cask installs `Caffold Server.app` in `/Applications` and links the bundled CLI as `caffold`. The preview is ad-hoc signed and not Apple-notarized; installation clears its quarantine attribute.
+The Cask installs `Caffold Server.app` in `/Applications` and links the bundled CLI as `caffold`. The application is ad-hoc signed and not Apple-notarized; installation clears its quarantine attribute.
 
 ## Build
 
@@ -43,7 +43,7 @@ target/caffold-server/Caffold-Server-<version>-macos-arm64.zip
 target/caffold-server/Caffold-Server-<version>-macos-arm64.zip.sha256
 ```
 
-Maintainers preparing a distribution should follow the [internal release process](../../docs/internal/macos-release.md).
+Maintainers preparing a distribution should follow the [macOS release process](../../docs/operations/macos-release.md).
 
 For a local development replacement of `/Applications/Caffold Server.app`, use
 the tracked safe installer and runbook:

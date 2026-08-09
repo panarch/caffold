@@ -360,16 +360,12 @@ the same logical cwd context without a local project registry.
 
 ## Process Ownership
 
-Default assumption:
+The current process model is:
 
 - one Caffold backend instance per host
 - one persistent app-server daemon per user
 - one disposable proxy child per Caffold backend connection
 - multiple tasks/threads managed through that daemon
-
-If implementation evidence shows that app-server isolation works better per
-repository or per task, this can be revisited. The current product does not use
-per-task app-server processes.
 
 ## Diagnostics
 
@@ -400,26 +396,6 @@ shapes Caffold uses. It requires the authenticated standalone Codex CLI. Treat
 it as incident evidence rather than an automated compatibility result; use the
 schema and live suites below for supported verification.
 
-## CLI Wrapper Boundary
-
-Codex CLI wrapping is available for fallback and diagnostics. App-server is the
-product integration path.
-
-The CLI is better suited for:
-
-- sanity checks
-- debugging
-- manual resume
-- one-off execution
-
-The app-server path is better suited for:
-
-- rich client behavior
-- approvals
-- event streaming
-- history-aware thread control
-- structured follow-up from UI actions
-
 ## Live Verification
 
 The regular Playwright suite mocks Codex app-server responses so it remains
@@ -439,11 +415,3 @@ test records each created thread immediately and archives it during teardown,
 including after a failed assertion. This test is intentionally separate from
 `npm run test:e2e` because it requires local Codex authentication and consumes
 model usage.
-
-## Open Questions
-
-- How to represent partial failures and reconnects in the UI
-- Whether thread history pagination is enough for long task timelines
-- Whether optional Caffold annotations are useful after thread-backed tasks are
-  stable
-- How to surface protocol changes without leaking internals through the app

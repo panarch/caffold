@@ -1,6 +1,6 @@
 # Backend And API Review Policy
 
-This policy extends the common [Review Policy](../review-policy.md) for backend,
+This policy extends the common [Review Policy](policy.md) for backend,
 HTTP API, storage, filesystem, and external-tool changes.
 
 ## Backend And API Review

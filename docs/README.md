@@ -1,42 +1,55 @@
 # Documentation
 
-Caffold docs are split by audience.
+Caffold documentation is organized by purpose. All tracked documents are part
+of the repository documentation; their directory identifies what they explain,
+not who is allowed to read them.
+
+## Product
+
+These documents describe the product, its current behavior, and its direction.
+Only the roadmap should present unfinished product behavior as planned work.
+
+- [Vision](product/vision.md)
+- [Current Product Status](product/status.md)
+- [Product Workflows](product/workflows.md)
+- [UI Surfaces](product/ui-surfaces.md)
+- [Roadmap](product/roadmap.md)
+
+## Architecture
+
+These documents define implemented system boundaries and detailed ownership
+contracts.
+
+- [Architecture Overview](architecture/overview.md)
+- [Codex App Server](architecture/codex-app-server.md)
+- [Managed Worktree Lifecycle](architecture/worktree-lifecycle.md)
+- [Live Updates](architecture/live-updates.md)
+- [Frontend Structure](architecture/frontend.md)
+- [Navigation Routing](architecture/navigation.md)
+- [Security and Approvals](architecture/security-and-approvals.md)
 
 ## Development
 
-These documents define reproducible setup, testing, local application, and
-mobile review workflows.
+These documents define reproducible contributor setup, testing, local
+application, and mobile review workflows.
 
 - [Contributing](../CONTRIBUTING.md)
 - [Testing](development/testing.md)
 - [macOS Local Application Development](development/macos-local-app.md)
 - [Mobile and PWA Testing](development/mobile-pwa-testing.md)
 
-## Public-Facing
+## Review
 
-These documents explain what Caffold is and why it exists. They should avoid overpromising implementation details.
+These documents define the repository review policy and its area-specific
+rules.
 
-- [Vision](public/vision.md)
-- [Architecture](public/architecture.md)
-- [Review Policy](public/review-policy.md)
-  - [Frontend Review](public/review-policy/frontend.md)
-  - [Backend and API Review](public/review-policy/backend.md)
+- [Review Policy](review/policy.md)
+- [Frontend Review](review/frontend.md)
+- [Backend and API Review](review/backend.md)
 
-## Engineering and Planning
+## Operations
 
-These documents record current implementation boundaries, the product baseline,
-and planned work. Each document distinguishes implemented behavior from product
-direction where both appear.
+These documents define maintainer procedures for distributing and operating
+supported artifacts.
 
-- [Current Product Baseline](internal/mvp.md)
-- [Roadmap](internal/roadmap.md)
-- [Workflows](internal/workflows.md)
-- [Codex App Server](internal/codex-app-server.md)
-- [Worktree Lifecycle](internal/worktree-lifecycle.md)
-- [Operation Ledger](internal/operation-ledger.md)
-- [UI Surfaces](internal/ui-surfaces.md)
-- [Frontend Structure](internal/frontend-structure.md)
-- [Navigation Routing](internal/navigation-routing.md)
-- [Live Updates](internal/live-updates.md)
-- [Security and Approvals](internal/security-approvals.md)
-- [macOS Release Process](internal/macos-release.md)
+- [macOS Release Process](operations/macos-release.md)

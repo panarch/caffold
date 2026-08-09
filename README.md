@@ -66,7 +66,7 @@ cargo run -- serve --root tests/fixtures/home
 
 `Caffold Server` packages the Rust backend as a portable macOS menu bar app while the browser/PWA remains the primary interface.
 
-Install the preview on an Apple silicon Mac running macOS 14 or later:
+Install Caffold on an Apple silicon Mac running macOS 14 or later:
 
 ```sh
 brew install --cask panarch/tap/caffold
@@ -135,33 +135,31 @@ than the installed application's database.
 
 ## Documentation
 
-Public-facing docs:
+The complete [documentation index](docs/README.md) is organized by purpose.
 
-- [Vision](docs/public/vision.md)
-- [Architecture](docs/public/architecture.md)
-- [Review Policy](docs/public/review-policy.md)
+Product:
 
-Contributor docs:
+- [Vision](docs/product/vision.md)
+- [Current Product Status](docs/product/status.md)
+- [Product Workflows](docs/product/workflows.md)
+- [UI Surfaces](docs/product/ui-surfaces.md)
+- [Roadmap](docs/product/roadmap.md)
+
+Architecture and engineering policy:
+
+- [Architecture Overview](docs/architecture/overview.md)
+- [Review Policy](docs/review/policy.md)
+
+Development:
 
 - [Contributing](CONTRIBUTING.md)
 - [Testing](docs/development/testing.md)
 - [macOS Local Application Development](docs/development/macos-local-app.md)
 - [Mobile and PWA Testing](docs/development/mobile-pwa-testing.md)
 
-Engineering and planning notes:
+Operations:
 
-- [Current Product Baseline](docs/internal/mvp.md)
-- [Roadmap](docs/internal/roadmap.md)
-- [Workflows](docs/internal/workflows.md)
-- [Codex App Server](docs/internal/codex-app-server.md)
-- [Worktree Lifecycle](docs/internal/worktree-lifecycle.md)
-- [Operation Ledger](docs/internal/operation-ledger.md)
-- [UI Surfaces](docs/internal/ui-surfaces.md)
-- [Frontend Structure](docs/internal/frontend-structure.md)
-- [Navigation Routing](docs/internal/navigation-routing.md)
-- [Live Updates](docs/internal/live-updates.md)
-- [Security and Approvals](docs/internal/security-approvals.md)
-- [macOS Release Process](docs/internal/macos-release.md)
+- [macOS Release Process](docs/operations/macos-release.md)
 
 ## Status
 

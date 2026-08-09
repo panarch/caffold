@@ -55,7 +55,7 @@ application-bundle replacement, follow
 ## Change workflow
 
 1. Start from a dedicated branch or worktree when the change should be isolated.
-2. Read the [review policy](docs/public/review-policy.md) and the affected area
+2. Read the [review policy](docs/review/policy.md) and the affected area
    policy before editing.
 3. Keep production ownership, tests, fixtures, and documentation in the same
    change.
@@ -85,12 +85,12 @@ boundary, and coverage workflow.
 
 ## Documentation ownership
 
-- `README.md` and `docs/public/` explain the product and stable engineering
-  policy without promising unfinished behavior.
+- `docs/product/` describes product behavior and direction. Unfinished behavior
+  belongs in the roadmap rather than current workflow or surface documents.
+- `docs/architecture/` defines implementation and source-of-truth boundaries.
 - `docs/development/` contains reproducible contributor procedures.
-- `docs/internal/` contains implementation contracts, the current product
-  baseline, and plans. Planned behavior must be distinguished from implemented
-  behavior.
+- `docs/review/` contains repository-wide and area-specific review policy.
+- `docs/operations/` contains maintainer procedures for supported artifacts.
 - Machine-local runtime data and configuration, credentials, logs, PIDs, and
   generated output remain untracked.
 

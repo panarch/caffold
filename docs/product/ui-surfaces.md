@@ -1,6 +1,7 @@
 # UI Surfaces
 
-> Internal product-surface map of the current browser UI.
+This document maps the currently implemented browser UI surfaces and their
+product boundaries.
 
 Caffold is a dense, review-oriented work surface for desktop, foldable, and
 phone layouts. Its browser components present state owned by Codex, Git,

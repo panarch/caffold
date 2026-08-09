@@ -1,7 +1,7 @@
 # Frontend Structure
 
-> Internal architecture note. This document describes the current frontend
-> component hierarchy and ownership boundaries.
+This document describes the current frontend component hierarchy and ownership
+boundaries.
 
 Caffold does not use filesystem routes. `frontend/pages` should not be treated
 as a URL router like Next.js. It is a hierarchy for page-level custom elements:

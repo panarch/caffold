@@ -41,6 +41,23 @@ test("the documentation index links every document", () => {
   }
 });
 
+test("documentation is organized by purpose rather than audience", () => {
+  for (const directory of ["docs/public", "docs/internal"]) {
+    assert.equal(existsSync(resolve(repoRoot, directory)), false, directory);
+  }
+
+  const docsIndex = readFileSync(resolve(repoRoot, "docs/README.md"), "utf8");
+  for (const heading of [
+    "## Product",
+    "## Architecture",
+    "## Development",
+    "## Review",
+    "## Operations",
+  ]) {
+    assert.match(docsIndex, new RegExp(`^${heading}$`, "m"));
+  }
+});
+
 test("local Markdown links in contributor documentation resolve", () => {
   const linkPattern = /\[[^\]]*\]\(([^)]+)\)/g;
   for (const path of contributorDocs) {
@@ -86,9 +103,9 @@ test("development entrypoints and diagnostic probe remain discoverable", () => {
 });
 
 test("current worktree documentation names the same-Task isolation tool", () => {
-  const workflow = readFileSync(resolve(repoRoot, "docs/internal/workflows.md"), "utf8");
+  const workflow = readFileSync(resolve(repoRoot, "docs/product/workflows.md"), "utf8");
   const lifecycle = readFileSync(
-    resolve(repoRoot, "docs/internal/worktree-lifecycle.md"),
+    resolve(repoRoot, "docs/architecture/worktree-lifecycle.md"),
     "utf8",
   );
   for (const source of [workflow, lifecycle]) {
@@ -99,7 +116,7 @@ test("current worktree documentation names the same-Task isolation tool", () => 
 
 test("backend review policy keeps incomplete ownership work visible", () => {
   const policy = readFileSync(
-    resolve(repoRoot, "docs/public/review-policy/backend.md"),
+    resolve(repoRoot, "docs/review/backend.md"),
     "utf8",
   );
   assert.match(policy, /test ownership is only partially aligned/);
@@ -113,7 +130,7 @@ test("backend review policy keeps incomplete ownership work visible", () => {
 
 test("frontend review policy keeps incomplete ownership work visible", () => {
   const policy = readFileSync(
-    resolve(repoRoot, "docs/public/review-policy/frontend.md"),
+    resolve(repoRoot, "docs/review/frontend.md"),
     "utf8",
   );
   assert.match(policy, /test ownership is only partially aligned/);

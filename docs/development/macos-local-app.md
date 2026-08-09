@@ -2,7 +2,7 @@
 
 This runbook replaces `/Applications/Caffold Server.app` with a locally built
 bundle for development review. It is distinct from the
-[release process](../internal/macos-release.md) and never replaces the
+[release process](../operations/macos-release.md) and never replaces the
 application's Redb data.
 
 Replacement restarts the macOS wrapper and its bundled Caffold backend. It

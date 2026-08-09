@@ -15,8 +15,7 @@ Codex availability does not decide the top-level surface. Connection failures
 remain visible inside Tasks, where the user can retry or browse local files;
 they must not cause a transient or automatic switch to Files.
 
-> Internal architecture note. This document defines Caffold's browser routing
-> and navigation ownership.
+This document defines Caffold's browser routing and navigation ownership.
 
 Caffold uses URLs to preserve review orientation across reloads, bookmarks, and
 browser back/forward. URLs describe semantic review state only. They do not

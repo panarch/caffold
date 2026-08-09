@@ -1,9 +1,14 @@
 # Security and Approvals
 
-> Internal security boundary for deployment on personal hosts and trusted
-> private networks.
+This document defines the security and approval boundary for deployment on
+personal hosts and trusted private networks.
 
 Caffold is a remote control surface for a local development machine.
+
+The supported deployment boundary is one trusted host accessed locally or over
+a trusted private network. Caffold does not currently provide the
+authentication and authorization boundary required for direct public-internet
+exposure.
 
 ## Trust Boundary
 
@@ -46,8 +51,7 @@ can change the approval flow.
 ## Git Mutations
 
 Caffold does not expose direct Git mutation controls. Git mutations happen
-through Codex instructions or manual terminal work. A future product control
-requires an explicit approval and recovery contract.
+through Codex instructions or manual terminal work.
 
 ## Worktree Deletion
 
@@ -63,9 +67,10 @@ owned path.
 
 ## Tailscale Assumption
 
-Tailscale reduces exposure but is not a full product security model.
-
-For personal use, it is a practical deployment assumption. If Caffold becomes more broadly used, authentication, authorization, and audit controls need a separate design.
+Tailscale is a supported private-network transport, not a substitute for host
+trust. Direct public-internet deployment is outside the current supported
+boundary. Supporting it requires application authentication, authorization,
+and audit controls and remains [planned product work](../product/roadmap.md).
 
 ## Voice Input
 
