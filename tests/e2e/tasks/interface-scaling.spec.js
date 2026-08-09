@@ -87,6 +87,8 @@ test("scales visible Task controls without shrinking their touch targets", async
     "sendHeight",
     "popoverLabelFontSize",
     "popoverValueFontSize",
+    "worktreeGuideHeadingFontSize",
+    "worktreeGuideBodyFontSize",
   ]) {
     if (compact[key] === 0 || spacious[key] === 0) {
       continue;
@@ -109,6 +111,14 @@ test("scales visible Task controls without shrinking their touch targets", async
       metrics.popoverValueFontSize,
       "task detail values must use the compact Interface metadata tier",
     ).toBeCloseTo(metrics.popoverLabelFontSize, 1);
+    expect(
+      metrics.worktreeGuideHeadingFontSize,
+      "the worktree guide heading must use the Interface heading tier",
+    ).toBeCloseTo(metrics.rootFontSize, 1);
+    expect(
+      metrics.worktreeGuideBodyFontSize,
+      "the worktree guide body must stay slightly quieter than Interface text",
+    ).toBeCloseTo(metrics.rootFontSize * 0.875, 1);
   }
 
   for (const metrics of [compact, spacious]) {
@@ -350,6 +360,13 @@ function taskInterfaceMetrics(page) {
     const popoverValueFontSize = fontSize(
       document.querySelector(".task-detail-popover dd"),
     );
+    const worktreeGuide = document.querySelector(
+      "caffold-task-new .task-new-worktree-guide",
+    );
+    const worktreeGuideHeadingFontSize = fontSize(
+      worktreeGuide.querySelector("h2"),
+    );
+    const worktreeGuideBodyFontSize = fontSize(worktreeGuide);
     const archiveHitTarget = verticalHitTarget(controls.archive);
     const archiveHitDebug = hitDebug(controls.archive);
     activeDetail
@@ -373,6 +390,8 @@ function taskInterfaceMetrics(page) {
       sendHeight: tokenPixels("--interface-control-visual-size"),
       popoverLabelFontSize,
       popoverValueFontSize,
+      worktreeGuideHeadingFontSize,
+      worktreeGuideBodyFontSize,
       horizontalOverflow:
         document.documentElement.scrollWidth >
         document.documentElement.clientWidth,

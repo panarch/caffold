@@ -1219,6 +1219,99 @@ async fn prompt_does_not_wait_for_a_background_subscription_refresh() {
 }
 
 #[tokio::test]
+async fn system_error_prompt_starts_a_recovery_turn() {
+    let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+        "thread/resume",
+        resume_response(ThreadStatus::SystemError, Vec::new(), Vec::new()),
+    )]);
+    let sessions = CodexThreadSessions::default();
+    let _viewer = sessions
+        .acquire_viewer(&client, 1, "thread-1")
+        .await
+        .expect("viewer");
+
+    let target = sessions
+        .prepare_prompt(&client, 1, "thread-1")
+        .await
+        .expect("prepare recovery prompt");
+
+    assert!(matches!(target, PromptTarget::Start { cwd } if cwd == "Workspace/rust/codger"));
+    assert_eq!(methods(&client).await, vec!["thread/resume"]);
+    assert!(
+        sessions
+            .snapshot("thread-1")
+            .await
+            .expect("snapshot")
+            .runtime_lease
+    );
+}
+
+#[tokio::test]
+async fn not_loaded_prompt_resumes_before_starting_a_turn() {
+    let client = CodexThreadClient::mock(vec![
+        MockCodexResponse::ok(
+            "thread/resume",
+            resume_response(ThreadStatus::NotLoaded, Vec::new(), Vec::new()),
+        ),
+        MockCodexResponse::ok(
+            "thread/resume",
+            resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
+        ),
+    ]);
+    let sessions = CodexThreadSessions::default();
+    let _viewer = sessions
+        .acquire_viewer(&client, 1, "thread-1")
+        .await
+        .expect("viewer");
+
+    let target = sessions
+        .prepare_prompt(&client, 1, "thread-1")
+        .await
+        .expect("prepare loaded prompt");
+
+    assert!(matches!(target, PromptTarget::Start { cwd } if cwd == "Workspace/rust/codger"));
+    assert_eq!(
+        methods(&client).await,
+        vec!["thread/resume", "thread/resume"]
+    );
+}
+
+#[tokio::test]
+async fn not_loaded_prompt_refresh_failure_releases_runtime() {
+    let client = CodexThreadClient::mock(vec![
+        MockCodexResponse::ok(
+            "thread/resume",
+            resume_response(ThreadStatus::NotLoaded, Vec::new(), Vec::new()),
+        ),
+        MockCodexResponse::error(
+            "thread/resume",
+            CodexThreadError::RequestTimeout {
+                method: "thread/resume",
+                request_id: 2,
+                timeout_ms: 120_000,
+            },
+        ),
+    ]);
+    let sessions = CodexThreadSessions::default();
+    let _viewer = sessions
+        .acquire_viewer(&client, 1, "thread-1")
+        .await
+        .expect("viewer");
+
+    assert!(matches!(
+        sessions.prepare_prompt(&client, 1, "thread-1").await,
+        Err(CodexThreadError::RequestTimeout { .. })
+    ));
+    let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
+    assert!(!snapshot.runtime_lease);
+    assert!(snapshot.last_error.is_some());
+    assert_eq!(
+        methods(&client).await,
+        vec!["thread/resume", "thread/resume"]
+    );
+}
+
+#[tokio::test]
 async fn completed_prompt_shares_initial_history_bootstrap() {
     let client = CodexThreadClient::mock(vec![MockCodexResponse::delayed_ok(
         "thread/resume",
@@ -1254,10 +1347,9 @@ async fn completed_prompt_shares_initial_history_bootstrap() {
         .record_turn_started(
             1,
             "thread-1",
+            Some("/managed/worktree"),
             turn("turn-new", TurnStatus::InProgress),
-            None,
-            None,
-            None,
+            CodexTurnOptions::default(),
         )
         .await;
     viewer
@@ -1267,6 +1359,14 @@ async fn completed_prompt_shares_initial_history_bootstrap() {
     assert_eq!(methods(&client).await, vec!["thread/resume"]);
     let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
     assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-new"));
+    assert_eq!(
+        snapshot.active_turn_cwd.as_deref(),
+        Some("/managed/worktree")
+    );
+    assert_eq!(
+        snapshot.thread.as_ref().map(|thread| thread.cwd.as_str()),
+        Some("/managed/worktree")
+    );
     assert!(
         snapshot
             .thread
@@ -1276,7 +1376,7 @@ async fn completed_prompt_shares_initial_history_bootstrap() {
 }
 
 #[tokio::test]
-async fn stale_background_refresh_preserves_a_new_active_turn_pointer() {
+async fn stale_background_refresh_preserves_a_new_active_turn_and_its_cwd() {
     let client = CodexThreadClient::mock(vec![
         MockCodexResponse::ok(
             "thread/resume",
@@ -1321,10 +1421,9 @@ async fn stale_background_refresh_preserves_a_new_active_turn_pointer() {
         .record_turn_started(
             1,
             "thread-1",
+            Some("/managed/worktree"),
             turn("turn-new", TurnStatus::InProgress),
-            None,
-            None,
-            None,
+            CodexTurnOptions::default(),
         )
         .await;
     refresh
@@ -1334,6 +1433,15 @@ async fn stale_background_refresh_preserves_a_new_active_turn_pointer() {
 
     let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
     assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-new"));
+    assert_eq!(
+        snapshot.active_turn_cwd.as_deref(),
+        Some("/managed/worktree")
+    );
+    assert_eq!(
+        snapshot.thread.as_ref().map(|thread| thread.cwd.as_str()),
+        Some("Workspace/rust/codger"),
+        "canonical thread metadata may retain the original checkout cwd"
+    );
     assert!(
         snapshot
             .thread

@@ -1,4 +1,5 @@
 mod v0_to_v1;
+mod v1_to_v2;
 
 use chrono::{NaiveDateTime, Utc};
 use gluesql::{
@@ -10,10 +11,10 @@ use gluesql::{
 };
 use std::{collections::BTreeSet, path::Path};
 
-use super::{Result, ThreadStoreError, managed_thread, schema_migration};
+use super::{Result, TaskStoreError, managed_thread, managed_worktree, schema_migration};
 
-const LATEST_SCHEMA_VERSION: i64 = 1;
-const APPLICATION_TABLE_COUNT: usize = 1;
+const LATEST_SCHEMA_VERSION: i64 = 2;
+const APPLICATION_TABLE_COUNT: usize = 2;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(super) struct MigrationReport {
@@ -27,6 +28,7 @@ enum DetectedSchemaVersion {
     Fresh,
     V0,
     V1,
+    V2,
     UnsupportedNewer(i64),
 }
 
@@ -36,12 +38,12 @@ enum DetectedSchemaVersion {
 /// and the report makes idempotency observable in tests.
 pub(super) fn migrate_to_latest(path: &Path) -> Result<MigrationReport> {
     if !path.exists() {
-        return Err(ThreadStoreError::MigrationPathMissing(
+        return Err(TaskStoreError::MigrationPathMissing(
             path.display().to_string(),
         ));
     }
     if !path.is_file() {
-        return Err(ThreadStoreError::MigrationPathNotFile(
+        return Err(TaskStoreError::MigrationPathNotFile(
             path.display().to_string(),
         ));
     }
@@ -49,13 +51,14 @@ pub(super) fn migrate_to_latest(path: &Path) -> Result<MigrationReport> {
     match detect_redb_schema(path)? {
         DetectedSchemaVersion::Fresh => Ok(MigrationReport::default()),
         DetectedSchemaVersion::V0 => v0_to_v1::migrate(path),
-        DetectedSchemaVersion::V1 => Ok(MigrationReport {
+        DetectedSchemaVersion::V1 => v1_to_v2::migrate(path),
+        DetectedSchemaVersion::V2 => Ok(MigrationReport {
             migrated_tables: 0,
             unchanged_tables: APPLICATION_TABLE_COUNT,
             rewritten_rows: 0,
         }),
         DetectedSchemaVersion::UnsupportedNewer(version) => {
-            Err(ThreadStoreError::UnsupportedNewerSchemaVersion {
+            Err(TaskStoreError::UnsupportedNewerSchemaVersion {
                 found: version,
                 supported: LATEST_SCHEMA_VERSION,
             })
@@ -74,10 +77,11 @@ pub(super) fn initialize_redb(glue: &mut Glue<RedbStorage>) -> Result<()> {
     begin().execute(glue)?;
     let result = match detect_schema(glue) {
         Ok(DetectedSchemaVersion::Fresh) => create_latest_schema(glue, Utc::now().naive_utc()),
-        Ok(DetectedSchemaVersion::V1) => Ok(()),
-        Ok(DetectedSchemaVersion::V0) => Err(ThreadStoreError::MigrationRequired(0)),
+        Ok(DetectedSchemaVersion::V2) => Ok(()),
+        Ok(DetectedSchemaVersion::V1) => Err(TaskStoreError::MigrationRequired(1)),
+        Ok(DetectedSchemaVersion::V0) => Err(TaskStoreError::MigrationRequired(0)),
         Ok(DetectedSchemaVersion::UnsupportedNewer(version)) => {
-            Err(ThreadStoreError::UnsupportedNewerSchemaVersion {
+            Err(TaskStoreError::UnsupportedNewerSchemaVersion {
                 found: version,
                 supported: LATEST_SCHEMA_VERSION,
             })
@@ -102,8 +106,12 @@ where
     S: GStore + GStoreMut + Planner,
 {
     managed_thread::create_table(glue)?;
+    managed_worktree::create_table(glue)?;
     schema_migration::create_table(glue)?;
-    schema_migration::record(glue, LATEST_SCHEMA_VERSION, applied_at)
+    for version in 1..=LATEST_SCHEMA_VERSION {
+        schema_migration::record(glue, version, applied_at)?;
+    }
+    Ok(())
 }
 
 fn detect_redb_schema(path: &Path) -> Result<DetectedSchemaVersion> {
@@ -131,35 +139,43 @@ where
         .collect::<BTreeSet<_>>();
     let known_names = BTreeSet::from([
         managed_thread::TABLE_NAME.to_string(),
+        managed_worktree::TABLE_NAME.to_string(),
         v0_to_v1::LEGACY_ARCHIVED_THREADS_TABLE.to_string(),
         schema_migration::TABLE_NAME.to_string(),
     ]);
     if let Some(unexpected) = table_names.difference(&known_names).next() {
-        return Err(ThreadStoreError::UnexpectedSchemaTable(unexpected.clone()));
+        return Err(TaskStoreError::UnexpectedSchemaTable(unexpected.clone()));
     }
 
     let has_managed = table_names.contains(managed_thread::TABLE_NAME);
+    let has_worktrees = table_names.contains(managed_worktree::TABLE_NAME);
     let has_legacy_archived = table_names.contains(v0_to_v1::LEGACY_ARCHIVED_THREADS_TABLE);
     let has_migrations = table_names.contains(schema_migration::TABLE_NAME);
 
     if !has_migrations {
-        return match (has_managed, has_legacy_archived) {
-            (false, false) => Ok(DetectedSchemaVersion::Fresh),
-            (true, _) => Ok(DetectedSchemaVersion::V0),
-            (false, true) => Err(ThreadStoreError::IncompleteSchema),
+        return match (has_managed, has_worktrees, has_legacy_archived) {
+            (false, false, false) => Ok(DetectedSchemaVersion::Fresh),
+            (true, false, _) => Ok(DetectedSchemaVersion::V0),
+            _ => Err(TaskStoreError::IncompleteSchema),
         };
     }
 
-    if !has_managed || has_legacy_archived || table_names.len() != 2 {
-        return Err(ThreadStoreError::IncompleteSchema);
+    if !has_managed || has_legacy_archived {
+        return Err(TaskStoreError::IncompleteSchema);
     }
     schema_migration::validate_table(glue)?;
     let version = schema_migration::current_version(glue)?;
     match version {
-        LATEST_SCHEMA_VERSION => {
+        1 if !has_worktrees && table_names.len() == 2 => {
             managed_thread::validate_table(glue)?;
             Ok(DetectedSchemaVersion::V1)
         }
+        LATEST_SCHEMA_VERSION if has_worktrees && table_names.len() == 3 => {
+            managed_thread::validate_table(glue)?;
+            managed_worktree::validate_table(glue)?;
+            Ok(DetectedSchemaVersion::V2)
+        }
+        1 | LATEST_SCHEMA_VERSION => Err(TaskStoreError::IncompleteSchema),
         version => Ok(DetectedSchemaVersion::UnsupportedNewer(version)),
     }
 }
@@ -202,7 +218,7 @@ mod tests {
         );
 
         initialize_memory(&mut glue).unwrap();
-        assert_eq!(detect_schema(&mut glue).unwrap(), DetectedSchemaVersion::V1);
+        assert_eq!(detect_schema(&mut glue).unwrap(), DetectedSchemaVersion::V2);
     }
 
     #[test]
@@ -230,7 +246,7 @@ mod tests {
             migrate_to_latest(&legacy).unwrap(),
             MigrationReport {
                 migrated_tables: 0,
-                unchanged_tables: 1,
+                unchanged_tables: 2,
                 rewritten_rows: 0,
             }
         );
@@ -245,7 +261,7 @@ mod tests {
 
         assert!(matches!(
             initialize_redb(&mut glue),
-            Err(ThreadStoreError::MigrationRequired(0))
+            Err(TaskStoreError::MigrationRequired(0))
         ));
     }
 
@@ -257,21 +273,21 @@ mod tests {
         write_current_schema(&newer);
         {
             let mut glue = Glue::new(RedbStorage::new(&newer).unwrap());
-            schema_migration::record(&mut glue, 2, Utc::now().naive_utc()).unwrap();
+            schema_migration::record(&mut glue, 3, Utc::now().naive_utc()).unwrap();
         }
         assert!(matches!(
             migrate_to_latest(&newer),
-            Err(ThreadStoreError::UnsupportedNewerSchemaVersion {
-                found: 2,
-                supported: 1
+            Err(TaskStoreError::UnsupportedNewerSchemaVersion {
+                found: 3,
+                supported: 2
             })
         ));
         let mut glue = Glue::new(RedbStorage::new(&newer).unwrap());
         assert!(matches!(
             initialize_redb(&mut glue),
-            Err(ThreadStoreError::UnsupportedNewerSchemaVersion {
-                found: 2,
-                supported: 1
+            Err(TaskStoreError::UnsupportedNewerSchemaVersion {
+                found: 3,
+                supported: 2
             })
         ));
         drop(glue);
@@ -280,11 +296,11 @@ mod tests {
         write_current_schema(&gap);
         {
             let mut glue = Glue::new(RedbStorage::new(&gap).unwrap());
-            schema_migration::record(&mut glue, 3, Utc::now().naive_utc()).unwrap();
+            schema_migration::record(&mut glue, 4, Utc::now().naive_utc()).unwrap();
         }
         assert!(matches!(
             migrate_to_latest(&gap),
-            Err(ThreadStoreError::InvalidSchemaMigrationHistory)
+            Err(TaskStoreError::InvalidSchemaMigrationHistory)
         ));
     }
 
@@ -304,12 +320,12 @@ mod tests {
         }
         assert!(matches!(
             migrate_to_latest(&unexpected),
-            Err(ThreadStoreError::UnexpectedSchemaTable(table)) if table == "unrelated_data"
+            Err(TaskStoreError::UnexpectedSchemaTable(table)) if table == "unrelated_data"
         ));
         let mut glue = Glue::new(RedbStorage::new(&unexpected).unwrap());
         assert!(matches!(
             initialize_redb(&mut glue),
-            Err(ThreadStoreError::UnexpectedSchemaTable(table)) if table == "unrelated_data"
+            Err(TaskStoreError::UnexpectedSchemaTable(table)) if table == "unrelated_data"
         ));
         drop(glue);
 
@@ -324,7 +340,7 @@ mod tests {
         }
         assert!(matches!(
             migrate_to_latest(&archived_only),
-            Err(ThreadStoreError::IncompleteSchema)
+            Err(TaskStoreError::IncompleteSchema)
         ));
 
         let migrations_only = temp.path().join("migrations-only.redb");
@@ -335,7 +351,7 @@ mod tests {
         }
         assert!(matches!(
             migrate_to_latest(&migrations_only),
-            Err(ThreadStoreError::IncompleteSchema)
+            Err(TaskStoreError::IncompleteSchema)
         ));
 
         let invalid_current = temp.path().join("invalid-current.redb");
@@ -347,7 +363,7 @@ mod tests {
         }
         assert!(matches!(
             migrate_to_latest(&invalid_current),
-            Err(ThreadStoreError::InvalidSchemaTable(table))
+            Err(TaskStoreError::InvalidSchemaTable(table))
                 if table == managed_thread::TABLE_NAME
         ));
     }
@@ -358,11 +374,11 @@ mod tests {
         let missing = temp.path().join("missing.redb");
         assert!(matches!(
             migrate_to_latest(&missing),
-            Err(ThreadStoreError::MigrationPathMissing(_))
+            Err(TaskStoreError::MigrationPathMissing(_))
         ));
         assert!(matches!(
             migrate_to_latest(temp.path()),
-            Err(ThreadStoreError::MigrationPathNotFile(_))
+            Err(TaskStoreError::MigrationPathNotFile(_))
         ));
     }
 }

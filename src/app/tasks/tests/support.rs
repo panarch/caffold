@@ -7,12 +7,15 @@ pub(in crate::app::tasks) async fn task_state_with_codex_client(
     client: CodexThreadClient,
 ) -> TaskState {
     let (shutdown, _) = broadcast::channel(16);
+    let worktree_root = fs.root().join(".caffold-test/worktrees");
     let state = TaskState::new(
         Arc::new(fs),
         String::new(),
         shutdown,
-        ThreadStore::memory().expect("in-memory thread store"),
-    );
+        TaskStore::memory().expect("in-memory task store"),
+        worktree_root,
+    )
+    .expect("task state");
     state.codex_runtime.install_test_client(1, client).await;
     state
 }

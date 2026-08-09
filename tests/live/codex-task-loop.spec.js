@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
-import { spawn } from "node:child_process";
-import { sep } from "node:path";
+import { execFileSync, spawn } from "node:child_process";
+import { existsSync, mkdirSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, sep } from "node:path";
 
 import { resolveCodexBin } from "./codex-bin.mjs";
 
@@ -138,6 +139,50 @@ async function archiveLiveThread(request, threadId) {
   throw new Error(`failed to archive live thread ${threadId}: HTTP ${response.status()} ${body}`);
 }
 
+async function restoreLiveThread(request, threadId) {
+  const response = await request.post(`/api/tasks/${threadId}/restore`);
+  const body = await response.text();
+  expect(response.status(), `restore response: ${body}`).toBe(200);
+  liveThreadIds.add(threadId);
+  return JSON.parse(body);
+}
+
+function initializeLiveRepository(marker) {
+  const relativePath = join("target", "caffold-live-fixtures", marker);
+  const repository = join(process.cwd(), relativePath);
+  mkdirSync(repository, { recursive: true });
+  for (const args of [
+    ["init"],
+    ["config", "user.email", "test@example.com"],
+    ["config", "user.name", "Caffold Live Test"],
+  ]) {
+    execFileSync("git", ["-C", repository, ...args]);
+  }
+  writeFileSync(join(repository, "README.md"), "Caffold live worktree fixture\n");
+  execFileSync("git", ["-C", repository, "add", "README.md"]);
+  execFileSync("git", ["-C", repository, "commit", "-m", "Initial fixture"]);
+  execFileSync("git", ["-C", repository, "branch", "-M", "main"]);
+  return {
+    repository,
+    cwd: [liveCwd(), relativePath.split(sep).join("/")]
+      .filter(Boolean)
+      .join("/"),
+  };
+}
+
+function branchExists(repository, branchName) {
+  try {
+    execFileSync(
+      "git",
+      ["-C", repository, "show-ref", "--verify", `refs/heads/${branchName}`],
+      { stdio: "ignore" },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 test.afterEach(async ({ request }) => {
   for (const threadId of [...liveThreadIds]) {
     await archiveLiveThread(request, threadId);
@@ -159,6 +204,25 @@ async function submitPromptAndExpectAccepted(page, threadId, submit) {
   const payload = JSON.parse(body);
   expect(payload.threadId).toBe(threadId);
   return payload;
+}
+
+async function expectLiveThreadIdle(request, threadId) {
+  await expect
+    .poll(
+      async () => {
+        const response = await request.get(`/api/tasks/${threadId}`);
+        if (!response.ok()) {
+          return false;
+        }
+        const detail = await response.json();
+        return (
+          detail.task?.threadStatus?.type === "idle" &&
+          detail.task?.activeTurn == null
+        );
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
 }
 
 test("creates and resumes a real Codex task through Caffold with Spark", async ({
@@ -434,6 +498,172 @@ test("renames a newly created Caffold task through the dynamic tool", async ({
       .locator('.task-list-section[data-task-section="archived"]')
       .locator(`.task-archived-row[data-thread-id="${threadId}"] .task-row-title`),
   ).toHaveText(requestedName);
+});
+
+test("moves one dirty Spark task into a worktree and resumes the same thread", async ({
+  page,
+}) => {
+  const marker = `${Date.now()}`;
+  const fixture = initializeLiveRepository(marker);
+  const branchName = `caffold/live-${marker}`;
+  const preparedReply = `caffold-isolated-prepared-${marker}`;
+  const continuedReply = `caffold-isolated-continued-${marker}`;
+  const restoredReply = `caffold-isolated-restored-${marker}`;
+  const continuationFile = `continuation-${marker}.txt`;
+  let threadId;
+  let fixtureCanBeRemoved = false;
+
+  try {
+    writeFileSync(join(fixture.repository, "README.md"), `dirty README ${marker}\n`);
+    writeFileSync(join(fixture.repository, "staged.txt"), `staged ${marker}\n`);
+    execFileSync("git", ["-C", fixture.repository, "add", "staged.txt"]);
+    writeFileSync(join(fixture.repository, "untracked.txt"), `untracked ${marker}\n`);
+
+    await page.goto(`/tasks/new?cwd=${encodeURIComponent(fixture.cwd)}`);
+    const tasksPage = page.locator("caffold-tasks-page");
+    const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
+    await expect(newTaskForm).toBeVisible();
+    await chooseModel(newTaskForm, SPARK_MODEL);
+
+    const newTaskPrompt = newTaskForm.getByRole("textbox", {
+      name: "New task prompt",
+    });
+    await newTaskPrompt.fill(
+      [
+        "Prepare this current task in a managed worktree.",
+        "Call isolate_current_task exactly once with this exact argument:",
+        `branchName: ${branchName}`,
+        "includeChanges: true",
+        "The tool must be your final file-affecting action. Do not run commands or edit files after it.",
+        `After it succeeds, reply with exactly ${preparedReply}. Do not continue the review yet.`,
+      ].join("\n"),
+    );
+    await newTaskPrompt.press("Enter");
+    await expect(page).toHaveURL(/\/tasks\/[^?]+$/);
+    threadId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
+    expect(threadId).toBeTruthy();
+    liveThreadIds.add(threadId);
+
+    await expect(
+      tasksPage
+        .locator('.task-message[data-message-role="assistant"][data-message-phase="final"]')
+        .filter({ hasText: preparedReply }),
+    ).toBeVisible({ timeout: 120_000 });
+
+    const initialDetailResponse = await page.request.get(`/api/tasks/${threadId}`);
+    expect(initialDetailResponse.ok()).toBeTruthy();
+    const initialDetail = await initialDetailResponse.json();
+    const worktreePath = initialDetail.task?.cwd;
+    expect(initialDetail.threadId).toBe(threadId);
+    expect(worktreePath).toBeTruthy();
+    expect(initialDetail.task?.worktree?.linked).toBe(true);
+    expect(initialDetail.task?.worktree?.branch).toBe(branchName);
+    expect(existsSync(worktreePath)).toBe(true);
+    expect(existsSync(join(worktreePath, continuationFile))).toBe(false);
+    expect(
+      execFileSync("git", ["-C", fixture.repository, "branch", "--show-current"], {
+        encoding: "utf8",
+      }).trim(),
+    ).toBe("main");
+    expect(
+      execFileSync("git", ["-C", fixture.repository, "status", "--porcelain=v1"], {
+        encoding: "utf8",
+      }).trim(),
+    ).toBe("");
+    expect(
+      execFileSync("git", ["-C", worktreePath, "diff", "--cached", "--name-only"], {
+        encoding: "utf8",
+      }).trim(),
+    ).toBe("staged.txt");
+    expect(
+      execFileSync("git", ["-C", worktreePath, "diff", "--name-only"], {
+        encoding: "utf8",
+      }).trim(),
+    ).toBe("README.md");
+    expect(
+      execFileSync("git", ["-C", worktreePath, "ls-files", "--others", "--exclude-standard"], {
+        encoding: "utf8",
+      }).trim(),
+    ).toBe("untracked.txt");
+
+    const finalMessages = tasksPage.locator(
+      '.task-message[data-message-role="assistant"][data-message-phase="final"]',
+    );
+    const followUpForm = tasksPage.locator(
+      '.task-follow-up-form[data-task-form="follow-up"]',
+    );
+    const followUpPrompt = followUpForm.getByRole("textbox", {
+      name: "Follow-up prompt",
+    });
+    await followUpPrompt.fill(
+      `Create ${continuationFile} in the current working directory containing exactly ${marker}, then reply with exactly ${continuedReply}.`,
+    );
+    const outcome = await submitPromptAndExpectAccepted(page, threadId, () =>
+      followUpPrompt.press("Enter"),
+    );
+    expect(outcome.steered).toBe(false);
+    await expect(finalMessages.filter({ hasText: continuedReply })).toBeVisible({
+      timeout: 120_000,
+    });
+    await expectLiveThreadIdle(page.request, threadId);
+    expect(existsSync(join(worktreePath, continuationFile))).toBe(true);
+    expect(existsSync(join(fixture.repository, continuationFile))).toBe(false);
+
+    execFileSync("git", ["-C", worktreePath, "add", "-A"]);
+    execFileSync("git", ["-C", worktreePath, "commit", "-m", "Complete live fixture"]);
+
+    await archiveLiveThread(page.request, threadId);
+    expect(existsSync(worktreePath)).toBe(false);
+    expect(branchExists(fixture.repository, branchName)).toBe(true);
+
+    const restored = await restoreLiveThread(page.request, threadId);
+    expect(restored.threadId).toBe(threadId);
+    expect(restored.worktree?.linked).toBe(true);
+    expect(restored.worktree?.branch).toBe(branchName);
+    expect(restored.cwd).toBe(worktreePath);
+    expect(existsSync(worktreePath)).toBe(true);
+
+    await page.goto(`/tasks/${threadId}`);
+    const restoredForm = tasksPage.locator(
+      '.task-follow-up-form[data-task-form="follow-up"]',
+    );
+    const restoredPrompt = restoredForm.getByRole("textbox", {
+      name: "Follow-up prompt",
+    });
+    await restoredPrompt.fill(
+      `Reply with exactly ${restoredReply}. Do not modify files or run commands.`,
+    );
+    const restoredOutcome = await submitPromptAndExpectAccepted(page, threadId, () =>
+      restoredPrompt.press("Enter"),
+    );
+    expect(restoredOutcome.steered).toBe(false);
+    await expect(finalMessages.filter({ hasText: restoredReply })).toBeVisible({
+      timeout: 120_000,
+    });
+    await expectLiveThreadIdle(page.request, threadId);
+
+    await archiveLiveThread(page.request, threadId);
+    expect(existsSync(worktreePath)).toBe(false);
+    expect(branchExists(fixture.repository, branchName)).toBe(true);
+    fixtureCanBeRemoved = true;
+  } finally {
+    if (threadId && liveThreadIds.has(threadId)) {
+      try {
+        await archiveLiveThread(page.request, threadId);
+      } catch {
+        // Preserve the fixture when a live task is still active so its worktree
+        // remains recoverable and afterEach can report the archive failure.
+      }
+    }
+    if (fixtureCanBeRemoved || !threadId || !liveThreadIds.has(threadId)) {
+      rmSync(fixture.repository, { recursive: true, force: true });
+      try {
+        rmdirSync(dirname(fixture.repository));
+      } catch {
+        // Another failed live fixture may still need the shared parent.
+      }
+    }
+  }
 });
 
 test("sends image attachments through Caffold with a multimodal model", async ({

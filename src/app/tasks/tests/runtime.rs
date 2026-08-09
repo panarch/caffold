@@ -1,14 +1,14 @@
 use super::super::{events::*, runtime::*};
 use super::*;
 use crate::codex_app_server::CodexThreadError;
-use crate::thread_store::ManagedThread;
+use crate::task_store::ManagedThread;
 
 fn runtime_with_events(events: TaskEvents) -> CodexRuntime {
     let (shutdown, _) = broadcast::channel(1);
     CodexRuntime::new(
         CodexThreadSessions::default(),
         events,
-        ThreadStore::memory().unwrap(),
+        TaskStore::memory().unwrap(),
         shutdown,
     )
 }
@@ -20,7 +20,7 @@ fn test_runtime() -> CodexRuntime {
 #[test]
 fn completed_turn_notification_persists_the_latest_completion_time() {
     let runtime = test_runtime();
-    let store = runtime.test_thread_store();
+    let store = runtime.test_task_store();
     store
         .claim(
             ManagedThread::new("thread_1", Some(1_000), None, None),
@@ -166,7 +166,7 @@ async fn protocol_failures_keep_a_healthy_codex_connection() {
 
 #[tokio::test]
 async fn startup_recovery_resumes_only_loaded_threads_managed_by_caffold() {
-    let store = ThreadStore::memory().unwrap();
+    let store = TaskStore::memory().unwrap();
     store
         .claim(ManagedThread::new("managed", None, None, None), 10)
         .unwrap();
@@ -421,7 +421,7 @@ async fn server_requests_store_live_pending_approvals_without_local_task_ledger(
 
 #[tokio::test]
 async fn rename_dynamic_tool_updates_only_the_current_managed_thread() {
-    let store = ThreadStore::memory().unwrap();
+    let store = TaskStore::memory().unwrap();
     store
         .claim(
             ManagedThread::new("thread_1", None, None, None),
@@ -507,7 +507,7 @@ async fn rename_dynamic_tool_rejects_threads_outside_caffold_management() {
 
 #[tokio::test]
 async fn rename_dynamic_tool_rejects_invalid_names_and_unknown_tools() {
-    let store = ThreadStore::memory().unwrap();
+    let store = TaskStore::memory().unwrap();
     store
         .claim(ManagedThread::new("thread_1", None, None, None), 1)
         .unwrap();
@@ -554,7 +554,7 @@ async fn rename_dynamic_tool_rejects_invalid_names_and_unknown_tools() {
 
 #[tokio::test]
 async fn rename_dynamic_tool_returns_a_failed_result_when_app_server_rejects_the_name() {
-    let store = ThreadStore::memory().unwrap();
+    let store = TaskStore::memory().unwrap();
     store
         .claim(ManagedThread::new("thread_1", None, None, None), 1)
         .unwrap();

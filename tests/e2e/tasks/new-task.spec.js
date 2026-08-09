@@ -25,6 +25,80 @@ test("focuses a new task prompt automatically only on desktop", async ({
     'caffold-tasks-page .task-new-form textarea[name="prompt"]',
   );
   await expect(homePrompt).toBeVisible();
+  const worktreeGuide = tasksPage.locator(".task-new-worktree-guide");
+  await expect(worktreeGuide).toBeVisible();
+  await expect(
+    worktreeGuide.getByRole("heading", {
+      name: "Work in an isolated worktree",
+    }),
+  ).toBeVisible();
+  await expect(worktreeGuide.locator("code")).toHaveText([
+    "Prepare this task in an isolated worktree. Leave my current checkout changes in place. Stop when the worktree is ready.",
+    "Now review PR #123.",
+  ]);
+  await expect(worktreeGuide).toContainText(
+    "By default, Caffold prepares a clean worktree and leaves staged, unstaged, and untracked changes in your current checkout.",
+  );
+  await expect(worktreeGuide).toContainText(
+    "The same setup request also works in an existing task.",
+  );
+  await expect(worktreeGuide).toContainText(
+    "Need the current changes too? Say “Move this task and my current changes into an isolated worktree.”",
+  );
+  await expect(worktreeGuide.locator("strong")).toHaveCount(0);
+  expect(
+    await worktreeGuide
+      .locator("h2, .task-new-worktree-label")
+      .evaluateAll((elements) =>
+        elements.map((element) => getComputedStyle(element).fontWeight),
+      ),
+  ).toEqual(["400", "400", "400"]);
+  const guideAlignment = await tasksPage.evaluate((element) => {
+    const composerElement = element.querySelector(
+      ".task-new-form .task-composer-panel",
+    );
+    const textareaElement = element.querySelector(
+      '.task-new-form textarea[name="prompt"]',
+    );
+    const guideElement = element.querySelector(".task-new-worktree-guide");
+    const guideHeadingElement = guideElement.querySelector("h2");
+    const composer = composerElement.getBoundingClientRect();
+    const textarea = textareaElement.getBoundingClientRect();
+    const guide = guideElement.getBoundingClientRect();
+    const guideHeading = guideHeadingElement.getBoundingClientRect();
+    const composerStyle = getComputedStyle(composerElement);
+    const textareaStyle = getComputedStyle(textareaElement);
+    return {
+      composerLeft: composer.left,
+      composerRight: composer.right,
+      composerBorderLeft: Number.parseFloat(composerStyle.borderLeftWidth),
+      composerBorderRight: Number.parseFloat(composerStyle.borderRightWidth),
+      guideLeft: guide.left,
+      guideRight: guide.right,
+      guideContentLeft: guideHeading.left,
+      guideContentRight: guideHeading.right,
+      textareaContentLeft:
+        textarea.left + Number.parseFloat(textareaStyle.paddingLeft),
+      textareaContentRight:
+        textarea.right - Number.parseFloat(textareaStyle.paddingRight),
+    };
+  });
+  expect(guideAlignment.guideLeft).toBeCloseTo(guideAlignment.composerLeft, 1);
+  expect(guideAlignment.guideRight).toBeCloseTo(guideAlignment.composerRight, 1);
+  expect(
+    Math.abs(
+      guideAlignment.guideContentLeft -
+        guideAlignment.textareaContentLeft -
+        guideAlignment.composerBorderLeft,
+    ),
+  ).toBeLessThanOrEqual(0.25);
+  expect(
+    Math.abs(
+      guideAlignment.guideContentRight -
+        guideAlignment.textareaContentRight +
+        guideAlignment.composerBorderRight,
+    ),
+  ).toBeLessThanOrEqual(0.25);
   if (testInfo.project.name === "desktop") {
     await expect(homePrompt).toBeFocused();
   } else {

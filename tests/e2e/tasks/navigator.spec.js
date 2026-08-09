@@ -1594,6 +1594,12 @@ test("groups Tasks by repository without worktree accordions", async ({ page }, 
     "Thinking",
   );
   await expect(featureTask.locator(".task-unseen-complete")).toHaveCount(0);
+  if (testInfo.project.name !== "phone") {
+    await tasksPage.getByRole("button", { name: "New Task" }).click();
+    await expect(page).toHaveURL(
+      "/tasks/new?cwd=Workspace%2Frust%2Fgluesql",
+    );
+  }
   await page.goto("/tasks");
   await expect(
     tasksPage.locator(

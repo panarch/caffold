@@ -82,11 +82,11 @@ transition. Update it when ownership moves.
 
 Completed reference area:
 
-- `thread_store` is the first owner-aligned backend slice. Physical table
-  behavior lives in `managed_thread.rs` and `schema_migration.rs`; migration
-  orchestration and the v0-to-v1 transformation live with their inline unit
-  tests in their respective files.
-- `thread_store.rs` retains facade and open/reopen behavior instead of owning
+- `task_store` is the first owner-aligned backend slice. Physical table
+  behavior lives in `managed_thread.rs`, `managed_worktree.rs`, and
+  `schema_migration.rs`; migration orchestration and each version transition
+  live with their inline unit tests in their respective files.
+- `task_store.rs` retains facade and open/reopen behavior instead of owning
   the table and migration test suites centrally.
 - The migration work was checked with focused unit tests, production-file
   coverage inspection, full library coverage, formatting, clippy, API tests,

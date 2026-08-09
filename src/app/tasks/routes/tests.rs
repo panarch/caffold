@@ -2,7 +2,7 @@ use super::super::{projection::*, tests::support::*};
 use super::*;
 use crate::app::tasks::events::task_event_from_thread_item;
 use crate::codex_app_server::ThreadStatus;
-use crate::{fs::RootedFs, thread_store::ThreadStore};
+use crate::{fs::RootedFs, task_store::TaskStore};
 use std::{path::PathBuf, sync::Arc};
 use tower::ServiceExt;
 
@@ -51,6 +51,33 @@ fn current_model_list_response() -> JsonValue {
     })
 }
 
+fn initialize_git_repository(path: &std::path::Path) {
+    std::fs::create_dir_all(path).unwrap();
+    for args in [
+        vec!["init"],
+        vec!["config", "user.email", "test@example.com"],
+        vec!["config", "user.name", "Caffold Test"],
+    ] {
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+    }
+    std::fs::write(path.join("README.md"), "initial\n").unwrap();
+    for args in [vec!["add", "README.md"], vec!["commit", "-m", "Initial"]] {
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+    }
+}
+
 #[test]
 fn extracts_codex_version_from_app_server_user_agent() {
     assert_eq!(
@@ -70,8 +97,10 @@ fn task_state_preserves_the_configured_default_cwd() {
         Arc::new(RootedFs::new(root.path()).unwrap()),
         "project".to_string(),
         shutdown,
-        ThreadStore::memory().unwrap(),
-    );
+        TaskStore::memory().unwrap(),
+        root.path().join("managed-worktrees"),
+    )
+    .expect("task state");
 
     assert_eq!(
         PathBuf::from(task_cwd(&state, None).unwrap()),
@@ -237,6 +266,18 @@ async fn create_task_keeps_explicit_permission_mode_for_the_first_turn() {
         requests[0].1["dynamicTools"][0]["inputSchema"]["required"],
         json!(["name"])
     );
+    assert_eq!(
+        requests[0].1["dynamicTools"][1]["name"],
+        "isolate_current_task"
+    );
+    assert_eq!(
+        requests[0].1["dynamicTools"][1]["inputSchema"]["properties"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .collect::<Vec<_>>(),
+        ["branchName", "includeChanges"]
+    );
     assert_eq!(requests[1].0, "turn/start");
     assert_eq!(requests[1].1["approvalsReviewer"], "auto_review");
 }
@@ -293,7 +334,7 @@ async fn create_task_persists_the_applied_model_and_reasoning_effort() {
 
     assert_eq!(response.0.model.as_deref(), Some("gpt-5.6-sol"));
     assert_eq!(response.0.reasoning_effort.as_deref(), Some("xhigh"));
-    let stored = thread_store_get(&state, thread_id)
+    let stored = task_store_get(&state, thread_id)
         .await
         .unwrap()
         .expect("managed thread settings");
@@ -303,6 +344,297 @@ async fn create_task_persists_the_applied_model_and_reasoning_effort() {
     assert_eq!(requests[2].0, "turn/start");
     assert_eq!(requests[2].1["model"], "gpt-5.6-sol");
     assert_eq!(requests[2].1["effort"], "xhigh");
+}
+
+#[tokio::test]
+async fn managed_worktree_archive_and_restore_follow_the_task_route_lifecycle() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    initialize_git_repository(&source);
+    let thread_id = "thread-managed-worktree";
+    let thread = || {
+        json!({
+            "id": thread_id,
+            "preview": "Managed worktree task",
+            "status": { "type": "idle" },
+            "cwd": source.display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": 1.0,
+            "turns": []
+        })
+    };
+    let client = CodexThreadClient::mock(vec![
+        crate::codex_app_server::MockCodexResponse::ok(
+            "thread/read",
+            json!({ "thread": thread() }),
+        ),
+        crate::codex_app_server::MockCodexResponse::ok("thread/archive", json!({})),
+        crate::codex_app_server::MockCodexResponse::ok(
+            "thread/unarchive",
+            json!({ "thread": thread() }),
+        ),
+    ]);
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, &source).await;
+    state
+        .lifecycle
+        .isolate_current_task(
+            source,
+            thread_id.to_string(),
+            "Managed worktree task".to_string(),
+            None,
+            false,
+        )
+        .await
+        .unwrap();
+    let worktree = state
+        .task_store
+        .worktree_for_thread(thread_id)
+        .unwrap()
+        .unwrap();
+    assert!(std::path::Path::new(&worktree.worktree_path).is_dir());
+
+    let _ = task_archive(State(state.clone()), AxumPath(thread_id.to_string()))
+        .await
+        .unwrap();
+    assert!(!std::path::Path::new(&worktree.worktree_path).exists());
+    assert_eq!(
+        state
+            .task_store
+            .worktree_for_thread(thread_id)
+            .unwrap()
+            .unwrap()
+            .state,
+        crate::task_store::ManagedWorktreeState::Archived
+    );
+
+    let _ = task_restore(State(state.clone()), AxumPath(thread_id.to_string()))
+        .await
+        .unwrap();
+    assert!(std::path::Path::new(&worktree.worktree_path).is_dir());
+    assert_eq!(
+        state
+            .task_store
+            .worktree_for_thread(thread_id)
+            .unwrap()
+            .unwrap()
+            .state,
+        crate::task_store::ManagedWorktreeState::Ready
+    );
+    assert!(state.task_store.get(thread_id).unwrap().is_some());
+    assert!(state.task_store.get_archived(thread_id).unwrap().is_none());
+}
+
+#[tokio::test]
+async fn dirty_managed_worktree_blocks_the_task_archive_before_codex_changes_state() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    initialize_git_repository(&source);
+    let thread_id = "thread-dirty-managed-worktree";
+    let thread = || {
+        json!({
+            "id": thread_id,
+            "preview": "Dirty managed worktree task",
+            "status": { "type": "idle" },
+            "cwd": source.display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": 1.0,
+            "turns": []
+        })
+    };
+    let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+        "thread/read",
+        json!({ "thread": thread() }),
+    )]);
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, &source).await;
+    state
+        .lifecycle
+        .isolate_current_task(
+            source,
+            thread_id.to_string(),
+            "Dirty managed worktree task".to_string(),
+            None,
+            false,
+        )
+        .await
+        .unwrap();
+    let worktree = state
+        .task_store
+        .worktree_for_thread(thread_id)
+        .unwrap()
+        .unwrap();
+    std::fs::write(
+        std::path::Path::new(&worktree.worktree_path).join("uncommitted.txt"),
+        "keep me\n",
+    )
+    .unwrap();
+
+    let result = task_archive(State(state.clone()), AxumPath(thread_id.to_string())).await;
+
+    assert!(matches!(
+        result,
+        Err(ApiError::BadRequest {
+            code: "managed_worktree_dirty",
+            ..
+        })
+    ));
+    assert_eq!(
+        state
+            .task_store
+            .worktree_for_thread(thread_id)
+            .unwrap()
+            .unwrap()
+            .state,
+        crate::task_store::ManagedWorktreeState::Ready
+    );
+    assert!(state.task_store.get(thread_id).unwrap().is_some());
+    assert!(std::path::Path::new(&worktree.worktree_path).is_dir());
+    assert_eq!(
+        client
+            .mock_requests()
+            .await
+            .into_iter()
+            .map(|(method, _)| method)
+            .collect::<Vec<_>>(),
+        ["thread/read"]
+    );
+}
+
+#[tokio::test]
+async fn failed_codex_archive_restores_the_managed_worktree_and_keeps_the_task_active() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    initialize_git_repository(&source);
+    let thread_id = "thread-failed-archive";
+    let thread = || {
+        json!({
+            "id": thread_id,
+            "preview": "Archive rollback",
+            "status": { "type": "idle" },
+            "cwd": source.display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": 1.0,
+            "turns": []
+        })
+    };
+    let client = CodexThreadClient::mock(vec![
+        crate::codex_app_server::MockCodexResponse::ok(
+            "thread/read",
+            json!({ "thread": thread() }),
+        ),
+        crate::codex_app_server::MockCodexResponse::error(
+            "thread/archive",
+            CodexThreadError::ProcessUnavailable,
+        ),
+    ]);
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, &source).await;
+    state
+        .lifecycle
+        .isolate_current_task(
+            source,
+            thread_id.to_string(),
+            "Archive rollback".to_string(),
+            None,
+            false,
+        )
+        .await
+        .unwrap();
+    let worktree = state
+        .task_store
+        .worktree_for_thread(thread_id)
+        .unwrap()
+        .unwrap();
+
+    assert!(matches!(
+        task_archive(State(state.clone()), AxumPath(thread_id.to_string())).await,
+        Err(ApiError::CodexThread(_))
+    ));
+    assert!(state.task_store.get(thread_id).unwrap().is_some());
+    assert!(state.task_store.get_archived(thread_id).unwrap().is_none());
+    assert_eq!(
+        state
+            .task_store
+            .worktree_for_thread(thread_id)
+            .unwrap()
+            .unwrap()
+            .state,
+        crate::task_store::ManagedWorktreeState::Ready
+    );
+    assert!(std::path::Path::new(&worktree.worktree_path).is_dir());
+}
+
+#[tokio::test]
+async fn failed_codex_restore_removes_the_recreated_worktree_and_keeps_the_task_archived() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    initialize_git_repository(&source);
+    let thread_id = "thread-failed-restore";
+    let thread = || {
+        json!({
+            "id": thread_id,
+            "preview": "Restore rollback",
+            "status": { "type": "idle" },
+            "cwd": source.display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": 1.0,
+            "turns": []
+        })
+    };
+    let client = CodexThreadClient::mock(vec![
+        crate::codex_app_server::MockCodexResponse::ok(
+            "thread/read",
+            json!({ "thread": thread() }),
+        ),
+        crate::codex_app_server::MockCodexResponse::ok("thread/archive", json!({})),
+        crate::codex_app_server::MockCodexResponse::error(
+            "thread/unarchive",
+            CodexThreadError::ProcessUnavailable,
+        ),
+    ]);
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, &source).await;
+    state
+        .lifecycle
+        .isolate_current_task(
+            source,
+            thread_id.to_string(),
+            "Restore rollback".to_string(),
+            None,
+            false,
+        )
+        .await
+        .unwrap();
+    let worktree = state
+        .task_store
+        .worktree_for_thread(thread_id)
+        .unwrap()
+        .unwrap();
+    let _ = task_archive(State(state.clone()), AxumPath(thread_id.to_string()))
+        .await
+        .unwrap();
+
+    assert!(matches!(
+        task_restore(State(state.clone()), AxumPath(thread_id.to_string())).await,
+        Err(ApiError::CodexThread(_))
+    ));
+    assert!(state.task_store.get(thread_id).unwrap().is_none());
+    assert!(state.task_store.get_archived(thread_id).unwrap().is_some());
+    assert_eq!(
+        state
+            .task_store
+            .worktree_for_thread(thread_id)
+            .unwrap()
+            .unwrap()
+            .state,
+        crate::task_store::ManagedWorktreeState::Archived
+    );
+    assert!(!std::path::Path::new(&worktree.worktree_path).exists());
 }
 
 #[tokio::test]
@@ -397,7 +729,7 @@ async fn managed_list_never_projects_pending_approval_onto_thread_status() {
     let resolved = resolve_thread_cwd(&state.fs, &thread);
     let task = task_record_from_thread(&thread, &[], resolved.as_ref()).unwrap();
     assert_eq!(task.thread_status, ThreadStatus::Idle);
-    thread_store_claim(&state, managed_thread_from_task_record(&task, None, None))
+    task_store_claim(&state, managed_thread_from_task_record(&task, None, None))
         .await
         .unwrap();
 
@@ -421,11 +753,11 @@ async fn managed_list_projects_persisted_completion_time_and_unseen_state() {
     let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
     let resolved = resolve_thread_cwd(&state.fs, &thread);
     let task = task_record_from_thread(&thread, &[], resolved.as_ref()).unwrap();
-    thread_store_claim(&state, managed_thread_from_task_record(&task, None, None))
+    task_store_claim(&state, managed_thread_from_task_record(&task, None, None))
         .await
         .unwrap();
     state
-        .thread_store
+        .task_store
         .update_completed_at(thread_id, 5_000)
         .unwrap();
 
@@ -471,9 +803,9 @@ async fn archive_and_restore_keep_caffold_membership_in_separate_lists() {
         .expect("archive succeeds")
         .0;
     assert_eq!(archived.thread_id, thread_id);
-    assert!(thread_store_get(&state, thread_id).await.unwrap().is_none());
+    assert!(task_store_get(&state, thread_id).await.unwrap().is_none());
     assert!(
-        thread_store_get_archived(&state, thread_id)
+        task_store_get_archived(&state, thread_id)
             .await
             .unwrap()
             .is_some()
@@ -490,9 +822,9 @@ async fn archive_and_restore_keep_caffold_membership_in_separate_lists() {
         .expect("restore succeeds")
         .0;
     assert_eq!(restored.thread_id, thread_id);
-    assert!(thread_store_get(&state, thread_id).await.unwrap().is_some());
+    assert!(task_store_get(&state, thread_id).await.unwrap().is_some());
     assert!(
-        thread_store_get_archived(&state, thread_id)
+        task_store_get_archived(&state, thread_id)
             .await
             .unwrap()
             .is_none()
@@ -542,9 +874,9 @@ async fn active_tasks_cannot_be_archived() {
             ..
         })
     ));
-    assert!(thread_store_get(&state, thread_id).await.unwrap().is_some());
+    assert!(task_store_get(&state, thread_id).await.unwrap().is_some());
     assert!(
-        thread_store_get_archived(&state, thread_id)
+        task_store_get_archived(&state, thread_id)
             .await
             .unwrap()
             .is_none()
@@ -578,9 +910,9 @@ async fn archive_failure_keeps_the_task_in_the_active_membership() {
     let result = task_archive(State(state.clone()), AxumPath(thread_id.to_string())).await;
 
     assert!(matches!(result, Err(ApiError::CodexThread(_))));
-    assert!(thread_store_get(&state, thread_id).await.unwrap().is_some());
+    assert!(task_store_get(&state, thread_id).await.unwrap().is_some());
     assert!(
-        thread_store_get_archived(&state, thread_id)
+        task_store_get_archived(&state, thread_id)
             .await
             .unwrap()
             .is_none()
@@ -597,7 +929,7 @@ async fn restore_failure_keeps_the_task_in_the_archived_membership() {
     )]);
     let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
     manage_test_thread(&state, thread_id, root.path()).await;
-    thread_store_archive(&state, thread_id)
+    task_store_archive(&state, thread_id)
         .await
         .unwrap()
         .unwrap();
@@ -605,9 +937,9 @@ async fn restore_failure_keeps_the_task_in_the_archived_membership() {
     let result = task_restore(State(state.clone()), AxumPath(thread_id.to_string())).await;
 
     assert!(matches!(result, Err(ApiError::CodexThread(_))));
-    assert!(thread_store_get(&state, thread_id).await.unwrap().is_none());
+    assert!(task_store_get(&state, thread_id).await.unwrap().is_none());
     assert!(
-        thread_store_get_archived(&state, thread_id)
+        task_store_get_archived(&state, thread_id)
             .await
             .unwrap()
             .is_some()
@@ -634,12 +966,12 @@ async fn archived_list_fails_as_a_whole_without_updating_recency_on_read_error()
     let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
     for thread_id in [good_id, failed_id] {
         manage_test_thread(&state, thread_id, root.path()).await;
-        thread_store_archive(&state, thread_id)
+        task_store_archive(&state, thread_id)
             .await
             .unwrap()
             .unwrap();
     }
-    let before = thread_store_get_archived(&state, good_id)
+    let before = task_store_get_archived(&state, good_id)
         .await
         .unwrap()
         .unwrap()
@@ -650,7 +982,7 @@ async fn archived_list_fails_as_a_whole_without_updating_recency_on_read_error()
 
     assert!(matches!(result, Err(ApiError::CodexThread(_))));
     assert_eq!(
-        thread_store_get_archived(&state, good_id)
+        task_store_get_archived(&state, good_id)
             .await
             .unwrap()
             .unwrap()
@@ -680,7 +1012,7 @@ async fn managed_list_fails_as_a_whole_without_updating_recency_on_read_error() 
     let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
     manage_test_thread(&state, good_id, root.path()).await;
     manage_test_thread(&state, failed_id, root.path()).await;
-    let before = thread_store_get(&state, good_id)
+    let before = task_store_get(&state, good_id)
         .await
         .unwrap()
         .unwrap()
@@ -690,7 +1022,7 @@ async fn managed_list_fails_as_a_whole_without_updating_recency_on_read_error() 
 
     assert!(matches!(result, Err(ApiError::CodexThread(_))));
     assert_eq!(
-        thread_store_get(&state, good_id)
+        task_store_get(&state, good_id)
             .await
             .unwrap()
             .unwrap()
@@ -767,7 +1099,7 @@ async fn task_prompt_persists_the_applied_model_and_reasoning_effort() {
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
-    thread_store_update_composer_settings(&state, thread_id, Some("gpt-5.6-luna"), Some("medium"))
+    task_store_update_composer_settings(&state, thread_id, Some("gpt-5.6-luna"), Some("medium"))
         .await
         .unwrap();
 
@@ -788,7 +1120,7 @@ async fn task_prompt_persists_the_applied_model_and_reasoning_effort() {
     .expect("follow-up prompt succeeds");
 
     assert!(!response.0.steered);
-    let stored = thread_store_get(&state, thread_id).await.unwrap().unwrap();
+    let stored = task_store_get(&state, thread_id).await.unwrap().unwrap();
     assert_eq!(stored.model.as_deref(), Some("gpt-5.6-sol"));
     assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
     let requests = client.mock_requests().await;
@@ -801,6 +1133,494 @@ async fn task_prompt_persists_the_applied_model_and_reasoning_effort() {
     );
     assert_eq!(requests[2].1["model"], "gpt-5.6-sol");
     assert_eq!(requests[2].1["effort"], "xhigh");
+}
+
+#[tokio::test]
+async fn task_prompt_starts_and_steers_the_same_thread_in_its_ready_managed_worktree() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-managed-follow-up";
+    let managed_cwd = root.path().join("managed/worktree-1");
+    initialize_git_repository(root.path());
+    let checkout =
+        crate::git::create_attached_worktree(root.path(), &managed_cwd, "caffold/review", None)
+            .unwrap();
+    let client = CodexThreadClient::mock(vec![
+        crate::codex_app_server::MockCodexResponse::ok(
+            "thread/resume",
+            resumed_task(thread_id, root.path()),
+        ),
+        crate::codex_app_server::MockCodexResponse::ok("model/list", current_model_list_response()),
+        crate::codex_app_server::MockCodexResponse::ok(
+            "turn/start",
+            json!({
+                "turn": {
+                    "id": "turn-managed-follow-up",
+                    "items": [],
+                    "status": "inProgress"
+                }
+            }),
+        ),
+        crate::codex_app_server::MockCodexResponse::ok(
+            "turn/steer",
+            json!({ "turnId": "turn-managed-follow-up" }),
+        ),
+    ]);
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+    state
+        .task_store
+        .create_worktree(ManagedWorktree {
+            worktree_id: "worktree-1".to_string(),
+            thread_id: Some(thread_id.to_string()),
+            repository_git_dir: checkout.common_dir.display().to_string(),
+            worktree_path: managed_cwd.display().to_string(),
+            branch_name: checkout.branch_name,
+            head_sha: checkout.head_sha,
+            state: ManagedWorktreeState::Ready,
+            created_at_ms: 1,
+            updated_at_ms: 1,
+        })
+        .unwrap();
+
+    let response = task_prompt(
+        State(state.clone()),
+        AxumPath(thread_id.to_string()),
+        Query(TasksQuery { cursor: None }),
+        Json(TaskPromptRequest {
+            prompt: "Review the issue now".to_string(),
+            images: Vec::new(),
+            model: None,
+            effort: None,
+            permission_mode: None,
+            active_turn_id: None,
+        }),
+    )
+    .await
+    .expect("managed follow-up prompt succeeds");
+
+    assert!(!response.0.steered);
+    let requests = client.mock_requests().await;
+    let turn_start = requests.last().unwrap();
+    assert_eq!(turn_start.0, "turn/start");
+    assert_eq!(turn_start.1["threadId"], thread_id);
+    assert_eq!(turn_start.1["cwd"], managed_cwd.display().to_string());
+    assert_eq!(
+        state
+            .codex_sessions
+            .snapshot(thread_id)
+            .await
+            .unwrap()
+            .thread
+            .unwrap()
+            .cwd,
+        managed_cwd.display().to_string()
+    );
+
+    let syncing = state.codex_sessions.begin_external_sync(thread_id).await;
+    state
+        .codex_sessions
+        .apply_external_read_sync(
+            thread_id,
+            syncing.revision,
+            serde_json::from_value(json!({
+                "id": thread_id,
+                "preview": "Managed follow-up",
+                "status": { "type": "active", "activeFlags": [] },
+                "cwd": root.path().display().to_string(),
+                "createdAt": 1.0,
+                "updatedAt": 2.0,
+                "turns": []
+            }))
+            .unwrap(),
+            serde_json::from_value(json!({
+                "data": [{
+                    "id": "turn-managed-follow-up",
+                    "items": [],
+                    "status": "inProgress"
+                }],
+                "nextCursor": null,
+                "backwardsCursor": null
+            }))
+            .unwrap(),
+        )
+        .await;
+    let snapshot = state.codex_sessions.snapshot(thread_id).await.unwrap();
+    assert_eq!(
+        snapshot.thread.unwrap().cwd,
+        root.path().display().to_string()
+    );
+    assert_eq!(
+        snapshot.active_turn_cwd.as_deref(),
+        Some(managed_cwd.to_str().unwrap())
+    );
+
+    let response = task_prompt(
+        State(state),
+        AxumPath(thread_id.to_string()),
+        Query(TasksQuery { cursor: None }),
+        Json(TaskPromptRequest {
+            prompt: "Steer inside the managed worktree".to_string(),
+            images: Vec::new(),
+            model: None,
+            effort: None,
+            permission_mode: None,
+            active_turn_id: Some("turn-managed-follow-up".to_string()),
+        }),
+    )
+    .await
+    .expect("managed active turn remains steerable after external sync");
+
+    assert!(response.0.steered);
+    assert_eq!(
+        client
+            .mock_requests()
+            .await
+            .iter()
+            .map(|(method, _)| method.as_str())
+            .collect::<Vec<_>>(),
+        ["thread/resume", "turn/start", "turn/steer"]
+    );
+}
+
+#[tokio::test]
+async fn task_prompt_rejects_an_unavailable_ready_worktree_before_calling_codex() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-missing-ready-worktree";
+    initialize_git_repository(root.path());
+    let repository = crate::git::managed_repository(root.path()).unwrap();
+    let missing = root.path().join("managed/missing-worktree");
+    let client = CodexThreadClient::mock(Vec::new());
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+    state
+        .task_store
+        .create_worktree(ManagedWorktree {
+            worktree_id: "worktree-missing".to_string(),
+            thread_id: Some(thread_id.to_string()),
+            repository_git_dir: repository.common_dir.display().to_string(),
+            worktree_path: missing.display().to_string(),
+            branch_name: "caffold/missing".to_string(),
+            head_sha: repository.head_sha,
+            state: ManagedWorktreeState::Ready,
+            created_at_ms: 1,
+            updated_at_ms: 1,
+        })
+        .unwrap();
+
+    let error = task_prompt(
+        State(state),
+        AxumPath(thread_id.to_string()),
+        Query(TasksQuery { cursor: None }),
+        Json(TaskPromptRequest {
+            prompt: "Do not start in a missing directory".to_string(),
+            images: Vec::new(),
+            model: None,
+            effort: None,
+            permission_mode: None,
+            active_turn_id: None,
+        }),
+    )
+    .await
+    .unwrap_err();
+
+    assert!(matches!(
+        error,
+        ApiError::BadRequest {
+            code: "managed_worktree_unavailable",
+            message,
+        } if message.contains(&missing.display().to_string())
+    ));
+    assert!(client.mock_requests().await.is_empty());
+}
+
+#[tokio::test]
+async fn task_prompt_blocks_a_transfer_that_requires_manual_recovery() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-recovery-required";
+    let client = CodexThreadClient::mock(Vec::new());
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+    state
+        .task_store
+        .create_worktree(ManagedWorktree {
+            worktree_id: "worktree-recovery".to_string(),
+            thread_id: Some(thread_id.to_string()),
+            repository_git_dir: root.path().join(".git").display().to_string(),
+            worktree_path: root.path().join("managed/recovery").display().to_string(),
+            branch_name: "caffold/recovery".to_string(),
+            head_sha: "deadbeef".to_string(),
+            state: ManagedWorktreeState::RecoveryRequired,
+            created_at_ms: 1,
+            updated_at_ms: 1,
+        })
+        .unwrap();
+
+    let error = task_prompt(
+        State(state),
+        AxumPath(thread_id.to_string()),
+        Query(TasksQuery { cursor: None }),
+        Json(TaskPromptRequest {
+            prompt: "Do not lose my work".to_string(),
+            images: Vec::new(),
+            model: None,
+            effort: None,
+            permission_mode: None,
+            active_turn_id: None,
+        }),
+    )
+    .await
+    .unwrap_err();
+
+    assert!(matches!(
+        error,
+        ApiError::BadRequest {
+            code: "worktree_transfer_recovery_required",
+            ..
+        }
+    ));
+    assert!(client.mock_requests().await.is_empty());
+}
+
+#[tokio::test]
+async fn task_prompt_does_not_steer_the_isolation_turn_in_the_old_checkout() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-isolation-finishing";
+    let managed_cwd = root.path().join("managed/worktree-1");
+    initialize_git_repository(root.path());
+    let checkout =
+        crate::git::create_attached_worktree(root.path(), &managed_cwd, "caffold/review", None)
+            .unwrap();
+    let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+        "thread/resume",
+        json!({
+            "thread": {
+                "id": thread_id,
+                "preview": "Isolation finishing",
+                "status": { "type": "active", "activeFlags": [] },
+                "cwd": root.path().display().to_string(),
+                "createdAt": 1.0,
+                "updatedAt": 2.0,
+                "turns": []
+            },
+            "initialTurnsPage": {
+                "data": [{
+                    "id": "turn-isolation",
+                    "items": [],
+                    "status": "inProgress"
+                }],
+                "nextCursor": null,
+                "backwardsCursor": null
+            }
+        }),
+    )]);
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+    state
+        .task_store
+        .create_worktree(ManagedWorktree {
+            worktree_id: "worktree-1".to_string(),
+            thread_id: Some(thread_id.to_string()),
+            repository_git_dir: checkout.common_dir.display().to_string(),
+            worktree_path: managed_cwd.display().to_string(),
+            branch_name: checkout.branch_name,
+            head_sha: checkout.head_sha,
+            state: ManagedWorktreeState::Ready,
+            created_at_ms: 1,
+            updated_at_ms: 1,
+        })
+        .unwrap();
+
+    let error = task_prompt(
+        State(state),
+        AxumPath(thread_id.to_string()),
+        Query(TasksQuery { cursor: None }),
+        Json(TaskPromptRequest {
+            prompt: "Do not steer the old turn".to_string(),
+            images: Vec::new(),
+            model: None,
+            effort: None,
+            permission_mode: None,
+            active_turn_id: Some("turn-isolation".to_string()),
+        }),
+    )
+    .await
+    .unwrap_err();
+
+    assert!(matches!(
+        error,
+        ApiError::BadRequest {
+            code: "worktree_transfer_finishing",
+            ..
+        }
+    ));
+    assert_eq!(
+        client
+            .mock_requests()
+            .await
+            .iter()
+            .map(|(method, _)| method.as_str())
+            .collect::<Vec<_>>(),
+        ["thread/resume"]
+    );
+}
+
+#[tokio::test]
+async fn task_prompt_recovers_a_system_error_thread_with_a_new_turn() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-system-error-recovery";
+    let client = CodexThreadClient::mock(vec![
+        crate::codex_app_server::MockCodexResponse::ok(
+            "thread/resume",
+            json!({
+                "thread": {
+                    "id": thread_id,
+                    "preview": "Failed turn recovery regression",
+                    "status": { "type": "systemError" },
+                    "cwd": root.path().display().to_string(),
+                    "createdAt": 1.0,
+                    "updatedAt": 2.0,
+                    "turns": [{
+                        "id": "turn-failed",
+                        "items": [],
+                        "status": "failed"
+                    }]
+                },
+                "initialTurnsPage": {
+                    "data": [{
+                        "id": "turn-failed",
+                        "items": [],
+                        "status": "failed"
+                    }],
+                    "nextCursor": null,
+                    "backwardsCursor": null
+                }
+            }),
+        ),
+        crate::codex_app_server::MockCodexResponse::ok(
+            "turn/start",
+            json!({
+                "turn": {
+                    "id": "turn-recovery",
+                    "items": [],
+                    "status": "inProgress"
+                }
+            }),
+        ),
+    ]);
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+
+    let response = task_prompt(
+        State(state.clone()),
+        AxumPath(thread_id.to_string()),
+        Query(TasksQuery { cursor: None }),
+        Json(TaskPromptRequest {
+            prompt: "Retry after the failed turn".to_string(),
+            images: Vec::new(),
+            model: None,
+            effort: None,
+            permission_mode: None,
+            active_turn_id: None,
+        }),
+    )
+    .await
+    .expect("system error follow-up starts a recovery turn");
+
+    assert!(!response.0.steered);
+    assert_eq!(response.0.turn_id, "turn-recovery");
+    assert_eq!(
+        client
+            .mock_requests()
+            .await
+            .into_iter()
+            .map(|(method, _)| method)
+            .collect::<Vec<_>>(),
+        ["thread/resume", "turn/start"]
+    );
+    assert_eq!(
+        state
+            .codex_sessions
+            .snapshot(thread_id)
+            .await
+            .expect("recovered session")
+            .active_turn_id
+            .as_deref(),
+        Some("turn-recovery")
+    );
+}
+
+#[tokio::test]
+async fn task_prompt_resumes_a_not_loaded_thread_before_starting_a_new_turn() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-not-loaded-recovery";
+    let resume = |status: &str| {
+        json!({
+            "thread": {
+                "id": thread_id,
+                "preview": "Restored thread recovery regression",
+                "status": { "type": status },
+                "cwd": root.path().display().to_string(),
+                "createdAt": 1.0,
+                "updatedAt": 2.0,
+                "turns": []
+            },
+            "initialTurnsPage": {
+                "data": [],
+                "nextCursor": null,
+                "backwardsCursor": null
+            }
+        })
+    };
+    let client = CodexThreadClient::mock(vec![
+        crate::codex_app_server::MockCodexResponse::ok("thread/resume", resume("notLoaded")),
+        crate::codex_app_server::MockCodexResponse::ok("thread/resume", resume("idle")),
+        crate::codex_app_server::MockCodexResponse::ok(
+            "turn/start",
+            json!({
+                "turn": {
+                    "id": "turn-after-restore",
+                    "items": [],
+                    "status": "inProgress"
+                }
+            }),
+        ),
+    ]);
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+
+    let response = task_prompt(
+        State(state),
+        AxumPath(thread_id.to_string()),
+        Query(TasksQuery { cursor: None }),
+        Json(TaskPromptRequest {
+            prompt: "Continue after restore".to_string(),
+            images: Vec::new(),
+            model: None,
+            effort: None,
+            permission_mode: None,
+            active_turn_id: None,
+        }),
+    )
+    .await
+    .expect("not-loaded follow-up resumes and starts a turn");
+
+    assert!(!response.0.steered);
+    assert_eq!(response.0.turn_id, "turn-after-restore");
+    assert_eq!(
+        client
+            .mock_requests()
+            .await
+            .into_iter()
+            .map(|(method, _)| method)
+            .collect::<Vec<_>>(),
+        ["thread/resume", "thread/resume", "turn/start"]
+    );
 }
 
 #[tokio::test]
@@ -998,11 +1818,11 @@ async fn mark_seen_tracks_completion_separately_from_canonical_recency() {
     let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
     manage_test_thread(&state, thread_id, root.path()).await;
     state
-        .thread_store
+        .task_store
         .update_completed_at(thread_id, 9_000)
         .unwrap();
     assert_eq!(
-        thread_store_get(&state, thread_id)
+        task_store_get(&state, thread_id)
             .await
             .unwrap()
             .unwrap()
@@ -1015,7 +1835,7 @@ async fn mark_seen_tracks_completion_separately_from_canonical_recency() {
         .unwrap();
 
     assert!(!task.0.unseen);
-    let managed = thread_store_get(&state, thread_id).await.unwrap().unwrap();
+    let managed = task_store_get(&state, thread_id).await.unwrap().unwrap();
     assert_eq!(managed.last_seen_activity_ms, Some(9_000));
     assert_eq!(managed.last_completed_at_ms, Some(9_000));
     assert_eq!(managed.last_observed_recency_ms, Some(10_000));

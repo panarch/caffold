@@ -209,6 +209,13 @@ class CaffoldTasksPage extends HTMLElement {
       : this.taskNew()?.selectedContextPath() ?? "";
   }
 
+  newTaskContextPath() {
+    this.ensureRendered();
+    return this.view === "detail"
+      ? this.taskDetail()?.newTaskContextPath() ?? ""
+      : this.taskNew()?.selectedContextPath() ?? "";
+  }
+
   closeActiveSubview() {
     return this.taskDetail()?.closeActiveSubview() ?? false;
   }
@@ -262,7 +269,7 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   requestNewTaskRoute() {
-    const cwd = this.selectedTaskContextPath();
+    const cwd = this.newTaskContextPath();
     this.requestRoute({
       kind: "tasks",
       new: true,

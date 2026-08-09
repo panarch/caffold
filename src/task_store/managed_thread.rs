@@ -11,7 +11,7 @@ use gluesql::{
     prelude::{Glue, SelectResultExt},
 };
 
-use super::{Result, ThreadStoreError};
+use super::{Result, TaskStoreError};
 
 pub(super) const TABLE_NAME: &str = "managed_threads";
 
@@ -82,7 +82,7 @@ pub(super) struct ManagedThreadRow {
 }
 
 impl TryFrom<&ManagedThread> for ManagedThreadRow {
-    type Error = ThreadStoreError;
+    type Error = TaskStoreError;
 
     fn try_from(thread: &ManagedThread) -> Result<Self> {
         Ok(Self {
@@ -112,7 +112,7 @@ impl TryFrom<&ManagedThread> for ManagedThreadRow {
 }
 
 impl TryFrom<ManagedThreadRow> for ManagedThread {
-    type Error = ThreadStoreError;
+    type Error = TaskStoreError;
 
     fn try_from(row: ManagedThreadRow) -> Result<Self> {
         Ok(Self {
@@ -172,10 +172,10 @@ where
     let actual = glue
         .storage
         .fetch_schema(TABLE_NAME)?
-        .ok_or(ThreadStoreError::IncompleteSchema)?;
+        .ok_or(TaskStoreError::IncompleteSchema)?;
     let expected = Schema::from_ddl(&expected_ddl())?;
     if actual.column_defs != expected.column_defs {
-        return Err(ThreadStoreError::InvalidSchemaTable(TABLE_NAME.to_string()));
+        return Err(TaskStoreError::InvalidSchemaTable(TABLE_NAME.to_string()));
     }
     Ok(())
 }
@@ -205,7 +205,7 @@ where
         update_all(glue, &thread)?;
     } else {
         if get_archived(glue, &thread.thread_id)?.is_some() {
-            return Err(ThreadStoreError::ArchivedThreadCannotBeClaimed(
+            return Err(TaskStoreError::ArchivedThreadCannotBeClaimed(
                 thread.thread_id,
             ));
         }
@@ -417,10 +417,10 @@ pub(super) fn columns() -> Vec<ExprNode<'static>> {
 }
 
 pub(super) fn to_db_timestamp(value: u64, field: &'static str) -> Result<NaiveDateTime> {
-    let value = i64::try_from(value).map_err(|_| ThreadStoreError::InvalidRow(field))?;
+    let value = i64::try_from(value).map_err(|_| TaskStoreError::InvalidRow(field))?;
     DateTime::<Utc>::from_timestamp_millis(value)
         .map(|timestamp| timestamp.naive_utc())
-        .ok_or(ThreadStoreError::InvalidRow(field))
+        .ok_or(TaskStoreError::InvalidRow(field))
 }
 
 fn get_by_membership<S>(
@@ -566,14 +566,14 @@ fn expected_ddl() -> String {
 fn expect_single_update(payload: Payload) -> Result<()> {
     match payload {
         Payload::Update(1) => Ok(()),
-        _ => Err(ThreadStoreError::UnexpectedPayload),
+        _ => Err(TaskStoreError::UnexpectedPayload),
     }
 }
 
 fn deleted(payload: Payload) -> Result<bool> {
     match payload {
         Payload::Delete(count) => Ok(count > 0),
-        _ => Err(ThreadStoreError::UnexpectedPayload),
+        _ => Err(TaskStoreError::UnexpectedPayload),
     }
 }
 
@@ -609,7 +609,7 @@ fn from_db_timestamp(value: NaiveDateTime, field: &'static str) -> Result<u64> {
         .and_utc()
         .timestamp_millis()
         .try_into()
-        .map_err(|_| ThreadStoreError::InvalidRow(field))
+        .map_err(|_| TaskStoreError::InvalidRow(field))
 }
 
 fn from_optional_db_timestamp(
@@ -664,15 +664,11 @@ fn decode_cursor(cursor: Option<&str>) -> Result<Option<ManagedThreadCursor>> {
         .strip_prefix("v2:")
         .and_then(|value| value.split_once(':'))
         .filter(|(_, thread_id)| !thread_id.is_empty())
-        .ok_or(ThreadStoreError::InvalidCursor)?;
+        .ok_or(TaskStoreError::InvalidCursor)?;
     let last_observed_recency_ms = if recency == "-" {
         None
     } else {
-        Some(
-            recency
-                .parse()
-                .map_err(|_| ThreadStoreError::InvalidCursor)?,
-        )
+        Some(recency.parse().map_err(|_| TaskStoreError::InvalidCursor)?)
     };
     Ok(Some(ManagedThreadCursor {
         last_observed_recency_ms,
@@ -704,7 +700,7 @@ mod tests {
         let missing = Glue::new(MemoryStorage::default());
         assert!(matches!(
             validate_table(&missing),
-            Err(ThreadStoreError::IncompleteSchema)
+            Err(TaskStoreError::IncompleteSchema)
         ));
 
         let mut invalid = Glue::new(MemoryStorage::default());
@@ -715,7 +711,7 @@ mod tests {
             .unwrap();
         assert!(matches!(
             validate_table(&invalid),
-            Err(ThreadStoreError::InvalidSchemaTable(table)) if table == TABLE_NAME
+            Err(TaskStoreError::InvalidSchemaTable(table)) if table == TABLE_NAME
         ));
     }
 
@@ -740,7 +736,7 @@ mod tests {
         invalid.claimed_at_ms = u64::MAX;
         assert!(matches!(
             ManagedThreadRow::try_from(&invalid),
-            Err(ThreadStoreError::InvalidRow("claimed_at_ms"))
+            Err(TaskStoreError::InvalidRow("claimed_at_ms"))
         ));
     }
 
@@ -754,7 +750,7 @@ mod tests {
             make_invalid(&mut thread);
             assert!(matches!(
                 ManagedThreadRow::try_from(&thread),
-                Err(ThreadStoreError::InvalidRow(found)) if found == field
+                Err(TaskStoreError::InvalidRow(found)) if found == field
             ));
         }
 
@@ -786,7 +782,7 @@ mod tests {
             make_invalid(&mut row, before_epoch);
             assert!(matches!(
                 ManagedThread::try_from(row),
-                Err(ThreadStoreError::InvalidRow(found)) if found == field
+                Err(TaskStoreError::InvalidRow(found)) if found == field
             ));
         }
 
@@ -875,7 +871,7 @@ mod tests {
         for cursor in ["v1:1:task", "v2:not-a-number:task", "v2:1:"] {
             assert!(matches!(
                 list(&mut glue, Some(cursor), 1),
-                Err(ThreadStoreError::InvalidCursor)
+                Err(TaskStoreError::InvalidCursor)
             ));
         }
         assert_eq!(list(&mut glue, Some("  "), 1).unwrap(), (Vec::new(), None));
@@ -972,7 +968,7 @@ mod tests {
             .expect_err("claim must not bypass archived membership");
         assert!(matches!(
             error,
-            ThreadStoreError::ArchivedThreadCannotBeClaimed(thread_id)
+            TaskStoreError::ArchivedThreadCannotBeClaimed(thread_id)
                 if thread_id == "archived"
         ));
         assert!(get(&mut glue, "archived").unwrap().is_none());
@@ -1033,13 +1029,13 @@ mod tests {
         assert!(expect_single_update(Payload::Update(1)).is_ok());
         assert!(matches!(
             expect_single_update(Payload::Update(0)),
-            Err(ThreadStoreError::UnexpectedPayload)
+            Err(TaskStoreError::UnexpectedPayload)
         ));
         assert!(deleted(Payload::Delete(1)).unwrap());
         assert!(!deleted(Payload::Delete(0)).unwrap());
         assert!(matches!(
             deleted(Payload::Update(0)),
-            Err(ThreadStoreError::UnexpectedPayload)
+            Err(TaskStoreError::UnexpectedPayload)
         ));
     }
 }

@@ -9,13 +9,15 @@ use super::events::{
     TaskEventRecord, TaskEvents, event_id_from_params, now_ms, seconds_to_ms_value,
     task_event_from_item_lifecycle, task_event_from_raw_response_item, task_event_record,
 };
+use super::{lifecycle::TaskLifecycle, worktrees::IsolateOutcome};
 use crate::{
     codex_app_server::{
         CodexNotification, CodexRuntimeEvent, CodexServerRequest, CodexThreadClient,
-        CodexThreadError, RENAME_CURRENT_THREAD_TOOL_NAME, ThreadStatus, TurnStatus,
+        CodexThreadError, ISOLATE_CURRENT_TASK_TOOL_NAME, RENAME_CURRENT_THREAD_TOOL_NAME,
+        ThreadStatus, TurnStatus,
     },
     codex_thread_sessions::{CodexThreadSessions, ThreadSessionSnapshot},
-    thread_store::ThreadStore,
+    task_store::TaskStore,
 };
 
 #[derive(Clone)]
@@ -23,7 +25,8 @@ pub(in crate::app) struct CodexRuntime {
     process: Arc<CodexProcess>,
     sessions: CodexThreadSessions,
     events: TaskEvents,
-    thread_store: ThreadStore,
+    task_store: TaskStore,
+    lifecycle: Option<TaskLifecycle>,
     approvals: Arc<Mutex<HashMap<String, PendingApproval>>>,
     signals: broadcast::Sender<CodexRuntimeSignal>,
     shutdown: broadcast::Sender<()>,
@@ -87,6 +90,22 @@ struct RenameCurrentThreadArguments {
     name: String,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct IsolateCurrentTaskArguments {
+    branch_name: Option<String>,
+    #[serde(default)]
+    include_changes: bool,
+}
+
+struct DynamicToolInvocation {
+    request_id: JsonValue,
+    thread_id: String,
+    tool: String,
+    namespace: Option<String>,
+    arguments: JsonValue,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ApprovalKind {
     Command,
@@ -106,7 +125,7 @@ impl CodexRuntime {
     pub(in crate::app) fn new(
         sessions: CodexThreadSessions,
         events: TaskEvents,
-        thread_store: ThreadStore,
+        task_store: TaskStore,
         shutdown: broadcast::Sender<()>,
     ) -> Self {
         let (signals, _) = broadcast::channel(64);
@@ -114,11 +133,17 @@ impl CodexRuntime {
             process: Arc::new(CodexProcess::default()),
             sessions,
             events,
-            thread_store,
+            task_store,
+            lifecycle: None,
             approvals: Arc::new(Mutex::new(HashMap::new())),
             signals,
             shutdown,
         }
+    }
+
+    pub(in crate::app) fn with_lifecycle(mut self, lifecycle: TaskLifecycle) -> Self {
+        self.lifecycle = Some(lifecycle);
+        self
     }
 
     pub(in crate::app) fn subscribe(&self) -> broadcast::Receiver<CodexRuntimeSignal> {
@@ -322,7 +347,7 @@ impl CodexRuntime {
                                 }
                             }
                             CodexRuntimeEvent::ServerRequest(request) => {
-                                runtime.handle_server_request(&client, request).await;
+                                runtime.handle_server_request(&client, generation, request).await;
                             }
                             CodexRuntimeEvent::Diagnostic { message } => {
                                 eprintln!("{message}");
@@ -372,12 +397,12 @@ impl CodexRuntime {
                 return;
             }
         };
-        let thread_store = self.thread_store.clone();
+        let task_store = self.task_store.clone();
         let managed_thread_ids = match tokio::task::spawn_blocking(move || {
             loaded_thread_ids
                 .into_iter()
                 .map(|thread_id| {
-                    thread_store
+                    task_store
                         .get(&thread_id)
                         .map(|managed| managed.map(|_| thread_id))
                 })
@@ -539,7 +564,7 @@ impl CodexRuntime {
                     .filter(|value| *value > 0)
                     .unwrap_or_else(now_ms);
                 if let Err(error) = self
-                    .thread_store
+                    .task_store
                     .update_completed_at(&thread_id, completed_ms)
                 {
                     eprintln!("failed to persist completed turn for {thread_id}: {error}");
@@ -568,7 +593,12 @@ impl CodexRuntime {
         }
     }
 
-    async fn handle_server_request(&self, client: &CodexThreadClient, request: CodexServerRequest) {
+    async fn handle_server_request(
+        &self,
+        client: &CodexThreadClient,
+        generation: u64,
+        request: CodexServerRequest,
+    ) {
         let (request_id, thread_id, params, kind) = match request {
             CodexServerRequest::DynamicToolCall {
                 id,
@@ -578,8 +608,18 @@ impl CodexRuntime {
                 arguments,
                 ..
             } => {
-                self.handle_dynamic_tool_call(client, id, thread_id, tool, namespace, arguments)
-                    .await;
+                self.handle_dynamic_tool_call(
+                    client,
+                    generation,
+                    DynamicToolInvocation {
+                        request_id: id,
+                        thread_id,
+                        tool,
+                        namespace,
+                        arguments,
+                    },
+                )
+                .await;
                 return;
             }
             CodexServerRequest::CommandExecutionApproval {
@@ -632,14 +672,25 @@ impl CodexRuntime {
     async fn handle_dynamic_tool_call(
         &self,
         client: &CodexThreadClient,
-        request_id: JsonValue,
-        thread_id: String,
-        tool: String,
-        namespace: Option<String>,
-        arguments: JsonValue,
+        generation: u64,
+        invocation: DynamicToolInvocation,
     ) {
+        let DynamicToolInvocation {
+            request_id,
+            thread_id,
+            tool,
+            namespace,
+            arguments,
+        } = invocation;
         let result = self
-            .execute_dynamic_tool(client, &thread_id, &tool, namespace.as_deref(), arguments)
+            .execute_dynamic_tool(
+                client,
+                generation,
+                &thread_id,
+                &tool,
+                namespace.as_deref(),
+                arguments,
+            )
             .await;
         let (success, text) = match result {
             Ok(text) => (true, text),
@@ -665,12 +716,18 @@ impl CodexRuntime {
     async fn execute_dynamic_tool(
         &self,
         client: &CodexThreadClient,
+        _generation: u64,
         thread_id: &str,
         tool: &str,
         namespace: Option<&str>,
         arguments: JsonValue,
     ) -> Result<String, String> {
-        if namespace.is_some() || tool != RENAME_CURRENT_THREAD_TOOL_NAME {
+        if namespace.is_some()
+            || !matches!(
+                tool,
+                RENAME_CURRENT_THREAD_TOOL_NAME | ISOLATE_CURRENT_TASK_TOOL_NAME
+            )
+        {
             let qualified_tool = namespace
                 .map(|namespace| format!("{namespace}.{tool}"))
                 .unwrap_or_else(|| tool.to_string());
@@ -678,29 +735,112 @@ impl CodexRuntime {
                 "Caffold does not support the dynamic tool `{qualified_tool}`."
             ));
         }
-        let RenameCurrentThreadArguments { name } = serde_json::from_value(arguments)
-            .map_err(|_| "The new task name must be a non-empty string.".to_string())?;
-        let name = name.trim();
-        if name.is_empty() {
-            return Err("The new task name must be a non-empty string.".to_string());
+        if self.managed_thread(thread_id).await?.is_none() {
+            return Err(if tool == RENAME_CURRENT_THREAD_TOOL_NAME {
+                "Caffold can only rename tasks that it manages.".to_string()
+            } else {
+                "Caffold can only isolate a task that it manages.".to_string()
+            });
         }
-        if !self.manages_thread(thread_id).await? {
-            return Err("Caffold can only rename tasks that it manages.".to_string());
+        if tool == RENAME_CURRENT_THREAD_TOOL_NAME {
+            let RenameCurrentThreadArguments { name } = serde_json::from_value(arguments)
+                .map_err(|_| "The new task name must be a non-empty string.".to_string())?;
+            let name = name.trim();
+            if name.is_empty() {
+                return Err("The new task name must be a non-empty string.".to_string());
+            }
+            client
+                .set_thread_name(thread_id, name)
+                .await
+                .map_err(|error| format!("Caffold could not rename the current task: {error}"))?;
+            return Ok(format!("Renamed the current Caffold task to `{name}`."));
         }
-        client
-            .set_thread_name(thread_id, name)
+
+        let IsolateCurrentTaskArguments {
+            branch_name,
+            include_changes,
+        } = serde_json::from_value(arguments).map_err(|_| {
+            "Arguments must use an optional non-empty `branchName` and a boolean `includeChanges`."
+                .to_string()
+        })?;
+        let branch_name = branch_name
+            .map(|branch| {
+                let branch = branch.trim().to_string();
+                if branch.is_empty() {
+                    Err("`branchName` must be a non-empty string when provided.".to_string())
+                } else {
+                    Ok(branch)
+                }
+            })
+            .transpose()?;
+        let thread = client
+            .read_thread(thread_id)
             .await
-            .map_err(|error| format!("Caffold could not rename the current task: {error}"))?;
-        Ok(format!("Renamed the current Caffold task to `{name}`."))
+            .map_err(|error| format!("Caffold could not read the current task: {error}"))?;
+        let task_name = thread
+            .name
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .or_else(|| {
+                let preview = thread.preview.trim();
+                (!preview.is_empty()).then_some(preview)
+            })
+            .unwrap_or("task")
+            .to_string();
+        let lifecycle = self
+            .lifecycle
+            .as_ref()
+            .ok_or_else(|| "Caffold task lifecycle is unavailable.".to_string())?;
+        let isolated = lifecycle
+            .isolate_current_task(
+                thread.cwd.into(),
+                thread_id.to_string(),
+                task_name,
+                branch_name,
+                include_changes,
+            )
+            .await
+            .map_err(|error| format!("Caffold could not isolate the current task: {error}"))?;
+        match isolated {
+            IsolateOutcome::AlreadyReady(worktree) => Ok(format!(
+                "The current Caffold task is already isolated on branch `{}` at `{}`. End this turn; the user's next request will continue there.",
+                worktree.branch_name, worktree.worktree_path
+            )),
+            IsolateOutcome::Isolated {
+                worktree,
+                source_warning,
+            } => {
+                let warning = source_warning
+                    .map(|warning| format!(" The original checkout could not be switched to its default branch and remains detached: {warning}"))
+                    .unwrap_or_default();
+                let result = if include_changes {
+                    format!(
+                        "Moved the current Caffold task to branch `{}` at `{}` and preserved its tracked and untracked changes.",
+                        worktree.branch_name, worktree.worktree_path
+                    )
+                } else {
+                    format!(
+                        "Prepared the current Caffold task on branch `{}` at `{}`. Source checkout changes were left in place.",
+                        worktree.branch_name, worktree.worktree_path
+                    )
+                };
+                Ok(format!(
+                    "{result} End this turn; the user's next request will continue there.{warning}"
+                ))
+            }
+        }
     }
 
-    async fn manages_thread(&self, thread_id: &str) -> Result<bool, String> {
-        let store = self.thread_store.clone();
+    async fn managed_thread(
+        &self,
+        thread_id: &str,
+    ) -> Result<Option<crate::task_store::ManagedThread>, String> {
+        let store = self.task_store.clone();
         let thread_id = thread_id.to_string();
         tokio::task::spawn_blocking(move || store.get(&thread_id))
             .await
             .map_err(|error| format!("Caffold could not verify the current task: {error}"))?
-            .map(|thread| thread.is_some())
             .map_err(|error| format!("Caffold could not verify the current task: {error}"))
     }
 
@@ -780,8 +920,8 @@ impl CodexRuntime {
     }
 
     #[cfg(test)]
-    pub(in crate::app) fn test_thread_store(&self) -> ThreadStore {
-        self.thread_store.clone()
+    pub(in crate::app) fn test_task_store(&self) -> TaskStore {
+        self.task_store.clone()
     }
 
     #[cfg(test)]
@@ -790,7 +930,7 @@ impl CodexRuntime {
         client: &CodexThreadClient,
         request: CodexServerRequest,
     ) {
-        self.handle_server_request(client, request).await;
+        self.handle_server_request(client, 1, request).await;
     }
 
     #[cfg(test)]
@@ -896,4 +1036,239 @@ fn approval_id_from_request(request_id: &JsonValue, params: &JsonValue) -> Strin
             JsonValue::Number(value) => value.to_string(),
             _ => request_id.to_string(),
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{path::Path, process::Command, sync::Arc};
+
+    use serde_json::{Value as JsonValue, json};
+
+    use super::*;
+    use crate::{
+        app::tasks::{routes::TaskListEvents, worktrees::ManagedWorktrees},
+        codex_app_server::{self, MockCodexResponse},
+        fs::RootedFs,
+        task_store::ManagedThread,
+    };
+
+    fn initialize_repository(path: &Path) {
+        std::fs::create_dir(path).unwrap();
+        for arguments in [
+            &["init"][..],
+            &["config", "user.email", "test@example.com"],
+            &["config", "user.name", "Caffold Test"],
+        ] {
+            let output = Command::new("git")
+                .arg("-C")
+                .arg(path)
+                .args(arguments)
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+        }
+        std::fs::write(path.join("README.md"), "initial\n").unwrap();
+        for arguments in [&["add", "README.md"][..], &["commit", "-m", "Initial"]] {
+            let output = Command::new("git")
+                .arg("-C")
+                .arg(path)
+                .args(arguments)
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+        }
+    }
+
+    fn dynamic_tool_request(
+        thread_id: &str,
+        tool: &str,
+        arguments: JsonValue,
+    ) -> CodexServerRequest {
+        codex_app_server::decode_server_request(
+            json!(31),
+            "item/tool/call",
+            json!({
+                "threadId": thread_id,
+                "turnId": "turn_1",
+                "callId": "call_1",
+                "tool": tool,
+                "arguments": arguments
+            }),
+        )
+        .unwrap()
+    }
+
+    fn test_runtime(store: TaskStore) -> CodexRuntime {
+        let (shutdown, _) = broadcast::channel(1);
+        CodexRuntime::new(
+            CodexThreadSessions::default(),
+            TaskEvents::default(),
+            store,
+            shutdown,
+        )
+    }
+
+    #[tokio::test]
+    async fn isolate_tool_prepares_the_same_task_without_requesting_source_changes() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        initialize_repository(&source);
+
+        let fs = Arc::new(RootedFs::new(root.path()).unwrap());
+        let store = TaskStore::memory().unwrap();
+        store
+            .claim(
+                ManagedThread::new(
+                    "thread_source",
+                    None,
+                    Some("gpt-test".to_string()),
+                    Some("high".to_string()),
+                ),
+                1,
+            )
+            .unwrap();
+        let sessions = CodexThreadSessions::default();
+        let events = TaskEvents::default();
+        let worktrees = ManagedWorktrees::new(
+            fs.clone(),
+            store.clone(),
+            root.path().join("managed-worktrees"),
+        )
+        .unwrap();
+        let lifecycle = TaskLifecycle::new(
+            fs,
+            sessions.clone(),
+            events.clone(),
+            TaskListEvents::new(),
+            store.clone(),
+            worktrees,
+        );
+        let (shutdown, _) = broadcast::channel(1);
+        let runtime =
+            CodexRuntime::new(sessions, events, store.clone(), shutdown).with_lifecycle(lifecycle);
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/read",
+            json!({
+                "thread": {
+                    "id": "thread_source",
+                    "name": "Review issue 42",
+                    "preview": "Source task",
+                    "status": { "type": "idle" },
+                    "cwd": source.display().to_string(),
+                    "createdAt": 1.0,
+                    "updatedAt": 1.0,
+                    "turns": []
+                }
+            }),
+        )]);
+
+        runtime
+            .handle_test_server_request(
+                &client,
+                dynamic_tool_request("thread_source", ISOLATE_CURRENT_TASK_TOOL_NAME, json!({})),
+            )
+            .await;
+
+        let records = store.managed_worktrees().unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].thread_id.as_deref(), Some("thread_source"));
+        assert!(
+            records[0]
+                .branch_name
+                .starts_with("caffold/review-issue-42-")
+        );
+        assert!(Path::new(&records[0].worktree_path).is_dir());
+        let requests = client.mock_requests().await;
+        assert_eq!(
+            requests
+                .iter()
+                .map(|(method, _)| method.as_str())
+                .collect::<Vec<_>>(),
+            ["thread/read"]
+        );
+        let response = &client.mock_server_responses().await[0].1;
+        assert_eq!(response["success"], true);
+        assert_eq!(
+            response["contentItems"][0]["text"],
+            format!(
+                "Prepared the current Caffold task on branch `{}` at `{}`. Source checkout changes were left in place. End this turn; the user's next request will continue there.",
+                records[0].branch_name, records[0].worktree_path
+            )
+        );
+    }
+
+    #[test]
+    fn isolate_tool_defaults_change_transfer_to_false_and_accepts_explicit_opt_in() {
+        let default = serde_json::from_value::<IsolateCurrentTaskArguments>(json!({})).unwrap();
+        assert!(!default.include_changes);
+        let explicit = serde_json::from_value::<IsolateCurrentTaskArguments>(
+            json!({ "includeChanges": true }),
+        )
+        .unwrap();
+        assert!(explicit.include_changes);
+    }
+
+    #[tokio::test]
+    async fn isolate_tool_rejects_threads_outside_caffold_management() {
+        let store = TaskStore::memory().unwrap();
+        let runtime = test_runtime(store);
+        let client = CodexThreadClient::mock(Vec::new());
+
+        runtime
+            .handle_test_server_request(
+                &client,
+                dynamic_tool_request("external_thread", ISOLATE_CURRENT_TASK_TOOL_NAME, json!({})),
+            )
+            .await;
+
+        assert!(client.mock_requests().await.is_empty());
+        assert_eq!(
+            client.mock_server_responses().await[0].1,
+            json!({
+                "contentItems": [{
+                    "type": "inputText",
+                    "text": "Caffold can only isolate a task that it manages."
+                }],
+                "success": false
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn isolate_tool_rejects_invalid_arguments_before_reading_the_thread() {
+        let store = TaskStore::memory().unwrap();
+        store
+            .claim(ManagedThread::new("thread_1", None, None, None), 1)
+            .unwrap();
+        let runtime = test_runtime(store);
+        let client = CodexThreadClient::mock(Vec::new());
+
+        for arguments in [
+            json!({ "branchName": " " }),
+            json!({ "prompt": "unexpected" }),
+            json!({ "includeChanges": "yes" }),
+        ] {
+            runtime
+                .handle_test_server_request(
+                    &client,
+                    dynamic_tool_request("thread_1", ISOLATE_CURRENT_TASK_TOOL_NAME, arguments),
+                )
+                .await;
+        }
+
+        assert!(client.mock_requests().await.is_empty());
+        let responses = client.mock_server_responses().await;
+        assert_eq!(responses.len(), 3);
+        assert_eq!(
+            responses
+                .iter()
+                .map(|(_, response)| response["contentItems"][0]["text"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            [
+                "`branchName` must be a non-empty string when provided.",
+                "Arguments must use an optional non-empty `branchName` and a boolean `includeChanges`.",
+                "Arguments must use an optional non-empty `branchName` and a boolean `includeChanges`.",
+            ]
+        );
+    }
 }

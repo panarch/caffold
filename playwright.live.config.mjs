@@ -1,10 +1,22 @@
 import { defineConfig } from "@playwright/test";
+import { join } from "node:path";
 
 import { resolveCodexBin } from "./tests/live/codex-bin.mjs";
 
 const defaultLiveURL = "http://127.0.0.1:55178";
 const externalLiveURL = process.env.CAFFOLD_LIVE_URL;
 const codexBin = resolveCodexBin();
+const localRuntimeRoot = join(
+  process.cwd(),
+  "target",
+  `caffold-live-${process.pid}`,
+);
+const localServerScript = join(
+  process.cwd(),
+  "tests",
+  "live",
+  "caffold-live-server.mjs",
+);
 
 export default defineConfig({
   testDir: "./tests/live",
@@ -18,10 +30,14 @@ export default defineConfig({
   webServer: externalLiveURL
     ? undefined
     : {
-    command:
-      "cargo run --quiet -- serve --host 127.0.0.1 --port 55178",
+        command: `${JSON.stringify(process.execPath)} ${JSON.stringify(localServerScript)}`,
         url: defaultLiveURL,
-        env: { ...process.env, CAFFOLD_CODEX_BIN: codexBin },
+        env: {
+          ...process.env,
+          CAFFOLD_CODEX_BIN: codexBin,
+          CAFFOLD_LIVE_RUNTIME_ROOT: localRuntimeRoot,
+        },
+        gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },
         reuseExistingServer: false,
         timeout: 180_000,
         stdout: "pipe",

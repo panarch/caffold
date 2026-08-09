@@ -18,6 +18,7 @@ pub struct ServeConfig {
     pub port: u16,
     pub root: Option<PathBuf>,
     pub data_dir: Option<PathBuf>,
+    pub worktree_root: Option<PathBuf>,
 }
 
 pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
@@ -31,6 +32,9 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         }
     };
     let data_dir = config.data_dir.unwrap_or(default_data_dir()?);
+    let worktree_root = config
+        .worktree_root
+        .unwrap_or_else(|| data_dir.join("worktrees"));
     let server_settings = Arc::new(ServerSettingsStore::persistent(
         data_dir.join("server.json"),
     )?);
@@ -45,6 +49,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         initial_path.clone(),
         shutdown.clone(),
         data_dir.join("caffold.redb"),
+        worktree_root.clone(),
     )?;
     let app = router_with_states(shell_router, workspace_router, tasks.router(), voice_router);
     let listener = TcpListener::bind((config.host, config.port)).await?;
@@ -56,6 +61,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     println!("Caffold is serving http://{addr}");
     println!("Browsing root {}", root.display());
     println!("Data directory {}", data_dir.display());
+    println!("Managed worktree directory {}", worktree_root.display());
     println!(
         "Initial path {}",
         if initial_path.is_empty() {
@@ -85,7 +91,8 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
     );
     let workspace_router = workspace::router(fs.clone(), shutdown.clone());
     let voice_router = voice::router(fs.root().join(".caffold-test/models/whisper"));
-    let tasks = tasks::TasksApp::memory(fs, String::new(), shutdown)?;
+    let worktree_root = fs.root().join(".caffold-test/worktrees");
+    let tasks = tasks::TasksApp::memory(fs, String::new(), shutdown, worktree_root)?;
     Ok(router_with_states(
         shell_router,
         workspace_router,

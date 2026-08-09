@@ -82,6 +82,21 @@ class CaffoldTaskNew extends HTMLElement {
       <section class="task-new-workspace">
         <div class="task-new-error-region"></div>
         <caffold-task-composer></caffold-task-composer>
+        <section class="task-new-worktree-guide" aria-labelledby="task-new-worktree-guide-title">
+          <h2 id="task-new-worktree-guide-title">Work in an isolated worktree</h2>
+          <p>Start with a setup-only request when you want this task separated from your main checkout. By default, Caffold prepares a clean worktree and leaves staged, unstaged, and untracked changes in your current checkout. The same setup request also works in an existing task.</p>
+          <ol>
+            <li>
+              <span class="task-new-worktree-label">Prepare the workspace</span>
+              <code>Prepare this task in an isolated worktree. Leave my current checkout changes in place. Stop when the worktree is ready.</code>
+            </li>
+            <li>
+              <span class="task-new-worktree-label">Continue in the worktree</span>
+              <code>Now review PR #123.</code>
+            </li>
+          </ol>
+          <p class="task-new-worktree-note">Need the current changes too? Say “Move this task and my current changes into an isolated worktree.”</p>
+        </section>
       </section>
       <caffold-task-directory-picker></caffold-task-directory-picker>
     `;

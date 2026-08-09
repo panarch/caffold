@@ -10,7 +10,7 @@ use crate::{
     codex_app_server::{self, CodexPermissionMode, CodexThreadClient},
     codex_thread_sessions::CodexThreadSessions,
     fs::RootedFs,
-    thread_store::ThreadStore,
+    task_store::TaskStore,
 };
 
 mod detail;

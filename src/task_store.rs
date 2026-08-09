@@ -7,21 +7,43 @@ use gluesql::prelude::{Error as GlueError, Glue, MemoryStorage, RedbStorage};
 use thiserror::Error;
 
 mod managed_thread;
+mod managed_worktree;
 mod migration;
 mod schema_migration;
 
 pub(crate) use managed_thread::ManagedThread;
+pub(crate) use managed_worktree::{ManagedWorktree, ManagedWorktreeState};
 
 #[derive(Debug, Error)]
-pub(crate) enum ThreadStoreError {
+pub(crate) enum TaskStoreError {
     #[error("invalid thread pagination cursor")]
     InvalidCursor,
-    #[error("unexpected thread store payload")]
+    #[error("unexpected task store payload")]
     UnexpectedPayload,
     #[error("invalid thread row column: {0}")]
     InvalidRow(&'static str),
     #[error("archived thread cannot be claimed as active: {0}")]
     ArchivedThreadCannotBeClaimed(String),
+    #[error("managed worktree already exists for thread: {0}")]
+    DuplicateManagedWorktreeThread(String),
+    #[cfg(test)]
+    #[error("managed worktree {worktree_id} is already bound to thread: {thread_id}")]
+    ManagedWorktreeAlreadyBound {
+        worktree_id: String,
+        thread_id: String,
+    },
+    #[error("managed worktree path is already owned: {0}")]
+    DuplicateManagedWorktreePath(String),
+    #[error("invalid managed worktree state: {0}")]
+    InvalidManagedWorktreeState(String),
+    #[error("managed worktree {worktree_id} cannot transition from {actual} to {expected}")]
+    ManagedWorktreeStateConflict {
+        worktree_id: String,
+        actual: String,
+        expected: String,
+    },
+    #[error("managed worktree cannot transition from {from} to {to}")]
+    InvalidManagedWorktreeTransition { from: String, to: String },
     #[error("thread exists in both legacy active and archived tables: {0}")]
     DuplicateLegacyThread(String),
     #[error("Caffold schema v{0} requires migration before opening")]
@@ -40,23 +62,23 @@ pub(crate) enum ThreadStoreError {
     InvalidSchemaMigrationHistory,
     #[error("incomplete Caffold thread schema")]
     IncompleteSchema,
-    #[error("thread store mutex was poisoned")]
+    #[error("task store mutex was poisoned")]
     Poisoned,
-    #[error("thread store error: {0}")]
+    #[error("task store error: {0}")]
     Glue(#[from] GlueError),
-    #[error("filesystem error while preparing thread store: {0}")]
+    #[error("filesystem error while preparing task store: {0}")]
     Io(#[from] std::io::Error),
 }
 
-type Result<T> = std::result::Result<T, ThreadStoreError>;
+type Result<T> = std::result::Result<T, TaskStoreError>;
 
 #[derive(Clone)]
-pub(crate) enum ThreadStore {
+pub(crate) enum TaskStore {
     Memory(Arc<Mutex<Glue<MemoryStorage>>>),
     Redb(Arc<Mutex<Glue<RedbStorage>>>),
 }
 
-impl ThreadStore {
+impl TaskStore {
     pub(crate) fn memory() -> Result<Self> {
         let mut glue = Glue::new(MemoryStorage::default());
         migration::initialize_memory(&mut glue)?;
@@ -253,10 +275,120 @@ impl ThreadStore {
             Self::Redb(glue) => managed_thread::delete(&mut *lock_glue(glue)?, thread_id),
         }
     }
+
+    pub(crate) fn create_worktree(&self, worktree: ManagedWorktree) -> Result<ManagedWorktree> {
+        match self {
+            Self::Memory(glue) => managed_worktree::create(&mut *lock_glue(glue)?, worktree),
+            Self::Redb(glue) => managed_worktree::create(&mut *lock_glue(glue)?, worktree),
+        }
+    }
+
+    pub(crate) fn worktree(&self, worktree_id: &str) -> Result<Option<ManagedWorktree>> {
+        match self {
+            Self::Memory(glue) => managed_worktree::get(&mut *lock_glue(glue)?, worktree_id),
+            Self::Redb(glue) => managed_worktree::get(&mut *lock_glue(glue)?, worktree_id),
+        }
+    }
+
+    pub(crate) fn worktree_for_thread(&self, thread_id: &str) -> Result<Option<ManagedWorktree>> {
+        match self {
+            Self::Memory(glue) => {
+                managed_worktree::get_for_thread(&mut *lock_glue(glue)?, thread_id)
+            }
+            Self::Redb(glue) => managed_worktree::get_for_thread(&mut *lock_glue(glue)?, thread_id),
+        }
+    }
+
+    pub(crate) fn managed_worktrees(&self) -> Result<Vec<ManagedWorktree>> {
+        match self {
+            Self::Memory(glue) => managed_worktree::list(&mut *lock_glue(glue)?),
+            Self::Redb(glue) => managed_worktree::list(&mut *lock_glue(glue)?),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn bind_worktree_thread(
+        &self,
+        worktree_id: &str,
+        thread_id: &str,
+        updated_at_ms: u64,
+    ) -> Result<ManagedWorktree> {
+        match self {
+            Self::Memory(glue) => managed_worktree::bind_thread(
+                &mut *lock_glue(glue)?,
+                worktree_id,
+                thread_id,
+                updated_at_ms,
+            ),
+            Self::Redb(glue) => managed_worktree::bind_thread(
+                &mut *lock_glue(glue)?,
+                worktree_id,
+                thread_id,
+                updated_at_ms,
+            ),
+        }
+    }
+
+    pub(crate) fn update_worktree_checkout(
+        &self,
+        worktree_id: &str,
+        branch_name: &str,
+        head_sha: &str,
+        updated_at_ms: u64,
+    ) -> Result<ManagedWorktree> {
+        match self {
+            Self::Memory(glue) => managed_worktree::update_checkout(
+                &mut *lock_glue(glue)?,
+                worktree_id,
+                branch_name,
+                head_sha,
+                updated_at_ms,
+            ),
+            Self::Redb(glue) => managed_worktree::update_checkout(
+                &mut *lock_glue(glue)?,
+                worktree_id,
+                branch_name,
+                head_sha,
+                updated_at_ms,
+            ),
+        }
+    }
+
+    pub(crate) fn transition_worktree(
+        &self,
+        worktree_id: &str,
+        expected: ManagedWorktreeState,
+        next: ManagedWorktreeState,
+        updated_at_ms: u64,
+    ) -> Result<ManagedWorktree> {
+        match self {
+            Self::Memory(glue) => managed_worktree::transition(
+                &mut *lock_glue(glue)?,
+                worktree_id,
+                expected,
+                next,
+                updated_at_ms,
+            ),
+            Self::Redb(glue) => managed_worktree::transition(
+                &mut *lock_glue(glue)?,
+                worktree_id,
+                expected,
+                next,
+                updated_at_ms,
+            ),
+        }
+    }
+
+    pub(crate) fn delete_worktree(&self, worktree_id: &str) -> Result<bool> {
+        match self {
+            Self::Memory(glue) => managed_worktree::delete(&mut *lock_glue(glue)?, worktree_id),
+            Self::Redb(glue) => managed_worktree::delete(&mut *lock_glue(glue)?, worktree_id),
+        }
+    }
 }
 
 fn lock_glue<T>(glue: &Arc<Mutex<T>>) -> Result<MutexGuard<'_, T>> {
-    glue.lock().map_err(|_| ThreadStoreError::Poisoned)
+    glue.lock().map_err(|_| TaskStoreError::Poisoned)
 }
 
 #[cfg(test)]
@@ -267,12 +399,26 @@ mod tests {
         ManagedThread::new(id, Some(20), None, None)
     }
 
+    fn worktree(id: &str) -> ManagedWorktree {
+        ManagedWorktree {
+            worktree_id: id.to_string(),
+            thread_id: None,
+            repository_git_dir: format!("/repositories/{id}/.git"),
+            worktree_path: format!("/managed/{id}"),
+            branch_name: format!("caffold/{id}"),
+            head_sha: "abc123".to_string(),
+            state: ManagedWorktreeState::Creating,
+            created_at_ms: 100,
+            updated_at_ms: 100,
+        }
+    }
+
     #[test]
     fn memory_and_redb_backends_share_the_same_store_contract() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("nested/caffold.redb");
-        let memory = ThreadStore::memory().unwrap();
-        let redb = ThreadStore::redb(&path).unwrap();
+        let memory = TaskStore::memory().unwrap();
+        let redb = TaskStore::redb(&path).unwrap();
 
         for (index, store) in [&memory, &redb].into_iter().enumerate() {
             let thread_id = format!("task-{index}");
@@ -295,6 +441,22 @@ mod tests {
                 .unwrap();
             assert_eq!(configured.model.as_deref(), Some("gpt-test"));
 
+            let worktree_id = format!("worktree-{index}");
+            store.create_worktree(worktree(&worktree_id)).unwrap();
+            store
+                .transition_worktree(
+                    &worktree_id,
+                    ManagedWorktreeState::Creating,
+                    ManagedWorktreeState::Ready,
+                    110,
+                )
+                .unwrap();
+            let bound = store
+                .bind_worktree_thread(&worktree_id, &thread_id, 120)
+                .unwrap();
+            assert_eq!(store.worktree(&worktree_id).unwrap(), Some(bound.clone()));
+            assert_eq!(store.worktree_for_thread(&thread_id).unwrap(), Some(bound));
+
             let archived = store.archive(&thread_id, 60).unwrap().unwrap();
             assert_eq!(store.get_archived(&thread_id).unwrap(), Some(archived));
             assert_eq!(store.list_archived(None, 10).unwrap().0.len(), 1);
@@ -310,8 +472,9 @@ mod tests {
 
         redb.claim(thread("persisted"), 200).unwrap();
         drop(redb);
-        let reopened = ThreadStore::redb(&path).unwrap();
+        let reopened = TaskStore::redb(&path).unwrap();
         assert!(reopened.get("persisted").unwrap().is_some());
+        assert!(reopened.worktree("worktree-1").unwrap().is_some());
     }
 
     #[test]
@@ -323,8 +486,8 @@ mod tests {
             panic!("poison test mutex");
         })
         .join();
-        let store = ThreadStore::Memory(glue);
+        let store = TaskStore::Memory(glue);
 
-        assert!(matches!(store.get("task"), Err(ThreadStoreError::Poisoned)));
+        assert!(matches!(store.get("task"), Err(TaskStoreError::Poisoned)));
     }
 }

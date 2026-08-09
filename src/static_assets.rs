@@ -804,10 +804,8 @@ mod tests {
                 .body
                 .starts_with(b"caffold-task-workspace")
         );
-        let task_workspace_navigation = get(
-            "pages/(task-workspace)/components/navigation.js",
-        )
-        .expect("task workspace navigation js");
+        let task_workspace_navigation = get("pages/(task-workspace)/components/navigation.js")
+            .expect("task workspace navigation js");
         assert_eq!(
             task_workspace_navigation.content_type,
             "text/javascript; charset=utf-8"
@@ -818,10 +816,8 @@ mod tests {
                 .windows(b"caffold-task-workspace-navigation".len())
                 .any(|window| window == b"caffold-task-workspace-navigation")
         );
-        let task_workspace_navigation_css = get(
-            "pages/(task-workspace)/components/navigation.css",
-        )
-        .expect("task workspace navigation css");
+        let task_workspace_navigation_css = get("pages/(task-workspace)/components/navigation.css")
+            .expect("task workspace navigation css");
         assert_eq!(
             task_workspace_navigation_css.content_type,
             "text/css; charset=utf-8"

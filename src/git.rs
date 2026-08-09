@@ -7,6 +7,20 @@ use std::{
     thread,
 };
 
+mod worktree;
+
+pub(crate) use worktree::{
+    WorktreeCheckout, WorktreeError, WorktreeIsolationMode, delete_local_branch_if_matches,
+    delete_transfer_snapshot, execute_worktree_transfer, inspect_attached_worktree,
+    prepare_worktree_transfer, recover_worktree_transfer, remove_attached_worktree,
+    restore_attached_worktree,
+};
+#[cfg(test)]
+pub(crate) use worktree::{
+    create_attached_worktree, create_prepared_worktree, managed_repository,
+    prepare_attached_worktree,
+};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Repository {
     pub root: PathBuf,

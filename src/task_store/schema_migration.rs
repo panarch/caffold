@@ -10,7 +10,7 @@ use gluesql::{
     prelude::{Glue, SelectResultExt},
 };
 
-use super::{Result, ThreadStoreError};
+use super::{Result, TaskStoreError};
 
 pub(super) const TABLE_NAME: &str = "schema_migrations";
 
@@ -41,10 +41,10 @@ where
     let actual = glue
         .storage
         .fetch_schema(TABLE_NAME)?
-        .ok_or(ThreadStoreError::IncompleteSchema)?;
+        .ok_or(TaskStoreError::IncompleteSchema)?;
     let expected = Schema::from_ddl(&expected_ddl())?;
     if actual.column_defs != expected.column_defs {
-        return Err(ThreadStoreError::InvalidSchemaTable(TABLE_NAME.to_string()));
+        return Err(TaskStoreError::InvalidSchemaTable(TABLE_NAME.to_string()));
     }
     Ok(())
 }
@@ -74,13 +74,13 @@ where
             .enumerate()
             .all(|(index, version)| *version == index as i64 + 1);
     if !history_is_complete {
-        return Err(ThreadStoreError::InvalidSchemaMigrationHistory);
+        return Err(TaskStoreError::InvalidSchemaMigrationHistory);
     }
 
     versions
         .last()
         .copied()
-        .ok_or(ThreadStoreError::InvalidSchemaMigrationHistory)
+        .ok_or(TaskStoreError::InvalidSchemaMigrationHistory)
 }
 
 pub(super) fn record<S>(glue: &mut Glue<S>, version: i64, applied_at: NaiveDateTime) -> Result<()>
@@ -119,7 +119,7 @@ mod tests {
         validate_table(&glue).unwrap();
         assert!(matches!(
             current_version(&mut glue),
-            Err(ThreadStoreError::InvalidSchemaMigrationHistory)
+            Err(TaskStoreError::InvalidSchemaMigrationHistory)
         ));
 
         let applied_at = Utc::now().naive_utc();
@@ -134,7 +134,7 @@ mod tests {
         let missing = Glue::new(MemoryStorage::default());
         assert!(matches!(
             validate_table(&missing),
-            Err(ThreadStoreError::IncompleteSchema)
+            Err(TaskStoreError::IncompleteSchema)
         ));
 
         let mut invalid = Glue::new(MemoryStorage::default());
@@ -145,7 +145,7 @@ mod tests {
             .unwrap();
         assert!(matches!(
             validate_table(&invalid),
-            Err(ThreadStoreError::InvalidSchemaTable(table)) if table == TABLE_NAME
+            Err(TaskStoreError::InvalidSchemaTable(table)) if table == TABLE_NAME
         ));
 
         let mut gap = Glue::new(MemoryStorage::default());
@@ -153,7 +153,7 @@ mod tests {
         record(&mut gap, 2, Utc::now().naive_utc()).unwrap();
         assert!(matches!(
             current_version(&mut gap),
-            Err(ThreadStoreError::InvalidSchemaMigrationHistory)
+            Err(TaskStoreError::InvalidSchemaMigrationHistory)
         ));
     }
 }

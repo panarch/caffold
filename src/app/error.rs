@@ -22,6 +22,22 @@ pub(super) enum ApiError {
     BadRequest { code: &'static str, message: String },
 }
 
+impl std::fmt::Display for ApiError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Fs(error) => error.fmt(formatter),
+            Self::CodexThread(message) | Self::Watch(message) | Self::Internal(message) => {
+                formatter.write_str(message)
+            }
+            Self::Timeout { message, .. }
+            | Self::NotFound { message, .. }
+            | Self::BadRequest { message, .. } => formatter.write_str(message),
+        }
+    }
+}
+
+impl std::error::Error for ApiError {}
+
 #[derive(Debug, Serialize)]
 struct ErrorResponse {
     error: ErrorBody,

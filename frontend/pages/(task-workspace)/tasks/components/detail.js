@@ -34,6 +34,7 @@ import {
 import { cleanLogicalPath } from "../task-format.js";
 import {
   taskDetailThreadId,
+  taskRepositoryPath,
   taskThreadId,
 } from "../task-list-model.js";
 
@@ -1621,6 +1622,10 @@ class CaffoldTaskDetail extends HTMLElement {
     return cleanLogicalPath(
       this.taskDetail?.task?.worktree?.rootPath || this.taskDetail?.task?.cwdPath || "",
     );
+  }
+
+  newTaskContextPath() {
+    return taskRepositoryPath(this.taskDetail?.task);
   }
 
   get taskDetailView() {

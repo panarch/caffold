@@ -16,8 +16,8 @@ use std::{
 use uuid::Uuid;
 
 use super::{DetectedSchemaVersion, MigrationReport, create_latest_schema, detect_redb_schema};
-use crate::thread_store::{
-    Result, ThreadStoreError,
+use crate::task_store::{
+    Result, TaskStoreError,
     managed_thread::{self, ManagedThreadRow},
 };
 
@@ -62,7 +62,7 @@ impl ReplacementDatabase {
             .file_name()
             .and_then(|filename| filename.to_str())
             .unwrap_or("caffold.redb");
-        let path = target.with_file_name(format!(".{filename}.migration-v1-{}", Uuid::new_v4()));
+        let path = target.with_file_name(format!(".{filename}.migration-v2-{}", Uuid::new_v4()));
         Self {
             path,
             published: false,
@@ -138,7 +138,7 @@ fn ensure_disjoint_membership(snapshot: &LegacySnapshot) -> Result<()> {
         .iter()
         .find(|row| managed_ids.contains(row.thread_id.as_str()))
     {
-        return Err(ThreadStoreError::DuplicateLegacyThread(
+        return Err(TaskStoreError::DuplicateLegacyThread(
             duplicate.thread_id.clone(),
         ));
     }
@@ -155,8 +155,8 @@ fn write_replacement(
     create_latest_schema(&mut glue, applied_at)?;
     rewrite_rows(&mut glue, snapshot, applied_at)?;
     drop(glue);
-    if detect_redb_schema(path)? != DetectedSchemaVersion::V1 {
-        return Err(ThreadStoreError::IncompleteSchema);
+    if detect_redb_schema(path)? != DetectedSchemaVersion::V2 {
+        return Err(TaskStoreError::IncompleteSchema);
     }
     Ok(())
 }
@@ -197,7 +197,7 @@ where
         .rows_as::<ManagedThreadRow>()?;
     actual.sort_by(|left, right| left.thread_id.cmp(&right.thread_id));
     if actual != expected {
-        return Err(ThreadStoreError::UnexpectedPayload);
+        return Err(TaskStoreError::UnexpectedPayload);
     }
     Ok(())
 }
@@ -229,10 +229,10 @@ where
     let actual = glue
         .storage
         .fetch_schema(table_name)?
-        .ok_or(ThreadStoreError::IncompleteSchema)?;
+        .ok_or(TaskStoreError::IncompleteSchema)?;
     let expected = Schema::from_ddl(&legacy_table_ddl(table_name))?;
     if actual.column_defs != expected.column_defs {
-        return Err(ThreadStoreError::InvalidSchemaTable(table_name.to_string()));
+        return Err(TaskStoreError::InvalidSchemaTable(table_name.to_string()));
     }
     Ok(())
 }
@@ -268,7 +268,7 @@ fn convert_legacy_row(
 }
 
 fn legacy_timestamp(value: i64, field: &'static str) -> Result<NaiveDateTime> {
-    let value = u64::try_from(value).map_err(|_| ThreadStoreError::InvalidRow(field))?;
+    let value = u64::try_from(value).map_err(|_| TaskStoreError::InvalidRow(field))?;
     managed_thread::to_db_timestamp(value, field)
 }
 
@@ -286,7 +286,7 @@ mod tests {
     use gluesql::core::{query_builder::begin, query_builder::rollback};
 
     use super::*;
-    use crate::thread_store::{ManagedThread, schema_migration};
+    use crate::task_store::{ManagedThread, schema_migration};
 
     fn managed_legacy_row() -> LegacyManagedThreadRow {
         LegacyManagedThreadRow {
@@ -403,6 +403,7 @@ mod tests {
             table_names,
             BTreeSet::from([
                 managed_thread::TABLE_NAME.to_string(),
+                crate::task_store::managed_worktree::TABLE_NAME.to_string(),
                 schema_migration::TABLE_NAME.to_string(),
             ])
         );
@@ -443,7 +444,7 @@ mod tests {
 
         assert!(matches!(
             migrate(&path),
-            Err(ThreadStoreError::InvalidRow("claimed_at_ms"))
+            Err(TaskStoreError::InvalidRow("claimed_at_ms"))
         ));
 
         let mut glue = Glue::new(RedbStorage::new(&path).unwrap());
@@ -474,7 +475,7 @@ mod tests {
 
         assert!(matches!(
             migrate(&path),
-            Err(ThreadStoreError::DuplicateLegacyThread(thread_id))
+            Err(TaskStoreError::DuplicateLegacyThread(thread_id))
                 if thread_id == "managed-legacy"
         ));
 
@@ -503,7 +504,7 @@ mod tests {
 
         assert!(matches!(
             migrate(&path),
-            Err(ThreadStoreError::InvalidSchemaTable(table))
+            Err(TaskStoreError::InvalidSchemaTable(table))
                 if table == managed_thread::TABLE_NAME
         ));
     }
@@ -518,7 +519,7 @@ mod tests {
             make_invalid(&mut row);
             assert!(matches!(
                 convert_legacy_row(row, None),
-                Err(ThreadStoreError::InvalidRow(found)) if found == field
+                Err(TaskStoreError::InvalidRow(found)) if found == field
             ));
         }
 

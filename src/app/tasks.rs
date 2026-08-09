@@ -1,24 +1,28 @@
 mod detail;
 mod events;
 mod generated_images;
+mod lifecycle;
 mod projection;
 mod routes;
 mod runtime;
 mod sync;
+mod worktrees;
 
 use std::{path::PathBuf, sync::Arc};
 
 use axum::Router;
 use tokio::sync::broadcast;
 
-use crate::{fs::RootedFs, thread_store::ThreadStore};
+use crate::{fs::RootedFs, task_store::TaskStore};
 
 use detail::{DetailContext, TaskDetailSync};
 use events::TaskEvents;
+use lifecycle::TaskLifecycle;
 pub(super) use projection::TaskRecord;
 use routes::TaskListEvents;
 use runtime::CodexRuntime;
 use sync::TaskSync;
+use worktrees::ManagedWorktrees;
 
 #[derive(Clone)]
 struct TaskState {
@@ -30,7 +34,8 @@ struct TaskState {
     task_events: TaskEvents,
     task_sync: TaskSync<TaskDetailSync>,
     task_list_events: TaskListEvents,
-    thread_store: ThreadStore,
+    task_store: TaskStore,
+    lifecycle: TaskLifecycle,
     shutdown: broadcast::Sender<()>,
 }
 
@@ -39,23 +44,35 @@ impl TaskState {
         fs: Arc<RootedFs>,
         default_cwd_path: String,
         shutdown: broadcast::Sender<()>,
-        thread_store: ThreadStore,
-    ) -> Self {
+        task_store: TaskStore,
+        worktree_root: PathBuf,
+    ) -> anyhow::Result<Self> {
         let task_events = TaskEvents::default();
         let codex_sessions = crate::codex_thread_sessions::CodexThreadSessions::default();
+        let task_list_events = TaskListEvents::new();
+        let managed_worktrees =
+            ManagedWorktrees::new(fs.clone(), task_store.clone(), worktree_root)?;
+        let lifecycle = TaskLifecycle::new(
+            fs.clone(),
+            codex_sessions.clone(),
+            task_events.clone(),
+            task_list_events.clone(),
+            task_store.clone(),
+            managed_worktrees,
+        );
         let codex_runtime = CodexRuntime::new(
             codex_sessions.clone(),
             task_events.clone(),
-            thread_store.clone(),
+            task_store.clone(),
             shutdown.clone(),
-        );
+        )
+        .with_lifecycle(lifecycle.clone());
         let codex_runtime_signals = codex_runtime.subscribe();
         let task_sync = TaskSync::new(shutdown.clone());
-        let task_list_events = TaskListEvents::new();
         let removal_events = task_list_events.clone();
         let detail = DetailContext::new(
             fs.clone(),
-            thread_store.clone(),
+            task_store.clone(),
             codex_runtime.clone(),
             codex_runtime_signals,
             codex_sessions.clone(),
@@ -66,7 +83,7 @@ impl TaskState {
                 removal_events.remove(thread_id, reason);
             },
         );
-        Self {
+        Ok(Self {
             fs,
             default_cwd_path,
             codex_runtime,
@@ -75,9 +92,10 @@ impl TaskState {
             task_events,
             task_sync,
             task_list_events,
-            thread_store,
+            task_store,
+            lifecycle,
             shutdown,
-        }
+        })
     }
 }
 
@@ -91,14 +109,15 @@ impl TasksApp {
         fs: Arc<RootedFs>,
         default_cwd_path: String,
         shutdown: broadcast::Sender<()>,
-        thread_store: ThreadStore,
-    ) -> Self {
-        let state = TaskState::new(fs, default_cwd_path, shutdown, thread_store);
+        task_store: TaskStore,
+        worktree_root: PathBuf,
+    ) -> anyhow::Result<Self> {
+        let state = TaskState::new(fs, default_cwd_path, shutdown, task_store, worktree_root)?;
         let runtime = state.codex_runtime.clone();
-        Self {
+        Ok(Self {
             router: routes::router(state),
             runtime,
-        }
+        })
     }
 
     pub(super) fn persistent(
@@ -106,13 +125,15 @@ impl TasksApp {
         default_cwd_path: String,
         shutdown: broadcast::Sender<()>,
         database_path: PathBuf,
+        worktree_root: PathBuf,
     ) -> anyhow::Result<Self> {
         let app = Self::new(
             fs,
             default_cwd_path,
             shutdown,
-            ThreadStore::redb(database_path)?,
-        );
+            TaskStore::redb(database_path)?,
+            worktree_root,
+        )?;
         app.runtime.startup();
         Ok(app)
     }
@@ -121,13 +142,15 @@ impl TasksApp {
         fs: Arc<RootedFs>,
         default_cwd_path: String,
         shutdown: broadcast::Sender<()>,
+        worktree_root: PathBuf,
     ) -> anyhow::Result<Self> {
-        Ok(Self::new(
+        Self::new(
             fs,
             default_cwd_path,
             shutdown,
-            ThreadStore::memory()?,
-        ))
+            TaskStore::memory()?,
+            worktree_root,
+        )
     }
 
     pub(super) fn router(&self) -> Router {

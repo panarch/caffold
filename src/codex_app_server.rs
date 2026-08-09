@@ -18,7 +18,6 @@ mod protocol;
 mod reconnect_spike;
 mod transport;
 
-pub(crate) use protocol::RENAME_CURRENT_THREAD_TOOL_NAME;
 use protocol::{
     ACCOUNT_RATE_LIMITS_READ, ACCOUNT_READ, ACCOUNT_USAGE_READ, AccountReadResponse, CONFIG_READ,
     ConfigReadResponse, EmptyResponse, INITIALIZE, INITIALIZED, JsonRpcError, MODEL_LIST,
@@ -36,6 +35,7 @@ pub use protocol::{
     CodexThread, CodexTurn, ModelListResponse, PermissionProfileSummary, SortDirection,
     ThreadResumeResponse, ThreadStatus, ThreadUnsubscribeResponse, TurnStatus, TurnsPage,
 };
+pub(crate) use protocol::{ISOLATE_CURRENT_TASK_TOOL_NAME, RENAME_CURRENT_THREAD_TOOL_NAME};
 use protocol::{THREAD_LOADED_LIST, ThreadLoadedListResponse, thread_loaded_list_params};
 #[cfg(test)]
 use protocol::{ThreadListResponse, thread_list_params};

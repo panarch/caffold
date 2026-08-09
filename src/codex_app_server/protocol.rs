@@ -29,6 +29,7 @@ pub(crate) const MODEL_LIST: &str = "model/list";
 pub(crate) const PERMISSION_PROFILE_LIST: &str = "permissionProfile/list";
 pub(crate) const CONFIG_READ: &str = "config/read";
 pub(crate) const RENAME_CURRENT_THREAD_TOOL_NAME: &str = "rename_current_thread";
+pub(crate) const ISOLATE_CURRENT_TASK_TOOL_NAME: &str = "isolate_current_task";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -472,7 +473,7 @@ enum ApprovalsReviewer {
 pub struct ThreadStartParams<'a> {
     pub cwd: &'a str,
     pub runtime_workspace_roots: [&'a str; 1],
-    pub dynamic_tools: [DynamicToolSpec; 1],
+    pub dynamic_tools: [DynamicToolSpec; 2],
     #[serde(skip_serializing_if = "Option::is_none")]
     approval_policy: Option<ApprovalPolicy>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -956,10 +957,33 @@ pub(crate) fn thread_start_params(
     ThreadStartParams {
         cwd,
         runtime_workspace_roots: [cwd],
-        dynamic_tools: [rename_current_thread_tool()],
+        dynamic_tools: [rename_current_thread_tool(), isolate_current_task_tool()],
         approval_policy: permission_mode.map(CodexPermissionMode::approval_policy),
         approvals_reviewer: permission_mode.map(CodexPermissionMode::approvals_reviewer),
         permissions: permission_mode.map(CodexPermissionMode::profile_id),
+    }
+}
+
+fn isolate_current_task_tool() -> DynamicToolSpec {
+    DynamicToolSpec {
+        kind: DynamicToolType::Function,
+        name: ISOLATE_CURRENT_TASK_TOOL_NAME,
+        description: "Prepare the current Caffold task in a Caffold-managed Git worktree only when the user explicitly asks to isolate the current task or prepare a worktree. By default, leave staged, unstaged, and untracked source checkout changes in place. Set includeChanges to true only when the user explicitly asks to move current or uncommitted changes too. Call this as the final file-affecting action of the current turn. After it succeeds, do not call command or file tools; end the turn so the user's next request can continue in the managed worktree.",
+        input_schema: json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "branchName": {
+                    "type": "string",
+                    "description": "Optional local branch name when the current checkout is on its default branch or detached. A current non-default branch is always handed off unchanged.",
+                    "minLength": 1
+                },
+                "includeChanges": {
+                    "type": "boolean",
+                    "description": "Whether to move staged, unstaged, and untracked changes into the worktree. Defaults to false and must be true only when the user explicitly requests that transfer."
+                }
+            }
+        }),
     }
 }
 
@@ -1245,6 +1269,25 @@ mod tests {
                             },
                             "required": ["name"]
                         }
+                    }, {
+                        "type": "function",
+                        "name": "isolate_current_task",
+                        "description": "Prepare the current Caffold task in a Caffold-managed Git worktree only when the user explicitly asks to isolate the current task or prepare a worktree. By default, leave staged, unstaged, and untracked source checkout changes in place. Set includeChanges to true only when the user explicitly asks to move current or uncommitted changes too. Call this as the final file-affecting action of the current turn. After it succeeds, do not call command or file tools; end the turn so the user's next request can continue in the managed worktree.",
+                        "inputSchema": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "branchName": {
+                                    "type": "string",
+                                    "description": "Optional local branch name when the current checkout is on its default branch or detached. A current non-default branch is always handed off unchanged.",
+                                    "minLength": 1
+                                },
+                                "includeChanges": {
+                                    "type": "boolean",
+                                    "description": "Whether to move staged, unstaged, and untracked changes into the worktree. Defaults to false and must be true only when the user explicitly requests that transfer."
+                                }
+                            }
+                        }
                     }],
                     "approvalPolicy": "on-request",
                     "approvalsReviewer": "auto_review",
@@ -1497,6 +1540,25 @@ mod tests {
                             }
                         },
                         "required": ["name"]
+                    }
+                }, {
+                    "type": "function",
+                    "name": "isolate_current_task",
+                    "description": "Prepare the current Caffold task in a Caffold-managed Git worktree only when the user explicitly asks to isolate the current task or prepare a worktree. By default, leave staged, unstaged, and untracked source checkout changes in place. Set includeChanges to true only when the user explicitly asks to move current or uncommitted changes too. Call this as the final file-affecting action of the current turn. After it succeeds, do not call command or file tools; end the turn so the user's next request can continue in the managed worktree.",
+                    "inputSchema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "branchName": {
+                                "type": "string",
+                                "description": "Optional local branch name when the current checkout is on its default branch or detached. A current non-default branch is always handed off unchanged.",
+                                "minLength": 1
+                            },
+                            "includeChanges": {
+                                "type": "boolean",
+                                "description": "Whether to move staged, unstaged, and untracked changes into the worktree. Defaults to false and must be true only when the user explicitly requests that transfer."
+                            }
+                        }
                     }
                 }]
             })

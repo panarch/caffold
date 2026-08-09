@@ -1,4 +1,4 @@
-use std::convert::Infallible;
+use std::{convert::Infallible, path::Path};
 
 use axum::{
     Json, Router,
@@ -22,6 +22,7 @@ use super::{
     ApprovalResolveError, CodexConnection, DetailFrameStream, TaskDetailResponse, TaskEventRecord,
     TaskRecord, TaskState, accepted_user_message_event, now_ms, task_activity_ms,
 };
+use super::{lifecycle::StartTask, worktrees::inspect_ready_worktree};
 
 use super::generated_images::GeneratedImageError;
 
@@ -31,9 +32,9 @@ use crate::{
         CodexPermissionMode, CodexStatusResponse, CodexThreadClient, CodexThreadError,
         CodexTurnOptions, ThreadStatus,
     },
-    codex_thread_sessions::{PromptTarget, ThreadSessionsDiagnostics},
+    codex_thread_sessions::{PromptTarget, ThreadSessionSnapshot, ThreadSessionsDiagnostics},
     fs::MAX_IMAGE_BYTES,
-    thread_store::{ManagedThread, ThreadStoreError},
+    task_store::{ManagedThread, ManagedWorktree, ManagedWorktreeState, TaskStoreError},
 };
 
 const MAX_TASK_IMAGES: usize = 4;
@@ -178,7 +179,7 @@ impl TaskListEvents {
         });
     }
 
-    fn update(&self, task: TaskRecord) {
+    pub(super) fn update(&self, task: TaskRecord) {
         let _ = self.updates.send(task);
     }
 
@@ -336,7 +337,7 @@ async fn list_managed_tasks(
     Query(query): Query<TasksQuery>,
 ) -> Result<Json<TaskListResponse>, ApiError> {
     let (managed, next_cursor) =
-        thread_store_list(&state, query.cursor.as_deref(), TASK_LIST_PAGE_SIZE).await?;
+        task_store_list(&state, query.cursor.as_deref(), TASK_LIST_PAGE_SIZE).await?;
     let connection = require_codex_thread_connection(&state).await?;
     let reads = stream::iter(managed)
         .map(|managed| {
@@ -359,7 +360,7 @@ async fn list_managed_tasks(
         .await;
     let mut tasks = reads.into_iter().collect::<Result<Vec<_>, ApiError>>()?;
     for (task, activity_ms) in &tasks {
-        thread_store_update_observed_recency(&state, &task.thread_id, *activity_ms).await?;
+        task_store_update_observed_recency(&state, &task.thread_id, *activity_ms).await?;
     }
     tasks.sort_by(|(left, _), (right, _)| {
         task_activity_ms(right)
@@ -375,7 +376,7 @@ async fn list_archived_tasks(
     Query(query): Query<TasksQuery>,
 ) -> Result<Json<TaskListResponse>, ApiError> {
     let (archived, next_cursor) =
-        thread_store_list_archived(&state, query.cursor.as_deref(), TASK_LIST_PAGE_SIZE).await?;
+        task_store_list_archived(&state, query.cursor.as_deref(), TASK_LIST_PAGE_SIZE).await?;
     let connection = require_codex_thread_connection(&state).await?;
     let reads = stream::iter(archived)
         .map(|managed| {
@@ -398,8 +399,7 @@ async fn list_archived_tasks(
         .await;
     let mut tasks = reads.into_iter().collect::<Result<Vec<_>, ApiError>>()?;
     for (task, activity_ms) in &tasks {
-        thread_store_update_archived_observed_recency(&state, &task.thread_id, *activity_ms)
-            .await?;
+        task_store_update_archived_observed_recency(&state, &task.thread_id, *activity_ms).await?;
     }
     tasks.sort_by(|(left, _), (right, _)| {
         task_activity_ms(right)
@@ -410,119 +410,132 @@ async fn list_archived_tasks(
     Ok(Json(TaskListResponse { tasks, next_cursor }))
 }
 
-async fn thread_store_list(
+async fn task_store_list(
     state: &TaskState,
     cursor: Option<&str>,
     limit: usize,
 ) -> Result<(Vec<ManagedThread>, Option<String>), ApiError> {
-    let store = state.thread_store.clone();
+    let store = state.task_store.clone();
     let cursor = cursor.map(ToOwned::to_owned);
     tokio::task::spawn_blocking(move || store.list(cursor.as_deref(), limit))
         .await
-        .map_err(thread_store_join_error)?
-        .map_err(thread_store_api_error)
+        .map_err(task_store_join_error)?
+        .map_err(task_store_api_error)
 }
 
-async fn thread_store_list_archived(
+async fn task_store_list_archived(
     state: &TaskState,
     cursor: Option<&str>,
     limit: usize,
 ) -> Result<(Vec<ManagedThread>, Option<String>), ApiError> {
-    let store = state.thread_store.clone();
+    let store = state.task_store.clone();
     let cursor = cursor.map(ToOwned::to_owned);
     tokio::task::spawn_blocking(move || store.list_archived(cursor.as_deref(), limit))
         .await
-        .map_err(thread_store_join_error)?
-        .map_err(thread_store_api_error)
+        .map_err(task_store_join_error)?
+        .map_err(task_store_api_error)
 }
 
-async fn thread_store_get(
+async fn task_store_get(
     state: &TaskState,
     thread_id: &str,
 ) -> Result<Option<ManagedThread>, ApiError> {
-    let store = state.thread_store.clone();
+    let store = state.task_store.clone();
     let thread_id = thread_id.to_string();
     tokio::task::spawn_blocking(move || store.get(&thread_id))
         .await
-        .map_err(thread_store_join_error)?
-        .map_err(thread_store_api_error)
+        .map_err(task_store_join_error)?
+        .map_err(task_store_api_error)
 }
 
-async fn thread_store_get_archived(
+async fn task_store_get_archived(
     state: &TaskState,
     thread_id: &str,
 ) -> Result<Option<ManagedThread>, ApiError> {
-    let store = state.thread_store.clone();
+    let store = state.task_store.clone();
     let thread_id = thread_id.to_string();
     tokio::task::spawn_blocking(move || store.get_archived(&thread_id))
         .await
-        .map_err(thread_store_join_error)?
-        .map_err(thread_store_api_error)
+        .map_err(task_store_join_error)?
+        .map_err(task_store_api_error)
 }
 
-async fn thread_store_claim(
+async fn task_store_worktree_for_thread(
+    state: &TaskState,
+    thread_id: &str,
+) -> Result<Option<ManagedWorktree>, ApiError> {
+    let store = state.task_store.clone();
+    let thread_id = thread_id.to_string();
+    tokio::task::spawn_blocking(move || store.worktree_for_thread(&thread_id))
+        .await
+        .map_err(task_store_join_error)?
+        .map_err(task_store_api_error)
+}
+
+#[cfg(test)]
+async fn task_store_claim(
     state: &TaskState,
     thread: ManagedThread,
 ) -> Result<ManagedThread, ApiError> {
-    let store = state.thread_store.clone();
+    let store = state.task_store.clone();
     tokio::task::spawn_blocking(move || store.claim(thread, now_ms()))
         .await
-        .map_err(thread_store_join_error)?
-        .map_err(thread_store_api_error)
+        .map_err(task_store_join_error)?
+        .map_err(task_store_api_error)
 }
 
-async fn thread_store_mark_seen(
+async fn task_store_mark_seen(
     state: &TaskState,
     thread_id: &str,
     canonical_activity_ms: u64,
 ) -> Result<Option<ManagedThread>, ApiError> {
-    let store = state.thread_store.clone();
+    let store = state.task_store.clone();
     let thread_id = thread_id.to_string();
     tokio::task::spawn_blocking(move || {
         store.mark_seen(&thread_id, canonical_activity_ms, now_ms())
     })
     .await
-    .map_err(thread_store_join_error)?
-    .map_err(thread_store_api_error)
+    .map_err(task_store_join_error)?
+    .map_err(task_store_api_error)
 }
 
-async fn thread_store_update_observed_recency(
+async fn task_store_update_observed_recency(
     state: &TaskState,
     thread_id: &str,
     canonical_activity_ms: u64,
 ) -> Result<Option<ManagedThread>, ApiError> {
-    let store = state.thread_store.clone();
+    let store = state.task_store.clone();
     let thread_id = thread_id.to_string();
     tokio::task::spawn_blocking(move || {
         store.update_observed_recency(&thread_id, canonical_activity_ms)
     })
     .await
-    .map_err(thread_store_join_error)?
-    .map_err(thread_store_api_error)
+    .map_err(task_store_join_error)?
+    .map_err(task_store_api_error)
 }
 
-async fn thread_store_update_archived_observed_recency(
+async fn task_store_update_archived_observed_recency(
     state: &TaskState,
     thread_id: &str,
     canonical_activity_ms: u64,
 ) -> Result<Option<ManagedThread>, ApiError> {
-    let store = state.thread_store.clone();
+    let store = state.task_store.clone();
     let thread_id = thread_id.to_string();
     tokio::task::spawn_blocking(move || {
         store.update_archived_observed_recency(&thread_id, canonical_activity_ms)
     })
     .await
-    .map_err(thread_store_join_error)?
-    .map_err(thread_store_api_error)
+    .map_err(task_store_join_error)?
+    .map_err(task_store_api_error)
 }
 
-async fn thread_store_update_composer_settings(
+async fn task_store_update_composer_settings(
     state: &TaskState,
     thread_id: &str,
     model: Option<&str>,
     reasoning_effort: Option<&str>,
 ) -> Result<Option<ManagedThread>, ApiError> {
-    let store = state.thread_store.clone();
+    let store = state.task_store.clone();
     let thread_id = thread_id.to_string();
     let model = model.map(str::to_string);
     let reasoning_effort = reasoning_effort.map(str::to_string);
@@ -530,37 +543,37 @@ async fn thread_store_update_composer_settings(
         store.update_composer_settings(&thread_id, model.as_deref(), reasoning_effort.as_deref())
     })
     .await
-    .map_err(thread_store_join_error)?
-    .map_err(thread_store_api_error)
+    .map_err(task_store_join_error)?
+    .map_err(task_store_api_error)
 }
 
-async fn thread_store_archive(
+async fn task_store_archive(
     state: &TaskState,
     thread_id: &str,
 ) -> Result<Option<ManagedThread>, ApiError> {
-    let store = state.thread_store.clone();
+    let store = state.task_store.clone();
     let thread_id = thread_id.to_string();
     tokio::task::spawn_blocking(move || store.archive(&thread_id, now_ms()))
         .await
-        .map_err(thread_store_join_error)?
-        .map_err(thread_store_api_error)
+        .map_err(task_store_join_error)?
+        .map_err(task_store_api_error)
 }
 
-async fn thread_store_restore(
+async fn task_store_restore(
     state: &TaskState,
     thread_id: &str,
 ) -> Result<Option<ManagedThread>, ApiError> {
-    let store = state.thread_store.clone();
+    let store = state.task_store.clone();
     let thread_id = thread_id.to_string();
     tokio::task::spawn_blocking(move || store.restore(&thread_id))
         .await
-        .map_err(thread_store_join_error)?
-        .map_err(thread_store_api_error)
+        .map_err(task_store_join_error)?
+        .map_err(task_store_api_error)
 }
 
-fn thread_store_api_error(error: ThreadStoreError) -> ApiError {
+fn task_store_api_error(error: TaskStoreError) -> ApiError {
     match error {
-        ThreadStoreError::InvalidCursor => ApiError::BadRequest {
+        TaskStoreError::InvalidCursor => ApiError::BadRequest {
             code: "task_cursor_invalid",
             message: error.to_string(),
         },
@@ -568,8 +581,8 @@ fn thread_store_api_error(error: ThreadStoreError) -> ApiError {
     }
 }
 
-fn thread_store_join_error(error: tokio::task::JoinError) -> ApiError {
-    ApiError::Internal(format!("thread store task failed: {error}"))
+fn task_store_join_error(error: tokio::task::JoinError) -> ApiError {
+    ApiError::Internal(format!("task store worker failed: {error}"))
 }
 
 async fn create_task(
@@ -588,83 +601,23 @@ async fn create_task(
     )
     .await?;
 
-    let requested_permission_mode = turn_options.permission_mode;
-    let requested_model = turn_options.model.clone();
-    let requested_reasoning_effort = turn_options.effort.clone();
-    let thread = client
-        .start_thread(&cwd, turn_options.permission_mode)
+    let task = state
+        .lifecycle
+        .start_task(
+            &connection,
+            StartTask {
+                cwd,
+                prompt,
+                images,
+                turn_options,
+                initial_name: None,
+            },
+        )
         .await?;
-    let thread_permission_mode = requested_permission_mode.or(thread.permission_mode);
-    let effective_model = requested_model.or_else(|| thread.model.clone());
-    let effective_reasoning_effort =
-        requested_reasoning_effort.or_else(|| thread.reasoning_effort.clone());
-    let task = state.detail.record_from_codex_thread(&thread.thread)?;
-    thread_store_claim(
-        &state,
-        managed_thread_from_task_record(
-            &task,
-            effective_model.clone(),
-            effective_reasoning_effort.clone(),
-        ),
-    )
-    .await?;
-    notify_task_updated(&state, task);
-    state
-        .codex_sessions
-        .register_started_thread(
-            &connection.client,
-            connection.generation,
-            thread.thread.clone(),
-            thread_permission_mode,
-            thread.model.clone(),
-            thread.reasoning_effort.clone(),
-        )
-        .await;
-    let permission_mode = thread_permission_mode;
-    let turn = match client
-        .start_turn(&thread.thread_id, &cwd, &prompt, &images, turn_options)
-        .await
-    {
-        Ok(turn) => turn,
-        Err(error) => {
-            state.codex_sessions.cancel_runtime(&thread.thread_id).await;
-            return Err(error.into());
-        }
-    };
-    state
-        .codex_sessions
-        .record_turn_started(
-            connection.generation,
-            &thread.thread_id,
-            turn.turn,
-            permission_mode,
-            effective_model.clone(),
-            effective_reasoning_effort.clone(),
-        )
-        .await;
-    if let Err(error) = thread_store_update_composer_settings(
-        &state,
-        &thread.thread_id,
-        effective_model.as_deref(),
-        effective_reasoning_effort.as_deref(),
-    )
-    .await
-    {
-        eprintln!(
-            "failed to persist composer settings for started thread {}: {error:?}",
-            thread.thread_id
-        );
-    }
-    state.task_events.publish(accepted_user_message_event(
-        &thread.thread_id,
-        &turn.turn_id,
-        &prompt,
-        &images,
-    ));
     Ok(Json(
         state
             .detail
-            .read(&connection, &thread.thread_id, None)
+            .read(&connection, &task.thread_id, None)
             .await?,
     ))
 }
@@ -728,7 +681,7 @@ async fn mark_task_seen(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<TaskRecord>, ApiError> {
-    if thread_store_get(&state, &thread_id).await?.is_none() {
+    if task_store_get(&state, &thread_id).await?.is_none() {
         return Err(task_not_managed_error());
     }
     let client = require_codex_thread_client(&state).await?;
@@ -739,7 +692,7 @@ async fn mark_task_seen(
         .await;
     let mut task = state.detail.record_from_codex_thread(&thread)?;
     let activity_ms = task_activity_ms(&task);
-    let Some(managed) = thread_store_mark_seen(&state, &thread_id, activity_ms).await? else {
+    let Some(managed) = task_store_mark_seen(&state, &thread_id, activity_ms).await? else {
         return Err(task_not_managed_error());
     };
     apply_managed_thread_metadata(&mut task, &managed);
@@ -942,9 +895,11 @@ async fn task_prompt(
     Query(_query): Query<TasksQuery>,
     Json(request): Json<TaskPromptRequest>,
 ) -> Result<Json<TaskPromptResponse>, ApiError> {
-    if thread_store_get(&state, &thread_id).await?.is_none() {
+    if task_store_get(&state, &thread_id).await?.is_none() {
         return Err(task_not_managed_error());
     }
+    let managed_worktree = task_store_worktree_for_thread(&state, &thread_id).await?;
+    let managed_cwd = managed_prompt_cwd(managed_worktree.as_ref())?;
     let (prompt, images) = normalize_task_input(&request.prompt, request.images)?;
     let _requested_active_turn_id = request.active_turn_id;
     let connection = require_codex_thread_connection(&state).await?;
@@ -965,6 +920,13 @@ async fn task_prompt(
             return Err(error.into());
         }
     };
+    if let Some(managed_cwd) = managed_cwd.as_deref() {
+        target = managed_prompt_target(
+            target,
+            managed_cwd,
+            state.codex_sessions.snapshot(&thread_id).await.as_ref(),
+        )?;
+    }
     let mut refreshed_stale_turn = false;
     let outcome = loop {
         let attempted_steer = matches!(&target, PromptTarget::Steer { .. });
@@ -1031,6 +993,13 @@ async fn task_prompt(
                         return Err(refresh_error.into());
                     }
                 };
+                if let Some(managed_cwd) = managed_cwd.as_deref() {
+                    target = managed_prompt_target(
+                        target,
+                        managed_cwd,
+                        state.codex_sessions.snapshot(&thread_id).await.as_ref(),
+                    )?;
+                }
             }
             Err(error) => {
                 state.codex_sessions.cancel_runtime(&thread_id).await;
@@ -1048,14 +1017,13 @@ async fn task_prompt(
             .record_turn_started(
                 connection.generation,
                 &thread_id,
+                managed_cwd.as_deref(),
                 turn,
-                applied_options.permission_mode,
-                applied_options.model.clone(),
-                applied_options.effort.clone(),
+                applied_options.clone(),
             )
             .await;
         if let Some(snapshot) = state.codex_sessions.snapshot(&thread_id).await {
-            let persistence_result = thread_store_update_composer_settings(
+            let persistence_result = task_store_update_composer_settings(
                 &state,
                 &thread_id,
                 snapshot.model.as_deref(),
@@ -1082,12 +1050,88 @@ async fn task_prompt(
     }))
 }
 
+fn managed_prompt_cwd(worktree: Option<&ManagedWorktree>) -> Result<Option<String>, ApiError> {
+    let Some(worktree) = worktree else {
+        return Ok(None);
+    };
+    match worktree.state {
+        ManagedWorktreeState::Ready => {
+            inspect_ready_worktree(worktree).map_err(|error| ApiError::BadRequest {
+                code: "managed_worktree_unavailable",
+                message: format!(
+                    "the managed worktree is unavailable at {}: {error}",
+                    worktree.worktree_path
+                ),
+            })?;
+            Ok(Some(worktree.worktree_path.clone()))
+        }
+        ManagedWorktreeState::Creating
+        | ManagedWorktreeState::IsolatingClean
+        | ManagedWorktreeState::HandingOff
+        | ManagedWorktreeState::Transferring => Err(ApiError::BadRequest {
+            code: "worktree_transfer_in_progress",
+            message: "the task worktree transfer is still in progress; retry after it finishes"
+                .to_string(),
+        }),
+        ManagedWorktreeState::CleanRecoveryRequired
+        | ManagedWorktreeState::HandoffRecoveryRequired
+        | ManagedWorktreeState::RecoveryRequired => Err(ApiError::BadRequest {
+            code: "worktree_transfer_recovery_required",
+            message: format!(
+                "the task worktree transfer requires recovery; keep the source and target checkouts intact and preserve refs/caffold/transfers/{} if it exists",
+                worktree.worktree_id
+            ),
+        }),
+        state => Err(ApiError::BadRequest {
+            code: "managed_worktree_unavailable",
+            message: format!(
+                "the managed worktree is unavailable while it is {}",
+                state.as_str()
+            ),
+        }),
+    }
+}
+
+fn managed_prompt_target(
+    target: PromptTarget,
+    managed_cwd: &str,
+    snapshot: Option<&ThreadSessionSnapshot>,
+) -> Result<PromptTarget, ApiError> {
+    match target {
+        PromptTarget::Start { .. } => Ok(PromptTarget::Start {
+            cwd: managed_cwd.to_string(),
+        }),
+        PromptTarget::Steer { turn_id }
+            if snapshot
+                .and_then(|snapshot| snapshot.active_turn_cwd.as_deref())
+                .is_some_and(|cwd| same_directory(cwd, managed_cwd)) =>
+        {
+            Ok(PromptTarget::Steer { turn_id })
+        }
+        PromptTarget::Steer { .. } => Err(ApiError::BadRequest {
+            code: "worktree_transfer_finishing",
+            message: "the isolation turn is still finishing in the original checkout; retry after it completes"
+                .to_string(),
+        }),
+    }
+}
+
+fn same_directory(left: &str, right: &str) -> bool {
+    match (
+        Path::new(left).canonicalize().ok(),
+        Path::new(right).canonicalize().ok(),
+    ) {
+        (Some(left), Some(right)) => left == right,
+        _ => false,
+    }
+}
+
 async fn task_interrupt(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
     Query(_query): Query<TasksQuery>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
-    if thread_store_get(&state, &thread_id).await?.is_none() {
+    if task_store_get(&state, &thread_id).await?.is_none() {
         return Err(task_not_managed_error());
     }
     let connection = require_codex_thread_connection(&state).await?;
@@ -1117,7 +1161,7 @@ async fn task_archive(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<TaskRecord>, ApiError> {
-    if thread_store_get(&state, &thread_id).await?.is_none() {
+    if task_store_get(&state, &thread_id).await?.is_none() {
         return Err(task_not_managed_error());
     }
     let connection = require_codex_thread_connection(&state).await?;
@@ -1129,15 +1173,22 @@ async fn task_archive(
         });
     }
     let task = state.detail.record_from_codex_thread(&thread)?;
-    connection.client.archive_thread(&thread_id).await?;
-    match thread_store_archive(&state, &thread_id).await {
+    let worktree = state.lifecycle.archive_worktree(thread_id.clone()).await?;
+    if let Err(error) = connection.client.archive_thread(&thread_id).await {
+        state
+            .lifecycle
+            .rollback_archived_worktree(&thread_id, &worktree)
+            .await;
+        return Err(error.into());
+    }
+    match task_store_archive(&state, &thread_id).await {
         Ok(Some(_)) => {}
         Ok(None) => {
-            let _ = connection.client.unarchive_thread(&thread_id).await;
+            rollback_task_archive(&state, &connection.client, &thread_id, &worktree).await;
             return Err(task_not_managed_error());
         }
         Err(error) => {
-            let _ = connection.client.unarchive_thread(&thread_id).await;
+            rollback_task_archive(&state, &connection.client, &thread_id, &worktree).await;
             return Err(error);
         }
     }
@@ -1149,30 +1200,70 @@ async fn task_restore(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<TaskRecord>, ApiError> {
-    let Some(archived) = thread_store_get_archived(&state, &thread_id).await? else {
+    let Some(archived) = task_store_get_archived(&state, &thread_id).await? else {
         return Err(task_not_archived_error());
     };
     let connection = require_codex_thread_connection(&state).await?;
-    let thread = connection.client.unarchive_thread(&thread_id).await?;
+    let worktree = state.lifecycle.restore_worktree(thread_id.clone()).await?;
+    let thread = match connection.client.unarchive_thread(&thread_id).await {
+        Ok(thread) => thread,
+        Err(error) => {
+            state
+                .lifecycle
+                .rollback_restored_worktree(&thread_id, &worktree)
+                .await;
+            return Err(error.into());
+        }
+    };
     state
         .codex_sessions
         .observe_thread_metadata(thread.clone())
         .await;
     let mut task = state.detail.record_from_codex_thread(&thread)?;
     apply_managed_thread_metadata(&mut task, &archived);
-    match thread_store_restore(&state, &thread_id).await {
+    match task_store_restore(&state, &thread_id).await {
         Ok(Some(_)) => {}
         Ok(None) => {
-            let _ = connection.client.archive_thread(&thread_id).await;
+            rollback_task_restore(&state, &connection.client, &thread_id, &worktree).await;
             return Err(task_not_archived_error());
         }
         Err(error) => {
-            let _ = connection.client.archive_thread(&thread_id).await;
+            rollback_task_restore(&state, &connection.client, &thread_id, &worktree).await;
             return Err(error);
         }
     }
     notify_task_updated(&state, task.clone());
     Ok(Json(task))
+}
+
+async fn rollback_task_archive(
+    state: &TaskState,
+    client: &CodexThreadClient,
+    thread_id: &str,
+    worktree: &super::worktrees::ArchiveOutcome,
+) {
+    if let Err(error) = client.unarchive_thread(thread_id).await {
+        eprintln!("failed to unarchive Codex thread while rolling back archive: {error}");
+    }
+    state
+        .lifecycle
+        .rollback_archived_worktree(thread_id, worktree)
+        .await;
+}
+
+async fn rollback_task_restore(
+    state: &TaskState,
+    client: &CodexThreadClient,
+    thread_id: &str,
+    worktree: &super::worktrees::RestoreOutcome,
+) {
+    if let Err(error) = client.archive_thread(thread_id).await {
+        eprintln!("failed to archive Codex thread while rolling back restore: {error}");
+    }
+    state
+        .lifecycle
+        .rollback_restored_worktree(thread_id, worktree)
+        .await;
 }
 
 fn notify_task_removed(state: &TaskState, thread_id: &str, reason: &'static str) {
@@ -1192,7 +1283,7 @@ async fn task_approval(
     Query(_query): Query<TasksQuery>,
     Json(request): Json<TaskApprovalRequest>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
-    if thread_store_get(&state, &thread_id).await?.is_none() {
+    if task_store_get(&state, &thread_id).await?.is_none() {
         return Err(task_not_managed_error());
     }
     let connection = require_codex_thread_connection(&state).await?;
@@ -1233,6 +1324,7 @@ async fn require_codex_thread_connection(
     state.detail.connection().await
 }
 
+#[cfg(test)]
 fn managed_thread_from_task_record(
     task: &TaskRecord,
     model: Option<String>,
@@ -1484,7 +1576,7 @@ pub(super) async fn test_task_stream(
 
 #[cfg(test)]
 pub(super) async fn test_claim_task(state: &TaskState, task: &TaskRecord) -> Result<(), ApiError> {
-    thread_store_claim(state, managed_thread_from_task_record(task, None, None))
+    task_store_claim(state, managed_thread_from_task_record(task, None, None))
         .await
         .map(|_| ())
 }
@@ -1494,7 +1586,7 @@ pub(super) async fn test_store_get(
     state: &TaskState,
     thread_id: &str,
 ) -> Result<Option<ManagedThread>, ApiError> {
-    thread_store_get(state, thread_id).await
+    task_store_get(state, thread_id).await
 }
 
 #[cfg(test)]
@@ -1504,7 +1596,7 @@ pub(super) async fn test_store_update_composer_settings(
     model: Option<&str>,
     reasoning_effort: Option<&str>,
 ) -> Result<Option<ManagedThread>, ApiError> {
-    thread_store_update_composer_settings(state, thread_id, model, reasoning_effort).await
+    task_store_update_composer_settings(state, thread_id, model, reasoning_effort).await
 }
 
 #[cfg(test)]

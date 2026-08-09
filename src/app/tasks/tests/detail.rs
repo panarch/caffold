@@ -118,6 +118,7 @@ async fn canonical_turn_history_recovers_missed_completion_and_marks_it_seen_whe
         thread: Some(thread),
         turns_page: Some(turns_page),
         active_turn_id: None,
+        active_turn_cwd: None,
         viewer_leases: 0,
         runtime_lease: false,
         generation: 1,
@@ -684,7 +685,7 @@ async fn app_server_recovery_does_not_block_on_leased_thread_restoration() {
     let runtime = CodexRuntime::new(
         sessions.clone(),
         TaskEvents::default(),
-        ThreadStore::memory().unwrap(),
+        TaskStore::memory().unwrap(),
         shutdown,
     );
 

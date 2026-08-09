@@ -36,6 +36,10 @@ struct ServeArgs {
     /// Directory for Caffold's local metadata database.
     #[arg(long, value_name = "PATH")]
     data_dir: Option<PathBuf>,
+
+    /// Directory exclusively owned by Caffold for managed Git worktrees.
+    #[arg(long, value_name = "PATH")]
+    worktree_root: Option<PathBuf>,
 }
 
 pub async fn run() -> anyhow::Result<()> {
@@ -54,6 +58,7 @@ pub async fn run() -> anyhow::Result<()> {
                 port: args.port,
                 root: args.root,
                 data_dir: args.data_dir,
+                worktree_root: args.worktree_root,
             })
             .await
         }

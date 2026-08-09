@@ -14,13 +14,14 @@ use super::{
     },
     runtime::{CodexConnection, CodexRuntime, CodexRuntimeSignal},
     sync::{DeferredTaskRolloutSubscription, TaskSync, TaskSyncJob, TaskSyncOutcome},
+    worktrees::inspect_ready_worktree,
 };
 use crate::{
     app::error::ApiError,
     codex_app_server::{CodexPermissionMode, CodexThreadClient, CodexThreadError, TurnsPage},
     codex_thread_sessions::{CodexThreadSessions, ThreadSessionSnapshot},
     fs::RootedFs,
-    thread_store::{ManagedThread, ThreadStore, ThreadStoreError},
+    task_store::{ManagedThread, ManagedWorktreeState, TaskStore, TaskStoreError},
 };
 
 pub(super) const TASK_DETAIL_TURNS_PAGE_SIZE: usize = 8;
@@ -30,7 +31,7 @@ type RemoveManagedTask = Arc<dyn Fn(&str, &'static str) + Send + Sync>;
 #[derive(Clone)]
 pub(in crate::app) struct DetailContext {
     fs: Arc<RootedFs>,
-    store: ThreadStore,
+    store: TaskStore,
     runtime: CodexRuntime,
     runtime_signals: Arc<AsyncMutex<Option<broadcast::Receiver<CodexRuntimeSignal>>>>,
     sessions: CodexThreadSessions,
@@ -103,7 +104,7 @@ impl DetailContext {
     #[allow(clippy::too_many_arguments)]
     pub(in crate::app) fn new(
         fs: Arc<RootedFs>,
-        store: ThreadStore,
+        store: TaskStore,
         runtime: CodexRuntime,
         runtime_signals: broadcast::Receiver<CodexRuntimeSignal>,
         sessions: CodexThreadSessions,
@@ -445,6 +446,7 @@ impl DetailContext {
             .thread
             .expect("thread metadata was checked above")
             .into_value();
+        let thread = self.project_managed_worktree_cwd(thread)?;
         let thread = thread_with_turns(&thread, turns)?;
         let mut events = thread_events(&thread);
         self.events.observe(&events);
@@ -509,9 +511,16 @@ impl DetailContext {
         &self,
         thread: &crate::codex_app_server::CodexThread,
     ) -> Result<TaskRecord, ApiError> {
-        let thread = thread.clone().into_value();
+        let thread = self.project_managed_worktree_cwd(thread.clone().into_value())?;
         let resolved = resolve_thread_cwd(&self.fs, &thread);
         task_record_from_thread(&thread, &[], resolved.as_ref())
+    }
+
+    fn project_managed_worktree_cwd(
+        &self,
+        thread: serde_json::Value,
+    ) -> Result<serde_json::Value, ApiError> {
+        project_managed_worktree_cwd(&self.store, thread)
     }
 
     async fn ensure_runtime_signal_driver(&self) {
@@ -742,6 +751,40 @@ impl DetailContext {
     }
 }
 
+fn project_managed_worktree_cwd(
+    store: &TaskStore,
+    mut thread: serde_json::Value,
+) -> Result<serde_json::Value, ApiError> {
+    let Some(thread_id) = thread
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+    else {
+        return Ok(thread);
+    };
+    let worktree = store
+        .worktree_for_thread(&thread_id)
+        .map_err(|error| ApiError::Internal(error.to_string()))?;
+    if let Some(worktree) = worktree
+        && worktree.state == ManagedWorktreeState::Ready
+    {
+        inspect_ready_worktree(&worktree).map_err(|error| ApiError::BadRequest {
+            code: "managed_worktree_unavailable",
+            message: format!(
+                "the managed worktree is unavailable at {}: {error}",
+                worktree.worktree_path
+            ),
+        })?;
+        if let Some(object) = thread.as_object_mut() {
+            object.insert(
+                "cwd".to_string(),
+                serde_json::Value::String(worktree.worktree_path),
+            );
+        }
+    }
+    Ok(thread)
+}
+
 pub(in crate::app) fn loading_detail(
     thread_id: &str,
     revision: u64,
@@ -769,10 +812,145 @@ pub(in crate::app) fn not_managed_error() -> ApiError {
     }
 }
 
-fn store_error(error: ThreadStoreError) -> ApiError {
+fn store_error(error: TaskStoreError) -> ApiError {
     ApiError::Internal(error.to_string())
 }
 
 fn store_join_error(error: tokio::task::JoinError) -> ApiError {
-    ApiError::Internal(format!("thread store task failed: {error}"))
+    ApiError::Internal(format!("task store worker failed: {error}"))
+}
+
+#[cfg(test)]
+mod inline_tests {
+    use serde_json::json;
+
+    use super::*;
+    use crate::task_store::ManagedWorktree;
+
+    #[test]
+    fn ready_managed_worktree_overrides_stale_app_server_cwd_projection() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("source");
+        initialize_repository(&source);
+        let managed = temp.path().join("managed");
+        let checkout =
+            crate::git::create_attached_worktree(&source, &managed, "caffold/review", None)
+                .unwrap();
+        let store = TaskStore::memory().unwrap();
+        store
+            .create_worktree(ManagedWorktree {
+                worktree_id: "worktree-1".to_string(),
+                thread_id: Some("thread-1".to_string()),
+                repository_git_dir: checkout.common_dir.display().to_string(),
+                worktree_path: managed.display().to_string(),
+                branch_name: checkout.branch_name,
+                head_sha: checkout.head_sha,
+                state: ManagedWorktreeState::Ready,
+                created_at_ms: 1,
+                updated_at_ms: 1,
+            })
+            .unwrap();
+
+        let projected = project_managed_worktree_cwd(
+            &store,
+            json!({ "id": "thread-1", "cwd": "/stale/source" }),
+        )
+        .unwrap();
+
+        assert_eq!(projected["cwd"], managed.display().to_string());
+    }
+
+    #[test]
+    fn unavailable_ready_worktree_rejects_cwd_projection() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("source");
+        initialize_repository(&source);
+        let repository = crate::git::managed_repository(&source).unwrap();
+        let missing = temp.path().join("missing-managed");
+        let store = TaskStore::memory().unwrap();
+        store
+            .create_worktree(ManagedWorktree {
+                worktree_id: "worktree-1".to_string(),
+                thread_id: Some("thread-1".to_string()),
+                repository_git_dir: repository.common_dir.display().to_string(),
+                worktree_path: missing.display().to_string(),
+                branch_name: "caffold/review".to_string(),
+                head_sha: repository.head_sha,
+                state: ManagedWorktreeState::Ready,
+                created_at_ms: 1,
+                updated_at_ms: 1,
+            })
+            .unwrap();
+
+        let error = project_managed_worktree_cwd(
+            &store,
+            json!({ "id": "thread-1", "cwd": "/stale/source" }),
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            ApiError::BadRequest {
+                code: "managed_worktree_unavailable",
+                message,
+            } if message.contains(&missing.display().to_string())
+        ));
+    }
+
+    #[test]
+    fn incomplete_managed_worktree_keeps_canonical_cwd_visible() {
+        let temp = tempfile::tempdir().unwrap();
+        let managed = temp.path().join("managed");
+        std::fs::create_dir(&managed).unwrap();
+        let store = TaskStore::memory().unwrap();
+        store
+            .create_worktree(ManagedWorktree {
+                worktree_id: "worktree-1".to_string(),
+                thread_id: Some("thread-1".to_string()),
+                repository_git_dir: temp.path().join(".git").display().to_string(),
+                worktree_path: managed.display().to_string(),
+                branch_name: "caffold/review".to_string(),
+                head_sha: "deadbeef".to_string(),
+                state: ManagedWorktreeState::RecoveryRequired,
+                created_at_ms: 1,
+                updated_at_ms: 1,
+            })
+            .unwrap();
+
+        let projected = project_managed_worktree_cwd(
+            &store,
+            json!({ "id": "thread-1", "cwd": "/original/source" }),
+        )
+        .unwrap();
+
+        assert_eq!(projected["cwd"], "/original/source");
+    }
+
+    fn initialize_repository(path: &std::path::Path) {
+        std::fs::create_dir(path).unwrap();
+        for args in [
+            &["init"][..],
+            &["config", "user.email", "test@example.com"],
+            &["config", "user.name", "Caffold Test"],
+        ] {
+            git(path, args);
+        }
+        std::fs::write(path.join("README.md"), "initial\n").unwrap();
+        git(path, &["add", "README.md"]);
+        git(path, &["commit", "-m", "Initial"]);
+    }
+
+    fn git(path: &std::path::Path, args: &[&str]) {
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 }
