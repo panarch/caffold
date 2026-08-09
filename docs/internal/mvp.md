@@ -1,66 +1,68 @@
-# MVP
+# Current Product Baseline
 
-> Internal planning note. This is a working scope document, not a public feature commitment.
+> Internal scope document. This records the current shallow product boundary,
+> not a public feature commitment.
 
-The MVP should not shrink the product into a standalone diff viewer. Caffold's minimum viable shape includes the web console, Codex app-server integration, and review surface together.
+Caffold's minimum useful shape is a web/PWA review console, Codex app-server
+integration, and repository review workspace together. Scope reduction should
+keep those pillars and limit the depth of each rather than turn Caffold into a
+standalone diff viewer.
 
-The right way to reduce scope is to keep the main pillars and make each pillar shallow.
+## Implemented baseline
 
-## Required Pillars
+- `caffold serve` and the macOS menu-bar server wrapper;
+- browser/PWA access on the trusted host and tailnet-only Tailscale Serve;
+- managed, thread-backed Tasks with canonical app-server lifecycle;
+- persistent app-server daemon plus replaceable proxy connection;
+- prompts, steering, interruption, command approvals, images, and local voice
+  input in the Conversation surface;
+- cwd-derived repository/worktree grouping and integrated Files, Git, GitHub,
+  Diff, source, and log review surfaces;
+- same-Task preparation of a Caffold-managed worktree through
+  `isolate_current_task`;
+- opt-in transfer of staged, unstaged, and untracked changes with bounded
+  recovery;
+- archive/restore of Tasks and verified clean managed worktrees;
+- responsive desktop, foldable, and phone layouts;
+- deterministic browser suites and opt-in real Codex live verification.
 
-The MVP must include:
+## Deliberately shallow boundaries
 
-- `caffold serve` or equivalent host process
-- browser/PWA access to the host
-- Codex thread-backed Tasks with cwd-derived repository/worktree context
-- Codex app-server process management
-- backend-to-app-server JSON-RPC adapter
-- Codex thread start and lookup
-- Codex turn start, interrupt, and follow-up prompt support
-- approval UI for command approvals
-- changed files view
-- unified diff viewer
-- file browser and file viewer
-- filename search and `rg` search
-- command runner for explicit commands and test presets
-- test result display
-- Tailscale-friendly deployment assumptions
+- unified diff before a full split-diff and hunk-comment workflow;
+- read/review-oriented Git UI while mutation remains Codex-directed or manual;
+- explicit setup-only worktree isolation before Issue/PR bootstrap automation;
+- Caffold-created worktree ownership without adoption of external worktrees;
+- clean managed-worktree archive removal without force deletion;
+- one host/runtime owner before a central multi-host dashboard;
+- command and tool output in Conversation rather than a full PTY workspace;
+- GitHub review projection without automatic PR publication or mutation.
 
-## Shallow First
+## Not in the current baseline
 
-The MVP can keep depth low:
+- stage, unstage, commit, merge, rebase, reset, checkout, or stash buttons;
+- automatic Issue/PR recognition followed by worktree preparation and request
+  continuation;
+- automatic PR creation or review-comment publication;
+- external worktree adoption or cleanup;
+- force deletion of dirty managed worktrees;
+- a full terminal, tmux, or Zellij workspace;
+- durable duplication of Codex transcript or lifecycle state;
+- a central multi-host dashboard;
+- rich hunk review/comment state and test-failure-to-hunk linking.
 
-- unified diff before split diff
-- file-level review before hunk review state
-- basic timeline before rich event filtering
-- command runner before full PTY
-- preset test commands before complex task pipelines
-- one host instance before a central multi-host dashboard
-- manual worktree cleanup before automated cleanup policy
-- simple PWA shell before native mobile polish
+## Acceptance scenarios
 
-## Excluded From MVP
+The current baseline is useful when these flows work:
 
-The MVP should exclude:
-
-- stage, unstage, commit, merge, rebase, reset, checkout, and stash UI
-- automatic PR creation
-- GitHub projection
-- full terminal workspace
-- tmux or Zellij integration
-- screenshot or preview panels
-- central multi-host dashboard
-- automatic worktree deletion
-- Caffold-owned duplication of Codex thread history
-- duplication of all Codex transcript data
-
-## Acceptance Scenarios
-
-The MVP is useful when these flows work:
-
-1. Create a task from the web UI in a selected cwd, start a Codex thread, and see its live repository/worktree context.
-2. Review changed files and diffs from a mobile or foldable screen without opening an editor.
-3. Approve or deny a command request remotely and see the decision recorded.
-4. Run a test preset, inspect the result, and keep that result attached to the task.
-5. Send a follow-up prompt after reading a diff or file.
-6. Reopen the console later and know which worktree and Codex thread belong to the task.
+1. Start a Task in a selected cwd and see live repository/worktree context.
+2. Continue and steer real Codex work through reconnects without replacing
+   app-server-owned thread state.
+3. Review files, diffs, Git state, and GitHub context on desktop, foldable, and
+   phone layouts.
+4. Approve or deny a command request and see the canonical outcome.
+5. Explicitly prepare the same Task in an isolated worktree without moving dirty
+   source changes by default.
+6. Archive a clean managed worktree, restore it, and preserve the same Task,
+   branch, and thread.
+7. Return later and identify the Task, thread, branch, worktree, and current
+   review state without remembering a terminal session.

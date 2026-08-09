@@ -1,11 +1,12 @@
 # Operation Ledger
 
-> Internal planning note. This describes Caffold-owned event history before the schema is implemented.
+> Internal planning note. Caffold does not currently implement this
+> application-level ledger.
 
 The operation ledger is a possible application-level append-only event log.
 
-It is not part of the first thread-backed Tasks slice. It is not the database
-WAL and it is not a complete replay log for all state.
+It is separate from the thread-backed Tasks model, the database WAL, and any
+complete replay log for external state.
 
 ## Purpose
 
@@ -26,7 +27,7 @@ Source ownership:
 
 - Codex owns thread/session originals
 - git owns file changes
-- command runner owns immediate process output while running
+- Codex app-server owns command execution events and output
 - Caffold may own optional annotations, summaries, and operation events
 
 Caffold can store summaries and snapshots when they make the UI more reliable,
@@ -35,7 +36,7 @@ transcript duplication is not the default.
 
 ## Event Types
 
-Initial event candidates:
+Proposed event types:
 
 - task_created
 - task_status_changed

@@ -1,69 +1,57 @@
 # Roadmap
 
-> Internal planning note. This roadmap is a working plan, not a release commitment.
+> Internal working plan. Ordering reflects product risk and workflow value, not
+> a release commitment.
 
-This roadmap is ordered by product risk and workflow value, not by implementation glamour.
+## Current foundation
 
-## Phase 0: Planning Skeleton
+The following foundation exists and should be hardened rather than rebuilt:
 
-- README
-- design docs
-- MVP boundary
-- architecture sketch
-- open questions
+- Rust host, browser/PWA shell, and macOS menu-bar packaging;
+- persistent Codex app-server daemon integration and thread-backed Tasks;
+- Conversation controls, approvals, reconnect recovery, and local voice input;
+- integrated Files, Git, GitHub, Diff, source, and log review;
+- responsive desktop, foldable, and phone layouts;
+- same-Task managed-worktree isolation, dirty transfer recovery, archive, and
+  restore;
+- public review policy plus contributor development and verification guides.
 
-## Phase 1: Host Console Skeleton
+## Next: close one outer-loop workflow
 
-- Rust backend starts
-- web UI is served
-- Codex thread-backed task list and detail screens exist
-- cwd-based Files context works without a local project registry
-- managed thread membership and list state use one local GlueSQL table
+Close review of someone else's PR before adding broader mutation:
 
-## Phase 2: Git Review Surface
+1. identify repository and PR without allocating a worktree;
+2. explicitly prepare or reuse an isolated review worktree;
+3. attach integrated Review and optional Codex analysis/tests;
+4. detect a changed remote head without replacing the active review;
+5. explicitly sync while protecting dirty state and review position;
+6. finish or dismiss review;
+7. archive the Task and safely clean up only Caffold-owned resources.
 
-- read git status
-- list changed files
-- show unified diff
-- show file content
-- browse files
-- run filename search and `rg`
+This provides the shared Prepare, Sync, Close, and cleanup substrate for Issue
+implementation and owned-PR follow-up.
 
-## Phase 3: Codex App Server Integration
+## Then
 
-- ensure the persistent app-server daemon and connect through a proxy child
-- initialize JSON-RPC adapter
-- start or attach thread
-- send prompt
-- stream basic events
-- interrupt turn
-- send follow-up prompt
-
-## Phase 4: Approval and Command Runner
-
-- command approval UI
-- accept, accept for session, decline, cancel
-- command runner
-- test presets
-- command and test results in the task conversation
-
-## Phase 5: Mobile Review Polish
-
-- mobile and foldable layout pass
-- stable task list on mobile
-- readable diff on mobile
-- approval actions usable on mobile
-- reconnect state
+- Issue implementation bootstrap, branch preparation, and PR linkage;
+- owned-PR follow-up with comments, checks, and base movement;
+- clearer test/command summaries attached to review context;
+- richer reconnect, unavailable, and recovery actions;
+- hunk-level review state and review-summary generation;
+- test-failure links to relevant files or hunks;
+- controlled GitHub mutations after their approval and recovery contracts are
+  explicit.
 
 ## Later
 
-- split diff
-- hunk review state
-- GitHub PR projection
-- preview/screenshot panel
-- tmux or Zellij escape hatch
-- review summary generation
-- test failure to file/hunk linking
-- central multi-host dashboard
-- cleanup policy
-- controlled git mutation flows
+- split diff;
+- full PTY, tmux, or Zellij escape hatch;
+- central multi-host dashboard;
+- optional external-worktree adoption only if ownership and cleanup can be
+  proven safely;
+- broader controlled Git mutation UI.
+
+Automatic Issue/PR recognition, worktree isolation, and continuation of the
+original request is orchestration around existing capabilities. It must not
+weaken the explicit setup-only `isolate_current_task` contract or silently move
+dirty checkout state.

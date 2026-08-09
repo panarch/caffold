@@ -22,7 +22,7 @@ Codex remains the work execution engine. The git worktree remains the constructi
 
 ## Shape
 
-The intended shape is:
+Caffold consists of:
 
 - a Rust backend running on each trusted host
 - a browser/PWA frontend served by that backend
@@ -48,7 +48,7 @@ brew install cmake
 xcode-select --install
 ```
 
-Start the first read-only file browser slice:
+Start Caffold:
 
 ```sh
 cargo run -- serve
@@ -108,9 +108,10 @@ See [Caffold Server for macOS](desktop/macos/README.md) for installation, runtim
 
 ## Test
 
-Run Rust checks:
+Install the committed Node dependencies, then run Rust checks:
 
 ```sh
+npm ci
 cargo test
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
@@ -122,7 +123,15 @@ Run browser tests:
 npm run test:e2e
 ```
 
-Playwright tests verify behavior and write review screenshots under the ignored `test-results` directory. Caffold does not commit Playwright snapshot baselines; future CI visual checks should compare screenshots generated from `main` and the pull request head in the same runner.
+Playwright tests verify behavior and write review screenshots under
+`test-results`. The repository does not store Playwright snapshot baselines, so
+visual comparisons should use screenshots generated from `main` and the pull
+request head in the same runner.
+
+See [Contributing](CONTRIBUTING.md) and the [testing guide](docs/development/testing.md)
+for the complete Node, macOS, protocol, live Codex, and coverage matrix. Local
+development and automated tests use isolated ports and data directories rather
+than the installed application's database.
 
 ## Documentation
 
@@ -130,10 +139,18 @@ Public-facing docs:
 
 - [Vision](docs/public/vision.md)
 - [Architecture](docs/public/architecture.md)
+- [Review Policy](docs/public/review-policy.md)
 
-Internal planning notes:
+Contributor docs:
 
-- [MVP](docs/internal/mvp.md)
+- [Contributing](CONTRIBUTING.md)
+- [Testing](docs/development/testing.md)
+- [macOS Local Application Development](docs/development/macos-local-app.md)
+- [Mobile and PWA Testing](docs/development/mobile-pwa-testing.md)
+
+Engineering and planning notes:
+
+- [Current Product Baseline](docs/internal/mvp.md)
 - [Roadmap](docs/internal/roadmap.md)
 - [Workflows](docs/internal/workflows.md)
 - [Codex App Server](docs/internal/codex-app-server.md)
@@ -141,6 +158,8 @@ Internal planning notes:
 - [Operation Ledger](docs/internal/operation-ledger.md)
 - [UI Surfaces](docs/internal/ui-surfaces.md)
 - [Frontend Structure](docs/internal/frontend-structure.md)
+- [Navigation Routing](docs/internal/navigation-routing.md)
+- [Live Updates](docs/internal/live-updates.md)
 - [Security and Approvals](docs/internal/security-approvals.md)
 - [macOS Release Process](docs/internal/macos-release.md)
 

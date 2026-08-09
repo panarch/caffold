@@ -1,6 +1,7 @@
-# Architecture Sketch
+# Architecture
 
-This is an initial architecture sketch, not a fixed public contract.
+This document describes Caffold's current architecture. It is not a public
+compatibility contract.
 
 Caffold is organized around one control instance per trusted host.
 
@@ -13,18 +14,15 @@ flowchart TD
     Proxy["Codex proxy child"]
     AppServer["Persistent Codex app-server daemon"]
     Git["git worktree"]
-    Commands["Command runner"]
     Whisper["Host-local Whisper model"]
 
-    PWA -->|"HTTP / SSE / WebSocket as needed"| Backend
+    PWA -->|"HTTP / SSE"| Backend
     PWA -->|"16 kHz mono PCM WAV"| Backend
     Backend -->|"JSON-RPC / WebSocket"| Proxy
     Proxy --> AppServer
     Backend --> Git
-    Backend --> Commands
     Backend --> Whisper
     AppServer -->|"agent events / approvals / thread data"| Proxy
-    Commands -->|"exit code / output summary"| Backend
 ```
 
 ## Components
@@ -42,7 +40,6 @@ The backend owns:
 - Codex app-server daemon connection and disposable proxy lifecycle
 - JSON-RPC adapter
 - git status, diff, log, and file APIs
-- command runner
 - host-local Whisper model installation, verification, and transcription
 - PWA asset serving
 
@@ -73,7 +70,9 @@ Detail applies canonical reads, and Routes adapts those owners to HTTP.
 
 ### Codex App Server
 
-Codex app-server owns Codex thread, turn, approval, and event stream behavior. Caffold should treat it as an external integration boundary rather than embedding Codex internals in the first implementation.
+Codex app-server owns Codex thread, turn, approval, and event stream behavior.
+Caffold treats it as an external integration boundary and does not embed Codex
+internal crates.
 
 ### Git Worktree
 
@@ -93,25 +92,32 @@ lifetime; Tailscale is transport for remote browsers, not part of inference.
 ## Source of Truth
 
 - Codex thread/session: conversation, turns, agent activity
-- Caffold Redb: managed-thread membership, recency-only ordering cache, composer settings, and seen state
+- Caffold Redb: managed-thread membership, recency-only ordering cache,
+  composer/seen state, and Caffold-managed worktree ownership and recovery
 - git worktree: actual file and code changes
 - PWA: view and controller only
 
 ## Process Model
 
-The initial model is one persistent Codex app-server daemon per user. A Caffold
+The current model is one persistent Codex app-server daemon per user. A Caffold
 backend ensures that daemon is running and connects through a proxy child that
 may be replaced independently. Caffold owns and stops the proxy, not the daemon.
 
 Codex remains the source of truth for thread content and runtime state. Caffold
-keeps one local `managed_threads` table for the subset explicitly continued in
-Caffold. The table contains only the thread ID, last observed canonical recency,
-claimed/opened/seen timestamps, and optional model/reasoning settings. It never
-stores title, preview, cwd, Codex timestamps, status, active turn, or event
-summary. The recency value is only an ordering cache; list rows are rebuilt from
-successful canonical `thread/read` responses before being returned. Caffold derives
+keeps local Caffold-owned tables for managed-thread membership and managed
+worktree ownership/recovery. Managed-thread metadata contains only the thread
+ID, last observed canonical recency, Caffold timestamps, and optional
+model/reasoning settings. It never stores title, preview, cwd, Codex timestamps,
+status, active turn, or event summary. The recency value is only an ordering
+cache; list rows are rebuilt from successful canonical `thread/read` responses
+before being returned. Caffold derives
 repository and worktree context live from each thread cwd and does not keep a
 project registry. Tasks globally groups the main checkout and linked worktrees by
 their shared Git repository while each Task keeps its actual worktree root for
-Files and Diff. Worktree lifecycle operations remain outside the current Tasks
-surface.
+Files and Diff.
+
+An eligible managed Task can explicitly move the same Codex thread into a new
+Caffold-managed worktree. The ownership record permits bounded recovery,
+archive removal, and restore only for paths Caffold created and verified. An
+external worktree may be used as cwd but is never adopted or removed from path
+inference alone.

@@ -1,8 +1,9 @@
 # Security and Approvals
 
-> Internal planning note. This is an early safety model and should be revisited before exposing Caffold beyond personal trusted networks.
+> Internal security boundary for deployment on personal hosts and trusted
+> private networks.
 
-Caffold is a remote control surface for a local development machine. Its safety model matters from the first MVP.
+Caffold is a remote control surface for a local development machine.
 
 ## Trust Boundary
 
@@ -11,7 +12,8 @@ Expected deployment:
 - personal host machines
 - private network access such as Tailscale
 - no public unauthenticated exposure
-- local filesystem and command access only through the backend
+- browser access to the local filesystem and Codex command execution only
+  through the Caffold backend
 
 Caffold should still assume that remote command execution is sensitive.
 
@@ -20,35 +22,44 @@ Caffold should still assume that remote command execution is sensitive.
 - Show cwd before command approval.
 - Show the exact command before approval.
 - Distinguish one-time approval from accept-for-session.
-- Record every approval decision.
+- Keep every approval decision visible in the canonical conversation.
 - Make decline and cancel first-class outcomes.
 - Avoid silent destructive operations.
 
-## Command Runner
+## Codex Command Execution
 
-The command runner should be explicit and auditable.
+Codex app-server owns command execution. Caffold presents each request, command
+event, output, and result without introducing a separate command runner or
+alternate process state.
 
-MVP rules:
+Current rules:
 
-- command cwd is the task worktree
-- command output is attached to the task
-- exit code is shown
-- long-running commands need visible running state
-- command start and completion are recorded
+- command cwd follows the Codex thread workspace;
+- approval cards show the requested command and cwd;
+- command output and exit status remain attached to the canonical turn;
+- long-running commands expose visible running state;
+- approval outcomes are sent back through the original app-server request.
 
-Future rules can add allowlists, deny lists, or command classes.
+Allowlists, deny lists, or command classes require a separate policy before they
+can change the approval flow.
 
 ## Git Mutations
 
-Direct git mutation UI is excluded from the MVP.
-
-This avoids making Caffold responsible for complex destructive flows too early. Git mutation can happen through Codex instructions or manual terminal work until a controlled flow is designed.
+Caffold does not expose direct Git mutation controls. Git mutations happen
+through Codex instructions or manual terminal work. A future product control
+requires an explicit approval and recovery contract.
 
 ## Worktree Deletion
 
-Dirty worktree deletion requires explicit confirmation and should be impossible to trigger accidentally.
+Caffold removes a worktree only as part of an explicit Archive action and only
+when a matching `managed_worktrees` ownership record proves that Caffold created
+the UUID-derived path. The live Git common directory, branch, managed root, and
+clean state are revalidated before removal.
 
-MVP should prefer no automatic deletion.
+Dirty managed worktrees block Archive; there is no force-delete confirmation
+path. External or merely cwd-derived worktrees are never deleted by Caffold.
+Archive retains the managed branch and record so Restore can recreate the same
+owned path.
 
 ## Tailscale Assumption
 

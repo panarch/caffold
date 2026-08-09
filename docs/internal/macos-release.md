@@ -1,6 +1,10 @@
 # macOS Release Process
 
-This document separates reversible local release preparation from public distribution. Caffold currently ships only an arm64 macOS menu bar app. Developer ID signing, Apple notarization, Intel builds, Linux packaging, and in-app updating are outside the first release boundary.
+This document separates reversible local release preparation from public
+distribution. Caffold ships an arm64 macOS menu bar app through Homebrew.
+Developer ID signing, Apple notarization, Intel builds, and Linux packaging are
+not supported. The menu app can initiate an explicitly approved Homebrew
+upgrade; it does not download or replace executable content itself.
 
 ## Version ownership
 
@@ -35,7 +39,9 @@ The command performs no publication or repository mutation. Cargo may download l
 8. writes and verifies a SHA-256 checksum beside the archive; and
 9. confirms packaging did not change the source worktree.
 
-The output under `target/caffold-server` is ignored build output. A successful dry run is evidence that the current source can produce the release artifact; it does not publish anything.
+The output under `target/caffold-server` is generated build output. A
+successful dry run is evidence that the current source can produce the release
+artifact; it does not publish anything.
 
 ## GitHub workflow
 
@@ -86,7 +92,7 @@ Published version tags and assets are not overwritten. If installation reveals a
 
 ## Application update lifecycle
 
-`v0.1.0` establishes the Homebrew installation baseline. Source developed after that release adds the app-driven path whose first real end-to-end check uses a later release such as `v0.1.1`:
+The menu app uses this update lifecycle:
 
 1. the menu app requests the latest stable `panarch/caffold` GitHub Release at launch and refreshes a stale result when the menu opens;
 2. GitHub provides only version discovery and the release-page fallback;

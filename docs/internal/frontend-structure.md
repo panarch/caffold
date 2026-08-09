@@ -331,8 +331,7 @@ slot instead of adding broad descendant rules to the parent layout.
 
 ## Browser Test Structure
 
-The Playwright suite mirrors the runtime owner rather than the historical
-screen where a flow was first tested:
+The Playwright suite mirrors runtime ownership:
 
 ```text
 tests/e2e/
@@ -522,7 +521,7 @@ ownership boundary. For example, the Git log list belongs only to
 `(git)/(log)/commit/page`, and the PR files tree belongs only to
 `(github)/(pulls)/files/page`. GitHub-only helpers shared by GitHub pages,
 such as the Markdown renderer, belong under `(github)/components`. The file
-browser is different: it is now a reusable surface used by `files/page` and
+browser is a reusable surface used by `files/page` and
 task-workspace integrations, so it lives under `frontend/components`
 with its list implementation in `frontend/components/file-browser/`.
 Layout-specific helper components follow the same rule. App chrome such as the

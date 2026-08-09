@@ -1,0 +1,299 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
+PACKAGE_SCRIPT="${REPO_DIR}/desktop/macos/package-app"
+SOURCE_APP="${CAFFOLD_SERVER_APP_SOURCE:-${REPO_DIR}/target/caffold-server/Caffold Server.app}"
+TARGET_APP="${CAFFOLD_SERVER_APP_TARGET:-/Applications/Caffold Server.app}"
+TARGET_DIR="$(dirname -- "${TARGET_APP}")"
+TARGET_EXECUTABLE="${TARGET_APP}/Contents/MacOS/CaffoldServer"
+TARGET_SERVER="${TARGET_APP}/Contents/Resources/caffold"
+STAGING_APP="${TARGET_DIR}/.Caffold Server.installing.$$.app"
+FAILED_APP="${TARGET_DIR}/.Caffold Server.failed.$$.app"
+BACKUP_ROOT="${CAFFOLD_SERVER_BACKUP_DIR:-${HOME}/Library/Application Support/Caffold/install-backups}"
+BACKUP_APP="${BACKUP_ROOT}/Caffold Server-$(date '+%Y%m%d-%H%M%S')-$$.app"
+PORT="${CAFFOLD_SERVER_PORT:-5178}"
+HEALTH_URL="http://127.0.0.1:${PORT}/api/health"
+BUNDLE_ID="io.panarch.caffold.server"
+STOP_ATTEMPTS="${CAFFOLD_SERVER_STOP_ATTEMPTS:-80}"
+STOP_INTERVAL="${CAFFOLD_SERVER_STOP_INTERVAL:-0.25}"
+HEALTH_ATTEMPTS="${CAFFOLD_SERVER_HEALTH_ATTEMPTS:-120}"
+HEALTH_INTERVAL="${CAFFOLD_SERVER_HEALTH_INTERVAL:-0.25}"
+SKIP_BUILD="${CAFFOLD_LOCAL_INSTALL_SKIP_BUILD:-false}"
+EXPECTED_COMMIT="$(git -C "${REPO_DIR}" rev-parse --short=8 HEAD)"
+
+backup_created=false
+replacement_started=false
+install_finished=false
+
+usage() {
+  cat <<'EOF'
+Usage: desktop/macos/install-local [--check-stopped]
+
+Build, validate, and safely replace the local Caffold Server application.
+
+  --check-stopped  Check that the target app, its bundled server, and its port
+                   listener are all stopped without changing anything.
+EOF
+}
+
+validate_app() {
+  local app_path="$1"
+  test -x "${app_path}/Contents/MacOS/CaffoldServer"
+  test -x "${app_path}/Contents/Resources/caffold"
+  codesign --verify --deep --strict "${app_path}"
+  plutil -lint "${app_path}/Contents/Info.plist" >/dev/null
+}
+
+matching_processes() {
+  local executable="$1"
+  ps -axo pid=,command= | awk -v executable="${executable}" '
+    {
+      pid = $1
+      $1 = ""
+      sub(/^[[:space:]]+/, "")
+      if ($0 == executable || index($0, executable " ") == 1) {
+        print pid "\t" $0
+      }
+    }
+  '
+}
+
+wrapper_processes() {
+  matching_processes "${TARGET_EXECUTABLE}"
+}
+
+bundled_server_processes() {
+  matching_processes "${TARGET_SERVER}"
+}
+
+listener_pids() {
+  lsof -tiTCP:"${PORT}" -sTCP:LISTEN 2>/dev/null || true
+}
+
+installed_runtime_stopped() {
+  [[ -z "$(wrapper_processes)" ]] \
+    && [[ -z "$(bundled_server_processes)" ]] \
+    && [[ -z "$(listener_pids)" ]]
+}
+
+print_running_runtime() {
+  local wrappers servers listeners
+  wrappers="$(wrapper_processes)"
+  servers="$(bundled_server_processes)"
+  listeners="$(listener_pids)"
+  [[ -z "${wrappers}" ]] || printf 'wrapper processes:\n%s\n' "${wrappers}" >&2
+  [[ -z "${servers}" ]] || printf 'bundled server processes:\n%s\n' "${servers}" >&2
+  [[ -z "${listeners}" ]] || printf 'port %s listener PIDs:\n%s\n' "${PORT}" "${listeners}" >&2
+}
+
+request_app_quit() {
+  if [[ -n "$(wrapper_processes)" ]]; then
+    osascript -e "tell application id \"${BUNDLE_ID}\" to quit" >/dev/null 2>&1 || true
+  fi
+}
+
+wait_for_installed_runtime_to_stop() {
+  local attempt
+  for ((attempt = 1; attempt <= STOP_ATTEMPTS; attempt += 1)); do
+    if installed_runtime_stopped; then
+      return 0
+    fi
+    if ((attempt < STOP_ATTEMPTS)); then
+      sleep "${STOP_INTERVAL}"
+    fi
+  done
+  return 1
+}
+
+stop_installed_app() {
+  local context="$1"
+  request_app_quit
+  if wait_for_installed_runtime_to_stop; then
+    return 0
+  fi
+
+  echo "${context} did not stop completely." >&2
+  print_running_runtime
+  return 1
+}
+
+listener_pid() {
+  listener_pids | head -n 1
+}
+
+verify_running_server() {
+  local expected_commit="$1"
+  local context="$2"
+  local health=""
+  local attempt
+
+  for ((attempt = 1; attempt <= HEALTH_ATTEMPTS; attempt += 1)); do
+    health="$(curl -fsS "${HEALTH_URL}" 2>/dev/null || true)"
+    if [[ "${health}" == *'"status":"ok"'* ]]; then
+      break
+    fi
+    if ((attempt < HEALTH_ATTEMPTS)); then
+      sleep "${HEALTH_INTERVAL}"
+    fi
+  done
+
+  if [[ "${health}" != *'"status":"ok"'* ]]; then
+    echo "${context} did not become healthy at ${HEALTH_URL}." >&2
+    return 1
+  fi
+  if [[ -n "${expected_commit}" && "${health}" != *"\"buildId\":\"${expected_commit}"* ]]; then
+    echo "${context} health does not report expected commit ${expected_commit}: ${health}" >&2
+    return 1
+  fi
+
+  local pid command
+  pid="$(listener_pid)"
+  if [[ -z "${pid}" ]]; then
+    echo "No listener owns port ${PORT} after ${context} reported healthy." >&2
+    return 1
+  fi
+  command="$(ps -p "${pid}" -o command=)"
+  case "${command}" in
+    "${TARGET_SERVER} serve"|"${TARGET_SERVER} serve "*) ;;
+    *)
+      echo "Port ${PORT} is owned by an unexpected process: ${command}" >&2
+      return 1
+      ;;
+  esac
+
+  echo "health:  ${health}"
+  echo "process: ${command}"
+}
+
+start_and_verify() {
+  local expected_commit="$1"
+  local context="$2"
+  open "${TARGET_APP}"
+  verify_running_server "${expected_commit}" "${context}"
+}
+
+rollback_on_error() {
+  local status=$?
+  trap - EXIT
+  if [[ "${status}" -eq 0 || "${install_finished}" == true ]]; then
+    return
+  fi
+
+  if [[ "${replacement_started}" != true ]]; then
+    if [[ -d "${STAGING_APP}" ]]; then
+      rm -rf -- "${STAGING_APP}"
+    fi
+    return
+  fi
+
+  echo "Installation failed; restoring the previous app." >&2
+  if ! stop_installed_app "The newly installed Caffold Server"; then
+    echo "Rollback was not attempted because the new runtime still owns resources." >&2
+    echo "The previous app remains at: ${BACKUP_APP}" >&2
+    return
+  fi
+
+  if [[ -d "${TARGET_APP}" ]]; then
+    mv -- "${TARGET_APP}" "${FAILED_APP}"
+    echo "failed app: ${FAILED_APP}" >&2
+  fi
+  if [[ "${backup_created}" == true && -d "${BACKUP_APP}" ]]; then
+    mv -- "${BACKUP_APP}" "${TARGET_APP}"
+    if start_and_verify "" "The restored Caffold Server"; then
+      echo "The previous app was restored and is healthy." >&2
+    else
+      echo "The previous app was restored but did not become healthy." >&2
+    fi
+  fi
+  if [[ -d "${STAGING_APP}" ]]; then
+    rm -rf -- "${STAGING_APP}"
+  fi
+}
+
+case "${TARGET_APP}" in
+  /*.app) ;;
+  *)
+    echo "CAFFOLD_SERVER_APP_TARGET must be an absolute .app path." >&2
+    exit 2
+    ;;
+esac
+
+if [[ ! "${PORT}" =~ ^[0-9]+$ ]] || ((PORT < 1 || PORT > 65535)); then
+  echo "CAFFOLD_SERVER_PORT must be an integer from 1 through 65535." >&2
+  exit 2
+fi
+if [[ ! "${STOP_ATTEMPTS}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "CAFFOLD_SERVER_STOP_ATTEMPTS must be a positive integer." >&2
+  exit 2
+fi
+if [[ ! "${HEALTH_ATTEMPTS}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "CAFFOLD_SERVER_HEALTH_ATTEMPTS must be a positive integer." >&2
+  exit 2
+fi
+if [[ ! "${STOP_INTERVAL}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+  echo "CAFFOLD_SERVER_STOP_INTERVAL must be a non-negative number." >&2
+  exit 2
+fi
+if [[ ! "${HEALTH_INTERVAL}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+  echo "CAFFOLD_SERVER_HEALTH_INTERVAL must be a non-negative number." >&2
+  exit 2
+fi
+if [[ "${SKIP_BUILD}" != false && "${SKIP_BUILD}" != true ]]; then
+  echo "CAFFOLD_LOCAL_INSTALL_SKIP_BUILD must be true or false." >&2
+  exit 2
+fi
+
+case "${1:-}" in
+  "") ;;
+  --check-stopped)
+    if installed_runtime_stopped; then
+      echo "Caffold Server runtime is fully stopped."
+      exit 0
+    fi
+    echo "Caffold Server runtime is not fully stopped." >&2
+    print_running_runtime
+    exit 1
+    ;;
+  --help|-h)
+    usage
+    exit 0
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac
+
+trap rollback_on_error EXIT
+
+if [[ "${SKIP_BUILD}" == false ]]; then
+  (cd "${REPO_DIR}" && cargo clean -p caffold --release)
+  "${PACKAGE_SCRIPT}" build
+fi
+validate_app "${SOURCE_APP}"
+
+mkdir -p "${TARGET_DIR}" "${BACKUP_ROOT}"
+ditto "${SOURCE_APP}" "${STAGING_APP}"
+validate_app "${STAGING_APP}"
+
+if ! stop_installed_app "The installed Caffold Server"; then
+  echo "Installation was not started." >&2
+  exit 1
+fi
+
+replacement_started=true
+if [[ -d "${TARGET_APP}" ]]; then
+  mv -- "${TARGET_APP}" "${BACKUP_APP}"
+  backup_created=true
+fi
+mv -- "${STAGING_APP}" "${TARGET_APP}"
+
+start_and_verify "${EXPECTED_COMMIT}" "The new Caffold Server"
+install_finished=true
+
+echo "installed: ${TARGET_APP}"
+if [[ "${backup_created}" == true ]]; then
+  echo "backup:    ${BACKUP_APP}"
+fi

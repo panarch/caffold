@@ -107,6 +107,19 @@ with Shadow DOM. Good reasons include reusable leaf widgets, third-party-like
 components, or a component whose styles cannot reasonably share the app
 cascade.
 
+### Native disclosure and modal surfaces
+
+Prefer browser-native interaction state when it matches the product contract.
+Use the HTML Popover API for lightweight, dismissible metadata or contextual
+panels. `popover="auto"` with `popovertarget` is the default when light dismiss
+and one-open-auto-popover behavior are appropriate.
+
+Use `<dialog>` for modal work or an explicit confirm/cancel decision, not as a
+generic details panel. A custom overlay is justified only when native focus,
+dismissal, anchoring, or modality cannot express the required behavior. Review
+keyboard access, focus return, Escape/light-dismiss behavior, and compact mobile
+placement at the same boundary as the visual change.
+
 ### Component Ownership And Lifecycles
 
 A component extraction is a state-ownership change, not only a markup move.
@@ -191,8 +204,8 @@ Use these rules when reviewing CSS:
 - Use component-local classes for internal chrome.
 - Avoid raw tag selectors from shell or container components.
 - Cross-component overrides must be narrow and intentional.
-- New component selectors must be scoped below that custom element, and old
-  broad container selectors must be removed when ownership moves.
+- New component selectors must be scoped below that custom element, and
+  overlapping broad container selectors must be removed when ownership moves.
 - Register new JavaScript and CSS assets in the stylesheet entrypoint, service
   worker cache, Rust static asset table, and static asset tests in the same
   change.
@@ -275,11 +288,15 @@ valid, while a short test that combines unrelated owners is not.
 
 ### Current Adoption
 
-Browser specs are grouped by App Shell, Files, Review, and Tasks surfaces.
-Large Tasks specs and support fixtures are still transitional and need the same
-owner and independent-failure review when their production surface changes.
-Their current location or size is not precedent for adding unrelated scenarios
-to the same spec.
+Browser test ownership is only partially aligned with this policy. Specs are
+grouped by App Shell, Files, Review, and Tasks surfaces, but the Tasks area is
+not fully owner-aligned.
+
+Large Tasks specs and support fixtures still contain multiple behavior owners.
+Changes to those surfaces must keep independently failing behavior in separate
+tests and must not add unrelated scenarios merely because a shared fixture
+already exists. Their current location or size is not precedent for adding new
+owner-private or cross-owner scenarios.
 
 ## Frontend Verification
 

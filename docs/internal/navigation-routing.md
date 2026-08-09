@@ -3,7 +3,7 @@
 ## Default entrypoint
 
 `/` is the canonical Codex-first Tasks home and the durable application
-entrypoint. The legacy `/tasks` list URL is accepted on direct entry and
+entrypoint. The `/tasks` compatibility URL is accepted on direct entry and
 canonicalized to `/` with history replacement. The wide Tasks home keeps the
 task navigator visible and renders the New Task composer as its default detail
 surface. Narrow viewports keep the list as the first surface while active or
@@ -15,8 +15,8 @@ Codex availability does not decide the top-level surface. Connection failures
 remain visible inside Tasks, where the user can retry or browse local files;
 they must not cause a transient or automatic switch to Files.
 
-> Internal planning note. This document describes the first URL routing layer for
-> Caffold's browser UI.
+> Internal architecture note. This document defines Caffold's browser routing
+> and navigation ownership.
 
 Caffold uses URLs to preserve review orientation across reloads, bookmarks, and
 browser back/forward. URLs describe semantic review state only. They do not
@@ -56,7 +56,7 @@ The Codex action in the Files surface always enters `/`. Task rows are grouped
 by repository and worktree context derived from each thread cwd; cwd never
 filters the list.
 `/tasks/new?cwd=...` is the only Tasks route that carries cwd, because it selects
-where the new thread starts. Legacy list and detail URLs containing cwd are
+where the new thread starts. Compatibility list and detail URLs containing cwd are
 canonicalized to their cwd-free forms.
 
 Tasks route targets describe semantic detail ownership rather than responsive

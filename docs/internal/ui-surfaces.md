@@ -1,103 +1,125 @@
 # UI Surfaces
 
-> Internal planning note. These surfaces describe product intent before UI implementation.
+> Internal product-surface map of the current browser UI.
 
-Caffold UI should be dense, review-oriented, and useful on mobile. It should not feel like a marketing site or a general IDE.
+Caffold is a dense, review-oriented work surface for desktop, foldable, and
+phone layouts. Its browser components present state owned by Codex, Git,
+GitHub, the filesystem, and Caffold without replacing those sources of truth.
 
-## Task List
+## Task Navigator
 
-Shows:
+The Task navigator is the return-later entrypoint. It provides:
 
-- tasks
-- repository and worktree context derived from each thread cwd
-- status
-- recent event
-- changed file count
-- latest test status
+- active and Archived sections;
+- repository grouping derived from each thread cwd;
+- linked-worktree context within each repository;
+- task title, recency, canonical availability, and unseen-completion state;
+- New Task, Archive, and Restore actions where their lifecycle permits them.
 
-The task list is the recovery surface. A user returning later should know where to resume.
+Selecting a Task opens its Conversation without changing its repository or
+worktree context.
 
-## Task Timeline
+## New Task
 
-Shows:
+New Task provides:
 
-- task lifecycle events
-- Codex turn events
-- approval decisions
-- command and test results
-- interruptions and resumes
-- follow-up prompts
+- cwd selection inherited from the active Task or Files context when available;
+- model and reasoning-effort selection;
+- the shared prompt composer, image attachment, and voice input;
+- a setup-only guide for preparing an isolated worktree.
 
-The timeline should explain what happened without requiring the user to scroll through a full transcript first.
+Task creation starts a Codex thread in the selected cwd. Managed-worktree
+preparation happens explicitly from the resulting Task; it is not an implicit
+side effect of task creation.
 
-## Approval UI
+## Conversation
 
-MVP approval UI should support:
+Conversation renders the canonical Codex thread as a review timeline. It
+includes:
 
-- command approval
-- accept
-- accept for session
-- decline
-- cancel
-- visible approval result in the thread-backed conversation
+- user prompts and agent responses;
+- reasoning summaries and tool activity;
+- command execution, output, and file-change records;
+- approval requests and their canonical outcomes;
+- interruption, failure, completion, reconnect, and unavailable states;
+- follow-up Start or Steer behavior selected from canonical thread state.
 
-File-change approval is a different concept. It can start as review annotation or task status, not as a permission mechanism.
+The composer owns drafts, selection, attachments, and voice capture. It can
+interrupt an active turn but does not synthesize Codex lifecycle state.
 
-## Changed Files
+## Integrated Task Review
 
-The changed files view is the center of the product.
+Each Task has one integrated Review workspace with independent semantic axes:
 
-It should show:
+- Working Tree or Branch scope;
+- Changes or Files navigator;
+- Diff or Source viewer;
+- one selected worktree-relative path.
 
-- file path
-- change type
-- insertions/deletions
-- selection state
-- quick open
-- diff open
+Desktop and foldable layouts keep navigator and viewer visible together. Phone
+layouts show one role at a time and provide a semantic Back action from the
+selected file. Review selection is encoded in the URL; pane width, disclosure,
+and scroll remain component-local.
 
-## Diff Viewer
+## Files
 
-MVP diff viewer:
+The standalone Files surface provides rooted filesystem inspection:
 
-- unified diff
-- file-level navigation
-- hunk-level anchors if cheap
-- copyable context for follow-up prompt
-- mobile-readable layout
+- directory navigation and file viewing;
+- filename filtering and `rg` content search;
+- text, source, and supported image presentation;
+- live invalidation with an explicit Refresh fallback;
+- repository-aware entry into Git and GitHub review.
 
-Later:
+The configured `RootedFs` boundary rejects traversal and symlink escapes.
 
-- split diff
-- hunk review state
-- comment or note state
-- related test failure links
+## Git Review
 
-## File Browser
+Git is read/review-oriented and contains three modes:
 
-The file browser supports editor-free inspection.
+- Diff for the working tree;
+- Compare for two refs;
+- Log for bounded commit history and commit detail.
 
-It should include:
+Each mode owns its navigator, selected path, viewer state, and repository
+refresh. Caffold does not expose stage, commit, checkout, reset, merge, rebase,
+or stash controls.
 
-- worktree file tree
-- file content viewer
-- changed and unchanged files
-- filename search
-- `rg` search
-- quick related file opening
+## GitHub Review
 
-## Command Runner
+GitHub review uses the repository resolved from cwd and the authenticated
+GitHub CLI. It provides:
 
-The command runner is not a full terminal.
+- Issue list and detail;
+- Pull Request list and detail;
+- Pull Request changed files, unified diff, and source review;
+- availability and error states when GitHub context cannot be resolved.
 
-MVP behavior:
+The current surface is read-only. It does not publish comments, reviews, pull
+requests, or other GitHub mutations.
 
-- cwd fixed to the task worktree
-- explicit command display
-- output display
-- exit code
-- start/end timestamps
-- thread-backed task context
-- test presets
+## Settings
 
-Full PTY, tmux, or Zellij integration is an escape hatch for later.
+The Task workspace includes:
+
+- Appearance settings for Interface, Conversation, and Code scales;
+- Codex runtime status and diagnostics;
+- About Caffold application and build information.
+
+Appearance choices are browser-local. Task model and reasoning choices are
+stored with Caffold-managed Task metadata.
+
+## Product Boundaries
+
+The browser UI does not provide:
+
+- a full terminal or PTY workspace;
+- automatic Issue/PR preparation and continuation;
+- external-worktree adoption or cleanup;
+- force deletion of dirty managed worktrees;
+- split diff, hunk comments, or durable review annotations;
+- a Caffold-owned duplicate of the Codex transcript.
+
+Planned additions belong in the [Roadmap](roadmap.md) and
+[Product Workflows](workflows.md), not in the description of an implemented
+surface.
