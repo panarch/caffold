@@ -18,6 +18,8 @@ use crate::{
     static_assets,
 };
 
+const SERVICE_WORKER_CACHE_NAME_PLACEHOLDER: &str = "\"caffold-shell-__CAFFOLD_BUILD_ID__\"";
+
 #[derive(Clone)]
 struct ShellState {
     fs: Arc<RootedFs>,
@@ -118,25 +120,44 @@ fn render_manifest(name: &str) -> Result<Vec<u8>, ApiError> {
         .map_err(|error| ApiError::Internal(format!("PWA manifest failed to encode: {error}")))
 }
 
-async fn service_worker() -> Response {
-    match static_assets::get("service-worker.js") {
-        Some(asset) => {
-            let mut response = Response::new(Body::from(asset.body));
-            response.headers_mut().insert(
-                header::CONTENT_TYPE,
-                HeaderValue::from_static(asset.content_type),
-            );
-            response
-                .headers_mut()
-                .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
-            response.headers_mut().insert(
-                HeaderName::from_static("service-worker-allowed"),
-                HeaderValue::from_static("/"),
-            );
-            response
-        }
-        None => StatusCode::NOT_FOUND.into_response(),
+async fn service_worker() -> Result<Response, ApiError> {
+    let asset = static_assets::get("service-worker.js")
+        .ok_or_else(|| ApiError::Internal("service worker asset is unavailable".to_string()))?;
+    let body = render_service_worker(asset.body, env!("CAFFOLD_BUILD_ID"))?;
+    let mut response = Response::new(Body::from(body));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(asset.content_type),
+    );
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    response.headers_mut().insert(
+        HeaderName::from_static("service-worker-allowed"),
+        HeaderValue::from_static("/"),
+    );
+    Ok(response)
+}
+
+fn render_service_worker(source: &[u8], build_id: &str) -> Result<String, ApiError> {
+    let source = std::str::from_utf8(source)
+        .map_err(|error| ApiError::Internal(format!("service worker asset is invalid: {error}")))?;
+    if source
+        .matches(SERVICE_WORKER_CACHE_NAME_PLACEHOLDER)
+        .count()
+        != 1
+    {
+        return Err(ApiError::Internal(
+            "service worker cache name placeholder is missing or duplicated".to_string(),
+        ));
     }
+    let cache_name =
+        serde_json::to_string(&format!("caffold-shell-{build_id}")).map_err(|error| {
+            ApiError::Internal(format!(
+                "service worker cache name failed to encode: {error}"
+            ))
+        })?;
+    Ok(source.replacen(SERVICE_WORKER_CACHE_NAME_PLACEHOLDER, &cache_name, 1))
 }
 
 async fn asset(AxumPath(path): AxumPath<String>) -> Response {
