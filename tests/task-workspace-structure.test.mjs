@@ -61,3 +61,20 @@ test("task workspace declares one shared master pane and one detail pane", () =>
     /<caffold-settings-navigator|workspaceNavigationHost/,
   );
 });
+
+test("archived task deletion dialog owns its modal state and markup", () => {
+  const workspace = readFrontend("pages/(task-workspace)/layout.js");
+  const deleteDialog = readFrontend(
+    "pages/(task-workspace)/tasks/components/archived-delete-dialog.js",
+  );
+
+  assert.match(
+    workspace,
+    /<caffold-task-archived-delete-dialog><\/caffold-task-archived-delete-dialog>/,
+  );
+  assert.doesNotMatch(workspace, /<dialog|pendingDeleteTask|showModal\(/);
+  assert.match(deleteDialog, /<dialog/);
+  assert.match(deleteDialog, /pendingThreadId/);
+  assert.match(deleteDialog, /dialog\.showModal\(\)/);
+  assert.match(deleteDialog, /TASK_ARCHIVED_DELETE_CONFIRMED_EVENT/);
+});

@@ -403,8 +403,26 @@ where
 {
     let payload = table(TABLE_NAME)
         .delete()
-        .filter(col("thread_id").eq(text(thread_id.to_owned())))
-        .filter(Membership::Active.filter())
+        .filter(
+            col("thread_id")
+                .eq(text(thread_id.to_owned()))
+                .and(Membership::Active.filter()),
+        )
+        .execute(glue)?;
+    deleted(payload)
+}
+
+pub(super) fn delete_archived<S>(glue: &mut Glue<S>, thread_id: &str) -> Result<bool>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    let payload = table(TABLE_NAME)
+        .delete()
+        .filter(
+            col("thread_id")
+                .eq(text(thread_id.to_owned()))
+                .and(Membership::Archived.filter()),
+        )
         .execute(glue)?;
     deleted(payload)
 }
@@ -982,6 +1000,24 @@ mod tests {
     }
 
     #[test]
+    fn deletes_target_only_the_requested_membership() {
+        let mut glue = memory();
+        claim(&mut glue, thread("active", Some(20)), 100).unwrap();
+        claim(&mut glue, thread("other-active", Some(25)), 100).unwrap();
+        claim(&mut glue, thread("archived", Some(30)), 100).unwrap();
+        archive(&mut glue, "archived", 200).unwrap().unwrap();
+
+        assert!(!delete_archived(&mut glue, "active").unwrap());
+        assert!(get(&mut glue, "active").unwrap().is_some());
+        assert!(delete_archived(&mut glue, "archived").unwrap());
+        assert!(get_archived(&mut glue, "archived").unwrap().is_none());
+        assert!(!delete_archived(&mut glue, "archived").unwrap());
+        assert!(delete(&mut glue, "active").unwrap());
+        assert!(get(&mut glue, "active").unwrap().is_none());
+        assert!(get(&mut glue, "other-active").unwrap().is_some());
+    }
+
+    #[test]
     fn missing_thread_mutations_are_noops() {
         let mut glue = memory();
         assert_eq!(archive(&mut glue, "missing", 100).unwrap(), None);
@@ -1004,6 +1040,7 @@ mod tests {
             None
         );
         assert!(!delete(&mut glue, "missing").unwrap());
+        assert!(!delete_archived(&mut glue, "missing").unwrap());
     }
 
     #[test]

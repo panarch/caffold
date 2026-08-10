@@ -161,6 +161,7 @@ test(
         "thread/start",
         "thread/name/set",
         "thread/read",
+        "thread/delete",
         "thread/resume",
         "thread/unsubscribe",
         "thread/turns/list",

@@ -276,6 +276,15 @@ impl TaskStore {
         }
     }
 
+    pub(crate) fn delete_archived(&self, thread_id: &str) -> Result<bool> {
+        match self {
+            Self::Memory(glue) => {
+                managed_thread::delete_archived(&mut *lock_glue(glue)?, thread_id)
+            }
+            Self::Redb(glue) => managed_thread::delete_archived(&mut *lock_glue(glue)?, thread_id),
+        }
+    }
+
     pub(crate) fn create_worktree(&self, worktree: ManagedWorktree) -> Result<ManagedWorktree> {
         match self {
             Self::Memory(glue) => managed_worktree::create(&mut *lock_glue(glue)?, worktree),
@@ -465,6 +474,12 @@ mod tests {
                 .unwrap()
                 .unwrap();
             assert_eq!(archived.last_observed_recency_ms, Some(70));
+
+            let deleted_thread_id = format!("archived-delete-{index}");
+            store.claim(thread(&deleted_thread_id), 100).unwrap();
+            store.archive(&deleted_thread_id, 60).unwrap().unwrap();
+            assert!(store.delete_archived(&deleted_thread_id).unwrap());
+            assert!(store.get_archived(&deleted_thread_id).unwrap().is_none());
 
             assert!(store.restore(&thread_id).unwrap().is_some());
             assert!(store.delete(&thread_id).unwrap());

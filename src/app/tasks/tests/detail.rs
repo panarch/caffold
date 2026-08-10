@@ -937,6 +937,7 @@ fn task_stream_bootstrap_replays_the_canonical_detail_snapshot() {
             task: Some(TaskRecord {
                 id: thread_id.to_string(),
                 thread_id: thread_id.to_string(),
+                conversation_available: true,
                 title: "Bootstrap regression".to_string(),
                 preview: "canonical assistant response".to_string(),
                 thread_status: ThreadStatus::Idle,

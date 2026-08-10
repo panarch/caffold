@@ -317,7 +317,9 @@ test("archives and restores an idle Caffold task through the grouped Archived se
       const icon = group.querySelector(".task-repository-icon");
       const row = group.querySelector(".task-archived-row");
       const title = group.querySelector(".task-row-title");
-      const restoreButton = group.querySelector(".task-restore-button");
+      const restoreButton = group.querySelector(
+        ".task-archived-action-button:not(.task-delete-button)",
+      );
       const rowBounds = row.getBoundingClientRect();
       const titleBounds = title.getBoundingClientRect();
       const restoreBounds = restoreButton.getBoundingClientRect();
@@ -367,14 +369,14 @@ test("archives and restores an idle Caffold task through the grouped Archived se
   const restoreButton = archivedSection.getByRole("button", {
     name: "Restore Archive round trip",
   });
-  await expect(restoreButton.locator(".task-restore-icon")).toBeVisible();
+  await expect(restoreButton.locator(".task-archived-action-icon")).toBeVisible();
   await restoreButton.click();
   const restoringButton = archivedSection.getByRole("button", {
     name: "Restoring Archive round trip",
   });
   await expect(restoringButton).toBeDisabled();
-  await expect(restoringButton).toHaveClass(/is-restoring/);
-  await expect(restoringButton.locator(".task-restore-icon")).toBeVisible();
+  await expect(restoringButton).toHaveClass(/is-loading/);
+  await expect(restoringButton.locator(".task-archived-action-icon")).toBeVisible();
   releaseRestore();
 
   await expect(

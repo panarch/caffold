@@ -1,6 +1,9 @@
 import { renderInlineIcon, warmIcons } from "../../components/icons.js";
 import { routeTarget } from "../../navigation-routes.js";
 import "./components/navigation.js";
+import {
+  TASK_ARCHIVED_DELETE_CONFIRMED_EVENT,
+} from "./tasks/components/archived-delete-dialog.js";
 import "./tasks/components/navigator.js";
 import "./tasks/page.js";
 import "./settings/navigator.js";
@@ -83,6 +86,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
           </main>
         </div>
       </section>
+      <caffold-task-archived-delete-dialog></caffold-task-archived-delete-dialog>
     `;
     this.backButton = this.querySelector(".task-workspace-back");
     this.closeButton = this.querySelector(".task-workspace-close");
@@ -94,6 +98,9 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.tasksPage = this.querySelector("caffold-tasks-page");
     this.settingsWorkspace = this.querySelector("caffold-settings-workspace");
     this.navigation = this.querySelector("caffold-task-workspace-navigation");
+    this.archivedDeleteDialog = this.querySelector(
+      ":scope > caffold-task-archived-delete-dialog",
+    );
     this.tasksPage.ensureRendered();
     this.settingsWorkspace.ensureRendered();
     this.tasksPage.connectTaskNavigator(this.taskNavigator);
@@ -111,6 +118,22 @@ class CaffoldTaskWorkspace extends HTMLElement {
         }),
       );
     });
+    this.taskNavigator.addEventListener(
+      "caffold:task-navigator-intent",
+      (event) => {
+        if (event.detail?.type === "delete-archived-task") {
+          this.archivedDeleteDialog.openTask(event.detail.task);
+        }
+      },
+    );
+    this.archivedDeleteDialog.addEventListener(
+      TASK_ARCHIVED_DELETE_CONFIRMED_EVENT,
+      (event) => {
+        event.stopPropagation();
+        void this.taskNavigator?.deleteThread(event.detail?.threadId);
+      },
+    );
+
     this.closeButton.addEventListener("click", () => {
       this.dispatchEvent(
         new CustomEvent("caffold:close-task-workspace", { bubbles: true }),

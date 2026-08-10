@@ -35,8 +35,8 @@ The adapter owns:
 - request/response matching
 - event stream handling
 - app-server error normalization
-- thread-oriented APIs for listing, reading, starting, steering, interrupting,
-  and resolving approvals
+- thread-oriented APIs for listing, reading, starting, deleting, steering,
+  interrupting, and resolving approvals
 
 The rest of Caffold should not depend directly on app-server protocol details.
 
@@ -214,6 +214,20 @@ Caffold keeps pending approvals and SSE notifications as ephemeral in-memory
 state in this slice. After a backend restart, startup recovery resumes each
 managed loaded thread so app-server can re-emit a pending approval request.
 
+Archived Tasks resolve their canonical display data with `thread/read`. A
+missing Codex rollout is the one exception to whole-page failure: the archived
+row remains visible as `Conversation unavailable`, exposes permanent deletion,
+and does not expose Restore. Other read and transport failures remain explicit
+list errors.
+
+Permanent deletion is an explicit `DELETE /api/tasks/{thread_id}` mutation for
+locally archived Tasks only. It calls app-server `thread/delete`, clears
+Caffold's ephemeral per-thread resources, and removes the archived membership
+and any managed-worktree ownership record. The operation does not remove a Git
+branch or an external worktree. These steps are intentionally not an atomic
+cross-system transaction; a failed request keeps any remaining local archived
+record visible so the user can retry.
+
 ## Browser Status Projection
 
 The browser API exposes app-server status without normalizing it into a Caffold
@@ -248,7 +262,7 @@ snapshots.
 The Tasks browser keeps list and detail as separate projections of app-server
 state:
 
-- `caffold-task-navigator` owns managed/History reads, list SSE, and the
+- `caffold-task-navigator` owns managed/Archived reads, list mutations, list SSE, and the
   per-thread list revision baseline.
 - `caffold-task-detail` owns the selected task's canonical read and application,
   event cache, and per-thread detail revision baseline. Its private

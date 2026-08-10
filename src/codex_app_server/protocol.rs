@@ -18,6 +18,7 @@ pub(crate) const THREAD_START: &str = "thread/start";
 pub(crate) const THREAD_NAME_SET: &str = "thread/name/set";
 pub(crate) const THREAD_RESUME: &str = "thread/resume";
 pub(crate) const THREAD_ARCHIVE: &str = "thread/archive";
+pub(crate) const THREAD_DELETE: &str = "thread/delete";
 pub(crate) const THREAD_UNARCHIVE: &str = "thread/unarchive";
 #[allow(dead_code)]
 pub(crate) const THREAD_UNSUBSCRIBE: &str = "thread/unsubscribe";
@@ -919,6 +920,10 @@ pub(crate) fn thread_archive_params(thread_id: &str) -> ThreadIdParams<'_> {
     ThreadIdParams { thread_id }
 }
 
+pub(crate) fn thread_delete_params(thread_id: &str) -> ThreadIdParams<'_> {
+    ThreadIdParams { thread_id }
+}
+
 pub(crate) fn thread_unarchive_params(thread_id: &str) -> ThreadIdParams<'_> {
     ThreadIdParams { thread_id }
 }
@@ -1344,6 +1349,12 @@ mod tests {
                 THREAD_ARCHIVE,
                 serde_json::to_value(thread_archive_params("thread_1"))
                     .expect("thread archive params"),
+                json!({ "threadId": "thread_1" }),
+            ),
+            (
+                THREAD_DELETE,
+                serde_json::to_value(thread_delete_params("thread_1"))
+                    .expect("thread delete params"),
                 json!({ "threadId": "thread_1" }),
             ),
             (

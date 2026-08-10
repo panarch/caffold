@@ -21,14 +21,15 @@ mod transport;
 use protocol::{
     ACCOUNT_RATE_LIMITS_READ, ACCOUNT_READ, ACCOUNT_USAGE_READ, AccountReadResponse, CONFIG_READ,
     ConfigReadResponse, EmptyResponse, INITIALIZE, INITIALIZED, JsonRpcError, MODEL_LIST,
-    PERMISSION_PROFILE_LIST, PermissionProfileListResponse, THREAD_ARCHIVE, THREAD_LIST,
-    THREAD_NAME_SET, THREAD_READ, THREAD_RESUME, THREAD_START, THREAD_TURNS_LIST, THREAD_UNARCHIVE,
-    THREAD_UNSUBSCRIBE, TURN_INTERRUPT, TURN_START, TURN_STEER, ThreadReadResponse,
-    ThreadStartResponse, TurnStartResponse, TurnSteerResponse, account_read_params,
-    config_read_params, decode_response, model_list_params, permission_profile_list_params,
-    thread_archive_params, thread_read_params, thread_resume_params, thread_set_name_params,
-    thread_start_params, thread_turns_list_params, thread_unarchive_params,
-    thread_unsubscribe_params, turn_interrupt_params, turn_start_params, turn_steer_params,
+    PERMISSION_PROFILE_LIST, PermissionProfileListResponse, THREAD_ARCHIVE, THREAD_DELETE,
+    THREAD_LIST, THREAD_NAME_SET, THREAD_READ, THREAD_RESUME, THREAD_START, THREAD_TURNS_LIST,
+    THREAD_UNARCHIVE, THREAD_UNSUBSCRIBE, TURN_INTERRUPT, TURN_START, TURN_STEER,
+    ThreadReadResponse, ThreadStartResponse, TurnStartResponse, TurnSteerResponse,
+    account_read_params, config_read_params, decode_response, model_list_params,
+    permission_profile_list_params, thread_archive_params, thread_delete_params,
+    thread_read_params, thread_resume_params, thread_set_name_params, thread_start_params,
+    thread_turns_list_params, thread_unarchive_params, thread_unsubscribe_params,
+    turn_interrupt_params, turn_start_params, turn_steer_params,
 };
 pub use protocol::{
     CodexAccount, CodexAppServerInfo, CodexNotification, CodexPermissionMode, CodexServerRequest,
@@ -595,6 +596,13 @@ impl CodexThreadClient {
         Ok(())
     }
 
+    pub async fn delete_thread(&self, thread_id: &str) -> Result<(), CodexThreadError> {
+        let _: EmptyResponse = self
+            .request_typed(THREAD_DELETE, thread_delete_params(thread_id))
+            .await?;
+        Ok(())
+    }
+
     pub async fn unarchive_thread(&self, thread_id: &str) -> Result<CodexThread, CodexThreadError> {
         let response: protocol::ThreadUnarchiveResponse = self
             .request_typed(THREAD_UNARCHIVE, thread_unarchive_params(thread_id))
@@ -943,7 +951,12 @@ fn classify_json_rpc_error(method: Option<&str>, value: &Value) -> CodexThreadEr
     });
     if error.code == -32602 {
         CodexThreadError::InvalidParams(error.message)
-    } else if error.code == -32600 && matches!(method, Some(THREAD_RESUME | THREAD_TURNS_LIST)) {
+    } else if error.code == -32600
+        && matches!(
+            method,
+            Some(THREAD_READ | THREAD_RESUME | THREAD_TURNS_LIST)
+        )
+    {
         CodexThreadError::ThreadUnavailable(error.message)
     } else if error.code == -32600 && matches!(method, Some(TURN_STEER)) {
         CodexThreadError::TurnUnavailable(error.message)
@@ -1420,6 +1433,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn deletes_threads_with_the_canonical_app_server_method() {
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(THREAD_DELETE, json!({}))]);
+
+        client
+            .delete_thread("thread_1")
+            .await
+            .expect("delete thread");
+
+        assert_eq!(
+            client.mock_requests().await,
+            vec![(THREAD_DELETE.to_string(), json!({ "threadId": "thread_1" }))]
+        );
+    }
+
+    #[tokio::test]
     async fn request_timeouts_do_not_publish_a_connection_error() {
         let request_error = CodexThreadError::RequestTimeout {
             method: THREAD_LIST,
@@ -1491,19 +1519,21 @@ mod tests {
 
     #[test]
     fn classifies_unavailable_thread_by_request_method() {
-        let error = classify_json_rpc_error(
-            Some(THREAD_RESUME),
-            &json!({
-                "code": -32600,
-                "message": "no rollout found for thread id example"
-            }),
-        );
+        for method in [THREAD_READ, THREAD_RESUME, THREAD_TURNS_LIST] {
+            let error = classify_json_rpc_error(
+                Some(method),
+                &json!({
+                    "code": -32600,
+                    "message": "no rollout found for thread id example"
+                }),
+            );
 
-        assert!(matches!(
-            error,
-            CodexThreadError::ThreadUnavailable(message)
-                if message == "no rollout found for thread id example"
-        ));
+            assert!(matches!(
+                error,
+                CodexThreadError::ThreadUnavailable(message)
+                    if message == "no rollout found for thread id example"
+            ));
+        }
     }
 
     #[test]
