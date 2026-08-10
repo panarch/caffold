@@ -724,6 +724,237 @@ test("orders separate turns by message chronology when a newer start marker is s
     "new-answer",
   ]);
 });
+test("keeps cross-turn work chronological and the active status at the timeline tail", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Task chronology regression");
+  await installEventSourceMock(page, {
+    registryKey: "__crossTurnChronologySources",
+    autoOpen: true,
+  });
+  await mockCodexModels(page);
+
+  const threadId = "thread_cross_turn_work_chronology";
+  const activeTurnId = "turn-A";
+  const foreignTurnId = "turn-B";
+  const now = 1_767_192_000_000;
+  const activeTask = {
+    id: threadId,
+    threadId,
+    ...canonicalTaskState("active", {
+      turnId: activeTurnId,
+      startedAtMs: now,
+      latestTurnStatus: "inProgress",
+    }),
+    title: "Cross-turn work chronology",
+    preview: "Keep the timeline chronological",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    createdMs: now,
+    updatedMs: now + 2_000,
+    recencyMs: now + 2_000,
+    lastEventSummary: "Files changed",
+  };
+  const event = (id, type, createdMs, turnId, payload = {}) => ({
+    id,
+    threadId,
+    type,
+    summary: type,
+    payload: { threadId, turnId, ...payload },
+    createdMs,
+  });
+  const user = event("event_user_a", "user_message", now, activeTurnId, {
+    text: "Keep cross-turn work in order.",
+  });
+  const reasoning = event(
+    "event_reasoning_a",
+    "reasoning",
+    now + 500,
+    activeTurnId,
+    {
+      itemId: "reasoning_a",
+      lifecycle: "completed",
+      summary: ["Inspect the active timeline."],
+    },
+  );
+  const foreignCommand = event(
+    "event_command_b",
+    "command_execution",
+    now + 1_000,
+    foreignTurnId,
+    {
+      itemId: "command_b",
+      lifecycle: "completed",
+      command: "cargo test",
+      status: "completed",
+      exitCode: 0,
+      aggregatedOutput: "test result: ok",
+    },
+  );
+  const fileChange = event(
+    "event_file_a",
+    "file_change",
+    now + 2_000,
+    activeTurnId,
+    {
+      itemId: "file_a",
+      lifecycle: "completed",
+      status: "completed",
+      changes: [{ path: "src/app.rs" }],
+      changeCount: 1,
+    },
+  );
+  const activeDetail = {
+    revision: 1,
+    task: activeTask,
+    events: [user, reasoning, foreignCommand, fileChange],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  };
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [activeTask], nextCursor: null }),
+    }),
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(activeDetail),
+    }),
+  );
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect(tasksPage).toContainText("Keep cross-turn work in order.");
+  await expect
+    .poll(() => page.evaluate(() => window.__crossTurnChronologySources.length))
+    .toBeGreaterThan(0);
+
+  const visibleTimelineOrder = () =>
+    tasksPage.locator(".task-conversation").evaluate((conversation) =>
+      [...conversation.children].map((entry) => {
+        if (entry.classList.contains("task-turn-active")) {
+          return `active:${entry.dataset.turnId}`;
+        }
+        if (entry.classList.contains("task-turn-work")) {
+          return `work:${entry.dataset.turnId}`;
+        }
+        return entry.dataset.eventId ?? entry.dataset.eventType ?? null;
+      }),
+    );
+  const emitTaskSync = (detail, revision) =>
+    page.evaluate(({ threadId, detail, revision }) => {
+      const source = window.__crossTurnChronologySources.find((candidate) =>
+        candidate.url.includes(`/api/tasks/${threadId}/stream`),
+      );
+      source.emit("task-sync", { threadId, revision, detail });
+    }, { threadId, detail, revision });
+  const emitTaskEvent = (entry, revision) =>
+    page.evaluate(({ threadId, entry, revision }) => {
+      const source = window.__crossTurnChronologySources.find((candidate) =>
+        candidate.url.includes(`/api/tasks/${threadId}/stream`),
+      );
+      source.emit("task-event", { threadId, revision, event: entry });
+    }, { threadId, entry, revision });
+
+  expect(await visibleTimelineOrder()).toEqual([
+    "event_user_a",
+    "reasoning",
+    "event_command_b",
+    "file_change",
+    `active:${activeTurnId}`,
+  ]);
+  await expect(
+    tasksPage.locator(".task-conversation > .task-turn-active:last-child"),
+  ).toHaveAttribute("data-turn-id", activeTurnId);
+
+  await emitTaskSync(
+    {
+      ...activeDetail,
+      revision: 2,
+      events: [fileChange, reasoning, user, foreignCommand],
+    },
+    2,
+  );
+  expect(await visibleTimelineOrder()).toEqual([
+    "event_user_a",
+    "reasoning",
+    "event_command_b",
+    "file_change",
+    `active:${activeTurnId}`,
+  ]);
+
+  const plan = event("event_plan_a", "plan", now + 3_000, activeTurnId, {
+    itemId: "plan_a",
+    lifecycle: "completed",
+    text: "Keep the active status after every completed event.",
+  });
+  await emitTaskEvent(plan, 3);
+  expect(await visibleTimelineOrder()).toEqual([
+    "event_user_a",
+    "reasoning",
+    "event_command_b",
+    "file_change",
+    "plan",
+    `active:${activeTurnId}`,
+  ]);
+
+  const finalAnswer = event(
+    "event_final_a",
+    "assistant_message",
+    now + 4_000,
+    activeTurnId,
+    {
+      itemId: "final_a",
+      phase: "final",
+      text: "The timeline remains chronological.",
+    },
+  );
+  const turnCompleted = event(
+    "event_turn_completed_a",
+    "turn_completed",
+    now + 5_000,
+    activeTurnId,
+    { status: "completed" },
+  );
+  const completedTask = {
+    ...activeTask,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    updatedMs: now + 5_000,
+    recencyMs: now + 5_000,
+    lastEventSummary: "The timeline remains chronological.",
+  };
+  await emitTaskSync(
+    {
+      revision: 4,
+      task: completedTask,
+      events: [
+        turnCompleted,
+        plan,
+        foreignCommand,
+        finalAnswer,
+        fileChange,
+        reasoning,
+        user,
+      ],
+      eventsPage: { nextCursor: null },
+      pendingApprovals: [],
+    },
+    4,
+  );
+
+  expect(await visibleTimelineOrder()).toEqual([
+    "event_user_a",
+    "event_command_b",
+    `work:${activeTurnId}`,
+    "event_final_a",
+  ]);
+  await expect(tasksPage.locator(".task-turn-work")).toHaveCount(1);
+  await expect(tasksPage.locator(".task-turn-active")).toHaveCount(0);
+});
 test("keeps task event chronology stable through approval, completion, and reload", async ({
   page,
 }, testInfo) => {
