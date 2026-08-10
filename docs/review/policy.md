@@ -5,7 +5,7 @@ should be reviewed with the same bias the product gives its users: make the
 relevant state visible, keep the workflow inspectable, and avoid trusting
 generated output until the behavior has been checked.
 
-This document is a public engineering policy, not a fixed roadmap or
+This document is the repository engineering policy, not a fixed roadmap or
 compatibility contract. It defines the common review rules and links to the
 area-specific policies that apply to a change.
 
@@ -72,11 +72,11 @@ cross-layer status overlay remains.
 Apply every area affected by the change. The split is for reviewability, not a
 permission to ignore a boundary that crosses files or processes.
 
-- [Frontend Review](review-policy/frontend.md) covers layout, responsive
+- [Frontend Review](frontend.md) covers layout, responsive
   behavior, integrated review navigation, Web Components, CSS ownership,
   component lifecycles, appearance ownership, browser tests, and frontend
   verification.
-- [Backend and API Review](review-policy/backend.md) covers backend ownership,
+- [Backend and API Review](backend.md) covers backend ownership,
   route and capability boundaries, external state writers, path safety, and
   mutation policy, including Rust tests, coverage, and backend verification.
 

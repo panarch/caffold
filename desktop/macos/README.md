@@ -4,13 +4,13 @@
 
 ## Install
 
-The current preview requires an Apple silicon Mac running macOS 14 or later. Install it with:
+The macOS application requires an Apple silicon Mac running macOS 14 or later. Install it with:
 
 ```sh
 brew install --cask panarch/tap/caffold
 ```
 
-The Cask installs `Caffold Server.app` in `/Applications` and links the bundled CLI as `caffold`. The preview is ad-hoc signed and not Apple-notarized; installation clears its quarantine attribute.
+The Cask installs `Caffold Server.app` in `/Applications` and links the bundled CLI as `caffold`. The application is ad-hoc signed and not Apple-notarized; installation clears its quarantine attribute.
 
 ## Build
 
@@ -25,7 +25,10 @@ xcode-select --install
 desktop/macos/package-app build
 ```
 
-The app is written to `target/caffold-server/Caffold Server.app` and can be moved directly to `/Applications` or transferred with AirDrop.
+The app is written to `target/caffold-server/Caffold Server.app`. For a new
+manual installation, copy the bundle to `/Applications` or transfer it with
+AirDrop. Use the local installer below when replacing an existing development
+installation.
 
 Create and verify a versioned zip archive with:
 
@@ -40,7 +43,17 @@ target/caffold-server/Caffold-Server-<version>-macos-arm64.zip
 target/caffold-server/Caffold-Server-<version>-macos-arm64.zip.sha256
 ```
 
-Maintainers preparing a distribution should follow the [internal release process](../../docs/internal/macos-release.md).
+Maintainers preparing a distribution should follow the [macOS release process](../../docs/operations/macos-release.md).
+
+For a local development replacement of `/Applications/Caffold Server.app`, use
+the tracked safe installer and runbook:
+
+```sh
+desktop/macos/install-local
+```
+
+The [local application development guide](../../docs/development/macos-local-app.md)
+documents backup, shutdown, health verification, and rollback behavior.
 
 ## Runtime dependencies
 
@@ -84,5 +97,3 @@ The menu reports stable status rows for Codex, Git, GitHub CLI, Whisper model re
 The app only restarts a server process that it started. When it connects to an existing Caffold process, choosing a different port starts a separate app-managed server and leaves the external process untouched. Changing only the bind mode on the occupied port remains blocked.
 
 Updates follow the same ownership rule. Caffold refuses to update while connected to an externally managed server. For an app-managed server, it reads canonical managed-task status before confirmation and warns if active work may be interrupted. GitHub is only the release-discovery source; Homebrew remains responsible for downloading, checksum verification, installation, and CLI-link replacement. Manually copied app bundles receive a release-page link instead of being overwritten.
-
-The private `.notes/bin/caffold-5178` helper remains separate. It manages the local development/validation service and is not part of the distributed application.

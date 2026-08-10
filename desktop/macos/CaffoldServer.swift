@@ -109,7 +109,8 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         restartAfterTermination = false
         if ownsServer, let serverProcess, serverProcess.isRunning {
-            serverProcess.terminate()
+            let outcome = terminateOwnedProcess(serverProcess)
+            appendLog("Owned server \(outcome.description) during application termination.")
         }
         try? logHandle?.close()
     }
@@ -730,7 +731,22 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
             restartAfterTermination = true
             setStatus("Restarting server...")
             restartMenuItem?.isEnabled = false
-            serverProcess.terminate()
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let outcome = terminateOwnedProcess(serverProcess)
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.appendLog("Owned server \(outcome.description) during restart.")
+                    if outcome == .timedOut {
+                        self.restartAfterTermination = false
+                        self.setStatus("Server restart timed out")
+                        self.updateServerControls()
+                        self.presentError(
+                            "Caffold could not restart the server",
+                            detail: "The owned server process did not stop after its shutdown deadline. Review \(self.logURL.path)."
+                        )
+                    }
+                }
+            }
         } else if !serverRunning {
             startServer()
         } else {

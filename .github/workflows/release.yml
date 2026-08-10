@@ -189,11 +189,20 @@ jobs:
       - name: Verify release contracts
         run: npm run test:release
 
+      - name: Verify contributor documentation
+        run: npm run test:docs
+
       - name: Verify application updater
         run: npm run test:updater
 
       - name: Verify menu bar integration status
         run: npm run test:system-status
+
+      - name: Verify macOS process lifecycle
+        run: npm run test:macos-runtime
+
+      - name: Verify local application replacement contract
+        run: npm run test:local-install
 
       - name: Check Rust formatting
         run: cargo fmt --check

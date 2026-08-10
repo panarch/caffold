@@ -16,8 +16,8 @@ worktrees are never adopted or removed.
   browsing root.
 - Ownership is recorded in the `managed_worktrees` table. A path alone is never
   sufficient proof that Caffold may remove it.
-- Tasks without a managed-worktree record keep the legacy archive behavior:
-  their existing cwd and files are retained.
+- Tasks without a managed-worktree record retain their existing cwd and files
+  when archived.
 
 ## Isolation Preparation
 
@@ -52,9 +52,9 @@ artifacts remain in the source checkout. Caffold rejects unresolved Git
 operations and dirty submodule or nested-repository state because Git stash
 cannot safely represent those cases.
 
-Codex currently accepts Caffold's dynamic tools only on `thread/start`. A Task
-whose thread predates `isolate_current_task` does not acquire the tool merely by
-being resumed or forked; newly started threads receive it.
+Codex accepts Caffold's dynamic tools only on `thread/start`. Threads started by
+Caffold receive `isolate_current_task`; resuming or forking another thread does
+not add the tool to it.
 
 ## Dirty-State Transfer And Recovery
 
@@ -101,19 +101,17 @@ startup from the ownership record and actual filesystem state. A mismatched or
 otherwise unsafe target remains in its persisted non-ready state without
 preventing unrelated Tasks or the Caffold server from starting.
 
-## Deliberate First-Release Limitation
+## Coordination And Recovery Limits
 
 Coordination across Git, the Codex app-server, and the Caffold task store is not
-an atomic transaction in the first same-thread isolation implementation.
-Caffold protects user changes, but clean orphan branches, worktrees, transfer
-refs, or a temporarily detached source checkout can remain after a failed
-best-effort cleanup. This release does not claim exactly-once execution, full
-rollback, automatic orphan collection, or automatic continuation of the
-original request.
+an atomic transaction. Caffold protects user changes, but clean orphan
+branches, worktrees, transfer refs, or a temporarily detached source checkout
+can remain after a failed best-effort cleanup. The lifecycle does not provide
+exactly-once execution, full rollback, automatic orphan collection, or
+automatic continuation of the original request.
 
-A later bootstrap orchestration may recognize a new issue/PR task, request
-isolation preparation, and continue it automatically. That orchestration is
-explicitly outside this lifecycle.
+Automatic Issue/PR recognition, isolation preparation, and request continuation
+are scenario orchestration outside this lifecycle.
 
 ## Safety Invariants
 

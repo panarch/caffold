@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
+WORK_DIR="${REPO_DIR}/target/caffold-runtime-tests"
+mkdir -p "${WORK_DIR}/swift-module-cache"
+
+xcrun swiftc \
+  -warnings-as-errors \
+  -module-cache-path "${WORK_DIR}/swift-module-cache" \
+  -o "${WORK_DIR}/caffold-runtime-tests" \
+  "${SCRIPT_DIR}/CaffoldServer/Runtime.swift" \
+  "${REPO_DIR}/tests/macos-runtime/main.swift"
+
+"${WORK_DIR}/caffold-runtime-tests"

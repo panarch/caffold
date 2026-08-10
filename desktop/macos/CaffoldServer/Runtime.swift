@@ -1,4 +1,58 @@
+import Darwin
 import Foundation
+
+enum OwnedProcessTerminationOutcome: Equatable {
+    case alreadyStopped
+    case terminated
+    case forceTerminated
+    case timedOut
+
+    var description: String {
+        switch self {
+        case .alreadyStopped:
+            return "already stopped"
+        case .terminated:
+            return "stopped gracefully"
+        case .forceTerminated:
+            return "stopped after the graceful-shutdown deadline"
+        case .timedOut:
+            return "did not stop after SIGKILL"
+        }
+    }
+}
+
+func terminateOwnedProcess(
+    _ process: Process,
+    gracefulTimeout: TimeInterval = 5,
+    forceTimeout: TimeInterval = 2
+) -> OwnedProcessTerminationOutcome {
+    guard process.isRunning else { return .alreadyStopped }
+
+    process.terminate()
+    if waitForProcessExit(process, timeout: gracefulTimeout) {
+        return .terminated
+    }
+
+    // The Process instance is the ownership proof. Check it again immediately
+    // before signaling its exact PID so an unrelated process is never selected
+    // by name, port, or executable path.
+    guard process.isRunning else { return .terminated }
+    guard Darwin.kill(process.processIdentifier, SIGKILL) == 0 else {
+        return process.isRunning ? .timedOut : .forceTerminated
+    }
+
+    return waitForProcessExit(process, timeout: forceTimeout)
+        ? .forceTerminated
+        : .timedOut
+}
+
+private func waitForProcessExit(_ process: Process, timeout: TimeInterval) -> Bool {
+    let deadline = Date().addingTimeInterval(max(0, timeout))
+    while process.isRunning, Date() < deadline {
+        Thread.sleep(forTimeInterval: 0.025)
+    }
+    return !process.isRunning
+}
 
 enum ServerBindMode: String {
     case local = "127.0.0.1"
