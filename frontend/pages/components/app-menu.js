@@ -65,7 +65,7 @@ class CaffoldAppMenu extends HTMLElement {
         aria-haspopup="menu"
         popovertarget="${POPOVER_ID}"
       >
-        <img class="app-menu-mark" src="/assets/icons/caffold-mark.svg" alt="" />
+        <img class="app-menu-mark" src="/assets/icons/favicon-32.png" alt="" />
         <strong class="app-menu-name">Caffold</strong>
       </button>
       <div class="app-menu-popover" id="${POPOVER_ID}" popover role="menu">

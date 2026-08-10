@@ -15,7 +15,7 @@ export async function expectHeaderBrand(page) {
   const name = brand.locator(".app-menu-name");
 
   await expect(mark).toBeVisible();
-  await expect(mark).toHaveAttribute("src", "/assets/icons/caffold-mark.svg");
+  await expect(mark).toHaveAttribute("src", "/assets/icons/favicon-32.png");
 
   const isPhone = await page.evaluate(() => window.matchMedia("(max-width: 520px)").matches);
   if (isPhone) {

@@ -88,20 +88,11 @@ install_info_plist() {
 }
 
 build_icon() {
-  local generator="${DIST_DIR}/IconGenerator"
-  local source_1024="${DIST_DIR}/CaffoldServer-1024.png"
-  local source_512="${DIST_DIR}/CaffoldServer-512.png"
+  local app_icon="${REPO_DIR}/frontend/assets/icons/icon-512.png"
+  local menu_icon="${REPO_DIR}/frontend/assets/icons/favicon-32.png"
 
-  xcrun swiftc \
-    -O \
-    -module-cache-path "${DIST_DIR}/swift-module-cache" \
-    -framework AppKit \
-    -o "${generator}" \
-    "${SCRIPT_DIR}/IconGenerator.swift"
-  "${generator}" "${source_1024}"
-  sips -z 512 512 "${source_1024}" --out "${source_512}" >/dev/null
-  sips -s format icns "${source_512}" --out "${RESOURCES_DIR}/CaffoldServer.icns" >/dev/null
-  rm -f -- "${generator}" "${source_1024}" "${source_512}"
+  sips -s format icns "${app_icon}" --out "${RESOURCES_DIR}/CaffoldServer.icns" >/dev/null
+  cp "${menu_icon}" "${RESOURCES_DIR}/CaffoldMenuIcon.png"
 }
 
 install_readme() {
@@ -129,6 +120,7 @@ verify_bundle() {
   require_executable "${macos_dir}/CaffoldServer"
   require_executable "${resources_dir}/caffold"
   require_file "${resources_dir}/CaffoldServer.icns"
+  require_file "${resources_dir}/CaffoldMenuIcon.png"
   require_file "${plist}"
   assert_plist_value "${plist}" CFBundleIdentifier "${BUNDLE_IDENTIFIER}"
   assert_plist_value "${plist}" CFBundleShortVersionString "${expected_version}"
