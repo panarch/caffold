@@ -58,7 +58,7 @@ caffold-settings-navigator {
     grid-template-columns: var(--interface-icon-size) minmax(0, 1fr);
     align-items: center;
     gap: var(--interface-space-5);
-    min-height: var(--task-list-row-height);
+    min-height: var(--interface-row-size);
     border: 0;
     background: transparent;
     color: var(--text);

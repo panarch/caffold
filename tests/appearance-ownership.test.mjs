@@ -543,7 +543,7 @@ test("icon-only controls use square slots from their semantic control tier", () 
     [
       "pages/(task-workspace)/tasks/components/navigator.css",
       ".task-restore-button",
-      "--interface-compact-hit-size",
+      "--task-list-row-height",
     ],
     [
       "components/file-browser/list.css",
@@ -595,6 +595,8 @@ test("archived restore actions stay visually secondary until interaction", () =>
   const navigator = readFrontend("pages/(task-workspace)/tasks/components/navigator.css");
 
   cssBlockMatching(navigator, ".task-restore-button", [
+    /width: var\(--task-list-row-height\)/,
+    /height: var\(--task-list-row-height\)/,
     /color: var\(--border-strong\)/,
   ]);
   cssBlockMatching(navigator, ".task-restore-button::before", [

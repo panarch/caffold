@@ -24,7 +24,7 @@ export const APPEARANCE_SETTINGS = Object.freeze({
     min: 13,
     max: 20,
     step: 1,
-    defaultValue: 15,
+    defaultValue: 14,
     suffix: "px",
   }),
   codeTextPx: Object.freeze({
