@@ -60,6 +60,10 @@ const ownership = new Map([
     ["caffold-task-directory-picker"],
   ],
   [
+    "pages/(task-workspace)/tasks/components/archived-delete-dialog.css",
+    ["caffold-task-archived-delete-dialog"],
+  ],
+  [
     "pages/(task-workspace)/tasks/components/image-preview-dialog.css",
     ["caffold-task-image-preview-dialog"],
   ],
@@ -209,6 +213,7 @@ const componentChildren = new Map([
       "caffold-settings-navigator",
       "caffold-tasks-page",
       "caffold-settings-workspace",
+      "caffold-task-archived-delete-dialog",
     ],
   ],
   [

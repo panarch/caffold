@@ -78,6 +78,17 @@ fn initialize_git_repository(path: &std::path::Path) {
     }
 }
 
+fn git_branch_exists(path: &std::path::Path, branch_name: &str) -> bool {
+    std::process::Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["show-ref", "--verify", &format!("refs/heads/{branch_name}")])
+        .output()
+        .unwrap()
+        .status
+        .success()
+}
+
 #[test]
 fn extracts_codex_version_from_app_server_user_agent() {
     assert_eq!(
@@ -424,6 +435,81 @@ async fn managed_worktree_archive_and_restore_follow_the_task_route_lifecycle() 
     );
     assert!(state.task_store.get(thread_id).unwrap().is_some());
     assert!(state.task_store.get_archived(thread_id).unwrap().is_none());
+}
+
+#[tokio::test]
+async fn managed_worktree_permanent_delete_preserves_the_local_branch() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    initialize_git_repository(&source);
+    let thread_id = "thread-delete-managed-worktree";
+    let thread = || {
+        json!({
+            "id": thread_id,
+            "preview": "Delete managed worktree task",
+            "status": { "type": "idle" },
+            "cwd": source.display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": 1.0,
+            "turns": []
+        })
+    };
+    let client = CodexThreadClient::mock(vec![
+        crate::codex_app_server::MockCodexResponse::ok(
+            "thread/read",
+            json!({ "thread": thread() }),
+        ),
+        crate::codex_app_server::MockCodexResponse::ok("thread/archive", json!({})),
+        crate::codex_app_server::MockCodexResponse::ok("thread/delete", json!({})),
+    ]);
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, &source).await;
+    state
+        .lifecycle
+        .isolate_current_task(
+            source.clone(),
+            thread_id.to_string(),
+            "Delete managed worktree task".to_string(),
+            None,
+            false,
+        )
+        .await
+        .unwrap();
+    let worktree = state
+        .task_store
+        .worktree_for_thread(thread_id)
+        .unwrap()
+        .unwrap();
+
+    let _ = task_archive(State(state.clone()), AxumPath(thread_id.to_string()))
+        .await
+        .expect("archive succeeds");
+    assert!(git_branch_exists(&source, &worktree.branch_name));
+
+    let response = task_delete(State(state.clone()), AxumPath(thread_id.to_string()))
+        .await
+        .expect("delete succeeds");
+
+    assert_eq!(response.0.thread_id, thread_id);
+    assert!(state.task_store.get_archived(thread_id).unwrap().is_none());
+    assert!(
+        state
+            .task_store
+            .worktree_for_thread(thread_id)
+            .unwrap()
+            .is_none()
+    );
+    assert!(git_branch_exists(&source, &worktree.branch_name));
+    assert_eq!(
+        client
+            .mock_requests()
+            .await
+            .into_iter()
+            .map(|(method, _)| method)
+            .collect::<Vec<_>>(),
+        ["thread/read", "thread/archive", "thread/delete"]
+    );
 }
 
 #[tokio::test]
@@ -943,6 +1029,135 @@ async fn restore_failure_keeps_the_task_in_the_archived_membership() {
             .await
             .unwrap()
             .is_some()
+    );
+}
+
+#[tokio::test]
+async fn permanent_delete_rejects_tasks_outside_the_archived_membership() {
+    let root = tempfile::tempdir().unwrap();
+    let active_id = "thread-active-delete";
+    let client = CodexThreadClient::mock(Vec::new());
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, active_id, root.path()).await;
+
+    for thread_id in ["thread-unmanaged-delete", active_id] {
+        assert!(matches!(
+            task_delete(State(state.clone()), AxumPath(thread_id.to_string())).await,
+            Err(ApiError::BadRequest {
+                code: "task_not_archived",
+                ..
+            })
+        ));
+    }
+    assert!(state.task_store.get(active_id).unwrap().is_some());
+    assert!(client.mock_requests().await.is_empty());
+}
+
+#[tokio::test]
+async fn unavailable_archived_conversation_stays_listed_and_can_be_deleted() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-unavailable-delete";
+    let client = CodexThreadClient::mock(vec![
+        crate::codex_app_server::MockCodexResponse::error(
+            "thread/read",
+            CodexThreadError::ThreadUnavailable(
+                "no rollout found for thread id thread-unavailable-delete".to_string(),
+            ),
+        ),
+        crate::codex_app_server::MockCodexResponse::ok("thread/delete", json!({})),
+    ]);
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+    task_store_archive(&state, thread_id)
+        .await
+        .unwrap()
+        .unwrap();
+    state.codex_sessions.begin_external_sync(thread_id).await;
+    assert_eq!(state.codex_sessions.diagnostics().await.tracked_sessions, 1);
+
+    let archived = list_archived_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
+        .await
+        .expect("unavailable conversation remains listable");
+    assert_eq!(archived.0.tasks.len(), 1);
+    assert_eq!(archived.0.tasks[0].thread_id, thread_id);
+    assert!(!archived.0.tasks[0].conversation_available);
+    assert_eq!(archived.0.tasks[0].preview, "Conversation unavailable");
+
+    state.task_events.publish(TaskEventRecord {
+        id: "cached-event".to_string(),
+        thread_id: thread_id.to_string(),
+        event_type: "agent_message".to_string(),
+        summary: "cached".to_string(),
+        payload: None,
+        created_ms: 1,
+        updated_ms: None,
+        sort_index: None,
+        generated_image: None,
+    });
+    assert_eq!(state.task_events.for_thread(thread_id).len(), 1);
+
+    let response = router(state.clone())
+        .oneshot(
+            axum::http::Request::builder()
+                .method("DELETE")
+                .uri(format!("/api/tasks/{thread_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("delete response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), 4096)
+        .await
+        .expect("delete body");
+    let body: JsonValue = serde_json::from_slice(&body).expect("delete response json");
+    assert_eq!(body["threadId"], thread_id);
+    assert!(state.task_store.get_archived(thread_id).unwrap().is_none());
+    assert!(state.task_events.for_thread(thread_id).is_empty());
+    assert_eq!(state.codex_sessions.diagnostics().await.tracked_sessions, 0);
+    assert_eq!(
+        client
+            .mock_requests()
+            .await
+            .into_iter()
+            .map(|(method, _)| method)
+            .collect::<Vec<_>>(),
+        ["thread/read", "thread/delete"]
+    );
+}
+
+#[tokio::test]
+async fn failed_codex_delete_keeps_the_archived_membership_for_retry() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-delete-failure";
+    let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::error(
+        "thread/delete",
+        CodexThreadError::ProcessUnavailable,
+    )]);
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+    task_store_archive(&state, thread_id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert!(matches!(
+        task_delete(State(state.clone()), AxumPath(thread_id.to_string())).await,
+        Err(ApiError::CodexThread(_))
+    ));
+    assert!(state.task_store.get_archived(thread_id).unwrap().is_some());
+    assert_eq!(
+        client
+            .mock_requests()
+            .await
+            .into_iter()
+            .map(|(method, _)| method)
+            .collect::<Vec<_>>(),
+        ["thread/delete"]
     );
 }
 

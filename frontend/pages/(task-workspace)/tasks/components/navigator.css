@@ -211,6 +211,16 @@ caffold-task-navigator {
     min-width: 0;
   }
 
+  & .task-archived-row.is-conversation-unavailable .task-archived-copy {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  & .task-archived-row.is-conversation-unavailable .task-row-indicators {
+    justify-content: flex-start;
+    width: auto;
+  }
+
   & .task-archived-action-error {
     grid-column: 1 / -1;
     margin: 0;
@@ -219,7 +229,12 @@ caffold-task-navigator {
     line-height: var(--interface-line-height);
   }
 
-  & .task-restore-button {
+  & .task-archived-actions {
+    display: flex;
+    align-items: center;
+  }
+
+  & .task-archived-action-button {
     position: relative;
     display: grid;
     width: var(--task-list-row-height);
@@ -232,7 +247,7 @@ caffold-task-navigator {
     cursor: pointer;
   }
 
-  & .task-restore-button::before {
+  & .task-archived-action-button::before {
     position: absolute;
     inset: max(
       0px,
@@ -246,15 +261,29 @@ caffold-task-navigator {
     content: "";
   }
 
-  & .task-restore-icon {
+  & .task-archived-action-icon {
     position: relative;
     display: block;
     width: var(--interface-icon-size);
     height: var(--interface-icon-size);
   }
 
-  & .task-restore-button.is-restoring .task-restore-icon {
+  & .task-archived-action-button.is-loading .task-archived-action-icon {
     animation: task-status-spin 800ms linear infinite;
+  }
+
+  & .task-delete-button {
+    color: var(--danger);
+  }
+
+  & .task-delete-button .task-archived-action-icon {
+    opacity: 0.62;
+  }
+
+  & .task-conversation-unavailable {
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
   }
 
   & [data-task-action="load-more-tasks"],
@@ -271,19 +300,35 @@ caffold-task-navigator {
     inset-block: calc(0px - var(--interface-compact-hit-outset));
   }
 
-  & .task-restore-button:not(:disabled):hover,
-  & .task-restore-button:focus-visible {
+  & .task-archived-action-button:not(:disabled):hover,
+  & .task-archived-action-button:focus-visible {
     color: var(--control-fg);
     outline: none;
   }
 
-  & .task-restore-button:not(:disabled):hover::before,
-  & .task-restore-button:focus-visible::before {
+  & .task-archived-action-button:not(:disabled):hover::before,
+  & .task-archived-action-button:focus-visible::before {
     border-color: var(--border);
     background: var(--control-subtle-hover-bg);
   }
 
-  & .task-restore-button:disabled {
+  & .task-delete-button:not(:disabled):hover,
+  & .task-delete-button:focus-visible {
+    color: var(--danger-strong);
+  }
+
+  & .task-delete-button:not(:disabled):hover .task-archived-action-icon,
+  & .task-delete-button:focus-visible .task-archived-action-icon {
+    opacity: 1;
+  }
+
+  & .task-delete-button:not(:disabled):hover::before,
+  & .task-delete-button:focus-visible::before {
+    border-color: var(--danger-border);
+    background: var(--danger-faint);
+  }
+
+  & .task-archived-action-button:disabled {
     cursor: wait;
     opacity: 0.65;
   }
@@ -422,7 +467,7 @@ caffold-task-navigator {
 
 @media (prefers-reduced-motion: reduce) {
   caffold-task-navigator {
-    & .task-restore-button.is-restoring .task-restore-icon {
+    & .task-archived-action-button.is-loading .task-archived-action-icon {
       animation: none;
     }
 

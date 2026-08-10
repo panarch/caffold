@@ -18,6 +18,7 @@ use serde_json::json;
 #[cfg(test)]
 use std::time::Duration;
 
+use super::projection::short_thread_id;
 use super::{
     ApprovalResolveError, CodexConnection, DetailFrameStream, TaskDetailResponse, TaskEventRecord,
     TaskRecord, TaskState, accepted_user_message_event, now_ms, task_activity_ms,
@@ -144,6 +145,12 @@ struct TaskListResponse {
     next_cursor: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskDeleteResponse {
+    thread_id: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TaskEventEnvelope {
@@ -206,7 +213,10 @@ pub(super) fn router(state: TaskState) -> Router {
         )
         .route("/api/tasks/archived", get(list_archived_tasks))
         .route("/api/tasks/stream", get(task_list_stream))
-        .route("/api/tasks/{thread_id}", get(task_detail))
+        .route(
+            "/api/tasks/{thread_id}",
+            get(task_detail).delete(task_delete),
+        )
         .route(
             "/api/tasks/{thread_id}/seen",
             axum::routing::put(mark_task_seen),
@@ -383,15 +393,24 @@ async fn list_archived_tasks(
             let state = state.clone();
             let client = connection.client.clone();
             async move {
-                let thread = client.read_thread(&managed.thread_id).await?;
-                state
-                    .codex_sessions
-                    .observe_thread_metadata(thread.clone())
-                    .await;
-                let mut task = state.detail.record_from_codex_thread(&thread)?;
-                let activity_ms = task_activity_ms(&task);
-                apply_managed_thread_metadata(&mut task, &managed);
-                Ok::<_, ApiError>((task, activity_ms))
+                match client.read_thread(&managed.thread_id).await {
+                    Ok(thread) => {
+                        state
+                            .codex_sessions
+                            .observe_thread_metadata(thread.clone())
+                            .await;
+                        let mut task = state.detail.record_from_codex_thread(&thread)?;
+                        let activity_ms = task_activity_ms(&task);
+                        apply_managed_thread_metadata(&mut task, &managed);
+                        Ok::<_, ApiError>((task, activity_ms))
+                    }
+                    Err(error) if error.is_thread_unavailable() => {
+                        let task = unavailable_archived_task(&managed);
+                        let activity_ms = task_activity_ms(&task);
+                        Ok((task, activity_ms))
+                    }
+                    Err(error) => Err(error.into()),
+                }
             }
         })
         .buffer_unordered(TASK_CANONICAL_READ_CONCURRENCY)
@@ -566,6 +585,27 @@ async fn task_store_restore(
     let store = state.task_store.clone();
     let thread_id = thread_id.to_string();
     tokio::task::spawn_blocking(move || store.restore(&thread_id))
+        .await
+        .map_err(task_store_join_error)?
+        .map_err(task_store_api_error)
+}
+
+async fn task_store_delete_archived(state: &TaskState, thread_id: &str) -> Result<bool, ApiError> {
+    let store = state.task_store.clone();
+    let thread_id = thread_id.to_string();
+    tokio::task::spawn_blocking(move || store.delete_archived(&thread_id))
+        .await
+        .map_err(task_store_join_error)?
+        .map_err(task_store_api_error)
+}
+
+async fn task_store_delete_worktree(
+    state: &TaskState,
+    worktree_id: &str,
+) -> Result<bool, ApiError> {
+    let store = state.task_store.clone();
+    let worktree_id = worktree_id.to_string();
+    tokio::task::spawn_blocking(move || store.delete_worktree(&worktree_id))
         .await
         .map_err(task_store_join_error)?
         .map_err(task_store_api_error)
@@ -1236,6 +1276,35 @@ async fn task_restore(
     Ok(Json(task))
 }
 
+async fn task_delete(
+    State(state): State<TaskState>,
+    AxumPath(thread_id): AxumPath<String>,
+) -> Result<Json<TaskDeleteResponse>, ApiError> {
+    if task_store_get_archived(&state, &thread_id).await?.is_none() {
+        return Err(task_not_archived_error());
+    }
+    let worktree = task_store_worktree_for_thread(&state, &thread_id).await?;
+    if let Some(worktree) = &worktree
+        && worktree.state != ManagedWorktreeState::Archived
+    {
+        return Err(ApiError::BadRequest {
+            code: "task_not_archived",
+            message: "managed worktree is not archived".to_string(),
+        });
+    }
+
+    let connection = require_codex_thread_connection(&state).await?;
+    connection.client.delete_thread(&thread_id).await?;
+    state.lifecycle.delete_task_resources(&thread_id).await;
+    if let Some(worktree) = worktree {
+        task_store_delete_worktree(&state, &worktree.worktree_id).await?;
+    }
+    task_store_delete_archived(&state, &thread_id).await?;
+    notify_task_removed(&state, &thread_id, "deleted");
+
+    Ok(Json(TaskDeleteResponse { thread_id }))
+}
+
 async fn rollback_task_archive(
     state: &TaskState,
     client: &CodexThreadClient,
@@ -1268,6 +1337,33 @@ async fn rollback_task_restore(
 
 fn notify_task_removed(state: &TaskState, thread_id: &str, reason: &'static str) {
     state.task_list_events.remove(thread_id, reason);
+}
+
+fn unavailable_archived_task(managed: &ManagedThread) -> TaskRecord {
+    let activity_ms = managed
+        .last_observed_recency_ms
+        .or(managed.archived_at_ms)
+        .unwrap_or(managed.claimed_at_ms);
+    TaskRecord {
+        id: managed.thread_id.clone(),
+        thread_id: managed.thread_id.clone(),
+        conversation_available: false,
+        title: format!("Thread {}", short_thread_id(&managed.thread_id)),
+        preview: "Conversation unavailable".to_string(),
+        thread_status: ThreadStatus::NotLoaded,
+        latest_turn_status: None,
+        active_turn: None,
+        cwd: String::new(),
+        cwd_path: None,
+        relative_cwd: String::new(),
+        worktree: None,
+        created_ms: managed.claimed_at_ms,
+        updated_ms: activity_ms,
+        recency_ms: Some(activity_ms),
+        last_completed_ms: managed.last_completed_at_ms,
+        last_event_summary: Some("Conversation unavailable".to_string()),
+        unseen: false,
+    }
 }
 
 fn task_not_archived_error() -> ApiError {

@@ -205,6 +205,16 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/directory-picker.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/directory-picker.js"
         ))),
+        "pages/(task-workspace)/tasks/components/archived-delete-dialog.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/archived-delete-dialog.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/archived-delete-dialog.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/archived-delete-dialog.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/components/image-preview-dialog.css" => {
             Some(css(include_str!(
                 "../frontend/pages/(task-workspace)/tasks/components/image-preview-dialog.css"
@@ -933,6 +943,10 @@ mod tests {
                 b"caffold-task-directory-picker".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/components/archived-delete-dialog.js",
+                b"caffold-task-archived-delete-dialog".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/components/image-preview-dialog.js",
                 b"caffold-task-image-preview-dialog".as_slice(),
             ),
@@ -1000,6 +1014,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/components/directory-picker.css",
                 b"caffold-task-directory-picker".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/components/archived-delete-dialog.css",
+                b"caffold-task-archived-delete-dialog".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/components/image-preview-dialog.css",

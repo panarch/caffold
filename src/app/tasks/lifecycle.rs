@@ -231,6 +231,11 @@ impl TaskLifecycle {
         }
     }
 
+    pub(in crate::app) async fn delete_task_resources(&self, thread_id: &str) {
+        self.sessions.forget_thread(thread_id).await;
+        self.events.remove_thread(thread_id);
+    }
+
     fn record_from_codex_thread(
         &self,
         thread: &crate::codex_app_server::CodexThread,

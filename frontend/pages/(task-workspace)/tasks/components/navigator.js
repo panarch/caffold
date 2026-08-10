@@ -1,4 +1,5 @@
 import {
+  deleteTask,
   getArchivedTasks,
   getTasks,
   restoreTask,
@@ -75,6 +76,8 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.archivedTaskRequestId = 0;
     this.restoringThreadIds = new Set();
     this.restoreErrors = new Map();
+    this.deletingThreadIds = new Set();
+    this.deleteErrors = new Map();
     this.selectedThreadId = "";
     this.stream = null;
     this.streamNeedsSync = false;
@@ -195,6 +198,7 @@ class CaffoldTaskNavigator extends HTMLElement {
     if (
       !threadId ||
       this.restoringThreadIds.has(threadId) ||
+      this.deletingThreadIds.has(threadId) ||
       isTaskTransportStale(this.streamState)
     ) {
       return null;
@@ -220,6 +224,34 @@ class CaffoldTaskNavigator extends HTMLElement {
       return null;
     } finally {
       this.restoringThreadIds.delete(threadId);
+      this.render();
+    }
+  }
+
+  async deleteThread(threadId) {
+    this.ensureState();
+    if (
+      !threadId ||
+      this.deletingThreadIds.has(threadId) ||
+      this.restoringThreadIds.has(threadId) ||
+      isTaskTransportStale(this.streamState)
+    ) {
+      return null;
+    }
+    this.deletingThreadIds.add(threadId);
+    this.deleteErrors.delete(threadId);
+    this.render();
+    try {
+      const response = await deleteTask(threadId);
+      this.removeArchivedTask(threadId);
+      return response;
+    } catch (error) {
+      const normalized = error instanceof Error ? error : new Error(`${error}`);
+      this.deleteErrors.set(threadId, normalized);
+      this.render();
+      return null;
+    } finally {
+      this.deletingThreadIds.delete(threadId);
       this.render();
     }
   }
@@ -252,6 +284,13 @@ class CaffoldTaskNavigator extends HTMLElement {
       void this.loadTasks({ force: true });
     } else if (action.dataset.taskAction === "restore-archived-task") {
       void this.restoreThread(threadId);
+    } else if (action.dataset.taskAction === "delete-archived-task") {
+      const task = this.archivedTasks.find(
+        (candidate) => taskThreadId(candidate) === threadId,
+      );
+      if (task) {
+        this.dispatchIntent("delete-archived-task", { task });
+      }
     }
   }
 
@@ -466,6 +505,8 @@ class CaffoldTaskNavigator extends HTMLElement {
         this.removeTask(message.threadId);
         if (message.reason === "archived") {
           void this.loadArchived({ force: true });
+        } else if (message.reason === "deleted") {
+          this.removeArchivedTask(message.threadId);
         }
       }
     });
@@ -562,6 +603,22 @@ class CaffoldTaskNavigator extends HTMLElement {
     }
     this.tasks = tasks;
     this.revisionByThread.delete(threadId);
+    this.render();
+  }
+
+  removeArchivedTask(threadId) {
+    if (!threadId) {
+      return;
+    }
+    const archivedTasks = this.archivedTasks.filter(
+      (candidate) => taskThreadId(candidate) !== threadId,
+    );
+    if (archivedTasks.length === this.archivedTasks.length) {
+      return;
+    }
+    this.archivedTasks = archivedTasks;
+    this.restoreErrors.delete(threadId);
+    this.deleteErrors.delete(threadId);
     this.render();
   }
 
@@ -733,8 +790,15 @@ class CaffoldTaskNavigator extends HTMLElement {
   renderArchivedTaskRow(task, repositoryKey = taskRepositoryKey(task)) {
     const threadId = taskThreadId(task);
     const restoring = this.restoringThreadIds.has(threadId);
+    const deleting = this.deletingThreadIds.has(threadId);
+    const mutating = restoring || deleting;
     const transportBlocked = isTaskTransportStale(this.streamState);
     const restoreError = this.restoreErrors.get(threadId);
+    const deleteError = this.deleteErrors.get(threadId);
+    const conversationAvailable = task?.conversationAvailable !== false;
+    const availabilityClass = conversationAvailable
+      ? ""
+      : " is-conversation-unavailable";
     const restoreLabel = restoring
       ? `Restoring ${task.title}`
       : restoreError
@@ -744,19 +808,37 @@ class CaffoldTaskNavigator extends HTMLElement {
       ? "Restoring task"
       : restoreError?.message ?? "Restore task; its worktree was retained";
     const restoreIcon = restoring ? "LoaderCircle" : "ArchiveRestore";
+    const deleteLabel = deleting
+      ? `Deleting ${task.title}`
+      : deleteError
+        ? `Retry deleting ${task.title}`
+        : `Delete ${task.title}`;
+    const deleteTitle = deleting
+      ? "Deleting task"
+      : deleteError?.message ?? "Permanently delete task";
+    const deleteIcon = deleting ? "LoaderCircle" : "Trash2";
     const worktree = task?.worktree?.linked
       ? `<span class="task-row-worktree" title="${escapeHtml(taskWorktreeLabel(task))}">
           ${renderInlineIcon("GitBranch", "Linked worktree retained", "task-row-worktree-icon")}
         </span>`
       : "";
+    const meta = conversationAvailable
+      ? renderTaskRowMeta(task, false)
+      : `<span class="task-conversation-unavailable">Conversation unavailable</span>`;
+    const restoreButton = conversationAvailable
+      ? `<button type="button" class="task-archived-action-button${restoring ? " is-loading" : ""}" data-task-action="restore-archived-task" data-thread-id="${escapeHtml(threadId)}" aria-label="${escapeHtml(restoreLabel)}" title="${escapeHtml(restoreTitle)}" ${mutating || transportBlocked ? "disabled" : ""}>${renderInlineIcon(restoreIcon, restoreLabel, "task-archived-action-icon")}</button>`
+      : "";
     return `
-      <li class="task-archived-row" data-thread-id="${escapeHtml(threadId)}" data-task-list-key="${escapeHtml(repositoryKey)}">
+      <li class="task-archived-row${availabilityClass}" data-thread-id="${escapeHtml(threadId)}" data-task-list-key="${escapeHtml(repositoryKey)}">
         <div class="task-archived-copy" title="${escapeHtml(task.title)}">
           <span class="task-row-title">${escapeHtml(task.title)}</span>
-          <span class="task-row-indicators">${worktree}${renderTaskRowMeta(task, false)}</span>
+          <span class="task-row-indicators">${worktree}${meta}</span>
         </div>
-        <button type="button" class="task-restore-button${restoring ? " is-restoring" : ""}" data-task-action="restore-archived-task" data-thread-id="${escapeHtml(threadId)}" aria-label="${escapeHtml(restoreLabel)}" title="${escapeHtml(restoreTitle)}" ${restoring || transportBlocked ? "disabled" : ""}>${renderInlineIcon(restoreIcon, restoreLabel, "task-restore-icon")}</button>
-        ${restoreError ? `<p class="task-archived-action-error" role="alert">${escapeHtml(restoreError.message)}</p>` : ""}
+        <div class="task-archived-actions">
+          ${restoreButton}
+          <button type="button" class="task-archived-action-button task-delete-button${deleting ? " is-loading" : ""}" data-task-action="delete-archived-task" data-thread-id="${escapeHtml(threadId)}" aria-label="${escapeHtml(deleteLabel)}" title="${escapeHtml(deleteTitle)}" ${mutating || transportBlocked ? "disabled" : ""}>${renderInlineIcon(deleteIcon, deleteLabel, "task-archived-action-icon")}</button>
+        </div>
+        ${restoreError || deleteError ? `<p class="task-archived-action-error" role="alert">${escapeHtml((deleteError ?? restoreError).message)}</p>` : ""}
       </li>
     `;
   }

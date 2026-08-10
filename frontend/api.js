@@ -61,6 +61,12 @@ export async function restoreTask(threadId) {
   });
 }
 
+export async function deleteTask(threadId) {
+  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}`, {}, {
+    method: "DELETE",
+  });
+}
+
 export async function createTask(task) {
   return requestJson("/api/tasks", {}, {
     method: "POST",

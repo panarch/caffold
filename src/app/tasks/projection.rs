@@ -17,6 +17,7 @@ use crate::{
 pub(in crate::app) struct TaskRecord {
     pub(in crate::app) id: String,
     pub(in crate::app) thread_id: String,
+    pub(in crate::app) conversation_available: bool,
     pub(in crate::app) title: String,
     pub(in crate::app) preview: String,
     pub(in crate::app) thread_status: ThreadStatus,
@@ -101,6 +102,7 @@ pub(in crate::app) fn task_record_from_thread(
     Ok(TaskRecord {
         id: thread_id.to_string(),
         thread_id: thread_id.to_string(),
+        conversation_available: true,
         title,
         preview,
         thread_status,

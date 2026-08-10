@@ -2263,3 +2263,17 @@ async fn diagnostics_include_only_leased_or_failed_sessions_as_active() {
     let inactive = sessions.diagnostics().await;
     assert!(inactive.active_sessions.is_empty());
 }
+
+#[tokio::test]
+async fn forgotten_thread_releases_its_ephemeral_session_entry() {
+    let sessions = CodexThreadSessions::default();
+    sessions
+        .observe_thread_metadata(thread(ThreadStatus::Idle, Vec::new()))
+        .await;
+    assert!(sessions.snapshot("thread-1").await.is_some());
+
+    sessions.forget_thread("thread-1").await;
+
+    assert!(sessions.snapshot("thread-1").await.is_none());
+    assert_eq!(sessions.diagnostics().await.tracked_sessions, 0);
+}

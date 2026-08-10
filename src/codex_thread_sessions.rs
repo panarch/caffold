@@ -843,6 +843,10 @@ impl CodexThreadSessions {
         Some(snapshot(&state))
     }
 
+    pub async fn forget_thread(&self, thread_id: &str) {
+        self.entries.lock().await.remove(thread_id);
+    }
+
     async fn release_viewer(&self, thread_id: &str) {
         let Some(entry) = self.existing_entry(thread_id).await else {
             return;

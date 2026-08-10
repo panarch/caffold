@@ -1,0 +1,93 @@
+caffold-task-archived-delete-dialog {
+  position: absolute;
+
+  & > dialog {
+    width: min(28rem, calc(100vw - 2rem));
+    max-width: none;
+    margin: auto;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--danger-border);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 18px 48px rgb(var(--shadow-rgb) / 24%);
+  }
+
+  & > dialog::backdrop {
+    background: rgb(var(--scrim-rgb) / 32%);
+  }
+
+  & .task-delete-dialog-card {
+    display: grid;
+    gap: var(--interface-space-5);
+    margin: 0;
+    padding: var(--interface-space-10);
+  }
+
+  & .task-delete-dialog-card h2,
+  & .task-delete-dialog-card p {
+    margin: 0;
+  }
+
+  & .task-delete-dialog-card h2 {
+    font-size: var(--interface-heading-font-size);
+    line-height: 1.25;
+  }
+
+  & .task-delete-dialog-card p {
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .task-delete-dialog-card .task-delete-dialog-task {
+    overflow-wrap: anywhere;
+    color: var(--text);
+    font-weight: 650;
+  }
+
+  & .task-delete-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--interface-control-gap);
+    margin-top: var(--interface-space-3);
+  }
+
+  & .task-delete-dialog-button {
+    min-height: var(--interface-control-hit-size);
+    padding: var(--interface-space-2) var(--interface-control-padding-inline);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--control-fg);
+    font: inherit;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    cursor: pointer;
+  }
+
+  & .task-delete-dialog-button:hover,
+  & .task-delete-dialog-button:focus-visible {
+    border-color: var(--border-strong);
+    outline: none;
+  }
+
+  & .task-delete-confirm {
+    border-color: var(--danger-border);
+    background: var(--danger-subtle);
+    color: var(--danger-strong);
+  }
+}
+
+@media (max-width: 520px) {
+  caffold-task-archived-delete-dialog {
+    & > dialog {
+      width: calc(100vw - 1rem);
+    }
+
+    & .task-delete-dialog-card {
+      padding: var(--interface-space-8);
+    }
+  }
+}

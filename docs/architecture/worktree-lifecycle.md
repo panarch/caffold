@@ -94,6 +94,11 @@ Restore recreates the same UUID path from the retained local branch before the
 Codex thread and Task return to the active list. The record transitions through
 `restoring` back to `ready`.
 
+Permanent deletion is available only after archive. The archived managed
+worktree path is already absent, so deletion removes only Caffold's ownership
+record. The local branch remains in the repository and no external worktree or
+Git ref is removed.
+
 If a later coordinated step fails, Caffold attempts the inverse worktree and
 Codex transition so the visible Task state and filesystem state remain aligned.
 Interrupted transfer, `removing`, and `restoring` states are reconciled on

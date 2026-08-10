@@ -415,7 +415,7 @@ test("visible inline icons have explicit block geometry from their UI owner", ()
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-primary-action-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/tasks/components/navigator.css", ".task-repository-icon", "--task-list-icon-size"],
     ["pages/(task-workspace)/tasks/components/navigator.css", ".task-row-worktree-icon", "--task-list-icon-size"],
-    ["pages/(task-workspace)/tasks/components/navigator.css", ".task-restore-icon", "--interface-icon-size"],
+    ["pages/(task-workspace)/tasks/components/navigator.css", ".task-archived-action-icon", "--interface-icon-size"],
     ["components/file-browser/list.css", ".file-refresh-icon", "--interface-icon-size"],
     ["components/file-tree.css", ".entry-icon-svg", "--file-tree-icon-size"],
     ["components/file-viewer.css", ".viewer-refresh-icon", "--interface-icon-size"],
@@ -540,7 +540,7 @@ test("icon-only controls use square slots from their semantic control tier", () 
     ],
     [
       "pages/(task-workspace)/tasks/components/navigator.css",
-      ".task-restore-button",
+      ".task-archived-action-button",
       "--task-list-row-height",
     ],
     [
@@ -589,21 +589,34 @@ test("icon-only controls use square slots from their semantic control tier", () 
   ]);
 });
 
-test("archived restore actions stay visually secondary until interaction", () => {
+test("archived actions use a visually secondary compact base", () => {
   const navigator = readFrontend("pages/(task-workspace)/tasks/components/navigator.css");
 
-  cssBlockMatching(navigator, ".task-restore-button", [
+  cssBlockMatching(navigator, ".task-archived-action-button", [
     /width: var\(--task-list-row-height\)/,
     /height: var\(--task-list-row-height\)/,
     /color: var\(--border-strong\)/,
   ]);
-  cssBlockMatching(navigator, ".task-restore-button::before", [
+  cssBlockMatching(navigator, ".task-archived-action-button::before", [
     /border: 1px solid transparent/,
     /background: transparent/,
   ]);
-  cssBlockMatching(navigator, ".task-restore-button:not\(:disabled\):hover::before", [
+  cssBlockMatching(navigator, ".task-archived-action-button:not\(:disabled\):hover::before", [
     /border-color: var\(--border\)/,
     /background: var\(--control-subtle-hover-bg\)/,
+  ]);
+  cssBlockMatching(navigator, ".task-delete-button", [
+    /color: var\(--danger\)/,
+  ]);
+  cssBlockMatching(navigator, ".task-delete-button .task-archived-action-icon", [
+    /opacity: 0\.62/,
+  ]);
+  cssBlockMatching(navigator, ".task-delete-button:not\(:disabled\):hover", [
+    /color: var\(--danger-strong\)/,
+  ]);
+  cssBlockMatching(navigator, ".task-delete-button:not\(:disabled\):hover::before", [
+    /border-color: var\(--danger-border\)/,
+    /background: var\(--danger-faint\)/,
   ]);
 });
 

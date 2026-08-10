@@ -119,6 +119,12 @@ impl GeneratedImageStore {
             }
         }
     }
+
+    pub(in crate::app) fn remove_thread(&self, thread_id: &str) {
+        if let Ok(mut images) = self.images.write() {
+            images.retain(|(candidate, _), _| candidate != thread_id);
+        }
+    }
 }
 
 fn default_generated_images_root() -> Option<PathBuf> {
@@ -241,6 +247,12 @@ mod tests {
         );
         assert_eq!(
             store.load("thread_1", "image_2").await,
+            Err(GeneratedImageError::NotFound)
+        );
+
+        store.remove_thread("thread_1");
+        assert_eq!(
+            store.load("thread_1", "image_1").await,
             Err(GeneratedImageError::NotFound)
         );
     }

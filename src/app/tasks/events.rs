@@ -108,6 +108,12 @@ impl LiveTaskEventCache {
             .and_then(|events| events.get(thread_id).cloned())
             .unwrap_or_default()
     }
+
+    pub(in crate::app) fn remove_thread(&self, thread_id: &str) {
+        if let Ok(mut events) = self.events.lock() {
+            events.remove(thread_id);
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -168,6 +174,11 @@ impl TaskEvents {
 
     pub(in crate::app) fn generated_images(&self) -> &GeneratedImageStore {
         &self.generated_images
+    }
+
+    pub(in crate::app) fn remove_thread(&self, thread_id: &str) {
+        self.cache.remove_thread(thread_id);
+        self.generated_images.remove_thread(thread_id);
     }
 }
 
