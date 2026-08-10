@@ -1,0 +1,176 @@
+caffold-task-detail-info {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+
+  & .task-detail-info-button {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: var(--interface-compact-hit-size);
+    height: var(--interface-compact-hit-size);
+    margin-block: calc(0rem - var(--interface-compact-hit-outset));
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--control-fg);
+    cursor: pointer;
+  }
+
+  & .task-detail-info-button::before {
+    position: absolute;
+    inset: var(--interface-compact-hit-outset);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    content: "";
+  }
+
+  & .task-detail-info-button:hover,
+  & .task-detail-info-button:focus-visible {
+    outline: none;
+  }
+
+  & .task-detail-info-button:hover::before,
+  & .task-detail-info-button:focus-visible::before {
+    border-color: var(--border-strong);
+    background: var(--surface-muted);
+  }
+
+  & .task-detail-info-button .task-status-chip {
+    grid-auto-flow: initial;
+    place-items: center;
+    pointer-events: none;
+  }
+
+  & .task-detail-info-button .task-status-icon,
+  & .task-detail-info-button .task-status-spinner {
+    grid-area: 1 / 1;
+  }
+
+  & .task-detail-popover {
+    position: fixed;
+    inset: auto;
+    position-area: block-end center;
+    position-try-fallbacks: flip-block;
+    width: max-content;
+    max-width: min(42rem, calc(100vw - 1.5rem));
+    max-height: min(60vh, 420px);
+    margin: var(--interface-space-3) var(--interface-space-5);
+    padding: 0.75rem;
+    overflow: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 14px 34px rgb(var(--shadow-rgb) / 18%);
+  }
+
+  & .task-detail-popover::backdrop {
+    background: transparent;
+  }
+
+  & .task-detail-popover dl {
+    display: grid;
+    grid-template-columns: max-content minmax(192px, 1fr);
+    gap: 0.5625rem 0.875rem;
+    margin: 0;
+  }
+
+  & .task-detail-popover dl div {
+    display: contents;
+  }
+
+  & .task-detail-popover dt {
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .task-detail-popover dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .task-detail-archive-action {
+    display: grid;
+    justify-items: start;
+    gap: var(--interface-space-3);
+    margin-top: var(--interface-space-6);
+    padding-top: var(--interface-space-5);
+    border-top: 1px solid var(--border);
+  }
+
+  & .task-detail-archive-action > p {
+    display: block;
+    max-width: 36rem;
+    margin: 0;
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .task-detail-archive-action .task-secondary-button {
+    position: relative;
+    min-height: var(--interface-compact-hit-size);
+    margin-block: calc(0rem - var(--interface-compact-hit-outset));
+    border: 0;
+    background: transparent;
+    font-size: var(--interface-meta-font-size);
+  }
+
+  & .task-detail-archive-action .task-secondary-button::before {
+    position: absolute;
+    inset: var(--interface-compact-hit-outset) 0;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    content: "";
+  }
+
+  & .task-detail-archive-action .task-secondary-button:hover::before,
+  & .task-detail-archive-action .task-secondary-button:focus-visible::before {
+    border-color: var(--border-strong);
+  }
+
+  & .task-detail-archive-action .task-detail-archive-error {
+    color: var(--danger);
+  }
+
+  & .task-detail-status {
+    width: var(--interface-icon-slot-size);
+    height: var(--interface-icon-slot-size);
+    justify-content: center;
+    padding: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  caffold-task-detail-info {
+    & .task-detail-popover {
+      position-area: none;
+      inset: auto var(--interface-space-4);
+      top: calc(anchor(bottom) + var(--interface-space-3));
+      width: auto;
+      margin: 0;
+    }
+
+    & .task-detail-popover dl {
+      grid-template-columns: 1fr;
+      gap: 0.1875rem;
+    }
+
+    & .task-detail-popover dl div {
+      display: grid;
+      gap: 0.125rem;
+    }
+
+    & .task-detail-popover dl div + div {
+      margin-top: 0.5rem;
+    }
+  }
+}
