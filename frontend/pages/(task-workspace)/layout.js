@@ -44,11 +44,21 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.innerHTML = `
       <button
         type="button"
-        class="task-workspace-close"
+        class="task-workspace-route-control task-workspace-back"
         aria-label="Back to tasks"
         title="Back to tasks"
+        hidden
       >
-        ${renderInlineIcon("X", "Close", "task-workspace-close-icon")}
+        ${renderInlineIcon("ArrowLeft", "Back to tasks", "task-workspace-route-control-icon")}
+      </button>
+      <button
+        type="button"
+        class="task-workspace-route-control task-workspace-close"
+        aria-label="Close new task"
+        title="Close new task"
+        hidden
+      >
+        ${renderInlineIcon("X", "Close new task", "task-workspace-route-control-icon")}
       </button>
       <section class="task-workspace-surface">
         <div class="task-workspace-master-detail">
@@ -74,6 +84,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
         </div>
       </section>
     `;
+    this.backButton = this.querySelector(".task-workspace-back");
     this.closeButton = this.querySelector(".task-workspace-close");
     this.masterDetail = this.querySelector(".task-workspace-master-detail");
     this.masterPane = this.querySelector(".task-workspace-master-pane");
@@ -89,11 +100,18 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.settingsWorkspace.connectSettingsNavigator(this.settingsNavigator);
     this.renderIcons();
 
+    this.backButton.addEventListener("click", () => {
+      this.dispatchEvent(
+        new CustomEvent("caffold:request-tasks-route", {
+          bubbles: true,
+          detail: {
+            route: { kind: "tasks" },
+            replace: true,
+          },
+        }),
+      );
+    });
     this.closeButton.addEventListener("click", () => {
-      if (this.tasksPage?.closeActiveSubview?.()) {
-        this.updateChrome();
-        return;
-      }
       this.dispatchEvent(
         new CustomEvent("caffold:close-task-workspace", { bubbles: true }),
       );
@@ -156,11 +174,18 @@ class CaffoldTaskWorkspace extends HTMLElement {
   }
 
   renderIcons() {
+    if (this.backButton) {
+      this.backButton.innerHTML = renderInlineIcon(
+        "ArrowLeft",
+        "Back to tasks",
+        "task-workspace-route-control-icon",
+      );
+    }
     if (this.closeButton) {
       this.closeButton.innerHTML = renderInlineIcon(
         "X",
-        "Close",
-        "task-workspace-close-icon",
+        "Close new task",
+        "task-workspace-route-control-icon",
       );
     }
   }
@@ -208,30 +233,26 @@ class CaffoldTaskWorkspace extends HTMLElement {
   }
 
   updateChrome() {
-    if (!this.closeButton) {
+    if (!this.backButton || !this.closeButton) {
       return;
     }
     const taskRoute = this.mode === "tasks" ? this.route : null;
     const target = taskRoute ? routeTarget(taskRoute) : null;
-    const isTaskSubview =
-      this.tasksPage?.taskDetailView &&
-      this.tasksPage.taskDetailView !== "conversation";
-    const isGlobalTasksHome = target === "home";
-    const isTaskConversation = target === "detail" && !isTaskSubview;
-    const showClose = Boolean(taskRoute && !isGlobalTasksHome);
+    const showBack = ["detail", "review", "review-file"].includes(target);
+    const showClose = target === "new";
 
+    this.backButton.hidden = !showBack;
     this.closeButton.hidden = !showClose;
-    this.toggleAttribute("data-workspace-close-visible", showClose);
     this.toggleAttribute(
-      "data-workspace-close-responsive",
-      isTaskConversation || target === "new",
+      "data-workspace-route-control-visible",
+      showBack || showClose,
     );
+    this.toggleAttribute("data-workspace-back-visible", showBack);
+    this.toggleAttribute("data-workspace-close-visible", showClose);
     this.dataset.workspaceMode = this.mode ?? "tasks";
     this.syncPresentationState();
 
-    const label = isTaskSubview ? "Back to task" : "Back to tasks";
-    this.closeButton.setAttribute("aria-label", label);
-    this.closeButton.setAttribute("title", label);
+    this.renderIcons();
     this.navigation.setMode(this.mode);
     this.syncTaskListWidth();
   }

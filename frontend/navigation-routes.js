@@ -254,7 +254,7 @@ const ROUTE_DEFINITIONS = [
             reviewViewer: route.reviewViewer,
             baseRef: route.baseRef,
           })
-        : tasksRoute({ threadId: route.threadId }),
+        : tasksRoute(),
   }),
   routeDefinition({
     id: "global-tasks-detail",

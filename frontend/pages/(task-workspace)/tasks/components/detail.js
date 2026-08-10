@@ -679,6 +679,13 @@ class CaffoldTaskDetail extends HTMLElement {
       this.requestReviewRoute({ review: true });
       return;
     }
+    if (action === "open-review-scope") {
+      this.requestReviewRoute({
+        review: true,
+        scope: intent.reviewScope,
+      });
+      return;
+    }
     if (action === "open-conversation") {
       this.requestReviewRoute({ review: false });
       return;
@@ -695,7 +702,7 @@ class CaffoldTaskDetail extends HTMLElement {
     const preservedReviewRoute = this.reviewComponents
       .get(this.selectedThreadId)
       ?.currentTaskRoute?.();
-    const route = options.review
+    let route = options.review
       ? preservedReviewRoute ?? {
           kind: "tasks",
           threadId: this.selectedThreadId,
@@ -707,6 +714,14 @@ class CaffoldTaskDetail extends HTMLElement {
           baseRef: "",
         }
       : { kind: "tasks", threadId: this.selectedThreadId };
+    if (options.review && ["working", "branch"].includes(options.scope)) {
+      route = {
+        ...route,
+        review: true,
+        reviewScope: options.scope,
+        baseRef: options.scope === "branch" ? `${route.baseRef ?? ""}` : "",
+      };
+    }
     this.dispatchEvent(
       new CustomEvent("caffold:task-detail-intent", {
         bubbles: true,
@@ -1365,6 +1380,9 @@ class CaffoldTaskDetail extends HTMLElement {
           : null,
       transportState: this.detailStream.state,
       reviewView: this.reviewView,
+      reviewScope:
+        this.taskRoute?.reviewScope === "branch" ? "branch" : "working",
+      reviewBaseRef: `${this.taskRoute?.baseRef ?? ""}`,
       contextPath: this.activeCwdPath(),
       archiveState: this.archiveStateValue,
     });
@@ -1630,14 +1648,6 @@ class CaffoldTaskDetail extends HTMLElement {
 
   get taskDetailView() {
     return this.reviewView;
-  }
-
-  closeActiveSubview() {
-    if (this.reviewView !== "review") {
-      return false;
-    }
-    this.requestReviewRoute({ review: false });
-    return true;
   }
 
   hasSelectedTaskDetail() {

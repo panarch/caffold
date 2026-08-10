@@ -385,7 +385,6 @@ test("common chrome shares one icon slot and control geometry", () => {
     ["pages/components/header-actions.css", ".header-action-icon"],
     ["pages/(task-workspace)/tasks/controls.css", ".task-action-icon"],
     ["pages/(task-workspace)/tasks/components/detail/summary.css", ".task-brand-button img"],
-    ["pages/(task-workspace)/tasks/components/detail/review.css", ".task-refresh-icon"],
     ["components/file-viewer.css", ".viewer-info-icon"],
     ["pages/(review-workspace)/layout.css", ".review-workspace-close-icon"],
   ];
@@ -410,11 +409,10 @@ test("visible inline icons have explicit block geometry from their UI owner", ()
     ["pages/(review-workspace)/(github)/(pulls)/list/page.css", ".github-pull-icon", "--interface-icon-small-size"],
     ["pages/(task-workspace)/settings/layout.css", ".settings-workspace-back-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/settings/appearance/page.css", ".settings-preview-icon", "--task-list-icon-size"],
-    ["pages/(task-workspace)/layout.css", ".task-workspace-close-icon", "--interface-icon-size"],
+    ["pages/(task-workspace)/layout.css", ".task-workspace-route-control-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/components/navigation.css", ".task-workspace-navigation-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/tasks/controls.css", ".task-action-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-primary-action-icon", "--interface-icon-size"],
-    ["pages/(task-workspace)/tasks/components/detail/review.css", ".task-refresh-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/tasks/components/navigator.css", ".task-repository-icon", "--task-list-icon-size"],
     ["pages/(task-workspace)/tasks/components/navigator.css", ".task-row-worktree-icon", "--task-list-icon-size"],
     ["pages/(task-workspace)/tasks/components/navigator.css", ".task-restore-icon", "--interface-icon-size"],
@@ -527,7 +525,7 @@ test("icon-only controls use square slots from their semantic control tier", () 
     ],
     [
       "pages/(task-workspace)/layout.css",
-      ".task-workspace-close",
+      ".task-workspace-route-control",
       "--interface-compact-hit-size",
     ],
     [
@@ -634,7 +632,7 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
       ".task-image-preview-close::before",
       "--interface-control-hit-outset",
     ],
-    ["pages/(task-workspace)/layout.css", ".task-workspace-close::before", "--interface-compact-hit-outset"],
+    ["pages/(task-workspace)/layout.css", ".task-workspace-route-control::before", "--interface-compact-hit-outset"],
     ["pages/(review-workspace)/layout.css", ".review-workspace-close::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-primary-action-button::before", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-composer-attachment-remove::before", "--interface-compact-hit-outset"],
@@ -666,11 +664,6 @@ test("contextual and inline actions stay compact while page and primary actions 
       "pages/(task-workspace)/tasks/components/detail/summary.css",
       ".task-detail-actions .task-secondary-button",
       "--interface-compact-visual-size",
-    ],
-    [
-      "pages/(task-workspace)/tasks/components/detail/review.css",
-      ".task-review-refresh",
-      "--interface-compact-hit-size",
     ],
     [
       "pages/(task-workspace)/tasks/components/detail/conversation.css",
@@ -752,14 +745,6 @@ test("dense contextual toolbars separate visual size from coarse-pointer hit are
   assert.match(
     review,
     /\.task-review-axis-options button \{[\s\S]*height: var\(--interface-compact-hit-size\)[\s\S]*margin-block: calc\(0rem - var\(--interface-compact-hit-outset\)\)/,
-  );
-  assert.match(
-    review,
-    /\.task-review-refresh \{[\s\S]*width: var\(--interface-compact-hit-size\)[\s\S]*height: var\(--interface-compact-hit-size\)[\s\S]*margin: calc\(0rem - var\(--interface-compact-hit-outset\)\)/,
-  );
-  assert.match(
-    review,
-    /\.task-review-refresh::before \{[\s\S]*inset: var\(--interface-compact-hit-outset\)/,
   );
 });
 

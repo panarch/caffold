@@ -22,6 +22,8 @@ caffold-git-diff-changes-tree {
     min-height: 0;
     overflow: hidden;
     padding: 0.3125rem 0.75rem;
+    padding-left: var(--review-navigator-header-padding-inline, 0.75rem);
+    padding-right: var(--review-pane-action-clearance, 0.75rem);
     border-bottom: 1px solid var(--border);
   }
 

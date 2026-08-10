@@ -121,7 +121,7 @@ test("keeps the composer Stop action stable while an interrupt request is pendin
   await expect(primaryAction).toBeEnabled();
 });
 
-test("updates only affected detail regions and preserves an active IME composition", async ({
+test("updates stable detail regions and preserves an active IME composition", async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -199,8 +199,8 @@ test("updates only affected detail regions and preserves an active IME compositi
         summaryPreserved:
           element.querySelector("caffold-task-detail-summary h2") ===
           nodes.summaryHeading,
-        conversationUpdated:
-          element.querySelector(".task-conversation-scroll") !==
+        conversationPreserved:
+          element.querySelector(".task-conversation-scroll") ===
           nodes.conversationScroller,
         promptPreserved:
           element.querySelector(
@@ -212,7 +212,7 @@ test("updates only affected detail regions and preserves an active IME compositi
     }),
   ).toEqual({
     summaryPreserved: true,
-    conversationUpdated: true,
+    conversationPreserved: true,
     promptPreserved: true,
     promptValue: "한",
     promptFocused: true,
@@ -355,7 +355,7 @@ test("loading detail accepts a canonical task sync without a synthetic task", as
   const loadingMessage = page.getByText("Loading task...");
   await expect(loadingMessage).toBeVisible();
   const loadingClearance = await loadingMessage.evaluate((message) => {
-    const close = document.querySelector(".task-workspace-close");
+    const close = document.querySelector(".task-workspace-back");
     const closeBounds = close.getBoundingClientRect();
     const textRange = document.createRange();
     textRange.selectNodeContents(message);
@@ -2090,7 +2090,7 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
   });
   if (testInfo.project.name === "phone") {
     await page
-      .locator("caffold-task-workspace .task-workspace-close")
+      .locator("caffold-task-workspace .task-workspace-back")
       .click();
     await expect(page).toHaveURL("/");
   }

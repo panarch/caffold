@@ -125,7 +125,7 @@ Back and close controls use deterministic parent routes:
 - PR detail -> PR list
 - task detail -> Tasks home
 - task Review file -> the same Review route without `file`
-- task Review list -> the same task Conversation
+- task Review list -> Tasks home
 - new task -> Tasks home
 - Tasks home -> no parent
 - standalone review workspace close -> standalone files at the same cwd
@@ -135,8 +135,12 @@ not mint a separate durable task ID. A direct route for an unmanaged thread
 performs a metadata-only read and shows the Continue gate without resuming or
 subscribing to the thread.
 
-Browser back/forward should produce the same state transitions as the visible
-controls.
+Nested Back controls use these parent routes, so browser back/forward can replay
+the same semantic file and list boundaries. The compact Task-detail
+Back-to-Tasks control is an explicit workspace exit instead: Conversation,
+Working Tree, and Branch comparison all replace the current entry with Tasks
+home. It does not reuse Review's file-to-navigator Back or mutate the retained
+Task detail component.
 
 Conversation -> Review pushes a history entry. Scope, navigator, viewer, and
 base changes replace the current Review entry because they refine one review

@@ -17,6 +17,7 @@ class CaffoldTasksPage extends HTMLElement {
     }
     this.rendered = true;
     this.view = "home";
+    this.detailView = "conversation";
     this.taskListState = "loading";
     this.selectedThreadId = "";
     this.adoptedThreadId = "";
@@ -125,6 +126,9 @@ class CaffoldTasksPage extends HTMLElement {
     const target = routeTarget(route);
     const nextView =
       target === "new" ? "new" : target === "home" ? "home" : "detail";
+    const nextDetailView = ["review", "review-file"].includes(target)
+      ? "review"
+      : "conversation";
     const nextThreadId = `${route?.threadId ?? ""}`;
     if (nextView !== this.view || nextThreadId !== this.selectedThreadId) {
       this.imagePreviewDialog()?.dismiss();
@@ -140,6 +144,7 @@ class CaffoldTasksPage extends HTMLElement {
         taskDetailThreadId(this.taskDetail()?.currentDetail()) === nextThreadId);
 
     this.view = nextView;
+    this.detailView = nextDetailView;
     this.selectedThreadId = nextThreadId;
     this.setAttribute("data-tasks-view", nextView);
     this.taskNavigator()?.setSelectedThreadId(nextThreadId);
@@ -199,7 +204,7 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   get taskDetailView() {
-    return this.taskDetail()?.taskDetailView ?? "conversation";
+    return this.view === "detail" ? this.detailView : "conversation";
   }
 
   selectedTaskContextPath() {
@@ -214,10 +219,6 @@ class CaffoldTasksPage extends HTMLElement {
     return this.view === "detail"
       ? this.taskDetail()?.newTaskContextPath() ?? ""
       : this.taskNew()?.selectedContextPath() ?? "";
-  }
-
-  closeActiveSubview() {
-    return this.taskDetail()?.closeActiveSubview() ?? false;
   }
 
   taskNavigator() {

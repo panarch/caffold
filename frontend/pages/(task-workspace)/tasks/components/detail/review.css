@@ -1,5 +1,20 @@
 caffold-task-review {
-  --review-header-height: var(--interface-compact-hit-size);
+  --review-header-padding-block: var(--interface-space-4);
+  --review-navigator-header-padding-inline: var(--interface-space-6);
+  --review-navigator-action-inline-end: var(--interface-space-6);
+  --review-navigator-axis-inline-size: 7rem;
+  --review-viewer-action-inline-end: calc(
+    var(--interface-space-7) + var(--interface-compact-hit-outset)
+  );
+  --review-viewer-axis-inline-size: 7.5rem;
+  --review-pane-title-size: 0.82rem;
+  --review-pane-title-line-height: 1.05;
+  --review-pane-meta-size: 0.74rem;
+  --review-pane-meta-line-height: 1.1;
+  --review-header-height: calc(
+    var(--interface-compact-hit-size) + var(--review-header-padding-block) +
+      var(--review-header-padding-block)
+  );
   display: block;
   min-width: 0;
   min-height: 0;
@@ -9,29 +24,11 @@ caffold-task-review {
 
   & .task-review-workspace {
     display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
     min-width: 0;
     min-height: 0;
     height: 100%;
     overflow: hidden;
-  }
-
-  & .task-review-toolbar {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: var(--interface-toolbar-gap);
-    min-width: 0;
-    padding: var(--interface-space-4) var(--interface-space-6);
-    border-bottom: 1px solid var(--border);
-    background: var(--surface);
-  }
-
-  & .task-review-axis {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--interface-space-2);
-    min-width: 0;
   }
 
   & .task-review-axis-options {
@@ -48,28 +45,13 @@ caffold-task-review {
     background: var(--surface-muted);
   }
 
-  & .task-review-axis-label,
-  & .task-review-base > span {
-    color: var(--muted);
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-    white-space: nowrap;
-  }
-
-  & .task-review-axis-label {
-    padding: 0 var(--interface-space-1);
-  }
-
-  & .task-review-base > span {
-    padding: 0 var(--interface-space-3);
-  }
-
   & .task-review-axis-options button {
     position: relative;
     z-index: 1;
     display: grid;
     box-sizing: border-box;
     height: var(--interface-compact-hit-size);
+    min-width: 0;
     min-height: var(--interface-compact-hit-size);
     margin-block: calc(0rem - var(--interface-compact-hit-outset));
     padding: 0;
@@ -87,6 +69,7 @@ caffold-task-review {
     display: grid;
     box-sizing: border-box;
     width: 100%;
+    min-width: 0;
     height: calc(var(--interface-compact-visual-size) - 2px);
     padding: 0 var(--interface-space-4);
     place-items: center;
@@ -96,7 +79,20 @@ caffold-task-review {
   & .task-review-axis-options button[aria-pressed="true"] > span {
     background: var(--surface);
     color: var(--text);
-    box-shadow: 0 0 0 1px var(--border);
+  }
+
+  & .task-review-axis-options button[aria-pressed="true"]:first-child > span {
+    box-shadow: 1px 0 0 var(--border);
+  }
+
+  & .task-review-axis-options button[aria-pressed="true"]:last-child > span {
+    box-shadow: -1px 0 0 var(--border);
+  }
+
+  & .task-review-axis-options:has(button[hidden])
+    button[aria-pressed="true"]
+    > span {
+    box-shadow: none;
   }
 
   & .task-review-axis-options button:disabled {
@@ -104,65 +100,8 @@ caffold-task-review {
     cursor: default;
   }
 
-  & .task-review-base {
-    position: relative;
-    display: flex;
-    align-items: center;
-    height: var(--interface-compact-visual-size);
-    min-width: 0;
-    margin-left: auto;
-  }
-
-  & .task-review-base[hidden] {
+  & .task-review-axis-options button[hidden] {
     display: none;
-  }
-
-  & .task-review-base select {
-    width: min(24vw, 260px);
-    min-width: 120px;
-    height: var(--interface-compact-visual-size);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
-    color: var(--text);
-    font: inherit;
-    font-size: var(--interface-meta-font-size);
-    text-overflow: ellipsis;
-  }
-
-  & .task-review-base::before {
-    position: absolute;
-    inset: calc(0px - var(--interface-compact-hit-outset)) 0;
-    content: "";
-  }
-
-  & .task-review-refresh {
-    position: relative;
-    width: var(--interface-compact-hit-size);
-    height: var(--interface-compact-hit-size);
-    min-height: var(--interface-compact-hit-size);
-    margin: calc(0rem - var(--interface-compact-hit-outset));
-    flex: 0 0 auto;
-  }
-
-  & .task-review-refresh::before {
-    position: absolute;
-    inset: var(--interface-compact-hit-outset);
-    content: "";
-  }
-
-  & .task-review-refresh.is-unavailable {
-    color: var(--warning);
-  }
-
-  & .task-refresh-icon {
-    display: block;
-    width: var(--interface-icon-size);
-    height: var(--interface-icon-size);
-  }
-
-  & .task-review-refresh.is-refreshing .task-refresh-icon {
-    animation: task-refresh-spin 0.8s linear infinite;
   }
 
   & .task-review-notices:has(> :not([hidden])) {
@@ -222,6 +161,69 @@ caffold-task-review {
   & .task-review-viewer-pane {
     position: relative;
     overflow: hidden;
+  }
+
+  & .task-review-navigator-pane {
+    --review-pane-action-clearance: calc(
+      var(--review-navigator-action-inline-end) +
+        var(--review-navigator-axis-inline-size) + var(--interface-space-5)
+    );
+  }
+
+  & .task-review-viewer-pane {
+    --review-pane-action-clearance: calc(
+      var(--review-viewer-action-inline-end) +
+        var(--review-viewer-axis-inline-size) + var(--interface-space-5) -
+        var(--interface-compact-hit-outset)
+    );
+  }
+
+  & .task-review-pane-axis {
+    position: absolute;
+    z-index: 4;
+    top: 0;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    height: var(--review-header-height);
+    padding-block: var(--review-header-padding-block);
+  }
+
+  & .task-review-navigator-axis {
+    right: var(--review-navigator-action-inline-end);
+  }
+
+  & .task-review-viewer-axis {
+    right: var(--review-viewer-action-inline-end);
+  }
+
+  & .task-review-navigator-axis .task-review-axis-options:not(:has(button[hidden])) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: var(--review-navigator-axis-inline-size);
+  }
+
+  & .task-review-viewer-axis .task-review-axis-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: var(--review-viewer-axis-inline-size);
+  }
+
+  & .task-review-axis-options:has(button[hidden]) {
+    grid-template-columns: max-content;
+  }
+
+  & .task-review-viewer-empty-header {
+    position: absolute;
+    z-index: 1;
+    inset: 0 0 auto;
+    box-sizing: border-box;
+    height: var(--review-header-height);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    pointer-events: none;
+  }
+
+  &[data-file-selected] .task-review-viewer-empty-header {
+    display: none;
   }
 
   & .task-review-navigator {
@@ -290,92 +292,10 @@ caffold-task-review {
 
 }
 
-@media (max-width: 1100px) {
-  caffold-task-review {
-    & .task-review-toolbar {
-      display: grid;
-      grid-template-columns: repeat(3, max-content) minmax(0, 1fr) auto;
-    }
-
-    & .task-review-axis-label {
-      display: none;
-    }
-  }
-}
-
 @media (max-width: 560px) {
   caffold-task-review {
     & .task-review-workspace {
-      grid-template-rows: auto auto minmax(0, 1fr);
-    }
-
-    & .task-review-toolbar {
-      grid-template-columns:
-        minmax(0, 1.2fr)
-        minmax(0, 0.8fr)
-        var(--interface-compact-visual-size);
-      gap: max(
-        var(--interface-space-3),
-        calc(var(--interface-compact-hit-outset) + var(--interface-compact-hit-outset))
-      );
-      padding: var(--interface-space-4);
-      overflow: hidden;
-    }
-
-    & .task-review-axis {
-      width: 100%;
-    }
-
-    & .task-review-axis-options {
-      width: 100%;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    & .task-review-axis[aria-label="Review scope"] .task-review-axis-options {
-      grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
-    }
-
-    & .task-review-axis[aria-label="Review navigator"] .task-review-axis-options {
-      grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-    }
-
-    & .task-review-axis-options button {
-      min-width: 0;
-      padding: 0;
-    }
-
-    & .task-review-axis-options button > span {
-      min-width: 0;
-      padding: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    & .task-review-axis[aria-label="Review viewer"] {
-      grid-row: 2;
-      grid-column: 1;
-    }
-
-    & .task-review-base {
-      grid-row: 2;
-      grid-column: 2 / 4;
-      width: 100%;
-      margin: 0;
-    }
-
-    & .task-review-base > span {
-      display: none;
-    }
-
-    & .task-review-base select {
-      width: 100%;
-      min-width: 0;
-    }
-
-    & .task-review-refresh {
-      grid-row: 1;
-      grid-column: 3;
+      grid-template-rows: auto minmax(0, 1fr);
     }
 
     & .task-review-layout {
@@ -396,12 +316,19 @@ caffold-task-review {
     &[data-file-selected] .task-review-navigator-pane {
       display: none;
     }
-
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  caffold-task-review .task-review-refresh.is-refreshing .task-refresh-icon {
-    animation: none;
+@media (pointer: coarse), (max-width: 520px) {
+  caffold-task-review {
+    --review-header-padding-block: 0px;
+  }
+}
+
+@media (max-width: 520px) {
+  caffold-task-review {
+    --review-viewer-action-inline-end: calc(
+      var(--interface-space-4) + var(--interface-compact-hit-outset)
+    );
   }
 }

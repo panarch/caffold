@@ -630,14 +630,14 @@ test("isolates task detail responses and conversation scroll by thread", async (
     )
     .toBe(true);
 
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
     "data-task-detail-view",
     "review",
   );
   await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
   await taskNavigator.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   const reviewTree = tasksPage.locator(
     "caffold-task-review caffold-git-diff-changes-tree",
   );

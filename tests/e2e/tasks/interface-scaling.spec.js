@@ -255,7 +255,7 @@ function taskInterfaceMetrics(page) {
       "caffold-task-detail:not([hidden])",
     );
     const controls = {
-      close: document.querySelector(".task-workspace-close"),
+      close: document.querySelector(".task-workspace-back"),
       info: activeDetail.querySelector(".task-detail-info-button"),
       newTask: document.querySelector(
         "caffold-task-navigator .task-list-new-task",
@@ -392,7 +392,7 @@ function taskInterfaceMetrics(page) {
       ),
       closeHeight: tokenPixels("--interface-compact-visual-size"),
       closeIconSize: boxHeight(
-        controls.close.querySelector(".task-workspace-close-icon"),
+        controls.close.querySelector(".task-workspace-route-control-icon"),
       ),
       infoHeight: tokenPixels("--interface-compact-visual-size"),
       newTaskVisualHeight: paintedHeight(controls.newTask),

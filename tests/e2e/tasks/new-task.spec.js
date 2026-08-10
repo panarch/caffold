@@ -372,7 +372,7 @@ test("creates a task with responsive composer controls and canonical approval st
   await expect(tasksPage.locator(".task-conversation")).toBeVisible();
   await expect(tasksPage.locator(".task-detail-summary h2")).toHaveCSS(
     "font-size",
-    touchInterface ? "17px" : "16px",
+    touchInterface ? "14.875px" : "14px",
   );
   await expect(tasksPage.locator(".task-detail-meta")).toHaveCSS(
     "font-size",

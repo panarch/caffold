@@ -15,6 +15,12 @@ test("task workspace declares one shared master pane and one detail pane", () =>
     "pages/(task-workspace)/components/navigation.js",
   );
   const tasksPage = readFrontend("pages/(task-workspace)/tasks/page.js");
+  const taskSummary = readFrontend(
+    "pages/(task-workspace)/tasks/components/detail/summary.js",
+  );
+  const taskReview = readFrontend(
+    "pages/(task-workspace)/tasks/components/detail/review.js",
+  );
   const settingsWorkspace = readFrontend(
     "pages/(task-workspace)/settings/layout.js",
   );
@@ -39,7 +45,17 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   assert.match(detailPane, /<caffold-settings-workspace/);
 
   assert.doesNotMatch(workspace, /syncNavigationOwner|\.append\(|\.prepend\(/);
+  assert.doesNotMatch(
+    workspace,
+    /closeActiveSubview|tasksPage\.taskDetailView|tasksPage\?\.taskDetailView/,
+  );
+  assert.match(workspace, /class="task-workspace-route-control task-workspace-back"/);
+  assert.match(workspace, /class="task-workspace-route-control task-workspace-close"/);
+  assert.match(workspace, /aria-label="Close new task"/);
   assert.doesNotMatch(tasksPage, /<caffold-task-navigator|workspaceNavigationHost/);
+  assert.doesNotMatch(tasksPage, /closeActiveSubview/);
+  assert.doesNotMatch(taskSummary, /getGitRefs|\/api\/git\/refs/);
+  assert.match(taskReview, /getGitRefs/);
   assert.doesNotMatch(
     settingsWorkspace,
     /<caffold-settings-navigator|workspaceNavigationHost/,
