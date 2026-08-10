@@ -154,6 +154,16 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/settings/codex/page.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/settings/codex/page.js"
         ))),
+        "pages/(task-workspace)/settings/codex/components/runtime-restart-dialog.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/settings/codex/components/runtime-restart-dialog.css"
+            )))
+        }
+        "pages/(task-workspace)/settings/codex/components/runtime-restart-dialog.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/settings/codex/components/runtime-restart-dialog.js"
+            )))
+        }
         "pages/(task-workspace)/settings/about/page.css" => Some(css(include_str!(
             "../frontend/pages/(task-workspace)/settings/about/page.css"
         ))),
@@ -694,6 +704,15 @@ mod tests {
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
             assert!(asset.body.starts_with(b"import "));
         }
+
+        let runtime_restart_dialog =
+            get("pages/(task-workspace)/settings/codex/components/runtime-restart-dialog.js")
+                .expect("Codex runtime restart dialog asset");
+        assert_eq!(
+            runtime_restart_dialog.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(runtime_restart_dialog.body.starts_with(b"export const"));
 
         let app_shell_layout = get("pages/layout.js").expect("app shell layout js asset");
         assert_eq!(

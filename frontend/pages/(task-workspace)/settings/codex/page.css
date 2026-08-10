@@ -76,6 +76,78 @@ caffold-settings-codex-page {
     color: var(--danger);
   }
 
+  & .settings-details dd[data-state="restart-required"] {
+    color: var(--warning);
+  }
+
+  & .settings-runtime-control {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--interface-space-8);
+    margin-top: var(--interface-space-10);
+    padding: var(--interface-space-8);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    background: var(--surface-subtle);
+  }
+
+  & .settings-runtime-control > div {
+    display: grid;
+    gap: var(--interface-space-2);
+    min-width: 0;
+  }
+
+  & .settings-runtime-control h3,
+  & .settings-runtime-control p,
+  & .settings-runtime-message {
+    margin: 0;
+  }
+
+  & .settings-runtime-control h3 {
+    font-size: 0.86rem;
+  }
+
+  & .settings-runtime-control p {
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .settings-runtime-control button {
+    min-height: var(--interface-control-hit-size);
+    padding: var(--interface-space-2) var(--interface-control-padding-inline);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--control-fg);
+    font: inherit;
+    font-size: var(--interface-meta-font-size);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  & .settings-runtime-control button:hover:not(:disabled),
+  & .settings-runtime-control button:focus-visible {
+    border-color: var(--border-strong);
+    outline: none;
+  }
+
+  & .settings-runtime-control button:disabled {
+    color: var(--disabled-text);
+    cursor: default;
+  }
+
+  & .settings-runtime-message {
+    margin-top: var(--interface-space-5);
+    color: var(--success);
+    font-size: var(--interface-meta-font-size);
+  }
+
+  & .settings-runtime-message[data-state="failed"] {
+    color: var(--danger);
+  }
+
   & .settings-usage {
     display: grid;
     margin-top: var(--interface-space-10);
@@ -132,5 +204,15 @@ caffold-settings-codex-page {
     & .settings-usage-row > span:last-child {
       grid-column: 1 / -1;
     }
+
+    & .settings-runtime-control {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    & .settings-runtime-control button {
+      align-self: start;
+    }
+
   }
 }

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, future::Future, sync::Arc};
 
 use futures_util::{StreamExt, stream};
 use serde::Deserialize;
@@ -198,6 +198,45 @@ impl CodexRuntime {
     pub(in crate::app) async fn diagnostics(&self) -> (u64, bool) {
         let process = self.process.state.lock().await;
         (process.generation, process.client.is_some())
+    }
+
+    pub(in crate::app) async fn restart_daemon(
+        &self,
+    ) -> Result<crate::codex_app_server::CodexDaemonInfo, CodexThreadError> {
+        self.restart_daemon_with(CodexThreadClient::restart_daemon)
+            .await
+    }
+
+    async fn restart_daemon_with<Restart, RestartFuture>(
+        &self,
+        restart: Restart,
+    ) -> Result<crate::codex_app_server::CodexDaemonInfo, CodexThreadError>
+    where
+        Restart: FnOnce() -> RestartFuture,
+        RestartFuture:
+            Future<Output = Result<crate::codex_app_server::CodexDaemonInfo, CodexThreadError>>,
+    {
+        let mut process = self.process.state.lock().await;
+        let generation = process.generation;
+        let client = process.client.take();
+        let message = "Codex runtime is restarting.".to_string();
+        let affected = self
+            .sessions
+            .connection_lost(generation, message.clone())
+            .await;
+        for thread_id in affected {
+            let _ = self.signals.send(CodexRuntimeSignal::SessionUnavailable {
+                thread_id,
+                message: message.clone(),
+            });
+        }
+        if let Some(client) = client {
+            client.shutdown().await;
+        }
+
+        let result = restart().await;
+        drop(process);
+        result
     }
 
     pub(in crate::app) async fn shutdown(&self) {
@@ -1049,7 +1088,7 @@ mod tests {
     use super::*;
     use crate::{
         app::tasks::{routes::TaskListEvents, worktrees::ManagedWorktrees},
-        codex_app_server::{self, MockCodexResponse},
+        codex_app_server::{self, CodexDaemonInfo, MockCodexResponse},
         fs::RootedFs,
         task_store::ManagedThread,
     };
@@ -1108,6 +1147,122 @@ mod tests {
             store,
             shutdown,
         )
+    }
+
+    #[tokio::test]
+    async fn daemon_restart_releases_the_existing_proxy_before_running_command() {
+        let runtime = test_runtime(TaskStore::memory().expect("in-memory task store"));
+        runtime
+            .install_test_client(7, CodexThreadClient::mock(Vec::new()))
+            .await;
+        assert_eq!(runtime.diagnostics().await, (7, true));
+
+        let daemon = runtime
+            .restart_daemon_with(|| async {
+                Ok(CodexDaemonInfo {
+                    status: "restarted".to_string(),
+                    backend: Some("pid".to_string()),
+                    pid: Some(4271),
+                    managed_codex_path: None,
+                    managed_codex_version: Some("0.147.0".to_string()),
+                    socket_path: None,
+                    cli_version: Some("0.147.0".to_string()),
+                    app_server_version: Some("0.147.0".to_string()),
+                })
+            })
+            .await
+            .expect("restart result");
+
+        assert_eq!(daemon.status, "restarted");
+        assert_eq!(runtime.diagnostics().await, (7, false));
+    }
+
+    #[tokio::test]
+    async fn failed_daemon_restart_leaves_the_stale_proxy_released_for_recovery() {
+        let runtime = test_runtime(TaskStore::memory().expect("in-memory task store"));
+        runtime
+            .install_test_client(11, CodexThreadClient::mock(Vec::new()))
+            .await;
+
+        let error = runtime
+            .restart_daemon_with(|| async {
+                Err(CodexThreadError::StartFailed(
+                    "daemon restart failed".to_string(),
+                ))
+            })
+            .await
+            .expect_err("restart failure");
+
+        assert!(error.to_string().contains("daemon restart failed"));
+        assert_eq!(runtime.diagnostics().await, (11, false));
+    }
+
+    #[tokio::test]
+    async fn daemon_restart_marks_subscribed_sessions_unavailable() {
+        let sessions = CodexThreadSessions::default();
+        let events = TaskEvents::default();
+        let store = TaskStore::memory().expect("in-memory task store");
+        let (shutdown, _) = broadcast::channel(1);
+        let runtime = CodexRuntime::new(sessions.clone(), events, store, shutdown);
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            json!({
+                "thread": {
+                    "id": "thread_restart",
+                    "preview": "Restart recovery",
+                    "status": { "type": "idle" },
+                    "cwd": "Workspace/rust/codger",
+                    "createdAt": 1.0,
+                    "updatedAt": 1.0,
+                    "turns": []
+                },
+                "initialTurnsPage": {
+                    "data": [],
+                    "nextCursor": null,
+                    "backwardsCursor": null
+                }
+            }),
+        )]);
+        runtime.install_test_client(13, client.clone()).await;
+        sessions
+            .ensure_subscribed(&client, 13, "thread_restart")
+            .await
+            .expect("subscribed session");
+        let mut signals = runtime.subscribe();
+
+        runtime
+            .restart_daemon_with(|| async {
+                Ok(CodexDaemonInfo {
+                    status: "restarted".to_string(),
+                    backend: None,
+                    pid: None,
+                    managed_codex_path: None,
+                    managed_codex_version: None,
+                    socket_path: None,
+                    cli_version: None,
+                    app_server_version: None,
+                })
+            })
+            .await
+            .expect("restart result");
+
+        let snapshot = sessions
+            .snapshot("thread_restart")
+            .await
+            .expect("session snapshot");
+        assert_eq!(
+            snapshot.lifecycle,
+            crate::codex_thread_sessions::ThreadSessionLifecycle::Error
+        );
+        assert_eq!(
+            snapshot.last_error.as_deref(),
+            Some("Codex runtime is restarting.")
+        );
+        assert!(matches!(
+            signals.try_recv(),
+            Ok(CodexRuntimeSignal::SessionUnavailable { thread_id, message })
+                if thread_id == "thread_restart" && message == "Codex runtime is restarting."
+        ));
     }
 
     #[tokio::test]

@@ -14,6 +14,113 @@ test.beforeEach(async ({ page }) => {
   await mockCodexModels(page);
 });
 
+test("shows Codex versions and explicitly restarts an outdated runtime", async ({
+  page,
+}) => {
+  let restarted = false;
+  let restartRequests = 0;
+  let releaseRestart;
+  const restartGate = new Promise((resolve) => {
+    releaseRestart = resolve;
+  });
+  const status = () => ({
+    available: true,
+    codexCliAvailable: true,
+    appServerAvailable: true,
+    message: null,
+    account: null,
+    rateLimits: null,
+    usage: null,
+    appServer: {
+      userAgent: `Codex Desktop/${restarted ? "0.147.0" : "0.146.1"}`,
+    },
+    daemon: {
+      status: "alreadyRunning",
+      backend: "pid",
+      pid: 4271,
+      managedCodexVersion: "0.147.0",
+      cliVersion: "0.147.0",
+      appServerVersion: restarted ? "0.147.0" : "0.146.1",
+    },
+    diagnostics: {
+      codexCliVersion: restarted ? "0.147.0" : "0.146.1",
+      processGeneration: restarted ? 2 : 1,
+      processConnected: true,
+      threadSessions: { trackedSessions: 0, subscribedSessions: 0 },
+    },
+  });
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(status()),
+    }),
+  );
+  await page.route(/\/api\/codex\/restart(?:\?|$)/, async (route) => {
+    restartRequests += 1;
+    expect(route.request().method()).toBe("POST");
+    await restartGate;
+    restarted = true;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "restarted",
+        managedCodexVersion: "0.147.0",
+        appServerVersion: "0.147.0",
+      }),
+    });
+  });
+
+  await page.goto("/settings/codex");
+  const settings = page.locator("caffold-settings-codex-page");
+  await expect(settings).toContainText("Codex CLI");
+  await expect(settings).toContainText("0.146.1");
+  await expect(settings).toContainText("Restart required");
+
+  await settings.getByRole("button", { name: "Restart runtime" }).click();
+  const dialog = settings.getByRole("dialog", { name: "Restart Codex runtime?" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("other Codex clients");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
+  expect(restartRequests).toBe(0);
+
+  await settings.getByRole("button", { name: "Restart runtime" }).click();
+  await dialog.getByRole("button", { name: "Restart Codex" }).click();
+  await expect(settings.getByRole("button", { name: "Restarting…" })).toBeDisabled();
+
+  releaseRestart();
+  await expect(settings).toContainText("Codex runtime restarted.");
+  await expect(settings).not.toContainText("Restart required");
+  await expect(settings).toContainText("App-server runtime");
+  await expect(settings.locator(".settings-details")).toContainText("0.147.0");
+  expect(restartRequests).toBe(1);
+});
+
+test("keeps Codex Settings actionable when runtime restart fails", async ({
+  page,
+}) => {
+  await page.route(/\/api\/codex\/restart(?:\?|$)/, (route) =>
+    route.fulfill({
+      status: 502,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: {
+          code: "codex_app_server_error",
+          message: "Codex runtime could not be restarted.",
+        },
+      }),
+    }),
+  );
+
+  await page.goto("/settings/codex");
+  const settings = page.locator("caffold-settings-codex-page");
+  await settings.getByRole("button", { name: "Restart runtime" }).click();
+  await settings.getByRole("button", { name: "Restart Codex" }).click();
+
+  await expect(settings).toContainText("Codex runtime could not be restarted.");
+  await expect(settings.getByRole("button", { name: "Restart runtime" })).toBeEnabled();
+});
+
 test("returns from Settings to the canonical Tasks home", async ({
   page,
 }, testInfo) => {

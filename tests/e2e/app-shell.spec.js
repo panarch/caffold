@@ -639,6 +639,9 @@ test("groups Git and GitHub actions and routes Codex status to Settings", async 
   await expect(codexSettings).toContainText("Connected");
   await expect(codexSettings).toContainText("user@example.com");
   await expect(codexSettings).toContainText("pro");
+  await expect(codexSettings).toContainText("0.147.0");
+  await expect(codexSettings).toContainText("App-server runtime");
+  await expect(codexSettings.getByRole("button", { name: "Restart runtime" })).toBeVisible();
   await expect(codexSettings).toContainText("Remaining usage");
   await expect(codexSettings).toContainText("5 hours");
   await expect(codexSettings).toContainText("17%");

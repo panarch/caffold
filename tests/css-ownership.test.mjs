@@ -177,6 +177,10 @@ const ownership = new Map([
     ["caffold-settings-codex-page"],
   ],
   [
+    "pages/(task-workspace)/settings/codex/components/runtime-restart-dialog.css",
+    ["caffold-codex-runtime-restart-dialog"],
+  ],
+  [
     "pages/(task-workspace)/settings/about/page.css",
     ["caffold-settings-about-page"],
   ],
@@ -223,6 +227,10 @@ const componentChildren = new Map([
       "caffold-settings-codex-page",
       "caffold-settings-about-page",
     ],
+  ],
+  [
+    "caffold-settings-codex-page",
+    ["caffold-codex-runtime-restart-dialog"],
   ],
   [
     "caffold-tasks-page",

@@ -394,6 +394,11 @@ impl CodexThreadClient {
         Ok(client)
     }
 
+    pub(crate) async fn restart_daemon() -> Result<CodexDaemonInfo, CodexThreadError> {
+        let codex_executable = resolve_codex_executable()?;
+        transport::restart_daemon(&codex_executable).await
+    }
+
     fn inner(&self) -> &Arc<CodexThreadClientInner> {
         self.inner
             .as_ref()

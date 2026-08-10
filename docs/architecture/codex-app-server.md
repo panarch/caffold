@@ -397,6 +397,19 @@ The Tasks UI does not use these diagnostics as state. They are observational;
 thread status, turn status, typed notifications, and canonical API responses
 remain the source of truth.
 
+### Explicit runtime restart
+
+Settings may explicitly restart the shared Codex app-server through
+`POST /api/codex/restart`. Caffold first releases its disposable proxy, then
+asks the installed Codex CLI to restart the persistent daemon. The next status
+request creates a new proxy generation and restores Caffold-managed session
+subscriptions through the normal reconnect path.
+
+Caffold does not restart the daemon automatically when the installed and
+running versions differ. The daemon is user-global and may also serve Codex
+clients outside Caffold, so the user must confirm an interruption before this
+mutation runs.
+
 Maintainers can measure resume/read/history payloads for one existing thread
 without starting a turn:
 

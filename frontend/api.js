@@ -6,6 +6,10 @@ export async function getCodexStatus() {
   return requestJson("/api/codex/status");
 }
 
+export async function restartCodexRuntime() {
+  return requestJson("/api/codex/restart", {}, { method: "POST" });
+}
+
 export async function getCodexModels() {
   return requestJson("/api/codex/models");
 }

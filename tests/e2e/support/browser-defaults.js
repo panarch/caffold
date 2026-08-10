@@ -38,6 +38,25 @@ function mockCodexStatus(overrides = {}) {
       platformFamily: "unix",
       platformOs: "macos",
     },
+    daemon: {
+      status: "alreadyRunning",
+      backend: "pid",
+      pid: 4271,
+      managedCodexPath: "/Users/example/.codex/packages/standalone/current/codex",
+      managedCodexVersion: "0.147.0",
+      socketPath: "/Users/example/.codex/app-server-control/app-server-control.sock",
+      cliVersion: "0.147.0",
+      appServerVersion: "0.147.0",
+    },
+    diagnostics: {
+      codexCliVersion: "0.147.0",
+      processGeneration: 1,
+      processConnected: true,
+      threadSessions: {
+        trackedSessions: 0,
+        subscribedSessions: 0,
+      },
+    },
     ...overrides,
   };
 }

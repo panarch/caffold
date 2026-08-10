@@ -12,10 +12,22 @@ export function sameCodexStatus(left, right) {
     left.account?.accountType === right.account?.accountType &&
     left.account?.email === right.account?.email &&
     left.account?.planType === right.account?.planType &&
+    daemonSignature(left) === daemonSignature(right) &&
+    left.diagnostics?.codexCliVersion === right.diagnostics?.codexCliVersion &&
     usageSignature(left, "primary") === usageSignature(right, "primary") &&
     usageSignature(left, "secondary") === usageSignature(right, "secondary") &&
     formatResetCredits(left) === formatResetCredits(right)
   );
+}
+
+function daemonSignature(status) {
+  const daemon = status?.daemon;
+  return [
+    daemon?.status,
+    daemon?.managedCodexVersion,
+    daemon?.cliVersion,
+    daemon?.appServerVersion,
+  ].join("|");
 }
 
 export function codexState(status) {

@@ -110,10 +110,23 @@ pub(super) async fn connect_proxy(
 }
 
 async fn ensure_daemon(codex_executable: &Path) -> Result<CodexDaemonInfo, CodexThreadError> {
+    daemon_command(codex_executable, "start").await
+}
+
+pub(super) async fn restart_daemon(
+    codex_executable: &Path,
+) -> Result<CodexDaemonInfo, CodexThreadError> {
+    daemon_command(codex_executable, "restart").await
+}
+
+async fn daemon_command(
+    codex_executable: &Path,
+    action: &'static str,
+) -> Result<CodexDaemonInfo, CodexThreadError> {
     let output = Command::new(codex_executable)
         .arg("app-server")
         .arg("daemon")
-        .arg("start")
+        .arg(action)
         .stdin(Stdio::null())
         .output()
         .await
@@ -121,7 +134,7 @@ async fn ensure_daemon(codex_executable: &Path) -> Result<CodexDaemonInfo, Codex
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         let message = if stderr.is_empty() {
-            format!("daemon start exited with {}", output.status)
+            format!("daemon {action} exited with {}", output.status)
         } else {
             stderr
         };
@@ -129,7 +142,7 @@ async fn ensure_daemon(codex_executable: &Path) -> Result<CodexDaemonInfo, Codex
     }
     from_slice(&output.stdout).map_err(|error| {
         CodexThreadError::Protocol(format!(
-            "invalid Codex app-server daemon start response: {error}"
+            "invalid Codex app-server daemon {action} response: {error}"
         ))
     })
 }
@@ -145,6 +158,8 @@ fn start_error(error: std::io::Error) -> CodexThreadError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
 
     #[test]
     fn decodes_started_and_existing_daemon_diagnostics() {
@@ -165,5 +180,74 @@ mod tests {
             assert_eq!(daemon.pid, Some(32723));
             assert_eq!(daemon.app_server_version.as_deref(), Some("0.146.1"));
         }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn restart_invokes_the_daemon_lifecycle_command_and_decodes_status() {
+        let temp = tempfile::tempdir().expect("temporary Codex fixture");
+        let codex = temp.path().join("codex");
+        std::fs::write(
+            &codex,
+            r#"#!/bin/sh
+if [ "$1 $2 $3" != "app-server daemon restart" ]; then
+  echo "unexpected arguments: $*" >&2
+  exit 2
+fi
+printf '%s' '{"status":"restarted","backend":"pid","pid":4271,"managedCodexVersion":"0.147.0","cliVersion":"0.147.0","appServerVersion":"0.147.0"}'
+"#,
+        )
+        .expect("write fake Codex executable");
+        std::fs::set_permissions(&codex, std::fs::Permissions::from_mode(0o755))
+            .expect("make fake Codex executable runnable");
+
+        let daemon = restart_daemon(&codex)
+            .await
+            .expect("restart daemon through fake Codex executable");
+
+        assert_eq!(daemon.status, "restarted");
+        assert_eq!(daemon.pid, Some(4271));
+        assert_eq!(daemon.managed_codex_version.as_deref(), Some("0.147.0"));
+        assert_eq!(daemon.app_server_version.as_deref(), Some("0.147.0"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn restart_preserves_daemon_command_failure_details() {
+        let temp = tempfile::tempdir().expect("temporary Codex fixture");
+        let codex = temp.path().join("codex");
+        std::fs::write(
+            &codex,
+            r#"#!/bin/sh
+echo "daemon is busy" >&2
+exit 9
+"#,
+        )
+        .expect("write failing Codex executable");
+        std::fs::set_permissions(&codex, std::fs::Permissions::from_mode(0o755))
+            .expect("make failing Codex executable runnable");
+
+        let error = restart_daemon(&codex)
+            .await
+            .expect_err("restart command must fail");
+
+        assert!(error.to_string().contains("daemon is busy"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn restart_identifies_an_invalid_restart_response() {
+        let temp = tempfile::tempdir().expect("temporary Codex fixture");
+        let codex = temp.path().join("codex");
+        std::fs::write(&codex, "#!/bin/sh\nprintf '%s' 'not-json'\n")
+            .expect("write invalid Codex executable");
+        std::fs::set_permissions(&codex, std::fs::Permissions::from_mode(0o755))
+            .expect("make invalid Codex executable runnable");
+
+        let error = restart_daemon(&codex)
+            .await
+            .expect_err("invalid daemon response must fail");
+
+        assert!(error.to_string().contains("daemon restart response"));
     }
 }

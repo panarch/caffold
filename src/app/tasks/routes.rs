@@ -30,8 +30,8 @@ use super::generated_images::GeneratedImageError;
 use crate::{
     app::error::ApiError,
     codex_app_server::{
-        CodexPermissionMode, CodexStatusResponse, CodexThreadClient, CodexThreadError,
-        CodexTurnOptions, NORMAL_SERVICE_TIER_ID, ThreadStatus,
+        CodexDaemonInfo, CodexPermissionMode, CodexStatusResponse, CodexThreadClient,
+        CodexThreadError, CodexTurnOptions, NORMAL_SERVICE_TIER_ID, ThreadStatus,
     },
     codex_thread_sessions::{PromptTarget, ThreadSessionSnapshot, ThreadSessionsDiagnostics},
     fs::MAX_IMAGE_BYTES,
@@ -207,6 +207,7 @@ impl TaskListEvents {
 pub(super) fn router(state: TaskState) -> Router {
     Router::new()
         .route("/api/codex/status", get(codex_status))
+        .route("/api/codex/restart", post(codex_restart))
         .route("/api/codex/models", get(codex_models))
         .route("/api/codex/permissions", get(codex_permissions))
         .route(
@@ -276,6 +277,15 @@ async fn codex_status(State(state): State<TaskState>) -> Json<CodexStatusPayload
         status,
         diagnostics,
     })
+}
+
+async fn codex_restart(State(state): State<TaskState>) -> Result<Json<CodexDaemonInfo>, ApiError> {
+    state
+        .codex_runtime
+        .restart_daemon()
+        .await
+        .map(Json)
+        .map_err(ApiError::from)
 }
 
 fn codex_version_from_user_agent(user_agent: &str) -> Option<String> {
