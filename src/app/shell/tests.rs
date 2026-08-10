@@ -16,3 +16,18 @@ fn server_name_is_applied_to_install_metadata() {
     assert_eq!(manifest["theme_color"], "#ffffff");
     assert_eq!(manifest["background_color"], "#f5f5f5");
 }
+
+#[test]
+fn service_worker_cache_name_uses_safely_serialized_build_id() {
+    let source = static_assets::get("service-worker.js")
+        .expect("service worker asset")
+        .body;
+    let first = render_service_worker(source, "first-build").unwrap();
+    let second = render_service_worker(source, "second\"\\\nbuild").unwrap();
+
+    assert!(first.starts_with("const CACHE_NAME = \"caffold-shell-first-build\";"));
+    assert!(second.starts_with("const CACHE_NAME = \"caffold-shell-second\\\"\\\\\\nbuild\";"));
+    assert_ne!(first, second);
+    assert!(!first.contains("__CAFFOLD_BUILD_ID__"));
+    assert!(!second.contains("__CAFFOLD_BUILD_ID__"));
+}

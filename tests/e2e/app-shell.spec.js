@@ -193,7 +193,11 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorkerResponse.headers()["cache-control"]).toContain("no-cache");
   expect(serviceWorkerResponse.headers()["service-worker-allowed"]).toBe("/");
   const serviceWorker = await serviceWorkerResponse.text();
-  expect(serviceWorker).toMatch(/const CACHE_NAME = "caffold-shell-v\d+"/);
+  expect(serviceWorker).toContain(
+    `const CACHE_NAME = ${JSON.stringify(`caffold-shell-${health.buildId}`)};`,
+  );
+  expect(serviceWorker).not.toContain("__CAFFOLD_BUILD_ID__");
+  expect(serviceWorker).not.toMatch(/caffold-shell-v\d+/);
   expect(serviceWorker).toContain("/assets/icons/caffold-mark.svg");
   expect(serviceWorker).toContain("/assets/brand/git-logomark-light.svg");
   expect(serviceWorker).toContain("/assets/brand/github-invertocat-light.svg");
@@ -372,6 +376,13 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).not.toContain("/assets/components/header-actions/git-status.js");
   expect(serviceWorker).not.toContain("/assets/components/header-actions/github-status.js");
   expect(serviceWorker).not.toContain("/assets/components/header-actions/shared.js");
+  expect(serviceWorker).toContain('self.addEventListener("install"');
+  expect(serviceWorker).toContain("caches.open(CACHE_NAME)");
+  expect(serviceWorker).toContain("self.skipWaiting()");
+  expect(serviceWorker).toContain('self.addEventListener("activate"');
+  expect(serviceWorker).toContain("key !== CACHE_NAME");
+  expect(serviceWorker).toContain("caches.delete(key)");
+  expect(serviceWorker).toContain("self.clients.claim()");
   expect(serviceWorker).toContain('url.pathname.startsWith("/api/")');
   expect(serviceWorker).toContain("networkFirst(request, \"/\")");
   expect(serviceWorker).toContain('url.pathname.startsWith("/assets/")');
