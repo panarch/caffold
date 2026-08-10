@@ -353,6 +353,7 @@ test("creates a task with responsive composer controls and canonical approval st
   expect(newTaskFormState).toEqual({
     data: {
       effort: "xhigh",
+      fastMode: "false",
       model: "gpt-5.6-sol",
       permissionMode: "approveForMe",
       prompt: "Inspect the planner changes",

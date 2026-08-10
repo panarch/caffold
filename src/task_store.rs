@@ -252,6 +252,7 @@ impl TaskStore {
         thread_id: &str,
         model: Option<&str>,
         reasoning_effort: Option<&str>,
+        fast_mode: bool,
     ) -> Result<Option<ManagedThread>> {
         match self {
             Self::Memory(glue) => managed_thread::update_composer_settings(
@@ -259,12 +260,14 @@ impl TaskStore {
                 thread_id,
                 model,
                 reasoning_effort,
+                fast_mode,
             ),
             Self::Redb(glue) => managed_thread::update_composer_settings(
                 &mut *lock_glue(glue)?,
                 thread_id,
                 model,
                 reasoning_effort,
+                fast_mode,
             ),
         }
     }
@@ -445,10 +448,11 @@ mod tests {
             let seen = store.mark_seen(&thread_id, 30, 50).unwrap().unwrap();
             assert!(!seen.unseen());
             let configured = store
-                .update_composer_settings(&thread_id, Some("gpt-test"), Some("xhigh"))
+                .update_composer_settings(&thread_id, Some("gpt-test"), Some("xhigh"), true)
                 .unwrap()
                 .unwrap();
             assert_eq!(configured.model.as_deref(), Some("gpt-test"));
+            assert!(configured.fast_mode);
 
             let worktree_id = format!("worktree-{index}");
             store.create_worktree(worktree(&worktree_id)).unwrap();

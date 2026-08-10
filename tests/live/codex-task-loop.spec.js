@@ -6,6 +6,7 @@ import { dirname, join, sep } from "node:path";
 import { resolveCodexBin } from "./codex-bin.mjs";
 
 const SPARK_MODEL = "gpt-5.3-codex-spark";
+const FAST_MODEL = "gpt-5.6-sol";
 const MULTIMODAL_MODEL = "gpt-5.6-luna";
 const LIVE_REASONING_EFFORT = "low";
 const PASTED_IMAGE_BASE64 =
@@ -83,13 +84,13 @@ function liveCwd() {
 }
 
 async function chooseModel(taskForm, model, effort = LIVE_REASONING_EFFORT) {
-  await taskForm.getByRole("button", { name: "Choose model and reasoning" }).click();
+  await taskForm.getByRole("button", { name: /Choose model/ }).click();
   const modelOption = taskForm.locator(`[data-model="${model}"]`);
   await expect(modelOption, `Codex model ${model} should be available`).toBeVisible();
   await modelOption.click();
   await expect(taskForm.locator('input[name="model"]')).toHaveValue(model);
 
-  await taskForm.getByRole("button", { name: "Choose model and reasoning" }).click();
+  await taskForm.getByRole("button", { name: /Choose model/ }).click();
   const effortOption = taskForm.locator(`[data-effort="${effort}"]`);
   await expect(
     effortOption,
@@ -224,6 +225,53 @@ async function expectLiveThreadIdle(request, threadId) {
     )
     .toBe(true);
 }
+
+test("creates a real Codex task in Fast mode and restores the task setting", async ({
+  page,
+  request,
+}) => {
+  const marker = `${Date.now()}`;
+  const reply = `caffold-live-fast-${marker}`;
+
+  await page.goto(`/tasks/new?cwd=${encodeURIComponent(liveCwd())}`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const form = tasksPage.locator('.task-new-form[data-task-form="create"]');
+  await chooseModel(form, FAST_MODEL);
+  await expect(form.locator('input[name="fastMode"]')).toHaveValue("false");
+
+  await form.getByRole("button", { name: /Choose model/ }).click();
+  const fastOption = form.locator('[data-fast-mode="true"]');
+  await expect(fastOption, `${FAST_MODEL} should advertise Fast mode`).toBeVisible();
+  await fastOption.click();
+  await expect(form.locator('input[name="fastMode"]')).toHaveValue("true");
+  await expect(form.locator(".task-model-fast")).toHaveAttribute("title", "Fast mode");
+
+  const prompt = form.getByRole("textbox", { name: "New task prompt" });
+  await prompt.fill(`Reply with exactly ${reply}. Do not modify files or run commands.`);
+  await prompt.press("Enter");
+  await expect(page).toHaveURL(/\/tasks\/[^?]+$/);
+  const threadId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
+  expect(threadId).toBeTruthy();
+  liveThreadIds.add(threadId);
+
+  await expect(
+    tasksPage
+      .locator('.task-message[data-message-role="assistant"][data-message-phase="final"]')
+      .filter({ hasText: reply }),
+  ).toBeVisible();
+  await expectLiveThreadIdle(request, threadId);
+  await expect
+    .poll(async () => {
+      const response = await request.get(`/api/tasks/${threadId}`);
+      return response.ok() ? (await response.json()).fastMode : null;
+    })
+    .toBe(true);
+
+  await page.reload();
+  const followUp = tasksPage.locator('.task-follow-up-form[data-task-form="follow-up"]');
+  await expect(followUp.locator('input[name="fastMode"]')).toHaveValue("true");
+  await expect(followUp.locator(".task-model-fast")).toHaveAttribute("title", "Fast mode");
+});
 
 test("creates and resumes a real Codex task through Caffold with Spark", async ({
   page,

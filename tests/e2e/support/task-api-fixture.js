@@ -78,6 +78,13 @@ export async function installTaskApiFixture(page) {
               { reasoningEffort: "xhigh", description: "Extra depth" },
             ],
             defaultReasoningEffort: "medium",
+            serviceTiers: [
+              {
+                id: "priority",
+                name: "Fast",
+                description: "1.5x speed, increased usage",
+              },
+            ],
             inputModalities: ["text"],
             supportsPersonality: false,
             isDefault: true,
@@ -102,6 +109,7 @@ export function taskDetailFixture({
   running = false,
   model = null,
   reasoningEffort = null,
+  fastMode = false,
 } = {}) {
   return {
     threadId: "thread-1",
@@ -132,5 +140,6 @@ export function taskDetailFixture({
     permissionMode: "approveForMe",
     model,
     reasoningEffort,
+    fastMode,
   };
 }

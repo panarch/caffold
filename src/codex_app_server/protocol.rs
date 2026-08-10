@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
+use super::CodexTurnOptions;
+
 #[allow(dead_code)]
 pub const MINIMUM_SUPPORTED_CODEX_CLI_VERSION: &str = "0.146.0";
 
@@ -268,10 +270,31 @@ pub struct Model {
     pub default_reasoning_effort: Value,
     #[serde(default)]
     pub input_modalities: Vec<Value>,
+    #[serde(default)]
+    pub service_tiers: Vec<ModelServiceTier>,
+    #[serde(default)]
+    pub default_service_tier: Option<String>,
     pub supports_personality: bool,
     pub is_default: bool,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelServiceTier {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+}
+
+impl Model {
+    pub fn fast_service_tier_id(&self) -> Option<&str> {
+        self.service_tiers
+            .iter()
+            .find(|tier| tier.name.eq_ignore_ascii_case("Fast"))
+            .map(|tier| tier.id.as_str())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -481,6 +504,7 @@ pub struct ThreadStartParams<'a> {
     approvals_reviewer: Option<ApprovalsReviewer>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub permissions: Option<&'static str>,
+    pub service_tier: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -535,6 +559,7 @@ pub struct TurnStartParams<'a> {
     pub model: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effort: Option<&'a str>,
+    pub service_tier: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -598,6 +623,10 @@ pub enum CodexNotification {
     ThreadNameUpdated {
         thread_id: String,
         thread_name: Option<String>,
+    },
+    ThreadSettingsUpdated {
+        thread_id: String,
+        thread_settings: BTreeMap<String, Value>,
     },
     TurnStarted {
         thread_id: String,
@@ -715,6 +744,22 @@ pub(crate) fn decode_notification(
             Ok(CodexNotification::ThreadNameUpdated {
                 thread_id,
                 thread_name,
+            })
+        }
+        "thread/settings/updated" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Params {
+                thread_id: String,
+                thread_settings: BTreeMap<String, Value>,
+            }
+            let Params {
+                thread_id,
+                thread_settings,
+            } = decode_params(method, params)?;
+            Ok(CodexNotification::ThreadSettingsUpdated {
+                thread_id,
+                thread_settings,
             })
         }
         "turn/started" | "turn/completed" => {
@@ -966,6 +1011,7 @@ pub(crate) fn thread_start_params(
         approval_policy: permission_mode.map(CodexPermissionMode::approval_policy),
         approvals_reviewer: permission_mode.map(CodexPermissionMode::approvals_reviewer),
         permissions: permission_mode.map(CodexPermissionMode::profile_id),
+        service_tier: None,
     }
 }
 
@@ -1024,20 +1070,26 @@ pub(crate) fn turn_start_params<'a>(
     cwd: &'a str,
     prompt: &'a str,
     image_urls: &'a [String],
-    model: Option<&'a str>,
-    effort: Option<&'a str>,
-    permission_mode: Option<CodexPermissionMode>,
+    options: &'a CodexTurnOptions,
 ) -> TurnStartParams<'a> {
     TurnStartParams {
         thread_id,
         input: turn_input(prompt, image_urls),
         cwd,
         runtime_workspace_roots: [cwd],
-        approval_policy: permission_mode.map(CodexPermissionMode::approval_policy),
-        approvals_reviewer: permission_mode.map(CodexPermissionMode::approvals_reviewer),
-        permissions: permission_mode.map(CodexPermissionMode::profile_id),
-        model: model.filter(|value| !value.is_empty()),
-        effort: effort.filter(|value| !value.is_empty()),
+        approval_policy: options
+            .permission_mode
+            .map(CodexPermissionMode::approval_policy),
+        approvals_reviewer: options
+            .permission_mode
+            .map(CodexPermissionMode::approvals_reviewer),
+        permissions: options.permission_mode.map(CodexPermissionMode::profile_id),
+        model: options.model.as_deref().filter(|value| !value.is_empty()),
+        effort: options.effort.as_deref().filter(|value| !value.is_empty()),
+        service_tier: options
+            .service_tier
+            .as_deref()
+            .filter(|value| !value.is_empty()),
     }
 }
 
@@ -1151,6 +1203,27 @@ mod tests {
                 thread_name: Some("Readable name".to_string()),
             }
         );
+
+        let settings = decode_notification(
+            "thread/settings/updated",
+            json!({
+                "threadId": "thread_1",
+                "threadSettings": {
+                    "model": "gpt-5.6-sol",
+                    "reasoningEffort": "low",
+                    "serviceTier": "priority"
+                }
+            }),
+        )
+        .expect("thread settings notification");
+        assert!(matches!(
+            settings,
+            CodexNotification::ThreadSettingsUpdated {
+                thread_id,
+                thread_settings,
+            } if thread_id == "thread_1"
+                && thread_settings.get("serviceTier") == Some(&json!("priority"))
+        ));
 
         let unknown = decode_notification("future/event", json!({ "value": 1 }))
             .expect("unknown notifications are forward compatible");
@@ -1294,6 +1367,7 @@ mod tests {
                             }
                         }
                     }],
+                    "serviceTier": null,
                     "approvalPolicy": "on-request",
                     "approvalsReviewer": "auto_review",
                     "permissions": ":workspace"
@@ -1306,9 +1380,12 @@ mod tests {
                     "/workspace/project",
                     "Inspect",
                     &images,
-                    Some("gpt-5.5"),
-                    Some("high"),
-                    Some(CodexPermissionMode::FullAccess),
+                    &CodexTurnOptions {
+                        model: Some("gpt-5.5".to_string()),
+                        effort: Some("high".to_string()),
+                        service_tier: Some("priority".to_string()),
+                        permission_mode: Some(CodexPermissionMode::FullAccess),
+                    },
                 ))
                 .expect("turn start params"),
                 json!({
@@ -1323,7 +1400,8 @@ mod tests {
                     "approvalsReviewer": "user",
                     "permissions": ":danger-full-access",
                     "model": "gpt-5.5",
-                    "effort": "high"
+                    "effort": "high",
+                    "serviceTier": "priority"
                 }),
             ),
             (
@@ -1571,7 +1649,8 @@ mod tests {
                             }
                         }
                     }
-                }]
+                }],
+                "serviceTier": null
             })
         );
         assert_eq!(
@@ -1580,9 +1659,7 @@ mod tests {
                 "/workspace/project",
                 "Inspect",
                 &[],
-                None,
-                None,
-                None,
+                &CodexTurnOptions::default(),
             ))
             .expect("turn start params"),
             json!({
@@ -1591,7 +1668,8 @@ mod tests {
                     { "type": "text", "text": "Inspect", "text_elements": [] }
                 ],
                 "cwd": "/workspace/project",
-                "runtimeWorkspaceRoots": ["/workspace/project"]
+                "runtimeWorkspaceRoots": ["/workspace/project"],
+                "serviceTier": null
             })
         );
     }

@@ -290,6 +290,9 @@ async fn subscription_keeps_the_app_server_thread_settings() {
     response
         .extra
         .insert("reasoningEffort".to_string(), json!("xhigh"));
+    response
+        .extra
+        .insert("serviceTier".to_string(), json!("priority"));
     let client = CodexThreadClient::mock(vec![MockCodexResponse::ok("thread/resume", response)]);
     let sessions = CodexThreadSessions::default();
 
@@ -304,6 +307,56 @@ async fn subscription_keeps_the_app_server_thread_settings() {
     );
     assert_eq!(snapshot.model.as_deref(), Some("gpt-test"));
     assert_eq!(snapshot.reasoning_effort.as_deref(), Some("xhigh"));
+    assert!(snapshot.fast_mode);
+}
+
+#[tokio::test]
+async fn subscription_normalizes_default_service_tier_to_normal() {
+    let mut response = resume_response(ThreadStatus::Idle, Vec::new(), Vec::new());
+    response
+        .extra
+        .insert("serviceTier".to_string(), json!("default"));
+    let client = CodexThreadClient::mock(vec![MockCodexResponse::ok("thread/resume", response)]);
+    let sessions = CodexThreadSessions::default();
+
+    let snapshot = sessions
+        .ensure_subscribed(&client, 1, "thread-1")
+        .await
+        .expect("subscribe");
+
+    assert!(!snapshot.fast_mode);
+}
+
+#[tokio::test]
+async fn thread_settings_notification_updates_fast_mode() {
+    let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+        "thread/resume",
+        resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
+    )]);
+    let sessions = CodexThreadSessions::default();
+    sessions
+        .ensure_subscribed(&client, 1, "thread-1")
+        .await
+        .expect("subscribe");
+
+    sessions
+        .apply_notification(
+            1,
+            &CodexNotification::ThreadSettingsUpdated {
+                thread_id: "thread-1".to_string(),
+                thread_settings: std::collections::BTreeMap::from([
+                    ("model".to_string(), json!("gpt-5.6-sol")),
+                    ("reasoningEffort".to_string(), json!("low")),
+                    ("serviceTier".to_string(), json!("priority")),
+                ]),
+            },
+        )
+        .await;
+
+    let snapshot = sessions.snapshot("thread-1").await.unwrap();
+    assert!(snapshot.fast_mode);
+    assert_eq!(snapshot.model.as_deref(), Some("gpt-5.6-sol"));
+    assert_eq!(snapshot.reasoning_effort.as_deref(), Some("low"));
 }
 
 #[tokio::test]
@@ -2224,9 +2277,12 @@ async fn registered_started_thread_is_subscribed_and_holds_runtime() {
                 },
                 vec![turn("turn-new", TurnStatus::InProgress)],
             ),
-            Some(CodexPermissionMode::AskForApproval),
-            Some("gpt-test".to_string()),
-            Some("xhigh".to_string()),
+            StartedThreadSettings {
+                permission_mode: Some(CodexPermissionMode::AskForApproval),
+                model: Some("gpt-test".to_string()),
+                reasoning_effort: Some("xhigh".to_string()),
+                fast_mode: true,
+            },
         )
         .await;
 
@@ -2236,6 +2292,7 @@ async fn registered_started_thread_is_subscribed_and_holds_runtime() {
     assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-new"));
     assert_eq!(snapshot.model.as_deref(), Some("gpt-test"));
     assert_eq!(snapshot.reasoning_effort.as_deref(), Some("xhigh"));
+    assert!(snapshot.fast_mode);
     assert!(methods(&client).await.is_empty());
 }
 

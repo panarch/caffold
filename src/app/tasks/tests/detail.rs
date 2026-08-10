@@ -5,15 +5,21 @@ use crate::codex_app_server::{ThreadStatus, TurnStatus};
 use crate::codex_thread_sessions::ThreadSessionLifecycle;
 
 #[tokio::test]
-async fn cached_task_detail_restores_managed_thread_model_settings() {
+async fn cached_task_detail_restores_managed_thread_composer_settings() {
     let root = tempfile::tempdir().unwrap();
     let thread_id = "thread-cached-model-settings";
     let client = CodexThreadClient::mock(Vec::new());
     let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
     manage_test_thread(&state, thread_id, root.path()).await;
-    test_store_update_composer_settings(&state, thread_id, Some("gpt-5.6-sol"), Some("xhigh"))
-        .await
-        .unwrap();
+    test_store_update_composer_settings(
+        &state,
+        thread_id,
+        Some("gpt-5.6-sol"),
+        Some("xhigh"),
+        true,
+    )
+    .await
+    .unwrap();
 
     let (detail, revision) = state.detail.cached(thread_id).await.unwrap();
 
@@ -21,6 +27,7 @@ async fn cached_task_detail_restores_managed_thread_model_settings() {
     assert!(detail.history_loading);
     assert_eq!(detail.model.as_deref(), Some("gpt-5.6-sol"));
     assert_eq!(detail.reasoning_effort.as_deref(), Some("xhigh"));
+    assert!(detail.fast_mode);
 }
 
 #[tokio::test]
@@ -41,6 +48,7 @@ async fn canonical_resume_refreshes_cached_model_settings() {
             },
             "model": "gpt-5.6-luna",
             "reasoningEffort": "medium",
+            "serviceTier": null,
             "initialTurnsPage": {
                 "data": [],
                 "nextCursor": null,
@@ -51,9 +59,15 @@ async fn canonical_resume_refreshes_cached_model_settings() {
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
-    test_store_update_composer_settings(&state, thread_id, Some("gpt-5.6-sol"), Some("xhigh"))
-        .await
-        .unwrap();
+    test_store_update_composer_settings(
+        &state,
+        thread_id,
+        Some("gpt-5.6-sol"),
+        Some("xhigh"),
+        true,
+    )
+    .await
+    .unwrap();
 
     let snapshot = state
         .codex_sessions
@@ -68,9 +82,68 @@ async fn canonical_resume_refreshes_cached_model_settings() {
 
     assert_eq!(detail.model.as_deref(), Some("gpt-5.6-luna"));
     assert_eq!(detail.reasoning_effort.as_deref(), Some("medium"));
+    assert!(!detail.fast_mode);
     let stored = test_store_get(&state, thread_id).await.unwrap().unwrap();
     assert_eq!(stored.model.as_deref(), Some("gpt-5.6-luna"));
     assert_eq!(stored.reasoning_effort.as_deref(), Some("medium"));
+    assert!(!stored.fast_mode);
+}
+
+#[tokio::test]
+async fn canonical_resume_without_model_settings_preserves_the_cached_selection() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-canonical-speed-only";
+    let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+        "thread/resume",
+        json!({
+            "thread": {
+                "id": thread_id,
+                "preview": "Canonical speed only",
+                "status": { "type": "idle" },
+                "cwd": root.path().display().to_string(),
+                "createdAt": 1.0,
+                "updatedAt": 2.0,
+                "turns": []
+            },
+            "serviceTier": null,
+            "initialTurnsPage": {
+                "data": [],
+                "nextCursor": null,
+                "backwardsCursor": null
+            }
+        }),
+    )]);
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+    test_store_update_composer_settings(
+        &state,
+        thread_id,
+        Some("gpt-5.6-sol"),
+        Some("xhigh"),
+        true,
+    )
+    .await
+    .unwrap();
+
+    let snapshot = state
+        .codex_sessions
+        .ensure_subscribed(&client, 1, thread_id)
+        .await
+        .unwrap();
+    let detail = state
+        .detail
+        .assemble_snapshot(snapshot, None)
+        .await
+        .unwrap();
+
+    assert_eq!(detail.model.as_deref(), Some("gpt-5.6-sol"));
+    assert_eq!(detail.reasoning_effort.as_deref(), Some("xhigh"));
+    assert!(!detail.fast_mode);
+    let stored = test_store_get(&state, thread_id).await.unwrap().unwrap();
+    assert_eq!(stored.model.as_deref(), Some("gpt-5.6-sol"));
+    assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
+    assert!(!stored.fast_mode);
 }
 
 #[tokio::test]
@@ -130,6 +203,7 @@ async fn canonical_turn_history_recovers_missed_completion_and_marks_it_seen_whe
         permission_mode: None,
         model: None,
         reasoning_effort: None,
+        fast_mode: false,
     };
 
     let background = state
@@ -961,6 +1035,7 @@ fn task_stream_bootstrap_replays_the_canonical_detail_snapshot() {
             permission_mode: Some(CodexPermissionMode::AskForApproval),
             model: Some("gpt-test".to_string()),
             reasoning_effort: Some("xhigh".to_string()),
+            fast_mode: true,
         },
         reason: "stream-bootstrap",
         error: None,

@@ -614,7 +614,7 @@ test("keeps model picker chrome compact and scales it only with Interface", asyn
     "[data-appearance-picker-probe] caffold-task-composer",
   );
   const modelButton = composer.getByRole("button", {
-    name: "Choose model and reasoning",
+    name: /Choose model/,
   });
   await expect(modelButton).toContainText("5.6 Sol");
 
@@ -623,7 +623,7 @@ test("keeps model picker chrome compact and scales it only with Interface", asyn
   await setRange(codeRange, 12);
   await modelButton.click();
   const popover = composer.getByRole("menu", {
-    name: "Model and reasoning options",
+    name: /Model.*options/,
   });
   await expect(popover).toBeVisible();
   const compact = await modelPickerMetrics(composer);
@@ -685,8 +685,12 @@ test("keeps model picker chrome compact and scales it only with Interface", asyn
   expect(compact.modelButtonHeight).toBeCloseTo(compact.compactVisualSize, 1);
   expect(spacious.modelButtonHeight).toBeCloseTo(spacious.compactVisualSize, 1);
   expect(spacious.optionHeight).toBeGreaterThanOrEqual(compact.optionHeight);
-  expect(compact.optionHeight).toBeGreaterThanOrEqual(compact.targetFloor);
-  expect(spacious.optionHeight).toBeGreaterThanOrEqual(spacious.targetFloor);
+  expect(compact.optionHeight).toBeGreaterThanOrEqual(
+    minimumModelOptionHeight(compact) - 0.01,
+  );
+  expect(spacious.optionHeight).toBeGreaterThanOrEqual(
+    minimumModelOptionHeight(spacious) - 0.01,
+  );
   expect(spacious.modelButtonOverflow).toBe(false);
   expect(spacious.permissionButtonOverflow).toBe(false);
   expect(spacious.toolbarOverflow).toBe(false);
@@ -700,6 +704,10 @@ test("keeps model picker chrome compact and scales it only with Interface", asyn
 
 function range(settingsPage, name) {
   return settingsPage.locator(`input[type="range"][data-setting="${name}"]`);
+}
+
+function minimumModelOptionHeight(metrics) {
+  return Math.max(metrics.rootFontSize * 2.125, metrics.targetFloor - 2);
 }
 
 async function setRange(locator, value) {

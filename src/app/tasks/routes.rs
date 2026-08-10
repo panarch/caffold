@@ -31,7 +31,7 @@ use crate::{
     app::error::ApiError,
     codex_app_server::{
         CodexPermissionMode, CodexStatusResponse, CodexThreadClient, CodexThreadError,
-        CodexTurnOptions, ThreadStatus,
+        CodexTurnOptions, NORMAL_SERVICE_TIER_ID, ThreadStatus,
     },
     codex_thread_sessions::{PromptTarget, ThreadSessionSnapshot, ThreadSessionsDiagnostics},
     fs::MAX_IMAGE_BYTES,
@@ -87,6 +87,8 @@ struct CreateTaskRequest {
     cwd: Option<String>,
     model: Option<String>,
     effort: Option<String>,
+    #[serde(default)]
+    fast_mode: bool,
     permission_mode: Option<CodexPermissionMode>,
 }
 
@@ -98,6 +100,8 @@ struct TaskPromptRequest {
     images: Vec<String>,
     model: Option<String>,
     effort: Option<String>,
+    #[serde(default)]
+    fast_mode: bool,
     permission_mode: Option<CodexPermissionMode>,
     active_turn_id: Option<String>,
 }
@@ -553,13 +557,19 @@ async fn task_store_update_composer_settings(
     thread_id: &str,
     model: Option<&str>,
     reasoning_effort: Option<&str>,
+    fast_mode: bool,
 ) -> Result<Option<ManagedThread>, ApiError> {
     let store = state.task_store.clone();
     let thread_id = thread_id.to_string();
     let model = model.map(str::to_string);
     let reasoning_effort = reasoning_effort.map(str::to_string);
     tokio::task::spawn_blocking(move || {
-        store.update_composer_settings(&thread_id, model.as_deref(), reasoning_effort.as_deref())
+        store.update_composer_settings(
+            &thread_id,
+            model.as_deref(),
+            reasoning_effort.as_deref(),
+            fast_mode,
+        )
     })
     .await
     .map_err(task_store_join_error)?
@@ -637,6 +647,7 @@ async fn create_task(
         client,
         request.model,
         request.effort,
+        request.fast_mode,
         request.permission_mode,
     )
     .await?;
@@ -945,6 +956,7 @@ async fn task_prompt(
     let connection = require_codex_thread_connection(&state).await?;
     let requested_model = request.model;
     let requested_effort = request.effort;
+    let requested_fast_mode = request.fast_mode;
     let requested_permission_mode = request.permission_mode;
     let mut target = match state
         .codex_sessions
@@ -985,6 +997,7 @@ async fn task_prompt(
                     &connection.client,
                     requested_model.clone(),
                     requested_effort.clone(),
+                    requested_fast_mode,
                     requested_permission_mode,
                 )
                 .await?;
@@ -1068,6 +1081,7 @@ async fn task_prompt(
                 &thread_id,
                 snapshot.model.as_deref(),
                 snapshot.reasoning_effort.as_deref(),
+                snapshot.fast_mode,
             )
             .await;
             if let Err(error) = persistence_result {
@@ -1425,6 +1439,7 @@ fn managed_thread_from_task_record(
     task: &TaskRecord,
     model: Option<String>,
     reasoning_effort: Option<String>,
+    fast_mode: bool,
 ) -> ManagedThread {
     let mut managed = ManagedThread::new(
         task.thread_id.clone(),
@@ -1432,6 +1447,7 @@ fn managed_thread_from_task_record(
         model,
         reasoning_effort,
     );
+    managed.fast_mode = fast_mode;
     managed.last_completed_at_ms = task.last_completed_ms;
     managed
 }
@@ -1541,14 +1557,16 @@ async fn codex_turn_options(
     client: &CodexThreadClient,
     model: Option<String>,
     effort: Option<String>,
+    fast_mode: bool,
     permission_mode: Option<CodexPermissionMode>,
 ) -> Result<CodexTurnOptions, ApiError> {
     let model = normalize_codex_model(model)?;
     let effort = normalize_codex_effort(effort)?;
-    if model.is_none() && effort.is_none() {
+    if model.is_none() && effort.is_none() && !fast_mode {
         return Ok(CodexTurnOptions {
             model,
             effort,
+            service_tier: Some(NORMAL_SERVICE_TIER_ID.to_string()),
             permission_mode,
         });
     }
@@ -1592,9 +1610,21 @@ async fn codex_turn_options(
         });
     }
 
+    let normal_service_tier = selected_model
+        .default_service_tier
+        .clone()
+        .unwrap_or_else(|| NORMAL_SERVICE_TIER_ID.to_string());
+    let service_tier = Some(
+        fast_mode
+            .then(|| selected_model.fast_service_tier_id().map(str::to_string))
+            .flatten()
+            .unwrap_or(normal_service_tier),
+    );
+
     Ok(CodexTurnOptions {
         model,
         effort,
+        service_tier,
         permission_mode,
     })
 }
@@ -1672,9 +1702,12 @@ pub(super) async fn test_task_stream(
 
 #[cfg(test)]
 pub(super) async fn test_claim_task(state: &TaskState, task: &TaskRecord) -> Result<(), ApiError> {
-    task_store_claim(state, managed_thread_from_task_record(task, None, None))
-        .await
-        .map(|_| ())
+    task_store_claim(
+        state,
+        managed_thread_from_task_record(task, None, None, false),
+    )
+    .await
+    .map(|_| ())
 }
 
 #[cfg(test)]
@@ -1691,8 +1724,9 @@ pub(super) async fn test_store_update_composer_settings(
     thread_id: &str,
     model: Option<&str>,
     reasoning_effort: Option<&str>,
+    fast_mode: bool,
 ) -> Result<Option<ManagedThread>, ApiError> {
-    task_store_update_composer_settings(state, thread_id, model, reasoning_effort).await
+    task_store_update_composer_settings(state, thread_id, model, reasoning_effort, fast_mode).await
 }
 
 #[cfg(test)]

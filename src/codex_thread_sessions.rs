@@ -10,7 +10,7 @@ use tokio::sync::Mutex as AsyncMutex;
 
 use crate::codex_app_server::{
     CodexNotification, CodexPermissionMode, CodexThread, CodexThreadClient, CodexThreadError,
-    CodexTurn, CodexTurnOptions, ThreadStatus, TurnStatus, TurnsPage,
+    CodexTurn, CodexTurnOptions, ThreadStatus, TurnStatus, TurnsPage, is_fast_service_tier,
 };
 
 const INITIAL_TURNS_PAGE_SIZE: usize = 8;
@@ -45,6 +45,15 @@ pub struct ThreadSessionSnapshot {
     pub permission_mode: Option<CodexPermissionMode>,
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
+    pub fast_mode: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct StartedThreadSettings {
+    pub(crate) permission_mode: Option<CodexPermissionMode>,
+    pub(crate) model: Option<String>,
+    pub(crate) reasoning_effort: Option<String>,
+    pub(crate) fast_mode: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -108,6 +117,7 @@ struct ThreadSessionState {
     permission_mode: Option<CodexPermissionMode>,
     model: Option<String>,
     reasoning_effort: Option<String>,
+    fast_mode: bool,
 }
 
 impl Default for ThreadSessionState {
@@ -134,6 +144,7 @@ impl Default for ThreadSessionState {
             permission_mode: None,
             model: None,
             reasoning_effort: None,
+            fast_mode: false,
         }
     }
 }
@@ -383,9 +394,7 @@ impl CodexThreadSessions {
         client: &CodexThreadClient,
         generation: u64,
         thread: CodexThread,
-        permission_mode: Option<CodexPermissionMode>,
-        model: Option<String>,
-        reasoning_effort: Option<String>,
+        settings: StartedThreadSettings,
     ) {
         let entry = self.entry(&thread.id).await;
         let mut state = entry.state.lock().await;
@@ -396,9 +405,10 @@ impl CodexThreadSessions {
         update_active_turn(&mut state, next_active_turn_id, Some(thread.cwd.clone()));
         state.thread = Some(thread);
         state.pending_thread_status = None;
-        state.permission_mode = permission_mode;
-        state.model = model;
-        state.reasoning_effort = reasoning_effort;
+        state.permission_mode = settings.permission_mode;
+        state.model = settings.model;
+        state.reasoning_effort = settings.reasoning_effort;
+        state.fast_mode = settings.fast_mode;
         state.turns_page = None;
         state.runtime_lease = true;
         state.revision = state.revision.saturating_add(1);
@@ -587,6 +597,7 @@ impl CodexThreadSessions {
         if options.effort.is_some() {
             state.reasoning_effort = options.effort;
         }
+        state.fast_mode = is_fast_service_tier(options.service_tier.as_deref());
         state.runtime_lease = true;
         upsert_turn(&mut state.turns_page, turn);
         state.revision = state.revision.saturating_add(1);
@@ -951,6 +962,7 @@ fn snapshot(state: &ThreadSessionState) -> ThreadSessionSnapshot {
         permission_mode: state.permission_mode,
         model: state.model.clone(),
         reasoning_effort: state.reasoning_effort.clone(),
+        fast_mode: state.fast_mode,
     }
 }
 
@@ -965,6 +977,11 @@ fn apply_thread_settings(
     if let Some(reasoning_effort) = settings.get("reasoningEffort") {
         state.reasoning_effort = reasoning_effort.as_str().map(str::to_string);
     }
+    state.fast_mode = is_fast_service_tier(
+        settings
+            .get("serviceTier")
+            .and_then(serde_json::Value::as_str),
+    );
 }
 
 fn merge_external_resume_response(
@@ -1339,6 +1356,7 @@ fn notification_thread_id(notification: &CodexNotification) -> Option<&str> {
         CodexNotification::ThreadStarted { thread } => Some(&thread.id),
         CodexNotification::ThreadStatusChanged { thread_id, .. }
         | CodexNotification::ThreadNameUpdated { thread_id, .. }
+        | CodexNotification::ThreadSettingsUpdated { thread_id, .. }
         | CodexNotification::TurnStarted { thread_id, .. }
         | CodexNotification::TurnCompleted { thread_id, .. }
         | CodexNotification::ItemStarted { thread_id, .. }
@@ -1397,6 +1415,12 @@ fn apply_notification_state(
                 return false;
             }
             thread.name = thread_name.clone();
+            true
+        }
+        CodexNotification::ThreadSettingsUpdated {
+            thread_settings, ..
+        } => {
+            apply_thread_settings(state, thread_settings);
             true
         }
         CodexNotification::TurnStarted { turn, .. } => {

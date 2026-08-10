@@ -18,7 +18,7 @@ use tokio::{
 use tokio_tungstenite::{WebSocketStream, client_async, tungstenite::Message};
 
 use super::{
-    CodexPermissionMode,
+    CodexPermissionMode, CodexTurnOptions,
     protocol::{
         INITIALIZE, INITIALIZED, RENAME_CURRENT_THREAD_TOOL_NAME, THREAD_ARCHIVE, THREAD_NAME_SET,
         THREAD_READ, THREAD_RESUME, THREAD_START, TURN_INTERRUPT, TURN_START,
@@ -350,9 +350,11 @@ async fn run_reconnect_spike(socket_path: &Path, ids: &mut SpikeIds) -> Result<(
                 cwd,
                 &prompt,
                 &[],
-                Some(SPIKE_MODEL),
-                Some("low"),
-                None,
+                &CodexTurnOptions {
+                    model: Some(SPIKE_MODEL.to_string()),
+                    effort: Some("low".to_string()),
+                    ..CodexTurnOptions::default()
+                },
             ))
             .context("serialize turn/start params")?,
         )
@@ -511,9 +513,12 @@ async fn run_approval_reconnect_spike(socket_path: &Path, ids: &mut SpikeIds) ->
                 cwd,
                 &prompt,
                 &[],
-                Some(SPIKE_MODEL),
-                Some("low"),
-                Some(CodexPermissionMode::AskForApproval),
+                &CodexTurnOptions {
+                    model: Some(SPIKE_MODEL.to_string()),
+                    effort: Some("low".to_string()),
+                    permission_mode: Some(CodexPermissionMode::AskForApproval),
+                    ..CodexTurnOptions::default()
+                },
             ))
             .context("serialize approval turn/start params")?,
         )

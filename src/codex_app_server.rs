@@ -259,13 +259,24 @@ pub struct CodexThreadStart {
     pub permission_mode: Option<CodexPermissionMode>,
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
+    pub fast_mode: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CodexTurnOptions {
     pub model: Option<String>,
     pub effort: Option<String>,
+    pub service_tier: Option<String>,
     pub permission_mode: Option<CodexPermissionMode>,
+}
+
+pub(crate) const NORMAL_SERVICE_TIER_ID: &str = "default";
+
+pub(crate) fn is_fast_service_tier(service_tier: Option<&str>) -> bool {
+    service_tier.is_some_and(|tier| {
+        let tier = tier.trim();
+        !tier.is_empty() && !tier.eq_ignore_ascii_case(NORMAL_SERVICE_TIER_ID)
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -560,12 +571,15 @@ impl CodexThreadClient {
             .get("reasoningEffort")
             .and_then(Value::as_str)
             .map(str::to_string);
+        let fast_mode =
+            is_fast_service_tier(typed.extra.get("serviceTier").and_then(Value::as_str));
         Ok(CodexThreadStart {
             thread_id,
             thread: typed.thread,
             permission_mode,
             model,
             reasoning_effort,
+            fast_mode,
         })
     }
 
@@ -621,15 +635,7 @@ impl CodexThreadClient {
         let typed: TurnStartResponse = self
             .request_typed(
                 TURN_START,
-                turn_start_params(
-                    thread_id,
-                    cwd,
-                    prompt,
-                    image_urls,
-                    options.model.as_deref(),
-                    options.effort.as_deref(),
-                    options.permission_mode,
-                ),
+                turn_start_params(thread_id, cwd, prompt, image_urls, &options),
             )
             .await?;
         let turn_id = typed.turn.id.clone();
@@ -1118,6 +1124,15 @@ fn unavailable(
 mod tests {
     use super::*;
     use tokio::io::AsyncWriteExt;
+
+    #[test]
+    fn normalizes_current_service_tiers_to_normal_or_fast() {
+        assert!(!is_fast_service_tier(None));
+        assert!(!is_fast_service_tier(Some("")));
+        assert!(!is_fast_service_tier(Some("default")));
+        assert!(!is_fast_service_tier(Some("DEFAULT")));
+        assert!(is_fast_service_tier(Some("priority")));
+    }
 
     fn write_executable(path: &Path) {
         std::fs::write(path, "#!/bin/sh\n").expect("write executable fixture");

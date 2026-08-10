@@ -496,7 +496,8 @@ impl CodexRuntime {
                     now_ms(),
                 ));
             }
-            CodexNotification::ThreadNameUpdated { .. } => {}
+            CodexNotification::ThreadNameUpdated { .. }
+            | CodexNotification::ThreadSettingsUpdated { .. } => {}
             CodexNotification::ItemStarted {
                 thread_id,
                 turn_id,
@@ -979,6 +980,7 @@ fn notification_thread_id(notification: &CodexNotification) -> Option<&str> {
         CodexNotification::ThreadStarted { thread } => Some(&thread.id),
         CodexNotification::ThreadStatusChanged { thread_id, .. }
         | CodexNotification::ThreadNameUpdated { thread_id, .. }
+        | CodexNotification::ThreadSettingsUpdated { thread_id, .. }
         | CodexNotification::TurnStarted { thread_id, .. }
         | CodexNotification::TurnCompleted { thread_id, .. }
         | CodexNotification::ItemStarted { thread_id, .. }

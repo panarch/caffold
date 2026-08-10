@@ -33,7 +33,9 @@ function createComposerState() {
     imageError: "",
     model: "",
     effort: "",
+    fastMode: false,
     modelExplicit: false,
+    fastModeExplicit: false,
     permissionMode: "",
     permissionExplicit: false,
     selectionStart: 0,
@@ -116,6 +118,7 @@ class CaffoldTaskComposer extends HTMLElement {
       activeTurnId: "",
       interrupting: false,
       interruptError: "",
+      fastMode: false,
     };
     this.state = createComposerState();
     this.boundThreadId = "";
@@ -246,6 +249,14 @@ class CaffoldTaskComposer extends HTMLElement {
       stateChanged = true;
     }
     if (
+      Object.hasOwn(context, "fastMode") &&
+      !state.fastModeExplicit &&
+      state.fastMode !== Boolean(context.fastMode)
+    ) {
+      state.fastMode = Boolean(context.fastMode);
+      stateChanged = true;
+    }
+    if (
       context.permissionMode &&
       !state.permissionExplicit &&
       state.permissionMode !== `${context.permissionMode}`
@@ -290,7 +301,12 @@ class CaffoldTaskComposer extends HTMLElement {
     }
     if (result.resetOverrides) {
       state.modelExplicit = false;
+      state.fastModeExplicit = false;
       state.permissionExplicit = false;
+    }
+    if (result.resetFastMode) {
+      state.fastMode = false;
+      state.fastModeExplicit = false;
     }
     this.context.requestError = `${result.error?.message ?? result.error ?? ""}`;
     this.render();
@@ -303,6 +319,7 @@ class CaffoldTaskComposer extends HTMLElement {
   resetOverrides() {
     const state = this.stateFor();
     state.modelExplicit = false;
+    state.fastModeExplicit = false;
     state.permissionExplicit = false;
   }
 
@@ -314,6 +331,7 @@ class CaffoldTaskComposer extends HTMLElement {
         state.images.length ||
         state.imageError ||
         state.modelExplicit ||
+        state.fastModeExplicit ||
         state.permissionExplicit ||
         this.activeSubmissionFor() ||
         this.context.requestError,
@@ -556,6 +574,9 @@ class CaffoldTaskComposer extends HTMLElement {
       model.defaultReasoningEffort ||
       model.supportedReasoningEfforts[0]?.value ||
       "";
+    if (!model.supportsFast) {
+      state.fastMode = false;
+    }
   }
 
   selectedModel() {
@@ -578,6 +599,10 @@ class CaffoldTaskComposer extends HTMLElement {
       supported[0]?.value ||
       ""
     );
+  }
+
+  selectedFastMode() {
+    return Boolean(this.stateFor().fastMode && this.selectedModel()?.supportsFast);
   }
 
   handleInput(event) {
@@ -706,6 +731,10 @@ class CaffoldTaskComposer extends HTMLElement {
     }
     if (type === "select-effort") {
       this.selectEffort(action.dataset.effort);
+      return;
+    }
+    if (type === "select-fast-mode") {
+      this.selectFastMode(action.dataset.fastMode === "true");
       return;
     }
     if (type === "toggle-permission") {
@@ -955,6 +984,10 @@ class CaffoldTaskComposer extends HTMLElement {
     if (!supported.some((option) => option.value === state.effort)) {
       state.effort = model?.defaultReasoningEffort ?? supported[0]?.value ?? "";
     }
+    if (!model?.supportsFast) {
+      state.fastMode = false;
+      state.fastModeExplicit = true;
+    }
     this.openPicker = "";
     this.render();
   }
@@ -966,6 +999,17 @@ class CaffoldTaskComposer extends HTMLElement {
     const state = this.stateFor();
     state.effort = `${effort ?? ""}`;
     state.modelExplicit = true;
+    this.openPicker = "";
+    this.render();
+  }
+
+  selectFastMode(fastMode) {
+    if (this.context.settingsLocked) {
+      return;
+    }
+    const state = this.stateFor();
+    state.fastMode = Boolean(fastMode && this.selectedModel()?.supportsFast);
+    state.fastModeExplicit = true;
     this.openPicker = "";
     this.render();
   }
@@ -1093,6 +1137,7 @@ class CaffoldTaskComposer extends HTMLElement {
     if (effort) {
       options.effort = effort;
     }
+    options.fastMode = this.selectedFastMode();
     if (state.permissionExplicit) {
       options.permissionMode =
         state.permissionMode || this.defaultPermissionMode;
@@ -1153,6 +1198,7 @@ class CaffoldTaskComposer extends HTMLElement {
     const state = this.stateFor();
     const model = this.selectedModel();
     const effort = this.selectedEffort();
+    const fastMode = this.selectedFastMode();
     const submitting = Boolean(this.activeSubmissionFor());
     const voiceBusy = ["requesting", "recording", "transcribing"].includes(
       this.voice.phase,
@@ -1215,6 +1261,7 @@ class CaffoldTaskComposer extends HTMLElement {
           }
           <input type="hidden" name="model" value="${escapeHtml(model?.model ?? "")}">
           <input type="hidden" name="effort" value="${escapeHtml(effort)}">
+          <input type="hidden" name="fastMode" value="${fastMode ? "true" : "false"}">
           <input type="hidden" name="permissionMode" value="${escapeHtml(permissionMode)}">
           <div class="task-composer-toolbar">
             <div class="task-composer-tools">
@@ -1223,7 +1270,7 @@ class CaffoldTaskComposer extends HTMLElement {
                   ? `<button type="button" class="task-toolbar-button" data-composer-action="cancel">Cancel</button>`
                   : ""
               }
-              ${this.renderModelPicker(model, effort, settingsLocked)}
+              ${this.renderModelPicker(model, effort, fastMode, settingsLocked)}
               ${this.renderPermissionPicker(permission, permissionMode, settingsLocked)}
             </div>
             <div class="task-composer-actions">
@@ -1326,39 +1373,41 @@ class CaffoldTaskComposer extends HTMLElement {
     );
   }
 
-  renderModelPicker(model, effort, disabled) {
+  renderModelPicker(model, effort, fastMode, disabled) {
     const reasoningOptions = model?.supportedReasoningEfforts ?? [];
     const modelLabel =
       model?.displayName ?? (this.modelLoading ? "Loading model" : "Model");
     const effortValue = effort || "Reasoning";
-    const summaryLabel = `${modelLabel} · ${effortValue}`;
+    const summaryLabel = `${modelLabel} · ${effortValue}${fastMode ? " · Fast" : ""}`;
     const compactModel = compactModelLabel(modelLabel);
+    const supportsFast = Boolean(model?.supportsFast);
+    const pickerLabel = supportsFast
+      ? "Choose model, reasoning, and speed"
+      : "Choose model and reasoning";
     const open = !disabled && this.openPicker === "model";
     return `
       <div class="task-model-picker${open ? " is-open" : ""}">
         <button
           type="button"
-          class="task-model-button"
+          class="task-model-button${fastMode ? " is-fast" : ""}"
           data-composer-action="toggle-model"
           aria-expanded="${open ? "true" : "false"}"
-          aria-label="Choose model and reasoning"
-          title="${escapeHtml(disabled ? "Model and reasoning can be changed after the active turn finishes." : summaryLabel)}"
+          aria-label="${pickerLabel}"
+          title="${escapeHtml(disabled ? "Model, reasoning, and speed can be changed after the active turn finishes." : summaryLabel)}"
           ${disabled ? "disabled" : ""}
         >
           <span class="task-model-name">${escapeHtml(compactModel)}</span>
           <span class="task-model-effort"> · ${escapeHtml(effortValue)}</span>
+          ${
+            fastMode
+              ? `<span class="task-model-fast" title="Fast mode">${renderInlineIcon("Zap", "Fast mode", "task-model-fast-icon")}</span>`
+              : ""
+          }
         </button>
         ${
           open
             ? `<button type="button" class="task-model-backdrop" data-composer-action="close-model" aria-label="Close model picker"></button>
-              <div class="task-model-popover" role="menu" aria-label="Model and reasoning options">
-                <section>
-                  <p>Reasoning level</p>
-                  ${reasoningOptions
-                    .map((option) => renderReasoningOption(option, effort))
-                    .join("")}
-                </section>
-                <hr>
+              <div class="task-model-popover" role="menu" aria-label="${supportsFast ? "Model, reasoning, and speed options" : "Model and reasoning options"}">
                 <section>
                   <p>Model</p>
                   ${
@@ -1368,9 +1417,26 @@ class CaffoldTaskComposer extends HTMLElement {
                             renderModelOption(option, model?.model ?? ""),
                           )
                           .join("")
-                      : renderModelFallback(this.modelLoading, this.modelError)
+                    : renderModelFallback(this.modelLoading, this.modelError)
                   }
                 </section>
+                <hr>
+                <section>
+                  <p>Reasoning level</p>
+                  ${reasoningOptions
+                    .map((option) => renderReasoningOption(option, effort))
+                    .join("")}
+                </section>
+                ${
+                  supportsFast
+                    ? `<hr>
+                      <section>
+                        <p>Speed</p>
+                        ${renderFastModeOption(false, fastMode)}
+                        ${renderFastModeOption(true, fastMode)}
+                      </section>`
+                    : ""
+                }
               </div>`
             : ""
         }
@@ -1503,9 +1569,24 @@ function normalizeModelOptions(response) {
         supportedReasoningEfforts: normalizeReasoningOptions(
           model?.supportedReasoningEfforts,
         ),
+        supportsFast: normalizeServiceTiers(model?.serviceTiers).some(
+          (tier) => tier.name.toLowerCase() === "fast",
+        ),
       };
     })
     .filter(Boolean);
+}
+
+function normalizeServiceTiers(tiers) {
+  if (!Array.isArray(tiers)) {
+    return [];
+  }
+  return tiers
+    .map((tier) => ({
+      id: `${tier?.id ?? ""}`.trim(),
+      name: `${tier?.name ?? ""}`.trim(),
+    }))
+    .filter((tier) => tier.id && tier.name);
 }
 
 function compactModelLabel(label) {
@@ -1584,6 +1665,25 @@ function renderReasoningOption(option, selectedEffort) {
     >
       <span>
         <strong>${escapeHtml(option.value)}</strong>
+      </span>
+      ${selected ? renderInlineIcon("Check", "Selected", "task-model-check") : ""}
+    </button>
+  `;
+}
+
+function renderFastModeOption(fastMode, selectedFastMode) {
+  const selected = fastMode === selectedFastMode;
+  const label = fastMode ? "Fast" : "Normal";
+  return `
+    <button
+      type="button"
+      class="task-model-option"
+      data-composer-action="select-fast-mode"
+      data-fast-mode="${fastMode ? "true" : "false"}"
+      aria-pressed="${selected ? "true" : "false"}"
+    >
+      <span>
+        <strong>${label}</strong>
       </span>
       ${selected ? renderInlineIcon("Check", "Selected", "task-model-check") : ""}
     </button>
