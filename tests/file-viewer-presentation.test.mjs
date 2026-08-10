@@ -52,10 +52,35 @@ test("diff presentation derives one title and subtitle before content arrives", 
 
   assert.equal(presentation.title, "planner/mod.rs");
   assert.equal(presentation.subtitle, "Modified · Commit abcdef1");
+  assert.equal(presentation.lineStats, null);
   assert.deepEqual(
     presentation.metadata.map(({ field }) => field),
     ["path", "kind", "repository"],
   );
+});
+
+test("diff presentation exposes authoritative line statistics when available", () => {
+  const presentation = diffViewerPresentation({
+    path: "src/planner/mod.rs",
+    kind: "unstaged",
+    status: " M",
+    additions: 42,
+    deletions: 17,
+  });
+
+  assert.deepEqual(presentation.lineStats, { additions: 42, deletions: 17 });
+});
+
+test("diff presentation omits unavailable line statistics", () => {
+  const presentation = diffViewerPresentation({
+    path: "assets/logo.png",
+    kind: "unstaged",
+    status: " M",
+    additions: null,
+    deletions: null,
+  });
+
+  assert.equal(presentation.lineStats, null);
 });
 
 test("diff presentation does not repeat equivalent status and kind labels", () => {

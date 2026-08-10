@@ -574,7 +574,11 @@ class CaffoldTaskReview extends HTMLElement {
         if (!this.acceptViewer(generation, selectedPath)) {
           return;
         }
-        viewer?.setDiff(diff, { ...viewerOptions, presentation });
+        const loadedPresentation = this.diffPresentation(selectedPath, change, diff);
+        viewer?.setDiff(diff, {
+          ...viewerOptions,
+          presentation: loadedPresentation,
+        });
       }
       if (!background) {
         this.restoreViewerPosition(saved);
@@ -586,15 +590,17 @@ class CaffoldTaskReview extends HTMLElement {
     }
   }
 
-  diffPresentation(selectedPath, change) {
+  diffPresentation(selectedPath, change, diff = {}) {
     return diffViewerPresentation({
-      repository: { rootPath: taskWorktreeRootPath(this.task) },
-      path: selectedPath,
-      repoRelativePath: this.route.path,
+      ...diff,
+      repository: diff.repository ?? { rootPath: taskWorktreeRootPath(this.task) },
+      path: diff.path ?? selectedPath,
+      repoRelativePath: diff.repoRelativePath ?? this.route.path,
       kind:
-        this.route.scope === "branch"
+        diff.kind ||
+        (this.route.scope === "branch"
           ? `${this.route.baseRef}...${taskCompareHeadRef(this.task, this.refs)}`
-          : change?.kind ?? "",
+          : change?.kind ?? ""),
       status: change?.file?.status ?? "",
     });
   }

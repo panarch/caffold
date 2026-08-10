@@ -49,6 +49,12 @@ pub struct DiffStats {
     pub deletions: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileDiffStats {
+    Available(DiffStats),
+    Unavailable,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LogEntry {
     pub sha: String,
@@ -226,6 +232,42 @@ pub fn diff(repository: &Repository, repo_relative_path: &str, kind: &str) -> Op
         .map(|stdout| stdout.trim_end().to_string())
 }
 
+pub fn diff_stats(
+    repository: &Repository,
+    repo_relative_path: &str,
+    kind: &str,
+) -> Option<FileDiffStats> {
+    let null_path = if cfg!(windows) { "NUL" } else { "/dev/null" };
+    let args = match kind {
+        "staged" => vec![
+            "diff",
+            "--cached",
+            "--numstat",
+            "--find-renames",
+            "-z",
+            "--",
+        ],
+        "untracked" => vec![
+            "diff",
+            "--no-index",
+            "--numstat",
+            "-z",
+            "--",
+            null_path,
+            repo_relative_path,
+        ],
+        _ => vec!["diff", "--numstat", "--find-renames", "-z", "--"],
+    };
+
+    let output = if kind == "untracked" {
+        run_git_allowing_status(&repository.root, &args, &[0, 1])?
+    } else {
+        run_git_bytes(&repository.root, &args)?
+    };
+
+    Some(parse_file_diff_stats_for_path(&output, repo_relative_path))
+}
+
 pub fn log_count(repository: &Repository) -> Option<usize> {
     let output = run_git_owned_allowing_status(
         &repository.root,
@@ -330,6 +372,32 @@ pub fn commit_diff(
         .map(|stdout| stdout.trim_end().to_string())
 }
 
+pub fn commit_diff_stats(
+    repository: &Repository,
+    commit_sha: &str,
+    repo_relative_path: &str,
+) -> Option<FileDiffStats> {
+    if repo_relative_path.is_empty() {
+        return None;
+    }
+
+    let commit_sha = normalize_commit_sha(commit_sha)?;
+    let args = vec![
+        "show".to_string(),
+        "--format=".to_string(),
+        "--numstat".to_string(),
+        "--first-parent".to_string(),
+        "--find-renames".to_string(),
+        "-z".to_string(),
+        commit_sha.to_string(),
+    ];
+
+    Some(parse_file_diff_stats_for_path(
+        &run_git_owned(&repository.root, &args)?,
+        repo_relative_path,
+    ))
+}
+
 pub fn compare_refs(
     repository: &Repository,
     base_ref: Option<&str>,
@@ -420,6 +488,30 @@ pub fn compare_diff(
     String::from_utf8(run_git_owned(&repository.root, &args)?)
         .ok()
         .map(|stdout| stdout.trim_end().to_string())
+}
+
+pub fn compare_diff_stats(
+    repository: &Repository,
+    refs: &CompareRefs,
+    repo_relative_path: &str,
+) -> Option<FileDiffStats> {
+    if repo_relative_path.is_empty() {
+        return None;
+    }
+
+    let range = compare_range(refs);
+    let args = vec![
+        "diff".to_string(),
+        "--numstat".to_string(),
+        "--find-renames".to_string(),
+        "-z".to_string(),
+        range,
+    ];
+
+    Some(parse_file_diff_stats_for_path(
+        &run_git_owned(&repository.root, &args)?,
+        repo_relative_path,
+    ))
 }
 
 fn current_branch(path: &Path) -> Option<String> {
@@ -611,6 +703,58 @@ fn parse_diff_stats(output: &[u8]) -> DiffStats {
             }
             stats
         })
+}
+
+fn parse_file_diff_stats_for_path(output: &[u8], repo_relative_path: &str) -> FileDiffStats {
+    let records = output.split(|byte| *byte == 0).collect::<Vec<_>>();
+    let expected_path = repo_relative_path.as_bytes();
+    let mut stats = DiffStats::default();
+    let mut has_entry = false;
+    let mut index = 0;
+
+    while index < records.len() {
+        let record = records[index];
+        index += 1;
+        if record.is_empty() {
+            continue;
+        }
+
+        let mut fields = record.splitn(3, |byte| *byte == b'\t');
+        let additions = fields.next().unwrap_or_default();
+        let deletions = fields.next().unwrap_or_default();
+        let path = fields.next().unwrap_or_default();
+        let matches_path = if path.is_empty() {
+            let old_path = records.get(index).copied().unwrap_or_default();
+            let new_path = records.get(index + 1).copied().unwrap_or_default();
+            index = index.saturating_add(2);
+            old_path == expected_path || new_path == expected_path
+        } else {
+            path == expected_path
+        };
+
+        if !matches_path {
+            continue;
+        }
+
+        let additions = std::str::from_utf8(additions)
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok());
+        let deletions = std::str::from_utf8(deletions)
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok());
+        let (Some(additions), Some(deletions)) = (additions, deletions) else {
+            return FileDiffStats::Unavailable;
+        };
+        has_entry = true;
+        stats.additions = stats.additions.saturating_add(additions);
+        stats.deletions = stats.deletions.saturating_add(deletions);
+    }
+
+    if has_entry {
+        FileDiffStats::Available(stats)
+    } else {
+        FileDiffStats::Unavailable
+    }
 }
 
 fn text_file_line_count(path: &Path) -> Option<u64> {
@@ -851,6 +995,130 @@ mod tests {
     }
 
     #[test]
+    fn parses_available_and_unavailable_file_numstat() {
+        assert_eq!(
+            parse_file_diff_stats_for_path(
+                b"2\t1\tsrc/main.rs\0-\t-\tassets/image.png\0",
+                "src/main.rs",
+            ),
+            FileDiffStats::Available(DiffStats {
+                additions: 2,
+                deletions: 1,
+            })
+        );
+        assert_eq!(
+            parse_file_diff_stats_for_path(b"0\t0\t\0old-name.txt\0new-name.txt\0", "new-name.txt",),
+            FileDiffStats::Available(DiffStats {
+                additions: 0,
+                deletions: 0,
+            })
+        );
+        assert_eq!(
+            parse_file_diff_stats_for_path(
+                b"2\t1\tsrc/main.rs\0-\t-\tassets/image.png\0",
+                "assets/image.png",
+            ),
+            FileDiffStats::Unavailable
+        );
+        assert_eq!(
+            parse_file_diff_stats_for_path(b"", "missing.txt"),
+            FileDiffStats::Unavailable
+        );
+    }
+
+    #[test]
+    fn reads_scope_matching_working_tree_file_stats() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        git(temp.path(), &["init"]);
+        fs::write(temp.path().join("sample.txt"), "base\nkeep\n").unwrap();
+        fs::write(temp.path().join("old-name.txt"), "rename me\n").unwrap();
+        git(temp.path(), &["add", "sample.txt", "old-name.txt"]);
+        commit(temp.path(), "Add samples");
+
+        fs::write(temp.path().join("sample.txt"), "staged\nkeep\n").unwrap();
+        git(temp.path(), &["add", "sample.txt"]);
+        fs::write(temp.path().join("sample.txt"), "unstaged\nkeep\nextra\n").unwrap();
+        fs::write(temp.path().join("untracked.txt"), "first\nsecond").unwrap();
+        fs::write(temp.path().join("binary.dat"), b"before\0after\n").unwrap();
+        git(temp.path(), &["mv", "old-name.txt", "new-name.txt"]);
+
+        let repository = repository_for(temp.path()).unwrap();
+        assert_eq!(
+            diff_stats(&repository, "sample.txt", "staged"),
+            Some(FileDiffStats::Available(DiffStats {
+                additions: 1,
+                deletions: 1,
+            }))
+        );
+        assert_eq!(
+            diff_stats(&repository, "sample.txt", "unstaged"),
+            Some(FileDiffStats::Available(DiffStats {
+                additions: 2,
+                deletions: 1,
+            }))
+        );
+        assert_eq!(
+            diff_stats(&repository, "untracked.txt", "untracked"),
+            Some(FileDiffStats::Available(DiffStats {
+                additions: 2,
+                deletions: 0,
+            }))
+        );
+        assert_eq!(
+            diff_stats(&repository, "binary.dat", "untracked"),
+            Some(FileDiffStats::Unavailable)
+        );
+        assert_eq!(
+            diff_stats(&repository, "new-name.txt", "staged"),
+            Some(FileDiffStats::Available(DiffStats {
+                additions: 0,
+                deletions: 0,
+            }))
+        );
+    }
+
+    #[test]
+    fn reads_rename_aware_commit_and_compare_file_stats() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        git(temp.path(), &["init"]);
+        fs::write(temp.path().join("old-name.txt"), "rename me\n").unwrap();
+        git(temp.path(), &["add", "old-name.txt"]);
+        commit(temp.path(), "Add old name");
+        git(
+            temp.path(),
+            &["update-ref", "refs/remotes/origin/main", "HEAD"],
+        );
+        git(temp.path(), &["checkout", "-b", "feature/rename"]);
+        git(temp.path(), &["mv", "old-name.txt", "new-name.txt"]);
+        commit(temp.path(), "Rename sample");
+
+        let repository = repository_for(temp.path()).unwrap();
+        let rename_commit = log_entries(&repository, 1, 1).unwrap()[0].sha.clone();
+        let refs = compare_refs(&repository, Some("origin/main"), Some("feature/rename")).unwrap();
+        let expected = Some(FileDiffStats::Available(DiffStats {
+            additions: 0,
+            deletions: 0,
+        }));
+
+        assert_eq!(
+            commit_diff_stats(&repository, &rename_commit, "new-name.txt"),
+            expected
+        );
+        assert_eq!(
+            compare_diff_stats(&repository, &refs, "new-name.txt"),
+            expected
+        );
+    }
+
+    #[test]
     fn counts_working_tree_changes_and_untracked_text_lines() {
         if !git_is_available() {
             return;
@@ -982,6 +1250,13 @@ mod tests {
         let diff = commit_diff(&repository, &log[0].sha, "sample.txt").unwrap();
         assert!(diff.contains("-old"));
         assert!(diff.contains("+new"));
+        assert_eq!(
+            commit_diff_stats(&repository, &log[0].sha, "sample.txt"),
+            Some(FileDiffStats::Available(DiffStats {
+                additions: 1,
+                deletions: 1,
+            }))
+        );
     }
 
     #[test]
@@ -1035,6 +1310,13 @@ mod tests {
         let diff = compare_diff(&repository, &refs, "sample.txt").unwrap();
         assert!(diff.contains("-old"));
         assert!(diff.contains("+new"));
+        assert_eq!(
+            compare_diff_stats(&repository, &refs, "sample.txt"),
+            Some(FileDiffStats::Available(DiffStats {
+                additions: 1,
+                deletions: 1,
+            }))
+        );
     }
 
     #[test]

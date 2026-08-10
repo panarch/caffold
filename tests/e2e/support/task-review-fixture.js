@@ -134,6 +134,8 @@ export async function installTaskReviewFixture(page) {
         path: file,
         repoRelativePath: relativePath,
         kind: url.searchParams.get("kind"),
+        additions: 2,
+        deletions: 1,
         diff: [
           `diff --git a/${relativePath} b/${relativePath}`,
           "index 1111111..2222222 100644",
@@ -212,6 +214,8 @@ export async function installTaskReviewFixture(page) {
         path: file,
         repoRelativePath: relativePath,
         kind: `${url.searchParams.get("base")}...main`,
+        additions: 4,
+        deletions: 2,
         diff: [
           `diff --git a/${relativePath} b/${relativePath}`,
           `--- a/${relativePath}`,

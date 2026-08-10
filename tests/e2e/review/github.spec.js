@@ -558,6 +558,8 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
         repoRelativePath: file.replace(/^src\//, ""),
         status: file.endsWith("lib.rs") ? "A" : "M",
         kind: "PR #12",
+        additions: file.endsWith("lib.rs") ? 2 : 10,
+        deletions: file.endsWith("lib.rs") ? 0 : 2,
         diff: [
           `diff --git a/${file.replace(/^src\//, "")} b/${file.replace(/^src\//, "")}`,
           "@@ -1,1 +1,2 @@",
@@ -764,6 +766,9 @@ test("opens GitHub pull requests from the header", async ({ page }, testInfo) =>
     "/github/pulls/12/files?cwd=src&file=planner%2Fmod.rs",
   );
   await expect(page.locator("caffold-diff-viewer")).toContainText("new PR review line");
+  await expect(
+    page.locator(".github-mode-pulls caffold-review-file-viewer .viewer-line-stats"),
+  ).toHaveAttribute("aria-label", "10 additions and 2 deletions");
   expect(listRequests).toBe(listRequestsBeforeFileClick);
   expect(pullFilesRequests).toBe(pullFilesRequestsBeforeFileClick);
   if (testInfo.project.name === "phone") {

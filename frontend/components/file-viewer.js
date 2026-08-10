@@ -269,6 +269,7 @@ class CaffoldFileViewer extends HTMLElement {
     this.ensureDetailsPopoverId();
     const popoverId = this.detailsPopoverId;
     const subtitle = options.subtitle ?? "";
+    const lineStats = options.lineStats ?? null;
 
     return `
       <header class="viewer-header">
@@ -277,8 +278,11 @@ class CaffoldFileViewer extends HTMLElement {
           <div class="viewer-title-block">
             <h2 title="${escapeHtml(title)}">${escapeHtml(title)}</h2>
             ${
-              subtitle
-                ? `<span class="viewer-subtitle">${escapeHtml(subtitle)}</span>`
+              subtitle || lineStats
+                ? `<div class="viewer-subtitle-row">
+                    ${subtitle ? `<span class="viewer-subtitle">${escapeHtml(subtitle)}</span>` : ""}
+                    ${this.renderLineStats(lineStats)}
+                  </div>`
                 : ""
             }
           </div>
@@ -322,15 +326,36 @@ class CaffoldFileViewer extends HTMLElement {
     const title = presentation?.title || "File";
     const subtitle = presentation?.subtitle ?? "";
     const metadata = presentation?.metadata ?? [];
-    if (!subtitle && metadata.length === 0) {
+    const lineStats = presentation?.lineStats ?? null;
+    if (!subtitle && !lineStats && metadata.length === 0) {
       return this.renderBasicHeader(title);
     }
 
     return this.renderHeader(
       title,
       metadata,
-      { subtitle },
+      { subtitle, lineStats },
     );
+  }
+
+  renderLineStats(lineStats) {
+    if (
+      !Number.isFinite(lineStats?.additions) ||
+      !Number.isFinite(lineStats?.deletions)
+    ) {
+      return "";
+    }
+
+    const additions = new Intl.NumberFormat("en-US").format(lineStats.additions);
+    const deletions = new Intl.NumberFormat("en-US").format(lineStats.deletions);
+    return `
+      <span class="viewer-line-stats" aria-label="${escapeHtml(
+        `${additions} additions and ${deletions} deletions`,
+      )}">
+        <span class="is-addition" aria-hidden="true">+${escapeHtml(additions)}</span>
+        <span class="is-deletion" aria-hidden="true">-${escapeHtml(deletions)}</span>
+      </span>
+    `;
   }
 
   renderBasicHeader(title) {
