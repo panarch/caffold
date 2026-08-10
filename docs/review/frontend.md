@@ -140,6 +140,28 @@ code for drafts, focus, scroll, selection, subscriptions, timers, or watchers.
 If a container patches its own Light DOM, preserve stateful child elements by
 identity and interact with them only through their public component boundary.
 
+### Incremental DOM updates
+
+Caffold's frontend direction favors browser-owned, long-lived DOM over adding
+a React-style virtual tree or a generic keyed reconciliation layer. This is a
+preference for new work and for paths already being changed, not a requirement
+to rewrite every existing `render()` method before an adjacent improvement can
+land.
+
+Where the component already owns stable elements, prefer applying the domain
+change directly to the smallest affected DOM surface. A title change can update
+text, a status change can update its status presentation, and an ordering
+change can move the existing row. Equivalent canonical snapshots should
+ideally be DOM no-ops. Preserve node identity when it carries animation, focus,
+selection, scroll, disclosure, media, or custom-element lifecycle continuity.
+
+Initial mounting and meaningful structural transitions may still render a
+larger subtree when that remains the clearest implementation. Improve broad
+render paths incrementally as related behavior is touched; do not turn a local
+identity fix into a new rendering framework or an unrelated rewrite. If direct
+patching would become brittle, prefer a clearer component ownership boundary or
+a deliberately scoped rerender over accumulating hidden DOM assumptions.
+
 Do not add a global store merely to coordinate an extraction. Independent API
 or revision projections must remain independent unless the external source
 provides one shared ordering contract. For example, a task-list revision must
