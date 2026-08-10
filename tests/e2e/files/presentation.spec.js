@@ -288,6 +288,101 @@ test("sizes source and diff gutters from their longest rendered line numbers", a
   );
 });
 
+test("distinguishes diff metadata from hunk content with the same prefixes", async ({ page }) => {
+  await page.goto(FILES_HOME_URL);
+
+  const rows = await page.evaluate(async () => {
+    await customElements.whenDefined("caffold-diff-viewer");
+
+    const viewer = document.createElement("caffold-diff-viewer");
+    document.body.append(viewer);
+    viewer.setDiff({
+      diff: [
+        "diff --git a/first.sql b/first.sql",
+        "index 1111111..2222222 100644",
+        "--- a/first.sql",
+        "+++ b/first.sql",
+        "@@ -10,3 +10,4 @@",
+        " context before",
+        "--- | true |",
+        "+++ | false |",
+        "+ordinary addition",
+        " context after",
+        "\\ No newline at end of file",
+        "@@ -30 +31 @@",
+        "-old second hunk",
+        "+new second hunk",
+        "diff --git a/second.txt b/second.txt",
+        "index 3333333..4444444 100644",
+        "--- a/second.txt",
+        "+++ b/second.txt",
+        "@@ -1 +1 @@",
+        "-old second file",
+        "+new second file",
+      ].join("\n"),
+    });
+
+    const renderedRows = Array.from(viewer.querySelectorAll(".diff-row"), (row) => ({
+      type: row.className.match(/\bdiff-row-([^\s]+)/)?.[1] ?? null,
+      oldLine: row.querySelector(".diff-old-line").textContent,
+      newLine: row.querySelector(".diff-new-line").textContent,
+      prefix: row.querySelector(".diff-prefix").textContent,
+      content: row.querySelector(".diff-code").textContent,
+    }));
+    viewer.remove();
+    return renderedRows;
+  });
+
+  const rowWithContent = (content) => rows.find((row) => row.content === content);
+
+  expect(rowWithContent("-- | true |")).toEqual({
+    type: "removed",
+    oldLine: "11",
+    newLine: "",
+    prefix: "-",
+    content: "-- | true |",
+  });
+  expect(rowWithContent("++ | false |")).toEqual({
+    type: "added",
+    oldLine: "",
+    newLine: "11",
+    prefix: "+",
+    content: "++ | false |",
+  });
+  expect(rowWithContent("context after")).toEqual({
+    type: "context",
+    oldLine: "12",
+    newLine: "13",
+    prefix: " ",
+    content: "context after",
+  });
+  expect(rowWithContent("\\ No newline at end of file")).toMatchObject({
+    type: "note",
+    oldLine: "",
+    newLine: "",
+  });
+  expect(rowWithContent("old second hunk")).toMatchObject({
+    type: "removed",
+    oldLine: "30",
+  });
+  expect(rowWithContent("new second hunk")).toMatchObject({
+    type: "added",
+    newLine: "31",
+  });
+  expect(rowWithContent("old second file")).toMatchObject({
+    type: "removed",
+    oldLine: "1",
+  });
+  expect(rowWithContent("new second file")).toMatchObject({
+    type: "added",
+    newLine: "1",
+  });
+  expect(rowWithContent("--- a/first.sql")).toMatchObject({ type: "metadata" });
+  expect(rowWithContent("+++ b/first.sql")).toMatchObject({ type: "metadata" });
+  expect(rowWithContent("--- a/second.txt")).toMatchObject({ type: "metadata" });
+  expect(rowWithContent("+++ b/second.txt")).toMatchObject({ type: "metadata" });
+});
+
 test("maps diff scroll positions to source lines", async ({ page }) => {
   await page.goto(FILES_HOME_URL);
   await page.addStyleTag({

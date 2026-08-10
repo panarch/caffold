@@ -1,6 +1,6 @@
 import { escapeHtml } from "./dom.js";
 
-const HUNK_HEADER_PATTERN = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/;
+const HUNK_HEADER_PATTERN = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/;
 
 class CaffoldDiffViewer extends HTMLElement {
   connectedCallback() {
@@ -187,27 +187,18 @@ function parseUnifiedDiff(diffText) {
   const rows = [];
   let oldLine = null;
   let newLine = null;
-  let inHunk = false;
+  let oldLinesRemaining = 0;
+  let newLinesRemaining = 0;
 
   for (const line of diffText.split("\n")) {
     const hunkMatch = line.match(HUNK_HEADER_PATTERN);
     if (hunkMatch) {
       oldLine = Number(hunkMatch[1]);
-      newLine = Number(hunkMatch[2]);
-      inHunk = true;
+      oldLinesRemaining = hunkLineCount(hunkMatch[2]);
+      newLine = Number(hunkMatch[3]);
+      newLinesRemaining = hunkLineCount(hunkMatch[4]);
       rows.push({
         type: "hunk",
-        oldLine: null,
-        newLine: null,
-        prefix: "",
-        content: line,
-      });
-      continue;
-    }
-
-    if (!inHunk || isDiffMetadataLine(line)) {
-      rows.push({
-        type: "metadata",
         oldLine: null,
         newLine: null,
         prefix: "",
@@ -227,7 +218,7 @@ function parseUnifiedDiff(diffText) {
       continue;
     }
 
-    if (line.startsWith("+")) {
+    if (line.startsWith("+") && newLinesRemaining > 0) {
       rows.push({
         type: "added",
         oldLine: null,
@@ -236,10 +227,11 @@ function parseUnifiedDiff(diffText) {
         content: line.slice(1),
       });
       newLine += 1;
+      newLinesRemaining -= 1;
       continue;
     }
 
-    if (line.startsWith("-")) {
+    if (line.startsWith("-") && oldLinesRemaining > 0) {
       rows.push({
         type: "removed",
         oldLine,
@@ -248,10 +240,11 @@ function parseUnifiedDiff(diffText) {
         content: line.slice(1),
       });
       oldLine += 1;
+      oldLinesRemaining -= 1;
       continue;
     }
 
-    if (line.startsWith(" ")) {
+    if (line.startsWith(" ") && oldLinesRemaining > 0 && newLinesRemaining > 0) {
       rows.push({
         type: "context",
         oldLine,
@@ -261,6 +254,8 @@ function parseUnifiedDiff(diffText) {
       });
       oldLine += 1;
       newLine += 1;
+      oldLinesRemaining -= 1;
+      newLinesRemaining -= 1;
       continue;
     }
 
@@ -276,18 +271,6 @@ function parseUnifiedDiff(diffText) {
   return rows;
 }
 
-function isDiffMetadataLine(line) {
-  return (
-    line.startsWith("diff --git ") ||
-    line.startsWith("index ") ||
-    line.startsWith("--- ") ||
-    line.startsWith("+++ ") ||
-    line.startsWith("new file mode ") ||
-    line.startsWith("deleted file mode ") ||
-    line.startsWith("old mode ") ||
-    line.startsWith("new mode ") ||
-    line.startsWith("similarity index ") ||
-    line.startsWith("rename from ") ||
-    line.startsWith("rename to ")
-  );
+function hunkLineCount(count) {
+  return count === undefined ? 1 : Number(count);
 }
