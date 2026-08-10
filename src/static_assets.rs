@@ -236,6 +236,14 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/detail/summary.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/detail/summary.js"
         ))),
+        "pages/(task-workspace)/tasks/components/detail/summary/info.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/summary/info.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/summary/info.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/detail/summary/info.js"
+        ))),
         "pages/(task-workspace)/tasks/components/detail/conversation.css" => {
             Some(css(include_str!(
                 "../frontend/pages/(task-workspace)/tasks/components/detail/conversation.css"
@@ -941,6 +949,10 @@ mod tests {
                 b"caffold-task-detail-summary".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/components/detail/summary/info.js",
+                b"caffold-task-detail-info".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/components/detail/review.js",
                 b"caffold-task-review".as_slice(),
             ),
@@ -1000,6 +1012,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/components/detail/summary.css",
                 b"caffold-task-detail-summary".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/components/detail/summary/info.css",
+                b"caffold-task-detail-info".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/components/detail/review.css",

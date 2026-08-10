@@ -534,7 +534,7 @@ test("icon-only controls use square slots from their semantic control tier", () 
       "--interface-compact-hit-size",
     ],
     [
-      "pages/(task-workspace)/tasks/components/detail/summary.css",
+      "pages/(task-workspace)/tasks/components/detail/summary/info.css",
       ".task-detail-info-button",
       "--interface-compact-hit-size",
     ],
@@ -638,7 +638,7 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-permission-button::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/settings/appearance/page.css", ".settings-reset-all::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/settings/appearance/page.css", ".settings-range-control button::before", "--interface-compact-hit-outset"],
-    ["pages/(task-workspace)/tasks/components/detail/summary.css", ".task-detail-archive-action .task-secondary-button::before", "--interface-compact-hit-outset"],
+    ["pages/(task-workspace)/tasks/components/detail/summary/info.css", ".task-detail-archive-action .task-secondary-button::before", "--interface-compact-hit-outset"],
   ];
 
   for (const [path, selector, token] of controls) {
@@ -743,7 +743,7 @@ test("dense contextual toolbars separate visual size from coarse-pointer hit are
   );
   assert.match(
     summary,
-    /\.task-brand-button::before,[\s\S]*--interface-compact-hit-outset/,
+    /\.task-brand-button::before \{[\s\S]*--interface-compact-hit-outset/,
   );
   assert.match(
     review,
@@ -823,7 +823,7 @@ test("text actions use the shared Interface metadata scale instead of root body 
     ["pages/components/pathbar.css", ".path-crumbs button"],
     ["pages/(task-workspace)/tasks/controls.css", ".task-primary-button"],
     ["pages/(task-workspace)/tasks/components/detail/summary.css", ".task-review-menu-popover button"],
-    ["pages/(task-workspace)/tasks/components/detail/summary.css", ".task-detail-popover dd"],
+    ["pages/(task-workspace)/tasks/components/detail/summary/info.css", ".task-detail-popover dd"],
     ["pages/(review-workspace)/(github)/(pulls)/detail/page.css", ".github-pull-commit a"],
   ];
 

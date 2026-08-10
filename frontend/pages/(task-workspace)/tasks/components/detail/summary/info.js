@@ -1,0 +1,274 @@
+import {
+  renderInlineIcon,
+  warmIcons,
+} from "../../../../../../components/icons.js";
+import {
+  formatTaskStatus,
+  isTaskTransportStale,
+  taskThreadStatusType,
+} from "../../../runtime-state.js";
+import { shortId } from "../../../task-format.js";
+import { taskThreadId } from "../../../task-list-model.js";
+import { renderTaskStatusChip } from "../../task-status.js";
+
+let taskInfoInstanceId = 0;
+
+class CaffoldTaskDetailInfo extends HTMLElement {
+  connectedCallback() {
+    this.ensureState();
+    if (!this.listenersAttached) {
+      this.listenersAttached = true;
+      this.addEventListener("click", this.boundClick);
+      window.addEventListener("caffold:icons-ready", this.boundIconsReady);
+    }
+    if (this.snapshot.task && !this.infoButton()) {
+      this.render();
+    }
+  }
+
+  disconnectedCallback() {
+    if (!this.listenersAttached) {
+      return;
+    }
+    this.listenersAttached = false;
+    this.removeEventListener("click", this.boundClick);
+    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
+  }
+
+  ensureState() {
+    if (this.stateReady) {
+      return;
+    }
+    this.stateReady = true;
+    taskInfoInstanceId += 1;
+    this.popoverId = `task-detail-info-${taskInfoInstanceId}`;
+    this.renderedThreadId = "";
+    this.snapshot = normalizedSnapshot();
+    this.listenersAttached = false;
+    this.boundClick = (event) => this.handleClick(event);
+    this.boundIconsReady = () => this.patchStatus({ force: true });
+    warmIcons();
+  }
+
+  setSnapshot(snapshot = {}) {
+    this.ensureState();
+    const nextSnapshot = normalizedSnapshot(snapshot);
+    const nextThreadId = taskThreadId(nextSnapshot.task);
+    this.snapshot = nextSnapshot;
+
+    if (
+      !nextThreadId ||
+      nextThreadId !== this.renderedThreadId ||
+      !this.infoButton()
+    ) {
+      this.render();
+      return;
+    }
+    this.patch();
+  }
+
+  deactivate() {
+    const popover = this.infoPopover();
+    if (!popover?.matches(":popover-open")) {
+      return;
+    }
+    try {
+      popover.hidePopover();
+    } catch {
+      // The component may have been detached during a parent transition.
+    }
+  }
+
+  handleClick(event) {
+    const action = closestElement(
+      event.target,
+      '[data-task-info-action="archive"]',
+    );
+    if (!action || action.matches(":disabled")) {
+      return;
+    }
+    this.dispatchEvent(
+      new CustomEvent("caffold:task-detail-info-intent", {
+        bubbles: true,
+        composed: true,
+        detail: { type: "archive" },
+      }),
+    );
+  }
+
+  render() {
+    const task = this.snapshot.task;
+    if (!task) {
+      this.replaceChildren();
+      this.renderedThreadId = "";
+      return;
+    }
+
+    this.innerHTML = `
+      <button
+        type="button"
+        class="task-detail-info-button"
+        popovertarget="${this.popoverId}"
+      ></button>
+      <div
+        id="${this.popoverId}"
+        class="task-detail-popover"
+        popover="auto"
+        aria-label="Task details"
+      >
+        <dl>
+          <div>
+            <dt>Status</dt>
+            <dd data-task-info-field="status"></dd>
+          </div>
+          <div>
+            <dt>Thread</dt>
+            <dd data-task-info-field="thread"></dd>
+          </div>
+          <div>
+            <dt>Working directory</dt>
+            <dd data-task-info-field="working-directory"></dd>
+          </div>
+          <div data-task-info-worktree>
+            <dt>Worktree</dt>
+            <dd data-task-info-field="worktree-path"></dd>
+          </div>
+          <div data-task-info-worktree>
+            <dt>Branch</dt>
+            <dd data-task-info-field="worktree-ref"></dd>
+          </div>
+        </dl>
+        <div class="task-detail-archive-action">
+          <p>Archive removes this task from the active list. Its worktree and files are retained.</p>
+          <button
+            type="button"
+            class="task-secondary-button"
+            data-task-info-action="archive"
+          >Archive task</button>
+          <p class="task-detail-archive-error" role="alert" hidden></p>
+        </div>
+      </div>
+    `;
+    this.renderedThreadId = taskThreadId(task);
+    this.patch();
+  }
+
+  patch() {
+    const task = this.snapshot.task;
+    if (!task || !this.infoButton()) {
+      return;
+    }
+
+    this.patchStatus();
+    setText(
+      this.querySelector('[data-task-info-field="thread"]'),
+      taskThreadId(task),
+    );
+    setText(
+      this.querySelector('[data-task-info-field="working-directory"]'),
+      `${task.cwdPath || task.cwd || this.snapshot.contextPath}`,
+    );
+
+    const hasWorktree = Boolean(task.worktree);
+    for (const row of this.querySelectorAll("[data-task-info-worktree]")) {
+      row.hidden = !hasWorktree;
+    }
+    setText(
+      this.querySelector('[data-task-info-field="worktree-path"]'),
+      `${task.worktree?.rootPath ?? ""}`,
+    );
+    setText(
+      this.querySelector('[data-task-info-field="worktree-ref"]'),
+      taskWorktreeRef(task),
+    );
+    this.patchArchive();
+  }
+
+  patchStatus(options = {}) {
+    const task = this.snapshot.task;
+    const button = this.infoButton();
+    if (!task || !button) {
+      return;
+    }
+
+    const statusLabel = formatTaskStatus(task, this.snapshot.transportState);
+    const status = renderTaskStatusChip(task, "task-detail-status", {
+      label: false,
+      transportState: this.snapshot.transportState,
+    });
+    const content =
+      status || renderInlineIcon("Info", "Task details", "task-action-icon");
+    if (options.force || button.innerHTML.trim() !== content.trim()) {
+      button.innerHTML = content;
+    }
+    button.setAttribute("aria-label", `Task details, ${statusLabel}`);
+    button.setAttribute("title", `Status: ${statusLabel}`);
+    setText(
+      this.querySelector('[data-task-info-field="status"]'),
+      statusLabel,
+    );
+  }
+
+  patchArchive() {
+    const task = this.snapshot.task;
+    const button = this.querySelector('[data-task-info-action="archive"]');
+    const error = this.querySelector(".task-detail-archive-error");
+    if (!task || !button || !error) {
+      return;
+    }
+
+    const loading = this.snapshot.archiveState.loading;
+    button.disabled =
+      loading ||
+      isTaskTransportStale(this.snapshot.transportState) ||
+      taskThreadStatusType(task) === "active";
+    setText(button, loading ? "Archiving..." : "Archive task");
+
+    const message = archiveErrorMessage(this.snapshot.archiveState.error);
+    setText(error, message);
+    error.hidden = !message;
+  }
+
+  infoButton() {
+    return this.querySelector(".task-detail-info-button");
+  }
+
+  infoPopover() {
+    return this.querySelector(".task-detail-popover");
+  }
+}
+
+if (!customElements.get("caffold-task-detail-info")) {
+  customElements.define("caffold-task-detail-info", CaffoldTaskDetailInfo);
+}
+
+function normalizedSnapshot(snapshot = {}) {
+  return {
+    task: snapshot.task ?? null,
+    transportState: snapshot.transportState ?? "idle",
+    contextPath: `${snapshot.contextPath ?? "."}`,
+    archiveState: {
+      loading: Boolean(snapshot.archiveState?.loading),
+      error: snapshot.archiveState?.error ?? null,
+    },
+  };
+}
+
+function taskWorktreeRef(task) {
+  const branch = `${task?.worktree?.branch ?? ""}`.trim();
+  return branch || shortId(task?.worktree?.headSha ?? "");
+}
+
+function archiveErrorMessage(error) {
+  return error ? `${error.message ?? error}` : "";
+}
+
+function setText(element, value) {
+  if (element && element.textContent !== value) {
+    element.textContent = value;
+  }
+}
+
+function closestElement(target, selector) {
+  return target instanceof Element ? target.closest(selector) : null;
+}

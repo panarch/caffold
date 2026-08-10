@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   canonicalTaskState,
+  captureReviewScreenshot,
   installEventSourceMock,
   mockCodexModels,
 } from "../support/task-fixtures.js";
@@ -50,6 +51,47 @@ function summaryDetail(task, revision = 1) {
   };
 }
 
+async function emitSummarySync(page, threadId, detail, reason) {
+  await page.evaluate(
+    ({ threadId, detail, reason }) => {
+      const source = window.__taskSummaryEventSources.find((candidate) =>
+        candidate.url.includes(`/api/tasks/${threadId}/stream`),
+      );
+      source.emit("task-sync", {
+        threadId,
+        revision: detail.revision,
+        detail,
+        reason,
+      });
+    },
+    { threadId, detail, reason },
+  );
+}
+
+async function summaryNodeState(page) {
+  return page.evaluate(() => {
+    const summary = document.querySelector("caffold-task-detail-summary");
+    const nodes = window.__taskSummaryNodes;
+    return {
+      owner: nodes.owner === summary,
+      info:
+        nodes.info === summary.querySelector("caffold-task-detail-info"),
+      infoButton:
+        nodes.infoButton === summary.querySelector(".task-detail-info-button"),
+      infoPopover:
+        nodes.infoPopover === summary.querySelector(".task-detail-popover"),
+      infoOpen: nodes.infoPopover.matches(":popover-open"),
+    };
+  });
+}
+
+const stableSummaryNodes = {
+  owner: true,
+  info: true,
+  infoButton: true,
+  infoPopover: true,
+};
+
 async function installSummaryFixture(page, tasks) {
   await installEventSourceMock(page, {
     registryKey: "__taskSummaryEventSources",
@@ -69,75 +111,104 @@ async function installSummaryFixture(page, tasks) {
   }
 }
 
-test("keeps the task summary owner and its disclosure across canonical sync", async ({
+test("keeps the task info leaf and popover stable across canonical sync", async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Detail ownership regression");
   const threadId = "thread_summary_stable";
   const task = summaryTask(threadId, "Stable summary", "repo-stable", 100);
   await installSummaryFixture(page, [task]);
-  await page.route(/\/api\/github\/status(?:\?|$)/, (route) =>
-    route.fulfill({
-      json: {
-        repository: { rootPath: "repo-stable", branch: "main", dirty: false },
-        github: { owner: "example", name: "stable" },
-        ghAvailable: true,
-        authenticated: true,
-        issuesAvailable: true,
-        pullsAvailable: true,
-        message: null,
-      },
-    }),
-  );
+  let pendingGithubRoute = null;
+  await page.route(/\/api\/github\/status(?:\?|$)/, (route) => {
+    pendingGithubRoute = route;
+  });
 
   await page.goto(`/tasks/${threadId}`);
   const summary = page.locator("caffold-task-detail-summary");
   await expect(summary).toBeVisible();
-  await expect(summary.locator(".task-review-menu")).toHaveCount(2);
-  await summary
-    .locator('.task-review-menu summary[aria-label="Open Git workspace"]')
-    .click();
-  await expect(
-    summary.locator('.task-review-menu:has(summary[aria-label="Open Git workspace"])'),
-  ).toHaveAttribute("open", "");
+  await expect.poll(() => Boolean(pendingGithubRoute)).toBe(true);
+  await expect(summary.locator(".task-review-menu")).toHaveCount(1);
+  const taskDetailsButton = summary.getByRole("button", {
+    name: /Task details/,
+  });
+  const taskDetailsPopover = summary.locator(".task-detail-popover");
   await summary.evaluate((element) => {
-    window.__taskSummaryOwner = element;
+    window.__taskSummaryNodes = {
+      owner: element,
+      info: element.querySelector("caffold-task-detail-info"),
+      infoButton: element.querySelector(".task-detail-info-button"),
+      infoPopover: element.querySelector(".task-detail-popover"),
+    };
   });
 
-  const updatedTask = {
+  await taskDetailsButton.click();
+  await expect(taskDetailsPopover).toBeVisible();
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent("caffold:icons-ready"));
+  });
+  await pendingGithubRoute.fulfill({
+    json: {
+      repository: { rootPath: "repo-stable", branch: "main", dirty: false },
+      github: { owner: "example", name: "stable" },
+      ghAvailable: true,
+      authenticated: true,
+      issuesAvailable: true,
+      pullsAvailable: true,
+      message: null,
+    },
+  });
+  await expect(summary.locator(".task-review-menu")).toHaveCount(2);
+  await expect
+    .poll(() => summaryNodeState(page))
+    .toEqual({ ...stableSummaryNodes, infoOpen: true });
+
+  const activeTask = {
     ...task,
+    ...canonicalTaskState("active", {
+      turnId: "turn_summary_live",
+      latestTurnStatus: "inProgress",
+    }),
     title: "Canonical summary update",
     updatedMs: task.updatedMs + 1,
     recencyMs: task.recencyMs + 1,
   };
-  await page.evaluate(
-    ({ threadId, detail }) => {
-      const source = window.__taskSummaryEventSources.find((candidate) =>
-        candidate.url.includes(`/api/tasks/${threadId}/stream`),
-      );
-      source.emit("task-sync", {
-        threadId,
-        revision: detail.revision,
-        detail,
-        reason: "canonical-summary-update",
-      });
-    },
-    { threadId, detail: summaryDetail(updatedTask, 2) },
+  await emitSummarySync(
+    page,
+    threadId,
+    summaryDetail(activeTask, 2),
+    "summary-state-update",
   );
-
   await expect(summary.locator("h2")).toHaveText("Canonical summary update");
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          window.__taskSummaryOwner ===
-          document.querySelector("caffold-task-detail-summary"),
-      ),
-    )
-    .toBe(true);
+  await expect(taskDetailsButton).toHaveAttribute("title", "Status: active");
   await expect(
-    summary.locator('.task-review-menu:has(summary[aria-label="Open Git workspace"])'),
-  ).toHaveAttribute("open", "");
+    taskDetailsPopover.locator('[data-task-info-field="status"]'),
+  ).toHaveText("active");
+  await expect(
+    taskDetailsPopover.locator('[data-task-info-action="archive"]'),
+  ).toBeDisabled();
+  await expect
+    .poll(() => summaryNodeState(page))
+    .toEqual({ ...stableSummaryNodes, infoOpen: true });
+
+  const [buttonBox, popoverBox] = await Promise.all([
+    taskDetailsButton.boundingBox(),
+    taskDetailsPopover.boundingBox(),
+  ]);
+  expect(buttonBox).not.toBeNull();
+  expect(popoverBox).not.toBeNull();
+  expect(popoverBox.x).toBeGreaterThanOrEqual(7);
+  expect(popoverBox.x + popoverBox.width).toBeLessThanOrEqual(
+    page.viewportSize().width - 7,
+  );
+  expect(popoverBox.y).toBeGreaterThanOrEqual(
+    buttonBox.y + buttonBox.height + 4,
+  );
+  expect(buttonBox.x + buttonBox.width / 2).toBeGreaterThanOrEqual(
+    popoverBox.x - 1,
+  );
+  expect(buttonBox.x + buttonBox.width / 2).toBeLessThanOrEqual(
+    popoverBox.x + popoverBox.width + 1,
+  );
+  await captureReviewScreenshot(page, testInfo, "tasks-summary-live-popover");
 });
 
 test("rejects a stale GitHub availability response after switching tasks", async ({
@@ -173,8 +244,12 @@ test("rejects a stale GitHub availability response after switching tasks", async
   const summary = tasksPage.locator("caffold-task-detail-summary");
   await expect(summary).toBeVisible();
   await expect.poll(() => Boolean(pendingTaskARoute)).toBe(true);
+  const taskDetailsPopover = summary.locator(".task-detail-popover");
+  await summary.getByRole("button", { name: /Task details/ }).click();
+  await expect(taskDetailsPopover).toBeVisible();
   await summary.evaluate((element) => {
     window.__taskSummaryOwner = element;
+    window.__taskSummaryPopover = element.querySelector(".task-detail-popover");
   });
 
   await taskNavigator
@@ -184,15 +259,22 @@ test("rejects a stale GitHub availability response after switching tasks", async
   await expect(
     summary.getByRole("button", { name: "Repo B has no GitHub remote" }),
   ).toBeDisabled();
+  await expect(taskDetailsPopover).not.toBeVisible();
   await expect
     .poll(() =>
       page.evaluate(
-        () =>
-          window.__taskSummaryOwner ===
-          document.querySelector("caffold-task-detail-summary"),
+        () => {
+          const summary = document.querySelector("caffold-task-detail-summary");
+          return {
+            owner: window.__taskSummaryOwner === summary,
+            popoverReset:
+              window.__taskSummaryPopover !==
+              summary.querySelector(".task-detail-popover"),
+          };
+        },
       ),
     )
-    .toBe(true);
+    .toEqual({ owner: true, popoverReset: true });
 
   await pendingTaskARoute.fulfill({
     json: {

@@ -86,6 +86,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/tasks/components/detail/stream.js",
   "/assets/pages/(task-workspace)/tasks/components/detail/summary.css",
   "/assets/pages/(task-workspace)/tasks/components/detail/summary.js",
+  "/assets/pages/(task-workspace)/tasks/components/detail/summary/info.css",
+  "/assets/pages/(task-workspace)/tasks/components/detail/summary/info.js",
   "/assets/pages/(task-workspace)/tasks/components/detail/conversation.css",
   "/assets/pages/(task-workspace)/tasks/components/detail/conversation.js",
   "/assets/pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css",

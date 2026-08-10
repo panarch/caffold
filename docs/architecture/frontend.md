@@ -216,10 +216,12 @@ lifetimes:
   Detail; the module has no task/event cache or revision writer. Detail checks
   both its route generation and the stream-provided current-generation guard
   before applying a refresh response.
-- `caffold-task-detail-summary` owns the stable header DOM, task-info and
+- `caffold-task-detail-summary` owns the stable header DOM, review-mode and
   Git/GitHub menu disclosure, and GitHub availability requests scoped to the
-  current worktree. It receives raw task/transport/review snapshots and emits
-  intents; it cannot mutate canonical task state or invoke Codex actions.
+  current worktree. Its `caffold-task-detail-info` leaf owns the task-info
+  button, native popover disclosure, status and archive presentation, and emits
+  archive intents back through Summary. Both receive read-only snapshots; they
+  cannot mutate canonical task state or invoke Codex actions.
 - `caffold-task-conversation` owns transcript rendering, disclosure state,
   scroll anchors, Markdown reflow handling, and the canonical active-turn
   clock.
@@ -425,6 +427,9 @@ frontend/pages/
           stream.js
           summary.js
           summary.css
+          summary/
+            info.js
+            info.css
           conversation.js
           conversation.css
           conversation/
