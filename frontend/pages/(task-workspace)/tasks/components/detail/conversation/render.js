@@ -20,6 +20,7 @@ import {
   isTurnContinuationEvent,
   isTurnStatusEvent,
   isWorkEvent,
+  sortEventsChronologically,
 } from "../../../task-events.js";
 import {
   formatCommand,
@@ -30,12 +31,17 @@ import {
 } from "../../../task-format.js";
 
 export function renderConversation(events, task, approvals = [], options = {}) {
-  const conversationEvents = dedupeCanonicalEvents(events);
+  const conversationEvents = sortEventsChronologically(
+    dedupeCanonicalEvents(events),
+  );
   const groups = conversationGroups(conversationEvents);
   const liveStatusAvailable = !options.controlsDisabled;
   const activeGroupIndex = liveStatusAvailable
     ? activeTurnGroupIndex(groups, task)
     : -1;
+  const eventOrder = new Map(
+    conversationEvents.map((event, index) => [event, index]),
+  );
   const pendingApprovalIds = new Set(
     approvals.map((event) => event.payload?.approvalId).filter(Boolean),
   );
@@ -45,39 +51,52 @@ export function renderConversation(events, task, approvals = [], options = {}) {
       .map((event) => `${event.payload?.text ?? event.payload?.prompt ?? ""}`.trim())
       .filter(Boolean),
   );
-  const output = groups
-    .map((group, index) => {
+  const entries = groups
+    .flatMap((group, index) => {
       if (group.kind === "turn") {
-        return renderTurnGroup(group, task, {
+        return renderTurnGroupEntries(group, task, {
           forceActive: index === activeGroupIndex,
           pendingApprovalIds,
           controlsDisabled: options.controlsDisabled,
           approvalErrors: options.approvalErrors,
           liveStatusAvailable,
+          eventOrder,
         });
       }
       if (
         group.event.type === "approval_requested" &&
         pendingApprovalIds.has(group.event.payload?.approvalId)
       ) {
-        return renderApprovalFlow([group.event], {
-          disabled: options.controlsDisabled,
-          approvalErrors: options.approvalErrors,
-        });
+        return [
+          renderedTimelineEntry(
+            [group.event],
+            renderApprovalFlow([group.event], {
+              disabled: options.controlsDisabled,
+              approvalErrors: options.approvalErrors,
+            }),
+            eventOrder,
+          ),
+        ];
       }
       if (!shouldRenderStandaloneEvent(group.event, userPrompts)) {
-        return "";
+        return [];
       }
-      return renderConversationEvent(group.event, task, { active: false });
+      return [
+        renderedTimelineEntry(
+          [group.event],
+          renderConversationEvent(group.event, task, { active: false }),
+          eventOrder,
+        ),
+      ];
     })
-    .join("");
-  if (
-    liveStatusAvailable &&
-    isTaskActivelyWorking(task) &&
-    activeGroupIndex < 0
-  ) {
+    .filter(Boolean)
+    .map((entry, index) => ({ ...entry, index }))
+    .sort((left, right) => left.order - right.order || left.index - right.index);
+  const output = entries.map(({ html }) => html).join("");
+  if (liveStatusAvailable && isTaskActivelyWorking(task)) {
+    const activeGroup = groups[activeGroupIndex];
     return `${output}${renderActiveTurnStatus(
-      {
+      activeGroup ?? {
         turnId: task?.activeTurn?.id ?? "active-turn",
         events: [],
       },
@@ -85,6 +104,17 @@ export function renderConversation(events, task, approvals = [], options = {}) {
     )}`;
   }
   return output;
+}
+
+function renderedTimelineEntry(events, html, eventOrder) {
+  if (!html) {
+    return null;
+  }
+  const order = events.reduce(
+    (earliest, event) => Math.min(earliest, eventOrder.get(event) ?? earliest),
+    Number.MAX_SAFE_INTEGER,
+  );
+  return { order, html };
 }
 
 function activeTurnGroupIndex(groups, task) {
@@ -117,7 +147,7 @@ function activeTurnGroupIndex(groups, task) {
   return groups.findLastIndex((group) => group.kind === "turn");
 }
 
-function renderTurnGroup(group, task, options = {}) {
+function renderTurnGroupEntries(group, task, options = {}) {
   const assistantEvents = group.events.filter((event) => event.type === "assistant_message");
   const statusEvents = group.events.filter(isTurnStatusEvent);
   const terminalEvent = statusEvents.find(isTerminalTurnEvent);
@@ -134,7 +164,7 @@ function renderTurnGroup(group, task, options = {}) {
       !isActive);
 
   if (isComplete) {
-    return renderCompletedTurnGroup(
+    return renderCompletedTurnGroupEntries(
       group,
       task,
       terminalEvent,
@@ -142,27 +172,28 @@ function renderTurnGroup(group, task, options = {}) {
       options.pendingApprovalIds,
       options.controlsDisabled,
       options.approvalErrors,
+      options.eventOrder,
     );
   }
 
-  const output = group.events
+  return group.events
     .map((event) =>
-      renderActiveTurnTimelineEvent(
-        event,
-        task,
-        options.pendingApprovalIds,
-        options.controlsDisabled,
-        options.approvalErrors,
+      renderedTimelineEntry(
+        [event],
+        renderActiveTurnTimelineEvent(
+          event,
+          task,
+          options.pendingApprovalIds,
+          options.controlsDisabled,
+          options.approvalErrors,
+        ),
+        options.eventOrder,
       ),
     )
     .filter(Boolean);
-  if (isActive) {
-    output.push(renderActiveTurnStatus(group, task));
-  }
-  return output.join("");
 }
 
-function renderCompletedTurnGroup(
+function renderCompletedTurnGroupEntries(
   group,
   task,
   terminalEvent,
@@ -170,6 +201,7 @@ function renderCompletedTurnGroup(
   pendingApprovalIds = new Set(),
   controlsDisabled = false,
   approvalErrors = new Map(),
+  eventOrder = new Map(),
 ) {
   const output = [];
   const userEvents = group.events.filter((event) => event.type === "user_message");
@@ -188,31 +220,58 @@ function renderCompletedTurnGroup(
   );
 
   for (const event of userEvents) {
-    output.push(renderConversationEvent(event, task, { active: false }));
+    output.push(
+      renderedTimelineEntry(
+        [event],
+        renderConversationEvent(event, task, { active: false }),
+        eventOrder,
+      ),
+    );
   }
   if (workEvents.length > 0) {
-    output.push(renderTurnWorkSummary(group, workEvents, terminalEvent));
+    const workSummaryAnchor = workEvents.at(-1);
+    output.push(
+      renderedTimelineEntry(
+        [workSummaryAnchor],
+        renderTurnWorkSummary(group, workEvents, terminalEvent),
+        eventOrder,
+      ),
+    );
   }
   for (const event of generatedImages) {
-    output.push(renderConversationEvent(event, task, { active: false }));
+    output.push(
+      renderedTimelineEntry(
+        [event],
+        renderConversationEvent(event, task, { active: false }),
+        eventOrder,
+      ),
+    );
   }
   if (approvals.length > 0) {
     output.push(
-      renderApprovalFlow(approvals, {
-        disabled: controlsDisabled,
-        approvalErrors,
-      }),
+      renderedTimelineEntry(
+        approvals,
+        renderApprovalFlow(approvals, {
+          disabled: controlsDisabled,
+          approvalErrors,
+        }),
+        eventOrder,
+      ),
     );
   }
   if (finalAssistantEvent) {
     output.push(
-      renderConversationEvent(finalAssistantEvent, task, {
-        active: false,
-        messagePhase: "final",
-      }),
+      renderedTimelineEntry(
+        [finalAssistantEvent],
+        renderConversationEvent(finalAssistantEvent, task, {
+          active: false,
+          messagePhase: "final",
+        }),
+        eventOrder,
+      ),
     );
   }
-  return output.join("");
+  return output.filter(Boolean);
 }
 
 function renderActiveTurnTimelineEvent(

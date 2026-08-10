@@ -233,6 +233,15 @@ export function upsertEvent(events, event) {
   return mergeEvents(events, [event]);
 }
 
+export function sortEventsChronologically(events) {
+  return [...events].sort(
+    (left, right) =>
+      (left.createdMs ?? 0) - (right.createdMs ?? 0) ||
+      (left.sortIndex ?? Number.MAX_SAFE_INTEGER) -
+        (right.sortIndex ?? Number.MAX_SAFE_INTEGER),
+  );
+}
+
 export function mergeEvents(leftEvents, rightEvents) {
   const byId = new Map();
   for (const event of [...leftEvents, ...rightEvents]) {
@@ -241,11 +250,8 @@ export function mergeEvents(leftEvents, rightEvents) {
       byId.set(key, mergeEventRecord(byId.get(key), event));
     }
   }
-  return dedupeCanonicalEvents([...byId.values()]).sort(
-    (left, right) =>
-      (left.createdMs ?? 0) - (right.createdMs ?? 0) ||
-      (left.sortIndex ?? Number.MAX_SAFE_INTEGER) -
-        (right.sortIndex ?? Number.MAX_SAFE_INTEGER),
+  return sortEventsChronologically(
+    dedupeCanonicalEvents([...byId.values()]),
   );
 }
 
