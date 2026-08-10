@@ -1182,7 +1182,7 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     await expect(detailPane).toBeVisible();
     await expect(detailPane).toContainText("Main root task detail response");
     await captureReviewScreenshot(page, testInfo, "tasks-single-pane-detail");
-    await page.locator("caffold-task-workspace .task-workspace-close").click();
+    await page.locator("caffold-task-workspace .task-workspace-back").click();
     await expect(page).toHaveURL("/");
     await expect(listPane).toBeVisible();
     await expect(detailPane).toBeHidden();

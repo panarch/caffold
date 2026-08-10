@@ -11,40 +11,68 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
   page,
 }, testInfo) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
 
   const before = await taskReview.evaluate((review) => {
-    const toolbar = review.querySelector(".task-review-toolbar");
+    const modeSwitch = document.querySelector(
+      "caffold-task-detail-summary .task-mode-switch",
+    );
+    const summary = document.querySelector("caffold-task-detail-summary");
+    const summaryActions = summary.querySelector(".task-detail-actions");
+    const summaryInfo = summary.querySelector(".task-detail-info-button");
+    const summaryTitle = summary.querySelector(".task-detail-heading h2");
+    const summaryRect = summary.getBoundingClientRect();
+    const actionsRect = summaryActions.getBoundingClientRect();
+    const infoRect = summaryInfo.getBoundingClientRect();
+    const infoVisualInset = Number.parseFloat(
+      getComputedStyle(summaryInfo, "::before").right,
+    );
     const navigator = review.querySelector(".task-review-navigator-pane");
     const viewer = review.querySelector(".task-review-viewer-pane");
+    const visiblePaneControls = [...review.querySelectorAll(
+      ".task-review-pane-axis .task-review-axis-options",
+    )].filter((control) => control.getClientRects().length > 0);
+    const rightmostPaneControl = visiblePaneControls.reduce((rightmost, control) =>
+      !rightmost || control.getBoundingClientRect().right > rightmost.getBoundingClientRect().right
+        ? control
+        : rightmost,
+    null);
     return {
       overflow: review.scrollWidth > review.clientWidth,
-      toolbarOverflow: toolbar.scrollWidth > toolbar.clientWidth,
+      modeSwitchOverflow: modeSwitch.scrollWidth > modeSwitch.clientWidth,
+      summaryActionsContained:
+        actionsRect.left >= summaryRect.left - 1 &&
+        actionsRect.right <= summaryRect.right + 1,
       navigatorVisible: getComputedStyle(navigator).display !== "none",
       viewerVisible: getComputedStyle(viewer).display !== "none",
-      toolbarRows: new Set(
-        [...toolbar.querySelectorAll(".task-review-axis, .task-review-base")]
-          .filter((control) => getComputedStyle(control).display !== "none")
-          .map((control) => Math.round(control.getBoundingClientRect().top)),
-      ).size,
+      actionEdgeDelta: Math.abs(
+        infoRect.right - infoVisualInset -
+          rightmostPaneControl.getBoundingClientRect().right,
+      ),
+      rootFontSize: Number.parseFloat(
+        getComputedStyle(document.documentElement).fontSize,
+      ),
+      taskTitleFontSize: Number.parseFloat(getComputedStyle(summaryTitle).fontSize),
     };
   });
   expect(before.overflow).toBe(false);
-  expect(before.toolbarOverflow).toBe(false);
+  expect(before.modeSwitchOverflow).toBe(false);
+  expect(before.summaryActionsContained).toBe(true);
   expect(before.navigatorVisible).toBe(true);
   expect(before.viewerVisible).toBe(testInfo.project.name !== "phone");
-  if (testInfo.project.name === "phone") {
-    expect(before.toolbarRows).toBeLessThanOrEqual(2);
-  }
+  expect(before.actionEdgeDelta).toBeLessThanOrEqual(1);
+  expect(before.taskTitleFontSize).toBeLessThan(before.rootFontSize);
+  expect(before.taskTitleFontSize).toBeGreaterThanOrEqual(before.rootFontSize * 0.8);
 
   const summaryClearance = await page.evaluate(() => {
-    const closeButton = document.querySelector(".task-workspace-close");
+    const closeButton = document.querySelector(".task-workspace-back");
     const close = closeButton.getBoundingClientRect();
     const heading = document
       .querySelector("caffold-task-detail-summary .task-detail-heading h2")
       .getBoundingClientRect();
     return {
       closeLabel: closeButton.getAttribute("aria-label"),
+      closeIconLabel: closeButton.querySelector(".sr-only")?.textContent,
       closeRight: close.right,
       closeTitleCenterDelta: Math.abs(
         close.top + close.height / 2 -
@@ -54,29 +82,138 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
         getComputedStyle(closeButton).display !== "none" && close.width > 0,
       headingLeft: heading.left,
       headingWidth: heading.width,
+      usesCollapsedWorkspace: window.matchMedia("(max-width: 899px)").matches,
     };
   });
-  expect(summaryClearance.closeVisible).toBe(true);
-  expect(summaryClearance.closeLabel).toBe("Back to task");
-  expect(summaryClearance.closeTitleCenterDelta).toBeLessThanOrEqual(2);
-  expect(summaryClearance.headingLeft).toBeGreaterThanOrEqual(
-    summaryClearance.closeRight,
+  expect(summaryClearance.closeVisible).toBe(
+    summaryClearance.usesCollapsedWorkspace,
   );
+  expect(summaryClearance.closeLabel).toBe("Back to tasks");
+  expect(summaryClearance.closeIconLabel).toBe("Back to tasks");
+  if (summaryClearance.closeVisible) {
+    expect(summaryClearance.closeTitleCenterDelta).toBeLessThanOrEqual(2);
+    expect(summaryClearance.headingLeft).toBeGreaterThanOrEqual(
+      summaryClearance.closeRight,
+    );
+  }
   expect(summaryClearance.headingWidth).toBeGreaterThanOrEqual(100);
 
   await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
   const after = await taskReview.evaluate((review) => {
     const navigator = review.querySelector(".task-review-navigator-pane");
     const viewer = review.querySelector(".task-review-viewer-pane");
+    const viewerInfo = review.querySelector(
+      "caffold-review-file-viewer .viewer-info-button",
+    );
+    const viewerAxis = review.querySelector(
+      ".task-review-viewer-axis .task-review-axis-options",
+    );
+    const summary = document.querySelector("caffold-task-detail-summary");
+    const github = [...summary.querySelectorAll(".task-brand-button")].at(-1);
+    const summaryInfo = summary.querySelector(".task-detail-info-button");
+    const visualBounds = (element, pseudo) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element, pseudo);
+      return {
+        left: rect.left + Number.parseFloat(style.left),
+        right: rect.right - Number.parseFloat(style.right),
+      };
+    };
+    const viewerInfoBounds = visualBounds(viewerInfo, "::after");
+    const githubBounds = visualBounds(github, "::before");
+    const summaryInfoBounds = visualBounds(summaryInfo, "::before");
+    const rootStyle = getComputedStyle(document.documentElement);
     return {
       overflow: review.scrollWidth > review.clientWidth,
       navigatorVisible: getComputedStyle(navigator).display !== "none",
       viewerVisible: getComputedStyle(viewer).display !== "none",
+      lowerControlGap:
+        viewerAxis.getBoundingClientRect().left - viewerInfoBounds.right,
+      upperControlGap: summaryInfoBounds.left - githubBounds.right,
+      upperControlsShareRow:
+        Math.abs(
+          summaryInfo.getBoundingClientRect().top - github.getBoundingClientRect().top,
+        ) <= 1,
+      expectedControlGap:
+        Number.parseFloat(rootStyle.getPropertyValue("--interface-space-5")) *
+        Number.parseFloat(rootStyle.fontSize),
     };
   });
   expect(after.overflow).toBe(false);
   expect(after.viewerVisible).toBe(true);
   expect(after.navigatorVisible).toBe(testInfo.project.name !== "phone");
+  expect(
+    Math.abs(after.lowerControlGap - after.expectedControlGap),
+  ).toBeLessThanOrEqual(1);
+  if (after.upperControlsShareRow) {
+    expect(
+      Math.abs(after.lowerControlGap - after.upperControlGap),
+    ).toBeLessThanOrEqual(1);
+  }
+});
+
+test("owns one collapsed Back across Conversation and Review modes", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "phone",
+    "The Review back control belongs to the collapsed workspace.",
+  );
+  const { taskScenario, tasksPage } = await openCompletedTaskForReview(page);
+  const workspace = page.locator("caffold-task-workspace");
+  const masterPane = workspace.locator(".task-workspace-master-pane");
+  const detailPane = workspace.locator(".task-workspace-detail-pane");
+  const backToTasks = workspace.locator(".task-workspace-back");
+  const newTaskClose = workspace.locator(".task-workspace-close");
+  const routes = [
+    {
+      name: "Conversation",
+      url: `/tasks/${taskScenario.threadId}`,
+      detailView: "conversation",
+    },
+    {
+      name: "Working Tree",
+      url: `/tasks/${taskScenario.threadId}/review`,
+      detailView: "review",
+    },
+    {
+      name: "Branch vs default",
+      url: `/tasks/${taskScenario.threadId}/review?scope=branch&base=origin%2Fmain`,
+      detailView: "review",
+    },
+  ];
+
+  for (const mode of routes) {
+    await page.goto(mode.url);
+    await expect(page).toHaveURL(mode.url);
+    await expect(tasksPage).toHaveAttribute("data-tasks-view", "detail");
+    await expect(tasksPage).toHaveAttribute(
+      "data-task-detail-view",
+      mode.detailView,
+    );
+    await expect(backToTasks, mode.name).toBeVisible();
+    await expect(backToTasks).toHaveAttribute("aria-label", "Back to tasks");
+    await expect(backToTasks.locator(".sr-only")).toHaveText("Back to tasks");
+    await expect(newTaskClose).toBeHidden();
+
+    const historyLength = await page.evaluate(() => window.history.length);
+    await backToTasks.click();
+    await expect(page).toHaveURL("/");
+    await expect(tasksPage).toHaveAttribute("data-tasks-view", "home");
+    await expect(tasksPage).toHaveAttribute(
+      "data-task-detail-view",
+      "conversation",
+    );
+    await expect(workspace).not.toHaveAttribute(
+      "data-workspace-route-control-visible",
+      "",
+    );
+    await expect(masterPane).toBeVisible();
+    await expect(detailPane).toBeHidden();
+    await expect
+      .poll(() => page.evaluate(() => window.history.length))
+      .toBe(historyLength);
+  }
 });
 
 test("keeps one compact file-navigation header on phone", async ({
@@ -84,7 +221,7 @@ test("keeps one compact file-navigation header on phone", async ({
 }, testInfo) => {
   test.skip(testInfo.project.name !== "phone", "Phone owns the single-pane back control.");
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
 
   const backButtons = taskReview.getByRole("button", { name: "Back to navigator" });
@@ -96,14 +233,10 @@ test("keeps one compact file-navigation header on phone", async ({
   ).toHaveCount(1);
 
   const geometry = await taskReview.evaluate((review) => {
-    const toolbar = review.querySelector(".task-review-toolbar");
-    const refresh = review.querySelector(".task-review-refresh");
     const viewerHeader = review.querySelector("caffold-review-file-viewer .viewer-header");
     const close = viewerHeader.querySelector(".viewer-close-button");
     const info = viewerHeader.querySelector(".viewer-info-button");
     const titleBlock = viewerHeader.querySelector(".viewer-title-block");
-    const toolbarRect = toolbar.getBoundingClientRect();
-    const refreshRect = refresh.getBoundingClientRect();
     const headerRect = viewerHeader.getBoundingClientRect();
     const closeRect = close.getBoundingClientRect();
     const infoRect = info.getBoundingClientRect();
@@ -114,9 +247,6 @@ test("keeps one compact file-navigation header on phone", async ({
     const infoInset = Number.parseFloat(
       getComputedStyle(info, "::after").top,
     );
-    const refreshInset = Number.parseFloat(
-      getComputedStyle(refresh, "::before").top,
-    );
     return {
       closeVisualHeight: closeRect.height - closeInset * 2,
       closeVisualWidth: closeRect.width - closeInset * 2,
@@ -125,27 +255,12 @@ test("keeps one compact file-navigation header on phone", async ({
       infoVisualHeight: infoRect.height - infoInset * 2,
       infoVisualWidth: infoRect.width - infoInset * 2,
       overflow: review.scrollWidth > review.clientWidth,
-      refreshBottom: refreshRect.bottom,
-      refreshHitHeight: refreshRect.height,
-      refreshRight: refreshRect.right,
-      refreshTop: refreshRect.top,
-      refreshVisualHeight: refreshRect.height - refreshInset * 2,
-      refreshVisualWidth: refreshRect.width - refreshInset * 2,
-      toolbarBottom: toolbarRect.bottom,
-      toolbarRight: toolbarRect.right,
-      toolbarTop: toolbarRect.top,
       titleCenter: titleBlockRect.top + titleBlockRect.height / 2,
       headerCenter: headerRect.top + headerRect.height / 2,
     };
   });
 
   expect(geometry.overflow).toBe(false);
-  expect(geometry.refreshTop).toBeGreaterThanOrEqual(geometry.toolbarTop);
-  expect(geometry.refreshBottom).toBeLessThanOrEqual(geometry.toolbarBottom);
-  expect(geometry.refreshRight).toBeLessThanOrEqual(geometry.toolbarRight);
-  expect(geometry.refreshVisualWidth).toBeLessThanOrEqual(36);
-  expect(geometry.refreshVisualHeight).toBeLessThanOrEqual(36);
-  expect(geometry.refreshHitHeight).toBeGreaterThanOrEqual(40);
   expect(geometry.closeVisualWidth).toBeLessThanOrEqual(36);
   expect(geometry.closeVisualHeight).toBeLessThanOrEqual(36);
   expect(geometry.infoVisualWidth).toBeCloseTo(geometry.closeVisualWidth, 1);
@@ -164,7 +279,7 @@ test("clamps the navigator so the shared viewer keeps its minimum width", async 
 }, testInfo) => {
   test.skip(testInfo.project.name === "phone", "Phone intentionally shows one pane at a time.");
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await taskReview.evaluate((review) => {
     review.resizer().setValue(10_000);
     review.panelWidth = review.resizer().currentValue;
@@ -180,7 +295,7 @@ test("clamps the navigator so the shared viewer keeps its minimum width", async 
 
 test("keeps Review reflowed at the appearance extremes", async ({ page }, testInfo) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
 
   for (const settings of [
@@ -194,12 +309,14 @@ test("keeps Review reflowed at the appearance extremes", async ({ page }, testIn
       }
     }, settings);
     const layout = await taskReview.evaluate((review) => {
-      const toolbar = review.querySelector(".task-review-toolbar");
+      const modeSwitch = document.querySelector(
+        "caffold-task-detail-summary .task-mode-switch",
+      );
       const viewer = review.querySelector(".task-review-viewer-pane");
       const code = review.querySelector(".diff-code");
       return {
         overflow: review.scrollWidth > review.clientWidth,
-        toolbarOverflow: toolbar.scrollWidth > toolbar.clientWidth,
+        modeSwitchOverflow: modeSwitch.scrollWidth > modeSwitch.clientWidth,
         viewerOverflow: viewer.scrollWidth > viewer.clientWidth,
         codeFontSize: code ? getComputedStyle(code).fontSize : null,
         selectedInsets: [...review.querySelectorAll(
@@ -220,7 +337,7 @@ test("keeps Review reflowed at the appearance extremes", async ({ page }, testIn
       };
     });
     expect(layout.overflow).toBe(false);
-    expect(layout.toolbarOverflow).toBe(false);
+    expect(layout.modeSwitchOverflow).toBe(false);
     expect(layout.viewerOverflow).toBe(false);
     expect(layout.codeFontSize).toBe(`${settings.codeTextPx}px`);
     expect(layout.truncatedAxisLabels).toEqual([]);
@@ -258,7 +375,7 @@ test("keeps compact Task segments pixel-aligned on Retina displays", async ({
   try {
     await installBrowserDefaults(page);
     const { tasksPage } = await openCompletedTaskForReview(page);
-    await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+    await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
 
     for (const interfaceScalePercent of [90, 100, 105, 120]) {
       await page.evaluate(async (value) => {
@@ -331,14 +448,17 @@ test("reflows Review at a desktop 200 percent effective viewport", async ({
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Desktop browser zoom is the reflow contract.");
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await page.setViewportSize({ width: 640, height: 400 });
 
   const layout = await taskReview.evaluate((review) => ({
     overflow: review.scrollWidth > review.clientWidth,
-    toolbarOverflow:
-      review.querySelector(".task-review-toolbar").scrollWidth >
-      review.querySelector(".task-review-toolbar").clientWidth,
+    modeSwitchOverflow: (() => {
+      const modeSwitch = document.querySelector(
+        "caffold-task-detail-summary .task-mode-switch",
+      );
+      return modeSwitch.scrollWidth > modeSwitch.clientWidth;
+    })(),
     navigatorWidth: review
       .querySelector(".task-review-navigator-pane")
       .getBoundingClientRect().width,
@@ -347,7 +467,7 @@ test("reflows Review at a desktop 200 percent effective viewport", async ({
       .getBoundingClientRect().width,
   }));
   expect(layout.overflow).toBe(false);
-  expect(layout.toolbarOverflow).toBe(false);
+  expect(layout.modeSwitchOverflow).toBe(false);
   expect(layout.navigatorWidth).toBeGreaterThanOrEqual(220);
   expect(layout.viewerWidth).toBeGreaterThanOrEqual(360);
 });

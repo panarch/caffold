@@ -181,8 +181,14 @@ detail controllers are stable-mounted siblings in the detail pane. Mode and
 compact-route presentation only select among those existing children. No child
 reparents navigation at runtime. The layout remembers the last route in each
 mode and hides the master pane on compact detail routes where content space is
-primary. It is separate from `(review-workspace)` because task control is not
-only a review surface.
+primary. On compact Tasks detail routes, the layout renders one route-derived
+Back to Tasks control for Conversation and every integrated Review mode. That
+control exits the selected Task with history replacement; it does not inspect
+or mutate Detail or Review state. Review's file-to-navigator Back remains owned
+by the Review file viewer. New Task keeps its separate close control. The Task
+detail controls are hidden when the master pane is simultaneously visible. The
+layout is separate from `(review-workspace)` because task control is not only a
+review surface.
 
 `(task-workspace)/tasks/page` is the task detail-route controller. It owns the
 selected route/thread and the Conversation/Review outer layout, while receiving
@@ -220,8 +226,11 @@ lifetimes:
   Git/GitHub menu disclosure, and GitHub availability requests scoped to the
   current worktree. Its `caffold-task-detail-info` leaf owns the task-info
   button, native popover disclosure, status and archive presentation, and emits
-  archive intents back through Summary. Both receive read-only snapshots; they
-  cannot mutate canonical task state or invoke Codex actions.
+  archive intents back through Summary. The visible Conversation, Working Tree,
+  and Branch comparison segments share Summary DOM, while the selected Review
+  scope remains route-owned and Review remains the only writer of its own route
+  axes. Both Summary and Info receive read-only snapshots; they cannot mutate
+  canonical task state or invoke Codex actions.
 - `caffold-task-conversation` owns transcript rendering, disclosure state,
   scroll anchors, Markdown reflow handling, and the canonical active-turn
   clock.
@@ -230,13 +239,15 @@ lifetimes:
   model/permission overrides.
   Detail still owns the prompt mutation and canonical reconciliation.
 - `caffold-task-review` is the integrated Task Review owner. It owns one
-  selected path plus the independent Working Tree/Branch, Changes/Files, and
-  Diff/Source axes. It composes the two Git change-tree presentations, one
-  reusable file navigator, and one shared source/diff viewer instead of
-  mounting complete Files, Diff, and Compare browsers. It also owns Git
-  status/compare requests, the one root filesystem watch, refresh generations,
-  panel width, navigator/viewer scroll, and expanded file directories. Task and
-  event inputs are read-only context for that component.
+  selected path plus the Changes/Files and Diff/Source axes. It consumes the
+  route-owned Working Tree/Branch scope selected by the Task Detail mode
+  control, then owns Git refs/status/compare requests and branch-base
+  normalization for that scope. It composes the two Git change-tree
+  presentations, one reusable file navigator, and one shared source/diff viewer
+  instead of mounting complete Files, Diff, and Compare browsers. It also owns
+  the one root filesystem watch, refresh generations, panel width,
+  navigator/viewer scroll, and expanded file directories. Task and event inputs
+  are read-only context for that component.
 
 Navigator and Detail are independent browser projections. Each owns its own
 REST/SSE baseline and revision map; neither revision can invalidate the other.
@@ -266,10 +277,12 @@ transcript position without letting inactive review work continue in the
 background.
 
 Task Review semantic state comes from `/tasks/:threadId/review`: selected path,
-scope, navigator, viewer, and branch base are route-owned. The Review component
-is the only writer that turns UI intents into changes to those route fields;
-the Tasks page and Detail only forward the route and intent. Scroll, expanded
-directories, and resizer width remain component-local and do not enter the URL.
+scope, navigator, viewer, and branch base are route-owned. Task Detail is the
+only writer that turns the Summary's outer Conversation/Working Tree/Branch
+mode intents into task route transitions. The Review component is the only
+writer for selected path, navigator, viewer, and branch-base normalization; the
+Tasks page only forwards route intents. Scroll, expanded directories, and
+resizer width remain component-local and do not enter the URL.
 The worktree root is used when Git is available, with the thread cwd as the
 non-Git Files/Source root. Live repository and worktree context is derived from
 each canonical thread cwd rather than stored by the frontend.

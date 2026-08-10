@@ -43,6 +43,8 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       task: null,
       transportState: "idle",
       reviewView: "conversation",
+      reviewScope: "working",
+      reviewBaseRef: "",
       contextPath: ".",
       archiveState: { loading: false, error: null },
     };
@@ -67,6 +69,8 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       task,
       transportState: snapshot.transportState ?? "idle",
       reviewView: normalizeReviewView(snapshot.reviewView),
+      reviewScope: normalizeReviewScope(snapshot.reviewScope),
+      reviewBaseRef: `${snapshot.reviewBaseRef ?? ""}`,
       contextPath: `${snapshot.contextPath ?? "."}`,
       archiveState: {
         loading: Boolean(snapshot.archiveState?.loading),
@@ -134,6 +138,7 @@ class CaffoldTaskDetailSummary extends HTMLElement {
     this.dispatchIntent({
       type: action.dataset.summaryAction,
       reviewKind: action.dataset.reviewKind ?? null,
+      reviewScope: action.dataset.reviewScope ?? null,
     });
   }
 
@@ -266,26 +271,14 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       </div>
       <div class="task-detail-right">
         <div class="task-detail-actions">
-          <div class="task-mode-switch" role="group" aria-label="Task view">
-            <button
-              type="button"
-              data-summary-action="open-conversation"
-              data-summary-mode="conversation"
-              aria-pressed="${this.snapshot.reviewView === "conversation" ? "true" : "false"}"
-            ><span>Conversation</span></button>
-            <button
-              type="button"
-              data-summary-action="open-review"
-              data-summary-mode="review"
-              aria-pressed="${this.snapshot.reviewView === "review" ? "true" : "false"}"
-            ><span>Review</span></button>
-          </div>
+          ${this.renderTaskModeSwitch(task)}
           ${this.renderReviewMenus(task)}
         </div>
         <caffold-task-detail-info></caffold-task-detail-info>
       </div>
     `;
     this.renderedThreadId = taskThreadId(task);
+    this.patchReviewView();
     this.syncTaskInfo();
   }
 
@@ -307,18 +300,62 @@ class CaffoldTaskDetailSummary extends HTMLElement {
     if (label) {
       label.hidden = !worktreeLabel;
     }
-    this.patchReviewView();
+    this.patchTaskModeSwitch();
     this.patchReviewControls();
     this.syncTaskInfo();
   }
 
   patchReviewView() {
     for (const button of this.querySelectorAll("[data-summary-mode]")) {
+      const pressed = button.dataset.reviewScope
+        ? this.snapshot.reviewView === "review" &&
+          button.dataset.reviewScope === this.snapshot.reviewScope
+        : button.dataset.summaryMode === this.snapshot.reviewView;
       button.setAttribute(
         "aria-pressed",
-        button.dataset.summaryMode === this.snapshot.reviewView ? "true" : "false",
+        pressed ? "true" : "false",
       );
     }
+  }
+
+  renderTaskModeSwitch(task) {
+    if (!taskWorktreeRootPath(task)) {
+      return `<div class="task-mode-switch" data-summary-key="files" role="group" aria-label="Task view">
+        <button type="button" data-summary-action="open-conversation" data-summary-mode="conversation"><span>Conversation</span></button>
+        <button type="button" data-summary-action="open-review" data-summary-mode="review"><span>Review</span></button>
+      </div>`;
+    }
+    const baseRef = this.reviewBaseRef();
+    return `<div class="task-mode-switch" data-summary-key="git" role="group" aria-label="Task view">
+      <button type="button" data-summary-action="open-conversation" data-summary-mode="conversation"><span>Conversation</span></button>
+      <button type="button" data-summary-action="open-review-scope" data-summary-mode="review" data-review-scope="working"><span>Working Tree</span></button>
+      <button type="button" data-summary-action="open-review-scope" data-summary-mode="review" data-review-scope="branch" title="Compare with ${escapeHtml(baseRef || "the default branch")}"><span data-summary-field="review-branch-label">Branch vs default</span></button>
+    </div>`;
+  }
+
+  patchTaskModeSwitch() {
+    const task = this.snapshot.task;
+    const current = this.querySelector(".task-mode-switch");
+    if (!task || !current) {
+      return;
+    }
+    const template = document.createElement("template");
+    template.innerHTML = this.renderTaskModeSwitch(task).trim();
+    const next = template.content.firstElementChild;
+    if (current.dataset.summaryKey !== next?.dataset.summaryKey) {
+      current.replaceWith(next);
+    } else if (current.dataset.summaryKey === "git") {
+      const branch = current.querySelector('[data-review-scope="branch"]');
+      const baseRef = this.reviewBaseRef();
+      if (branch) {
+        branch.title = `Compare with ${baseRef || "the default branch"}`;
+      }
+    }
+    this.patchReviewView();
+  }
+
+  reviewBaseRef() {
+    return this.snapshot.reviewBaseRef || "";
   }
 
   syncTaskInfo() {
@@ -431,6 +468,10 @@ if (!customElements.get("caffold-task-detail-summary")) {
 
 function normalizeReviewView(view) {
   return view === "review" ? "review" : "conversation";
+}
+
+function normalizeReviewScope(scope) {
+  return scope === "branch" ? "branch" : "working";
 }
 
 function taskWorktreeRootPath(task) {

@@ -19,7 +19,6 @@ import {
   imageTypeLabel,
   isPreviewableImagePath,
 } from "../../../../../components/dom.js";
-import { renderInlineIcon, warmIcons } from "../../../../../components/icons.js";
 import "../../../../../components/review-panel-resizer.js";
 import {
   subscribeToWatch,
@@ -35,13 +34,11 @@ class CaffoldTaskReview extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
     this.active = true;
-    this.attachGlobalListeners();
     this.syncReview({ reactivated: true });
   }
 
   disconnectedCallback() {
     this.active = false;
-    this.detachGlobalListeners();
     this.unsubscribeWatch();
     this.invalidateRequests();
     this.fileNavigator()?.setWatchActive(false);
@@ -69,59 +66,26 @@ class CaffoldTaskReview extends HTMLElement {
     this.imageRevision = 0;
     this.watchUnsubscribe = null;
     this.watchPath = "";
-    this.watchUnavailable = false;
     this.pendingWatchViewerRefresh = false;
-    this.refreshing = false;
     this.panelWidth = REVIEW_PANEL_DEFAULT_WIDTH;
     this.navigatorScroll = new Map();
     this.viewerScroll = new Map();
     this.pendingRepresentationLine = new Map();
-    this.globalListenersAttached = false;
-    this.boundIconsReady = () => this.patchRefreshButton();
-    warmIcons();
 
     this.innerHTML = `
       <section class="task-review-workspace" aria-label="Task review">
-        <header class="task-review-toolbar">
-          <div class="task-review-axis" role="group" aria-label="Review scope">
-            <span class="task-review-axis-label">Scope</span>
-            <div class="task-review-axis-options">
-              <button type="button" data-review-axis="scope" data-review-value="working"><span>Working Tree</span></button>
-              <button type="button" data-review-axis="scope" data-review-value="branch"><span>Branch</span></button>
-            </div>
-          </div>
-          <div class="task-review-axis" role="group" aria-label="Review navigator">
-            <span class="task-review-axis-label">Navigator</span>
-            <div class="task-review-axis-options">
-              <button type="button" data-review-axis="navigator" data-review-value="changes"><span>Changes</span></button>
-              <button type="button" data-review-axis="navigator" data-review-value="files"><span>Files</span></button>
-            </div>
-          </div>
-          <div class="task-review-axis" role="group" aria-label="Review viewer">
-            <span class="task-review-axis-label">Viewer</span>
-            <div class="task-review-axis-options">
-              <button type="button" data-review-axis="viewer" data-review-value="diff"><span>Diff</span></button>
-              <button type="button" data-review-axis="viewer" data-review-value="source"><span>Source</span></button>
-            </div>
-          </div>
-          <label class="task-review-base">
-            <span>Base</span>
-            <select data-review-base disabled><option value="">Loading refs...</option></select>
-          </label>
-          <button
-            type="button"
-            class="task-icon-button task-review-refresh"
-            data-review-action="refresh"
-            aria-label="Refresh review"
-            title="Refresh review"
-          >${renderInlineIcon("RefreshCw", "Refresh review", "task-refresh-icon")}</button>
-        </header>
         <div class="task-review-notices">
           <p class="task-review-git-notice" hidden>Git review is unavailable for this task. Browse files and source instead.</p>
           <p class="task-review-error" role="alert" hidden></p>
         </div>
         <div class="task-review-layout">
           <aside class="task-review-navigator-pane" aria-label="Review navigator">
+            <div class="task-review-pane-axis task-review-navigator-axis" role="group" aria-label="Review navigator">
+              <div class="task-review-axis-options">
+                <button type="button" data-review-axis="navigator" data-review-value="changes"><span>Changes</span></button>
+                <button type="button" data-review-axis="navigator" data-review-value="files"><span>Files</span></button>
+              </div>
+            </div>
             <div class="task-review-navigator" data-review-navigator="working">
               <caffold-git-diff-changes-tree></caffold-git-diff-changes-tree>
               <div class="task-review-empty-action" hidden>
@@ -142,6 +106,13 @@ class CaffoldTaskReview extends HTMLElement {
             aria-label="Resize review navigator"
           ></caffold-review-panel-resizer>
           <section class="task-review-viewer-pane" aria-label="Review file">
+            <div class="task-review-viewer-empty-header" aria-hidden="true"></div>
+            <div class="task-review-pane-axis task-review-viewer-axis" role="group" aria-label="Review viewer">
+              <div class="task-review-axis-options">
+                <button type="button" data-review-axis="viewer" data-review-value="diff"><span>Diff</span></button>
+                <button type="button" data-review-axis="viewer" data-review-value="source"><span>Source</span></button>
+              </div>
+            </div>
             <caffold-review-file-viewer compact-chrome></caffold-review-file-viewer>
           </section>
         </div>
@@ -157,7 +128,6 @@ class CaffoldTaskReview extends HTMLElement {
     this.applyPanelWidth();
 
     this.addEventListener("click", (event) => this.handleClick(event));
-    this.addEventListener("change", (event) => this.handleChange(event));
     this.addEventListener("caffold:open-git-diff", (event) => {
       if (!closestElement(event.target, "caffold-git-diff-changes-tree")) {
         return;
@@ -193,22 +163,6 @@ class CaffoldTaskReview extends HTMLElement {
       event.stopPropagation();
       this.clearSelectedPath();
     });
-  }
-
-  attachGlobalListeners() {
-    if (this.globalListenersAttached) {
-      return;
-    }
-    this.globalListenersAttached = true;
-    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
-  }
-
-  detachGlobalListeners() {
-    if (!this.globalListenersAttached) {
-      return;
-    }
-    this.globalListenersAttached = false;
-    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
   setTaskContext({ task = null, events = [], route = null } = {}) {
@@ -299,7 +253,7 @@ class CaffoldTaskReview extends HTMLElement {
     if (!this.active || !this.task) {
       return;
     }
-    this.patchToolbar();
+    this.patchControls();
     this.patchLayout();
     this.syncSelection();
     this.ensureFileNavigator({
@@ -437,14 +391,17 @@ class CaffoldTaskReview extends HTMLElement {
         return null;
       }
       this.refs = refs;
-      const baseRef = this.route.baseRef || refs.defaultBaseRef || refs.refs?.[0]?.name || "";
-      if (!this.route.baseRef && baseRef) {
+      const baseRef = refs.defaultBaseRef || refs.refs?.[0]?.name || "";
+      if (this.route.baseRef !== baseRef) {
         this.requestRoute({ ...this.route, baseRef }, { replace: true });
         return null;
       }
-      this.patchToolbar();
+      this.patchControls();
       if (!this.compare) {
-        this.branchTree()?.setLoading(refs.repository);
+        this.branchTree()?.setLoading(refs.repository, {
+          baseRef,
+          headRef: taskCompareHeadRef(this.task, refs),
+        });
       }
       const compare = await getGitCompare(
         rootPath,
@@ -467,7 +424,7 @@ class CaffoldTaskReview extends HTMLElement {
         this.branchTree()?.setCompare(compare);
       }
       this.syncSelection();
-      this.patchToolbar();
+      this.patchControls();
       this.patchEmptyStates();
       if (this.route.path && this.route.scope === "branch") {
         void this.loadViewer();
@@ -490,6 +447,7 @@ class CaffoldTaskReview extends HTMLElement {
     return (
       this.active &&
       this.isConnected &&
+      (owner !== "branch" || this.route.scope === "branch") &&
       generation ===
         (owner === "branch" ? this.branchGeneration : this.statusGeneration) &&
       rootPath === taskWorktreeRootPath(this.task)
@@ -664,7 +622,7 @@ class CaffoldTaskReview extends HTMLElement {
     });
   }
 
-  patchToolbar() {
+  patchControls() {
     const gitAvailable = Boolean(this.task?.worktree);
     for (const button of this.querySelectorAll("button[data-review-axis]")) {
       const axis = button.dataset.reviewAxis;
@@ -672,10 +630,10 @@ class CaffoldTaskReview extends HTMLElement {
       const current = this.route[axis];
       button.setAttribute("aria-pressed", current === value ? "true" : "false");
       const gitOnly =
-        (axis === "scope" && value === "branch") ||
         (axis === "navigator" && value === "changes") ||
         (axis === "viewer" && value === "diff");
       button.disabled = gitOnly && !gitAvailable;
+      button.toggleAttribute("hidden", gitOnly && !gitAvailable);
       if (button.disabled) {
         button.title = "Unavailable outside a Git worktree";
       } else {
@@ -684,27 +642,13 @@ class CaffoldTaskReview extends HTMLElement {
     }
     const notice = this.querySelector(".task-review-git-notice");
     notice?.toggleAttribute("hidden", gitAvailable);
-    const base = this.baseSelect();
-    const refs = this.refs?.refs ?? [];
-    if (base) {
-      base.closest("label")?.toggleAttribute("hidden", this.route.scope !== "branch");
-      base.innerHTML = refs.length
-        ? refs.map((ref) => `<option value="${escapeAttribute(ref.name)}">${escapeText(ref.name)}</option>`).join("")
-        : `<option value="">Loading refs...</option>`;
-      base.disabled = refs.length === 0;
-      if (this.route.baseRef) {
-        base.value = this.route.baseRef;
-      }
-      base.title = this.route.baseRef;
-    }
-    this.patchRefreshButton();
     this.patchErrorState();
   }
 
   patchErrorState() {
     const error = this.route.scope === "branch" ? this.compareError : this.statusError;
     const message = error
-      ? `${this.route.scope === "branch" ? "Branch comparison" : "Working tree"} refresh failed: ${error.message}`
+      ? `${this.route.scope === "branch" ? "Branch comparison" : "Working tree"} update failed: ${error.message}`
       : "";
     const notice = this.querySelector(".task-review-error");
     if (!notice) {
@@ -747,9 +691,7 @@ class CaffoldTaskReview extends HTMLElement {
     const action = closestElement(event.target, "[data-review-action]");
     if (action && this.contains(action)) {
       event.stopPropagation();
-      if (action.dataset.reviewAction === "refresh") {
-        void this.refresh();
-      } else if (action.dataset.reviewAction === "review-branch") {
+      if (action.dataset.reviewAction === "review-branch") {
         this.updateAxis("scope", "branch");
       }
       return;
@@ -766,17 +708,6 @@ class CaffoldTaskReview extends HTMLElement {
     }
     event.stopPropagation();
     this.updateAxis(axis.dataset.reviewAxis, axis.dataset.reviewValue);
-  }
-
-  handleChange(event) {
-    const select = closestElement(event.target, "select[data-review-base]");
-    if (!select || !this.contains(select)) {
-      return;
-    }
-    event.stopPropagation();
-    this.compare = null;
-    this.compareError = null;
-    this.requestRoute({ ...this.route, baseRef: select.value }, { replace: true });
   }
 
   updateAxis(axis, value) {
@@ -823,31 +754,21 @@ class CaffoldTaskReview extends HTMLElement {
     );
   }
 
-  async refresh() {
-    if (this.refreshing) {
-      return;
+  async refreshAll() {
+    const requests = [
+      this.fileNavigator()?.requestRefresh({
+        allDirectories: true,
+        selected: Boolean(this.route.path),
+      }),
+    ];
+    if (this.task?.worktree) {
+      requests.push(
+        this.route.scope === "branch"
+          ? this.ensureBranchData({ force: true })
+          : this.refreshWorking(),
+      );
     }
-    this.refreshing = true;
-    this.patchRefreshButton();
-    try {
-      const requests = [
-        this.fileNavigator()?.requestRefresh({
-          allDirectories: true,
-          selected: Boolean(this.route.path),
-        }),
-      ];
-      if (this.task?.worktree) {
-        requests.push(
-          this.route.scope === "branch"
-            ? this.ensureBranchData({ force: true })
-            : this.refreshWorking(),
-        );
-      }
-      await Promise.allSettled(requests.filter(Boolean));
-    } finally {
-      this.refreshing = false;
-      this.patchRefreshButton();
-    }
+    await Promise.allSettled(requests.filter(Boolean));
   }
 
   subscribeWatch(path) {
@@ -861,10 +782,8 @@ class CaffoldTaskReview extends HTMLElement {
         if (path !== this.watchPath) {
           return;
         }
-        this.watchUnavailable = false;
-        this.patchRefreshButton();
         if (recovered) {
-          void this.refresh();
+          void this.refreshAll();
         }
       },
       onChange: (change) => {
@@ -894,13 +813,6 @@ class CaffoldTaskReview extends HTMLElement {
           void this.ensureBranchData({ force: true });
         }
       },
-      onError: () => {
-        if (path !== this.watchPath) {
-          return;
-        }
-        this.watchUnavailable = true;
-        this.patchRefreshButton();
-      },
     });
   }
 
@@ -908,22 +820,6 @@ class CaffoldTaskReview extends HTMLElement {
     this.watchUnsubscribe?.();
     this.watchUnsubscribe = null;
     this.watchPath = "";
-    this.watchUnavailable = false;
-  }
-
-  patchRefreshButton() {
-    const button = this.querySelector(".task-review-refresh");
-    if (!button) {
-      return;
-    }
-    const label = this.watchUnavailable
-      ? "Live updates unavailable. Refresh manually."
-      : "Refresh review";
-    button.innerHTML = renderInlineIcon("RefreshCw", label, "task-refresh-icon");
-    button.setAttribute("aria-label", label);
-    button.title = label;
-    button.classList.toggle("is-refreshing", this.refreshing);
-    button.classList.toggle("is-unavailable", this.watchUnavailable);
   }
 
   applyPanelWidth() {
@@ -975,9 +871,6 @@ class CaffoldTaskReview extends HTMLElement {
     return this.querySelector("caffold-review-panel-resizer");
   }
 
-  baseSelect() {
-    return this.querySelector("select[data-review-base]");
-  }
 }
 
 if (!customElements.get("caffold-task-review")) {
@@ -1097,16 +990,6 @@ function sameEventList(left = [], right = []) {
     left.length === right.length &&
     left.every((event, index) => event === right[index])
   );
-}
-
-function escapeText(value) {
-  const span = document.createElement("span");
-  span.textContent = `${value ?? ""}`;
-  return span.innerHTML;
-}
-
-function escapeAttribute(value) {
-  return escapeText(value).replaceAll('"', "&quot;");
 }
 
 function closestElement(target, selector) {

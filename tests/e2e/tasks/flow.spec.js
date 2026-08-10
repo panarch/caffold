@@ -270,6 +270,9 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
 
   await page.goto("/tasks/new");
   await expect(page).toHaveURL("/tasks/new");
+  await expect(
+    page.locator("caffold-task-workspace .task-workspace-close"),
+  ).toHaveAttribute("aria-label", "Close new task");
   await page.goBack();
   await expect(page).toHaveURL("/");
   await page.goto("/tasks/new");
@@ -491,9 +494,16 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await expect(page).toHaveURL(`/tasks/${threadId}`);
   await expect(tasksPage).toContainText("Hello from a global Codex thread.");
 
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await tasksPage.locator('caffold-task-review button[data-review-axis="navigator"][data-review-value="files"]').click();
-  await tasksPage.locator('caffold-task-review button[data-review-axis="viewer"][data-review-value="source"]').click();
+  const taskReview = tasksPage.locator("caffold-task-review");
+  if (testInfo.project.name === "phone") {
+    await taskReview.evaluate((review) => review.updateAxis("viewer", "source"));
+  } else {
+    await taskReview
+      .locator('button[data-review-axis="viewer"][data-review-value="source"]')
+      .click();
+  }
   await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
     "data-task-detail-view",
     "review",
@@ -508,7 +518,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
     "conversation",
   );
 
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
     "data-task-detail-view",
     "review",
@@ -516,7 +526,11 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await expect(page).toHaveURL(`/tasks/${threadId}/review?nav=files&view=source`);
   const taskDiff = tasksPage.locator("caffold-task-review");
   await taskDiff.getByRole("button", { name: "Changes", exact: true }).click();
-  await taskDiff.getByRole("button", { name: "Diff", exact: true }).click();
+  if (testInfo.project.name === "phone") {
+    await taskDiff.evaluate((review) => review.updateAxis("viewer", "diff"));
+  } else {
+    await taskDiff.getByRole("button", { name: "Diff", exact: true }).click();
+  }
   const readmeChange = taskDiff.locator(
     'caffold-git-diff-changes-tree button[data-file-tree-relative-path="README.md"]',
   );

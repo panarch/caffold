@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
-import { openCompletedTaskForReview } from "../support/task-review-test.js";
+import {
+  openCompletedTaskForReview,
+  selectTaskReviewScope,
+} from "../support/task-review-test.js";
 import { scrollTop } from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
@@ -26,7 +29,7 @@ test("preserves conversation and thread-local Review state while lifecycles deac
   await textarea.fill("Keep this draft while reviewing");
   const detailReadsBeforeReview = taskScenario.taskDetailReadRequests;
 
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   const review = tasksPage.locator("caffold-task-review");
   await expect(review).toBeVisible();
   await review.evaluate((element) => {
@@ -67,7 +70,7 @@ test("preserves conversation and thread-local Review state while lifecycles deac
     )
     .toBe(0);
 
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await expect(review).toHaveAttribute("data-persist-probe", "kept");
   await expect
     .poll(() =>
@@ -76,19 +79,23 @@ test("preserves conversation and thread-local Review state while lifecycles deac
     .toBe(360);
 });
 
-test("reopens Review at its last semantic route after returning to Conversation", async ({
+test("reopens the selected Review scope at its last semantic route", async ({
   page,
-}) => {
+}, testInfo) => {
   const { taskScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
 
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await taskReview
     .locator('caffold-git-diff-changes-tree button[data-file-tree-relative-path="planner.rs"]')
     .click();
-  await taskReview.getByRole("button", { name: "Branch", exact: true }).click();
+  await selectTaskReviewScope(tasksPage, "branch");
   await taskReview.getByRole("button", { name: "Source", exact: true }).click();
-  await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+  if (testInfo.project.name === "phone") {
+    await taskReview.evaluate((review) => review.updateAxis("navigator", "files"));
+  } else {
+    await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+  }
   await expect(page).toHaveURL(
     `/tasks/${taskScenario.threadId}/review?scope=branch&nav=files&view=source&file=planner.rs&base=origin%2Fmain`,
   );
@@ -96,7 +103,7 @@ test("reopens Review at its last semantic route after returning to Conversation"
   await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(page).toHaveURL(`/tasks/${taskScenario.threadId}`);
 
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.locator('button[data-review-scope="branch"]').click();
   await expect(page).toHaveURL(
     `/tasks/${taskScenario.threadId}/review?scope=branch&nav=files&view=source&file=planner.rs&base=origin%2Fmain`,
   );
@@ -111,7 +118,7 @@ test("keeps the selected Review viewer mounted during canonical task sync", asyn
   const { taskScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
 
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await taskReview
     .locator('caffold-git-diff-changes-tree button[data-file-tree-relative-path="planner.rs"]')
     .click();
@@ -126,6 +133,57 @@ test("keeps the selected Review viewer mounted during canonical task sync", asyn
   await expect(visibleDiff).toHaveAttribute("data-canonical-sync-probe", "kept");
   await expect(visibleDiff).toContainText("new planner behavior");
   await expect(taskReview.locator(".surface-message")).toHaveCount(0);
+});
+
+test("keeps Task view and pane controls mounted and focused through live updates", async ({
+  page,
+}) => {
+  const { reviewScenario, tasksPage, taskReview } =
+    await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await taskReview
+    .locator('caffold-git-diff-changes-tree button[data-file-tree-relative-path="planner.rs"]')
+    .click();
+
+  await tasksPage.evaluate((tasks) => {
+    tasks.querySelector('button[data-review-scope="working"]').stableControlProbe = true;
+    const review = tasks.querySelector("caffold-task-review");
+    review.querySelector('[data-review-value="files"]').stableControlProbe = true;
+    const viewerControl = review.querySelector('[data-review-value="diff"]');
+    viewerControl.stableControlProbe = true;
+    viewerControl.focus();
+  });
+
+  const requestsBefore = reviewScenario.gitStatusRequests;
+  reviewScenario.includeLiveFile = true;
+  await emitWatchChange(page, {
+    revision: 7,
+    paths: ["src/live-update.rs"],
+    gitStatusChanged: true,
+    gitRefsChanged: false,
+    overflow: false,
+  });
+  await expect.poll(() => reviewScenario.gitStatusRequests).toBeGreaterThan(requestsBefore);
+
+  expect(
+    await tasksPage.evaluate((tasks) => {
+      const scope = tasks.querySelector('button[data-review-scope="working"]');
+      const review = tasks.querySelector("caffold-task-review");
+      const navigator = review.querySelector('[data-review-value="files"]');
+      const viewer = review.querySelector('[data-review-value="diff"]');
+      return {
+        scope: scope.stableControlProbe === true,
+        navigator: navigator.stableControlProbe === true,
+        viewer: viewer.stableControlProbe === true,
+        viewerFocused: document.activeElement === viewer,
+      };
+    }),
+  ).toEqual({
+    scope: true,
+    navigator: true,
+    viewer: true,
+    viewerFocused: true,
+  });
 });
 
 test("does not reveal the selected Files entry again during canonical task sync", async ({
@@ -146,7 +204,7 @@ test("does not reveal the selected Files entry again during canonical task sync"
     `,
   });
 
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await taskReview.getByRole("button", { name: "Files", exact: true }).click();
   const fileList = taskReview.locator("caffold-file-navigator .file-tree-scroll");
   const selected = fileList.locator('button[data-file-tree-path="src/alpha.rs"]');
@@ -190,7 +248,7 @@ test("keeps both Review navigator scroll positions during unrelated live updates
     }
   });
 
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   const changesList = taskReview.locator("caffold-git-diff-changes-tree .file-tree-scroll");
   await expect(
     taskReview.locator('caffold-git-diff-changes-tree button[data-file-tree-kind="file"]'),
@@ -339,7 +397,7 @@ test("rejects a late file navigator response while Review is inactive", async ({
     await route.fulfill({ response });
   });
 
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await requested;
   await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
   releaseDirectory();
@@ -354,7 +412,7 @@ test("rejects a late file navigator response while Review is inactive", async ({
     )
     .toBe(null);
 
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await expect
     .poll(() => directoryRequests)
     .toBeGreaterThanOrEqual(2);

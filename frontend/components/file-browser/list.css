@@ -13,27 +13,34 @@ caffold-file-list {
   }
 
   & .file-list-panel > header {
+    box-sizing: border-box;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: 0.125rem;
     align-content: center;
+    height: var(--review-header-height, auto);
+    min-height: 0;
+    overflow: hidden;
     padding: 0.4375rem 0.875rem;
+    padding-left: var(--review-navigator-header-padding-inline, 0.875rem);
+    padding-right: var(--review-pane-action-clearance, 0.875rem);
     border-bottom: 1px solid var(--border);
   }
 
   & h2 {
     margin: 0;
     overflow: hidden;
-    font-size: 0.9375rem;
+    font-size: var(--review-pane-title-size, 0.9375rem);
     font-weight: 600;
-    line-height: 1.15;
+    line-height: var(--review-pane-title-line-height, 1.15);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   & .file-list-panel > header span {
     color: var(--muted);
-    font-size: 0.8125rem;
+    font-size: var(--review-pane-meta-size, 0.8125rem);
+    line-height: var(--review-pane-meta-line-height, normal);
   }
 
   & .file-list-title-row {

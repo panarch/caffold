@@ -40,7 +40,7 @@ caffold-task-detail-summary {
 
   & h2 {
     overflow: hidden;
-    font-size: var(--interface-heading-font-size);
+    font-size: 0.875rem;
     line-height: var(--interface-line-height);
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -92,7 +92,8 @@ caffold-task-detail-summary {
 
   & .task-mode-switch {
     display: inline-grid;
-    grid-template-columns: repeat(2, max-content);
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
     align-content: center;
     box-sizing: border-box;
     height: var(--interface-compact-visual-size);
@@ -129,12 +130,40 @@ caffold-task-detail-summary {
     padding: 0 var(--interface-space-4);
     place-items: center;
     border-radius: 3px;
+    white-space: nowrap;
+  }
+
+  & [data-summary-field="review-branch-label"] {
+    display: block;
+    max-width: 10rem;
+    overflow: hidden;
+    line-height: calc(var(--interface-compact-visual-size) - 2px);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   & .task-mode-switch button[aria-pressed="true"] > span {
     background: var(--surface);
     color: var(--text);
     box-shadow: 0 0 0 1px var(--border);
+  }
+
+  & .task-mode-switch button + button::before {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 1px;
+    height: 0.875rem;
+    background: var(--border);
+    content: "";
+    opacity: 0.72;
+    pointer-events: none;
+    transform: translate(-0.5px, -50%);
+  }
+
+  & .task-mode-switch button[aria-pressed="true"] + button::before,
+  & .task-mode-switch button + button[aria-pressed="true"]::before {
+    opacity: 0;
   }
 
   & .task-review-menu {
@@ -355,8 +384,12 @@ caffold-task-detail-summary {
       padding: 0;
     }
 
-    & h2 {
-      font-size: var(--interface-heading-font-size);
+    & .task-mode-switch button > span {
+      padding-inline: var(--interface-space-3);
+    }
+
+    & [data-summary-field="review-branch-label"] {
+      max-width: 7.5rem;
     }
 
   }

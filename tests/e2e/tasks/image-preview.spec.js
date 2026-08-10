@@ -91,9 +91,9 @@ test("keeps one sent-image dialog stable through live conversation updates", asy
 
   await sentPreview.click();
   await expect(dialog).toBeVisible();
-  await tasksPage.locator(".task-conversation").evaluate((element) => {
-    window.__taskConversationBeforeImagePreviewSync = element;
-  });
+  const previewImage = dialog.locator("[data-task-image-preview-image]");
+  const previewSource = await previewImage.getAttribute("src");
+  expect(previewSource).toBeTruthy();
 
   scenario.events = [
     ...scenario.events,
@@ -108,19 +108,16 @@ test("keeps one sent-image dialog stable through live conversation updates", asy
   scenario.updateTask({ lastEventSummary: "Live update while previewing" });
   await emitTaskSync(page, scenario, 2);
 
-  await expect
-    .poll(() =>
-      tasksPage.locator(".task-conversation").evaluate(
-        (element) =>
-          element !== window.__taskConversationBeforeImagePreviewSync,
-      ),
-    )
-    .toBe(true);
+  const liveUpdate = tasksPage.locator(
+    '.task-event[data-event-id="event_image_preview_live"]',
+  );
+  await expect(liveUpdate).toContainText("Live update while previewing");
   await expect(dialogHost).toHaveCount(1);
   await expect(dialog).toBeVisible();
   await expect(dialog.locator("[data-task-image-preview-name]")).toHaveText(
     "planner-layout.png",
   );
+  await expect(previewImage).toHaveAttribute("src", previewSource);
   await expect
     .poll(() =>
       dialog.evaluate(
@@ -128,6 +125,9 @@ test("keeps one sent-image dialog stable through live conversation updates", asy
       ),
     )
     .toBe(true);
+  await dialog.getByRole("button", { name: "Close image preview" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(liveUpdate).toBeVisible();
 
   await tasksPage.evaluate((element) => {
     element.prepareRoute({ kind: "tasks", new: true });

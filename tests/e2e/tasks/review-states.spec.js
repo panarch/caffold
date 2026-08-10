@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
-import { openCompletedTaskForReview } from "../support/task-review-test.js";
+import {
+  openCompletedTaskForReview,
+  selectTaskReviewScope,
+} from "../support/task-review-test.js";
 import {
   captureReviewScreenshot,
   stabilizeDynamicText,
@@ -18,7 +21,7 @@ test("keeps a clean working tree explicit and offers branch review", async ({
       review.cleanWorkingTree = true;
     },
   });
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await expect(page).toHaveURL(`/tasks/${taskScenario.threadId}/review`);
   await expect(taskReview).toContainText("No changes.");
   await expect(taskReview).toContainText(
@@ -40,8 +43,8 @@ test("names the selected base when a branch comparison is clean", async ({
       review.cleanBranch = true;
     },
   });
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
-  await taskReview.getByRole("button", { name: "Branch", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await selectTaskReviewScope(tasksPage, "branch");
   await expect(page).toHaveURL(
     `/tasks/${taskScenario.threadId}/review?scope=branch&base=origin%2Fmain`,
   );
@@ -64,13 +67,28 @@ test("normalizes a non-Git task to Files and Source without hiding why", async (
     `/tasks/${taskScenario.threadId}/review?nav=files&view=source`,
   );
   await expect(taskReview).toContainText("Git review is unavailable for this task.");
-  await expect(taskReview.getByRole("button", { name: "Changes", exact: true })).toBeDisabled();
-  await expect(taskReview.getByRole("button", { name: "Diff", exact: true })).toBeDisabled();
+  await expect(
+    tasksPage.locator('caffold-task-detail-summary button[data-review-scope="working"]'),
+  ).toHaveCount(0);
+  await expect(
+    tasksPage.locator('caffold-task-detail-summary button[data-review-scope="branch"]'),
+  ).toHaveCount(0);
+  await expect(taskReview.locator('[data-review-value="changes"]')).toBeHidden();
+  await expect(taskReview.locator('[data-review-value="diff"]')).toBeHidden();
+  await expect(taskReview.getByRole("button", { name: "Files", exact: true })).toBeVisible();
   await expect(
     taskReview.locator("caffold-file-navigator").getByRole("button", {
       name: /alpha\.rs file/,
     }),
   ).toBeAttached();
+  if (testInfo.project.name === "phone") {
+    await expect(taskReview.locator('[data-review-value="source"]')).toBeHidden();
+    await taskReview
+      .locator("caffold-file-navigator")
+      .getByRole("button", { name: /alpha\.rs file/ })
+      .click();
+  }
+  await expect(taskReview.getByRole("button", { name: "Source", exact: true })).toBeVisible();
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-review-no-git");
 });
@@ -83,10 +101,10 @@ test("keeps unchanged and deleted file representations explicit", async ({
       review.edgeCaseFiles = true;
     },
   });
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await taskReview.getByRole("button", { name: "Files", exact: true }).click();
-  await taskReview.getByRole("button", { name: "Source", exact: true }).click();
   await taskReview.locator('button[data-file-tree-path="src/alpha.rs"]').click();
+  await taskReview.getByRole("button", { name: "Source", exact: true }).click();
   await expect(taskReview.locator("caffold-review-file-viewer")).toContainText("pub const ALPHA");
   await taskReview.getByRole("button", { name: "Diff", exact: true }).click();
   await expect(taskReview).toContainText("No changes in this scope.");
@@ -100,10 +118,10 @@ test("keeps unchanged and deleted file representations explicit", async ({
   await taskReview.getByRole("button", { name: "View source" }).click();
   await expect(taskReview.locator("caffold-review-file-viewer")).toContainText("pub const ALPHA");
 
-  await taskReview.getByRole("button", { name: "Changes", exact: true }).click();
   if (test.info().project.name === "phone") {
     await taskReview.getByRole("button", { name: "Back to navigator" }).click();
   }
+  await taskReview.getByRole("button", { name: "Changes", exact: true }).click();
   await taskReview.locator('button[data-file-tree-relative-path="deleted.rs"]').click();
   await taskReview.getByRole("button", { name: "Source", exact: true }).click();
   await expect(page).toHaveURL(
@@ -119,19 +137,31 @@ test("keeps unchanged and deleted file representations explicit", async ({
   await captureReviewScreenshot(page, testInfo, "tasks-review-deleted-source");
 });
 
-test("keeps the last canonical working tree visible when refresh fails", async ({
+test("keeps the last canonical working tree visible when a live update fails", async ({
   page,
 }, testInfo) => {
   const { reviewScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   const changes = taskReview.locator("caffold-git-diff-changes-tree");
   await expect(changes.locator('button[data-file-tree-kind="file"]')).toHaveCount(4);
 
   reviewScenario.failNextGitStatus = true;
-  await taskReview.getByRole("button", { name: "Refresh review" }).click();
-  await expect(taskReview).toContainText("Working tree refresh failed:");
+  await page.evaluate(() => {
+    const source = window.__caffoldMockEventSources.find(
+      (candidate) =>
+        candidate.url.startsWith("/api/watch?") && candidate.readyState !== 2,
+    );
+    source?.emit("change", {
+      revision: 11,
+      paths: ["src/planner.rs"],
+      gitStatusChanged: true,
+      gitRefsChanged: false,
+      overflow: false,
+    });
+  });
+  await expect(taskReview).toContainText("Working tree update failed:");
   await expect(changes.locator('button[data-file-tree-kind="file"]')).toHaveCount(4);
   await stabilizeDynamicText(page);
-  await captureReviewScreenshot(page, testInfo, "tasks-review-refresh-error");
+  await captureReviewScreenshot(page, testInfo, "tasks-review-update-error");
 });

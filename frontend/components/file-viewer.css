@@ -41,6 +41,7 @@
   & .viewer-panel > header {
     display: grid;
     padding: 0.375rem 0.5rem 0.375rem 0.875rem;
+    padding-right: var(--review-pane-action-clearance, 0.5rem);
     border-bottom: 1px solid var(--border);
   }
 }
@@ -338,6 +339,7 @@ caffold-review-file-viewer {
   :is(caffold-file-viewer, caffold-review-file-viewer) {
     & .viewer-panel > header {
       padding: 0.25rem 0.5rem;
+      padding-right: var(--review-pane-action-clearance, 0.5rem);
     }
 
     & .viewer-title-row {

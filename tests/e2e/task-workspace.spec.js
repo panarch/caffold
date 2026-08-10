@@ -350,7 +350,7 @@ test("keeps bottom navigation responsive in Conversation and hides it throughout
     });
   }
 
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await expect(page).toHaveURL(`/tasks/${taskScenario.threadId}/review`);
   await expect(navigation).toBeHidden();
 

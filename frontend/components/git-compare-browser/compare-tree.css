@@ -22,6 +22,8 @@ caffold-git-compare-tree {
     min-height: 0;
     overflow: hidden;
     padding: 0.25rem 0.75rem;
+    padding-left: var(--review-navigator-header-padding-inline, 0.75rem);
+    padding-right: var(--review-pane-action-clearance, 0.75rem);
     border-bottom: 1px solid var(--border);
   }
 
@@ -35,13 +37,25 @@ caffold-git-compare-tree {
     white-space: nowrap;
   }
 
-  & .compare-tree-title-row {
+  & .compare-tree-title-row,
+  & .compare-tree-meta-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.5rem;
     align-items: center;
     width: 100%;
     min-width: 0;
+  }
+
+  & .compare-base {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 0.74rem;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   & .compare-file-count {

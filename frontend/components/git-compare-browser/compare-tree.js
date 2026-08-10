@@ -28,8 +28,13 @@ class CaffoldGitCompareTree extends HTMLElement {
     }
   }
 
-  setLoading(repository) {
-    this.state = { status: "loading", repository };
+  setLoading(repository, comparison = {}) {
+    this.state = {
+      status: "loading",
+      repository,
+      baseRef: `${comparison.baseRef ?? ""}`,
+      headRef: `${comparison.headRef ?? ""}`,
+    };
     this.renderState();
   }
 
@@ -95,7 +100,7 @@ class CaffoldGitCompareTree extends HTMLElement {
         <section class="compare-tree-panel${state.status === "error" ? " error-panel" : ""}"${
           state.status === "loading" ? ' aria-busy="true"' : ""
         }>
-          ${this.renderHeader(state.repository, null)}
+          ${this.renderHeader(state, null)}
           ${message ? `<p class="surface-message">${message}</p>` : "<caffold-file-tree></caffold-file-tree>"}
         </section>
       `;
@@ -143,12 +148,18 @@ class CaffoldGitCompareTree extends HTMLElement {
 
   renderHeaderContent(payload, count) {
     const countLabel = count === null || count === undefined ? "" : `${count} files`;
+    const baseRef = `${payload?.baseRef ?? ""}`;
     return `
       <div class="compare-tree-title-row">
         <h2>Files</h2>
         <span class="compare-file-count">${escapeHtml(countLabel)}</span>
       </div>
-      ${renderDiffStats(payload)}
+      <div class="compare-tree-meta-row">
+        ${baseRef
+          ? `<span class="compare-base" title="Compare with ${escapeHtml(baseRef)}">vs ${escapeHtml(compareRefLabel(baseRef))}</span>`
+          : "<span></span>"}
+        ${renderDiffStats(payload)}
+      </div>
     `;
   }
 }
@@ -169,6 +180,10 @@ function renderDiffStats(payload) {
       <span class="is-deletion">-${escapeHtml(deletions)}</span>
     </span>
   `;
+}
+
+function compareRefLabel(ref) {
+  return `${ref ?? ""}`.replace(/^origin\//, "");
 }
 
 function compareNodes(files) {

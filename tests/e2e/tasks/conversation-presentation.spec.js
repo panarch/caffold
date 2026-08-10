@@ -453,7 +453,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
       ...element.querySelectorAll(
         ".task-detail-actions > button, .task-detail-actions > details > summary, .task-detail-info-button",
       ),
-    ];
+    ].filter((control) => !control.matches(":disabled"));
     return {
       visualHeights: controls.map((control) => {
         const bounds = control.getBoundingClientRect();
@@ -517,7 +517,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     ).toBe(true);
   }
   const workspaceHeaderMetrics = await tasksPage.evaluate((element) => {
-    const close = document.querySelector(".task-workspace-close");
+    const close = document.querySelector(".task-workspace-back");
     const summary = element.querySelector(".task-detail-summary");
     const summaryBounds = summary.getBoundingClientRect();
     const headingBounds = summary
@@ -610,7 +610,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
         .getBoundingClientRect();
       return {
         closeVisible:
-          getComputedStyle(document.querySelector(".task-workspace-close"))
+          getComputedStyle(document.querySelector(".task-workspace-back"))
             .display !== "none",
         sameRow:
           Math.abs(

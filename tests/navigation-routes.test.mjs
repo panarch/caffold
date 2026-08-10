@@ -156,7 +156,7 @@ test("derives deterministic parent routes", () => {
       "/tasks/thread/review?scope=branch&nav=files&view=source&file=src%2Flib.rs&base=origin%2Fmain",
       "/tasks/thread/review?scope=branch&nav=files&view=source&base=origin%2Fmain",
     ],
-    ["/tasks/thread/review", "/tasks/thread"],
+    ["/tasks/thread/review", "/"],
     ["/files?cwd=repo&file=src%2Flib.rs", "/files?cwd=repo"],
     ["/files?cwd=repo", null],
     ["/git/diff?cwd=repo&file=src%2Flib.rs", "/git/diff?cwd=repo"],

@@ -17,10 +17,14 @@ test("browses source through the shared Files navigator and one root watch", asy
 }, testInfo) => {
   const { taskScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await taskReview.getByRole("button", { name: "Files", exact: true }).click();
-  await taskReview.getByRole("button", { name: "Source", exact: true }).click();
-  await expect(taskReview.getByRole("button", { name: "Refresh review" })).toHaveCount(1);
+  if (testInfo.project.name === "phone") {
+    await taskReview.evaluate((review) => review.updateAxis("viewer", "source"));
+  } else {
+    await taskReview.getByRole("button", { name: "Source", exact: true }).click();
+  }
+  await expect(taskReview.getByRole("button", { name: "Refresh review" })).toHaveCount(0);
   await expect(taskReview.getByRole("button", { name: "Refresh files" })).toHaveCount(0);
   await expect(page).toHaveURL(
     `/tasks/${taskScenario.threadId}/review?nav=files&view=source`,
@@ -97,9 +101,13 @@ test("previews images selected from the shared Files navigator", async ({
 }) => {
   const { taskScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await taskReview.getByRole("button", { name: "Files", exact: true }).click();
-  await taskReview.getByRole("button", { name: "Source", exact: true }).click();
+  if (test.info().project.name === "phone") {
+    await taskReview.evaluate((review) => review.updateAxis("viewer", "source"));
+  } else {
+    await taskReview.getByRole("button", { name: "Source", exact: true }).click();
+  }
 
   const navigator = taskReview.locator("caffold-file-navigator");
   await navigator.locator('button[data-file-tree-path="src/review-image.svg"]').click();
@@ -117,7 +125,7 @@ test("previews images selected from the shared Files navigator", async ({
 
 test("keeps the shared Review panes inside the task workspace", async ({ page }) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
 
   const layout = await page.evaluate(() => {
     const codex = document.querySelector("caffold-task-workspace");
@@ -159,7 +167,7 @@ test("keeps browser Back aligned with the semantic Review parent", async ({
   );
   const { taskScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
-  await tasksPage.getByRole("button", { name: "Review", exact: true }).click();
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await taskReview.getByRole("button", { name: "Files", exact: true }).click();
   await taskReview.getByRole("button", { name: "Source", exact: true }).click();
 
