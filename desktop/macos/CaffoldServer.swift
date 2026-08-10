@@ -267,37 +267,15 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func menuBarIcon() -> NSImage {
-        let image = NSImage(size: NSSize(width: 18, height: 18))
-        image.lockFocus()
-
-        NSColor.black.setStroke()
-
-        let frame = NSBezierPath()
-        frame.lineWidth = 1.7
-        frame.lineCapStyle = .round
-        frame.lineJoinStyle = .round
-        frame.move(to: NSPoint(x: 4, y: 2.5))
-        frame.line(to: NSPoint(x: 4, y: 15.5))
-        frame.move(to: NSPoint(x: 14, y: 2.5))
-        frame.line(to: NSPoint(x: 14, y: 15.5))
-        for y in [4.2, 9.0, 13.8] {
-            frame.move(to: NSPoint(x: 2.5, y: y))
-            frame.line(to: NSPoint(x: 15.5, y: y))
+        guard
+            let url = Bundle.main.url(forResource: "CaffoldMenuIcon", withExtension: "png"),
+            let image = NSImage(contentsOf: url)
+        else {
+            return NSImage(size: NSSize(width: 18, height: 18))
         }
-        frame.stroke()
 
-        let braces = NSBezierPath()
-        braces.lineWidth = 1.45
-        braces.lineCapStyle = .round
-        braces.lineJoinStyle = .round
-        braces.move(to: NSPoint(x: 4, y: 4.2))
-        braces.line(to: NSPoint(x: 14, y: 13.8))
-        braces.move(to: NSPoint(x: 4, y: 13.8))
-        braces.line(to: NSPoint(x: 14, y: 4.2))
-        braces.stroke()
-
-        image.unlockFocus()
-        image.isTemplate = true
+        image.size = NSSize(width: 18, height: 18)
+        image.isTemplate = false
         return image
     }
 

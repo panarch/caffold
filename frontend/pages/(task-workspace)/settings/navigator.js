@@ -43,7 +43,7 @@ class CaffoldSettingsNavigator extends HTMLElement {
   render() {
     this.innerHTML = `
       <header class="settings-navigator-header">
-        <img src="/assets/icons/caffold-mark.svg" alt="" />
+        <img src="/assets/icons/favicon-32.png" alt="" />
         <div>
           <strong>Settings</strong>
           <span>Local to this browser</span>

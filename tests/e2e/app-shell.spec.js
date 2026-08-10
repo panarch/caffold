@@ -79,7 +79,7 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   );
   await expect(page.locator('link[rel="icon"]')).toHaveAttribute(
     "href",
-    "/assets/icons/caffold.svg",
+    "/assets/icons/favicon-32.png",
   );
   await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute(
     "href",
@@ -117,7 +117,6 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(manifest.background_color).toBe("#f5f5f5");
   expect(manifest.icons.map((icon) => icon.src)).toEqual(
     expect.arrayContaining([
-      "/assets/icons/caffold.svg",
       "/assets/icons/icon-192.png",
       "/assets/icons/icon-512.png",
       "/assets/icons/maskable-192.png",
@@ -125,18 +124,12 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
     ]),
   );
 
-  const svgResponse = await request.get("/assets/icons/caffold.svg");
-  expect(svgResponse.headers()["content-type"]).toContain("image/svg+xml");
-  const appIcon = await svgResponse.text();
-  expect(appIcon).toContain('filter id="caffold-mark-shadow"');
-  expect(appIcon).toContain('<rect width="256" height="256" fill="#f7faf7"/>');
-  expect(appIcon).not.toContain('rx="48"');
-
-  const markResponse = await request.get("/assets/icons/caffold-mark.svg");
-  expect(markResponse.headers()["content-type"]).toContain("image/svg+xml");
-  const markSvg = await markResponse.text();
-  expect(markSvg).toContain('viewBox="40 40 176 176"');
-  expect(markSvg).not.toContain("<rect");
+  for (const iconPath of ["caffold.png", "favicon-32.png"]) {
+    const iconResponse = await request.get(`/assets/icons/${iconPath}`);
+    expect(iconResponse.headers()["content-type"]).toContain("image/png");
+    const icon = await iconResponse.body();
+    expect([...icon.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+  }
 
   const gitBrandResponse = await request.get("/assets/brand/git-logomark-light.svg");
   expect(gitBrandResponse.headers()["content-type"]).toContain("image/svg+xml");
@@ -198,7 +191,8 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   );
   expect(serviceWorker).not.toContain("__CAFFOLD_BUILD_ID__");
   expect(serviceWorker).not.toMatch(/caffold-shell-v\d+/);
-  expect(serviceWorker).toContain("/assets/icons/caffold-mark.svg");
+  expect(serviceWorker).toContain("/assets/icons/caffold.png");
+  expect(serviceWorker).toContain("/assets/icons/favicon-32.png");
   expect(serviceWorker).toContain("/assets/brand/git-logomark-light.svg");
   expect(serviceWorker).toContain("/assets/brand/github-invertocat-light.svg");
   expect(serviceWorker).toContain("/assets/brand/codex-template@2x.png");

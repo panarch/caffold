@@ -50,7 +50,7 @@ class CaffoldSettingsAboutPage extends HTMLElement {
       <div class="settings-content-scroll">
         <section class="settings-content-section" aria-labelledby="settings-about-title">
           <header class="settings-about-heading">
-            <img src="/assets/icons/caffold-mark.svg" alt="" />
+            <img src="/assets/icons/caffold.png" alt="" />
             <div>
               <h2 id="settings-about-title">About Caffold</h2>
               <p>Local workspace and code review</p>

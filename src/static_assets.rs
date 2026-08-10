@@ -28,9 +28,9 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "fonts/D2Coding-OFL.txt" => Some(plain_text(include_str!(
             "../frontend/assets/fonts/D2Coding-OFL.txt"
         ))),
-        "icons/caffold.svg" => Some(svg(include_str!("../frontend/assets/icons/caffold.svg"))),
-        "icons/caffold-mark.svg" => Some(svg(include_str!(
-            "../frontend/assets/icons/caffold-mark.svg"
+        "icons/caffold.png" => Some(png(include_bytes!("../frontend/assets/icons/caffold.png"))),
+        "icons/favicon-32.png" => Some(png(include_bytes!(
+            "../frontend/assets/icons/favicon-32.png"
         ))),
         "icons/icon-192.png" => Some(png(include_bytes!("../frontend/assets/icons/icon-192.png"))),
         "icons/icon-512.png" => Some(png(include_bytes!("../frontend/assets/icons/icon-512.png"))),
@@ -562,13 +562,11 @@ mod tests {
         assert_eq!(build_info.content_type, "text/javascript; charset=utf-8");
         assert!(build_info.body.starts_with(b"export const BUILD_INFO"));
 
-        let svg = get("icons/caffold.svg").expect("svg icon asset");
-        assert_eq!(svg.content_type, "image/svg+xml");
-        assert!(svg.body.starts_with(b"<svg"));
-
-        let mark_svg = get("icons/caffold-mark.svg").expect("svg mark asset");
-        assert_eq!(mark_svg.content_type, "image/svg+xml");
-        assert!(mark_svg.body.starts_with(b"<svg"));
+        for path in ["icons/caffold.png", "icons/favicon-32.png"] {
+            let icon = get(path).expect("PNG icon asset");
+            assert_eq!(icon.content_type, "image/png");
+            assert!(icon.body.starts_with(b"\x89PNG\r\n\x1a\n"));
+        }
 
         let brand_svg = get("brand/github-invertocat-light.svg").expect("brand svg asset");
         assert_eq!(brand_svg.content_type, "image/svg+xml");
