@@ -1255,7 +1255,8 @@ test("keeps task event chronology stable through approval, completion, and reloa
     detailRevision,
   );
   await expect(tasksPage.locator(".task-turn-work")).toHaveCount(1);
-  const completedWorkDetails = tasksPage.locator(".task-turn-work > details");
+  const completedWorkOwner = tasksPage.locator("caffold-task-work-details");
+  const completedWorkDetails = completedWorkOwner.locator(":scope > details");
   const completedWorkSummary = completedWorkDetails.locator(":scope > summary");
   const conversationScroller = tasksPage.locator(".task-conversation-scroll");
   await conversationScroller.evaluate((element) => {
@@ -1279,7 +1280,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
     .toBeCloseTo(disclosureOffset, 1);
   await expect.poll(() => isScrolledToBottom(conversationScroller)).toBe(false);
   const completedWorkOrder = () =>
-    tasksPage.locator(".task-work-item").evaluateAll((items) =>
+    completedWorkOwner.locator(".task-work-details-item").evaluateAll((items) =>
       items.map((item) => item.dataset.eventType),
     );
   expect(await completedWorkOrder()).toEqual([
@@ -1317,7 +1318,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
     .toBeCloseTo(disclosureOffsetBeforeLive, 1);
   await expect.poll(() => isScrolledToBottom(conversationScroller)).toBe(false);
   const completedCommandButton = tasksPage.locator(
-    '.task-work-item[data-event-type="command_execution"] > .task-command-summary',
+    '.task-work-details-item[data-event-type="command_execution"] > .task-work-details-command-summary',
   );
   await expect(completedCommandButton).toContainText("Completed");
   await completedCommandButton.click();
@@ -1351,14 +1352,14 @@ test("keeps task event chronology stable through approval, completion, and reloa
     .toBe(finalAnswer.createdMs);
   await expect(
     tasksPage.locator(
-      '.task-work-item[data-event-type="assistant_message"]',
+      '.task-work-details-item[data-event-type="assistant_message"]',
     ),
   ).toHaveCount(2);
 
   await page.reload();
   await expect(tasksPage).toContainText("The event order is stable.");
   await expect(tasksPage.locator(".task-turn-work")).toHaveCount(1);
-  await tasksPage.locator(".task-turn-work > details > summary").click();
+  await tasksPage.locator("caffold-task-work-details > details > summary").click();
   expect(await completedWorkOrder()).toEqual([
     "reasoning",
     "assistant_message",

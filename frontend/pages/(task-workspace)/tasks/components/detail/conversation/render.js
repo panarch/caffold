@@ -31,6 +31,7 @@ import {
 } from "../../../task-format.js";
 
 export function renderConversation(events, task, approvals = [], options = {}) {
+  const workDetails = new Map();
   const conversationEvents = sortEventsChronologically(
     dedupeCanonicalEvents(events),
   );
@@ -61,6 +62,7 @@ export function renderConversation(events, task, approvals = [], options = {}) {
           approvalErrors: options.approvalErrors,
           liveStatusAvailable,
           eventOrder,
+          workDetails,
         });
       }
       if (
@@ -92,18 +94,18 @@ export function renderConversation(events, task, approvals = [], options = {}) {
     .filter(Boolean)
     .map((entry, index) => ({ ...entry, index }))
     .sort((left, right) => left.order - right.order || left.index - right.index);
-  const output = entries.map(({ html }) => html).join("");
+  let html = entries.map((entry) => entry.html).join("");
   if (liveStatusAvailable && isTaskActivelyWorking(task)) {
     const activeGroup = groups[activeGroupIndex];
-    return `${output}${renderActiveTurnStatus(
+    html += renderActiveTurnStatus(
       activeGroup ?? {
         turnId: task?.activeTurn?.id ?? "active-turn",
         events: [],
       },
       task,
-    )}`;
+    );
   }
-  return output;
+  return { html, workDetails };
 }
 
 function renderedTimelineEntry(events, html, eventOrder) {
@@ -173,6 +175,7 @@ function renderTurnGroupEntries(group, task, options = {}) {
       options.controlsDisabled,
       options.approvalErrors,
       options.eventOrder,
+      options.workDetails,
     );
   }
 
@@ -202,6 +205,7 @@ function renderCompletedTurnGroupEntries(
   controlsDisabled = false,
   approvalErrors = new Map(),
   eventOrder = new Map(),
+  workDetails = new Map(),
 ) {
   const output = [];
   const userEvents = group.events.filter((event) => event.type === "user_message");
@@ -233,7 +237,7 @@ function renderCompletedTurnGroupEntries(
     output.push(
       renderedTimelineEntry(
         [workSummaryAnchor],
-        renderTurnWorkSummary(group, workEvents, terminalEvent),
+        renderTurnWorkSummary(group, workEvents, terminalEvent, task, workDetails),
         eventOrder,
       ),
     );
@@ -718,22 +722,29 @@ function renderThinkingEvent(event, text, task, eventState) {
   `;
 }
 
-function renderTurnWorkSummary(group, workEvents, terminalEvent) {
+function renderTurnWorkSummary(
+  group,
+  workEvents,
+  terminalEvent,
+  task,
+  workDetails,
+) {
   const duration = turnDurationLabel(group.events, terminalEvent);
   const count = turnWorkItemCount(workEvents);
   const updateText = count === 1 ? "1 update" : `${count} updates`;
   const label = duration ? `Worked for ${duration}` : "Work details";
+  const threadId = `${task?.threadId ?? task?.id ?? workEvents[0]?.threadId ?? ""}`;
+  const disclosureKey = `turn-work:${turnGroupDisclosureIdentity(group)}`;
+  const identity = `${threadId}:${disclosureKey}`;
+  workDetails.set(identity, {
+    identity,
+    label,
+    updateText,
+    events: [...workEvents],
+  });
   return `
-    <li class="task-event task-turn-work" data-turn-id="${escapeHtml(group.turnId)}">
-      <details${disclosureIdentityAttribute("turn-work", turnGroupDisclosureIdentity(group))}>
-        <summary>
-          <span>${escapeHtml(label)}</span>
-          <span>${escapeHtml(updateText)}</span>
-        </summary>
-        <div class="task-turn-work-body">
-          ${renderTurnWorkItems(workEvents)}
-        </div>
-      </details>
+    <li class="task-event task-turn-work" data-turn-id="${escapeHtml(group.turnId)}" data-conversation-entry-key="${escapeHtml(identity)}">
+      <caffold-task-work-details></caffold-task-work-details>
     </li>
   `;
 }
@@ -763,197 +774,6 @@ function turnDurationLabel(events, terminalEvent) {
     return "";
   }
   return formatDuration(endMs - startMs);
-}
-
-function renderTurnWorkItems(events) {
-  const output = [];
-  let combinedEvents = [];
-  let combinedType = "";
-  const flushCombinedEvents = () => {
-    if (combinedType === "reasoning") {
-      output.push(renderCombinedReasoningWorkItem(combinedEvents));
-    } else if (combinedType === "file_change") {
-      output.push(renderCombinedFileChangeWorkItem(combinedEvents));
-    }
-    combinedEvents = [];
-    combinedType = "";
-  };
-
-  for (const event of events) {
-    if (["reasoning", "file_change"].includes(event.type)) {
-      if (combinedType && combinedType !== event.type) {
-        flushCombinedEvents();
-      }
-      combinedType = event.type;
-      combinedEvents.push(event);
-      continue;
-    }
-    flushCombinedEvents();
-    output.push(renderTurnWorkItem(event));
-  }
-  flushCombinedEvents();
-  return output.filter(Boolean).join("");
-}
-
-function renderCombinedReasoningWorkItem(events) {
-  if (!events.length) {
-    return "";
-  }
-  const text = events
-    .map((event) => {
-      const payload = event.payload ?? {};
-      const summary = Array.isArray(payload.summary)
-        ? payload.summary.filter(Boolean).join("\n\n")
-        : "";
-      const content = Array.isArray(payload.content)
-        ? payload.content.filter(Boolean).join("\n\n")
-        : "";
-      return [summary, content].filter(Boolean).join("\n\n");
-    })
-    .filter(Boolean)
-    .join("\n\n");
-  return renderTurnWorkItemShell(latestEvent(events), "Thinking", text);
-}
-
-function renderCombinedFileChangeWorkItem(events) {
-  if (!events.length) {
-    return "";
-  }
-
-  const latest = latestEvent(events);
-  const payload = latest.payload ?? {};
-  const latestCount =
-    typeof payload.changeCount === "number"
-      ? payload.changeCount
-      : Array.isArray(payload.changes)
-        ? payload.changes.length
-        : null;
-  const latestSummary =
-    typeof latestCount === "number"
-      ? latestCount === 1
-        ? "Latest: 1 changed file"
-        : `Latest: ${latestCount} changed files`
-      : "";
-  const status = payload.status ? `Latest status: ${formatStatus(payload.status)}` : "";
-  const updateText =
-    events.length === 1
-      ? "1 file change update"
-      : `${events.length} file change updates`;
-
-  return renderFileChangeWorkItemShell(
-    latest,
-    [updateText, latestSummary, status].filter(Boolean).join("\n"),
-    fileChangePaths(events),
-  );
-}
-
-function latestEvent(events) {
-  return events.reduce((latest, event) =>
-    (event.createdMs ?? 0) >= (latest.createdMs ?? 0) ? event : latest,
-  );
-}
-
-function renderTurnWorkItem(event) {
-  const payload = event.payload ?? {};
-  const dataType = escapeHtml(event.type);
-  if (event.type === "assistant_message") {
-    return renderTurnWorkItemShell(event, "Update", payload.text);
-  }
-  if (event.type === "reasoning") {
-    const summary = Array.isArray(payload.summary)
-      ? payload.summary.filter(Boolean).join("\n\n")
-      : "";
-    const content = Array.isArray(payload.content)
-      ? payload.content.filter(Boolean).join("\n\n")
-      : "";
-    return renderTurnWorkItemShell(event, "Thinking", [summary, content].filter(Boolean).join("\n\n"));
-  }
-  if (event.type === "plan") {
-    return renderTurnWorkItemShell(event, "Plan", payload.text);
-  }
-  if (event.type === "command_execution") {
-    const command = `${payload.command ?? ""}`.trim();
-    const cwd = `${payload.cwd ?? ""}`.trim();
-    const status = `${payload.status ?? ""}`.trim();
-    const output = `${payload.aggregatedOutput ?? ""}`.trim();
-    if (isTerminalCommandStatus(status)) {
-      return `
-        <article class="task-work-item task-work-command" data-event-type="command_execution" data-command-status="${escapeHtml(commandResultStatus(payload))}" data-command-terminal="true">
-          ${renderTerminalCommandSummary(event)}
-        </article>
-      `;
-    }
-    const open = status && status !== "completed" ? " open" : "";
-    return `
-      <article class="task-work-item task-work-command" data-event-type="command_execution" data-command-status="${escapeHtml(status || "unknown")}">
-        <details${open}${disclosureIdentityAttribute("command", eventIdentityKey(event))}>
-          <summary>
-            <strong>Command</strong>
-            ${status ? `<span>${escapeHtml(formatStatus(status))}</span>` : ""}
-            <time>${escapeHtml(formatDate(event.createdMs))}</time>
-          </summary>
-          <div class="task-work-command-body">
-            ${command ? `<code>$ ${escapeHtml(command)}</code>` : ""}
-            ${cwd ? `<span>cwd: ${escapeHtml(cwd)}</span>` : ""}
-            ${output ? `<pre>${escapeHtml(output)}</pre>` : ""}
-          </div>
-        </details>
-      </article>
-    `;
-  }
-  if (event.type === "file_change") {
-    const count =
-      typeof payload.changeCount === "number"
-        ? payload.changeCount
-        : Array.isArray(payload.changes)
-          ? payload.changes.length
-          : 0;
-    const status = payload.status ? `Status: ${formatStatus(payload.status)}` : "";
-    const summary = count === 1 ? "1 changed file" : `${count} changed files`;
-    return renderFileChangeWorkItemShell(
-      event,
-      [summary, status].filter(Boolean).join("\n"),
-      fileChangePaths([event]),
-    );
-  }
-  if (event.type === "task_failed") {
-    return renderTurnWorkItemShell(event, "Error", event.summary, "danger");
-  }
-  return `
-    <article class="task-work-item" data-event-type="${dataType}">
-      <header>
-        <strong>${escapeHtml(event.summary)}</strong>
-        <time>${escapeHtml(formatDate(event.createdMs))}</time>
-      </header>
-    </article>
-  `;
-}
-
-function renderTurnWorkItemShell(event, label, text, tone = "neutral") {
-  const value = `${text ?? ""}`.trim();
-  return `
-    <article class="task-work-item" data-event-type="${escapeHtml(event.type)}" data-tool-tone="${escapeHtml(tone)}">
-      <header>
-        <strong>${escapeHtml(label)}</strong>
-        <time>${escapeHtml(formatDate(event.createdMs))}</time>
-      </header>
-      ${value ? `<pre>${escapeHtml(value)}</pre>` : ""}
-    </article>
-  `;
-}
-
-function renderFileChangeWorkItemShell(event, text, paths) {
-  const value = `${text ?? ""}`.trim();
-  return `
-    <article class="task-work-item" data-event-type="file_change" data-tool-tone="neutral">
-      <header>
-        <strong>Files changed</strong>
-        <time>${escapeHtml(formatDate(event.createdMs))}</time>
-      </header>
-      ${value ? `<pre>${escapeHtml(value)}</pre>` : ""}
-      ${renderChangedFilePaths(paths)}
-    </article>
-  `;
 }
 
 function renderToolEvent(event, label, text, tone = "neutral") {

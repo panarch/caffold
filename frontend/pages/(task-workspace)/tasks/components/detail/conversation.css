@@ -1,20 +1,17 @@
 caffold-task-conversation {
   & .task-message-content,
   & .task-thinking-content,
-  & .task-file-change p,
-  & .task-turn-work-body {
+  & .task-file-change p {
     font-size: var(--conversation-font-size);
     line-height: var(--conversation-line-height);
   }
 
   & .task-message-header,
   & .task-turn-active,
-  & .task-turn-work summary,
   & .task-thinking summary,
   & .task-command summary,
   & .task-tool-card header,
-  & .task-file-change header,
-  & .task-work-item header {
+  & .task-file-change header {
     font-size: var(--interface-meta-font-size);
     line-height: var(--interface-line-height);
   }
@@ -61,6 +58,10 @@ caffold-task-conversation {
     width: min(100%, 980px);
     min-width: 0;
     margin: 0 auto;
+  }
+
+  & .task-conversation-notices {
+    display: contents;
   }
 
   & .task-conversation,
@@ -204,11 +205,8 @@ caffold-task-conversation {
 
   & .task-message-content,
   & .task-turn-work,
-  & .task-turn-work-body,
-  & .task-work-item,
   & .task-thinking details,
   & .task-command details,
-  & .task-work-command details,
   & .task-tool-card,
   & .task-file-change article {
     min-width: 0;
@@ -229,8 +227,7 @@ caffold-task-conversation {
   }
 
   & .task-command pre,
-  & .task-tool-card pre,
-  & .task-work-item pre {
+  & .task-tool-card pre {
     margin: 0;
     font-size: var(--code-font-size);
     line-height: var(--code-line-height);
@@ -424,10 +421,8 @@ caffold-task-conversation {
 
   & .task-thinking details,
   & .task-command details,
-  & .task-work-command details,
   & .task-tool-card,
-  & .task-file-change article,
-  & .task-work-item {
+  & .task-file-change article {
     border: 1px solid var(--border);
     border-radius: 10px;
     background: var(--surface-subtle);
@@ -439,10 +434,8 @@ caffold-task-conversation {
 
   & .task-thinking summary,
   & .task-command summary,
-  & .task-work-command summary,
   & .task-tool-card header,
-  & .task-file-change header,
-  & .task-work-item header {
+  & .task-file-change header {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -454,14 +447,12 @@ caffold-task-conversation {
   }
 
   & .task-thinking summary::marker,
-  & .task-command summary::marker,
-  & .task-work-command summary::marker {
+  & .task-command summary::marker {
     color: var(--muted);
   }
 
   & .task-thinking summary span:first-child,
-  & .task-command summary span:first-child,
-  & .task-work-command summary strong:first-child {
+  & .task-command summary span:first-child {
     display: inline-flex;
     align-items: center;
     gap: 0.4375rem;
@@ -469,8 +460,7 @@ caffold-task-conversation {
   }
 
   & .task-thinking summary span:first-child::after,
-  & .task-command summary span:first-child::after,
-  & .task-work-command summary strong:first-child::after {
+  & .task-command summary span:first-child::after {
     display: inline-block;
     width: 0.375rem;
     height: 0.375rem;
@@ -481,62 +471,28 @@ caffold-task-conversation {
   }
 
   & .task-thinking details[open] summary span:first-child::after,
-  & .task-command details[open] summary span:first-child::after,
-  & .task-work-command details[open] summary strong:first-child::after {
+  & .task-command details[open] summary span:first-child::after {
     transform: rotate(45deg);
   }
 
   & .task-tool-card header,
-  & .task-file-change header,
-  & .task-work-item header {
+  & .task-file-change header {
     cursor: default;
   }
 
   & .task-thinking summary time,
   & .task-command summary time,
-  & .task-work-command summary time,
   & .task-tool-card header time,
-  & .task-file-change header time,
-  & .task-work-item header time {
+  & .task-file-change header time {
     margin-left: auto;
     font-size: var(--interface-meta-font-size);
   }
 
   & .task-thinking-content,
   & .task-command pre,
-  & .task-tool-card pre,
-  & .task-work-item pre {
+  & .task-tool-card pre {
     overflow-x: auto;
     padding: 0.625rem;
-  }
-
-  & .task-work-command-body {
-    display: grid;
-    gap: 0.4375rem;
-    padding: 0.625rem;
-  }
-
-  & .task-work-command-body > code,
-  & .task-work-command-body > span {
-    overflow-wrap: anywhere;
-    font-size: var(--code-font-size);
-    line-height: var(--code-line-height);
-  }
-
-  & .task-work-command-body > span {
-    color: var(--muted);
-  }
-
-  & .task-work-command-body > pre {
-    max-width: 100%;
-    overflow-x: auto;
-    overscroll-behavior-inline: contain;
-    padding: 0.5625rem 0.625rem;
-    border: 1px solid var(--border-subtle);
-    border-radius: 6px;
-    background: var(--code-bg);
-    white-space: pre;
-    overflow-wrap: normal;
   }
 
   & .task-changed-files {
@@ -560,6 +516,11 @@ caffold-task-conversation {
     justify-self: start;
     width: min(100%, 850px);
     margin-top: 0.125rem;
+  }
+
+  & .task-turn-work > caffold-task-work-details {
+    min-width: 0;
+    max-width: 100%;
   }
 
   & .task-turn-active {
@@ -623,67 +584,15 @@ caffold-task-conversation {
 }
 
 caffold-task-conversation {
-  & .task-turn-work details {
-    color: var(--muted);
-  }
-
-  & .task-turn-work summary {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5625rem;
-    min-height: var(--interface-compact-control-size);
-    padding: 0 0 0.125rem;
-    cursor: pointer;
-  }
-
-  & .task-turn-work summary::marker {
-    color: var(--muted);
-  }
-
-  & .task-turn-work summary span:last-child {
-    font-size: var(--interface-meta-font-size);
-  }
-
-  & .task-turn-work summary span:first-child {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4375rem;
-  }
-
-  & .task-turn-work summary span:first-child::after {
-    display: inline-block;
-    width: 0.375rem;
-    height: 0.375rem;
-    border-right: 1.5px solid currentColor;
-    border-bottom: 1.5px solid currentColor;
-    content: "";
-    transform: rotate(-45deg);
-  }
-
-  & .task-turn-work details[open] summary span:first-child::after {
-    transform: rotate(45deg);
-  }
-
-  & .task-turn-work-body {
-    display: grid;
-    gap: 0.5625rem;
-    padding-top: 0.5625rem;
-    color: var(--text);
-  }
-
   & .task-command[data-command-status="failed"] details,
-  & .task-work-command[data-command-status="failed"] details,
   & .task-command[data-command-status="failed"][data-command-terminal="true"],
-  & .task-work-command[data-command-status="failed"][data-command-terminal="true"],
   & .task-tool-card[data-tool-tone="danger"] {
     border-color: var(--danger-faint-border);
     background: var(--danger-faint);
   }
 
   & .task-command[data-command-status="running"] details,
-  & .task-command[data-command-status="waiting_for_approval"] details,
-  & .task-work-command[data-command-status="running"] details,
-  & .task-work-command[data-command-status="waiting_for_approval"] details {
+  & .task-command[data-command-status="waiting_for_approval"] details {
     border-color: var(--warning-border);
     background: var(--warning-subtle);
   }

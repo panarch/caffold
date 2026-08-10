@@ -93,7 +93,9 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   );
   await expect(tasksPage.locator(".task-turn-work")).toContainText("Worked for");
   await expect(tasksPage.locator(".task-turn-work")).toContainText("7 updates");
-  await expect(tasksPage.locator(".task-turn-work > details")).not.toHaveAttribute("open", "");
+  await expect(
+    tasksPage.locator("caffold-task-work-details > details"),
+  ).not.toHaveAttribute("open", "");
   await expect
     .poll(() =>
       tasksPage.evaluate((element) => {
@@ -104,9 +106,9 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
       }),
     )
     .toBe(true);
-  await expect(tasksPage.locator(".task-work-item")).toHaveCount(7);
-  await expect(tasksPage.locator(".task-work-item").first()).not.toBeVisible();
-  const workDetails = tasksPage.locator(".task-turn-work > details");
+  await expect(tasksPage.locator(".task-work-details-item")).toHaveCount(7);
+  await expect(tasksPage.locator(".task-work-details-item").first()).not.toBeVisible();
+  const workDetails = tasksPage.locator("caffold-task-work-details > details");
   const workSummary = workDetails.locator(":scope > summary");
   await workSummary.scrollIntoViewIfNeeded();
   const workSummaryOffset = await workSummary.evaluate((summary) => {
@@ -124,18 +126,18 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     )
     .toBeCloseTo(workSummaryOffset, 1);
   await expect(
-    tasksPage.locator('.task-work-item[data-event-type="assistant_message"]'),
+    tasksPage.locator('.task-work-details-item[data-event-type="assistant_message"]'),
   ).toContainText("I am checking the planner diff");
-  await expect(tasksPage.locator('.task-work-item[data-event-type="reasoning"]')).toContainText(
+  await expect(tasksPage.locator('.task-work-details-item[data-event-type="reasoning"]')).toContainText(
     "Checked the planner diff.",
   );
-  await expect(tasksPage.locator('.task-work-item[data-event-type="plan"]')).toContainText(
+  await expect(tasksPage.locator('.task-work-details-item[data-event-type="plan"]')).toContainText(
     "Run focused tests",
   );
   const completedCommand = tasksPage.locator(
-    '.task-work-item[data-event-type="command_execution"][data-command-status="completed"]',
+    '.task-work-details-item[data-event-type="command_execution"][data-command-status="completed"]',
   );
-  const completedCommandButton = completedCommand.locator(".task-command-summary");
+  const completedCommandButton = completedCommand.locator(".task-work-details-command-summary");
   await expect(completedCommand.locator("details")).toHaveCount(0);
   await expect(completedCommandButton).toContainText("Completed");
   await expect(completedCommandButton).toContainText("cargo test");
@@ -259,9 +261,9 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   });
 
   const failedCommand = tasksPage.locator(
-    '.task-work-item[data-event-type="command_execution"][data-command-status="failed"]',
+    '.task-work-details-item[data-event-type="command_execution"][data-command-status="failed"]',
   );
-  const failedCommandButton = failedCommand.locator(".task-command-summary");
+  const failedCommandButton = failedCommand.locator(".task-work-details-command-summary");
   await expect(failedCommandButton).toContainText("Failed");
   await expect(failedCommandButton).toContainText("Exit 101");
   await failedCommandButton.click();
@@ -291,7 +293,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
       ),
     )
     .toBe(true);
-  const workItemOrder = await tasksPage.locator(".task-work-item").evaluateAll((items) =>
+  const workItemOrder = await tasksPage.locator(".task-work-details-item").evaluateAll((items) =>
     items.map((item) => item.getAttribute("data-event-type")),
   );
   expect(workItemOrder).toEqual([
@@ -303,22 +305,24 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     "file_change",
     "assistant_message",
   ]);
-  await expect(tasksPage.locator('.task-work-item[data-event-type="file_change"]')).toContainText(
+  await expect(tasksPage.locator('.task-work-details-item[data-event-type="file_change"]')).toContainText(
     "2 file change updates",
   );
-  await expect(tasksPage.locator('.task-work-item[data-event-type="file_change"]')).toContainText(
+  await expect(tasksPage.locator('.task-work-details-item[data-event-type="file_change"]')).toContainText(
     "src/planner.rs",
   );
-  await expect(tasksPage.locator('.task-work-item[data-event-type="file_change"]')).toContainText(
+  await expect(tasksPage.locator('.task-work-details-item[data-event-type="file_change"]')).toContainText(
     "tests/planner.rs",
   );
-  await expect(tasksPage.locator('.task-work-item[data-event-type="file_change"]')).toContainText(
+  await expect(tasksPage.locator('.task-work-details-item[data-event-type="file_change"]')).toContainText(
     "src/lib.rs",
   );
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-work-details");
-  await tasksPage.locator(".task-turn-work > details > summary").click();
-  await expect(tasksPage.locator(".task-turn-work > details")).not.toHaveAttribute("open", "");
+  await tasksPage.locator("caffold-task-work-details > details > summary").click();
+  await expect(
+    tasksPage.locator("caffold-task-work-details > details"),
+  ).not.toHaveAttribute("open", "");
   await expect(tasksPage.locator(".task-approval-card")).toHaveCount(0);
   await expect(tasksPage.locator(".task-follow-up-form")).toBeVisible();
   await expect(tasksPage.locator(".task-conversation-scroll")).toHaveCSS("overflow-y", "auto");

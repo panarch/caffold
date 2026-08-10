@@ -259,6 +259,12 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain(
     "/assets/pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css",
   );
+  expect(serviceWorker).toContain(
+    "/assets/pages/(task-workspace)/tasks/components/detail/conversation/work-details.js",
+  );
+  expect(serviceWorker).toContain(
+    "/assets/pages/(task-workspace)/tasks/components/detail/conversation/work-details.css",
+  );
   expect(serviceWorker).toContain("/assets/pages/(task-workspace)/tasks/page.css");
   expect(serviceWorker).toContain(
     "/assets/pages/(task-workspace)/tasks/components/detail/conversation/markdown.js",

@@ -389,7 +389,7 @@ test("creates and resumes a real Codex task through Caffold with Spark", async (
   await expect(markdownMessage).toBeVisible();
   await expect(finalResponse).toBeVisible();
   await expect(
-    tasksPage.locator(".task-turn-work").last().locator(":scope > details"),
+    tasksPage.locator("caffold-task-work-details").last().locator(":scope > details"),
   ).not.toHaveAttribute("open", "");
 
   await expect(followUpForm).toHaveAttribute("data-thread-id", threadId);
