@@ -267,9 +267,9 @@ test("opens GitHub issues from the header", async ({ page }, testInfo) => {
   expect(markdownLayout).toMatchObject({
     hasTableScrollWrapper: true,
     cellWhiteSpace: "nowrap",
-    hostFontSize: "15px",
+    hostFontSize: "14px",
   });
-  expect(Number.parseFloat(markdownLayout.headingFontSize)).toBeGreaterThan(15);
+  expect(Number.parseFloat(markdownLayout.headingFontSize)).toBeGreaterThan(14);
   if (testInfo.project.name === "phone") {
     expect(markdownLayout.tableScrolls).toBe(true);
   }

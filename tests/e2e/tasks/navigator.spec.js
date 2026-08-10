@@ -14,6 +14,10 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
+function expectedTaskRowHeight(projectName, rootFontSize) {
+  return projectName === "desktop" ? rootFontSize * 2 : 36;
+}
+
 test("loads additional task-list pages only after a cursor request", async ({ page }) => {
   await installEventSourceMock(page);
   await mockCodexModels(page);
@@ -311,17 +315,48 @@ test("archives and restores an idle Caffold task through the grouped Archived se
     .first()
     .evaluate((group) => {
       const icon = group.querySelector(".task-repository-icon");
+      const row = group.querySelector(".task-archived-row");
       const title = group.querySelector(".task-row-title");
+      const restoreButton = group.querySelector(".task-restore-button");
+      const rowBounds = row.getBoundingClientRect();
+      const titleBounds = title.getBoundingClientRect();
+      const restoreBounds = restoreButton.getBoundingClientRect();
       return {
+        restoreButtonHeight: restoreBounds.height,
         rootFontSize: Number.parseFloat(
           getComputedStyle(document.documentElement).fontSize,
         ),
+        rowHeight: rowBounds.height,
+        restoreCenterDelta: Math.abs(
+          restoreBounds.top + restoreBounds.height / 2 -
+            (rowBounds.top + rowBounds.height / 2),
+        ),
+        titleCenterDelta: Math.abs(
+          titleBounds.top + titleBounds.height / 2 -
+            (rowBounds.top + rowBounds.height / 2),
+        ),
+        titleFontSize: Number.parseFloat(getComputedStyle(title).fontSize),
         titleInset:
-          title.getBoundingClientRect().left - group.getBoundingClientRect().left,
+          titleBounds.left - group.getBoundingClientRect().left,
         titleOffsetFromIcon:
-          title.getBoundingClientRect().left - icon.getBoundingClientRect().left,
+          titleBounds.left - icon.getBoundingClientRect().left,
       };
     });
+  const expectedArchivedRowHeight = expectedTaskRowHeight(
+    testInfo.project.name,
+    archivedTreeLayout.rootFontSize,
+  );
+  expect(archivedTreeLayout.rowHeight).toBeCloseTo(expectedArchivedRowHeight, 1);
+  expect(archivedTreeLayout.restoreButtonHeight).toBeCloseTo(
+    expectedArchivedRowHeight,
+    1,
+  );
+  expect(archivedTreeLayout.titleFontSize).toBeCloseTo(
+    archivedTreeLayout.rootFontSize * 0.8125,
+    2,
+  );
+  expect(archivedTreeLayout.restoreCenterDelta).toBeLessThanOrEqual(0.5);
+  expect(archivedTreeLayout.titleCenterDelta).toBeLessThanOrEqual(0.5);
   expect(archivedTreeLayout.titleInset).toBeCloseTo(
     archivedTreeLayout.rootFontSize,
     1,
@@ -873,20 +908,43 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     elements.map((element) => {
       const title = element.querySelector(".task-row-title");
       const indicators = element.querySelector(".task-row-indicators");
+      const rowBounds = element.getBoundingClientRect();
+      const titleBounds = title.getBoundingClientRect();
+      const indicatorBounds = indicators.getBoundingClientRect();
       return {
-        height: Math.round(element.getBoundingClientRect().height),
-        titleWidth: Math.round(title.getBoundingClientRect().width),
-        indicatorWidth: Math.round(indicators.getBoundingClientRect().width),
+        height: rowBounds.height,
         hasHorizontalOverflow: element.scrollWidth > element.clientWidth,
+        indicatorCenterDelta: Math.abs(
+          indicatorBounds.top + indicatorBounds.height / 2 -
+            (rowBounds.top + rowBounds.height / 2),
+        ),
+        indicatorWidth: Math.round(indicatorBounds.width),
+        titleCenterDelta: Math.abs(
+          titleBounds.top + titleBounds.height / 2 -
+            (rowBounds.top + rowBounds.height / 2),
+        ),
+        titleFontSize: Number.parseFloat(getComputedStyle(title).fontSize),
+        titleWidth: Math.round(titleBounds.width),
       };
     }),
   );
-  const rowHeights = rowLayout.map(({ height }) => height);
   const rootFontSize = await page.evaluate(() =>
     Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
   );
-  expect(new Set(rowHeights).size).toBe(1);
-  expect(rowHeights[0]).toBeLessThanOrEqual(44);
+  const expectedRowHeight = expectedTaskRowHeight(testInfo.project.name, rootFontSize);
+  expect(
+    rowLayout.every(({ height }) => Math.abs(height - expectedRowHeight) <= 0.1),
+  ).toBe(true);
+  expect(
+    rowLayout.every(
+      ({ titleFontSize }) =>
+        Math.abs(titleFontSize - rootFontSize * 0.8125) <= 0.01,
+    ),
+  ).toBe(true);
+  expect(rowLayout.every(({ titleCenterDelta }) => titleCenterDelta <= 0.5)).toBe(true);
+  expect(
+    rowLayout.every(({ indicatorCenterDelta }) => indicatorCenterDelta <= 0.5),
+  ).toBe(true);
   expect(new Set(rowLayout.map(({ titleWidth }) => titleWidth)).size).toBe(1);
   expect(new Set(rowLayout.map(({ indicatorWidth }) => indicatorWidth))).toEqual(
     new Set([Math.round(rootFontSize * 3)]),
@@ -904,6 +962,7 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     });
   expect(longTitleLayout.textOverflow).toBe("ellipsis");
   expect(longTitleLayout.whiteSpace).toBe("nowrap");
+  expect(longTitleLayout.isTruncated).toBe(true);
   const taskScrollerPresentation = await tasksPage
     .locator(".task-list-scroll")
     .evaluate((element) => {
@@ -922,7 +981,6 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
   });
 
   if (testInfo.project.name !== "phone") {
-    expect(longTitleLayout.isTruncated).toBe(true);
     await expect(listPane).toBeVisible();
     await expect(detailPane).toBeVisible();
     await expect(resizer).toBeVisible();

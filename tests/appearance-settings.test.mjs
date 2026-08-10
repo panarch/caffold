@@ -112,7 +112,7 @@ test("preserves legacy text choices but resets conflicting density choices", asy
       appearanceVersion: 3,
       typefacePreset: "d2-coding",
       interfaceScalePercent: 100,
-      conversationTextPx: 15,
+      conversationTextPx: 14,
       codeTextPx: 13,
     },
     "present fields take precedence over legacy values even when malformed",
@@ -195,7 +195,7 @@ test("malformed storage resets and persists the v3 defaults silently", async () 
         appearanceVersion: 3,
         typefacePreset: "d2-coding",
         interfaceScalePercent: 100,
-        conversationTextPx: 15,
+        conversationTextPx: 14,
         codeTextPx: 13,
       },
     ],
@@ -229,11 +229,11 @@ test("user updates and resets publish one normalized snapshot each", async () =>
     appearanceVersion: 3,
     typefacePreset: "d2-coding",
     interfaceScalePercent: 115,
-    conversationTextPx: 15,
+    conversationTextPx: 14,
     codeTextPx: 13,
   });
   assert.equal(properties.get("--interface-scale"), "1");
-  assert.equal(properties.get("--conversation-font-size"), "15px");
+  assert.equal(properties.get("--conversation-font-size"), "14px");
   assert.equal(properties.get("--code-font-size"), "13px");
 });
 

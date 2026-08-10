@@ -121,7 +121,7 @@
   );
   --interface-row-size: max(2.25rem, var(--interface-target-floor));
   --interface-header-size: max(2.125rem, var(--interface-target-floor));
-  --conversation-font-size: 15px;
+  --conversation-font-size: 14px;
   --conversation-line-height: 1.47;
   --code-font-size: 13px;
   --code-line-height: 1.55;
@@ -234,8 +234,8 @@
   --file-tree-padding-y: 0.125rem;
   --file-tree-padding-left: 0.375rem;
   --file-tree-padding-right: 0.5rem;
-  --task-list-font-size: 0.875rem;
-  --task-list-row-height: var(--interface-row-size);
+  --task-list-font-size: 0.8125rem;
+  --task-list-row-height: 2rem;
   --task-group-font-size: 0.75rem;
   --task-group-row-height: max(1.75rem, var(--interface-target-floor));
   --task-list-icon-size: 0.9375rem;
@@ -306,5 +306,6 @@ samp {
     --interface-base-font-size: 17px;
     --interface-target-floor: 40px;
     --file-tree-row-height: 36px;
+    --task-list-row-height: 36px;
   }
 }

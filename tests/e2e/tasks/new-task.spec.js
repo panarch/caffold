@@ -406,7 +406,7 @@ test("creates a task with responsive composer controls and canonical approval st
   );
   await expect(
     tasksPage.locator('.task-message[data-message-role="user"] .task-message-content'),
-  ).toHaveCSS("font-size", "15px");
+  ).toHaveCSS("font-size", "14px");
   await expect(tasksPage).toContainText("Command Approval");
   await expect(tasksPage).toContainText("cargo test");
   await expect(tasksPage).toContainText("Run the test suite");
@@ -500,8 +500,8 @@ test("creates a task with responsive composer controls and canonical approval st
       expect.objectContaining({
         backgroundColor: "rgb(241, 241, 241)",
         borderRadius: "18px",
-        fontSize: "15px",
-        lineHeight: "22.05px",
+        fontSize: "14px",
+        lineHeight: "20.58px",
         overflowWrap: "anywhere",
       }),
     );

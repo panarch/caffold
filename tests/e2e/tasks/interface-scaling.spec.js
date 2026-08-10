@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
 
 test("scales visible Task controls without shrinking their touch targets", async ({
   page,
-}) => {
+}, testInfo) => {
   await installScalingTask(page);
   await page.addInitScript(() => {
     localStorage.setItem(
@@ -85,6 +85,7 @@ test("scales visible Task controls without shrinking their touch targets", async
     "modelHeight",
     "permissionHeight",
     "sendHeight",
+    "taskTitleFontSize",
     "popoverLabelFontSize",
     "popoverValueFontSize",
     "worktreeGuideHeadingFontSize",
@@ -97,6 +98,15 @@ test("scales visible Task controls without shrinking their touch targets", async
       spacious[key] / compact[key],
       `${key} must follow Interface scale`,
     ).toBeCloseTo(interfaceRatio, 1);
+  }
+  if (testInfo.project.name === "desktop") {
+    expect(
+      spacious.taskRowMinHeight / compact.taskRowMinHeight,
+      "desktop task rows must follow Interface scale",
+    ).toBeCloseTo(interfaceRatio, 1);
+  } else {
+    expect(compact.taskRowMinHeight).toBeCloseTo(36, 1);
+    expect(spacious.taskRowMinHeight).toBeCloseTo(36, 1);
   }
   expect(
     spaciousAttachment.visualHeight / compactAttachment.visualHeight,
@@ -351,6 +361,8 @@ function taskInterfaceMetrics(page) {
     };
     const taskDetailActions = activeDetail.querySelector(".task-detail-actions");
     const taskDetailRight = activeDetail.querySelector(".task-detail-right");
+    const taskRow = document.querySelector("caffold-task-navigator .task-row");
+    const taskTitle = taskRow.querySelector(".task-row-title");
     const compactInset = number(
       getComputedStyle(controls.git, "::before").left,
     );
@@ -388,6 +400,8 @@ function taskInterfaceMetrics(page) {
       modelHeight: boxHeight(controls.model),
       permissionHeight: boxHeight(controls.permission),
       sendHeight: tokenPixels("--interface-control-visual-size"),
+      taskRowMinHeight: number(getComputedStyle(taskRow).minHeight),
+      taskTitleFontSize: fontSize(taskTitle),
       popoverLabelFontSize,
       popoverValueFontSize,
       worktreeGuideHeadingFontSize,

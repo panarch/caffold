@@ -230,7 +230,7 @@ test("updates independent ranges live without replacing their DOM", async ({
   );
   await expect(
     settingsPage.locator(".settings-conversation-message p").first(),
-  ).toHaveCSS("font-size", "15px");
+  ).toHaveCSS("font-size", "14px");
   await expect(settingsPage.locator(".settings-code-preview")).toHaveCSS(
     "font-size",
     "13px",
@@ -246,7 +246,7 @@ test("updates independent ranges live without replacing their DOM", async ({
   await expect(interfaceRange).toBeFocused();
   await expect(
     settingsPage.locator(".settings-conversation-message p").first(),
-  ).toHaveCSS("font-size", "15px");
+  ).toHaveCSS("font-size", "14px");
   await expect(settingsPage.locator(".settings-code-preview")).toHaveCSS(
     "font-size",
     "13px",
@@ -290,11 +290,28 @@ test("updates independent ranges live without replacing their DOM", async ({
   expect(semanticProbe.textarea).toBe("20px");
   expect(semanticProbe.modelButton).not.toBe("20px");
 
+  const interfacePreviewDensity = await settingsPage
+    .locator(".settings-interface-preview-row")
+    .evaluate((element) => ({
+      fontSize: Number.parseFloat(getComputedStyle(element).fontSize),
+      height: element.getBoundingClientRect().height,
+      rootFontSize: Number.parseFloat(
+        getComputedStyle(document.documentElement).fontSize,
+      ),
+    }));
+  expect(interfacePreviewDensity.height).toBeCloseTo(
+    touchInterface ? 36 : interfacePreviewDensity.rootFontSize * 2,
+    1,
+  );
+  expect(interfacePreviewDensity.fontSize).toBeCloseTo(
+    interfacePreviewDensity.rootFontSize * 0.8125,
+    2,
+  );
+
   if (touchInterface) {
     for (const control of [
       settingsPage.locator(".settings-reset-all"),
       settingsPage.locator(".settings-range-control button").first(),
-      settingsPage.locator(".settings-interface-preview-row"),
     ]) {
       const box = await control.boundingBox();
       expect(box.height).toBeGreaterThanOrEqual(40);
@@ -312,13 +329,13 @@ test("updates independent ranges live without replacing their DOM", async ({
       'button[data-action="reset-setting"][data-setting="conversationTextPx"]',
     )
     .click();
-  await expect(conversationRange).toHaveValue("15");
+  await expect(conversationRange).toHaveValue("14");
   await expect(interfaceRange).toHaveValue("105");
   await expect(codeRange).toHaveValue("18");
 
   await settingsPage.locator('button[data-action="reset-appearance"]').click();
   await expect(interfaceRange).toHaveValue("100");
-  await expect(conversationRange).toHaveValue("15");
+  await expect(conversationRange).toHaveValue("14");
   await expect(codeRange).toHaveValue("13");
 });
 
