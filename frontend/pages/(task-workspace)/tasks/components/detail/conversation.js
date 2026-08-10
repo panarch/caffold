@@ -8,6 +8,7 @@ import {
 import { isTaskTransportStale } from "../../runtime-state.js";
 import { requestTaskImagePreview } from "../image-preview-dialog.js";
 import "./conversation/markdown.js";
+import "./conversation/work-details.js";
 import { renderConversation } from "./conversation/render.js";
 
 class CaffoldTaskConversation extends HTMLElement {
@@ -19,6 +20,14 @@ class CaffoldTaskConversation extends HTMLElement {
     this.addEventListener(
       "caffold:task-markdown-rendered",
       this.boundMarkdownRendered,
+    );
+    this.addEventListener(
+      "caffold:task-work-details-disclosure-intent",
+      this.boundWorkDetailsDisclosureIntent,
+    );
+    this.addEventListener(
+      "caffold:task-work-details-intent",
+      this.boundWorkDetailsIntent,
     );
     this.render();
   }
@@ -32,6 +41,14 @@ class CaffoldTaskConversation extends HTMLElement {
     this.removeEventListener(
       "caffold:task-markdown-rendered",
       this.boundMarkdownRendered,
+    );
+    this.removeEventListener(
+      "caffold:task-work-details-disclosure-intent",
+      this.boundWorkDetailsDisclosureIntent,
+    );
+    this.removeEventListener(
+      "caffold:task-work-details-intent",
+      this.boundWorkDetailsIntent,
     );
     this.disconnectResizeObserver();
     this.stopActiveTurnClock();
@@ -68,6 +85,10 @@ class CaffoldTaskConversation extends HTMLElement {
     };
     this.boundMarkdownRendered = (event) =>
       this.handleMarkdownRendered(event);
+    this.boundWorkDetailsDisclosureIntent = (event) =>
+      this.handleWorkDetailsDisclosureIntent(event);
+    this.boundWorkDetailsIntent = (event) =>
+      this.handleWorkDetailsIntent(event);
   }
 
   setSnapshot(snapshot = {}) {
@@ -154,6 +175,10 @@ class CaffoldTaskConversation extends HTMLElement {
     return this.querySelector(":scope > .task-conversation-scroll");
   }
 
+  conversationList() {
+    return this.scroller()?.querySelector(":scope .task-conversation") ?? null;
+  }
+
   hasScrollSnapshot(threadId) {
     this.ensureState();
     return this.scrollByThread.has(`${threadId ?? ""}`);
@@ -208,48 +233,17 @@ class CaffoldTaskConversation extends HTMLElement {
     const controlsDisabled = isTaskTransportStale(
       this.snapshot.transportState,
     );
-    this.innerHTML = `
-      <div class="task-conversation-scroll">
-        <div class="task-conversation-column">
-          ${
-            this.snapshot.detailError
-              ? `<div class="task-detail-load-error task-detail-load-error-inline" role="alert">
-                  <p>Task details could not be refreshed.</p>
-                  <p class="task-load-error-message">${escapeHtml(this.snapshot.detailError.message)}</p>
-                  <button type="button" class="task-secondary-button" data-task-action="retry-task-detail" data-conversation-action="retry-detail">Retry</button>
-                </div>`
-              : ""
-          }
-          ${
-            this.snapshot.loading
-              ? `<p class="task-history-loading" role="status">Loading conversation...</p>`
-              : ""
-          }
-          ${
-            this.snapshot.eventsPage?.nextCursor || this.snapshot.loadingOlder
-              ? `<div class="task-load-older">
-                  ${this.snapshot.loadingOlder ? "Loading older..." : ""}
-                  ${
-                    this.snapshot.historyError
-                      ? `<div class="task-history-error" role="alert">
-                          <span>Older messages are temporarily unavailable.</span>
-                          <span class="task-load-error-message">${escapeHtml(this.snapshot.historyError.message)}</span>
-                          <button type="button" data-task-action="retry-task-history" data-conversation-action="retry-history">Retry loading older messages</button>
-                        </div>`
-                      : ""
-                  }
-                </div>`
-              : ""
-          }
-          <ol class="task-conversation" aria-label="Task conversation">
-            ${renderConversation(this.snapshot.events, task, approvals, {
-              controlsDisabled,
-              approvalErrors: this.approvalErrors,
-            })}
-          </ol>
-        </div>
-      </div>
-    `;
+    this.ensureShell();
+    this.renderNotices();
+    const view = renderConversation(this.snapshot.events, task, approvals, {
+      controlsDisabled,
+      approvalErrors: this.approvalErrors,
+    });
+    reconcileConversationList(
+      this.conversationList(),
+      view.html,
+      view.workDetails,
+    );
     this.restoreDisclosureState();
     this.restoreScroll(previousScroll);
     this.restorePendingDisclosureAnchor(
@@ -259,6 +253,56 @@ class CaffoldTaskConversation extends HTMLElement {
     this.bindResizeObserver();
     this.syncActiveTurnClock();
     this.rememberScroll();
+  }
+
+  ensureShell() {
+    if (this.scroller()) {
+      return;
+    }
+    this.innerHTML = `
+      <div class="task-conversation-scroll">
+        <div class="task-conversation-column">
+          <div class="task-conversation-notices"></div>
+          <ol class="task-conversation" aria-label="Task conversation"></ol>
+        </div>
+      </div>
+    `;
+  }
+
+  renderNotices() {
+    const notices = this.querySelector(".task-conversation-notices");
+    notices.innerHTML = `
+      ${
+        this.snapshot.detailError
+          ? `<div class="task-detail-load-error task-detail-load-error-inline" role="alert">
+              <p>Task details could not be refreshed.</p>
+              <p class="task-load-error-message">${escapeHtml(this.snapshot.detailError.message)}</p>
+              <button type="button" class="task-secondary-button" data-task-action="retry-task-detail" data-conversation-action="retry-detail">Retry</button>
+            </div>`
+          : ""
+      }
+      ${
+        this.snapshot.loading
+          ? `<p class="task-history-loading" role="status">Loading conversation...</p>`
+          : ""
+      }
+      ${
+        this.snapshot.eventsPage?.nextCursor || this.snapshot.loadingOlder
+          ? `<div class="task-load-older">
+              ${this.snapshot.loadingOlder ? "Loading older..." : ""}
+              ${
+                this.snapshot.historyError
+                  ? `<div class="task-history-error" role="alert">
+                      <span>Older messages are temporarily unavailable.</span>
+                      <span class="task-load-error-message">${escapeHtml(this.snapshot.historyError.message)}</span>
+                      <button type="button" data-task-action="retry-task-history" data-conversation-action="retry-history">Retry loading older messages</button>
+                    </div>`
+                  : ""
+              }
+            </div>`
+          : ""
+      }
+    `;
   }
 
   handleClick(event) {
@@ -321,12 +365,64 @@ class CaffoldTaskConversation extends HTMLElement {
     }
   }
 
+  handleWorkDetailsIntent(event) {
+    const owner = event.target;
+    if (
+      !(owner instanceof HTMLElement) ||
+      owner.localName !== "caffold-task-work-details" ||
+      !this.contains(owner)
+    ) {
+      return;
+    }
+    event.stopPropagation();
+    if (event.detail?.type !== "command-output") {
+      return;
+    }
+    const commandKey = `${event.detail.commandKey ?? ""}`;
+    const command = dedupeCanonicalEvents(this.snapshot.events).find(
+      (entry) =>
+        entry.type === "command_execution" &&
+        eventIdentityKey(entry) === commandKey,
+    );
+    if (command) {
+      this.dispatchIntent("command-output", { command, commandKey });
+    }
+  }
+
+  handleWorkDetailsDisclosureIntent(event) {
+    const owner = event.target;
+    if (
+      !(owner instanceof HTMLElement) ||
+      owner.localName !== "caffold-task-work-details" ||
+      !this.contains(owner)
+    ) {
+      return;
+    }
+    event.stopPropagation();
+    const identity = `${event.detail?.identity ?? ""}`;
+    const key = `${event.detail?.key ?? ""}`;
+    if (!identity || !key) {
+      return;
+    }
+    this.captureWorkDetailsAnchor(
+      owner,
+      identity,
+      key,
+      Boolean(event.detail?.open),
+    );
+  }
+
   focusCommandSummary(commandKey) {
-    const button = [...this.querySelectorAll(".task-command-summary")].find(
+    const button = [...this.querySelectorAll(".task-command > .task-command-summary")].find(
       (entry) => entry.dataset.commandKey === commandKey,
     );
-    button?.focus();
-    return Boolean(button);
+    if (button) {
+      button.focus();
+      return true;
+    }
+    return [...this.querySelectorAll("caffold-task-work-details")].some(
+      (owner) => owner.focusCommandSummary(commandKey),
+    );
   }
 
   handleScroll() {
@@ -471,6 +567,38 @@ class CaffoldTaskConversation extends HTMLElement {
       summary.getBoundingClientRect().top -
       scroller.getBoundingClientRect().top;
     this.pendingDisclosureAnchorByThread.set(threadId, {
+      owner: "conversation",
+      key,
+      open,
+      offset,
+    });
+    window.requestAnimationFrame(() => {
+      const currentScroller = this.scroller();
+      if (
+        this.snapshot.threadId === threadId &&
+        this.restorePendingDisclosureAnchor(currentScroller, threadId)
+      ) {
+        this.rememberScroll(threadId);
+      }
+    });
+  }
+
+  captureWorkDetailsAnchor(owner, identity, key, open) {
+    const scroller = this.scroller();
+    const threadId = this.snapshot.threadId;
+    const anchorTop = owner.disclosureAnchorTop(key);
+    if (
+      !scroller ||
+      !threadId ||
+      !scroller.contains(owner) ||
+      !Number.isFinite(anchorTop)
+    ) {
+      return;
+    }
+    const offset = anchorTop - scroller.getBoundingClientRect().top;
+    this.pendingDisclosureAnchorByThread.set(threadId, {
+      owner: "work-details",
+      identity,
       key,
       open,
       offset,
@@ -491,24 +619,39 @@ class CaffoldTaskConversation extends HTMLElement {
     if (!scroller || !pending) {
       return false;
     }
-    const disclosure = [
-      ...scroller.querySelectorAll("details[data-disclosure-key]"),
-    ].find((entry) => entry.dataset.disclosureKey === pending.key);
-    if (!disclosure) {
+    let currentTop = null;
+    let currentOpen = false;
+    if (pending.owner === "work-details") {
+      const owner = [
+        ...scroller.querySelectorAll("caffold-task-work-details"),
+      ].find((entry) => entry.identity === pending.identity);
+      if (!owner) {
+        this.pendingDisclosureAnchorByThread.delete(threadId);
+        return false;
+      }
+      currentOpen = owner.disclosureOpen(pending.key);
+      currentTop = owner.disclosureAnchorTop(pending.key);
+    } else {
+      const disclosure = [
+        ...scroller.querySelectorAll("details[data-disclosure-key]"),
+      ].find((entry) => entry.dataset.disclosureKey === pending.key);
+      if (!disclosure) {
+        this.pendingDisclosureAnchorByThread.delete(threadId);
+        return false;
+      }
+      currentOpen = disclosure.open;
+      currentTop = disclosure
+        .querySelector(":scope > summary")
+        ?.getBoundingClientRect().top;
+    }
+    if (currentOpen !== pending.open) {
+      return false;
+    }
+    if (!Number.isFinite(currentTop)) {
       this.pendingDisclosureAnchorByThread.delete(threadId);
       return false;
     }
-    if (disclosure.open !== pending.open) {
-      return false;
-    }
-    const summary = disclosure.querySelector(":scope > summary");
-    if (!summary) {
-      this.pendingDisclosureAnchorByThread.delete(threadId);
-      return false;
-    }
-    const currentOffset =
-      summary.getBoundingClientRect().top -
-      scroller.getBoundingClientRect().top;
+    const currentOffset = currentTop - scroller.getBoundingClientRect().top;
     scroller.scrollTop = Math.min(
       Math.max(0, scroller.scrollTop + currentOffset - pending.offset),
       maxScrollTop(scroller),
@@ -628,6 +771,61 @@ class CaffoldTaskConversation extends HTMLElement {
   stopActiveTurnClock() {
     window.clearInterval(this.activeTurnClockTimer);
     this.activeTurnClockTimer = null;
+  }
+}
+
+function reconcileConversationList(list, html, workDetails) {
+  if (!list) {
+    return;
+  }
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  const existingWorkEntries = new Map(
+    [...list.children]
+      .filter((entry) => entry.matches(".task-turn-work[data-conversation-entry-key]"))
+      .map((entry) => [entry.dataset.conversationEntryKey, entry]),
+  );
+  const desiredEntries = [...template.content.children].map((entry) => {
+    const key = `${entry.dataset.conversationEntryKey ?? ""}`;
+    if (!key) {
+      return entry;
+    }
+    const snapshot = workDetails.get(key);
+    const existing = existingWorkEntries.get(key);
+    const owner = existing?.querySelector(
+      ":scope > caffold-task-work-details",
+    );
+    if (existing && owner && snapshot) {
+      existing.dataset.turnId = entry.dataset.turnId;
+      return existing;
+    }
+    return entry;
+  });
+  reconcileElementChildren(list, desiredEntries);
+  for (const entry of desiredEntries) {
+    const key = `${entry.dataset.conversationEntryKey ?? ""}`;
+    const snapshot = workDetails.get(key);
+    const owner = entry.querySelector(
+      ":scope > caffold-task-work-details",
+    );
+    if (owner && snapshot) {
+      owner.setSnapshot(snapshot);
+    }
+  }
+}
+
+function reconcileElementChildren(parent, desiredChildren) {
+  let cursor = parent.firstElementChild;
+  for (const child of desiredChildren) {
+    if (child !== cursor) {
+      parent.insertBefore(child, cursor);
+    }
+    cursor = child.nextElementSibling;
+  }
+  while (cursor) {
+    const next = cursor.nextElementSibling;
+    cursor.remove();
+    cursor = next;
   }
 }
 

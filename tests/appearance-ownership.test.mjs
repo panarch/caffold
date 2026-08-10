@@ -10,6 +10,7 @@ const e2eSupportRoot = fileURLToPath(new URL("./e2e/support/", import.meta.url))
 const conversationOwners = new Set([
   "pages/(task-workspace)/tasks/components/composer.css",
   "pages/(task-workspace)/tasks/components/detail/conversation.css",
+  "pages/(task-workspace)/tasks/components/detail/conversation/work-details.css",
   "pages/(task-workspace)/tasks/components/detail/conversation/markdown.js",
   "pages/(review-workspace)/(github)/(issues)/detail/page.css",
   "pages/(review-workspace)/(github)/(pulls)/detail/page.css",
@@ -25,6 +26,7 @@ const codeOwners = new Set([
   "pages/(task-workspace)/tasks/components/detail/conversation.css",
   "pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css",
   "pages/(task-workspace)/tasks/components/detail/conversation/markdown.js",
+  "pages/(task-workspace)/tasks/components/detail/conversation/work-details.css",
   "pages/(review-workspace)/(github)/components/markdown.js",
   "pages/(task-workspace)/settings/appearance/page.css",
   "settings.js",

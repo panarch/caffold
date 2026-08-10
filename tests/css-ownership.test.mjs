@@ -52,6 +52,10 @@ const ownership = new Map([
     ["caffold-task-command-dialog"],
   ],
   [
+    "pages/(task-workspace)/tasks/components/detail/conversation/work-details.css",
+    ["caffold-task-work-details"],
+  ],
+  [
     "pages/(task-workspace)/tasks/components/directory-picker.css",
     ["caffold-task-directory-picker"],
   ],
@@ -237,6 +241,7 @@ const componentChildren = new Map([
       "caffold-task-review",
     ],
   ],
+  ["caffold-task-conversation", ["caffold-task-work-details"]],
   [
     "caffold-task-review",
     [

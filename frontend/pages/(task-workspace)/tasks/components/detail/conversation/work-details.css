@@ -1,0 +1,268 @@
+caffold-task-work-details {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+
+  & > details {
+    color: var(--muted);
+  }
+
+  & > details > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5625rem;
+    min-height: var(--interface-compact-control-size);
+    padding: 0 0 0.125rem;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    cursor: pointer;
+  }
+
+  & > details > summary::marker {
+    color: var(--muted);
+  }
+
+  & .task-work-details-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4375rem;
+  }
+
+  & .task-work-details-count {
+    font-size: var(--interface-meta-font-size);
+  }
+
+  & .task-work-details-chevron {
+    display: inline-grid;
+    width: var(--interface-icon-small-size);
+    height: var(--interface-icon-small-size);
+    flex: 0 0 var(--interface-icon-small-size);
+    place-items: center;
+  }
+
+  & .task-work-details-chevron-icon {
+    grid-area: 1 / 1;
+    display: block;
+    width: var(--interface-icon-small-size);
+    height: var(--interface-icon-small-size);
+    stroke-width: 2.2;
+  }
+
+  & .task-work-details-chevron-expanded,
+  & > details[open] .task-work-details-chevron-collapsed {
+    display: none;
+  }
+
+  & > details[open] .task-work-details-chevron-expanded {
+    display: block;
+  }
+
+  & .task-work-details-body {
+    display: grid;
+    gap: 0.5625rem;
+    min-width: 0;
+    max-width: 100%;
+    padding-top: 0.5625rem;
+    color: var(--text);
+    font-size: var(--conversation-font-size);
+    line-height: var(--conversation-line-height);
+  }
+
+  & .task-work-details-item {
+    min-width: 0;
+    max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-subtle);
+  }
+
+  & .task-work-details-command details {
+    min-width: 0;
+    max-width: 100%;
+    border: 0;
+    background: transparent;
+  }
+
+  & .task-work-details-item header,
+  & .task-work-details-command summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    min-height: var(--interface-control-size);
+    padding: 0.4375rem 0.6875rem;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .task-work-details-command summary {
+    cursor: pointer;
+  }
+
+  & .task-work-details-command summary::marker {
+    color: var(--muted);
+  }
+
+  & .task-work-details-command summary strong:first-child {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4375rem;
+    min-width: 0;
+  }
+
+  & .task-work-details-command summary strong:first-child::after {
+    display: inline-block;
+    width: 0.375rem;
+    height: 0.375rem;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    content: "";
+    transform: rotate(-45deg);
+  }
+
+  & .task-work-details-command details[open] summary strong:first-child::after {
+    transform: rotate(45deg);
+  }
+
+  & .task-work-details-item header time,
+  & .task-work-details-command summary time {
+    margin-left: auto;
+    font-size: var(--interface-meta-font-size);
+  }
+
+  & .task-work-details-item pre {
+    margin: 0;
+    overflow-x: auto;
+    padding: 0.625rem;
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  & .task-work-details-command-body {
+    display: grid;
+    gap: 0.4375rem;
+    padding: 0.625rem;
+  }
+
+  & .task-work-details-command-body > code,
+  & .task-work-details-command-body > span {
+    overflow-wrap: anywhere;
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
+  }
+
+  & .task-work-details-command-body > span {
+    color: var(--muted);
+  }
+
+  & .task-work-details-command-body > pre {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    padding: 0.5625rem 0.625rem;
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    background: var(--code-bg);
+    white-space: pre;
+    overflow-wrap: normal;
+  }
+
+  & .task-work-details-changed-files {
+    display: grid;
+    gap: 0.25rem;
+    margin: 0;
+    padding: 0.5rem 0.6875rem 0.625rem;
+    border-top: 1px solid var(--border-subtle);
+    list-style: none;
+  }
+
+  & .task-work-details-changed-files code {
+    display: block;
+    overflow-wrap: anywhere;
+    color: var(--text);
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
+  }
+
+  & .task-work-details-command[data-command-status="failed"],
+  & .task-work-details-item[data-tool-tone="danger"] {
+    border-color: var(--danger-faint-border);
+    background: var(--danger-faint);
+  }
+
+  & .task-work-details-command[data-command-status="running"],
+  & .task-work-details-command[data-command-status="waiting_for_approval"] {
+    border-color: var(--warning-border);
+    background: var(--warning-subtle);
+  }
+
+  & .task-work-details-command-summary {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: var(--interface-space-4);
+    width: 100%;
+    min-width: 0;
+    min-height: var(--interface-control-size);
+    padding: 0.4375rem 0.6875rem;
+    border: 0;
+    border-radius: inherit;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  & .task-work-details-command-summary:hover,
+  & .task-work-details-command-summary:focus-visible {
+    background: var(--control-hover-bg);
+  }
+
+  & .task-work-details-command-status,
+  & .task-work-details-command-meta,
+  & .task-work-details-command-action {
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    white-space: nowrap;
+  }
+
+  & .task-work-details-command-status[data-command-result="completed"] {
+    color: var(--success-strong);
+  }
+
+  & .task-work-details-command-status[data-command-result="failed"] {
+    color: var(--danger);
+  }
+
+  & .task-work-details-command-label {
+    min-width: 0;
+    overflow: hidden;
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & .task-work-details-command-meta {
+    color: var(--muted);
+  }
+
+  & .task-work-details-command-action {
+    color: var(--link-fg);
+  }
+}
+
+@media (max-width: 620px) {
+  caffold-task-work-details {
+    & .task-work-details-command-summary {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+    }
+
+    & .task-work-details-command-meta {
+      display: none;
+    }
+  }
+}
