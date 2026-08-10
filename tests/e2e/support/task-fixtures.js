@@ -207,6 +207,13 @@ export async function mockCodexModels(page) {
                 description: "Maximum reasoning with automatic task delegation",
               },
             ],
+            serviceTiers: [
+              {
+                id: "priority",
+                name: "Fast",
+                description: "1.5x speed, increased usage",
+              },
+            ],
           },
         ],
         nextCursor: null,

@@ -209,6 +209,7 @@ class CaffoldTaskNew extends HTMLElement {
       this.syncComposer();
       this.composer()?.resolveSubmission(submissionId, {
         status: "accepted",
+        resetFastMode: true,
       });
       this.dispatchEvent(
         new CustomEvent("caffold:task-created", {

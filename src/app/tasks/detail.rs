@@ -55,6 +55,7 @@ pub(in crate::app) struct TaskDetailResponse {
     pub(in crate::app) permission_mode: Option<CodexPermissionMode>,
     pub(in crate::app) model: Option<String>,
     pub(in crate::app) reasoning_effort: Option<String>,
+    pub(in crate::app) fast_mode: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -424,6 +425,7 @@ impl DetailContext {
         let permission_mode = snapshot.permission_mode;
         let session_model = snapshot.model.clone();
         let session_reasoning_effort = snapshot.reasoning_effort.clone();
+        let session_fast_mode = snapshot.fast_mode;
         let thread_id = snapshot
             .thread
             .as_ref()
@@ -468,16 +470,23 @@ impl DetailContext {
             .store_update_observed_recency(&thread_id, activity_ms)
             .await?
             .or(managed);
-        if session_model.is_some() || session_reasoning_effort.is_some() {
-            managed = self
-                .store_update_composer_settings(
-                    &thread_id,
-                    session_model.as_deref(),
-                    session_reasoning_effort.as_deref(),
-                )
-                .await?
-                .or(managed);
-        }
+        let persisted_model = session_model
+            .as_deref()
+            .or_else(|| managed.as_ref().and_then(|thread| thread.model.as_deref()));
+        let persisted_reasoning_effort = session_reasoning_effort.as_deref().or_else(|| {
+            managed
+                .as_ref()
+                .and_then(|thread| thread.reasoning_effort.as_deref())
+        });
+        managed = self
+            .store_update_composer_settings(
+                &thread_id,
+                persisted_model,
+                persisted_reasoning_effort,
+                session_fast_mode,
+            )
+            .await?
+            .or(managed);
         if let Some(mut current) = managed {
             if actively_viewed
                 && let Some(seen) = self
@@ -502,6 +511,7 @@ impl DetailContext {
                 permission_mode,
                 model,
                 reasoning_effort,
+                fast_mode: session_fast_mode,
             });
         }
         Err(not_managed_error())
@@ -724,6 +734,7 @@ impl DetailContext {
         thread_id: &str,
         model: Option<&str>,
         reasoning_effort: Option<&str>,
+        fast_mode: bool,
     ) -> Result<Option<ManagedThread>, ApiError> {
         let store = self.store.clone();
         let thread_id = thread_id.to_string();
@@ -734,6 +745,7 @@ impl DetailContext {
                 &thread_id,
                 model.as_deref(),
                 reasoning_effort.as_deref(),
+                fast_mode,
             )
         })
         .await
@@ -802,6 +814,7 @@ pub(in crate::app) fn loading_detail(
         permission_mode: None,
         model: managed.and_then(|thread| thread.model.clone()),
         reasoning_effort: managed.and_then(|thread| thread.reasoning_effort.clone()),
+        fast_mode: managed.is_some_and(|thread| thread.fast_mode),
     }
 }
 

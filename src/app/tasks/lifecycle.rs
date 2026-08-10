@@ -2,8 +2,8 @@ use std::{path::PathBuf, sync::Arc};
 
 use crate::{
     app::error::ApiError,
-    codex_app_server::{CodexThreadClient, CodexTurnOptions},
-    codex_thread_sessions::CodexThreadSessions,
+    codex_app_server::{CodexThreadClient, CodexTurnOptions, is_fast_service_tier},
+    codex_thread_sessions::{CodexThreadSessions, StartedThreadSettings},
     fs::RootedFs,
     task_store::{ManagedThread, TaskStore},
 };
@@ -70,6 +70,8 @@ impl TaskLifecycle {
         let requested_permission_mode = turn_options.permission_mode;
         let requested_model = turn_options.model.clone();
         let requested_reasoning_effort = turn_options.effort.clone();
+        let requested_service_tier = turn_options.service_tier.clone();
+        let requested_fast_mode = is_fast_service_tier(requested_service_tier.as_deref());
         let client = &connection.client;
         let mut thread = client
             .start_thread(&cwd, turn_options.permission_mode)
@@ -102,6 +104,7 @@ impl TaskLifecycle {
                 &task,
                 effective_model.clone(),
                 effective_reasoning_effort.clone(),
+                requested_fast_mode,
             ))
             .await
         {
@@ -116,9 +119,12 @@ impl TaskLifecycle {
                 client,
                 connection.generation,
                 thread.thread.clone(),
-                thread_permission_mode,
-                thread.model.clone(),
-                thread.reasoning_effort.clone(),
+                StartedThreadSettings {
+                    permission_mode: thread_permission_mode,
+                    model: thread.model.clone(),
+                    reasoning_effort: thread.reasoning_effort.clone(),
+                    fast_mode: requested_fast_mode,
+                },
             )
             .await;
         let turn = match client
@@ -141,6 +147,7 @@ impl TaskLifecycle {
                     permission_mode: thread_permission_mode,
                     model: effective_model.clone(),
                     effort: effective_reasoning_effort.clone(),
+                    service_tier: requested_service_tier,
                 },
             )
             .await;
@@ -149,6 +156,7 @@ impl TaskLifecycle {
                 &thread.thread_id,
                 effective_model.as_deref(),
                 effective_reasoning_effort.as_deref(),
+                requested_fast_mode,
             )
             .await
         {
@@ -259,6 +267,7 @@ impl TaskLifecycle {
         thread_id: &str,
         model: Option<&str>,
         reasoning_effort: Option<&str>,
+        fast_mode: bool,
     ) -> Result<(), ApiError> {
         let store = self.store.clone();
         let thread_id = thread_id.to_string();
@@ -269,6 +278,7 @@ impl TaskLifecycle {
                 &thread_id,
                 model.as_deref(),
                 reasoning_effort.as_deref(),
+                fast_mode,
             )
         })
         .await
@@ -291,6 +301,7 @@ fn managed_thread_from_task_record(
     task: &TaskRecord,
     model: Option<String>,
     reasoning_effort: Option<String>,
+    fast_mode: bool,
 ) -> ManagedThread {
     let mut managed = ManagedThread::new(
         task.thread_id.clone(),
@@ -298,6 +309,7 @@ fn managed_thread_from_task_record(
         model,
         reasoning_effort,
     );
+    managed.fast_mode = fast_mode;
     managed.last_completed_at_ms = task.last_completed_ms;
     managed
 }

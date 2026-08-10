@@ -194,6 +194,36 @@ test(
       const readParams = readFileSync(join(outputDirectory, "v2", "ThreadReadParams.ts"), "utf8");
       assert.match(readParams, /includeTurns/);
 
+      const model = readFileSync(join(outputDirectory, "v2", "Model.ts"), "utf8");
+      assert.match(model, /serviceTiers: Array<ModelServiceTier>/);
+      assert.match(model, /defaultServiceTier: string \| null/);
+
+      const serviceTier = readFileSync(
+        join(outputDirectory, "v2", "ModelServiceTier.ts"),
+        "utf8",
+      );
+      assert.match(serviceTier, /id: string/);
+      assert.match(serviceTier, /name: string/);
+      assert.match(serviceTier, /description: string/);
+
+      const turnStartServiceTierParams = readFileSync(
+        join(outputDirectory, "v2", "TurnStartParams.ts"),
+        "utf8",
+      );
+      assert.match(turnStartServiceTierParams, /serviceTier\?: string \| null/);
+
+      const threadStartResponse = readFileSync(
+        join(outputDirectory, "v2", "ThreadStartResponse.ts"),
+        "utf8",
+      );
+      assert.match(threadStartResponse, /serviceTier: string \| null/);
+
+      const threadResumeResponse = readFileSync(
+        join(outputDirectory, "v2", "ThreadResumeResponse.ts"),
+        "utf8",
+      );
+      assert.match(threadResumeResponse, /serviceTier: string \| null/);
+
       const turnsResponse = readFileSync(
         join(outputDirectory, "v2", "ThreadTurnsListResponse.ts"),
         "utf8",

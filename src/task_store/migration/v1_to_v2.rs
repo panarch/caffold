@@ -47,28 +47,37 @@ fn migrate_transaction(glue: &mut Glue<RedbStorage>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::task_store::{ManagedThread, managed_thread};
+    use crate::task_store::{managed_thread, migration::v2_to_v3};
+    use gluesql::core::query_builder::table;
+    use gluesql::prelude::SelectResultExt;
 
     #[test]
     fn adds_the_worktree_table_without_rewriting_thread_rows() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("v1.redb");
         let mut glue = Glue::new(RedbStorage::new(&path).unwrap());
-        managed_thread::create_table(&mut glue).unwrap();
+        v2_to_v3::create_managed_thread_v2_table(&mut glue).unwrap();
         schema_migration::create_table(&mut glue).unwrap();
         schema_migration::record(&mut glue, 1, Utc::now().naive_utc()).unwrap();
-        let thread = ManagedThread {
+        let thread = v2_to_v3::ManagedThreadV2Row {
             thread_id: "thread-v1".to_string(),
-            archived_at_ms: None,
-            last_observed_recency_ms: None,
-            claimed_at_ms: 1_750_000_000_000,
-            last_opened_at_ms: None,
-            last_seen_activity_ms: None,
-            last_completed_at_ms: None,
+            archived_at: None,
+            last_observed_recency_at: None,
+            claimed_at: chrono::DateTime::from_timestamp_millis(1_750_000_000_000)
+                .unwrap()
+                .naive_utc(),
+            last_opened_at: None,
+            last_seen_activity_at: None,
+            last_completed_at: None,
             model: Some("gpt-test".to_string()),
             reasoning_effort: Some("high".to_string()),
         };
-        let thread = managed_thread::claim(&mut glue, thread, 1_750_000_000_000).unwrap();
+        table(managed_thread::TABLE_NAME)
+            .insert()
+            .values_from(std::slice::from_ref(&thread))
+            .unwrap()
+            .execute(&mut glue)
+            .unwrap();
         drop(glue);
 
         assert_eq!(
@@ -82,8 +91,12 @@ mod tests {
 
         let mut glue = Glue::new(RedbStorage::new(&path).unwrap());
         assert_eq!(
-            managed_thread::get(&mut glue, "thread-v1").unwrap(),
-            Some(thread)
+            table(managed_thread::TABLE_NAME)
+                .select()
+                .execute(&mut glue)
+                .rows_as::<v2_to_v3::ManagedThreadV2Row>()
+                .unwrap(),
+            vec![thread]
         );
         managed_worktree::validate_table(&glue).unwrap();
         assert_eq!(schema_migration::current_version(&mut glue).unwrap(), 2);

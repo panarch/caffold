@@ -851,6 +851,14 @@ test("mixed surfaces keep content and controls on separate axes", () => {
     composer,
     /\.task-model-button[\s\S]*min-height: var\(--interface-compact-visual-size\)/,
   );
+  assert.match(
+    composer,
+    /\.task-model-button \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto;/,
+  );
+  assert.match(
+    composer,
+    /\.task-model-button\.is-fast \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto auto;/,
+  );
   assert.doesNotMatch(composer, /\.task-(?:model|permission)-(?:icon|caret)/);
   assert.match(
     composer,
@@ -859,6 +867,18 @@ test("mixed surfaces keep content and controls on separate axes", () => {
   assert.match(
     composer,
     /\.task-model-option \{[\s\S]*gap: 0\.5rem;[\s\S]*padding: 0\.375rem;/,
+  );
+  assert.match(
+    composer,
+    /\.task-model-option \{[\s\S]*min-height: max\(2\.125rem, calc\(var\(--interface-target-floor\) - 2px\)\)/,
+  );
+  assert.match(
+    composer,
+    /\.task-model-option strong \{[\s\S]*font-weight: 600;/,
+  );
+  assert.match(
+    composer,
+    /\.task-model-fast-icon \{[\s\S]*width: 0\.75rem;[\s\S]*height: 0\.75rem;[\s\S]*fill: currentColor;[\s\S]*stroke-width: 2;/,
   );
 
   const conversation = readFrontend(

@@ -315,6 +315,10 @@ caffold-task-composer {
     text-align: left;
   }
 
+  & .task-model-button.is-fast {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
   & .task-permission-button {
     anchor-name: --task-permission-picker;
     max-width: min(100%, 220px);
@@ -332,6 +336,20 @@ caffold-task-composer {
 
   & .task-model-effort {
     white-space: nowrap;
+  }
+
+  & .task-model-fast {
+    display: grid;
+    place-items: center;
+    color: var(--control-selected-fg);
+  }
+
+  & .task-model-fast-icon {
+    display: block;
+    width: 0.75rem;
+    height: 0.75rem;
+    fill: currentColor;
+    stroke-width: 2;
   }
 
   & .task-toolbar-button:hover,
@@ -565,7 +583,7 @@ caffold-task-composer {
     align-items: center;
     gap: 0.5rem;
     width: 100%;
-    min-height: max(2.125rem, var(--interface-target-floor));
+    min-height: max(2.125rem, calc(var(--interface-target-floor) - 2px));
     padding: 0.375rem;
     border: 0;
     border-radius: 0.375rem;
@@ -574,6 +592,10 @@ caffold-task-composer {
     font-size: 0.875rem;
     text-align: left;
     cursor: pointer;
+  }
+
+  & .task-model-option strong {
+    font-weight: 600;
   }
 
   & .task-model-option:hover,

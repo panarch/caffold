@@ -62,7 +62,7 @@ impl ReplacementDatabase {
             .file_name()
             .and_then(|filename| filename.to_str())
             .unwrap_or("caffold.redb");
-        let path = target.with_file_name(format!(".{filename}.migration-v2-{}", Uuid::new_v4()));
+        let path = target.with_file_name(format!(".{filename}.migration-v3-{}", Uuid::new_v4()));
         Self {
             path,
             published: false,
@@ -155,7 +155,7 @@ fn write_replacement(
     create_latest_schema(&mut glue, applied_at)?;
     rewrite_rows(&mut glue, snapshot, applied_at)?;
     drop(glue);
-    if detect_redb_schema(path)? != DetectedSchemaVersion::V2 {
+    if detect_redb_schema(path)? != DetectedSchemaVersion::V3 {
         return Err(TaskStoreError::IncompleteSchema);
     }
     Ok(())
@@ -264,6 +264,7 @@ fn convert_legacy_row(
         last_completed_at: None,
         model: row.model,
         reasoning_effort: row.reasoning_effort,
+        fast_mode: false,
     })
 }
 
@@ -382,6 +383,7 @@ mod tests {
                 last_completed_at_ms: None,
                 model: Some("gpt-legacy".to_string()),
                 reasoning_effort: Some("xhigh".to_string()),
+                fast_mode: false,
             })
         );
         let archived = managed_thread::get_archived(&mut glue, "archived-legacy")

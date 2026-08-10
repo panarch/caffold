@@ -597,12 +597,26 @@ class CaffoldTaskDetail extends HTMLElement {
     }
 
     request.state = PROMPT_SUBMISSION_STATE.ACCEPTED;
+    request.canonicalConfirmed = true;
+    this.releaseConfirmedFollowUpOverrides(request);
     request.composer?.resolveSubmission(request.submissionId, {
       status: "accepted",
     });
     if (this.followUpRequests.get(threadId) === request) {
       this.followUpRequests.delete(threadId);
     }
+  }
+
+  releaseConfirmedFollowUpOverrides(request) {
+    if (
+      request?.overridesReleased ||
+      !request?.canonicalConfirmed ||
+      request?.resetOverridesOnCanonical !== true
+    ) {
+      return;
+    }
+    request.composer?.resetOverrides();
+    request.overridesReleased = true;
   }
 
   acceptTaskDetailRevision(threadId, revision) {
@@ -806,7 +820,10 @@ class CaffoldTaskDetail extends HTMLElement {
       });
       return;
     }
-    if (this.followUpRequests.has(threadId)) {
+    if (
+      this.followUpRequests.get(threadId)?.state ===
+      PROMPT_SUBMISSION_STATE.SENDING
+    ) {
       composer.resolveSubmission(submissionId, {
         status: "rejected",
         error: new Error("A prompt is already being submitted for this task."),
@@ -849,6 +866,9 @@ class CaffoldTaskDetail extends HTMLElement {
           .filter(Boolean),
       ),
       state: PROMPT_SUBMISSION_STATE.SENDING,
+      canonicalConfirmed: false,
+      resetOverridesOnCanonical: null,
+      overridesReleased: false,
     };
     this.followUpRequests.set(threadId, followUpRequest);
     this.setThreadEvents(
@@ -869,6 +889,8 @@ class CaffoldTaskDetail extends HTMLElement {
         throw new Error("Codex accepted the prompt for a different task.");
       }
       followUpRequest.state = PROMPT_SUBMISSION_STATE.ACCEPTED;
+      followUpRequest.resetOverridesOnCanonical = !response?.steered;
+      this.releaseConfirmedFollowUpOverrides(followUpRequest);
       this.setThreadEvents(
         threadId,
         (this.eventsByThread.get(threadId) ?? []).map((event) =>
@@ -880,12 +902,8 @@ class CaffoldTaskDetail extends HTMLElement {
             : event,
         ),
       );
-      if (!response?.steered) {
-        composer.resetOverrides();
-      }
       composer.resolveSubmission(submissionId, {
         status: "accepted",
-        resetOverrides: !response?.steered,
       });
       if (threadId === this.selectedThreadId) {
         this.conversationUpdateKind = "live";
@@ -928,7 +946,10 @@ class CaffoldTaskDetail extends HTMLElement {
         }
       }
     } finally {
-      if (this.followUpRequests.get(threadId) === followUpRequest) {
+      if (
+        this.followUpRequests.get(threadId) === followUpRequest &&
+        followUpRequest.state !== PROMPT_SUBMISSION_STATE.ACCEPTED
+      ) {
         this.followUpRequests.delete(threadId);
       }
       this.pruneFollowUpComposerCache();
@@ -1420,6 +1441,7 @@ class CaffoldTaskDetail extends HTMLElement {
       }`,
       model: `${this.taskDetail?.model ?? ""}`.trim(),
       effort: `${this.taskDetail?.reasoningEffort ?? ""}`.trim(),
+      fastMode: Boolean(this.taskDetail?.fastMode),
       permissionMode: `${this.taskDetail?.permissionMode ?? ""}`.trim(),
     });
     this.activateFollowUpComposer(threadId);

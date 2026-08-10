@@ -24,6 +24,12 @@ fn current_model_list_response() -> JsonValue {
                     { "reasoningEffort": "ultra", "description": "Automatic delegation" }
                 ],
                 "defaultReasoningEffort": "low",
+                "serviceTiers": [{
+                    "id": "priority",
+                    "name": "Fast",
+                    "description": "1.5x speed, increased usage"
+                }],
+                "defaultServiceTier": null,
                 "inputModalities": ["text", "image"],
                 "supportsPersonality": false,
                 "isDefault": true
@@ -42,8 +48,30 @@ fn current_model_list_response() -> JsonValue {
                     { "reasoningEffort": "max", "description": "Maximum depth" }
                 ],
                 "defaultReasoningEffort": "medium",
+                "serviceTiers": [{
+                    "id": "priority",
+                    "name": "Fast",
+                    "description": "1.5x speed, increased usage"
+                }],
+                "defaultServiceTier": null,
                 "inputModalities": ["text", "image"],
                 "supportsPersonality": true,
+                "isDefault": false
+            },
+            {
+                "id": "gpt-5.4-mini",
+                "model": "gpt-5.4-mini",
+                "displayName": "GPT-5.4 Mini",
+                "description": "Fast model without a service tier override.",
+                "hidden": false,
+                "supportedReasoningEfforts": [
+                    { "reasoningEffort": "low", "description": "Fast responses" }
+                ],
+                "defaultReasoningEffort": "low",
+                "serviceTiers": [],
+                "defaultServiceTier": null,
+                "inputModalities": ["text"],
+                "supportsPersonality": false,
                 "isDefault": false
             }
         ],
@@ -138,6 +166,12 @@ async fn codex_models_preserves_app_server_reasoning_efforts() {
                     { "reasoningEffort": "ultra", "description": "Automatic delegation" }
                 ],
                 "defaultReasoningEffort": "low",
+                "serviceTiers": [{
+                    "id": "priority",
+                    "name": "Fast",
+                    "description": "1.5x speed, increased usage"
+                }],
+                "defaultServiceTier": null,
                 "inputModalities": ["text", "image"],
                 "supportsPersonality": false,
                 "isDefault": true
@@ -154,6 +188,8 @@ async fn codex_models_preserves_app_server_reasoning_efforts() {
 
     assert_eq!(efforts[0]["reasoningEffort"], "low");
     assert_eq!(efforts[0]["description"], "Fast responses");
+    assert_eq!(response["data"][0]["serviceTiers"][0]["id"], "priority");
+    assert_eq!(response["data"][0]["serviceTiers"][0]["name"], "Fast");
     assert!(efforts[0].get("value").is_none());
     assert!(efforts[0].get("label").is_none());
     assert_eq!(efforts[1]["reasoningEffort"], "xhigh");
@@ -256,6 +292,7 @@ async fn create_task_keeps_explicit_permission_mode_for_the_first_turn() {
             cwd: None,
             model: None,
             effort: None,
+            fast_mode: false,
             permission_mode: Some(CodexPermissionMode::ApproveForMe),
         }),
     )
@@ -337,6 +374,7 @@ async fn create_task_persists_the_applied_model_and_reasoning_effort() {
             cwd: None,
             model: Some("gpt-5.6-sol".to_string()),
             effort: Some("xhigh".to_string()),
+            fast_mode: true,
             permission_mode: None,
         }),
     )
@@ -345,15 +383,18 @@ async fn create_task_persists_the_applied_model_and_reasoning_effort() {
 
     assert_eq!(response.0.model.as_deref(), Some("gpt-5.6-sol"));
     assert_eq!(response.0.reasoning_effort.as_deref(), Some("xhigh"));
+    assert!(response.0.fast_mode);
     let stored = task_store_get(&state, thread_id)
         .await
         .unwrap()
         .expect("managed thread settings");
     assert_eq!(stored.model.as_deref(), Some("gpt-5.6-sol"));
     assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
+    assert!(stored.fast_mode);
     let requests = client.mock_requests().await;
     assert_eq!(requests[2].0, "turn/start");
     assert_eq!(requests[2].1["model"], "gpt-5.6-sol");
+    assert_eq!(requests[2].1["serviceTier"], "priority");
     assert_eq!(requests[2].1["effort"], "xhigh");
 }
 
@@ -734,6 +775,7 @@ async fn codex_turn_options_accepts_server_reported_reasoning_efforts() {
         &client,
         Some("gpt-5.6-sol".to_string()),
         Some("xhigh".to_string()),
+        false,
         Some(CodexPermissionMode::AskForApproval),
     )
     .await
@@ -745,12 +787,55 @@ async fn codex_turn_options_accepts_server_reported_reasoning_efforts() {
         &client,
         Some("gpt-5.6-luna".to_string()),
         Some("max".to_string()),
+        false,
         Some(CodexPermissionMode::ApproveForMe),
     )
     .await
     .unwrap();
     assert_eq!(max.model.as_deref(), Some("gpt-5.6-luna"));
     assert_eq!(max.effort.as_deref(), Some("max"));
+}
+
+#[tokio::test]
+async fn codex_turn_options_maps_fast_mode_and_normalizes_unsupported_models() {
+    let client = CodexThreadClient::mock(vec![
+        crate::codex_app_server::MockCodexResponse::ok("model/list", current_model_list_response()),
+        crate::codex_app_server::MockCodexResponse::ok("model/list", current_model_list_response()),
+        crate::codex_app_server::MockCodexResponse::ok("model/list", current_model_list_response()),
+    ]);
+
+    let fast = codex_turn_options(
+        &client,
+        Some("gpt-5.6-sol".to_string()),
+        Some("low".to_string()),
+        true,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(fast.service_tier.as_deref(), Some("priority"));
+
+    let normal = codex_turn_options(
+        &client,
+        Some("gpt-5.6-sol".to_string()),
+        Some("low".to_string()),
+        false,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(normal.service_tier.as_deref(), Some("default"));
+
+    let normalized = codex_turn_options(
+        &client,
+        Some("gpt-5.4-mini".to_string()),
+        Some("low".to_string()),
+        true,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(normalized.service_tier.as_deref(), Some("default"));
 }
 
 #[tokio::test]
@@ -764,6 +849,7 @@ async fn codex_turn_options_rejects_effort_not_supported_by_selected_model() {
         &client,
         Some("gpt-5.6-luna".to_string()),
         Some("ultra".to_string()),
+        true,
         Some(CodexPermissionMode::AskForApproval),
     )
     .await
@@ -789,6 +875,7 @@ async fn codex_turn_options_rejects_model_missing_from_server_list() {
         &client,
         Some("gpt-imaginary".to_string()),
         Some("high".to_string()),
+        false,
         Some(CodexPermissionMode::AskForApproval),
     )
     .await
@@ -815,9 +902,12 @@ async fn managed_list_never_projects_pending_approval_onto_thread_status() {
     let resolved = resolve_thread_cwd(&state.fs, &thread);
     let task = task_record_from_thread(&thread, &[], resolved.as_ref()).unwrap();
     assert_eq!(task.thread_status, ThreadStatus::Idle);
-    task_store_claim(&state, managed_thread_from_task_record(&task, None, None))
-        .await
-        .unwrap();
+    task_store_claim(
+        &state,
+        managed_thread_from_task_record(&task, None, None, false),
+    )
+    .await
+    .unwrap();
 
     let response = list_managed_tasks(State(state), Query(TasksQuery { cursor: None }))
         .await
@@ -839,9 +929,12 @@ async fn managed_list_projects_persisted_completion_time_and_unseen_state() {
     let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
     let resolved = resolve_thread_cwd(&state.fs, &thread);
     let task = task_record_from_thread(&thread, &[], resolved.as_ref()).unwrap();
-    task_store_claim(&state, managed_thread_from_task_record(&task, None, None))
-        .await
-        .unwrap();
+    task_store_claim(
+        &state,
+        managed_thread_from_task_record(&task, None, None, false),
+    )
+    .await
+    .unwrap();
     state
         .task_store
         .update_completed_at(thread_id, 5_000)
@@ -1314,9 +1407,15 @@ async fn task_prompt_persists_the_applied_model_and_reasoning_effort() {
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
-    task_store_update_composer_settings(&state, thread_id, Some("gpt-5.6-luna"), Some("medium"))
-        .await
-        .unwrap();
+    task_store_update_composer_settings(
+        &state,
+        thread_id,
+        Some("gpt-5.6-luna"),
+        Some("medium"),
+        false,
+    )
+    .await
+    .unwrap();
 
     let response = task_prompt(
         State(state.clone()),
@@ -1327,6 +1426,7 @@ async fn task_prompt_persists_the_applied_model_and_reasoning_effort() {
             images: Vec::new(),
             model: Some("gpt-5.6-sol".to_string()),
             effort: Some("xhigh".to_string()),
+            fast_mode: true,
             permission_mode: None,
             active_turn_id: None,
         }),
@@ -1338,6 +1438,7 @@ async fn task_prompt_persists_the_applied_model_and_reasoning_effort() {
     let stored = task_store_get(&state, thread_id).await.unwrap().unwrap();
     assert_eq!(stored.model.as_deref(), Some("gpt-5.6-sol"));
     assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
+    assert!(stored.fast_mode);
     let requests = client.mock_requests().await;
     assert_eq!(
         requests
@@ -1348,6 +1449,7 @@ async fn task_prompt_persists_the_applied_model_and_reasoning_effort() {
     );
     assert_eq!(requests[2].1["model"], "gpt-5.6-sol");
     assert_eq!(requests[2].1["effort"], "xhigh");
+    assert_eq!(requests[2].1["serviceTier"], "priority");
 }
 
 #[tokio::test]
@@ -1407,6 +1509,7 @@ async fn task_prompt_starts_and_steers_the_same_thread_in_its_ready_managed_work
             images: Vec::new(),
             model: None,
             effort: None,
+            fast_mode: false,
             permission_mode: None,
             active_turn_id: None,
         }),
@@ -1479,6 +1582,7 @@ async fn task_prompt_starts_and_steers_the_same_thread_in_its_ready_managed_work
             images: Vec::new(),
             model: None,
             effort: None,
+            fast_mode: false,
             permission_mode: None,
             active_turn_id: Some("turn-managed-follow-up".to_string()),
         }),
@@ -1533,6 +1637,7 @@ async fn task_prompt_rejects_an_unavailable_ready_worktree_before_calling_codex(
             images: Vec::new(),
             model: None,
             effort: None,
+            fast_mode: false,
             permission_mode: None,
             active_turn_id: None,
         }),
@@ -1582,6 +1687,7 @@ async fn task_prompt_blocks_a_transfer_that_requires_manual_recovery() {
             images: Vec::new(),
             model: None,
             effort: None,
+            fast_mode: false,
             permission_mode: None,
             active_turn_id: None,
         }),
@@ -1658,6 +1764,7 @@ async fn task_prompt_does_not_steer_the_isolation_turn_in_the_old_checkout() {
             images: Vec::new(),
             model: None,
             effort: None,
+            fast_mode: false,
             permission_mode: None,
             active_turn_id: Some("turn-isolation".to_string()),
         }),
@@ -1739,6 +1846,7 @@ async fn task_prompt_recovers_a_system_error_thread_with_a_new_turn() {
             images: Vec::new(),
             model: None,
             effort: None,
+            fast_mode: false,
             permission_mode: None,
             active_turn_id: None,
         }),
@@ -1818,6 +1926,7 @@ async fn task_prompt_resumes_a_not_loaded_thread_before_starting_a_new_turn() {
             images: Vec::new(),
             model: None,
             effort: None,
+            fast_mode: false,
             permission_mode: None,
             active_turn_id: None,
         }),
@@ -1878,6 +1987,7 @@ async fn task_prompt_keeps_accepted_steer_visible_before_canonical_sync() {
             images: Vec::new(),
             model: None,
             effort: None,
+            fast_mode: false,
             permission_mode: None,
             active_turn_id: Some(turn_id.to_string()),
         }),
@@ -2000,6 +2110,7 @@ async fn stale_steer_refreshes_canonical_status_before_starting_a_follow_up() {
             images: Vec::new(),
             model: None,
             effort: None,
+            fast_mode: false,
             permission_mode: None,
             active_turn_id: Some(stale_turn_id.to_string()),
         }),

@@ -25,6 +25,7 @@ const COLUMN_DEFINITIONS: &[&str] = &[
     "last_completed_at TIMESTAMP NULL",
     "model TEXT NULL",
     "reasoning_effort TEXT NULL",
+    "fast_mode BOOLEAN NOT NULL DEFAULT FALSE",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,6 +39,7 @@ pub(crate) struct ManagedThread {
     pub last_completed_at_ms: Option<u64>,
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
+    pub fast_mode: bool,
 }
 
 impl ManagedThread {
@@ -57,6 +59,7 @@ impl ManagedThread {
             last_completed_at_ms: None,
             model,
             reasoning_effort,
+            fast_mode: false,
         }
     }
 
@@ -79,6 +82,7 @@ pub(super) struct ManagedThreadRow {
     pub last_completed_at: Option<NaiveDateTime>,
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
+    pub fast_mode: bool,
 }
 
 impl TryFrom<&ManagedThread> for ManagedThreadRow {
@@ -107,6 +111,7 @@ impl TryFrom<&ManagedThread> for ManagedThreadRow {
             )?,
             model: thread.model.clone(),
             reasoning_effort: thread.reasoning_effort.clone(),
+            fast_mode: thread.fast_mode,
         })
     }
 }
@@ -134,6 +139,7 @@ impl TryFrom<ManagedThreadRow> for ManagedThread {
             )?,
             model: row.model,
             reasoning_effort: row.reasoning_effort,
+            fast_mode: row.fast_mode,
         })
     }
 }
@@ -202,6 +208,7 @@ where
         if thread.reasoning_effort.is_none() {
             thread.reasoning_effort = existing.reasoning_effort;
         }
+        thread.fast_mode = existing.fast_mode;
         update_all(glue, &thread)?;
     } else {
         if get_archived(glue, &thread.thread_id)?.is_some() {
@@ -380,6 +387,7 @@ pub(super) fn update_composer_settings<S>(
     thread_id: &str,
     model: Option<&str>,
     reasoning_effort: Option<&str>,
+    fast_mode: bool,
 ) -> Result<Option<ManagedThread>>
 where
     S: GStore + GStoreMut + Planner,
@@ -393,6 +401,7 @@ where
         .filter(Membership::Active.filter())
         .set("model", optional_text(model))
         .set("reasoning_effort", optional_text(reasoning_effort))
+        .set("fast_mode", glue_value(Value::Bool(fast_mode)))
         .execute(glue)?;
     get(glue, thread_id)
 }
@@ -570,6 +579,7 @@ where
             "reasoning_effort",
             optional_text(row.reasoning_effort.as_deref()),
         )
+        .set("fast_mode", glue_value(Value::Bool(row.fast_mode)))
         .execute(glue)?;
     Ok(())
 }
@@ -745,6 +755,7 @@ mod tests {
             last_completed_at_ms: Some(150),
             model: Some("gpt-test".to_string()),
             reasoning_effort: Some("xhigh".to_string()),
+            fast_mode: true,
         };
 
         let row = ManagedThreadRow::try_from(&thread).unwrap();
@@ -924,7 +935,7 @@ mod tests {
         assert_eq!(claimed.last_seen_activity_ms, None);
         assert!(!claimed.unseen());
 
-        update_composer_settings(&mut glue, "task", Some("gpt-test"), Some("xhigh")).unwrap();
+        update_composer_settings(&mut glue, "task", Some("gpt-test"), Some("xhigh"), true).unwrap();
         let refreshed = update_observed_recency(&mut glue, "task", 40)
             .unwrap()
             .unwrap();
@@ -932,6 +943,7 @@ mod tests {
         assert_eq!(refreshed.last_seen_activity_ms, None);
         assert_eq!(refreshed.model.as_deref(), Some("gpt-test"));
         assert_eq!(refreshed.reasoning_effort.as_deref(), Some("xhigh"));
+        assert!(refreshed.fast_mode);
         assert!(!refreshed.unseen());
 
         let completed = update_completed_at(&mut glue, "task", 45).unwrap().unwrap();
@@ -1036,7 +1048,7 @@ mod tests {
         );
         assert_eq!(mark_seen(&mut glue, "missing", 100, 100).unwrap(), None);
         assert_eq!(
-            update_composer_settings(&mut glue, "missing", None, None).unwrap(),
+            update_composer_settings(&mut glue, "missing", None, None, false).unwrap(),
             None
         );
         assert!(!delete(&mut glue, "missing").unwrap());
