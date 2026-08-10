@@ -220,13 +220,18 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
         return null;
       }
 
+      const loadedPresentation = this.diffPresentation(path, status, number, diff);
+      this.viewerPresentation = loadedPresentation;
       if (diff.diffUnavailable) {
         this.fileViewer.setError(
-          presentation,
+          loadedPresentation,
           new Error(diff.message ?? "Diff unavailable."),
         );
       } else {
-        this.fileViewer.setDiff({ ...diff, status }, { presentation });
+        this.fileViewer.setDiff(
+          { ...diff, status },
+          { presentation: loadedPresentation },
+        );
       }
       return diff;
     } catch (error) {
@@ -288,14 +293,29 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
     return this.pullFiles?.files?.find((entry) => entry.path === path) ?? null;
   }
 
-  diffPresentation(path, status = "", number = this.currentPullNumber()) {
+  diffPresentation(path, status = "", number = this.currentPullNumber(), diff = {}) {
     const file = this.findFile(path);
+    const fileStatsAvailable =
+      Number.isFinite(file?.additions) &&
+      Number.isFinite(file?.deletions) &&
+      (file.patchAvailable || file.additions > 0 || file.deletions > 0);
     return diffViewerPresentation({
-      repository: this.repository,
-      path,
-      repoRelativePath: file?.repoRelativePath,
-      kind: Number.isFinite(number) ? `PR #${number}` : "",
+      ...diff,
+      repository: diff.repository ?? this.repository,
+      path: diff.path ?? path,
+      repoRelativePath: diff.repoRelativePath ?? file?.repoRelativePath,
+      kind: diff.kind || (Number.isFinite(number) ? `PR #${number}` : ""),
       status: status || file?.status || "",
+      additions: Object.hasOwn(diff, "additions")
+        ? diff.additions
+        : fileStatsAvailable
+          ? file.additions
+          : undefined,
+      deletions: Object.hasOwn(diff, "deletions")
+        ? diff.deletions
+        : fileStatsAvailable
+          ? file.deletions
+          : undefined,
     });
   }
 

@@ -282,9 +282,10 @@ class CaffoldGitCompareBrowser extends HTMLElement {
         return null;
       }
 
+      const loadedPresentation = this.diffPresentation(path, status, diff);
       this.viewer.setDiff(
         { ...diff, status },
-        { presentation },
+        { presentation: loadedPresentation },
       );
       return diff;
     } catch (error) {
@@ -367,7 +368,7 @@ class CaffoldGitCompareBrowser extends HTMLElement {
       if (requestId !== this.diffRequestId || path !== this.compareTree.selectedPath) {
         return null;
       }
-      const presentation = this.diffPresentation(path, file.status ?? "");
+      const presentation = this.diffPresentation(path, file.status ?? "", diff);
       this.viewer.setDiff(
         { ...diff, status: file.status ?? "" },
         { preserveScroll: true, presentation },
@@ -500,16 +501,17 @@ class CaffoldGitCompareBrowser extends HTMLElement {
     }
   }
 
-  diffPresentation(path, status = "") {
+  diffPresentation(path, status = "", diff = {}) {
     const file = this.fileForPath(path);
     return diffViewerPresentation({
-      repository: this.repository,
-      path,
-      repoRelativePath: file?.repoRelativePath,
+      ...diff,
+      repository: diff.repository ?? this.repository,
+      path: diff.path ?? path,
+      repoRelativePath: diff.repoRelativePath ?? file?.repoRelativePath,
       kind:
-        this.compare?.baseRef && this.compare?.headRef
+        diff.kind || (this.compare?.baseRef && this.compare?.headRef
           ? `${this.compare.baseRef}...${this.compare.headRef}`
-          : "",
+          : ""),
       status: status || file?.status || "",
     });
   }

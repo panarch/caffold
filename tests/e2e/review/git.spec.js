@@ -115,6 +115,8 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
         path: file,
         repoRelativePath: file.replace(/^src\//, ""),
         kind,
+        additions: file.endsWith("deleted.rs") ? null : 2,
+        deletions: file.endsWith("deleted.rs") ? null : kind === "untracked" ? 0 : 1,
         diff:
           kind === "untracked"
             ? [
@@ -223,6 +225,15 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   );
   await expect(page.locator(".git-mode-diff .viewer-subtitle")).toHaveText(
     "Modified · Unstaged",
+  );
+  const workingTreeFileStats = page.locator(
+    ".git-mode-diff caffold-review-file-viewer .viewer-line-stats",
+  );
+  await expect(workingTreeFileStats.locator(".is-addition")).toHaveText("+2");
+  await expect(workingTreeFileStats.locator(".is-deletion")).toHaveText("-1");
+  await expect(workingTreeFileStats).toHaveAttribute(
+    "aria-label",
+    "2 additions and 1 deletions",
   );
   if (testInfo.project.name === "phone") {
     await expectMobileReviewDetail(page, {
@@ -344,6 +355,9 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   await expect(page.locator(".git-mode-diff .viewer-subtitle")).toHaveText(
     "Deleted · Unstaged",
   );
+  await expect(
+    page.locator(".git-mode-diff caffold-review-file-viewer .viewer-line-stats"),
+  ).toHaveCount(0);
   if (testInfo.project.name === "phone") {
     await page.getByRole("button", { name: "Back to changes" }).click();
     await expect(workspace).toHaveAttribute("data-mobile-detail", "false");
@@ -361,6 +375,9 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
 
   await page.locator('button[data-file-tree-path="src/new-file.rs"]').click();
   await expect(page.locator(".git-mode-diff .viewer-subtitle")).toHaveText("Added");
+  await expect(
+    page.locator(".git-mode-diff caffold-review-file-viewer .viewer-line-stats"),
+  ).toHaveAttribute("aria-label", "2 additions and 0 deletions");
   await expect(page.locator("caffold-diff-viewer")).toContainText("pub fn new_file");
   if (testInfo.project.name === "phone") {
     await page.getByRole("button", { name: "Back to changes" }).click();
@@ -453,6 +470,8 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
         path: "src/runtime/release.rs",
         repoRelativePath: "runtime/release.rs",
         kind: `origin/release...${headRef}`,
+        additions: 2,
+        deletions: 1,
         diff: [
           "diff --git a/runtime/release.rs b/runtime/release.rs",
           "index 1111111..2222222 100644",
@@ -596,6 +615,9 @@ test("opens branch compare diffs", async ({ page }, testInfo) => {
   await expect(page.locator(".git-mode-compare .viewer-subtitle")).toHaveText(
     `Added · origin/release...${headRef}`,
   );
+  await expect(
+    page.locator(".git-mode-compare caffold-review-file-viewer .viewer-line-stats"),
+  ).toHaveAttribute("aria-label", "2 additions and 1 deletions");
   await expect(page.locator("caffold-diff-viewer")).toContainText("old compare line");
   await expect(page.locator("caffold-diff-viewer")).toContainText("new compare line");
   if (testInfo.project.name === "phone") {
@@ -724,6 +746,8 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
         path: file,
         repoRelativePath: file.replace(/^src\//, ""),
         kind: "commit abcdef1",
+        additions: 2,
+        deletions: 1,
         diff: [
           `diff --git a/${file.replace(/^src\//, "")} b/${file.replace(/^src\//, "")}`,
           "index 1111111..2222222 100644",
@@ -919,6 +943,9 @@ test("opens commit diffs from Log mode", async ({ page }, testInfo) => {
   await expect(page.locator(".git-mode-log .viewer-subtitle")).toHaveText(
     "Modified · Commit abcdef1",
   );
+  await expect(
+    page.locator(".git-mode-log caffold-review-file-viewer .viewer-line-stats"),
+  ).toHaveAttribute("aria-label", "2 additions and 1 deletions");
   if (testInfo.project.name === "phone") {
     await expect(logView.locator("caffold-git-log-commit-page")).toHaveAttribute(
       "data-detail-view",

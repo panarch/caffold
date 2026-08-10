@@ -26,12 +26,17 @@ test("keeps the selected Review file identity stable while content loads", async
   await expect(viewer.locator(".viewer-subtitle")).toHaveText(
     "Modified · Unstaged",
   );
+  await expect(viewer.locator(".viewer-line-stats")).toHaveCount(0);
   await expect(viewer.locator("caffold-diff-viewer")).toContainText(
     "new planner behavior",
   );
   await expect(viewer.locator(".viewer-title-block h2")).toHaveText("planner.rs");
   await expect(viewer.locator(".viewer-subtitle")).toHaveText(
     "Modified · Unstaged",
+  );
+  await expect(viewer.locator(".viewer-line-stats")).toHaveAttribute(
+    "aria-label",
+    "2 additions and 1 deletions",
   );
 
   await page.route(/\/api\/file(?:\?|$)/, async (route) => {
@@ -158,6 +163,9 @@ test("keeps selectedPath while scope, navigator, and viewer switch independently
   await expect(taskReview.locator("caffold-review-file-viewer")).toContainText(
     "new branch behavior",
   );
+  await expect(
+    taskReview.locator("caffold-review-file-viewer .viewer-line-stats"),
+  ).toHaveAttribute("aria-label", "4 additions and 2 deletions");
 
   await taskReview.getByRole("button", { name: "Source", exact: true }).click();
   await expect(page).toHaveURL(

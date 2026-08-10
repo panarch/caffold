@@ -224,9 +224,16 @@ class CaffoldGitLogCommitPage extends HTMLElement {
         return null;
       }
 
+      const loadedPresentation = this.diffPresentation(
+        path,
+        sha,
+        options.status,
+        diff,
+      );
+      this.viewerPresentation = loadedPresentation;
       this.fileViewer.setDiff(
         { ...diff, status: options.status ?? "" },
-        { presentation },
+        { presentation: loadedPresentation },
       );
       return diff;
     } catch (error) {
@@ -291,9 +298,11 @@ class CaffoldGitLogCommitPage extends HTMLElement {
       if (requestId !== this.fileRequestId || path !== this.commitTree.selectedPath) {
         return null;
       }
+      const loadedPresentation = this.diffPresentation(path, sha, file.status, diff);
+      this.viewerPresentation = loadedPresentation;
       this.fileViewer.setDiff(
         { ...diff, status: file.status ?? "" },
-        { preserveScroll: true, presentation },
+        { preserveScroll: true, presentation: loadedPresentation },
       );
       return diff;
     } catch (error) {
@@ -326,13 +335,14 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     return this.commitPayload?.files?.find((entry) => entry.path === path) ?? null;
   }
 
-  diffPresentation(path, sha = this.currentCommitSha(), status = "") {
+  diffPresentation(path, sha = this.currentCommitSha(), status = "", diff = {}) {
     const file = this.findFile(path);
     return diffViewerPresentation({
-      repository: this.repository,
-      path,
-      repoRelativePath: file?.repoRelativePath,
-      kind: sha ? `commit ${sha.slice(0, 7)}` : "",
+      ...diff,
+      repository: diff.repository ?? this.repository,
+      path: diff.path ?? path,
+      repoRelativePath: diff.repoRelativePath ?? file?.repoRelativePath,
+      kind: diff.kind || (sha ? `commit ${sha.slice(0, 7)}` : ""),
       status: status || file?.status || "",
     });
   }

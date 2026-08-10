@@ -143,9 +143,10 @@ class CaffoldGitDiffBrowser extends HTMLElement {
         return null;
       }
 
+      const loadedPresentation = this.diffPresentation(path, kind, status, diff);
       this.viewer.setDiff(
         { ...diff, status },
-        { presentation },
+        { presentation: loadedPresentation },
       );
       return diff;
     } catch (error) {
@@ -184,7 +185,7 @@ class CaffoldGitDiffBrowser extends HTMLElement {
       if (requestId !== this.diffRequestId || path !== this.changesTree.selectedPath) {
         return null;
       }
-      const presentation = this.diffPresentation(path, kind, file.status ?? "");
+      const presentation = this.diffPresentation(path, kind, file.status ?? "", diff);
       this.viewer.setDiff(
         { ...diff, status: file.status ?? "" },
         { preserveScroll: true, presentation },
@@ -225,13 +226,15 @@ class CaffoldGitDiffBrowser extends HTMLElement {
     }
   }
 
-  diffPresentation(path, kind = "", status = "") {
+  diffPresentation(path, kind = "", status = "", diff = {}) {
     const file = this.gitStatus?.files?.find((entry) => entry.path === path);
     return diffViewerPresentation({
-      repository: this.repository,
-      path,
-      repoRelativePath: file?.repoRelativePath,
-      kind: kind || (file?.untracked ? "untracked" : file?.category ?? ""),
+      ...diff,
+      repository: diff.repository ?? this.repository,
+      path: diff.path ?? path,
+      repoRelativePath: diff.repoRelativePath ?? file?.repoRelativePath,
+      kind:
+        diff.kind || kind || (file?.untracked ? "untracked" : file?.category ?? ""),
       status: status || file?.status || "",
     });
   }

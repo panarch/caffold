@@ -216,6 +216,8 @@ pub struct GithubPullFileResponse {
     pub repo_relative_path: String,
     pub status: String,
     pub kind: String,
+    pub additions: Option<u64>,
+    pub deletions: Option<u64>,
     pub diff: String,
     pub diff_unavailable: bool,
     pub message: Option<String>,
@@ -422,6 +424,8 @@ pub struct GitDiffResponse {
     pub path: String,
     pub repo_relative_path: String,
     pub kind: String,
+    pub additions: Option<u64>,
+    pub deletions: Option<u64>,
     pub diff: String,
 }
 
@@ -872,6 +876,12 @@ impl RootedFs {
                     path: file_path.to_string(),
                 }
             })?;
+        let stats = git::commit_diff_stats(&repository, commit_sha, &repo_relative_path)
+            .ok_or_else(|| FsError::GitCommandFailed {
+                action: "read commit diff stats",
+                path: file_path.to_string(),
+            })?;
+        let (additions, deletions) = optional_diff_stats(stats);
         let kind = format!("commit {}", short_commit_label(commit_sha));
 
         Ok(GitDiffResponse {
@@ -879,6 +889,8 @@ impl RootedFs {
             path: logical_file_path,
             repo_relative_path,
             kind,
+            additions,
+            deletions,
             diff,
         })
     }
@@ -951,12 +963,22 @@ impl RootedFs {
                 path: file_path.to_string(),
             }
         })?;
+        let stats =
+            git::compare_diff_stats(&repository, &refs, &repo_relative_path).ok_or_else(|| {
+                FsError::GitCommandFailed {
+                    action: "read compare diff stats",
+                    path: file_path.to_string(),
+                }
+            })?;
+        let (additions, deletions) = optional_diff_stats(stats);
 
         Ok(GitDiffResponse {
             repository: repository_info,
             path: logical_file_path,
             repo_relative_path,
             kind: format!("{}...{}", refs.base, refs.head),
+            additions,
+            deletions,
             diff,
         })
     }
@@ -1259,6 +1281,8 @@ impl RootedFs {
         } else {
             Some("GitHub did not provide a text diff for this file.".to_string())
         };
+        let (additions, deletions) =
+            optional_github_diff_stats(file.additions, file.deletions, message.is_none());
 
         Ok(GithubPullFileResponse {
             repository: repository_info,
@@ -1268,6 +1292,8 @@ impl RootedFs {
             repo_relative_path,
             status: file.status,
             kind: format!("PR #{number}"),
+            additions,
+            deletions,
             diff: file.patch.unwrap_or_default(),
             diff_unavailable: message.is_some(),
             message,
@@ -1301,12 +1327,21 @@ impl RootedFs {
                 path: file_path.to_string(),
             }
         })?;
+        let stats = git::diff_stats(&repository, &repo_relative_path, kind).ok_or_else(|| {
+            FsError::GitCommandFailed {
+                action: "read diff stats",
+                path: file_path.to_string(),
+            }
+        })?;
+        let (additions, deletions) = optional_diff_stats(stats);
 
         Ok(GitDiffResponse {
             repository: repository_info,
             path: logical_file_path,
             repo_relative_path,
             kind: kind.to_string(),
+            additions,
+            deletions,
             diff,
         })
     }
@@ -1727,6 +1762,25 @@ fn short_commit_label(commit_sha: &str) -> String {
     commit_sha.chars().take(7).collect()
 }
 
+fn optional_diff_stats(stats: git::FileDiffStats) -> (Option<u64>, Option<u64>) {
+    match stats {
+        git::FileDiffStats::Available(stats) => (Some(stats.additions), Some(stats.deletions)),
+        git::FileDiffStats::Unavailable => (None, None),
+    }
+}
+
+fn optional_github_diff_stats(
+    additions: u64,
+    deletions: u64,
+    diff_available: bool,
+) -> (Option<u64>, Option<u64>) {
+    let stats_available = diff_available || additions > 0 || deletions > 0;
+    (
+        stats_available.then_some(additions),
+        stats_available.then_some(deletions),
+    )
+}
+
 fn join_relative_path(base: &str, child: &str) -> String {
     if base.is_empty() {
         child.to_string()
@@ -1966,8 +2020,60 @@ mod tests {
             .git_commit_diff("repo", &log.commits[0].sha, "repo/sample.txt")
             .unwrap();
         assert_eq!(diff.repo_relative_path, "sample.txt");
+        assert_eq!(diff.additions, Some(1));
+        assert_eq!(diff.deletions, Some(1));
         assert!(diff.diff.contains("-old"));
         assert!(diff.diff.contains("+new"));
+    }
+
+    #[test]
+    fn reads_scope_matching_working_tree_diff_stats() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let repo_path = temp.path().join("repo");
+        fs::create_dir(&repo_path).unwrap();
+        git(&repo_path, &["init"]);
+        fs::write(repo_path.join("sample.txt"), "base\nkeep\n").unwrap();
+        git(&repo_path, &["add", "sample.txt"]);
+        commit(&repo_path, "Add sample");
+
+        fs::write(repo_path.join("sample.txt"), "staged\nkeep\n").unwrap();
+        git(&repo_path, &["add", "sample.txt"]);
+        fs::write(repo_path.join("sample.txt"), "unstaged\nkeep\nextra\n").unwrap();
+        fs::write(repo_path.join("untracked.txt"), "first\nsecond").unwrap();
+        fs::write(repo_path.join("binary.dat"), b"before\0after\n").unwrap();
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+        let staged = rooted
+            .git_diff("repo", "repo/sample.txt", "staged")
+            .unwrap();
+        let unstaged = rooted
+            .git_diff("repo", "repo/sample.txt", "unstaged")
+            .unwrap();
+        let untracked = rooted
+            .git_diff("repo", "repo/untracked.txt", "untracked")
+            .unwrap();
+        let binary = rooted
+            .git_diff("repo", "repo/binary.dat", "untracked")
+            .unwrap();
+
+        assert_eq!((staged.additions, staged.deletions), (Some(1), Some(1)));
+        assert_eq!((unstaged.additions, unstaged.deletions), (Some(2), Some(1)));
+        assert_eq!(
+            (untracked.additions, untracked.deletions),
+            (Some(2), Some(0))
+        );
+        assert_eq!((binary.additions, binary.deletions), (None, None));
+    }
+
+    #[test]
+    fn github_diff_stats_omit_only_ambiguous_unavailable_zeroes() {
+        assert_eq!(optional_github_diff_stats(0, 0, false), (None, None));
+        assert_eq!(optional_github_diff_stats(7, 3, false), (Some(7), Some(3)));
+        assert_eq!(optional_github_diff_stats(0, 0, true), (Some(0), Some(0)));
     }
 
     #[test]
@@ -2027,6 +2133,8 @@ mod tests {
             .unwrap();
         assert_eq!(diff.repo_relative_path, "sample.txt");
         assert_eq!(diff.kind, "origin/main...feature/review");
+        assert_eq!(diff.additions, Some(1));
+        assert_eq!(diff.deletions, Some(1));
         assert!(diff.diff.contains("-old"));
         assert!(diff.diff.contains("+new"));
     }

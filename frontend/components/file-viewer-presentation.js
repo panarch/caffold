@@ -54,6 +54,23 @@ export function diffViewerPresentation(diff = {}) {
     title,
     subtitle: diffSubtitle(diff),
     metadata,
+    lineStats: diffLineStats(diff),
+  };
+}
+
+function diffLineStats(diff) {
+  if (
+    !Number.isFinite(diff.additions) ||
+    !Number.isFinite(diff.deletions) ||
+    diff.additions < 0 ||
+    diff.deletions < 0
+  ) {
+    return null;
+  }
+
+  return {
+    additions: diff.additions,
+    deletions: diff.deletions,
   };
 }
 
