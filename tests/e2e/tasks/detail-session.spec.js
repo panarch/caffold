@@ -9,6 +9,7 @@ import {
   canonicalTaskState,
   isScrolledToBottom,
   mockCodexModels,
+  pasteImage,
   scrollTop,
 } from "../support/task-fixtures.js";
 
@@ -903,7 +904,7 @@ test("preserves stable detail children through another task load failure", async
     tasksPage.locator('[data-stable-child="composer"]'),
   ).toHaveCount(1);
 });
-test("keeps one Composer per thread with a bounded clean inactive cache", async ({
+test("keeps one Composer and its image draft per thread with a bounded clean inactive cache", async ({
   page,
 }, testInfo) => {
   test.skip(
@@ -970,12 +971,68 @@ test("keeps one Composer per thread with a bounded clean inactive cache", async 
   const tasksPage = page.locator("caffold-tasks-page");
   const prompt = tasksPage.getByRole("textbox", { name: "Follow-up prompt" });
   await prompt.fill("Keep this thread-specific draft");
+  await pasteImage(prompt, "thread-a-draft.png");
+  const attachment = tasksPage.locator(
+    '.task-follow-up-form .task-composer-attachment[title="thread-a-draft.png"]',
+  );
+  const previewImage = attachment.getByRole("button", {
+    name: "Preview thread-a-draft.png",
+  });
+  const removeImage = attachment.getByRole("button", {
+    name: "Remove thread-a-draft.png",
+  });
+  await expect(attachment).toHaveCount(1);
+  const imageDraft = await attachment.evaluate((element) => {
+    const preview = element.querySelector('[data-composer-action="preview-image"]');
+    return {
+      id: preview?.dataset.imageId ?? "",
+      src: preview?.querySelector("img")?.getAttribute("src") ?? "",
+    };
+  });
+  expect(imageDraft.id).not.toBe("");
+  expect(imageDraft.src).toMatch(/^data:image\/png;base64,/);
   await tasksPage.evaluate((element) => {
     const detail = element.querySelector("caffold-task-detail");
     const composer = detail.followUpComposer();
+    const image = composer.stateFor().images[0];
     composer.dataset.cacheIdentity = "stateful";
     window.__statefulTaskComposer = composer;
+    window.__statefulTaskImage = image;
+    window.__statefulTaskAttachment = composer.querySelector(
+      ".task-composer-attachment",
+    );
   });
+
+  const workspaceNavigation = page.locator("caffold-task-workspace-navigation");
+  await workspaceNavigation
+    .locator('button[data-workspace-mode="settings"]')
+    .click();
+  await expect(page).toHaveURL("/settings");
+  await expect(tasksPage).toBeHidden();
+  const settingsRetention = await tasksPage.evaluate((element, threadId) => {
+    const detail = element.querySelector("caffold-task-detail");
+    const composer = detail.followUpComposers.get(threadId);
+    return {
+      sameComposer: composer === window.__statefulTaskComposer,
+      sameImage: composer.stateFor().images[0] === window.__statefulTaskImage,
+      sameAttachment:
+        composer.querySelector(".task-composer-attachment") ===
+        window.__statefulTaskAttachment,
+      connected: composer.isConnected,
+    };
+  }, threadIds[0]);
+  expect(settingsRetention).toEqual({
+    sameComposer: true,
+    sameImage: true,
+    sameAttachment: true,
+    connected: true,
+  });
+  await workspaceNavigation
+    .locator('button[data-workspace-mode="tasks"]')
+    .click();
+  await expect(tasksPage).toBeVisible();
+  await expect(prompt).toHaveValue("Keep this thread-specific draft");
+  await expect(attachment).toHaveCount(1);
 
   await tasksPage.evaluate(async (element, threadId) => {
     await element.querySelector("caffold-task-detail").open(threadId);
@@ -992,15 +1049,17 @@ test("keeps one Composer per thread with a bounded clean inactive cache", async 
   const cache = await tasksPage.evaluate((element, ids) => {
     const detail = element.querySelector("caffold-task-detail");
     const active = detail.followUpComposer();
+    const stateful = detail.followUpComposers.get(ids[0]);
     return {
       keys: [...detail.followUpComposers.keys()],
-      statefulRetained:
-        detail.followUpComposers.get(ids[0]) ===
-        window.__statefulTaskComposer,
+      statefulRetained: stateful === window.__statefulTaskComposer,
       statefulConnected: window.__statefulTaskComposer.isConnected,
+      statefulImageRetained:
+        stateful.stateFor().images[0] === window.__statefulTaskImage,
       oldestCleanRetained: detail.followUpComposers.has(ids[1]),
       oldestCleanConnected: window.__oldestCleanTaskComposer.isConnected,
       activeThreadId: active?.dataset.threadId ?? "",
+      activeImageCount: active.stateFor().images.length,
       connectedComposers: element.querySelectorAll(
         "caffold-task-detail caffold-task-composer",
       ).length,
@@ -1009,10 +1068,13 @@ test("keeps one Composer per thread with a bounded clean inactive cache", async 
   expect(cache.keys).toHaveLength(8);
   expect(cache.statefulRetained).toBe(true);
   expect(cache.statefulConnected).toBe(false);
+  expect(cache.statefulImageRetained).toBe(true);
   expect(cache.oldestCleanRetained).toBe(false);
   expect(cache.oldestCleanConnected).toBe(false);
   expect(cache.activeThreadId).toBe(threadIds.at(-1));
+  expect(cache.activeImageCount).toBe(0);
   expect(cache.connectedComposers).toBe(1);
+  await expect(attachment).toHaveCount(0);
 
   const staleSubmission = await tasksPage.evaluate(
     async (element, { staleThreadId, activeThreadId }) => {
@@ -1028,6 +1090,8 @@ test("keeps one Composer per thread with a bounded clean inactive cache", async 
         submissionId: "stale-submission",
         threadId: staleThreadId,
         prompt: "Do not send this stale prompt",
+        images: [window.__statefulTaskImage.dataUrl],
+        attachments: [window.__statefulTaskImage],
       });
       return {
         selectedThreadId: detail.selectedThreadId,
@@ -1046,6 +1110,7 @@ test("keeps one Composer per thread with a bounded clean inactive cache", async 
     resolutionStatus: "rejected",
   });
   expect(promptRequests).toBe(0);
+  await prompt.fill("Keep this isolated Task B draft");
 
   await tasksPage.evaluate(async (element, threadId) => {
     const detail = element.querySelector("caffold-task-detail");
@@ -1065,6 +1130,45 @@ test("keeps one Composer per thread with a bounded clean inactive cache", async 
     ),
   ).toBeVisible();
   await expect(prompt).toHaveValue("Keep this thread-specific draft");
+  await expect(attachment).toHaveCount(1);
+  await expect(previewImage).toHaveAttribute("data-image-id", imageDraft.id);
+  await expect(attachment.locator("img")).toHaveAttribute("src", imageDraft.src);
+  await expect(removeImage).toBeVisible();
+  const taskRetention = await tasksPage.evaluate((element) => {
+    const detail = element.querySelector("caffold-task-detail");
+    return {
+      sameComposer: detail.followUpComposer() === window.__statefulTaskComposer,
+      sameImage:
+        detail.followUpComposer().stateFor().images[0] ===
+        window.__statefulTaskImage,
+    };
+  });
+  expect(taskRetention).toEqual({ sameComposer: true, sameImage: true });
+
+  const previewDialog = tasksPage.locator(
+    ":scope > caffold-task-image-preview-dialog > dialog",
+  );
+  await previewImage.click();
+  await expect(previewDialog).toBeVisible();
+  await expect(
+    previewDialog.locator("[data-task-image-preview-name]"),
+  ).toHaveText("thread-a-draft.png");
+  await expect(
+    previewDialog.locator("[data-task-image-preview-image]"),
+  ).toHaveAttribute("src", imageDraft.src);
+  await previewDialog
+    .getByRole("button", { name: "Close image preview" })
+    .click();
+  await expect(previewDialog).not.toBeVisible();
+
+  await removeImage.click();
+  await expect(attachment).toHaveCount(0);
+
+  await tasksPage.evaluate(async (element, threadId) => {
+    await element.querySelector("caffold-task-detail").open(threadId);
+  }, threadIds.at(-1));
+  await expect(prompt).toHaveValue("Keep this isolated Task B draft");
+  await expect(attachment).toHaveCount(0);
 });
 
 test("keeps prompt, interrupt, and approval request errors with their owning controls", async ({
