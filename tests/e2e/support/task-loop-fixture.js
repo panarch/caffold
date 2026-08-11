@@ -7,6 +7,7 @@ import {
 export async function installTaskLoopFixture(
   page,
   {
+    completedAssistantResponse: completedAssistantResponseOverride,
     contextPath = "src",
     threadId = "thread_12345678",
   } = {},
@@ -78,7 +79,7 @@ export async function installTaskLoopFixture(
   const canonicalFollowUpResponseReleased = new Promise((resolve) => {
     releaseCanonicalFollowUpResponse = resolve;
   });
-  const completedAssistantResponse = [
+  const completedAssistantResponse = completedAssistantResponseOverride ?? [
     "## Review ready",
     "",
     "The planner changes are **ready** to review. Open `Diff` next.",
