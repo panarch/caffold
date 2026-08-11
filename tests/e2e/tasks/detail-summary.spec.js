@@ -145,6 +145,7 @@ test("keeps the task info leaf and popover stable across canonical sync", async 
   await page.evaluate(() => {
     window.dispatchEvent(new CustomEvent("caffold:icons-ready"));
   });
+  await expect(taskDetailsButton.locator(".task-action-icon")).toHaveCount(1);
   await pendingGithubRoute.fulfill({
     json: {
       repository: { rootPath: "repo-stable", branch: "main", dirty: false },
@@ -209,6 +210,211 @@ test("keeps the task info leaf and popover stable across canonical sync", async 
     popoverBox.x + popoverBox.width + 1,
   );
   await captureReviewScreenshot(page, testInfo, "tasks-summary-live-popover");
+});
+
+test("keeps the task info spinner stable across equivalent detail activity", async ({
+  page,
+}) => {
+  const threadId = "thread_summary_spinner_equivalent";
+  const task = {
+    ...summaryTask(threadId, "Stable info spinner", "repo-spinner", 100),
+    ...canonicalTaskState("active", {
+      turnId: "turn_summary_spinner_equivalent",
+      latestTurnStatus: "inProgress",
+    }),
+    worktree: null,
+  };
+  await installSummaryFixture(page, [task]);
+
+  await page.goto(`/tasks/${threadId}`);
+  const infoButton = page.locator(
+    "caffold-task-detail-summary .task-detail-info-button",
+  );
+  await expect(infoButton.locator(".task-status-spinner")).toHaveCount(1);
+  await infoButton.evaluate((button) => {
+    const records = [];
+    const observer = new MutationObserver((mutations) => {
+      records.push(...mutations);
+    });
+    observer.observe(button, {
+      attributes: true,
+      characterData: true,
+      childList: true,
+      subtree: true,
+    });
+    window.__taskInfoStatusProbe = {
+      button,
+      chip: button.querySelector(":scope > .task-status-chip"),
+      spinner: button.querySelector(".task-status-spinner"),
+      observer,
+      records,
+    };
+  });
+
+  await emitSummarySync(
+    page,
+    threadId,
+    summaryDetail(task, 2),
+    "equivalent-status-update",
+  );
+  const renamedTask = {
+    ...task,
+    title: "Renamed stable info spinner",
+    updatedMs: task.updatedMs + 1,
+    recencyMs: task.recencyMs + 1,
+  };
+  await emitSummarySync(
+    page,
+    threadId,
+    summaryDetail(renamedTask, 3),
+    "unrelated-summary-update",
+  );
+  await expect(
+    page.locator("caffold-task-detail-summary h2"),
+  ).toHaveText("Renamed stable info spinner");
+  await page.evaluate((threadId) => {
+    const source = window.__taskSummaryEventSources.find((candidate) =>
+      candidate.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    source.emit("task-event", {
+      threadId,
+      revision: 4,
+      event: {
+        id: "event_summary_spinner_equivalent",
+        threadId,
+        type: "assistant_message",
+        summary: "Assistant response",
+        payload: {
+          turnId: "turn_summary_spinner_equivalent",
+          text: "Only the conversation changed.",
+        },
+        createdMs: 101,
+      },
+    });
+    window.dispatchEvent(new CustomEvent("caffold:icons-ready"));
+  }, threadId);
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+
+  expect(
+    await infoButton.evaluate((button) => {
+      const probe = window.__taskInfoStatusProbe;
+      probe.observer.disconnect();
+      return {
+        buttonPreserved: probe.button === button,
+        chipPreserved:
+          probe.chip === button.querySelector(":scope > .task-status-chip"),
+        mutationCount: probe.records.length,
+        spinnerPreserved:
+          probe.spinner === button.querySelector(".task-status-spinner"),
+      };
+    }),
+  ).toEqual({
+    buttonPreserved: true,
+    chipPreserved: true,
+    mutationCount: 0,
+    spinnerPreserved: true,
+  });
+});
+
+test("keeps the task info spinner stable across reconnecting status", async ({
+  page,
+}) => {
+  const threadId = "thread_summary_spinner_reconnecting";
+  const task = {
+    ...summaryTask(threadId, "Reconnecting info spinner", "repo-spinner", 100),
+    ...canonicalTaskState("active", {
+      turnId: "turn_summary_spinner_reconnecting",
+      latestTurnStatus: "inProgress",
+    }),
+    worktree: null,
+  };
+  await installSummaryFixture(page, [task]);
+
+  await page.goto(`/tasks/${threadId}`);
+  const infoButton = page.locator(
+    "caffold-task-detail-summary .task-detail-info-button",
+  );
+  const statusChip = infoButton.locator(":scope > .task-status-chip");
+  const statusText = page.locator(
+    'caffold-task-detail-summary [data-task-info-field="status"]',
+  );
+  await expect(statusChip).toHaveAttribute("data-status", "running");
+  await infoButton.evaluate((button) => {
+    window.__taskInfoStatusNodes = {
+      chip: button.querySelector(":scope > .task-status-chip"),
+      spinner: button.querySelector(".task-status-spinner"),
+    };
+  });
+
+  await page.evaluate((threadId) => {
+    const source = window.__taskSummaryEventSources.find((candidate) =>
+      candidate.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    source.emitError();
+  }, threadId);
+  await expect(statusChip).toHaveAttribute("data-status", "reconnecting");
+  await expect(statusChip).toHaveAttribute("aria-label", "reconnecting");
+  await expect(infoButton).toHaveAttribute(
+    "aria-label",
+    "Task details, reconnecting",
+  );
+  await expect(infoButton).toHaveAttribute("title", "Status: reconnecting");
+  await expect(statusText).toHaveText("reconnecting");
+  expect(
+    await infoButton.evaluate((button) => ({
+      chipPreserved:
+        window.__taskInfoStatusNodes.chip ===
+        button.querySelector(":scope > .task-status-chip"),
+      spinnerPreserved:
+        window.__taskInfoStatusNodes.spinner ===
+        button.querySelector(".task-status-spinner"),
+    })),
+  ).toEqual({ chipPreserved: true, spinnerPreserved: true });
+
+  await page.evaluate((threadId) => {
+    const source = window.__taskSummaryEventSources.find((candidate) =>
+      candidate.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    source.emitOpen();
+  }, threadId);
+  await expect(statusChip).toHaveAttribute("data-status", "running");
+  await expect(statusChip).toHaveAttribute("aria-label", "running");
+  await expect(infoButton).toHaveAttribute(
+    "aria-label",
+    "Task details, active",
+  );
+  await expect(infoButton).toHaveAttribute("title", "Status: active");
+  await expect(statusText).toHaveText("active");
+  expect(
+    await infoButton.evaluate((button) => ({
+      chipPreserved:
+        window.__taskInfoStatusNodes.chip ===
+        button.querySelector(":scope > .task-status-chip"),
+      spinnerPreserved:
+        window.__taskInfoStatusNodes.spinner ===
+        button.querySelector(".task-status-spinner"),
+    })),
+  ).toEqual({ chipPreserved: true, spinnerPreserved: true });
+
+  const idleTask = {
+    ...task,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+  };
+  await emitSummarySync(
+    page,
+    threadId,
+    summaryDetail(idleTask, 2),
+    "completed-status-update",
+  );
+  await expect(infoButton.locator(".task-status-chip")).toHaveCount(0);
+  await expect(infoButton.locator(".task-status-spinner")).toHaveCount(0);
+  await expect(infoButton.locator(".task-action-icon")).toHaveCount(1);
+  await expect(infoButton).toHaveAttribute("title", "Status: idle");
 });
 
 test("rejects a stale GitHub availability response after switching tasks", async ({

@@ -21,8 +21,12 @@ class CaffoldTaskDetailInfo extends HTMLElement {
       this.addEventListener("click", this.boundClick);
       window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     }
-    if (this.snapshot.task && !this.infoButton()) {
-      this.render();
+    if (this.snapshot.task) {
+      if (this.infoButton()) {
+        this.patchStatus();
+      } else {
+        this.render();
+      }
     }
   }
 
@@ -43,10 +47,11 @@ class CaffoldTaskDetailInfo extends HTMLElement {
     taskInfoInstanceId += 1;
     this.popoverId = `task-detail-info-${taskInfoInstanceId}`;
     this.renderedThreadId = "";
+    this.renderedStatusKey = "";
     this.snapshot = normalizedSnapshot();
     this.listenersAttached = false;
     this.boundClick = (event) => this.handleClick(event);
-    this.boundIconsReady = () => this.patchStatus({ force: true });
+    this.boundIconsReady = () => this.patchStatus();
     warmIcons();
   }
 
@@ -101,6 +106,7 @@ class CaffoldTaskDetailInfo extends HTMLElement {
     if (!task) {
       this.replaceChildren();
       this.renderedThreadId = "";
+      this.renderedStatusKey = "";
       return;
     }
 
@@ -150,6 +156,7 @@ class CaffoldTaskDetailInfo extends HTMLElement {
       </div>
     `;
     this.renderedThreadId = taskThreadId(task);
+    this.renderedStatusKey = "";
     this.patch();
   }
 
@@ -184,7 +191,7 @@ class CaffoldTaskDetailInfo extends HTMLElement {
     this.patchArchive();
   }
 
-  patchStatus(options = {}) {
+  patchStatus() {
     const task = this.snapshot.task;
     const button = this.infoButton();
     if (!task || !button) {
@@ -198,15 +205,19 @@ class CaffoldTaskDetailInfo extends HTMLElement {
     });
     const content =
       status || renderInlineIcon("Info", "Task details", "task-action-icon");
-    if (options.force || button.innerHTML.trim() !== content.trim()) {
-      button.innerHTML = content;
+    const renderKey = JSON.stringify([statusLabel, content]);
+    if (renderKey === this.renderedStatusKey) {
+      return;
     }
-    button.setAttribute("aria-label", `Task details, ${statusLabel}`);
-    button.setAttribute("title", `Status: ${statusLabel}`);
+
+    patchStatusContent(button, content);
+    setAttribute(button, "aria-label", `Task details, ${statusLabel}`);
+    setAttribute(button, "title", `Status: ${statusLabel}`);
     setText(
       this.querySelector('[data-task-info-field="status"]'),
       statusLabel,
     );
+    this.renderedStatusKey = renderKey;
   }
 
   patchArchive() {
@@ -261,6 +272,68 @@ function taskWorktreeRef(task) {
 
 function archiveErrorMessage(error) {
   return error ? `${error.message ?? error}` : "";
+}
+
+function patchStatusContent(button, content) {
+  const template = document.createElement("template");
+  template.innerHTML = content.trim();
+  const currentChip = button.querySelector(":scope > .task-status-chip");
+  const nextChip = template.content.firstElementChild;
+  if (currentChip && nextChip?.matches(".task-status-chip")) {
+    patchStatusChip(currentChip, nextChip);
+    return;
+  }
+  if (button.innerHTML.trim() !== content.trim()) {
+    button.innerHTML = content;
+  }
+}
+
+function patchStatusChip(current, next) {
+  syncElementAttributes(current, next, [
+    "class",
+    "data-status",
+    "title",
+    "aria-label",
+  ]);
+
+  const currentSpinner = current.querySelector(":scope > .task-status-spinner");
+  const nextSpinner = next.querySelector(":scope > .task-status-spinner");
+  if (currentSpinner && nextSpinner) {
+    syncElementAttributes(currentSpinner, nextSpinner, ["class", "aria-hidden"]);
+    patchSpinnerLabel(current, next);
+    return;
+  }
+  if (current.innerHTML.trim() !== next.innerHTML.trim()) {
+    current.innerHTML = next.innerHTML;
+  }
+}
+
+function patchSpinnerLabel(current, next) {
+  const currentLabel = current.querySelector(":scope > .sr-only");
+  const nextLabel = next.querySelector(":scope > .sr-only");
+  if (currentLabel && nextLabel) {
+    setText(currentLabel, nextLabel.textContent);
+  } else if (currentLabel) {
+    currentLabel.remove();
+  } else if (nextLabel) {
+    current.append(nextLabel);
+  }
+}
+
+function syncElementAttributes(element, nextElement, names) {
+  for (const name of names) {
+    if (nextElement.hasAttribute(name)) {
+      setAttribute(element, name, nextElement.getAttribute(name));
+    } else if (element.hasAttribute(name)) {
+      element.removeAttribute(name);
+    }
+  }
+}
+
+function setAttribute(element, name, value) {
+  if (element.getAttribute(name) !== value) {
+    element.setAttribute(name, value);
+  }
 }
 
 function setText(element, value) {
