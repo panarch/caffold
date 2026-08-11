@@ -153,6 +153,110 @@ test("returns from Settings to the canonical Tasks home", async ({
   await expect(page.locator(".files-surface")).toBeHidden();
 });
 
+test("gives every Settings route one page title and landmark hierarchy", async ({
+  page,
+}) => {
+  const routes = [
+    ["/settings/appearance", "Appearance", "caffold-settings-appearance-page"],
+    ["/settings/codex", "Codex", "caffold-settings-codex-page"],
+    ["/settings/about", "About Caffold", "caffold-settings-about-page"],
+  ];
+
+  for (const [path, title, pageSelector] of routes) {
+    await page.goto(path);
+
+    await expect(page.locator(pageSelector)).toBeVisible();
+    await expect(page.locator("main")).toHaveCount(1);
+    await expect(page.locator("main main")).toHaveCount(0);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+    await expect(
+      page.getByRole("heading", { level: 1, name: title }),
+    ).toBeVisible();
+    await expect(page.getByRole("region", { name: title })).toBeVisible();
+    await expect(
+      page.locator('nav[aria-label="Settings sections"]'),
+    ).toHaveCount(1);
+  }
+});
+
+test("reflows Settings from the detail pane width at maximum Interface scale", async ({
+  page,
+}, testInfo) => {
+  const shouldStack = testInfo.project.name !== "desktop";
+
+  await page.goto("/settings/appearance");
+  const appearance = page.locator("caffold-settings-appearance-page");
+  await setRange(range(appearance, "interfaceScalePercent"), 120);
+  const settingsDetailFontSize = await appearance
+    .locator(".settings-field-copy span")
+    .first()
+    .evaluate((element) => getComputedStyle(element).fontSize);
+  await expect(
+    appearance.locator(".settings-range-control output").first(),
+  ).toHaveCSS("font-size", settingsDetailFontSize);
+  const appearanceMetrics = await settingsSurfaceMetrics(appearance, {
+    row: ".settings-appearance-group:not(.settings-typeface-group) .settings-field",
+    leading: ".settings-field-copy",
+    trailing: ".settings-range-control",
+    pageAction: ".settings-reset-all",
+    contextAction: ".settings-range-control button",
+  });
+  expect(appearanceMetrics.overflowX).toBe(false);
+  expect(appearanceMetrics.stacked).toBe(shouldStack);
+  expectSettingsActionTiers(appearanceMetrics, true);
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "settings-appearance-roles-interface-120",
+  );
+
+  await page.goto("/settings/codex");
+  const codex = page.locator("caffold-settings-codex-page");
+  const codexMetrics = await settingsSurfaceMetrics(codex, {
+    row: ".settings-details > div",
+    leading: "dt",
+    trailing: "dd",
+    pageAction: '.settings-content-section > header [data-action="refresh-codex-status"]',
+  });
+  expect(codexMetrics.overflowX).toBe(false);
+  expect(codexMetrics.stacked).toBe(shouldStack);
+  expectSettingsActionTiers(codexMetrics);
+  await expect(codex.locator(".settings-details dd").first()).toHaveCSS(
+    "font-size",
+    settingsDetailFontSize,
+  );
+  await expect(codex.locator(".settings-usage-row strong").first()).toHaveCSS(
+    "font-size",
+    settingsDetailFontSize,
+  );
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "settings-codex-roles-interface-120",
+  );
+
+  await page.goto("/settings/about");
+  const about = page.locator("caffold-settings-about-page");
+  const aboutMetrics = await settingsSurfaceMetrics(about, {
+    row: ".settings-details > div",
+    leading: "dt",
+    trailing: "dd",
+    pageAction: '[data-action="copy-diagnostics"]',
+  });
+  expect(aboutMetrics.overflowX).toBe(false);
+  expect(aboutMetrics.stacked).toBe(shouldStack);
+  expectSettingsActionTiers(aboutMetrics);
+  await expect(about.locator(".settings-details dd").first()).toHaveCSS(
+    "font-size",
+    settingsDetailFontSize,
+  );
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "settings-about-roles-interface-120",
+  );
+});
+
 test("normalizes legacy settings into the current appearance contract", async ({
   page,
 }) => {
@@ -289,6 +393,13 @@ test("updates independent ranges live without replacing their DOM", async ({
   await expect(conversationRange).toHaveAttribute("max", "20");
   await expect(codeRange).toHaveAttribute("min", "12");
   await expect(codeRange).toHaveAttribute("max", "20");
+  const settingsSmallText = settingsPage
+    .locator(".settings-field-copy span")
+    .first();
+  await expect(settingsSmallText).toHaveCSS("font-size", "14px");
+  await setRange(interfaceRange, 90);
+  await expect(settingsSmallText).toHaveCSS("font-size", "14px");
+  await setRange(interfaceRange, 100);
 
   const responsiveDefaults = await page.evaluate(() => ({
     coarse: matchMedia("(pointer: coarse)").matches,
@@ -322,13 +433,14 @@ test("updates independent ranges live without replacing their DOM", async ({
     };
     return {
       regularHit: tokenHeight("--interface-control-hit-size"),
+      regularVisual: tokenHeight("--interface-control-visual-size"),
       compactVisual: tokenHeight("--interface-compact-visual-size"),
       resetAllVisual: visualHeight(".settings-reset-all"),
       resetOneVisual: visualHeight(".settings-range-control button"),
     };
   });
   expect(settingsControlTiers.resetAllVisual).toBeCloseTo(
-    settingsControlTiers.compactVisual,
+    settingsControlTiers.regularVisual,
     1,
   );
   expect(settingsControlTiers.resetOneVisual).toBeCloseTo(
@@ -413,6 +525,22 @@ test("updates independent ranges live without replacing their DOM", async ({
   expect(interfacePreviewDensity.fontSize).toBeCloseTo(
     interfacePreviewDensity.rootFontSize * 0.8125,
     2,
+  );
+  const interfacePreview = settingsPage.locator(".settings-interface-preview");
+  await expect(
+    interfacePreview.locator(".settings-interface-preview-section-header"),
+  ).toContainText("Caffold Tasks");
+  await expect(
+    interfacePreview.locator(".settings-interface-preview-repository"),
+  ).toContainText("caffold");
+  await expect(
+    interfacePreview.locator(".settings-preview-icon"),
+  ).toHaveCount(1);
+  await expect(
+    interfacePreview.locator(".settings-preview-action-icon"),
+  ).toHaveCount(1);
+  await expect(interfacePreview.getByText("Open", { exact: true })).toHaveCount(
+    0,
   );
 
   if (touchInterface) {
@@ -822,6 +950,63 @@ async function setRange(locator, value) {
     element.value = `${nextValue}`;
     element.dispatchEvent(new Event("input", { bubbles: true }));
   }, value);
+}
+
+async function settingsSurfaceMetrics(surface, selectors) {
+  return surface.evaluate((element, requested) => {
+    const number = (value) => Number.parseFloat(value) || 0;
+    const tokenHeight = (token) => {
+      const probe = document.createElement("div");
+      probe.style.cssText = `position:fixed;height:var(${token})`;
+      document.body.append(probe);
+      const height = probe.getBoundingClientRect().height;
+      probe.remove();
+      return height;
+    };
+    const actionMetric = (selector) => {
+      if (!selector) {
+        return null;
+      }
+      const action = element.querySelector(selector);
+      const box = action.getBoundingClientRect();
+      const inset = number(getComputedStyle(action, "::before").top);
+      return {
+        height: box.height,
+        visualHeight: box.height - inset * 2,
+      };
+    };
+    const row = element.querySelector(requested.row);
+    const leading = row.querySelector(requested.leading).getBoundingClientRect();
+    const trailing = row.querySelector(requested.trailing).getBoundingClientRect();
+    const scroll = element.querySelector(
+      ".settings-scroll, .settings-content-scroll",
+    );
+
+    return {
+      overflowX:
+        element.scrollWidth > element.clientWidth ||
+        scroll.scrollWidth > scroll.clientWidth,
+      stacked: trailing.top >= leading.bottom - 1,
+      regularHit: tokenHeight("--interface-control-hit-size"),
+      regularVisual: tokenHeight("--interface-control-visual-size"),
+      compactHit: tokenHeight("--interface-compact-hit-size"),
+      compactVisual: tokenHeight("--interface-compact-visual-size"),
+      pageAction: actionMetric(requested.pageAction),
+      contextAction: actionMetric(requested.contextAction),
+    };
+  }, selectors);
+}
+
+function expectSettingsActionTiers(metrics, hasContextAction = false) {
+  expect(metrics.pageAction.height).toBeCloseTo(metrics.regularHit, 1);
+  expect(metrics.pageAction.visualHeight).toBeCloseTo(metrics.regularVisual, 1);
+  if (hasContextAction) {
+    expect(metrics.contextAction.height).toBeCloseTo(metrics.compactHit, 1);
+    expect(metrics.contextAction.visualHeight).toBeCloseTo(
+      metrics.compactVisual,
+      1,
+    );
+  }
 }
 
 async function modelPickerMetrics(composer) {

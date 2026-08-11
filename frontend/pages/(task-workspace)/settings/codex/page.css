@@ -1,20 +1,25 @@
 caffold-settings-codex-page {
+  container: settings-codex / inline-size;
   display: block;
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
+  font-size: var(--interface-font-size);
+  line-height: var(--interface-line-height);
 
   & .settings-content-scroll {
     height: 100%;
     min-height: 0;
     overflow: auto;
-    padding: 1.75rem 1.5rem 3rem;
+    padding-block: var(--settings-content-padding-block);
+    padding-inline: var(--settings-content-padding-inline);
   }
 
   & .settings-content-section {
     display: grid;
-    width: min(100%, 48rem);
+    width: min(100%, var(--settings-content-max-width));
+    min-width: 0;
     margin: 0 auto;
   }
 
@@ -27,18 +32,60 @@ caffold-settings-codex-page {
     padding-bottom: var(--interface-space-6);
   }
 
-  & .settings-content-section > header h2,
   & .settings-content-section > header p {
     margin: 0;
-  }
-
-  & .settings-content-section > header h2 {
-    font-size: 1rem;
-  }
-
-  & .settings-content-section > header p {
     color: var(--muted);
-    font-size: 0.75rem;
+    font-size: var(--settings-page-description-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .settings-content-section > header button,
+  & .settings-runtime-control button {
+    position: relative;
+    isolation: isolate;
+    height: var(--settings-page-action-size);
+    min-height: var(--settings-page-action-size);
+    padding: 0 var(--interface-control-padding-inline);
+    border: 0;
+    background: transparent;
+    color: var(--control-fg);
+    font: inherit;
+    font-size: var(--settings-small-text-size);
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  & .settings-content-section > header button::before,
+  & .settings-runtime-control button::before {
+    position: absolute;
+    z-index: -1;
+    inset: var(--interface-control-hit-outset) 0;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    content: "";
+  }
+
+  & .settings-content-section > header button:hover:not(:disabled),
+  & .settings-content-section > header button:focus-visible,
+  & .settings-runtime-control button:hover:not(:disabled),
+  & .settings-runtime-control button:focus-visible {
+    outline: none;
+  }
+
+  & .settings-content-section > header button:hover:not(:disabled)::before,
+  & .settings-content-section > header button:focus-visible::before,
+  & .settings-runtime-control button:hover:not(:disabled)::before,
+  & .settings-runtime-control button:focus-visible::before {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
+
+  & .settings-content-section > header button:disabled,
+  & .settings-runtime-control button:disabled {
+    color: var(--disabled-text);
+    cursor: default;
   }
 
   & .settings-details {
@@ -60,11 +107,15 @@ caffold-settings-codex-page {
   & .settings-details dt,
   & .settings-usage-row > span:first-child {
     color: var(--muted);
+    font-size: var(--settings-detail-label-size);
+    line-height: var(--interface-line-height);
   }
 
   & .settings-details dd {
     min-width: 0;
     margin: 0;
+    font-size: var(--settings-detail-value-size);
+    line-height: var(--interface-line-height);
     overflow-wrap: anywhere;
   }
 
@@ -105,43 +156,20 @@ caffold-settings-codex-page {
   }
 
   & .settings-runtime-control h3 {
-    font-size: 0.86rem;
+    font-size: var(--settings-field-label-size);
+    line-height: var(--interface-line-height);
   }
 
   & .settings-runtime-control p {
     color: var(--muted);
-    font-size: var(--interface-meta-font-size);
+    font-size: var(--settings-small-text-size);
     line-height: var(--interface-line-height);
-  }
-
-  & .settings-runtime-control button {
-    min-height: var(--interface-control-hit-size);
-    padding: var(--interface-space-2) var(--interface-control-padding-inline);
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    background: var(--surface);
-    color: var(--control-fg);
-    font: inherit;
-    font-size: var(--interface-meta-font-size);
-    white-space: nowrap;
-    cursor: pointer;
-  }
-
-  & .settings-runtime-control button:hover:not(:disabled),
-  & .settings-runtime-control button:focus-visible {
-    border-color: var(--border-strong);
-    outline: none;
-  }
-
-  & .settings-runtime-control button:disabled {
-    color: var(--disabled-text);
-    cursor: default;
   }
 
   & .settings-runtime-message {
     margin-top: var(--interface-space-5);
     color: var(--success);
-    font-size: var(--interface-meta-font-size);
+    font-size: var(--settings-small-text-size);
   }
 
   & .settings-runtime-message[data-state="failed"] {
@@ -155,7 +183,8 @@ caffold-settings-codex-page {
 
   & .settings-usage h3 {
     margin: 0;
-    font-size: 0.86rem;
+    font-size: var(--settings-field-label-size);
+    line-height: var(--interface-line-height);
   }
 
   & .settings-usage-row {
@@ -163,6 +192,7 @@ caffold-settings-codex-page {
   }
 
   & .settings-usage-row strong {
+    font-size: var(--settings-detail-value-size);
     font-weight: 600;
     font-variant-numeric: tabular-nums;
   }
@@ -170,25 +200,28 @@ caffold-settings-codex-page {
   & .settings-usage-row time,
   & .settings-usage-row > span:last-child {
     color: var(--muted);
+    font-size: var(--settings-detail-label-size);
     font-variant-numeric: tabular-nums;
   }
 
   & .settings-status-message {
     margin: var(--interface-space-8) 0 0;
     color: var(--muted);
+    font-size: var(--settings-field-description-size);
+    line-height: var(--interface-line-height);
     overflow-wrap: anywhere;
   }
 }
 
-@media (max-width: 520px) {
+@container settings-codex (max-width: 34rem) {
   caffold-settings-codex-page {
-    & .settings-content-scroll {
-      padding: 1.25rem var(--interface-space-5) 2.25rem;
-    }
-
     & .settings-content-section > header {
       align-items: start;
       flex-direction: column;
+    }
+
+    & .settings-content-section > header button {
+      align-self: start;
     }
 
     & .settings-details > div {
@@ -213,6 +246,5 @@ caffold-settings-codex-page {
     & .settings-runtime-control button {
       align-self: start;
     }
-
   }
 }

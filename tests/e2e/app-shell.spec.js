@@ -432,7 +432,12 @@ test("keeps build metadata out of normal layout and exposes it in About", async 
 
   const about = page.locator("caffold-settings-about-page");
   await expect(about).toBeVisible();
-  await expect(about.getByRole("heading", { name: "About Caffold" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "About Caffold" }),
+  ).toBeVisible();
+  await expect(about).toContainText(
+    "A review-first workspace for agent-assisted development.",
+  );
   await expect(about.locator(".settings-details")).toContainText(version);
   await expect(about.locator(".settings-details")).toContainText(buildId);
   await expect(about.locator(".settings-details")).toContainText(health.buildId);

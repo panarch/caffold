@@ -1,4 +1,5 @@
 caffold-settings-appearance-page {
+  container: settings-appearance / inline-size;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   width: 100%;
@@ -9,16 +10,20 @@ caffold-settings-appearance-page {
   font-size: var(--interface-font-size);
   line-height: var(--interface-line-height);
 
-  & .settings-reset-all:hover,
+  & .settings-reset-all:hover:not(:disabled),
   & .settings-reset-all:focus-visible,
-  & .settings-range-control button:hover,
+  & .settings-typeface-control button:hover:not(:disabled),
+  & .settings-typeface-control button:focus-visible,
+  & .settings-range-control button:hover:not(:disabled),
   & .settings-range-control button:focus-visible {
     outline: none;
   }
 
-  & .settings-reset-all:hover::before,
+  & .settings-reset-all:hover:not(:disabled)::before,
   & .settings-reset-all:focus-visible::before,
-  & .settings-range-control button:hover::before,
+  & .settings-typeface-control button:hover:not(:disabled)::before,
+  & .settings-typeface-control button:focus-visible::before,
+  & .settings-range-control button:hover:not(:disabled)::before,
   & .settings-range-control button:focus-visible::before {
     border-color: var(--border-strong);
     background: var(--control-hover-bg);
@@ -27,13 +32,15 @@ caffold-settings-appearance-page {
   & .settings-scroll {
     min-height: 0;
     overflow: auto;
-    padding: 1.75rem 1.5rem 3rem;
+    padding-block: var(--settings-content-padding-block);
+    padding-inline: var(--settings-content-padding-inline);
   }
 
   & .settings-section {
     display: grid;
     gap: 1.75rem;
-    width: min(100%, 48rem);
+    width: min(100%, var(--settings-content-max-width));
+    min-width: 0;
     margin: 0 auto;
   }
 
@@ -41,28 +48,16 @@ caffold-settings-appearance-page {
     display: flex;
     align-items: end;
     justify-content: space-between;
-    gap: 1rem;
+    gap: var(--interface-space-8);
     border-bottom: 1px solid var(--border);
-    padding-bottom: 0.75rem;
+    padding-bottom: var(--interface-space-6);
   }
 
-  & .settings-section > header > div {
-    display: grid;
-    gap: 0.25rem;
-  }
-
-  & .settings-section h2,
   & .settings-section > header p {
     margin: 0;
-  }
-
-  & .settings-section h2 {
-    font-size: 1rem;
-  }
-
-  & .settings-section > header p {
     color: var(--muted);
-    font-size: 0.75rem;
+    font-size: var(--settings-page-description-size);
+    line-height: var(--interface-line-height);
   }
 
   & .settings-reset-all,
@@ -71,16 +66,25 @@ caffold-settings-appearance-page {
     position: relative;
     isolation: isolate;
     box-sizing: border-box;
-    height: var(--interface-compact-hit-size);
-    min-height: var(--interface-compact-hit-size);
     border: 0;
     background: transparent;
     color: var(--control-fg);
     cursor: pointer;
     padding: 0 var(--interface-space-5);
-    font-size: var(--interface-meta-font-size);
+    font-size: var(--settings-small-text-size);
     line-height: 1;
     white-space: nowrap;
+  }
+
+  & .settings-reset-all {
+    height: var(--settings-page-action-size);
+    min-height: var(--settings-page-action-size);
+  }
+
+  & .settings-typeface-control button,
+  & .settings-range-control button {
+    height: var(--settings-context-action-size);
+    min-height: var(--settings-context-action-size);
   }
 
   & .settings-reset-all::before,
@@ -88,11 +92,19 @@ caffold-settings-appearance-page {
   & .settings-range-control button::before {
     position: absolute;
     z-index: -1;
-    inset: var(--interface-compact-hit-outset) 0;
     border: 1px solid var(--border);
     border-radius: 0.3125rem;
     background: var(--surface);
     content: "";
+  }
+
+  & .settings-reset-all::before {
+    inset: var(--interface-control-hit-outset) 0;
+  }
+
+  & .settings-typeface-control button::before,
+  & .settings-range-control button::before {
+    inset: var(--interface-compact-hit-outset) 0;
   }
 
   & .settings-reset-all:disabled,
@@ -125,14 +137,15 @@ caffold-settings-appearance-page {
   }
 
   & .settings-field-copy label {
-    font-size: 0.86rem;
+    font-size: var(--settings-field-label-size);
     font-weight: 700;
+    line-height: var(--interface-line-height);
   }
 
   & .settings-field-copy span {
     color: var(--muted);
-    font-size: 0.76rem;
-    line-height: 1.45;
+    font-size: var(--settings-field-description-size);
+    line-height: var(--interface-line-height);
   }
 
   & .settings-range-control {
@@ -174,7 +187,7 @@ caffold-settings-appearance-page {
     display: block;
     width: min(100%, 35rem);
     color: var(--muted);
-    font-size: var(--interface-meta-font-size);
+    font-size: var(--settings-small-text-size);
     line-height: var(--interface-line-height);
   }
 
@@ -195,7 +208,7 @@ caffold-settings-appearance-page {
   & .settings-range-control output {
     min-width: 4ch;
     color: var(--text);
-    font-size: 0.86rem;
+    font-size: var(--settings-detail-value-size);
     font-variant-numeric: tabular-nums;
     text-align: right;
   }
@@ -238,38 +251,68 @@ caffold-settings-appearance-page {
 
   & .settings-interface-preview {
     display: grid;
-    padding: 0.3125rem 0 0.5rem;
+    padding: var(--interface-space-2) 0 var(--interface-space-4);
     font-size: var(--task-list-font-size);
   }
 
-  & .settings-interface-preview-header,
+  & .settings-interface-preview-section-header,
+  & .settings-interface-preview-repository,
   & .settings-interface-preview-row {
     display: grid;
     align-items: center;
     min-width: 0;
   }
 
-  & .settings-interface-preview-header {
+  & .settings-interface-preview-section-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: var(--interface-compact-visual-size);
+    padding: 0 var(--interface-space-5) 0 var(--interface-space-6);
+    color: var(--muted);
+  }
+
+  & .settings-interface-preview-section-header strong {
+    font-size: var(--interface-meta-font-size);
+    letter-spacing: 0.045em;
+    text-transform: uppercase;
+  }
+
+  & .settings-interface-preview-new-task {
+    display: grid;
+    width: var(--interface-compact-visual-size);
+    height: var(--interface-compact-visual-size);
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--control-fg);
+  }
+
+  & .settings-preview-action-icon {
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+  }
+
+  & .settings-interface-preview-repository {
     grid-template-columns: var(--task-list-icon-size) minmax(0, 1fr) auto;
     gap: 0.4375rem;
-    min-height: var(--task-group-row-height);
-    padding: 0 0.5625rem;
+    min-height: var(--interface-space-14);
+    padding: 0.1875rem 0.5625rem;
     color: var(--muted);
     font-size: var(--task-group-font-size);
   }
 
-  & .settings-interface-preview-header button {
-    box-sizing: border-box;
-    height: var(--interface-compact-visual-size);
-    min-height: var(--interface-compact-visual-size);
-    border: 1px solid var(--border);
-    border-radius: 0.25rem;
-    background: var(--surface);
-    color: var(--control-fg);
-    padding: 0 var(--interface-space-3);
-    font-size: var(--interface-meta-font-size);
-    line-height: 1;
-    pointer-events: none;
+  & .settings-interface-preview-repository strong {
+    overflow: hidden;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & .settings-interface-preview-repository > span:last-child {
+    min-width: 2ch;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
   }
 
   & .settings-preview-icon {
@@ -279,16 +322,16 @@ caffold-settings-appearance-page {
   }
 
   & .settings-interface-preview-row {
-    grid-template-columns: minmax(0, 1fr) 4ch;
+    grid-template-columns: minmax(0, 1fr) 3rem;
     min-height: var(--task-list-row-height);
-    margin-left: calc(0.5625rem + var(--task-list-icon-size));
-    border-left: 3px solid var(--selection-indicator);
     background: var(--selection-bg);
-    padding: 0 0.5625rem;
+    padding: 0.1875rem 0.5625rem;
+    padding-inline-start: var(--interface-space-8);
   }
 
   & .settings-interface-preview-row span {
     overflow: hidden;
+    font-weight: 500;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -375,10 +418,11 @@ caffold-settings-appearance-page {
   }
 }
 
-@media (max-width: 700px) {
+@container settings-appearance (max-width: 44rem) {
   caffold-settings-appearance-page {
-    & .settings-scroll {
-      padding: 1.25rem 1rem 2.25rem;
+    & .settings-section > header {
+      align-items: start;
+      flex-direction: column;
     }
 
     & .settings-field {
@@ -388,17 +432,8 @@ caffold-settings-appearance-page {
   }
 }
 
-@media (max-width: 520px) {
+@container settings-appearance (max-width: 28rem) {
   caffold-settings-appearance-page {
-    & .settings-scroll {
-      padding-inline: 0.625rem;
-    }
-
-    & .settings-section > header {
-      align-items: start;
-      flex-direction: column;
-    }
-
     & .settings-range-control {
       grid-template-columns: minmax(0, 1fr) 4rem;
     }

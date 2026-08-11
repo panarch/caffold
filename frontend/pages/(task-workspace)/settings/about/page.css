@@ -1,20 +1,25 @@
 caffold-settings-about-page {
+  container: settings-about / inline-size;
   display: block;
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
+  font-size: var(--interface-font-size);
+  line-height: var(--interface-line-height);
 
   & .settings-content-scroll {
     height: 100%;
     min-height: 0;
     overflow: auto;
-    padding: 1.75rem 1.5rem 3rem;
+    padding-block: var(--settings-content-padding-block);
+    padding-inline: var(--settings-content-padding-inline);
   }
 
   & .settings-content-section {
     display: grid;
-    width: min(100%, 48rem);
+    width: min(100%, var(--settings-content-max-width));
+    min-width: 0;
     margin: 0 auto;
   }
 
@@ -26,18 +31,11 @@ caffold-settings-about-page {
     padding-bottom: var(--interface-space-6);
   }
 
-  & .settings-content-section > header h2,
   & .settings-content-section > header p {
     margin: 0;
-  }
-
-  & .settings-content-section > header h2 {
-    font-size: 1rem;
-  }
-
-  & .settings-content-section > header p {
     color: var(--muted);
-    font-size: 0.75rem;
+    font-size: var(--settings-page-description-size);
+    line-height: var(--interface-line-height);
   }
 
   & .settings-about-heading {
@@ -48,11 +46,6 @@ caffold-settings-about-page {
     display: block;
     width: 2.25rem;
     height: 2.25rem;
-  }
-
-  & .settings-about-heading > div {
-    display: grid;
-    gap: var(--interface-space-2);
   }
 
   & .settings-details {
@@ -71,11 +64,15 @@ caffold-settings-about-page {
 
   & .settings-details dt {
     color: var(--muted);
+    font-size: var(--settings-detail-label-size);
+    line-height: var(--interface-line-height);
   }
 
   & .settings-details dd {
     min-width: 0;
     margin: 0;
+    font-size: var(--settings-detail-value-size);
+    line-height: var(--interface-line-height);
     overflow-wrap: anywhere;
   }
 
@@ -98,16 +95,49 @@ caffold-settings-about-page {
 
   & [data-about-copy-status] {
     color: var(--muted);
-    font-size: var(--interface-meta-font-size);
+    font-size: var(--settings-small-text-size);
+  }
+
+  & .settings-about-actions button {
+    position: relative;
+    isolation: isolate;
+    height: var(--settings-page-action-size);
+    min-height: var(--settings-page-action-size);
+    padding: 0 var(--interface-control-padding-inline);
+    border: 0;
+    background: transparent;
+    color: var(--control-fg);
+    font: inherit;
+    font-size: var(--settings-small-text-size);
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  & .settings-about-actions button::before {
+    position: absolute;
+    z-index: -1;
+    inset: var(--interface-control-hit-outset) 0;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    content: "";
+  }
+
+  & .settings-about-actions button:hover,
+  & .settings-about-actions button:focus-visible {
+    outline: none;
+  }
+
+  & .settings-about-actions button:hover::before,
+  & .settings-about-actions button:focus-visible::before {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
   }
 }
 
-@media (max-width: 520px) {
+@container settings-about (max-width: 30rem) {
   caffold-settings-about-page {
-    & .settings-content-scroll {
-      padding: 1.25rem var(--interface-space-5) 2.25rem;
-    }
-
     & .settings-details > div {
       grid-template-columns: minmax(0, 1fr);
       gap: var(--interface-space-2);

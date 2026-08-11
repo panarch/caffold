@@ -80,10 +80,10 @@ class CaffoldTaskWorkspace extends HTMLElement {
             aria-valuemax="${TASK_LIST_MAX_WIDTH}"
             aria-valuenow="${this.taskListWidth}"
           ></div>
-          <main class="task-workspace-detail-pane" aria-label="Workspace content">
+          <div class="task-workspace-detail-pane">
             <caffold-tasks-page></caffold-tasks-page>
             <caffold-settings-workspace hidden></caffold-settings-workspace>
-          </main>
+          </div>
         </div>
       </section>
       <caffold-task-archived-delete-dialog></caffold-task-archived-delete-dialog>

@@ -92,12 +92,9 @@ class CaffoldSettingsCodexPage extends HTMLElement {
 
     this.innerHTML = `
       <div class="settings-content-scroll">
-        <section class="settings-content-section" aria-labelledby="settings-codex-title">
+        <div class="settings-content-section">
           <header>
-            <div>
-              <h2 id="settings-codex-title">Codex</h2>
-              <p>Connection, account, plan, and local app-server usage.</p>
-            </div>
+            <p>Connection, account, plan, and local app-server usage.</p>
             <button type="button" data-action="refresh-codex-status"${restarting ? " disabled" : ""}>Refresh</button>
           </header>
           <dl class="settings-details">
@@ -133,7 +130,7 @@ class CaffoldSettingsCodexPage extends HTMLElement {
             </div>
           </section>
           ${status?.message ? `<p class="settings-status-message">${escapeHtml(status.message)}</p>` : ""}
-        </section>
+        </div>
       </div>
       <caffold-codex-runtime-restart-dialog></caffold-codex-runtime-restart-dialog>
     `;

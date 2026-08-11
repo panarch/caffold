@@ -48,13 +48,10 @@ class CaffoldSettingsAboutPage extends HTMLElement {
     const status = buildStatus(this.healthValue);
     this.innerHTML = `
       <div class="settings-content-scroll">
-        <section class="settings-content-section" aria-labelledby="settings-about-title">
+        <div class="settings-content-section">
           <header class="settings-about-heading">
             <img src="/assets/icons/caffold.png" alt="" />
-            <div>
-              <h2 id="settings-about-title">About Caffold</h2>
-              <p>Local workspace and code review</p>
-            </div>
+            <p>A review-first workspace for agent-assisted development.</p>
           </header>
           <dl class="settings-details">
             ${detail("Version", BUILD_INFO.version)}
@@ -67,7 +64,7 @@ class CaffoldSettingsAboutPage extends HTMLElement {
             <span data-about-copy-status role="status" aria-live="polite"></span>
             <button type="button" data-action="copy-diagnostics">Copy diagnostics</button>
           </footer>
-        </section>
+        </div>
       </div>
     `;
   }
