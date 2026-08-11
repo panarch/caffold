@@ -1424,6 +1424,247 @@ test("keeps the Tasks list DOM stable while opening a managed task", async ({ pa
     seenRequests: 0,
   });
 });
+test("patches only changed Task row content and preserves a running spinner", async ({
+  page,
+}) => {
+  await installEventSourceMock(page, {
+    registryKey: "__taskDomEventSources",
+    autoOpen: true,
+  });
+  await mockCodexModels(page);
+
+  const now = 1_767_300_000_000;
+  const worktree = {
+    rootPath: "worktrees/spinner-stability/caffold",
+    repositoryRootPath: "Workspace/rust/caffold",
+    branch: "fix/task-navigator-spinner-stability",
+    headSha: "1111111111111111111111111111111111111111",
+    relativeCwd: "",
+    linked: false,
+  };
+  const runningTask = {
+    id: "thread_spinner_stability",
+    threadId: "thread_spinner_stability",
+    ...canonicalTaskState("active", {
+      turnId: "turn_spinner_stability",
+      startedAtMs: now,
+      latestTurnStatus: "inProgress",
+    }),
+    title: "Spinner stability",
+    preview: "Spinner stability preview",
+    cwd: worktree.rootPath,
+    cwdPath: worktree.rootPath,
+    relativeCwd: "",
+    worktree,
+    createdMs: now,
+    updatedMs: now + 100,
+    recencyMs: now + 100,
+    lastEventSummary: "Running",
+    unseen: false,
+  };
+  const siblingTask = {
+    id: "thread_spinner_sibling",
+    threadId: "thread_spinner_sibling",
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Spinner sibling",
+    preview: "Spinner sibling preview",
+    cwd: worktree.rootPath,
+    cwdPath: worktree.rootPath,
+    relativeCwd: "",
+    worktree: { ...worktree, linked: true },
+    createdMs: now,
+    updatedMs: now + 200,
+    recencyMs: now + 200,
+    lastCompletedMs: now + 200,
+    lastEventSummary: "Completed",
+    unseen: false,
+  };
+  const tasks = [siblingTask, runningTask];
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks, nextCursor: null }),
+    }),
+  );
+  await page.route(/\/api\/tasks\/thread_spinner_stability(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        revision: 1,
+        threadId: runningTask.threadId,
+        syncState: "ready",
+        task: runningTask,
+        events: [],
+        eventsPage: { nextCursor: null },
+        pendingApprovals: [],
+      }),
+    }),
+  );
+
+  await page.goto("/tasks/thread_spinner_stability");
+  const tasksPage = page.locator("caffold-task-workspace");
+  const target = tasksPage.locator(
+    '.task-row[data-thread-id="thread_spinner_stability"]',
+  );
+  await expect(target.locator(".task-status-spinner")).toHaveCount(1);
+  await tasksPage.evaluate((element) => {
+    const row = element.querySelector(
+      '.task-row[data-thread-id="thread_spinner_stability"]',
+    );
+    const item = row.closest("li");
+    const records = [];
+    const observer = new MutationObserver((mutations) => records.push(...mutations));
+    observer.observe(item, {
+      attributes: true,
+      characterData: true,
+      childList: true,
+      subtree: true,
+    });
+    window.__taskDomProbe = {
+      item,
+      row,
+      spinner: row.querySelector(".task-status-spinner"),
+      observer,
+      records,
+    };
+  });
+
+  await page.evaluate((task) => {
+    const detailSource = window.__taskDomEventSources.find(
+      ({ url }) =>
+        url.includes("/api/tasks/thread_spinner_stability/stream"),
+    );
+    const listSource = window.__taskDomEventSources.find(({ url }) =>
+      url.includes("/api/tasks/stream"),
+    );
+    detailSource.emit("task-sync", {
+      threadId: task.threadId,
+      revision: 2,
+      detail: {
+        revision: 2,
+        threadId: task.threadId,
+        syncState: "ready",
+        task,
+        events: [],
+        eventsPage: { nextCursor: null },
+        pendingApprovals: [],
+      },
+      reason: "canonical-repeat",
+    });
+    listSource.emit("task-updated", task);
+  }, runningTask);
+  await tasksPage.evaluate((element) => {
+    const navigator = element.querySelector("caffold-task-navigator");
+    navigator.setStreamState("connecting");
+    navigator.setStreamState("ready");
+  });
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+
+  expect(
+    await tasksPage.evaluate((element) => {
+      const row = element.querySelector(
+        '.task-row[data-thread-id="thread_spinner_stability"]',
+      );
+      return {
+        itemPreserved: window.__taskDomProbe.item === row.closest("li"),
+        mutationCount: window.__taskDomProbe.records.length,
+        rowPreserved: window.__taskDomProbe.row === row,
+        spinnerPreserved:
+          window.__taskDomProbe.spinner === row.querySelector(".task-status-spinner"),
+      };
+    }),
+  ).toEqual({
+    itemPreserved: true,
+    mutationCount: 0,
+    rowPreserved: true,
+    spinnerPreserved: true,
+  });
+
+  await page.evaluate((task) => {
+    const listSource = window.__taskDomEventSources.find(({ url }) =>
+      url.includes("/api/tasks/stream"),
+    );
+    listSource.emit("task-updated", {
+      ...task,
+      title: "Updated sibling",
+    });
+  }, siblingTask);
+  await expect(
+    tasksPage.locator(
+      '.task-row[data-thread-id="thread_spinner_sibling"] .task-row-title',
+    ),
+  ).toHaveText("Updated sibling");
+  expect(
+    await tasksPage.evaluate((element) => {
+      const row = element.querySelector(
+        '.task-row[data-thread-id="thread_spinner_stability"]',
+      );
+      return {
+        rowPreserved: window.__taskDomProbe.row === row,
+        spinnerPreserved:
+          window.__taskDomProbe.spinner === row.querySelector(".task-status-spinner"),
+      };
+    }),
+  ).toEqual({ rowPreserved: true, spinnerPreserved: true });
+
+  const updatedRunningTask = {
+    ...runningTask,
+    title: "Updated spinner stability",
+    worktree: { ...worktree, linked: true },
+    updatedMs: now + 300,
+    recencyMs: now + 300,
+  };
+  await page.evaluate((task) => {
+    const listSource = window.__taskDomEventSources.find(({ url }) =>
+      url.includes("/api/tasks/stream"),
+    );
+    listSource.emit("task-updated", task);
+  }, updatedRunningTask);
+  await expect(target).toHaveAttribute("title", "Updated spinner stability");
+  await expect(target.locator(".task-row-worktree")).toHaveCount(1);
+  await expect(
+    tasksPage.locator('.task-list .task-row[data-thread-id]').first(),
+  ).toHaveAttribute("data-thread-id", "thread_spinner_stability");
+  expect(
+    await tasksPage.evaluate((element) => {
+      const row = element.querySelector(
+        '.task-row[data-thread-id="thread_spinner_stability"]',
+      );
+      return {
+        rowPreserved: window.__taskDomProbe.row === row,
+        spinnerPreserved:
+          window.__taskDomProbe.spinner === row.querySelector(".task-status-spinner"),
+      };
+    }),
+  ).toEqual({ rowPreserved: true, spinnerPreserved: true });
+
+  const idleTask = {
+    ...updatedRunningTask,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    lastCompletedMs: now + 400,
+    unseen: true,
+  };
+  await page.evaluate((task) => {
+    const listSource = window.__taskDomEventSources.find(({ url }) =>
+      url.includes("/api/tasks/stream"),
+    );
+    listSource.emit("task-updated", task);
+  }, idleTask);
+  await expect(target).toHaveAttribute("data-task-status", "idle");
+  await expect(target).not.toHaveAttribute("aria-busy", "true");
+  await expect(target.locator(".task-status-spinner")).toHaveCount(0);
+  await expect(target.locator(".task-unseen-complete")).toHaveCount(0);
+  expect(
+    await tasksPage.evaluate((element) => {
+      const row = element.querySelector(
+        '.task-row[data-thread-id="thread_spinner_stability"]',
+      );
+      window.__taskDomProbe.observer.disconnect();
+      return window.__taskDomProbe.row === row;
+    }),
+  ).toBe(true);
+});
 test("groups Tasks by repository without worktree accordions", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     window.EventSource = class MockEventSource {

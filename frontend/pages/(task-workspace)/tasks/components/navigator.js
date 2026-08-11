@@ -577,8 +577,11 @@ class CaffoldTaskNavigator extends HTMLElement {
     if (this.streamState === state) {
       return;
     }
+    const previousState = this.streamState;
     this.streamState = state;
-    this.render();
+    if (taskTransportRenderKey(previousState) !== taskTransportRenderKey(state)) {
+      this.render();
+    }
     this.dispatchEvent(
       new CustomEvent("caffold:task-navigator-transport-change", {
         bubbles: true,
@@ -873,8 +876,10 @@ class CaffoldTaskNavigator extends HTMLElement {
   syncSelection() {
     for (const row of this.querySelectorAll(".task-row[data-thread-id]")) {
       if (row.dataset.threadId === this.selectedThreadId) {
-        row.setAttribute("aria-current", "true");
-      } else {
+        if (row.getAttribute("aria-current") !== "true") {
+          row.setAttribute("aria-current", "true");
+        }
+      } else if (row.hasAttribute("aria-current")) {
         row.removeAttribute("aria-current");
       }
     }
@@ -921,6 +926,10 @@ function parseJson(value) {
   }
 }
 
+function taskTransportRenderKey(state) {
+  return isTaskTransportStale(state) ? state : "available";
+}
+
 function renderTaskRowMeta(
   task,
   unseen = false,
@@ -961,7 +970,22 @@ function unseenAttentionDelayMs(threadId) {
 function patchTaskListRow(row, nextRow) {
   const currentButton = row.querySelector(":scope > .task-row");
   const nextButton = nextRow.querySelector(":scope > .task-row");
-  if (!currentButton || !nextButton) {
+  const currentTitle = currentButton?.querySelector(":scope > .task-row-title");
+  const nextTitle = nextButton?.querySelector(":scope > .task-row-title");
+  const currentIndicators = currentButton?.querySelector(
+    ":scope > .task-row-indicators",
+  );
+  const nextIndicators = nextButton?.querySelector(
+    ":scope > .task-row-indicators",
+  );
+  if (
+    !currentButton ||
+    !nextButton ||
+    !currentTitle ||
+    !nextTitle ||
+    !currentIndicators ||
+    !nextIndicators
+  ) {
     return false;
   }
   syncElementAttributes(row, nextRow, [
@@ -979,15 +1003,47 @@ function patchTaskListRow(row, nextRow) {
     "aria-current",
     "aria-busy",
   ]);
-  currentButton.replaceChildren(...nextButton.childNodes);
+  syncElementAttributes(currentTitle, nextTitle, ["class"]);
+  if (currentTitle.textContent !== nextTitle.textContent) {
+    currentTitle.textContent = nextTitle.textContent;
+  }
+  syncElementAttributes(currentIndicators, nextIndicators, ["class"]);
+  patchTaskRowIndicator(currentIndicators, nextIndicators, ".task-row-worktree");
+  patchTaskRowIndicator(currentIndicators, nextIndicators, ".task-row-meta");
   return true;
+}
+
+function patchTaskRowIndicator(currentIndicators, nextIndicators, selector) {
+  const current = currentIndicators.querySelector(`:scope > ${selector}`);
+  const next = nextIndicators.querySelector(`:scope > ${selector}`);
+  if (current?.outerHTML === next?.outerHTML) {
+    return;
+  }
+  if (current && next) {
+    current.replaceWith(next);
+    return;
+  }
+  if (current) {
+    current.remove();
+    return;
+  }
+  if (!next) {
+    return;
+  }
+  const before = selector === ".task-row-worktree"
+    ? currentIndicators.querySelector(":scope > .task-row-meta")
+    : null;
+  currentIndicators.insertBefore(next, before);
 }
 
 function syncElementAttributes(element, nextElement, names) {
   for (const name of names) {
     if (nextElement.hasAttribute(name)) {
-      element.setAttribute(name, nextElement.getAttribute(name));
-    } else {
+      const value = nextElement.getAttribute(name);
+      if (element.getAttribute(name) !== value) {
+        element.setAttribute(name, value);
+      }
+    } else if (element.hasAttribute(name)) {
       element.removeAttribute(name);
     }
   }
