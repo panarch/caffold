@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "./support/browser-defaults.js";
 import {
   canonicalTaskState,
+  captureReviewScreenshot,
   installEventSourceMock,
   mockCodexModels,
 } from "./support/task-fixtures.js";
@@ -184,6 +185,264 @@ test("reflows the Settings root without changing its route", async ({
   await expect(page).toHaveURL("/settings");
 });
 
+test("shares navigation pane resizing across Tasks and Settings", async ({
+  page,
+}, testInfo) => {
+  await installEventSourceMock(page);
+  await installTaskRoutes(page, workspaceTask());
+  await page.goto("/");
+
+  const taskWorkspace = page.locator("caffold-task-workspace");
+  const navigationPane = taskWorkspace.locator(".task-workspace-master-pane");
+  const detailPane = taskWorkspace.locator(".task-workspace-detail-pane");
+  const separator = taskWorkspace.locator(".task-workspace-master-resizer");
+  const navigation = taskWorkspace.locator(".task-workspace-navigation");
+
+  await expect(separator).toHaveCount(1);
+  await expect(separator).toHaveAttribute("role", "separator");
+  await expect(separator).toHaveAttribute(
+    "aria-label",
+    "Resize navigation pane",
+  );
+  await expect(separator).toHaveAttribute("aria-orientation", "vertical");
+  await expect(separator).toHaveAttribute("aria-valuemin", "280");
+
+  if (testInfo.project.name === "phone") {
+    await expect(separator).toBeHidden();
+    await navigation.locator('[data-workspace-mode="settings"]').click();
+    await expect(page).toHaveURL("/settings");
+    await expect(separator).toBeHidden();
+    await taskWorkspace
+      .locator('button[data-settings-section="about"]')
+      .click();
+    await expect(page).toHaveURL("/settings/about");
+    await expect(separator).toBeHidden();
+    return;
+  }
+
+  await expect(
+    taskWorkspace.getByRole("separator", { name: "Resize navigation pane" }),
+  ).toBeVisible();
+  await separator.evaluate((element) => {
+    element.dataset.identityMarker = "shared-navigation-resizer";
+  });
+  const maximumWidth = Number(await separator.getAttribute("aria-valuemax"));
+  expect(maximumWidth).toBe(
+    Math.min(520, page.viewportSize().width - 520),
+  );
+
+  await separator.focus();
+  await separator.press("ArrowRight");
+  await expect(separator).toHaveAttribute("aria-valuenow", "396");
+  await separator.press("ArrowLeft");
+  await expect(separator).toHaveAttribute("aria-valuenow", "380");
+  await separator.press("Home");
+  await expect(separator).toHaveAttribute("aria-valuenow", "280");
+  await separator.press("End");
+  await expect(separator).toHaveAttribute(
+    "aria-valuenow",
+    `${maximumWidth}`,
+  );
+  await separator.press("Home");
+
+  const tasksSeparatorBox = await separator.boundingBox();
+  expect(tasksSeparatorBox).not.toBeNull();
+  await page.mouse.move(
+    tasksSeparatorBox.x + tasksSeparatorBox.width / 2,
+    tasksSeparatorBox.y + tasksSeparatorBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    tasksSeparatorBox.x + tasksSeparatorBox.width / 2 + 64,
+    tasksSeparatorBox.y + tasksSeparatorBox.height / 2,
+    { steps: 4 },
+  );
+  await page.mouse.up();
+  await expect(separator).toHaveAttribute("aria-valuenow", "344");
+
+  await navigation.locator('[data-workspace-mode="settings"]').click();
+  await expect(page).toHaveURL("/settings");
+  await expect(
+    taskWorkspace.getByRole("separator", { name: "Resize navigation pane" }),
+  ).toBeVisible();
+  await expect(separator).toHaveAttribute(
+    "data-identity-marker",
+    "shared-navigation-resizer",
+  );
+  await expect(separator).toHaveAttribute("aria-orientation", "vertical");
+  await expect(separator).toHaveAttribute("aria-valuemin", "280");
+  await expect(separator).toHaveAttribute(
+    "aria-valuemax",
+    `${maximumWidth}`,
+  );
+  await expect(separator).toHaveAttribute("aria-valuenow", "344");
+  await expect
+    .poll(() =>
+      navigationPane.evaluate((element) =>
+        Math.round(element.getBoundingClientRect().width),
+      ),
+    )
+    .toBe(344);
+
+  const settingsSeparatorBox = await separator.boundingBox();
+  expect(settingsSeparatorBox).not.toBeNull();
+  await page.mouse.move(
+    settingsSeparatorBox.x + settingsSeparatorBox.width / 2,
+    settingsSeparatorBox.y + settingsSeparatorBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    settingsSeparatorBox.x + settingsSeparatorBox.width / 2 + 32,
+    settingsSeparatorBox.y + settingsSeparatorBox.height / 2,
+    { steps: 4 },
+  );
+  await page.mouse.up();
+  await expect(separator).toHaveAttribute("aria-valuenow", "376");
+
+  await separator.focus();
+  await separator.press("ArrowRight");
+  await expect(separator).toHaveAttribute("aria-valuenow", "392");
+  await separator.press("ArrowLeft");
+  await expect(separator).toHaveAttribute("aria-valuenow", "376");
+  await separator.press("Home");
+  await expect(separator).toHaveAttribute("aria-valuenow", "280");
+  await separator.press("End");
+  await expect(separator).toHaveAttribute(
+    "aria-valuenow",
+    `${maximumWidth}`,
+  );
+  await separator.press("ArrowLeft");
+  const sharedWidth = maximumWidth - 16;
+  await expect(separator).toHaveAttribute(
+    "aria-valuenow",
+    `${sharedWidth}`,
+  );
+
+  await taskWorkspace
+    .locator('button[data-settings-section="about"]')
+    .click();
+  await expect(page).toHaveURL("/settings/about");
+  await expect(separator).toBeVisible();
+  await expect(separator).toHaveAttribute("aria-valuenow", `${sharedWidth}`);
+
+  for (const interfaceScalePercent of [90, 120]) {
+    await page.evaluate(async (value) => {
+      const { setAppearanceSetting } = await import("/assets/settings.js");
+      setAppearanceSetting("interfaceScalePercent", value);
+    }, interfaceScalePercent);
+    const geometry = await taskWorkspace.evaluate((element) => {
+      const navigationPane = element.querySelector(
+        ".task-workspace-master-pane",
+      );
+      const detailPane = element.querySelector(".task-workspace-detail-pane");
+      const separator = element.querySelector(
+        ".task-workspace-master-resizer",
+      );
+      const navigationBounds = navigationPane.getBoundingClientRect();
+      const separatorBounds = separator.getBoundingClientRect();
+      return {
+        detailWidth: detailPane.getBoundingClientRect().width,
+        hasHorizontalOverflow: element.scrollWidth > element.clientWidth,
+        navigationWidth: Math.round(navigationBounds.width),
+        separatorCenterOffset:
+          separatorBounds.left + separatorBounds.width / 2 -
+          navigationBounds.right,
+      };
+    });
+    expect(geometry.hasHorizontalOverflow).toBe(false);
+    expect(geometry.navigationWidth).toBe(sharedWidth);
+    expect(geometry.detailWidth).toBeGreaterThanOrEqual(520);
+    expect(Math.abs(geometry.separatorCenterOffset)).toBeLessThanOrEqual(0.5);
+  }
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "settings-shared-navigation-resizer",
+  );
+
+  await navigation.locator('[data-workspace-mode="tasks"]').click();
+  await expect(page).toHaveURL("/");
+  await expect(separator).toBeVisible();
+  await expect(separator).toHaveAttribute("aria-valuenow", `${sharedWidth}`);
+  await expect
+    .poll(() =>
+      navigationPane.evaluate((element) =>
+        Math.round(element.getBoundingClientRect().width),
+      ),
+    )
+    .toBe(sharedWidth);
+  await expect(detailPane).toBeVisible();
+});
+
+test("clamps the shared navigation pane across the desktop boundary", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop",
+    "One browser project covers explicit window-resize clamping.",
+  );
+
+  await installEventSourceMock(page);
+  await installTaskRoutes(page, workspaceTask());
+  await page.goto("/settings/about");
+
+  const taskWorkspace = page.locator("caffold-task-workspace");
+  const navigationPane = taskWorkspace.locator(".task-workspace-master-pane");
+  const detailPane = taskWorkspace.locator(".task-workspace-detail-pane");
+  const separator = taskWorkspace.locator(".task-workspace-master-resizer");
+
+  await separator.focus();
+  await separator.press("End");
+  await expect(separator).toHaveAttribute("aria-valuenow", "520");
+
+  await page.setViewportSize({ width: 1000, height: 704 });
+  await expect(separator).toHaveAttribute("aria-valuemax", "480");
+  await expect(separator).toHaveAttribute("aria-valuenow", "480");
+  const constrainedLayout = await taskWorkspace.evaluate((element) => ({
+    detailWidth: element
+      .querySelector(".task-workspace-detail-pane")
+      .getBoundingClientRect().width,
+    hasHorizontalOverflow: element.scrollWidth > element.clientWidth,
+    navigationWidth: element
+      .querySelector(".task-workspace-master-pane")
+      .getBoundingClientRect().width,
+  }));
+  expect(constrainedLayout.hasHorizontalOverflow).toBe(false);
+  expect(constrainedLayout.navigationWidth).toBeCloseTo(480, 1);
+  expect(constrainedLayout.detailWidth).toBeGreaterThanOrEqual(520);
+
+  await page.setViewportSize({ width: 899, height: 704 });
+  await expect(separator).toBeHidden();
+  await expect(navigationPane).toBeHidden();
+  await expect(detailPane).toBeVisible();
+  expect(
+    await taskWorkspace.evaluate(
+      (element) => element.scrollWidth > element.clientWidth,
+    ),
+  ).toBe(false);
+
+  await page.setViewportSize({ width: 900, height: 704 });
+  await expect(separator).toBeVisible();
+  await expect(separator).toHaveAttribute("aria-valuemax", "380");
+  await expect(separator).toHaveAttribute("aria-valuenow", "380");
+  await expect(navigationPane).toBeVisible();
+  await expect(detailPane).toBeVisible();
+  const boundaryLayout = await taskWorkspace.evaluate((element) => ({
+    detailWidth: element
+      .querySelector(".task-workspace-detail-pane")
+      .getBoundingClientRect().width,
+    hasHorizontalOverflow: element.scrollWidth > element.clientWidth,
+    navigationWidth: element
+      .querySelector(".task-workspace-master-pane")
+      .getBoundingClientRect().width,
+  }));
+  expect(boundaryLayout).toEqual({
+    detailWidth: 520,
+    hasHorizontalOverflow: false,
+    navigationWidth: 380,
+  });
+});
+
 test("preserves Tasks and Settings DOM while hidden task updates arrive", async ({
   page,
 }, testInfo) => {
@@ -316,6 +575,12 @@ test("keeps bottom navigation responsive in Conversation and hides it throughout
   const navigation = page.locator(
     "caffold-task-workspace .task-workspace-navigation",
   );
+  const navigationPane = page.locator(
+    "caffold-task-workspace .task-workspace-master-pane",
+  );
+  const separator = page.locator(
+    "caffold-task-workspace .task-workspace-master-resizer",
+  );
   const detail = page.locator("caffold-task-detail");
   expect(
     await navigation.evaluate(
@@ -330,8 +595,11 @@ test("keeps bottom navigation responsive in Conversation and hides it throughout
   await expect(detail).toBeVisible();
   if (testInfo.project.name === "phone") {
     await expect(navigation).toBeHidden();
+    await expect(separator).toBeHidden();
   } else {
     await expect(navigation).toBeVisible();
+    await expect(navigationPane).toBeVisible();
+    await expect(separator).toBeVisible();
     const geometry = await page.locator("caffold-task-workspace").evaluate((element) => {
       const list = element.querySelector(".task-workspace-master-pane");
       const navigator = element.querySelector("caffold-task-navigator");
@@ -366,6 +634,8 @@ test("keeps bottom navigation responsive in Conversation and hides it throughout
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await expect(page).toHaveURL(`/tasks/${taskScenario.threadId}/review`);
   await expect(navigation).toBeHidden();
+  await expect(navigationPane).toBeHidden();
+  await expect(separator).toBeHidden();
 
   await tasksPage
     .getByRole("button", { name: "Conversation", exact: true })
@@ -373,8 +643,11 @@ test("keeps bottom navigation responsive in Conversation and hides it throughout
   await expect(page).toHaveURL(`/tasks/${taskScenario.threadId}`);
   if (testInfo.project.name === "phone") {
     await expect(navigation).toBeHidden();
+    await expect(separator).toBeHidden();
   } else {
     await expect(navigation).toBeVisible();
+    await expect(navigationPane).toBeVisible();
+    await expect(separator).toBeVisible();
   }
 });
 

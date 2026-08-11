@@ -9,11 +9,11 @@ import "./tasks/page.js";
 import "./settings/navigator.js";
 import "./settings/layout.js";
 
-const TASK_LIST_DEFAULT_WIDTH = 380;
-const TASK_LIST_MIN_WIDTH = 280;
-const TASK_LIST_MAX_WIDTH = 520;
-const TASK_DETAIL_MIN_WIDTH = 520;
-const TASKS_MASTER_DETAIL_MEDIA_QUERY = "(min-width: 900px)";
+const NAVIGATION_PANE_DEFAULT_WIDTH = 380;
+const NAVIGATION_PANE_MIN_WIDTH = 280;
+const NAVIGATION_PANE_MAX_WIDTH = 520;
+const WORKSPACE_DETAIL_MIN_WIDTH = 520;
+const WORKSPACE_MASTER_DETAIL_MEDIA_QUERY = "(min-width: 900px)";
 
 class CaffoldTaskWorkspace extends HTMLElement {
   connectedCallback() {
@@ -26,7 +26,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
 
   disconnectedCallback() {
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
-    this.stopTaskListResize();
+    this.stopNavigationPaneResize();
     this.detachGlobalListeners();
   }
 
@@ -39,11 +39,11 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.mode = "tasks";
     this.route = { kind: "tasks" };
     this.lastTaskRoute = { kind: "tasks" };
-    this.taskListWidth = TASK_LIST_DEFAULT_WIDTH;
+    this.navigationPaneWidth = NAVIGATION_PANE_DEFAULT_WIDTH;
     this.globalListenersAttached = false;
-    this.boundResize = () => this.syncTaskListWidth();
-    this.boundPointerMove = (event) => this.resizeTaskList(event);
-    this.boundPointerUp = () => this.stopTaskListResize();
+    this.boundResize = () => this.syncNavigationPaneWidth();
+    this.boundPointerMove = (event) => this.resizeNavigationPane(event);
+    this.boundPointerUp = () => this.stopNavigationPaneResize();
     this.innerHTML = `
       <button
         type="button"
@@ -74,11 +74,11 @@ class CaffoldTaskWorkspace extends HTMLElement {
             class="task-workspace-master-resizer"
             role="separator"
             tabindex="0"
-            aria-label="Resize tasks list"
+            aria-label="Resize navigation pane"
             aria-orientation="vertical"
-            aria-valuemin="${TASK_LIST_MIN_WIDTH}"
-            aria-valuemax="${TASK_LIST_MAX_WIDTH}"
-            aria-valuenow="${this.taskListWidth}"
+            aria-valuemin="${NAVIGATION_PANE_MIN_WIDTH}"
+            aria-valuemax="${NAVIGATION_PANE_MAX_WIDTH}"
+            aria-valuenow="${this.navigationPaneWidth}"
           ></div>
           <div class="task-workspace-detail-pane">
             <caffold-tasks-page></caffold-tasks-page>
@@ -155,10 +155,10 @@ class CaffoldTaskWorkspace extends HTMLElement {
       },
     );
     this.masterResizer.addEventListener("pointerdown", (event) => {
-      this.startTaskListResize(event, this.masterResizer);
+      this.startNavigationPaneResize(event, this.masterResizer);
     });
     this.masterResizer.addEventListener("keydown", (event) => {
-      if (this.handleTaskListResizeKeydown(event)) {
+      if (this.handleNavigationPaneResizeKeydown(event)) {
         event.stopPropagation();
       }
     });
@@ -176,7 +176,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
       event.stopPropagation();
       this.syncPresentationState();
     });
-    this.applyTaskListWidth();
+    this.applyNavigationPaneWidth();
     this.updateChrome();
   }
 
@@ -282,7 +282,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
 
     this.renderIcons();
     this.navigation.setMode(this.mode);
-    this.syncTaskListWidth();
+    this.syncNavigationPaneWidth();
   }
 
   syncPresentationState() {
@@ -298,113 +298,114 @@ class CaffoldTaskWorkspace extends HTMLElement {
       this.settingsWorkspace.dataset.settingsView ?? "list";
   }
 
-  startTaskListResize(event, separator) {
+  startNavigationPaneResize(event, separator) {
     if (
       event.button !== 0 ||
-      this.mode !== "tasks" ||
-      !window.matchMedia(TASKS_MASTER_DETAIL_MEDIA_QUERY).matches
+      !["tasks", "settings"].includes(this.mode) ||
+      !window.matchMedia(WORKSPACE_MASTER_DETAIL_MEDIA_QUERY).matches
     ) {
       return;
     }
     event.preventDefault();
-    this.taskListResizeStart = {
+    this.navigationPaneResizeStart = {
       pointerX: event.clientX,
-      width: this.taskListWidth,
+      width: this.navigationPaneWidth,
     };
-    this.classList.add("is-resizing-task-list");
+    this.classList.add("is-resizing-navigation-pane");
     separator.setPointerCapture?.(event.pointerId);
     window.addEventListener("pointermove", this.boundPointerMove);
     window.addEventListener("pointerup", this.boundPointerUp, { once: true });
     window.addEventListener("pointercancel", this.boundPointerUp, { once: true });
   }
 
-  resizeTaskList(event) {
-    if (!this.taskListResizeStart) {
+  resizeNavigationPane(event) {
+    if (!this.navigationPaneResizeStart) {
       return;
     }
-    this.setTaskListWidth(
-      this.taskListResizeStart.width +
+    this.setNavigationPaneWidth(
+      this.navigationPaneResizeStart.width +
         event.clientX -
-        this.taskListResizeStart.pointerX,
+        this.navigationPaneResizeStart.pointerX,
     );
   }
 
-  stopTaskListResize() {
-    this.taskListResizeStart = null;
-    this.classList.remove("is-resizing-task-list");
+  stopNavigationPaneResize() {
+    this.navigationPaneResizeStart = null;
+    this.classList.remove("is-resizing-navigation-pane");
     window.removeEventListener("pointermove", this.boundPointerMove);
     window.removeEventListener("pointerup", this.boundPointerUp);
     window.removeEventListener("pointercancel", this.boundPointerUp);
   }
 
-  handleTaskListResizeKeydown(event) {
+  handleNavigationPaneResizeKeydown(event) {
     if (
       event.currentTarget !== this.masterResizer ||
-      this.mode !== "tasks" ||
-      !window.matchMedia(TASKS_MASTER_DETAIL_MEDIA_QUERY).matches
+      !["tasks", "settings"].includes(this.mode) ||
+      !window.matchMedia(WORKSPACE_MASTER_DETAIL_MEDIA_QUERY).matches
     ) {
       return false;
     }
-    let nextWidth = this.taskListWidth;
+    let nextWidth = this.navigationPaneWidth;
     if (event.key === "ArrowLeft") {
       nextWidth -= event.shiftKey ? 40 : 16;
     } else if (event.key === "ArrowRight") {
       nextWidth += event.shiftKey ? 40 : 16;
     } else if (event.key === "Home") {
-      nextWidth = TASK_LIST_MIN_WIDTH;
+      nextWidth = NAVIGATION_PANE_MIN_WIDTH;
     } else if (event.key === "End") {
-      nextWidth = this.taskListMaximumWidth();
+      nextWidth = this.navigationPaneMaximumWidth();
     } else {
       return false;
     }
     event.preventDefault();
-    this.setTaskListWidth(nextWidth);
+    this.setNavigationPaneWidth(nextWidth);
     return true;
   }
 
-  taskListMaximumWidth() {
-    const available = (this.masterDetail?.clientWidth ?? 0) - TASK_DETAIL_MIN_WIDTH;
+  navigationPaneMaximumWidth() {
+    const available =
+      (this.masterDetail?.clientWidth ?? 0) - WORKSPACE_DETAIL_MIN_WIDTH;
     return Math.max(
-      TASK_LIST_MIN_WIDTH,
-      Math.min(TASK_LIST_MAX_WIDTH, available),
+      NAVIGATION_PANE_MIN_WIDTH,
+      Math.min(NAVIGATION_PANE_MAX_WIDTH, available),
     );
   }
 
-  setTaskListWidth(width) {
-    this.taskListWidth = Math.max(
-      TASK_LIST_MIN_WIDTH,
-      Math.min(this.taskListMaximumWidth(), width),
+  setNavigationPaneWidth(width) {
+    this.navigationPaneWidth = Math.max(
+      NAVIGATION_PANE_MIN_WIDTH,
+      Math.min(this.navigationPaneMaximumWidth(), width),
     );
-    this.applyTaskListWidth();
+    this.applyNavigationPaneWidth();
   }
 
-  syncTaskListWidth() {
+  syncNavigationPaneWidth() {
     const shellWidth = this.masterDetail?.clientWidth ?? 0;
     if (
-      !window.matchMedia(TASKS_MASTER_DETAIL_MEDIA_QUERY).matches ||
+      !window.matchMedia(WORKSPACE_MASTER_DETAIL_MEDIA_QUERY).matches ||
       shellWidth <= 0
     ) {
-      this.applyTaskListWidth();
+      this.applyNavigationPaneWidth();
       return;
     }
-    this.setTaskListWidth(this.taskListWidth);
+    this.setNavigationPaneWidth(this.navigationPaneWidth);
   }
 
-  applyTaskListWidth() {
+  applyNavigationPaneWidth() {
     this.style.setProperty(
       "--task-workspace-master-width",
-      `${this.taskListWidth}px`,
+      `${this.navigationPaneWidth}px`,
     );
     if (!this.masterResizer) {
       return;
     }
     this.masterResizer.setAttribute(
       "aria-valuemax",
-      `${this.taskListMaximumWidth()}`,
+      `${this.navigationPaneMaximumWidth()}`,
     );
     this.masterResizer.setAttribute(
       "aria-valuenow",
-      `${Math.round(this.taskListWidth)}`,
+      `${Math.round(this.navigationPaneWidth)}`,
     );
   }
 }
