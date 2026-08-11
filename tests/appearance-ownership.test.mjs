@@ -185,6 +185,7 @@ test("color roles keep neutral chrome, interactions, and semantic feedback separ
   const selectedOwners = [
     "components/file-tree.css",
     "pages/(task-workspace)/tasks/components/navigator.css",
+    "pages/(task-workspace)/settings/appearance/page.css",
   ];
   for (const path of selectedOwners) {
     assert.match(
@@ -197,7 +198,6 @@ test("color roles keep neutral chrome, interactions, and semantic feedback separ
   for (const path of [
     "pages/(review-workspace)/(github)/(issues)/list/page.css",
     "pages/(review-workspace)/(github)/(pulls)/list/page.css",
-    "pages/(task-workspace)/settings/appearance/page.css",
   ]) {
     assert.match(
       readFrontend(path),
@@ -347,6 +347,99 @@ test("component styles do not own literal colors", () => {
       `${path} must consume semantic color tokens from styles.css`,
     );
   }
+});
+
+test("Settings roles share inherited constraints without sharing leaf selectors", () => {
+  const settingsLayout = readFrontend(
+    "pages/(task-workspace)/settings/layout.css",
+  );
+  for (const token of [
+    "--settings-content-max-width",
+    "--settings-content-padding-block",
+    "--settings-content-padding-inline",
+    "--settings-small-text-size",
+    "--settings-page-title-size",
+    "--settings-page-description-size",
+    "--settings-field-label-size",
+    "--settings-field-description-size",
+    "--settings-detail-label-size",
+    "--settings-detail-value-size",
+    "--settings-page-action-size",
+    "--settings-context-action-size",
+  ]) {
+    assert.match(settingsLayout, new RegExp(`${token}:`));
+  }
+  assert.match(
+    settingsLayout,
+    /--settings-small-text-size: max\(14px, 0\.8125rem\)/,
+  );
+  assert.match(
+    settingsLayout,
+    /--settings-detail-value-size: var\(--settings-small-text-size\)/,
+  );
+
+  const pages = [
+    [
+      "pages/(task-workspace)/settings/appearance/page.css",
+      "settings-appearance",
+    ],
+    ["pages/(task-workspace)/settings/codex/page.css", "settings-codex"],
+    ["pages/(task-workspace)/settings/about/page.css", "settings-about"],
+  ];
+  for (const [path, container] of pages) {
+    const source = readFrontend(path);
+    assert.match(source, new RegExp(`container: ${container} / inline-size`));
+    assert.match(source, /var\(--settings-content-max-width\)/);
+    assert.match(source, /var\(--settings-content-padding-block\)/);
+    assert.match(source, /var\(--settings-content-padding-inline\)/);
+    assert.match(source, /var\(--settings-page-description-size\)/);
+  }
+
+  const appLayout = readFrontend("pages/layout.js");
+  const taskWorkspace = readFrontend("pages/(task-workspace)/layout.js");
+  const tasksPage = readFrontend("pages/(task-workspace)/tasks/page.js");
+  const settingsWorkspace = readFrontend(
+    "pages/(task-workspace)/settings/layout.js",
+  );
+  assert.match(appLayout, /<main class="app-main"/);
+  for (const source of [taskWorkspace, tasksPage, settingsWorkspace]) {
+    assert.doesNotMatch(source, /<\/?main\b/);
+  }
+  assert.match(
+    settingsWorkspace,
+    /role="region"[\s\S]*aria-labelledby="settings-workspace-title"/,
+  );
+  assert.match(settingsWorkspace, /<h1 id="settings-workspace-title"><\/h1>/);
+
+  for (const path of [
+    "pages/(task-workspace)/settings/appearance/page.js",
+    "pages/(task-workspace)/settings/codex/page.js",
+    "pages/(task-workspace)/settings/about/page.js",
+  ]) {
+    assert.doesNotMatch(readFrontend(path), /<h2 id="settings-(?:appearance|codex|about)-title"/);
+  }
+  assert.match(
+    readFrontend("pages/(task-workspace)/settings/navigator.js"),
+    /aria-label="Settings sections"/,
+  );
+  assert.doesNotMatch(
+    readFrontend("pages/(task-workspace)/settings/navigator.js"),
+    /Local to this browser/,
+  );
+
+  const appearancePage = readFrontend(
+    "pages/(task-workspace)/settings/appearance/page.js",
+  );
+  assert.match(appearancePage, /settings-interface-preview-section-header/);
+  assert.match(appearancePage, /settings-interface-preview-repository/);
+  assert.match(appearancePage, />Caffold Tasks</);
+  assert.doesNotMatch(appearancePage, />Open</);
+
+  cssBlockMatching(
+    readFrontend("pages/(task-workspace)/settings/codex/page.css"),
+    ".settings-usage-row strong",
+    [/font-size: var\(--settings-detail-value-size\)/],
+  );
 });
 
 test("interface spacing scales instead of bypassing the appearance axis", () => {
@@ -651,8 +744,12 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-composer-attachment-remove::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-model-button::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-permission-button::before", "--interface-compact-hit-outset"],
-    ["pages/(task-workspace)/settings/appearance/page.css", ".settings-reset-all::before", "--interface-compact-hit-outset"],
+    ["pages/(task-workspace)/settings/appearance/page.css", ".settings-reset-all::before", "--interface-control-hit-outset"],
+    ["pages/(task-workspace)/settings/appearance/page.css", ".settings-typeface-control button::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/settings/appearance/page.css", ".settings-range-control button::before", "--interface-compact-hit-outset"],
+    ["pages/(task-workspace)/settings/codex/page.css", ".settings-content-section > header button::before", "--interface-control-hit-outset"],
+    ["pages/(task-workspace)/settings/codex/page.css", ".settings-runtime-control button::before", "--interface-control-hit-outset"],
+    ["pages/(task-workspace)/settings/about/page.css", ".settings-about-actions button::before", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/tasks/components/detail/summary/info.css", ".task-detail-archive-action .task-secondary-button::before", "--interface-compact-hit-outset"],
   ];
 
@@ -695,13 +792,13 @@ test("contextual and inline actions stay compact while page and primary actions 
     ],
     [
       "pages/(task-workspace)/settings/appearance/page.css",
-      ".settings-reset-all",
-      "--interface-compact-hit-size",
+      ".settings-range-control button",
+      "--settings-context-action-size",
     ],
     [
       "pages/(task-workspace)/settings/appearance/page.css",
-      ".settings-range-control button",
-      "--interface-compact-hit-size",
+      ".settings-typeface-control button",
+      "--settings-context-action-size",
     ],
     [
       "pages/(review-workspace)/(github)/(pulls)/detail/page.css",
@@ -728,8 +825,43 @@ test("contextual and inline actions stay compact while page and primary actions 
     ],
   );
   for (const [path, selector, token] of compactControls) {
-    const block = cssBlockContaining(readFrontend(path), selector, "height:");
-    assert.match(block, new RegExp(`height: var\\(${token}\\)`), `${path} ${selector}`);
+    const block = cssBlockContaining(readFrontend(path), selector, token);
+    assert.match(
+      block,
+      new RegExp(`(?:min-)?height: var\\(${token}\\)`),
+      `${path} ${selector}`,
+    );
+  }
+
+  const pageActions = [
+    [
+      "pages/(task-workspace)/settings/appearance/page.css",
+      ".settings-reset-all",
+    ],
+    [
+      "pages/(task-workspace)/settings/codex/page.css",
+      ".settings-content-section > header button",
+    ],
+    [
+      "pages/(task-workspace)/settings/codex/page.css",
+      ".settings-runtime-control button",
+    ],
+    [
+      "pages/(task-workspace)/settings/about/page.css",
+      ".settings-about-actions button",
+    ],
+  ];
+  for (const [path, selector] of pageActions) {
+    const block = cssBlockContaining(
+      readFrontend(path),
+      selector,
+      "--settings-page-action-size",
+    );
+    assert.match(
+      block,
+      /min-height: var\(--settings-page-action-size\)/,
+      `${path} ${selector}`,
+    );
   }
 });
 

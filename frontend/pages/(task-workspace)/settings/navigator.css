@@ -24,20 +24,13 @@ caffold-settings-navigator {
     height: 1.625rem;
   }
 
-  & .settings-navigator-header div {
-    display: grid;
-    gap: var(--interface-space-1);
-    min-width: 0;
-  }
-
   & .settings-navigator-header strong {
-    font-size: 0.95rem;
+    min-width: 0;
+    overflow: hidden;
+    font-size: var(--interface-heading-font-size);
     line-height: 1.2;
-  }
-
-  & .settings-navigator-header span {
-    color: var(--muted);
-    font-size: var(--interface-meta-font-size);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   & .settings-navigator-list {

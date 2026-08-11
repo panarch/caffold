@@ -28,6 +28,7 @@ test("navigates Settings as responsive master-detail pages with browser history"
 
   await expect(listPane).toBeVisible();
   await expect(navigation).toBeVisible();
+  await expect(taskWorkspace.getByText("Local to this browser")).toHaveCount(0);
   const rootGeometry = await taskWorkspace.evaluate((element) => {
     const list = element.querySelector(".task-workspace-master-pane");
     const navigator = element.querySelector("caffold-settings-navigator");
@@ -36,11 +37,19 @@ test("navigates Settings as responsive master-detail pages with browser history"
     );
     const navigation = element.querySelector(".task-workspace-navigation");
     const detail = element.querySelector(".task-workspace-detail-pane");
+    const navigatorHeader = element.querySelector(
+      ".settings-navigator-header",
+    );
+    const detailHeader = element.querySelector(
+      ".settings-workspace-detail-header",
+    );
     const masterDetail = element.querySelector(".task-workspace-master-detail");
     const listRect = list.getBoundingClientRect();
     const navigatorRect = navigator.getBoundingClientRect();
     const navigationRect = navigation.getBoundingClientRect();
     const detailRect = detail.getBoundingClientRect();
+    const navigatorHeaderRect = navigatorHeader.getBoundingClientRect();
+    const detailHeaderRect = detailHeader.getBoundingClientRect();
     const masterDetailRect = masterDetail.getBoundingClientRect();
     return {
       ownedByList: navigationHost.parentElement === list,
@@ -52,6 +61,9 @@ test("navigates Settings as responsive master-detail pages with browser history"
       detailFillsWorkspace:
         getComputedStyle(detail).display === "none" ||
         Math.abs(detailRect.height - masterDetailRect.height) <= 1,
+      settingsHeadersAlign:
+        detailHeader.hidden ||
+        Math.abs(navigatorHeaderRect.height - detailHeaderRect.height) <= 1,
     };
   });
   expect(rootGeometry).toEqual({
@@ -60,6 +72,7 @@ test("navigates Settings as responsive master-detail pages with browser history"
     contentEndsAboveNavigation: true,
     navigationEndsWithList: true,
     detailFillsWorkspace: true,
+    settingsHeadersAlign: true,
   });
   if (testInfo.project.name === "phone") {
     await expect(workspace).toHaveAttribute("data-settings-view", "list");

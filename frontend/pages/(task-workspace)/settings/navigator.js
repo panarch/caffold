@@ -44,12 +44,9 @@ class CaffoldSettingsNavigator extends HTMLElement {
     this.innerHTML = `
       <header class="settings-navigator-header">
         <img src="/assets/icons/favicon-32.png" alt="" />
-        <div>
-          <strong>Settings</strong>
-          <span>Local to this browser</span>
-        </div>
+        <strong>Settings</strong>
       </header>
-      <nav class="settings-navigator-list" aria-label="Settings">
+      <nav class="settings-navigator-list" aria-label="Settings sections">
         ${ITEMS.map((item) => `
           <button
             type="button"

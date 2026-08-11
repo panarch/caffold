@@ -43,10 +43,10 @@ class CaffoldTasksPage extends HTMLElement {
 
     this.innerHTML = `
       <section class="tasks-surface" aria-label="Tasks">
-        <main class="tasks-detail-pane" aria-label="Task content">
+        <div class="tasks-detail-pane" role="region" aria-label="Task content">
           <caffold-task-new hidden></caffold-task-new>
           <caffold-task-detail hidden></caffold-task-detail>
-        </main>
+        </div>
       </section>
       <caffold-task-image-preview-dialog></caffold-task-image-preview-dialog>
     `;

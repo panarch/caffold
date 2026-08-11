@@ -89,12 +89,9 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
   render() {
     this.innerHTML = `
       <div class="settings-scroll">
-        <section class="settings-section" aria-labelledby="settings-appearance-title">
+        <div class="settings-section">
           <header>
-            <div>
-              <h2 id="settings-appearance-title">Appearance</h2>
-              <p>Typeface and independent sizing controls keep every surface consistent.</p>
-            </div>
+            <p>Typeface and independent sizing controls keep every surface consistent.</p>
             <button type="button" class="settings-reset-all" data-action="reset-appearance">
               Reset appearance
             </button>
@@ -104,14 +101,20 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
             "interfaceScalePercent",
             `
               <div class="settings-interface-preview" aria-label="Interface preview">
-                <div class="settings-interface-preview-header">
+                <div class="settings-interface-preview-section-header">
+                  <strong>Caffold Tasks</strong>
+                  <span class="settings-interface-preview-new-task" aria-hidden="true">
+                    ${renderInlineIcon("Plus", "", "settings-preview-action-icon")}
+                  </span>
+                </div>
+                <div class="settings-interface-preview-repository">
                   <span data-settings-icon="preview">
                     ${renderInlineIcon("FolderGit2", "Git repository", "settings-preview-icon")}
                   </span>
                   <strong>caffold</strong>
-                  <button type="button" tabindex="-1">Open</button>
+                  <span>1</span>
                 </div>
-                <div class="settings-interface-preview-row">
+                <div class="settings-interface-preview-row" aria-current="true">
                   <span>Review appearance settings</span>
                   <time>now</time>
                 </div>
@@ -145,7 +148,7 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
               </div>
             `,
           )}
-        </section>
+        </div>
       </div>
     `;
   }
@@ -211,6 +214,16 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
         "FolderGit2",
         "Git repository",
         "settings-preview-icon",
+      );
+    }
+    const previewActionIcon = this.querySelector(
+      ".settings-interface-preview-new-task",
+    );
+    if (previewActionIcon) {
+      previewActionIcon.innerHTML = renderInlineIcon(
+        "Plus",
+        "",
+        "settings-preview-action-icon",
       );
     }
   }

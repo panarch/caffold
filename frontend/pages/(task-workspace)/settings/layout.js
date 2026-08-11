@@ -39,8 +39,12 @@ class CaffoldSettingsWorkspace extends HTMLElement {
       this.requestSection(event.detail?.section);
     };
     this.innerHTML = `
-      <section class="settings-workspace-surface" aria-label="Settings">
-        <main class="settings-workspace-detail-pane" aria-label="Settings content">
+      <div class="settings-workspace-surface">
+        <div
+          class="settings-workspace-detail-pane"
+          role="region"
+          aria-labelledby="settings-workspace-title"
+        >
           <header class="settings-workspace-detail-header" hidden>
             <button
               type="button"
@@ -52,13 +56,13 @@ class CaffoldSettingsWorkspace extends HTMLElement {
                 ${renderInlineIcon("ArrowLeft", "Back to settings", "settings-workspace-back-icon")}
               </span>
             </button>
-            <h1></h1>
+            <h1 id="settings-workspace-title"></h1>
           </header>
           <caffold-settings-appearance-page hidden></caffold-settings-appearance-page>
           <caffold-settings-codex-page hidden></caffold-settings-codex-page>
           <caffold-settings-about-page hidden></caffold-settings-about-page>
-        </main>
-      </section>
+        </div>
+      </div>
     `;
     this.querySelector('[data-action="back-to-settings"]')?.addEventListener(
       "click",
