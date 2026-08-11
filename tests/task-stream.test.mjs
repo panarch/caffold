@@ -1,0 +1,265 @@
+import assert from "node:assert/strict";
+import test, { afterEach } from "node:test";
+
+import { TASK_TRANSPORT_STATE } from "../frontend/pages/(task-workspace)/tasks/runtime-state.js";
+import { TaskStreamLifecycle } from "../frontend/pages/(task-workspace)/tasks/stream.js";
+
+const originalBrowserGlobals = {
+  document: globalThis.document,
+  EventSource: globalThis.EventSource,
+  window: globalThis.window,
+};
+
+afterEach(() => {
+  for (const [name, value] of Object.entries(originalBrowserGlobals)) {
+    if (value === undefined) {
+      delete globalThis[name];
+    } else {
+      globalThis[name] = value;
+    }
+  }
+});
+
+function installBrowserHarness() {
+  const sources = [];
+  const documentListeners = new Map();
+
+  class MockEventSource {
+    constructor(url) {
+      this.url = url;
+      this.listeners = new Map();
+      this.readyState = 0;
+      this.closed = false;
+      sources.push(this);
+    }
+
+    addEventListener(type, listener) {
+      const listeners = this.listeners.get(type) ?? [];
+      listeners.push(listener);
+      this.listeners.set(type, listeners);
+    }
+
+    emit(type, payload = null) {
+      for (const listener of this.listeners.get(type) ?? []) {
+        listener(payload === null ? {} : { data: JSON.stringify(payload) });
+      }
+    }
+
+    emitOpen() {
+      this.readyState = 1;
+      this.emit("open");
+    }
+
+    emitError({ closed = false } = {}) {
+      this.readyState = closed ? 2 : 0;
+      this.emit("error");
+    }
+
+    close() {
+      this.closed = true;
+      this.readyState = 2;
+    }
+  }
+
+  globalThis.window = {
+    EventSource: MockEventSource,
+    setTimeout,
+    clearTimeout,
+  };
+  globalThis.EventSource = MockEventSource;
+  globalThis.document = {
+    visibilityState: "visible",
+    addEventListener(type, listener) {
+      const listeners = documentListeners.get(type) ?? [];
+      listeners.push(listener);
+      documentListeners.set(type, listeners);
+    },
+    removeEventListener(type, listener) {
+      documentListeners.set(
+        type,
+        (documentListeners.get(type) ?? []).filter(
+          (candidate) => candidate !== listener,
+        ),
+      );
+    },
+  };
+
+  return { sources };
+}
+
+function nextTask() {
+  return new Promise((resolve) => setTimeout(resolve, 5));
+}
+
+test("replaces a terminal source and ignores its stale generation", async () => {
+  const browser = installBrowserHarness();
+  const events = [];
+  const reconciliations = [];
+  const lifecycle = new TaskStreamLifecycle({
+    createUrl: () => "/api/tasks/stream",
+    eventTypes: ["task-updated"],
+    onEvent: (_type, event) => events.push(JSON.parse(event.data).value),
+    onReconcile: (_contextKey, _isCurrent, metadata) =>
+      reconciliations.push(metadata),
+    retryDelaysMs: [0],
+  });
+
+  lifecycle.activate("task-list");
+  const first = browser.sources[0];
+  first.emitOpen();
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
+
+  first.emitError({ closed: true });
+  first.emitError({ closed: true });
+  assert.equal(first.closed, true);
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.RECONNECTING);
+  await nextTask();
+
+  assert.equal(browser.sources.length, 2);
+  const replacement = browser.sources[1];
+  first.emit("task-updated", { value: "stale" });
+  replacement.emitOpen();
+  await nextTask();
+  replacement.emit("task-updated", { value: "current" });
+
+  assert.deepEqual(reconciliations, [{ recovery: true }]);
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
+  assert.deepEqual(events, ["current"]);
+  lifecycle.deactivate();
+});
+
+test("bounds replacement attempts and lets an explicit retry start a new cycle", async () => {
+  const browser = installBrowserHarness();
+  const lifecycle = new TaskStreamLifecycle({
+    createUrl: () => "/api/tasks/stream",
+    retryDelaysMs: [0, 0],
+  });
+
+  lifecycle.activate("task-list");
+  browser.sources[0].emitOpen();
+  browser.sources[0].emitError({ closed: true });
+  await nextTask();
+  browser.sources[1].emitError({ closed: true });
+  await nextTask();
+  browser.sources[2].emitError({ closed: true });
+  await nextTask();
+
+  assert.equal(browser.sources.length, 3);
+  assert.equal(lifecycle.source, null);
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.UNAVAILABLE);
+
+  lifecycle.retry();
+  assert.equal(browser.sources.length, 4);
+  browser.sources[3].emitOpen();
+  await nextTask();
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
+  lifecycle.deactivate();
+});
+
+test("lets a reconnecting source recover without creating a duplicate", async () => {
+  const browser = installBrowserHarness();
+  let reconciliations = 0;
+  const lifecycle = new TaskStreamLifecycle({
+    createUrl: () => "/api/tasks/thread-a/stream",
+    onReconcile: () => {
+      reconciliations += 1;
+    },
+    reconnectTimeoutMs: 1_000,
+    retryDelaysMs: [0],
+  });
+
+  lifecycle.activate("thread-a");
+  const source = browser.sources[0];
+  source.emitOpen();
+  source.emitError();
+  source.emitError();
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.RECONNECTING);
+
+  source.emitOpen();
+  await nextTask();
+  assert.equal(browser.sources.length, 1);
+  assert.equal(reconciliations, 1);
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
+  lifecycle.deactivate();
+});
+
+test("distinguishes requested reconciliation from transport recovery", async () => {
+  const browser = installBrowserHarness();
+  const reconciliations = [];
+  const lifecycle = new TaskStreamLifecycle({
+    createUrl: () => "/api/tasks/thread-a/stream",
+    onReconcile: (_contextKey, _isCurrent, metadata) =>
+      reconciliations.push(metadata),
+    retryDelaysMs: [0],
+  });
+
+  lifecycle.activate("thread-a");
+  browser.sources[0].emitOpen();
+  await lifecycle.requestReconciliation();
+  assert.deepEqual(reconciliations, [{ recovery: false }]);
+
+  browser.sources[0].emitError({ closed: true });
+  await nextTask();
+  browser.sources[1].emitOpen();
+  await nextTask();
+
+  assert.deepEqual(reconciliations, [
+    { recovery: false },
+    { recovery: true },
+  ]);
+  lifecycle.deactivate();
+});
+
+test("reconciles an already-open stream when the page becomes visible", async () => {
+  const browser = installBrowserHarness();
+  let reconciliations = 0;
+  const lifecycle = new TaskStreamLifecycle({
+    createUrl: () => "/api/tasks/thread-a/stream",
+    onReconcile: () => {
+      reconciliations += 1;
+    },
+  });
+
+  lifecycle.activate("thread-a");
+  browser.sources[0].emitOpen();
+  document.visibilityState = "visible";
+  lifecycle.visibilityChanged();
+  await nextTask();
+
+  assert.equal(browser.sources.length, 1);
+  assert.equal(reconciliations, 1);
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
+  lifecycle.deactivate();
+});
+
+test("upgrades a coalesced request to recovery reconciliation", async () => {
+  const browser = installBrowserHarness();
+  let releaseFirstReconciliation;
+  const firstReconciliation = new Promise((resolve) => {
+    releaseFirstReconciliation = resolve;
+  });
+  const reconciliations = [];
+  const lifecycle = new TaskStreamLifecycle({
+    createUrl: () => "/api/tasks/thread-a/stream",
+    onReconcile: (_contextKey, _isCurrent, metadata) => {
+      reconciliations.push(metadata);
+      return reconciliations.length === 1
+        ? firstReconciliation
+        : Promise.resolve();
+    },
+  });
+
+  lifecycle.activate("thread-a");
+  browser.sources[0].emitOpen();
+  const requested = lifecycle.requestReconciliation();
+  lifecycle.visibilityChanged();
+  releaseFirstReconciliation();
+  await requested;
+
+  assert.deepEqual(reconciliations, [
+    { recovery: false },
+    { recovery: true },
+  ]);
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
+  lifecycle.deactivate();
+});

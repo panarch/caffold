@@ -23,6 +23,7 @@ import {
   taskWorktreeLabel,
   upsertTask,
 } from "../task-list-model.js";
+import { TaskStreamLifecycle } from "../stream.js";
 import {
   patchTaskStatusChip,
   renderTaskStatusChip,
@@ -37,7 +38,6 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.ensureState();
     this.addEventListener("click", this.boundClick);
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
-    document.addEventListener("visibilitychange", this.boundVisibilityChange);
     this.render();
     if (this.active) {
       void this.activate({ force: true });
@@ -47,7 +47,6 @@ class CaffoldTaskNavigator extends HTMLElement {
   disconnectedCallback() {
     this.removeEventListener("click", this.boundClick);
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
-    document.removeEventListener("visibilitychange", this.boundVisibilityChange);
     this.taskListRequestId += 1;
     this.archivedTaskRequestId += 1;
     this.taskListLoading = false;
@@ -83,15 +82,20 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.deletingThreadIds = new Set();
     this.deleteErrors = new Map();
     this.selectedThreadId = "";
-    this.stream = null;
-    this.streamNeedsSync = false;
-    this.streamState = TASK_TRANSPORT_STATE.IDLE;
     this.revisionByThread = new Map();
     this.active = false;
     this.lastPublishedListState = "";
     this.boundClick = (event) => this.handleClick(event);
     this.boundIconsReady = () => this.render();
-    this.boundVisibilityChange = () => this.handleVisibilityChange();
+    this.taskListStream = new TaskStreamLifecycle({
+      createUrl: () => taskListStreamUrl(),
+      eventTypes: ["task-removed", "task-updated", "task-sync"],
+      onEvent: (type, event) => this.handleStreamEvent(type, event),
+      onReconcile: (_contextKey, isCurrent) =>
+        this.reconcileTaskList(isCurrent),
+      onStateChange: (state, previousState) =>
+        this.handleStreamStateChange(state, previousState),
+    });
     warmIcons();
   }
 
@@ -110,17 +114,6 @@ class CaffoldTaskNavigator extends HTMLElement {
       this.connectStream();
     }
     return { tasks, archived };
-  }
-
-  handleVisibilityChange() {
-    if (!this.active) {
-      return;
-    }
-    if (document.visibilityState !== "visible") {
-      this.closeStream();
-      return;
-    }
-    void this.activate({ force: true });
   }
 
   setSelectedThreadId(threadId) {
@@ -286,6 +279,8 @@ class CaffoldTaskNavigator extends HTMLElement {
       void this.loadArchived({ force: true });
     } else if (action.dataset.taskAction === "retry-task-list") {
       void this.loadTasks({ force: true });
+    } else if (action.dataset.taskAction === "retry-task-stream") {
+      this.taskListStream.retry();
     } else if (action.dataset.taskAction === "restore-archived-task") {
       void this.restoreThread(threadId);
     } else if (action.dataset.taskAction === "delete-archived-task") {
@@ -308,7 +303,7 @@ class CaffoldTaskNavigator extends HTMLElement {
     );
   }
 
-  async loadTasks({ force = false } = {}) {
+  async loadTasks({ force = false, isCurrent = () => true } = {}) {
     if (this.taskListLoaded && !force) {
       return { tasks: this.tasks, nextCursor: this.taskListNextCursor };
     }
@@ -325,6 +320,10 @@ class CaffoldTaskNavigator extends HTMLElement {
       if (requestId !== this.taskListRequestId) {
         return null;
       }
+      if (!isCurrent()) {
+        this.taskListLoading = false;
+        return null;
+      }
       this.tasks = response.tasks ?? [];
       this.taskListNextCursor = response.nextCursor ?? null;
       this.taskListLoading = false;
@@ -333,6 +332,10 @@ class CaffoldTaskNavigator extends HTMLElement {
       return response;
     } catch (error) {
       if (requestId !== this.taskListRequestId) {
+        return null;
+      }
+      if (!isCurrent()) {
+        this.taskListLoading = false;
         return null;
       }
       this.taskListLoading = false;
@@ -446,64 +449,14 @@ class CaffoldTaskNavigator extends HTMLElement {
   }
 
   connectStream() {
-    if (
-      !this.active ||
-      !this.isConnected ||
-      document.visibilityState !== "visible" ||
-      this.stream
-    ) {
+    if (!this.active || !this.isConnected) {
       return;
     }
-    if (!("EventSource" in window)) {
-      this.setStreamState(TASK_TRANSPORT_STATE.UNAVAILABLE);
-      return;
-    }
+    this.taskListStream.activate("task-list");
+  }
 
-    let stream;
-    try {
-      stream = new EventSource(taskListStreamUrl());
-    } catch {
-      this.setStreamState(TASK_TRANSPORT_STATE.UNAVAILABLE);
-      return;
-    }
-    this.stream = stream;
-    this.setStreamState(TASK_TRANSPORT_STATE.CONNECTING);
-    stream.addEventListener("open", () => {
-      if (this.stream !== stream) {
-        return;
-      }
-      if (this.streamNeedsSync) {
-        this.streamNeedsSync = false;
-        this.revisionByThread.clear();
-        void this.loadTasks({ force: true }).then((response) => {
-          if (this.stream !== stream) {
-            return;
-          }
-          this.setStreamState(
-            response
-              ? TASK_TRANSPORT_STATE.READY
-              : TASK_TRANSPORT_STATE.UNAVAILABLE,
-          );
-        });
-        return;
-      }
-      this.setStreamState(TASK_TRANSPORT_STATE.READY);
-    });
-    stream.addEventListener("error", () => {
-      if (this.stream !== stream) {
-        return;
-      }
-      this.streamNeedsSync = true;
-      this.setStreamState(
-        stream.readyState === 2
-          ? TASK_TRANSPORT_STATE.UNAVAILABLE
-          : TASK_TRANSPORT_STATE.RECONNECTING,
-      );
-    });
-    stream.addEventListener("task-removed", (event) => {
-      if (this.stream !== stream) {
-        return;
-      }
+  handleStreamEvent(type, event) {
+    if (type === "task-removed") {
       const message = parseJson(event.data);
       if (message?.threadId) {
         this.removeTask(message.threadId);
@@ -513,11 +466,9 @@ class CaffoldTaskNavigator extends HTMLElement {
           this.removeArchivedTask(message.threadId);
         }
       }
-    });
-    stream.addEventListener("task-updated", (event) => {
-      if (this.stream !== stream) {
-        return;
-      }
+      return;
+    }
+    if (type === "task-updated") {
       const task = parseJson(event.data);
       const threadId = taskThreadId(task);
       if (!threadId) {
@@ -533,28 +484,37 @@ class CaffoldTaskNavigator extends HTMLElement {
       ) {
         this.render();
       }
-    });
-    stream.addEventListener("task-sync", (event) => {
-      if (this.stream !== stream) {
-        return;
-      }
-      const message = parseJson(event.data);
-      const detail = message?.detail;
-      if (message?.error) {
-        this.tasks = [];
-        this.taskListLoaded = false;
-        this.taskListError = new Error(message.error);
-        this.render();
-        return;
-      }
-      if (
-        detail?.task &&
-        message?.threadId === taskThreadId(detail.task) &&
-        this.acceptRevision(message.threadId, message.revision)
-      ) {
-        this.upsertCanonicalTask(detail.task);
-      }
-    });
+      return;
+    }
+
+    const message = parseJson(event.data);
+    const detail = message?.detail;
+    if (message?.error) {
+      this.tasks = [];
+      this.taskListLoaded = false;
+      this.taskListError = new Error(message.error);
+      this.render();
+      return;
+    }
+    if (
+      detail?.task &&
+      message?.threadId === taskThreadId(detail.task) &&
+      this.acceptRevision(message.threadId, message.revision)
+    ) {
+      this.upsertCanonicalTask(detail.task);
+    }
+  }
+
+  async reconcileTaskList(isCurrent) {
+    this.revisionByThread.clear();
+    const response = await this.loadTasks({ force: true, isCurrent });
+    if (!isCurrent()) {
+      return null;
+    }
+    if (!response) {
+      throw this.taskListError ?? new Error("Canonical task list unavailable.");
+    }
+    return response;
   }
 
   acceptRevision(threadId, revision) {
@@ -571,18 +531,10 @@ class CaffoldTaskNavigator extends HTMLElement {
   }
 
   closeStream() {
-    this.stream?.close();
-    this.stream = null;
-    this.streamNeedsSync = false;
-    this.streamState = TASK_TRANSPORT_STATE.IDLE;
+    this.taskListStream.deactivate();
   }
 
-  setStreamState(state) {
-    if (this.streamState === state) {
-      return;
-    }
-    const previousState = this.streamState;
-    this.streamState = state;
+  handleStreamStateChange(state, previousState) {
     if (taskTransportRenderKey(previousState) !== taskTransportRenderKey(state)) {
       this.render();
     }
@@ -596,6 +548,14 @@ class CaffoldTaskNavigator extends HTMLElement {
         },
       }),
     );
+  }
+
+  get streamState() {
+    return this.taskListStream?.state ?? TASK_TRANSPORT_STATE.IDLE;
+  }
+
+  setStreamState(state) {
+    this.taskListStream.setState(state);
   }
 
   removeTask(threadId) {
@@ -686,11 +646,18 @@ class CaffoldTaskNavigator extends HTMLElement {
       : this.taskListError;
     const availability =
       kind === "managed" && isTaskTransportStale(this.streamState)
-        ? `<p class="task-list-availability" data-task-list-availability="${escapeHtml(this.streamState)}" role="status">${
-            this.streamState === TASK_TRANSPORT_STATE.RECONNECTING
-              ? "Reconnecting to Caffold server..."
-              : "Caffold server unavailable."
-          }</p>`
+        ? `<div class="task-list-availability" data-task-list-availability="${escapeHtml(this.streamState)}" role="status">
+            <span>${
+              this.streamState === TASK_TRANSPORT_STATE.RECONNECTING
+                ? "Reconnecting to Caffold server..."
+                : "Caffold server unavailable."
+            }</span>
+            ${
+              this.streamState === TASK_TRANSPORT_STATE.UNAVAILABLE
+                ? `<button type="button" class="task-secondary-button" data-task-action="retry-task-stream">Retry</button>`
+                : ""
+            }
+          </div>`
         : "";
     const tasks = sortTasksByRecency(entries);
     const pagination = archived

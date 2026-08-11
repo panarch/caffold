@@ -117,6 +117,277 @@ test("background Task tabs release list and detail streams", async ({
     .toBe(2);
 });
 
+test("replaces terminal Task streams and reconciles list and detail", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Browser connection lifecycle regression");
+  await page.addInitScript(() => {
+    window.__taskRecoveryServerAvailable = true;
+    window.__taskRecoveryEventSources = [];
+    window.EventSource = class MockEventSource {
+      constructor(url) {
+        this.url = url;
+        this.listeners = new Map();
+        this.readyState = 0;
+        this.closed = false;
+        window.__taskRecoveryEventSources.push(this);
+        queueMicrotask(() => {
+          if (window.__taskRecoveryServerAvailable && !this.closed) {
+            this.emitOpen();
+          }
+        });
+      }
+
+      addEventListener(type, listener) {
+        const listeners = this.listeners.get(type) ?? [];
+        listeners.push(listener);
+        this.listeners.set(type, listeners);
+      }
+
+      emit(type, payload) {
+        for (const listener of this.listeners.get(type) ?? []) {
+          listener({ data: JSON.stringify(payload) });
+        }
+      }
+
+      emitOpen() {
+        this.readyState = 1;
+        for (const listener of this.listeners.get("open") ?? []) {
+          listener({});
+        }
+      }
+
+      emitTerminalError() {
+        this.readyState = 2;
+        for (const listener of this.listeners.get("error") ?? []) {
+          listener({});
+        }
+      }
+
+      close() {
+        this.closed = true;
+        this.readyState = 2;
+      }
+    };
+  });
+  await mockCodexModels(page);
+
+  const threadId = "thread_terminal_stream_recovery";
+  const now = 1_767_190_450_000;
+  const initialTask = {
+    id: threadId,
+    threadId,
+    ...canonicalTaskState("active", {
+      turnId: "turn_before_terminal_disconnect",
+      startedAtMs: now,
+      latestTurnStatus: "inProgress",
+    }),
+    title: "Terminal stream recovery",
+    preview: "Running before disconnect",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    worktree: null,
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: "Running before disconnect",
+    unseen: false,
+  };
+  const recoveredTask = {
+    ...initialTask,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    preview: "Recovered canonical task",
+    updatedMs: now + 2,
+    recencyMs: now + 2,
+    lastEventSummary: "Recovered canonical task",
+  };
+  const archivedTask = {
+    ...recoveredTask,
+    id: "thread_archived_terminal_recovery",
+    threadId: "thread_archived_terminal_recovery",
+    title: "Archived terminal recovery",
+    conversationAvailable: true,
+  };
+  const detail = (task, text, revision) => ({
+    threadId,
+    syncState: "ready",
+    revision,
+    task,
+    events: [
+      {
+        id: `event_${revision}`,
+        threadId,
+        type: "assistant_message",
+        summary: "Assistant response",
+        payload: { turnId: `turn_${revision}`, text },
+        createdMs: now + revision,
+      },
+    ],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  });
+  let canonicalTask = initialTask;
+  let canonicalDetail = detail(initialTask, "Running before terminal disconnect.", 8);
+  let listReads = 0;
+  let detailReads = 0;
+  let holdRecoveredDetail = false;
+  let releaseRecoveredDetail;
+  const recoveredDetailGate = new Promise((resolve) => {
+    releaseRecoveredDetail = resolve;
+  });
+
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [archivedTask], nextCursor: null }),
+    }),
+  );
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    listReads += 1;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [canonicalTask], nextCursor: null }),
+    });
+  });
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), async (route) => {
+    detailReads += 1;
+    if (holdRecoveredDetail) {
+      await recoveredDetailGate;
+    }
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(canonicalDetail),
+    });
+  });
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  const navigator = page.locator("caffold-task-navigator");
+  const tasksPage = page.locator("caffold-tasks-page");
+  const taskRow = navigator.locator(`.task-row[data-thread-id="${threadId}"]`);
+  const restoreButton = navigator.locator(
+    '[data-task-action="restore-archived-task"]',
+  );
+  await expect(taskRow).toHaveAttribute("data-task-status", "running");
+  await expect(tasksPage).toContainText("Running before terminal disconnect.");
+  await expect(restoreButton).toBeEnabled();
+  await expect
+    .poll(() => page.evaluate(() => window.__taskRecoveryEventSources.length))
+    .toBe(2);
+
+  await page.evaluate(() => {
+    window.__taskRecoveryServerAvailable = false;
+    for (const source of window.__taskRecoveryEventSources) {
+      source.emitTerminalError();
+    }
+  });
+
+  await expect(taskRow).toHaveAttribute("data-task-status", "reconnecting");
+  await expect(restoreButton).toBeDisabled();
+  await expect(
+    tasksPage.locator('.task-stream-state[data-stream-state="reconnecting"]'),
+  ).toBeVisible();
+
+  canonicalTask = recoveredTask;
+  canonicalDetail = detail(recoveredTask, "Recovered canonical baseline.", 1);
+  holdRecoveredDetail = true;
+  await page.evaluate(() => {
+    window.__taskRecoveryServerAvailable = true;
+    for (const source of window.__taskRecoveryEventSources) {
+      if (source.readyState === 0 && !source.closed) {
+        source.emitOpen();
+      }
+    }
+  });
+
+  await expect.poll(() => listReads).toBeGreaterThan(1);
+  await expect.poll(() => detailReads).toBeGreaterThan(1);
+  const replacementDetail = detail(
+    recoveredTask,
+    "Recovered without a page reload.",
+    2,
+  );
+  await page.evaluate(({ threadId, detail }) => {
+    const source = window.__taskRecoveryEventSources.findLast(
+      (candidate) =>
+        candidate.url.includes(`/api/tasks/${threadId}/stream`) &&
+        !candidate.closed,
+    );
+    source.emit("task-sync", {
+      threadId,
+      revision: detail.revision,
+      reason: "replacement-stream-update",
+      detail,
+    });
+  }, { threadId, detail: replacementDetail });
+  releaseRecoveredDetail();
+  holdRecoveredDetail = false;
+  await expect(taskRow).toHaveAttribute("data-task-status", "idle");
+  await expect(tasksPage).toContainText("Recovered without a page reload.");
+  await expect(tasksPage).not.toContainText("Recovered canonical baseline.");
+  await expect(tasksPage.locator(".task-stream-state")).toHaveCount(0);
+  await expect(restoreButton).toBeEnabled();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__taskRecoveryEventSources.filter(
+          (source) => source.readyState !== 2 && !source.closed,
+        ).length,
+      ),
+    )
+    .toBe(2);
+
+  await page.evaluate(
+    ({ threadId, staleTask }) => {
+      const oldListSource = window.__taskRecoveryEventSources.find((source) =>
+        source.url.startsWith("/api/tasks/stream"),
+      );
+      const oldDetailSource = window.__taskRecoveryEventSources.find((source) =>
+        source.url.includes(`/api/tasks/${threadId}/stream`),
+      );
+      oldListSource.emit("task-updated", staleTask);
+      oldDetailSource.emit("task-sync", {
+        threadId,
+        revision: 999,
+        reason: "stale-generation",
+        detail: {
+          threadId,
+          syncState: "ready",
+          revision: 999,
+          task: staleTask,
+          events: [
+            {
+              id: "event_stale_generation",
+              threadId,
+              type: "assistant_message",
+              summary: "Assistant response",
+              payload: {
+                turnId: "turn_stale_generation",
+                text: "Stale generation must stay hidden.",
+              },
+              createdMs: Date.now(),
+            },
+          ],
+          eventsPage: { nextCursor: null },
+          pendingApprovals: [],
+        },
+      });
+    },
+    { threadId, staleTask: initialTask },
+  );
+  await expect(taskRow).toHaveAttribute("data-task-status", "idle");
+  await expect(tasksPage).not.toContainText("Stale generation must stay hidden.");
+
+  await page.getByRole("button", { name: /Task details/ }).click();
+  await expect(page.getByRole("button", { name: "Archive task" })).toBeEnabled();
+  await page.getByRole("button", { name: "New Task" }).click();
+  const newTaskForm = tasksPage.locator(".task-new-form");
+  const prompt = newTaskForm.locator('textarea[name="prompt"]');
+  await expect(prompt).toBeEnabled();
+  await prompt.fill("Verify recovered task creation controls");
+  await expect(newTaskForm.getByRole("button", { name: "Start task" })).toBeEnabled();
+});
+
 test("reattaches Tasks component lifecycles without rebuilding stable children", async ({
   page,
 }, testInfo) => {
@@ -149,8 +420,9 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
     const taskNew = element.querySelector("caffold-task-new");
     const detail = element.querySelector("caffold-task-detail");
     const composer = taskNew.querySelector("caffold-task-composer");
-    composer.modelLoading = true;
-    composer.permissionLoading = true;
+    const turnOptions = composer.querySelector("caffold-task-turn-options");
+    turnOptions.modelLoading = true;
+    turnOptions.permissionLoading = true;
 
     element.remove();
     const detached = !element.isConnected;
@@ -165,8 +437,8 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
       navigatorStillConnected: element.taskNavigator() === navigator,
       sameTaskNew: taskNew === element.querySelector("caffold-task-new"),
       sameDetail: detail === element.querySelector("caffold-task-detail"),
-      composerRequestsReleased:
-        !composer.modelLoading && !composer.permissionLoading,
+      turnOptionRequestsReleased:
+        !turnOptions.modelLoading && !turnOptions.permissionLoading,
     };
   });
 
@@ -177,7 +449,7 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
     navigatorStillConnected: true,
     sameTaskNew: true,
     sameDetail: true,
-    composerRequestsReleased: true,
+    turnOptionRequestsReleased: true,
   });
 });
 test("keeps task list and detail revisions independent", async ({ page }, testInfo) => {

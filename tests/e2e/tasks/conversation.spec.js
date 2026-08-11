@@ -1733,19 +1733,36 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
   await expect(tasksPage).toContainText("Synced after reconnect.");
   await expect.poll(() => taskDetailReadRequests).toBe(readsBeforeReconnect + 1);
 
-  const sourcesBeforeRetry = await page.evaluate(() => window.__taskEventSources.length);
+  const sourcesBeforeFailure = await page.evaluate(
+    () => window.__taskEventSources.length,
+  );
   await page.evaluate((threadId) => {
-    const taskSource = window.__taskEventSources.find((source) =>
-      source.url.includes(`/api/tasks/${threadId}/stream`) && !source.closed,
+    const taskSource = window.__taskEventSources.findLast(
+      (source) =>
+        source.url.includes(`/api/tasks/${threadId}/stream`) && !source.closed,
     );
     taskSource.emitError(true);
   }, threadId);
+  for (const replacementCount of [1, 2, 3]) {
+    await expect
+      .poll(() => page.evaluate(() => window.__taskEventSources.length))
+      .toBe(sourcesBeforeFailure + replacementCount);
+    await page.evaluate((threadId) => {
+      const taskSource = window.__taskEventSources.findLast(
+        (source) =>
+          source.url.includes(`/api/tasks/${threadId}/stream`) && !source.closed,
+      );
+      taskSource.emitError(true);
+    }, threadId);
+  }
   const streamError = tasksPage.locator(
     '.task-stream-state[data-stream-state="unavailable"]',
   );
   await expect(streamError).toContainText("Caffold server unavailable.");
+  const sourcesBeforeRetry = await page.evaluate(
+    () => window.__taskEventSources.length,
+  );
   await streamError.getByRole("button", { name: "Retry" }).click();
-  await expect(tasksPage.locator(".task-stream-state")).toHaveCount(0);
   await expect
     .poll(() => page.evaluate(() => window.__taskEventSources.length))
     .toBe(sourcesBeforeRetry + 1);
@@ -1755,4 +1772,5 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     );
     sources.at(-1).emitOpen();
   }, threadId);
+  await expect(tasksPage.locator(".task-stream-state")).toHaveCount(0);
 });

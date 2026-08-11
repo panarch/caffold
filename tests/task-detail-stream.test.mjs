@@ -159,7 +159,7 @@ test("closes the previous thread stream and rejects its late inputs", () => {
   assert.equal(stream.state, TASK_TRANSPORT_STATE.IDLE);
 });
 
-test("coalesces reconnect and visibility refreshes within one stream generation", async () => {
+test("coalesces refresh requests within one stream generation", async () => {
   const browser = installBrowserHarness();
   const firstRefresh = deferred();
   let refreshCount = 0;
@@ -171,12 +171,10 @@ test("coalesces reconnect and visibility refreshes within one stream generation"
   });
 
   stream.activate("thread-a");
-  const source = browser.sources[0];
-  source.emitError();
-  assert.equal(stream.state, TASK_TRANSPORT_STATE.RECONNECTING);
-  source.emitOpen();
-  browser.emitDocumentEvent("visibilitychange");
-  browser.emitDocumentEvent("visibilitychange");
+  browser.sources[0].emitOpen();
+  stream.requestRefresh();
+  stream.requestRefresh();
+  stream.requestRefresh();
 
   await Promise.resolve();
   assert.equal(refreshCount, 1);
@@ -185,8 +183,6 @@ test("coalesces reconnect and visibility refreshes within one stream generation"
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(refreshCount, 2);
   assert.equal(stream.refresh, null);
-
-  stream.markCanonicalReady("thread-a");
   assert.equal(stream.state, TASK_TRANSPORT_STATE.READY);
 });
 
@@ -212,7 +208,7 @@ test("invalidates a pending refresh when the stream generation changes", async (
   await pendingRefresh.promise;
 });
 
-test("releases the stream while hidden and refreshes before reconnecting", async () => {
+test("releases the stream while hidden and refreshes the replacement", async () => {
   const browser = installBrowserHarness();
   const refresh = deferred();
   let refreshCount = 0;
@@ -225,6 +221,7 @@ test("releases the stream while hidden and refreshes before reconnecting", async
 
   stream.activate("thread-a");
   const initialSource = browser.sources[0];
+  initialSource.emitOpen();
 
   browser.setVisibility("hidden");
   assert.equal(initialSource.closed, true);
@@ -232,13 +229,16 @@ test("releases the stream while hidden and refreshes before reconnecting", async
   assert.equal(stream.state, TASK_TRANSPORT_STATE.IDLE);
 
   browser.setVisibility("visible");
+  assert.equal(browser.sources.length, 2);
+  const replacement = browser.sources[1];
+  assert.equal(replacement.url, "/api/tasks/thread-a/stream");
+  replacement.emitOpen();
   await Promise.resolve();
   assert.equal(refreshCount, 1);
-  assert.equal(browser.sources.length, 1);
 
   refresh.resolve();
   await refresh.promise;
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(browser.sources.length, 2);
-  assert.equal(browser.sources[1].url, "/api/tasks/thread-a/stream");
+  assert.equal(stream.state, TASK_TRANSPORT_STATE.READY);
 });

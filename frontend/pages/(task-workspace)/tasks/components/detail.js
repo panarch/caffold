@@ -72,8 +72,10 @@ class CaffoldTaskDetail extends HTMLElement {
     this.detailStream = new TaskDetailStream({
       onTaskSync: (message) => this.applyTaskStreamSync(message),
       onTaskEvent: (message) => this.applyTaskStreamEvent(message),
-      onRefresh: (threadId, isCurrent) =>
-        this.refreshSelectedTask(threadId, isCurrent),
+      onRefresh: (threadId, isCurrent, { recovery } = {}) =>
+        this.refreshSelectedTask(threadId, isCurrent, {
+          resetRevision: recovery,
+        }),
       onStateChange: (state, previousState) =>
         this.handleStreamStateChange(state, previousState),
     });
@@ -564,14 +566,6 @@ class CaffoldTaskDetail extends HTMLElement {
       this.emitTaskSnapshot();
     }
     this.conversationUpdateKind = updateKind;
-    if (canonicalError && isTaskTransportStale(this.detailStream.state)) {
-      this.detailStream.markUnavailable(threadId, { notify: false });
-    } else if (
-      this.taskDetail?.syncState === "ready" &&
-      this.taskDetail?.task
-    ) {
-      this.detailStream.markCanonicalReady(threadId);
-    }
     this.render();
     return true;
   }
@@ -645,8 +639,22 @@ class CaffoldTaskDetail extends HTMLElement {
     }
   }
 
-  async refreshSelectedTask(threadId, isCurrent = () => true) {
+  async refreshSelectedTask(
+    threadId,
+    isCurrent = () => true,
+    { resetRevision = false } = {},
+  ) {
     const loadGeneration = this.detailLoadGeneration;
+    if (resetRevision) {
+      if (
+        !isCurrent() ||
+        loadGeneration !== this.detailLoadGeneration ||
+        threadId !== this.selectedThreadId
+      ) {
+        return;
+      }
+      this.taskDetailRevisionByThread.delete(threadId);
+    }
     const detail = await getTask(threadId);
     if (
       !isCurrent() ||
@@ -655,9 +663,19 @@ class CaffoldTaskDetail extends HTMLElement {
     ) {
       return;
     }
-    this.applyCanonicalTaskDetail(threadId, detail, {
+    if (this.applyCanonicalTaskDetail(threadId, detail, {
       updateKind: this.liveConversationUpdateKind(threadId),
-    });
+    })) {
+      return true;
+    }
+    const revision = Number(detail?.revision);
+    const currentRevision = this.taskDetailRevisionByThread.get(threadId) ?? 0;
+    return (
+      taskDetailThreadId(detail) === threadId &&
+      Number.isFinite(revision) &&
+      revision > 0 &&
+      currentRevision > revision
+    );
   }
 
   handleAction(action, element) {

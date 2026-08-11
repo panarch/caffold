@@ -195,6 +195,9 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/runtime-state.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/runtime-state.js"
         ))),
+        "pages/(task-workspace)/tasks/stream.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/stream.js"
+        ))),
         "pages/(task-workspace)/tasks/task-events.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/task-events.js"
         ))),
@@ -979,6 +982,15 @@ mod tests {
                 .windows(b"TaskDetailStream".len())
                 .any(|window| window == b"TaskDetailStream")
         );
+        let task_stream = get("pages/(task-workspace)/tasks/stream.js")
+            .expect("shared task stream js");
+        assert_eq!(task_stream.content_type, "text/javascript; charset=utf-8");
+        assert!(
+            task_stream
+                .body
+                .windows(b"TaskStreamLifecycle".len())
+                .any(|window| window == b"TaskStreamLifecycle")
+        );
         for (path, tag) in [
             (
                 "pages/(task-workspace)/tasks/components/composer.js",
@@ -1061,6 +1073,7 @@ mod tests {
             );
         }
         for path in [
+            "/assets/pages/(task-workspace)/tasks/stream.js",
             "/assets/pages/(task-workspace)/tasks/components/voice-level-meter.css",
             "/assets/pages/(task-workspace)/tasks/components/voice-level-meter.js",
         ] {
