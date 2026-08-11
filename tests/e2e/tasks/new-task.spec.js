@@ -261,7 +261,7 @@ test("creates a task with responsive composer controls and canonical approval st
       modelPopoverMetrics.popoverTop - modelPopoverMetrics.buttonBottom,
     ).toBeLessThanOrEqual(14);
   } else {
-    expect(modelPopoverMetrics.backdropVisible).toBe(true);
+    expect(modelPopoverMetrics.backdropVisible).toBe(false);
     expect(modelPopoverMetrics.popoverLeft).toBeGreaterThanOrEqual(9);
     expect(modelPopoverMetrics.popoverRight).toBeLessThanOrEqual(
       modelPopoverMetrics.viewportWidth - 9,
@@ -269,9 +269,7 @@ test("creates a task with responsive composer controls and canonical approval st
     expect(
       modelPopoverMetrics.viewportHeight - modelPopoverMetrics.popoverBottom,
     ).toBeLessThanOrEqual(14);
-    await newTaskComposer.locator(".task-model-backdrop").click({
-      position: { x: 8, y: 8 },
-    });
+    await page.mouse.click(2, 2);
     await expect(modelPopover).toBeHidden();
     await newTaskComposer.locator(".task-model-button").click();
     await expect(modelPopover).toBeVisible();

@@ -537,6 +537,18 @@ pub fn current_compare_ref(repository: &Repository) -> Option<String> {
 }
 
 pub fn default_compare_base_ref(repository: &Repository) -> Option<String> {
+    if let Some(remote_head) = run_git(
+        &repository.root,
+        &[
+            "symbolic-ref",
+            "--quiet",
+            "--short",
+            "refs/remotes/origin/HEAD",
+        ],
+    ) && let Some(remote_head) = resolve_compare_ref(repository, &remote_head)
+    {
+        return Some(remote_head);
+    }
     ["origin/main", "origin/master", "main", "master"]
         .into_iter()
         .find_map(|candidate| resolve_compare_ref(repository, candidate))
@@ -1399,6 +1411,42 @@ mod tests {
             refs.iter()
                 .any(|branch_ref| branch_ref.name == "HEAD"
                     && branch_ref.kind == BranchRefKind::Head)
+        );
+    }
+
+    #[test]
+    fn prefers_the_resolved_origin_head_as_the_default_base_ref() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        git(temp.path(), &["init"]);
+        fs::write(temp.path().join("sample.txt"), "hello\n").unwrap();
+        git(temp.path(), &["add", "sample.txt"]);
+        commit(temp.path(), "Add sample");
+        git(temp.path(), &["branch", "-M", "main"]);
+        git(
+            temp.path(),
+            &["update-ref", "refs/remotes/origin/main", "HEAD"],
+        );
+        git(
+            temp.path(),
+            &["update-ref", "refs/remotes/origin/release", "HEAD"],
+        );
+        git(
+            temp.path(),
+            &[
+                "symbolic-ref",
+                "refs/remotes/origin/HEAD",
+                "refs/remotes/origin/release",
+            ],
+        );
+
+        let repository = repository_for(temp.path()).unwrap();
+        assert_eq!(
+            default_compare_base_ref(&repository).as_deref(),
+            Some("origin/release")
         );
     }
 

@@ -1019,14 +1019,19 @@ fn isolate_current_task_tool() -> DynamicToolSpec {
     DynamicToolSpec {
         kind: DynamicToolType::Function,
         name: ISOLATE_CURRENT_TASK_TOOL_NAME,
-        description: "Prepare the current Caffold task in a Caffold-managed Git worktree only when the user explicitly asks to isolate the current task or prepare a worktree. By default, leave staged, unstaged, and untracked source checkout changes in place. Set includeChanges to true only when the user explicitly asks to move current or uncommitted changes too. Call this as the final file-affecting action of the current turn. After it succeeds, do not call command or file tools; end the turn so the user's next request can continue in the managed worktree.",
+        description: "Prepare the current Caffold task in a Caffold-managed Git worktree only when the user explicitly asks to isolate the current task or prepare a worktree. By default, leave staged, unstaged, and untracked source checkout changes in place. An optional baseRef creates a new branch from that ref without handing off the current branch and cannot be combined with includeChanges. Set includeChanges to true only when the user explicitly asks to move current or uncommitted changes too. Call this as the final file-affecting action of the current turn. After it succeeds, do not call command or file tools; end the turn so the user's next request can continue in the managed worktree.",
         input_schema: json!({
             "type": "object",
             "additionalProperties": false,
             "properties": {
                 "branchName": {
                     "type": "string",
-                    "description": "Optional local branch name when the current checkout is on its default branch or detached. A current non-default branch is always handed off unchanged.",
+                    "description": "Optional local branch name. Without baseRef, a current non-default branch is always handed off unchanged. With baseRef, this names the new branch created from that ref.",
+                    "minLength": 1
+                },
+                "baseRef": {
+                    "type": "string",
+                    "description": "Optional existing branch, tag, or commit ref to use as the new branch starting point. When provided, the current checkout remains unchanged and includeChanges must be false.",
                     "minLength": 1
                 },
                 "includeChanges": {
@@ -1350,14 +1355,19 @@ mod tests {
                     }, {
                         "type": "function",
                         "name": "isolate_current_task",
-                        "description": "Prepare the current Caffold task in a Caffold-managed Git worktree only when the user explicitly asks to isolate the current task or prepare a worktree. By default, leave staged, unstaged, and untracked source checkout changes in place. Set includeChanges to true only when the user explicitly asks to move current or uncommitted changes too. Call this as the final file-affecting action of the current turn. After it succeeds, do not call command or file tools; end the turn so the user's next request can continue in the managed worktree.",
+                        "description": "Prepare the current Caffold task in a Caffold-managed Git worktree only when the user explicitly asks to isolate the current task or prepare a worktree. By default, leave staged, unstaged, and untracked source checkout changes in place. An optional baseRef creates a new branch from that ref without handing off the current branch and cannot be combined with includeChanges. Set includeChanges to true only when the user explicitly asks to move current or uncommitted changes too. Call this as the final file-affecting action of the current turn. After it succeeds, do not call command or file tools; end the turn so the user's next request can continue in the managed worktree.",
                         "inputSchema": {
                             "type": "object",
                             "additionalProperties": false,
                             "properties": {
                                 "branchName": {
                                     "type": "string",
-                                    "description": "Optional local branch name when the current checkout is on its default branch or detached. A current non-default branch is always handed off unchanged.",
+                                    "description": "Optional local branch name. Without baseRef, a current non-default branch is always handed off unchanged. With baseRef, this names the new branch created from that ref.",
+                                    "minLength": 1
+                                },
+                                "baseRef": {
+                                    "type": "string",
+                                    "description": "Optional existing branch, tag, or commit ref to use as the new branch starting point. When provided, the current checkout remains unchanged and includeChanges must be false.",
                                     "minLength": 1
                                 },
                                 "includeChanges": {
@@ -1633,14 +1643,19 @@ mod tests {
                 }, {
                     "type": "function",
                     "name": "isolate_current_task",
-                    "description": "Prepare the current Caffold task in a Caffold-managed Git worktree only when the user explicitly asks to isolate the current task or prepare a worktree. By default, leave staged, unstaged, and untracked source checkout changes in place. Set includeChanges to true only when the user explicitly asks to move current or uncommitted changes too. Call this as the final file-affecting action of the current turn. After it succeeds, do not call command or file tools; end the turn so the user's next request can continue in the managed worktree.",
+                    "description": "Prepare the current Caffold task in a Caffold-managed Git worktree only when the user explicitly asks to isolate the current task or prepare a worktree. By default, leave staged, unstaged, and untracked source checkout changes in place. An optional baseRef creates a new branch from that ref without handing off the current branch and cannot be combined with includeChanges. Set includeChanges to true only when the user explicitly asks to move current or uncommitted changes too. Call this as the final file-affecting action of the current turn. After it succeeds, do not call command or file tools; end the turn so the user's next request can continue in the managed worktree.",
                     "inputSchema": {
                         "type": "object",
                         "additionalProperties": false,
                         "properties": {
                             "branchName": {
                                 "type": "string",
-                                "description": "Optional local branch name when the current checkout is on its default branch or detached. A current non-default branch is always handed off unchanged.",
+                                "description": "Optional local branch name. Without baseRef, a current non-default branch is always handed off unchanged. With baseRef, this names the new branch created from that ref.",
+                                "minLength": 1
+                            },
+                            "baseRef": {
+                                "type": "string",
+                                "description": "Optional existing branch, tag, or commit ref to use as the new branch starting point. When provided, the current checkout remains unchanged and includeChanges must be false.",
                                 "minLength": 1
                             },
                             "includeChanges": {

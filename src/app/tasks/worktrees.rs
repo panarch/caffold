@@ -120,6 +120,7 @@ impl ManagedWorktrees {
         thread_id: String,
         task_name: String,
         requested_branch: Option<String>,
+        base_ref: Option<String>,
         include_changes: bool,
     ) -> Result<IsolateOutcome, ManagedWorktreeError> {
         let worktrees = self.clone();
@@ -129,6 +130,7 @@ impl ManagedWorktrees {
                 &thread_id,
                 &task_name,
                 requested_branch.as_deref(),
+                base_ref.as_deref(),
                 include_changes,
             )
         })
@@ -250,6 +252,7 @@ impl ManagedWorktrees {
         thread_id: &str,
         task_name: &str,
         requested_branch: Option<&str>,
+        base_ref: Option<&str>,
         include_changes: bool,
     ) -> Result<IsolateOutcome, ManagedWorktreeError> {
         if let Some(existing) = self.store.worktree_for_thread(thread_id)? {
@@ -274,6 +277,7 @@ impl ManagedWorktrees {
             &path,
             &automatic_branch,
             requested_branch,
+            base_ref,
             include_changes,
         )?;
         let active_state = isolation_active_state(plan.mode);
@@ -898,6 +902,7 @@ mod tests {
                 "thread-clean".to_string(),
                 "Clean review".to_string(),
                 None,
+                None,
                 false,
             )
             .await
@@ -947,6 +952,7 @@ mod tests {
                 "thread-dirty-feature".to_string(),
                 "PR review".to_string(),
                 None,
+                None,
                 false,
             )
             .await
@@ -964,6 +970,95 @@ mod tests {
         assert_eq!(
             git_output(&source, &["status", "--porcelain=v1"]),
             "?? review.txt"
+        );
+    }
+
+    #[tokio::test]
+    async fn selected_base_creates_a_new_branch_without_moving_the_source_checkout() {
+        if !git_is_available() {
+            return;
+        }
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("source");
+        fs::create_dir(&source).unwrap();
+        initialize_repository(&source);
+        git(&source, &["branch", "-M", "main"]);
+        git(&source, &["switch", "-c", "release"]);
+        fs::write(source.join("release.txt"), "selected base\n").unwrap();
+        git(&source, &["add", "release.txt"]);
+        git(&source, &["commit", "-m", "Release base"]);
+        let base_head = git_output(&source, &["rev-parse", "HEAD"]);
+        git(
+            &source,
+            &["update-ref", "refs/remotes/origin/release", &base_head],
+        );
+        git(&source, &["switch", "main"]);
+        git(&source, &["switch", "-c", "review/current"]);
+        fs::write(source.join("current.txt"), "current branch\n").unwrap();
+        git(&source, &["add", "current.txt"]);
+        git(&source, &["commit", "-m", "Current branch"]);
+        fs::write(source.join("dirty.txt"), "stay here\n").unwrap();
+        let source_head = git_output(&source, &["rev-parse", "HEAD"]);
+        let source_status = git_output(&source, &["status", "--porcelain=v1"]);
+
+        let store = TaskStore::memory().unwrap();
+        let worktrees = ManagedWorktrees::new(
+            Arc::new(RootedFs::new(temp.path()).unwrap()),
+            store.clone(),
+            temp.path().join("managed"),
+        )
+        .unwrap();
+
+        let error = worktrees
+            .isolate_current(
+                source.clone(),
+                "thread-invalid-base".to_string(),
+                "Issue 62".to_string(),
+                Some("issue/62".to_string()),
+                Some("origin/release".to_string()),
+                true,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            ManagedWorktreeError::Git(WorktreeError::BaseRefWithChanges)
+        ));
+        assert!(store.managed_worktrees().unwrap().is_empty());
+
+        let IsolateOutcome::Isolated { worktree, .. } = worktrees
+            .isolate_current(
+                source.clone(),
+                "thread-selected-base".to_string(),
+                "Issue 62".to_string(),
+                Some("issue/62".to_string()),
+                Some("origin/release".to_string()),
+                false,
+            )
+            .await
+            .unwrap()
+        else {
+            panic!("selected base should create a managed worktree");
+        };
+
+        let target = Path::new(&worktree.worktree_path);
+        assert_eq!(worktree.branch_name, "issue/62");
+        assert_eq!(
+            git_output(target, &["branch", "--show-current"]),
+            "issue/62"
+        );
+        assert_eq!(git_output(target, &["rev-parse", "HEAD"]), base_head);
+        assert!(target.join("release.txt").is_file());
+        assert!(!target.join("current.txt").exists());
+        assert_eq!(git_output(target, &["status", "--porcelain=v1"]), "");
+        assert_eq!(
+            git_output(&source, &["branch", "--show-current"]),
+            "review/current"
+        );
+        assert_eq!(git_output(&source, &["rev-parse", "HEAD"]), source_head);
+        assert_eq!(
+            git_output(&source, &["status", "--porcelain=v1"]),
+            source_status
         );
     }
 
@@ -990,6 +1085,7 @@ mod tests {
                 source.clone(),
                 "thread-clean-feature".to_string(),
                 "PR review".to_string(),
+                None,
                 None,
                 false,
             )
@@ -1046,6 +1142,7 @@ mod tests {
                 "thread-1".to_string(),
                 "Review issue 42".to_string(),
                 None,
+                None,
                 true,
             )
             .await
@@ -1082,6 +1179,7 @@ mod tests {
                     "thread-1".to_string(),
                     "Review issue 42".to_string(),
                     None,
+                    None,
                     true,
                 )
                 .await
@@ -1114,6 +1212,7 @@ mod tests {
                 source.clone(),
                 "thread-1".to_string(),
                 "PR review".to_string(),
+                None,
                 None,
                 true,
             )
@@ -1163,6 +1262,7 @@ mod tests {
                 "thread-1".to_string(),
                 "Detached review".to_string(),
                 Some("review/detached".to_string()),
+                None,
                 true,
             )
             .await

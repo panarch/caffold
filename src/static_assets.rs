@@ -209,6 +209,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/composer.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/composer.js"
         ))),
+        "pages/(task-workspace)/tasks/components/task-turn-options.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/task-turn-options.css"
+        ))),
+        "pages/(task-workspace)/tasks/components/task-turn-options.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/task-turn-options.js"
+        ))),
         "pages/(task-workspace)/tasks/components/directory-picker.css" => Some(css(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/directory-picker.css"
         ))),
@@ -441,6 +447,16 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(review-workspace)/(github)/(issues)/detail/page.js" => Some(js(include_str!(
             "../frontend/pages/(review-workspace)/(github)/(issues)/detail/page.js"
         ))),
+        "pages/(review-workspace)/(github)/(issues)/components/task-start-dialog.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(review-workspace)/(github)/(issues)/components/task-start-dialog.css"
+            )))
+        }
+        "pages/(review-workspace)/(github)/(issues)/components/task-start-dialog.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(review-workspace)/(github)/(issues)/components/task-start-dialog.js"
+            )))
+        }
         "pages/(review-workspace)/(github)/(pulls)/layout.css" => Some(css(include_str!(
             "../frontend/pages/(review-workspace)/(github)/(pulls)/layout.css"
         ))),
@@ -964,6 +980,10 @@ mod tests {
                 b"caffold-task-composer".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/components/task-turn-options.js",
+                b"caffold-task-turn-options".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/components/directory-picker.js",
                 b"caffold-task-directory-picker".as_slice(),
             ),
@@ -1213,6 +1233,19 @@ mod tests {
                 .body
                 .windows(b"caffold-github-issue-detail-page".len())
                 .any(|window| window == b"caffold-github-issue-detail-page")
+        );
+        let issue_task_start_dialog =
+            get("pages/(review-workspace)/(github)/(issues)/components/task-start-dialog.js")
+                .expect("issue task start dialog js");
+        assert_eq!(
+            issue_task_start_dialog.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(
+            issue_task_start_dialog
+                .body
+                .windows(b"caffold-github-issue-task-start-dialog".len())
+                .any(|window| window == b"caffold-github-issue-task-start-dialog")
         );
         assert!(get("components/github-issues-list.js").is_none());
         assert!(get("components/github-issue-viewer.js").is_none());

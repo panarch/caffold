@@ -40,6 +40,7 @@ pub(crate) struct WorktreeTransferPlan {
     pub target: PathBuf,
     pub branch_name: String,
     pub head_sha: String,
+    pub source_head_sha: String,
     pub reuse_current_branch: bool,
     pub source_branch: Option<String>,
     pub mode: WorktreeIsolationMode,
@@ -92,6 +93,8 @@ pub(crate) enum WorktreeError {
         "the source checkout has uncommitted changes on non-default branch `{branch}`; retry with `includeChanges: true` to hand off that branch and its changes"
     )]
     DirtyBranchRequiresTransfer { branch: String },
+    #[error("`baseRef` cannot be combined with `includeChanges: true`")]
+    BaseRefWithChanges,
     #[error("the protected worktree transfer snapshot is unavailable: {0}")]
     MissingTransferSnapshot(String),
     #[error("managed worktree repository mismatch: expected {expected}, found {actual}")]
@@ -173,6 +176,7 @@ pub(crate) fn prepare_worktree_transfer(
     target: &Path,
     automatic_branch: &str,
     requested_branch: Option<&str>,
+    base_ref: Option<&str>,
     include_changes: bool,
 ) -> Result<WorktreeTransferPlan, WorktreeError> {
     reject_symlink_target(target)?;
@@ -183,13 +187,40 @@ pub(crate) fn prepare_worktree_transfer(
         .ok_or_else(|| WorktreeError::NotRepository(source.display().to_string()))?;
     let metadata = repository_metadata_paths(&repository)
         .ok_or_else(|| WorktreeError::MissingMetadata(source.display().to_string()))?;
-    if metadata.git_dir != metadata.common_dir {
+    if base_ref.is_none() && metadata.git_dir != metadata.common_dir {
         return Err(WorktreeError::LinkedSource(source.display().to_string()));
     }
     reject_unresolved_operation(&repository.root, &metadata.git_dir)?;
     reject_dirty_submodules_or_nested_repositories(&repository.root)?;
-    let head_sha = head_sha(&repository)
+    if base_ref.is_some() && include_changes {
+        return Err(WorktreeError::BaseRefWithChanges);
+    }
+    let source_head_sha = head_sha(&repository)
         .ok_or_else(|| WorktreeError::MissingHead(source.display().to_string()))?;
+    let head_sha = if let Some(base_ref) = base_ref {
+        verify_commit(&repository.root, base_ref)?
+    } else {
+        source_head_sha.clone()
+    };
+    if base_ref.is_some() {
+        let source_branch = current_branch_name(&repository.root)?;
+        let branch_name = requested_branch.unwrap_or(automatic_branch).to_string();
+        validate_branch_name(&repository.root, &branch_name)?;
+        if local_branch_exists(&repository.root, &branch_name)? {
+            return Err(WorktreeError::BranchAlreadyExists(branch_name));
+        }
+        return Ok(WorktreeTransferPlan {
+            repository_root: repository.root,
+            common_dir: metadata.common_dir,
+            target: target.to_path_buf(),
+            branch_name,
+            head_sha,
+            source_head_sha,
+            reuse_current_branch: false,
+            source_branch,
+            mode: WorktreeIsolationMode::CreateClean,
+        });
+    }
     let source_branch = current_branch_name(&repository.root)?;
     let default_branch = default_local_branch(&repository.root, source_branch.as_deref())?;
     let reuse_current_branch = source_branch
@@ -232,6 +263,7 @@ pub(crate) fn prepare_worktree_transfer(
         target: target.to_path_buf(),
         branch_name,
         head_sha,
+        source_head_sha,
         reuse_current_branch,
         source_branch,
         mode,
@@ -544,9 +576,9 @@ fn ensure_source_matches_plan(plan: &WorktreeTransferPlan) -> Result<(), Worktre
         "source HEAD inspection",
         ["rev-parse", "HEAD"],
     )?;
-    if actual_head != plan.head_sha {
+    if actual_head != plan.source_head_sha {
         return Err(WorktreeError::BranchHeadMismatch {
-            expected: plan.head_sha.clone(),
+            expected: plan.source_head_sha.clone(),
             actual: actual_head,
         });
     }
@@ -956,7 +988,6 @@ fn command_succeeds(command: &mut Command, operation: &'static str) -> Result<bo
     }
 }
 
-#[cfg(test)]
 fn verify_commit(repository: &Path, reference: &str) -> Result<String, WorktreeError> {
     let commit = format!("{reference}^{{commit}}");
     run_git_text(
@@ -1288,7 +1319,7 @@ mod tests {
     }
 
     #[test]
-    fn transfer_planning_preserves_feature_branches_and_rejects_linked_sources() {
+    fn transfer_planning_preserves_feature_branches_and_requires_a_base_for_linked_sources() {
         if !git_is_available() {
             return;
         }
@@ -1311,6 +1342,7 @@ mod tests {
             &target,
             "caffold/unused",
             Some("review/pr-42"),
+            None,
             false,
         )
         .unwrap();
@@ -1323,6 +1355,7 @@ mod tests {
                 &target,
                 "caffold/unused",
                 Some("review/renamed"),
+                None,
                 false,
             ),
             Err(WorktreeError::CurrentBranchConflict { current, requested })
@@ -1342,9 +1375,26 @@ mod tests {
             ],
         );
         assert!(matches!(
-            prepare_worktree_transfer(&linked, &target, "caffold/linked", None, false),
+            prepare_worktree_transfer(&linked, &target, "caffold/linked", None, None, false),
             Err(WorktreeError::LinkedSource(path)) if path == linked.display().to_string()
         ));
+
+        let selected_base = prepare_worktree_transfer(
+            &linked,
+            &target,
+            "caffold/linked",
+            None,
+            Some("main"),
+            false,
+        )
+        .unwrap();
+        assert!(!selected_base.reuse_current_branch);
+        assert_eq!(selected_base.branch_name, "caffold/linked");
+        assert_eq!(selected_base.mode, WorktreeIsolationMode::CreateClean);
+        assert_eq!(
+            selected_base.head_sha,
+            run_git_text(&source, "test selected base", ["rev-parse", "main"]).unwrap()
+        );
     }
 
     #[test]
@@ -1367,7 +1417,7 @@ mod tests {
         git(&nested, &["init"]);
 
         assert!(matches!(
-            prepare_worktree_transfer(&source, &target, "caffold/nested", None, false),
+            prepare_worktree_transfer(&source, &target, "caffold/nested", None, None, false),
             Err(WorktreeError::DirtySubmodule(path)) if path == "nested/"
         ));
     }
@@ -1400,7 +1450,7 @@ mod tests {
         fs::write(nested.join("inner.txt"), "dirty\n").unwrap();
 
         assert!(matches!(
-            prepare_worktree_transfer(&source, &target, "caffold/nested", None, true),
+            prepare_worktree_transfer(&source, &target, "caffold/nested", None, None, true),
             Err(WorktreeError::DirtySubmodule(path)) if path == "nested repo"
         ));
     }
@@ -1436,7 +1486,7 @@ mod tests {
         assert!(!merge.status.success());
 
         assert!(matches!(
-            prepare_worktree_transfer(&source, &target, "caffold/conflict", None, false),
+            prepare_worktree_transfer(&source, &target, "caffold/conflict", None, None, false),
             Err(WorktreeError::UnresolvedOperation(_))
         ));
     }

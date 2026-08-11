@@ -7,16 +7,31 @@ class CaffoldGithubIssueDetailPage extends HTMLElement {
     if (!this.initialized) {
       this.initialized = true;
       this.addEventListener("click", (event) => {
-        const button = event.target.closest('button[data-action="close-github-issue-viewer"]');
+        const button = event.target.closest("button[data-action]");
         if (!button) {
           return;
         }
-
-        this.dispatchEvent(
-          new CustomEvent("caffold:close-github-issue-viewer", {
-            bubbles: true,
-          }),
-        );
+        if (button.dataset.action === "close-github-issue-viewer") {
+          this.dispatchEvent(
+            new CustomEvent("caffold:close-github-issue-viewer", {
+              bubbles: true,
+            }),
+          );
+        } else if (
+          button.dataset.action === "start-github-issue-task" &&
+          this.state?.status === "ready"
+        ) {
+          this.dispatchEvent(
+            new CustomEvent("caffold:start-github-issue-task", {
+              bubbles: true,
+              composed: true,
+              detail: {
+                payload: this.state.payload,
+                opener: button,
+              },
+            }),
+          );
+        }
       });
       this.boundIconsReady = () => this.render();
       window.addEventListener("caffold:icons-ready", this.boundIconsReady);
@@ -90,12 +105,24 @@ class CaffoldGithubIssueDetailPage extends HTMLElement {
           <div class="github-issue-viewer-title-row">
             ${this.renderCloseButton()}
             <h2>${escapeHtml(issue.title)}</h2>
-            <a
-              class="github-issue-link"
-              href="${escapeHtml(issue.url)}"
-              target="_blank"
-              rel="noreferrer"
-            >GitHub</a>
+            <div class="github-issue-actions">
+              <button
+                type="button"
+                class="github-issue-start-button"
+                data-action="start-github-issue-task"
+                aria-label="Start Task for issue #${escapeHtml(`${issue.number}`)}"
+                title="Start Task"
+              >
+                ${renderInlineIcon("Plus", "Start Task", "github-issue-start-icon")}
+                <span class="github-issue-start-label">Start Task</span>
+              </button>
+              <a
+                class="github-issue-link"
+                href="${escapeHtml(issue.url)}"
+                target="_blank"
+                rel="noreferrer"
+              >GitHub</a>
+            </div>
           </div>
           <div class="github-issue-viewer-meta">
             <span>#${escapeHtml(`${issue.number}`)}</span>

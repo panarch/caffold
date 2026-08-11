@@ -742,8 +742,8 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
     ["pages/(review-workspace)/layout.css", ".review-workspace-close::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-primary-action-button::before", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-composer-attachment-remove::before", "--interface-compact-hit-outset"],
-    ["pages/(task-workspace)/tasks/components/composer.css", ".task-model-button::before", "--interface-compact-hit-outset"],
-    ["pages/(task-workspace)/tasks/components/composer.css", ".task-permission-button::before", "--interface-compact-hit-outset"],
+    ["pages/(task-workspace)/tasks/components/task-turn-options.css", ".task-model-button::before", "--interface-compact-hit-outset"],
+    ["pages/(task-workspace)/tasks/components/task-turn-options.css", ".task-permission-button::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/settings/appearance/page.css", ".settings-reset-all::before", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/settings/appearance/page.css", ".settings-typeface-control button::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/settings/appearance/page.css", ".settings-range-control button::before", "--interface-compact-hit-outset"],
@@ -975,41 +975,44 @@ test("mixed surfaces keep content and controls on separate axes", () => {
   const composer = readFrontend(
     "pages/(task-workspace)/tasks/components/composer.css",
   );
+  const turnOptions = readFrontend(
+    "pages/(task-workspace)/tasks/components/task-turn-options.css",
+  );
   assert.match(
     composer,
     /\.task-composer textarea[\s\S]*font-size: var\(--conversation-font-size\)/,
   );
   assert.match(
-    composer,
+    turnOptions,
     /\.task-model-button[\s\S]*min-height: var\(--interface-compact-visual-size\)/,
   );
   assert.match(
-    composer,
+    turnOptions,
     /\.task-model-button \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto;/,
   );
   assert.match(
-    composer,
+    turnOptions,
     /\.task-model-button\.is-fast \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto auto;/,
   );
-  assert.doesNotMatch(composer, /\.task-(?:model|permission)-(?:icon|caret)/);
+  assert.doesNotMatch(turnOptions, /\.task-(?:model|permission)-(?:icon|caret)/);
   assert.match(
-    composer,
+    turnOptions,
     /\.task-model-popover,[\s\S]*padding: 0\.5rem;/,
   );
   assert.match(
-    composer,
+    turnOptions,
     /\.task-model-option \{[\s\S]*gap: 0\.5rem;[\s\S]*padding: 0\.375rem;/,
   );
   assert.match(
-    composer,
+    turnOptions,
     /\.task-model-option \{[\s\S]*min-height: max\(2\.125rem, calc\(var\(--interface-target-floor\) - 2px\)\)/,
   );
   assert.match(
-    composer,
+    turnOptions,
     /\.task-model-option strong \{[\s\S]*font-weight: 600;/,
   );
   assert.match(
-    composer,
+    turnOptions,
     /\.task-model-fast-icon \{[\s\S]*width: 0\.75rem;[\s\S]*height: 0\.75rem;[\s\S]*fill: currentColor;[\s\S]*stroke-width: 2;/,
   );
 

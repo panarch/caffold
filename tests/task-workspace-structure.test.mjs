@@ -38,7 +38,7 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   assert.match(workspaceNavigation, /data-workspace-mode="settings"/);
 
   const detailPane = workspace.match(
-    /<main class="task-workspace-detail-pane"[\s\S]*?<\/main>/,
+    /<div class="task-workspace-detail-pane"[\s\S]*?<\/div>/,
   )?.[0];
   assert.ok(detailPane, "workspace must declare its detail pane");
   assert.match(detailPane, /<caffold-tasks-page/);

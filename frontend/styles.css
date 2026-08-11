@@ -19,6 +19,7 @@
 @import "./pages/(task-workspace)/tasks/components/task-status.css";
 @import "./pages/(task-workspace)/tasks/page.css";
 @import "./pages/(task-workspace)/tasks/components/composer.css";
+@import "./pages/(task-workspace)/tasks/components/task-turn-options.css";
 @import "./pages/(task-workspace)/tasks/components/voice-level-meter.css";
 @import "./pages/(task-workspace)/tasks/components/directory-picker.css";
 @import "./pages/(task-workspace)/tasks/components/archived-delete-dialog.css";
@@ -45,6 +46,7 @@
 @import "./pages/(review-workspace)/(github)/(issues)/layout.css";
 @import "./pages/(review-workspace)/(github)/(issues)/list/page.css";
 @import "./pages/(review-workspace)/(github)/(issues)/detail/page.css";
+@import "./pages/(review-workspace)/(github)/(issues)/components/task-start-dialog.css";
 @import "./pages/(review-workspace)/(github)/(pulls)/layout.css";
 @import "./pages/(review-workspace)/(github)/(pulls)/list/page.css";
 @import "./pages/(review-workspace)/(github)/(pulls)/detail/page.css";

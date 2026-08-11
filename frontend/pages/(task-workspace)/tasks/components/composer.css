@@ -4,8 +4,7 @@ caffold-task-composer {
     line-height: var(--interface-line-height);
   }
 
-  & .task-composer-context,
-  & .task-model-note {
+  & .task-composer-context {
     font-size: var(--interface-meta-font-size);
     line-height: var(--interface-line-height);
   }
@@ -37,6 +36,10 @@ caffold-task-composer {
     border-radius: 14px;
     background: var(--surface);
     box-shadow: var(--structural-shadow-panel);
+  }
+
+  & .task-composer-render-region {
+    display: contents;
   }
 
   & .task-composer-context {
@@ -251,34 +254,17 @@ caffold-task-composer {
     min-width: 0;
   }
 
+  & .task-composer-tools > caffold-task-turn-options {
+    flex: 0 1 auto;
+  }
+
   & .task-composer-actions {
     display: flex;
     align-items: center;
     gap: 0.1875rem;
   }
 
-  & .task-model-picker,
-  & .task-permission-picker {
-    position: relative;
-    min-width: 0;
-  }
-
-  & .task-model-picker {
-    flex: 0 1 auto;
-  }
-
-  & .task-permission-picker {
-    flex: 0 0 auto;
-  }
-
-  & .task-model-backdrop,
-  & .task-permission-backdrop {
-    display: none;
-  }
-
-  & .task-toolbar-button,
-  & .task-model-button,
-  & .task-permission-button {
+  & .task-toolbar-button {
     position: relative;
     display: inline-grid;
     grid-auto-flow: column;
@@ -295,81 +281,16 @@ caffold-task-composer {
     cursor: pointer;
   }
 
-  & .task-toolbar-button::before,
-  & .task-model-button::before,
-  & .task-permission-button::before {
+  & .task-toolbar-button::before {
     position: absolute;
     inset: calc(0px - var(--interface-compact-hit-outset)) 0;
     content: "";
   }
 
-  & .task-model-button {
-    anchor-name: --task-model-picker;
-    grid-template-columns: minmax(0, 1fr) auto;
-    justify-content: stretch;
-    width: fit-content;
-    max-width: min(100%, 384px);
-    padding-inline: 0.625rem;
-    background: var(--surface-muted);
-    color: var(--text);
-    text-align: left;
-  }
-
-  & .task-model-button.is-fast {
-    grid-template-columns: minmax(0, 1fr) auto auto;
-  }
-
-  & .task-permission-button {
-    anchor-name: --task-permission-picker;
-    max-width: min(100%, 220px);
-    padding-inline: 0.625rem;
-    background: var(--surface-muted);
-    color: var(--text);
-    white-space: nowrap;
-  }
-
-  & .task-model-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  & .task-model-effort {
-    white-space: nowrap;
-  }
-
-  & .task-model-fast {
-    display: grid;
-    place-items: center;
-    color: var(--control-selected-fg);
-  }
-
-  & .task-model-fast-icon {
-    display: block;
-    width: 0.75rem;
-    height: 0.75rem;
-    fill: currentColor;
-    stroke-width: 2;
-  }
-
   & .task-toolbar-button:hover,
-  & .task-toolbar-button:focus-visible,
-  & .task-model-button:hover,
-  & .task-model-button:focus-visible,
-  & .task-permission-button:hover,
-  & .task-permission-button:focus-visible {
+  & .task-toolbar-button:focus-visible {
     background: var(--control-active-bg);
     outline: none;
-  }
-
-  & .task-permission-button.is-dangerous,
-  & .task-permission-option.is-dangerous strong {
-    color: var(--danger);
-  }
-
-  & .task-permission-button:disabled {
-    cursor: not-allowed;
-    opacity: 0.58;
   }
 
   & .task-voice-button,
@@ -504,141 +425,6 @@ caffold-task-composer {
     stroke-width: 2.2;
   }
 
-  & .task-model-popover,
-  & .task-permission-popover {
-    position: fixed;
-    z-index: 10;
-    inset: auto;
-    position-try-fallbacks: flip-block, flip-inline;
-    width: min(496px, calc(100vw - 2rem));
-    max-height: min(608px, calc(100% - 1.125rem));
-    margin: var(--interface-space-4) var(--interface-space-5);
-    padding: 0.5rem;
-    overflow: auto;
-    border: 1px solid var(--border);
-    border-radius: 0.625rem;
-    background: var(--surface);
-    box-shadow: 0 18px 56px rgb(var(--shadow-rgb) / 18%);
-    color: var(--text);
-  }
-
-  & .task-permission-popover {
-    position-anchor: --task-permission-picker;
-    position-area: block-end center;
-    justify-self: start;
-    width: min(410px, calc(100vw - 2rem));
-  }
-
-  & .task-model-popover {
-    position-anchor: --task-model-picker;
-    position-area: block-end center;
-    justify-self: start;
-  }
-
-  & .task-follow-up-form .task-model-popover {
-    position-area: block-start center;
-    justify-self: start;
-  }
-
-  & .task-follow-up-form .task-permission-popover {
-    position-area: block-start center;
-  }
-
-  & .task-follow-up-form .task-model-popover,
-  & .task-follow-up-form .task-permission-popover {
-    max-height: min(
-      608px,
-      calc(100% - var(--task-workspace-header-size) - 1.125rem)
-    );
-  }
-
-  & .task-permission-heading {
-    margin: 0;
-    padding: 0.25rem 0.375rem 0.375rem;
-    color: var(--muted);
-    font-size: var(--interface-meta-font-size);
-  }
-
-  & .task-model-popover section {
-    display: grid;
-    gap: 0.125rem;
-  }
-
-  & .task-model-popover p {
-    margin: 0;
-    padding: 0.25rem 0.375rem;
-    color: var(--muted);
-    font-size: var(--interface-meta-font-size);
-  }
-
-  & .task-model-popover hr {
-    height: 1px;
-    margin: 0.375rem;
-    border: 0;
-    background: var(--border-subtle);
-  }
-
-  & .task-model-option {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 0.5rem;
-    width: 100%;
-    min-height: max(2.125rem, calc(var(--interface-target-floor) - 2px));
-    padding: 0.375rem;
-    border: 0;
-    border-radius: 0.375rem;
-    background: transparent;
-    color: var(--text);
-    font-size: 0.875rem;
-    text-align: left;
-    cursor: pointer;
-  }
-
-  & .task-model-option strong {
-    font-weight: 600;
-  }
-
-  & .task-model-option:hover,
-  & .task-model-option:focus-visible,
-  & .task-model-option[aria-pressed="true"] {
-    background: var(--control-active-bg);
-    outline: none;
-  }
-
-  & .task-model-option:disabled {
-    cursor: not-allowed;
-    opacity: 0.52;
-  }
-
-  & .task-model-option:disabled:hover {
-    background: transparent;
-  }
-
-  & .task-model-option span {
-    display: grid;
-    gap: 0.0625rem;
-    min-width: 0;
-  }
-
-  & .task-model-option small {
-    color: var(--muted);
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-    overflow-wrap: anywhere;
-  }
-
-  & .task-model-check {
-    display: block;
-    width: var(--interface-icon-small-size);
-    height: var(--interface-icon-small-size);
-    color: var(--control-selected-fg);
-    stroke-width: 2.4;
-  }
-
-  & .task-model-note {
-    color: var(--muted);
-  }
 }
 
 @keyframes task-voice-spin {
@@ -669,44 +455,6 @@ caffold-task-composer {
 
     & .task-composer textarea {
       padding: 0.625rem 0.875rem 0.375rem;
-    }
-  }
-}
-
-@media (max-width: 899px) {
-  caffold-task-composer {
-    & .task-model-popover,
-    & .task-permission-popover {
-      position-anchor: none;
-      position-area: none;
-      position-try-fallbacks: none;
-      inset: auto 0.625rem 0.625rem;
-      width: auto;
-      max-height: min(544px, calc(100vh - 1.5rem));
-      margin: 0;
-    }
-
-    & .task-follow-up-form .task-model-popover,
-    & .task-follow-up-form .task-permission-popover {
-      bottom: 0.625rem;
-    }
-
-    & .task-model-backdrop,
-    & .task-permission-backdrop {
-      position: fixed;
-      inset: 0;
-      z-index: 9;
-      display: block;
-      border: 0;
-      background: rgb(var(--overlay-rgb) / 10%);
-      cursor: default;
-    }
-
-    & .task-model-popover,
-    & .task-permission-popover {
-      z-index: 10;
-      border-radius: 1rem;
-      box-shadow: 0 -12px 48px rgb(var(--shadow-rgb) / 18%);
     }
   }
 }
