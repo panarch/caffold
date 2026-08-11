@@ -9,6 +9,7 @@ import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import { cleanLogicalPath } from "../task-format.js";
 import { requestTaskImagePreview } from "./image-preview-dialog.js";
+import "./voice-level-meter.js";
 import {
   formatRecordingDuration,
   VoiceRecorder,
@@ -844,6 +845,12 @@ class CaffoldTaskComposer extends HTMLElement {
         }
         this.updateVoiceElapsed(elapsedSeconds);
       },
+      onLevel: (level) => {
+        if (operationId !== this.voiceOperationId) {
+          return;
+        }
+        this.updateVoiceLevel(level);
+      },
       onLimit: () => {
         if (operationId === this.voiceOperationId) {
           void this.stopVoiceRecording();
@@ -885,6 +892,10 @@ class CaffoldTaskComposer extends HTMLElement {
     timer.textContent = duration;
     timer.setAttribute("aria-label", `Recording duration ${duration}`);
     timer.classList.toggle("is-limit", this.voice.recordingLimitReached);
+  }
+
+  updateVoiceLevel(level) {
+    this.querySelector("caffold-voice-level-meter")?.setLevel(level);
   }
 
   async stopVoiceRecording({ submitAfterTranscription = false } = {}) {
@@ -1319,6 +1330,7 @@ class CaffoldTaskComposer extends HTMLElement {
           ? "LoaderCircle"
           : "Mic";
     return `
+      ${recording ? "<caffold-voice-level-meter></caffold-voice-level-meter>" : ""}
       ${
         showElapsed
           ? `<span

@@ -1,4 +1,75 @@
 const TARGET_SAMPLE_RATE = 16_000;
+const LEVEL_INTERVAL_MS = 100;
+const LEVEL_FLOOR_DB = -60;
+const LEVEL_CEILING_DB = 0;
+const LEVEL_ATTACK_MS = 35;
+const LEVEL_RELEASE_MS = 240;
+
+export function normalizeVoiceLevel(rms) {
+  const amplitude = Math.max(0, Number(rms) || 0);
+  if (!amplitude) {
+    return 0;
+  }
+  const decibels = 20 * Math.log10(amplitude);
+  return clamp(
+    (decibels - LEVEL_FLOOR_DB) / (LEVEL_CEILING_DB - LEVEL_FLOOR_DB),
+    0,
+    1,
+  );
+}
+
+export class VoiceLevelTracker {
+  constructor({
+    intervalMs = LEVEL_INTERVAL_MS,
+    attackMs = LEVEL_ATTACK_MS,
+    releaseMs = LEVEL_RELEASE_MS,
+  } = {}) {
+    this.intervalMs = Math.max(1, intervalMs);
+    this.attackMs = Math.max(0, attackMs);
+    this.releaseMs = Math.max(0, releaseMs);
+    this.reset();
+  }
+
+  reset() {
+    this.sumSquares = 0;
+    this.windowSamples = 0;
+    this.lastDeliveryMs = null;
+    this.level = 0;
+  }
+
+  capture(samples, nowMs = voiceLevelNow()) {
+    if (!samples?.length) {
+      return null;
+    }
+    for (const sample of samples) {
+      this.sumSquares += sample * sample;
+    }
+    this.windowSamples += samples.length;
+
+    if (this.lastDeliveryMs === null) {
+      this.lastDeliveryMs = nowMs;
+      return null;
+    }
+    const elapsedMs = nowMs - this.lastDeliveryMs;
+    if (elapsedMs < this.intervalMs) {
+      return null;
+    }
+
+    const rms = Math.sqrt(this.sumSquares / this.windowSamples);
+    const target = normalizeVoiceLevel(rms);
+    const timeConstant = target >= this.level ? this.attackMs : this.releaseMs;
+    const blend = timeConstant ? 1 - Math.exp(-elapsedMs / timeConstant) : 1;
+    this.level += (target - this.level) * blend;
+    if (this.level < 0.001) {
+      this.level = 0;
+    }
+
+    this.sumSquares = 0;
+    this.windowSamples = 0;
+    this.lastDeliveryMs = nowMs;
+    return { level: this.level, rms };
+  }
+}
 
 export function voiceCaptureSupport() {
   if (!window.isSecureContext) {
@@ -29,10 +100,12 @@ export function voiceCaptureSupport() {
 }
 
 export class VoiceRecorder {
-  constructor({ maxSeconds, onElapsed, onLimit }) {
+  constructor({ maxSeconds, onElapsed, onLimit, onLevel }) {
     this.maxSeconds = maxSeconds;
     this.onElapsed = onElapsed;
     this.onLimit = onLimit;
+    this.onLevel = onLevel;
+    this.levelTracker = new VoiceLevelTracker();
     this.chunks = [];
     this.sampleCount = 0;
     this.elapsedSeconds = 0;
@@ -52,6 +125,7 @@ export class VoiceRecorder {
     this.sampleCount = 0;
     this.elapsedSeconds = 0;
     this.limitNotified = false;
+    this.levelTracker.reset();
 
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     this.context = new AudioContextClass({ latencyHint: "interactive" });
@@ -102,7 +176,7 @@ export class VoiceRecorder {
     }
   }
 
-  captureChunk(value) {
+  captureChunk(value, nowMs) {
     if (!this.active || !(value instanceof Float32Array)) {
       return;
     }
@@ -114,6 +188,10 @@ export class VoiceRecorder {
     const chunk = value.length > remaining ? value.slice(0, remaining) : value;
     this.chunks.push(chunk);
     this.sampleCount += chunk.length;
+    const reading = this.levelTracker.capture(chunk, nowMs);
+    if (reading) {
+      this.onLevel?.(reading.level);
+    }
     const elapsedSeconds = Math.min(
       this.maxSeconds,
       Math.floor(this.sampleCount / this.context.sampleRate),
@@ -167,6 +245,8 @@ export class VoiceRecorder {
   }
 
   async release() {
+    this.active = false;
+    this.levelTracker.reset();
     if (this.limitTimer) {
       window.clearTimeout(this.limitTimer);
       this.limitTimer = null;
@@ -187,6 +267,14 @@ export class VoiceRecorder {
     this.stream = null;
     this.context = null;
   }
+}
+
+function voiceLevelNow() {
+  return globalThis.performance?.now?.() ?? Date.now();
+}
+
+function clamp(value, minimum, maximum) {
+  return Math.min(maximum, Math.max(minimum, value));
 }
 
 export function formatRecordingDuration(seconds) {

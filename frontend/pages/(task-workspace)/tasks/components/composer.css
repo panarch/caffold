@@ -389,12 +389,13 @@ caffold-task-composer {
   }
 
   & .task-voice-elapsed {
-    min-width: 2.5rem;
+    min-width: 4ch;
     color: var(--muted);
     font-size: var(--interface-meta-font-size);
-    font-variant-numeric: tabular-nums;
+    font-variant-numeric: lining-nums tabular-nums;
     line-height: var(--interface-compact-visual-size);
-    text-align: right;
+    text-align: left;
+    text-box: trim-both cap alphabetic;
     white-space: nowrap;
   }
 

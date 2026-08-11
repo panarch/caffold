@@ -4,7 +4,9 @@ import test from "node:test";
 import {
   encodePcmWav,
   formatRecordingDuration,
+  normalizeVoiceLevel,
   resampleLinear,
+  VoiceLevelTracker,
   VoiceRecorder,
 } from "../frontend/pages/(task-workspace)/tasks/components/voice-recorder.js";
 
@@ -34,6 +36,79 @@ test("reports captured seconds and stops accepting samples at the limit", () => 
   assert.deepEqual(elapsed, [1, 2]);
   assert.equal(recorder.sampleCount, 8);
   assert.equal(limitCalls, 1);
+});
+
+test("maps RMS amplitude through a bounded logarithmic display range", () => {
+  assert.equal(normalizeVoiceLevel(0), 0);
+  assert.equal(normalizeVoiceLevel(0.001), 0);
+  assert.equal(normalizeVoiceLevel(1), 1);
+  assert.equal(normalizeVoiceLevel(2), 1);
+  assert.ok(Math.abs(normalizeVoiceLevel(0.1) - 2 / 3) < 0.000_001);
+});
+
+test("aggregates PCM windows and bounds level delivery to 10 Hz", () => {
+  const tracker = new VoiceLevelTracker({ attackMs: 0, releaseMs: 0 });
+
+  assert.equal(tracker.capture(Float32Array.from([0, 0]), 0), null);
+  assert.equal(tracker.capture(Float32Array.from([1, 1]), 30), null);
+  assert.equal(tracker.capture(Float32Array.from([1, 1]), 99), null);
+  const first = tracker.capture(Float32Array.from([1, 1]), 100);
+  assert.ok(first);
+  assert.ok(Math.abs(first.rms - Math.sqrt(0.75)) < 0.000_001);
+  assert.equal(tracker.capture(Float32Array.from([0.5]), 199), null);
+  assert.ok(tracker.capture(Float32Array.from([0.5]), 200));
+});
+
+test("uses fast attack and slower release while silence settles to baseline", () => {
+  const tracker = new VoiceLevelTracker();
+  const loud = Float32Array.from([1, 1, 1, 1]);
+  const silent = Float32Array.from([0, 0, 0, 0]);
+
+  tracker.capture(loud, 0);
+  const attack = tracker.capture(loud, 100);
+  const release = tracker.capture(silent, 200);
+  const settled = tracker.capture(silent, 1_200);
+
+  assert.ok(attack.level > 0.8);
+  assert.ok(release.level < attack.level);
+  assert.ok(release.level > attack.level * 0.6);
+  assert.ok(settled.level < 0.01);
+});
+
+test("resets level aggregation without retaining a stale visual value", () => {
+  const tracker = new VoiceLevelTracker({ attackMs: 0, releaseMs: 0 });
+  tracker.capture(Float32Array.from([1]), 0);
+  assert.equal(tracker.capture(Float32Array.from([1]), 100).level, 1);
+
+  tracker.reset();
+  assert.equal(tracker.capture(Float32Array.from([0]), 200), null);
+  assert.deepEqual(tracker.capture(Float32Array.from([0]), 300), {
+    level: 0,
+    rms: 0,
+  });
+});
+
+test("delivers levels without modifying retained recording samples", async () => {
+  const levels = [];
+  const recorder = new VoiceRecorder({
+    maxSeconds: 2,
+    onLevel: (level) => levels.push(level),
+  });
+  const source = Float32Array.from([0.25, -0.25, 0.5, -0.5]);
+  recorder.active = true;
+  recorder.context = { sampleRate: 16_000 };
+
+  recorder.captureChunk(source, 0);
+  recorder.captureChunk(source, 100);
+
+  assert.equal(levels.length, 1);
+  assert.ok(levels[0] > 0);
+  assert.strictEqual(recorder.chunks[0], source);
+  assert.deepEqual(Array.from(source), [0.25, -0.25, 0.5, -0.5]);
+
+  recorder.context = null;
+  await recorder.cancel();
+  assert.equal(recorder.levelTracker.level, 0);
 });
 
 test("resamples microphone PCM to 16 kHz without mutating the source", () => {
