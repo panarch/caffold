@@ -127,6 +127,10 @@ class CaffoldTaskDetailInfo extends HTMLElement {
       >
         <dl>
           <div>
+            <dt>Task</dt>
+            <dd data-task-info-field="task"></dd>
+          </div>
+          <div>
             <dt>Status</dt>
             <dd data-task-info-field="status"></dd>
           </div>
@@ -170,6 +174,10 @@ class CaffoldTaskDetailInfo extends HTMLElement {
     }
 
     this.patchStatus();
+    setText(
+      this.querySelector('[data-task-info-field="task"]'),
+      `${task.title ?? ""}`,
+    );
     setText(
       this.querySelector('[data-task-info-field="thread"]'),
       taskThreadId(task),

@@ -111,6 +111,80 @@ async function installSummaryFixture(page, tasks) {
   }
 }
 
+test("keeps long Task titles clipped in the header and readable in Info", async ({
+  page,
+}, testInfo) => {
+  const threadId = "thread_summary_long_title";
+  const title =
+    "Review the complete canonical Task title across desktop, foldable, and phone layouts while keeping every diagnostic value available without crowding the header controls";
+  const task = {
+    ...summaryTask(threadId, title, "repo-long-title", 100),
+    worktree: null,
+  };
+  await installSummaryFixture(page, [task]);
+
+  await page.goto(`/tasks/${threadId}`);
+  const summary = page.locator("caffold-task-detail-summary");
+  const heading = summary.locator(".task-detail-heading > h2");
+  await expect(summary).toBeVisible();
+  await expect(summary.locator(".task-detail-heading > *")).toHaveCount(1);
+  await expect(heading).toHaveText(title);
+  await expect
+    .poll(() =>
+      heading.evaluate((element) => element.scrollWidth > element.clientWidth),
+    )
+    .toBe(true);
+
+  const headerLayout = await summary.evaluate((element) => {
+    const heading = element.querySelector(".task-detail-heading");
+    const right = element.querySelector(".task-detail-right");
+    return {
+      headingRight: heading.getBoundingClientRect().right,
+      noHorizontalOverflow: element.scrollWidth <= element.clientWidth,
+      rightLeft: right.getBoundingClientRect().left,
+    };
+  });
+  expect(headerLayout.noHorizontalOverflow).toBe(true);
+  if (testInfo.project.name !== "phone") {
+    expect(headerLayout.headingRight).toBeLessThanOrEqual(headerLayout.rightLeft);
+  }
+
+  await summary.getByRole("button", { name: /Task details/ }).click();
+  const popover = summary.locator(".task-detail-popover");
+  const taskValue = popover.locator('[data-task-info-field="task"]');
+  await expect(popover).toBeVisible();
+  await expect(taskValue).toHaveText(title);
+  await expect(popover.locator('[data-task-info-field="thread"]')).toHaveText(
+    threadId,
+  );
+  await expect(
+    popover.locator('[data-task-info-field="working-directory"]'),
+  ).toHaveText("repo-long-title");
+  const worktreeRows = popover.locator("[data-task-info-worktree]");
+  await expect(worktreeRows).toHaveCount(2);
+  await expect(worktreeRows.first()).toBeHidden();
+  await expect(worktreeRows.last()).toBeHidden();
+  await expect
+    .poll(() =>
+      taskValue.evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return [...range.getClientRects()].filter(
+          ({ width, height }) => width > 0 && height > 0,
+        ).length;
+      }),
+    )
+    .toBeGreaterThan(1);
+  await expect
+    .poll(() =>
+      taskValue.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth,
+      ),
+    )
+    .toBe(true);
+  await captureReviewScreenshot(page, testInfo, "tasks-summary-long-title-info");
+});
+
 test("keeps the task info leaf and popover stable across canonical sync", async ({
   page,
 }, testInfo) => {
@@ -142,6 +216,9 @@ test("keeps the task info leaf and popover stable across canonical sync", async 
 
   await taskDetailsButton.click();
   await expect(taskDetailsPopover).toBeVisible();
+  await expect(
+    taskDetailsPopover.locator('[data-task-info-field="task"]'),
+  ).toHaveText("Stable summary");
   await page.evaluate(() => {
     window.dispatchEvent(new CustomEvent("caffold:icons-ready"));
   });
@@ -179,6 +256,9 @@ test("keeps the task info leaf and popover stable across canonical sync", async 
     "summary-state-update",
   );
   await expect(summary.locator("h2")).toHaveText("Canonical summary update");
+  await expect(
+    taskDetailsPopover.locator('[data-task-info-field="task"]'),
+  ).toHaveText("Canonical summary update");
   await expect(taskDetailsButton).toHaveAttribute("title", "Status: active");
   await expect(
     taskDetailsPopover.locator('[data-task-info-field="status"]'),
