@@ -125,6 +125,7 @@ class CaffoldTaskNew extends HTMLElement {
   }
 
   deactivate() {
+    this.composer()?.endEditingLifetime();
     this.hidden = true;
     this.directoryPicker()?.dismiss();
   }
@@ -209,7 +210,7 @@ class CaffoldTaskNew extends HTMLElement {
       this.syncComposer();
       this.composer()?.resolveSubmission(submissionId, {
         status: "accepted",
-        resetFastMode: true,
+        resetOptions: true,
       });
       this.dispatchEvent(
         new CustomEvent("caffold:task-created", {

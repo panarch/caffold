@@ -240,8 +240,8 @@ class CaffoldTaskComposer extends HTMLElement {
     if (result.resetOverrides) {
       this.turnOptions()?.resetOverrides();
     }
-    if (result.resetFastMode) {
-      this.turnOptions()?.resetFastMode();
+    if (result.resetOptions) {
+      this.resetTurnOptions();
     }
     this.context.requestError = `${result.error?.message ?? result.error ?? ""}`;
     this.render();
@@ -255,6 +255,23 @@ class CaffoldTaskComposer extends HTMLElement {
     this.turnOptions()?.resetOverrides();
   }
 
+  hasMeaningfulDraft() {
+    this.captureCurrentState();
+    const state = this.stateFor();
+    return Boolean(
+      state.prompt.trim() || state.images.length || this.activeSubmissionFor()
+    );
+  }
+
+  endEditingLifetime({ preserveOptions = false } = {}) {
+    this.turnOptions()?.hidePopovers();
+    if (preserveOptions || this.hasMeaningfulDraft()) {
+      return false;
+    }
+    this.resetTurnOptions();
+    return true;
+  }
+
   hasRestorableState() {
     this.captureCurrentState();
     const state = this.stateFor();
@@ -262,7 +279,6 @@ class CaffoldTaskComposer extends HTMLElement {
       state.prompt.trim() ||
         state.images.length ||
         state.imageError ||
-        this.turnOptions()?.hasOverrides() ||
         this.activeSubmissionFor() ||
         this.context.requestError,
     );
@@ -1021,12 +1037,8 @@ class CaffoldTaskComposer extends HTMLElement {
     return this.querySelector(":scope caffold-task-turn-options");
   }
 
-  syncTurnOptionsContext(locked = null) {
-    const turnOptions = this.turnOptions();
-    if (!turnOptions) {
-      return;
-    }
-    turnOptions.setContext({
+  turnOptionsContext(locked = null) {
+    return {
       cwd: this.context.cwd,
       initialSelection: {
         model: `${this.context.model ?? ""}`,
@@ -1039,7 +1051,24 @@ class CaffoldTaskComposer extends HTMLElement {
           ? Boolean(this.context.disabled || this.context.settingsLocked)
           : Boolean(locked),
       placement: this.context.mode === "follow-up" ? "above" : "below",
-    });
+    };
+  }
+
+  syncTurnOptionsContext(locked = null) {
+    const turnOptions = this.turnOptions();
+    if (!turnOptions) {
+      return;
+    }
+    turnOptions.setContext(this.turnOptionsContext(locked));
+  }
+
+  resetTurnOptions() {
+    const turnOptions = this.turnOptions();
+    if (!turnOptions) {
+      return;
+    }
+    turnOptions.reset(this.turnOptionsContext());
+    this.syncTurnOptionsFields();
   }
 
   syncTurnOptionsFields() {

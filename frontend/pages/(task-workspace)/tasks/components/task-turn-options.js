@@ -248,15 +248,6 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     this.emitChange();
   }
 
-  hasOverrides() {
-    const selection = this.selection;
-    return Boolean(
-      selection.modelExplicit ||
-        selection.fastModeExplicit ||
-        selection.permissionExplicit
-    );
-  }
-
   snapshot() {
     return {
       model: this.selectedModel()?.model ?? "",
