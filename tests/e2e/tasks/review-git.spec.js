@@ -152,7 +152,7 @@ test("keeps selectedPath while scope, navigator, and viewer switch independently
   const branchMode = tasksPage.locator(
     'caffold-task-detail-summary button[data-review-scope="branch"]',
   );
-  await expect(branchMode).toHaveText("Branch vs default");
+  await expect(branchMode).toHaveText("Branch");
   await branchMode.evaluate((button) => {
     button.dataset.stableLabelProbe = "kept";
     button.branchLabelHistory = [button.textContent.trim()];
@@ -172,18 +172,21 @@ test("keeps selectedPath while scope, navigator, and viewer switch independently
     `/tasks/${taskScenario.threadId}/review?scope=branch&file=planner.rs&base=origin%2Fmain`,
   );
   await expect(branchMode).toHaveAttribute("aria-pressed", "true");
-  await expect(branchMode).toHaveText("Branch vs default");
+  await expect(branchMode).toHaveText("Branch");
   await expect(branchMode).toHaveAttribute("title", "Compare with origin/main");
   await expect(branchMode).toHaveAttribute("data-stable-label-probe", "kept");
   expect(
     await branchMode.evaluate((button) => [...new Set(button.branchLabelHistory)]),
-  ).toEqual(["Branch vs default"]);
+  ).toEqual(["Branch"]);
 
   const compareTree = taskReview.locator("caffold-git-compare-tree");
-  await expect(compareTree.locator(".compare-base")).toHaveText("vs main");
+  await expect(compareTree.locator(".compare-base-label")).toHaveText("vs main");
   await expect(compareTree.locator(".compare-base")).toHaveAttribute(
     "title",
     "Compare with origin/main",
+  );
+  await expect(compareTree.getByLabel("Branch comparison base")).toHaveValue(
+    "origin/main",
   );
   await expect(
     compareTree.locator('button[data-file-tree-path="src/planner.rs"]'),
@@ -305,7 +308,7 @@ test("supports every scope navigator and viewer combination", async ({ page }) =
   }
 });
 
-test("normalizes Task Review branch URLs to the repository default base", async ({
+test("preserves valid Task Review base routes and falls back for missing refs", async ({
   page,
 }) => {
   const { taskScenario, taskReview } = await openCompletedTaskForReview(page);
@@ -314,16 +317,165 @@ test("normalizes Task Review branch URLs to the repository default base", async 
   );
 
   await expect(page).toHaveURL(
-    `/tasks/${taskScenario.threadId}/review?scope=branch&base=origin%2Fmain`,
+    `/tasks/${taskScenario.threadId}/review?scope=branch&base=origin%2Frelease`,
   );
   const compareTree = taskReview.locator("caffold-git-compare-tree");
+  const baseSelect = compareTree.getByLabel("Branch comparison base");
+  await expect(baseSelect).toHaveValue("origin/release");
+  await expect(baseSelect.locator("option")).toHaveText([
+    "main",
+    "origin/main",
+    "origin/release",
+    "origin/feature/this-is-a-very-long-branch-name-used-for-responsive-review-testing",
+  ]);
+  await expect(
+    compareTree.locator('button[data-file-tree-path="src/release.rs"]'),
+  ).toBeAttached();
+  await expect(
+    compareTree.locator('button[data-file-tree-path="src/planner.rs"]'),
+  ).toHaveCount(0);
+
+  await page.goto(
+    `/tasks/${taskScenario.threadId}/review?scope=branch&base=origin%2Fmissing`,
+  );
+  await expect(page).toHaveURL(
+    `/tasks/${taskScenario.threadId}/review?scope=branch&base=origin%2Fmain`,
+  );
+  await expect(baseSelect).toHaveValue("origin/main");
   await expect(
     compareTree.locator('button[data-file-tree-path="src/planner.rs"]'),
   ).toBeAttached();
+});
+
+test("selects local and remote Branch bases without replacing the picker", async ({
+  page,
+}, testInfo) => {
+  const { reviewScenario, taskScenario, tasksPage, taskReview } =
+    await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await selectTaskReviewScope(tasksPage, "branch");
+
+  const compareTree = taskReview.locator("caffold-git-compare-tree");
+  const baseSelect = compareTree.getByLabel("Branch comparison base");
+  await expect(baseSelect).toHaveValue("origin/main");
+  await baseSelect.evaluate((select) => {
+    select.stableBaseSelectorProbe = true;
+  });
+  const selectedFile = testInfo.project.name === "phone" ? "" : "file=planner.rs&";
+  if (selectedFile) {
+    await compareTree.locator('button[data-file-tree-path="src/planner.rs"]').click();
+  }
+
+  await baseSelect.selectOption("main");
+  await expect(page).toHaveURL(
+    `/tasks/${taskScenario.threadId}/review?scope=branch&${selectedFile}base=main`,
+  );
+  await expect(baseSelect).toHaveValue("main");
+  await expect.poll(() => reviewScenario.lastCompareDiffBaseRef).toBe("main");
+  expect(await baseSelect.evaluate((select) => select.stableBaseSelectorProbe)).toBe(true);
+
+  await baseSelect.selectOption("origin/release");
+  await expect(page).toHaveURL(
+    `/tasks/${taskScenario.threadId}/review?scope=branch&${selectedFile}base=origin%2Frelease`,
+  );
+  await expect(baseSelect).toHaveValue("origin/release");
   await expect(
     compareTree.locator('button[data-file-tree-path="src/release.rs"]'),
-  ).toHaveCount(0);
-  await expect(taskReview.locator("select")).toHaveCount(0);
+  ).toBeAttached();
+  if (selectedFile) {
+    await expect(taskReview.locator("caffold-review-file-viewer")).toContainText(
+      "No changes in this scope.",
+    );
+  }
+  expect(await baseSelect.evaluate((select) => select.stableBaseSelectorProbe)).toBe(true);
+
+  await selectTaskReviewScope(tasksPage, "working");
+  await expect(page).toHaveURL(
+    `/tasks/${taskScenario.threadId}/review?${selectedFile}base=origin%2Frelease`,
+  );
+  await selectTaskReviewScope(tasksPage, "branch");
+  await expect(page).toHaveURL(
+    `/tasks/${taskScenario.threadId}/review?scope=branch&${selectedFile}base=origin%2Frelease`,
+  );
+  await expect(baseSelect).toHaveValue("origin/release");
+  expect(await baseSelect.evaluate((select) => select.stableBaseSelectorProbe)).toBe(true);
+
+  await page.reload();
+  await expect(page).toHaveURL(
+    `/tasks/${taskScenario.threadId}/review?scope=branch&${selectedFile}base=origin%2Frelease`,
+  );
+  await expect(taskReview.getByLabel("Branch comparison base")).toHaveValue(
+    "origin/release",
+  );
+});
+
+test("keeps equivalent Branch header refreshes mutation-free", async ({ page }) => {
+  const { reviewScenario, tasksPage, taskReview } =
+    await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await selectTaskReviewScope(tasksPage, "branch");
+
+  const compareTree = taskReview.locator("caffold-git-compare-tree");
+  const baseSelect = compareTree.getByLabel("Branch comparison base");
+  await expect(baseSelect).toHaveValue("origin/main");
+  await baseSelect.evaluate((select) => {
+    const header = select.closest("header");
+    const records = [];
+    const observer = new MutationObserver((mutations) => records.push(...mutations));
+    observer.observe(header, {
+      attributes: true,
+      characterData: true,
+      childList: true,
+      subtree: true,
+    });
+    window.__branchHeaderMutationProbe = { select, observer, records };
+  });
+
+  const before = reviewScenario.gitCompareRequests;
+  await emitGitRefsChanged(page);
+  await expect.poll(() => reviewScenario.gitCompareRequests).toBeGreaterThan(before);
+  expect(
+    await page.evaluate(() => {
+      const probe = window.__branchHeaderMutationProbe;
+      probe.records.push(...probe.observer.takeRecords());
+      probe.observer.disconnect();
+      return {
+        sameSelect:
+          probe.select.isConnected &&
+          probe.select
+            .closest("caffold-git-compare-tree")
+            ?.querySelector("select[data-compare-base-ref]") === probe.select,
+        mutations: probe.records.length,
+      };
+    }),
+  ).toEqual({ sameSelect: true, mutations: 0 });
+});
+
+test("falls back when the selected Branch base disappears", async ({ page }) => {
+  const { reviewScenario, taskScenario, tasksPage, taskReview } =
+    await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await selectTaskReviewScope(tasksPage, "branch");
+
+  const compareTree = taskReview.locator("caffold-git-compare-tree");
+  const baseSelect = compareTree.getByLabel("Branch comparison base");
+  await baseSelect.selectOption("origin/release");
+  await expect(baseSelect).toHaveValue("origin/release");
+  await baseSelect.evaluate((select) => {
+    select.stableBaseSelectorProbe = true;
+  });
+
+  reviewScenario.removeRef("origin/release");
+  await emitGitRefsChanged(page);
+  await expect(page).toHaveURL(
+    `/tasks/${taskScenario.threadId}/review?scope=branch&base=origin%2Fmain`,
+  );
+  await expect(baseSelect).toHaveValue("origin/main");
+  await expect(baseSelect.locator('option[value="origin/release"]')).toHaveCount(0);
+  await expect(
+    compareTree.locator('button[data-file-tree-path="src/planner.rs"]'),
+  ).toBeAttached();
+  expect(await baseSelect.evaluate((select) => select.stableBaseSelectorProbe)).toBe(true);
 });
 
 test("keeps compact review controls and available panes inside the workspace", async ({
@@ -377,6 +529,54 @@ test("keeps compact review controls and available panes inside the workspace", a
       ),
     )
     .toBe(0);
+  const longBaseRef =
+    "origin/feature/this-is-a-very-long-branch-name-used-for-responsive-review-testing";
+  const compareTree = taskReview.locator("caffold-git-compare-tree");
+  const compareHeader = compareTree.locator(".compare-tree-panel > header");
+  const baseSelect = compareTree.getByLabel("Branch comparison base");
+  await baseSelect.selectOption(longBaseRef);
+  await expect(baseSelect).toHaveValue(longBaseRef);
+  await expect(compareHeader.locator(".compare-line-stats")).toBeVisible();
+  const compareHeaderMetrics = await compareHeader.evaluate((header) => {
+    const primary = header.querySelector(".compare-tree-primary");
+    const secondary = header.querySelector(".compare-tree-secondary");
+    const title = header.querySelector("h2");
+    const base = header.querySelector(".compare-base");
+    const label = header.querySelector(".compare-base-label");
+    const chevron = header.querySelector(".compare-base-chevron");
+    const select = header.querySelector("select[data-compare-base-ref]");
+    const baseStyle = getComputedStyle(base);
+    return {
+      height: header.getBoundingClientRect().height,
+      titleFontSize: Number.parseFloat(getComputedStyle(title).fontSize),
+      selectHeight: select.getBoundingClientRect().height,
+      labelOverflows: label.scrollWidth > label.clientWidth,
+      primaryBeforeSecondary:
+        primary.getBoundingClientRect().right <=
+        secondary.getBoundingClientRect().left + 1,
+      labelBelowTitle:
+        label.getBoundingClientRect().top >=
+        title.getBoundingClientRect().bottom - 1,
+      chevronVisible: chevron.getClientRects().length > 0,
+      baseBorderWidth:
+        Number.parseFloat(baseStyle.borderTopWidth) +
+        Number.parseFloat(baseStyle.borderRightWidth) +
+        Number.parseFloat(baseStyle.borderBottomWidth) +
+        Number.parseFloat(baseStyle.borderLeftWidth),
+    };
+  });
+  expect(compareHeaderMetrics.labelOverflows).toBe(true);
+  expect(compareHeaderMetrics.primaryBeforeSecondary).toBe(true);
+  expect(compareHeaderMetrics.labelBelowTitle).toBe(true);
+  expect(compareHeaderMetrics.chevronVisible).toBe(true);
+  expect(compareHeaderMetrics.baseBorderWidth).toBe(0);
+  expect(compareHeaderMetrics.selectHeight).toBeGreaterThan(0);
+  if (testInfo.project.name !== "desktop") {
+    expect(compareHeaderMetrics.selectHeight).toBeGreaterThanOrEqual(40);
+  }
+  await stabilizeDynamicText(page);
+  await captureReviewScreenshot(page, testInfo, "tasks-branch-base-selector");
+
   await workingMode.click();
   const changesHeader = taskReview.locator(
     "caffold-git-diff-changes-tree .changes-tree-panel > header",
@@ -388,6 +588,14 @@ test("keeps compact review controls and available panes inside the workspace", a
       getComputedStyle(header.querySelector("h2")).fontSize,
     ),
   }));
+  expect(
+    Math.abs(compareHeaderMetrics.height - changesHeaderMetrics.height),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(
+      compareHeaderMetrics.titleFontSize - changesHeaderMetrics.titleFontSize,
+    ),
+  ).toBeLessThanOrEqual(0.1);
   const changesAlignment = await taskReview.evaluate((review) => {
     const pane = review.querySelector(".task-review-navigator-pane");
     const header = review.querySelector(
@@ -431,19 +639,25 @@ test("keeps compact review controls and available panes inside the workspace", a
       getComputedStyle(header.querySelector("h2")).fontSize,
     ),
   }));
-  expect(Math.abs(filesHeaderMetrics.height - changesHeaderMetrics.height)).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(filesHeaderMetrics.height - changesHeaderMetrics.height),
+  ).toBeLessThanOrEqual(1);
   expect(
     Math.abs(filesHeaderMetrics.titleFontSize - changesHeaderMetrics.titleFontSize),
   ).toBeLessThanOrEqual(0.1);
   const filesAlignment = await taskReview.evaluate((review) => {
-    const header = review.querySelector("caffold-file-list .file-list-panel > header");
+    const header = review.querySelector(
+      "caffold-file-list .file-list-panel > header",
+    );
     const count = header.querySelector(".entry-count");
     const controls = review.querySelector(
       ".task-review-navigator-axis .task-review-axis-options",
     );
     const rootStyle = getComputedStyle(document.documentElement);
     return {
-      labelGap: controls.getBoundingClientRect().left - count.getBoundingClientRect().right,
+      labelGap:
+        controls.getBoundingClientRect().left -
+        count.getBoundingClientRect().right,
       expectedLabelGap:
         Number.parseFloat(rootStyle.getPropertyValue("--interface-space-5")) *
         Number.parseFloat(rootStyle.fontSize),
@@ -653,3 +867,57 @@ test("rejects a late branch response after returning to the working tree", async
   ).toHaveCount(0);
   await expect(taskReview.locator("caffold-git-diff-changes-tree")).toBeVisible();
 });
+
+test("rejects a late compare response after the Branch base changes again", async ({
+  page,
+}) => {
+  const { reviewScenario, taskScenario, tasksPage, taskReview } =
+    await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await selectTaskReviewScope(tasksPage, "branch");
+
+  const compareTree = taskReview.locator("caffold-git-compare-tree");
+  const baseSelect = compareTree.getByLabel("Branch comparison base");
+  await expect(baseSelect).toHaveValue("origin/main");
+  await baseSelect.evaluate((select) => {
+    select.stableBaseSelectorProbe = true;
+  });
+
+  reviewScenario.setCompareDelay("origin/release", 250);
+  const before = reviewScenario.gitCompareRequests;
+  await baseSelect.selectOption("origin/release");
+  await expect.poll(() => reviewScenario.gitCompareRequests).toBeGreaterThan(before);
+  await baseSelect.selectOption("main");
+  await expect(page).toHaveURL(
+    `/tasks/${taskScenario.threadId}/review?scope=branch&base=main`,
+  );
+  await page.waitForTimeout(300);
+
+  await expect(baseSelect).toHaveValue("main");
+  await expect(
+    compareTree.locator('button[data-file-tree-path="src/planner.rs"]'),
+  ).toBeAttached();
+  await expect(
+    compareTree.locator('button[data-file-tree-path="src/release.rs"]'),
+  ).toHaveCount(0);
+  expect(await baseSelect.evaluate((select) => select.stableBaseSelectorProbe)).toBe(true);
+});
+
+async function emitGitRefsChanged(page) {
+  await page.evaluate(() => {
+    const source = window.__caffoldMockEventSources.find(
+      (candidate) =>
+        candidate.url.startsWith("/api/watch?") && candidate.readyState !== 2,
+    );
+    if (!source) {
+      throw new Error("Missing Task Review watch source");
+    }
+    source.emit("change", {
+      revision: Date.now(),
+      paths: [],
+      gitStatusChanged: false,
+      gitRefsChanged: true,
+      overflow: false,
+    });
+  });
+}

@@ -177,7 +177,7 @@ test("owns one collapsed Back across Conversation and Review modes", async ({
       detailView: "review",
     },
     {
-      name: "Branch vs default",
+      name: "Branch",
       url: `/tasks/${taskScenario.threadId}/review?scope=branch&base=origin%2Fmain`,
       detailView: "review",
     },

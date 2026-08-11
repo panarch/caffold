@@ -142,6 +142,13 @@ class CaffoldTaskReview extends HTMLElement {
       event.stopPropagation();
       this.selectLogicalPath(event.detail?.path);
     });
+    this.addEventListener("caffold:select-compare-base", (event) => {
+      if (!closestElement(event.target, "caffold-git-compare-tree")) {
+        return;
+      }
+      event.stopPropagation();
+      this.selectCompareBase(event.detail?.baseRef);
+    });
     this.addEventListener("caffold:file-navigator-open-file", (event) => {
       event.stopPropagation();
       this.selectLogicalPath(event.detail?.path);
@@ -273,6 +280,7 @@ class CaffoldTaskReview extends HTMLElement {
       if (
         this.route.scope === "branch" &&
         (options.reactivated ||
+          !this.refs ||
           !this.compare ||
           this.compare.baseRef !== this.route.baseRef)
       ) {
@@ -391,7 +399,8 @@ class CaffoldTaskReview extends HTMLElement {
         return null;
       }
       this.refs = refs;
-      const baseRef = refs.defaultBaseRef || refs.refs?.[0]?.name || "";
+      const baseRef = selectedCompareBaseRef(this.route.baseRef, refs);
+      this.branchTree()?.setBaseSelection({ refs: refs.refs, value: baseRef });
       if (this.route.baseRef !== baseRef) {
         this.requestRoute({ ...this.route, baseRef }, { replace: true });
         return null;
@@ -735,6 +744,19 @@ class CaffoldTaskReview extends HTMLElement {
     this.requestRoute({ ...this.route, path: relative }, { replace });
   }
 
+  selectCompareBase(baseRef) {
+    const next = `${baseRef ?? ""}`;
+    if (
+      !next ||
+      next === this.route.baseRef ||
+      !this.refs?.refs?.some((ref) => ref.name === next)
+    ) {
+      return;
+    }
+    this.captureLocalState();
+    this.requestRoute({ ...this.route, baseRef: next }, { replace: true });
+  }
+
   clearSelectedPath() {
     if (!this.route.path) {
       return;
@@ -805,12 +827,12 @@ class CaffoldTaskReview extends HTMLElement {
             watchChangeAffectsPath(change, this.logicalSelectedPath());
           void this.refreshWorking({ background: true });
         }
-        if (
-          this.task?.worktree &&
-          this.route.scope === "branch" &&
-          change.gitRefsChanged
-        ) {
-          void this.ensureBranchData({ force: true });
+        if (this.task?.worktree && change.gitRefsChanged) {
+          if (this.route.scope === "branch") {
+            void this.ensureBranchData({ force: true });
+          } else {
+            this.refs = null;
+          }
         }
       },
     });
@@ -932,6 +954,19 @@ function taskWorktreeRootPath(task) {
 
 function taskCompareHeadRef(task, refs = null) {
   return task?.worktree?.branch || refs?.defaultHeadRef || "HEAD";
+}
+
+function selectedCompareBaseRef(preferredRef, refsPayload = {}) {
+  const refs = Array.isArray(refsPayload.refs) ? refsPayload.refs : [];
+  const hasRef = (candidate) =>
+    Boolean(candidate && refs.some((ref) => ref.name === candidate));
+  if (hasRef(preferredRef)) {
+    return `${preferredRef}`;
+  }
+  if (hasRef(refsPayload.defaultBaseRef)) {
+    return `${refsPayload.defaultBaseRef}`;
+  }
+  return refs[0]?.name || refsPayload.defaultBaseRef || "";
 }
 
 function relativeTaskPath(path, rootPath) {

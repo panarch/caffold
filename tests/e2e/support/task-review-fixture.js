@@ -15,6 +15,16 @@ export async function installTaskReviewFixture(page) {
   let gitDiffDelayMs = 0;
   let workingDiffText = "new planner behavior";
   const compareDelays = new Map();
+  let refs = [
+    { name: "main", kind: "local" },
+    { name: "origin/main", kind: "remote" },
+    { name: "origin/release", kind: "remote" },
+    {
+      name: "origin/feature/this-is-a-very-long-branch-name-used-for-responsive-review-testing",
+      kind: "remote",
+    },
+  ];
+  const compareDiffBaseRefs = [];
 
   await page.route(/\/api\/git\/status(?:\?|$)/, (route) => {
     gitStatusRequests += 1;
@@ -156,15 +166,7 @@ export async function installTaskReviewFixture(page) {
       contentType: "application/json",
       body: JSON.stringify({
         repository: { rootPath: "src", branch: "main", dirty: true },
-        refs: [
-          { name: "main", kind: "local" },
-          { name: "origin/main", kind: "remote" },
-          { name: "origin/release", kind: "remote" },
-          {
-            name: "origin/feature/this-is-a-very-long-branch-name-used-for-responsive-review-testing",
-            kind: "remote",
-          },
-        ],
+        refs,
         currentRef: "main",
         defaultBaseRef: "origin/main",
         defaultHeadRef: "main",
@@ -176,6 +178,7 @@ export async function installTaskReviewFixture(page) {
     const url = new URL(route.request().url());
     expect(url.searchParams.get("path")).toBe("src");
     expect(url.searchParams.get("head")).toBe("main");
+    compareDiffBaseRefs.push(url.searchParams.get("base"));
     const baseRef = url.searchParams.get("base");
     const delay = compareDelays.get(baseRef) ?? 0;
     if (delay > 0) {
@@ -244,6 +247,9 @@ export async function installTaskReviewFixture(page) {
     get gitCompareDiffRequests() {
       return gitCompareDiffRequests;
     },
+    get lastCompareDiffBaseRef() {
+      return compareDiffBaseRefs.at(-1) ?? null;
+    },
     set includeLiveFile(value) {
       includeLiveFile = value;
     },
@@ -270,6 +276,9 @@ export async function installTaskReviewFixture(page) {
     },
     setCompareDelay(baseRef, delayMs) {
       compareDelays.set(baseRef, delayMs);
+    },
+    removeRef(name) {
+      refs = refs.filter((ref) => ref.name !== name);
     },
   };
 }

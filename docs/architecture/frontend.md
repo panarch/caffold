@@ -241,8 +241,10 @@ lifetimes:
 - `caffold-task-review` is the integrated Task Review owner. It owns one
   selected path plus the Changes/Files and Diff/Source axes. It consumes the
   route-owned Working Tree/Branch scope selected by the Task Detail mode
-  control, then owns Git refs/status/compare requests and branch-base
-  normalization for that scope. It composes the two Git change-tree
+  control, then owns Git refs/status/compare requests, branch-base selection,
+  and branch-base normalization for that scope. Its compare-tree leaf receives
+  refs and selected base as a snapshot and emits only base-selection intents
+  back to Review. It composes the two Git change-tree
   presentations, one reusable file navigator, and one shared source/diff viewer
   instead of mounting complete Files, Diff, and Compare browsers. It also owns
   the one root filesystem watch, refresh generations, panel width,

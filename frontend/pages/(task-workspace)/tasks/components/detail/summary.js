@@ -329,7 +329,7 @@ class CaffoldTaskDetailSummary extends HTMLElement {
     return `<div class="task-mode-switch" data-summary-key="git" role="group" aria-label="Task view">
       <button type="button" data-summary-action="open-conversation" data-summary-mode="conversation"><span>Conversation</span></button>
       <button type="button" data-summary-action="open-review-scope" data-summary-mode="review" data-review-scope="working"><span>Working Tree</span></button>
-      <button type="button" data-summary-action="open-review-scope" data-summary-mode="review" data-review-scope="branch" title="Compare with ${escapeHtml(baseRef || "the default branch")}"><span data-summary-field="review-branch-label">Branch vs default</span></button>
+      <button type="button" data-summary-action="open-review-scope" data-summary-mode="review" data-review-scope="branch" title="Compare with ${escapeHtml(baseRef || "the default branch")}"><span data-summary-field="review-branch-label">Branch</span></button>
     </div>`;
   }
 
@@ -349,6 +349,7 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       const baseRef = this.reviewBaseRef();
       if (branch) {
         branch.title = `Compare with ${baseRef || "the default branch"}`;
+        setText(branch.querySelector('[data-summary-field="review-branch-label"]'), "Branch");
       }
     }
     this.patchReviewView();

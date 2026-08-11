@@ -1,4 +1,3 @@
-import { escapeHtml } from "../dom.js";
 import {
   buildFileTreeNodes,
   FILE_TREE_SELECT_EVENT,
@@ -10,6 +9,25 @@ class CaffoldGitCompareTree extends HTMLElement {
       return;
     }
     this.initialized = true;
+    this.addEventListener("change", (event) => {
+      const select = event.target.closest?.("select[data-compare-base-ref]");
+      if (!select || !this.contains(select)) {
+        return;
+      }
+      const baseRef = `${select.value ?? ""}`;
+      if (!baseRef || baseRef === this.baseSelection?.value) {
+        return;
+      }
+      this.baseSelection = { ...this.baseSelection, value: baseRef };
+      this.patchBasePresentation(baseRef);
+      this.dispatchEvent(
+        new CustomEvent("caffold:select-compare-base", {
+          bubbles: true,
+          composed: true,
+          detail: { baseRef },
+        }),
+      );
+    });
     this.addEventListener(FILE_TREE_SELECT_EVENT, (event) => {
       const file = event.detail.node.source;
       if (!file) {
@@ -58,6 +76,22 @@ class CaffoldGitCompareTree extends HTMLElement {
     this.fileTree()?.setSelectedKey(this.selectedKey());
   }
 
+  setBaseSelection(selection = {}) {
+    const refs = normalizeRefs(selection.refs);
+    const refsKey = refsFingerprint(refs);
+    this.baseSelection = {
+      enabled: refs.length > 0,
+      refs,
+      value: `${selection.value ?? ""}`,
+    };
+    this.ensurePanel();
+    if (refsKey !== this.baseRefsKey) {
+      this.baseRefsKey = refsKey;
+      replaceRefOptions(this.baseRefSelect(), refs);
+    }
+    this.patchHeader(this.headerPayload(), this.headerFileCount());
+  }
+
   setEmptyMessage(message) {
     this.emptyMessage = message || "No files changed.";
     if (this.state?.status === "ready" && !this.state.comparePayload.files?.length) {
@@ -67,6 +101,8 @@ class CaffoldGitCompareTree extends HTMLElement {
 
   reset() {
     this.selectedPath = "";
+    this.baseSelection = { enabled: false, refs: [], value: "" };
+    this.baseRefsKey = "";
     this.state = { status: "idle" };
     this.renderState();
   }
@@ -89,32 +125,27 @@ class CaffoldGitCompareTree extends HTMLElement {
 
   renderState() {
     const state = this.state ?? { status: "idle" };
-    if (state.status !== "ready") {
-      const message =
-        state.status === "loading"
-          ? "Loading compare..."
-          : state.status === "error"
-            ? escapeHtml(state.error.message)
+    const ready = state.status === "ready";
+    const payload = ready ? state.comparePayload : state;
+    const files = ready ? payload.files ?? [] : [];
+    const message =
+      state.status === "loading"
+        ? "Loading compare..."
+        : state.status === "error"
+          ? state.error.message
+          : ready && files.length === 0
+            ? this.emptyMessage || "No files changed."
             : "";
-      this.innerHTML = `
-        <section class="compare-tree-panel${state.status === "error" ? " error-panel" : ""}"${
-          state.status === "loading" ? ' aria-busy="true"' : ""
-        }>
-          ${this.renderHeader(state, null)}
-          ${message ? `<p class="surface-message">${message}</p>` : "<caffold-file-tree></caffold-file-tree>"}
-        </section>
-      `;
+    const panel = this.ensurePanel(message ? "message" : "tree");
+    panel.classList.toggle("error-panel", state.status === "error");
+    panel.toggleAttribute("aria-busy", state.status === "loading");
+    this.patchHeader(payload, ready ? files.length : null);
+    if (message) {
+      patchText(this.message(), message);
       return;
     }
 
-    const payload = state.comparePayload;
-    const files = payload.files ?? [];
-    this.ensureReadyPanel(files.length > 0);
-    this.querySelector(":scope > .compare-tree-panel > header").innerHTML =
-      this.renderHeaderContent(payload, files.length);
-    if (files.length === 0) {
-      this.querySelector(":scope > .compare-tree-panel > .surface-message").textContent =
-        this.emptyMessage || "No files changed.";
+    if (!ready) {
       return;
     }
 
@@ -128,62 +159,180 @@ class CaffoldGitCompareTree extends HTMLElement {
     });
   }
 
-  ensureReadyPanel(hasFiles) {
-    const expected = hasFiles ? "tree" : "empty";
-    const panel = this.querySelector(":scope > .compare-tree-panel");
-    if (panel?.dataset.content === expected) {
-      return;
+  ensurePanel(content = null) {
+    let panel = this.querySelector(":scope > .compare-tree-panel");
+    if (!panel) {
+      this.innerHTML = `
+        <section class="compare-tree-panel" data-content="tree">
+          <header>
+            <div class="compare-tree-primary">
+              <h2>Files</h2>
+              <span class="compare-base">
+                <span class="compare-base-label"></span>
+                <span class="compare-base-chevron" aria-hidden="true" hidden></span>
+                <select data-compare-base-ref aria-label="Branch comparison base" hidden></select>
+              </span>
+            </div>
+            <div class="compare-tree-secondary">
+              <span class="compare-file-count"></span>
+              <span class="compare-line-stats" hidden>
+                <span class="is-addition"></span>
+                <span class="is-deletion"></span>
+              </span>
+            </div>
+          </header>
+          <caffold-file-tree class="compare-tree-content"></caffold-file-tree>
+        </section>
+      `;
+      panel = this.querySelector(":scope > .compare-tree-panel");
     }
-    this.innerHTML = `
-      <section class="compare-tree-panel" data-content="${expected}">
-        <header></header>
-        ${hasFiles ? "<caffold-file-tree></caffold-file-tree>" : '<p class="surface-message"></p>'}
-      </section>
-    `;
+    if (content && panel.dataset.content !== content) {
+      const next = document.createElement(content === "message" ? "p" : "caffold-file-tree");
+      next.className =
+        content === "message"
+          ? "surface-message compare-tree-content"
+          : "compare-tree-content";
+      panel.querySelector(":scope > .compare-tree-content")?.replaceWith(next);
+      panel.dataset.content = content;
+    }
+    return panel;
   }
 
-  renderHeader(payload, count) {
-    return `<header>${this.renderHeaderContent(payload, count)}</header>`;
-  }
-
-  renderHeaderContent(payload, count) {
+  patchHeader(payload, count) {
     const countLabel = count === null || count === undefined ? "" : `${count} files`;
-    const baseRef = `${payload?.baseRef ?? ""}`;
-    return `
-      <div class="compare-tree-title-row">
-        <h2>Files</h2>
-        <span class="compare-file-count">${escapeHtml(countLabel)}</span>
-      </div>
-      <div class="compare-tree-meta-row">
-        ${baseRef
-          ? `<span class="compare-base" title="Compare with ${escapeHtml(baseRef)}">vs ${escapeHtml(compareRefLabel(baseRef))}</span>`
-          : "<span></span>"}
-        ${renderDiffStats(payload)}
-      </div>
-    `;
+    const baseRef = this.baseSelection?.enabled
+      ? this.baseSelection.value
+      : `${payload?.baseRef ?? ""}`;
+    patchText(this.querySelector(".compare-file-count"), countLabel);
+    this.patchBasePresentation(baseRef);
+    this.patchDiffStats(payload);
+  }
+
+  patchBasePresentation(baseRef) {
+    const enabled = Boolean(this.baseSelection?.enabled);
+    const label = this.querySelector(".compare-base-label");
+    const base = this.querySelector(".compare-base");
+    const chevron = this.querySelector(".compare-base-chevron");
+    const select = this.baseRefSelect();
+    const text = baseRef ? `vs ${compareRefLabel(baseRef)}` : "";
+    patchText(label, text);
+    setAttribute(base, "title", baseRef ? `Compare with ${baseRef}` : null);
+    chevron?.toggleAttribute("hidden", !enabled);
+    select?.toggleAttribute("hidden", !enabled);
+    setAttribute(select, "title", enabled && baseRef ? baseRef : null);
+    if (enabled && select && select.value !== baseRef) {
+      select.value = baseRef;
+    }
+  }
+
+  patchDiffStats(payload) {
+    const stats = diffStats(payload);
+    const container = this.querySelector(".compare-line-stats");
+    container?.toggleAttribute("hidden", !stats);
+    setAttribute(container, "aria-label", stats?.label ?? null);
+    patchText(container?.querySelector(".is-addition"), stats?.additions ?? "");
+    patchText(container?.querySelector(".is-deletion"), stats?.deletions ?? "");
+  }
+
+  headerPayload() {
+    return this.state?.status === "ready" ? this.state.comparePayload : this.state;
+  }
+
+  headerFileCount() {
+    return this.state?.status === "ready"
+      ? (this.state.comparePayload?.files?.length ?? 0)
+      : null;
+  }
+
+  baseRefSelect() {
+    return this.querySelector("select[data-compare-base-ref]");
+  }
+
+  message() {
+    return this.querySelector(":scope > .compare-tree-panel > .surface-message");
   }
 }
 
 customElements.define("caffold-git-compare-tree", CaffoldGitCompareTree);
 
-function renderDiffStats(payload) {
+function diffStats(payload) {
   if (!Number.isFinite(payload?.additions) || !Number.isFinite(payload?.deletions)) {
-    return "";
+    return null;
   }
   const additions = new Intl.NumberFormat("en-US").format(payload.additions);
   const deletions = new Intl.NumberFormat("en-US").format(payload.deletions);
-  return `
-    <span class="compare-line-stats" aria-label="${escapeHtml(
-      `${additions} additions and ${deletions} deletions`,
-    )}">
-      <span class="is-addition">+${escapeHtml(additions)}</span>
-      <span class="is-deletion">-${escapeHtml(deletions)}</span>
-    </span>
-  `;
+  return {
+    label: `${additions} additions and ${deletions} deletions`,
+    additions: `+${additions}`,
+    deletions: `-${deletions}`,
+  };
 }
 
 function compareRefLabel(ref) {
   return `${ref ?? ""}`.replace(/^origin\//, "");
+}
+
+function normalizeRefs(refs) {
+  return (Array.isArray(refs) ? refs : [])
+    .map((ref) => ({
+      name: `${ref?.name ?? ""}`,
+      kind: `${ref?.kind ?? "local"}`,
+    }))
+    .filter((ref) => ref.name);
+}
+
+function refsFingerprint(refs) {
+  return refs.map((ref) => `${ref.kind}\u0000${ref.name}`).join("\u0001");
+}
+
+function replaceRefOptions(select, refs) {
+  if (!select) {
+    return;
+  }
+  const groups = [];
+  let group = null;
+  let previousKind = null;
+  for (const ref of refs) {
+    if (ref.kind !== previousKind) {
+      group = document.createElement("optgroup");
+      group.label = refKindLabel(ref.kind);
+      groups.push(group);
+      previousKind = ref.kind;
+    }
+    const option = document.createElement("option");
+    option.value = ref.name;
+    option.textContent = ref.name;
+    group.append(option);
+  }
+  select.replaceChildren(...groups);
+}
+
+function refKindLabel(kind) {
+  if (kind === "head") {
+    return "Current";
+  }
+  return kind === "remote" ? "Remote" : "Local";
+}
+
+function patchText(element, value) {
+  if (element && element.textContent !== value) {
+    element.textContent = value;
+  }
+}
+
+function setAttribute(element, name, value) {
+  if (!element) {
+    return;
+  }
+  if (value === null || value === undefined || value === "") {
+    if (element.hasAttribute(name)) {
+      element.removeAttribute(name);
+    }
+    return;
+  }
+  if (element.getAttribute(name) !== `${value}`) {
+    element.setAttribute(name, `${value}`);
+  }
 }
 
 function compareNodes(files) {
