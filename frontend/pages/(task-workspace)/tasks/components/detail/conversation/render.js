@@ -310,6 +310,9 @@ function renderActiveTurnTimelineEvent(
 function renderActiveTurnStatus(group, task) {
   const startedMs = activeTurnStartMs(task);
   const state = activeTurnStateLabel(group.events, task);
+  const threadId = `${task?.threadId ?? task?.id ?? ""}`.trim();
+  const turnId = `${group.turnId ?? task?.activeTurn?.id ?? "active-turn"}`;
+  const identity = `active-turn:${threadId}:${turnId}`;
   const startedAttribute = startedMs
     ? ` data-active-turn-started-ms="${escapeHtml(startedMs)}"`
     : "";
@@ -320,7 +323,8 @@ function renderActiveTurnStatus(group, task) {
     <li
       class="task-event task-turn-active"
       ${startedAttribute}
-      data-turn-id="${escapeHtml(group.turnId)}"
+      data-turn-id="${escapeHtml(turnId)}"
+      data-conversation-entry-key="${escapeHtml(identity)}"
     >
       <span class="task-status-spinner" aria-hidden="true"></span>
       <span class="task-turn-active-duration">${escapeHtml(duration)}</span>

@@ -782,13 +782,25 @@ function reconcileConversationList(list, html, workDetails) {
   template.innerHTML = html;
   const existingWorkEntries = new Map(
     [...list.children]
-      .filter((entry) => entry.matches(".task-turn-work[data-conversation-entry-key]"))
+      .filter((entry) =>
+        entry.matches(".task-turn-work[data-conversation-entry-key]"),
+      )
       .map((entry) => [entry.dataset.conversationEntryKey, entry]),
+  );
+  const existingActiveTurn = list.querySelector(
+    ":scope > .task-turn-active[data-conversation-entry-key]",
   );
   const desiredEntries = [...template.content.children].map((entry) => {
     const key = `${entry.dataset.conversationEntryKey ?? ""}`;
     if (!key) {
       return entry;
+    }
+    if (
+      entry.matches(".task-turn-active") &&
+      existingActiveTurn?.dataset.conversationEntryKey === key &&
+      patchActiveTurnEntry(existingActiveTurn, entry)
+    ) {
+      return existingActiveTurn;
     }
     const snapshot = workDetails.get(key);
     const existing = existingWorkEntries.get(key);
@@ -814,18 +826,90 @@ function reconcileConversationList(list, html, workDetails) {
   }
 }
 
-function reconcileElementChildren(parent, desiredChildren) {
-  let cursor = parent.firstElementChild;
-  for (const child of desiredChildren) {
-    if (child !== cursor) {
-      parent.insertBefore(child, cursor);
-    }
-    cursor = child.nextElementSibling;
+function patchActiveTurnEntry(current, desired) {
+  const currentSpinner = current.querySelector(":scope > .task-status-spinner");
+  const desiredSpinner = desired.querySelector(":scope > .task-status-spinner");
+  const currentDuration = current.querySelector(
+    ":scope > .task-turn-active-duration",
+  );
+  const desiredDuration = desired.querySelector(
+    ":scope > .task-turn-active-duration",
+  );
+  const currentState = current.querySelector(
+    ":scope > .task-turn-active-state",
+  );
+  const desiredState = desired.querySelector(
+    ":scope > .task-turn-active-state",
+  );
+  if (
+    !currentSpinner ||
+    !desiredSpinner ||
+    !currentDuration ||
+    !desiredDuration ||
+    !currentState ||
+    !desiredState
+  ) {
+    return false;
   }
-  while (cursor) {
-    const next = cursor.nextElementSibling;
-    cursor.remove();
-    cursor = next;
+
+  syncElementAttributes(current, desired, [
+    "class",
+    "data-active-turn-started-ms",
+    "data-turn-id",
+    "data-conversation-entry-key",
+  ]);
+  syncElementAttributes(currentSpinner, desiredSpinner, [
+    "class",
+    "aria-hidden",
+  ]);
+  syncElementAttributes(currentDuration, desiredDuration, ["class"]);
+  syncElementAttributes(currentState, desiredState, [
+    "class",
+    "title",
+    "aria-live",
+  ]);
+  patchText(currentDuration, desiredDuration.textContent);
+  patchText(currentState, desiredState.textContent);
+  return true;
+}
+
+function syncElementAttributes(current, desired, names) {
+  for (const name of names) {
+    if (desired.hasAttribute(name)) {
+      const value = desired.getAttribute(name);
+      if (current.getAttribute(name) === value) {
+        continue;
+      }
+      current.setAttribute(name, value);
+    } else if (current.hasAttribute(name)) {
+      current.removeAttribute(name);
+    }
+  }
+}
+
+function patchText(element, value) {
+  if (element.textContent !== value) {
+    element.textContent = value;
+  }
+}
+
+function reconcileElementChildren(parent, desiredChildren) {
+  const desired = new Set(desiredChildren);
+  for (const child of [...parent.children]) {
+    if (!desired.has(child)) {
+      child.remove();
+    }
+  }
+
+  // Reconcile from the stable tail so the active-turn entry is not detached
+  // while older timeline entries ahead of it are replaced.
+  let anchor = null;
+  for (let index = desiredChildren.length - 1; index >= 0; index -= 1) {
+    const child = desiredChildren[index];
+    if (child.parentElement !== parent || child.nextElementSibling !== anchor) {
+      parent.insertBefore(child, anchor);
+    }
+    anchor = child;
   }
 }
 
