@@ -91,6 +91,10 @@ class CaffoldAppShell extends HTMLElement {
     this.addEventListener("caffold:open-tasks", () => {
       this.navigateToRoute({ kind: "tasks" });
     });
+    this.addEventListener("caffold:task-created", (event) => {
+      event.stopPropagation();
+      this.taskWorkspace.adoptCreatedDetail(event.detail?.detail);
+    });
     this.addEventListener("caffold:open-settings", (event) => {
       this.navigateToRoute({
         kind: "settings",

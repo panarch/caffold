@@ -324,7 +324,7 @@ async fn create_task_keeps_explicit_permission_mode_for_the_first_turn() {
             .unwrap()
             .keys()
             .collect::<Vec<_>>(),
-        ["branchName", "includeChanges"]
+        ["baseRef", "branchName", "includeChanges"]
     );
     assert_eq!(requests[1].0, "turn/start");
     assert_eq!(requests[1].1["approvalsReviewer"], "auto_review");
@@ -436,6 +436,7 @@ async fn managed_worktree_archive_and_restore_follow_the_task_route_lifecycle() 
             thread_id.to_string(),
             "Managed worktree task".to_string(),
             None,
+            None,
             false,
         )
         .await
@@ -513,6 +514,7 @@ async fn managed_worktree_permanent_delete_preserves_the_local_branch() {
             thread_id.to_string(),
             "Delete managed worktree task".to_string(),
             None,
+            None,
             false,
         )
         .await
@@ -583,6 +585,7 @@ async fn dirty_managed_worktree_blocks_the_task_archive_before_codex_changes_sta
             source,
             thread_id.to_string(),
             "Dirty managed worktree task".to_string(),
+            None,
             None,
             false,
         )
@@ -667,6 +670,7 @@ async fn failed_codex_archive_restores_the_managed_worktree_and_keeps_the_task_a
             thread_id.to_string(),
             "Archive rollback".to_string(),
             None,
+            None,
             false,
         )
         .await
@@ -732,6 +736,7 @@ async fn failed_codex_restore_removes_the_recreated_worktree_and_keeps_the_task_
             source,
             thread_id.to_string(),
             "Restore rollback".to_string(),
+            None,
             None,
             false,
         )

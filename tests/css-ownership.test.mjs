@@ -44,6 +44,10 @@ const ownership = new Map([
     ["caffold-task-composer"],
   ],
   [
+    "pages/(task-workspace)/tasks/components/task-turn-options.css",
+    ["caffold-task-turn-options"],
+  ],
+  [
     "pages/(task-workspace)/tasks/components/voice-level-meter.css",
     ["caffold-voice-level-meter"],
   ],
@@ -130,6 +134,10 @@ const ownership = new Map([
   [
     "pages/(review-workspace)/(github)/(issues)/detail/page.css",
     ["caffold-github-issue-detail-page"],
+  ],
+  [
+    "pages/(review-workspace)/(github)/(issues)/components/task-start-dialog.css",
+    ["caffold-github-issue-task-start-dialog"],
   ],
   [
     "pages/(review-workspace)/(github)/(issues)/layout.css",
@@ -307,7 +315,11 @@ const componentChildren = new Map([
   ],
   [
     "caffold-github-issues-layout",
-    ["caffold-github-issues-list-page", "caffold-github-issue-detail-page"],
+    [
+      "caffold-github-issues-list-page",
+      "caffold-github-issue-detail-page",
+      "caffold-github-issue-task-start-dialog",
+    ],
   ],
   [
     "caffold-github-pulls-layout",

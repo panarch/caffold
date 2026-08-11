@@ -66,6 +66,38 @@ test("composer exposes Codex approval modes and confirms full access", async ({
   await expect(picker).toContainText("Full access");
 });
 
+test("model options use native popover dismissal and return focus to their trigger", async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  await page.goto("/tasks/new?cwd=src");
+
+  const form = page.locator('.task-new-form[data-task-form="create"]');
+  const trigger = form.getByRole("button", { name: /Choose model/ });
+  const popover = form.getByRole("menu", { name: /Model.*options/ });
+  await trigger.click();
+  await expect(popover).toBeVisible();
+  expect(
+    await popover.evaluate((element) => ({
+      mode: element.getAttribute("popover"),
+      open: element.matches(":popover-open"),
+      target: element.id,
+    })),
+  ).toEqual({
+    mode: "auto",
+    open: true,
+    target: await trigger.getAttribute("popovertarget"),
+  });
+
+  await page.keyboard.press("Escape");
+  await expect(popover).toBeHidden();
+  await expect(trigger).toBeFocused();
+
+  await trigger.click();
+  await form.getByRole("textbox", { name: "New task prompt" }).click();
+  await expect(popover).toBeHidden();
+});
+
 test("untouched approval mode preserves the effective Codex default", async ({ page }) => {
   await installTaskApiFixture(page);
   await page.unroute("**/api/tasks");

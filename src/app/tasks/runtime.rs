@@ -94,6 +94,7 @@ struct RenameCurrentThreadArguments {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct IsolateCurrentTaskArguments {
     branch_name: Option<String>,
+    base_ref: Option<String>,
     #[serde(default)]
     include_changes: bool,
 }
@@ -798,9 +799,10 @@ impl CodexRuntime {
 
         let IsolateCurrentTaskArguments {
             branch_name,
+            base_ref,
             include_changes,
         } = serde_json::from_value(arguments).map_err(|_| {
-            "Arguments must use an optional non-empty `branchName` and a boolean `includeChanges`."
+            "Arguments must use optional non-empty `branchName` and `baseRef` values plus a boolean `includeChanges`."
                 .to_string()
         })?;
         let branch_name = branch_name
@@ -813,6 +815,19 @@ impl CodexRuntime {
                 }
             })
             .transpose()?;
+        let base_ref = base_ref
+            .map(|base_ref| {
+                let base_ref = base_ref.trim().to_string();
+                if base_ref.is_empty() {
+                    Err("`baseRef` must be a non-empty string when provided.".to_string())
+                } else {
+                    Ok(base_ref)
+                }
+            })
+            .transpose()?;
+        if base_ref.is_some() && include_changes {
+            return Err("`baseRef` cannot be combined with `includeChanges: true`.".to_string());
+        }
         let thread = client
             .read_thread(thread_id)
             .await
@@ -838,6 +853,7 @@ impl CodexRuntime {
                 thread_id.to_string(),
                 task_name,
                 branch_name,
+                base_ref,
                 include_changes,
             )
             .await
@@ -1355,14 +1371,16 @@ mod tests {
     }
 
     #[test]
-    fn isolate_tool_defaults_change_transfer_to_false_and_accepts_explicit_opt_in() {
+    fn isolate_tool_defaults_change_transfer_to_false_and_accepts_selected_base() {
         let default = serde_json::from_value::<IsolateCurrentTaskArguments>(json!({})).unwrap();
         assert!(!default.include_changes);
+        assert!(default.base_ref.is_none());
         let explicit = serde_json::from_value::<IsolateCurrentTaskArguments>(
-            json!({ "includeChanges": true }),
+            json!({ "baseRef": "origin/release", "includeChanges": false }),
         )
         .unwrap();
-        assert!(explicit.include_changes);
+        assert_eq!(explicit.base_ref.as_deref(), Some("origin/release"));
+        assert!(!explicit.include_changes);
     }
 
     #[tokio::test]
@@ -1402,6 +1420,8 @@ mod tests {
 
         for arguments in [
             json!({ "branchName": " " }),
+            json!({ "baseRef": " " }),
+            json!({ "baseRef": "main", "includeChanges": true }),
             json!({ "prompt": "unexpected" }),
             json!({ "includeChanges": "yes" }),
         ] {
@@ -1415,7 +1435,7 @@ mod tests {
 
         assert!(client.mock_requests().await.is_empty());
         let responses = client.mock_server_responses().await;
-        assert_eq!(responses.len(), 3);
+        assert_eq!(responses.len(), 5);
         assert_eq!(
             responses
                 .iter()
@@ -1423,8 +1443,10 @@ mod tests {
                 .collect::<Vec<_>>(),
             [
                 "`branchName` must be a non-empty string when provided.",
-                "Arguments must use an optional non-empty `branchName` and a boolean `includeChanges`.",
-                "Arguments must use an optional non-empty `branchName` and a boolean `includeChanges`.",
+                "`baseRef` must be a non-empty string when provided.",
+                "`baseRef` cannot be combined with `includeChanges: true`.",
+                "Arguments must use optional non-empty `branchName` and `baseRef` values plus a boolean `includeChanges`.",
+                "Arguments must use optional non-empty `branchName` and `baseRef` values plus a boolean `includeChanges`.",
             ]
         );
     }

@@ -180,6 +180,7 @@ impl TaskLifecycle {
         thread_id: String,
         task_name: String,
         branch_name: Option<String>,
+        base_ref: Option<String>,
         include_changes: bool,
     ) -> Result<IsolateOutcome, ApiError> {
         let source = source.canonicalize().map_err(|error| {
@@ -190,7 +191,14 @@ impl TaskLifecycle {
         })?;
         self.fs.logical_path_for_absolute(&source)?;
         self.worktrees
-            .isolate_current(source, thread_id, task_name, branch_name, include_changes)
+            .isolate_current(
+                source,
+                thread_id,
+                task_name,
+                branch_name,
+                base_ref,
+                include_changes,
+            )
             .await
             .map_err(worktree_api_error)
     }
@@ -326,6 +334,7 @@ pub(in crate::app) fn worktree_api_error(error: ManagedWorktreeError) -> ApiErro
         | ManagedWorktreeError::Git(crate::git::WorktreeError::LinkedSource(_))
         | ManagedWorktreeError::Git(crate::git::WorktreeError::UnresolvedOperation(_))
         | ManagedWorktreeError::Git(crate::git::WorktreeError::DirtySubmodule(_))
+        | ManagedWorktreeError::Git(crate::git::WorktreeError::BaseRefWithChanges)
         | ManagedWorktreeError::Git(crate::git::WorktreeError::DirtyBranchRequiresTransfer {
             ..
         })

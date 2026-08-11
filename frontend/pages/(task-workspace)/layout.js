@@ -245,6 +245,11 @@ class CaffoldTaskWorkspace extends HTMLElement {
     return this.tasksPage.selectedTaskContextPath();
   }
 
+  adoptCreatedDetail(detail) {
+    this.ensureRendered();
+    this.tasksPage.adoptCreatedDetail(detail);
+  }
+
   setCodexStatus(status) {
     this.ensureRendered();
     this.settingsWorkspace.setCodexStatus(status);
