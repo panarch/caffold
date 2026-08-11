@@ -1,10 +1,9 @@
 caffold-app-shell {
   box-sizing: border-box;
-  position: relative;
+  position: fixed;
+  inset: 0;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  height: 100vh;
-  height: 100dvh;
+  grid-template-rows: minmax(0, 1fr);
   padding-bottom: env(safe-area-inset-bottom);
   overflow: hidden;
 
@@ -46,50 +45,5 @@ caffold-app-shell {
 
   & .app-bootstrap-error p {
     color: var(--muted);
-  }
-
-  & .app-build-alert {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--interface-space-4);
-    min-width: 0;
-    min-height: var(--interface-compact-control-size);
-    padding: var(--interface-space-2) var(--interface-space-6);
-    overflow: hidden;
-    border-top: 1px solid var(--danger);
-    background: var(--danger-soft);
-    color: var(--danger);
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-  }
-
-  & .app-build-alert[hidden] {
-    display: none;
-  }
-
-  & .app-build-alert > span {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  & .app-build-alert button {
-    position: relative;
-    min-height: var(--interface-compact-visual-size);
-    padding: 0 var(--interface-control-padding-inline);
-    border: 1px solid currentcolor;
-    border-radius: 5px;
-    background: var(--surface);
-    color: var(--danger);
-    font: inherit;
-    cursor: pointer;
-  }
-
-  & .app-build-alert button::before {
-    position: absolute;
-    inset: calc(0px - var(--interface-compact-hit-outset)) 0;
-    content: "";
   }
 }

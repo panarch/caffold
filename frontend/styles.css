@@ -1,4 +1,6 @@
 @import "./pages/layout.css";
+@import "./pages/components/build-mismatch-alert.css";
+@import "./pages/components/update-dialog.css";
 @import "./components/pagination.css";
 @import "./components/file-tree.css";
 @import "./components/file-navigator.css";

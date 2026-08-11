@@ -76,7 +76,8 @@ caffold-settings-about-page {
     overflow-wrap: anywhere;
   }
 
-  & .settings-details dd[data-state="current"] {
+  & .settings-details dd[data-state="current"],
+  & .settings-details dd[data-state="update"] {
     color: var(--success);
   }
 
@@ -87,6 +88,7 @@ caffold-settings-about-page {
 
   & .settings-about-actions {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: flex-end;
     gap: var(--interface-space-6);
@@ -133,6 +135,21 @@ caffold-settings-about-page {
   & .settings-about-actions button:focus-visible::before {
     border-color: var(--border-strong);
     background: var(--control-hover-bg);
+  }
+
+  & .settings-about-actions [data-action="reload-update"] {
+    color: var(--primary-action-fg);
+  }
+
+  & .settings-about-actions [data-action="reload-update"]::before {
+    border-color: var(--primary-action-border);
+    background: var(--primary-action-bg);
+  }
+
+  & .settings-about-actions [data-action="reload-update"]:hover::before,
+  & .settings-about-actions [data-action="reload-update"]:focus-visible::before {
+    border-color: var(--border-strong);
+    background: var(--primary-action-bg);
   }
 }
 

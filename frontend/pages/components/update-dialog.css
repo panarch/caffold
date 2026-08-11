@@ -1,0 +1,89 @@
+caffold-update-dialog {
+  position: absolute;
+
+  & > dialog {
+    width: min(30rem, calc(100vw - 2rem));
+    max-width: none;
+    margin: auto;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 18px 48px rgb(var(--shadow-rgb) / 24%);
+  }
+
+  & > dialog::backdrop {
+    background: rgb(var(--scrim-rgb) / 32%);
+  }
+
+  & .update-dialog-card {
+    display: grid;
+    gap: var(--interface-space-5);
+    margin: 0;
+    padding: var(--interface-space-10);
+  }
+
+  & .update-dialog-card h2,
+  & .update-dialog-card p {
+    margin: 0;
+  }
+
+  & .update-dialog-card h2 {
+    font-size: var(--interface-heading-font-size);
+    line-height: 1.25;
+  }
+
+  & .update-dialog-card p {
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .update-dialog-card footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--interface-control-gap);
+    margin-top: var(--interface-space-3);
+  }
+
+  & .update-dialog-card button {
+    min-height: var(--interface-control-size);
+    padding: 0 var(--interface-control-padding-inline);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--control-fg);
+    font: inherit;
+    font-size: var(--interface-meta-font-size);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  & .update-dialog-card button:hover,
+  & .update-dialog-card button:focus-visible {
+    border-color: var(--border-strong);
+    outline: none;
+  }
+
+  & .update-dialog-card button[value="reload"] {
+    border-color: var(--primary-action-border);
+    background: var(--primary-action-bg);
+    color: var(--primary-action-fg);
+  }
+
+  & .update-dialog-card button[value="reload"]:hover,
+  & .update-dialog-card button[value="reload"]:focus-visible {
+    border-color: var(--border-strong);
+  }
+}
+
+@media (max-width: 520px) {
+  caffold-update-dialog {
+    & > dialog {
+      width: calc(100vw - 1rem);
+    }
+  }
+}

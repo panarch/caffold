@@ -1,0 +1,55 @@
+caffold-build-mismatch-alert {
+  position: fixed;
+  z-index: 30;
+  inset-inline: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100vw;
+  padding-bottom: env(safe-area-inset-bottom);
+  border-top: 1px solid var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger);
+
+  &[hidden] {
+    display: none;
+  }
+
+  & .build-mismatch-alert {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--interface-space-4);
+    min-width: 0;
+    min-height: var(--interface-compact-control-size);
+    padding: var(--interface-space-2) var(--interface-space-6);
+    overflow: hidden;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .build-mismatch-alert > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & .build-mismatch-alert button {
+    position: relative;
+    min-height: var(--interface-compact-visual-size);
+    padding: 0 var(--interface-control-padding-inline);
+    border: 1px solid currentcolor;
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--danger);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  & .build-mismatch-alert button::before {
+    position: absolute;
+    inset: calc(0px - var(--interface-compact-hit-outset)) 0;
+    content: "";
+  }
+}

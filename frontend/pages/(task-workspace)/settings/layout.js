@@ -176,6 +176,11 @@ class CaffoldSettingsWorkspace extends HTMLElement {
     this.ensureRendered();
     this.querySelector("caffold-settings-about-page").setBuildStatus(health);
   }
+
+  setUpdateStatus(status) {
+    this.ensureRendered();
+    this.querySelector("caffold-settings-about-page").setUpdateStatus(status);
+  }
 }
 
 customElements.define("caffold-settings-workspace", CaffoldSettingsWorkspace);
