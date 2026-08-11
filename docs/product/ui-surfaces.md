@@ -135,7 +135,13 @@ Settings includes:
 - Appearance controls for System/Light/Dark theme, typeface, Interface scale,
   Conversation text, and Code text;
 - Codex runtime status, Refresh, restart, and diagnostics;
-- About Caffold application and build information.
+- About Caffold application and build information, including shared
+  checking/ready/settled update status and a **Reload to update** action while
+  a prepared PWA generation remains ready.
+
+Normal update checking and readiness are distinct from the viewport-fixed red
+build-mismatch alert. That exceptional alert appears only after update checking
+has settled without a prepared replacement for a differing server build.
 
 Appearance choices are persisted in browser-local settings rather than Task or
 server state.

@@ -1,4 +1,13 @@
 const CACHE_NAME = "caffold-shell-__CAFFOLD_BUILD_ID__";
+const CACHE_PREFIX = "caffold-shell-";
+const BUILD_ID = CACHE_NAME.slice(CACHE_PREFIX.length);
+const SHELL_NETWORK_TIMEOUT_MS = 3000;
+const ACTIVATE_PREPARED_BUILD_MESSAGE = "caffold:activate-prepared-build";
+const CLAIM_PREPARED_BUILD_MESSAGE = "caffold:claim-prepared-build";
+const GET_BUILD_ID_MESSAGE = "caffold:get-build-id";
+const PRUNE_SHELL_CACHES_MESSAGE = "caffold:prune-shell-caches";
+const UPDATE_CONTROLLED_MESSAGE = "caffold:update-controlled";
+const UPDATE_READY_MESSAGE = "caffold:update-ready";
 
 const APP_SHELL_ASSETS = [
   "/",
@@ -28,6 +37,11 @@ const APP_SHELL_ASSETS = [
   "/assets/brand/codex-template@2x.png",
   "/assets/pages/layout.css",
   "/assets/pages/layout.js",
+  "/assets/pages/components/build-mismatch-alert.css",
+  "/assets/pages/components/build-mismatch-alert.js",
+  "/assets/pages/components/pwa-update-lifecycle.js",
+  "/assets/pages/components/update-dialog.css",
+  "/assets/pages/components/update-dialog.js",
   "/assets/components/file-tree.css",
   "/assets/components/file-tree.js",
   "/assets/components/file-navigator.css",
@@ -51,6 +65,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/settings/codex/page.css",
   "/assets/pages/(task-workspace)/settings/codex/page.js",
   "/assets/pages/(task-workspace)/settings/codex/status-model.js",
+  "/assets/pages/(task-workspace)/settings/codex/components/runtime-restart-dialog.css",
+  "/assets/pages/(task-workspace)/settings/codex/components/runtime-restart-dialog.js",
   "/assets/pages/(task-workspace)/settings/about/page.css",
   "/assets/pages/(task-workspace)/settings/about/page.js",
   "/assets/pages/(task-workspace)/tasks/controls.css",
@@ -152,26 +168,36 @@ const APP_SHELL_ASSETS = [
   "/assets/components/pagination.js",
 ];
 
+const APP_SHELL_ASSET_PATHS = new Set(APP_SHELL_ASSETS);
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL_ASSETS))
-      .then(() => self.skipWaiting()),
+      .then((cache) => cache.addAll(APP_SHELL_ASSETS)),
   );
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches
-      .keys()
-      .then((keys) =>
-        Promise.all(
-          keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)),
-        ),
-      )
-      .then(() => self.clients.claim()),
-  );
+  event.waitUntil(activatePreparedShell());
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === PRUNE_SHELL_CACHES_MESSAGE) {
+    event.waitUntil(pruneShellCachesWhenUnused(event.data.cacheNames));
+    return;
+  }
+  if (event.data?.type === GET_BUILD_ID_MESSAGE) {
+    event.source?.postMessage(updateReadyMessage());
+    return;
+  }
+  if (event.data?.type === ACTIVATE_PREPARED_BUILD_MESSAGE) {
+    event.waitUntil(self.skipWaiting());
+    return;
+  }
+  if (event.data?.type === CLAIM_PREPARED_BUILD_MESSAGE) {
+    event.waitUntil(claimPreparedBuild(event.source));
+  }
 });
 
 self.addEventListener("fetch", (event) => {
@@ -192,25 +218,79 @@ self.addEventListener("fetch", (event) => {
     url.pathname === "/tasks" ||
     url.pathname.startsWith("/tasks/")
   ) {
-    event.respondWith(networkFirst(request, "/"));
+    event.respondWith(activeShellFirst(request, "/"));
     return;
   }
 
-  if (url.pathname.startsWith("/assets/")) {
-    event.respondWith(networkFirst(request));
+  if (APP_SHELL_ASSET_PATHS.has(url.pathname)) {
+    event.respondWith(activeShellFirst(request, url.pathname));
   }
 });
 
-async function networkFirst(request, fallbackPath = null) {
-  try {
-    const response = await fetch(request);
-    if (response.ok) {
-      const cache = await caches.open(CACHE_NAME);
-      cache.put(request, response.clone());
-    }
-    return response;
-  } catch {
-    const cached = await caches.match(request);
-    return cached ?? (fallbackPath ? caches.match(fallbackPath) : Response.error());
+async function activeShellFirst(request, cachePath) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(cachePath, { ignoreSearch: true });
+  if (cached) {
+    return cached;
   }
+
+  try {
+    return await fetchWithTimeout(request);
+  } catch {
+    return new Response("Caffold app shell is unavailable.", {
+      status: 504,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
+}
+
+async function fetchWithTimeout(request) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SHELL_NETWORK_TIMEOUT_MS);
+  try {
+    return await fetch(request, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function pruneShellCachesWhenUnused(cacheNames) {
+  const [controlledClients, allClients] = await Promise.all([
+    self.clients.matchAll({ type: "window" }),
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }),
+  ]);
+  const controlledIds = new Set(controlledClients.map((client) => client.id));
+  if (allClients.some((client) => !controlledIds.has(client.id))) {
+    return;
+  }
+
+  await Promise.all(
+    (Array.isArray(cacheNames) ? cacheNames : [])
+      .filter(
+        (key) =>
+          typeof key === "string" &&
+          key.startsWith(CACHE_PREFIX) &&
+          key !== CACHE_NAME,
+      )
+      .map((key) => caches.delete(key)),
+  );
+}
+
+async function activatePreparedShell() {
+  const clients = await self.clients.matchAll({
+    type: "window",
+    includeUncontrolled: true,
+  });
+  for (const client of clients) {
+    client.postMessage(updateReadyMessage());
+  }
+}
+
+function updateReadyMessage() {
+  return { type: UPDATE_READY_MESSAGE, buildId: BUILD_ID };
+}
+
+async function claimPreparedBuild(client) {
+  await self.clients.claim();
+  client?.postMessage({ type: UPDATE_CONTROLLED_MESSAGE, buildId: BUILD_ID });
 }

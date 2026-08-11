@@ -714,7 +714,9 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
       const modelButton = element.querySelector(".task-model-button");
       const modelName = element.querySelector(".task-model-name");
       const permissionButton = element.querySelector(".task-permission-button");
-      const buildAlert = document.querySelector(".app-build-alert");
+      const buildAlert = document.querySelector(
+        "caffold-build-mismatch-alert",
+      );
       const shell = document.querySelector("caffold-app-shell");
       const workspace = document.querySelector("caffold-task-workspace");
       const conversation = document.querySelector(".task-conversation-scroll");

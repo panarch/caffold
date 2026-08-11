@@ -6,20 +6,39 @@ import {
   routeEquals,
   routeUrl,
 } from "../navigation-routes.js";
+import { CAFFOLD_BUILD_MISMATCH_RELOAD_EVENT } from "./components/build-mismatch-alert.js";
+import { PwaUpdateLifecycle } from "./components/pwa-update-lifecycle.js";
+import {
+  CAFFOLD_UPDATE_LATER_EVENT,
+  CAFFOLD_UPDATE_RELOAD_EVENT,
+} from "./components/update-dialog.js";
 import "./(task-workspace)/layout.js";
 
 class CaffoldAppShell extends HTMLElement {
   connectedCallback() {
     if (this.initialized) {
+      this.pwaUpdateLifecycle?.connect();
       return;
     }
 
     this.initialized = true;
     this.currentRoute = null;
     this.initialPath = "";
+    this.aboutHealthRequest = null;
+    this.buildHealth = null;
+    this.presentedUpdateBuildIds = new Set();
+    this.pwaUpdateStatus = {
+      state: "checking",
+      preparedUpdate: { ready: false, buildId: null },
+    };
     this.render();
     this.taskWorkspace = this.querySelector("caffold-task-workspace");
     this.taskWorkspace.ensureRendered();
+    this.pwaUpdateLifecycle = new PwaUpdateLifecycle({
+      currentBuildId: BUILD_INFO.id,
+      onReloadReady: () => window.location.reload(),
+      onStatusChange: (status) => this.applyPwaUpdateStatus(status),
+    });
     this.installNavigationHandlers();
 
     const initialRoute = parseRoute(window.location.href);
@@ -53,6 +72,17 @@ class CaffoldAppShell extends HTMLElement {
     this.addEventListener("caffold:request-workspace-route", (event) => {
       this.navigateToRoute(event.detail?.route);
     });
+    this.addEventListener(CAFFOLD_UPDATE_RELOAD_EVENT, (event) => {
+      event.stopPropagation();
+      this.pwaUpdateLifecycle.activatePreparedUpdate();
+    });
+    this.addEventListener(CAFFOLD_UPDATE_LATER_EVENT, (event) => {
+      event.stopPropagation();
+    });
+    this.addEventListener(CAFFOLD_BUILD_MISMATCH_RELOAD_EVENT, (event) => {
+      event.stopPropagation();
+      window.location.reload();
+    });
     this.addEventListener("caffold:close-task-workspace", () => {
       const route = parseRoute(window.location.href) ?? this.currentRoute;
       const parent = parentRoute(route);
@@ -60,7 +90,12 @@ class CaffoldAppShell extends HTMLElement {
         this.navigateToRoute(parent);
       }
     });
+    void this.pwaUpdateLifecycle.start();
     this.bootstrap();
+  }
+
+  disconnectedCallback() {
+    this.pwaUpdateLifecycle?.disconnect();
   }
 
   render() {
@@ -73,19 +108,37 @@ class CaffoldAppShell extends HTMLElement {
           <button type="button" data-action="retry-bootstrap">Retry</button>
         </section>
       </main>
-      <footer class="app-build-alert" role="status" aria-live="polite" hidden>
-        <span data-build-alert-message></span>
-        <button type="button" data-action="reload-build">Reload</button>
-      </footer>
+      <caffold-update-dialog></caffold-update-dialog>
+      <caffold-build-mismatch-alert hidden></caffold-build-mismatch-alert>
     `;
-    this.querySelector('[data-action="reload-build"]')?.addEventListener(
-      "click",
-      () => window.location.reload(),
-    );
     this.querySelector('[data-action="retry-bootstrap"]')?.addEventListener(
       "click",
       () => void this.bootstrap(),
     );
+  }
+
+  refreshAboutStatus() {
+    void this.pwaUpdateLifecycle.checkForUpdate();
+    if (this.aboutHealthRequest) {
+      return this.aboutHealthRequest;
+    }
+
+    const request = getHealth()
+      .then((health) => {
+        this.updateBuildStatus(health);
+        return health;
+      })
+      .catch(() => {
+        this.updateBuildStatus(null);
+        return null;
+      })
+      .finally(() => {
+        if (this.aboutHealthRequest === request) {
+          this.aboutHealthRequest = null;
+        }
+      });
+    this.aboutHealthRequest = request;
+    return request;
   }
 
   installNavigationHandlers() {
@@ -96,7 +149,12 @@ class CaffoldAppShell extends HTMLElement {
 
     if (this.usesNavigationApi) {
       window.navigation.addEventListener("navigate", (event) => {
-        if (!event.canIntercept || event.hashChange || event.downloadRequest) {
+        if (
+          !event.canIntercept ||
+          event.navigationType === "reload" ||
+          event.hashChange ||
+          event.downloadRequest
+        ) {
           return;
         }
         const destination = new URL(event.destination.url);
@@ -162,19 +220,49 @@ class CaffoldAppShell extends HTMLElement {
   }
 
   updateBuildStatus(health) {
-    const alert = this.querySelector(".app-build-alert");
-    const message = alert?.querySelector("[data-build-alert-message]");
-    this.taskWorkspace?.setBuildStatus(health);
-    if (!alert || !message) {
+    this.buildHealth = health ?? null;
+    this.taskWorkspace?.setBuildStatus(this.buildHealth);
+    this.pwaUpdateLifecycle?.setServerBuildId(this.buildHealth?.buildId);
+    this.renderBuildAlert();
+  }
+
+  applyPwaUpdateStatus(status) {
+    this.pwaUpdateStatus = {
+      state: ["checking", "ready", "settled"].includes(status?.state)
+        ? status.state
+        : "checking",
+      preparedUpdate: {
+        ready: Boolean(status?.preparedUpdate?.ready),
+        buildId: status?.preparedUpdate?.buildId ?? null,
+      },
+    };
+    const preparedUpdate = this.pwaUpdateStatus.preparedUpdate;
+    this.taskWorkspace?.setUpdateStatus(this.pwaUpdateStatus);
+    this.renderBuildAlert();
+    const updateDialog = this.querySelector("caffold-update-dialog");
+    if (!preparedUpdate.ready) {
+      updateDialog?.close();
       return;
     }
-    const serverId = health?.buildId;
-    const serverLabel = health?.buildLabel || serverId;
-    const mismatch = Boolean(serverId && serverId !== BUILD_INFO.id);
-    alert.hidden = !mismatch;
-    message.textContent = mismatch
-      ? `New Caffold build available (${serverLabel}).`
-      : "";
+    if (!this.presentedUpdateBuildIds.has(preparedUpdate.buildId)) {
+      this.presentedUpdateBuildIds.add(preparedUpdate.buildId);
+      updateDialog?.open();
+    }
+  }
+
+  renderBuildAlert() {
+    const alert = this.querySelector("caffold-build-mismatch-alert");
+    if (!alert) {
+      return;
+    }
+    const serverId = this.buildHealth?.buildId;
+    const serverLabel = this.buildHealth?.buildLabel || serverId;
+    const mismatch = Boolean(
+      serverId &&
+        serverId !== BUILD_INFO.id &&
+        this.pwaUpdateStatus.state === "settled",
+    );
+    alert.setStatus(mismatch ? { serverLabel } : null);
   }
 
   navigateToRoute(route, options = {}) {
@@ -214,6 +302,9 @@ class CaffoldAppShell extends HTMLElement {
     await this.taskWorkspace.openRoute(route, {
       defaultCwdPath: this.initialPath || ".",
     });
+    if (route.kind === "settings" && route.section === "about") {
+      void this.refreshAboutStatus();
+    }
     return true;
   }
 }

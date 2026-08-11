@@ -189,12 +189,21 @@ const ownership = new Map([
     "pages/(task-workspace)/settings/about/page.css",
     ["caffold-settings-about-page"],
   ],
+  [
+    "pages/components/build-mismatch-alert.css",
+    ["caffold-build-mismatch-alert"],
+  ],
+  ["pages/components/update-dialog.css", ["caffold-update-dialog"]],
   ["pages/layout.css", ["caffold-app-shell"]],
 ]);
 const componentChildren = new Map([
   [
     "caffold-app-shell",
-    ["caffold-task-workspace"],
+    [
+      "caffold-task-workspace",
+      "caffold-build-mismatch-alert",
+      "caffold-update-dialog",
+    ],
   ],
   ["caffold-file-navigator", ["caffold-file-list"]],
   ["caffold-review-file-viewer", ["caffold-code-viewer", "caffold-diff-viewer"]],

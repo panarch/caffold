@@ -259,6 +259,11 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.settingsWorkspace.setBuildStatus(health);
   }
 
+  setUpdateStatus(status) {
+    this.ensureRendered();
+    this.settingsWorkspace.setUpdateStatus(status);
+  }
+
   updateChrome() {
     if (!this.backButton || !this.closeButton) {
       return;

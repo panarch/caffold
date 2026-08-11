@@ -51,6 +51,7 @@ The package scripts are grouped by their production owner:
 | `npm run test:appearance` | appearance settings and ownership |
 | `npm run test:css-ownership` | stylesheet/component ownership |
 | `npm run test:routes` | browser route contracts |
+| `npm run test:service-worker` | PWA shell cache, fallback, and cache-generation lifecycle |
 | `npm run test:task-state` | task list/detail/state projection |
 | `npm run test:watch` | filesystem watch behavior |
 | `npm run test:voice` | browser voice recorder contract |
@@ -84,6 +85,12 @@ test command; let Playwright shut down its own server, or retry a failed run.
 For layout changes, inspect the generated screenshots under `test-results` and
 exercise the relevant desktop, foldable, and phone projects. For fixture or
 shared-state changes, compare normal parallel execution with `--workers=1`.
+
+PWA build-handoff changes must run `tests/e2e/app-shell-update.spec.js`. Its
+deterministic service-worker fixture checks first install, checking, ready, and
+settled presentation, while its loopback lifecycle server exercises real
+Chromium worker installation, consecutive replacement builds, explicit reload,
+cache cleanup, and separation from the exceptional build-mismatch alert.
 
 ## Codex live tests
 

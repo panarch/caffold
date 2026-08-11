@@ -64,6 +64,21 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         ))),
         "pages/layout.css" => Some(css(include_str!("../frontend/pages/layout.css"))),
         "pages/layout.js" => Some(js(include_str!("../frontend/pages/layout.js"))),
+        "pages/components/build-mismatch-alert.css" => Some(css(include_str!(
+            "../frontend/pages/components/build-mismatch-alert.css"
+        ))),
+        "pages/components/build-mismatch-alert.js" => Some(js(include_str!(
+            "../frontend/pages/components/build-mismatch-alert.js"
+        ))),
+        "pages/components/pwa-update-lifecycle.js" => Some(js(include_str!(
+            "../frontend/pages/components/pwa-update-lifecycle.js"
+        ))),
+        "pages/components/update-dialog.css" => Some(css(include_str!(
+            "../frontend/pages/components/update-dialog.css"
+        ))),
+        "pages/components/update-dialog.js" => Some(js(include_str!(
+            "../frontend/pages/components/update-dialog.js"
+        ))),
         "components/file-tree.css" => {
             Some(css(include_str!("../frontend/components/file-tree.css")))
         }
@@ -649,6 +664,30 @@ mod tests {
         assert!(get("pages/components/header-actions.js").is_none());
         assert!(get("pages/components/app-menu.js").is_none());
         assert!(get("pages/components/pathbar.js").is_none());
+
+        let build_mismatch_alert =
+            get("pages/components/build-mismatch-alert.js").expect("build mismatch alert js asset");
+        assert_eq!(
+            build_mismatch_alert.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(build_mismatch_alert.body.starts_with(b"export "));
+
+        let pwa_update_lifecycle =
+            get("pages/components/pwa-update-lifecycle.js").expect("PWA update lifecycle js asset");
+        assert_eq!(
+            pwa_update_lifecycle.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(pwa_update_lifecycle.body.starts_with(b"const "));
+
+        let update_dialog =
+            get("pages/components/update-dialog.js").expect("update dialog js asset");
+        assert_eq!(update_dialog.content_type, "text/javascript; charset=utf-8");
+        assert!(update_dialog.body.starts_with(b"export "));
+
+        assert!(get("pages/components/about-dialog.js").is_none());
+        assert!(get("pages/components/about-dialog.css").is_none());
 
         let settings_module = get("settings.js").expect("settings module asset");
         assert_eq!(

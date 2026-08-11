@@ -13,6 +13,7 @@
     "test:macos-runtime": "desktop/macos/test-runtime",
     "test:playwright-config": "node --test tests/playwright-config.test.mjs",
     "test:routes": "node --test tests/navigation-routes.test.mjs",
+    "test:service-worker": "node --test tests/service-worker.test.mjs",
     "test:task-state": "node --test tests/css-ownership.test.mjs tests/task-*.test.mjs",
     "test:system-status": "desktop/macos/test-system-status",
     "test:voice": "node --test tests/voice-recorder.test.mjs",

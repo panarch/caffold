@@ -30,7 +30,7 @@ occupies most of a surface.
 
 ```text
 caffold-app-shell
-`-- caffold-task-workspace
+|-- caffold-task-workspace
     |-- Task navigator
     |-- New Task
     |   `-- Directory Picker
@@ -44,6 +44,8 @@ caffold-app-shell
     |       |-- Issues
     |       `-- Pull Requests
     `-- Settings
+|-- caffold-build-mismatch-alert
+`-- caffold-update-dialog
 ```
 
 Task Workspace stays mounted while Task Detail switches among Conversation,
@@ -60,6 +62,17 @@ application-lifetime coordination:
 - Navigation API and History fallback integration;
 - settings application;
 - build-update presentation.
+
+The app shell owns one `PwaUpdateLifecycle` instance. That lifecycle is the
+single owner of service-worker registration and build handoff, and publishes
+`checking`, `ready`, or `settled` state. The shell uses the same snapshot for
+the update dialog and About Caffold; presentation components emit user intent
+without inspecting service-worker state.
+
+A replacement is `ready` only after its complete shell cache is available, and
+Reload explicitly transitions to that prepared generation. The viewport-fixed
+`caffold-build-mismatch-alert` remains a separate exceptional diagnostic and
+appears only when UI and server builds differ after the lifecycle is `settled`.
 
 All known routes are forwarded to `caffold-task-workspace`. Task Detail owns
 the selected child and Task context; Git and GitHub own their layout instances,
@@ -306,6 +319,8 @@ Regression tests move with the active owner:
 - Task-owned Git in `tests/e2e/tasks/git-review.spec.js`;
 - Task-owned GitHub in `tests/e2e/tasks/github-review.spec.js`;
 - application shell boundaries in `tests/e2e/app-shell.spec.js`;
+- PWA update lifecycle and build-handoff boundaries in
+  `tests/e2e/app-shell-update.spec.js`;
 - Settings Codex behavior in `tests/e2e/settings.spec.js`;
 - assets, CSS, appearance, and watch primitives in their focused Node/Rust
   suites.
