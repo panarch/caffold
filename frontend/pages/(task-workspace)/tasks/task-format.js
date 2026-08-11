@@ -105,13 +105,24 @@ export function formatDuration(ms) {
   if (!Number.isFinite(seconds)) {
     return "";
   }
-  const minutes = Math.floor(seconds / 60);
+
+  const days = Math.floor(seconds / 86_400);
+  const hours = Math.floor((seconds % 86_400) / 3_600);
+  const minutes = Math.floor((seconds % 3_600) / 60);
   const remainingSeconds = seconds % 60;
-  if (minutes === 0) {
-    return `${remainingSeconds}s`;
+
+  const parts = [];
+  if (days > 0) {
+    parts.push(`${days}d`);
   }
-  if (remainingSeconds === 0) {
-    return `${minutes}m`;
+  if (hours > 0) {
+    parts.push(`${hours}h`);
   }
-  return `${minutes}m ${remainingSeconds}s`;
+  if (minutes > 0) {
+    parts.push(`${minutes}m`);
+  }
+  if (remainingSeconds > 0) {
+    parts.push(`${remainingSeconds}s`);
+  }
+  return parts.join(" ");
 }
