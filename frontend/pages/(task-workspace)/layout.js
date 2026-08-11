@@ -1,5 +1,5 @@
 import { renderInlineIcon, warmIcons } from "../../components/icons.js";
-import { routeTarget } from "../../navigation-routes.js";
+import { routeDomain, routeTarget } from "../../navigation-routes.js";
 import "./components/navigation.js";
 import {
   TASK_ARCHIVED_DELETE_CONFIRMED_EVENT,
@@ -254,11 +254,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.tasksPage.adoptCreatedDetail(detail);
   }
 
-  setCodexStatus(status) {
-    this.ensureRendered();
-    this.settingsWorkspace.setCodexStatus(status);
-  }
-
   setBuildStatus(health) {
     this.ensureRendered();
     this.settingsWorkspace.setBuildStatus(health);
@@ -270,7 +265,11 @@ class CaffoldTaskWorkspace extends HTMLElement {
     }
     const taskRoute = this.mode === "tasks" ? this.route : null;
     const target = taskRoute ? routeTarget(taskRoute) : null;
-    const showBack = ["detail", "review", "review-file"].includes(target);
+    const domain = routeDomain(taskRoute);
+    const showBack = Boolean(
+      taskRoute?.threadId &&
+      (domain ? target === "list" : target !== "review-file"),
+    );
     const showClose = target === "new";
 
     this.backButton.hidden = !showBack;
@@ -298,6 +297,8 @@ class CaffoldTaskWorkspace extends HTMLElement {
       this.tasksPage.dataset.taskListState ?? "loading";
     this.dataset.taskDetailView =
       this.tasksPage.dataset.taskDetailView ?? "conversation";
+    this.dataset.taskDetailPresentation =
+      this.tasksPage.dataset.taskDetailPresentation ?? "reading";
     this.dataset.settingsView =
       this.settingsWorkspace.dataset.settingsView ?? "list";
   }

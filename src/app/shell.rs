@@ -73,11 +73,6 @@ pub(super) fn router(
         .route("/settings/{*path}", get(index))
         .route("/tasks", get(index))
         .route("/tasks/{*path}", get(index))
-        .route("/files", get(index))
-        .route("/git", get(index))
-        .route("/git/{*path}", get(index))
-        .route("/github", get(index))
-        .route("/github/{*path}", get(index))
         .with_state(state)
 }
 

@@ -1,4 +1,3 @@
-import { getGitHubStatus } from "../../../../../api.js";
 import { escapeHtml } from "../../../../../components/dom.js";
 import { cleanLogicalPath } from "../../task-format.js";
 import { taskThreadId } from "../../task-list-model.js";
@@ -16,7 +15,6 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       );
     }
     this.render();
-    this.ensureGithubStatus();
   }
 
   disconnectedCallback() {
@@ -46,10 +44,6 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       archiveState: { loading: false, error: null },
     };
     this.renderedThreadId = "";
-    this.githubStatus = null;
-    this.githubStatusPath = "";
-    this.githubStatusState = "idle";
-    this.githubStatusRequestId = 0;
     this.active = false;
     this.listenersAttached = false;
     this.boundClick = (event) => this.handleClick(event);
@@ -61,7 +55,6 @@ class CaffoldTaskDetailSummary extends HTMLElement {
     const previousThreadId = taskThreadId(this.snapshot.task);
     const task = snapshot.task ?? null;
     const nextThreadId = taskThreadId(task);
-    const nextRootPath = taskWorktreeRootPath(task);
     this.snapshot = {
       task,
       transportState: snapshot.transportState ?? "idle",
@@ -76,12 +69,6 @@ class CaffoldTaskDetailSummary extends HTMLElement {
     };
     this.active = true;
 
-    if (!nextRootPath) {
-      this.resetGithubStatus();
-    } else if (this.githubStatusPath !== nextRootPath) {
-      this.resetGithubStatus(nextRootPath);
-    }
-
     if (
       nextThreadId &&
       previousThreadId === nextThreadId &&
@@ -91,7 +78,6 @@ class CaffoldTaskDetailSummary extends HTMLElement {
     } else {
       this.render();
     }
-    this.ensureGithubStatus();
   }
 
   setReviewView(view) {
@@ -107,10 +93,6 @@ class CaffoldTaskDetailSummary extends HTMLElement {
   deactivate() {
     this.ensureState();
     this.active = false;
-    this.githubStatusRequestId += 1;
-    if (this.githubStatusState === "loading") {
-      this.githubStatusState = "idle";
-    }
     this.taskInfo()?.deactivate();
   }
 
@@ -158,94 +140,6 @@ class CaffoldTaskDetailSummary extends HTMLElement {
         detail,
       }),
     );
-  }
-
-  beginGithubStatus(rootPath) {
-    this.githubStatusRequestId += 1;
-    this.githubStatus = null;
-    this.githubStatusPath = rootPath;
-    this.githubStatusState = "loading";
-  }
-
-  resetGithubStatus(rootPath = "") {
-    this.githubStatusRequestId += 1;
-    this.githubStatus = null;
-    this.githubStatusPath = rootPath;
-    this.githubStatusState = "idle";
-  }
-
-  ensureGithubStatus() {
-    const rootPath = taskWorktreeRootPath(this.snapshot.task);
-    if (!this.active || !this.isConnected || !rootPath) {
-      return;
-    }
-    if (this.githubStatusPath !== rootPath) {
-      this.resetGithubStatus(rootPath);
-    }
-    if (this.githubStatusState !== "idle") {
-      return;
-    }
-    this.beginGithubStatus(rootPath);
-    this.patchReviewControls();
-    void this.loadGithubStatus(rootPath);
-  }
-
-  async loadGithubStatus(rootPath) {
-    const requestId = this.githubStatusRequestId;
-    try {
-      const status = await getGitHubStatus(rootPath);
-      if (!this.acceptGithubStatus(requestId, rootPath)) {
-        return;
-      }
-      this.githubStatus = status;
-      this.githubStatusState = "ready";
-      this.patchReviewControls();
-    } catch (error) {
-      if (!this.acceptGithubStatus(requestId, rootPath)) {
-        return;
-      }
-      this.githubStatus = { message: error.message };
-      this.githubStatusState = "error";
-      this.patchReviewControls();
-    }
-  }
-
-  acceptGithubStatus(requestId, rootPath) {
-    return (
-      this.active &&
-      this.isConnected &&
-      requestId === this.githubStatusRequestId &&
-      rootPath === taskWorktreeRootPath(this.snapshot.task)
-    );
-  }
-
-  githubMenuState(rootPath) {
-    if (
-      this.githubStatusPath !== rootPath ||
-      ["idle", "loading"].includes(this.githubStatusState)
-    ) {
-      return {
-        enabled: false,
-        loading: true,
-        issues: false,
-        pulls: false,
-        message: "Checking GitHub availability",
-      };
-    }
-
-    const issues = Boolean(this.githubStatus?.issuesAvailable);
-    const pulls = Boolean(this.githubStatus?.pullsAvailable);
-    return {
-      enabled: Boolean(this.githubStatus?.github) && (issues || pulls),
-      loading: false,
-      issues,
-      pulls,
-      message:
-        this.githubStatus?.message ||
-        (this.githubStatus?.github
-          ? "GitHub CLI authentication is required"
-          : "No GitHub remote detected"),
-    };
   }
 
   render() {
@@ -366,7 +260,6 @@ class CaffoldTaskDetailSummary extends HTMLElement {
         <span class="task-brand-icon" data-brand="git" aria-hidden="true"></span>
       </summary>
       <div class="task-review-menu-popover" role="menu" aria-label="Git workspace">
-        <button type="button" role="menuitem" data-summary-action="open-git-tool" data-review-kind="diff">Working Tree</button>
         <button type="button" role="menuitem" data-summary-action="open-git-tool" data-review-kind="compare">Compare</button>
         <button type="button" role="menuitem" data-summary-action="open-git-tool" data-review-kind="log">Log</button>
       </div>
@@ -382,25 +275,15 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       </button>`;
     }
 
-    const github = this.githubMenuState(rootPath);
-    if (github.enabled) {
-      const key = `enabled:${github.pulls}:${github.issues}`;
-      return `<details class="task-review-menu" data-review-menu="github" data-summary-review-control="github" data-summary-key="${key}">
-        <summary class="task-brand-button" title="Open GitHub workspace" aria-label="Open GitHub workspace">
-          <span class="task-brand-icon" data-brand="github" aria-hidden="true"></span>
-        </summary>
-        <div class="task-review-menu-popover" role="menu" aria-label="GitHub workspace">
-          <button type="button" role="menuitem" data-summary-action="open-github-tool" data-review-kind="pulls" ${github.pulls ? "" : "disabled"}>Pull Requests</button>
-          <button type="button" role="menuitem" data-summary-action="open-github-tool" data-review-kind="issues" ${github.issues ? "" : "disabled"}>Issues</button>
-        </div>
-      </details>`;
-    }
-
-    const key = github.loading ? "loading" : `disabled:${github.message}`;
-    return `<button type="button" class="task-brand-button${github.loading ? " is-loading" : ""}" data-summary-review-control="github" data-summary-key="${escapeHtml(key)}" disabled title="${escapeHtml(github.message)}">
-      <span class="task-brand-icon" data-brand="github" aria-hidden="true"></span>
-      <span class="sr-only">${escapeHtml(github.message)}</span>
-    </button>`;
+    return `<details class="task-review-menu" data-review-menu="github" data-summary-review-control="github" data-summary-key="enabled">
+      <summary class="task-brand-button" title="Open GitHub workspace" aria-label="Open GitHub workspace">
+        <span class="task-brand-icon" data-brand="github" aria-hidden="true"></span>
+      </summary>
+      <div class="task-review-menu-popover" role="menu" aria-label="GitHub workspace">
+        <button type="button" role="menuitem" data-summary-action="open-github-tool" data-review-kind="pulls">Pull Requests</button>
+        <button type="button" role="menuitem" data-summary-action="open-github-tool" data-review-kind="issues">Issues</button>
+      </div>
+    </details>`;
   }
 
   patchReviewControls() {
@@ -450,7 +333,7 @@ if (!customElements.get("caffold-task-detail-summary")) {
 }
 
 function normalizeReviewView(view) {
-  return view === "review" ? "review" : "conversation";
+  return ["review", "git", "github"].includes(view) ? view : "conversation";
 }
 
 function normalizeReviewScope(scope) {

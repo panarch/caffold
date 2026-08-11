@@ -1,0 +1,18 @@
+@import "./list/page.css";
+
+@import "./commit/page.css";
+
+caffold-git-log-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+
+  &[data-log-view="list"] caffold-git-log-commit-page,
+  &[data-log-view="detail"] caffold-git-log-list-page {
+    display: none;
+  }
+}

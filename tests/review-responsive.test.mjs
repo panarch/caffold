@@ -18,10 +18,10 @@ test("review file workspaces share one single-pane boundary", () => {
   assert.equal(REVIEW_SINGLE_PANE_MEDIA_QUERY, "(max-width: 860px)");
 
   const layoutStyles = [
-    "components/git-diff-browser.css",
     "components/git-compare-browser.css",
-    "pages/(review-workspace)/(git)/(log)/commit/page.css",
-    "pages/(review-workspace)/(github)/(pulls)/files/page.css",
+    "pages/(task-workspace)/tasks/components/detail/review/changes-tree.css",
+    "pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/page.css",
+    "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/page.css",
   ];
   for (const path of layoutStyles) {
     const source = readFrontend(path);
@@ -38,9 +38,8 @@ test("review file workspaces share one single-pane boundary", () => {
   }
 
   const behaviorSources = [
-    "components/git-diff-browser.js",
     "components/git-compare-browser.js",
-    "pages/(review-workspace)/(git)/(log)/commit/page.js",
+    "pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/page.js",
   ];
   for (const path of behaviorSources) {
     const source = readFrontend(path);

@@ -142,31 +142,6 @@ export async function captureReviewScreenshot(page, testInfo, name) {
   });
 }
 
-function headerActionGroupButton(page, group) {
-  return page.locator(`caffold-header-actions button[data-action-group="${group}"]`);
-}
-
-export async function openHeaderActionGroup(page, group) {
-  const button = headerActionGroupButton(page, group);
-  const popover = page.locator(
-    `caffold-header-actions .header-actions-popover[data-action-group="${group}"]`,
-  );
-
-  await expect(button).toBeVisible();
-  await page.locator("caffold-header-actions").evaluate((element) => {
-    element.querySelectorAll(".header-actions-popover").forEach((panel) => {
-      panel.hidden = true;
-    });
-    element.querySelectorAll("button[data-action-group]").forEach((actionButton) => {
-      actionButton.setAttribute("aria-expanded", "false");
-    });
-  });
-  await button.click();
-  await expect(popover).toBeVisible();
-
-  return popover;
-}
-
 export async function mockCodexModels(page) {
   await page.route(/\/api\/codex\/models(?:\?|$)/, (route) =>
     route.fulfill({

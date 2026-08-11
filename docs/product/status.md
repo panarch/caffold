@@ -11,8 +11,11 @@ boundaries.
 - persistent app-server daemon plus replaceable proxy connection;
 - prompts, steering, interruption, command approvals, images, and local voice
   input in the Conversation surface;
-- cwd-derived repository/worktree grouping and integrated Files, Git, GitHub,
-  Diff, source, and log review surfaces;
+- cwd-derived repository/worktree grouping and Task-owned integrated
+  Working Tree/Branch, file/source, Git Compare/Log, and GitHub review
+  surfaces;
+- explicit setup-only Task creation from GitHub Issue detail with a selected
+  base ref;
 - same-Task preparation of a Caffold-managed worktree through
   `isolate_current_task`;
 - opt-in transfer of staged, unstaged, and untracked changes with bounded
@@ -28,8 +31,10 @@ boundaries.
 - Git and GitHub surfaces are read/review-oriented. Caffold does not expose
   stage, commit, checkout, merge, rebase, reset, stash, publication, or review
   mutation controls.
-- Worktree isolation is explicit and setup-only. Caffold does not automatically
-  recognize an Issue or PR and continue the original request after preparation.
+- Worktree isolation is explicit and setup-only. Issue detail can explicitly
+  start a setup-only Task that prepares a worktree; Pull Request detail cannot,
+  and Caffold does not automatically continue the original request after
+  preparation.
 - Caffold owns cleanup only for worktrees it created and recorded. It does not
   adopt external worktrees or force-delete dirty managed worktrees.
 - Conversation presents command and tool output but does not provide a full
@@ -48,9 +53,11 @@ The current product supports these flows:
 3. Review files, diffs, Git state, and GitHub context on desktop, foldable, and
    phone layouts.
 4. Approve or deny a command request and see the canonical outcome.
-5. Explicitly prepare the same Task in an isolated worktree without moving dirty
+5. Start a setup-only Task from GitHub Issue detail and stop after preparing its
+   selected-base worktree.
+6. Explicitly prepare the same Task in an isolated worktree without moving dirty
    source changes by default.
-6. Archive a clean managed worktree, restore it, and preserve the same Task,
+7. Archive a clean managed worktree, restore it, and preserve the same Task,
    branch, and thread.
-7. Return later and identify the Task, thread, branch, worktree, and current
+8. Return later and identify the Task, thread, branch, worktree, and current
    review state without remembering a terminal session.

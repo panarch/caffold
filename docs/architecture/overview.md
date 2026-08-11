@@ -114,7 +114,7 @@ before being returned. Caffold derives
 repository and worktree context live from each thread cwd and does not keep a
 project registry. Tasks globally groups the main checkout and linked worktrees by
 their shared Git repository while each Task keeps its actual worktree root for
-Files and Diff.
+Integrated Review, Git, and GitHub context.
 
 An eligible managed Task can explicitly move the same Codex thread into a new
 Caffold-managed worktree. The ownership record permits bounded recovery,

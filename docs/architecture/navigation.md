@@ -1,74 +1,84 @@
 # Navigation Routing
 
-## Default entrypoint
+This document defines Caffold's browser routes and navigation ownership.
+Routes preserve semantic Task orientation across reload, bookmarks, and browser
+Back/forward. They do not encode desktop, foldable, or phone presentation.
 
-`/` is the canonical Codex-first Tasks home and the durable application
-entrypoint. The `/tasks` compatibility URL is accepted on direct entry and
-canonicalized to `/` with history replacement. The wide Tasks home keeps the
-task navigator visible and renders the New Task composer as its default detail
-surface. Narrow viewports keep the list as the first surface while active or
-archived tasks exist. Once both lists are loaded and empty, the same Tasks home
-shows New Task as its default detail instead of requiring a separate empty-state
-action.
+## Application route boundary
 
-Codex availability does not decide the top-level surface. Connection failures
-remain visible inside Tasks, where the user can retry or browse local files;
-they must not cause a transient or automatic switch to Files.
+`caffold-task-workspace` is the only routed workspace below
+`caffold-app-shell`. The App Shell parses and forwards routes, applies
+application bootstrap data, and presents build updates. It does not select a
+Task child, derive repository context for Git or GitHub, or implement
+domain-local Back behavior.
 
-This document defines Caffold's browser routing and navigation ownership.
+`/` is the canonical Tasks home. `/tasks` canonicalizes to `/` with history
+replacement. All other active application routes are either Settings or
+Task-scoped routes:
 
-Caffold uses URLs to preserve review orientation across reloads, bookmarks, and
-browser back/forward. URLs describe semantic review state only. They do not
-encode mobile, foldable, or desktop layout state.
+```text
+/
+/tasks/new?cwd=...
+/tasks/:threadId
+/tasks/:threadId/review?scope=...&nav=...&view=...&file=...&base=...
+/tasks/:threadId/git/compare?base=...&head=...&file=...
+/tasks/:threadId/git/log?page=...&sha=...&file=...
+/tasks/:threadId/github/issues?page=...
+/tasks/:threadId/github/issues/:number?page=...
+/tasks/:threadId/github/pulls?page=...
+/tasks/:threadId/github/pulls/:number?page=...
+/tasks/:threadId/github/pulls/:number/files?page=...&file=...
+/settings
+/settings/appearance
+/settings/codex
+/settings/about
+```
 
-## Route Shape
+The route list above is the complete frontend schema. Any other frontend path
+uses the server's general unknown-route response.
 
-- `/`
-- `/tasks/new?cwd=...`
-- `/tasks/:threadId`
-- `/tasks/:threadId/review?scope=...&nav=...&view=...&file=...&base=...`
-- `/files?cwd=...&file=...`
-- `/git/diff?cwd=...&file=...`
-- `/git/compare?cwd=...&base=...&head=...&file=...`
-- `/git/log?cwd=...&page=...&sha=...&file=...`
-- `/github/issues?cwd=...&page=...`
-- `/github/issues/:number?cwd=...`
-- `/github/pulls?cwd=...&page=...`
-- `/github/pulls/:number?cwd=...`
-- `/github/pulls/:number/files?cwd=...&file=...`
+## Tasks home presentation
 
-Files, Git, and GitHub routes use a RootedFs logical `cwd` query. File and
-review paths are relative to that context. Git and GitHub routes canonicalize
-`cwd` to the live repository root before replacing the current history entry,
-so reload and copied URLs use one stable repository context.
+`/` owns both the Task navigator and the default New Task detail without
+encoding a responsive pane choice in the URL. Wide layouts keep the navigator
+visible and render New Task as the default detail. Compact layouts show the
+navigator first while either the active or Archived list contains Tasks. Once
+both lists finish loading and are empty, the same `/` route shows New Task
+instead of requiring a separate empty-state action.
 
-When a standalone route omits `cwd`, the app fills it before route preparation
-using this precedence: the selected Task worktree/thread context, the current
-Files directory, then the server initial path. Review routes prefer the current
-live repository root when one is already loaded.
+Codex availability does not select the top-level surface. Connection failures
+remain visible inside Tasks and must not cause a transient or automatic switch
+to another workspace.
 
-Codex remains the content/runtime source of truth and Caffold does not require a
-local project registry. `/` is the explicit Caffold Tasks route, split into
-active and Archived Caffold-managed threads. Unmanaged app-server threads are
-outside this navigation model; direct Task URLs do not import them implicitly.
-The Codex action in the Files surface always enters `/`. Task rows are grouped
-by repository and worktree context derived from each thread cwd; cwd never
-filters the list.
-`/tasks/new?cwd=...` is the only Tasks route that carries cwd, because it selects
-where the new thread starts. Compatibility list and detail URLs containing cwd are
-canonicalized to their cwd-free forms.
+## Canonical Task context
 
-Tasks route targets describe semantic detail ownership rather than responsive
-layout: `/` is `home`, `/tasks/new` is `new`, and a thread route is `detail` or
-`review`. The `home` target owns both the task navigator and the default New Task
-detail. Viewport and the combined active-and-archived list state decide which of
-those two panes is visible on compact layouts; they never change the URL. The
-Navigator header owns the New Task action. Its explicit `new` target preserves
-cwd from an existing task context when one is selected, so both context and
-browser history remain durable.
+Every Git and GitHub route includes the selected Codex `threadId`. Task Detail
+loads that canonical Task independently of navigator pagination and derives
+the repository/worktree context from its Task snapshot. Git and GitHub routes
+never carry `cwd` and must not borrow another selected Task or an app-level
+fallback when context resolution fails.
 
-Task Conversation keeps `/tasks/:threadId`. Integrated Task Review uses
-`/tasks/:threadId/review` and carries five independent semantic fields:
+`/tasks/new` is the sole route whose `cwd` query has application meaning. New
+Task owns that selected directory. Its precedence is:
+
+1. explicit `/tasks/new?cwd=...`;
+2. the selected Task's canonical repository root for a New Task intent;
+3. the bootstrap `initialPath` snapshot;
+4. `.`.
+
+The Directory Picker owns only its transient traversal while open. Cancel does
+not change New Task; `Use This Folder` updates New Task and its route.
+
+## Task Detail routes
+
+`/tasks/:threadId` selects Conversation. Task Detail exposes four stable
+sibling surfaces:
+
+- Integrated Review owns Working Tree and current Task Branch review.
+- Git owns arbitrary-ref Compare and bounded Log/commit inspection.
+- GitHub owns Issues and Pull Requests.
+
+Integrated Review carries independent semantic axes:
 
 - `scope=working|branch`
 - `nav=changes|files`
@@ -76,29 +86,25 @@ Task Conversation keeps `/tasks/:threadId`. Integrated Task Review uses
 - `file=<task-root-relative-path>`
 - `base=<branch-base-ref>`
 
-The defaults (`working`, `changes`, `diff`, no file, no base) are omitted.
-Unknown enum values, parent traversal, and root-escaping file paths normalize
-to safe defaults with history replacement. Branch keeps a valid explicit base;
-when the base is missing or no longer appears in the Git refs response, that
-response supplies the default and Review replaces the resolved base into the
-URL. The resolved branch base remains route-owned while the other Review axes
-or scope change. Async Git and filesystem responses fill the prepared Review
-but do not decide its selected path or axes.
+Defaults (`working`, `changes`, `diff`, no file, no base) are omitted. Invalid
+enums and root-escaping paths normalize to safe defaults. A Branch response
+may replace an absent or invalid base with the normalized current base, but
+asynchronous data does not decide the selected scope, navigator, viewer, or
+path.
 
-## Route Definitions
+Git Compare preserves `base`, `head`, and `file`. Git Log preserves `page`,
+`sha`, and `file`. GitHub lists and details preserve `page`; Pull Request Files
+also preserves `file`. Paths are repository-relative and reject parent
+traversal.
 
-`frontend/navigation-routes.js` keeps the route schema in an internal
-`ROUTE_DEFINITIONS` table. Each entry is a concrete URL pattern such as
-`/git/log` or `/github/pulls/[number]/files`. A route entry owns parsing, path
-generation, query parameters, parent-route behavior, and
-surface/domain/target metadata for that URL variant. `routeMode(route)` returns
-the route kind as the domain-local mode.
+## Route definitions
 
-Route object matching is generated from the route kind, URL pattern parameters,
-rest path segments, and target metadata. Add a custom matcher only for a route
-variant that cannot be described by those fields.
+`frontend/navigation-routes.js` is the pure central schema. Its internal
+`ROUTE_DEFINITIONS` entries own parsing, URL generation, query normalization,
+parent calculation, and surface/domain/target metadata. They do not own API
+requests, selected Task state, or component activation.
 
-The exported helpers remain the public interface:
+The public helpers are:
 
 - `parseRoute(url)`
 - `routeUrl(route)`
@@ -109,93 +115,83 @@ The exported helpers remain the public interface:
 - `routeMode(route)`
 - `routeTarget(route)`
 
-Adding a route variant should mean adding one route definition plus route helper
-tests. The table is an implementation detail and is not exported.
+Git and GitHub route objects preserve their domain-local `kind` (`compare`,
+`log`, `issues`, or `pulls`) and add the mandatory `threadId`; they are not
+flattened into synthetic `kind: "tasks"` objects. Every canonical definition
+reports `task-workspace` as its surface.
 
-## Parent Routes
+## Preparation and activation
 
-Back and close controls use deterministic parent routes:
+Route handling is deliberately split:
 
-- file viewer -> file list at the parent path
-- diff file -> diff list
-- compare file -> compare list with the same refs
-- commit file -> commit detail
-- commit detail -> log list
-- issue detail -> issue list
-- PR file -> PR files
-- PR files -> PR detail
-- PR detail -> PR list
-- task detail -> Tasks home
-- task Review file -> the same Review route without `file`
-- task Review list -> Tasks home
-- new task -> Tasks home
-- Tasks home -> no parent
-- standalone review workspace close -> standalone files at the same cwd
+1. parse the URL;
+2. synchronously prepare the requested Task/domain/list/detail/file shell;
+3. load the canonical Task by `threadId`;
+4. derive its repository/worktree snapshot;
+5. activate the requested child and reconcile canonical domain data.
 
-Task detail routes use Codex app-server `threadId` values directly. Caffold does
-not mint a separate durable task ID. A direct route for an unmanaged thread
-performs a metadata-only read and shows the Continue gate without resuming or
-subscribing to the thread.
+`prepareRoute(route)` is API-free. A deep reload therefore presents the final
+destination shell without flashing Tasks home, Conversation, or a domain list.
+Missing Task, repository, or GitHub context remains in the requested shell with
+Retry instead of redirecting elsewhere.
 
-Nested Back controls use these parent routes, so browser back/forward can replay
-the same semantic file and list boundaries. The compact Task-detail
-Back-to-Tasks control is an explicit workspace exit instead: Conversation,
-Working Tree, and Branch comparison all replace the current entry with Tasks
-home. It does not reuse Review's file-to-navigator Back or mutate the retained
-Task detail component.
+Task switches, route changes, repository-context changes, and child
+deactivation invalidate the relevant request generations. A late response may
+not patch or reactivate a stale destination.
 
-Conversation -> Review pushes a history entry. Scope, navigator, viewer, and
-base changes replace the current Review entry because they refine one review
-workspace rather than open a new destination. The first file selection pushes
-the file parent boundary; later file selections replace that file entry. On
-phone, the visible Review Back control removes only `file`, matching the
-semantic parent returned by `parentRoute`.
+## Parent and Back behavior
 
-## Browser API
+`parentRoute(route)` defines deterministic visible parents:
 
-The Navigation API is the primary integration point. Initial page load is handled
-explicitly because the Navigation API does not fire `navigate` for the first
-document load. A small History API fallback keeps the same route interface usable
-in older browsers.
+- Integrated Review file -> the same Review route without `file`;
+- Git Compare file -> Compare list with the same refs;
+- Git Log file -> commit; commit -> Log list;
+- Issue detail -> Issues list;
+- PR file -> PR Files; PR Files -> PR detail; PR detail -> PR list;
+- Task child root or Conversation -> Tasks home;
+- New Task -> Tasks home;
+- Settings section -> Settings list.
 
-Navigation entry state is reserved for ephemeral UI state such as scroll
-restoration. Durable review state must be recoverable from the URL and current
-backend APIs.
+Browser Back remains ordinary history traversal. Visible Back is a semantic
+parent action and follows the explicit history policy below. On compact layouts
+exactly one contextual Back is shown, with deepest-visible priority: file,
+domain detail, then Task. Desktop does not add a file Back when the
+corresponding navigator is simultaneously visible.
 
-## Route Lifecycle
+Conversation, Integrated Review, Git, and GitHub share the same parent. A root
+child Back therefore targets Tasks home; switching siblings uses the Task
+Summary controls.
 
-Every routed surface follows the same lifecycle:
+## History policy
 
-1. Parse the URL into a semantic route.
-2. Prepare the target synchronously with `prepareRoute(route)`.
-3. Load cwd context, status, and content asynchronously.
-4. Refresh the already-prepared target with the loaded data.
+Route requests push by default. Opening a Task child, Git/GitHub list or detail,
+Compare or Log file, PR Files, changing Compare refs, and changing Log/GitHub
+pages therefore create replayable history entries. Domain-local visible Back
+and file-close actions also request their semantic parent through the default
+push policy; browser Back remains ordinary traversal of the entries already
+visited.
 
-`prepareRoute(route)` must not call APIs. It may only set the active surface,
-domain mode, subview, selected placeholder, shared chrome title/subtitle/back
-state, and mobile detail state implied by the route.
+Replacement is explicit and limited to cases that refine or canonicalize the
+current destination: `/tasks` canonicalization, invalid-route normalization,
+compact Task exit, and Integrated Review axis/base changes. Integrated Review's
+first file selection pushes its file boundary; later file selections replace
+that file entry, and clearing the selected file replaces it with the same
+Review route without `file`.
 
-The URL is the source of truth for whether the target is a list, detail, files,
-or file viewer surface. Async loading results may fill that target, but they
-must not be required to decide which target is visible.
+Every route writer preserves all fields owned by the active domain when
+changing one field.
 
-This matters most for reload and direct URL entry. A PR file route such as
-`/github/pulls/:number/files?cwd=...&file=...` should prepare the PR files
-viewer immediately. It should not show the file browser, PR list, or PR detail
-while GitHub status, PR file lists, or diffs are loading.
+Navigation entry state is reserved for ephemeral browser state such as scroll
+restoration. Durable semantic state must be recoverable from the URL and
+canonical Task/domain APIs.
 
-GitHub status setters must not implicitly load Issues or Pull Requests lists.
-List loading belongs to list routes only. Detail and file routes must remain
-independently reloadable even when no list cache exists.
+## Server fallback and tests
 
-## Server Fallback
+The Rust server serves the application shell for `/`, `/settings*`, and known
+`/tasks*` frontend routes. API and asset paths retain their own errors. Unknown
+frontend paths return the general unknown-route response.
 
-The Rust server serves the app shell for `/`, `/settings`, and known frontend
-routes under `/files`, `/git`, `/github`, and `/tasks`. API and asset routes stay explicit
-and should continue returning their real errors when a path is missing.
-
-## Test Contract
-
-Routing changes should be covered by Playwright tests for direct entry, reload,
-and browser back/forward across desktop, foldable, and phone projects when the
-view affects mobile review behavior.
+Route changes require pure route-helper coverage plus browser coverage for
+direct entry, reload, internal navigation, deterministic Back, browser
+Back/forward, stale-response rejection, and desktop/foldable/phone presentation
+where layout changes the visible controls.

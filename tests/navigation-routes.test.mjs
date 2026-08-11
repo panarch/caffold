@@ -12,42 +12,24 @@ import {
 } from "../frontend/navigation-routes.js";
 
 globalThis.window = {
-  location: {
-    origin: "http://caffold.test",
-  },
+  location: { origin: "http://caffold.test" },
 };
 
-test("parses and serializes routes canonically", () => {
+test("parses and serializes Task-scoped routes canonically", () => {
   const cases = [
     ["/", { kind: "tasks", new: false, threadId: "", cwd: "" }, "/"],
     ["/settings", { kind: "settings", section: "" }, "/settings"],
-    [
-      "/settings/appearance",
-      { kind: "settings", section: "appearance" },
-      "/settings/appearance",
-    ],
-    [
-      "/settings/codex",
-      { kind: "settings", section: "codex" },
-      "/settings/codex",
-    ],
-    [
-      "/settings/about",
-      { kind: "settings", section: "about" },
-      "/settings/about",
-    ],
-    [
-      "/tasks?cwd=Workspace%2Frust%2Fgluesql",
-      { kind: "tasks", new: false, threadId: "", cwd: "" },
-      "/",
-    ],
+    ["/settings/appearance", { kind: "settings", section: "appearance" }, "/settings/appearance"],
+    ["/settings/codex", { kind: "settings", section: "codex" }, "/settings/codex"],
+    ["/settings/about", { kind: "settings", section: "about" }, "/settings/about"],
+    ["/tasks", { kind: "tasks", new: false, threadId: "", cwd: "" }, "/"],
     [
       "/tasks/new?cwd=src",
       { kind: "tasks", new: true, threadId: "", cwd: "src" },
       "/tasks/new?cwd=src",
     ],
     [
-      "/tasks/thread%201?cwd=src",
+      "/tasks/thread%201",
       { kind: "tasks", new: false, threadId: "thread 1", cwd: "" },
       "/tasks/thread%201",
     ],
@@ -68,71 +50,45 @@ test("parses and serializes routes canonically", () => {
       "/tasks/thread%201/review?scope=branch&nav=files&view=source&file=src%2Flib.rs&base=origin%2Fmain",
     ],
     [
-      "/tasks/thread/review?scope=invalid&nav=nope&view=raw&file=..%2Fsecret",
-      {
-        kind: "tasks",
-        new: false,
-        threadId: "thread",
-        cwd: "",
-        review: true,
-        reviewScope: "working",
-        reviewNavigator: "changes",
-        reviewViewer: "diff",
-        path: "",
-        baseRef: "",
-      },
-      "/tasks/thread/review",
-    ],
-    [
-      "/files?cwd=Workspace%2Frust%2Fgluesql&file=core%2Fsrc%2Flib.rs",
-      { kind: "files", cwd: "Workspace/rust/gluesql", path: "core/src/lib.rs" },
-      "/files?cwd=Workspace%2Frust%2Fgluesql&file=core%2Fsrc%2Flib.rs",
-    ],
-    [
-      "/git/diff?cwd=repo&file=src%2Flib.rs",
-      { kind: "diff", cwd: "repo", path: "src/lib.rs" },
-      "/git/diff?cwd=repo&file=src%2Flib.rs",
-    ],
-    [
-      "/git/compare?cwd=repo&base=origin%2Fmain&head=feature%2Fx&file=src%2Flib.rs",
+      "/tasks/thread/git/compare?base=origin%2Fmain&head=feature%2Fx&file=src%2Flib.rs",
       {
         kind: "compare",
-        cwd: "repo",
+        threadId: "thread",
         baseRef: "origin/main",
         headRef: "feature/x",
         path: "src/lib.rs",
       },
-      "/git/compare?cwd=repo&base=origin%2Fmain&head=feature%2Fx&file=src%2Flib.rs",
+      "/tasks/thread/git/compare?base=origin%2Fmain&head=feature%2Fx&file=src%2Flib.rs",
     ],
     [
-      "/git/log?cwd=repo&page=2&sha=abcdef&file=src%2Flib.rs",
-      { kind: "log", cwd: "repo", page: 2, sha: "abcdef", path: "src/lib.rs" },
-      "/git/log?cwd=repo&page=2&sha=abcdef&file=src%2Flib.rs",
+      "/tasks/thread/git/log?page=2&sha=abcdef&file=src%2Flib.rs",
+      { kind: "log", threadId: "thread", page: 2, sha: "abcdef", path: "src/lib.rs" },
+      "/tasks/thread/git/log?page=2&sha=abcdef&file=src%2Flib.rs",
     ],
     [
-      "/github/issues?cwd=repo&page=2",
-      { kind: "issues", cwd: "repo", page: 2, number: null },
-      "/github/issues?cwd=repo&page=2",
+      "/tasks/thread/github/issues?page=2",
+      { kind: "issues", threadId: "thread", page: 2, number: null },
+      "/tasks/thread/github/issues?page=2",
     ],
     [
-      "/github/issues/42?cwd=repo",
-      { kind: "issues", cwd: "repo", page: 1, number: 42 },
-      "/github/issues/42?cwd=repo",
+      "/tasks/thread/github/issues/42",
+      { kind: "issues", threadId: "thread", page: 1, number: 42 },
+      "/tasks/thread/github/issues/42",
     ],
     [
-      "/github/pulls?cwd=repo&page=2",
-      { kind: "pulls", cwd: "repo", page: 2, number: null, files: false, path: "" },
-      "/github/pulls?cwd=repo&page=2",
+      "/tasks/thread/github/pulls?page=2",
+      { kind: "pulls", threadId: "thread", page: 2, number: null, files: false, path: "" },
+      "/tasks/thread/github/pulls?page=2",
     ],
     [
-      "/github/pulls/12?cwd=repo",
-      { kind: "pulls", cwd: "repo", page: 1, number: 12, files: false, path: "" },
-      "/github/pulls/12?cwd=repo",
+      "/tasks/thread/github/pulls/12",
+      { kind: "pulls", threadId: "thread", page: 1, number: 12, files: false, path: "" },
+      "/tasks/thread/github/pulls/12",
     ],
     [
-      "/github/pulls/12/files?cwd=repo&page=2&file=src%2Flib.rs",
-      { kind: "pulls", cwd: "repo", page: 2, number: 12, files: true, path: "src/lib.rs" },
-      "/github/pulls/12/files?cwd=repo&page=2&file=src%2Flib.rs",
+      "/tasks/thread/github/pulls/12/files?page=2&file=src%2Flib.rs",
+      { kind: "pulls", threadId: "thread", page: 2, number: 12, files: true, path: "src/lib.rs" },
+      "/tasks/thread/github/pulls/12/files?page=2&file=src%2Flib.rs",
     ],
   ];
 
@@ -143,44 +99,41 @@ test("parses and serializes routes canonically", () => {
   }
 });
 
-test("derives deterministic parent routes", () => {
+test("derives deterministic Task child parents", () => {
   const cases = [
     ["/settings", null],
     ["/settings/appearance", "/settings"],
-    ["/settings/codex", "/settings"],
-    ["/settings/about", "/settings"],
     ["/", null],
     ["/tasks/new?cwd=src", "/"],
-    ["/tasks/thread?cwd=src", "/"],
+    ["/tasks/thread", "/"],
     [
       "/tasks/thread/review?scope=branch&nav=files&view=source&file=src%2Flib.rs&base=origin%2Fmain",
       "/tasks/thread/review?scope=branch&nav=files&view=source&base=origin%2Fmain",
     ],
     ["/tasks/thread/review", "/"],
-    ["/files?cwd=repo&file=src%2Flib.rs", "/files?cwd=repo"],
-    ["/files?cwd=repo", null],
-    ["/git/diff?cwd=repo&file=src%2Flib.rs", "/git/diff?cwd=repo"],
-    ["/git/diff?cwd=repo", "/files?cwd=repo"],
     [
-      "/git/compare?cwd=repo&base=main&head=feature&file=src%2Flib.rs",
-      "/git/compare?cwd=repo&base=main&head=feature",
+      "/tasks/thread/git/compare?base=main&head=feature&file=src%2Flib.rs",
+      "/tasks/thread/git/compare?base=main&head=feature",
     ],
-    ["/git/compare?cwd=repo&base=main&head=feature", "/files?cwd=repo"],
+    ["/tasks/thread/git/compare?base=main&head=feature", "/"],
     [
-      "/git/log?cwd=repo&page=2&sha=abcdef&file=src%2Flib.rs",
-      "/git/log?cwd=repo&page=2&sha=abcdef",
+      "/tasks/thread/git/log?page=2&sha=abcdef&file=src%2Flib.rs",
+      "/tasks/thread/git/log?page=2&sha=abcdef",
     ],
-    ["/git/log?cwd=repo&page=2&sha=abcdef", "/git/log?cwd=repo&page=2"],
-    ["/git/log?cwd=repo&page=2", "/files?cwd=repo"],
-    ["/github/issues/42?cwd=repo&page=2", "/github/issues?cwd=repo&page=2"],
-    ["/github/issues?cwd=repo&page=2", "/files?cwd=repo"],
+    ["/tasks/thread/git/log?page=2&sha=abcdef", "/tasks/thread/git/log?page=2"],
+    ["/tasks/thread/git/log?page=2", "/"],
+    ["/tasks/thread/github/issues/42?page=2", "/tasks/thread/github/issues?page=2"],
+    ["/tasks/thread/github/issues?page=2", "/"],
     [
-      "/github/pulls/12/files?cwd=repo&page=2&file=src%2Flib.rs",
-      "/github/pulls/12/files?cwd=repo&page=2",
+      "/tasks/thread/github/pulls/12/files?page=2&file=src%2Flib.rs",
+      "/tasks/thread/github/pulls/12/files?page=2",
     ],
-    ["/github/pulls/12/files?cwd=repo&page=2", "/github/pulls/12?cwd=repo&page=2"],
-    ["/github/pulls/12?cwd=repo&page=2", "/github/pulls?cwd=repo&page=2"],
-    ["/github/pulls?cwd=repo&page=2", "/files?cwd=repo"],
+    [
+      "/tasks/thread/github/pulls/12/files?page=2",
+      "/tasks/thread/github/pulls/12?page=2",
+    ],
+    ["/tasks/thread/github/pulls/12?page=2", "/tasks/thread/github/pulls?page=2"],
+    ["/tasks/thread/github/pulls?page=2", "/"],
   ];
 
   for (const [url, expectedParent] of cases) {
@@ -189,78 +142,63 @@ test("derives deterministic parent routes", () => {
   }
 });
 
-test("exposes surface, domain, mode, and target metadata", () => {
+test("exposes Task workspace, domain, mode, and target metadata", () => {
   const cases = [
-    ["/", "task-workspace", null, "tasks", "home"],
-    ["/settings", "task-workspace", null, "settings", "list"],
-    ["/settings/appearance", "task-workspace", null, "settings", "appearance"],
-    ["/settings/codex", "task-workspace", null, "settings", "codex"],
-    ["/settings/about", "task-workspace", null, "settings", "about"],
-    ["/tasks/new", "task-workspace", null, "tasks", "new"],
-    ["/tasks/thread", "task-workspace", null, "tasks", "detail"],
-    ["/tasks/thread/review", "task-workspace", null, "tasks", "review"],
-    [
-      "/tasks/thread/review?file=src%2Flib.rs",
-      "task-workspace",
-      null,
-      "tasks",
-      "review-file",
-    ],
-    ["/files?cwd=repo", "files", null, "files", "list"],
-    ["/files?cwd=repo&file=src%2Flib.rs", "files", null, "files", "path"],
-    ["/git/diff?cwd=repo", "review", "git", "diff", "list"],
-    ["/git/diff?cwd=repo&file=src%2Flib.rs", "review", "git", "diff", "file"],
-    ["/git/compare?cwd=repo", "review", "git", "compare", "list"],
-    ["/git/log?cwd=repo", "review", "git", "log", "list"],
-    ["/git/log?cwd=repo&sha=abcdef", "review", "git", "log", "commit"],
-    ["/github/issues?cwd=repo", "review", "github", "issues", "list"],
-    ["/github/issues/42?cwd=repo", "review", "github", "issues", "detail"],
-    ["/github/pulls?cwd=repo", "review", "github", "pulls", "list"],
-    ["/github/pulls/12?cwd=repo", "review", "github", "pulls", "detail"],
-    ["/github/pulls/12/files?cwd=repo", "review", "github", "pulls", "files"],
-    [
-      "/github/pulls/12/files?cwd=repo&file=src%2Flib.rs",
-      "review",
-      "github",
-      "pulls",
-      "file",
-    ],
+    ["/", null, "tasks", "home"],
+    ["/settings", null, "settings", "list"],
+    ["/tasks/new", null, "tasks", "new"],
+    ["/tasks/thread", null, "tasks", "detail"],
+    ["/tasks/thread/review", null, "tasks", "review"],
+    ["/tasks/thread/review?file=src%2Flib.rs", null, "tasks", "review-file"],
+    ["/tasks/thread/git/compare", "git", "compare", "list"],
+    ["/tasks/thread/git/compare?file=src%2Flib.rs", "git", "compare", "file"],
+    ["/tasks/thread/git/log", "git", "log", "list"],
+    ["/tasks/thread/git/log?sha=abcdef", "git", "log", "commit"],
+    ["/tasks/thread/github/issues", "github", "issues", "list"],
+    ["/tasks/thread/github/issues/42", "github", "issues", "detail"],
+    ["/tasks/thread/github/pulls", "github", "pulls", "list"],
+    ["/tasks/thread/github/pulls/12", "github", "pulls", "detail"],
+    ["/tasks/thread/github/pulls/12/files", "github", "pulls", "files"],
+    ["/tasks/thread/github/pulls/12/files?file=src%2Flib.rs", "github", "pulls", "file"],
   ];
 
-  for (const [url, surface, domain, mode, target] of cases) {
+  for (const [url, domain, mode, target] of cases) {
     const route = parseRoute(url);
-    assert.equal(routeSurface(route), surface);
+    assert.equal(routeSurface(route), "task-workspace");
     assert.equal(routeDomain(route), domain);
     assert.equal(routeMode(route), mode);
     assert.equal(routeTarget(route), target);
   }
 });
 
-test("rejects removed project routes and invalid app paths", () => {
+test("rejects obsolete standalone and invalid routes", () => {
   for (const url of [
-    "/api/health",
+    "/files",
+    "/git/diff?cwd=repo",
+    "/git/compare?cwd=repo",
+    "/git/log?cwd=repo",
+    "/github/issues?cwd=repo",
+    "/github/pulls?cwd=repo",
     "/projects",
-    "/projects/prj/files",
-    "/projects/prj/tasks",
-    "/github/issues/not-a-number",
-    "/github/pulls/not-a-number",
+    "/tasks/thread/github/issues/not-a-number",
+    "/tasks/thread/github/pulls/not-a-number",
   ]) {
     assert.equal(parseRoute(url), null);
   }
 });
 
-test("compares routes by canonical URL", () => {
+test("compares Task-scoped routes by canonical URL", () => {
   assert.equal(
     routeEquals(
-      { kind: "issues", cwd: "repo", page: 1, number: null },
-      parseRoute("/github/issues?cwd=repo"),
+      { kind: "issues", threadId: "thread", page: 1, number: null },
+      parseRoute("/tasks/thread/github/issues"),
     ),
     true,
   );
   assert.equal(
     routeEquals(
-      { kind: "issues", cwd: "repo", page: 2, number: null },
-      parseRoute("/github/issues?cwd=repo"),
+      { kind: "issues", threadId: "other", page: 1, number: null },
+      parseRoute("/tasks/thread/github/issues"),
     ),
     false,
   );

@@ -10,7 +10,7 @@ import "./diff-viewer.js";
 
 let viewerInstanceId = 0;
 
-class CaffoldFileViewer extends HTMLElement {
+class CaffoldReviewFileViewer extends HTMLElement {
   connectedCallback() {
     this.ensureDetailsPopoverId();
 
@@ -414,10 +414,6 @@ class CaffoldFileViewer extends HTMLElement {
   }
 
   refreshEventName() {
-    if (this.tagName === "CAFFOLD-FILE-VIEWER") {
-      return "caffold:refresh-file-viewer";
-    }
-
     const action = this.getAttribute("refresh-action");
     return action ? `caffold:${action}` : "";
   }
@@ -439,11 +435,7 @@ class CaffoldFileViewer extends HTMLElement {
   }
 }
 
-customElements.define("caffold-file-viewer", CaffoldFileViewer);
-customElements.define(
-  "caffold-review-file-viewer",
-  class CaffoldReviewFileViewer extends CaffoldFileViewer {},
-);
+customElements.define("caffold-review-file-viewer", CaffoldReviewFileViewer);
 
 function imageUrlWithRevision(path, revision) {
   const url = new URL(imageUrl(path));

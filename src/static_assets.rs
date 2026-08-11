@@ -64,60 +64,21 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         ))),
         "pages/layout.css" => Some(css(include_str!("../frontend/pages/layout.css"))),
         "pages/layout.js" => Some(js(include_str!("../frontend/pages/layout.js"))),
-        "pages/components/app-menu.css" => Some(css(include_str!(
-            "../frontend/pages/components/app-menu.css"
-        ))),
-        "pages/components/app-menu.js" => {
-            Some(js(include_str!("../frontend/pages/components/app-menu.js")))
-        }
-        "pages/components/pathbar.css" => Some(css(include_str!(
-            "../frontend/pages/components/pathbar.css"
-        ))),
-        "pages/components/pathbar.js" => {
-            Some(js(include_str!("../frontend/pages/components/pathbar.js")))
-        }
-        "pages/components/header-actions.css" => Some(css(include_str!(
-            "../frontend/pages/components/header-actions.css"
-        ))),
-        "pages/components/header-actions.js" => Some(js(include_str!(
-            "../frontend/pages/components/header-actions.js"
-        ))),
-        "pages/components/header-actions/codex-status.js" => Some(js(include_str!(
-            "../frontend/pages/components/header-actions/codex-status.js"
-        ))),
-        "pages/components/header-actions/codex-status-model.js" => Some(js(include_str!(
-            "../frontend/pages/components/header-actions/codex-status-model.js"
-        ))),
-        "pages/components/header-actions/git-status.js" => Some(js(include_str!(
-            "../frontend/pages/components/header-actions/git-status.js"
-        ))),
-        "pages/components/header-actions/github-status.js" => Some(js(include_str!(
-            "../frontend/pages/components/header-actions/github-status.js"
-        ))),
-        "pages/components/header-actions/shared.js" => Some(js(include_str!(
-            "../frontend/pages/components/header-actions/shared.js"
-        ))),
         "components/file-tree.css" => {
             Some(css(include_str!("../frontend/components/file-tree.css")))
         }
         "components/file-tree.js" => Some(js(include_str!("../frontend/components/file-tree.js"))),
-        "components/file-browser.css" => {
-            Some(css(include_str!("../frontend/components/file-browser.css")))
-        }
-        "components/file-browser.js" => {
-            Some(js(include_str!("../frontend/components/file-browser.js")))
-        }
         "components/file-navigator.css" => Some(css(include_str!(
             "../frontend/components/file-navigator.css"
         ))),
         "components/file-navigator.js" => {
             Some(js(include_str!("../frontend/components/file-navigator.js")))
         }
-        "components/file-browser/list.css" => Some(css(include_str!(
-            "../frontend/components/file-browser/list.css"
+        "components/file-navigator/list.css" => Some(css(include_str!(
+            "../frontend/components/file-navigator/list.css"
         ))),
-        "components/file-browser/list.js" => Some(js(include_str!(
-            "../frontend/components/file-browser/list.js"
+        "components/file-navigator/list.js" => Some(js(include_str!(
+            "../frontend/components/file-navigator/list.js"
         ))),
         "components/review-panel-resizer.css" => Some(css(include_str!(
             "../frontend/components/review-panel-resizer.css"
@@ -129,8 +90,6 @@ pub fn get(path: &str) -> Option<StaticAsset> {
             "../frontend/components/review-responsive.js"
         ))),
         "watch.js" => Some(js(include_str!("../frontend/watch.js"))),
-        "pages/files/page.css" => Some(css(include_str!("../frontend/pages/files/page.css"))),
-        "pages/files/page.js" => Some(js(include_str!("../frontend/pages/files/page.js"))),
         "pages/(task-workspace)/settings/appearance/page.css" => Some(css(include_str!(
             "../frontend/pages/(task-workspace)/settings/appearance/page.css"
         ))),
@@ -154,6 +113,9 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         ))),
         "pages/(task-workspace)/settings/codex/page.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/settings/codex/page.js"
+        ))),
+        "pages/(task-workspace)/settings/codex/status-model.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/settings/codex/status-model.js"
         ))),
         "pages/(task-workspace)/settings/codex/components/runtime-restart-dialog.css" => {
             Some(css(include_str!(
@@ -324,6 +286,16 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/detail/review.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/detail/review.js"
         ))),
+        "pages/(task-workspace)/tasks/components/detail/review/changes-tree.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/review/changes-tree.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/review/changes-tree.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/review/changes-tree.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/components/navigator.css" => Some(css(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/navigator.css"
         ))),
@@ -342,48 +314,34 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/task-status.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/task-status.js"
         ))),
-        "pages/(review-workspace)/layout.css" => Some(css(include_str!(
-            "../frontend/pages/(review-workspace)/layout.css"
+        "pages/(task-workspace)/tasks/components/detail/(git)/layout.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/layout.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(git)/layout.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/layout.js"
         ))),
-        "pages/(review-workspace)/layout.js" => Some(js(include_str!(
-            "../frontend/pages/(review-workspace)/layout.js"
-        ))),
-        "pages/(review-workspace)/(git)/layout.css" => Some(css(include_str!(
-            "../frontend/pages/(review-workspace)/(git)/layout.css"
-        ))),
-        "pages/(review-workspace)/(git)/layout.js" => Some(js(include_str!(
-            "../frontend/pages/(review-workspace)/(git)/layout.js"
-        ))),
-        "pages/(review-workspace)/(git)/components/controls.css" => Some(css(include_str!(
-            "../frontend/pages/(review-workspace)/(git)/components/controls.css"
-        ))),
-        "pages/(review-workspace)/(git)/components/controls.js" => Some(js(include_str!(
-            "../frontend/pages/(review-workspace)/(git)/components/controls.js"
-        ))),
-        "pages/(review-workspace)/(git)/diff/page.css" => Some(css(include_str!(
-            "../frontend/pages/(review-workspace)/(git)/diff/page.css"
-        ))),
-        "pages/(review-workspace)/(git)/diff/page.js" => Some(js(include_str!(
-            "../frontend/pages/(review-workspace)/(git)/diff/page.js"
-        ))),
-        "components/git-diff-browser.css" => Some(css(include_str!(
-            "../frontend/components/git-diff-browser.css"
-        ))),
-        "components/git-diff-browser.js" => Some(js(include_str!(
-            "../frontend/components/git-diff-browser.js"
-        ))),
-        "components/git-diff-browser/changes-tree.css" => Some(css(include_str!(
-            "../frontend/components/git-diff-browser/changes-tree.css"
-        ))),
-        "components/git-diff-browser/changes-tree.js" => Some(js(include_str!(
-            "../frontend/components/git-diff-browser/changes-tree.js"
-        ))),
-        "pages/(review-workspace)/(git)/compare/page.css" => Some(css(include_str!(
-            "../frontend/pages/(review-workspace)/(git)/compare/page.css"
-        ))),
-        "pages/(review-workspace)/(git)/compare/page.js" => Some(js(include_str!(
-            "../frontend/pages/(review-workspace)/(git)/compare/page.js"
-        ))),
+        "pages/(task-workspace)/tasks/components/detail/(git)/components/controls.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/components/controls.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(git)/components/controls.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/components/controls.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(git)/compare/page.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/compare/page.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(git)/compare/page.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/compare/page.js"
+            )))
+        }
         "components/git-compare-browser.css" => Some(css(include_str!(
             "../frontend/components/git-compare-browser.css"
         ))),
@@ -396,103 +354,149 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "components/git-compare-browser/compare-tree.js" => Some(js(include_str!(
             "../frontend/components/git-compare-browser/compare-tree.js"
         ))),
-        "pages/(review-workspace)/(git)/(log)/layout.css" => Some(css(include_str!(
-            "../frontend/pages/(review-workspace)/(git)/(log)/layout.css"
-        ))),
-        "pages/(review-workspace)/(git)/(log)/layout.js" => Some(js(include_str!(
-            "../frontend/pages/(review-workspace)/(git)/(log)/layout.js"
-        ))),
-        "pages/(review-workspace)/(git)/(log)/list/page.css" => Some(css(include_str!(
-            "../frontend/pages/(review-workspace)/(git)/(log)/list/page.css"
-        ))),
-        "pages/(review-workspace)/(git)/(log)/list/page.js" => Some(js(include_str!(
-            "../frontend/pages/(review-workspace)/(git)/(log)/list/page.js"
-        ))),
-        "pages/(review-workspace)/(git)/(log)/commit/page.css" => Some(css(include_str!(
-            "../frontend/pages/(review-workspace)/(git)/(log)/commit/page.css"
-        ))),
-        "pages/(review-workspace)/(git)/(log)/commit/page.js" => Some(js(include_str!(
-            "../frontend/pages/(review-workspace)/(git)/(log)/commit/page.js"
-        ))),
-        "pages/(review-workspace)/(git)/(log)/commit/components/changes-tree.css" => {
+        "pages/(task-workspace)/tasks/components/detail/(git)/(log)/layout.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(review-workspace)/(git)/(log)/commit/components/changes-tree.css"
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/(log)/layout.css"
             )))
         }
-        "pages/(review-workspace)/(git)/(log)/commit/components/changes-tree.js" => {
+        "pages/(task-workspace)/tasks/components/detail/(git)/(log)/layout.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(review-workspace)/(git)/(log)/commit/components/changes-tree.js"
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/(log)/layout.js"
             )))
         }
-        "pages/(review-workspace)/(github)/layout.css" => Some(css(include_str!(
-            "../frontend/pages/(review-workspace)/(github)/layout.css"
-        ))),
-        "pages/(review-workspace)/(github)/layout.js" => Some(js(include_str!(
-            "../frontend/pages/(review-workspace)/(github)/layout.js"
-        ))),
-        "pages/(review-workspace)/(github)/components/markdown.js" => Some(js(include_str!(
-            "../frontend/pages/(review-workspace)/(github)/components/markdown.js"
-        ))),
-        "pages/(review-workspace)/(github)/(issues)/layout.css" => Some(css(include_str!(
-            "../frontend/pages/(review-workspace)/(github)/(issues)/layout.css"
-        ))),
-        "pages/(review-workspace)/(github)/(issues)/layout.js" => Some(js(include_str!(
-            "../frontend/pages/(review-workspace)/(github)/(issues)/layout.js"
-        ))),
-        "pages/(review-workspace)/(github)/(issues)/list/page.css" => Some(css(include_str!(
-            "../frontend/pages/(review-workspace)/(github)/(issues)/list/page.css"
-        ))),
-        "pages/(review-workspace)/(github)/(issues)/list/page.js" => Some(js(include_str!(
-            "../frontend/pages/(review-workspace)/(github)/(issues)/list/page.js"
-        ))),
-        "pages/(review-workspace)/(github)/(issues)/detail/page.css" => Some(css(include_str!(
-            "../frontend/pages/(review-workspace)/(github)/(issues)/detail/page.css"
-        ))),
-        "pages/(review-workspace)/(github)/(issues)/detail/page.js" => Some(js(include_str!(
-            "../frontend/pages/(review-workspace)/(github)/(issues)/detail/page.js"
-        ))),
-        "pages/(review-workspace)/(github)/(issues)/components/task-start-dialog.css" => {
+        "pages/(task-workspace)/tasks/components/detail/(git)/(log)/list/page.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(review-workspace)/(github)/(issues)/components/task-start-dialog.css"
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/(log)/list/page.css"
             )))
         }
-        "pages/(review-workspace)/(github)/(issues)/components/task-start-dialog.js" => {
+        "pages/(task-workspace)/tasks/components/detail/(git)/(log)/list/page.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(review-workspace)/(github)/(issues)/components/task-start-dialog.js"
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/(log)/list/page.js"
             )))
         }
-        "pages/(review-workspace)/(github)/(pulls)/layout.css" => Some(css(include_str!(
-            "../frontend/pages/(review-workspace)/(github)/(pulls)/layout.css"
-        ))),
-        "pages/(review-workspace)/(github)/(pulls)/layout.js" => Some(js(include_str!(
-            "../frontend/pages/(review-workspace)/(github)/(pulls)/layout.js"
-        ))),
-        "pages/(review-workspace)/(github)/(pulls)/list/page.css" => Some(css(include_str!(
-            "../frontend/pages/(review-workspace)/(github)/(pulls)/list/page.css"
-        ))),
-        "pages/(review-workspace)/(github)/(pulls)/list/page.js" => Some(js(include_str!(
-            "../frontend/pages/(review-workspace)/(github)/(pulls)/list/page.js"
-        ))),
-        "pages/(review-workspace)/(github)/(pulls)/detail/page.css" => Some(css(include_str!(
-            "../frontend/pages/(review-workspace)/(github)/(pulls)/detail/page.css"
-        ))),
-        "pages/(review-workspace)/(github)/(pulls)/detail/page.js" => Some(js(include_str!(
-            "../frontend/pages/(review-workspace)/(github)/(pulls)/detail/page.js"
-        ))),
-        "pages/(review-workspace)/(github)/(pulls)/files/page.css" => Some(css(include_str!(
-            "../frontend/pages/(review-workspace)/(github)/(pulls)/files/page.css"
-        ))),
-        "pages/(review-workspace)/(github)/(pulls)/files/page.js" => Some(js(include_str!(
-            "../frontend/pages/(review-workspace)/(github)/(pulls)/files/page.js"
-        ))),
-        "pages/(review-workspace)/(github)/(pulls)/files/components/tree.css" => {
+        "pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/page.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(review-workspace)/(github)/(pulls)/files/components/tree.css"
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/page.css"
             )))
         }
-        "pages/(review-workspace)/(github)/(pulls)/files/components/tree.js" => {
+        "pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/page.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(review-workspace)/(github)/(pulls)/files/components/tree.js"
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/page.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/components/changes-tree.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/components/changes-tree.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/components/changes-tree.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/components/changes-tree.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/layout.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/layout.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/layout.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/layout.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/components/markdown.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/components/markdown.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/layout.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(issues)/layout.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/layout.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(issues)/layout.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/list/page.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(issues)/list/page.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/list/page.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(issues)/list/page.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/detail/page.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(issues)/detail/page.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/detail/page.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(issues)/detail/page.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/components/task-start-dialog.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(issues)/components/task-start-dialog.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/components/task-start-dialog.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(issues)/components/task-start-dialog.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/layout.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/layout.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/layout.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/layout.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/list/page.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/list/page.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/list/page.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/list/page.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/detail/page.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/detail/page.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/detail/page.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/detail/page.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/page.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/page.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/page.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/page.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/components/tree.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/components/tree.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/components/tree.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/components/tree.js"
             )))
         }
         "components/code-viewer.css" => {
@@ -622,28 +626,13 @@ mod tests {
         assert_eq!(codex_brand.content_type, "image/png");
         assert!(codex_brand.body.starts_with(b"\x89PNG\r\n\x1a\n"));
 
-        let codex_status_js =
-            get("pages/components/header-actions/codex-status.js").expect("codex status js asset");
-        assert_eq!(
-            codex_status_js.content_type,
-            "text/javascript; charset=utf-8"
-        );
-        assert!(codex_status_js.body.starts_with(b"import "));
-
-        assert!(get("pages/components/header-actions/codex-status.css").is_none());
-
-        let codex_status_model = get("pages/components/header-actions/codex-status-model.js")
-            .expect("codex status model asset");
+        let codex_status_model = get("pages/(task-workspace)/settings/codex/status-model.js")
+            .expect("Codex settings status model asset");
         assert_eq!(
             codex_status_model.content_type,
             "text/javascript; charset=utf-8"
         );
         assert!(codex_status_model.body.starts_with(b"export "));
-
-        let git_status_js =
-            get("pages/components/header-actions/git-status.js").expect("git status js asset");
-        assert_eq!(git_status_js.content_type, "text/javascript; charset=utf-8");
-        assert!(git_status_js.body.starts_with(b"import "));
 
         let review_responsive_js =
             get("components/review-responsive.js").expect("review responsive js asset");
@@ -657,39 +646,9 @@ mod tests {
                 .starts_with(b"export const REVIEW_SINGLE_PANE_MAX_WIDTH_PX")
         );
 
-        let github_status_js = get("pages/components/header-actions/github-status.js")
-            .expect("github status js asset");
-        assert_eq!(
-            github_status_js.content_type,
-            "text/javascript; charset=utf-8"
-        );
-        assert!(github_status_js.body.starts_with(b"import "));
-
-        let header_actions_shared = get("pages/components/header-actions/shared.js")
-            .expect("header actions shared js asset");
-        assert_eq!(
-            header_actions_shared.content_type,
-            "text/javascript; charset=utf-8"
-        );
-        assert!(header_actions_shared.body.starts_with(b"import "));
-        assert!(get("components/header-actions/codex-status.js").is_none());
-        assert!(get("components/header-actions/codex-status.css").is_none());
-        assert!(get("components/header-actions/git-status.js").is_none());
-        assert!(get("components/header-actions/github-status.js").is_none());
-        assert!(get("components/header-actions/shared.js").is_none());
-        assert!(get("components/header-actions.js").is_none());
-        assert!(get("components/header-actions.css").is_none());
-        assert!(get("components/pathbar.js").is_none());
-        assert!(get("components/pathbar.css").is_none());
-        assert!(get("components/project-switcher.js").is_none());
-        assert!(get("components/project-switcher.css").is_none());
-
-        let app_menu = get("pages/components/app-menu.js").expect("app menu js asset");
-        assert_eq!(app_menu.content_type, "text/javascript; charset=utf-8");
-        assert!(app_menu.body.starts_with(b"import "));
-
-        assert!(get("pages/components/about-dialog.js").is_none());
-        assert!(get("pages/components/about-dialog.css").is_none());
+        assert!(get("pages/components/header-actions.js").is_none());
+        assert!(get("pages/components/app-menu.js").is_none());
+        assert!(get("pages/components/pathbar.js").is_none());
 
         let settings_module = get("settings.js").expect("settings module asset");
         assert_eq!(
@@ -751,20 +710,11 @@ mod tests {
         );
         assert!(app_shell_layout.body.starts_with(b"import "));
 
-        let review_workspace_layout_css =
-            get("pages/(review-workspace)/layout.css").expect("review workspace layout css asset");
-        assert_eq!(
-            review_workspace_layout_css.content_type,
-            "text/css; charset=utf-8"
-        );
-        assert!(
-            review_workspace_layout_css
-                .body
-                .starts_with(b"caffold-review-workspace")
-        );
+        assert!(get("pages/(review-workspace)/layout.css").is_none());
 
         let git_review_layout =
-            get("pages/(review-workspace)/(git)/layout.js").expect("git review layout js");
+            get("pages/(task-workspace)/tasks/components/detail/(git)/layout.js")
+                .expect("git review layout js");
         assert_eq!(
             git_review_layout.content_type,
             "text/javascript; charset=utf-8"
@@ -773,11 +723,12 @@ mod tests {
         assert!(
             git_review_layout
                 .body
-                .windows(b"caffold-git-review-layout".len())
-                .any(|window| window == b"caffold-git-review-layout")
+                .windows(b"caffold-task-git-layout".len())
+                .any(|window| window == b"caffold-task-git-layout")
         );
-        let git_review_controls = get("pages/(review-workspace)/(git)/components/controls.js")
-            .expect("git review controls js");
+        let git_review_controls =
+            get("pages/(task-workspace)/tasks/components/detail/(git)/components/controls.js")
+                .expect("git review controls js");
         assert_eq!(
             git_review_controls.content_type,
             "text/javascript; charset=utf-8"
@@ -788,8 +739,9 @@ mod tests {
                 .windows(b"caffold-git-review-controls".len())
                 .any(|window| window == b"caffold-git-review-controls")
         );
-        let git_review_controls_css = get("pages/(review-workspace)/(git)/components/controls.css")
-            .expect("git review controls css");
+        let git_review_controls_css =
+            get("pages/(task-workspace)/tasks/components/detail/(git)/components/controls.css")
+                .expect("git review controls css");
         assert_eq!(
             git_review_controls_css.content_type,
             "text/css; charset=utf-8"
@@ -824,7 +776,8 @@ mod tests {
         );
 
         let compare_page =
-            get("pages/(review-workspace)/(git)/compare/page.js").expect("compare page js");
+            get("pages/(task-workspace)/tasks/components/detail/(git)/compare/page.js")
+                .expect("compare page js");
         assert_eq!(compare_page.content_type, "text/javascript; charset=utf-8");
         assert!(compare_page.body.starts_with(b"import "));
         assert!(
@@ -853,7 +806,7 @@ mod tests {
                 .windows(b"caffold-git-compare-tree".len())
                 .any(|window| window == b"caffold-git-compare-tree")
         );
-        assert!(get("pages/(review-workspace)/(git)/compare/components/compare-tree.js").is_none());
+        assert!(get("pages/(task-workspace)/tasks/components/detail/(git)/compare/components/compare-tree.js").is_none());
 
         let task_workspace_layout =
             get("pages/(task-workspace)/layout.js").expect("task workspace layout js");
@@ -982,8 +935,8 @@ mod tests {
                 .windows(b"TaskDetailStream".len())
                 .any(|window| window == b"TaskDetailStream")
         );
-        let task_stream = get("pages/(task-workspace)/tasks/stream.js")
-            .expect("shared task stream js");
+        let task_stream =
+            get("pages/(task-workspace)/tasks/stream.js").expect("shared task stream js");
         assert_eq!(task_stream.content_type, "text/javascript; charset=utf-8");
         assert!(
             task_stream
@@ -1150,25 +1103,9 @@ mod tests {
         assert!(get("pages/tasks/page.js").is_none());
         assert!(get("pages/tasks/page.css").is_none());
 
-        let diff_page = get("pages/(review-workspace)/(git)/diff/page.js").expect("diff page js");
-        assert_eq!(diff_page.content_type, "text/javascript; charset=utf-8");
-        assert!(diff_page.body.starts_with(b"import "));
-        assert!(
-            diff_page
-                .body
-                .windows(b"caffold-git-diff-page".len())
-                .any(|window| window == b"caffold-git-diff-page")
-        );
-        let diff_browser = get("components/git-diff-browser.js").expect("git diff browser js");
-        assert_eq!(diff_browser.content_type, "text/javascript; charset=utf-8");
-        assert!(
-            diff_browser
-                .body
-                .windows(b"caffold-git-diff-browser".len())
-                .any(|window| window == b"caffold-git-diff-browser")
-        );
         let diff_changes_tree =
-            get("components/git-diff-browser/changes-tree.js").expect("diff changes tree js");
+            get("pages/(task-workspace)/tasks/components/detail/review/changes-tree.js")
+                .expect("integrated review changes tree js");
         assert_eq!(
             diff_changes_tree.content_type,
             "text/javascript; charset=utf-8"
@@ -1179,12 +1116,12 @@ mod tests {
                 .windows(b"caffold-git-diff-changes-tree".len())
                 .any(|window| window == b"caffold-git-diff-changes-tree")
         );
-        assert!(get("pages/(review-workspace)/(git)/working-tree/page.js").is_none());
-        assert!(get("components/changes-tree.js").is_none());
-        assert!(get("pages/(review-workspace)/(git)/diff/components/changes-tree.js").is_none());
+        assert!(get("components/git-diff-browser.js").is_none());
+        assert!(get("pages/(task-workspace)/tasks/components/detail/(git)/diff/page.js").is_none());
 
         let github_review_layout =
-            get("pages/(review-workspace)/(github)/layout.js").expect("github review layout js");
+            get("pages/(task-workspace)/tasks/components/detail/(github)/layout.js")
+                .expect("github review layout js");
         assert_eq!(
             github_review_layout.content_type,
             "text/javascript; charset=utf-8"
@@ -1193,11 +1130,12 @@ mod tests {
         assert!(
             github_review_layout
                 .body
-                .windows(b"caffold-github-review-layout".len())
-                .any(|window| window == b"caffold-github-review-layout")
+                .windows(b"caffold-task-github-layout".len())
+                .any(|window| window == b"caffold-task-github-layout")
         );
-        let github_markdown = get("pages/(review-workspace)/(github)/components/markdown.js")
-            .expect("github markdown component js");
+        let github_markdown =
+            get("pages/(task-workspace)/tasks/components/detail/(github)/components/markdown.js")
+                .expect("github markdown component js");
         assert_eq!(
             github_markdown.content_type,
             "text/javascript; charset=utf-8"
@@ -1215,7 +1153,8 @@ mod tests {
         );
 
         let issues_layout =
-            get("pages/(review-workspace)/(github)/(issues)/layout.js").expect("issues layout js");
+            get("pages/(task-workspace)/tasks/components/detail/(github)/(issues)/layout.js")
+                .expect("issues layout js");
         assert_eq!(issues_layout.content_type, "text/javascript; charset=utf-8");
         assert!(issues_layout.body.starts_with(b"import "));
         assert!(
@@ -1225,8 +1164,9 @@ mod tests {
                 .any(|window| window == b"caffold-github-issues-layout")
         );
 
-        let issues_list_page = get("pages/(review-workspace)/(github)/(issues)/list/page.js")
-            .expect("issues list page js");
+        let issues_list_page =
+            get("pages/(task-workspace)/tasks/components/detail/(github)/(issues)/list/page.js")
+                .expect("issues list page js");
         assert_eq!(
             issues_list_page.content_type,
             "text/javascript; charset=utf-8"
@@ -1239,8 +1179,9 @@ mod tests {
                 .any(|window| window == b"caffold-github-issues-list-page")
         );
 
-        let issue_detail_page = get("pages/(review-workspace)/(github)/(issues)/detail/page.js")
-            .expect("issue detail page js");
+        let issue_detail_page =
+            get("pages/(task-workspace)/tasks/components/detail/(github)/(issues)/detail/page.js")
+                .expect("issue detail page js");
         assert_eq!(
             issue_detail_page.content_type,
             "text/javascript; charset=utf-8"
@@ -1253,7 +1194,7 @@ mod tests {
                 .any(|window| window == b"caffold-github-issue-detail-page")
         );
         let issue_task_start_dialog =
-            get("pages/(review-workspace)/(github)/(issues)/components/task-start-dialog.js")
+            get("pages/(task-workspace)/tasks/components/detail/(github)/(issues)/components/task-start-dialog.js")
                 .expect("issue task start dialog js");
         assert_eq!(
             issue_task_start_dialog.content_type,
@@ -1270,7 +1211,8 @@ mod tests {
         assert!(get("components/github-markdown.js").is_none());
 
         let pulls_layout =
-            get("pages/(review-workspace)/(github)/(pulls)/layout.js").expect("pulls layout js");
+            get("pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/layout.js")
+                .expect("pulls layout js");
         assert_eq!(pulls_layout.content_type, "text/javascript; charset=utf-8");
         assert!(pulls_layout.body.starts_with(b"import "));
         assert!(
@@ -1280,8 +1222,9 @@ mod tests {
                 .any(|window| window == b"caffold-github-pulls-layout")
         );
 
-        let pulls_list_page = get("pages/(review-workspace)/(github)/(pulls)/list/page.js")
-            .expect("pulls list page js");
+        let pulls_list_page =
+            get("pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/list/page.js")
+                .expect("pulls list page js");
         assert_eq!(
             pulls_list_page.content_type,
             "text/javascript; charset=utf-8"
@@ -1294,8 +1237,9 @@ mod tests {
                 .any(|window| window == b"caffold-github-pulls-list-page")
         );
 
-        let pull_detail_page = get("pages/(review-workspace)/(github)/(pulls)/detail/page.js")
-            .expect("pull detail page js");
+        let pull_detail_page =
+            get("pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/detail/page.js")
+                .expect("pull detail page js");
         assert_eq!(
             pull_detail_page.content_type,
             "text/javascript; charset=utf-8"
@@ -1308,8 +1252,9 @@ mod tests {
                 .any(|window| window == b"caffold-github-pull-detail-page")
         );
 
-        let pull_files_page = get("pages/(review-workspace)/(github)/(pulls)/files/page.js")
-            .expect("pull files page js");
+        let pull_files_page =
+            get("pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/page.js")
+                .expect("pull files page js");
         assert_eq!(
             pull_files_page.content_type,
             "text/javascript; charset=utf-8"
@@ -1322,7 +1267,7 @@ mod tests {
                 .any(|window| window == b"caffold-github-pull-files-page")
         );
         let pull_files_tree =
-            get("pages/(review-workspace)/(github)/(pulls)/files/components/tree.js")
+            get("pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/components/tree.js")
                 .expect("pull files tree js");
         assert_eq!(
             pull_files_tree.content_type,
@@ -1339,40 +1284,8 @@ mod tests {
         assert!(get("components/github-pull-viewer.js").is_none());
         assert!(get("components/github-pull-files-tree.js").is_none());
 
-        let file_list_page = get("pages/files/page.js").expect("files page js asset");
-        assert_eq!(
-            file_list_page.content_type,
-            "text/javascript; charset=utf-8"
-        );
-        assert!(file_list_page.body.starts_with(b"import "));
-        assert!(
-            file_list_page
-                .body
-                .windows(b"caffold-files-page".len())
-                .any(|window| window == b"caffold-files-page")
-        );
-
-        let file_browser_component =
-            get("components/file-browser.js").expect("file browser component js asset");
-        assert_eq!(
-            file_browser_component.content_type,
-            "text/javascript; charset=utf-8"
-        );
-        assert!(file_browser_component.body.starts_with(b"import "));
-        assert!(
-            file_browser_component
-                .body
-                .windows(b"caffold-file-browser".len())
-                .any(|window| window == b"caffold-file-browser")
-        );
-        let file_browser_css =
-            get("components/file-browser.css").expect("file browser component css asset");
-        assert_eq!(file_browser_css.content_type, "text/css; charset=utf-8");
-        assert!(
-            file_browser_css
-                .body
-                .starts_with(b"@import \"./file-navigator.css\"")
-        );
+        assert!(get("pages/files/page.js").is_none());
+        assert!(get("components/file-browser.js").is_none());
 
         let file_navigator_component =
             get("components/file-navigator.js").expect("file navigator component js asset");
@@ -1393,11 +1306,11 @@ mod tests {
         assert!(
             file_navigator_css
                 .body
-                .starts_with(b"@import \"./file-browser/list.css\"")
+                .starts_with(b"@import \"./file-navigator/list.css\"")
         );
 
-        let file_list_component =
-            get("components/file-browser/list.js").expect("file list component js asset");
+        let file_list_component = get("components/file-navigator/list.js")
+            .expect("file navigator list component js asset");
         assert_eq!(
             file_list_component.content_type,
             "text/javascript; charset=utf-8"
@@ -1431,7 +1344,8 @@ mod tests {
         assert_eq!(watch_module.content_type, "text/javascript; charset=utf-8");
         assert!(watch_module.body.starts_with(b"import "));
         let log_layout =
-            get("pages/(review-workspace)/(git)/(log)/layout.js").expect("git log layout js asset");
+            get("pages/(task-workspace)/tasks/components/detail/(git)/(log)/layout.js")
+                .expect("git log layout js asset");
         assert_eq!(log_layout.content_type, "text/javascript; charset=utf-8");
         assert!(log_layout.body.starts_with(b"import "));
         assert!(
@@ -1440,8 +1354,9 @@ mod tests {
                 .windows(b"caffold-git-log-layout".len())
                 .any(|window| window == b"caffold-git-log-layout")
         );
-        let log_list_page = get("pages/(review-workspace)/(git)/(log)/list/page.js")
-            .expect("log list page js asset");
+        let log_list_page =
+            get("pages/(task-workspace)/tasks/components/detail/(git)/(log)/list/page.js")
+                .expect("log list page js asset");
         assert_eq!(log_list_page.content_type, "text/javascript; charset=utf-8");
         assert!(log_list_page.body.starts_with(b"import "));
         assert!(
@@ -1450,8 +1365,9 @@ mod tests {
                 .windows(b"caffold-git-log-list-page".len())
                 .any(|window| window == b"caffold-git-log-list-page")
         );
-        let log_commit_page = get("pages/(review-workspace)/(git)/(log)/commit/page.js")
-            .expect("log commit page js asset");
+        let log_commit_page =
+            get("pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/page.js")
+                .expect("log commit page js asset");
         assert_eq!(
             log_commit_page.content_type,
             "text/javascript; charset=utf-8"
@@ -1464,7 +1380,7 @@ mod tests {
                 .any(|window| window == b"caffold-git-log-commit-page")
         );
         let commit_tree_component =
-            get("pages/(review-workspace)/(git)/(log)/commit/components/changes-tree.js")
+            get("pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/components/changes-tree.js")
                 .expect("commit changes tree component js asset");
         assert_eq!(
             commit_tree_component.content_type,
@@ -1480,8 +1396,11 @@ mod tests {
         assert!(get("components/file-list.js").is_none());
         assert!(get("components/log-list.js").is_none());
         assert!(get("components/commit-changes-tree.js").is_none());
-        assert!(get("pages/(review-workspace)/(git)/(log)/components/list.js").is_none());
-        assert!(get("pages/(review-workspace)/(git)/(log)/components/commit-tree.js").is_none());
+        assert!(
+            get("pages/(task-workspace)/tasks/components/detail/(git)/(log)/components/list.js")
+                .is_none()
+        );
+        assert!(get("pages/(task-workspace)/tasks/components/detail/(git)/(log)/components/commit-tree.js").is_none());
 
         let png = get("icons/icon-192.png").expect("png icon asset");
         assert_eq!(png.content_type, "image/png");

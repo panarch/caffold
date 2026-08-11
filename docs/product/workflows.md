@@ -4,18 +4,27 @@ This document describes Caffold's implemented product workflow and the object
 boundaries that keep it consistent. Planned orchestration belongs in the
 [Roadmap](roadmap.md).
 
-Caffold currently supports this repeated development loop:
+Caffold currently supports two entries into the same repeated development
+loop:
 
 ```text
 Ad-hoc request
         -> start a Task and Codex thread in a selected cwd
         -> optionally prepare the same Task in an isolated worktree
+
+GitHub Issue detail
+        -> explicitly start a setup-only Task
+        -> prepare its selected-base isolated worktree
+        -> wait for the user's next request
+
+Either entry
         -> work <-> review <-> test
         -> archive or restore the Task and its owned resources
 ```
 
-Conversation and integrated Review form the inner loop. Explicit worktree
-preparation plus archive and restore provide the implemented outer lifecycle.
+Conversation and the Task-owned review children form the inner loop. Explicit
+worktree preparation plus archive and restore provide the implemented outer
+lifecycle.
 
 ## Current implemented loop
 
@@ -29,14 +38,32 @@ preparation plus archive and restore provide the implemented outer lifecycle.
 6. Approvals, completion, interruption, and failures remain visible in the
    thread-backed conversation.
 
+### Start from a GitHub Issue
+
+1. Open Issue detail in a Task's GitHub child and choose `Start Task`.
+2. Select a base ref and the new Task's model, reasoning, speed, and approval
+   choices.
+3. Caffold creates a separate Task at the resolved repository root. Its first
+   prompt carries the Issue metadata as untrusted context and is setup-only.
+4. That turn renames the Task and calls `isolate_current_task` with the selected
+   base ref and `includeChanges: false`.
+5. Once the managed worktree is ready, the turn stops. The user reviews the
+   prepared Task and sends a new request before analysis or implementation
+   begins.
+
+Pull Request detail does not provide the same Start Task action. Neither Issue
+nor Pull Request context automatically continues work after preparation.
+
 ### Review loop
 
-1. Open the Task's integrated Review workspace.
+1. Open the Task's Integrated Review child.
 2. Select Working Tree or Branch scope.
-3. Inspect changed files, unified diffs, source files, repository status, and
-   Git log without changing Codex lifecycle state.
-4. Return to Conversation and send a follow-up prompt.
-5. Run and inspect tests through Codex or a manual development tool.
+3. Inspect changed files, unified diffs, and source files without changing
+   Codex lifecycle state.
+4. Open the same Task's Git child for arbitrary Compare or bounded Log, or its
+   GitHub child for Issues and Pull Requests.
+5. Return to Conversation and send a follow-up prompt.
+6. Run and inspect tests through Codex or a manual development tool.
 
 ### Same-Task isolation preparation
 
@@ -72,7 +99,7 @@ independent objects:
 
 | Object | Role and owner |
 | --- | --- |
-| Origin | Ad-hoc request, GitHub Issue, or GitHub PR. |
+| Origin | Ad-hoc request or explicit GitHub Issue Start Task. A GitHub PR may be review context but has no Start Task action. |
 | Repository | Git repository in which the job is evaluated. |
 | Worktree | Git-owned execution and inspection environment. |
 | Codex thread | App-server-owned conversation and execution history. |

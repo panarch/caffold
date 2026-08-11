@@ -81,6 +81,14 @@ class CaffoldGitCompareBrowser extends HTMLElement {
     this.emitStateChange();
   }
 
+  invalidateRequests() {
+    this.ensureRendered();
+    this.refsRequestId += 1;
+    this.compareRequestId += 1;
+    this.diffRequestId += 1;
+    this.pendingCompare = null;
+  }
+
   stateSnapshot() {
     this.ensureRendered();
     return {

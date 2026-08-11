@@ -128,12 +128,12 @@ test("backend review policy keeps incomplete ownership work visible", () => {
   );
 });
 
-test("frontend review policy keeps incomplete ownership work visible", () => {
+test("frontend review policy follows Task-first test ownership", () => {
   const policy = readFileSync(
     resolve(repoRoot, "docs/review/frontend.md"),
     "utf8",
   );
-  assert.match(policy, /test ownership is only partially aligned/);
-  assert.match(policy, /Tasks area is\s+not fully owner-aligned/);
-  assert.match(policy, /current location or size is not precedent/);
+  assert.match(policy, /Task-owned Git and GitHub behavior belongs/);
+  assert.match(policy, /App Shell coverage should assert only application-lifetime/);
+  assert.match(policy, /Active Task behavior must be exercised\s+through fixtures owned/);
 });

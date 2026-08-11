@@ -79,9 +79,8 @@ surface non-empty. Empty or unavailable combinations should explain the state
 and offer an explicit action.
 
 One integrated review workspace must have one selected-path owner. Reusing
-change-tree, file-tree, source, and diff presentation components is preferred;
-mounting complete standalone Files, Diff, and Compare browsers inside another
-review surface creates duplicate selection, watcher, and request owners.
+change-tree, file-tree, source, and diff presentation components is preferred.
+The active review surface owns their selection, watcher, and request lifetime.
 
 The route owns reloadable semantic review state. Panel width, tree disclosure,
 and navigator/viewer scroll belong to the component instance. A cached inactive
@@ -94,6 +93,17 @@ layouts show one at a time and expose a semantic file-to-navigator Back action.
 Test deep paths, unchanged and deleted files, clean scopes, long refs, large
 change sets, appearance extremes, and browser zoom rather than validating only
 the default happy path.
+
+Task Detail is the outer activation owner. Conversation, Integrated Review,
+Git, and GitHub are sibling surfaces. Integrated Review alone owns Working
+Tree/current-Branch selection and its root watch. Git is limited to arbitrary
+Compare and bounded Log, while GitHub owns its remote availability and data.
+
+Within one Task, a domain child may remain mounted while hidden, but mounting
+does not grant an active lifetime. Deactivation must invalidate requests and
+release watchers or timers. Reactivation must reconcile canonical data before
+calling retained DOM current. Switching Tasks destroys Git/GitHub instances,
+bounding each domain DOM lifetime to the selected Task.
 
 ## Web Components And CSS
 
@@ -180,12 +190,12 @@ container selectors must be narrow.
 Preferred patterns:
 
 ```css
-caffold-review-workspace {
-  & > .review-workspace-panel {
+caffold-task-git-layout {
+  & > .task-git-workspace {
     display: grid;
   }
 
-  & .review-workspace-title > h2 {
+  & .task-git-title > h2 {
     font-weight: 600;
   }
 }
@@ -200,7 +210,7 @@ caffold-git-log-list-page {
 Avoid broad container selectors that can enter child components:
 
 ```css
-caffold-review-workspace h2 {
+caffold-task-workspace h2 {
   font-weight: 600;
 }
 
@@ -259,9 +269,10 @@ value represents user-scalable Interface, Conversation, or Code content.
 Choose Interface control tiers by action role rather than feature. Page-level,
 application-wide, and primary actions use the regular control tier;
 contextual-toolbar and inline secondary actions use the compact tier. A
-component-specific selector must not silently make an equivalent Tasks, Files,
-Git, or GitHub action larger. Regression coverage should compare the role
-group, not merely assert whichever token each selector already uses.
+component-specific selector must not silently make an equivalent Task,
+Integrated Review, Git, or GitHub action larger. Regression coverage should
+compare the role group, not merely assert whichever token each selector already
+uses.
 
 Review target size and label size independently. A primary or page-level action
 can retain a regular hit target while using the shared Interface action text
@@ -277,9 +288,9 @@ rerendering the parent and replacing the focused range element.
 
 Browser regression tests follow the same ownership boundaries as the product.
 Place a test with the surface whose behavior would need to change if the test
-failed. App-shell, Files, Review, and Tasks coverage should not accumulate in
-one integration spec merely because those surfaces can be reached from the
-same browser session.
+failed. App Shell, Task Detail, Integrated Review, Git, GitHub, and Settings
+coverage should not accumulate in one integration spec merely because those
+surfaces can be reached from the same browser session.
 
 Keep independently failing behaviors in independent tests. One test may cover
 the complete lifecycle of one route or component contract, but it should not
@@ -308,17 +319,10 @@ the same change. Prefer ownership and failure boundaries over arbitrary
 line-count limits: a long fixture containing one coherent wire contract can be
 valid, while a short test that combines unrelated owners is not.
 
-### Current Adoption
-
-Browser test ownership is only partially aligned with this policy. Specs are
-grouped by App Shell, Files, Review, and Tasks surfaces, but the Tasks area is
-not fully owner-aligned.
-
-Large Tasks specs and support fixtures still contain multiple behavior owners.
-Changes to those surfaces must keep independently failing behavior in separate
-tests and must not add unrelated scenarios merely because a shared fixture
-already exists. Their current location or size is not precedent for adding new
-owner-private or cross-owner scenarios.
+Task-owned Git and GitHub behavior belongs in focused specs below
+`tests/e2e/tasks/`. App Shell coverage should assert only application-lifetime
+coordination and route/asset boundaries. Active Task behavior must be exercised
+through fixtures owned by its Task surface.
 
 ## Frontend Verification
 

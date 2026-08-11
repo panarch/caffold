@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "./support/browser-defaults.js";
-import { FILES_HOME_URL } from "./support/file-browser-fixtures.js";
 import {
   captureReviewScreenshot,
   installEventSourceMock,
@@ -140,7 +139,6 @@ test("returns from Settings to the canonical Tasks home", async ({
     await expect(settingsWorkspace).toBeVisible();
   }
   await expect(page.locator("caffold-settings-navigator")).toBeVisible();
-  await expect(page.locator(".files-surface")).toBeHidden();
 
   await page
     .locator('.task-workspace-navigation [data-workspace-mode="tasks"]')
@@ -150,7 +148,6 @@ test("returns from Settings to the canonical Tasks home", async ({
   const tasksPage = page.locator("caffold-tasks-page");
   await expect(tasksPage).toHaveAttribute("data-tasks-view", "home");
   await expect(tasksPage.locator(".task-new-form")).toBeVisible();
-  await expect(page.locator(".files-surface")).toBeHidden();
 });
 
 test("gives every Settings route one page title and landmark hierarchy", async ({
@@ -278,8 +275,6 @@ test("normalizes legacy settings into the current appearance contract", async ({
   await page.goto("/settings/appearance");
   const settingsPage = page.locator("caffold-settings-appearance-page");
   await expect(settingsPage).toBeVisible();
-  await expect(page.locator(".files-surface")).toBeHidden();
-  await expect(page.locator("caffold-app-menu")).toBeHidden();
   await expect(
     page.locator("caffold-settings-workspace .settings-workspace-detail-header"),
   ).toBeVisible();
@@ -366,70 +361,9 @@ test("selects, persists, and resolves System, Light, and Dark themes", async ({
 test("updates independent ranges live without replacing their DOM", async ({
   page,
 }, testInfo) => {
-  await page.goto(FILES_HOME_URL);
-  const appMenu = page.locator("caffold-app-menu");
-  const sharedInterfaceTextSize = await page.evaluate(() => {
-    const probe = document.createElement("span");
-    probe.style.cssText =
-      "position:fixed;font-size:var(--interface-meta-font-size)";
-    document.body.append(probe);
-    const value = getComputedStyle(probe).fontSize;
-    probe.remove();
-    return value;
-  });
-
-  await expect(page.locator("caffold-pathbar .path-crumbs button").first()).toHaveCSS(
-    "font-size",
-    sharedInterfaceTextSize,
-  );
-  await appMenu.locator(".app-menu-button").click();
-  const popover = appMenu.locator(".app-menu-popover");
-  await expect(popover).toBeVisible();
-  const [appMenuButtonBox, appMenuPopoverBox] = await Promise.all([
-    appMenu.locator(".app-menu-button").boundingBox(),
-    popover.boundingBox(),
-  ]);
-  expect(appMenuButtonBox).not.toBeNull();
-  expect(appMenuPopoverBox).not.toBeNull();
-  expect(appMenuPopoverBox.x).toBeGreaterThanOrEqual(7);
-  expect(appMenuPopoverBox.x + appMenuPopoverBox.width).toBeLessThanOrEqual(
-    page.viewportSize().width - 7,
-  );
-  expect(appMenuPopoverBox.y).toBeGreaterThanOrEqual(
-    appMenuButtonBox.y + appMenuButtonBox.height + 4,
-  );
-  expect(appMenuPopoverBox.y).toBeLessThanOrEqual(
-    appMenuButtonBox.y + appMenuButtonBox.height + 9,
-  );
-  expect(appMenuButtonBox.x + appMenuButtonBox.width / 2).toBeGreaterThanOrEqual(
-    appMenuPopoverBox.x - 1,
-  );
-  expect(appMenuButtonBox.x + appMenuButtonBox.width / 2).toBeLessThanOrEqual(
-    appMenuPopoverBox.x + appMenuPopoverBox.width + 1,
-  );
-  await expect(popover).toContainText("Settings");
-  await expect(popover.getByRole("menuitem", { name: "About Caffold" })).toHaveCSS(
-    "font-size",
-    sharedInterfaceTextSize,
-  );
-  const openSettings = popover.locator('button[data-action="open-settings"]');
-  await expect(openSettings).toHaveCSS("font-size", sharedInterfaceTextSize);
-  await openSettings.click();
-
-  await expect(page).toHaveURL("/settings");
+  await page.goto("/settings/appearance");
   const settingsPage = page.locator("caffold-settings-appearance-page");
-  if (testInfo.project.name === "phone") {
-    await expect(settingsPage).toBeHidden();
-    await page
-      .locator('button[data-settings-section="appearance"]')
-      .click();
-    await expect(page).toHaveURL("/settings/appearance");
-  }
   await expect(settingsPage).toBeVisible();
-  await expect(page.locator(".files-surface")).toBeHidden();
-  await expect(page.locator("caffold-app-menu")).toBeHidden();
-  await expect(page.locator("caffold-pathbar")).toBeHidden();
-  await expect(page.locator("caffold-files-page")).toBeHidden();
 
   const interfaceRange = range(settingsPage, "interfaceScalePercent");
   const conversationRange = range(settingsPage, "conversationTextPx");
@@ -661,7 +595,7 @@ test("switches and persists the local typeface presets", async ({ page }) => {
     });
 });
 
-test("applies extreme values to Files and Code without coupling the axes", async ({
+test("applies extreme values to the retained Review code viewer", async ({
   page,
 }) => {
   await page.goto("/settings/appearance");
@@ -670,43 +604,20 @@ test("applies extreme values to Files and Code without coupling the axes", async
   await setRange(range(settingsPage, "conversationTextPx"), 13);
   await setRange(range(settingsPage, "codeTextPx"), 20);
 
-  await page.goto(FILES_HOME_URL);
-  const rootFontSize = await page.evaluate(() =>
-    Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
-  );
-  const firstEntry = page.locator("caffold-file-list .file-tree-entry").first();
-  await expect(firstEntry).toBeVisible();
-  const fileMetrics = await firstEntry.evaluate((element) => {
-    const style = getComputedStyle(element);
-    const box = element.getBoundingClientRect();
-    const rowHeightProbe = document.createElement("div");
-    rowHeightProbe.style.cssText =
-      "position:fixed;height:var(--file-tree-row-height)";
-    document.body.append(rowHeightProbe);
-    const configuredRowHeight = rowHeightProbe.getBoundingClientRect().height;
-    rowHeightProbe.remove();
-    return {
-      fontSize: Number.parseFloat(style.fontSize),
-      height: box.height,
-      configuredRowHeight,
-    };
+  const viewer = await page.evaluateHandle(() => {
+    const element = document.createElement("caffold-review-file-viewer");
+    element.style.cssText = "position:fixed;inset:0;z-index:1000;background:var(--surface)";
+    element.setFile({
+      path: "src/example.rs",
+      name: "example.rs",
+      size: 24,
+      modifiedMs: null,
+      content: "fn example() {}",
+      languageHint: "rust",
+    });
+    document.body.append(element);
+    return element;
   });
-  expect(fileMetrics.fontSize).toBeCloseTo(rootFontSize * 0.8125, 3);
-  const touchInterface = await page.evaluate(
-    () =>
-      matchMedia("(pointer: coarse)").matches ||
-      matchMedia("(max-width: 520px)").matches,
-  );
-  expect(fileMetrics.configuredRowHeight).toBeCloseTo(
-    touchInterface ? 36 : rootFontSize * 1.5,
-    2,
-  );
-  expect(fileMetrics.height).toBeGreaterThanOrEqual(
-    fileMetrics.configuredRowHeight - 0.02,
-  );
-
-  await page.locator('button[data-file-tree-path="src"]').click();
-  await page.locator('button[data-file-tree-path="src/example.rs"]').click();
   await expect(page.locator("caffold-code-viewer .code-lines")).toHaveCSS(
     "font-size",
     "20px",
@@ -722,13 +633,13 @@ test("applies extreme values to Files and Code without coupling the axes", async
       document.querySelector(selector).getBoundingClientRect().height;
     return {
       compact,
-      info: height("caffold-file-viewer .viewer-info-button"),
+      info: height("caffold-review-file-viewer .viewer-info-button"),
     };
   });
   expect(fileToolbarTiers.info).toBeCloseTo(fileToolbarTiers.compact, 1);
 
-  await page.locator("caffold-file-viewer").evaluate((viewer) => {
-    viewer.setDiff({
+  await page.locator("caffold-review-file-viewer").evaluate((element) => {
+    element.setDiff({
       path: "src/example.rs",
       repoRelativePath: "src/example.rs",
       kind: "Working tree",
@@ -749,6 +660,7 @@ test("applies extreme values to Files and Code without coupling the axes", async
       ),
     )
     .toBe(true);
+  await viewer.dispose();
 });
 
 test("keeps mixed surfaces reflowed across appearance extremes", async ({

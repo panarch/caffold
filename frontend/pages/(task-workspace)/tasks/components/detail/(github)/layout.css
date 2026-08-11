@@ -1,0 +1,117 @@
+caffold-task-github-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+
+  & .task-github-surface {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+  }
+
+  & .task-domain-header {
+    display: flex;
+    align-items: center;
+    gap: var(--interface-space-3);
+    min-height: var(--task-workspace-header-size);
+    padding: 0 var(--task-detail-header-padding-inline);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  & .task-domain-back {
+    position: relative;
+    display: grid;
+    flex: 0 0 var(--interface-compact-hit-size);
+    place-items: center;
+    width: var(--interface-compact-hit-size);
+    height: var(--interface-compact-hit-size);
+    margin-inline: calc(0rem - var(--interface-compact-hit-outset));
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--control-fg);
+    cursor: pointer;
+  }
+
+  & .task-domain-back::before {
+    position: absolute;
+    inset: var(--interface-compact-hit-outset);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    content: "";
+  }
+
+  & .task-domain-back:hover,
+  & .task-domain-back:focus-visible {
+    outline: none;
+  }
+
+  & .task-domain-back:hover::before,
+  & .task-domain-back:focus-visible::before {
+    border-color: var(--control-emphasis-border);
+    background: var(--control-subtle-hover-bg);
+  }
+
+  & .task-domain-back[hidden] {
+    display: none;
+  }
+
+  & .task-domain-back-icon {
+    position: relative;
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+    stroke-width: 2;
+  }
+
+  & .task-domain-title {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    align-items: baseline;
+    gap: var(--interface-space-3);
+  }
+
+  & .task-domain-title h2 {
+    margin: 0;
+    font-size: var(--task-detail-header-title-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .task-domain-subtitle {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & .task-domain-body {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  & .github-review-view {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  & .github-mode-issues,
+  & .github-mode-pulls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    height: 100%;
+  }
+}

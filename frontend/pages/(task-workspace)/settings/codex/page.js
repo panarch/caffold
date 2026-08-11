@@ -1,5 +1,5 @@
 import { escapeHtml } from "../../../../components/dom.js";
-import { restartCodexRuntime } from "../../../../api.js";
+import { getCodexStatus, restartCodexRuntime } from "../../../../api.js";
 import {
   CODEX_RUNTIME_RESTART_CONFIRMED_EVENT,
 } from "./components/runtime-restart-dialog.js";
@@ -11,7 +11,7 @@ import {
   formatRateWindowLabel,
   formatRemainingPercent,
   formatResetCredits,
-} from "../../../components/header-actions/codex-status-model.js";
+} from "./status-model.js";
 
 class CaffoldSettingsCodexPage extends HTMLElement {
   connectedCallback() {
@@ -20,13 +20,14 @@ class CaffoldSettingsCodexPage extends HTMLElement {
     }
     this.initialized = true;
     this.statusValue = null;
+    this.statusRequestId = 0;
+    this.restartRequestId = 0;
+    this.active = false;
     this.restartState = "idle";
     this.restartMessage = "";
     this.addEventListener("click", (event) => {
       if (event.target.closest('[data-action="refresh-codex-status"]')) {
-        this.dispatchEvent(
-          new CustomEvent("caffold:refresh-codex-status", { bubbles: true }),
-        );
+        void this.loadStatus();
         return;
       }
       if (event.target.closest('[data-action="open-codex-restart"]')) {
@@ -38,6 +39,47 @@ class CaffoldSettingsCodexPage extends HTMLElement {
       void this.restartRuntime();
     });
     this.render();
+  }
+
+  disconnectedCallback() {
+    this.deactivate();
+  }
+
+  activate() {
+    if (this.active) {
+      return;
+    }
+    this.active = true;
+    void this.loadStatus();
+  }
+
+  deactivate() {
+    this.active = false;
+    this.statusRequestId += 1;
+    this.restartRequestId += 1;
+  }
+
+  async loadStatus() {
+    const requestId = ++this.statusRequestId;
+    try {
+      const status = await getCodexStatus();
+      if (!this.active || requestId !== this.statusRequestId) {
+        return null;
+      }
+      this.status = status;
+      return status;
+    } catch (error) {
+      if (!this.active || requestId !== this.statusRequestId) {
+        return null;
+      }
+      this.status = {
+        available: false,
+        codexCliAvailable: null,
+        appServerAvailable: null,
+        message: error.message,
+      };
+      return null;
+    }
   }
 
   set status(value) {
@@ -58,16 +100,21 @@ class CaffoldSettingsCodexPage extends HTMLElement {
     this.restartState = "pending";
     this.restartMessage = "";
     this.render();
+    const requestId = ++this.restartRequestId;
 
     try {
       await restartCodexRuntime();
+      if (!this.active || requestId !== this.restartRequestId) {
+        return;
+      }
       this.restartState = "succeeded";
       this.restartMessage = "Codex runtime restarted.";
       this.render();
-      this.dispatchEvent(
-        new CustomEvent("caffold:refresh-codex-status", { bubbles: true }),
-      );
+      await this.loadStatus();
     } catch (error) {
+      if (!this.active || requestId !== this.restartRequestId) {
+        return;
+      }
       this.restartState = "failed";
       this.restartMessage = error.message;
       this.render();

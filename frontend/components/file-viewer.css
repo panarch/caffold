@@ -1,4 +1,4 @@
-:is(caffold-file-viewer, caffold-review-file-viewer) {
+caffold-review-file-viewer {
   display: block;
   min-width: 0;
   min-height: 0;
@@ -80,7 +80,7 @@ caffold-review-file-viewer[compact-chrome] {
   }
 }
 
-:is(caffold-file-viewer, caffold-review-file-viewer) {
+caffold-review-file-viewer {
   & .viewer-title-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -127,7 +127,7 @@ caffold-review-file-viewer {
   }
 }
 
-:is(caffold-file-viewer, caffold-review-file-viewer) {
+caffold-review-file-viewer {
   & .viewer-subtitle {
     flex: 1 1 auto;
     min-width: 0;
@@ -229,7 +229,7 @@ caffold-review-file-viewer {
   }
 }
 
-:is(caffold-file-viewer, caffold-review-file-viewer) {
+caffold-review-file-viewer {
   & .viewer-info-button:not(:has(svg))::before {
     position: relative;
     z-index: 1;
@@ -336,7 +336,7 @@ caffold-review-file-viewer {
 }
 
 @media (max-width: 860px) {
-  :is(caffold-file-viewer, caffold-review-file-viewer) {
+  caffold-review-file-viewer {
     & .viewer-panel > header {
       padding: 0.25rem 0.5rem;
       padding-right: var(--review-pane-action-clearance, 0.5rem);
@@ -404,7 +404,7 @@ caffold-review-file-viewer {
 }
 
 @media (max-width: 520px) {
-  :is(caffold-file-viewer, caffold-review-file-viewer) {
+  caffold-review-file-viewer {
     & .viewer-panel > header {
       padding-left: 0.625rem;
     }

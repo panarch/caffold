@@ -7,9 +7,12 @@ import {
 } from "../../../../api.js";
 import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
+import { routeDomain } from "../../../../navigation-routes.js";
 import "./composer.js";
 import "./detail/conversation.js";
 import "./detail/conversation/command-dialog.js";
+import "./detail/(git)/layout.js";
+import "./detail/(github)/layout.js";
 import "./detail/review.js";
 import "./detail/summary.js";
 import { TaskDetailStream } from "./detail/stream.js";
@@ -98,6 +101,9 @@ class CaffoldTaskDetail extends HTMLElement {
     this.reviewLastUsed = new Map();
     this.reviewUseSequence = 0;
     this.activeReviewThreadId = "";
+    this.gitLayoutInstance = null;
+    this.githubLayoutInstance = null;
+    this.domainActivationFingerprint = "";
     this.taskRoute = null;
     this.reviewView = "conversation";
     this.boundIconsReady = () => {
@@ -113,7 +119,7 @@ class CaffoldTaskDetail extends HTMLElement {
         if (
           closestElement(
             event.target,
-            "caffold-task-detail-summary, caffold-task-conversation, caffold-task-composer, caffold-task-review",
+            "caffold-task-detail-summary, caffold-task-conversation, caffold-task-composer, caffold-task-review, caffold-task-git-layout, caffold-task-github-layout",
           )
         ) {
           return;
@@ -204,6 +210,42 @@ class CaffoldTaskDetail extends HTMLElement {
         }),
       );
     });
+    this.addEventListener("caffold:request-git-route", (event) => {
+      if (!this.gitLayoutInstance || !this.gitLayoutInstance.contains(event.target)) {
+        return;
+      }
+      event.stopPropagation();
+      this.requestDomainRoute(event.detail?.route, event.detail?.options);
+    });
+    this.addEventListener("caffold:request-github-route", (event) => {
+      if (
+        !this.githubLayoutInstance ||
+        !this.githubLayoutInstance.contains(event.target)
+      ) {
+        return;
+      }
+      event.stopPropagation();
+      this.requestDomainRoute(event.detail?.route, event.detail?.options);
+    });
+    this.addEventListener("caffold:change-compare-refs", (event) => {
+      if (!this.gitLayoutInstance || !this.gitLayoutInstance.contains(event.target)) {
+        return;
+      }
+      event.stopPropagation();
+      this.requestDomainRoute(
+        this.gitLayoutInstance.routeForCompareRefs(
+          event.detail?.baseRef,
+          event.detail?.headRef,
+        ),
+      );
+    });
+    this.addEventListener("caffold:refresh-git-review", (event) => {
+      if (!this.gitLayoutInstance || !this.gitLayoutInstance.contains(event.target)) {
+        return;
+      }
+      event.stopPropagation();
+      void this.gitLayoutInstance.refresh();
+    });
     this.addEventListener("caffold:task-detail-summary-intent", (event) => {
       const summary = closestElement(
         event.target,
@@ -223,6 +265,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.deactivate();
     this.disposeFollowUpComposers();
     this.disposeReviews();
+    this.disposeDomainChildren();
   }
 
   prepare(threadId, options = {}) {
@@ -240,8 +283,11 @@ class CaffoldTaskDetail extends HTMLElement {
       this.view = "detail";
       this.hidden = false;
       this.taskRoute = normalizeTaskRoute(options.route, targetThreadId);
-      const nextReviewView = this.taskRoute.review ? "review" : "conversation";
-      if (this.reviewView === "conversation" && nextReviewView === "review") {
+      const nextReviewView = taskDetailSurface(this.taskRoute);
+      if (this.reviewView !== nextReviewView) {
+        this.deactivateSelectedChild(this.reviewView);
+      }
+      if (this.reviewView === "conversation" && nextReviewView !== "conversation") {
         this.conversationComponent()?.setActive(false);
       }
       this.reviewView = nextReviewView;
@@ -262,6 +308,7 @@ class CaffoldTaskDetail extends HTMLElement {
       this.archiveStateValue = { loading: false, error: null };
       this.loadingOlderEvents = false;
       this.deactivateReview({ prune: false });
+      this.disposeDomainChildren();
       this.reviewView = "conversation";
       this.detailStream.deactivate();
     }
@@ -269,7 +316,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.hidden = false;
     this.selectedThreadId = targetThreadId;
     this.taskRoute = normalizeTaskRoute(options.route, targetThreadId);
-    this.reviewView = this.taskRoute.review ? "review" : "conversation";
+    this.reviewView = taskDetailSurface(this.taskRoute);
     this.activateThreadEvents(targetThreadId);
     this.taskDetail =
       taskDetailThreadId(this.taskDetail) === targetThreadId
@@ -325,7 +372,7 @@ class CaffoldTaskDetail extends HTMLElement {
     return true;
   }
 
-  deactivate() {
+  deactivate({ retainComposerDom = false } = {}) {
     this.detailLoadGeneration += 1;
     this.historyRequestToken += 1;
     this.interruptActionToken += 1;
@@ -336,8 +383,16 @@ class CaffoldTaskDetail extends HTMLElement {
     this.loadingOlderEvents = false;
     this.initialConversationLoad = null;
     this.detailStream.deactivate();
-    this.deactivateFollowUpComposer();
+    if (retainComposerDom) {
+      this.endFollowUpComposerEditingLifetime(
+        this.activeFollowUpComposerThreadId,
+        this.followUpComposer(),
+      );
+    } else {
+      this.deactivateFollowUpComposer();
+    }
     this.deactivateReview();
+    this.deactivateDomainChildren();
     this.taskSummary()?.deactivate();
     this.commandDialog()?.dismiss({ restoreFocus: false });
     this.hidden = true;
@@ -764,39 +819,45 @@ class CaffoldTaskDetail extends HTMLElement {
 
   openTaskReviewRoute(action, kind) {
     const task = this.taskDetail?.task;
-    const cwd = taskWorktreeRootPath(task);
-    if (!cwd || !kind) {
+    const threadId = taskThreadId(task);
+    if (!threadId || !taskWorktreeRootPath(task) || !kind) {
       return;
     }
+    if (kind === "diff") {
+      this.requestReviewRoute({ review: true, scope: "working" });
+      return;
+    }
+    const route = kind === "compare"
+      ? { kind, threadId, baseRef: "", headRef: "", path: "" }
+      : kind === "log"
+        ? { kind, threadId, page: 1, sha: "", path: "" }
+        : kind === "issues"
+          ? { kind, threadId, page: 1, number: null }
+          : { kind: "pulls", threadId, page: 1, number: null, files: false, path: "" };
+    this.requestDomainRoute(route);
+  }
 
-    const returnRoute = {
-      kind: "tasks",
-      threadId: taskThreadId(task),
+  requestDomainRoute(route, options = {}) {
+    if (!route || !this.selectedThreadId) {
+      return;
+    }
+    const rootPath = taskWorktreeRootPath(this.taskDetail?.task);
+    const taskRoute = {
+      ...route,
+      ...(route.path
+        ? { path: taskRelativePath(rootPath, route.path) }
+        : {}),
+      threadId: this.selectedThreadId,
     };
-    const options = {
-      returnRoute,
-      taskRelatedPaths: [task?.worktree?.rootPath, task?.cwdPath || task?.cwd].filter(Boolean),
-      ...(action === "open-github-tool" ? { skipReload: false } : {}),
-    };
-    const route =
-      kind === "diff"
-        ? { kind, cwd, path: "" }
-        : kind === "compare"
-          ? { kind, cwd, baseRef: "", headRef: "", path: "" }
-          : kind === "log"
-            ? { kind, cwd, page: 1, sha: "", path: "" }
-            : kind === "issues"
-              ? { kind, cwd, page: 1, number: null }
-              : { kind: "pulls", cwd, page: 1, number: null, files: false, path: "" };
-    const eventName =
-      action === "open-git-tool"
-        ? "caffold:request-git-route"
-        : "caffold:request-github-route";
     this.dispatchEvent(
-      new CustomEvent(eventName, {
+      new CustomEvent("caffold:task-detail-intent", {
         bubbles: true,
         composed: true,
-        detail: { route, options },
+        detail: {
+          type: "domain-route",
+          route: taskRoute,
+          replace: Boolean(options?.replace),
+        },
       }),
     );
   }
@@ -1175,6 +1236,7 @@ class CaffoldTaskDetail extends HTMLElement {
       this.syncConversationSnapshot();
     }
     this.syncTaskReview();
+    this.syncDomainChildren();
   }
 
   ensureTaskShell() {
@@ -1408,6 +1470,124 @@ class CaffoldTaskDetail extends HTMLElement {
     this.reviewComponents.clear();
     this.reviewLastUsed.clear();
     this.activeReviewThreadId = "";
+  }
+
+  domainSlot(domain) {
+    return this.querySelector(`.task-detail > .task-${domain}-slot`);
+  }
+
+  ensureDomainChild(domain) {
+    const slot = this.domainSlot(domain);
+    if (!slot) {
+      return null;
+    }
+    if (domain === "git") {
+      if (!this.gitLayoutInstance) {
+        this.gitLayoutInstance = document.createElement("caffold-task-git-layout");
+      }
+      if (this.gitLayoutInstance.parentElement !== slot) {
+        slot.replaceChildren(this.gitLayoutInstance);
+      }
+      return this.gitLayoutInstance;
+    }
+    if (!this.githubLayoutInstance) {
+      this.githubLayoutInstance = document.createElement(
+        "caffold-task-github-layout",
+      );
+    }
+    if (this.githubLayoutInstance.parentElement !== slot) {
+      slot.replaceChildren(this.githubLayoutInstance);
+    }
+    return this.githubLayoutInstance;
+  }
+
+  deactivateSelectedChild(surface = this.reviewView) {
+    if (surface === "review") {
+      this.deactivateReview();
+    } else if (surface === "git") {
+      this.gitLayoutInstance?.deactivate();
+    } else if (surface === "github") {
+      this.githubLayoutInstance?.deactivate();
+    }
+  }
+
+  deactivateDomainChildren() {
+    this.gitLayoutInstance?.deactivate();
+    this.githubLayoutInstance?.deactivate();
+    this.domainActivationFingerprint = "";
+  }
+
+  disposeDomainChildren() {
+    this.deactivateDomainChildren();
+    this.gitLayoutInstance?.remove();
+    this.githubLayoutInstance?.remove();
+    this.gitLayoutInstance = null;
+    this.githubLayoutInstance = null;
+  }
+
+  syncDomainChildren() {
+    const surface = this.reviewView;
+    const gitSlot = this.domainSlot("git");
+    const githubSlot = this.domainSlot("github");
+    if (gitSlot) {
+      gitSlot.hidden = surface !== "git";
+    }
+    if (githubSlot) {
+      githubSlot.hidden = surface !== "github";
+    }
+
+    if (surface !== "git") {
+      this.gitLayoutInstance?.deactivate();
+    }
+    if (surface !== "github") {
+      this.githubLayoutInstance?.deactivate();
+    }
+    if (!["git", "github"].includes(surface)) {
+      this.domainActivationFingerprint = "";
+      return;
+    }
+
+    const task = this.taskDetail?.task;
+    if (!task || taskThreadId(task) !== this.selectedThreadId) {
+      return;
+    }
+    const rootPath = taskWorktreeRootPath(task);
+    const child = this.ensureDomainChild(surface);
+    if (!rootPath) {
+      child.prepareRoute(this.taskRoute);
+      child.setRouteError?.(
+        this.taskRoute,
+        new Error("This Task has no Git worktree."),
+      );
+      return;
+    }
+
+    const activationFingerprint = JSON.stringify([
+      this.selectedThreadId,
+      surface,
+      rootPath,
+      task.worktree?.branch ?? "",
+      task.worktree?.headSha ?? "",
+      this.taskRoute,
+    ]);
+    if (
+      child.active &&
+      this.domainActivationFingerprint === activationFingerprint
+    ) {
+      return;
+    }
+    this.domainActivationFingerprint = activationFingerprint;
+    child.prepareRoute(this.taskRoute);
+    const repository = {
+      ...(task.worktree ?? {}),
+      rootPath,
+    };
+    void child.activate(this.taskRoute, {
+      context: { path: rootPath, repository },
+      routeOptions: {
+        resolvePath: (path) => joinLogicalPath(rootPath, path),
+      },
+    });
   }
 
   syncTaskSummary() {
@@ -1646,6 +1826,17 @@ class CaffoldTaskDetail extends HTMLElement {
       if (!currentReviewSlot && nextReviewSlot) {
         currentDetail.append(nextReviewSlot);
       }
+      for (const domain of ["git", "github"]) {
+        const currentSlot = currentDetail.querySelector(
+          `:scope > .task-${domain}-slot`,
+        );
+        const nextSlot = nextDetail.querySelector(
+          `:scope > .task-${domain}-slot`,
+        );
+        if (!currentSlot && nextSlot) {
+          currentDetail.append(nextSlot);
+        }
+      }
       currentDetail.dataset.threadId = threadId;
       currentDetail.dataset.taskDetailView = this.reviewView;
       return;
@@ -1660,10 +1851,10 @@ class CaffoldTaskDetail extends HTMLElement {
     }
     if (!this.hasSelectedTaskDetail()) {
       if (this.loading) {
-        return `loading:${this.selectedThreadId}`;
+        return `loading:${this.selectedThreadId}:${this.reviewView}`;
       }
       if (this.detailLoadError) {
-        return `error:${this.selectedThreadId}:${this.detailLoadError.message ?? this.detailLoadError}`;
+        return `error:${this.selectedThreadId}:${this.reviewView}:${this.detailLoadError.message ?? this.detailLoadError}`;
       }
       return `empty:${this.selectedThreadId}`;
     }
@@ -1709,9 +1900,18 @@ class CaffoldTaskDetail extends HTMLElement {
   renderBody() {
     const hasSelectedTaskDetail = this.hasSelectedTaskDetail();
     if (this.loading && !hasSelectedTaskDetail && this.view === "detail") {
+      if (["git", "github"].includes(this.reviewView)) {
+        return this.renderPendingDomain("Loading Task context...");
+      }
       return `<p class="surface-message task-detail-state-message">Loading task...</p>`;
     }
     if (this.detailLoadError && !hasSelectedTaskDetail && this.view === "detail") {
+      if (["git", "github"].includes(this.reviewView)) {
+        return this.renderPendingDomain(
+          this.detailLoadError?.message ?? "Task details are temporarily unavailable.",
+          { retry: true },
+        );
+      }
       return this.renderTaskDetailLoadError();
     }
     if (this.view === "detail") {
@@ -1726,6 +1926,19 @@ class CaffoldTaskDetail extends HTMLElement {
         <p>Task details are temporarily unavailable.</p>
         <p class="task-detail-error-message">${escapeHtml(this.detailLoadError?.message ?? "")}</p>
         <button type="button" class="task-secondary-button" data-task-action="retry-task-detail">Retry</button>
+      </section>
+    `;
+  }
+
+  renderPendingDomain(message, options = {}) {
+    const title = this.reviewView === "github" ? "GitHub" : "Git";
+    return `
+      <section class="task-domain-pending" data-task-domain="${this.reviewView}" aria-label="${title}">
+        <header><h2>${title}</h2></header>
+        <div class="task-domain-pending-body" ${options.retry ? 'role="alert"' : 'role="status"'}>
+          <p>${escapeHtml(message)}</p>
+          ${options.retry ? '<button type="button" class="task-secondary-button" data-task-action="retry-task-detail">Retry</button>' : ""}
+        </div>
       </section>
     `;
   }
@@ -1746,6 +1959,8 @@ class CaffoldTaskDetail extends HTMLElement {
           <div class="task-follow-up-composer-slot"></div>
         </section>
         <div class="task-review-slot"></div>
+        <div class="task-domain-slot task-git-slot" hidden></div>
+        <div class="task-domain-slot task-github-slot" hidden></div>
       </div>
     `;
   }
@@ -1824,7 +2039,32 @@ function closestElement(target, selector) {
 }
 
 function normalizeTaskRoute(route, threadId) {
-  return route?.kind === "tasks" && route.threadId === threadId
+  return route?.threadId === threadId
     ? { ...route }
     : { kind: "tasks", threadId };
+}
+
+function taskDetailSurface(route) {
+  const domain = routeDomain(route);
+  if (domain === "git" || domain === "github") {
+    return domain;
+  }
+  return route?.kind === "tasks" && route.review ? "review" : "conversation";
+}
+
+function joinLogicalPath(rootPath, path) {
+  return [rootPath, path]
+    .flatMap((value) => `${value ?? ""}`.split("/"))
+    .filter((segment) => segment && segment !== "." && segment !== "..")
+    .join("/");
+}
+
+function taskRelativePath(rootPath, path) {
+  const root = cleanLogicalPath(rootPath);
+  const target = cleanLogicalPath(path);
+  if (!root || root === "." || target === root) {
+    return target === root ? "" : target;
+  }
+  const prefix = `${root}/`;
+  return target.startsWith(prefix) ? target.slice(prefix.length) : target;
 }

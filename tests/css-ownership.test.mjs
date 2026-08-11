@@ -11,22 +11,20 @@ const frontendRoot = fileURLToPath(new URL("../frontend/", import.meta.url));
 const ownership = new Map([
   ["components/code-viewer.css", ["caffold-code-viewer"]],
   ["components/diff-viewer.css", ["caffold-diff-viewer"]],
-  ["components/file-browser.css", ["caffold-file-browser"]],
   ["components/file-navigator.css", ["caffold-file-navigator"]],
-  ["components/file-browser/list.css", ["caffold-file-list"]],
+  ["components/file-navigator/list.css", ["caffold-file-list"]],
   ["components/file-tree.css", ["caffold-file-tree"]],
   [
     "components/file-viewer.css",
-    ["caffold-file-viewer", "caffold-review-file-viewer"],
+    ["caffold-review-file-viewer"],
   ],
   ["components/git-compare-browser.css", ["caffold-git-compare-browser"]],
   [
     "components/git-compare-browser/compare-tree.css",
     ["caffold-git-compare-tree"],
   ],
-  ["components/git-diff-browser.css", ["caffold-git-diff-browser"]],
   [
-    "components/git-diff-browser/changes-tree.css",
+    "pages/(task-workspace)/tasks/components/detail/review/changes-tree.css",
     ["caffold-git-diff-changes-tree"],
   ],
   ["components/pagination.css", ["caffold-pagination"]],
@@ -100,78 +98,73 @@ const ownership = new Map([
   ["pages/(task-workspace)/tasks/controls.css", ["caffold-tasks-page"]],
   ["pages/(task-workspace)/tasks/page.css", ["caffold-tasks-page"]],
   [
-    "pages/(review-workspace)/(git)/(log)/commit/components/changes-tree.css",
+    "pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/components/changes-tree.css",
     ["caffold-commit-changes-tree"],
   ],
   [
-    "pages/(review-workspace)/(git)/(log)/commit/page.css",
+    "pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/page.css",
     ["caffold-git-log-commit-page"],
   ],
   [
-    "pages/(review-workspace)/(git)/(log)/layout.css",
+    "pages/(task-workspace)/tasks/components/detail/(git)/(log)/layout.css",
     ["caffold-git-log-layout"],
   ],
   [
-    "pages/(review-workspace)/(git)/(log)/list/page.css",
+    "pages/(task-workspace)/tasks/components/detail/(git)/(log)/list/page.css",
     ["caffold-git-log-list-page"],
   ],
   [
-    "pages/(review-workspace)/(git)/compare/page.css",
+    "pages/(task-workspace)/tasks/components/detail/(git)/compare/page.css",
     ["caffold-git-compare-page"],
   ],
   [
-    "pages/(review-workspace)/(git)/components/controls.css",
+    "pages/(task-workspace)/tasks/components/detail/(git)/components/controls.css",
     ["caffold-git-review-controls"],
   ],
   [
-    "pages/(review-workspace)/(git)/diff/page.css",
-    ["caffold-git-diff-page"],
+    "pages/(task-workspace)/tasks/components/detail/(git)/layout.css",
+    ["caffold-task-git-layout"],
   ],
   [
-    "pages/(review-workspace)/(git)/layout.css",
-    ["caffold-git-review-layout"],
-  ],
-  [
-    "pages/(review-workspace)/(github)/(issues)/detail/page.css",
+    "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/detail/page.css",
     ["caffold-github-issue-detail-page"],
   ],
   [
-    "pages/(review-workspace)/(github)/(issues)/components/task-start-dialog.css",
+    "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/components/task-start-dialog.css",
     ["caffold-github-issue-task-start-dialog"],
   ],
   [
-    "pages/(review-workspace)/(github)/(issues)/layout.css",
+    "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/layout.css",
     ["caffold-github-issues-layout"],
   ],
   [
-    "pages/(review-workspace)/(github)/(issues)/list/page.css",
+    "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/list/page.css",
     ["caffold-github-issues-list-page"],
   ],
   [
-    "pages/(review-workspace)/(github)/(pulls)/detail/page.css",
+    "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/detail/page.css",
     ["caffold-github-pull-detail-page"],
   ],
   [
-    "pages/(review-workspace)/(github)/(pulls)/files/components/tree.css",
+    "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/components/tree.css",
     ["caffold-github-pull-files-tree"],
   ],
   [
-    "pages/(review-workspace)/(github)/(pulls)/files/page.css",
+    "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/page.css",
     ["caffold-github-pull-files-page"],
   ],
   [
-    "pages/(review-workspace)/(github)/(pulls)/layout.css",
+    "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/layout.css",
     ["caffold-github-pulls-layout"],
   ],
   [
-    "pages/(review-workspace)/(github)/(pulls)/list/page.css",
+    "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/list/page.css",
     ["caffold-github-pulls-list-page"],
   ],
   [
-    "pages/(review-workspace)/(github)/layout.css",
-    ["caffold-github-review-layout"],
+    "pages/(task-workspace)/tasks/components/detail/(github)/layout.css",
+    ["caffold-task-github-layout"],
   ],
-  ["pages/(review-workspace)/layout.css", ["caffold-review-workspace"]],
   [
     "pages/(task-workspace)/settings/layout.css",
     ["caffold-settings-workspace"],
@@ -196,31 +189,14 @@ const ownership = new Map([
     "pages/(task-workspace)/settings/about/page.css",
     ["caffold-settings-about-page"],
   ],
-  ["pages/components/app-menu.css", ["caffold-app-menu"]],
-  ["pages/components/header-actions.css", ["caffold-header-actions"]],
-  ["pages/components/pathbar.css", ["caffold-pathbar"]],
-  ["pages/files/page.css", ["caffold-files-page"]],
   ["pages/layout.css", ["caffold-app-shell"]],
 ]);
 const componentChildren = new Map([
   [
     "caffold-app-shell",
-    [
-      "caffold-app-menu",
-      "caffold-header-actions",
-      "caffold-pathbar",
-      "caffold-files-page",
-      "caffold-task-workspace",
-      "caffold-review-workspace",
-    ],
-  ],
-  ["caffold-files-page", ["caffold-file-browser"]],
-  [
-    "caffold-file-browser",
-    ["caffold-file-navigator", "caffold-file-viewer"],
+    ["caffold-task-workspace"],
   ],
   ["caffold-file-navigator", ["caffold-file-list"]],
-  ["caffold-file-viewer", ["caffold-code-viewer", "caffold-diff-viewer"]],
   ["caffold-review-file-viewer", ["caffold-code-viewer", "caffold-diff-viewer"]],
   [
     "caffold-task-workspace",
@@ -264,38 +240,29 @@ const componentChildren = new Map([
       "caffold-task-command-dialog",
       "caffold-task-composer",
       "caffold-task-review",
+      "caffold-task-git-layout",
+      "caffold-task-github-layout",
     ],
   ],
   ["caffold-task-conversation", ["caffold-task-work-details"]],
   [
     "caffold-task-review",
     [
-      "caffold-file-browser",
-      "caffold-git-diff-browser",
-      "caffold-git-compare-browser",
+      "caffold-file-navigator",
+      "caffold-git-diff-changes-tree",
+      "caffold-git-compare-tree",
+      "caffold-review-panel-resizer",
+      "caffold-review-file-viewer",
     ],
-  ],
-  [
-    "caffold-git-diff-browser",
-    ["caffold-git-diff-changes-tree", "caffold-review-file-viewer"],
   ],
   [
     "caffold-git-compare-browser",
     ["caffold-git-compare-tree", "caffold-review-file-viewer"],
   ],
   [
-    "caffold-review-workspace",
-    [
-      "caffold-git-review-controls",
-      "caffold-git-review-layout",
-      "caffold-github-review-layout",
-    ],
+    "caffold-task-git-layout",
+    ["caffold-git-review-controls", "caffold-git-compare-page", "caffold-git-log-layout"],
   ],
-  [
-    "caffold-git-review-layout",
-    ["caffold-git-diff-page", "caffold-git-compare-page", "caffold-git-log-layout"],
-  ],
-  ["caffold-git-diff-page", ["caffold-git-diff-browser"]],
   ["caffold-git-compare-page", ["caffold-git-compare-browser"]],
   [
     "caffold-git-log-layout",
@@ -310,7 +277,7 @@ const componentChildren = new Map([
     ],
   ],
   [
-    "caffold-github-review-layout",
+    "caffold-task-github-layout",
     ["caffold-github-issues-layout", "caffold-github-pulls-layout"],
   ],
   [
@@ -458,7 +425,7 @@ test("rejects missing owners and selectors that enter child internals", () => {
 
 test("supports stylesheets shared by explicitly declared owners", () => {
   const css = `
-    :is(caffold-file-viewer, caffold-review-file-viewer) {
+    :is(caffold-primary-owner, caffold-secondary-owner) {
       display: grid;
 
       & .viewer-panel {
@@ -469,7 +436,7 @@ test("supports stylesheets shared by explicitly declared owners", () => {
 
   assert.deepEqual(
     ownershipViolations(css, {
-      owners: ["caffold-file-viewer", "caffold-review-file-viewer"],
+      owners: ["caffold-primary-owner", "caffold-secondary-owner"],
       path: "shared.css",
     }),
     [],

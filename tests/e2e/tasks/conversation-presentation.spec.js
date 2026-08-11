@@ -396,7 +396,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     )
     .evaluateAll((controls) =>
       controls.map((control) => {
-        const icon = control.querySelector("svg, img");
+        const icon = control.querySelector("svg, img, .task-brand-icon");
         const chip = control.querySelector(".task-status-chip");
         const controlBox = control.getBoundingClientRect();
         const iconBox = icon.getBoundingClientRect();

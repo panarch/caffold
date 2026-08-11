@@ -88,14 +88,14 @@ caffold-task-workspace {
     outline: none;
   }
 
-  &[data-workspace-mode="tasks"][data-tasks-view="detail"][data-task-detail-view="review"]
+  &[data-workspace-mode="tasks"][data-tasks-view="detail"][data-task-detail-presentation="code"]
     .task-workspace-master-pane,
-  &[data-workspace-mode="tasks"][data-tasks-view="detail"][data-task-detail-view="review"]
+  &[data-workspace-mode="tasks"][data-tasks-view="detail"][data-task-detail-presentation="code"]
     .task-workspace-master-resizer {
     display: none;
   }
 
-  &[data-workspace-mode="tasks"][data-tasks-view="detail"][data-task-detail-view="review"]
+  &[data-workspace-mode="tasks"][data-tasks-view="detail"][data-task-detail-presentation="code"]
     .task-workspace-master-detail {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -112,7 +112,7 @@ caffold-task-workspace {
     position: absolute;
     top: calc(var(--interface-space-4) - var(--interface-compact-hit-outset));
     left: calc(var(--interface-space-6) - var(--interface-compact-hit-outset));
-    z-index: 2;
+    z-index: 6;
     display: grid;
     place-items: center;
     width: var(--interface-compact-hit-size);
