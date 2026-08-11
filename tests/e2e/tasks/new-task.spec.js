@@ -368,16 +368,22 @@ test("creates a task with responsive composer controls and canonical approval st
   await expect(tasksPage).toHaveCount(1);
   await expect(tasksPage).toHaveAttribute("data-tasks-view", "detail");
   await expect(tasksPage).toContainText("Inspect the planner changes");
-  await expect(tasksPage).toContainText("Thread thread_1");
-  await expect(tasksPage.locator(".task-detail-meta")).toContainText("main · src");
+  await expect(
+    tasksPage.locator('[data-task-info-field="thread"]'),
+  ).toHaveText(threadId);
+  await expect(
+    tasksPage.locator('[data-task-info-field="worktree-ref"]'),
+  ).toHaveText("main");
+  await expect(
+    tasksPage.locator('[data-task-info-field="worktree-path"]'),
+  ).toHaveText(contextPath);
+  await expect(
+    tasksPage.locator('[data-task-info-field="working-directory"]'),
+  ).toHaveText(contextPath);
   await expect(tasksPage.locator(".task-conversation")).toBeVisible();
   await expect(tasksPage.locator(".task-detail-summary h2")).toHaveCSS(
     "font-size",
     touchInterface ? "14.875px" : "14px",
-  );
-  await expect(tasksPage.locator(".task-detail-meta")).toHaveCSS(
-    "font-size",
-    touchInterface ? "12.75px" : "12px",
   );
   await expect(tasksPage.locator('.task-message[data-message-role="user"]')).toContainText(
     "Inspect the planner changes",

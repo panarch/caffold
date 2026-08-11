@@ -404,7 +404,9 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
     },
   });
   await page.reload();
-  await expect(tasksPage.locator(".task-detail-meta")).toContainText("main");
+  await expect(
+    tasksPage.locator('[data-task-info-field="worktree-ref"]'),
+  ).toHaveText("main");
   await expect(tasksPage.locator(".task-review-menu")).toHaveCount(2);
 
   const gitReviewMenu = tasksPage.locator(

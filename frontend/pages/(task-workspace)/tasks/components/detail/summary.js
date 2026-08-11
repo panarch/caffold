@@ -1,10 +1,7 @@
 import { getGitHubStatus } from "../../../../../api.js";
 import { escapeHtml } from "../../../../../components/dom.js";
-import { cleanLogicalPath, shortId } from "../../task-format.js";
-import {
-  taskThreadId,
-  taskWorktreeLabel,
-} from "../../task-list-model.js";
+import { cleanLogicalPath } from "../../task-format.js";
+import { taskThreadId } from "../../task-list-model.js";
 import "./summary/info.js";
 
 class CaffoldTaskDetailSummary extends HTMLElement {
@@ -260,14 +257,9 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       return;
     }
 
-    const worktreeLabel = taskWorktreeLabel(task);
     this.innerHTML = `
       <div class="task-detail-heading">
         <h2>${escapeHtml(task.title)}</h2>
-        <p class="task-detail-meta">
-          <span data-summary-field="thread-short">Thread ${escapeHtml(shortId(task.threadId ?? task.id))}</span>
-          <span data-summary-field="worktree-label" ${worktreeLabel ? "" : "hidden"}>${escapeHtml(worktreeLabel)}</span>
-        </p>
       </div>
       <div class="task-detail-right">
         <div class="task-detail-actions">
@@ -290,16 +282,6 @@ class CaffoldTaskDetailSummary extends HTMLElement {
     }
 
     setText(this.querySelector(".task-detail-heading h2"), `${task.title ?? ""}`);
-    setText(
-      this.querySelector('[data-summary-field="thread-short"]'),
-      `Thread ${shortId(task.threadId ?? task.id)}`,
-    );
-    const worktreeLabel = taskWorktreeLabel(task);
-    const label = this.querySelector('[data-summary-field="worktree-label"]');
-    setText(label, worktreeLabel);
-    if (label) {
-      label.hidden = !worktreeLabel;
-    }
     this.patchTaskModeSwitch();
     this.patchReviewControls();
     this.syncTaskInfo();

@@ -33,43 +33,15 @@ caffold-task-detail-summary {
   border-bottom: 1px solid var(--border);
   box-shadow: var(--structural-shadow-block-end);
 
-  & h2,
-  & p {
-    margin: 0;
+  & .task-detail-heading {
+    min-width: 0;
   }
 
-  & h2 {
+  & .task-detail-heading > h2 {
+    min-width: 0;
+    margin: 0;
     overflow: hidden;
     font-size: 0.875rem;
-    line-height: var(--interface-line-height);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  & p {
-    display: flex;
-    align-items: center;
-    gap: var(--interface-space-5);
-    color: var(--muted);
-  }
-
-  & .task-detail-heading {
-    display: flex;
-    align-items: baseline;
-    gap: var(--interface-space-5);
-    min-width: 0;
-  }
-
-  & .task-detail-heading h2 {
-    flex: 0 1 auto;
-    min-width: 0;
-  }
-
-  & .task-detail-meta {
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    font-size: var(--interface-meta-font-size);
     line-height: var(--interface-line-height);
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -324,14 +296,6 @@ caffold-task-detail-summary {
   & .task-brand-button:focus-visible::before {
     border-color: var(--border-strong);
     background: var(--surface-muted);
-  }
-}
-
-@media (max-width: 959px) {
-  caffold-task-detail-summary {
-    & .task-detail-meta {
-      display: none;
-    }
   }
 }
 
