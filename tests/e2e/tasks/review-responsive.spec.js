@@ -354,6 +354,7 @@ test("keeps Review reflowed at the appearance extremes", async ({ page }, testIn
 });
 
 test("keeps compact Task segments pixel-aligned on Retina displays", async ({
+  baseURL,
   browser,
 }, testInfo) => {
   const viewportByProject = {
@@ -363,7 +364,7 @@ test("keeps compact Task segments pixel-aligned on Retina displays", async ({
   };
   const isMobile = testInfo.project.name !== "desktop";
   const context = await browser.newContext({
-    baseURL: "http://127.0.0.1:18765",
+    baseURL,
     deviceScaleFactor: 2,
     hasTouch: isMobile,
     isMobile,

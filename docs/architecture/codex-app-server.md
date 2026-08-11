@@ -433,9 +433,11 @@ lifecycle, run the opt-in live check against an authenticated Caffold server:
 npm run test:codex-live
 ```
 
-The check starts an isolated server at `http://127.0.0.1:55178` and uses the
-current repository's logical path from the filesystem root by default. Override them with
-`CAFFOLD_LIVE_URL` and `CAFFOLD_LIVE_CWD` when the server uses another root.
+The check selects an available loopback port, starts an isolated server, and
+uses the current repository's logical path from the filesystem root by default.
+Use `CAFFOLD_LIVE_PORT` to pin an available local port for diagnostics. Override
+the server or logical path with `CAFFOLD_LIVE_URL` and `CAFFOLD_LIVE_CWD` when
+the server uses another root.
 It creates a real Codex thread with an available low-cost model, reopens that
 thread from Tasks, and verifies a follow-up turn through the browser UI. The
 test records each created thread immediately and archives it during teardown,

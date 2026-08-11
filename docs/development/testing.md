@@ -58,6 +58,7 @@ The package scripts are grouped by their production owner:
 | `npm run test:docs` | documentation links and required contributor entrypoints |
 | `npm run test:release` | macOS packaging and release contracts |
 | `npm run test:local-install` | local app replacement preflight and rollback ordering |
+| `npm run test:playwright-config` | Playwright test-server port allocation and ownership |
 
 Run individual commands while iterating. A cross-cutting frontend or release
 change should run every affected row rather than relying on `test:e2e` alone.
@@ -68,10 +69,17 @@ change should run every affected row rather than relying on `test:e2e` alone.
 npm run test:e2e
 ```
 
-The regular Playwright suite starts an isolated Caffold server on port 18765 and
-uses isolated fixture data. It runs desktop, foldable, and phone projects. Its
-Codex responses are deterministic fixtures, so it does not prove compatibility
-with the installed Codex app-server.
+Each regular Playwright invocation selects an available loopback port, starts
+its own Caffold server with `reuseExistingServer: false`, and uses isolated
+fixture data. It runs desktop, foldable, and phone projects. Its Codex responses
+are deterministic fixtures, so it does not prove compatibility with the
+installed Codex app-server. Set `CAFFOLD_E2E_PORT` to an available port only for
+targeted diagnostics; an occupied override fails instead of attaching to that
+server.
+
+Test-server ports belong to individual Playwright runs, including runs in other
+worktrees. Do not stop a process merely because it owns a port used by an older
+test command; let Playwright shut down its own server, or retry a failed run.
 
 For layout changes, inspect the generated screenshots under `test-results` and
 exercise the relevant desktop, foldable, and phone projects. For fixture or
@@ -92,11 +100,13 @@ model usage:
 npm run test:codex-live
 ```
 
-By default it starts an isolated server on port 55178 with runtime files below
-`target/`, creates real Codex threads, and archives the threads it records during
-teardown. It is serialized and separate from the deterministic browser suite.
-`CAFFOLD_LIVE_URL` and `CAFFOLD_LIVE_CWD` are advanced overrides; do not point
-them at the installed application's data directory.
+By default each invocation selects an available loopback port and starts an
+isolated server with runtime files below `target/`. It creates real Codex
+threads and archives the threads it records during teardown. It is serialized
+and separate from the deterministic browser suite. `CAFFOLD_LIVE_PORT` pins an
+available local port for diagnostics. `CAFFOLD_LIVE_URL` and `CAFFOLD_LIVE_CWD`
+are advanced overrides; do not point them at the installed application's data
+directory.
 
 Use `node scripts/dev/probe-codex-app-server.mjs THREAD_ID` for an explicit
 maintainer probe of resume/read/page latency and payload size. The probe does
