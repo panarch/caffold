@@ -271,12 +271,18 @@ pub struct CodexTurnOptions {
 }
 
 pub(crate) const NORMAL_SERVICE_TIER_ID: &str = "default";
+pub(crate) const FAST_SERVICE_TIER_ID: &str = "priority";
+
+pub(crate) fn service_tier_for_fast_mode(fast_mode: bool) -> &'static str {
+    if fast_mode {
+        FAST_SERVICE_TIER_ID
+    } else {
+        NORMAL_SERVICE_TIER_ID
+    }
+}
 
 pub(crate) fn is_fast_service_tier(service_tier: Option<&str>) -> bool {
-    service_tier.is_some_and(|tier| {
-        let tier = tier.trim();
-        !tier.is_empty() && !tier.eq_ignore_ascii_case(NORMAL_SERVICE_TIER_ID)
-    })
+    service_tier.is_some_and(|tier| tier.trim().eq_ignore_ascii_case(FAST_SERVICE_TIER_ID))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -552,9 +558,13 @@ impl CodexThreadClient {
         &self,
         cwd: &str,
         permission_mode: Option<CodexPermissionMode>,
+        service_tier: &str,
     ) -> Result<CodexThreadStart, CodexThreadError> {
         let typed: ThreadStartResponse = self
-            .request_typed(THREAD_START, thread_start_params(cwd, permission_mode))
+            .request_typed(
+                THREAD_START,
+                thread_start_params(cwd, permission_mode, Some(service_tier)),
+            )
             .await?;
         let thread_id = typed.thread.id.clone();
         let permission_mode = if typed.extra.contains_key("approvalPolicy")
@@ -592,10 +602,11 @@ impl CodexThreadClient {
         &self,
         thread_id: &str,
         initial_turns_page: bool,
+        service_tier: &str,
     ) -> Result<ThreadResumeResponse, CodexThreadError> {
         self.request_typed(
             THREAD_RESUME,
-            thread_resume_params(thread_id, initial_turns_page),
+            thread_resume_params(thread_id, initial_turns_page, Some(service_tier)),
         )
         .await
     }
@@ -1136,7 +1147,10 @@ mod tests {
         assert!(!is_fast_service_tier(Some("")));
         assert!(!is_fast_service_tier(Some("default")));
         assert!(!is_fast_service_tier(Some("DEFAULT")));
+        assert!(!is_fast_service_tier(Some("flex")));
+        assert!(!is_fast_service_tier(Some("unknown")));
         assert!(is_fast_service_tier(Some("priority")));
+        assert!(is_fast_service_tier(Some(" PRIORITY ")));
     }
 
     fn write_executable(path: &Path) {
@@ -1271,7 +1285,7 @@ mod tests {
         let loaded_elapsed = loaded_started.elapsed();
         let resume_started = Instant::now();
         let resumed = client
-            .resume_thread_with_page(&thread_id, true)
+            .resume_thread_with_page(&thread_id, true, NORMAL_SERVICE_TIER_ID)
             .await
             .expect("resume live Codex task state");
         let resume_elapsed = resume_started.elapsed();

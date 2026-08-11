@@ -438,16 +438,12 @@ impl CodexRuntime {
             }
         };
         let task_store = self.task_store.clone();
-        let managed_thread_ids = match tokio::task::spawn_blocking(move || {
+        let managed_threads = match tokio::task::spawn_blocking(move || {
             loaded_thread_ids
                 .into_iter()
-                .map(|thread_id| {
-                    task_store
-                        .get(&thread_id)
-                        .map(|managed| managed.map(|_| thread_id))
-                })
+                .map(|thread_id| task_store.get(&thread_id))
                 .filter_map(|result| match result {
-                    Ok(thread_id) => thread_id.map(Ok),
+                    Ok(managed) => managed.map(Ok),
                     Err(error) => Some(Err(error)),
                 })
                 .collect::<Result<Vec<_>, _>>()
@@ -465,11 +461,16 @@ impl CodexRuntime {
             }
         };
 
-        stream::iter(managed_thread_ids)
-            .for_each_concurrent(8, |thread_id| {
+        stream::iter(managed_threads)
+            .for_each_concurrent(8, |managed| {
                 let runtime = self.clone();
                 let connection = connection.clone();
                 async move {
+                    let thread_id = managed.thread_id;
+                    runtime
+                        .sessions
+                        .restore_managed_fast_mode(&thread_id, managed.fast_mode)
+                        .await;
                     match runtime
                         .sessions
                         .recover_loaded_thread(

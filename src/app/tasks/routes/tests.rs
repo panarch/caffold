@@ -305,6 +305,7 @@ async fn create_task_keeps_explicit_permission_mode_for_the_first_turn() {
     );
     let requests = client.mock_requests().await;
     assert_eq!(requests[0].0, "thread/start");
+    assert_eq!(requests[0].1["serviceTier"], "default");
     assert_eq!(requests[0].1["approvalsReviewer"], "auto_review");
     assert_eq!(
         requests[0].1["dynamicTools"][0]["name"],
@@ -392,6 +393,8 @@ async fn create_task_persists_the_applied_model_and_reasoning_effort() {
     assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
     assert!(stored.fast_mode);
     let requests = client.mock_requests().await;
+    assert_eq!(requests[1].0, "thread/start");
+    assert_eq!(requests[1].1["serviceTier"], "priority");
     assert_eq!(requests[2].0, "turn/start");
     assert_eq!(requests[2].1["model"], "gpt-5.6-sol");
     assert_eq!(requests[2].1["serviceTier"], "priority");

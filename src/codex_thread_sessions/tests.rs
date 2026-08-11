@@ -265,10 +265,32 @@ async fn initial_subscription_bootstraps_only_from_resume() {
         .await
         .expect("subscribe viewer");
     let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
+    let requests = client.mock_requests().await;
 
     assert_eq!(methods(&client).await, vec!["thread/resume"]);
+    assert_eq!(requests[0].1["serviceTier"], "default");
     assert_eq!(snapshot.lifecycle, ThreadSessionLifecycle::Subscribed);
     assert_eq!(snapshot.turns_page.expect("initial page").data.len(), 8);
+}
+
+#[tokio::test]
+async fn restored_fast_task_resumes_with_an_explicit_priority_tier() {
+    let mut response = resume_response(ThreadStatus::Idle, Vec::new(), Vec::new());
+    response
+        .extra
+        .insert("serviceTier".to_string(), json!("priority"));
+    let client = CodexThreadClient::mock(vec![MockCodexResponse::ok("thread/resume", response)]);
+    let sessions = CodexThreadSessions::default();
+    sessions.restore_managed_fast_mode("thread-1", true).await;
+
+    let snapshot = sessions
+        .ensure_subscribed(&client, 1, "thread-1")
+        .await
+        .expect("subscribe");
+    let requests = client.mock_requests().await;
+
+    assert_eq!(requests[0].1["serviceTier"], "priority");
+    assert!(snapshot.fast_mode);
 }
 
 #[tokio::test]

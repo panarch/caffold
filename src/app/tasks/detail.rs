@@ -143,9 +143,7 @@ impl DetailContext {
         cursor: Option<&str>,
     ) -> Result<TaskDetailResponse, ApiError> {
         let cursor = cursor.map(str::trim).filter(|cursor| !cursor.is_empty());
-        if self.store_get(thread_id).await?.is_none() {
-            return Err(not_managed_error());
-        }
+        self.restore_managed_fast_mode(thread_id).await?;
         if let Some(cursor) = cursor {
             let connection = self.connection().await?;
             let _viewer = self
@@ -170,9 +168,7 @@ impl DetailContext {
         &self,
         thread_id: &str,
     ) -> Result<DetailFrameStream, ApiError> {
-        if self.store_get(thread_id).await?.is_none() {
-            return Err(not_managed_error());
-        }
+        self.restore_managed_fast_mode(thread_id).await?;
         let receiver = self.events.subscribe();
         let sync_receiver = self.sync.subscribe_updates();
         let viewer = self.sessions.reserve_viewer(thread_id).await;
@@ -340,6 +336,7 @@ impl DetailContext {
         thread_id: &str,
         cursor: Option<&str>,
     ) -> Result<TaskDetailResponse, ApiError> {
+        self.restore_managed_fast_mode(thread_id).await?;
         let (snapshot, response_page) = if let Some(cursor) = cursor {
             let (snapshot, page) = self
                 .sessions
@@ -388,6 +385,10 @@ impl DetailContext {
     }
 
     pub(in crate::app) async fn bootstrap(&self, thread_id: &str, baseline_revision: u64) {
+        if let Err(error) = self.restore_managed_fast_mode(thread_id).await {
+            self.broadcast_error(thread_id, error.to_string()).await;
+            return;
+        }
         let connection = match self.connection().await {
             Ok(connection) => connection,
             Err(error) => {
@@ -684,6 +685,17 @@ impl DetailContext {
             .await
             .map_err(store_join_error)?
             .map_err(store_error)
+    }
+
+    async fn restore_managed_fast_mode(&self, thread_id: &str) -> Result<(), ApiError> {
+        let managed = self
+            .store_get(thread_id)
+            .await?
+            .ok_or_else(not_managed_error)?;
+        self.sessions
+            .restore_managed_fast_mode(thread_id, managed.fast_mode)
+            .await;
+        Ok(())
     }
 
     async fn store_mark_seen(

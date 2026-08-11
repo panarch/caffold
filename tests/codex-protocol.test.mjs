@@ -184,6 +184,7 @@ test(
       );
       assert.match(resumeParams, /excludeTurns/);
       assert.match(resumeParams, /initialTurnsPage/);
+      assert.match(resumeParams, /serviceTier\?: string \| null/);
 
       const listParams = readFileSync(join(outputDirectory, "v2", "ThreadListParams.ts"), "utf8");
       assert.match(listParams, /cursor/);

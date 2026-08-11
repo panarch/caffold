@@ -211,6 +211,7 @@ async fn startup_recovery_resumes_only_loaded_threads_managed_by_caffold() {
                 "thread/resume".to_string(),
                 json!({
                     "threadId": "managed",
+                    "serviceTier": "default",
                     "excludeTurns": true,
                     "initialTurnsPage": {
                         "limit": 8,
