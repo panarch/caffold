@@ -23,10 +23,14 @@ import {
   taskWorktreeLabel,
   upsertTask,
 } from "../task-list-model.js";
-import { renderTaskStatusChip } from "./task-status.js";
+import {
+  patchTaskStatusChip,
+  renderTaskStatusChip,
+} from "./task-status.js";
 
 const UNSEEN_ATTENTION_PHASE_COUNT = 8;
 const UNSEEN_ATTENTION_PHASE_INTERVAL_MS = 300;
+const TASK_RUNNING_SPINNER_DURATION_MS = 800;
 
 class CaffoldTaskNavigator extends HTMLElement {
   connectedCallback() {
@@ -634,6 +638,7 @@ class CaffoldTaskNavigator extends HTMLElement {
         ${this.renderSection("Archived", this.archivedTasks, "archived")}
       </div>
     `;
+    initializeRunningSpinners(this);
     const scroller = this.querySelector(".task-list-scroll");
     if (scroller) {
       scroller.scrollTop = scrollTop;
@@ -1016,11 +1021,13 @@ function patchTaskListRow(row, nextRow) {
 function patchTaskRowIndicator(currentIndicators, nextIndicators, selector) {
   const current = currentIndicators.querySelector(`:scope > ${selector}`);
   const next = nextIndicators.querySelector(`:scope > ${selector}`);
-  if (current?.outerHTML === next?.outerHTML) {
+  if (current && next && patchMatchingTaskRowIndicator(current, next)) {
+    initializeRunningSpinners(current);
     return;
   }
   if (current && next) {
     current.replaceWith(next);
+    initializeRunningSpinners(next);
     return;
   }
   if (current) {
@@ -1034,6 +1041,59 @@ function patchTaskRowIndicator(currentIndicators, nextIndicators, selector) {
     ? currentIndicators.querySelector(":scope > .task-row-meta")
     : null;
   currentIndicators.insertBefore(next, before);
+  initializeRunningSpinners(next);
+}
+
+function patchMatchingTaskRowIndicator(current, next) {
+  if (current.matches(".task-status-chip") && next.matches(".task-status-chip")) {
+    patchTaskStatusChip(current, next);
+    return true;
+  }
+  if (
+    current.matches(".task-row-worktree") &&
+    next.matches(".task-row-worktree")
+  ) {
+    syncElementAttributes(current, next, ["class", "title"]);
+    return true;
+  }
+  if (
+    current.matches(".task-unseen-complete") &&
+    next.matches(".task-unseen-complete")
+  ) {
+    syncElementAttributes(current, next, [
+      "class",
+      "title",
+      "aria-label",
+      "style",
+    ]);
+    return true;
+  }
+  if (current.matches(".task-row-time") && next.matches(".task-row-time")) {
+    syncElementAttributes(current, next, ["class", "datetime"]);
+    if (current.textContent !== next.textContent) {
+      current.textContent = next.textContent;
+    }
+    return true;
+  }
+  return false;
+}
+
+function initializeRunningSpinners(root) {
+  const spinners = root.matches?.(".task-status-spinner")
+    ? [root]
+    : root.querySelectorAll(".task-status-spinner");
+  for (const spinner of spinners) {
+    if (!spinner.closest('.task-row[data-task-status="running"]')) {
+      spinner.style.removeProperty("animation-delay");
+      continue;
+    }
+    if (spinner.style.animationDelay) {
+      continue;
+    }
+    const delayMs =
+      0 - (Math.random() * (TASK_RUNNING_SPINNER_DURATION_MS - 1) + 1);
+    spinner.style.animationDelay = `${delayMs}ms`;
+  }
 }
 
 function syncElementAttributes(element, nextElement, names) {

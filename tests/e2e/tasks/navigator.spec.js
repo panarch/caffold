@@ -106,6 +106,91 @@ test("shows relative age from the latest completion instead of thread recency", 
   await expect(time).toHaveAttribute("datetime", new Date(lastCompletedMs).toISOString());
 });
 
+test("starts active Task navigator spinners at independent phases", async ({
+  page,
+}) => {
+  await installEventSourceMock(page);
+  await mockCodexModels(page);
+  const now = Date.now();
+  const tasks = ["alpha", "bravo", "charlie"].map((suffix, index) => ({
+    id: `thread_spinner_${suffix}`,
+    threadId: `thread_spinner_${suffix}`,
+    ...canonicalTaskState("active", {
+      turnId: `turn_spinner_${suffix}`,
+      startedAtMs: now - index * 1_000,
+      latestTurnStatus: "inProgress",
+    }),
+    title: `Running spinner ${suffix}`,
+    preview: `Running spinner ${suffix}`,
+    cwd: "tests/fixtures/home",
+    cwdPath: "tests/fixtures/home",
+    relativeCwd: "",
+    worktree: null,
+    createdMs: now - index * 1_000,
+    updatedMs: now - index * 1_000,
+    recencyMs: now - index * 1_000,
+    lastEventSummary: `Running ${suffix}`,
+    unseen: false,
+  }));
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks, nextCursor: null }),
+    }),
+  );
+  await page.route(/\/api\/tasks\/thread_spinner_alpha(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        revision: 1,
+        threadId: tasks[0].threadId,
+        syncState: "ready",
+        task: tasks[0],
+        events: [],
+        eventsPage: { nextCursor: null },
+        pendingApprovals: [],
+      }),
+    }),
+  );
+
+  await page.goto("/tasks/thread_spinner_alpha");
+  const navigatorSpinners = page.locator(
+    'caffold-task-navigator .task-row[data-task-status="running"] .task-status-spinner',
+  );
+  const spinnerPhases = () => navigatorSpinners.evaluateAll((elements) =>
+    elements
+      .map((spinner) => {
+        const row = spinner.closest(".task-row");
+        const style = getComputedStyle(spinner);
+        return {
+          animationDelay: style.animationDelay,
+          animationDuration: style.animationDuration,
+          animationName: style.animationName,
+          phase: spinner.style.animationDelay,
+          threadId: row.dataset.threadId,
+        };
+      })
+      .sort((left, right) => left.threadId.localeCompare(right.threadId)),
+  );
+
+  await expect(navigatorSpinners).toHaveCount(3);
+  const initial = await spinnerPhases();
+  for (const spinner of initial) {
+    expect(spinner.animationName).toBe("task-status-spin");
+    expect(spinner.animationDuration).toBe("0.8s");
+    expect(Number.parseFloat(spinner.animationDelay)).toBeLessThan(0);
+    expect(Number.parseFloat(spinner.animationDelay)).toBeGreaterThan(-0.8);
+    expect(spinner.phase).toMatch(/^-\d+(?:\.\d+)?ms$/);
+  }
+  expect(new Set(initial.map(({ phase }) => phase)).size).toBe(3);
+
+  const detailSpinner = page.locator(
+    ".task-detail-info-button .task-status-spinner",
+  );
+  await expect(detailSpinner).toHaveCount(1);
+  await expect(detailSpinner).toHaveCSS("animation-delay", "0s");
+});
+
 test("keeps unseen completion markers blinking, phase-shifted, and motion-safe", async ({
   page,
 }, testInfo) => {

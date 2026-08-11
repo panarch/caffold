@@ -9,7 +9,10 @@ import {
 } from "../../../runtime-state.js";
 import { shortId } from "../../../task-format.js";
 import { taskThreadId } from "../../../task-list-model.js";
-import { renderTaskStatusChip } from "../../task-status.js";
+import {
+  patchTaskStatusChip,
+  renderTaskStatusChip,
+} from "../../task-status.js";
 
 let taskInfoInstanceId = 0;
 
@@ -280,53 +283,11 @@ function patchStatusContent(button, content) {
   const currentChip = button.querySelector(":scope > .task-status-chip");
   const nextChip = template.content.firstElementChild;
   if (currentChip && nextChip?.matches(".task-status-chip")) {
-    patchStatusChip(currentChip, nextChip);
+    patchTaskStatusChip(currentChip, nextChip);
     return;
   }
   if (button.innerHTML.trim() !== content.trim()) {
     button.innerHTML = content;
-  }
-}
-
-function patchStatusChip(current, next) {
-  syncElementAttributes(current, next, [
-    "class",
-    "data-status",
-    "title",
-    "aria-label",
-  ]);
-
-  const currentSpinner = current.querySelector(":scope > .task-status-spinner");
-  const nextSpinner = next.querySelector(":scope > .task-status-spinner");
-  if (currentSpinner && nextSpinner) {
-    syncElementAttributes(currentSpinner, nextSpinner, ["class", "aria-hidden"]);
-    patchSpinnerLabel(current, next);
-    return;
-  }
-  if (current.innerHTML.trim() !== next.innerHTML.trim()) {
-    current.innerHTML = next.innerHTML;
-  }
-}
-
-function patchSpinnerLabel(current, next) {
-  const currentLabel = current.querySelector(":scope > .sr-only");
-  const nextLabel = next.querySelector(":scope > .sr-only");
-  if (currentLabel && nextLabel) {
-    setText(currentLabel, nextLabel.textContent);
-  } else if (currentLabel) {
-    currentLabel.remove();
-  } else if (nextLabel) {
-    current.append(nextLabel);
-  }
-}
-
-function syncElementAttributes(element, nextElement, names) {
-  for (const name of names) {
-    if (nextElement.hasAttribute(name)) {
-      setAttribute(element, name, nextElement.getAttribute(name));
-    } else if (element.hasAttribute(name)) {
-      element.removeAttribute(name);
-    }
   }
 }
 
