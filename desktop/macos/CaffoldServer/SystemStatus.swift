@@ -36,11 +36,28 @@ private struct CodexStatusResponse: Decodable {
         let planType: String?
     }
 
+    struct Diagnostics: Decodable {
+        let codexCliVersion: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case codexCliVersion
+        }
+
+        init(from decoder: Decoder) throws {
+            guard let container = try? decoder.container(keyedBy: CodingKeys.self) else {
+                codexCliVersion = nil
+                return
+            }
+            codexCliVersion = try? container.decode(String.self, forKey: .codexCliVersion)
+        }
+    }
+
     let available: Bool
     let codexCliAvailable: Bool
     let appServerAvailable: Bool
     let message: String?
     let account: Account?
+    let diagnostics: Diagnostics?
 }
 
 struct WhisperStatusResponse: Decodable {
@@ -167,11 +184,12 @@ func probeGithubStatus(completion: @escaping (IntegrationStatus) -> Void) {
 
 func probeCodexStatus(
     url: URL,
+    session: URLSession = .shared,
     completion: @escaping (IntegrationStatus) -> Void
 ) {
     var request = URLRequest(url: url)
     request.timeoutInterval = 4
-    URLSession.shared.dataTask(with: request) { data, response, _ in
+    session.dataTask(with: request) { data, response, _ in
         let statusResult: IntegrationStatus
         if
             let response = response as? HTTPURLResponse,
@@ -179,15 +197,24 @@ func probeCodexStatus(
             let data,
             let status = try? JSONDecoder().decode(CodexStatusResponse.self, from: data)
         {
+            let version = status.diagnostics?.codexCliVersion?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let versionDetail = version.flatMap { value in
+                value.isEmpty
+                    ? nil
+                    : IntegrationDetail(label: "Version", value: value)
+            }
+            let versionDetails = [versionDetail].compactMap { $0 }
             if !status.codexCliAvailable {
                 statusResult = IntegrationStatus(
                     name: "Codex",
                     state: .unavailable,
                     status: "Not installed",
-                    details: []
+                    details: versionDetails
                 )
             } else if status.available, status.appServerAvailable {
                 let details = [
+                    versionDetail,
                     status.account?.email.map { IntegrationDetail(label: "Account", value: $0) },
                     status.account?.planType.map { IntegrationDetail(label: "Plan", value: $0) },
                 ].compactMap { $0 }
@@ -202,14 +229,14 @@ func probeCodexStatus(
                     name: "Codex",
                     state: .attention,
                     status: "Sign-in required",
-                    details: []
+                    details: versionDetails
                 )
             } else {
                 statusResult = IntegrationStatus(
                     name: "Codex",
                     state: .unavailable,
                     status: "Unavailable",
-                    details: []
+                    details: versionDetails
                 )
             }
         } else {
