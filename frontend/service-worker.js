@@ -71,6 +71,7 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/tasks/page.css",
   "/assets/pages/(task-workspace)/tasks/page.js",
   "/assets/pages/(task-workspace)/tasks/runtime-state.js",
+  "/assets/pages/(task-workspace)/tasks/stream.js",
   "/assets/pages/(task-workspace)/tasks/task-events.js",
   "/assets/pages/(task-workspace)/tasks/task-format.js",
   "/assets/pages/(task-workspace)/tasks/task-list-model.js",
