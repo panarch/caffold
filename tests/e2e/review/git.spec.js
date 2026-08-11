@@ -152,10 +152,13 @@ test("opens changed diffs from Changes mode", async ({ page }, testInfo) => {
   await expect(gitButton).toBeVisible();
   await expect(page.locator("caffold-pathbar .header-action-button")).toHaveCount(0);
   await expect(gitButton.locator(".header-action-badge")).toHaveText("3");
-  await expect(gitButton.locator("img.header-action-brand-icon")).toBeVisible();
-  await expect(gitButton.locator("img.header-action-brand-icon")).toHaveAttribute(
-    "src",
-    "/assets/brand/git-logomark-light.svg",
+  const gitBrandIcon = gitButton.locator(
+    '.header-action-brand-icon[data-brand="git"]',
+  );
+  await expect(gitBrandIcon).toBeVisible();
+  await expect(gitBrandIcon).toHaveCSS(
+    "background-image",
+    /git-logomark-light\.svg/,
   );
   await expect(gitButton).not.toContainText("master");
   await expect(gitButton).toHaveAttribute("title", "Git actions, 3 changed files");

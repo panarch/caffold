@@ -188,14 +188,14 @@ test("reflows Settings from the detail pane width at maximum Interface scale", a
   const appearance = page.locator("caffold-settings-appearance-page");
   await setRange(range(appearance, "interfaceScalePercent"), 120);
   const settingsDetailFontSize = await appearance
-    .locator(".settings-field-copy span")
+    .locator(".settings-field-copy > span:not(.settings-field-label)")
     .first()
     .evaluate((element) => getComputedStyle(element).fontSize);
   await expect(
     appearance.locator(".settings-range-control output").first(),
   ).toHaveCSS("font-size", settingsDetailFontSize);
   const appearanceMetrics = await settingsSurfaceMetrics(appearance, {
-    row: ".settings-appearance-group:not(.settings-typeface-group) .settings-field",
+    row: ".settings-appearance-group:not(.settings-typeface-group):not(.settings-theme-group) .settings-field",
     leading: ".settings-field-copy",
     trailing: ".settings-range-control",
     pageAction: ".settings-reset-all",
@@ -295,7 +295,8 @@ test("normalizes legacy settings into the current appearance contract", async ({
       page.evaluate((key) => JSON.parse(localStorage.getItem(key)), SETTINGS_KEY),
     )
     .toEqual({
-      appearanceVersion: 3,
+      appearanceVersion: 4,
+      themeMode: "system",
       typefacePreset: "d2-coding",
       interfaceScalePercent: 100,
       conversationTextPx: 17,
@@ -313,6 +314,53 @@ test("normalizes legacy settings into the current appearance contract", async ({
       ),
     )
     .toBe(false);
+});
+
+test("selects, persists, and resolves System, Light, and Dark themes", async ({
+  page,
+}, testInfo) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/settings/appearance");
+
+  const appearance = page.locator("caffold-settings-appearance-page");
+  const system = appearance.getByRole("radio", { name: "System" });
+  const light = appearance.getByRole("radio", { name: "Light" });
+  const dark = appearance.getByRole("radio", { name: "Dark" });
+  const resetTheme = appearance.locator('button[data-action="reset-theme"]');
+
+  await expect(system).toBeChecked();
+  await expectThemeState(page, { mode: "system", resolvedTheme: "dark" });
+  await expect(resetTheme).toBeDisabled();
+  const systemDarkStyles = await representativeThemeStyles(page);
+  await captureReviewScreenshot(page, testInfo, "settings-theme-system-dark");
+
+  await light.check();
+  await expect(light).toBeChecked();
+  await expectThemeState(page, { mode: "light", resolvedTheme: "light" });
+  await expect(resetTheme).toBeEnabled();
+  const lightStyles = await representativeThemeStyles(page);
+  await captureReviewScreenshot(page, testInfo, "settings-theme-light");
+
+  for (const key of Object.keys(lightStyles)) {
+    expect(
+      lightStyles[key],
+      `${key} should differ between representative Light and Dark states`,
+    ).not.toBe(systemDarkStyles[key]);
+  }
+
+  await dark.check();
+  await expectThemeState(page, { mode: "dark", resolvedTheme: "dark" });
+  await page.emulateMedia({ colorScheme: "light" });
+  await expectThemeState(page, { mode: "dark", resolvedTheme: "dark" });
+  await page.reload();
+  await expect(dark).toBeChecked();
+  await expectThemeState(page, { mode: "dark", resolvedTheme: "dark" });
+
+  await system.check();
+  await expectThemeState(page, { mode: "system", resolvedTheme: "light" });
+  await expect(resetTheme).toBeDisabled();
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expectThemeState(page, { mode: "system", resolvedTheme: "dark" });
 });
 
 test("updates independent ranges live without replacing their DOM", async ({
@@ -394,7 +442,7 @@ test("updates independent ranges live without replacing their DOM", async ({
   await expect(codeRange).toHaveAttribute("min", "12");
   await expect(codeRange).toHaveAttribute("max", "20");
   const settingsSmallText = settingsPage
-    .locator(".settings-field-copy span")
+    .locator(".settings-field-copy > span:not(.settings-field-label)")
     .first();
   await expect(settingsSmallText).toHaveCSS("font-size", "14px");
   await setRange(interfaceRange, 90);
@@ -1120,4 +1168,68 @@ function expectComposerIconsCentered(metrics) {
       `${icon.name} glyph must be centered in its SVG view box`,
     ).toBeLessThanOrEqual(0.75);
   }
+}
+
+async function expectThemeState(page, { mode, resolvedTheme }) {
+  const expectedColor = resolvedTheme === "dark" ? "#1b1b1b" : "#ffffff";
+  await expect(page.locator("html")).toHaveAttribute("data-theme", resolvedTheme);
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
+    "content",
+    expectedColor,
+  );
+  await expect
+    .poll(() =>
+      page.evaluate((key) => {
+        const settings = JSON.parse(localStorage.getItem(key));
+        return {
+          colorScheme: getComputedStyle(document.documentElement).colorScheme,
+          themeMode: settings.themeMode,
+        };
+      }, SETTINGS_KEY),
+    )
+    .toEqual({ colorScheme: resolvedTheme, themeMode: mode });
+}
+
+async function representativeThemeStyles(page) {
+  return page.evaluate(async () => {
+    await import("/assets/components/diff-viewer.js");
+
+    const review = document.createElement("caffold-task-review");
+    review.style.cssText =
+      "position:fixed;inset:auto auto 0 -10000px;width:20rem;height:10rem";
+    document.body.append(review);
+    review.innerHTML = `
+      <p class="task-review-git-notice">Review warning</p>
+      <p class="task-review-error">Review error</p>
+    `;
+
+    const diff = document.createElement("caffold-diff-viewer");
+    diff.style.cssText =
+      "position:fixed;inset:auto auto 0 -10000px;width:20rem;height:10rem";
+    document.body.append(diff);
+    diff.setDiff({
+      diff: "@@ -1 +1 @@\n-old line\n+new line",
+    });
+
+    const colorPair = (element) => {
+      const style = getComputedStyle(element);
+      return `${style.color}|${style.backgroundColor}`;
+    };
+    const result = {
+      settings: colorPair(
+        document.querySelector("caffold-settings-appearance-page"),
+      ),
+      taskSelection: colorPair(
+        document.querySelector(".settings-interface-preview-row"),
+      ),
+      reviewWarning: colorPair(review.querySelector(".task-review-git-notice")),
+      reviewDanger: colorPair(review.querySelector(".task-review-error")),
+      code: colorPair(document.querySelector(".settings-code-preview")),
+      diffAdded: colorPair(diff.querySelector(".diff-row-added")),
+      diffRemoved: colorPair(diff.querySelector(".diff-row-removed")),
+    };
+    review.remove();
+    diff.remove();
+    return result;
+  });
 }

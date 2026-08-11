@@ -70,10 +70,7 @@ function renderGithubActions(githubStatus) {
       ${renderGroupButton({
         group: "github",
         popoverId: GITHUB_POPOVER_ID,
-        brandIcon: {
-          light: "/assets/brand/github-invertocat-light.svg",
-          dark: "/assets/brand/github-invertocat-dark.svg",
-        },
+        brandIcon: "github",
         label: "GitHub",
         title,
         state,

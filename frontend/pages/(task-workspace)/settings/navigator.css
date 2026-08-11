@@ -79,6 +79,7 @@ caffold-settings-navigator {
   }
 
   & .settings-navigator-brand {
+    filter: var(--brand-monochrome-filter);
     object-fit: contain;
   }
 

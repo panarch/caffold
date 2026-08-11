@@ -173,6 +173,12 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   );
   expect(await fontsModuleResponse.text()).toContain("TYPEFACE_PRESETS");
 
+  const themeModuleResponse = await request.get("/assets/theme.js");
+  expect(themeModuleResponse.headers()["content-type"]).toContain(
+    "text/javascript",
+  );
+  expect(await themeModuleResponse.text()).toContain("THEME_MODES");
+
   const viewerPresentationResponse = await request.get(
     "/assets/components/file-viewer-presentation.js",
   );
@@ -199,6 +205,7 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
   expect(serviceWorker).toContain("/assets/pages/layout.js");
   expect(serviceWorker).toContain("/assets/pages/layout.css");
   expect(serviceWorker).toContain("/assets/settings.js");
+  expect(serviceWorker).toContain("/assets/theme.js");
   expect(serviceWorker).toContain("/assets/fonts.js");
   expect(serviceWorker).toContain("/assets/fonts/D2Coding-Regular.woff2");
   expect(serviceWorker).toContain("/assets/fonts/D2Coding-Bold.woff2");
@@ -552,9 +559,15 @@ test("groups Git and GitHub actions and routes Codex status to Settings", async 
   const githubButton = headerActionGroupButton(page, "github");
   const codexButton = headerActionGroupButton(page, "codex");
   await expect(gitButton.locator(".header-action-badge")).toHaveCount(0);
-  const gitBrandIcon = gitButton.locator("img.header-action-brand-icon");
-  const githubBrandIcon = githubButton.locator("img.header-action-brand-icon");
-  const codexBrandIcon = codexButton.locator("img.header-action-brand-icon");
+  const gitBrandIcon = gitButton.locator(
+    '.header-action-brand-icon[data-brand="git"]',
+  );
+  const githubBrandIcon = githubButton.locator(
+    '.header-action-brand-icon[data-brand="github"]',
+  );
+  const codexBrandIcon = codexButton.locator(
+    '.header-action-brand-icon[data-brand="codex"]',
+  );
   await expect(gitBrandIcon).toBeVisible();
   await expect(githubBrandIcon).toBeVisible();
   await expect(codexBrandIcon).toBeVisible();
@@ -588,17 +601,38 @@ test("groups Git and GitHub actions and routes Codex status to Settings", async 
     expect(geometry.centerDeltaY).toBeLessThanOrEqual(0.5);
   }
   expect(new Set(headerActionGeometry.map(({ iconWidth }) => iconWidth)).size).toBe(1);
-  await expect(gitBrandIcon).toHaveAttribute(
-    "src",
-    "/assets/brand/git-logomark-light.svg",
+  await expect(gitBrandIcon).toHaveCSS(
+    "background-image",
+    /git-logomark-light\.svg/,
   );
-  await expect(githubBrandIcon).toHaveAttribute(
-    "src",
-    "/assets/brand/github-invertocat-light.svg",
+  await expect(githubBrandIcon).toHaveCSS(
+    "background-image",
+    /github-invertocat-light\.svg/,
   );
-  await expect(codexBrandIcon).toHaveAttribute(
-    "src",
-    "/assets/brand/codex-template@2x.png",
+  await expect(codexBrandIcon).toHaveCSS(
+    "background-image",
+    /codex-template@2x\.png/,
+  );
+  await page.evaluate(async () => {
+    const { setThemeMode } = await import("/assets/settings.js");
+    setThemeMode("dark");
+  });
+  await expect(gitBrandIcon).toHaveCSS(
+    "background-image",
+    /git-logomark-dark\.svg/,
+  );
+  await expect(githubBrandIcon).toHaveCSS(
+    "background-image",
+    /github-invertocat-dark\.svg/,
+  );
+  await expect(codexBrandIcon).toHaveCSS("filter", /invert\(1\)/);
+  await page.evaluate(async () => {
+    const { setThemeMode } = await import("/assets/settings.js");
+    setThemeMode("system");
+  });
+  await expect(gitBrandIcon).toHaveCSS(
+    "background-image",
+    /git-logomark-light\.svg/,
   );
   await expectHeaderBrand(page);
   await expectHeaderActionsFit(page);

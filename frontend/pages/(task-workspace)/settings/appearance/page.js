@@ -2,11 +2,13 @@ import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import {
   APPEARANCE_SETTINGS,
   DEFAULT_SETTINGS,
+  THEME_MODES,
   TYPEFACE_PRESETS,
   getSettings,
   resetAppearanceSetting,
   resetAppearanceSettings,
   setAppearanceSetting,
+  setThemeMode,
   setTypefacePreset,
 } from "../../../../settings.js";
 
@@ -57,6 +59,12 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
   }
 
   handleChange(event) {
+    const theme = event.target.closest('input[type="radio"][data-theme-setting]');
+    if (theme) {
+      setThemeMode(theme.value);
+      return;
+    }
+
     const select = event.target.closest("select[data-typeface-setting]");
     if (!select) {
       return;
@@ -81,6 +89,11 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
       return;
     }
 
+    if (button.dataset.action === "reset-theme") {
+      setThemeMode(DEFAULT_SETTINGS.themeMode);
+      return;
+    }
+
     if (button.dataset.action === "reset-appearance") {
       resetAppearanceSettings();
     }
@@ -91,11 +104,12 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
       <div class="settings-scroll">
         <div class="settings-section">
           <header>
-            <p>Typeface and independent sizing controls keep every surface consistent.</p>
+            <p>Theme, typeface, and sizing controls apply consistently across Caffold.</p>
             <button type="button" class="settings-reset-all" data-action="reset-appearance">
               Reset appearance
             </button>
           </header>
+          ${renderThemeSetting()}
           ${renderTypefaceSetting()}
           ${renderSetting(
             "interfaceScalePercent",
@@ -154,6 +168,14 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
   }
 
   syncControls(settings) {
+    this.querySelectorAll("input[data-theme-setting]").forEach((input) => {
+      input.checked = input.value === settings.themeMode;
+    });
+    const themeReset = this.querySelector('button[data-action="reset-theme"]');
+    if (themeReset) {
+      themeReset.disabled = settings.themeMode === DEFAULT_SETTINGS.themeMode;
+    }
+
     const typefaceSelect = this.querySelector("select[data-typeface-setting]");
     const typefaceReset = this.querySelector(
       'button[data-action="reset-typeface"]',
@@ -188,6 +210,7 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
     const resetAll = this.querySelector('button[data-action="reset-appearance"]');
     if (resetAll) {
       resetAll.disabled =
+        settings.themeMode === DEFAULT_SETTINGS.themeMode &&
         settings.typefacePreset === DEFAULT_SETTINGS.typefacePreset &&
         Object.keys(APPEARANCE_SETTINGS).every(
           (name) => settings[name] === DEFAULT_SETTINGS[name],
@@ -227,6 +250,45 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
       );
     }
   }
+}
+
+function renderThemeSetting() {
+  const options = Object.values(THEME_MODES)
+    .map(
+      (theme) => `
+        <label>
+          <input
+            type="radio"
+            name="settings-theme"
+            value="${theme.id}"
+            data-theme-setting
+          >
+          <span>${theme.label}</span>
+        </label>
+      `,
+    )
+    .join("");
+
+  return `
+    <div class="settings-appearance-group settings-theme-group">
+      <div class="settings-field">
+        <div class="settings-field-copy">
+          <span class="settings-field-label" id="settings-theme-label">Theme</span>
+          <span id="settings-theme-description">Follow your system or choose a fixed Light or Dark theme.</span>
+        </div>
+        <div class="settings-theme-control">
+          <fieldset
+            aria-labelledby="settings-theme-label"
+            aria-describedby="settings-theme-description"
+          >
+            <legend class="sr-only">Theme</legend>
+            ${options}
+          </fieldset>
+          <button type="button" data-action="reset-theme">Reset</button>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function renderTypefaceSetting() {

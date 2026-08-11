@@ -45,12 +45,11 @@ class CaffoldCodexHeaderAction extends HTMLElement {
           title="${escapeHtml(title)}"
           aria-label="${escapeHtml(title)}"
         >
-          <img
+          <span
             class="header-action-icon header-action-brand-icon"
-            src="/assets/brand/codex-template@2x.png"
-            alt=""
-            draggable="false"
-          />
+            data-brand="codex"
+            aria-hidden="true"
+          ></span>
         </button>
       </div>
     `;

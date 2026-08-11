@@ -4,11 +4,17 @@ import {
   applyTypefacePreset,
   normalizeTypefacePreset,
 } from "./fonts.js";
+import {
+  DEFAULT_THEME_MODE,
+  THEME_MODES,
+  applyThemeMode,
+  normalizeThemeMode,
+} from "./theme.js";
 
 const STORAGE_KEY = "caffold:settings";
 
-export const APPEARANCE_VERSION = 3;
-export { TYPEFACE_PRESETS };
+export const APPEARANCE_VERSION = 4;
+export { THEME_MODES, TYPEFACE_PRESETS };
 
 export const APPEARANCE_SETTINGS = Object.freeze({
   interfaceScalePercent: Object.freeze({
@@ -39,6 +45,7 @@ export const APPEARANCE_SETTINGS = Object.freeze({
 
 export const DEFAULT_SETTINGS = Object.freeze({
   appearanceVersion: APPEARANCE_VERSION,
+  themeMode: DEFAULT_THEME_MODE,
   typefacePreset: DEFAULT_TYPEFACE_PRESET,
   interfaceScalePercent: APPEARANCE_SETTINGS.interfaceScalePercent.defaultValue,
   conversationTextPx: APPEARANCE_SETTINGS.conversationTextPx.defaultValue,
@@ -83,6 +90,16 @@ export function setTypefacePreset(value) {
   return getSettings();
 }
 
+export function setThemeMode(value) {
+  const themeMode = normalizeThemeMode(value);
+  const settings = normalizeSettings({
+    ...currentSettings,
+    themeMode,
+  });
+  persistApplyAndPublish(settings);
+  return getSettings();
+}
+
 export function resetAppearanceSetting(name) {
   if (!Object.hasOwn(APPEARANCE_SETTINGS, name)) {
     return getSettings();
@@ -104,6 +121,7 @@ export function applySettings(settings = currentSettings) {
 
   const normalized = normalizeSettings(settings);
   const root = document.documentElement;
+  applyThemeMode(normalized.themeMode);
   root.style.setProperty(
     "--interface-scale",
     `${normalized.interfaceScalePercent / 100}`,
@@ -128,6 +146,7 @@ export function normalizeSettings(value) {
 
   return {
     appearanceVersion: APPEARANCE_VERSION,
+    themeMode: normalizeThemeMode(value?.themeMode),
     typefacePreset: normalizeTypefacePreset(value?.typefacePreset),
     interfaceScalePercent: normalizeSettingValue(
       value?.interfaceScalePercent,
