@@ -44,6 +44,8 @@ const FORBIDDEN_ELEMENTS = new Set([
   "textarea",
 ]);
 
+const VALID_INTEGER = /^-?[0-9]+$/;
+
 let parserPromise;
 
 class CaffoldTaskMarkdown extends HTMLElement {
@@ -323,7 +325,9 @@ function sanitizeAttributes(element) {
     ? new Set(["href", "title"])
     : element.localName === "input"
       ? new Set(["checked", "disabled", "type"])
-      : new Set();
+      : element.localName === "ol" && VALID_INTEGER.test(element.getAttribute("start") ?? "")
+        ? new Set(["start"])
+        : new Set();
 
   for (const attribute of [...element.attributes]) {
     if (!allowed.has(attribute.name.toLowerCase())) {

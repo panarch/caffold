@@ -121,11 +121,23 @@ export async function installBrowserDefaults(page) {
             .replace(/\\*\\*(.+?)\\*\\*/g, "<strong>$1</strong>")
             .replace(/\\x60([^\\x60]+)\\x60/g, "<code>$1</code>")
             .replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href="$2">$1</a>');
+          const unorderedItem = (line) => {
+            const content = line.slice(2);
+            const task = content.match(/^\\[([ xX])\\] (.*)$/);
+            if (!task) {
+              return '<li>' + inline(content) + '</li>';
+            }
+            const checked = task[1].toLowerCase() === "x" ? " checked" : "";
+            return '<li><input type="checkbox" disabled' + checked + '> ' + inline(task[2]) + '</li>';
+          };
           export const marked = {
             parse(source) {
-              const escaped = escapeHtml(source);
-              const blocks = escaped.split(/\\n{2,}/);
-              return blocks.map((block) => {
+              const blocks = source.split(/\\n{2,}/);
+              return blocks.map((sourceBlock) => {
+                if (sourceBlock.trimStart().startsWith("<")) {
+                  return sourceBlock;
+                }
+                const block = escapeHtml(sourceBlock);
                 if (block.startsWith("\\x60\\x60\\x60")) {
                   const lines = block.split("\\n");
                   return '<pre><code>' + lines.slice(1, -1).join("\\n") + '</code></pre>';
@@ -136,8 +148,22 @@ export async function installBrowserDefaults(page) {
                   return '<h' + level + '>' + inline(heading[2]) + '</h' + level + '>';
                 }
                 const lines = block.split("\\n");
+                const ordered = lines.map((line) => line.match(/^([0-9]{1,9})[.)] (.+)$/));
+                if (ordered.every(Boolean)) {
+                  const start = ordered[0][1];
+                  const startAttribute = start === "1" ? "" : ' start="' + start + '"';
+                  return '<ol' + startAttribute + '>' + ordered.map((item) => '<li>' + inline(item[2]) + '</li>').join("") + '</ol>';
+                }
+                if (
+                  lines.length > 1 &&
+                  lines[0].startsWith("- ") &&
+                  lines.slice(1).every((line) => line.startsWith("  - "))
+                ) {
+                  const nested = lines.slice(1).map((line) => unorderedItem(line.slice(2))).join("");
+                  return '<ul><li>' + inline(lines[0].slice(2)) + '<ul>' + nested + '</ul></li></ul>';
+                }
                 if (lines.every((line) => line.startsWith("- "))) {
-                  return '<ul>' + lines.map((line) => '<li>' + inline(line.slice(2)) + '</li>').join("") + '</ul>';
+                  return '<ul>' + lines.map(unorderedItem).join("") + '</ul>';
                 }
                 if (lines.length >= 2 && lines[0].startsWith("|") && lines[1].includes("---")) {
                   const cells = (line) => line.split("|").slice(1, -1).map((cell) => cell.trim());

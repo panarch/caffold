@@ -10,6 +10,138 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
+test("preserves ordered-list starts through Task Markdown sanitization", async ({ page }) => {
+  const completedAssistantResponse = [
+    "1. First",
+    "",
+    "- detail",
+    "",
+    "2. Second",
+    "",
+    "- detail",
+    "",
+    "3. Third",
+  ].join("\n");
+  const scenario = await installTaskLoopFixture(page, {
+    completedAssistantResponse,
+    threadId: "thread_ordered_list_starts",
+  });
+  await scenario.seedCompletedTask();
+  await page.goto(`/tasks/${scenario.threadId}`);
+
+  const tasksPage = page.locator("caffold-tasks-page");
+  const assistantMarkdown = tasksPage.locator(
+    '.task-message[data-message-role="assistant"] caffold-task-markdown',
+  );
+  await expect(assistantMarkdown).toHaveAttribute("data-render-state", "markdown");
+  await expect(assistantMarkdown.locator("ol")).toHaveCount(3);
+  await expect(assistantMarkdown.locator("ul")).toHaveCount(2);
+  expect(
+    await assistantMarkdown.locator("ol").evaluateAll((lists) =>
+      lists.map((list) => ({
+        effectiveStart: list.start,
+        start: list.getAttribute("start"),
+        text: list.textContent.trim(),
+      })),
+    ),
+  ).toEqual([
+    { effectiveStart: 1, start: null, text: "First" },
+    { effectiveStart: 2, start: "2", text: "Second" },
+    { effectiveStart: 3, start: "3", text: "Third" },
+  ]);
+
+  await tasksPage.evaluate(() => {
+    const probes = [
+      {
+        id: "fifth",
+        markdown: "5. Fifth",
+      },
+      {
+        id: "attributes",
+        markdown: [
+          '<ol start="7" class="discard" data-extra="discard" onclick="discard()"><li id="discard">Valid</li></ol>',
+          "",
+          '<ol start="not-an-integer"><li>Malformed</li></ol>',
+          "",
+          '<ol start="+8"><li>Plus-prefixed</li></ol>',
+          "",
+          '<ol start=" 9"><li>Whitespace-prefixed</li></ol>',
+          "",
+          '<ol start="-2" aria-label="discard"><li>Negative</li></ol>',
+          "",
+          '<ul start="4" data-extra="discard"><li>Wrong element</li></ul>',
+        ].join("\n"),
+      },
+      {
+        id: "list-features",
+        markdown: [
+          "1. One",
+          "2. Two",
+          "",
+          "- Parent",
+          "  - Nested detail",
+          "",
+          "- [x] Complete",
+          "- [ ] Pending",
+        ].join("\n"),
+      },
+    ];
+
+    for (const { id, markdown } of probes) {
+      const probe = document.createElement("caffold-task-markdown");
+      probe.dataset.testProbe = id;
+      probe.hidden = true;
+      probe.textContent = markdown;
+      document.body.append(probe);
+    }
+  });
+
+  const fifth = page.locator('caffold-task-markdown[data-test-probe="fifth"]');
+  await expect(fifth).toHaveAttribute("data-render-state", "markdown");
+  await expect(fifth.locator("ol")).toHaveAttribute("start", "5");
+  expect(await fifth.locator("ol").evaluate((list) => list.start)).toBe(5);
+
+  const attributes = page.locator('caffold-task-markdown[data-test-probe="attributes"]');
+  await expect(attributes).toHaveAttribute("data-render-state", "markdown");
+  expect(
+    await attributes.locator("ol").evaluateAll((lists) =>
+      lists.map((list) => ({
+        attributes: [...list.attributes].map((attribute) => attribute.name).sort(),
+        effectiveStart: list.start,
+        itemAttributes: [...list.querySelector("li").attributes].map(
+          (attribute) => attribute.name,
+        ),
+        start: list.getAttribute("start"),
+      })),
+    ),
+  ).toEqual([
+    { attributes: ["start"], effectiveStart: 7, itemAttributes: [], start: "7" },
+    { attributes: [], effectiveStart: 1, itemAttributes: [], start: null },
+    { attributes: [], effectiveStart: 1, itemAttributes: [], start: null },
+    { attributes: [], effectiveStart: 1, itemAttributes: [], start: null },
+    { attributes: ["start"], effectiveStart: -2, itemAttributes: [], start: "-2" },
+  ]);
+  expect(
+    await attributes.locator("ul").evaluate((list) =>
+      [...list.attributes].map((attribute) => attribute.name),
+    ),
+  ).toEqual([]);
+
+  const listFeatures = page.locator(
+    'caffold-task-markdown[data-test-probe="list-features"]',
+  );
+  await expect(listFeatures).toHaveAttribute("data-render-state", "markdown");
+  await expect(listFeatures.locator("ol > li")).toHaveCount(2);
+  expect(await listFeatures.locator("ol").evaluate((list) => list.start)).toBe(1);
+  await expect(listFeatures.locator("ul ul > li")).toHaveText("Nested detail");
+  const checkboxes = listFeatures.locator('input[type="checkbox"]');
+  await expect(checkboxes).toHaveCount(2);
+  await expect(checkboxes.first()).toBeChecked();
+  await expect(checkboxes.last()).not.toBeChecked();
+  await expect(checkboxes.first()).toBeDisabled();
+  await expect(checkboxes.last()).toBeDisabled();
+});
+
 test("presents a completed canonical turn without duplicate or unsafe content", async ({
   page,
 }, testInfo) => {
