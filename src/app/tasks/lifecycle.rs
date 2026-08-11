@@ -2,7 +2,9 @@ use std::{path::PathBuf, sync::Arc};
 
 use crate::{
     app::error::ApiError,
-    codex_app_server::{CodexThreadClient, CodexTurnOptions, is_fast_service_tier},
+    codex_app_server::{
+        CodexThreadClient, CodexTurnOptions, is_fast_service_tier, service_tier_for_fast_mode,
+    },
     codex_thread_sessions::{CodexThreadSessions, StartedThreadSettings},
     fs::RootedFs,
     task_store::{ManagedThread, TaskStore},
@@ -74,7 +76,13 @@ impl TaskLifecycle {
         let requested_fast_mode = is_fast_service_tier(requested_service_tier.as_deref());
         let client = &connection.client;
         let mut thread = client
-            .start_thread(&cwd, turn_options.permission_mode)
+            .start_thread(
+                &cwd,
+                turn_options.permission_mode,
+                requested_service_tier
+                    .as_deref()
+                    .unwrap_or_else(|| service_tier_for_fast_mode(requested_fast_mode)),
+            )
             .await?;
         if let Some(initial_name) = initial_name {
             if let Err(error) = client

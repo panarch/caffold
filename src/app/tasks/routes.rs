@@ -956,9 +956,9 @@ async fn task_prompt(
     Query(_query): Query<TasksQuery>,
     Json(request): Json<TaskPromptRequest>,
 ) -> Result<Json<TaskPromptResponse>, ApiError> {
-    if task_store_get(&state, &thread_id).await?.is_none() {
-        return Err(task_not_managed_error());
-    }
+    let managed = task_store_get(&state, &thread_id)
+        .await?
+        .ok_or_else(task_not_managed_error)?;
     let managed_worktree = task_store_worktree_for_thread(&state, &thread_id).await?;
     let managed_cwd = managed_prompt_cwd(managed_worktree.as_ref())?;
     let (prompt, images) = normalize_task_input(&request.prompt, request.images)?;
@@ -968,6 +968,10 @@ async fn task_prompt(
     let requested_effort = request.effort;
     let requested_fast_mode = request.fast_mode;
     let requested_permission_mode = request.permission_mode;
+    state
+        .codex_sessions
+        .restore_managed_fast_mode(&thread_id, managed.fast_mode)
+        .await;
     let mut target = match state
         .codex_sessions
         .prepare_prompt(&connection.client, connection.generation, &thread_id)
@@ -1195,9 +1199,13 @@ async fn task_interrupt(
     AxumPath(thread_id): AxumPath<String>,
     Query(_query): Query<TasksQuery>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
-    if task_store_get(&state, &thread_id).await?.is_none() {
-        return Err(task_not_managed_error());
-    }
+    let managed = task_store_get(&state, &thread_id)
+        .await?
+        .ok_or_else(task_not_managed_error)?;
+    state
+        .codex_sessions
+        .restore_managed_fast_mode(&thread_id, managed.fast_mode)
+        .await;
     let connection = require_codex_thread_connection(&state).await?;
     let Some(turn_id) = state
         .codex_sessions

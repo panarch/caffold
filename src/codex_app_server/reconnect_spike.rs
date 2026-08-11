@@ -18,7 +18,7 @@ use tokio::{
 use tokio_tungstenite::{WebSocketStream, client_async, tungstenite::Message};
 
 use super::{
-    CodexPermissionMode, CodexTurnOptions,
+    CodexPermissionMode, CodexTurnOptions, NORMAL_SERVICE_TIER_ID,
     protocol::{
         INITIALIZE, INITIALIZED, RENAME_CURRENT_THREAD_TOOL_NAME, THREAD_ARCHIVE, THREAD_NAME_SET,
         THREAD_READ, THREAD_RESUME, THREAD_START, TURN_INTERRUPT, TURN_START,
@@ -327,7 +327,7 @@ async fn run_reconnect_spike(socket_path: &Path, ids: &mut SpikeIds) -> Result<(
     let started = first
         .request(
             THREAD_START,
-            serde_json::to_value(thread_start_params(cwd, None))
+            serde_json::to_value(thread_start_params(cwd, None, Some(NORMAL_SERVICE_TIER_ID)))
                 .context("serialize thread/start params")?,
         )
         .await?;
@@ -404,8 +404,12 @@ async fn run_reconnect_spike(socket_path: &Path, ids: &mut SpikeIds) -> Result<(
     let resumed = second
         .request(
             THREAD_RESUME,
-            serde_json::to_value(thread_resume_params(&thread_id, true))
-                .context("serialize thread/resume params")?,
+            serde_json::to_value(thread_resume_params(
+                &thread_id,
+                true,
+                Some(NORMAL_SERVICE_TIER_ID),
+            ))
+            .context("serialize thread/resume params")?,
         )
         .await?;
     let resumed_status = resumed
@@ -490,6 +494,7 @@ async fn run_approval_reconnect_spike(socket_path: &Path, ids: &mut SpikeIds) ->
             serde_json::to_value(thread_start_params(
                 cwd,
                 Some(CodexPermissionMode::AskForApproval),
+                Some(NORMAL_SERVICE_TIER_ID),
             ))
             .context("serialize approval thread/start params")?,
         )
@@ -560,8 +565,12 @@ async fn run_approval_reconnect_spike(socket_path: &Path, ids: &mut SpikeIds) ->
     let resumed = second
         .request(
             THREAD_RESUME,
-            serde_json::to_value(thread_resume_params(&thread_id, true))
-                .context("serialize approval thread/resume params")?,
+            serde_json::to_value(thread_resume_params(
+                &thread_id,
+                true,
+                Some(NORMAL_SERVICE_TIER_ID),
+            ))
+            .context("serialize approval thread/resume params")?,
         )
         .await?;
     ensure!(

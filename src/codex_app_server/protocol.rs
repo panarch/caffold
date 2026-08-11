@@ -606,6 +606,7 @@ pub struct ThreadResumeParams<'a> {
     pub runtime_workspace_roots: Option<Vec<&'a str>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub approvals_reviewer: Option<&'static str>,
+    pub service_tier: Option<&'a str>,
     pub exclude_turns: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub initial_turns_page: Option<InitialTurnsPageParams>,
@@ -917,12 +918,14 @@ fn decode_params<T: DeserializeOwned>(method: &str, params: Value) -> Result<T, 
 pub(crate) fn thread_resume_params<'a>(
     thread_id: &'a str,
     initial_turns_page: bool,
+    service_tier: Option<&'a str>,
 ) -> ThreadResumeParams<'a> {
     ThreadResumeParams {
         thread_id,
         cwd: None,
         runtime_workspace_roots: None,
         approvals_reviewer: None,
+        service_tier,
         exclude_turns: true,
         initial_turns_page: initial_turns_page.then_some(InitialTurnsPageParams {
             limit: 8,
@@ -1000,10 +1003,11 @@ pub(crate) fn account_read_params() -> AccountReadParams {
     }
 }
 
-pub(crate) fn thread_start_params(
-    cwd: &str,
+pub(crate) fn thread_start_params<'a>(
+    cwd: &'a str,
     permission_mode: Option<CodexPermissionMode>,
-) -> ThreadStartParams<'_> {
+    service_tier: Option<&'a str>,
+) -> ThreadStartParams<'a> {
     ThreadStartParams {
         cwd,
         runtime_workspace_roots: [cwd],
@@ -1011,7 +1015,7 @@ pub(crate) fn thread_start_params(
         approval_policy: permission_mode.map(CodexPermissionMode::approval_policy),
         approvals_reviewer: permission_mode.map(CodexPermissionMode::approvals_reviewer),
         permissions: permission_mode.map(CodexPermissionMode::profile_id),
-        service_tier: None,
+        service_tier,
     }
 }
 
@@ -1274,9 +1278,11 @@ mod tests {
     #[test]
     fn serializes_resume_with_initial_turns_page() {
         assert_eq!(
-            serde_json::to_value(thread_resume_params("thread_1", true)).expect("serialize resume"),
+            serde_json::to_value(thread_resume_params("thread_1", true, Some("default"),))
+                .expect("serialize resume"),
             json!({
                 "threadId": "thread_1",
+                "serviceTier": "default",
                 "excludeTurns": true,
                 "initialTurnsPage": {
                     "limit": 8,
@@ -1331,6 +1337,7 @@ mod tests {
                 serde_json::to_value(thread_start_params(
                     "/workspace/project",
                     Some(CodexPermissionMode::ApproveForMe),
+                    Some("priority"),
                 ))
                 .expect("thread start params"),
                 json!({
@@ -1377,7 +1384,7 @@ mod tests {
                             }
                         }
                     }],
-                    "serviceTier": null,
+                    "serviceTier": "priority",
                     "approvalPolicy": "on-request",
                     "approvalsReviewer": "auto_review",
                     "permissions": ":workspace"
@@ -1619,8 +1626,12 @@ mod tests {
     #[test]
     fn omits_permission_overrides_when_the_composer_uses_codex_defaults() {
         assert_eq!(
-            serde_json::to_value(thread_start_params("/workspace/project", None))
-                .expect("thread start params"),
+            serde_json::to_value(thread_start_params(
+                "/workspace/project",
+                None,
+                Some("default"),
+            ))
+            .expect("thread start params"),
             json!({
                 "cwd": "/workspace/project",
                 "runtimeWorkspaceRoots": ["/workspace/project"],
@@ -1665,7 +1676,7 @@ mod tests {
                         }
                     }
                 }],
-                "serviceTier": null
+                "serviceTier": "default"
             })
         );
         assert_eq!(

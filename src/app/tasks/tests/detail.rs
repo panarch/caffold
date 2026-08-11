@@ -126,17 +126,21 @@ async fn canonical_resume_without_model_settings_preserves_the_cached_selection(
     .await
     .unwrap();
 
-    let snapshot = state
-        .codex_sessions
-        .ensure_subscribed(&client, 1, thread_id)
-        .await
-        .unwrap();
     let detail = state
         .detail
-        .assemble_snapshot(snapshot, None)
+        .read(
+            &CodexConnection {
+                client: client.clone(),
+                generation: 1,
+            },
+            thread_id,
+            None,
+        )
         .await
         .unwrap();
 
+    let requests = client.mock_requests().await;
+    assert_eq!(requests[0].1["serviceTier"], "priority");
     assert_eq!(detail.model.as_deref(), Some("gpt-5.6-sol"));
     assert_eq!(detail.reasoning_effort.as_deref(), Some("xhigh"));
     assert!(!detail.fast_mode);

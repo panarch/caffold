@@ -11,6 +11,7 @@ use tokio::sync::Mutex as AsyncMutex;
 use crate::codex_app_server::{
     CodexNotification, CodexPermissionMode, CodexThread, CodexThreadClient, CodexThreadError,
     CodexTurn, CodexTurnOptions, ThreadStatus, TurnStatus, TurnsPage, is_fast_service_tier,
+    service_tier_for_fast_mode,
 };
 
 const INITIAL_TURNS_PAGE_SIZE: usize = 8;
@@ -167,6 +168,14 @@ impl Drop for ThreadViewerLease {
 }
 
 impl CodexThreadSessions {
+    pub async fn restore_managed_fast_mode(&self, thread_id: &str, fast_mode: bool) {
+        let entry = self.entry(thread_id).await;
+        let mut state = entry.state.lock().await;
+        if state.lifecycle != ThreadSessionLifecycle::Subscribed {
+            state.fast_mode = fast_mode;
+        }
+    }
+
     pub async fn observe_thread_metadata(&self, mut thread: CodexThread) {
         let entry = self.entry(&thread.id).await;
         let mut state = entry.state.lock().await;
@@ -287,14 +296,17 @@ impl CodexThreadSessions {
             }
         }
 
-        let base_revision = {
+        let (base_revision, service_tier) = {
             let mut state = entry.state.lock().await;
             state.lifecycle = ThreadSessionLifecycle::Subscribing;
             state.generation = generation;
             state.last_error = None;
-            state.revision
+            (state.revision, service_tier_for_fast_mode(state.fast_mode))
         };
-        match client.resume_thread_with_page(thread_id, true).await {
+        match client
+            .resume_thread_with_page(thread_id, true, service_tier)
+            .await
+        {
             Ok(response) => {
                 let mut state = entry.state.lock().await;
                 if state.generation != generation {
@@ -341,12 +353,13 @@ impl CodexThreadSessions {
     ) -> Result<ThreadSessionSnapshot, CodexThreadError> {
         let entry = self.entry(thread_id).await;
         let _operation = entry.operation.lock().await;
-        let (preserve_subscription, base_revision) = {
+        let (preserve_subscription, base_revision, service_tier) = {
             let state = entry.state.lock().await;
             (
                 state.generation == generation
                     && state.lifecycle == ThreadSessionLifecycle::Subscribed,
                 state.revision,
+                service_tier_for_fast_mode(state.fast_mode),
             )
         };
 
@@ -357,7 +370,10 @@ impl CodexThreadSessions {
             state.last_error = None;
         }
 
-        match client.resume_thread_with_page(thread_id, true).await {
+        match client
+            .resume_thread_with_page(thread_id, true, service_tier)
+            .await
+        {
             Ok(response) => {
                 let mut state = entry.state.lock().await;
                 if preserve_subscription && state.generation != generation {
@@ -545,8 +561,14 @@ impl CodexThreadSessions {
                 return Ok(snapshot(&state));
             }
         }
-        let base_revision = entry.state.lock().await.revision;
-        let response = match client.resume_thread_with_page(thread_id, false).await {
+        let (base_revision, service_tier) = {
+            let state = entry.state.lock().await;
+            (state.revision, service_tier_for_fast_mode(state.fast_mode))
+        };
+        let response = match client
+            .resume_thread_with_page(thread_id, false, service_tier)
+            .await
+        {
             Ok(response) => response,
             Err(error) => {
                 let mut state = entry.state.lock().await;
