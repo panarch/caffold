@@ -1,0 +1,18 @@
+caffold-github-pulls-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+
+  &[data-pulls-view="list"] caffold-github-pull-detail-page,
+  &[data-pulls-view="list"] caffold-github-pull-files-page,
+  &[data-pulls-view="detail"] caffold-github-pulls-list-page,
+  &[data-pulls-view="detail"] caffold-github-pull-files-page,
+  &[data-pulls-view="files"] caffold-github-pulls-list-page,
+  &[data-pulls-view="files"] caffold-github-pull-detail-page {
+    display: none;
+  }
+}

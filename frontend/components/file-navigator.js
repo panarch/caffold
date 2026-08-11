@@ -1,6 +1,6 @@
 import { listDirectory } from "../api.js";
 import { createRefreshCoordinator, subscribeToWatch } from "../watch.js";
-import "./file-browser/list.js";
+import "./file-navigator/list.js";
 
 const LOADING_DELAY_MS = 180;
 

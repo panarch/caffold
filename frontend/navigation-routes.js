@@ -12,24 +12,17 @@ const TASK_REVIEW_QUERY = [
   { name: "file", key: "path", defaultValue: "" },
   { name: "base", key: "baseRef", defaultValue: "" },
 ];
-const FILE_QUERY = [...CWD_QUERY, { name: "file", key: "path", defaultValue: "" }];
-const STANDALONE_COMPARE_QUERY = [
-  ...CWD_QUERY,
+const FILE_QUERY = [{ name: "file", key: "path", defaultValue: "" }];
+const GIT_COMPARE_QUERY = [
   ...COMPARE_QUERY,
   { name: "file", key: "path", defaultValue: "" },
 ];
-const STANDALONE_LOG_QUERY = [
-  ...CWD_QUERY,
+const GIT_LOG_QUERY = [
   ...PAGE_QUERY,
   { name: "sha", key: "sha", defaultValue: "" },
   { name: "file", key: "path", defaultValue: "" },
 ];
-const STANDALONE_PAGE_QUERY = [...CWD_QUERY, ...PAGE_QUERY];
-const STANDALONE_PULL_FILES_QUERY = [
-  ...CWD_QUERY,
-  ...PAGE_QUERY,
-  { name: "file", key: "path", defaultValue: "" },
-];
+const PULL_FILES_QUERY = [...PAGE_QUERY, ...FILE_QUERY];
 
 const ROUTE_DEFINITIONS = [
   routeDefinition({
@@ -74,133 +67,6 @@ const ROUTE_DEFINITIONS = [
     matchesRoute: (route) =>
       route?.kind === "settings" && route.section === "about",
     parent: () => settingsRoute(),
-  }),
-  routeDefinition({
-    id: "standalone-files",
-    kind: "files",
-    pattern: "/files",
-    query: FILE_QUERY,
-    target: (route) => (cleanPath(route.path) ? "path" : "list"),
-    toRoute: (_, query) => standaloneFilesRoute(query),
-    parent: (route) => (route.path ? standaloneFilesRoute({ cwd: route.cwd }) : null),
-  }),
-  routeDefinition({
-    id: "standalone-diff",
-    kind: "diff",
-    pattern: "/git/diff",
-    query: FILE_QUERY,
-    domain: "git",
-    target: (route) => (cleanPath(route.path) ? "file" : "list"),
-    toRoute: (_, query) => standaloneDiffRoute(query),
-    parent: (route) =>
-      route.path
-        ? standaloneDiffRoute({ cwd: route.cwd })
-        : standaloneFilesRoute({ cwd: route.cwd }),
-  }),
-  routeDefinition({
-    id: "standalone-compare",
-    kind: "compare",
-    pattern: "/git/compare",
-    query: STANDALONE_COMPARE_QUERY,
-    domain: "git",
-    target: (route) => (cleanPath(route.path) ? "file" : "list"),
-    toRoute: (_, query) => standaloneCompareRoute(query),
-    parent: (route) =>
-      route.path
-        ? standaloneCompareRoute({
-            cwd: route.cwd,
-            baseRef: route.baseRef,
-            headRef: route.headRef,
-          })
-        : standaloneFilesRoute({ cwd: route.cwd }),
-  }),
-  routeDefinition({
-    id: "standalone-log",
-    kind: "log",
-    pattern: "/git/log",
-    query: STANDALONE_LOG_QUERY,
-    domain: "git",
-    target: (route) => (route.path ? "file" : route.sha ? "commit" : "list"),
-    toRoute: (_, query) => standaloneLogRoute(query),
-    parent: (route) => {
-      if (route.path) {
-        return standaloneLogRoute({
-          cwd: route.cwd,
-          page: route.page,
-          sha: route.sha,
-        });
-      }
-      if (route.sha) {
-        return standaloneLogRoute({ cwd: route.cwd, page: route.page });
-      }
-      return standaloneFilesRoute({ cwd: route.cwd });
-    },
-  }),
-  routeDefinition({
-    id: "standalone-issues-list",
-    kind: "issues",
-    pattern: "/github/issues",
-    query: STANDALONE_PAGE_QUERY,
-    domain: "github",
-    target: "list",
-    toRoute: (_, query) => standaloneIssuesRoute(query),
-    parent: (route) => standaloneFilesRoute({ cwd: route.cwd }),
-  }),
-  routeDefinition({
-    id: "standalone-issues-detail",
-    kind: "issues",
-    pattern: "/github/issues/[number]",
-    query: STANDALONE_PAGE_QUERY,
-    domain: "github",
-    target: "detail",
-    params: { number: "positiveInteger" },
-    toRoute: ({ number }, query) => standaloneIssuesRoute({ ...query, number }),
-    parent: (route) => standaloneIssuesRoute({ cwd: route.cwd, page: route.page }),
-  }),
-  routeDefinition({
-    id: "standalone-pulls-list",
-    kind: "pulls",
-    pattern: "/github/pulls",
-    query: STANDALONE_PAGE_QUERY,
-    domain: "github",
-    target: "list",
-    toRoute: (_, query) => standalonePullsRoute(query),
-    parent: (route) => standaloneFilesRoute({ cwd: route.cwd }),
-  }),
-  routeDefinition({
-    id: "standalone-pulls-detail",
-    kind: "pulls",
-    pattern: "/github/pulls/[number]",
-    query: STANDALONE_PAGE_QUERY,
-    domain: "github",
-    target: "detail",
-    params: { number: "positiveInteger" },
-    toRoute: ({ number }, query) => standalonePullsRoute({ ...query, number }),
-    parent: (route) => standalonePullsRoute({ cwd: route.cwd, page: route.page }),
-  }),
-  routeDefinition({
-    id: "standalone-pulls-files",
-    kind: "pulls",
-    pattern: "/github/pulls/[number]/files",
-    query: STANDALONE_PULL_FILES_QUERY,
-    domain: "github",
-    target: (route) => (cleanPath(route.path) ? "file" : "files"),
-    params: { number: "positiveInteger" },
-    toRoute: ({ number }, query) =>
-      standalonePullsRoute({ ...query, number, files: true }),
-    parent: (route) =>
-      route.path
-        ? standalonePullsRoute({
-            cwd: route.cwd,
-            page: route.page,
-            number: route.number,
-            files: true,
-          })
-        : standalonePullsRoute({
-            cwd: route.cwd,
-            page: route.page,
-            number: route.number,
-          }),
   }),
   routeDefinition({
     id: "global-tasks-home",
@@ -255,6 +121,120 @@ const ROUTE_DEFINITIONS = [
             baseRef: route.baseRef,
           })
         : tasksRoute(),
+  }),
+  routeDefinition({
+    id: "task-git-compare",
+    kind: "compare",
+    pattern: "/tasks/[threadId]/git/compare",
+    query: GIT_COMPARE_QUERY,
+    surface: "task-workspace",
+    domain: "git",
+    target: (route) => (cleanPath(route.path) ? "file" : "list"),
+    params: { threadId: "string" },
+    toRoute: ({ threadId }, query) => gitCompareRoute(threadId, query),
+    parent: (route) =>
+      route.path
+        ? gitCompareRoute(route.threadId, {
+            baseRef: route.baseRef,
+            headRef: route.headRef,
+          })
+        : tasksRoute(),
+  }),
+  routeDefinition({
+    id: "task-git-log",
+    kind: "log",
+    pattern: "/tasks/[threadId]/git/log",
+    query: GIT_LOG_QUERY,
+    surface: "task-workspace",
+    domain: "git",
+    target: (route) => (route.path ? "file" : route.sha ? "commit" : "list"),
+    params: { threadId: "string" },
+    toRoute: ({ threadId }, query) => gitLogRoute(threadId, query),
+    parent: (route) => {
+      if (route.path) {
+        return gitLogRoute(route.threadId, {
+          page: route.page,
+          sha: route.sha,
+        });
+      }
+      if (route.sha) {
+        return gitLogRoute(route.threadId, { page: route.page });
+      }
+      return tasksRoute();
+    },
+  }),
+  routeDefinition({
+    id: "task-github-issues-list",
+    kind: "issues",
+    pattern: "/tasks/[threadId]/github/issues",
+    query: PAGE_QUERY,
+    surface: "task-workspace",
+    domain: "github",
+    target: "list",
+    params: { threadId: "string" },
+    toRoute: ({ threadId }, query) => githubIssuesRoute(threadId, query),
+    parent: () => tasksRoute(),
+  }),
+  routeDefinition({
+    id: "task-github-issues-detail",
+    kind: "issues",
+    pattern: "/tasks/[threadId]/github/issues/[number]",
+    query: PAGE_QUERY,
+    surface: "task-workspace",
+    domain: "github",
+    target: "detail",
+    params: { threadId: "string", number: "positiveInteger" },
+    toRoute: ({ threadId, number }, query) =>
+      githubIssuesRoute(threadId, { ...query, number }),
+    parent: (route) => githubIssuesRoute(route.threadId, { page: route.page }),
+  }),
+  routeDefinition({
+    id: "task-github-pulls-list",
+    kind: "pulls",
+    pattern: "/tasks/[threadId]/github/pulls",
+    query: PAGE_QUERY,
+    surface: "task-workspace",
+    domain: "github",
+    target: "list",
+    params: { threadId: "string" },
+    toRoute: ({ threadId }, query) => githubPullsRoute(threadId, query),
+    parent: () => tasksRoute(),
+  }),
+  routeDefinition({
+    id: "task-github-pulls-detail",
+    kind: "pulls",
+    pattern: "/tasks/[threadId]/github/pulls/[number]",
+    query: PAGE_QUERY,
+    surface: "task-workspace",
+    domain: "github",
+    target: "detail",
+    params: { threadId: "string", number: "positiveInteger" },
+    toRoute: ({ threadId, number }, query) =>
+      githubPullsRoute(threadId, { ...query, number }),
+    parent: (route) => githubPullsRoute(route.threadId, { page: route.page }),
+  }),
+  routeDefinition({
+    id: "task-github-pulls-files",
+    kind: "pulls",
+    pattern: "/tasks/[threadId]/github/pulls/[number]/files",
+    query: PULL_FILES_QUERY,
+    surface: "task-workspace",
+    domain: "github",
+    target: (route) => (cleanPath(route.path) ? "file" : "files"),
+    params: { threadId: "string", number: "positiveInteger" },
+    toRoute: ({ threadId, number }, query) =>
+      githubPullsRoute(threadId, { ...query, number, files: true }),
+    parent: (route) =>
+      route.path
+        ? githubPullsRoute(route.threadId, {
+            page: route.page,
+            number: route.number,
+            files: true,
+          })
+        : githubPullsRoute(route.threadId, {
+            page: route.page,
+            number: route.number,
+          }),
   }),
   routeDefinition({
     id: "global-tasks-detail",
@@ -313,7 +293,7 @@ export function routeEquals(left, right) {
 }
 
 export function routeSurface(route) {
-  return routeDefinitionFor(route)?.surface ?? "files";
+  return routeDefinitionFor(route)?.surface ?? "task-workspace";
 }
 
 export function routeDomain(route) {
@@ -332,7 +312,7 @@ export function routeTarget(route) {
 function routeDefinition(config) {
   const definition = {
     ...config,
-    surface: config.surface ?? (config.domain ? "review" : "files"),
+    surface: config.surface ?? "task-workspace",
     tokens: compilePattern(config.pattern),
     query: config.query ?? [],
     params: config.params ?? {},
@@ -531,59 +511,43 @@ function settingsRoute(section = "") {
   };
 }
 
-function standaloneFilesRoute(options = {}) {
-  return {
-    kind: "files",
-    cwd: taskCwd(options.cwd),
-    path: cleanPath(options.path),
-  };
-}
-
-function standaloneDiffRoute(options = {}) {
-  return {
-    kind: "diff",
-    cwd: taskCwd(options.cwd),
-    path: cleanPath(options.path),
-  };
-}
-
-function standaloneCompareRoute(options = {}) {
+function gitCompareRoute(threadId, options = {}) {
   return {
     kind: "compare",
-    cwd: taskCwd(options.cwd),
+    threadId,
     baseRef: options.baseRef ?? "",
     headRef: options.headRef ?? "",
-    path: cleanPath(options.path),
+    path: safeRelativePath(options.path),
   };
 }
 
-function standaloneLogRoute(options = {}) {
+function gitLogRoute(threadId, options = {}) {
   return {
     kind: "log",
-    cwd: taskCwd(options.cwd),
+    threadId,
     page: options.page ?? 1,
     sha: options.sha ?? "",
-    path: cleanPath(options.path),
+    path: safeRelativePath(options.path),
   };
 }
 
-function standaloneIssuesRoute(options = {}) {
+function githubIssuesRoute(threadId, options = {}) {
   return {
     kind: "issues",
-    cwd: taskCwd(options.cwd),
+    threadId,
     page: options.page ?? 1,
     number: options.number ?? null,
   };
 }
 
-function standalonePullsRoute(options = {}) {
+function githubPullsRoute(threadId, options = {}) {
   return {
     kind: "pulls",
-    cwd: taskCwd(options.cwd),
+    threadId,
     page: options.page ?? 1,
     number: options.number ?? null,
     files: Boolean(options.files),
-    path: cleanPath(options.path),
+    path: safeRelativePath(options.path),
   };
 }
 

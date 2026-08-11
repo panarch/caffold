@@ -13,7 +13,7 @@ import {
   sourceViewerPresentation,
 } from "../../../../../components/file-viewer-presentation.js";
 import "../../../../../components/git-compare-browser/compare-tree.js";
-import "../../../../../components/git-diff-browser/changes-tree.js";
+import "./review/changes-tree.js";
 import {
   fileNameFromPath,
   imageTypeLabel,

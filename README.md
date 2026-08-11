@@ -54,7 +54,10 @@ Start Caffold:
 cargo run -- serve
 ```
 
-Then open the printed local URL. By default Caffold opens at `$HOME`, displays it as `~`, and allows read-only parent navigation up to the filesystem root.
+Then open the printed local URL. `/` opens Tasks. New Task initially uses the
+server's initial path (by default `$HOME`, displayed as `~`) as its cwd, and its
+Directory Picker provides read-only traversal within the configured RootedFs
+boundary.
 
 For deterministic local testing, a bounded root can be supplied:
 
@@ -163,4 +166,7 @@ Operations:
 
 ## Status
 
-This repository has a Codex-first task workspace plus read-only Files, Git, and GitHub review surfaces. The broader review and control workflow remains under active design and implementation.
+This repository has one Codex-first Task workspace. Each selected Task owns its
+Conversation, integrated Working Tree/Branch review, read-only Git Compare/Log,
+and read-only GitHub Issue/Pull Request surfaces. The broader review and control
+workflow remains under active design and implementation.

@@ -21,6 +21,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
   disconnectedCallback() {
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
     this.detachResponsiveListener();
+    this.querySelector("caffold-settings-codex-page")?.deactivate();
   }
 
   ensureRendered() {
@@ -149,6 +150,11 @@ class CaffoldSettingsWorkspace extends HTMLElement {
     for (const [section, page] of Object.entries(pages)) {
       page.hidden = section !== presentedSection;
     }
+    if (presentedSection === "codex") {
+      pages.codex?.activate();
+    } else {
+      pages.codex?.deactivate();
+    }
     pages.appearance?.prepareRoute?.();
     this.dispatchEvent(
       new CustomEvent("caffold:settings-presentation-change", {
@@ -164,11 +170,6 @@ class CaffoldSettingsWorkspace extends HTMLElement {
         detail: { route: { kind: "settings", section: section ?? "" } },
       }),
     );
-  }
-
-  setCodexStatus(status) {
-    this.ensureRendered();
-    this.querySelector("caffold-settings-codex-page").status = status;
   }
 
   setBuildStatus(health) {

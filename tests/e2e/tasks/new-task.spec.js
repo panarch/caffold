@@ -134,12 +134,7 @@ test("creates a task with responsive composer controls and canonical approval st
   const scenario = await installTaskLoopFixture(page);
   const { contextPath, threadId } = scenario;
   const touchInterface = testInfo.project.name !== "desktop";
-  await page.goto(`/files?cwd=${encodeURIComponent(contextPath)}`);
-  await page.locator("caffold-app-menu .app-menu-button").click();
-  await page
-    .locator('caffold-app-menu button[data-action="open-tasks"]')
-    .click();
-  await expect(page).toHaveURL("/");
+  await page.goto(`/tasks/new?cwd=${encodeURIComponent(contextPath)}`);
   const taskWorkspace = page.locator("caffold-task-workspace");
   await expect(taskWorkspace).toBeVisible();
   await expect
@@ -157,14 +152,12 @@ test("creates a task with responsive composer controls and canonical approval st
   expect(
     Math.round((appMainBox?.y ?? -2) + (appMainBox?.height ?? 0)),
   ).toBe(Math.round((appShellBox?.y ?? -1) + (appShellBox?.height ?? 0)));
-  await expect(page.locator(".files-surface")).toBeHidden();
-  await expect(page.locator("caffold-files-page")).toBeHidden();
   await expect(
     taskWorkspace.getByRole("button", { name: "Back to tasks" }),
   ).toHaveCount(0);
   await expect(page.locator("caffold-tasks-page")).toHaveAttribute(
     "data-tasks-view",
-    "home",
+    "new",
   );
   await expect(page.locator("caffold-tasks-page")).toHaveAttribute(
     "data-task-list-state",

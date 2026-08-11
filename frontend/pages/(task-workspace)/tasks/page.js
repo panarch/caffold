@@ -1,4 +1,4 @@
-import { routeTarget } from "../../../navigation-routes.js";
+import { routeDomain, routeTarget } from "../../../navigation-routes.js";
 import "./components/detail.js";
 import {
   TASK_IMAGE_PREVIEW_EVENT,
@@ -18,6 +18,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.rendered = true;
     this.view = "home";
     this.detailView = "conversation";
+    this.detailPresentation = "reading";
     this.taskListState = "loading";
     this.selectedThreadId = "";
     this.adoptedThreadId = "";
@@ -71,7 +72,10 @@ class CaffoldTasksPage extends HTMLElement {
       if (event.detail?.type === "task-archived" && event.detail.task) {
         this.taskNavigator()?.acceptArchivedTask(event.detail.task);
         this.requestRoute({ kind: "tasks" }, { replace: true });
-      } else if (event.detail?.type === "review-route" && event.detail.route) {
+      } else if (
+        ["review-route", "domain-route"].includes(event.detail?.type) &&
+        event.detail.route
+      ) {
         this.requestRoute(event.detail.route, {
           replace: event.detail.replace,
         });
@@ -124,7 +128,7 @@ class CaffoldTasksPage extends HTMLElement {
   deactivate() {
     this.imagePreviewDialog()?.dismiss();
     if (this.view === "detail") {
-      this.taskDetail()?.deactivate();
+      this.taskDetail()?.deactivate({ retainComposerDom: true });
     } else {
       this.taskNew()?.deactivate();
     }
@@ -133,11 +137,14 @@ class CaffoldTasksPage extends HTMLElement {
   prepareRoute(route, options = {}) {
     this.ensureRendered();
     const target = routeTarget(route);
-    const nextView =
-      target === "new" ? "new" : target === "home" ? "home" : "detail";
-    const nextDetailView = ["review", "review-file"].includes(target)
-      ? "review"
-      : "conversation";
+    const domain = routeDomain(route);
+    const nextView = route?.threadId
+      ? "detail"
+      : target === "new"
+        ? "new"
+        : "home";
+    const nextDetailView = domain ||
+      (["review", "review-file"].includes(target) ? "review" : "conversation");
     const nextThreadId = `${route?.threadId ?? ""}`;
     if (nextView !== this.view || nextThreadId !== this.selectedThreadId) {
       this.imagePreviewDialog()?.dismiss();
@@ -154,6 +161,7 @@ class CaffoldTasksPage extends HTMLElement {
 
     this.view = nextView;
     this.detailView = nextDetailView;
+    this.detailPresentation = taskRoutePresentation(route);
     this.selectedThreadId = nextThreadId;
     this.setAttribute("data-tasks-view", nextView);
     this.taskNavigator()?.setSelectedThreadId(nextThreadId);
@@ -180,7 +188,7 @@ class CaffoldTasksPage extends HTMLElement {
       this.render();
       return null;
     }
-    if (["detail", "review", "review-file"].includes(target)) {
+    if (route?.threadId) {
       this.taskNew()?.deactivate();
       void this.taskNavigator()?.activate();
       const result = await this.taskDetail()?.open(route.threadId, {
@@ -292,6 +300,10 @@ class CaffoldTasksPage extends HTMLElement {
     this.setAttribute("data-tasks-view", this.view);
     this.setAttribute("data-task-list-state", this.taskListState);
     this.setAttribute("data-task-detail-view", this.taskDetailView);
+    this.setAttribute(
+      "data-task-detail-presentation",
+      this.detailPresentation,
+    );
     const showNew = this.view === "new" || this.view === "home";
     this.taskNew()?.toggleAttribute("hidden", !showNew);
     this.taskDetail()?.toggleAttribute("hidden", this.view !== "detail");
@@ -300,6 +312,18 @@ class CaffoldTasksPage extends HTMLElement {
       new CustomEvent("caffold:tasks-presentation-change", { bubbles: true }),
     );
   }
+}
+
+function taskRoutePresentation(route) {
+  const domain = routeDomain(route);
+  const target = routeTarget(route);
+  if (domain === "git") {
+    return route.kind === "compare" || target !== "list" ? "code" : "reading";
+  }
+  if (domain === "github") {
+    return target === "files" || target === "file" ? "code" : "reading";
+  }
+  return target === "review" || target === "review-file" ? "code" : "reading";
 }
 
 if (!customElements.get("caffold-tasks-page")) {

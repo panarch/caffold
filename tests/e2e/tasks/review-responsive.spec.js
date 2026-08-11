@@ -7,6 +7,25 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
+test("keeps Task tool menus above active Review controls", async ({ page }) => {
+  const { tasksPage } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+
+  const summary = tasksPage.locator("caffold-task-detail-summary");
+  for (const [workspace, action] of [
+    ["Git", "Compare"],
+    ["GitHub", "Pull Requests"],
+  ]) {
+    await summary
+      .locator(`summary[aria-label="Open ${workspace} workspace"]`)
+      .click();
+    const menuAction = summary.getByRole("menuitem", { name: action, exact: true });
+    await expect(menuAction).toBeVisible();
+    await menuAction.click({ trial: true });
+    await page.keyboard.press("Escape");
+  }
+});
+
 test("uses two panes off phone and a semantic navigator/viewer split on phone", async ({
   page,
 }, testInfo) => {

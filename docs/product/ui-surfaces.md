@@ -1,126 +1,162 @@
 # UI Surfaces
 
-This document maps the currently implemented browser UI surfaces and their
-product boundaries.
+This document maps the implemented browser surfaces and their product
+boundaries. Caffold is Task-first: the selected Task is the stable context for
+conversation, local review, Git inspection, and GitHub inspection.
 
-Caffold is a dense, review-oriented work surface for desktop, foldable, and
-phone layouts. Its browser components present state owned by Codex, Git,
-GitHub, the filesystem, and Caffold without replacing those sources of truth.
+## Task workspace
+
+`caffold-task-workspace` is the only routed application workspace. It contains
+the Task navigator, New Task, Task Detail, and Settings. The application shell
+owns bootstrap, route forwarding, settings application, and build-update
+presentation.
+
+Desktop reading surfaces may keep the Task navigator visible. Code surfaces
+use the available detail width. Foldable and phone layouts use the same
+master-detail system and show one contextual Back appropriate to the deepest
+visible route.
 
 ## Task Navigator
 
-The Task navigator is the return-later entrypoint. It provides:
+The Task navigator provides:
 
 - active and Archived sections;
-- repository grouping derived from each thread cwd;
-- linked-worktree context within each repository;
-- task title, recency, canonical availability, and unseen-completion state;
-- New Task, Archive, and Restore actions where their lifecycle permits them.
+- repository grouping derived from canonical Task cwd/worktree state;
+- task title, recency, availability, and unseen-completion state;
+- New Task, Archive, Restore, and eligible delete actions.
 
-Selecting a Task opens its Conversation without changing its repository or
-worktree context.
+Selecting a Task opens its Conversation. Direct Task URLs load by `threadId`
+without requiring the Task to appear in the currently loaded navigator page.
 
 ## New Task
 
-New Task provides:
+New Task owns:
 
-- cwd selection inherited from the active Task or Files context when available;
-- model and reasoning-effort selection;
-- the shared prompt composer, image attachment, and voice input;
-- a setup-only guide for preparing an isolated worktree.
+- its selected cwd and route representation;
+- model, reasoning, speed, and approval choices;
+- the prompt draft, attachments, and voice input;
+- its scoped Directory Picker;
+- the setup-only isolated-worktree guide.
 
-Task creation starts a Codex thread in the selected cwd. Managed-worktree
-preparation happens explicitly from the resulting Task; it is not an implicit
-side effect of task creation.
+A New Task intent from an existing Task starts at that Task's repository root,
+not its managed worktree root. The bootstrap initial path and `.` are later
+fallbacks. The current New Task owns directory selection and its route value.
 
-## Conversation
+## Task Detail
 
-Conversation renders the canonical Codex thread as a review timeline. It
-includes:
+Task Detail owns the selected thread, canonical Task snapshot, Codex event
+stream, selected outer child, Task-scoped route intents, and child
+activation/deactivation. It hosts four stable sibling surfaces.
 
-- user prompts and agent responses;
+### Conversation
+
+Conversation renders the canonical Codex thread as a review timeline:
+
+- prompts and agent responses;
 - reasoning summaries and tool activity;
-- command execution, output, and file-change records;
-- approval requests and their canonical outcomes;
-- interruption, failure, completion, reconnect, and unavailable states;
-- follow-up Start or Steer behavior selected from canonical thread state.
+- commands, output, and file-change records;
+- approvals and canonical outcomes;
+- interruption, failure, reconnect, completion, and unavailable states;
+- follow-up Start or Steer behavior derived from canonical thread state.
 
-The composer owns drafts, selection, attachments, and voice capture. It can
-interrupt an active turn but does not synthesize Codex lifecycle state.
+The Composer owns its draft, attachments, selection, and voice capture. Task
+child switching does not interrupt the selected Task's Codex stream.
 
-## Integrated Task Review
+### Integrated Review
 
-Each Task has one integrated Review workspace with independent semantic axes:
+Integrated Review is the only owner of Working Tree and current Task Branch
+review. It combines:
 
 - Working Tree or Branch scope;
 - Changes or Files navigator;
 - Diff or Source viewer;
-- one selected worktree-relative path.
+- one selected task-root-relative path;
+- one root filesystem watch while active;
+- current-branch base normalization.
 
-Desktop and foldable layouts keep navigator and viewer visible together. Phone
-layouts show one role at a time and provide a semantic Back action from the
-selected file. Review selection is encoded in the URL; pane width, disclosure,
-and scroll remain component-local.
+This is also the product path for general file/source inspection through the
+reusable file navigator, source viewer, text viewer, and supported image viewer.
 
-## Files
+### Git
 
-The standalone Files surface provides rooted filesystem inspection:
+The Task-owned Git child contains only behavior not duplicated by Integrated
+Review:
 
-- directory navigation and file viewing;
-- filename filtering and `rg` content search;
-- text, source, and supported image presentation;
-- live invalidation with an explicit Refresh fallback;
-- repository-aware entry into Git and GitHub review.
+- arbitrary-ref Compare, where both base and head may differ from the Task's
+  current branch;
+- bounded Log, commit detail, changed files, diff, and source inspection.
 
-The configured `RootedFs` boundary rejects traversal and symlink escapes.
+Git is read-only. It does not expose stage, commit, checkout, reset, merge,
+rebase, stash, or publication controls. Its active repository watch reacts to
+ref-derived invalidation only; it does not own Working Tree status or the
+Integrated Review selected path.
 
-## Git Review
+### GitHub
 
-Git is read/review-oriented and contains three modes:
-
-- Diff for the working tree;
-- Compare for two refs;
-- Log for bounded commit history and commit detail.
-
-Each mode owns its navigator, selected path, viewer state, and repository
-refresh. Caffold does not expose stage, commit, checkout, reset, merge, rebase,
-or stash controls.
-
-## GitHub Review
-
-GitHub review uses the repository resolved from cwd and the authenticated
-GitHub CLI. It provides:
+The Task-owned GitHub child derives its repository from canonical Task context
+and the authenticated GitHub CLI. It provides:
 
 - Issue list and detail;
 - Pull Request list and detail;
-- Pull Request changed files, unified diff, and source review;
-- availability and error states when GitHub context cannot be resolved.
+- Pull Request changed files, unified diff, and source inspection;
+- an explicit Start Task action on Issue detail;
+- scoped availability, loading, error, and Retry states.
 
-The current surface is read-only. It does not publish comments, reviews, pull
-requests, or other GitHub mutations.
+Activation or meaningful re-entry performs a fresh canonical query while
+retained DOM-local state may remain visible. GitHub does not poll, create a
+filesystem watcher, or refresh while hidden. It does not publish comments,
+reviews, Pull Requests, or other GitHub mutations.
+
+Start Task is an Issue-only, explicit local workflow. The user chooses the
+selected base ref and Task turn options; Caffold creates a Task at the resolved
+repository root with a setup-only prompt that treats Issue metadata as
+untrusted, renames the Task, and prepares an isolated worktree without moving
+source-checkout changes. The setup turn stops after preparation and waits for
+the user's next request. Pull Request detail has no corresponding Start Task
+action, and neither flow automatically continues implementation or review.
+
+### Child lifetime
+
+Within one selected Task, Git and GitHub DOM remains mounted while hidden so
+selection, disclosure, scroll, and pane widths can survive. Inactive children
+release watchers, pending requests, and other active work, and activation
+performs a fresh canonical sync. Switching to a different Task destroys the
+Git/GitHub children, so each domain DOM lifetime is bounded to the selected
+Task.
+
+Integrated Review uses a bounded per-thread cache, with active work tied to
+connection and activation. Canonical repository-context changes invalidate
+repository-bound data even when `threadId` is unchanged.
 
 ## Settings
 
-The Task workspace includes:
+Settings includes:
 
-- Appearance settings for Interface, Conversation, and Code scales;
-- Codex runtime status and diagnostics;
+- Appearance controls for System/Light/Dark theme, typeface, Interface scale,
+  Conversation text, and Code text;
+- Codex runtime status, Refresh, restart, and diagnostics;
 - About Caffold application and build information.
 
-Appearance choices are browser-local. Task model and reasoning choices are
-stored with Caffold-managed Task metadata.
+Appearance choices are persisted in browser-local settings rather than Task or
+server state.
 
-## Product Boundaries
+Settings Codex owns its status requests and request generations. It refreshes
+on activation and invalidates pending work when hidden.
+
+## Product boundaries
 
 The browser UI does not provide:
 
 - a full terminal or PTY workspace;
-- automatic Issue/PR preparation and continuation;
-- external-worktree adoption or cleanup;
+- a Pull Request Start Task action;
+- automatic Task creation from Issue/PR context without an explicit user
+  action;
+- automatic continuation after the setup turn;
+- external-worktree adoption or force cleanup;
 - force deletion of dirty managed worktrees;
 - split diff, hunk comments, or durable review annotations;
 - a Caffold-owned duplicate of the Codex transcript.
 
 Planned additions belong in the [Roadmap](roadmap.md) and
-[Product Workflows](workflows.md), not in the description of an implemented
-surface.
+[Product Workflows](workflows.md), not in this description of implemented
+surfaces.

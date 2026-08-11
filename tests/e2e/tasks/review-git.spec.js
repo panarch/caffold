@@ -62,7 +62,7 @@ test("reviews working tree changes through the canonical Review route", async ({
     await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await expect(page).toHaveURL(`/tasks/${taskScenario.threadId}/review`);
-  await expect(page.locator("caffold-review-workspace")).toBeHidden();
+  await expect(page.locator("caffold-review-workspace")).toHaveCount(0);
 
   const changes = taskReview.locator("caffold-git-diff-changes-tree");
   const viewer = taskReview.locator("caffold-review-file-viewer");

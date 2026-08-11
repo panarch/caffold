@@ -1,580 +1,317 @@
-# Frontend Structure
+# Frontend Architecture
 
-This document describes the current frontend component hierarchy and ownership
-boundaries.
+The frontend is a small Light-DOM Web Component application. Its primary
+ownership rule is Task-first: application navigation enters one Task workspace,
+and a selected Task owns its Conversation, Integrated Review, Git, and GitHub
+children.
 
-Caffold does not use filesystem routes. `frontend/pages` should not be treated
-as a URL router like Next.js. It is a hierarchy for page-level custom elements:
-large Light DOM Web Components that own a major app surface or layout container.
+## Source organization
 
-Use `layout.js` and `layout.css` for containers that own nested surfaces,
-shared chrome, state transitions, or pane behavior. Use `page.js` and
-`page.css` for leaf app surfaces. The directory path carries the meaning; the
-filename communicates whether the custom element is a layout or a leaf page.
+Caffold does not use filesystem routing. `frontend/pages` is a hierarchy of
+page-level custom-element ownership, not a URL router such as Next.js. The
+directory path expresses ownership even when it does not appear in the browser
+URL.
 
-Example:
+Use `layout.js` and `layout.css` for container components that own nested
+surfaces, shared chrome, state transitions, or pane behavior. Use `page.js` and
+`page.css` for leaf app surfaces. Intermediate `frontend/pages` directories
+without their own `page.js` are wrapped in parentheses, such as `(git)`,
+`(log)`, and `(github)`; these are pathless ownership/layout nodes, not URL
+segments. The root `frontend/pages/layout.js` is the sole exception because an
+additional parenthesized root would repeat the application hierarchy.
 
-```text
-frontend/pages/layout.js
-frontend/pages/layout.css
-```
+Lower-level or reusable leaves stay in `frontend/components` even when they are
+rendered by one current screen. Page-specific helpers may live in that page's
+`components/` directory when moving them to the shared directory would hide
+their owner. A reusable component does not become a page merely because it
+occupies most of a surface.
 
-defines the app-level `<caffold-app-shell>` layout. Nested page directories
-represent UI ownership rather than URL paths.
-
-## Current Ownership Model
-
-The current runtime hierarchy is:
+## Routed hierarchy
 
 ```text
 caffold-app-shell
-  app main route slot
-    file browsing surface
-      app header
-        caffold-app-menu
-        caffold-header-actions
-          caffold-git-header-action
-          caffold-github-header-action
-          caffold-codex-header-action
-      caffold-pathbar
-      caffold-files-page
-        caffold-file-browser
-          caffold-file-list
-          caffold-file-viewer
-    task workspace
-      caffold-task-workspace
-        master pane
-          caffold-task-navigator
-          caffold-settings-navigator
-          caffold-task-workspace-navigation
-            Tasks
-            Settings
-        detail pane
-          caffold-tasks-page
-          caffold-task-new
-            caffold-task-composer
-            caffold-file-browser
-              caffold-file-list
-              caffold-file-viewer
-          caffold-task-detail
-            caffold-task-conversation
-            caffold-task-composer
-            caffold-task-review
-              caffold-git-diff-changes-tree
-              caffold-git-compare-tree
-              caffold-file-navigator
-                caffold-file-list
-              caffold-review-file-viewer
-          caffold-settings-workspace
-            caffold-settings-appearance-page
-            caffold-settings-codex-page
-            caffold-settings-about-page
-    caffold-review-workspace
-      git
-        caffold-git-review-layout
-          diff
-            caffold-git-diff-page
-              caffold-git-diff-browser
-                caffold-git-diff-changes-tree
-                caffold-review-file-viewer
-          compare
-            caffold-git-compare-page
-              caffold-git-compare-browser
-                caffold-git-compare-tree
-                caffold-review-file-viewer
-          log
-            caffold-git-log-layout
-              caffold-git-log-list-page
-              caffold-git-log-commit-page
-                caffold-commit-changes-tree
-                caffold-review-file-viewer
-      github
-        caffold-github-review-layout
-          issues
-            caffold-github-issues-layout
-              caffold-github-issues-list-page
-              caffold-github-issue-detail-page
-          pulls
-            caffold-github-pulls-layout
-              caffold-github-pulls-list-page
-              caffold-github-pull-detail-page
-              caffold-github-pull-files-page
-                caffold-github-pull-files-tree
-                caffold-review-file-viewer
+`-- caffold-task-workspace
+    |-- Task navigator
+    |-- New Task
+    |   `-- Directory Picker
+    |-- Task Detail
+    |   |-- Conversation
+    |   |-- Integrated Review
+    |   |-- Git
+    |   |   |-- Compare
+    |   |   `-- Log
+    |   `-- GitHub
+    |       |-- Issues
+    |       `-- Pull Requests
+    `-- Settings
 ```
 
-`frontend/pages/layout.js` is the app root layout and defines
-`<caffold-app-shell>` directly. `frontend/pages` is the one exception to the
-parenthesized grouping rule because wrapping the root app shell would only
-repeat the root hierarchy.
+Task Workspace stays mounted while Task Detail switches among Conversation,
+Integrated Review, Git, and GitHub. The selected `threadId` remains the
+canonical Task identity throughout those child transitions.
 
-`settings.js` owns browser-local preferences and applies their CSS variables
-before the app shell renders. `(task-workspace)/settings` is a routed
-master-detail surface reached from the task-workspace navigation, the
-Files-only `caffold-app-menu`, or the compact Codex status action. Its
-Appearance page persists device-specific UI preferences in `localStorage`
-rather than the server database. Codex and About Caffold are sibling Settings
-pages, not popovers or global dialogs.
+## App Shell
 
-Appearance has three independent semantic axes:
+`frontend/pages/layout.js` defines `caffold-app-shell`. It owns only
+application-lifetime coordination:
 
-- Interface size is a 90–120% scale over a 16px fine-pointer base or a 17px
-  coarse-pointer/narrow-screen base. It owns UI text, controls, rows, icons,
-  and spacing. Coarse pointers and screens at or below 520px keep important
-  targets at least 40px tall.
-- Conversation text is a device-independent 13–20px value. It owns Tasks
-  messages and work prose, the Composer textarea, and GitHub issue/PR prose.
-- Code text is a device-independent 12–20px value. It owns source and diff
-  viewers, command/tool output, and inline or fenced code inside Tasks and
-  GitHub prose.
+- bootstrap health and initial-path loading;
+- parsing and forwarding top-level routes;
+- Navigation API and History fallback integration;
+- settings application;
+- build-update presentation.
 
-Interface controls use two semantic size tiers. Page-level navigation,
-application-wide actions, and primary submissions use
-`--interface-control-size`. Contextual toolbars and inline secondary actions
-use `--interface-compact-control-size`. Feature ownership does not choose the
-tier: equivalent actions in Tasks, Files, Git, and GitHub use the same tier.
-The responsive target floor still raises either tier to at least 40px on
-coarse pointers and narrow screens.
+All known routes are forwarded to `caffold-task-workspace`. Task Detail owns
+the selected child and Task context; Git and GitHub own their layout instances,
+repository reconciliation, and domain-specific Back and Refresh behavior.
 
-Control geometry and label typography are separate contracts. A regular
-page-level target may keep `--interface-control-size` while its visible action
-label uses `--interface-meta-font-size`; making a target easier to hit must not
-silently turn its label into page-body text. Context menus, path navigation,
-and compact toolbar labels use the same Interface metadata scale unless their
-owner defines a distinct content-row typography.
+The Rust shell fallback serves only the known Tasks and Settings frontend
+routes. Every other frontend path receives the general unknown-route response.
 
-The shared root variables expose values; they do not transfer selector
-ownership to the root stylesheet. Each component consumes the semantic token
-inside its existing CSS boundary, including the Task and GitHub Markdown
-Shadow DOM styles. Mixed components keep their boundaries explicit: Composer
-chrome is Interface while its textarea is Conversation; approval prose is
-Conversation, its command is Code, and its controls are Interface. Timestamps,
-status, disclosure labels, loading/retry actions, and errors remain Interface
-even inside a conversation.
+## Task Workspace
 
-`settings.js` normalizes and writes `appearanceVersion: 2` on initial load
-without emitting a change event. The Settings page uses stable native range
-elements and patches their values in place so live updates do not replace the
-focused control or lose pointer capture. User updates and resets publish one
-`caffold:settings-change` snapshot.
+`frontend/pages/(task-workspace)/layout.js` is the only routed workspace. It
+owns:
 
-`files/page` is the app root's route-level file browsing page. It renders
-`caffold-file-browser` and delegates the file browser API that app-shell uses.
-`components/file-navigator` owns reusable directory loading/cache, expanded
-tree state, selected-row presentation, list scroll, delayed loading feedback,
-and its optional live-update subscription. `components/file-browser` composes
-that navigator with the shared file viewer and owns file-preview loading,
-files-route path materialization, list/viewer mode, mobile switching, and the
-left file-panel resizer. The app root coordinates cwd context, URL navigation,
-pathbar, and header actions around that surface instead of owning file browser
-internals. `watch.js` shares an SSE subscription with other consumers of the
-same filesystem scope; integrated Task Review disables the navigator's own
-watch and supplies one Review-owned root watch instead.
+- the shared master/detail presentation;
+- Task versus Settings mode;
+- Task and Settings navigators;
+- the user-resizable desktop navigation pane;
+- compact top-level Task/New Task Back or Close controls;
+- forwarding routes to Tasks or Settings.
 
-`(task-workspace)/layout` is the app root's default task workspace and `/` is
-its canonical Tasks home. It fills the app main route slot, so Tasks and
-Settings do not inherit the Files-only app header, pathbar, or pane shell. Its
-declarative master-detail shell owns the shared master pane, its resizer, the
-single bottom navigation, and the shared detail pane. Task and Settings
-navigators are stable-mounted siblings in the master pane; their corresponding
-detail controllers are stable-mounted siblings in the detail pane. Mode and
-compact-route presentation only select among those existing children. No child
-reparents navigation at runtime. The layout remembers the last route in each
-mode and hides the master pane on compact detail routes where content space is
-primary. On compact Tasks detail routes, the layout renders one route-derived
-Back to Tasks control for Conversation and every integrated Review mode. That
-control exits the selected Task with history replacement; it does not inspect
-or mutate Detail or Review state. Review's file-to-navigator Back remains owned
-by the Review file viewer. New Task keeps its separate close control. The Task
-detail controls are hidden when the master pane is simultaneously visible. The
-layout is separate from `(review-workspace)` because task control is not only a
-review surface.
+The workspace consumes the semantic presentation snapshot published by Tasks:
+`reading` or `code`, current Task target, and Task-detail child. It does not
+query nested Git/GitHub DOM or read their private state.
 
-`(task-workspace)/tasks/page` is the task detail-route controller. It owns the
-selected route/thread and the Conversation/Review outer layout, while receiving
-its sibling `caffold-task-navigator` from the workspace for list state and
-navigation intents. It does not own master-pane geometry, fetch task-list data,
-subscribe to list streams, send Codex mutations, or render child internals.
-`(task-workspace)/settings/layout` similarly owns Settings detail selection and
-keeps Appearance, Codex, and About pages mounted while receiving its sibling
-navigator from the workspace. On compact screens `/settings` presents the
-master list and a selected section presents the detail with a back control;
-wide screens keep both panes visible.
+Reading surfaces keep the Task navigator on desktop. Code surfaces use the full
+workspace width. Foldable and phone presentation is owned by the same
+master/detail layout system.
 
-The Tasks runtime hierarchy deliberately separates state with different
-lifetimes:
+## Tasks Page and Task Detail
 
-- `caffold-task-navigator` owns the managed and History REST pages, list SSE,
-  list revisions, Continue requests, repository grouping, list DOM, and list
-  scroll.
-- `caffold-task-new` owns cwd selection and the create request.
-  `caffold-task-composer` owns its create draft, images, focus, option pickers,
-  and voice capture state. Voice capture saves the current selection before it
-  releases textarea focus, locks prompt submission while recording or
-  transcribing, and inserts returned text without submitting or restoring
-  focus.
-- `caffold-task-detail` owns the selected thread's canonical REST read and
-  application, detail revisions, event cache, history requests, prompt
-  reconciliation, approvals, interrupt actions, and review-route coordination.
-  Its private `detail/stream.js` module owns only the selected thread's
-  `EventSource`, reconnect/visibility refresh scheduling, connection generation,
-  and transport state. Raw stream messages and a guarded refresh request go to
-  Detail; the module has no task/event cache or revision writer. Detail checks
-  both its route generation and the stream-provided current-generation guard
-  before applying a refresh response.
-- `caffold-task-detail-summary` owns the stable header DOM, review-mode and
-  Git/GitHub menu disclosure, and GitHub availability requests scoped to the
-  current worktree. Its `caffold-task-detail-info` leaf owns the task-info
-  button, native popover disclosure, status and archive presentation, and emits
-  archive intents back through Summary. The visible Conversation, Working Tree,
-  and Branch comparison segments share Summary DOM, while the selected Review
-  scope remains route-owned and Review remains the only writer of its own route
-  axes. Both Summary and Info receive read-only snapshots; they cannot mutate
-  canonical task state or invoke Codex actions.
-- `caffold-task-conversation` owns transcript rendering, disclosure state,
-  scroll anchors, Markdown reflow handling, and the canonical active-turn
-  clock.
-- The follow-up `caffold-task-composer` owns thread-local drafts, images,
-  focus/selection, textarea sizing, voice capture, and explicit
-  model/permission overrides.
-  Detail still owns the prompt mutation and canonical reconciliation.
-- `caffold-task-review` is the integrated Task Review owner. It owns one
-  selected path plus the Changes/Files and Diff/Source axes. It consumes the
-  route-owned Working Tree/Branch scope selected by the Task Detail mode
-  control, then owns Git refs/status/compare requests, branch-base selection,
-  and branch-base normalization for that scope. Its compare-tree leaf receives
-  refs and selected base as a snapshot and emits only base-selection intents
-  back to Review. It composes the two Git change-tree
-  presentations, one reusable file navigator, and one shared source/diff viewer
-  instead of mounting complete Files, Diff, and Compare browsers. It also owns
-  the one root filesystem watch, refresh generations, panel width,
-  navigator/viewer scroll, and expanded file directories. Task and event inputs
-  are read-only context for that component.
+`caffold-tasks-page` owns the home/new/detail choice and connects the Task
+navigator. It identifies any route with `threadId` as Task Detail, including
+Git and GitHub domain routes.
 
-Navigator and Detail are independent browser projections. Each owns its own
-REST/SSE baseline and revision map; neither revision can invalidate the other.
-Detail emits canonical task snapshots upward, the Tasks page forwards those
-snapshots to Navigator, and Navigator updates only through its public
-`upsertCanonicalTask` boundary. New Task similarly emits the canonical create
-response, which the page adopts into Detail and Navigator before requesting the
-new route.
+`caffold-task-detail` owns:
 
-Data crosses these boundaries as snapshots or method calls from parent to
-child. Actions cross upward as intent events. Leaf components do not mutate
-sibling state or call Codex mutation APIs on behalf of their canonical owner.
-The Tasks page mounts Navigator, New Task, and Detail once and switches them
-with visibility and activation methods. Tasks home owns Navigator plus New Task
-as its default detail; on compact layouts the combined loaded active-and-archived
-state chooses the list when either section has tasks and New Task only when both
-are empty. Navigator owns the New Task action in its active-section header; the
-active-task count is not a separate control. The explicit `/tasks/new` route
-selects the same New Task instance and inherits the selected task context when
-one exists. Detail likewise preserves Summary,
-Conversation, and Composer instances. It keeps up to six thread-local Review
-instances in an explicit LRU cache (`CLEAN_REVIEW_CACHE_LIMIT = 6`). An inactive
-Review is disconnected so its watcher and requests stop, while its DOM-local
-panel width, scroll, and disclosure state remain available for a quick return.
-Switching Conversation and Review therefore preserves the composer draft and
-transcript position without letting inactive review work continue in the
-background.
+- the selected `threadId` and canonical Task snapshot;
+- the selected outer surface;
+- Task-scoped route intents;
+- the selected Task's Codex event stream;
+- Task-level Summary and Conversation state;
+- child creation, activation, deactivation, and disposal.
 
-Task Review semantic state comes from `/tasks/:threadId/review`: selected path,
-scope, navigator, viewer, and branch base are route-owned. Task Detail is the
-only writer that turns the Summary's outer Conversation/Working Tree/Branch
-mode intents into task route transitions. The Review component is the only
-writer for selected path, navigator, viewer, and branch-base normalization; the
-Tasks page only forwards route intents. Scroll, expanded directories, and
-resizer width remain component-local and do not enter the URL.
-The worktree root is used when Git is available, with the thread cwd as the
-non-Git Files/Source root. Live repository and worktree context is derived from
-each canonical thread cwd rather than stored by the frontend.
+A deep route is prepared synchronously before canonical Task loading. Task
+Detail loads the Task independently of navigator pagination, derives the
+worktree/repository snapshot, and activates the requested domain only after
+that snapshot is available. Errors remain in the requested shell.
 
-When a loaded directory enters or leaves a Git repository, the app root decides
-the current repository context and reloads the active review route if needed.
-The review workspace applies or clears that repository context across review
-domains and asks the active domain for the route to reload. The Git and GitHub
-layouts own their own status refresh requests. Git and GitHub review route entry
-stays domain-specific: the app root prepares cwd-based path options and
-file-browser cleanup callbacks, the review workspace decides active-domain
-cleanup and chrome lifecycle, and the Git/GitHub layouts own their own route
-execution semantics.
-The two flows should not be hidden behind one generic helper because GitHub
-availability/status refresh has different semantics from Git review state.
+Same-Task switches do not interrupt or recreate the Task stream. A Task switch
+invalidates Task and child generations before the new Task can render. Task
+Summary sends intents upward and does not own GitHub availability requests.
 
-`caffold-header-actions` owns Files-header-only action status derivation. The app
-root supplies only the loaded repository context plus raw Git/GitHub status
-payloads, and the header actions component maps those into Git/GitHub button
-availability, labels, messages, and badges. Codex app-server status is
-header-local and is loaded directly by the header actions component, then
-passed to `caffold-codex-header-action`. The compact action navigates to
-Settings/Codex; it does not own a details popover. The app root forwards the
-raw status snapshot to the stable Settings/Codex page but does not fetch Codex
-status or assemble its display state.
+## Task Detail children
 
-`(review-workspace)` is a pathless review surface in the app main route slot. It owns
-the active review domain, shared review chrome, close/back behavior, panel
-resizing, and mobile list/detail transitions. It refreshes shared chrome by
-reading details from the active child layout rather than receiving chrome
-details from the app root. Back controls ask the active child layout for a
-domain route before falling back to the app root's browser-parent route. It is
-not a Git-only or GitHub-only page.
-Nested layouts own their own list/detail flow once they have a clear domain
-boundary. `(git)/layout` owns Git status loading, Git submode switching,
-Compare controls, Diff, Compare, and Log list/detail state. It also translates
-Git-domain open, close, and back events from child pages into Git route intents,
-and derives Git workspace chrome metadata such as branch, dirty marker, and
-changed-file count from its own repository/status state.
-It keeps the repository watch subscription active while repository context is
-available, so header status and the selected review detail stay current even
-when another top-level surface is visible.
-`(github)/layout` owns GitHub status loading, GitHub submode switching, and
-delegates issue and pull request internals to their nested layouts. It
-translates GitHub-domain open, close, and back events from child pages into
-GitHub route intents. For example,
-`(github)/(issues)/layout` owns issue list loading, pagination state, issue
-detail loading, and selected issue state; `app-shell` keeps cwd-based URL
-execution and top-level workspace coordination.
-Likewise, `(github)/(pulls)/layout` owns pull request list/detail/files mode
-switching, PR pagination, and selected PR summary state. Its `files/page` owns
-PR changed-file loading, PR file diff state, and PR file list scroll
-restoration.
+### Conversation
 
-CSS follows the same ownership boundary. A layout may expose shared variables
-such as pane header height, but it should style only its own chrome and direct
-layout children. Nested pages/components own their panel headers, titles, and
-detail selectors. If a domain-owned control is rendered into shared chrome, keep
-its CSS in the owning domain's stylesheet and scope the selector to the shared
-slot instead of adding broad descendant rules to the parent layout.
+Conversation owns transcript rendering, disclosure and scroll state, and the
+follow-up Composer. Stateful children are preserved by identity through Task
+Detail's incremental shell updates. Moving from Tasks to Settings ends active
+editing and transport work without destroying a retained Composer draft.
 
-## Browser Test Structure
+### Integrated Review
 
-The Playwright suite mirrors runtime ownership:
+`caffold-task-review` is the sole owner of Working Tree and current Task Branch
+review. It owns:
+
+- scope, navigator, viewer, base ref, and selected path;
+- Git status, branch refs/compare, file, diff, and source requests;
+- one root watch while active;
+- Changes/Files and Diff/Source reconciliation;
+- pane width, disclosure, selection, and scroll.
+
+Integrated Review uses a bounded per-thread component cache. Disconnecting an
+inactive entry invalidates its requests and releases its root watch. Its
+selected path and current-branch root watch remain unique to that cached review
+instance.
+
+### Git
+
+`caffold-task-git-layout` is a direct Task Detail child under the pathless
+`detail/(git)` directory. It owns arbitrary Compare and bounded Log modes,
+repository ref status, canonical reconciliation, domain-local routes, request
+generations, and a refs-only watch while active.
+
+It does not own Working Tree status, Task-related paths, current Task Branch
+comparison, or a Diff mode. Compare and Log leaves retain their own list,
+commit, file, diff, and source state.
+
+### GitHub
+
+`caffold-task-github-layout` is a direct Task Detail child under
+`detail/(github)`. It owns GitHub availability, Issues/Pulls mode, route-local
+list/detail/files selection, canonical reconciliation, nested request
+generations, and domain-local Back intents.
+
+GitHub performs no polling and creates no filesystem watcher. Activation,
+meaningful re-entry, Retry, and explicit actions request current canonical
+state. Hidden DOM may remain visible when reactivated, but it is never treated
+as proof that remote data is current.
+
+### Activation contract
+
+Connection and activation are separate concepts for Task domain children.
+
+- `prepareRoute(route)` selects DOM and chrome without APIs.
+- `activate(route, snapshot)` binds canonical Task repository context and
+  performs a fresh reconciliation.
+- `deactivate()` invalidates requests and releases watches/timers while keeping
+  safe DOM-local state.
+- disconnection/destroy performs deactivation plus instance cleanup.
+
+Within one Task, Git and GitHub instances stay mounted in hidden sibling slots.
+Switching Tasks destroys both instances, so their DOM lifetime is bounded to
+the selected Task. A repository/worktree context change within the same Task is
+a hard data-rebind boundary even though the outer surface stays selected.
+
+Every async writer checks an owner generation, route identity, context identity,
+or nested request token. A late response cannot reactivate an inactive child,
+write into a new Task, or restore a stale route.
+
+## Data flow
+
+Parent-to-child data crosses as snapshots or public methods. Child actions
+cross upward as intents.
 
 ```text
-tests/e2e/
-  app-shell.spec.js
-  settings.spec.js
-  task-workspace.spec.js
-  files/
-    navigation.spec.js
-    live.spec.js
-    presentation.spec.js
-  review/
-    git.spec.js
-    github.spec.js
-    routing.spec.js
-  tasks/
-    ...
-  support/
-    file-browser-fixtures.js
-    header-actions.js
-    review-layout.js
-    review-route-fixtures.js
-    review-context-fixture.js
-    task-fixtures.js
-    ...
+canonical Task response
+        |
+        v
+Task Detail --context snapshot--> active child
+        ^                              |
+        `-------- route intent --------'
 ```
 
-The spec owns the observable user contract: clicks, browser navigation, route
-transitions, responsive DOM, and assertions. Support modules own deterministic
-inputs and observation controls such as API responses, request counters,
-filesystem fixture values, delayed-request gates, and reusable layout
-measurements. They must not hide a surface's user flow behind a generic page
-object.
+No global store coordinates this hierarchy. Canonical Task, Git, GitHub, and
+filesystem projections remain independent because their external sources and
+revision lifetimes are independent.
 
-`review/routing.spec.js` is intentionally a routing-owner suite. Each Git or
-GitHub route lifecycle and each cwd-context reload mode is an independent
-test. The one cross-domain case is a narrow smoke test for switching route
-owners without retaining stale layout state. Git and GitHub product behavior
-otherwise remains in their domain specs.
+## Route ownership
 
-All mutable fixture state is created inside one Playwright test. Specs must
-remain valid under normal parallel execution and under `--workers=1`; serial
-configuration is not a substitute for isolating filesystem paths, request
-counters, delay gates, or browser-local state.
+`frontend/navigation-routes.js` owns the pure schema and metadata. App Shell
+forwards; Task Workspace selects Tasks/Settings; Task Detail selects the outer
+Task child; Git and GitHub select their domain-local modes and leaves.
 
-## Page/Layout Skeleton
+Task-scoped Git/GitHub routes always carry `threadId` and never route `cwd`.
+Task Detail derives repository context from canonical Task state. See
+[Navigation Routing](navigation.md) for exact route and Back contracts.
 
-The current page-level skeleton is:
+## New Task and directories
+
+New Task owns its cwd, draft, and choices. The Directory Picker is a transient
+child that returns a selected folder directly to New Task. The selected
+directory is represented by New Task state and its route.
+
+Reusable RootedFs capabilities remain shared:
+
+- `caffold-file-navigator` and its list leaf;
+- `caffold-review-file-viewer`;
+- source, text, diff, and supported image presentation;
+- shared watch subscription primitives;
+- New Task Directory Picker;
+- Integrated Review Files navigation;
+- Git Compare/Log and GitHub PR Files leaves.
+
+`caffold-review-file-viewer` hosts the reusable source, diff, text, and image
+leaves used by review surfaces. Navigation, presentation, and filesystem-watch
+primitives stay shared while each active surface owns its selection and request
+lifetime.
+
+## Settings
+
+Settings lives inside Task Workspace. Appearance owns theme and Interface,
+Conversation, and Code scales. Settings Codex owns `getCodexStatus`, loading,
+error, Refresh, runtime restart, post-restart refresh, and its request
+generations. It refreshes on activation, invalidates pending work when hidden,
+and requests its runtime status directly.
+
+## Physical hierarchy
+
+Relevant source ownership follows the routed hierarchy:
 
 ```text
-frontend/pages/
-  layout.js
-  layout.css
-  components/
-    pathbar.js
-    pathbar.css
-    header-actions.js
-    header-actions.css
-    header-actions/
-      shared.js
-      git-status.js
-      github-status.js
-      codex-status.js
-      codex-status-model.js
-
-  files/
-    page.js
-    page.css
-
-  (task-workspace)/
-    layout.js
-    layout.css
-    tasks/
-      page.js
-      page.css
-      runtime-state.js
-      task-events.js
-      task-format.js
-      task-list-model.js
-      components/
-        navigator.js
-        navigator.css
-        task-new.js
-        task-new.css
-        composer.js
-        composer.css
-        task-status.js
-        task-status.css
-        detail.js
-        detail.css
-        detail/
-          stream.js
-          summary.js
-          summary.css
-          summary/
-            info.js
-            info.css
-          conversation.js
-          conversation.css
-          conversation/
-            render.js
-            markdown.js
-          review.js
-          review.css
-    settings/
-      layout.js
-      layout.css
-      navigator.js
-      navigator.css
-      appearance/
-        page.js
-        page.css
-      codex/
-        page.js
-        page.css
-      about/
-        page.js
-        page.css
-
-  (review-workspace)/
-    layout.js
-    layout.css
-
-    (git)/
-      layout.js
-      layout.css
-      diff/
-        page.js
-        page.css
-      compare/
-        page.js
-        page.css
-      (log)/
-        layout.js
-        layout.css
-        list/
-          page.js
-          page.css
-        commit/
-          page.js
-          page.css
-          components/
-            changes-tree.js
-            changes-tree.css
-
-    (github)/
-      layout.js
-      layout.css
-      (issues)/
-        layout.js
-        layout.css
-        list/
-          page.js
-          page.css
-        detail/
-          page.js
-          page.css
-      (pulls)/
-        layout.js
-        layout.css
-        list/
-          page.js
-          page.css
-        detail/
-          page.js
-          page.css
-        files/
-          page.js
-          page.css
-          components/
-            tree.js
-            tree.css
+frontend/
+|-- navigation-routes.js
+|-- pages/
+|   |-- layout.js
+|   `-- (task-workspace)/
+|       |-- layout.js
+|       |-- settings/
+|       |   `-- codex/
+|       |       |-- page.js
+|       |       `-- status-model.js
+|       `-- tasks/
+|           |-- page.js
+|           `-- components/
+|               |-- detail.js
+|               `-- detail/
+|                   |-- review.js
+|                   |-- review/changes-tree.js
+|                   |-- (git)/
+|                   |   |-- layout.js
+|                   |   |-- compare/page.js
+|                   |   `-- (log)/...
+|                   `-- (github)/
+|                       |-- layout.js
+|                       |-- (issues)/...
+|                       `-- (pulls)/...
+`-- components/
+    |-- file-navigator.js
+    |-- file-navigator/list.js
+    |-- file-viewer.js
+    |-- git-compare-browser.js
+    `-- review-panel-resizer.js
 ```
 
-Keep reusable building blocks in `frontend/components`:
+A directory with its own `page.js`, such as `compare`, remains a leaf surface.
+Names describe the current owner and role: nested Git Log and GitHub
+Issues/Pulls layouts own domain state, while reusable components stay outside
+`pages`.
 
-- `file-browser.js`
-- `file-browser.css`
-- `file-browser/list.*`
-- `pagination.*`
-- `code-viewer.*`
-- `diff-viewer.*`
-- `file-viewer.*`
-- `icons.js`
-- `dom.js`
+## Styling and assets
 
-Page-specific helper components can live under that page's `components/`
-directory when moving them to shared `frontend/components` would hide the
-ownership boundary. For example, the Git log list belongs only to
-`(git)/(log)/list/page`, the commit changes tree belongs only to
-`(git)/(log)/commit/page`, and the PR files tree belongs only to
-`(github)/(pulls)/files/page`. GitHub-only helpers shared by GitHub pages,
-such as the Markdown renderer, belong under `(github)/components`. The file
-browser is a reusable surface used by `files/page` and
-task-workspace integrations, so it lives under `frontend/components`
-with its list implementation in `frontend/components/file-browser/`.
-Layout-specific helper components follow the same rule. App chrome such as the
-pathbar and header actions belongs to `frontend/pages/layout`.
+Components render in Light DOM, so CSS remains one cascade. Each stylesheet
+must scope internal selectors below the owning custom element. A parent may
+size or hide a child host, but descendant styling belongs to the child.
 
-## Naming Rules
+Every production JavaScript/CSS asset must be registered consistently in:
 
-- `layout.js` means a container Web Component, not a URL layout.
-- `page.js` is a leaf surface entrypoint. If the surface itself is page-owned,
-  define its custom element in `page.js` instead of leaving an import-only
-  wrapper.
-- Existing custom element names stay stable when a reusable component remains a
-  reusable component. When a surface is promoted to a page-owned element, use
-  the page-level custom element name.
-- Do not move lower-level or reusable components under `pages` just to mirror
-  the current screen. Components such as `pagination`, `file-viewer`, and
-  `diff-viewer` stay component-level.
-- Wrap intermediate `frontend/pages` directories that do not contain `page.js`
-  in parentheses, such as `(review-workspace)`, `(git)`, or `(github)`. These
-  are pathless grouping/layout nodes, not URL segments. Do not wrap the
-  `frontend/pages` root layout itself.
+- module imports;
+- `frontend/styles.css`;
+- `frontend/service-worker.js`;
+- `src/static_assets.rs`;
+- static asset and CSS ownership tests.
 
-## Migration Rules
+The service-worker cache and Rust static-asset table are exact manifests of the
+assets imported by the active application hierarchy.
 
-- Do not mix file movement with behavior changes.
-- When extracting a stateful component, move its state, every writer,
-  subscription/timer/watcher cleanup, DOM, component-scoped CSS, and regression
-  tests in the same change.
-- Keep stateful children mounted. A container should show, hide, and call their
-  public methods instead of rebuilding their internal DOM and attempting to
-  restore local state afterward.
-- Update imports, `styles.css`, `service-worker.js`, `src/static_assets.rs`,
-  and asset tests in the same commit.
-- Prefer stable custom element names. Moving a file should not require changing
-  `<caffold-*>` names.
-- Treat `pages` as a Web Component hierarchy, not a URL hierarchy.
+## Test ownership
+
+Regression tests move with the active owner:
+
+- pure route schema in `tests/navigation-routes.test.mjs`;
+- Task Detail and Integrated Review in `tests/e2e/tasks/`;
+- Task-owned Git in `tests/e2e/tasks/git-review.spec.js`;
+- Task-owned GitHub in `tests/e2e/tasks/github-review.spec.js`;
+- application shell boundaries in `tests/e2e/app-shell.spec.js`;
+- Settings Codex behavior in `tests/e2e/settings.spec.js`;
+- assets, CSS, appearance, and watch primitives in their focused Node/Rust
+  suites.
+
+Reusable file/source/diff/image behavior is covered through its active Task
+owners. Browser coverage must exercise direct entry/reload, Back and browser
+history, child switching, Task switching during pending work, activation
+freshness, stale response rejection, watch cleanup, retained DOM-local state,
+and desktop/foldable/phone presentation.
