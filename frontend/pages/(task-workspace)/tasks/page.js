@@ -121,6 +121,15 @@ class CaffoldTasksPage extends HTMLElement {
     this.connectedTaskNavigator?.setSelectedThreadId(this.selectedThreadId);
   }
 
+  deactivate() {
+    this.imagePreviewDialog()?.dismiss();
+    if (this.view === "detail") {
+      this.taskDetail()?.deactivate();
+    } else {
+      this.taskNew()?.deactivate();
+    }
+  }
+
   prepareRoute(route, options = {}) {
     this.ensureRendered();
     const target = routeTarget(route);

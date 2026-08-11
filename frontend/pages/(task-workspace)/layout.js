@@ -215,8 +215,12 @@ class CaffoldTaskWorkspace extends HTMLElement {
 
   prepareRoute(route, options = {}) {
     this.ensureRendered();
+    const previousMode = this.mode;
     this.route = route;
     this.mode = route?.kind === "settings" ? "settings" : "tasks";
+    if (previousMode === "tasks" && this.mode !== "tasks") {
+      this.tasksPage.deactivate();
+    }
     if (this.mode === "tasks") {
       this.lastTaskRoute = { ...route };
       this.tasksPage.prepareRoute(route, options);

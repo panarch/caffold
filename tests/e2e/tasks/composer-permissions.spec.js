@@ -9,6 +9,17 @@ import {
   pasteImage,
 } from "../support/task-fixtures.js";
 
+async function switchWorkspaceMode(page, mode) {
+  const button = page.locator(
+    `caffold-task-workspace-navigation button[data-workspace-mode="${mode}"]`,
+  );
+  if (await button.isVisible()) {
+    await button.click();
+  } else {
+    await button.evaluate((element) => element.click());
+  }
+}
+
 test("composer exposes Codex approval modes and confirms full access", async ({
   page,
 }, testInfo) => {
@@ -120,6 +131,7 @@ test("untouched approval mode preserves the effective Codex default", async ({ p
 
   await expect.poll(() => submittedBody).not.toBeNull();
   expect(submittedBody).not.toHaveProperty("permissionMode");
+  expect(submittedBody.fastMode).toBe(false);
 });
 
 test("explicit approval mode is sent with a new task prompt", async ({ page }) => {
@@ -252,6 +264,196 @@ test("new tasks start in Normal mode and submit an explicit Fast choice", async 
   await expect(nextForm.locator(".task-model-fast")).toHaveCount(0);
 });
 
+test("resets option-only New Task selections after Settings navigation", async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  await page.unroute("**/api/tasks");
+  let submittedBody = null;
+  await page.route("**/api/tasks", (route) => {
+    if (route.request().method() === "POST") {
+      submittedBody = route.request().postDataJSON();
+      return route.fulfill({ json: taskDetailFixture() });
+    }
+    return route.fulfill({ json: { tasks: [], nextCursor: null } });
+  });
+
+  await page.goto("/tasks/new?cwd=src");
+  const form = page.locator('.task-new-form[data-task-form="create"]');
+  const modelPicker = form.getByRole("button", { name: /Choose model/ });
+  await modelPicker.click();
+  await form.locator('[data-fast-mode="true"]').click();
+  await expect(form.locator('input[name="fastMode"]')).toHaveValue("true");
+
+  await switchWorkspaceMode(page, "settings");
+  await expect(page).toHaveURL("/settings");
+  await switchWorkspaceMode(page, "tasks");
+  await expect(page).toHaveURL("/tasks/new?cwd=src");
+  await expect(form.locator('input[name="fastMode"]')).toHaveValue("false");
+  await expect(form.locator(".task-model-fast")).toHaveCount(0);
+
+  const prompt = form.getByRole("textbox", { name: "New task prompt" });
+  await prompt.fill("Use the reset Normal mode");
+  await prompt.press("Enter");
+  await expect.poll(() => submittedBody).not.toBeNull();
+  expect(submittedBody.fastMode).toBe(false);
+});
+
+test("preserves and clears New Task options with their meaningful draft", async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  await page.goto("/tasks/new?cwd=src");
+  const form = page.locator('.task-new-form[data-task-form="create"]');
+  const modelPicker = form.getByRole("button", { name: /Choose model/ });
+  const permissionPicker = form.getByRole("button", {
+    name: "Choose approval mode",
+  });
+  const prompt = form.getByRole("textbox", { name: "New task prompt" });
+
+  await modelPicker.click();
+  await form.locator('[data-effort="xhigh"]').click();
+  await modelPicker.click();
+  await form.locator('[data-fast-mode="true"]').click();
+  await permissionPicker.click();
+  await form.getByRole("button", { name: /^Ask for approval/ }).click();
+  await prompt.fill("Keep this complete draft snapshot");
+  await pasteImage(prompt, "draft-snapshot.png");
+
+  await switchWorkspaceMode(page, "settings");
+  await expect(page).toHaveURL("/settings");
+  await switchWorkspaceMode(page, "tasks");
+  await expect(page).toHaveURL("/tasks/new?cwd=src");
+  await expect(prompt).toHaveValue("Keep this complete draft snapshot");
+  await expect(form.locator(".task-composer-attachment")).toHaveCount(1);
+  await expect(form.locator('input[name="model"]')).toHaveValue("gpt-test");
+  await expect(form.locator('input[name="effort"]')).toHaveValue("xhigh");
+  await expect(form.locator('input[name="fastMode"]')).toHaveValue("true");
+  await expect(form.locator('input[name="permissionMode"]')).toHaveValue(
+    "askForApproval",
+  );
+
+  await prompt.fill("");
+  await form
+    .getByRole("button", { name: "Remove draft-snapshot.png" })
+    .click();
+  await switchWorkspaceMode(page, "settings");
+  await expect(page).toHaveURL("/settings");
+  await switchWorkspaceMode(page, "tasks");
+  await expect(page).toHaveURL("/tasks/new?cwd=src");
+  await expect(prompt).toHaveValue("");
+  await expect(form.locator(".task-composer-attachment")).toHaveCount(0);
+  await expect(form.locator('input[name="model"]')).toHaveValue("gpt-test");
+  await expect(form.locator('input[name="effort"]')).toHaveValue("medium");
+  await expect(form.locator('input[name="fastMode"]')).toHaveValue("false");
+  await expect(form.locator('input[name="permissionMode"]')).toHaveValue(
+    "approveForMe",
+  );
+  expect(
+    await form.locator("caffold-task-turn-options").evaluate((element) =>
+      element.snapshot(),
+    ),
+  ).toMatchObject({
+    modelExplicit: false,
+    fastModeExplicit: false,
+    permissionExplicit: false,
+  });
+});
+
+test("reconciles an option-only follow-up to canonical Normal after Task switching", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop",
+    "Wide Task switching regression",
+  );
+  await installTaskApiFixture(page);
+  const makeDetail = (threadId, title) => {
+    const detail = taskDetailFixture({
+      model: "gpt-test",
+      reasoningEffort: "medium",
+      fastMode: false,
+    });
+    detail.threadId = threadId;
+    detail.task = {
+      ...detail.task,
+      id: threadId,
+      threadId,
+      title,
+      preview: `${title} preview`,
+    };
+    return detail;
+  };
+  const detailA = makeDetail("thread_option_a", "Option Task A");
+  const detailB = makeDetail("thread_option_b", "Option Task B");
+  const details = new Map([
+    [detailA.threadId, detailA],
+    [detailB.threadId, detailB],
+  ]);
+  await page.unroute("**/api/tasks");
+  await page.route("**/api/tasks", (route) =>
+    route.fulfill({
+      json: { tasks: [detailB.task, detailA.task], nextCursor: null },
+    }),
+  );
+  await page.route(/\/api\/tasks\/thread_option_[ab](?:\?|$)/, (route) => {
+    const threadId = new URL(route.request().url()).pathname.split("/").at(-1);
+    return route.fulfill({ json: details.get(threadId) });
+  });
+  await page.route(/\/api\/tasks\/thread_option_[ab]\/stream(?:\?|$)/, (route) =>
+    route.fulfill({ contentType: "text/event-stream", body: ": ready\n\n" }),
+  );
+
+  await page.goto("/tasks/thread_option_a?cwd=src");
+  const tasksPage = page.locator("caffold-tasks-page");
+  const form = tasksPage.locator(
+    '.task-follow-up-form[data-task-form="follow-up"]',
+  );
+  const modelPicker = form.getByRole("button", { name: /Choose model/ });
+  await modelPicker.click();
+  await form.locator('[data-fast-mode="true"]').click();
+  await expect(form.locator('input[name="fastMode"]')).toHaveValue("true");
+
+  const navigator = page.locator("caffold-task-navigator");
+  await navigator
+    .locator('.task-row[data-thread-id="thread_option_b"]')
+    .click();
+  await expect(page).toHaveURL("/tasks/thread_option_b");
+  expect(
+    await tasksPage.evaluate((element) => {
+      const detail = element.taskDetail();
+      const composer = detail.followUpComposers.get("thread_option_a");
+      return {
+        restorable: composer.hasRestorableState(),
+        retained: detail.shouldRetainFollowUpComposer(
+          "thread_option_a",
+          composer,
+        ),
+        options: composer.turnOptions().snapshot(),
+      };
+    }),
+  ).toEqual({
+    restorable: false,
+    retained: false,
+    options: {
+      model: "gpt-test",
+      effort: "medium",
+      fastMode: false,
+      permissionMode: "approveForMe",
+      modelExplicit: false,
+      fastModeExplicit: false,
+      permissionExplicit: false,
+    },
+  });
+
+  await navigator
+    .locator('.task-row[data-thread-id="thread_option_a"]')
+    .click();
+  await expect(page).toHaveURL("/tasks/thread_option_a");
+  await expect(form.locator('input[name="fastMode"]')).toHaveValue("false");
+  await expect(form.locator(".task-model-fast")).toHaveCount(0);
+});
+
 test("switching to a model without Fast support normalizes to Normal and hides Speed", async ({
   page,
 }) => {
@@ -347,6 +549,8 @@ test("new task submission stays single-flight and restores local input after rej
   await composer.evaluate((element) => {
     element.dataset.instanceMarker = "stable";
   });
+  await form.getByRole("button", { name: /Choose model/ }).click();
+  await form.locator('[data-fast-mode="true"]').click();
   await prompt.fill("Retry this exact task");
   await pasteImage(prompt, "create-retry.png");
   await prompt.press("Enter");
@@ -364,11 +568,13 @@ test("new task submission stays single-flight and restores local input after rej
   await expect(prompt).toHaveValue("Retry this exact task");
   await expect(prompt).toBeFocused();
   await expect(form.locator(".task-composer-attachment")).toHaveCount(1);
+  await expect(form.locator('input[name="fastMode"]')).toHaveValue("true");
 
   await prompt.press("Enter");
   await expect.poll(() => submittedBodies).toHaveLength(2);
   expect(submittedBodies[1]).toMatchObject({
     cwd: "src",
+    fastMode: true,
     prompt: "Retry this exact task",
   });
   expect(submittedBodies[1].images).toHaveLength(1);

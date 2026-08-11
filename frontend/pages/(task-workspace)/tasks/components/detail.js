@@ -969,13 +969,15 @@ class CaffoldTaskDetail extends HTMLElement {
       ) {
         this.followUpRequests.delete(threadId);
       }
+      if (this.activeFollowUpComposerThreadId !== threadId) {
+        this.endFollowUpComposerEditingLifetime(threadId, composer);
+      }
       this.pruneFollowUpComposerCache();
       if (threadId === this.selectedThreadId) {
         this.render();
       }
     }
   }
-
 
   async interruptSelectedTask() {
     const task = this.taskDetail?.task ?? null;
@@ -1261,6 +1263,7 @@ class CaffoldTaskDetail extends HTMLElement {
       return;
     }
     const composer = this.followUpComposers.get(threadId);
+    this.endFollowUpComposerEditingLifetime(threadId, composer);
     composer?.remove();
     this.followUpComposerLastUsed.set(
       threadId,
@@ -1270,6 +1273,12 @@ class CaffoldTaskDetail extends HTMLElement {
     if (prune) {
       this.pruneFollowUpComposerCache();
     }
+  }
+
+  endFollowUpComposerEditingLifetime(threadId, composer) {
+    composer?.endEditingLifetime({
+      preserveOptions: this.followUpRequests.has(threadId),
+    });
   }
 
   shouldRetainFollowUpComposer(threadId, composer) {
