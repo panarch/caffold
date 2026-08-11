@@ -78,10 +78,12 @@ Task Conversation keeps `/tasks/:threadId`. Integrated Task Review uses
 
 The defaults (`working`, `changes`, `diff`, no file, no base) are omitted.
 Unknown enum values, parent traversal, and root-escaping file paths normalize
-to safe defaults with history replacement. If Branch has no explicit base,
-the Git refs response supplies the default and the resolved base is replaced
-into the URL. Async Git and filesystem responses fill the prepared Review but
-do not decide its selected path or axes.
+to safe defaults with history replacement. Branch keeps a valid explicit base;
+when the base is missing or no longer appears in the Git refs response, that
+response supplies the default and Review replaces the resolved base into the
+URL. The resolved branch base remains route-owned while the other Review axes
+or scope change. Async Git and filesystem responses fill the prepared Review
+but do not decide its selected path or axes.
 
 ## Route Definitions
 

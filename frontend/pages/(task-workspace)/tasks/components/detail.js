@@ -733,7 +733,6 @@ class CaffoldTaskDetail extends HTMLElement {
         ...route,
         review: true,
         reviewScope: options.scope,
-        baseRef: options.scope === "branch" ? `${route.baseRef ?? ""}` : "",
       };
     }
     this.dispatchEvent(
