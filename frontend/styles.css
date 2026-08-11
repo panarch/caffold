@@ -19,6 +19,7 @@
 @import "./pages/(task-workspace)/tasks/components/task-status.css";
 @import "./pages/(task-workspace)/tasks/page.css";
 @import "./pages/(task-workspace)/tasks/components/composer.css";
+@import "./pages/(task-workspace)/tasks/components/voice-level-meter.css";
 @import "./pages/(task-workspace)/tasks/components/directory-picker.css";
 @import "./pages/(task-workspace)/tasks/components/archived-delete-dialog.css";
 @import "./pages/(task-workspace)/tasks/components/image-preview-dialog.css";

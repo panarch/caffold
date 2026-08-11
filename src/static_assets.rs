@@ -235,6 +235,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
                 "../frontend/pages/(task-workspace)/tasks/components/image-preview-dialog.js"
             )))
         }
+        "pages/(task-workspace)/tasks/components/voice-level-meter.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/voice-level-meter.css"
+        ))),
+        "pages/(task-workspace)/tasks/components/voice-level-meter.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/voice-level-meter.js"
+        ))),
         "pages/(task-workspace)/tasks/components/voice-recorder.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/voice-recorder.js"
         ))),
@@ -1008,6 +1014,10 @@ mod tests {
         }
         for (path, marker) in [
             (
+                "pages/(task-workspace)/tasks/components/voice-level-meter.js",
+                b"caffold-voice-level-meter".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/components/voice-recorder.js",
                 b"VoiceRecorder".as_slice(),
             ),
@@ -1023,6 +1033,18 @@ mod tests {
                     .body
                     .windows(marker.len())
                     .any(|window| window == marker)
+            );
+        }
+        for path in [
+            "/assets/pages/(task-workspace)/tasks/components/voice-level-meter.css",
+            "/assets/pages/(task-workspace)/tasks/components/voice-level-meter.js",
+        ] {
+            assert!(
+                service_worker
+                    .body
+                    .windows(path.len())
+                    .any(|window| window == path.as_bytes()),
+                "service worker is missing {path}"
             );
         }
         for (path, prefix) in [
@@ -1041,6 +1063,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/components/image-preview-dialog.css",
                 b"caffold-task-image-preview-dialog".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/components/voice-level-meter.css",
+                b"caffold-voice-level-meter".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/components/detail/conversation.css",

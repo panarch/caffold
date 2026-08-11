@@ -44,6 +44,10 @@ const ownership = new Map([
     ["caffold-task-composer"],
   ],
   [
+    "pages/(task-workspace)/tasks/components/voice-level-meter.css",
+    ["caffold-voice-level-meter"],
+  ],
+  [
     "pages/(task-workspace)/tasks/components/detail/conversation.css",
     ["caffold-task-conversation"],
   ],

@@ -81,6 +81,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/tasks/components/archived-delete-dialog.js",
   "/assets/pages/(task-workspace)/tasks/components/image-preview-dialog.css",
   "/assets/pages/(task-workspace)/tasks/components/image-preview-dialog.js",
+  "/assets/pages/(task-workspace)/tasks/components/voice-level-meter.css",
+  "/assets/pages/(task-workspace)/tasks/components/voice-level-meter.js",
   "/assets/pages/(task-workspace)/tasks/components/voice-recorder.js",
   "/assets/pages/(task-workspace)/tasks/components/voice-worklet.js",
   "/assets/pages/(task-workspace)/tasks/components/detail.css",

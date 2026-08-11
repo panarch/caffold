@@ -1,0 +1,31 @@
+caffold-voice-level-meter {
+  display: inline-flex;
+  flex: 0 0 3.5rem;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--interface-space-1) * 0.75);
+  width: 3.5rem;
+  height: var(--interface-compact-visual-size);
+  margin-inline-end: calc(var(--interface-space-1) * 1.5);
+  box-sizing: border-box;
+  color: var(--control-fg);
+
+  & > .task-voice-level-segment {
+    width: 0.125rem;
+    height: 0.75rem;
+    border-radius: 999px;
+    background: currentColor;
+    transform: scaleY(0.18);
+    transform-origin: center;
+    opacity: 0.2;
+    transition:
+      transform 90ms linear,
+      opacity 90ms linear;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  caffold-voice-level-meter > .task-voice-level-segment {
+    transition: none;
+  }
+}
