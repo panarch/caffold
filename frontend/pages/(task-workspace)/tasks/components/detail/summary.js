@@ -357,13 +357,13 @@ class CaffoldTaskDetailSummary extends HTMLElement {
   renderGitControl(task) {
     if (!taskWorktreeRootPath(task)) {
       return `<button type="button" class="task-brand-button" data-summary-review-control="git" data-summary-key="disabled" disabled title="Git and GitHub are unavailable outside a Git worktree">
-        <img src="/assets/brand/git-logomark-light.svg" alt="">
+        <span class="task-brand-icon" data-brand="git" aria-hidden="true"></span>
         <span class="sr-only">Git unavailable</span>
       </button>`;
     }
     return `<details class="task-review-menu" data-review-menu="git" data-summary-review-control="git" data-summary-key="enabled">
       <summary class="task-brand-button" title="Open Git workspace" aria-label="Open Git workspace">
-        <img src="/assets/brand/git-logomark-light.svg" alt="">
+        <span class="task-brand-icon" data-brand="git" aria-hidden="true"></span>
       </summary>
       <div class="task-review-menu-popover" role="menu" aria-label="Git workspace">
         <button type="button" role="menuitem" data-summary-action="open-git-tool" data-review-kind="diff">Working Tree</button>
@@ -377,7 +377,7 @@ class CaffoldTaskDetailSummary extends HTMLElement {
     const rootPath = taskWorktreeRootPath(task);
     if (!rootPath) {
       return `<button type="button" class="task-brand-button" data-summary-review-control="github" data-summary-key="disabled:no-worktree" disabled title="Git and GitHub are unavailable outside a Git worktree">
-        <img src="/assets/brand/github-invertocat-light.svg" alt="">
+        <span class="task-brand-icon" data-brand="github" aria-hidden="true"></span>
         <span class="sr-only">GitHub unavailable</span>
       </button>`;
     }
@@ -387,7 +387,7 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       const key = `enabled:${github.pulls}:${github.issues}`;
       return `<details class="task-review-menu" data-review-menu="github" data-summary-review-control="github" data-summary-key="${key}">
         <summary class="task-brand-button" title="Open GitHub workspace" aria-label="Open GitHub workspace">
-          <img src="/assets/brand/github-invertocat-light.svg" alt="">
+          <span class="task-brand-icon" data-brand="github" aria-hidden="true"></span>
         </summary>
         <div class="task-review-menu-popover" role="menu" aria-label="GitHub workspace">
           <button type="button" role="menuitem" data-summary-action="open-github-tool" data-review-kind="pulls" ${github.pulls ? "" : "disabled"}>Pull Requests</button>
@@ -398,7 +398,7 @@ class CaffoldTaskDetailSummary extends HTMLElement {
 
     const key = github.loading ? "loading" : `disabled:${github.message}`;
     return `<button type="button" class="task-brand-button${github.loading ? " is-loading" : ""}" data-summary-review-control="github" data-summary-key="${escapeHtml(key)}" disabled title="${escapeHtml(github.message)}">
-      <img src="/assets/brand/github-invertocat-light.svg" alt="">
+      <span class="task-brand-icon" data-brand="github" aria-hidden="true"></span>
       <span class="sr-only">${escapeHtml(github.message)}</span>
     </button>`;
   }

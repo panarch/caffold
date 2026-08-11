@@ -477,7 +477,7 @@ test("common chrome shares one icon slot and control geometry", () => {
   const owners = [
     ["pages/components/header-actions.css", ".header-action-icon"],
     ["pages/(task-workspace)/tasks/controls.css", ".task-action-icon"],
-    ["pages/(task-workspace)/tasks/components/detail/summary.css", ".task-brand-button img"],
+    ["pages/(task-workspace)/tasks/components/detail/summary.css", ".task-brand-icon"],
     ["components/file-viewer.css", ".viewer-info-icon"],
     ["pages/(review-workspace)/layout.css", ".review-workspace-close-icon"],
   ];

@@ -73,7 +73,6 @@
 }
 
 :root {
-  color-scheme: light;
   --interface-scale: 1;
   --interface-base-font-size: 16px;
   --interface-target-floor: 0px;
@@ -130,6 +129,30 @@
   --conversation-line-height: 1.47;
   --code-font-size: 13px;
   --code-line-height: 1.55;
+
+  --line-gutter-width: calc(var(--code-font-size) * 4.9);
+  --file-tree-font-size: 0.8125rem;
+  --file-tree-row-height: max(1.5rem, var(--interface-target-floor));
+  --file-tree-icon-slot-size: 1.25rem;
+  --file-tree-icon-size: 0.9375rem;
+  --file-tree-indent: 0.75rem;
+  --file-tree-column-gap: 0.375rem;
+  --file-tree-padding-y: 0.125rem;
+  --file-tree-padding-left: 0.375rem;
+  --file-tree-padding-right: 0.5rem;
+  --task-list-font-size: 0.8125rem;
+  --task-list-row-height: 2rem;
+  --task-group-font-size: 0.75rem;
+  --task-group-row-height: max(1.75rem, var(--interface-target-floor));
+  --task-list-icon-size: 0.9375rem;
+  --font-ui: "Caffold D2 Coding", ui-monospace, monospace;
+  --font-code: "Caffold D2 Coding", ui-monospace, monospace;
+  font-size: calc(var(--interface-base-font-size) * var(--interface-scale));
+}
+
+:root:not([data-theme]),
+:root[data-theme="light"] {
+  color-scheme: light;
 
   /* Neutral surfaces and content */
   --bg: #f5f5f5;
@@ -229,24 +252,119 @@
   --diff-added-text: var(--success);
   --diff-removed-bg: #f9e5e2;
   --diff-removed-text: var(--danger);
-  --line-gutter-width: calc(var(--code-font-size) * 4.9);
-  --file-tree-font-size: 0.8125rem;
-  --file-tree-row-height: max(1.5rem, var(--interface-target-floor));
-  --file-tree-icon-slot-size: 1.25rem;
-  --file-tree-icon-size: 0.9375rem;
-  --file-tree-indent: 0.75rem;
-  --file-tree-column-gap: 0.375rem;
-  --file-tree-padding-y: 0.125rem;
-  --file-tree-padding-left: 0.375rem;
-  --file-tree-padding-right: 0.5rem;
-  --task-list-font-size: 0.8125rem;
-  --task-list-row-height: 2rem;
-  --task-group-font-size: 0.75rem;
-  --task-group-row-height: max(1.75rem, var(--interface-target-floor));
-  --task-list-icon-size: 0.9375rem;
-  --font-ui: "Caffold D2 Coding", ui-monospace, monospace;
-  --font-code: "Caffold D2 Coding", ui-monospace, monospace;
-  font-size: calc(var(--interface-base-font-size) * var(--interface-scale));
+
+  /* Theme-sensitive in-app brand marks */
+  --brand-git-image: url("/assets/brand/git-logomark-light.svg");
+  --brand-github-image: url("/assets/brand/github-invertocat-light.svg");
+  --brand-monochrome-filter: none;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Neutral surfaces and content */
+  --bg: #141414;
+  --surface: #1b1b1b;
+  --surface-muted: #242424;
+  --surface-subtle: #202020;
+  --border: #3c3c3c;
+  --border-subtle: #303030;
+  --border-strong: #666666;
+  --text: #ededed;
+  --muted: #adadad;
+  --muted-subtle: #929292;
+  --disabled-text: #737373;
+  --text-inverse: #171717;
+
+  /* Interaction and selection */
+  --control-fg: #c7c7c7;
+  --control-selected-fg: #f5f5f5;
+  --tap-highlight-color: rgb(237 237 237 / 10%);
+  --focus-ring: #c2c2c2;
+  --row-hover-bg: #242424;
+  --control-hover-bg: #303030;
+  --control-subtle-hover-bg: #272727;
+  --control-subtle-hover-border: #484848;
+  --control-active-bg: #383838;
+  --control-active-border: #737373;
+  --control-active-text: #f0f0f0;
+  --control-pressed-bg: #414141;
+  --control-emphasis-border: #737373;
+  --primary-control-bg: #ededed;
+  --primary-control-hover-bg: #ffffff;
+  --resizer-hover-bg: #8a8a8a;
+  --selection-bg: #343434;
+  --selection-indicator: #999999;
+  --link-fg: #75d0ae;
+  --primary-action-fg: #78d6b4;
+  --primary-action-bg: #173c30;
+  --primary-action-border: #2f715d;
+  --list-divider: #303030;
+  --list-hover-bg: #242424;
+  --list-selection-bg: #343434;
+  --tag-border: #484848;
+  --badge-bg: #3b3b3b;
+  --badge-text: #ededed;
+
+  /* Semantic feedback */
+  --success: #75d0ae;
+  --success-strong: #9ce1c8;
+  --success-soft: #173c30;
+  --success-border: #2f715d;
+  --related-file-fg: #75d0ae;
+  --related-file-marker-bg: #75d0ae;
+  --warning: #f0b565;
+  --warning-strong: #f4c77f;
+  --warning-soft: #3b2b16;
+  --warning-subtle: #2d2418;
+  --warning-border: #76552b;
+  --warning-chip-bg: #463217;
+  --danger: #f08b86;
+  --danger-soft: #422322;
+  --danger-border: #7c413d;
+  --danger-subtle: #331d1c;
+  --danger-strong: #f3a29d;
+  --danger-faint: #28191a;
+  --danger-faint-border: #633835;
+  --danger-chip-bg: #492725;
+  --shadow-rgb: 0 0 0;
+  --structural-shadow-panel: 0 4px 18px rgb(var(--shadow-rgb) / 28%);
+  --structural-shadow-block-end: 0 3px 10px rgb(var(--shadow-rgb) / 20%);
+  --structural-shadow-inline-end: linear-gradient(
+    to right,
+    rgb(var(--shadow-rgb) / 10%) 0%,
+    rgb(var(--shadow-rgb) / 18%) 35%,
+    rgb(var(--shadow-rgb) / 4%) 70%,
+    transparent 100%
+  );
+  --overlay-rgb: 10 10 10;
+  --scrim-rgb: 0 0 0;
+  --overlay-border: rgb(255 255 255 / 18%);
+
+  /* Code and diff presentation */
+  --code-bg: #161616;
+  --code-gutter: #202020;
+  --code-text: #ededed;
+  --code-gutter-text: #8f8f8f;
+  --syntax-comment: #9b9b9b;
+  --syntax-keyword: #7cbcf2;
+  --syntax-literal: #efb76b;
+  --syntax-string: #8bd4a6;
+  --syntax-title: #efb071;
+  --syntax-type: #6fd1c7;
+  --diff-meta-bg: var(--surface-subtle);
+  --diff-meta-text: var(--muted);
+  --diff-hunk-bg: #2d2d2d;
+  --diff-hunk-text: #c2c2c2;
+  --diff-added-bg: #173326;
+  --diff-added-text: #82d3a4;
+  --diff-removed-bg: #3a2020;
+  --diff-removed-text: #f0948f;
+
+  /* Theme-sensitive in-app brand marks */
+  --brand-git-image: url("/assets/brand/git-logomark-dark.svg");
+  --brand-github-image: url("/assets/brand/github-invertocat-dark.svg");
+  --brand-monochrome-filter: invert(1);
 }
 
 html {

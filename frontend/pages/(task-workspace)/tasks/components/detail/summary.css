@@ -191,14 +191,24 @@ caffold-task-detail-summary {
     cursor: default;
   }
 
-  & .task-brand-button img {
+  & .task-brand-icon {
     position: absolute;
     inset: 50% auto auto 50%;
     display: block;
     width: var(--interface-icon-size);
     height: var(--interface-icon-size);
-    object-fit: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: contain;
     transform: translate(-50%, -50%);
+  }
+
+  & .task-brand-icon[data-brand="git"] {
+    background-image: var(--brand-git-image);
+  }
+
+  & .task-brand-icon[data-brand="github"] {
+    background-image: var(--brand-github-image);
   }
 
   & .task-brand-button.is-loading::after {

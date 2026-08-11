@@ -10,6 +10,7 @@ const APP_SHELL_ASSETS = [
   "/assets/fonts.js",
   "/assets/navigation-routes.js",
   "/assets/settings.js",
+  "/assets/theme.js",
   "/assets/fonts/D2Coding-Regular.woff2",
   "/assets/fonts/D2Coding-Bold.woff2",
   "/assets/icons/caffold.png",

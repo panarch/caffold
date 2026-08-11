@@ -84,18 +84,26 @@ caffold-header-actions {
     stroke-width: 1.9;
   }
 
-  & .header-action-brand-picture {
-    position: relative;
-    display: block;
-    width: var(--interface-icon-size);
-    height: var(--interface-icon-size);
-  }
-
   & .header-action-brand-icon {
     display: block;
     width: var(--interface-icon-size);
     height: var(--interface-icon-size);
-    object-fit: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: contain;
+  }
+
+  & .header-action-brand-icon[data-brand="git"] {
+    background-image: var(--brand-git-image);
+  }
+
+  & .header-action-brand-icon[data-brand="github"] {
+    background-image: var(--brand-github-image);
+  }
+
+  & .header-action-brand-icon[data-brand="codex"] {
+    background-image: url("/assets/brand/codex-template@2x.png");
+    filter: var(--brand-monochrome-filter);
   }
 
   & .header-action-badge {

@@ -68,18 +68,11 @@ export function renderHeaderNotice(message) {
 
 function renderBrandIcon(icon, label) {
   return `
-    <picture class="header-action-brand-picture" aria-hidden="true">
-      <source
-        srcset="${escapeHtml(icon.dark)}"
-        media="(prefers-color-scheme: dark)"
-      />
-      <img
-        class="header-action-icon header-action-brand-icon"
-        src="${escapeHtml(icon.light)}"
-        alt=""
-        draggable="false"
-      />
-    </picture>
+    <span
+      class="header-action-icon header-action-brand-icon"
+      data-brand="${escapeHtml(icon)}"
+      aria-hidden="true"
+    ></span>
     <span class="sr-only">${escapeHtml(label)}</span>
   `;
 }

@@ -19,6 +19,7 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "fonts.js" => Some(js(include_str!("../frontend/fonts.js"))),
         "navigation-routes.js" => Some(js(include_str!("../frontend/navigation-routes.js"))),
         "settings.js" => Some(js(include_str!("../frontend/settings.js"))),
+        "theme.js" => Some(js(include_str!("../frontend/theme.js"))),
         "fonts/D2Coding-Regular.woff2" => Some(woff2(include_bytes!(
             "../frontend/assets/fonts/D2Coding-Regular.woff2"
         ))),
@@ -693,6 +694,10 @@ mod tests {
             "text/javascript; charset=utf-8"
         );
         assert!(settings_module.body.starts_with(b"import "));
+
+        let theme_module = get("theme.js").expect("theme module asset");
+        assert_eq!(theme_module.content_type, "text/javascript; charset=utf-8");
+        assert!(theme_module.body.starts_with(b"const "));
 
         let fonts_module = get("fonts.js").expect("fonts module asset");
         assert_eq!(fonts_module.content_type, "text/javascript; charset=utf-8");

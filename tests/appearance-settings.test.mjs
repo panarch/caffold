@@ -26,6 +26,7 @@ test("appearance settings assets stay in the application shell", () => {
   const serviceWorker = readFrontend("service-worker.js");
   assert.match(serviceWorker, /"\/assets\/fonts\.js"/);
   assert.match(serviceWorker, /"\/assets\/settings\.js"/);
+  assert.match(serviceWorker, /"\/assets\/theme\.js"/);
   assert.match(serviceWorker, /"\/assets\/fonts\/D2Coding-Regular\.woff2"/);
   assert.match(serviceWorker, /"\/assets\/fonts\/D2Coding-Bold\.woff2"/);
   assert.match(
@@ -38,7 +39,7 @@ test("appearance settings assets stay in the application shell", () => {
   );
 });
 
-test("normalizes v3 values, malformed input, ranges, and steps", async () => {
+test("normalizes v4 values, malformed input, ranges, and steps", async () => {
   const { DEFAULT_SETTINGS, normalizeSettings } =
     await importFreshSettings("normalization");
 
@@ -53,13 +54,15 @@ test("normalizes v3 values, malformed input, ranges, and steps", async () => {
   );
   assert.deepEqual(
     normalizeSettings({
+      themeMode: "dark",
       typefacePreset: "noto-sans-mono-cjk-kr",
       interfaceScalePercent: 117,
       conversationTextPx: 12.5,
       codeTextPx: 24.4,
     }),
     {
-      appearanceVersion: 3,
+      appearanceVersion: 4,
+      themeMode: "dark",
       typefacePreset: "d2-coding",
       interfaceScalePercent: 115,
       conversationTextPx: 13,
@@ -68,13 +71,15 @@ test("normalizes v3 values, malformed input, ranges, and steps", async () => {
   );
   assert.deepEqual(
     normalizeSettings({
+      themeMode: "sepia",
       typefacePreset: "unknown-font",
       interfaceScalePercent: 118,
       conversationTextPx: 19.6,
       codeTextPx: 11.2,
     }),
     {
-      appearanceVersion: 3,
+      appearanceVersion: 4,
+      themeMode: "system",
       typefacePreset: "d2-coding",
       interfaceScalePercent: 120,
       conversationTextPx: 20,
@@ -94,7 +99,8 @@ test("preserves legacy text choices but resets conflicting density choices", asy
       codeSize: "default",
     }),
     {
-      appearanceVersion: 3,
+      appearanceVersion: 4,
+      themeMode: "system",
       typefacePreset: "d2-coding",
       interfaceScalePercent: 100,
       conversationTextPx: 17,
@@ -109,7 +115,8 @@ test("preserves legacy text choices but resets conflicting density choices", asy
       codeTextPx: "17",
     }),
     {
-      appearanceVersion: 3,
+      appearanceVersion: 4,
+      themeMode: "system",
       typefacePreset: "d2-coding",
       interfaceScalePercent: 100,
       conversationTextPx: 14,
@@ -119,7 +126,7 @@ test("preserves legacy text choices but resets conflicting density choices", asy
   );
 });
 
-test("initial load writes normalized v3 state without publishing a change", async () => {
+test("initial load writes normalized v4 state without publishing a change", async () => {
   const stored = JSON.stringify({
     fileTreeSize: "compact",
     taskListSize: "large",
@@ -140,7 +147,8 @@ test("initial load writes normalized v3 state without publishing a change", asyn
     async () => {
       const settings = await importFreshSettings("initial-load");
       assert.deepEqual(settings.getSettings(), {
-        appearanceVersion: 3,
+        appearanceVersion: 4,
+        themeMode: "system",
         typefacePreset: "d2-coding",
         interfaceScalePercent: 100,
         conversationTextPx: 17,
@@ -154,7 +162,8 @@ test("initial load writes normalized v3 state without publishing a change", asyn
     [
       "caffold:settings",
       {
-        appearanceVersion: 3,
+        appearanceVersion: 4,
+        themeMode: "system",
         typefacePreset: "d2-coding",
         interfaceScalePercent: 100,
         conversationTextPx: 17,
@@ -169,7 +178,7 @@ test("initial load writes normalized v3 state without publishing a change", asyn
   assert.match(properties.get("--font-code"), /Caffold D2 Coding/);
 });
 
-test("malformed storage resets and persists the v3 defaults silently", async () => {
+test("malformed storage resets and persists the v4 defaults silently", async () => {
   const writes = [];
   const events = [];
   const properties = new Map();
@@ -192,7 +201,8 @@ test("malformed storage resets and persists the v3 defaults silently", async () 
     [
       "caffold:settings",
       {
-        appearanceVersion: 3,
+        appearanceVersion: 4,
+        themeMode: "system",
         typefacePreset: "d2-coding",
         interfaceScalePercent: 100,
         conversationTextPx: 14,
@@ -226,7 +236,8 @@ test("user updates and resets publish one normalized snapshot each", async () =>
 
   assert.equal(events.length, 4);
   assert.deepEqual(events[0].detail.settings, {
-    appearanceVersion: 3,
+    appearanceVersion: 4,
+    themeMode: "system",
     typefacePreset: "d2-coding",
     interfaceScalePercent: 115,
     conversationTextPx: 14,
@@ -259,6 +270,41 @@ test("storage failure does not roll back the live session value", async () => {
 
   assert.equal(events.length, 1);
   assert.equal(properties.get("--code-font-size"), "18px");
+});
+
+test("theme updates apply, normalize, persist, and publish settings", async () => {
+  const events = [];
+  const properties = new Map();
+
+  await withBrowserGlobals(
+    {
+      getItem: () => null,
+      setItem: () => {},
+    },
+    events,
+    properties,
+    async () => {
+      const settings = await importFreshSettings("theme-updates");
+      settings.setThemeMode("dark");
+      assert.equal(settings.getSettings().themeMode, "dark");
+      assert.equal(document.documentElement.dataset.theme, "dark");
+      assert.equal(document.documentElement.style.colorScheme, "dark");
+
+      settings.setThemeMode("unknown");
+      assert.equal(settings.getSettings().themeMode, "system");
+      assert.equal(document.documentElement.dataset.theme, "light");
+    },
+  );
+
+  assert.deepEqual(
+    events.map((event) => event.type),
+    [
+      "caffold:theme-change",
+      "caffold:settings-change",
+      "caffold:theme-change",
+      "caffold:settings-change",
+    ],
+  );
 });
 
 async function withBrowserGlobals(localStorage, events, properties, run) {

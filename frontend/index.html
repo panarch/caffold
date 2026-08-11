@@ -33,6 +33,29 @@
       type="font/woff2"
       crossorigin
     />
+    <script>
+      (() => {
+        let themeMode = "system";
+        try {
+          const stored = JSON.parse(
+            localStorage.getItem("caffold:settings") ?? "null",
+          );
+          if (["system", "light", "dark"].includes(stored?.themeMode)) {
+            themeMode = stored.themeMode;
+          }
+        } catch {
+          // Use the system theme when local storage is unavailable or invalid.
+        }
+
+        const prefersDark = matchMedia("(prefers-color-scheme: dark)").matches;
+        const resolvedTheme =
+          themeMode === "system" ? (prefersDark ? "dark" : "light") : themeMode;
+        document.documentElement.dataset.theme = resolvedTheme;
+        document.documentElement.style.colorScheme = resolvedTheme;
+        document.querySelector('meta[name="theme-color"]').content =
+          resolvedTheme === "dark" ? "#1b1b1b" : "#ffffff";
+      })();
+    </script>
     <link rel="stylesheet" href="/assets/styles.css" />
     <script type="module" src="/assets/app.js"></script>
   </head>

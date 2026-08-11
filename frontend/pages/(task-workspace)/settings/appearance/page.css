@@ -14,6 +14,8 @@ caffold-settings-appearance-page {
   & .settings-reset-all:focus-visible,
   & .settings-typeface-control button:hover:not(:disabled),
   & .settings-typeface-control button:focus-visible,
+  & .settings-theme-control button:hover:not(:disabled),
+  & .settings-theme-control button:focus-visible,
   & .settings-range-control button:hover:not(:disabled),
   & .settings-range-control button:focus-visible {
     outline: none;
@@ -23,6 +25,8 @@ caffold-settings-appearance-page {
   & .settings-reset-all:focus-visible::before,
   & .settings-typeface-control button:hover:not(:disabled)::before,
   & .settings-typeface-control button:focus-visible::before,
+  & .settings-theme-control button:hover:not(:disabled)::before,
+  & .settings-theme-control button:focus-visible::before,
   & .settings-range-control button:hover:not(:disabled)::before,
   & .settings-range-control button:focus-visible::before {
     border-color: var(--border-strong);
@@ -62,6 +66,7 @@ caffold-settings-appearance-page {
 
   & .settings-reset-all,
   & .settings-typeface-control button,
+  & .settings-theme-control button,
   & .settings-range-control button {
     position: relative;
     isolation: isolate;
@@ -82,6 +87,7 @@ caffold-settings-appearance-page {
   }
 
   & .settings-typeface-control button,
+  & .settings-theme-control button,
   & .settings-range-control button {
     height: var(--settings-context-action-size);
     min-height: var(--settings-context-action-size);
@@ -89,6 +95,7 @@ caffold-settings-appearance-page {
 
   & .settings-reset-all::before,
   & .settings-typeface-control button::before,
+  & .settings-theme-control button::before,
   & .settings-range-control button::before {
     position: absolute;
     z-index: -1;
@@ -103,12 +110,14 @@ caffold-settings-appearance-page {
   }
 
   & .settings-typeface-control button::before,
+  & .settings-theme-control button::before,
   & .settings-range-control button::before {
     inset: var(--interface-compact-hit-outset) 0;
   }
 
   & .settings-reset-all:disabled,
   & .settings-typeface-control button:disabled,
+  & .settings-theme-control button:disabled,
   & .settings-range-control button:disabled {
     cursor: default;
     opacity: 0.45;
@@ -136,13 +145,14 @@ caffold-settings-appearance-page {
     gap: 0.3125rem;
   }
 
-  & .settings-field-copy label {
+  & .settings-field-copy label,
+  & .settings-field-label {
     font-size: var(--settings-field-label-size);
     font-weight: 700;
     line-height: var(--interface-line-height);
   }
 
-  & .settings-field-copy span {
+  & .settings-field-copy > span:not(.settings-field-label) {
     color: var(--muted);
     font-size: var(--settings-field-description-size);
     line-height: var(--interface-line-height);
@@ -162,6 +172,75 @@ caffold-settings-appearance-page {
     align-items: center;
     gap: 0.75rem;
     min-width: 0;
+  }
+
+  & .settings-theme-control {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+  }
+
+  & .settings-theme-control fieldset {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    min-width: 0;
+    margin: 0;
+    border: 1px solid var(--border);
+    border-radius: 0.3125rem;
+    padding: 0.1875rem;
+    background: var(--surface-muted);
+  }
+
+  & .settings-theme-control label {
+    position: relative;
+    display: grid;
+    min-width: 0;
+    min-height: var(--interface-control-size);
+    place-items: center;
+    cursor: pointer;
+  }
+
+  & .settings-theme-control input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    cursor: pointer;
+    opacity: 0;
+  }
+
+  & .settings-theme-control label > span {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    place-items: center;
+    border: 1px solid transparent;
+    border-radius: 0.25rem;
+    color: var(--muted);
+    padding: 0 var(--interface-space-4);
+    font-size: var(--settings-small-text-size);
+    line-height: 1;
+  }
+
+  & .settings-theme-control label:has(input:checked) > span {
+    border-color: var(--border);
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 1px 2px rgb(var(--shadow-rgb) / 10%);
+  }
+
+  & .settings-theme-control label:has(input:focus-visible) > span {
+    border-color: var(--focus-ring);
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  & .settings-theme-control label:hover > span {
+    color: var(--text);
   }
 
   & .settings-typeface-control select {
@@ -445,6 +524,14 @@ caffold-settings-appearance-page {
 
     & .settings-typeface-preview {
       grid-template-columns: minmax(0, 1fr);
+    }
+
+    & .settings-theme-control {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    & .settings-theme-control button {
+      justify-self: start;
     }
   }
 }

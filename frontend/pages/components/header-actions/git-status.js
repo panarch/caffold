@@ -81,10 +81,7 @@ function renderGitActions(gitStatus) {
       ${renderGroupButton({
         group: "git",
         popoverId: GIT_POPOVER_ID,
-        brandIcon: {
-          light: "/assets/brand/git-logomark-light.svg",
-          dark: "/assets/brand/git-logomark-dark.svg",
-        },
+        brandIcon: "git",
         label: "Git",
         title,
         badge,
