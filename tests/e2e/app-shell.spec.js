@@ -397,7 +397,7 @@ test("serves PWA manifest and icon assets", async ({ page, request }) => {
     const registration = await navigator.serviceWorker.ready;
     return registration.scope;
   });
-  expect(serviceWorkerScope).toBe("http://127.0.0.1:18765/");
+  expect(serviceWorkerScope).toBe(`${new URL(page.url()).origin}/`);
 });
 
 test("keeps build metadata out of normal layout and exposes it in About", async ({

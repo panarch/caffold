@@ -1,5 +1,9 @@
 import { defineConfig } from "@playwright/test";
 
+import { createRegularPlaywrightServer } from "./tests/playwright-local-server.mjs";
+
+const localServer = await createRegularPlaywrightServer();
+
 export default defineConfig({
   testDir: "./tests/e2e",
   globalSetup: "./tests/e2e/global-setup.mjs",
@@ -9,15 +13,9 @@ export default defineConfig({
   expect: {
     timeout: 7_500,
   },
-  webServer: {
-    command:
-      "cargo run -- serve --host 127.0.0.1 --port 18765 --root tests/fixtures/home --data-dir tests/fixtures/.caffold-data --worktree-root tests/fixtures/home/.caffold-worktrees",
-    url: "http://127.0.0.1:18765/api/health",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: localServer.webServer,
   use: {
-    baseURL: "http://127.0.0.1:18765",
+    baseURL: localServer.baseURL,
     trace: "on-first-retry",
   },
   projects: [
