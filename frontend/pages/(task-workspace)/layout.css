@@ -80,7 +80,7 @@ caffold-task-workspace {
 
   &:has(.task-workspace-master-resizer:hover) .task-workspace-master-pane,
   &:has(.task-workspace-master-resizer:focus-visible) .task-workspace-master-pane,
-  &.is-resizing-task-list .task-workspace-master-pane {
+  &.is-resizing-navigation-pane .task-workspace-master-pane {
     border-right-color: var(--resizer-hover-bg);
   }
 
@@ -88,7 +88,6 @@ caffold-task-workspace {
     outline: none;
   }
 
-  &[data-workspace-mode="settings"] .task-workspace-master-resizer,
   &[data-workspace-mode="tasks"][data-tasks-view="detail"][data-task-detail-view="review"]
     .task-workspace-master-pane,
   &[data-workspace-mode="tasks"][data-tasks-view="detail"][data-task-detail-view="review"]
