@@ -12,6 +12,7 @@ use crate::{
 
 use super::{
     CodexConnection, TaskRecord,
+    active_sections::{ActiveTaskSections, ActiveTaskTopPlacement},
     events::{TaskEvents, accepted_user_message_event, now_ms},
     projection::{resolve_thread_cwd, task_activity_ms, task_record_from_thread},
     routes::TaskListEvents,
@@ -28,6 +29,11 @@ pub(in crate::app) struct StartTask {
     pub(in crate::app) initial_name: Option<String>,
 }
 
+pub(in crate::app) struct StartedTask {
+    pub(in crate::app) task: TaskRecord,
+    pub(in crate::app) placement: ActiveTaskTopPlacement,
+}
+
 #[derive(Clone)]
 pub(in crate::app) struct TaskLifecycle {
     fs: Arc<RootedFs>,
@@ -36,6 +42,7 @@ pub(in crate::app) struct TaskLifecycle {
     list_events: TaskListEvents,
     store: TaskStore,
     worktrees: ManagedWorktrees,
+    active_sections: ActiveTaskSections,
 }
 
 impl TaskLifecycle {
@@ -46,6 +53,7 @@ impl TaskLifecycle {
         list_events: TaskListEvents,
         store: TaskStore,
         worktrees: ManagedWorktrees,
+        active_sections: ActiveTaskSections,
     ) -> Self {
         Self {
             fs,
@@ -54,6 +62,7 @@ impl TaskLifecycle {
             list_events,
             store,
             worktrees,
+            active_sections,
         }
     }
 
@@ -61,7 +70,7 @@ impl TaskLifecycle {
         &self,
         connection: &CodexConnection,
         request: StartTask,
-    ) -> Result<TaskRecord, ApiError> {
+    ) -> Result<StartedTask, ApiError> {
         let StartTask {
             cwd,
             prompt,
@@ -84,23 +93,36 @@ impl TaskLifecycle {
                     .unwrap_or_else(|| service_tier_for_fast_mode(requested_fast_mode)),
             )
             .await?;
-        if let Some(initial_name) = initial_name {
-            if let Err(error) = client
-                .set_thread_name(&thread.thread_id, &initial_name)
-                .await
-            {
-                self.rollback_unclaimed_thread(client, &thread.thread_id)
-                    .await;
-                return Err(error.into());
-            }
-            thread.thread.name = Some(initial_name);
+        let initial_name = initial_name
+            .or_else(|| non_empty_thread_name(&prompt))
+            .unwrap_or_else(|| format!("Thread {}", short_thread_id(&thread.thread_id)));
+        // Codex 0.147 materializes a new empty Thread in its persisted listing
+        // state on the first metadata write. Sections operate on that state, so
+        // persist the same first-prompt title Caffold already presents before
+        // attempting the required pre-turn Section move.
+        if let Err(error) = client
+            .set_thread_name(&thread.thread_id, &initial_name)
+            .await
+        {
+            self.rollback_unclaimed_thread(client, &thread.thread_id)
+                .await;
+            return Err(error.into());
         }
+        thread.thread.name = Some(initial_name);
         let thread_permission_mode = requested_permission_mode.or(thread.permission_mode);
         let effective_model = requested_model.or_else(|| thread.model.clone());
         let effective_reasoning_effort =
             requested_reasoning_effort.or_else(|| thread.reasoning_effort.clone());
         let task = match self.record_from_codex_thread(&thread.thread) {
             Ok(task) => task,
+            Err(error) => {
+                self.rollback_unclaimed_thread(client, &thread.thread_id)
+                    .await;
+                return Err(error);
+            }
+        };
+        let placement = match self.active_sections.place_at_top(client, &task).await {
+            Ok(placement) => placement,
             Err(error) => {
                 self.rollback_unclaimed_thread(client, &thread.thread_id)
                     .await;
@@ -121,7 +143,7 @@ impl TaskLifecycle {
             return Err(error);
         }
 
-        self.list_events.update(task.clone());
+        self.list_events.place(task.clone(), placement.clone());
         self.sessions
             .register_started_thread(
                 client,
@@ -179,7 +201,19 @@ impl TaskLifecycle {
             &prompt,
             &images,
         ));
-        Ok(task)
+        Ok(StartedTask { task, placement })
+    }
+
+    pub(in crate::app) async fn place_active_task(
+        &self,
+        client: &CodexThreadClient,
+        task: &TaskRecord,
+    ) -> Result<ActiveTaskTopPlacement, ApiError> {
+        self.active_sections.place_at_top(client, task).await
+    }
+
+    pub(in crate::app) async fn reconcile_active_sections(&self, client: &CodexThreadClient) {
+        self.active_sections.reconcile(client).await;
     }
 
     pub(in crate::app) async fn isolate_current_task(
@@ -311,6 +345,15 @@ impl TaskLifecycle {
             }
         }
     }
+}
+
+fn non_empty_thread_name(prompt: &str) -> Option<String> {
+    let prompt = prompt.trim();
+    (!prompt.is_empty()).then(|| prompt.to_string())
+}
+
+fn short_thread_id(thread_id: &str) -> &str {
+    thread_id.get(..8).unwrap_or(thread_id)
 }
 
 fn managed_thread_from_task_record(

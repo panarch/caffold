@@ -107,6 +107,10 @@ const ownership = new Map([
     ["caffold-archived-task-list"],
   ],
   [
+    "pages/(task-workspace)/tasks/components/recovery.css",
+    ["caffold-task-recovery"],
+  ],
+  [
     "pages/(task-workspace)/tasks/components/detail/review.css",
     ["caffold-task-review"],
   ],

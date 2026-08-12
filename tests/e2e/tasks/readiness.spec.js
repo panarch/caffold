@@ -4,6 +4,7 @@ import {
   mockCodexStatus,
 } from "../support/browser-defaults.js";
 import {
+  activeTaskProjection,
   captureReviewScreenshot,
   installEventSourceMock,
 } from "../support/task-fixtures.js";
@@ -263,7 +264,7 @@ test("Retry transitions from setup into the ready Task surface", async ({ page }
     taskRequests += 1;
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [], nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection()),
     });
   });
 
@@ -304,7 +305,7 @@ test("restarts a stale Codex runtime directly from Task setup", async ({ page })
     taskRequests += 1;
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [], nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection()),
     });
   });
 
@@ -379,7 +380,7 @@ test("a blocking transition releases the Task list and disables existing actions
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [activeTask], nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection([activeTask])),
     }),
   );
   await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
@@ -475,7 +476,7 @@ test("a backend-declared nonblocking restart state keeps Tasks usable", async ({
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [], nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection()),
     }),
   );
 

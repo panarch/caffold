@@ -111,7 +111,7 @@ private struct GitHubReleasePayload: Decodable {
     }
 }
 
-private struct UpdateTaskPage: Decodable {
+private struct UpdateTaskProjection: Decodable {
     struct Task: Decodable {
         struct ThreadStatus: Decodable {
             let type: String
@@ -120,8 +120,12 @@ private struct UpdateTaskPage: Decodable {
         let threadStatus: ThreadStatus
     }
 
-    let tasks: [Task]
-    let nextCursor: String?
+    struct Section: Decodable {
+        let tasks: [Task]
+    }
+
+    let sections: [Section]
+    let unsectioned: [Task]
 }
 
 enum ApplicationUpdateError: LocalizedError {
@@ -169,12 +173,11 @@ func decodeCaffoldRelease(_ data: Data) throws -> CaffoldRelease {
     return CaffoldRelease(version: version, webpageURL: payload.htmlURL)
 }
 
-func decodeUpdateTaskPage(_ data: Data) throws -> (activeCount: Int, nextCursor: String?) {
-    let page = try JSONDecoder().decode(UpdateTaskPage.self, from: data)
-    return (
-        page.tasks.filter { $0.threadStatus.type == "active" }.count,
-        page.nextCursor
-    )
+func decodeActiveTaskCount(_ data: Data) throws -> Int {
+    let projection = try JSONDecoder().decode(UpdateTaskProjection.self, from: data)
+    return (projection.sections.flatMap(\.tasks) + projection.unsectioned)
+        .filter { $0.threadStatus.type == "active" }
+        .count
 }
 
 func caffoldLatestReleaseRequest(currentVersion: CaffoldVersion) -> URLRequest {
@@ -188,16 +191,8 @@ func caffoldLatestReleaseRequest(currentVersion: CaffoldVersion) -> URLRequest {
     return request
 }
 
-func caffoldTaskPageRequest(baseURL: URL, cursor: String?) -> URLRequest? {
-    var components = URLComponents(
-        url: baseURL.appendingPathComponent("api/tasks"),
-        resolvingAgainstBaseURL: false
-    )
-    if let cursor {
-        components?.queryItems = [URLQueryItem(name: "cursor", value: cursor)]
-    }
-    guard let url = components?.url else { return nil }
-    var request = URLRequest(url: url)
+func caffoldActiveTasksRequest(baseURL: URL) -> URLRequest {
+    var request = URLRequest(url: baseURL.appendingPathComponent("api/tasks"))
     request.timeoutInterval = 5
     return request
 }

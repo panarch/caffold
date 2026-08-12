@@ -1,3 +1,4 @@
+mod active_sections;
 mod detail;
 mod events;
 mod generated_images;
@@ -35,6 +36,7 @@ struct TaskState {
     task_sync: TaskSync<TaskDetailSync>,
     task_list_events: TaskListEvents,
     task_store: TaskStore,
+    active_sections: active_sections::ActiveTaskSections,
     lifecycle: TaskLifecycle,
     shutdown: broadcast::Sender<()>,
 }
@@ -50,6 +52,8 @@ impl TaskState {
         let task_events = TaskEvents::default();
         let codex_sessions = crate::codex_thread_sessions::CodexThreadSessions::default();
         let task_list_events = TaskListEvents::new();
+        let active_sections =
+            active_sections::ActiveTaskSections::new(fs.clone(), task_store.clone());
         let managed_worktrees =
             ManagedWorktrees::new(fs.clone(), task_store.clone(), worktree_root)?;
         let lifecycle = TaskLifecycle::new(
@@ -59,6 +63,7 @@ impl TaskState {
             task_list_events.clone(),
             task_store.clone(),
             managed_worktrees,
+            active_sections.clone(),
         );
         let codex_runtime = CodexRuntime::new(
             codex_sessions.clone(),
@@ -69,7 +74,7 @@ impl TaskState {
         .with_lifecycle(lifecycle.clone());
         let codex_runtime_signals = codex_runtime.subscribe();
         let task_sync = TaskSync::new(shutdown.clone());
-        let removal_events = task_list_events.clone();
+        let refresh_events = task_list_events.clone();
         let detail = DetailContext::new(
             fs.clone(),
             task_store.clone(),
@@ -79,9 +84,7 @@ impl TaskState {
             task_events.clone(),
             task_sync.clone(),
             shutdown.clone(),
-            move |thread_id, reason| {
-                removal_events.remove(thread_id, reason);
-            },
+            move || refresh_events.refresh(),
         );
         Ok(Self {
             fs,
@@ -93,6 +96,7 @@ impl TaskState {
             task_sync,
             task_list_events,
             task_store,
+            active_sections,
             lifecycle,
             shutdown,
         })

@@ -126,6 +126,14 @@ it does not persist a second task ledger.
 - Additional browser viewers share the same subscribed session and do not
   repeat the resume bootstrap.
 - A new thread returned by `thread/start` is registered as already subscribed.
+- Before claiming a new thread or starting its first turn, Caffold persists its
+  initial display name, ensures the matching Thread Section, and moves the
+  thread before the Section's current first thread. The name write also makes
+  an otherwise empty Codex 0.147 thread available to Section storage.
+- After the managed claim succeeds, the create response and Active-list SSE
+  carry the same backend-authored Section placement. The navigator can insert
+  the row immediately without reconstructing grouping or reloading every
+  Section.
 - Caffold injects the experimental `rename_current_thread` dynamic tool only
   when it creates a new thread. App-server persists that tool with the thread
   and restores it on resume; existing threads are not retrofitted. When
@@ -192,12 +200,15 @@ truth for:
 - turn status and history
 
 Caffold derives repository and Git worktree context from `thread.cwd` on every
-response. Tasks always lists every locally managed thread and groups repository
-threads by the backend-only common Git directory, so the main checkout and
-sibling linked worktrees appear together. Each Task still retains its own
-canonical worktree root for Integrated Review and its Task-owned Git/GitHub
-children. Outside Git, cwd remains useful as the thread's creation and
-file-review context, but it does not filter Tasks.
+response. For Active Tasks, Codex Thread Sections own group identity,
+Thread-to-Section membership, and within-Section order. Caffold names a Section
+with the same RootedFs-logical repository/cwd path used by the existing Task
+projection: the repository common root for Git checkouts and Caffold linked
+worktrees, or the logical cwd outside Git. It then intersects Section results
+with locally managed membership. Each Task still retains its own canonical
+worktree root for Integrated Review and its Task-owned Git/GitHub children.
+Outside Git, cwd remains useful as the thread's creation and file-review
+context, but it does not filter Tasks.
 
 The derived worktree context contains only RootedFs-relative paths plus live
 branch, HEAD, linked-worktree, and relative-cwd information. Caffold does not
@@ -358,16 +369,30 @@ coalesce into one active sync plus at most one trailing sync. The resulting
 revisioned snapshot is broadcast to every Caffold SSE client viewing that task.
 Tasks without an active detail subscriber do not trigger rollout-driven reads.
 
-## Thread List Pagination
+## Active Thread Sections and Archived Pagination
 
-The Tasks surface has two independent paginated sections: active Caffold Tasks
-and Archived. Each reads 30 managed IDs at a time from its local Redb membership
-table, then resolves every row with `thread/read` using at most eight concurrent
-requests. A page is returned only if every canonical read succeeds; it is
-sorted by canonical activity (`recencyAt ?? max(updatedAt, createdAt)`) and then
-refreshes that section's recency cache. Both sections use an opaque
-recency-and-thread-ID keyset cursor so cache refreshes cannot shift later pages
-through an offset.
+The Active Tasks API reads every locally managed active ID, exhausts
+`threadSection/list`, and concurrently exhausts `thread/list` for each Section
+with `archived: false`, `sortKey: "section_position"`, and ascending order. It
+intersects those results with Caffold membership and returns Section boundaries
+and server order directly to the browser. Unrelated Codex threads are ignored.
+Unsectioned, misplaced, missing, or temporarily unavailable managed threads are
+returned in an explicit recovery group instead of being silently dropped.
+
+On each app-server connection generation, Caffold retries idempotent migration
+of unsectioned active managed threads. It derives the exact logical path,
+serializes Section creation per path, and inserts existing threads in their
+pre-migration recency order. It does not move a managed thread out of a
+different Section, delete duplicate or empty Sections, or persist a local
+Section/order ledger. New and restored Tasks are moved to the top of their
+matching Section. Ordinary status and content events patch their existing row;
+new and restored membership applies the backend-authored placement directly.
+Full Section projection reloads remain the recovery and reconnect boundary.
+
+Archived Tasks remain Caffold-owned and independent of Sections. They continue
+to read 30 managed IDs at a time from the archived Redb membership, resolve the
+page with `thread/read`, sort it by canonical activity, refresh its recency
+cache, and expose the opaque recency-and-thread-ID cursor.
 
 Thread state comes only from app-server `Thread.status` snapshots and
 `thread/status/changed`. `Turn.status` remains turn-local conversation state;
@@ -378,10 +403,11 @@ while the client was disconnected. If the rollout path is absent or the native
 watcher is unavailable, app-server notifications and explicit synchronization
 continue to work; Caffold does not add a polling fallback.
 
-The local table is the primary lookup path only for managed-thread membership
-and recency-first pagination. There is no offline Tasks rendering: if Codex
-metadata is unavailable, the Tasks API returns an explicit error rather than a
-stored row or a partial page.
+The local table is the primary lookup path only for managed-thread membership,
+Caffold metadata, and Archived pagination. It does not become a Section or Task
+ordering store. Active Section failures preserve membership and return bounded
+recovery rows when canonical metadata cannot be loaded; Archived canonical-read
+failures retain their existing explicit error behavior.
 
 The Tasks surface is a global list rather than a cwd filter. New Task inherits
 the selected Task's canonical repository root when available, then the
@@ -486,7 +512,11 @@ the server or logical path with `CAFFOLD_LIVE_URL` and `CAFFOLD_LIVE_CWD` when
 the server uses another root.
 It creates a real Codex thread with an available low-cost model, reopens that
 thread from Tasks, and verifies a follow-up turn through the browser UI. The
-test records each created thread immediately and archives it during teardown,
-including after a failed assertion. This test is intentionally separate from
+suite also uses one stable Git fixture path to verify real Section creation,
+new-Task placement responses and order, `section_position` listing, and
+restore-to-top placement responses without creating a new persistent Section
+on every run. The tests
+record each created thread immediately and archive it during teardown,
+including after a failed assertion. This suite is intentionally separate from
 `npm run test:e2e` because it requires local Codex authentication and consumes
 model usage.

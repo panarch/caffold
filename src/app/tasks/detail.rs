@@ -9,6 +9,7 @@ mod file_links;
 use file_links::{TaskFileLink, TaskFileLinkResolver};
 
 use super::{
+    active_sections::ActiveTaskTopPlacement,
     events::{
         TaskEventRecord, TaskEvents, merge_task_event_records, sort_task_events, thread_events,
     },
@@ -30,7 +31,7 @@ use crate::{
 
 pub(super) const TASK_DETAIL_TURNS_PAGE_SIZE: usize = 8;
 
-type RemoveManagedTask = Arc<dyn Fn(&str, &'static str) + Send + Sync>;
+type RefreshTaskList = Arc<dyn Fn() + Send + Sync>;
 
 #[derive(Clone)]
 pub(in crate::app) struct DetailContext {
@@ -43,7 +44,7 @@ pub(in crate::app) struct DetailContext {
     file_links: TaskFileLinkResolver,
     sync: TaskSync<TaskDetailSync>,
     shutdown: broadcast::Sender<()>,
-    remove_managed_task: RemoveManagedTask,
+    refresh_task_list: RefreshTaskList,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -63,6 +64,8 @@ pub(in crate::app) struct TaskDetailResponse {
     pub(in crate::app) model: Option<String>,
     pub(in crate::app) reasoning_effort: Option<String>,
     pub(in crate::app) fast_mode: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(in crate::app) active_top_placement: Option<ActiveTaskTopPlacement>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -121,7 +124,7 @@ impl DetailContext {
         events: TaskEvents,
         sync: TaskSync<TaskDetailSync>,
         shutdown: broadcast::Sender<()>,
-        remove_managed_task: impl Fn(&str, &'static str) + Send + Sync + 'static,
+        refresh_task_list: impl Fn() + Send + Sync + 'static,
     ) -> Self {
         Self {
             file_links: TaskFileLinkResolver::new(fs.clone()),
@@ -133,7 +136,7 @@ impl DetailContext {
             events,
             sync,
             shutdown,
-            remove_managed_task: Arc::new(remove_managed_task),
+            refresh_task_list: Arc::new(refresh_task_list),
         }
     }
 
@@ -429,6 +432,9 @@ impl DetailContext {
             Err(error) => {
                 self.sessions.fail_external_sync(thread_id, &error).await;
                 self.broadcast_error(thread_id, error.to_string()).await;
+                if error.is_thread_unavailable() {
+                    (self.refresh_task_list)();
+                }
                 return;
             }
         };
@@ -441,6 +447,9 @@ impl DetailContext {
             Err(error) => {
                 self.sessions.fail_external_sync(thread_id, &error).await;
                 self.broadcast_error(thread_id, error.to_string()).await;
+                if error.is_thread_unavailable() {
+                    (self.refresh_task_list)();
+                }
                 return;
             }
         };
@@ -550,6 +559,7 @@ impl DetailContext {
                 model,
                 reasoning_effort,
                 fast_mode: session_fast_mode,
+                active_top_placement: None,
             });
         }
         Err(not_managed_error())
@@ -652,8 +662,7 @@ impl DetailContext {
             Err(error) if error.is_thread_unavailable() => {
                 self.sessions.fail_external_sync(&thread_id, &error).await;
                 self.broadcast_error(&thread_id, error.to_string()).await;
-                let _ = self.store_delete(&thread_id).await;
-                (self.remove_managed_task)(&thread_id, "unavailable");
+                (self.refresh_task_list)();
                 job.complete(TaskSyncOutcome::Synchronized);
                 return;
             }
@@ -801,18 +810,9 @@ impl DetailContext {
         .map_err(store_join_error)?
         .map_err(store_error)
     }
-
-    async fn store_delete(&self, thread_id: &str) -> Result<bool, ApiError> {
-        let store = self.store.clone();
-        let thread_id = thread_id.to_string();
-        tokio::task::spawn_blocking(move || store.delete(&thread_id))
-            .await
-            .map_err(store_join_error)?
-            .map_err(store_error)
-    }
 }
 
-fn project_managed_worktree_cwd(
+pub(in crate::app) fn project_managed_worktree_cwd(
     store: &TaskStore,
     mut thread: serde_json::Value,
 ) -> Result<serde_json::Value, ApiError> {
@@ -865,6 +865,7 @@ pub(in crate::app) fn loading_detail(
         model: managed.and_then(|thread| thread.model.clone()),
         reasoning_effort: managed.and_then(|thread| thread.reasoning_effort.clone()),
         fast_mode: managed.is_some_and(|thread| thread.fast_mode),
+        active_top_placement: None,
     }
 }
 

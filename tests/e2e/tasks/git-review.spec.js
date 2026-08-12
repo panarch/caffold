@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { expectDomainBackChrome } from "../support/domain-header.js";
 import {
+  activeTaskProjection,
   canonicalTaskState,
   installEventSourceMock,
   mockCodexModels,
@@ -54,7 +55,7 @@ async function installTaskGitFixture(page, tasks = [taskRecord()]) {
   const counts = { refs: 0, compare: 0, compareDiff: 0, log: 0, commit: 0 };
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
-    route.fulfill({ json: { tasks, nextCursor: null } }),
+    route.fulfill({ json: activeTaskProjection(tasks) }),
   );
   for (const task of tasks) {
     await page.route(new RegExp(`/api/tasks/${task.threadId}(?:\\?|$)`), (route) =>

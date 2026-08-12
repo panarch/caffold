@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "./support/browser-defaults.js";
 import {
+  activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
   installEventSourceMock,
@@ -715,7 +716,7 @@ async function installTaskRoutes(page, task) {
     if (url.pathname === "/api/tasks") {
       return route.fulfill({
         contentType: "application/json",
-        body: JSON.stringify({ tasks: [task], nextCursor: null }),
+        body: JSON.stringify(activeTaskProjection([task])),
       });
     }
     if (url.pathname === "/api/tasks/archived") {

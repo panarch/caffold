@@ -357,6 +357,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/archived-task-list.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/archived-task-list.js"
         ))),
+        "pages/(task-workspace)/tasks/components/recovery.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/recovery.css"
+        ))),
+        "pages/(task-workspace)/tasks/components/recovery.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/recovery.js"
+        ))),
         "pages/(task-workspace)/tasks/components/navigator.css" => Some(css(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/navigator.css"
         ))),

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
+  activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
   installEventSourceMock,
@@ -100,7 +101,7 @@ async function installSummaryFixture(page, tasks) {
   await mockCodexModels(page);
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
-      json: { tasks, nextCursor: null },
+      json: activeTaskProjection(tasks),
     }),
   );
   for (const task of tasks) {

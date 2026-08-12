@@ -17,20 +17,6 @@ caffold-active-task-list {
     margin: 0 0 0.5rem;
   }
 
-  & .task-list-pagination {
-    display: grid;
-    justify-items: center;
-    gap: 0.375rem;
-    padding: 0.75rem 0.5625rem 0.25rem;
-  }
-
-  & .task-list-pagination-error {
-    margin: 0;
-    color: var(--danger);
-    font-size: var(--interface-meta-font-size);
-    text-align: center;
-  }
-
   & .task-repository-groups {
     --task-repository-indent: calc(9px + var(--task-list-icon-size));
 
@@ -129,6 +115,22 @@ caffold-active-task-list {
     min-width: 0;
   }
 
+  & .task-row-recovery-status {
+    display: inline-grid;
+    flex: 0 0 var(--interface-icon-slot-size);
+    width: var(--interface-icon-slot-size);
+    height: var(--interface-icon-slot-size);
+    place-items: center;
+    color: var(--warning);
+  }
+
+  & .task-row-recovery-icon {
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+    stroke-width: 1.9;
+  }
+
   & .task-row-meta {
     flex: 0 0 auto;
   }
@@ -177,18 +179,6 @@ caffold-active-task-list {
     display: block;
     width: var(--task-list-icon-size);
     height: var(--task-list-icon-size);
-  }
-
-  & [data-task-action="load-more-tasks"] {
-    box-sizing: border-box;
-    height: var(--interface-compact-visual-size);
-    min-height: var(--interface-compact-visual-size);
-    padding-block: 0;
-    font-size: var(--interface-meta-font-size);
-  }
-
-  & [data-task-action="load-more-tasks"]::before {
-    inset-block: calc(0px - var(--interface-compact-hit-outset));
   }
 
   & .task-row .task-status-chip[data-status="running"] {

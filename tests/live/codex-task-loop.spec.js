@@ -113,6 +113,35 @@ function initializeLiveRepository(marker) {
   };
 }
 
+function initializePersistentLiveRepository(marker) {
+  const relativePath = join("target", "caffold-live-fixtures", marker);
+  const repository = join(process.cwd(), relativePath);
+  mkdirSync(repository, { recursive: true });
+  if (!existsSync(join(repository, ".git"))) {
+    execFileSync("git", ["-C", repository, "init"]);
+  }
+  for (const args of [
+    ["config", "user.email", "test@example.com"],
+    ["config", "user.name", "Caffold Live Test"],
+  ]) {
+    execFileSync("git", ["-C", repository, ...args]);
+  }
+  try {
+    execFileSync("git", ["-C", repository, "rev-parse", "--verify", "HEAD"]);
+  } catch {
+    writeFileSync(join(repository, "README.md"), "Caffold live worktree fixture\n");
+    execFileSync("git", ["-C", repository, "add", "README.md"]);
+    execFileSync("git", ["-C", repository, "commit", "-m", "Initial fixture"]);
+  }
+  execFileSync("git", ["-C", repository, "branch", "-M", "main"]);
+  return {
+    repository,
+    cwd: [liveCwd(), relativePath.split(sep).join("/")]
+      .filter(Boolean)
+      .join("/"),
+  };
+}
+
 function branchExists(repository, branchName) {
   try {
     execFileSync(
@@ -191,6 +220,186 @@ async function expectLiveThreadIdle(request, threadId) {
     )
     .toBe(true);
 }
+
+test("creates, orders, and restores Tasks through real Codex Thread Sections", async ({
+  request,
+}) => {
+  const fixture = initializePersistentLiveRepository("thread-sections");
+  const marker = `${Date.now()}`;
+
+  const createTask = async (label) => {
+    const response = await request.post("/api/tasks", {
+      data: {
+        cwd: fixture.cwd,
+        prompt: `Reply with exactly caffold-section-${label}-${marker}. Do not modify files or run commands.`,
+        model: SPARK_MODEL,
+        effort: LIVE_REASONING_EFFORT,
+      },
+    });
+    const body = await response.text();
+    expect(response.status(), `create ${label} response: ${body}`).toBe(200);
+    const detail = JSON.parse(body);
+    expect(detail.threadId).toBeTruthy();
+    expect(detail.task?.worktree?.repositoryRootPath).toBe(fixture.cwd);
+    expect(detail.activeTopPlacement?.section?.id).toBeTruthy();
+    expect(detail.activeTopPlacement?.section?.name).toBe(fixture.cwd);
+    expect(detail.activeTopPlacement?.section?.repository).toBe(true);
+    liveThreadIds.add(detail.threadId);
+    return detail.threadId;
+  };
+
+  const sectionTaskIds = async (threadIds) => {
+    const response = await request.get("/api/tasks");
+    const body = await response.text();
+    expect(response.status(), `active Task response: ${body}`).toBe(200);
+    const projection = JSON.parse(body);
+    const section = projection.sections.find(({ name }) => name === fixture.cwd);
+    expect(section?.id).toBeTruthy();
+    expect(
+      projection.unsectioned.some(({ threadId }) => threadIds.includes(threadId)),
+    ).toBe(false);
+    return section.tasks
+      .map(({ threadId }) => threadId)
+      .filter((threadId) => threadIds.includes(threadId));
+  };
+
+  const firstThreadId = await createTask("first");
+  const secondThreadId = await createTask("second");
+  await expectLiveThreadIdle(request, firstThreadId);
+  await expectLiveThreadIdle(request, secondThreadId);
+
+  expect(await sectionTaskIds([firstThreadId, secondThreadId])).toEqual([
+    secondThreadId,
+    firstThreadId,
+  ]);
+
+  await archiveLiveThread(request, firstThreadId);
+  expect(await sectionTaskIds([firstThreadId, secondThreadId])).toEqual([
+    secondThreadId,
+  ]);
+
+  const restored = await restoreLiveThread(request, firstThreadId);
+  expect(restored.task?.threadId).toBe(firstThreadId);
+  expect(restored.activeTopPlacement?.section?.name).toBe(fixture.cwd);
+  expect(restored.activeTopPlacement?.beforeThreadId).toBe(secondThreadId);
+  expect(await sectionTaskIds([firstThreadId, secondThreadId])).toEqual([
+    firstThreadId,
+    secondThreadId,
+  ]);
+});
+
+test("reconciles externally archived and deleted Codex Threads through Recovery", async ({
+  request,
+}) => {
+  const fixture = initializePersistentLiveRepository("thread-recovery");
+  const marker = `${Date.now()}`;
+  const createdResponse = await request.post("/api/tasks", {
+    data: {
+      cwd: fixture.cwd,
+      prompt: `Reply with exactly caffold-recovery-${marker}. Do not modify files or run commands.`,
+      model: SPARK_MODEL,
+      effort: LIVE_REASONING_EFFORT,
+    },
+  });
+  const createdBody = await createdResponse.text();
+  expect(createdResponse.status(), `create recovery Task response: ${createdBody}`).toBe(200);
+  const created = JSON.parse(createdBody);
+  const threadId = created.threadId;
+  expect(threadId).toBeTruthy();
+  liveThreadIds.add(threadId);
+  await expectLiveThreadIdle(request, threadId);
+
+  const recoveryReason = async () => {
+    const response = await request.get("/api/tasks");
+    if (!response.ok()) {
+      return null;
+    }
+    const projection = await response.json();
+    return projection.unsectioned.find((task) => task.threadId === threadId)
+      ?.recovery?.reason ?? null;
+  };
+
+  const daemonClient = await CodexDaemonClient.connect();
+  let removed = false;
+  try {
+    await daemonClient.request("thread/archive", { threadId });
+    liveThreadIds.delete(threadId);
+    await expect.poll(recoveryReason).toBe("codexArchived");
+
+    const moveArchivedResponse = await request.post(
+      `/api/tasks/${threadId}/recovery/archive`,
+    );
+    const moveArchivedBody = await moveArchivedResponse.text();
+    expect(
+      moveArchivedResponse.status(),
+      `move Recovery Task to Archived response: ${moveArchivedBody}`,
+    ).toBe(200);
+    const archivedPageResponse = await request.get("/api/tasks/archived");
+    const archivedPageBody = await archivedPageResponse.text();
+    expect(
+      archivedPageResponse.status(),
+      `Archived Task page response: ${archivedPageBody}`,
+    ).toBe(200);
+    expect(
+      JSON.parse(archivedPageBody).tasks.some((task) => task.threadId === threadId),
+    ).toBe(true);
+
+    const restoredFromArchived = await restoreLiveThread(request, threadId);
+    expect(restoredFromArchived.task?.threadId).toBe(threadId);
+    await daemonClient.request("thread/archive", { threadId });
+    liveThreadIds.delete(threadId);
+    await expect.poll(recoveryReason).toBe("codexArchived");
+
+    const recoveryRestoreResponse = await request.post(
+      `/api/tasks/${threadId}/recovery/restore`,
+    );
+    const recoveryRestoreBody = await recoveryRestoreResponse.text();
+    expect(
+      recoveryRestoreResponse.status(),
+      `Recovery restore response: ${recoveryRestoreBody}`,
+    ).toBe(200);
+    const recoveryRestore = JSON.parse(recoveryRestoreBody);
+    expect(recoveryRestore.task?.threadId).toBe(threadId);
+    expect(recoveryRestore.activeTopPlacement?.section?.name).toBe(fixture.cwd);
+    liveThreadIds.add(threadId);
+
+    await daemonClient.request("thread/delete", { threadId });
+    liveThreadIds.delete(threadId);
+    await expect.poll(recoveryReason).toBe("threadMissing");
+
+    const removeResponse = await request.post(
+      `/api/tasks/${threadId}/recovery/remove`,
+    );
+    const removeBody = await removeResponse.text();
+    expect(removeResponse.status(), `Recovery removal response: ${removeBody}`).toBe(200);
+    expect(JSON.parse(removeBody).threadId).toBe(threadId);
+    removed = true;
+
+    const activeResponse = await request.get("/api/tasks");
+    const activeProjection = await activeResponse.json();
+    expect(
+      activeProjection.sections
+        .flatMap((section) => section.tasks)
+        .concat(activeProjection.unsectioned)
+        .some((task) => task.threadId === threadId),
+    ).toBe(false);
+  } finally {
+    if (!removed) {
+      liveThreadIds.delete(threadId);
+      try {
+        await daemonClient.request("thread/delete", { threadId });
+      } catch {
+        // The synthetic Thread may already have been deleted.
+      }
+      try {
+        await request.post(`/api/tasks/${threadId}/recovery/remove`);
+      } catch {
+        // The isolated live runtime is discarded after the suite.
+      }
+    }
+    await daemonClient.close();
+  }
+});
 
 test("creates a real Codex task in Fast mode and restores the task setting", async ({
   page,

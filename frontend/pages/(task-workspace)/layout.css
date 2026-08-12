@@ -180,6 +180,8 @@ caffold-task-workspace {
     &[data-workspace-mode="tasks"][data-tasks-view="new"]
       .task-workspace-master-pane,
     &[data-workspace-mode="tasks"][data-tasks-view="detail"]
+      .task-workspace-master-pane,
+    &[data-workspace-mode="tasks"][data-tasks-view="recovery"]
       .task-workspace-master-pane {
       display: none;
     }
@@ -189,6 +191,8 @@ caffold-task-workspace {
     &[data-workspace-mode="tasks"][data-tasks-view="new"]
       .task-workspace-detail-pane,
     &[data-workspace-mode="tasks"][data-tasks-view="detail"]
+      .task-workspace-detail-pane,
+    &[data-workspace-mode="tasks"][data-tasks-view="recovery"]
       .task-workspace-detail-pane {
       display: block;
     }

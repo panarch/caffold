@@ -5,6 +5,7 @@ import {
   codexBlocksTaskOperations,
 } from "../codex-status.js";
 import "./components/detail.js";
+import "./components/recovery.js";
 import {
   TASK_IMAGE_PREVIEW_EVENT,
 } from "./components/image-preview-dialog.js";
@@ -45,6 +46,12 @@ class CaffoldTasksPage extends HTMLElement {
         this.requestRoute({
           kind: "tasks",
           threadId: event.detail.threadId,
+        });
+      } else if (event.detail?.type === "select-task-recovery") {
+        this.requestRoute({
+          kind: "tasks",
+          threadId: event.detail.threadId,
+          recovery: true,
         });
       } else if (event.detail?.type === "new-task") {
         this.requestNewTaskRoute();
@@ -104,6 +111,7 @@ class CaffoldTasksPage extends HTMLElement {
           </section>
           <caffold-task-new hidden></caffold-task-new>
           <caffold-task-detail hidden></caffold-task-detail>
+          <caffold-task-recovery hidden></caffold-task-recovery>
         </div>
       </section>
       <caffold-task-image-preview-dialog></caffold-task-image-preview-dialog>
@@ -136,6 +144,14 @@ class CaffoldTasksPage extends HTMLElement {
         this.requestRoute(event.detail.route, {
           replace: event.detail.replace,
         });
+      }
+    });
+    this.addEventListener("caffold:task-recovery-intent", (event) => {
+      event.stopPropagation();
+      if (event.detail?.type === "recheck") {
+        void this.recheckRecovery();
+      } else if (event.detail?.type === "resolved") {
+        this.resolveRecovery(event.detail);
       }
     });
     this.addEventListener(
@@ -224,6 +240,8 @@ class CaffoldTasksPage extends HTMLElement {
     this.imagePreviewDialog()?.dismiss();
     if (this.view === "detail") {
       this.taskDetail()?.deactivate({ retainComposerDom: true });
+    } else if (this.view === "recovery") {
+      this.taskRecovery()?.deactivate();
     } else {
       this.taskNew()?.deactivate();
     }
@@ -235,7 +253,9 @@ class CaffoldTasksPage extends HTMLElement {
     this.currentOpenOptions = { ...options };
     const target = routeTarget(route);
     const domain = routeDomain(route);
-    const nextView = route?.threadId
+    const nextView = target === "recovery"
+      ? "recovery"
+      : route?.threadId
       ? "detail"
       : target === "new"
         ? "new"
@@ -264,9 +284,16 @@ class CaffoldTasksPage extends HTMLElement {
     this.taskNavigator()?.setSelectedThreadId(nextThreadId);
     if (nextView !== "detail") {
       this.taskDetail()?.deactivate();
-    } else {
+    }
+    if (nextView !== "recovery") {
+      this.taskRecovery()?.deactivate();
+    }
+    if (nextView === "detail") {
       this.taskNew()?.deactivate();
       this.taskDetail()?.prepare(nextThreadId, { preserveLoadedTask, route });
+    } else if (nextView === "recovery") {
+      this.taskNew()?.deactivate();
+      this.taskRecovery()?.prepare(options.recovery ?? null);
     }
     this.render();
     return { preserveLoadedTask };
@@ -288,6 +315,25 @@ class CaffoldTasksPage extends HTMLElement {
       void this.taskNavigator()?.activate();
       this.render();
       return null;
+    }
+    if (target === "recovery" && route?.threadId) {
+      this.taskNew()?.deactivate();
+      this.taskDetail()?.deactivate();
+      await this.taskNavigator()?.activate({ force: true });
+      const recovery = this.taskNavigator()?.recoveryFor(route.threadId);
+      if (!recovery) {
+        const task = this.taskNavigator()?.taskFor(route.threadId);
+        this.requestRoute(
+          task
+            ? { kind: "tasks", threadId: route.threadId }
+            : { kind: "tasks" },
+          { replace: true },
+        );
+        return null;
+      }
+      this.taskRecovery()?.updateRecovery(recovery);
+      this.render();
+      return recovery;
     }
     if (route?.threadId) {
       this.taskNew()?.deactivate();
@@ -317,8 +363,50 @@ class CaffoldTasksPage extends HTMLElement {
     this.adoptedThreadId = threadId;
     this.selectedThreadId = threadId;
     this.taskDetail()?.adoptCreatedDetail(detail);
-    this.taskNavigator()?.upsertCanonicalTask(detail.task);
+    this.taskNavigator()?.placeCanonicalTaskAtTop(
+      detail.task,
+      detail.activeTopPlacement,
+    );
     this.requestRoute({ kind: "tasks", threadId });
+  }
+
+  async recheckRecovery() {
+    const threadId = this.selectedThreadId;
+    if (!threadId || this.view !== "recovery") {
+      return null;
+    }
+    await this.taskNavigator()?.activate({ force: true });
+    const recovery = this.taskNavigator()?.recoveryFor(threadId);
+    if (recovery) {
+      this.taskRecovery()?.updateRecovery(recovery);
+      return recovery;
+    }
+    const task = this.taskNavigator()?.taskFor(threadId);
+    this.requestRoute(
+      task ? { kind: "tasks", threadId } : { kind: "tasks" },
+      { replace: true },
+    );
+    return null;
+  }
+
+  resolveRecovery(detail) {
+    const threadId = detail?.threadId ?? taskDetailThreadId({ task: detail?.task });
+    if (detail?.resolution === "restored" && detail.task) {
+      this.taskNavigator()?.placeCanonicalTaskAtTop(
+        detail.task,
+        detail.activeTopPlacement,
+      );
+      this.requestRoute(
+        { kind: "tasks", threadId: detail.task.threadId },
+        { replace: true },
+      );
+    } else if (detail?.resolution === "archived" && detail.task) {
+      this.taskNavigator()?.acceptArchivedTask(detail.task);
+      this.requestRoute({ kind: "tasks" }, { replace: true });
+    } else if (detail?.resolution === "removed") {
+      this.taskNavigator()?.removeTask(threadId);
+      this.requestRoute({ kind: "tasks" }, { replace: true });
+    }
   }
 
   setCodexStatus(status) {
@@ -384,6 +472,10 @@ class CaffoldTasksPage extends HTMLElement {
 
   taskDetail() {
     return this.querySelector(":scope > .tasks-surface caffold-task-detail");
+  }
+
+  taskRecovery() {
+    return this.querySelector(":scope > .tasks-surface caffold-task-recovery");
   }
 
   imagePreviewDialog() {
@@ -464,6 +556,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.setupSurface()?.toggleAttribute("hidden", !blocked);
     this.taskNew()?.toggleAttribute("hidden", blocked || !showNew);
     this.taskDetail()?.toggleAttribute("hidden", blocked || this.view !== "detail");
+    this.taskRecovery()?.toggleAttribute("hidden", blocked || this.view !== "recovery");
     this.renderSetupSurface();
     this.taskNavigator()?.setSelectedThreadId(this.selectedThreadId);
     this.dispatchEvent(

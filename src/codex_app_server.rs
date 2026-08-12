@@ -21,24 +21,27 @@ use protocol::{
     ACCOUNT_RATE_LIMITS_READ, ACCOUNT_READ, ACCOUNT_USAGE_READ, AccountReadResponse, CONFIG_READ,
     ConfigReadResponse, EmptyResponse, INITIALIZE, INITIALIZED, JsonRpcError, MODEL_LIST,
     PERMISSION_PROFILE_LIST, PermissionProfileListResponse, THREAD_ARCHIVE, THREAD_DELETE,
-    THREAD_LIST, THREAD_NAME_SET, THREAD_READ, THREAD_RESUME, THREAD_START, THREAD_TURNS_LIST,
-    THREAD_UNARCHIVE, THREAD_UNSUBSCRIBE, TURN_INTERRUPT, TURN_START, TURN_STEER,
-    ThreadReadResponse, ThreadStartResponse, TurnStartResponse, TurnSteerResponse,
-    account_read_params, config_read_params, decode_response, model_list_params,
-    permission_profile_list_params, thread_archive_params, thread_delete_params,
-    thread_read_params, thread_resume_params, thread_set_name_params, thread_start_params,
-    thread_turns_list_params, thread_unarchive_params, thread_unsubscribe_params,
-    turn_interrupt_params, turn_start_params, turn_steer_params,
+    THREAD_LIST, THREAD_NAME_SET, THREAD_READ, THREAD_RESUME, THREAD_SECTION_CREATE,
+    THREAD_SECTION_LIST, THREAD_SECTION_MOVE, THREAD_START, THREAD_TURNS_LIST, THREAD_UNARCHIVE,
+    THREAD_UNSUBSCRIBE, TURN_INTERRUPT, TURN_START, TURN_STEER, ThreadReadResponse,
+    ThreadSectionCreateResponse, ThreadSectionMoveResponse, ThreadStartResponse, TurnStartResponse,
+    TurnSteerResponse, account_read_params, config_read_params, decode_response, model_list_params,
+    permission_profile_list_params, section_thread_list_params, thread_archive_params,
+    thread_delete_params, thread_list_params, thread_read_params, thread_resume_params,
+    thread_section_create_params, thread_section_list_params, thread_section_move_params,
+    thread_set_name_params, thread_start_params, thread_turns_list_params, thread_unarchive_params,
+    thread_unsubscribe_params, turn_interrupt_params, turn_start_params, turn_steer_params,
 };
 pub use protocol::{
     CodexAppServerInfo, CodexNotification, CodexPermissionMode, CodexServerRequest, CodexThread,
     CodexTurn, ModelListResponse, PermissionProfileSummary, SortDirection, ThreadResumeResponse,
-    ThreadStatus, ThreadUnsubscribeResponse, TurnStatus, TurnsPage,
+    ThreadSection, ThreadSectionFilter, ThreadSectionListResponse, ThreadStatus,
+    ThreadUnsubscribeResponse, TurnStatus, TurnsPage,
 };
 pub(crate) use protocol::{ISOLATE_CURRENT_TASK_TOOL_NAME, RENAME_CURRENT_THREAD_TOOL_NAME};
-use protocol::{THREAD_LOADED_LIST, ThreadLoadedListResponse, thread_loaded_list_params};
-#[cfg(test)]
-use protocol::{ThreadListResponse, thread_list_params};
+use protocol::{
+    THREAD_LOADED_LIST, ThreadListResponse, ThreadLoadedListResponse, thread_loaded_list_params,
+};
 #[cfg(test)]
 pub(crate) use protocol::{TurnItemsView, decode_notification, decode_server_request};
 #[cfg(test)]
@@ -65,9 +68,8 @@ const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(500);
 
 fn request_timeout(method: &str) -> Duration {
     match method {
-        THREAD_LIST | THREAD_LOADED_LIST | THREAD_READ | THREAD_RESUME | THREAD_TURNS_LIST => {
-            HISTORY_REQUEST_TIMEOUT
-        }
+        THREAD_LIST | THREAD_LOADED_LIST | THREAD_READ | THREAD_RESUME | THREAD_SECTION_LIST
+        | THREAD_TURNS_LIST => HISTORY_REQUEST_TIMEOUT,
         _ => INTERACTIVE_REQUEST_TIMEOUT,
     }
 }
@@ -90,6 +92,7 @@ struct MockCodexThreadClient {
 #[cfg(test)]
 pub(crate) struct MockCodexResponse {
     method: &'static str,
+    params: Option<Value>,
     result: Result<Value, CodexThreadError>,
     delay: Duration,
 }
@@ -99,6 +102,21 @@ impl MockCodexResponse {
     pub(crate) fn ok<T: Serialize>(method: &'static str, value: T) -> Self {
         Self {
             method,
+            params: None,
+            result: serde_json::to_value(value)
+                .map_err(|error| CodexThreadError::Protocol(error.to_string())),
+            delay: Duration::ZERO,
+        }
+    }
+
+    pub(crate) fn ok_for<P: Serialize, T: Serialize>(
+        method: &'static str,
+        params: P,
+        value: T,
+    ) -> Self {
+        Self {
+            method,
+            params: Some(serde_json::to_value(params).expect("mock request params serialize")),
             result: serde_json::to_value(value)
                 .map_err(|error| CodexThreadError::Protocol(error.to_string())),
             delay: Duration::ZERO,
@@ -108,6 +126,20 @@ impl MockCodexResponse {
     pub(crate) fn error(method: &'static str, error: CodexThreadError) -> Self {
         Self {
             method,
+            params: None,
+            result: Err(error),
+            delay: Duration::ZERO,
+        }
+    }
+
+    pub(crate) fn error_for<P: Serialize>(
+        method: &'static str,
+        params: P,
+        error: CodexThreadError,
+    ) -> Self {
+        Self {
+            method,
+            params: Some(serde_json::to_value(params).expect("mock request params serialize")),
             result: Err(error),
             delay: Duration::ZERO,
         }
@@ -120,6 +152,7 @@ impl MockCodexResponse {
     ) -> Self {
         Self {
             method,
+            params: None,
             result: serde_json::to_value(value)
                 .map_err(|error| CodexThreadError::Protocol(error.to_string())),
             delay,
@@ -391,7 +424,6 @@ impl CodexThreadClient {
         let _ = timeout(SHUTDOWN_TIMEOUT, child.wait()).await;
     }
 
-    #[cfg(test)]
     pub async fn list_threads(
         &self,
         cursor: Option<&str>,
@@ -399,6 +431,68 @@ impl CodexThreadClient {
     ) -> Result<ThreadListResponse, CodexThreadError> {
         self.request_typed(THREAD_LIST, thread_list_params(cursor, limit))
             .await
+    }
+
+    pub async fn list_archived_threads(
+        &self,
+        cursor: Option<&str>,
+        limit: usize,
+    ) -> Result<ThreadListResponse, CodexThreadError> {
+        self.request_typed(
+            THREAD_LIST,
+            protocol::archived_thread_list_params(cursor, limit),
+        )
+        .await
+    }
+
+    pub async fn list_section_threads(
+        &self,
+        section: ThreadSectionFilter<'_>,
+        cursor: Option<&str>,
+        limit: usize,
+    ) -> Result<ThreadListResponse, CodexThreadError> {
+        self.request_typed(
+            THREAD_LIST,
+            section_thread_list_params(section, cursor, limit),
+        )
+        .await
+    }
+
+    pub async fn list_thread_sections(
+        &self,
+        cursor: Option<&str>,
+        limit: usize,
+    ) -> Result<ThreadSectionListResponse, CodexThreadError> {
+        self.request_typed(
+            THREAD_SECTION_LIST,
+            thread_section_list_params(cursor, limit),
+        )
+        .await
+    }
+
+    pub async fn create_thread_section(
+        &self,
+        name: &str,
+    ) -> Result<ThreadSection, CodexThreadError> {
+        let response: ThreadSectionCreateResponse = self
+            .request_typed(THREAD_SECTION_CREATE, thread_section_create_params(name))
+            .await?;
+        Ok(response.section)
+    }
+
+    pub async fn move_thread_to_section(
+        &self,
+        thread_id: &str,
+        section_id: Option<&str>,
+        before_thread_id: Option<&str>,
+    ) -> Result<(), CodexThreadError> {
+        let _: ThreadSectionMoveResponse = self
+            .request_typed(
+                THREAD_SECTION_MOVE,
+                thread_section_move_params(thread_id, section_id, before_thread_id),
+            )
+            .await?;
+        Ok(())
     }
 
     pub async fn read_thread(&self, thread_id: &str) -> Result<CodexThread, CodexThreadError> {
@@ -705,15 +799,21 @@ impl CodexThreadClient {
             mock.requests
                 .lock()
                 .await
-                .push((method.to_string(), params));
+                .push((method.to_string(), params.clone()));
             let response = {
                 let mut responses = mock.responses.lock().await;
                 let index = responses
                     .iter()
-                    .position(|response| response.method == method)
+                    .position(|response| {
+                        response.method == method
+                            && response
+                                .params
+                                .as_ref()
+                                .is_none_or(|expected| expected == &params)
+                    })
                     .ok_or_else(|| {
                         CodexThreadError::Protocol(format!(
-                            "mock Codex client has no response for {method}"
+                            "mock Codex client has no response for {method} with params {params}"
                         ))
                     })?;
                 responses
@@ -1031,7 +1131,13 @@ mod tests {
 
     #[test]
     fn gives_history_requests_enough_time_for_large_rollouts() {
-        for method in [THREAD_LIST, THREAD_READ, THREAD_RESUME, THREAD_TURNS_LIST] {
+        for method in [
+            THREAD_LIST,
+            THREAD_READ,
+            THREAD_RESUME,
+            THREAD_SECTION_LIST,
+            THREAD_TURNS_LIST,
+        ] {
             assert_eq!(
                 request_timeout(method),
                 Duration::from_secs(120),
@@ -1048,6 +1154,8 @@ mod tests {
             TURN_INTERRUPT,
             THREAD_ARCHIVE,
             THREAD_UNARCHIVE,
+            THREAD_SECTION_CREATE,
+            THREAD_SECTION_MOVE,
         ] {
             assert_eq!(
                 request_timeout(method),
@@ -1169,6 +1277,82 @@ mod tests {
                     "useStateDbOnly": true
                 })
             )]
+        );
+    }
+
+    #[tokio::test]
+    async fn lists_creates_and_moves_thread_sections_with_stable_methods() {
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok_for(
+                THREAD_SECTION_LIST,
+                json!({ "limit": 100 }),
+                json!({
+                    "data": [{ "id": "section-1", "name": "Workspace/rust/codger" }],
+                    "nextCursor": null
+                }),
+            ),
+            MockCodexResponse::ok_for(
+                THREAD_LIST,
+                json!({
+                    "limit": 100,
+                    "sortKey": "section_position",
+                    "sortDirection": "asc",
+                    "archived": false,
+                    "useStateDbOnly": true,
+                    "sectionId": "section-1"
+                }),
+                json!({ "data": [], "nextCursor": null }),
+            ),
+            MockCodexResponse::ok_for(
+                THREAD_SECTION_CREATE,
+                json!({ "name": "Workspace/rust/other" }),
+                json!({
+                    "section": { "id": "section-2", "name": "Workspace/rust/other" }
+                }),
+            ),
+            MockCodexResponse::ok_for(
+                THREAD_SECTION_MOVE,
+                json!({
+                    "threadId": "thread-1",
+                    "sectionId": "section-2",
+                    "beforeThreadId": "thread-2"
+                }),
+                json!({}),
+            ),
+        ]);
+
+        let sections = client
+            .list_thread_sections(None, 100)
+            .await
+            .expect("list sections");
+        assert_eq!(sections.data[0].id, "section-1");
+        client
+            .list_section_threads(ThreadSectionFilter::Section("section-1"), None, 100)
+            .await
+            .expect("list section threads");
+        let created = client
+            .create_thread_section("Workspace/rust/other")
+            .await
+            .expect("create section");
+        assert_eq!(created.id, "section-2");
+        client
+            .move_thread_to_section("thread-1", Some("section-2"), Some("thread-2"))
+            .await
+            .expect("move thread");
+
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .iter()
+                .map(|(method, _)| method.as_str())
+                .collect::<Vec<_>>(),
+            [
+                THREAD_SECTION_LIST,
+                THREAD_LIST,
+                THREAD_SECTION_CREATE,
+                THREAD_SECTION_MOVE,
+            ]
         );
     }
 

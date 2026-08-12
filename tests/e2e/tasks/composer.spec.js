@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
+  activeTaskProjection,
   canonicalTaskState,
   mockCodexModels,
   pasteImage,
@@ -104,7 +105,7 @@ test("starts a completed task follow-up clock only from canonical turn metadata"
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [task], nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection([task])),
     }),
   );
   await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
@@ -260,7 +261,7 @@ test("submits completed task follow-ups and reloads canonical messages", async (
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [task] }),
+      body: JSON.stringify(activeTaskProjection([task])),
     }),
   );
   await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), async (route) => {
@@ -590,7 +591,7 @@ test("unlocks a completed task when canonical item content arrives before the pr
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [task] }),
+      body: JSON.stringify(activeTaskProjection([task])),
     }),
   );
   await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
@@ -773,7 +774,7 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [taskA, taskB] }),
+      body: JSON.stringify(activeTaskProjection([taskA, taskB])),
     }),
   );
   await page.route(/\/api\/tasks\/(thread_pending_a|thread_running_b)(?:\?|$)/, (route) => {

@@ -3,6 +3,34 @@ import { expect } from "@playwright/test";
 export const PASTED_IMAGE_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
+export function activeTaskProjection(tasks = [], recovery = []) {
+  const sectionsByName = new Map();
+  for (const task of tasks) {
+    const repository = Boolean(task?.worktree);
+    const name = `${
+      task?.worktree?.repositoryRootPath ??
+      task?.worktree?.rootPath ??
+      task?.cwdPath ??
+      task?.cwd ??
+      task?.relativeCwd ??
+      ""
+    }`;
+    let section = sectionsByName.get(name);
+    if (!section) {
+      section = {
+        id: `fixture-section-${sectionsByName.size + 1}`,
+        name,
+        repository,
+        tasks: [],
+      };
+      sectionsByName.set(name, section);
+    }
+    section.repository ||= repository;
+    section.tasks.push(task);
+  }
+  return { sections: [...sectionsByName.values()], unsectioned: recovery };
+}
+
 export function canonicalTaskState(
   type,
   {

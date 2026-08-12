@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
+  activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
   installEventSourceMock,
@@ -67,7 +68,10 @@ async function installInitialTaskListGates(page) {
   });
   return {
     started: Promise.all([activeStarted.promise, archivedStarted.promise]),
-    settleActive: (body, status) => activeRelease.resolve(response(body, status)),
+    settleActive: (body, status) =>
+      activeRelease.resolve(
+        response(body?.tasks ? activeTaskProjection(body.tasks) : body, status),
+      ),
     settleArchived: (body, status) =>
       archivedRelease.resolve(response(body, status)),
   };
@@ -275,14 +279,14 @@ test("keeps settled list sections visible during later parallel refreshes", asyn
     if (activeReads === 1) {
       return route.fulfill({
         contentType: "application/json",
-        body: JSON.stringify({ tasks: [activeTask], nextCursor: null }),
+        body: JSON.stringify(activeTaskProjection([activeTask])),
       });
     }
     activeRefreshStarted.resolve();
     await activeRefreshRelease.promise;
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [activeTask], nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection([activeTask])),
     });
   });
   await page.route(/\/api\/tasks\/archived(?:\?|$)/, async (route) => {
@@ -324,7 +328,7 @@ test("keeps settled list sections visible during later parallel refreshes", asyn
   await expect.poll(() => archivedReads).toBe(2);
 });
 
-test("loads additional task-list pages only after a cursor request", async ({ page }) => {
+test("renders the backend-exhausted Active projection without cursor paging", async ({ page }) => {
   await installEventSourceMock(page);
   await mockCodexModels(page);
 
@@ -351,25 +355,143 @@ test("loads additional task-list pages only after a cursor request", async ({ pa
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify(
-        cursor
-          ? { tasks: [task("thread-page-2", "Older paged task", 10)], nextCursor: null }
-          : { tasks: [task("thread-page-1", "Newest paged task", 20)], nextCursor: "page-2" },
+        activeTaskProjection([
+          task("thread-page-1", "Newest paged task", 20),
+          task("thread-page-2", "Older paged task", 10),
+        ]),
       ),
     });
   });
 
   await page.goto("/tasks");
   const tasksPage = page.locator("caffold-task-workspace");
-  await expect(tasksPage.locator(".task-row")).toHaveCount(1);
-  await expect(tasksPage).toContainText("Newest paged task");
-  await expect(tasksPage).not.toContainText("Older paged task");
-
-  await tasksPage.getByRole("button", { name: "Load more tasks" }).click();
-
   await expect(tasksPage.locator(".task-row")).toHaveCount(2);
+  await expect(tasksPage).toContainText("Newest paged task");
   await expect(tasksPage).toContainText("Older paged task");
   await expect(tasksPage.getByRole("button", { name: "Load more tasks" })).toHaveCount(0);
-  expect(cursors).toEqual([null, "page-2"]);
+  expect(cursors).toEqual([null]);
+});
+
+test("refreshes server-owned ordering only for an explicit list refresh event", async ({
+  page,
+}) => {
+  await installEventSourceMock(page, {
+    sourceKey: "__taskListRefreshSource",
+    autoOpen: true,
+  });
+  await mockCodexModels(page);
+  const first = initialNavigatorTask("thread_order_first", "First ordered Task");
+  const second = initialNavigatorTask("thread_order_second", "Second ordered Task");
+  let reads = 0;
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    reads += 1;
+    return route.fulfill({
+      json: activeTaskProjection(reads === 1 ? [first, second] : [second, first]),
+    });
+  });
+
+  await page.goto("/tasks");
+  const rows = page.locator(
+    'caffold-task-navigator .task-row[data-thread-id]',
+  );
+  await expect(rows.nth(0)).toHaveAttribute("data-thread-id", first.threadId);
+
+  await page.evaluate(() => {
+    window.__taskListRefreshSource.emit("task-list-refresh", {});
+  });
+
+  await expect.poll(() => reads).toBe(2);
+  await expect(rows.nth(0)).toHaveAttribute("data-thread-id", second.threadId);
+});
+
+test("applies canonical top placements without list refetches or duplicate reordering", async ({
+  page,
+}) => {
+  await installEventSourceMock(page, {
+    sourceKey: "__activePlacementSource",
+    autoOpen: true,
+  });
+  await mockCodexModels(page);
+  const existing = initialNavigatorTask(
+    "thread_placement_existing",
+    "Existing placed Task",
+  );
+  const first = initialNavigatorTask(
+    "thread_placement_first",
+    "First placed Task",
+    canonicalTaskState("active", {
+      turnId: "turn_placement_first",
+      latestTurnStatus: "inProgress",
+    }),
+  );
+  const second = initialNavigatorTask(
+    "thread_placement_second",
+    "Second placed Task",
+  );
+  let reads = 0;
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    reads += 1;
+    return route.fulfill({ json: activeTaskProjection([existing]) });
+  });
+
+  await page.goto("/tasks");
+  const rows = page.locator(
+    'caffold-task-navigator .task-row[data-thread-id]',
+  );
+  await expect(rows).toHaveCount(1);
+
+  await page.evaluate((unknown) => {
+    window.__activePlacementSource.emit("task-sync", {
+      threadId: unknown.threadId,
+      revision: 1,
+      detail: { task: unknown },
+    });
+  }, initialNavigatorTask("thread_unknown_sync", "Unknown sync Task"));
+  await page.waitForTimeout(100);
+  expect(reads).toBe(1);
+
+  const firstPlacement = {
+    section: {
+      id: "fixture-section-1",
+      name: "tests/fixtures/home",
+      repository: false,
+    },
+    beforeThreadId: existing.threadId,
+  };
+  await page.evaluate(({ first, firstPlacement }) => {
+    window.__activePlacementSource.emit("task-placed-at-top", {
+      task: first,
+      placement: firstPlacement,
+    });
+  }, { first, firstPlacement });
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toHaveAttribute("data-thread-id", first.threadId);
+
+  await page.evaluate(({ first, second, firstPlacement }) => {
+    window.__activePlacementSource.emit("task-sync", {
+      threadId: first.threadId,
+      revision: 2,
+      detail: { task: { ...first, title: "First placed Task updated" } },
+    });
+    window.__activePlacementSource.emit("task-placed-at-top", {
+      task: second,
+      placement: {
+        ...firstPlacement,
+        beforeThreadId: first.threadId,
+      },
+    });
+    window.__activePlacementSource.emit("task-placed-at-top", {
+      task: first,
+      placement: firstPlacement,
+    });
+  }, { first, second, firstPlacement });
+
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(0)).toHaveAttribute("data-thread-id", second.threadId);
+  await expect(rows.nth(1)).toHaveAttribute("data-thread-id", first.threadId);
+  await expect(rows.nth(1)).toContainText("First placed Task");
+  await page.waitForTimeout(100);
+  expect(reads).toBe(1);
 });
 
 test("shows relative age from the latest completion instead of thread recency", async ({
@@ -399,7 +521,7 @@ test("shows relative age from the latest completion instead of thread recency", 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [task], nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection([task])),
     }),
   );
 
@@ -441,7 +563,7 @@ test("starts active Task navigator spinners at independent phases", async ({
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks, nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection(tasks)),
     }),
   );
   await page.route(/\/api\/tasks\/thread_spinner_alpha(?:\?|$)/, (route) =>
@@ -523,7 +645,7 @@ test("keeps unseen completion markers blinking, phase-shifted, and motion-safe",
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks, nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection(tasks)),
     }),
   );
 
@@ -634,7 +756,7 @@ test("archives and restores an idle Caffold task through the grouped Archived se
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: activeTasks, nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection(activeTasks)),
     }),
   );
   await page.route(/\/api\/tasks\/thread_archive(?:\?|$)/, (route) =>
@@ -665,7 +787,16 @@ test("archives and restores an idle Caffold task through the grouped Archived se
     archivedTasks = [existingArchivedTask];
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify(activeTask),
+      body: JSON.stringify({
+        task: activeTask,
+        activeTopPlacement: {
+          section: {
+            id: "fixture-section-1",
+            name: "tests/fixtures/home/project",
+            repository: false,
+          },
+        },
+      }),
     });
   });
 
@@ -816,6 +947,9 @@ test("archives and restores an idle Caffold task through the grouped Archived se
     navigator.locator('.task-list-section[data-task-section="managed"]'),
   ).toContainText("Archive round trip");
   await expect(archivedSection).not.toContainText("Archive round trip");
+  expect(
+    requestedPaths.filter((path) => path === "/api/tasks"),
+  ).toHaveLength(2);
   expect(mutations).toEqual(["archive", "restore"]);
 });
 
@@ -842,7 +976,7 @@ test("keeps an idle task active when the archive request fails", async ({ page }
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [task], nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection([task])),
     }),
   );
   await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
@@ -914,7 +1048,7 @@ test("keeps a task archived when restore fails", async ({ page }) => {
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [], nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection()),
     }),
   );
   await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
@@ -984,7 +1118,7 @@ test("does not offer archive while the canonical task is active", async ({ page 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [task], nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection([task])),
     }),
   );
   await page.route(/\/api\/tasks\/thread_active_archive(?:\?|$)/, (route) =>
@@ -1060,7 +1194,7 @@ test("clears stale task rows when canonical list reload fails", async ({ page })
     if (taskReads === 1) {
       return route.fulfill({
         contentType: "application/json",
-        body: JSON.stringify({ tasks: [task], nextCursor: null }),
+        body: JSON.stringify(activeTaskProjection([task])),
       });
     }
     return route.fulfill({
@@ -1173,7 +1307,7 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     expect(url.searchParams.get("cwd")).toBeNull();
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks }),
+      body: JSON.stringify(activeTaskProjection(tasks)),
     });
   });
   await page.route(/\/api\/tasks\/thread_[^/?]+(?:\?|$)/, (route) => {
@@ -1275,9 +1409,9 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
   expect(headerActionAlignment.edgeInsetDelta).toBeLessThanOrEqual(1);
   expect(headerActionAlignment.iconWidthDelta).toBeLessThanOrEqual(0.1);
   expect(headerActionAlignment.iconHeightDelta).toBeLessThanOrEqual(0.1);
-  await expect(rows.nth(0)).toContainText("Feature worktree task");
-  await expect(rows.nth(1)).toContainText("Main root task");
-  await expect(rows.nth(2)).toContainText("Main core task");
+  await expect(rows.nth(0)).toContainText("Main root task");
+  await expect(rows.nth(1)).toContainText("Main core task");
+  await expect(rows.nth(2)).toContainText("Feature worktree task");
   await expect(rows.nth(3)).toContainText(
     "Documentation directory task with an intentionally long title",
   );
@@ -1675,7 +1809,7 @@ test("switches Tasks to master-detail at the Fold8 landscape boundary", async ({
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [task], nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection([task])),
     }),
   );
   await page.route("**/api/tasks/thread-fold8-boundary", (route) =>
@@ -1788,7 +1922,7 @@ test("keeps the Tasks list DOM stable while opening a managed task", async ({ pa
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks, nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection(tasks)),
     }),
   );
   await page.route(/\/api\/tasks\/thread_dom_stability\/seen$/, (route) => {
@@ -1878,7 +2012,7 @@ test("keeps the Tasks list DOM stable while opening a managed task", async ({ pa
     seenRequests: 0,
   });
 });
-test("patches only changed Task row content and preserves a running spinner", async ({
+test("patches Task rows in place without reordering and preserves a running spinner", async ({
   page,
 }) => {
   await installEventSourceMock(page, {
@@ -1938,7 +2072,7 @@ test("patches only changed Task row content and preserves a running spinner", as
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks, nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection(tasks)),
     }),
   );
   await page.route(/\/api\/tasks\/thread_spinner_stability(?:\?|$)/, (route) =>
@@ -2079,7 +2213,7 @@ test("patches only changed Task row content and preserves a running spinner", as
   await expect(target.locator(".task-row-worktree")).toHaveCount(1);
   await expect(
     tasksPage.locator('.task-list .task-row[data-thread-id]').first(),
-  ).toHaveAttribute("data-thread-id", "thread_spinner_stability");
+  ).toHaveAttribute("data-thread-id", "thread_spinner_sibling");
   expect(
     await tasksPage.evaluate((element) => {
       const row = element.querySelector(
@@ -2205,7 +2339,7 @@ test("groups Tasks by repository without worktree accordions", async ({ page }, 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks }),
+      body: JSON.stringify(activeTaskProjection(tasks)),
     }),
   );
   await page.route(/\/api\/tasks\/thread_gluesql_feature(?:\?|$)/, (route) =>

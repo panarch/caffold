@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { expectDomainBackChrome } from "../support/domain-header.js";
 import {
+  activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
   installEventSourceMock,
@@ -158,7 +159,7 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
       requests.taskCreates.push(route.request().postDataJSON());
       return route.fulfill({ json: createdDetail });
     }
-    return route.fulfill({ json: { tasks: [task], nextCursor: null } });
+    return route.fulfill({ json: activeTaskProjection([task]) });
   });
   await page.route(new RegExp(`/api/tasks/${THREAD_ID}(?:\\?|$)`), (route) =>
     route.fulfill({

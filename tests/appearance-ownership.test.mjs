@@ -259,6 +259,7 @@ test("structural shadows separate fixed regions from floating elevation", () => 
       "pages/(task-workspace)/settings/navigator.css",
       "pages/(task-workspace)/tasks/components/detail/summary.css",
       "pages/(task-workspace)/tasks/components/navigator.css",
+      "pages/(task-workspace)/tasks/components/recovery.css",
     ],
   );
   assert.deepEqual(
@@ -923,11 +924,6 @@ test("contextual and inline actions stay compact while page and primary actions 
     [
       "pages/(task-workspace)/tasks/components/detail/conversation.css",
       ".task-approval-actions .task-secondary-button",
-      "--interface-compact-visual-size",
-    ],
-    [
-      "pages/(task-workspace)/tasks/components/active-task-list.css",
-      '[data-task-action="load-more-tasks"]',
       "--interface-compact-visual-size",
     ],
     [

@@ -6,6 +6,7 @@ import {
   taskDetailFixture,
 } from "../support/task-api-fixture.js";
 import {
+  activeTaskProjection,
   canonicalTaskState,
   isScrolledToBottom,
   mockCodexModels,
@@ -337,6 +338,9 @@ test("loading detail accepts a canonical task sync without a synthetic task", as
   page,
 }) => {
   await installTaskApiFixture(page);
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([taskDetailFixture().task]) }),
+  );
   await page.route("**/api/tasks/thread-1", (route) =>
     route.fulfill({
       json: {
@@ -420,10 +424,10 @@ test("loading detail accepts a canonical task sync without a synthetic task", as
   await expect(page.locator(".task-status-chip")).toHaveCount(0);
   await expect(
     page.locator('.task-list-section[data-task-section="managed"]'),
-  ).toContainText("Codex app-server is unavailable");
+  ).not.toContainText("Codex app-server is unavailable");
   await expect(
     page.locator('.task-row[data-thread-id="thread-1"]'),
-  ).toHaveCount(0);
+  ).toHaveCount(1);
   await expect(
     page.locator('[data-task-action="retry-task-detail"]'),
   ).toHaveCount(1);
@@ -431,7 +435,7 @@ test("loading detail accepts a canonical task sync without a synthetic task", as
     page.locator(
       '.task-list-section[data-task-section="managed"] [data-task-action="retry-task-list"]',
     ),
-  ).toHaveCount(1);
+  ).toHaveCount(0);
 });
 
 test("recovers task detail and prompt submission across bootstrap races", async ({
@@ -528,7 +532,9 @@ test("recovers task detail and prompt submission across bootstrap races", async 
     if (request.method() === "GET" && segments.length === 2) {
       return route.fulfill({
         contentType: "application/json",
-        body: JSON.stringify({ tasks: [taskBeforeFailure, taskAfterFailure] }),
+        body: JSON.stringify(
+          activeTaskProjection([taskBeforeFailure, taskAfterFailure]),
+        ),
       });
     }
     if (
@@ -690,7 +696,7 @@ test("keeps task context and retries after an initial detail timeout", async ({
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [task] }),
+      body: JSON.stringify(activeTaskProjection([task])),
     }),
   );
   await page.route(/\/api\/tasks\/thread_detail_timeout_fixture(?:\?|$)/, (route) => {
@@ -795,10 +801,7 @@ test("preserves stable detail children through another task load failure", async
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
-      json: {
-        tasks: [detailB.task, detailA.task],
-        nextCursor: null,
-      },
+      json: activeTaskProjection([detailB.task, detailA.task]),
     }),
   );
   await page.route(/\/api\/tasks\/thread-stable-a(?:\?|$)/, (route) =>
@@ -1635,7 +1638,7 @@ test("accepts canonical task detail after stream revisions restart", async ({ pa
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [staleTask] }),
+      body: JSON.stringify(activeTaskProjection([staleTask])),
     }),
   );
   await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
@@ -1738,7 +1741,7 @@ test("accepts canonical task sync after stream revisions restart", async ({ page
     taskListRequests += 1;
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [task], nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection([task])),
     });
   });
   await page.goto("/tasks");
@@ -2025,7 +2028,7 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [task], nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection([task])),
     }),
   );
   await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), async (route) => {

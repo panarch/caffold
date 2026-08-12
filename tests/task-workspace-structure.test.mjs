@@ -252,8 +252,12 @@ test("active and archived Task lists own distinct state and lifecycle boundaries
   assert.match(active, /TaskStreamLifecycle/);
   assert.match(active, /aria-label", "Caffold Tasks"/);
   assert.doesNotMatch(active, /getArchivedTasks|restoreTask|deleteTask/);
+  assert.doesNotMatch(active, /load-more-tasks|taskListNextCursor/);
   assert.match(activeStyles, /\.task-unseen-complete/);
-  assert.doesNotMatch(activeStyles, /task-archived-|load-more-archived-tasks/);
+  assert.doesNotMatch(
+    activeStyles,
+    /task-archived-|load-more-archived-tasks|load-more-tasks|task-list-pagination/,
+  );
 
   assert.match(
     archived,

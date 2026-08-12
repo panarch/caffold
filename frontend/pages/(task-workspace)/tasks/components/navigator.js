@@ -166,6 +166,11 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.activeTaskList.upsertCanonicalTask(task);
   }
 
+  placeCanonicalTaskAtTop(task, placement) {
+    this.ensureChildren();
+    this.activeTaskList.placeCanonicalTaskAtTop(task, placement);
+  }
+
   acceptArchivedTask(task) {
     this.ensureChildren();
     const threadId = taskThreadId(task);
@@ -199,6 +204,16 @@ class CaffoldTaskNavigator extends HTMLElement {
   removeTask(threadId) {
     this.ensureChildren();
     this.activeTaskList.removeTask(threadId);
+  }
+
+  taskFor(threadId) {
+    this.ensureChildren();
+    return this.activeTaskList.taskFor(threadId);
+  }
+
+  recoveryFor(threadId) {
+    this.ensureChildren();
+    return this.activeTaskList.recoveryFor(threadId);
   }
 
   removeArchivedTask(threadId) {
@@ -293,7 +308,10 @@ class CaffoldTaskNavigator extends HTMLElement {
   handleTaskRestored(event) {
     event.stopPropagation();
     if (event.detail?.task) {
-      this.activeTaskList.acceptTask(event.detail.task);
+      this.activeTaskList.acceptTask(
+        event.detail.task,
+        event.detail.activeTopPlacement,
+      );
     }
   }
 

@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import {
+  activeTaskProjection,
   canonicalTaskState,
   mockCodexModels,
 } from "./task-fixtures.js";
@@ -131,6 +132,9 @@ export async function installTaskLoopFixture(
       ),
       eventsPage: { nextCursor: null, ...(overrides.eventsPage ?? {}) },
       pendingApprovals: [],
+      ...(overrides.activeTopPlacement
+        ? { activeTopPlacement: overrides.activeTopPlacement }
+        : {}),
     };
   };
   const updateTask = (updates) => {
@@ -177,7 +181,7 @@ export async function installTaskLoopFixture(
       expect(url.searchParams.get("cwd")).toBeNull();
       return route.fulfill({
         contentType: "application/json",
-        body: JSON.stringify({ tasks: task ? [task] : [] }),
+        body: JSON.stringify(activeTaskProjection(task ? [task] : [])),
       });
     }
 
@@ -282,7 +286,17 @@ export async function installTaskLoopFixture(
 
       return route.fulfill({
         contentType: "application/json",
-        body: JSON.stringify(detailResponse()),
+        body: JSON.stringify(
+          detailResponse({
+            activeTopPlacement: {
+              section: {
+                id: "fixture-section-created-task",
+                name: contextPath,
+                repository: true,
+              },
+            },
+          }),
+        ),
       });
     }
 

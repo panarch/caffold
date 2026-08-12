@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   PASTED_IMAGE_BASE64,
+  activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
   installEventSourceMock,
@@ -78,7 +79,7 @@ test("keeps a large task usable while conversation history is loading", async ({
     if (request.method() === "GET" && segments.length === 2) {
       return route.fulfill({
         contentType: "application/json",
-        body: JSON.stringify({ tasks: [task] }),
+        body: JSON.stringify(activeTaskProjection([task])),
       });
     }
     if (
@@ -260,7 +261,7 @@ test("keeps the visible conversation anchor while loading older events by cursor
     expect(url.searchParams.get("cwd")).toBeNull();
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [task] }),
+      body: JSON.stringify(activeTaskProjection([task])),
     });
   });
 
@@ -473,7 +474,7 @@ test("keeps the latest conversation when older history times out", async ({
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [task] }),
+      body: JSON.stringify(activeTaskProjection([task])),
     }),
   );
   await page.route(/\/api\/tasks\/thread_history_timeout_fixture(?:\?|$)/, (route) => {
@@ -611,7 +612,10 @@ test("renders normalized Codex user messages instead of raw ambient context", as
   };
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
-    route.fulfill({ contentType: "application/json", body: JSON.stringify({ tasks: [task] }) }),
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(activeTaskProjection([task])),
+    }),
   );
   await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(detail) }),
@@ -702,7 +706,7 @@ test("orders separate turns by message chronology when a newer start marker is s
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [task], nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection([task])),
     }),
   );
   await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
@@ -816,7 +820,7 @@ test("keeps cross-turn work chronological and the active status at the timeline 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [activeTask], nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection([activeTask])),
     }),
   );
   await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>

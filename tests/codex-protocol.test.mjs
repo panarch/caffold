@@ -173,7 +173,10 @@ test(
         "thread/name/set",
         "thread/read",
         "thread/delete",
+        "thread/section/move",
         "thread/resume",
+        "threadSection/list",
+        "threadSection/create",
         "thread/unsubscribe",
         "thread/turns/list",
         "turn/start",
@@ -201,7 +204,42 @@ test(
       assert.match(listParams, /cursor/);
       assert.match(listParams, /sortKey/);
       assert.match(listParams, /sortDirection/);
+      assert.match(listParams, /sectionId\?: string \| null/);
       assert.match(listParams, /useStateDbOnly/);
+
+      const threadSortKey = readFileSync(
+        join(outputDirectory, "v2", "ThreadSortKey.ts"),
+        "utf8",
+      );
+      assert.match(threadSortKey, /"section_position"/);
+
+      const section = readFileSync(
+        join(outputDirectory, "v2", "ThreadSection.ts"),
+        "utf8",
+      );
+      assert.match(section, /id: string/);
+      assert.match(section, /name: string/);
+
+      const sectionList = readFileSync(
+        join(outputDirectory, "v2", "ThreadSectionListResponse.ts"),
+        "utf8",
+      );
+      assert.match(sectionList, /data: Array<ThreadSection>/);
+      assert.match(sectionList, /nextCursor: string \| null/);
+
+      const sectionCreate = readFileSync(
+        join(outputDirectory, "v2", "ThreadSectionCreateParams.ts"),
+        "utf8",
+      );
+      assert.match(sectionCreate, /name: string/);
+
+      const sectionMove = readFileSync(
+        join(outputDirectory, "v2", "ThreadSectionMoveParams.ts"),
+        "utf8",
+      );
+      assert.match(sectionMove, /threadId: string/);
+      assert.match(sectionMove, /sectionId: string \| null/);
+      assert.match(sectionMove, /beforeThreadId\?: string \| null/);
 
       const readParams = readFileSync(join(outputDirectory, "v2", "ThreadReadParams.ts"), "utf8");
       assert.match(readParams, /includeTurns/);

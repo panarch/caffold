@@ -497,8 +497,8 @@ mod tests {
     use super::*;
     use crate::{
         app::tasks::{
-            events::TaskEvents, lifecycle::TaskLifecycle, routes::TaskListEvents,
-            worktrees::ManagedWorktrees,
+            active_sections::ActiveTaskSections, events::TaskEvents, lifecycle::TaskLifecycle,
+            routes::TaskListEvents, worktrees::ManagedWorktrees,
         },
         codex_app_server::{self, CodexThreadError, MockCodexResponse},
         codex_thread_sessions::CodexThreadSessions,
@@ -859,12 +859,13 @@ mod tests {
         )
         .unwrap();
         let lifecycle = TaskLifecycle::new(
-            fs,
+            fs.clone(),
             sessions.clone(),
             events.clone(),
             TaskListEvents::new(),
             store.clone(),
             worktrees,
+            ActiveTaskSections::new(fs, store.clone()),
         );
         let (shutdown, _) = broadcast::channel(1);
         let runtime =

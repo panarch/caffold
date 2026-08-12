@@ -26,6 +26,7 @@
 @import "./pages/(task-workspace)/tasks/components/archived-delete-dialog.css";
 @import "./pages/(task-workspace)/tasks/components/image-preview-dialog.css";
 @import "./pages/(task-workspace)/tasks/components/detail.css";
+@import "./pages/(task-workspace)/tasks/components/recovery.css";
 @import "./pages/(task-workspace)/tasks/components/detail/summary.css";
 @import "./pages/(task-workspace)/tasks/components/detail/summary/git.css";
 @import "./pages/(task-workspace)/tasks/components/detail/summary/github.css";

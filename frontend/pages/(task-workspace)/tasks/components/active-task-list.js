@@ -9,13 +9,8 @@ import {
   taskThreadStatusType,
 } from "../runtime-state.js";
 import {
-  groupTasksByRepository,
-  mergeTaskListPage,
-  sortTasksByRecency,
-  taskRepositoryKey,
   taskThreadId,
   taskWorktreeLabel,
-  upsertTask,
 } from "../task-list-model.js";
 import { formatRelativeAge } from "../task-format.js";
 import { TaskStreamLifecycle } from "../stream.js";
@@ -51,7 +46,6 @@ class CaffoldActiveTaskList extends HTMLElement {
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
     this.taskListRequestId += 1;
     this.taskListLoading = false;
-    this.taskListLoadingMore = false;
     this.closeStream();
   }
 
@@ -60,14 +54,13 @@ class CaffoldActiveTaskList extends HTMLElement {
       return;
     }
     this.stateReady = true;
-    this.tasks = [];
+    this.sections = [];
+    this.unsectioned = [];
     this.taskListLoading = false;
-    this.taskListLoadingMore = false;
     this.taskListLoaded = false;
     this.taskListError = null;
-    this.taskListLoadMoreError = null;
-    this.taskListNextCursor = null;
     this.taskListRequestId = 0;
+    this.pendingTopPlacements = new Map();
     this.initialRequestSettled = false;
     this.selectedThreadId = "";
     this.revisionByThread = new Map();
@@ -77,7 +70,13 @@ class CaffoldActiveTaskList extends HTMLElement {
     this.boundIconsReady = () => this.render();
     this.taskListStream = new TaskStreamLifecycle({
       createUrl: () => taskListStreamUrl(),
-      eventTypes: ["task-removed", "task-updated", "task-sync"],
+      eventTypes: [
+        "task-removed",
+        "task-updated",
+        "task-placed-at-top",
+        "task-list-refresh",
+        "task-sync",
+      ],
       onEvent: (type, event) => this.handleStreamEvent(type, event),
       onReconcile: (_contextKey, isCurrent) =>
         this.reconcileTaskList(isCurrent),
@@ -111,7 +110,6 @@ class CaffoldActiveTaskList extends HTMLElement {
     if (becameBlocked) {
       this.taskListRequestId += 1;
       this.taskListLoading = false;
-      this.taskListLoadingMore = false;
       this.closeStream();
     }
     this.render();
@@ -126,7 +124,7 @@ class CaffoldActiveTaskList extends HTMLElement {
     this.selectedThreadId = nextThreadId;
     this.syncSelection();
     if (nextThreadId) {
-      const task = this.tasks.find(
+      const task = this.allTasks().find(
         (candidate) => taskThreadId(candidate) === nextThreadId,
       );
       if (task?.unseen) {
@@ -146,63 +144,127 @@ class CaffoldActiveTaskList extends HTMLElement {
     }
     const nextTask =
       threadId === this.selectedThreadId ? { ...task, unseen: false } : task;
-    const index = this.tasks.findIndex(
-      (candidate) => taskThreadId(candidate) === threadId,
-    );
-    if (index < 0) {
-      this.tasks = [...this.tasks, nextTask];
-      this.render();
+    const listKey = this.replaceTaskInPlace(nextTask);
+    if (!listKey) {
       return;
     }
-
-    const previous = this.tasks[index];
-    this.tasks = this.tasks.map((candidate, candidateIndex) =>
-      candidateIndex === index ? nextTask : candidate,
-    );
-    const previousListKey = taskRepositoryKey(previous);
-    const nextListKey = taskRepositoryKey(nextTask);
     const row = this.querySelector(
       `li[data-thread-id="${CSS.escape(threadId)}"]`,
     );
-    if (!row || previousListKey !== nextListKey) {
+    if (!row) {
       this.render();
       return;
     }
 
     const template = document.createElement("template");
-    template.innerHTML = this.renderTaskRow(nextTask, nextListKey).trim();
+    template.innerHTML = this.renderTaskRow(nextTask, listKey).trim();
     const nextRow = template.content.firstElementChild;
     if (!nextRow || !patchTaskListRow(row, nextRow)) {
       this.render();
       return;
     }
     this.syncSelection();
-    this.reorderTaskListDom();
     this.publishState();
   }
 
-  acceptTask(task) {
+  acceptTask(task, placement) {
     this.ensureState();
     if (!task || !taskThreadId(task)) {
       return;
     }
-    this.tasks = upsertTask(this.tasks, task);
-    this.taskListLoaded = true;
-    this.taskListError = null;
+    this.placeCanonicalTaskAtTop(task, placement);
+  }
+
+  placeCanonicalTaskAtTop(task, placement) {
+    this.ensureState();
+    const threadId = taskThreadId(task);
+    const normalizedPlacement = normalizeActiveTopPlacement(placement);
+    if (!threadId || !normalizedPlacement) {
+      return false;
+    }
+    const nextTask = threadId === this.selectedThreadId
+      ? { ...task, unseen: false }
+      : task;
+    if (!this.taskListLoaded) {
+      this.pendingTopPlacements.set(threadId, {
+        task: nextTask,
+        placement: normalizedPlacement,
+      });
+      return true;
+    }
+    this.applyCanonicalTopPlacement(nextTask, normalizedPlacement);
     this.render();
+    return true;
+  }
+
+  applyCanonicalTopPlacement(task, placement) {
+    const threadId = taskThreadId(task);
+    const targetId = placement.section.id;
+    const existingTarget = this.sections.find(
+      (section) =>
+        section.id === targetId &&
+        section.tasks.some((candidate) => taskThreadId(candidate) === threadId),
+    );
+    if (existingTarget) {
+      existingTarget.name = placement.section.name;
+      existingTarget.repository = placement.section.repository;
+      existingTarget.tasks = existingTarget.tasks.map((candidate) =>
+        taskThreadId(candidate) === threadId ? task : candidate
+      );
+      this.unsectioned = this.unsectioned.filter(
+        (candidate) => taskThreadId(candidate) !== threadId,
+      );
+      return;
+    }
+
+    const remainingSections = this.sections
+      .map((section) => ({
+        ...section,
+        tasks: section.tasks.filter(
+          (candidate) => taskThreadId(candidate) !== threadId,
+        ),
+      }))
+      .filter((section) => section.id === targetId || section.tasks.length);
+    const target = remainingSections.find((section) => section.id === targetId) ?? {
+      ...placement.section,
+      tasks: [],
+    };
+    target.name = placement.section.name;
+    target.repository = placement.section.repository;
+    const beforeIndex = placement.beforeThreadId
+      ? target.tasks.findIndex(
+          (candidate) => taskThreadId(candidate) === placement.beforeThreadId,
+        )
+      : target.tasks.length;
+    target.tasks.splice(beforeIndex < 0 ? 0 : beforeIndex, 0, task);
+    this.sections = [
+      target,
+      ...remainingSections.filter((section) => section.id !== targetId),
+    ];
+    this.unsectioned = this.unsectioned.filter(
+      (candidate) => taskThreadId(candidate) !== threadId,
+    );
   }
 
   removeTask(threadId) {
     if (!threadId || !this.taskListLoaded) {
       return;
     }
-    const tasks = this.tasks.filter(
+    const previousCount = this.allTasks().length;
+    this.sections = this.sections
+      .map((section) => ({
+        ...section,
+        tasks: section.tasks.filter(
+          (candidate) => taskThreadId(candidate) !== threadId,
+        ),
+      }))
+      .filter((section) => section.tasks.length);
+    this.unsectioned = this.unsectioned.filter(
       (candidate) => taskThreadId(candidate) !== threadId,
     );
-    if (tasks.length === this.tasks.length) {
+    if (this.allTasks().length === previousCount) {
       return;
     }
-    this.tasks = tasks;
     this.revisionByThread.delete(threadId);
     this.render();
   }
@@ -221,8 +283,11 @@ class CaffoldActiveTaskList extends HTMLElement {
     const threadId = `${action.dataset.threadId ?? ""}`;
     if (action.dataset.taskAction === "open-task") {
       this.dispatchIntent("select-task", { threadId });
-    } else if (action.dataset.taskAction === "load-more-tasks") {
-      void this.loadMoreTasks();
+    } else if (action.dataset.taskAction === "open-task-recovery") {
+      const recovery = this.recoveryFor(threadId);
+      if (recovery) {
+        this.dispatchIntent("select-task-recovery", { threadId, recovery });
+      }
     } else if (action.dataset.taskAction === "retry-task-list") {
       void this.loadTasks({ force: true });
     }
@@ -243,14 +308,15 @@ class CaffoldActiveTaskList extends HTMLElement {
       return null;
     }
     if (this.taskListLoaded && !force) {
-      return { tasks: this.tasks, nextCursor: this.taskListNextCursor };
+      return {
+        sections: this.sections,
+        unsectioned: this.unsectioned,
+      };
     }
 
     const requestId = ++this.taskListRequestId;
     this.taskListLoading = true;
-    this.taskListLoadingMore = false;
     this.taskListError = null;
-    this.taskListLoadMoreError = null;
     this.render();
 
     try {
@@ -262,10 +328,14 @@ class CaffoldActiveTaskList extends HTMLElement {
         this.taskListLoading = false;
         return null;
       }
-      this.tasks = response.tasks ?? [];
-      this.taskListNextCursor = response.nextCursor ?? null;
+      this.sections = normalizeActiveSections(response.sections);
+      this.unsectioned = normalizeTaskList(response.unsectioned);
       this.taskListLoading = false;
       this.taskListLoaded = true;
+      for (const { task, placement } of this.pendingTopPlacements.values()) {
+        this.applyCanonicalTopPlacement(task, placement);
+      }
+      this.pendingTopPlacements.clear();
       const initialSettled = this.markInitialRequestSettled();
       this.render();
       this.dispatchInitialSettled(initialSettled);
@@ -280,47 +350,12 @@ class CaffoldActiveTaskList extends HTMLElement {
       }
       this.taskListLoading = false;
       this.taskListError = error;
-      this.tasks = [];
+      this.sections = [];
+      this.unsectioned = [];
       this.taskListLoaded = false;
       const initialSettled = this.markInitialRequestSettled();
       this.render();
       this.dispatchInitialSettled(initialSettled);
-      return null;
-    }
-  }
-
-  async loadMoreTasks() {
-    const cursor = this.taskListNextCursor;
-    if (
-      this.codexOperationsBlocked ||
-      !cursor ||
-      this.taskListLoading ||
-      this.taskListLoadingMore
-    ) {
-      return null;
-    }
-
-    const requestId = ++this.taskListRequestId;
-    this.taskListLoadingMore = true;
-    this.taskListLoadMoreError = null;
-    this.render();
-    try {
-      const response = await getTasks(cursor);
-      if (requestId !== this.taskListRequestId) {
-        return null;
-      }
-      this.tasks = mergeTaskListPage(this.tasks, response.tasks ?? []);
-      this.taskListNextCursor = response.nextCursor ?? null;
-      this.taskListLoadingMore = false;
-      this.render();
-      return response;
-    } catch (error) {
-      if (requestId !== this.taskListRequestId) {
-        return null;
-      }
-      this.taskListLoadingMore = false;
-      this.taskListLoadMoreError = error;
-      this.render();
       return null;
     }
   }
@@ -364,6 +399,17 @@ class CaffoldActiveTaskList extends HTMLElement {
       }
       return;
     }
+    if (type === "task-list-refresh") {
+      void this.loadTasks({ force: true });
+      return;
+    }
+    if (type === "task-placed-at-top") {
+      const update = parseJson(event.data);
+      if (update?.task && update?.placement) {
+        this.placeCanonicalTaskAtTop(update.task, update.placement);
+      }
+      return;
+    }
     if (type === "task-updated") {
       const task = parseJson(event.data);
       const threadId = taskThreadId(task);
@@ -378,10 +424,8 @@ class CaffoldActiveTaskList extends HTMLElement {
     const message = parseJson(event.data);
     const detail = message?.detail;
     if (message?.error) {
-      this.tasks = [];
-      this.taskListLoaded = false;
-      this.taskListError = new Error(message.error);
-      this.render();
+      // A task-sync error belongs to one Task detail. The canonical list
+      // remains valid until its own request or transport fails.
       return;
     }
     if (
@@ -463,10 +507,55 @@ class CaffoldActiveTaskList extends HTMLElement {
     return !isTaskTransportStale(this.streamState);
   }
 
+  allTasks() {
+    return [
+      ...this.sections.flatMap((section) => section.tasks),
+      ...this.unsectioned,
+    ];
+  }
+
+  taskFor(threadId) {
+    return this.allTasks().find(
+      (task) => taskThreadId(task) === threadId,
+    ) ?? null;
+  }
+
+  recoveryFor(threadId) {
+    return this.unsectioned.find(
+      (task) => taskThreadId(task) === threadId && task?.recovery,
+    ) ?? null;
+  }
+
+  replaceTaskInPlace(task) {
+    const threadId = taskThreadId(task);
+    for (const section of this.sections) {
+      const index = section.tasks.findIndex(
+        (candidate) => taskThreadId(candidate) === threadId,
+      );
+      if (index < 0) {
+        continue;
+      }
+      section.tasks = section.tasks.map((candidate, candidateIndex) =>
+        candidateIndex === index ? task : candidate,
+      );
+      return section.id;
+    }
+    const recoveryIndex = this.unsectioned.findIndex(
+      (candidate) => taskThreadId(candidate) === threadId,
+    );
+    if (recoveryIndex < 0) {
+      return "";
+    }
+    this.unsectioned = this.unsectioned.map((candidate, candidateIndex) =>
+      candidateIndex === recoveryIndex ? task : candidate,
+    );
+    return "unsectioned";
+  }
+
   listState() {
     this.ensureState();
     return {
-      count: this.tasks.length,
+      count: this.allTasks().length,
       loaded: this.taskListLoaded,
       loading: !this.codexOperationsBlocked &&
         (this.taskListLoading || !this.initialRequestSettled),
@@ -487,68 +576,72 @@ class CaffoldActiveTaskList extends HTMLElement {
     this.ensureState();
     const loading = !this.codexOperationsBlocked &&
       (this.taskListLoading || !this.initialRequestSettled);
-    const tasks = sortTasksByRecency(this.tasks);
+    const taskCount = this.allTasks().length;
     let content;
-    if (this.codexOperationsBlocked && !tasks.length) {
+    if (this.codexOperationsBlocked && !taskCount) {
       content = `<p class="task-section-message">${escapeHtml(this.codexTaskOperations.message)}</p>`;
-    } else if (loading && !tasks.length) {
+    } else if (loading && !taskCount) {
       content = `<p class="task-section-message">Loading...</p>`;
-    } else if (this.taskListError && !tasks.length) {
+    } else if (this.taskListError && !taskCount) {
       content = `
         <div class="task-section-message" role="alert">
           <p>${escapeHtml(this.taskListError.message)}</p>
           <button type="button" class="task-secondary-button" data-task-action="retry-task-list" ${this.codexOperationsBlocked ? "disabled" : ""}>Retry</button>
         </div>
       `;
-    } else if (!tasks.length) {
+    } else if (!taskCount) {
       content = `<p class="task-section-message">No Caffold tasks yet.</p>`;
     } else {
-      const groups = groupTasksByRepository(tasks);
+      const sections = [
+        ...this.sections,
+        ...(this.unsectioned.length
+          ? [{
+              id: "unsectioned",
+              name: "Tasks awaiting Section recovery",
+              label: "Recovery",
+              repository: false,
+              recovery: true,
+              tasks: this.unsectioned,
+            }]
+          : []),
+      ];
       content = `<ol class="task-repository-groups" data-task-section="managed">
-        ${groups.map((group) => this.renderRepositoryGroup(group)).join("")}
+        ${sections.map((section) => this.renderSection(section)).join("")}
       </ol>`;
     }
-    this.innerHTML = `${content}${this.renderTaskPagination()}`;
+    this.innerHTML = content;
     initializeRunningSpinners(this);
     this.syncSelection();
     this.publishState();
   }
 
-  renderTaskPagination() {
-    if (!this.taskListNextCursor && !this.taskListLoadingMore && !this.taskListLoadMoreError) {
-      return "";
-    }
-    const label = this.taskListLoadingMore
-      ? "Loading more tasks..."
-      : this.taskListLoadMoreError
-        ? "Retry loading more tasks"
-        : "Load more tasks";
+  renderSection(section) {
+    const icon = section.recovery
+      ? "CircleAlert"
+      : section.repository
+        ? "FolderGit2"
+        : "Folder";
+    const iconLabel = section.recovery
+      ? "Section recovery"
+      : section.repository
+        ? "Git repository"
+        : "Directory";
+    const label = section.label ?? sectionLabel(section.name);
     return `
-      <div class="task-list-pagination">
-        ${this.taskListLoadMoreError ? `<p class="task-list-pagination-error">${escapeHtml(this.taskListLoadMoreError.message)}</p>` : ""}
-        <button type="button" class="task-secondary-button" data-task-action="load-more-tasks" ${this.taskListLoadingMore || this.codexOperationsBlocked ? "disabled" : ""}>${label}</button>
-      </div>
-    `;
-  }
-
-  renderRepositoryGroup(group) {
-    const icon = group.repository ? "FolderGit2" : "Folder";
-    const iconLabel = group.repository ? "Git repository" : "Directory";
-    return `
-      <li class="task-repository-group" data-task-repository-key="${escapeHtml(group.key)}">
-        <div class="task-repository-header" title="${escapeHtml(group.rootPath)}">
+      <li class="task-repository-group" data-task-repository-key="${escapeHtml(section.id)}"${section.recovery ? ' data-task-recovery="true"' : ""}>
+        <div class="task-repository-header" title="${escapeHtml(section.name)}">
           ${renderInlineIcon(icon, iconLabel, "task-repository-icon")}
-          <span class="task-repository-label">${escapeHtml(group.label)}</span>
-          <span class="task-repository-count">${group.tasks.length}</span>
+          <span class="task-repository-label">${escapeHtml(label)}</span>
+          <span class="task-repository-count">${section.tasks.length}</span>
         </div>
         <ol class="task-list">
-          ${group.tasks.map((task) => this.renderTaskRow(task, group.key)).join("")}
+          ${section.tasks.map((task) => this.renderTaskRow(task, section.id)).join("")}
         </ol>
       </li>
     `;
   }
 
-  renderTaskRow(task, repositoryKey = taskRepositoryKey(task)) {
+  renderTaskRow(task, sectionId) {
     const threadId = taskThreadId(task);
     const transportState = this.streamState;
     const selected = threadId === this.selectedThreadId ? ` aria-current="true"` : "";
@@ -558,7 +651,14 @@ class CaffoldActiveTaskList extends HTMLElement {
     const unseen = Boolean(
       threadId && task?.unseen && threadId !== this.selectedThreadId,
     );
-    const meta = unseen
+    const recoveryCopy = task?.recovery && task?.conversationAvailable === false
+      ? recoveryReasonCopy(task.recovery.reason)
+      : "";
+    const meta = recoveryCopy
+      ? `<span class="task-row-recovery-status" title="${escapeHtml(recoveryCopy)}">
+          ${renderInlineIcon("TriangleAlert", recoveryCopy, "task-row-recovery-icon")}
+        </span>`
+      : unseen
       ? renderUnseenTaskRowMeta(task)
       : renderTaskRowMeta(task, transportState);
     const worktree = task?.worktree?.linked
@@ -566,9 +666,13 @@ class CaffoldActiveTaskList extends HTMLElement {
           ${renderInlineIcon("GitBranch", "Linked worktree", "task-row-worktree-icon")}
         </span>`
       : "";
+    const action = recoveryCopy ? "open-task-recovery" : "open-task";
+    const title = this.codexOperationsBlocked
+      ? this.codexTaskOperations.title
+      : recoveryCopy ? `${task.title} — ${recoveryCopy}` : task.title;
     return `
-      <li data-thread-id="${escapeHtml(threadId)}" data-task-list-key="${escapeHtml(repositoryKey)}">
-        <button type="button" class="task-row" data-task-action="open-task" data-thread-id="${escapeHtml(threadId)}" data-task-status="${escapeHtml(status)}" title="${escapeHtml(this.codexOperationsBlocked ? this.codexTaskOperations.title : task.title)}"${selected}${busy}${this.codexOperationsBlocked ? " disabled" : ""}>
+      <li data-thread-id="${escapeHtml(threadId)}" data-task-list-key="${escapeHtml(sectionId)}">
+        <button type="button" class="task-row" data-task-action="${action}" data-thread-id="${escapeHtml(threadId)}" data-task-status="${escapeHtml(status)}"${task?.recovery ? ` data-task-recovery-reason="${escapeHtml(task.recovery.reason ?? "")}"` : ""} title="${escapeHtml(title)}"${selected}${busy}${this.codexOperationsBlocked ? " disabled" : ""}>
           <span class="task-row-title">${escapeHtml(task.title)}</span>
           <span class="task-row-indicators">${worktree}${meta}</span>
         </button>
@@ -588,35 +692,6 @@ class CaffoldActiveTaskList extends HTMLElement {
     }
   }
 
-  reorderTaskListDom() {
-    const groups = groupTasksByRepository(sortTasksByRecency(this.tasks));
-    const groupList = this.querySelector(":scope > .task-repository-groups");
-    if (!groupList) {
-      return;
-    }
-    const groupElements = [];
-    for (const group of groups) {
-      const groupElement = groupList.querySelector(
-        `:scope > [data-task-repository-key="${CSS.escape(group.key)}"]`,
-      );
-      if (!groupElement) {
-        continue;
-      }
-      groupElements.push(groupElement);
-      const taskList = groupElement.querySelector(":scope > .task-list");
-      if (taskList) {
-        const rows = group.tasks
-          .map((task) =>
-            taskList.querySelector(
-              `:scope > [data-thread-id="${CSS.escape(taskThreadId(task))}"]`,
-            ),
-          )
-          .filter(Boolean);
-        reorderChildElements(taskList, rows);
-      }
-    }
-    reorderChildElements(groupList, groupElements);
-  }
 }
 
 function parseJson(value) {
@@ -625,6 +700,56 @@ function parseJson(value) {
   } catch {
     return null;
   }
+}
+
+function normalizeActiveSections(sections) {
+  if (!Array.isArray(sections)) {
+    return [];
+  }
+  return sections
+    .filter((section) => section && typeof section === "object")
+    .map((section) => ({
+      id: `${section.id ?? ""}`,
+      name: `${section.name ?? ""}`,
+      repository: Boolean(section.repository),
+      tasks: normalizeTaskList(section.tasks),
+    }))
+    .filter((section) => section.id && section.tasks.length);
+}
+
+function normalizeTaskList(tasks) {
+  return Array.isArray(tasks) ? tasks.filter(Boolean) : [];
+}
+
+function recoveryReasonCopy(reason) {
+  return {
+    codexArchived: "Archived in Codex",
+    threadMissing: "Thread unavailable",
+    temporarilyUnavailable: "Temporarily unavailable",
+    sectionPlacementPending: "Section placement pending",
+  }[reason] ?? "Recovery required";
+}
+
+function normalizeActiveTopPlacement(placement) {
+  const section = placement?.section;
+  const id = `${section?.id ?? ""}`;
+  const name = `${section?.name ?? ""}`;
+  if (!id || !section || typeof section !== "object") {
+    return null;
+  }
+  const beforeThreadId = `${placement?.beforeThreadId ?? ""}`;
+  return {
+    section: {
+      id,
+      name,
+      repository: Boolean(section.repository),
+    },
+    beforeThreadId: beforeThreadId || null,
+  };
+}
+
+function sectionLabel(name) {
+  return `${name ?? ""}`.split("/").filter(Boolean).at(-1) ?? "Directory";
 }
 
 function taskTransportRenderKey(state) {
@@ -799,15 +924,6 @@ function syncElementAttributes(element, nextElement, names) {
       }
     } else if (element.hasAttribute(name)) {
       element.removeAttribute(name);
-    }
-  }
-}
-
-function reorderChildElements(parent, elements) {
-  for (let index = 0; index < elements.length; index += 1) {
-    const element = elements[index];
-    if (parent.children[index] !== element) {
-      parent.insertBefore(element, parent.children[index] ?? null);
     }
   }
 }

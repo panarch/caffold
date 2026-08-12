@@ -5,6 +5,7 @@ import {
   taskDetailFixture,
 } from "../support/task-api-fixture.js";
 import {
+  activeTaskProjection,
   captureReviewScreenshot,
   pasteImage,
 } from "../support/task-fixtures.js";
@@ -118,7 +119,7 @@ test("untouched approval mode preserves the effective Codex default", async ({ p
       submittedBody = route.request().postDataJSON();
       return route.fulfill({ json: taskDetailFixture() });
     }
-    return route.fulfill({ json: { tasks: [], nextCursor: null } });
+    return route.fulfill({ json: activeTaskProjection() });
   });
 
   await page.goto("/tasks/new?cwd=src");
@@ -152,7 +153,7 @@ test("explicit approval mode is sent with a new task prompt", async ({ page }) =
       submittedBody = route.request().postDataJSON();
       return route.fulfill({ json: taskDetailFixture() });
     }
-    return route.fulfill({ json: { tasks: [], nextCursor: null } });
+    return route.fulfill({ json: activeTaskProjection() });
   });
 
   await page.goto("/tasks/new?cwd=src");
@@ -182,7 +183,7 @@ test("new tasks start in Normal mode and submit an explicit Fast choice", async 
       submittedBody = route.request().postDataJSON();
       return route.fulfill({ json: taskDetailFixture({ fastMode: true }) });
     }
-    return route.fulfill({ json: { tasks: [], nextCursor: null } });
+    return route.fulfill({ json: activeTaskProjection() });
   });
 
   await page.goto("/tasks/new?cwd=src");
@@ -275,7 +276,7 @@ test("resets option-only New Task selections after Settings navigation", async (
       submittedBody = route.request().postDataJSON();
       return route.fulfill({ json: taskDetailFixture() });
     }
-    return route.fulfill({ json: { tasks: [], nextCursor: null } });
+    return route.fulfill({ json: activeTaskProjection() });
   });
 
   await page.goto("/tasks/new?cwd=src");
@@ -393,7 +394,7 @@ test("reconciles an option-only follow-up to canonical Normal after Task switchi
   await page.unroute("**/api/tasks");
   await page.route("**/api/tasks", (route) =>
     route.fulfill({
-      json: { tasks: [detailB.task, detailA.task], nextCursor: null },
+      json: activeTaskProjection([detailB.task, detailA.task]),
     }),
   );
   await page.route(/\/api\/tasks\/thread_option_[ab](?:\?|$)/, (route) => {
@@ -529,7 +530,7 @@ test("new task submission stays single-flight and restores local input after rej
   });
   await page.route("**/api/tasks", async (route) => {
     if (route.request().method() !== "POST") {
-      return route.fulfill({ json: { tasks: [], nextCursor: null } });
+      return route.fulfill({ json: activeTaskProjection() });
     }
     submittedBodies.push(route.request().postDataJSON());
     if (submittedBodies.length === 1) {
