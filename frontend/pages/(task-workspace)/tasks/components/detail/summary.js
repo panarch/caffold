@@ -1,6 +1,8 @@
 import { escapeHtml } from "../../../../../components/dom.js";
 import { cleanLogicalPath } from "../../task-format.js";
 import { taskThreadId } from "../../task-list-model.js";
+import "./summary/git.js";
+import "./summary/github.js";
 import "./summary/info.js";
 
 class CaffoldTaskDetailSummary extends HTMLElement {
@@ -13,6 +15,14 @@ class CaffoldTaskDetailSummary extends HTMLElement {
         "caffold:task-detail-info-intent",
         this.boundInfoIntent,
       );
+      this.addEventListener(
+        "caffold:task-detail-git-intent",
+        this.boundGitIntent,
+      );
+      this.addEventListener(
+        "caffold:task-detail-github-intent",
+        this.boundGithubIntent,
+      );
     }
     this.render();
   }
@@ -24,6 +34,14 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       this.removeEventListener(
         "caffold:task-detail-info-intent",
         this.boundInfoIntent,
+      );
+      this.removeEventListener(
+        "caffold:task-detail-git-intent",
+        this.boundGitIntent,
+      );
+      this.removeEventListener(
+        "caffold:task-detail-github-intent",
+        this.boundGithubIntent,
       );
     }
     this.deactivate();
@@ -48,6 +66,8 @@ class CaffoldTaskDetailSummary extends HTMLElement {
     this.listenersAttached = false;
     this.boundClick = (event) => this.handleClick(event);
     this.boundInfoIntent = (event) => this.handleInfoIntent(event);
+    this.boundGitIntent = (event) => this.handleGitIntent(event);
+    this.boundGithubIntent = (event) => this.handleGithubIntent(event);
   }
 
   setSnapshot(snapshot = {}) {
@@ -94,25 +114,14 @@ class CaffoldTaskDetailSummary extends HTMLElement {
     this.ensureState();
     this.active = false;
     this.taskInfo()?.deactivate();
+    this.git()?.deactivate();
+    this.github()?.deactivate();
   }
 
   handleClick(event) {
-    const reviewMenu = closestElement(event.target, ".task-review-menu");
-    for (const menu of this.querySelectorAll(".task-review-menu[open]")) {
-      if (menu !== reviewMenu) {
-        menu.removeAttribute("open");
-      }
-    }
-
     const action = closestElement(event.target, "[data-summary-action]");
     if (!action || action.matches(":disabled")) {
       return;
-    }
-    if (
-      action.dataset.summaryAction === "open-git-tool" ||
-      action.dataset.summaryAction === "open-github-tool"
-    ) {
-      action.closest("details")?.removeAttribute("open");
     }
     this.dispatchIntent({
       type: action.dataset.summaryAction,
@@ -130,6 +139,28 @@ class CaffoldTaskDetailSummary extends HTMLElement {
     }
     event.stopPropagation();
     this.dispatchIntent({ type: "archive" });
+  }
+
+  handleGitIntent(event) {
+    if (event.target !== this.git()) {
+      return;
+    }
+    event.stopPropagation();
+    this.dispatchIntent({
+      type: event.detail?.type,
+      reviewKind: event.detail?.reviewKind ?? null,
+    });
+  }
+
+  handleGithubIntent(event) {
+    if (event.target !== this.github()) {
+      return;
+    }
+    event.stopPropagation();
+    this.dispatchIntent({
+      type: event.detail?.type,
+      reviewKind: event.detail?.reviewKind ?? null,
+    });
   }
 
   dispatchIntent(detail) {
@@ -158,13 +189,16 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       <div class="task-detail-right">
         <div class="task-detail-actions">
           ${this.renderTaskModeSwitch(task)}
-          ${this.renderReviewMenus(task)}
+          <caffold-task-detail-git></caffold-task-detail-git>
+          <caffold-task-detail-github></caffold-task-detail-github>
         </div>
         <caffold-task-detail-info></caffold-task-detail-info>
       </div>
     `;
     this.renderedThreadId = taskThreadId(task);
     this.patchReviewView();
+    this.syncGit();
+    this.syncGithub();
     this.syncTaskInfo();
   }
 
@@ -177,7 +211,8 @@ class CaffoldTaskDetailSummary extends HTMLElement {
 
     setText(this.querySelector(".task-detail-heading h2"), `${task.title ?? ""}`);
     this.patchTaskModeSwitch();
-    this.patchReviewControls();
+    this.syncGit();
+    this.syncGithub();
     this.syncTaskInfo();
   }
 
@@ -244,84 +279,26 @@ class CaffoldTaskDetailSummary extends HTMLElement {
     });
   }
 
-  renderReviewMenus(task) {
-    return `${this.renderGitControl(task)}${this.renderGithubControl(task)}`;
+  syncGit() {
+    const available = Boolean(taskWorktreeRootPath(this.snapshot.task));
+    this.git()?.setSnapshot({ available });
   }
 
-  renderGitControl(task) {
-    if (!taskWorktreeRootPath(task)) {
-      return `<button type="button" class="task-brand-button" data-summary-review-control="git" data-summary-key="disabled" disabled title="Git and GitHub are unavailable outside a Git worktree">
-        <span class="task-brand-icon" data-brand="git" aria-hidden="true"></span>
-        <span class="sr-only">Git unavailable</span>
-      </button>`;
-    }
-    return `<details class="task-review-menu" data-review-menu="git" data-summary-review-control="git" data-summary-key="enabled">
-      <summary class="task-brand-button" title="Open Git workspace" aria-label="Open Git workspace">
-        <span class="task-brand-icon" data-brand="git" aria-hidden="true"></span>
-      </summary>
-      <div class="task-review-menu-popover" role="menu" aria-label="Git workspace">
-        <button type="button" role="menuitem" data-summary-action="open-git-tool" data-review-kind="compare">Compare</button>
-        <button type="button" role="menuitem" data-summary-action="open-git-tool" data-review-kind="log">Log</button>
-      </div>
-    </details>`;
-  }
-
-  renderGithubControl(task) {
-    const rootPath = taskWorktreeRootPath(task);
-    if (!rootPath) {
-      return `<button type="button" class="task-brand-button" data-summary-review-control="github" data-summary-key="disabled:no-worktree" disabled title="Git and GitHub are unavailable outside a Git worktree">
-        <span class="task-brand-icon" data-brand="github" aria-hidden="true"></span>
-        <span class="sr-only">GitHub unavailable</span>
-      </button>`;
-    }
-
-    return `<details class="task-review-menu" data-review-menu="github" data-summary-review-control="github" data-summary-key="enabled">
-      <summary class="task-brand-button" title="Open GitHub workspace" aria-label="Open GitHub workspace">
-        <span class="task-brand-icon" data-brand="github" aria-hidden="true"></span>
-      </summary>
-      <div class="task-review-menu-popover" role="menu" aria-label="GitHub workspace">
-        <button type="button" role="menuitem" data-summary-action="open-github-tool" data-review-kind="pulls">Pull Requests</button>
-        <button type="button" role="menuitem" data-summary-action="open-github-tool" data-review-kind="issues">Issues</button>
-      </div>
-    </details>`;
-  }
-
-  patchReviewControls() {
-    const task = this.snapshot.task;
-    const actions = this.querySelector(".task-detail-actions");
-    if (!task || !actions) {
-      return;
-    }
-
-    for (const [kind, markup] of [
-      ["git", this.renderGitControl(task)],
-      ["github", this.renderGithubControl(task)],
-    ]) {
-      const template = document.createElement("template");
-      template.innerHTML = markup.trim();
-      const nextControl = template.content.firstElementChild;
-      const currentControl = actions.querySelector(
-        `[data-summary-review-control="${kind}"]`,
-      );
-      if (
-        currentControl?.dataset.summaryKey === nextControl?.dataset.summaryKey
-      ) {
-        continue;
-      }
-      if (currentControl) {
-        currentControl.replaceWith(nextControl);
-      } else {
-        const previous =
-          kind === "github"
-            ? actions.querySelector('[data-summary-review-control="git"]')
-            : actions.querySelector(".task-mode-switch");
-        previous?.after(nextControl);
-      }
-    }
+  syncGithub() {
+    const available = Boolean(taskWorktreeRootPath(this.snapshot.task));
+    this.github()?.setSnapshot({ available });
   }
 
   taskInfo() {
     return this.querySelector("caffold-task-detail-info");
+  }
+
+  git() {
+    return this.querySelector("caffold-task-detail-git");
+  }
+
+  github() {
+    return this.querySelector("caffold-task-detail-github");
   }
 }
 

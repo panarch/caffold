@@ -195,7 +195,9 @@ test("keeps the task info leaf and popover stable across canonical sync", async 
   await page.goto(`/tasks/${threadId}`);
   const summary = page.locator("caffold-task-detail-summary");
   await expect(summary).toBeVisible();
-  await expect(summary.locator(".task-review-menu")).toHaveCount(2);
+  await expect(
+    summary.locator("caffold-task-detail-git, caffold-task-detail-github"),
+  ).toHaveCount(2);
   const taskDetailsButton = summary.getByRole("button", {
     name: /Task details/,
   });
@@ -273,6 +275,149 @@ test("keeps the task info leaf and popover stable across canonical sync", async 
     popoverBox.x + popoverBox.width + 1,
   );
   await captureReviewScreenshot(page, testInfo, "tasks-summary-live-popover");
+});
+
+test("uses light-dismiss review popovers and preserves them across same-Task sync", async ({
+  page,
+}) => {
+  const threadId = "thread_summary_review_popovers";
+  const task = summaryTask(
+    threadId,
+    "Stable review popovers",
+    "repo-review-popovers",
+    100,
+  );
+  await installSummaryFixture(page, [task]);
+
+  await page.goto(`/tasks/${threadId}`);
+  const summary = page.locator("caffold-task-detail-summary");
+  const gitTrigger = summary.getByRole("button", {
+    name: "Open Git workspace",
+  });
+  const githubTrigger = summary.getByRole("button", {
+    name: "Open GitHub workspace",
+  });
+  const infoTrigger = summary.getByRole("button", { name: /Task details/ });
+  const gitPopover = summary.locator(
+    "caffold-task-detail-git > .task-git-popover",
+  );
+  const githubPopover = summary.locator(
+    "caffold-task-detail-github > .task-github-popover",
+  );
+  const infoPopover = summary.locator(".task-detail-popover");
+
+  const [gitTarget, gitId, githubTarget, githubId] = await Promise.all([
+    gitTrigger.getAttribute("popovertarget"),
+    gitPopover.getAttribute("id"),
+    githubTrigger.getAttribute("popovertarget"),
+    githubPopover.getAttribute("id"),
+  ]);
+  expect(gitTarget).toBe(gitId);
+  expect(githubTarget).toBe(githubId);
+  await expect(gitPopover).toHaveAttribute("popover", "auto");
+  await expect(githubPopover).toHaveAttribute("popover", "auto");
+  await expect(gitPopover).toHaveAttribute("role", "group");
+  await expect(githubPopover).toHaveAttribute("role", "group");
+  await expect(summary.getByRole("menuitem", { includeHidden: true })).toHaveCount(
+    0,
+  );
+  await expect(gitPopover.locator(":scope > button")).toHaveCount(2);
+  await expect(githubPopover.locator(":scope > button")).toHaveCount(2);
+
+  await summary.evaluate((element) => {
+    const git = element.querySelector("caffold-task-detail-git");
+    const github = element.querySelector("caffold-task-detail-github");
+    window.__taskReviewPopoverNodes = {
+      git,
+      gitTrigger: git.querySelector(":scope > .task-git-button"),
+      gitPopover: git.querySelector(":scope > .task-git-popover"),
+      github,
+      githubTrigger: github.querySelector(":scope > .task-github-button"),
+      githubPopover: github.querySelector(":scope > .task-github-popover"),
+    };
+    window.__taskReviewSummaryIntents = [];
+    element.addEventListener("caffold:task-detail-summary-intent", (event) => {
+      window.__taskReviewSummaryIntents.push(event.detail?.type ?? null);
+    });
+  });
+
+  await gitTrigger.click();
+  await expect(gitPopover).toBeVisible();
+  await githubTrigger.click();
+  await expect(gitPopover).toBeHidden();
+  await expect(githubPopover).toBeVisible();
+  await infoTrigger.click();
+  await expect(githubPopover).toBeHidden();
+  await expect(infoPopover).toBeVisible();
+  await gitTrigger.click();
+  await expect(infoPopover).toBeHidden();
+  await expect(gitPopover).toBeVisible();
+
+  const renamedTask = {
+    ...task,
+    title: "Canonical review popover update",
+    updatedMs: task.updatedMs + 1,
+    recencyMs: task.recencyMs + 1,
+  };
+  await emitSummarySync(
+    page,
+    threadId,
+    summaryDetail(renamedTask, 2),
+    "review-popover-update",
+  );
+  await expect(summary.locator("h2")).toHaveText(
+    "Canonical review popover update",
+  );
+  await expect(gitPopover).toBeVisible();
+  expect(
+    await summary.evaluate((element) => {
+      const nodes = window.__taskReviewPopoverNodes;
+      const git = element.querySelector("caffold-task-detail-git");
+      const github = element.querySelector("caffold-task-detail-github");
+      return {
+        git: nodes.git === git,
+        gitTrigger:
+          nodes.gitTrigger === git.querySelector(":scope > .task-git-button"),
+        gitPopover:
+          nodes.gitPopover === git.querySelector(":scope > .task-git-popover"),
+        github: nodes.github === github,
+        githubTrigger:
+          nodes.githubTrigger ===
+          github.querySelector(":scope > .task-github-button"),
+        githubPopover:
+          nodes.githubPopover ===
+          github.querySelector(":scope > .task-github-popover"),
+      };
+    }),
+  ).toEqual({
+    git: true,
+    gitTrigger: true,
+    gitPopover: true,
+    github: true,
+    githubTrigger: true,
+    githubPopover: true,
+  });
+
+  const taskUrl = page.url();
+  await page.locator(".task-conversation-scroll").click({
+    position: { x: 8, y: 8 },
+  });
+  await expect(gitPopover).toBeHidden();
+  expect(page.url()).toBe(taskUrl);
+  expect(
+    await page.evaluate(() => window.__taskReviewSummaryIntents),
+  ).toEqual([]);
+
+  await gitTrigger.click();
+  const compareAction = gitPopover.getByRole("button", {
+    name: "Compare",
+    exact: true,
+  });
+  await compareAction.focus();
+  await expect(compareAction).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(gitPopover).toBeHidden();
+  await expect(gitTrigger).toBeFocused();
 });
 
 test("keeps the task info spinner stable across equivalent detail activity", async ({

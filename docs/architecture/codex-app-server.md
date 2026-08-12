@@ -283,9 +283,11 @@ state:
   revision, and a detail revision never advances or rejects a list revision.
 
 The remaining components project or collect UI state without acquiring Codex
-status ownership. `caffold-task-detail-summary` renders the Task header, owns
-its disclosure, and raises review/interrupt intents without executing Codex or
-GitHub requests.
+status ownership. `caffold-task-detail-summary` renders the Task header,
+composes its controls, and raises review/interrupt intents without executing
+Codex or GitHub requests. The `caffold-task-detail-git` and
+`caffold-task-detail-github` leaf components each own their native popover
+invoker, action surface, disclosure state, and action intent.
 `caffold-task-conversation` renders the canonical task and events and may
 request older history or approval actions through intents.
 `caffold-task-composer` owns draft, image, picker, and focus state, but emits a

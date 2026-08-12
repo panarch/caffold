@@ -249,6 +249,24 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/detail/summary.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/detail/summary.js"
         ))),
+        "pages/(task-workspace)/tasks/components/detail/summary/git.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/summary/git.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/summary/git.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/detail/summary/git.js"
+        ))),
+        "pages/(task-workspace)/tasks/components/detail/summary/github.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/summary/github.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/summary/github.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/summary/github.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/components/detail/summary/info.css" => {
             Some(css(include_str!(
                 "../frontend/pages/(task-workspace)/tasks/components/detail/summary/info.css"
@@ -660,6 +678,33 @@ mod tests {
                 .body
                 .starts_with(b"export const REVIEW_SINGLE_PANE_MAX_WIDTH_PX")
         );
+
+        for path in [
+            "pages/(task-workspace)/tasks/components/detail/summary/git.js",
+            "pages/(task-workspace)/tasks/components/detail/summary/github.js",
+        ] {
+            let task_button_js = get(path).expect("Task button js asset");
+            assert_eq!(
+                task_button_js.content_type,
+                "text/javascript; charset=utf-8"
+            );
+            assert!(task_button_js.body.starts_with(b"const "));
+        }
+
+        for (path, owner) in [
+            (
+                "pages/(task-workspace)/tasks/components/detail/summary/git.css",
+                b"caffold-task-detail-git".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/components/detail/summary/github.css",
+                b"caffold-task-detail-github".as_slice(),
+            ),
+        ] {
+            let task_button_css = get(path).expect("Task button css asset");
+            assert_eq!(task_button_css.content_type, "text/css; charset=utf-8");
+            assert!(task_button_css.body.starts_with(owner));
+        }
 
         assert!(get("pages/components/header-actions.js").is_none());
         assert!(get("pages/components/app-menu.js").is_none());

@@ -260,8 +260,8 @@ function taskInterfaceMetrics(page) {
       newTask: document.querySelector(
         "caffold-task-navigator .task-list-new-task",
       ),
-      git: activeDetail.querySelectorAll(".task-brand-button")[0],
-      github: activeDetail.querySelectorAll(".task-brand-button")[1],
+      git: activeDetail.querySelector(".task-git-button"),
+      github: activeDetail.querySelector(".task-github-button"),
       archive: activeDetail.querySelector(
         ".task-detail-popover:popover-open .task-detail-archive-action .task-secondary-button",
       ),

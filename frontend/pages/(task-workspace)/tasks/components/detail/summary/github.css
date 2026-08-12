@@ -1,0 +1,106 @@
+caffold-task-detail-github {
+  position: relative;
+  display: grid;
+  flex: 0 0 auto;
+  height: var(--interface-compact-visual-size);
+  place-items: center;
+
+  & > .task-github-button {
+    position: relative;
+    display: inline-grid;
+    width: var(--interface-compact-hit-size);
+    height: var(--interface-compact-hit-size);
+    margin-block: calc(0rem - var(--interface-compact-hit-outset));
+    padding: 0;
+    place-items: center;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    anchor-name: --task-review-github;
+  }
+
+  & > .task-github-button:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+
+  & .task-github-icon {
+    position: absolute;
+    inset: 50% auto auto 50%;
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+    background-image: var(--brand-github-image);
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: contain;
+    transform: translate(-50%, -50%);
+  }
+
+  & > .task-github-button:hover,
+  & > .task-github-button:focus-visible {
+    outline: none;
+  }
+
+  &:has(> .task-github-popover:popover-open) > .task-github-button::before {
+    border-color: var(--border-strong);
+    background: var(--surface-muted);
+  }
+
+  & > .task-github-popover {
+    position: fixed;
+    z-index: 8;
+    inset: auto;
+    position-anchor: --task-review-github;
+    position-area: block-end center;
+    position-try-fallbacks: flip-block;
+    width: 10.5rem;
+    margin: var(--interface-space-3) var(--interface-space-5);
+    padding: 0.25rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    box-shadow: 0 12px 30px rgb(var(--shadow-rgb) / 16%);
+  }
+
+  & > .task-github-popover:popover-open {
+    display: grid;
+  }
+
+  & > .task-github-popover button {
+    box-sizing: border-box;
+    height: var(--interface-compact-control-size);
+    min-height: var(--interface-compact-control-size);
+    padding: 0 var(--interface-space-5);
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  & > .task-github-popover button:hover,
+  & > .task-github-popover button:focus-visible {
+    background: var(--control-hover-bg);
+    outline: none;
+  }
+
+  & > .task-github-button::before {
+    position: absolute;
+    inset: var(--interface-compact-hit-outset);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    content: "";
+  }
+
+  & > .task-github-button:hover::before,
+  & > .task-github-button:focus-visible::before {
+    border-color: var(--border-strong);
+    background: var(--surface-muted);
+  }
+}

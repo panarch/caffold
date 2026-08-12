@@ -16,13 +16,26 @@ test("keeps Task tool menus above active Review controls", async ({ page }) => {
     ["Git", "Compare"],
     ["GitHub", "Pull Requests"],
   ]) {
-    await summary
-      .locator(`summary[aria-label="Open ${workspace} workspace"]`)
-      .click();
-    const menuAction = summary.getByRole("menuitem", { name: action, exact: true });
+    const trigger = summary.getByRole("button", {
+      name: `Open ${workspace} workspace`,
+    });
+    await trigger.click();
+    const menuAction = summary.getByRole("button", { name: action, exact: true });
+    const popover = menuAction.locator("..");
     await expect(menuAction).toBeVisible();
     await menuAction.click({ trial: true });
+    const [triggerBox, popoverBox] = await Promise.all([
+      trigger.boundingBox(),
+      popover.boundingBox(),
+    ]);
+    expect(triggerBox).not.toBeNull();
+    expect(popoverBox).not.toBeNull();
+    expect(popoverBox.x).toBeGreaterThanOrEqual(7);
+    expect(popoverBox.x + popoverBox.width).toBeLessThanOrEqual(
+      page.viewportSize().width - 7,
+    );
     await page.keyboard.press("Escape");
+    await expect(popover).toBeHidden();
   }
 });
 
@@ -128,7 +141,7 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
       ".task-review-viewer-axis .task-review-axis-options",
     );
     const summary = document.querySelector("caffold-task-detail-summary");
-    const github = [...summary.querySelectorAll(".task-brand-button")].at(-1);
+    const github = summary.querySelector(".task-github-button");
     const summaryInfo = summary.querySelector(".task-detail-info-button");
     const visualBounds = (element, pseudo) => {
       const rect = element.getBoundingClientRect();
