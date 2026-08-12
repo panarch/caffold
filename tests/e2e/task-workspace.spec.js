@@ -29,7 +29,56 @@ test("navigates Settings as responsive master-detail pages with browser history"
 
   await expect(listPane).toBeVisible();
   await expect(navigation).toBeVisible();
+  const workspaceBrand = taskWorkspace.locator(
+    "caffold-settings-navigator caffold-workspace-brand",
+  );
+  await expect(workspaceBrand.locator(".workspace-brand-title")).toHaveText(
+    "Caffold",
+  );
+  await expect(workspaceBrand.locator(".workspace-brand-icon")).toHaveAttribute(
+    "src",
+    "/assets/icons/favicon-32.png",
+  );
   await expect(taskWorkspace.getByText("Local to this browser")).toHaveCount(0);
+  const settingsHeaderTypography = await taskWorkspace.evaluate((element) => {
+    const rootFontSize = Number.parseFloat(
+      getComputedStyle(document.documentElement).fontSize,
+    );
+    const brandTitle = element.querySelector(
+      "caffold-settings-navigator .workspace-brand-title",
+    );
+    const brandIcon = element.querySelector(
+      "caffold-settings-navigator .workspace-brand-icon",
+    );
+    const detailTitle = element.querySelector(
+      ".settings-workspace-detail-header h1",
+    );
+    return {
+      rootFontSize,
+      brandTitleSize: Number.parseFloat(getComputedStyle(brandTitle).fontSize),
+      brandIconWidth: Number.parseFloat(getComputedStyle(brandIcon).width),
+      brandIconOffsetY: new DOMMatrixReadOnly(
+        getComputedStyle(brandIcon).transform,
+      ).m42,
+      detailTitleSize: Number.parseFloat(getComputedStyle(detailTitle).fontSize),
+    };
+  });
+  expect(settingsHeaderTypography.brandTitleSize).toBeCloseTo(
+    settingsHeaderTypography.rootFontSize * 0.8125,
+    2,
+  );
+  expect(settingsHeaderTypography.detailTitleSize).toBeCloseTo(
+    settingsHeaderTypography.brandTitleSize,
+    2,
+  );
+  expect(settingsHeaderTypography.brandIconWidth).toBeCloseTo(
+    settingsHeaderTypography.rootFontSize * 1.25,
+    2,
+  );
+  expect(settingsHeaderTypography.brandIconOffsetY).toBeCloseTo(
+    settingsHeaderTypography.rootFontSize * -0.0625,
+    2,
+  );
   const rootGeometry = await taskWorkspace.evaluate((element) => {
     const list = element.querySelector(".task-workspace-master-pane");
     const navigator = element.querySelector("caffold-settings-navigator");
@@ -75,6 +124,11 @@ test("navigates Settings as responsive master-detail pages with browser history"
     detailFillsWorkspace: true,
     settingsHeadersAlign: true,
   });
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "settings-workspace-header-chrome",
+  );
   if (testInfo.project.name === "phone") {
     await expect(workspace).toHaveAttribute("data-settings-view", "list");
     await expect(detailPane).toBeHidden();

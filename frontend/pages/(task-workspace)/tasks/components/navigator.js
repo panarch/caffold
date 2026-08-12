@@ -7,6 +7,7 @@ import {
 } from "../../../../api.js";
 import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
+import "../../components/workspace-brand.js";
 import {
   TASK_TRANSPORT_STATE,
   isTaskTransportStale,
@@ -28,6 +29,7 @@ import {
   patchTaskStatusChip,
   renderTaskStatusChip,
 } from "./task-status.js";
+import "./task-transport-overlay.js";
 
 const UNSEEN_ATTENTION_PHASE_COUNT = 8;
 const UNSEEN_ATTENTION_PHASE_INTERVAL_MS = 300;
@@ -258,6 +260,11 @@ class CaffoldTaskNavigator extends HTMLElement {
     return !isTaskTransportStale(this.streamState);
   }
 
+  retryStream() {
+    this.ensureState();
+    this.taskListStream.retry();
+  }
+
   handleClick(event) {
     const action = event.target instanceof Element
       ? event.target.closest("[data-task-action]")
@@ -279,8 +286,6 @@ class CaffoldTaskNavigator extends HTMLElement {
       void this.loadArchived({ force: true });
     } else if (action.dataset.taskAction === "retry-task-list") {
       void this.loadTasks({ force: true });
-    } else if (action.dataset.taskAction === "retry-task-stream") {
-      this.taskListStream.retry();
     } else if (action.dataset.taskAction === "restore-archived-task") {
       void this.restoreThread(threadId);
     } else if (action.dataset.taskAction === "delete-archived-task") {
@@ -593,6 +598,8 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.ensureState();
     const scrollTop = this.querySelector(".task-list-scroll")?.scrollTop ?? 0;
     this.innerHTML = `
+      ${this.renderPrimaryHeader()}
+      ${this.renderAvailability()}
       <div class="task-list-scroll">
         ${this.renderSection("Caffold Tasks", this.tasks, "managed")}
         ${this.renderSection("Archived", this.archivedTasks, "archived")}
@@ -605,6 +612,39 @@ class CaffoldTaskNavigator extends HTMLElement {
     }
     this.syncSelection();
     this.publishListState();
+  }
+
+  renderPrimaryHeader() {
+    return `
+      <header class="task-list-section-header task-list-primary-header">
+        <caffold-workspace-brand></caffold-workspace-brand>
+        <button
+          type="button"
+          class="task-list-new-task"
+          data-task-action="open-new"
+          aria-label="New Task"
+          title="New Task"
+        >${renderInlineIcon("Plus", "New task", "task-action-icon")}</button>
+      </header>
+    `;
+  }
+
+  renderAvailability() {
+    if (!isTaskTransportStale(this.streamState)) {
+      return "";
+    }
+    return `
+      <caffold-task-transport-overlay
+        class="task-list-availability"
+        state="${escapeHtml(this.streamState)}"
+        message="${
+          this.streamState === TASK_TRANSPORT_STATE.RECONNECTING
+            ? "Reconnecting to Caffold server..."
+            : "Caffold server unavailable."
+        }"
+        data-task-list-availability="${escapeHtml(this.streamState)}"
+      ></caffold-task-transport-overlay>
+    `;
   }
 
   listState() {
@@ -644,34 +684,19 @@ class CaffoldTaskNavigator extends HTMLElement {
     const error = archived
       ? this.archivedTaskError
       : this.taskListError;
-    const availability =
-      kind === "managed" && isTaskTransportStale(this.streamState)
-        ? `<div class="task-list-availability" data-task-list-availability="${escapeHtml(this.streamState)}" role="status">
-            <span>${
-              this.streamState === TASK_TRANSPORT_STATE.RECONNECTING
-                ? "Reconnecting to Caffold server..."
-                : "Caffold server unavailable."
-            }</span>
-            ${
-              this.streamState === TASK_TRANSPORT_STATE.UNAVAILABLE
-                ? `<button type="button" class="task-secondary-button" data-task-action="retry-task-stream">Retry</button>`
-                : ""
-            }
-          </div>`
-        : "";
     const tasks = sortTasksByRecency(entries);
     const pagination = archived
       ? this.renderArchivedPagination()
       : this.renderTaskPagination();
-    const headerAction = archived
-      ? `<span>${tasks.length}</span>`
-      : `<button
-          type="button"
-          class="task-list-new-task"
-          data-task-action="open-new"
-          aria-label="New Task"
-          title="New Task"
-        >${renderInlineIcon("Plus", "New task", "task-action-icon")}</button>`;
+    const header = archived
+      ? `<header class="task-list-section-header">
+          <h2>${escapeHtml(title)}</h2>
+          <span class="task-list-section-count">${tasks.length}</span>
+        </header>`
+      : "";
+    const sectionLabel = archived
+      ? ""
+      : ' aria-label="Caffold Tasks"';
     let content;
 
     if (loading && !tasks.length) {
@@ -695,12 +720,8 @@ class CaffoldTaskNavigator extends HTMLElement {
     }
 
     return `
-      <section class="task-list-section" data-task-section="${escapeHtml(kind)}">
-        <header class="task-list-section-header">
-          <h2>${escapeHtml(title)}</h2>
-          ${headerAction}
-        </header>
-        ${availability}
+      <section class="task-list-section" data-task-section="${escapeHtml(kind)}"${sectionLabel}>
+        ${header}
         ${content}
         ${pagination}
       </section>

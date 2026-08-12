@@ -20,6 +20,21 @@ export function isTaskTransportStale(state) {
   ].includes(state);
 }
 
+export function retryStaleTaskTransports(transports = []) {
+  let retried = 0;
+  for (const transport of transports) {
+    if (
+      !isTaskTransportStale(transport?.state) ||
+      typeof transport?.retry !== "function"
+    ) {
+      continue;
+    }
+    transport.retry();
+    retried += 1;
+  }
+  return retried;
+}
+
 export function taskTransportStatusView(state) {
   return {
     [TASK_TRANSPORT_STATE.RECONNECTING]: {

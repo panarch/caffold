@@ -1,14 +1,9 @@
 caffold-task-detail {
   --task-detail-header-padding-inline: var(--interface-space-7);
-  --task-detail-header-title-size: 0.875rem;
+  --task-detail-header-title-size: var(--workspace-header-title-size);
 
   & .task-conversation-pane {
     font-size: var(--interface-font-size);
-    line-height: var(--interface-line-height);
-  }
-
-  & .task-stream-state {
-    font-size: var(--interface-meta-font-size);
     line-height: var(--interface-line-height);
   }
 
@@ -62,61 +57,10 @@ caffold-task-detail {
     line-height: var(--interface-line-height);
   }
 
-  & .task-stream-state {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.4375rem;
-    min-height: var(--interface-compact-control-size);
-    padding: 0.3125rem 0.75rem;
-    border-top: 1px solid var(--warning-border);
-    background: var(--warning-soft);
-    color: var(--muted);
-  }
-
-  & .task-stream-state[data-stream-state="unavailable"] {
-    color: var(--warning);
-  }
-
-  & .task-stream-state button {
-    position: relative;
-    min-height: var(--interface-compact-visual-size);
-    padding: 0.125rem 0.4375rem;
-    border: 1px solid currentColor;
-    border-radius: 5px;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    cursor: pointer;
-  }
-
-  & .task-stream-state button::before {
-    position: absolute;
-    inset: calc(0px - var(--interface-compact-hit-outset)) 0;
-    content: "";
-  }
-
-  & .task-stream-icon,
-  & .task-stream-spinner {
-    width: var(--interface-icon-small-size);
-    height: var(--interface-icon-small-size);
-    flex: 0 0 var(--interface-icon-small-size);
-  }
-
-  & .task-stream-spinner {
-    box-sizing: border-box;
-    border: 2px solid currentColor;
-    border-right-color: transparent;
-    border-radius: 50%;
-    animation: task-status-spin 800ms linear infinite;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  caffold-task-detail {
-    & .task-stream-spinner {
-      animation: none;
-    }
+  & .task-conversation-pane > caffold-task-transport-overlay.task-stream-state {
+    top: var(--interface-space-4);
+    left: 50%;
+    transform: translateX(-50%);
   }
 }
 
@@ -138,8 +82,9 @@ caffold-task-detail {
   }
 
   & .task-conversation-pane {
+    position: relative;
     display: grid;
-    grid-template-rows: minmax(0, 1fr) auto auto;
+    grid-template-rows: minmax(0, 1fr) auto;
     min-height: 0;
     overflow: hidden;
   }

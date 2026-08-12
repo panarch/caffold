@@ -1,4 +1,5 @@
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
+import "../../components/workspace-brand.js";
 import {
   APPEARANCE_SETTINGS,
   DEFAULT_SETTINGS,
@@ -116,7 +117,7 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
             `
               <div class="settings-interface-preview" aria-label="Interface preview">
                 <div class="settings-interface-preview-section-header">
-                  <strong>Caffold Tasks</strong>
+                  <caffold-workspace-brand></caffold-workspace-brand>
                   <span class="settings-interface-preview-new-task" aria-hidden="true">
                     ${renderInlineIcon("Plus", "", "settings-preview-action-icon")}
                   </span>

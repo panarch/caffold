@@ -246,13 +246,18 @@ test("structural shadows separate fixed regions from floating elevation", () => 
   );
   assert.deepEqual(
     tokenConsumers(sources, /var\(--structural-shadow-panel\)/),
-    ["pages/(task-workspace)/tasks/components/composer.css"],
+    [
+      "pages/(task-workspace)/tasks/components/composer.css",
+      "pages/(task-workspace)/tasks/components/task-transport-overlay.css",
+    ],
   );
   assert.deepEqual(
     tokenConsumers(sources, /var\(--structural-shadow-block-end\)/),
     [
       "pages/(task-workspace)/settings/layout.css",
+      "pages/(task-workspace)/settings/navigator.css",
       "pages/(task-workspace)/tasks/components/detail/summary.css",
+      "pages/(task-workspace)/tasks/components/navigator.css",
     ],
   );
   assert.deepEqual(
@@ -330,6 +335,128 @@ test("unseen completion attention blinks the marker without hiding it", () => {
     navigatorView,
     /style="--task-unseen-attention-delay: \$\{attentionDelayMs\}ms"/,
   );
+});
+
+test("workspace header identity and titles share semantic ownership", () => {
+  const tokens = readFrontend("styles.css");
+  const brand = readFrontend(
+    "pages/(task-workspace)/components/workspace-brand.css",
+  );
+  const brandView = readFrontend(
+    "pages/(task-workspace)/components/workspace-brand.js",
+  );
+  const taskNavigator = readFrontend(
+    "pages/(task-workspace)/tasks/components/navigator.css",
+  );
+  const taskNavigatorView = readFrontend(
+    "pages/(task-workspace)/tasks/components/navigator.js",
+  );
+  const detail = readFrontend(
+    "pages/(task-workspace)/tasks/components/detail.css",
+  );
+  const settingsNavigator = readFrontend(
+    "pages/(task-workspace)/settings/navigator.css",
+  );
+  const settingsNavigatorView = readFrontend(
+    "pages/(task-workspace)/settings/navigator.js",
+  );
+  const settingsLayout = readFrontend(
+    "pages/(task-workspace)/settings/layout.css",
+  );
+  const appearanceView = readFrontend(
+    "pages/(task-workspace)/settings/appearance/page.js",
+  );
+
+  assert.match(tokens, /--workspace-header-title-size: 0\.8125rem/);
+  cssBlockMatching(brand, "caffold-workspace-brand", [
+    /gap: var\(--interface-space-3\)/,
+    /color: var\(--muted\)/,
+  ]);
+  cssBlockMatching(brand, ".workspace-brand-icon", [
+    /width: 1\.25rem/,
+    /height: 1\.25rem/,
+    /transform: translateY\(-0\.0625rem\)/,
+  ]);
+  cssBlockMatching(brand, ".workspace-brand-title", [
+    /font-size: var\(--workspace-header-title-size\)/,
+    /text-overflow: ellipsis/,
+    /white-space: nowrap/,
+  ]);
+  assert.match(
+    brandView,
+    /customElements\.define\("caffold-workspace-brand"/,
+  );
+  assert.match(taskNavigatorView, /<caffold-workspace-brand>/);
+  assert.match(settingsNavigatorView, /<caffold-workspace-brand>/);
+  assert.match(appearanceView, /<caffold-workspace-brand>/);
+  assert.doesNotMatch(taskNavigator, /task-list-primary-(?:brand|icon)/);
+  assert.doesNotMatch(settingsNavigator, /settings-navigator-header (?:img|strong)/);
+  cssBlockMatching(settingsNavigator, ".settings-navigator-header", [
+    /height: var\(--task-workspace-header-size\)/,
+    /padding: 0 var\(--interface-space-6\)/,
+    /box-shadow: var\(--structural-shadow-block-end\)/,
+  ]);
+  assert.match(
+    detail,
+    /--task-detail-header-title-size: var\(--workspace-header-title-size\)/,
+  );
+  assert.match(
+    settingsLayout,
+    /--settings-page-title-size: var\(--workspace-header-title-size\)/,
+  );
+});
+
+test("Task transport overlay owns shared chrome without owning parent placement", () => {
+  const overlay = readFrontend(
+    "pages/(task-workspace)/tasks/components/task-transport-overlay.css",
+  );
+  const workspace = readFrontend("pages/(task-workspace)/layout.css");
+  const navigator = readFrontend(
+    "pages/(task-workspace)/tasks/components/navigator.css",
+  );
+  const detail = readFrontend(
+    "pages/(task-workspace)/tasks/components/detail.css",
+  );
+
+  cssBlockMatching(overlay, "caffold-task-transport-overlay", [
+    /position: absolute/,
+    /width: max-content/,
+    /max-width: calc\(100% - var\(--interface-space-12\)\)/,
+    /background: var\(--warning-soft\)/,
+    /box-shadow: var\(--structural-shadow-panel\)/,
+  ]);
+  cssBlockMatching(navigator, "caffold-task-navigator", [
+    /position: relative/,
+    /display: grid/,
+    /grid-template-rows:/,
+    /minmax\(0, 1fr\)/,
+  ]);
+  cssBlockMatching(navigator, ".task-list-scroll", [
+    /min-height: 0/,
+    /overflow: auto/,
+  ]);
+  cssBlockMatching(navigator, ".task-list-primary-header", [
+    /border-bottom: 1px solid var\(--border\)/,
+    /box-shadow: var\(--structural-shadow-block-end\)/,
+  ]);
+  assert.match(
+    workspace,
+    /--task-navigator-scroll-padding-top: var\(--interface-space-3\)/,
+  );
+  cssBlockMatching(navigator, ".task-list-availability", [
+    /top: calc\(/,
+    /left: 50%/,
+    /transform: translateX\(-50%\)/,
+  ]);
+  cssBlockMatching(detail, ".task-conversation-pane", [
+    /position: relative/,
+    /grid-template-rows: minmax\(0, 1fr\) auto/,
+  ]);
+  cssBlockMatching(detail, ".task-stream-state", [
+    /top: var\(--interface-space-4\)/,
+    /left: 50%/,
+    /transform: translateX\(-50%\)/,
+  ]);
 });
 
 test("component styles do not own literal colors", () => {
@@ -430,7 +557,11 @@ test("Settings roles share inherited constraints without sharing leaf selectors"
   );
   assert.match(appearancePage, /settings-interface-preview-section-header/);
   assert.match(appearancePage, /settings-interface-preview-repository/);
-  assert.match(appearancePage, />Caffold Tasks</);
+  assert.match(
+    appearancePage,
+    /<caffold-workspace-brand><\/caffold-workspace-brand>/,
+  );
+  assert.doesNotMatch(appearancePage, /icons\/favicon-32\.png/);
   assert.doesNotMatch(appearancePage, />Open</);
 
   cssBlockMatching(

@@ -1,0 +1,25 @@
+caffold-workspace-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--interface-space-3);
+  min-width: 0;
+  color: var(--muted);
+
+  & .workspace-brand-icon {
+    display: block;
+    flex: 0 0 1.25rem;
+    width: 1.25rem;
+    height: 1.25rem;
+    transform: translateY(-0.0625rem);
+  }
+
+  & .workspace-brand-title {
+    min-width: 0;
+    overflow: hidden;
+    font-size: var(--workspace-header-title-size);
+    font-weight: 700;
+    line-height: var(--interface-line-height);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
