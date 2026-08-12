@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CodexStatusLifecycle } from "../frontend/pages/(task-workspace)/codex-status.js";
+import {
+  CodexStatusLifecycle,
+  PENDING_CODEX_TASK_OPERATIONS,
+  codexTaskOperationsPresentation,
+} from "../frontend/pages/(task-workspace)/codex-status.js";
 
 function deferred() {
   let resolve;
@@ -31,6 +35,53 @@ function codexStatus(state, blocksTaskOperations = state !== "ready") {
     },
   };
 }
+
+test("Codex Task operations use one fail-closed presentation snapshot", () => {
+  const pending = codexTaskOperationsPresentation(null);
+  const checkFailed = codexTaskOperationsPresentation({
+    readiness: null,
+    readinessLoadError: "status unavailable",
+  });
+  const blocking = codexTaskOperationsPresentation(
+    codexStatus("updateRequired"),
+  );
+  const ready = codexTaskOperationsPresentation(
+    codexStatus("restartRequired", false),
+  );
+  const inconsistentReady = codexTaskOperationsPresentation(
+    codexStatus("ready", true),
+  );
+
+  assert.deepEqual(
+    [pending, checkFailed, blocking, ready, inconsistentReady].map((view) => ({
+      phase: view.phase,
+      blocked: view.blocked,
+      title: view.title,
+    })),
+    [
+      {
+        phase: "pending",
+        blocked: true,
+        title: "Checking Codex readiness…",
+      },
+      {
+        phase: "checkFailed",
+        blocked: true,
+        title: "Codex readiness check failed",
+      },
+      {
+        phase: "blocking",
+        blocked: true,
+        title: "Codex update required",
+      },
+      { phase: "ready", blocked: false, title: "New Task" },
+      { phase: "blocking", blocked: true, title: "Codex unavailable" },
+    ],
+  );
+  assert.strictEqual(pending, PENDING_CODEX_TASK_OPERATIONS);
+  assert.equal(Object.isFrozen(pending), true);
+  assert.equal(Object.isFrozen(blocking), true);
+});
 
 test("Codex status owns one restart request and refreshes canonical readiness", async () => {
   let status = codexStatus("restartRequired");

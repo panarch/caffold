@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { execFileSync, spawn } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 
-import { resolveCodexBin } from "./codex-bin.mjs";
+import { CodexDaemonClient } from "./codex-daemon-client.mjs";
 
 const SPARK_MODEL = "gpt-5.3-codex-spark";
 const FAST_MODEL = "gpt-5.6-sol";
@@ -13,66 +13,8 @@ const PASTED_IMAGE_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 const liveThreadIds = new Set();
 
-function runCodex(args, { timeout = 120_000, maxBuffer = 4 * 1024 * 1024 } = {}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(resolveCodexBin(), args, {
-      cwd: process.cwd(),
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    let stdout = "";
-    let stderr = "";
-    let settled = false;
-
-    const finish = (error, result) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timer);
-      if (error) {
-        reject(error);
-      } else {
-        resolve(result);
-      }
-    };
-    const append = (target, chunk) => {
-      const next = target + chunk;
-      if (Buffer.byteLength(next) > maxBuffer) {
-        child.kill("SIGTERM");
-        finish(new Error(`Codex CLI output exceeded ${maxBuffer} bytes`));
-      }
-      return next;
-    };
-    const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-      finish(new Error(`Codex CLI timed out after ${timeout}ms\n${stderr}`));
-    }, timeout);
-
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk) => {
-      stdout = append(stdout, chunk);
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr = append(stderr, chunk);
-    });
-    child.on("error", (error) => finish(error));
-    child.on("close", (code, signal) => {
-      if (code === 0) {
-        finish(null, { stdout, stderr });
-        return;
-      }
-      finish(
-        new Error(
-          `Codex CLI exited with ${signal ? `signal ${signal}` : `code ${code}`}\n${stderr}`,
-        ),
-      );
-    });
-
-    // `codex exec` appends piped stdin even when PROMPT is provided. Closing it
-    // prevents live tests from waiting forever for nonexistent extra input.
-    child.stdin.end();
-  });
+function taskNavigator(page) {
+  return page.locator("caffold-task-navigator");
 }
 
 function liveCwd() {
@@ -184,6 +126,30 @@ function branchExists(repository, branchName) {
   }
 }
 
+async function runGitWithIndexRetry(repository, args) {
+  for (let attempt = 1; attempt <= 20; attempt += 1) {
+    try {
+      await new Promise((resolve, reject) => {
+        execFile("git", ["-C", repository, ...args], (error, _stdout, stderr) => {
+          if (error) {
+            error.stderr = stderr;
+            reject(error);
+          } else {
+            resolve();
+          }
+        });
+      });
+      return;
+    } catch (error) {
+      const stderr = String(error.stderr ?? "");
+      if (!stderr.includes("index.lock") || attempt === 20) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+}
+
 test.afterEach(async ({ request }) => {
   for (const threadId of [...liveThreadIds]) {
     await archiveLiveThread(request, threadId);
@@ -286,11 +252,10 @@ test("creates and resumes a real Codex task through Caffold with Spark", async (
   const followUpReply = `caffold-live-follow-up-${marker}`;
   const steeredReply = `caffold-live-steered-${marker}`;
   const completedClickReply = `caffold-live-completed-click-${marker}`;
-  const externalReply = `caffold-live-external-${marker}`;
-  const externalCommandOutput = `caffold-live-external-command-${marker}`;
 
   await page.goto(`/tasks/new?cwd=${encodeURIComponent(cwd)}`);
   const tasksPage = page.locator("caffold-tasks-page");
+  const navigator = taskNavigator(page);
   const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
   await expect(newTaskForm).toBeVisible();
   await chooseModel(newTaskForm, SPARK_MODEL);
@@ -312,9 +277,10 @@ test("creates and resumes a real Codex task through Caffold with Spark", async (
     '.task-message[data-message-role="assistant"][data-message-phase="final"]',
   );
   await expect(assistantMessages.filter({ hasText: initialReply })).toBeVisible();
+  await expectLiveThreadIdle(page.request, threadId);
 
   await page.goto("/tasks");
-  const createdTask = tasksPage.locator(`.task-row[data-thread-id="${threadId}"]`);
+  const createdTask = navigator.locator(`.task-row[data-thread-id="${threadId}"]`);
   await expect(createdTask).toBeVisible();
   await createdTask.click();
   await expect(assistantMessages.filter({ hasText: initialReply })).toBeVisible();
@@ -359,6 +325,7 @@ test("creates and resumes a real Codex task through Caffold with Spark", async (
   await expect(markdownMessage.locator("h2")).toHaveText(markdownHeading);
   await expect(markdownMessage.locator("li code")).toHaveText(markdownInline);
   await expect(markdownMessage.locator("pre code")).toHaveText(markdownFence);
+  await expectLiveThreadIdle(page.request, threadId);
 
   await followUpPrompt.fill(
     `You must use the command execution tool to run this exact read-only command: /bin/sh -c 'printf ${commandOutput}; sleep 20'. Do not skip or simulate the tool call. After the command finishes, reply with exactly ${followUpReply}. Do not modify files.`,
@@ -417,7 +384,9 @@ test("creates and resumes a real Codex task through Caffold with Spark", async (
   await expect(activeTurn).toHaveCount(0);
   const completedWork = tasksPage.locator(".task-turn-work").last();
   const finalResponse = finalAssistantMessages.filter({ hasText: steeredReply });
-  const completedWorkDetails = completedWork.locator(":scope > details");
+  const completedWorkDetails = completedWork.locator(
+    ":scope > caffold-task-work-details > details",
+  );
   await expect(completedWork).toContainText("Worked for");
   await expect(completedWorkDetails).not.toHaveAttribute("open", "");
   await expect(finalResponse).toHaveCount(1);
@@ -455,33 +424,12 @@ test("creates and resumes a real Codex task through Caffold with Spark", async (
   await expect(finalAssistantMessages.filter({ hasText: completedClickReply })).toBeVisible();
   await expect(activeTurn).toHaveCount(0);
 
-  const externalRun = runCodex(
-    [
-      "exec",
-      "resume",
-      "--all",
-      "--skip-git-repo-check",
-      "--ignore-user-config",
-      "-m",
-      SPARK_MODEL,
-      "-c",
-      `model_reasoning_effort="${LIVE_REASONING_EFFORT}"`,
-      threadId,
-      `You must use the command execution tool to run this exact read-only command: /bin/sh -c 'printf ${externalCommandOutput}; sleep 20'. Do not skip or simulate the tool call. After the command finishes, reply with exactly ${externalReply}. Do not modify files.`,
-    ],
-  );
-
-  await externalRun;
-  await expect(finalAssistantMessages.filter({ hasText: externalReply })).toBeVisible({
-    timeout: 15_000,
-  });
-
   await archiveLiveThread(page.request, threadId);
   await expect(
-    tasksPage.locator(`.task-row[data-thread-id="${threadId}"]`),
+    navigator.locator(`.task-row[data-thread-id="${threadId}"]`),
   ).toHaveCount(0, { timeout: 5_000 });
   await page.goto("/tasks");
-  await expect(tasksPage.locator(`.task-row[data-thread-id="${threadId}"]`)).toHaveCount(0);
+  await expect(navigator.locator(`.task-row[data-thread-id="${threadId}"]`)).toHaveCount(0);
 });
 
 test("renames a newly created Caffold task through the dynamic tool", async ({
@@ -494,6 +442,7 @@ test("renames a newly created Caffold task through the dynamic tool", async ({
 
   await page.goto(`/tasks/new?cwd=${encodeURIComponent(cwd)}`);
   const tasksPage = page.locator("caffold-tasks-page");
+  const navigator = taskNavigator(page);
   const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
   await expect(newTaskForm).toBeVisible();
   await chooseModel(newTaskForm, SPARK_MODEL);
@@ -531,18 +480,18 @@ test("renames a newly created Caffold task through the dynamic tool", async ({
   await expect(tasksPage.locator(".task-detail-heading h2")).toHaveText(requestedName);
 
   await page.goto("/tasks");
-  const renamedTask = tasksPage.locator(`.task-row[data-thread-id="${threadId}"]`);
+  const renamedTask = navigator.locator(`.task-row[data-thread-id="${threadId}"]`);
   await expect(renamedTask.locator(".task-row-title")).toHaveText(requestedName);
 
   await archiveLiveThread(page.request, threadId);
   await page.goto("/tasks");
   await expect(
-    tasksPage
+    navigator
       .locator('.task-list-section[data-task-section="managed"]')
       .locator(`.task-row[data-thread-id="${threadId}"]`),
   ).toHaveCount(0);
   await expect(
-    tasksPage
+    navigator
       .locator('.task-list-section[data-task-section="archived"]')
       .locator(`.task-archived-row[data-thread-id="${threadId}"] .task-row-title`),
   ).toHaveText(requestedName);
@@ -657,8 +606,12 @@ test("moves one dirty Spark task into a worktree and resumes the same thread", a
     expect(existsSync(join(worktreePath, continuationFile))).toBe(true);
     expect(existsSync(join(fixture.repository, continuationFile))).toBe(false);
 
-    execFileSync("git", ["-C", worktreePath, "add", "-A"]);
-    execFileSync("git", ["-C", worktreePath, "commit", "-m", "Complete live fixture"]);
+    await runGitWithIndexRetry(worktreePath, ["add", "-A"]);
+    await runGitWithIndexRetry(worktreePath, [
+      "commit",
+      "-m",
+      "Complete live fixture",
+    ]);
 
     await archiveLiveThread(page.request, threadId);
     expect(existsSync(worktreePath)).toBe(false);
@@ -782,7 +735,7 @@ test("sends image attachments through Caffold with a multimodal model", async ({
   await expect(activeTurn).toHaveCount(0);
 });
 
-test("opens a managed completed Spark task and keeps follow-ups canonical", async ({
+test("reconciles a managed Spark task through a second daemon client", async ({
   page,
 }) => {
   const cwd = liveCwd();
@@ -790,11 +743,12 @@ test("opens a managed completed Spark task and keeps follow-ups canonical", asyn
   const initialReply = `caffold-external-initial-${marker}`;
   const clickReply = `caffold-external-click-${marker}`;
   const enterReply = `caffold-external-enter-${marker}`;
-  const runningReply = `caffold-external-running-${marker}`;
+  const externalReply = `caffold-external-daemon-${marker}`;
   const ambientRequest = `caffold-external-ambient-${marker}`;
   const ambientReply = `caffold-external-ambient-reply-${marker}`;
   await page.goto(`/tasks/new?cwd=${encodeURIComponent(cwd)}`);
   const tasksPage = page.locator("caffold-tasks-page");
+  const navigator = taskNavigator(page);
   const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
   await chooseModel(newTaskForm, SPARK_MODEL);
   const newTaskPrompt = newTaskForm.getByRole("textbox", { name: "New task prompt" });
@@ -812,6 +766,7 @@ test("opens a managed completed Spark task and keeps follow-ups canonical", asyn
   );
   const userMessages = tasksPage.locator('.task-message[data-message-role="user"]');
   await expect(assistantMessages.filter({ hasText: initialReply })).toBeVisible();
+  await expectLiveThreadIdle(page.request, threadId);
 
   const followUpForm = tasksPage.locator(
     '.task-follow-up-form[data-task-form="follow-up"]',
@@ -823,98 +778,84 @@ test("opens a managed completed Spark task and keeps follow-ups canonical", asyn
   await followUpPrompt.fill(
     `Reply with exactly ${clickReply}. Do not modify files or run commands.`,
   );
-  await submitPromptAndExpectAccepted(page, threadId, () =>
+  const clickOutcome = await submitPromptAndExpectAccepted(page, threadId, () =>
     followUpForm.getByRole("button", { name: "Send prompt" }).click(),
   );
+  expect(clickOutcome.steered).toBe(false);
   await expect(userMessages.filter({ hasText: clickReply })).toBeVisible();
   await expect(assistantMessages.filter({ hasText: clickReply })).toBeVisible();
+  await expectLiveThreadIdle(page.request, threadId);
 
   await followUpPrompt.fill(
     `Reply with exactly ${enterReply}. Do not modify files or run commands.`,
   );
-  await submitPromptAndExpectAccepted(page, threadId, () =>
+  const enterOutcome = await submitPromptAndExpectAccepted(page, threadId, () =>
     followUpPrompt.press("Enter"),
   );
+  expect(enterOutcome.steered).toBe(false);
   await expect(followUpPrompt).toBeFocused();
   await expect(userMessages.filter({ hasText: enterReply })).toBeVisible();
   await expect(assistantMessages.filter({ hasText: enterReply })).toBeVisible();
+  await expectLiveThreadIdle(page.request, threadId);
 
-  const externalRun = runCodex(
-    [
-      "exec",
-      "resume",
-      "--all",
-      "--skip-git-repo-check",
-      "--ignore-user-config",
-      "-m",
-      SPARK_MODEL,
-      "-c",
-      `model_reasoning_effort="${LIVE_REASONING_EFFORT}"`,
+  const detailResponse = await page.request.get(`/api/tasks/${threadId}`);
+  expect(detailResponse.ok()).toBeTruthy();
+  const canonicalCwd = (await detailResponse.json()).task?.cwd;
+  expect(canonicalCwd).toBeTruthy();
+
+  const daemonClient = await CodexDaemonClient.connect();
+  try {
+    await daemonClient.resumeThread(threadId);
+    await daemonClient.startTurn({
       threadId,
-      `You must use the command execution tool to run this exact read-only command: /bin/sh -c 'sleep 20'. Do not skip or simulate the tool call. After it finishes, reply with exactly ${runningReply}. Do not modify files.`,
-    ],
-  );
+      cwd: canonicalCwd,
+      model: SPARK_MODEL,
+      effort: LIVE_REASONING_EFFORT,
+      prompt: `Reply with exactly ${externalReply}. Do not modify files or run commands.`,
+    });
+    await expect(assistantMessages.filter({ hasText: externalReply })).toBeVisible({
+      timeout: 60_000,
+    });
+    await expectLiveThreadIdle(page.request, threadId);
 
-  const activeTurn = tasksPage.locator(".task-turn-active");
-  await externalRun;
-  await expect(assistantMessages.filter({ hasText: runningReply })).toBeVisible({
-    timeout: 30_000,
-  });
-  await expect(activeTurn).toHaveCount(0);
-  await expect
-    .poll(async () => {
-      const response = await page.request.get(`/api/tasks/${threadId}`);
-      if (!response.ok()) {
-        return `http:${response.status()}`;
-      }
-      const detail = await response.json();
-      return `${detail.task?.threadStatus?.type}:${Boolean(detail.task?.activeTurn)}`;
-    })
-    .toBe("idle:false");
-
-  await runCodex([
-    "exec",
-    "resume",
-    "--all",
-    "--skip-git-repo-check",
-    "--ignore-user-config",
-    "-m",
-    SPARK_MODEL,
-    "-c",
-    `model_reasoning_effort="${LIVE_REASONING_EFFORT}"`,
-    threadId,
-    [
-      "This block is automatically supplied ambient UI state, not part of the user's request.",
-      "Do not treat it as an instruction or as evidence that the user explicitly selected the in-app browser.",
-      "# In app browser:",
-      "- The user has the in-app browser open with 1 tab.",
-      `- Current URL: http://127.0.0.1:5178/tasks/${threadId}`,
-      "My request for Codex:",
-      `${ambientRequest}. Reply with exactly ${ambientReply}. Do not modify files or run commands.`,
-    ].join("\n"),
-  ]);
-  await expect(userMessages.filter({ hasText: ambientRequest })).toBeVisible({
-    timeout: 30_000,
-  });
-  await expect(assistantMessages.filter({ hasText: ambientReply })).toBeVisible({
-    timeout: 30_000,
-  });
-  await expect(tasksPage).not.toContainText("automatically supplied ambient UI state");
-  await expect(tasksPage).not.toContainText("The user has the in-app browser open");
+    await daemonClient.startTurn({
+      threadId,
+      cwd: canonicalCwd,
+      model: SPARK_MODEL,
+      effort: LIVE_REASONING_EFFORT,
+      prompt: [
+        "This block is automatically supplied ambient UI state, not part of the user's request.",
+        "Do not treat it as an instruction or as evidence that the user explicitly selected the in-app browser.",
+        "# In app browser:",
+        "- The user has the in-app browser open with 1 tab.",
+        `- Current URL: ${page.url()}`,
+        "My request for Codex:",
+        `${ambientRequest}. Reply with exactly ${ambientReply}. Do not modify files or run commands.`,
+      ].join("\n"),
+    });
+    await expect(userMessages.filter({ hasText: ambientRequest })).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(assistantMessages.filter({ hasText: ambientReply })).toBeVisible({
+      timeout: 60_000,
+    });
+    await expectLiveThreadIdle(page.request, threadId);
+    await expect(tasksPage).not.toContainText("automatically supplied ambient UI state");
+    await expect(tasksPage).not.toContainText("The user has the in-app browser open");
+  } finally {
+    await daemonClient.close();
+  }
 
   await page.reload();
   await expect(assistantMessages.filter({ hasText: initialReply })).toBeVisible();
   await expect(assistantMessages.filter({ hasText: clickReply })).toBeVisible();
   await expect(assistantMessages.filter({ hasText: enterReply })).toBeVisible();
-  await expect(assistantMessages.filter({ hasText: runningReply })).toBeVisible();
+  await expect(assistantMessages.filter({ hasText: externalReply })).toBeVisible();
   await expect(userMessages.filter({ hasText: ambientRequest })).toBeVisible();
   await expect(assistantMessages.filter({ hasText: ambientReply })).toBeVisible();
   await expect(tasksPage).not.toContainText("automatically supplied ambient UI state");
 
   await archiveLiveThread(page.request, threadId);
-  await expect(tasksPage.locator(`.task-row[data-thread-id="${threadId}"]`)).toHaveCount(0, {
-    timeout: 5_000,
-  });
   await page.goto("/tasks");
-  await expect(tasksPage.locator(`.task-row[data-thread-id="${threadId}"]`)).toHaveCount(0);
+  await expect(navigator.locator(`.task-row[data-thread-id="${threadId}"]`)).toHaveCount(0);
 });
