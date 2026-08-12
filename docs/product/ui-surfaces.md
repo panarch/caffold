@@ -99,7 +99,7 @@ and the authenticated GitHub CLI. It provides:
 - Issue list and detail;
 - Pull Request list and detail;
 - Pull Request changed files, unified diff, and source inspection;
-- an explicit Start Task action on Issue detail;
+- the same explicit Start Task action on Issue and Pull Request detail;
 - scoped availability, loading, error, and Retry states.
 
 Activation or meaningful re-entry performs a fresh canonical query while
@@ -107,13 +107,19 @@ retained DOM-local state may remain visible. GitHub does not poll, create a
 filesystem watcher, or refresh while hidden. It does not publish comments,
 reviews, Pull Requests, or other GitHub mutations.
 
-Start Task is an Issue-only, explicit local workflow. The user chooses the
-selected base ref and Task turn options; Caffold creates a Task at the resolved
-repository root with a setup-only prompt that treats Issue metadata as
-untrusted, renames the Task, and prepares an isolated worktree without moving
-source-checkout changes. The setup turn stops after preparation and waits for
-the user's next request. Pull Request detail has no corresponding Start Task
-action, and neither flow automatically continues implementation or review.
+The Task's GitHub root mounts one shared Task Start dialog rather than separate
+Issue and Pull Request workflows. Each detail owns its visible action and
+canonical source payload; the root owns dialog lifetime, while the dialog owns
+Task turn options, Task creation, focus return, and source-specific setup.
+
+For Issues, the user chooses the base ref and the setup turn creates a new
+Issue branch from it. For Pull Requests, the dialog shows the canonical
+base/head relationship as read-only context and verifies the exact canonical
+head commit. Same-repository and fork PRs are supported; a stale or unavailable
+head remains an explicit recoverable error instead of selecting another ref.
+Both prompts treat source metadata as untrusted, leave source-checkout changes
+in place, stop after worktree preparation, and wait for the user's next request
+instead of beginning review or implementation.
 
 ### Child lifetime
 
@@ -154,7 +160,6 @@ on activation and invalidates pending work when hidden.
 The browser UI does not provide:
 
 - a full terminal or PTY workspace;
-- a Pull Request Start Task action;
 - automatic Task creation from Issue/PR context without an explicit user
   action;
 - automatic continuation after the setup turn;

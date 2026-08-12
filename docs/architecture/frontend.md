@@ -166,7 +166,12 @@ commit, file, diff, and source state.
 `caffold-task-github-layout` is a direct Task Detail child under
 `detail/(github)`. It owns GitHub availability, Issues/Pulls mode, route-local
 list/detail/files selection, canonical reconciliation, nested request
-generations, and domain-local Back intents.
+generations, domain-local Back intents, and the shared GitHub Task Start dialog.
+Issue and Pull Request detail emit the same source-neutral intent with canonical
+payloads; the GitHub root owns dialog reset/deactivation, and the dialog owns
+Task creation and its pending/error/focus lifecycle. Dialog-local GitHub Issue
+and Pull Request source children own their respective ref preparation, prompt
+construction, request invalidation, DOM, and CSS.
 
 GitHub performs no polling and creates no filesystem watcher. Activation,
 meaningful re-entry, Retry, and explicit actions request current canonical
@@ -278,6 +283,10 @@ frontend/
 |                   |   `-- (log)/...
 |                   `-- (github)/
 |                       |-- layout.js
+|                       |-- components/task-start-dialog.js
+|                       |-- components/task-start-dialog/
+|                       |   |-- github-issue.js
+|                       |   `-- github-pull.js
 |                       |-- (issues)/...
 |                       `-- (pulls)/...
 `-- components/

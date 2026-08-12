@@ -4,6 +4,8 @@ use std::{
 };
 
 use serde::Deserialize;
+use thiserror::Error;
+use uuid::Uuid;
 
 use crate::git;
 
@@ -106,7 +108,11 @@ pub struct GithubPullDetail {
     pub deletions: u64,
     pub changed_files: u64,
     pub base_ref_name: String,
+    pub base_ref_oid: String,
+    pub base_repository: GithubPullRepository,
     pub head_ref_name: String,
+    pub head_ref_oid: String,
+    pub head_repository: Option<GithubPullRepository>,
     pub body: String,
     pub body_html: Option<String>,
     pub created_at: Option<String>,
@@ -115,6 +121,32 @@ pub struct GithubPullDetail {
     pub conversation_comments: Vec<GithubPullComment>,
     pub review_comments: Vec<GithubPullReview>,
     pub commit_summaries: Vec<GithubPullCommit>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GithubPullRepository {
+    pub name_with_owner: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GithubPullHeadRef {
+    pub reference: String,
+    pub oid: String,
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum GithubPullHeadError {
+    #[error("the repository has no GitHub fetch remote")]
+    RemoteNotFound,
+    #[error("invalid pull request head OID: {0}")]
+    InvalidOid(String),
+    #[error("the pull request head could not be fetched")]
+    FetchFailed,
+    #[error("the pull request head moved from {expected} to {actual}")]
+    Stale { expected: String, actual: String },
+    #[error("the fetched pull request head could not be prepared")]
+    PrepareFailed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -167,8 +199,93 @@ pub struct GithubPullFile {
 }
 
 pub fn repository_for(repository: &git::Repository) -> Option<GithubRepository> {
-    let output = run_git(&repository.root, &["remote", "-v"])?;
-    output.lines().find_map(github_repository_from_remote_line)
+    github_remote_for(repository).map(|remote| remote.repository)
+}
+
+pub fn prepare_pull_head(
+    repository: &git::Repository,
+    number: u64,
+    expected_oid: &str,
+) -> Result<GithubPullHeadRef, GithubPullHeadError> {
+    let remote = github_remote_for(repository).ok_or(GithubPullHeadError::RemoteNotFound)?;
+    prepare_pull_head_from_remote(repository, &remote.name, number, expected_oid)
+}
+
+fn prepare_pull_head_from_remote(
+    repository: &git::Repository,
+    remote: &str,
+    number: u64,
+    expected_oid: &str,
+) -> Result<GithubPullHeadRef, GithubPullHeadError> {
+    if !valid_git_oid(expected_oid) {
+        return Err(GithubPullHeadError::InvalidOid(expected_oid.to_string()));
+    }
+
+    let temporary_ref = format!(
+        "refs/caffold/github/fetch/{number}/{}",
+        Uuid::new_v4().simple()
+    );
+    let source_ref = format!("refs/pull/{number}/head");
+    let refspec = format!("+{source_ref}:{temporary_ref}");
+    let fetched = Command::new("git")
+        .arg("-C")
+        .arg(&repository.root)
+        .args([
+            "fetch",
+            "--no-write-fetch-head",
+            "--no-recurse-submodules",
+            "--no-tags",
+            "--force",
+            remote,
+            &refspec,
+        ])
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false);
+    if !fetched {
+        delete_owned_ref(repository, &temporary_ref);
+        return Err(GithubPullHeadError::FetchFailed);
+    }
+
+    let actual_oid = match run_git(
+        &repository.root,
+        &[
+            "rev-parse",
+            "--verify",
+            &format!("{temporary_ref}^{{commit}}"),
+        ],
+    ) {
+        Some(oid) => oid,
+        None => {
+            delete_owned_ref(repository, &temporary_ref);
+            return Err(GithubPullHeadError::PrepareFailed);
+        }
+    };
+    if actual_oid != expected_oid {
+        delete_ref_if_matches(repository, &temporary_ref, &actual_oid);
+        return Err(GithubPullHeadError::Stale {
+            expected: expected_oid.to_string(),
+            actual: actual_oid,
+        });
+    }
+
+    let prepared_ref = format!("refs/caffold/github/pulls/{number}/{expected_oid}");
+    let prepared = Command::new("git")
+        .arg("-C")
+        .arg(&repository.root)
+        .args(["update-ref", &prepared_ref, expected_oid])
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false);
+    delete_ref_if_matches(repository, &temporary_ref, expected_oid);
+    if !prepared {
+        return Err(GithubPullHeadError::PrepareFailed);
+    }
+
+    Ok(GithubPullHeadRef {
+        reference: prepared_ref,
+        oid: expected_oid.to_string(),
+    })
 }
 
 pub fn capability(repository: &git::Repository) -> Option<GithubCapability> {
@@ -682,7 +799,17 @@ query($owner: String!, $name: String!, $number: Int!) {
       deletions
       changedFiles
       baseRefName
+      baseRefOid
+      baseRepository {
+        nameWithOwner
+        url
+      }
       headRefName
+      headRefOid
+      headRepository {
+        nameWithOwner
+        url
+      }
       body
       bodyHTML
       createdAt
@@ -807,14 +934,30 @@ fn run_git(path: &Path, args: &[&str]) -> Option<String> {
         return None;
     }
 
-    String::from_utf8(output.stdout).ok()
+    String::from_utf8(output.stdout)
+        .ok()
+        .map(|value| value.trim().to_string())
 }
 
-fn github_repository_from_remote_line(line: &str) -> Option<GithubRepository> {
-    let mut parts = line.split_whitespace();
-    let _remote = parts.next()?;
-    let url = parts.next()?;
-    github_repository_from_url(url)
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GithubRemote {
+    name: String,
+    repository: GithubRepository,
+}
+
+fn github_remote_for(repository: &git::Repository) -> Option<GithubRemote> {
+    let remotes = run_git(&repository.root, &["remote"])?;
+    remotes.lines().find_map(|name| {
+        let urls = run_git(
+            &repository.root,
+            &["config", "--get-all", &format!("remote.{name}.url")],
+        )?;
+        let repository = github_repository_from_url(urls.lines().next()?)?;
+        Some(GithubRemote {
+            name: name.to_string(),
+            repository,
+        })
+    })
 }
 
 fn github_repository_from_url(url: &str) -> Option<GithubRepository> {
@@ -845,6 +988,26 @@ fn valid_github_segment(segment: &str) -> bool {
         && segment
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+}
+
+fn valid_git_oid(oid: &str) -> bool {
+    matches!(oid.len(), 40 | 64) && oid.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn delete_ref_if_matches(repository: &git::Repository, reference: &str, oid: &str) {
+    let _ = Command::new("git")
+        .arg("-C")
+        .arg(&repository.root)
+        .args(["update-ref", "-d", reference, oid])
+        .output();
+}
+
+fn delete_owned_ref(repository: &git::Repository, reference: &str) {
+    let _ = Command::new("git")
+        .arg("-C")
+        .arg(&repository.root)
+        .args(["update-ref", "-d", reference])
+        .output();
 }
 
 fn parse_issue_search(output: &[u8]) -> Option<GhIssueSearchResponse> {
@@ -1044,13 +1207,26 @@ struct GhPullDetail {
     #[serde(default)]
     base_ref_name: String,
     #[serde(default)]
+    base_ref_oid: String,
+    base_repository: GhPullRepository,
+    #[serde(default)]
     head_ref_name: String,
+    #[serde(default)]
+    head_ref_oid: String,
+    head_repository: Option<GhPullRepository>,
     #[serde(default)]
     body: String,
     #[serde(rename = "bodyHTML")]
     body_html: Option<String>,
     created_at: Option<String>,
     updated_at: Option<String>,
+    url: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GhPullRepository {
+    name_with_owner: String,
     url: String,
 }
 
@@ -1283,7 +1459,11 @@ impl From<GhPullDetail> for GithubPullDetail {
             deletions: pull.deletions,
             changed_files: pull.changed_files,
             base_ref_name: pull.base_ref_name,
+            base_ref_oid: pull.base_ref_oid,
+            base_repository: GithubPullRepository::from(pull.base_repository),
             head_ref_name: pull.head_ref_name,
+            head_ref_oid: pull.head_ref_oid,
+            head_repository: pull.head_repository.map(GithubPullRepository::from),
             body: pull.body,
             body_html: pull.body_html,
             created_at: pull.created_at,
@@ -1307,6 +1487,15 @@ impl From<GhPullDetail> for GithubPullDetail {
                 .into_iter()
                 .map(|node| GithubPullCommit::from(node.commit))
                 .collect(),
+        }
+    }
+}
+
+impl From<GhPullRepository> for GithubPullRepository {
+    fn from(repository: GhPullRepository) -> Self {
+        Self {
+            name_with_owner: repository.name_with_owner,
+            url: repository.url,
         }
     }
 }
@@ -1399,6 +1588,136 @@ mod tests {
         assert_eq!(ssh, https);
         assert_eq!(explicit_ssh, https);
         assert!(github_repository_from_url("https://gitlab.com/example/caffold.git").is_none());
+        assert!(github_repository_from_url("https://github.com/example/caffold/extra").is_none());
+    }
+
+    #[test]
+    fn prepares_an_oid_pinned_pull_head_ref_and_rejects_a_moved_head() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let remote = temp.path().join("remote");
+        let local = temp.path().join("local");
+        std::fs::create_dir(&remote).unwrap();
+        std::fs::create_dir(&local).unwrap();
+        git(&remote, &["init"]);
+        std::fs::write(remote.join("review.txt"), "first\n").unwrap();
+        git(&remote, &["add", "review.txt"]);
+        commit(&remote, "First pull head");
+        let first_oid = git_output(&remote, &["rev-parse", "HEAD"]);
+        git(&remote, &["update-ref", "refs/pull/17/head", &first_oid]);
+        let blob_oid = git_output(&remote, &["rev-parse", "HEAD:review.txt"]);
+        git(&remote, &["update-ref", "refs/pull/19/head", &blob_oid]);
+        git(&remote, &["update-ref", "refs/pull/20/head", &first_oid]);
+
+        git(&local, &["init"]);
+        git(
+            &local,
+            &["remote", "add", "upstream", remote.to_str().unwrap()],
+        );
+        std::fs::write(local.join("local.txt"), "checked out\n").unwrap();
+        git(&local, &["add", "local.txt"]);
+        commit(&local, "Keep the source checkout");
+        std::fs::write(local.join("local.txt"), "dirty checkout\n").unwrap();
+        std::fs::write(local.join("untracked.txt"), "untracked\n").unwrap();
+        let checkout_head = git_output(&local, &["rev-parse", "HEAD"]);
+        let checkout_status = git_output(&local, &["status", "--short"]);
+        let fetch_head = local.join(".git/FETCH_HEAD");
+        std::fs::write(&fetch_head, "existing fetch state\n").unwrap();
+        let repository = git::Repository {
+            root: local.clone(),
+            branch: Some("test".to_string()),
+            dirty: true,
+        };
+        let prepared =
+            prepare_pull_head_from_remote(&repository, "upstream", 17, &first_oid).unwrap();
+
+        assert_eq!(prepared.oid, first_oid);
+        assert_eq!(
+            git_output(&local, &["rev-parse", &prepared.reference]),
+            first_oid
+        );
+        assert_eq!(git_output(&local, &["rev-parse", "HEAD"]), checkout_head);
+        assert_eq!(git_output(&local, &["status", "--short"]), checkout_status);
+        assert_eq!(
+            std::fs::read_to_string(&fetch_head).unwrap(),
+            "existing fetch state\n"
+        );
+        assert_eq!(
+            git_output(
+                &local,
+                &[
+                    "for-each-ref",
+                    "--format=%(refname)",
+                    "refs/caffold/github/fetch"
+                ],
+            ),
+            ""
+        );
+        assert_eq!(
+            prepare_pull_head_from_remote(&repository, "upstream", 17, "not-an-oid"),
+            Err(GithubPullHeadError::InvalidOid("not-an-oid".to_string()))
+        );
+        assert_eq!(
+            prepare_pull_head_from_remote(&repository, "upstream", 18, &first_oid),
+            Err(GithubPullHeadError::FetchFailed)
+        );
+        assert_eq!(
+            prepare_pull_head_from_remote(&repository, "upstream", 19, &blob_oid),
+            Err(GithubPullHeadError::PrepareFailed)
+        );
+        git(
+            &local,
+            &["update-ref", "refs/caffold/github/pulls/20", "HEAD"],
+        );
+        assert_eq!(
+            prepare_pull_head_from_remote(&repository, "upstream", 20, &first_oid),
+            Err(GithubPullHeadError::PrepareFailed)
+        );
+        assert_eq!(
+            git_output(
+                &local,
+                &[
+                    "for-each-ref",
+                    "--format=%(refname)",
+                    "refs/caffold/github/fetch"
+                ],
+            ),
+            ""
+        );
+
+        std::fs::write(remote.join("review.txt"), "second\n").unwrap();
+        git(&remote, &["add", "review.txt"]);
+        commit(&remote, "Move pull head");
+        let second_oid = git_output(&remote, &["rev-parse", "HEAD"]);
+        git(&remote, &["update-ref", "refs/pull/17/head", &second_oid]);
+
+        assert_eq!(
+            prepare_pull_head_from_remote(&repository, "upstream", 17, &first_oid),
+            Err(GithubPullHeadError::Stale {
+                expected: first_oid.clone(),
+                actual: second_oid,
+            })
+        );
+        assert_eq!(
+            git_output(
+                &local,
+                &[
+                    "for-each-ref",
+                    "--format=%(refname)",
+                    "refs/caffold/github/fetch"
+                ],
+            ),
+            ""
+        );
+        assert_eq!(git_output(&local, &["rev-parse", "HEAD"]), checkout_head);
+        assert_eq!(git_output(&local, &["status", "--short"]), checkout_status);
+        assert_eq!(
+            git_output(&local, &["rev-parse", &prepared.reference]),
+            first_oid
+        );
     }
 
     #[test]
@@ -1572,7 +1891,17 @@ mod tests {
                     "deletions": 4,
                     "changedFiles": 3,
                     "baseRefName": "main",
+                    "baseRefOid": "1111111111111111111111111111111111111111",
+                    "baseRepository": {
+                      "nameWithOwner": "example/caffold",
+                      "url": "https://github.com/example/caffold"
+                    },
                     "headRefName": "feature/prs",
+                    "headRefOid": "abcdef1234567890abcdef1234567890abcdef12",
+                    "headRepository": {
+                      "nameWithOwner": "contributor/caffold",
+                      "url": "https://github.com/contributor/caffold"
+                    },
                     "body": "**Pull** body",
                     "bodyHTML": "<p><strong>Pull</strong> body</p>",
                     "createdAt": "2026-07-02T06:00:00Z",
@@ -1592,7 +1921,16 @@ mod tests {
         assert_eq!(pull.commits, 1);
         assert_eq!(pull.changed_files, 3);
         assert_eq!(pull.base_ref_name, "main");
+        assert_eq!(pull.base_repository.name_with_owner, "example/caffold");
         assert_eq!(pull.head_ref_name, "feature/prs");
+        assert_eq!(
+            pull.head_ref_oid,
+            "abcdef1234567890abcdef1234567890abcdef12"
+        );
+        assert_eq!(
+            pull.head_repository.unwrap().name_with_owner,
+            "contributor/caffold"
+        );
         assert_eq!(
             pull.conversation_comments[0].author.as_deref(),
             Some("codex")
@@ -1721,5 +2059,55 @@ mod tests {
         assert!(files[1].patch.is_none());
         assert_eq!(files[2].status, "R");
         assert_eq!(files[2].previous_filename.as_deref(), Some("src/old.rs"));
+    }
+
+    fn git_is_available() -> bool {
+        Command::new("git")
+            .arg("--version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+
+    fn git(path: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "git failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn git_output(path: &Path, args: &[&str]) -> String {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        String::from_utf8(output.stdout).unwrap().trim().to_string()
+    }
+
+    fn commit(path: &Path, message: &str) {
+        git(
+            path,
+            &[
+                "-c",
+                "user.name=Caffold Test",
+                "-c",
+                "user.email=caffold@example.test",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-m",
+                message,
+            ],
+        );
     }
 }

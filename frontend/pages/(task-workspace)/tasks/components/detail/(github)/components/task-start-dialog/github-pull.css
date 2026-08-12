@@ -1,0 +1,95 @@
+caffold-github-pull-task-source {
+  display: grid;
+  gap: var(--interface-space-3);
+  min-width: 0;
+  font-size: var(--interface-meta-font-size);
+
+  &[hidden] {
+    display: none;
+  }
+
+  & > span {
+    font-weight: 600;
+  }
+
+  & p,
+  & dl,
+  & dd {
+    margin: 0;
+  }
+
+  & dl {
+    display: grid;
+    grid-template-columns:
+      calc(2.75rem + var(--interface-space-4))
+      max-content;
+    row-gap: var(--interface-space-3);
+    column-gap: 0;
+    min-width: 0;
+    max-width: 100%;
+    padding: var(--interface-space-5);
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface-subtle);
+  }
+
+  & dl > div {
+    display: contents;
+  }
+
+  & dl:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+  }
+
+  & dt {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    align-self: baseline;
+    padding-right: var(--interface-space-4);
+    background: var(--surface-subtle);
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  & dd {
+    align-self: baseline;
+    white-space: nowrap;
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
+  }
+
+  & .github-pull-task-source-help,
+  & .github-pull-task-source-error {
+    color: var(--muted);
+    line-height: var(--interface-line-height);
+  }
+
+  & .github-pull-task-source-error {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 0;
+    color: var(--danger);
+  }
+
+  & .github-pull-task-source-error:empty {
+    display: none;
+  }
+
+  & .github-pull-task-source-error button {
+    min-height: var(--interface-compact-hit-size);
+    padding: var(--interface-space-2) var(--interface-space-4);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--control-fg);
+    font: inherit;
+    cursor: pointer;
+  }
+}

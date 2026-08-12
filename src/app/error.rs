@@ -159,6 +159,32 @@ impl IntoResponse for ApiError {
                 "github_command_failed",
                 format!("GitHub CLI command failed while trying to {action}: {path}"),
             ),
+            ApiError::Fs(FsError::InvalidGithubPullHeadOid { oid }) => (
+                StatusCode::BAD_REQUEST,
+                "invalid_github_pull_head_oid",
+                format!("invalid pull request head OID: {oid}"),
+            ),
+            ApiError::Fs(FsError::GithubPullHeadUnavailable { path }) => (
+                StatusCode::BAD_GATEWAY,
+                "github_pull_head_unavailable",
+                format!(
+                    "Pull request head is unavailable for {path}. Refresh the PR details and try again."
+                ),
+            ),
+            ApiError::Fs(FsError::GithubPullHeadStale { expected, actual }) => (
+                StatusCode::CONFLICT,
+                "github_pull_head_stale",
+                format!(
+                    "Pull request head moved from {expected} to {actual}. Refresh the PR details before starting a Task."
+                ),
+            ),
+            ApiError::Fs(FsError::GithubPullRepositoryMismatch { expected, actual }) => (
+                StatusCode::CONFLICT,
+                "github_pull_repository_mismatch",
+                format!(
+                    "Pull request base repository changed from {expected} to {actual}. Refresh the GitHub surface before starting a Task."
+                ),
+            ),
             ApiError::Fs(FsError::Io { action, path, .. }) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "filesystem_error",
@@ -211,5 +237,58 @@ mod tests {
             }
             error => panic!("expected timeout API error, got {error:?}"),
         }
+    }
+
+    async fn assert_pull_head_error(error: FsError, status: StatusCode, code: &str) {
+        let response = ApiError::from(error).into_response();
+        assert_eq!(response.status(), status);
+        let body = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["error"]["code"], code);
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .is_some_and(|message| !message.is_empty())
+        );
+    }
+
+    #[tokio::test]
+    async fn github_pull_head_failures_have_recoverable_http_contracts() {
+        assert_pull_head_error(
+            FsError::InvalidGithubPullHeadOid {
+                oid: "not-an-oid".to_string(),
+            },
+            StatusCode::BAD_REQUEST,
+            "invalid_github_pull_head_oid",
+        )
+        .await;
+        assert_pull_head_error(
+            FsError::GithubPullHeadUnavailable {
+                path: "example/caffold#97".to_string(),
+            },
+            StatusCode::BAD_GATEWAY,
+            "github_pull_head_unavailable",
+        )
+        .await;
+        assert_pull_head_error(
+            FsError::GithubPullHeadStale {
+                expected: "1".repeat(40),
+                actual: "2".repeat(40),
+            },
+            StatusCode::CONFLICT,
+            "github_pull_head_stale",
+        )
+        .await;
+        assert_pull_head_error(
+            FsError::GithubPullRepositoryMismatch {
+                expected: "example/old".to_string(),
+                actual: "example/caffold".to_string(),
+            },
+            StatusCode::CONFLICT,
+            "github_pull_repository_mismatch",
+        )
+        .await;
     }
 }

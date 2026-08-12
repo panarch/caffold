@@ -3,6 +3,7 @@ import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { expectDomainBackChrome } from "../support/domain-header.js";
 import {
   canonicalTaskState,
+  captureReviewScreenshot,
   installEventSourceMock,
   mockCodexModels,
 } from "../support/task-fixtures.js";
@@ -14,6 +15,9 @@ test.beforeEach(async ({ page }) => {
 const THREAD_ID = "thread_linked_worktree_github";
 const WORKTREE_ROOT = "Users/taehoon/.codex/worktrees/4ce7/gluesql";
 const PULL_FILE_PATH = `${WORKTREE_ROOT}/src/review.rs`;
+const PULL_BASE_OID = "1111111111111111111111111111111111111111";
+const PULL_HEAD_OID = "2222222222222222222222222222222222222222";
+const CREATED_THREAD_ID = "thread_github_task_created";
 
 function linkedWorktreeTask() {
   const recencyMs = 1_785_700_000_000;
@@ -40,7 +44,7 @@ function linkedWorktreeTask() {
   };
 }
 
-async function installLinkedWorktreeGithubFixture(page) {
+async function installLinkedWorktreeGithubFixture(page, options = {}) {
   await installEventSourceMock(page, {
     registryKey: "__taskGithubEventSources",
   });
@@ -65,11 +69,97 @@ async function installLinkedWorktreeGithubFixture(page) {
     pull: 0,
     pullFiles: 0,
     pullFile: 0,
+    gitRefs: 0,
+    pullHeads: 0,
+    taskCreates: 0,
+  };
+  const requests = {
+    pullHeads: [],
+    taskCreates: [],
+  };
+  const controls = {
+    pullHeadFailure: null,
+    pullHeadGate: null,
+  };
+  const pull = {
+    number: 1983,
+    title: "Reject unsupported table function arguments",
+    state: "OPEN",
+    draft: false,
+    author: "kwondo1017",
+    labels: [],
+    comments: 1,
+    reviews: 1,
+    commits: 1,
+    additions: 2,
+    deletions: 1,
+    changedFiles: 1,
+    baseRefName: "main",
+    baseRefOid: PULL_BASE_OID,
+    baseRepository: {
+      nameWithOwner: "gluesql/gluesql",
+      url: "https://github.com/gluesql/gluesql",
+    },
+    headRefName: options.headRefName ?? "query-plan-limit-offset",
+    headRefOid: PULL_HEAD_OID,
+    headRepository: options.headRepository ?? {
+      nameWithOwner: "gluesql/gluesql",
+      url: "https://github.com/gluesql/gluesql",
+    },
+    body: "Task-owned Pull Request detail",
+    bodyHtml: "<p>Task-owned Pull Request detail</p>",
+    createdAt: "2026-08-03T02:00:00Z",
+    updatedAt: "2026-08-03T03:00:00Z",
+    url: "https://github.com/gluesql/gluesql/pull/1983",
+    conversationComments: [{
+      author: "maintainer",
+      body: "Please preserve the review workflow.",
+      bodyHtml: "<p>Please preserve the review workflow.</p>",
+      createdAt: "2026-08-03T02:30:00Z",
+      updatedAt: "2026-08-03T02:30:00Z",
+      url: "https://github.com/gluesql/gluesql/pull/1983#issuecomment-1",
+    }],
+    reviewComments: [{
+      author: "reviewer",
+      state: "CHANGES_REQUESTED",
+      body: "Use the exact head.",
+      bodyHtml: "<p>Use the exact head.</p>",
+      submittedAt: "2026-08-03T02:45:00Z",
+    }],
+    commitSummaries: [],
+  };
+  const createdTask = {
+    ...task,
+    id: CREATED_THREAD_ID,
+    threadId: CREATED_THREAD_ID,
+    title: "Prepared GitHub source",
+    preview: "Prepare this Caffold Task",
+    createdMs: task.createdMs + 10,
+    updatedMs: task.updatedMs + 10,
+    recencyMs: task.recencyMs + 10,
+  };
+  const createdDetail = {
+    threadId: CREATED_THREAD_ID,
+    syncState: "ready",
+    revision: 1,
+    task: createdTask,
+    events: [],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+    historyLoading: false,
+    permissionMode: null,
+    model: null,
+    reasoningEffort: null,
   };
 
-  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
-    route.fulfill({ json: { tasks: [task], nextCursor: null } }),
-  );
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    if (route.request().method() === "POST") {
+      counts.taskCreates += 1;
+      requests.taskCreates.push(route.request().postDataJSON());
+      return route.fulfill({ json: createdDetail });
+    }
+    return route.fulfill({ json: { tasks: [task], nextCursor: null } });
+  });
   await page.route(new RegExp(`/api/tasks/${THREAD_ID}(?:\\?|$)`), (route) =>
     route.fulfill({
       json: {
@@ -87,9 +177,28 @@ async function installLinkedWorktreeGithubFixture(page) {
       },
     }),
   );
+  await page.route(new RegExp(`/api/tasks/${CREATED_THREAD_ID}(?:\\?|$)`), (route) =>
+    route.fulfill({ json: createdDetail }),
+  );
   await page.route(/\/api\/git\/status(?:\?|$)/, (route) =>
     route.fulfill({ json: { repository, additions: 0, deletions: 0, files: [] } }),
   );
+  await page.route(/\/api\/git\/refs(?:\?|$)/, (route) => {
+    counts.gitRefs += 1;
+    return route.fulfill({
+      json: {
+        repository,
+        refs: [
+          { name: "query-plan-limit-offset", kind: "head" },
+          { name: "main", kind: "local" },
+          { name: "origin/main", kind: "remote" },
+        ],
+        currentRef: "query-plan-limit-offset",
+        defaultBaseRef: "origin/main",
+        defaultHeadRef: "query-plan-limit-offset",
+      },
+    });
+  });
   await page.route(/\/api\/github\/status(?:\?|$)/, (route) => {
     const path = new URL(route.request().url()).searchParams.get("path");
     if (path !== WORKTREE_ROOT) {
@@ -217,30 +326,35 @@ async function installLinkedWorktreeGithubFixture(page) {
       json: {
         repository,
         github,
-        pull: {
-          number: 1983,
-          title: "Reject unsupported table function arguments",
-          state: "OPEN",
-          draft: false,
-          author: "kwondo1017",
-          labels: [],
-          comments: 0,
-          reviews: 0,
-          commits: 1,
-          additions: 2,
-          deletions: 1,
-          changedFiles: 1,
-          baseRefName: "main",
-          headRefName: "query-plan-limit-offset",
-          body: "Task-owned Pull Request detail",
-          bodyHtml: "<p>Task-owned Pull Request detail</p>",
-          createdAt: "2026-08-03T02:00:00Z",
-          updatedAt: "2026-08-03T03:00:00Z",
-          url: "https://github.com/gluesql/gluesql/pull/1983",
-          conversationComments: [],
-          reviewComments: [],
-          commitSummaries: [],
+        pull,
+      },
+    });
+  });
+  await page.route(/\/api\/github\/pull-head(?:\?|$)/, async (route) => {
+    counts.pullHeads += 1;
+    const request = route.request().postDataJSON();
+    requests.pullHeads.push(request);
+    if (controls.pullHeadGate) {
+      await controls.pullHeadGate;
+    }
+    if (controls.pullHeadFailure) {
+      return route.fulfill({
+        status: controls.pullHeadFailure.status,
+        json: {
+          error: {
+            code: controls.pullHeadFailure.code,
+            message: controls.pullHeadFailure.message,
+          },
         },
+      });
+    }
+    return route.fulfill({
+      json: {
+        repository,
+        github,
+        number: pull.number,
+        headRef: `refs/caffold/github/pulls/${pull.number}/${pull.headRefOid}`,
+        headOid: pull.headRefOid,
       },
     });
   });
@@ -295,7 +409,7 @@ async function installLinkedWorktreeGithubFixture(page) {
     });
   });
 
-  return { task, repository, github, counts };
+  return { task, repository, github, counts, requests, controls, pull };
 }
 
 async function chooseLinkedWorktreeGithubList(page, kind) {
@@ -318,6 +432,21 @@ async function openLinkedWorktreePullRequests(page) {
   await page.goto(`/tasks/${THREAD_ID}`);
   await chooseLinkedWorktreeGithubList(page, "pulls");
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls`);
+}
+
+async function openLinkedWorktreePull(page) {
+  await openLinkedWorktreePullRequests(page);
+  await page.locator('button[data-pull-number="1983"]').click();
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls/1983`);
+  return page.locator("caffold-github-pull-detail-page");
+}
+
+async function openLinkedWorktreeIssue(page) {
+  await page.goto(`/tasks/${THREAD_ID}`);
+  await chooseLinkedWorktreeGithubList(page, "issues");
+  await page.locator('button[data-issue-number="1984"]').click();
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/issues/1984`);
+  return page.locator("caffold-github-issue-detail-page");
 }
 
 test("retains the same Task GitHub DOM and refreshes lists when reactivated", async ({ page }) => {
@@ -427,6 +556,238 @@ test("keeps loaded GitHub routes stable across unrelated Task stream updates", a
   await emitGithubTaskEvent(page, 7);
   await expect(pullDiff).toContainText("new Task-owned review");
   expect(fixture.counts.pullFile).toBe(1);
+});
+
+test("preserves Issue Start Task setup, focus return, and created Task selection", async ({ page }) => {
+  const fixture = await installLinkedWorktreeGithubFixture(page);
+  const issueDetail = await openLinkedWorktreeIssue(page);
+  const opener = issueDetail.getByRole("button", {
+    name: "Start Task for issue #1984",
+  });
+  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+
+  await opener.click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator("select[name='baseRef']")).toHaveValue("origin/main");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(opener).toBeFocused();
+
+  await opener.click();
+  await dialog.locator("select[name='baseRef']").selectOption("main");
+  const start = dialog.getByRole("button", { name: "Start Task" });
+  await expect(start).toBeEnabled();
+  await start.click();
+
+  await expect.poll(() => fixture.counts.taskCreates).toBe(1);
+  const request = fixture.requests.taskCreates[0];
+  expect(request.cwd).toBe(WORKTREE_ROOT);
+  expect(request.prompt).toContain("--- BEGIN UNTRUSTED ISSUE DATA ---");
+  expect(request.prompt).toContain("Selected base ref: main");
+  expect(request.prompt).toContain('baseRef exactly "main"');
+  expect(request.prompt).toContain("includeChanges set to false");
+  await expect(page).toHaveURL(`/tasks/${CREATED_THREAD_ID}`);
+});
+
+test("starts a same-repository PR Task from the exact prepared head", async ({ page }, testInfo) => {
+  const fixture = await installLinkedWorktreeGithubFixture(page);
+  const pullDetail = await openLinkedWorktreePull(page);
+  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+
+  await pullDetail.getByRole("button", {
+    name: "Start Task for pull request #1983",
+  }).click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('[data-pull-ref="base"]')).toContainText(
+    "gluesql/gluesql:main @ 111111111111",
+  );
+  await expect(dialog.locator('[data-pull-ref="head"]')).toContainText(
+    "gluesql/gluesql:query-plan-limit-offset @ 222222222222",
+  );
+  await expect(dialog.locator("select[name='baseRef']")).toBeHidden();
+  await captureReviewScreenshot(page, testInfo, "github-pr-start-task-dialog");
+  await dialog.getByRole("button", { name: "Start Task" }).click();
+
+  await expect.poll(() => fixture.counts.taskCreates).toBe(1);
+  expect(fixture.requests.pullHeads).toEqual([{
+    path: WORKTREE_ROOT,
+    number: 1983,
+    headOid: PULL_HEAD_OID,
+    baseRepository: "gluesql/gluesql",
+  }]);
+  const prompt = fixture.requests.taskCreates[0].prompt;
+  expect(prompt).toContain(`Head: gluesql/gluesql:query-plan-limit-offset @ ${PULL_HEAD_OID}`);
+  expect(prompt).toContain(
+    `Prepared local head ref: refs/caffold/github/pulls/1983/${PULL_HEAD_OID}`,
+  );
+  expect(prompt).toContain("Please preserve the review workflow.");
+  expect(prompt).toContain("Use the exact head.");
+  expect(prompt).toContain("do not review, analyze, or implement");
+  expect(prompt).not.toContain("Review PR versus Continue work");
+  await expect(page).toHaveURL(`/tasks/${CREATED_THREAD_ID}`);
+});
+
+test("keeps long PR refs in one shared horizontal scroll with sticky labels", async ({ page }) => {
+  await installLinkedWorktreeGithubFixture(page, {
+    headRefName:
+      "perf/memory-storage-lazy-scan-with-an-intentionally-long-review-branch-name",
+    headRepository: {
+      nameWithOwner: "contributor-with-a-long-name/gluesql-experimental-fork",
+      url: "https://github.com/contributor-with-a-long-name/gluesql-experimental-fork",
+    },
+  });
+  const pullDetail = await openLinkedWorktreePull(page);
+  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+
+  await pullDetail.getByRole("button", {
+    name: "Start Task for pull request #1983",
+  }).click();
+  const relationship = dialog.locator("caffold-github-pull-task-source dl");
+  await expect(relationship).toHaveAttribute("tabindex", "0");
+  await expect(relationship.locator("dd").first()).toHaveCSS("white-space", "nowrap");
+
+  const before = await relationship.evaluate((element) => {
+    const [baseRow, headRow] = element.querySelectorAll(":scope > div");
+    return {
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+      baseLabelLeft: baseRow.querySelector("dt").getBoundingClientRect().left,
+      headLabelLeft: headRow.querySelector("dt").getBoundingClientRect().left,
+      baseValueLeft: baseRow.querySelector("dd").getBoundingClientRect().left,
+      headValueLeft: headRow.querySelector("dd").getBoundingClientRect().left,
+    };
+  });
+  expect(before.scrollWidth).toBeGreaterThan(before.clientWidth);
+
+  await relationship.evaluate((element) => {
+    element.scrollLeft = 120;
+  });
+  await expect.poll(() => relationship.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  const after = await relationship.evaluate((element) => {
+    const [baseRow, headRow] = element.querySelectorAll(":scope > div");
+    return {
+      scrollLeft: element.scrollLeft,
+      baseLabelLeft: baseRow.querySelector("dt").getBoundingClientRect().left,
+      headLabelLeft: headRow.querySelector("dt").getBoundingClientRect().left,
+      baseValueLeft: baseRow.querySelector("dd").getBoundingClientRect().left,
+      headValueLeft: headRow.querySelector("dd").getBoundingClientRect().left,
+    };
+  });
+
+  expect(after.baseLabelLeft).toBeCloseTo(before.baseLabelLeft, 0);
+  expect(after.headLabelLeft).toBeCloseTo(before.headLabelLeft, 0);
+  expect(before.baseValueLeft - after.baseValueLeft).toBeCloseTo(after.scrollLeft, 0);
+  expect(before.headValueLeft - after.headValueLeft).toBeCloseTo(after.scrollLeft, 0);
+});
+
+test("starts a fork PR Task through the base repository pull ref", async ({ page }) => {
+  const fixture = await installLinkedWorktreeGithubFixture(page, {
+    headRepository: {
+      nameWithOwner: "contributor/gluesql",
+      url: "https://github.com/contributor/gluesql",
+    },
+  });
+  const pullDetail = await openLinkedWorktreePull(page);
+  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+
+  await pullDetail.getByRole("button", {
+    name: "Start Task for pull request #1983",
+  }).click();
+  await expect(dialog.locator('[data-pull-ref="base"]')).toContainText(
+    "gluesql/gluesql:main",
+  );
+  await expect(dialog.locator('[data-pull-ref="head"]')).toContainText(
+    "contributor/gluesql:query-plan-limit-offset",
+  );
+  await dialog.getByRole("button", { name: "Start Task" }).click();
+
+  await expect.poll(() => fixture.counts.taskCreates).toBe(1);
+  expect(fixture.requests.pullHeads[0]).toEqual({
+    path: WORKTREE_ROOT,
+    number: 1983,
+    headOid: PULL_HEAD_OID,
+    baseRepository: "gluesql/gluesql",
+  });
+  expect(fixture.requests.taskCreates[0].prompt).toContain(
+    `Head: contributor/gluesql:query-plan-limit-offset @ ${PULL_HEAD_OID}`,
+  );
+});
+
+test("keeps PR Task setup recoverable when the canonical head is unavailable", async ({ page }) => {
+  const fixture = await installLinkedWorktreeGithubFixture(page);
+  fixture.controls.pullHeadFailure = {
+    status: 502,
+    code: "github_pull_head_unavailable",
+    message: "Pull request head is unavailable. Refresh the PR details and try again.",
+  };
+  const pullDetail = await openLinkedWorktreePull(page);
+  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+
+  await pullDetail.getByRole("button", {
+    name: "Start Task for pull request #1983",
+  }).click();
+  await dialog.getByRole("button", { name: "Start Task" }).click();
+  await expect(dialog).toContainText("Pull request head is unavailable");
+  await expect(dialog).toBeVisible();
+  expect(fixture.counts.taskCreates).toBe(0);
+
+  fixture.controls.pullHeadFailure = null;
+  await dialog.getByRole("button", { name: "Start Task" }).click();
+  await expect.poll(() => fixture.counts.taskCreates).toBe(1);
+});
+
+test("requires an explicit PR refresh after the head moves", async ({ page }) => {
+  const movedOid = "3333333333333333333333333333333333333333";
+  const fixture = await installLinkedWorktreeGithubFixture(page);
+  fixture.controls.pullHeadFailure = {
+    status: 409,
+    code: "github_pull_head_stale",
+    message: `Pull request head moved from ${PULL_HEAD_OID} to ${movedOid}. Refresh the PR details before starting a Task.`,
+  };
+  const pullDetail = await openLinkedWorktreePull(page);
+  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+
+  await pullDetail.getByRole("button", {
+    name: "Start Task for pull request #1983",
+  }).click();
+  await dialog.getByRole("button", { name: "Start Task" }).click();
+  await expect(dialog).toContainText("Pull request head moved");
+  expect(fixture.counts.taskCreates).toBe(0);
+
+  fixture.pull.headRefOid = movedOid;
+  fixture.controls.pullHeadFailure = null;
+  await dialog.getByRole("button", { name: "Refresh PR" }).click();
+  await expect(dialog.locator('[data-pull-ref="head"]')).toContainText(
+    "@ 333333333333",
+  );
+  await dialog.getByRole("button", { name: "Start Task" }).click();
+  await expect.poll(() => fixture.counts.taskCreates).toBe(1);
+  expect(fixture.requests.pullHeads.at(-1).headOid).toBe(movedOid);
+});
+
+test("invalidates a pending GitHub Task start when the GitHub surface deactivates", async ({
+  page,
+}) => {
+  const fixture = await installLinkedWorktreeGithubFixture(page);
+  let releasePullHead;
+  fixture.controls.pullHeadGate = new Promise((resolve) => {
+    releasePullHead = resolve;
+  });
+  const pullDetail = await openLinkedWorktreePull(page);
+  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+
+  await pullDetail.getByRole("button", {
+    name: "Start Task for pull request #1983",
+  }).click();
+  await dialog.getByRole("button", { name: "Start Task" }).click();
+  await expect(dialog).toHaveAttribute("aria-busy", "true");
+  await page.locator("caffold-task-github-layout").evaluate((layout) => layout.deactivate());
+  await expect(dialog).toBeHidden();
+
+  releasePullHead();
+  await expect.poll(() => fixture.counts.pullHeads).toBe(1);
+  await page.waitForTimeout(50);
+  expect(fixture.counts.taskCreates).toBe(0);
 });
 
 test("reloads a Task-scoped GitHub route from canonical Task context", async ({ page }) => {

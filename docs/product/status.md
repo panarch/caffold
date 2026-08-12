@@ -15,7 +15,7 @@ boundaries.
   Working Tree/Branch, file/source, Git Compare/Log, and GitHub review
   surfaces;
 - explicit setup-only Task creation from GitHub Issue detail with a selected
-  base ref;
+  base ref and from Pull Request detail with an exact verified head commit;
 - same-Task preparation of a Caffold-managed worktree through
   `isolate_current_task`;
 - opt-in transfer of staged, unstaged, and untracked changes with bounded
@@ -31,10 +31,9 @@ boundaries.
 - Git and GitHub surfaces are read/review-oriented. Caffold does not expose
   stage, commit, checkout, merge, rebase, reset, stash, publication, or review
   mutation controls.
-- Worktree isolation is explicit and setup-only. Issue detail can explicitly
-  start a setup-only Task that prepares a worktree; Pull Request detail cannot,
-  and Caffold does not automatically continue the original request after
-  preparation.
+- Worktree isolation is explicit and setup-only. Issue and Pull Request detail
+  can explicitly start a Task that prepares a worktree, and Caffold does not
+  automatically continue review or implementation after preparation.
 - Caffold owns cleanup only for worktrees it created and recorded. It does not
   adopt external worktrees or force-delete dirty managed worktrees.
 - Conversation presents command and tool output but does not provide a full
@@ -53,8 +52,9 @@ The current product supports these flows:
 3. Review files, diffs, Git state, and GitHub context on desktop, foldable, and
    phone layouts.
 4. Approve or deny a command request and see the canonical outcome.
-5. Start a setup-only Task from GitHub Issue detail and stop after preparing its
-   selected-base worktree.
+5. Start a setup-only Task from GitHub Issue or Pull Request detail and stop
+   after preparing a worktree from the selected Issue base ref or exact PR head
+   commit.
 6. Explicitly prepare the same Task in an isolated worktree without moving dirty
    source changes by default.
 7. Archive a clean managed worktree, restore it, and preserve the same Task,

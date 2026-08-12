@@ -24,10 +24,16 @@ caffold-github-pull-detail-page {
 
   & .github-pull-viewer-title-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.625rem;
     align-items: center;
     min-width: 0;
+  }
+
+  & .github-pull-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
   }
 
   & h2,
@@ -69,6 +75,7 @@ caffold-github-pull-detail-page {
     text-decoration: underline;
   }
 
+  & .github-pull-start-button,
   & .github-pull-files-button {
     position: relative;
     display: grid;
@@ -86,12 +93,15 @@ caffold-github-pull-detail-page {
     font-size: 0.72rem;
   }
 
+  & .github-pull-start-button::before,
   & .github-pull-files-button::before {
     position: absolute;
     inset: calc(0px - var(--interface-compact-hit-outset)) 0;
     content: "";
   }
 
+  & .github-pull-start-button:hover,
+  & .github-pull-start-button:focus-visible,
   & .github-pull-files-button:hover,
   & .github-pull-files-button:focus-visible {
     border-color: var(--control-emphasis-border);
@@ -99,11 +109,16 @@ caffold-github-pull-detail-page {
     outline: none;
   }
 
+  & .github-pull-start-icon,
   & .github-pull-files-icon {
     display: block;
     width: var(--interface-icon-small-size);
     height: var(--interface-icon-small-size);
     stroke-width: 2;
+  }
+
+  & .github-pull-start-icon {
+    stroke-width: 2.2;
   }
 
   & .github-pull-viewer-meta {

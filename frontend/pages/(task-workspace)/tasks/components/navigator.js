@@ -296,13 +296,13 @@ class CaffoldTaskNavigator extends HTMLElement {
 
   listState() {
     this.ensureChildren();
-    const active = this.activeTaskList?.listState() ?? {
+    const active = this.activeTaskList?.listState?.() ?? {
       count: 0,
       loaded: false,
       loading: true,
       error: "",
     };
-    const archived = this.archivedTaskList?.listState() ?? {
+    const archived = this.archivedTaskList?.listState?.() ?? {
       count: 0,
       loaded: false,
       loading: true,

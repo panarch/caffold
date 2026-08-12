@@ -6,7 +6,7 @@ use axum::{
     extract::{Query, State},
     http::{HeaderMap, HeaderValue, header},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
 };
 use futures_util::stream;
 use serde::Deserialize;
@@ -18,8 +18,9 @@ use crate::{
     fs::{
         FileResponse, FsError, GitCommitResponse, GitCompareResponse, GitDiffResponse,
         GitLogResponse, GitRefsResponse, GitStatusResponse, GithubIssueResponse,
-        GithubIssuesResponse, GithubPullFileResponse, GithubPullFilesResponse, GithubPullResponse,
-        GithubPullsResponse, GithubStatusResponse, ListResponse, RootedFs,
+        GithubIssuesResponse, GithubPullFileResponse, GithubPullFilesResponse,
+        GithubPullHeadResponse, GithubPullResponse, GithubPullsResponse, GithubStatusResponse,
+        ListResponse, RootedFs,
     },
     watch::{WatchChange, WatchHub, WatchMessage},
 };
@@ -155,6 +156,16 @@ struct GithubPullQuery {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GithubPullHeadRequest {
+    #[serde(default)]
+    path: String,
+    number: u64,
+    head_oid: String,
+    base_repository: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct GithubPullFileQuery {
     #[serde(default)]
     path: String,
@@ -183,6 +194,7 @@ pub(super) fn router(fs: Arc<RootedFs>, shutdown: broadcast::Sender<()>) -> Rout
         .route("/api/github/issue", get(github_issue))
         .route("/api/github/pulls", get(github_pulls))
         .route("/api/github/pull", get(github_pull))
+        .route("/api/github/pull-head", post(prepare_github_pull_head))
         .route("/api/github/pull-files", get(github_pull_files))
         .route("/api/github/pull-file", get(github_pull_file))
         .with_state(state)
@@ -525,6 +537,22 @@ async fn github_pull(
     state
         .fs
         .github_pull(&query.path, query.number)
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
+async fn prepare_github_pull_head(
+    State(state): State<WorkspaceState>,
+    Json(request): Json<GithubPullHeadRequest>,
+) -> Result<Json<GithubPullHeadResponse>, ApiError> {
+    state
+        .fs
+        .prepare_github_pull_head(
+            &request.path,
+            request.number,
+            &request.head_oid,
+            &request.base_repository,
+        )
         .map(Json)
         .map_err(ApiError::from)
 }

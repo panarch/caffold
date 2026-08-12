@@ -198,6 +198,16 @@ pub struct GithubPullResponse {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct GithubPullHeadResponse {
+    pub repository: DirectoryGitInfo,
+    pub github: GithubRepositoryInfo,
+    pub number: u64,
+    pub head_ref: String,
+    pub head_oid: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct GithubPullFilesResponse {
     pub repository: DirectoryGitInfo,
     pub github: GithubRepositoryInfo,
@@ -293,7 +303,11 @@ pub struct GithubPullDetail {
     pub deletions: u64,
     pub changed_files: u64,
     pub base_ref_name: String,
+    pub base_ref_oid: String,
+    pub base_repository: GithubPullRepositoryInfo,
     pub head_ref_name: String,
+    pub head_ref_oid: String,
+    pub head_repository: Option<GithubPullRepositoryInfo>,
     pub body: String,
     pub body_html: Option<String>,
     pub created_at: Option<String>,
@@ -302,6 +316,13 @@ pub struct GithubPullDetail {
     pub conversation_comments: Vec<GithubPullComment>,
     pub review_comments: Vec<GithubPullReview>,
     pub commit_summaries: Vec<GithubPullCommit>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubPullRepositoryInfo {
+    pub name_with_owner: String,
+    pub url: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -467,6 +488,14 @@ pub enum FsError {
     GithubUnavailable { action: &'static str, path: String },
     #[error("GitHub CLI command failed while trying to {action}: {path}")]
     GithubCommandFailed { action: &'static str, path: String },
+    #[error("invalid pull request head OID: {oid}")]
+    InvalidGithubPullHeadOid { oid: String },
+    #[error("pull request head is unavailable: {path}")]
+    GithubPullHeadUnavailable { path: String },
+    #[error("pull request head moved from {expected} to {actual}")]
+    GithubPullHeadStale { expected: String, actual: String },
+    #[error("pull request base repository changed from {expected} to {actual}")]
+    GithubPullRepositoryMismatch { expected: String, actual: String },
     #[error("filesystem error while trying to {action}: {path}")]
     Io {
         action: &'static str,
@@ -1196,6 +1225,40 @@ impl RootedFs {
         })
     }
 
+    pub fn prepare_github_pull_head(
+        &self,
+        requested_path: &str,
+        number: u64,
+        expected_oid: &str,
+        expected_base_repository: &str,
+    ) -> Result<GithubPullHeadResponse, FsError> {
+        let repository = self.repository_for_request(requested_path)?;
+        let repository_info = self.git_info_for_repository(&repository)?;
+        let github_repository = github::repository_for(&repository).ok_or_else(|| {
+            FsError::GithubRepositoryNotFound {
+                path: requested_path.to_string(),
+            }
+        })?;
+        if github_repository.name_with_owner != expected_base_repository {
+            return Err(FsError::GithubPullRepositoryMismatch {
+                expected: expected_base_repository.to_string(),
+                actual: github_repository.name_with_owner,
+            });
+        }
+        let github = github_repository_info(github_repository.clone());
+        let path = format!("{}#{number}", github.name_with_owner);
+        let head = github::prepare_pull_head(&repository, number, expected_oid)
+            .map_err(|error| github_pull_head_fs_error(error, requested_path, &path))?;
+
+        Ok(GithubPullHeadResponse {
+            repository: repository_info,
+            github,
+            number,
+            head_ref: head.reference,
+            head_oid: head.oid,
+        })
+    }
+
     pub fn github_pull_files(
         &self,
         requested_path: &str,
@@ -1613,6 +1676,27 @@ fn github_repository_info(repository: github::GithubRepository) -> GithubReposit
     }
 }
 
+fn github_pull_head_fs_error(
+    error: github::GithubPullHeadError,
+    requested_path: &str,
+    pull_path: &str,
+) -> FsError {
+    match error {
+        github::GithubPullHeadError::RemoteNotFound => FsError::GithubRepositoryNotFound {
+            path: requested_path.to_string(),
+        },
+        github::GithubPullHeadError::InvalidOid(oid) => FsError::InvalidGithubPullHeadOid { oid },
+        github::GithubPullHeadError::Stale { expected, actual } => {
+            FsError::GithubPullHeadStale { expected, actual }
+        }
+        github::GithubPullHeadError::FetchFailed | github::GithubPullHeadError::PrepareFailed => {
+            FsError::GithubPullHeadUnavailable {
+                path: pull_path.to_string(),
+            }
+        }
+    }
+}
+
 fn github_issue_summary(issue: github::GithubIssueSummary) -> GithubIssueSummary {
     GithubIssueSummary {
         number: issue.number,
@@ -1673,7 +1757,11 @@ fn github_pull_detail(pull: github::GithubPullDetail) -> GithubPullDetail {
         deletions: pull.deletions,
         changed_files: pull.changed_files,
         base_ref_name: pull.base_ref_name,
+        base_ref_oid: pull.base_ref_oid,
+        base_repository: github_pull_repository_info(pull.base_repository),
         head_ref_name: pull.head_ref_name,
+        head_ref_oid: pull.head_ref_oid,
+        head_repository: pull.head_repository.map(github_pull_repository_info),
         body: pull.body,
         body_html: pull.body_html,
         created_at: pull.created_at,
@@ -1694,6 +1782,15 @@ fn github_pull_detail(pull: github::GithubPullDetail) -> GithubPullDetail {
             .into_iter()
             .map(github_pull_commit)
             .collect(),
+    }
+}
+
+fn github_pull_repository_info(
+    repository: github::GithubPullRepository,
+) -> GithubPullRepositoryInfo {
+    GithubPullRepositoryInfo {
+        name_with_owner: repository.name_with_owner,
+        url: repository.url,
     }
 }
 
@@ -1920,6 +2017,102 @@ mod tests {
         assert_eq!(git.root_path, "repo");
         assert!(git.branch.is_some());
         assert!(git.dirty);
+    }
+
+    #[test]
+    fn prepares_pull_heads_only_for_the_selected_matching_github_repository() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let repo_path = temp.path().join("repo");
+        fs::create_dir(&repo_path).unwrap();
+        git(&repo_path, &["init"]);
+        git(
+            &repo_path,
+            &[
+                "remote",
+                "add",
+                "origin",
+                "https://github.com/panarch/caffold.git",
+            ],
+        );
+        fs::create_dir(repo_path.join("nested")).unwrap();
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+        let mismatch = rooted
+            .prepare_github_pull_head("repo/nested", 97, "not-an-oid", "other/caffold")
+            .unwrap_err();
+        assert!(matches!(
+            mismatch,
+            FsError::GithubPullRepositoryMismatch { expected, actual }
+                if expected == "other/caffold" && actual == "panarch/caffold"
+        ));
+
+        let invalid_oid = rooted
+            .prepare_github_pull_head("repo/nested", 97, "not-an-oid", "panarch/caffold")
+            .unwrap_err();
+        assert!(matches!(
+            invalid_oid,
+            FsError::InvalidGithubPullHeadOid { oid } if oid == "not-an-oid"
+        ));
+
+        let local_repo = temp.path().join("local-repo");
+        fs::create_dir(&local_repo).unwrap();
+        git(&local_repo, &["init"]);
+        assert!(matches!(
+            rooted.prepare_github_pull_head(
+                "local-repo",
+                97,
+                "not-an-oid",
+                "panarch/caffold",
+            ),
+            Err(FsError::GithubRepositoryNotFound { path }) if path == "local-repo"
+        ));
+    }
+
+    #[test]
+    fn maps_github_pull_head_preparation_failures_at_the_filesystem_owner() {
+        let requested_path = "repo/nested";
+        let pull_path = "panarch/caffold#97";
+
+        assert!(matches!(
+            github_pull_head_fs_error(
+                github::GithubPullHeadError::RemoteNotFound,
+                requested_path,
+                pull_path,
+            ),
+            FsError::GithubRepositoryNotFound { path } if path == requested_path
+        ));
+        assert!(matches!(
+            github_pull_head_fs_error(
+                github::GithubPullHeadError::FetchFailed,
+                requested_path,
+                pull_path,
+            ),
+            FsError::GithubPullHeadUnavailable { path } if path == pull_path
+        ));
+        assert!(matches!(
+            github_pull_head_fs_error(
+                github::GithubPullHeadError::PrepareFailed,
+                requested_path,
+                pull_path,
+            ),
+            FsError::GithubPullHeadUnavailable { path } if path == pull_path
+        ));
+        assert!(matches!(
+            github_pull_head_fs_error(
+                github::GithubPullHeadError::Stale {
+                    expected: "1".repeat(40),
+                    actual: "2".repeat(40),
+                },
+                requested_path,
+                pull_path,
+            ),
+            FsError::GithubPullHeadStale { expected, actual }
+                if expected == "1".repeat(40) && actual == "2".repeat(40)
+        ));
     }
 
     #[test]

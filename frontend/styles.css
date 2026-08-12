@@ -52,7 +52,9 @@
 @import "./pages/(task-workspace)/tasks/components/detail/(github)/(issues)/layout.css";
 @import "./pages/(task-workspace)/tasks/components/detail/(github)/(issues)/list/page.css";
 @import "./pages/(task-workspace)/tasks/components/detail/(github)/(issues)/detail/page.css";
-@import "./pages/(task-workspace)/tasks/components/detail/(github)/(issues)/components/task-start-dialog.css";
+@import "./pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog.css";
+@import "./pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-issue.css";
+@import "./pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-pull.css";
 @import "./pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/layout.css";
 @import "./pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/list/page.css";
 @import "./pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/detail/page.css";

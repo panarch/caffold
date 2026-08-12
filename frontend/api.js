@@ -196,6 +196,13 @@ export async function getGitHubPull(path = "", number) {
   return requestJson("/api/github/pull", { path, number });
 }
 
+export async function prepareGitHubPullHead(path = "", number, headOid, baseRepository) {
+  return requestJson("/api/github/pull-head", {}, {
+    method: "POST",
+    body: { path, number, headOid, baseRepository },
+  });
+}
+
 export async function getGitHubPullFiles(path = "", number) {
   return requestJson("/api/github/pull-files", { path, number });
 }

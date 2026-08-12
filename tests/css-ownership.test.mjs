@@ -158,8 +158,16 @@ const ownership = new Map([
     ["caffold-github-issue-detail-page"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/components/task-start-dialog.css",
-    ["caffold-github-issue-task-start-dialog"],
+    "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog.css",
+    ["caffold-github-task-start-dialog"],
+  ],
+  [
+    "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-issue.css",
+    ["caffold-github-issue-task-source"],
+  ],
+  [
+    "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-pull.css",
+    ["caffold-github-pull-task-source"],
   ],
   [
     "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/layout.css",
@@ -327,14 +335,25 @@ const componentChildren = new Map([
   ],
   [
     "caffold-task-github-layout",
-    ["caffold-github-issues-layout", "caffold-github-pulls-layout"],
+    [
+      "caffold-github-issues-layout",
+      "caffold-github-pulls-layout",
+      "caffold-github-task-start-dialog",
+    ],
   ],
   [
     "caffold-github-issues-layout",
     [
       "caffold-github-issues-list-page",
       "caffold-github-issue-detail-page",
-      "caffold-github-issue-task-start-dialog",
+    ],
+  ],
+  [
+    "caffold-github-task-start-dialog",
+    [
+      "caffold-github-issue-task-source",
+      "caffold-github-pull-task-source",
+      "caffold-task-turn-options",
     ],
   ],
   [

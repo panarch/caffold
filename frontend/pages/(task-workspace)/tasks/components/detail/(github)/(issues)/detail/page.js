@@ -12,14 +12,15 @@ class CaffoldGithubIssueDetailPage extends HTMLElement {
           return;
         }
         if (
-          button.dataset.action === "start-github-issue-task" &&
+          button.dataset.action === "start-github-task" &&
           this.state?.status === "ready"
         ) {
           this.dispatchEvent(
-            new CustomEvent("caffold:start-github-issue-task", {
+            new CustomEvent("caffold:start-github-task", {
               bubbles: true,
               composed: true,
               detail: {
+                kind: "issue",
                 payload: this.state.payload,
                 opener: button,
               },
@@ -102,7 +103,7 @@ class CaffoldGithubIssueDetailPage extends HTMLElement {
               <button
                 type="button"
                 class="github-issue-start-button"
-                data-action="start-github-issue-task"
+                data-action="start-github-task"
                 aria-label="Start Task for issue #${escapeHtml(`${issue.number}`)}"
                 title="Start Task"
               >
