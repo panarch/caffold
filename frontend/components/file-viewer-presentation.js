@@ -4,6 +4,7 @@ import {
   formatModified,
   languageLabel,
 } from "./dom.js";
+import { fileStatusPresentation } from "../file-status.js";
 
 export function sourceViewerPresentation(source = {}) {
   const path = `${source.path ?? ""}`;
@@ -121,27 +122,5 @@ function diffKindLabel(kind) {
 }
 
 function diffStatusLabel(status) {
-  if (!status) {
-    return "";
-  }
-
-  const code = String(status).trim() === "??"
-    ? "??"
-    : Array.from(String(status)).find((character) => character !== " ");
-
-  if (code === "??") {
-    return "Added";
-  }
-
-  const labels = {
-    A: "Added",
-    C: "Copied",
-    D: "Deleted",
-    M: "Modified",
-    R: "Renamed",
-    T: "Type changed",
-    U: "Unmerged",
-  };
-
-  return labels[code] ?? String(status).trim();
+  return fileStatusPresentation(status).label;
 }

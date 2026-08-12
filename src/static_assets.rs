@@ -16,6 +16,7 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "styles.css" => Some(css(include_str!("../frontend/styles.css"))),
         "app.js" => Some(js(include_str!("../frontend/app.js"))),
         "api.js" => Some(js(include_str!("../frontend/api.js"))),
+        "file-status.js" => Some(js(include_str!("../frontend/file-status.js"))),
         "fonts.js" => Some(js(include_str!("../frontend/fonts.js"))),
         "navigation-routes.js" => Some(js(include_str!("../frontend/navigation-routes.js"))),
         "settings.js" => Some(js(include_str!("../frontend/settings.js"))),
@@ -1570,6 +1571,17 @@ mod tests {
                 .body
                 .windows(b"caffold-file-tree".len())
                 .any(|window| window == b"caffold-file-tree")
+        );
+        let file_status_module = get("file-status.js").expect("file status js asset");
+        assert_eq!(
+            file_status_module.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(
+            file_status_module
+                .body
+                .windows(b"fileStatusPresentation".len())
+                .any(|window| window == b"fileStatusPresentation")
         );
         let file_tree_css = get("components/file-tree.css").expect("file tree component css asset");
         assert_eq!(file_tree_css.content_type, "text/css; charset=utf-8");

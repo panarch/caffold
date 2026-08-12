@@ -49,8 +49,8 @@ caffold-file-tree {
   }
 
   &[data-status-column="true"] .file-tree-entry {
-    grid-template-columns: var(--file-tree-icon-slot-size) minmax(0, max-content);
-    gap: var(--file-tree-column-gap);
+    grid-template-columns: var(--file-tree-status-slot-size) minmax(0, max-content);
+    gap: var(--file-tree-status-gap);
   }
 
   & .file-tree-entry:hover,
@@ -71,14 +71,44 @@ caffold-file-tree {
   & .file-tree-status-code {
     display: none;
     align-self: center;
-    color: var(--warning-strong);
+    width: 100%;
+    color: var(--file-status-unknown-fg);
     font-size: var(--file-tree-font-size);
-    justify-self: start;
-    white-space: pre;
+    justify-self: center;
+    text-align: center;
+    white-space: nowrap;
   }
 
   &[data-status-column="true"] .file-tree-status-code {
     display: block;
+  }
+
+  & .file-tree-entry[data-file-tree-status-tone="added"] .file-tree-status-code {
+    color: var(--file-status-added-fg);
+  }
+
+  & .file-tree-entry[data-file-tree-status-tone="modified"] .file-tree-status-code {
+    color: var(--file-status-modified-fg);
+  }
+
+  & .file-tree-entry[data-file-tree-status-tone="deleted"] .file-tree-status-code {
+    color: var(--file-status-deleted-fg);
+  }
+
+  & .file-tree-entry[data-file-tree-status-tone="renamed"] .file-tree-status-code {
+    color: var(--file-status-renamed-fg);
+  }
+
+  & .file-tree-entry[data-file-tree-status-tone="copied"] .file-tree-status-code {
+    color: var(--file-status-copied-fg);
+  }
+
+  & .file-tree-entry[data-file-tree-status-tone="type-changed"] .file-tree-status-code {
+    color: var(--file-status-type-changed-fg);
+  }
+
+  & .file-tree-entry[data-file-tree-status-tone="unmerged"] .file-tree-status-code {
+    color: var(--file-status-unmerged-fg);
   }
 
   & .file-tree-node-label {

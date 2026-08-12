@@ -1,4 +1,5 @@
 import { escapeHtml } from "../../../../../../components/dom.js";
+import { fileStatusPresentation } from "../../../../../../file-status.js";
 import {
   buildFileTreeNodes,
   FILE_TREE_SELECT_EVENT,
@@ -187,7 +188,8 @@ function changeNodes(files) {
         kind: "file",
         path: file.path,
         treePath: repoRelativePath,
-        status: displayStatus(file),
+        status: file.status,
+        statusContext: file,
         title: repoRelativePath,
         ariaLabel: `Show diff for ${repoRelativePath}`,
         source: file,
@@ -235,5 +237,5 @@ function displayCategory(file) {
 }
 
 function displayStatus(file) {
-  return file.untracked ? "A" : file.status;
+  return fileStatusPresentation(file.status, file).code;
 }

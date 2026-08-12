@@ -12,6 +12,7 @@ import {
   diffViewerPresentation,
   sourceViewerPresentation,
 } from "../../../../../components/file-viewer-presentation.js";
+import { fileStatusPresentation } from "../../../../../file-status.js";
 import "../../../../../components/git-compare-browser/compare-tree.js";
 import "./review/changes-tree.js";
 import {
@@ -565,7 +566,9 @@ class CaffoldTaskReview extends HTMLElement {
         (this.route.scope === "branch"
           ? `${this.route.baseRef}...${taskCompareHeadRef(this.task, this.refs)}`
           : change?.kind ?? ""),
-      status: change?.file?.status ?? "",
+      status: change?.file
+        ? fileStatusPresentation(change.file.status, change.file).code
+        : "",
     });
   }
 
