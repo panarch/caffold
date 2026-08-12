@@ -117,6 +117,7 @@ test("installs the complete shell without replacing the current worker", async (
   await completion;
 
   assert.equal(harness.skipWaitingCalls.length, 0);
+  assert.ok(installedAssets.includes("/assets/file-status.js"));
   assert.ok(installedAssets.includes("/assets/pages/components/update-dialog.js"));
   assert.ok(
     installedAssets.includes(

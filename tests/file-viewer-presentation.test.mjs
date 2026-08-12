@@ -93,3 +93,12 @@ test("diff presentation does not repeat equivalent status and kind labels", () =
   assert.equal(presentation.title, "new-file.rs");
   assert.equal(presentation.subtitle, "Added");
 });
+
+test("diff presentation uses the safe shared label for unknown status input", () => {
+  const presentation = diffViewerPresentation({
+    path: "future-state.rs",
+    status: "provider-mystery",
+  });
+
+  assert.equal(presentation.subtitle, "Unknown");
+});

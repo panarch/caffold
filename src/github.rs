@@ -1569,7 +1569,7 @@ fn pull_file_status_code(status: &str) -> &'static str {
         "renamed" => "R",
         "copied" => "C",
         "changed" | "modified" => "M",
-        _ => "M",
+        _ => "?",
     }
 }
 
@@ -2059,6 +2059,16 @@ mod tests {
         assert!(files[1].patch.is_none());
         assert_eq!(files[2].status, "R");
         assert_eq!(files[2].previous_filename.as_deref(), Some("src/old.rs"));
+    }
+
+    #[test]
+    fn normalizes_pull_file_statuses_with_an_unknown_fallback() {
+        assert_eq!(pull_file_status_code("added"), "A");
+        assert_eq!(pull_file_status_code("modified"), "M");
+        assert_eq!(pull_file_status_code("removed"), "D");
+        assert_eq!(pull_file_status_code("renamed"), "R");
+        assert_eq!(pull_file_status_code("copied"), "C");
+        assert_eq!(pull_file_status_code("future-status"), "?");
     }
 
     fn git_is_available() -> bool {

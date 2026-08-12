@@ -1,4 +1,5 @@
 import { renderEntryIcon, warmIcons } from "./icons.js";
+import { fileStatusPresentation } from "../file-status.js";
 
 export const FILE_TREE_SELECT_EVENT = "caffold:file-tree-select";
 export const FILE_TREE_LOAD_EVENT = "caffold:file-tree-load-children";
@@ -353,6 +354,8 @@ class CaffoldFileTree extends HTMLElement {
 
   patchEntryButton(button, node, depth) {
     const expanded = node.kind === "directory" && this.expandedKeys.has(node.key);
+    const status = fileStatusPresentation(node.status, node.statusContext);
+    const statusVisible = this.dataset.statusColumn === "true" && Boolean(status.code);
     button.className = `file-tree-entry file-tree-${node.kind}`;
     button.style.setProperty("--tree-depth", depth);
     button.dataset.fileTreeKey = node.key;
@@ -362,10 +365,12 @@ class CaffoldFileTree extends HTMLElement {
     } else {
       delete button.dataset.fileTreePath;
     }
-    if (node.status) {
-      button.dataset.fileTreeStatus = node.status;
+    if (status.code) {
+      button.dataset.fileTreeStatus = status.code;
+      button.dataset.fileTreeStatusTone = status.tone;
     } else {
       delete button.dataset.fileTreeStatus;
+      delete button.dataset.fileTreeStatusTone;
     }
     if (node.treePath) {
       button.dataset.fileTreeRelativePath = node.treePath;
@@ -381,7 +386,11 @@ class CaffoldFileTree extends HTMLElement {
     button.toggleAttribute("data-ignored-entry", Boolean(node.ignored));
     button.disabled = Boolean(node.disabled);
     button.title = node.title ?? "";
-    button.setAttribute("aria-label", node.ariaLabel ?? defaultAriaLabel(node, expanded));
+    const ariaLabel = node.ariaLabel ?? defaultAriaLabel(node, expanded);
+    button.setAttribute(
+      "aria-label",
+      statusVisible ? `${status.label}. ${ariaLabel}` : ariaLabel,
+    );
 
     if (node.kind === "directory" && isExpandable(node)) {
       button.setAttribute("aria-expanded", expanded ? "true" : "false");
@@ -394,7 +403,7 @@ class CaffoldFileTree extends HTMLElement {
       );
     }
 
-    button.querySelector(":scope > .file-tree-status-code").textContent = node.status ?? "";
+    button.querySelector(":scope > .file-tree-status-code").textContent = status.code;
     button.querySelector(
       ":scope > .file-tree-node-label > .file-tree-name",
     ).textContent = node.name ?? "";

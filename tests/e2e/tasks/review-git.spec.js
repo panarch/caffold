@@ -55,6 +55,153 @@ test("keeps the selected Review file identity stable while content loads", async
   await expect(viewer.locator(".viewer-subtitle")).toHaveCount(0);
 });
 
+test("normalizes and compacts shared file-tree statuses", async ({
+  page,
+}, testInfo) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page, {
+    configureReview(review) {
+      review.edgeCaseFiles = true;
+    },
+  });
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+
+  const changes = taskReview.locator("caffold-git-diff-changes-tree");
+  const expected = [
+    ["planner.rs", "M", "modified", "Modified"],
+    ["deleted.rs", "D", "deleted", "Deleted"],
+    ["untracked.rs", "A", "added", "Added"],
+    ["staged.rs", "M", "modified", "Modified"],
+    ["mixed-modified.rs", "M", "modified", "Modified"],
+    ["added-modified.rs", "M", "modified", "Modified"],
+    ["renamed.rs", "R", "renamed", "Renamed"],
+    ["conflicted.rs", "U", "unmerged", "Unmerged"],
+    ["unknown.rs", "?", "unknown", "Unknown"],
+  ];
+  for (const [path, code, tone, label] of expected) {
+    const entry = changes.locator(
+      `button[data-file-tree-relative-path="${path}"]`,
+    );
+    await expect(entry).toHaveCount(1);
+    await expect(entry).toHaveAttribute("data-file-tree-status", code);
+    await expect(entry).toHaveAttribute("data-file-tree-status-tone", tone);
+    await expect(entry.locator(".file-tree-status-code")).toHaveText(code);
+    await expect(entry).toHaveAttribute("aria-label", new RegExp(`^${label}\\.`));
+  }
+
+  for (const path of ["mixed-modified.rs", "added-modified.rs"]) {
+    await expect(
+      changes.locator(`button[data-file-tree-relative-path="${path}"]`),
+    ).toHaveAttribute("data-file-tree-key", /^unstaged:file:/);
+  }
+  const renderedCodes = await changes
+    .locator(".file-tree-status-code")
+    .allTextContents();
+  expect(
+    renderedCodes.filter(Boolean).every((code) => Array.from(code).length === 1),
+  ).toBe(true);
+  expect(renderedCodes).not.toEqual(
+    expect.arrayContaining([" M", "M ", "MM", "AM", "??"]),
+  );
+
+  const geometry = await changes.evaluate((tree) => {
+    const entry = tree.querySelector(
+      'button[data-file-tree-relative-path="planner.rs"]',
+    );
+    const directory = tree.querySelector(
+      'button[data-file-tree-path="tests"]',
+    );
+    const nested = tree.querySelector(
+      'button[data-file-tree-relative-path="tests/planner.rs"]',
+    );
+    const status = entry.querySelector(".file-tree-status-code");
+    const label = entry.querySelector(".file-tree-node-label");
+    const icon = entry.querySelector(".file-tree-icon");
+    const name = entry.querySelector(".file-tree-name");
+    const statusRect = status.getBoundingClientRect();
+    const labelRect = label.getBoundingClientRect();
+    const iconRect = icon.getBoundingClientRect();
+    const nameRect = name.getBoundingClientRect();
+    const statusColors = {};
+    for (const [tone, token] of [
+      ["added", "--file-status-added-fg"],
+      ["modified", "--file-status-modified-fg"],
+      ["deleted", "--file-status-deleted-fg"],
+      ["renamed", "--file-status-renamed-fg"],
+      ["unmerged", "--file-status-unmerged-fg"],
+      ["unknown", "--file-status-unknown-fg"],
+    ]) {
+      const statusElement = tree.querySelector(
+        `.file-tree-entry[data-file-tree-status-tone="${tone}"] .file-tree-status-code`,
+      );
+      const probe = document.createElement("span");
+      probe.style.color = `var(${token})`;
+      tree.append(probe);
+      statusColors[tone] = {
+        actual: getComputedStyle(statusElement).color,
+        expected: getComputedStyle(probe).color,
+      };
+      probe.remove();
+    }
+    return {
+      statusColumn: entry.closest("caffold-file-tree").dataset.statusColumn,
+      statusWidth: statusRect.width,
+      statusGap: labelRect.left - statusRect.right,
+      iconSlotWidth: iconRect.width,
+      iconNameGap: nameRect.left - iconRect.right,
+      recoveredWidth:
+        iconRect.width + (nameRect.left - iconRect.right) -
+        statusRect.width - (labelRect.left - statusRect.right),
+      rootIconAlignment: Math.abs(
+        iconRect.left -
+          directory.querySelector(".file-tree-icon").getBoundingClientRect().left,
+      ),
+      nestedIndent:
+        nested.querySelector(".file-tree-icon").getBoundingClientRect().left -
+        directory.querySelector(".file-tree-icon").getBoundingClientRect().left,
+      statusColors,
+    };
+  });
+  expect(geometry.statusColumn).toBe("true");
+  expect(geometry.statusWidth).toBeLessThan(geometry.iconSlotWidth);
+  expect(geometry.statusGap).toBeLessThanOrEqual(geometry.iconNameGap);
+  expect(geometry.recoveredWidth).toBeGreaterThanOrEqual(12);
+  expect(geometry.recoveredWidth).toBeLessThanOrEqual(15);
+  expect(geometry.rootIconAlignment).toBeLessThanOrEqual(1);
+  expect(geometry.nestedIndent).toBeGreaterThanOrEqual(10);
+  for (const colors of Object.values(geometry.statusColors)) {
+    expect(colors.actual).toBe(colors.expected);
+  }
+
+  await stabilizeDynamicText(page);
+  await captureReviewScreenshot(page, testInfo, "tasks-file-status-column");
+
+  await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+  const statuslessTree = taskReview.locator("caffold-file-navigator caffold-file-tree");
+  await expect(
+    statuslessTree.locator('button[data-file-tree-path="src/planner.rs"]'),
+  ).toBeAttached();
+  const statuslessGeometry = await statuslessTree.evaluate((tree) => {
+    const entry = tree.querySelector('button[data-file-tree-path="src/planner.rs"]');
+    const status = entry.querySelector(".file-tree-status-code");
+    const icon = entry.querySelector(".file-tree-icon").getBoundingClientRect();
+    const name = entry.querySelector(".file-tree-name").getBoundingClientRect();
+    return {
+      statusColumn: tree.dataset.statusColumn,
+      statusDisplay: getComputedStyle(status).display,
+      columnCount: getComputedStyle(entry).gridTemplateColumns.split(" ").length,
+      iconSlotWidth: icon.width,
+      iconNameGap: name.left - icon.right,
+    };
+  });
+  expect(statuslessGeometry).toEqual({
+    statusColumn: "false",
+    statusDisplay: "none",
+    columnCount: 1,
+    iconSlotWidth: geometry.iconSlotWidth,
+    iconNameGap: geometry.iconNameGap,
+  });
+});
+
 test("reviews working tree changes through the canonical Review route", async ({
   page,
 }, testInfo) => {
