@@ -511,7 +511,7 @@ class CaffoldTaskDetail extends HTMLElement {
 
   applyTaskStreamEvent(message) {
     const threadId = `${message?.threadId ?? ""}`;
-    const entry = message?.event;
+    const entry = withEventFileLinks(message?.event, message?.fileLinks);
     if (
       threadId !== this.selectedThreadId ||
       !entry ||
@@ -575,7 +575,10 @@ class CaffoldTaskDetail extends HTMLElement {
       task: stableTask,
     };
     const currentEvents = this.eventsByThread.get(threadId) ?? [];
-    const incomingEvents = detail.events ?? [];
+    const incomingEvents = withDetailFileLinks(
+      detail.events ?? [],
+      detail.fileLinks,
+    );
     this.setThreadEvents(
       threadId,
       preferCurrentEvents
@@ -1985,6 +1988,35 @@ function isVisibleStreamState(state) {
 function taskWorktreeRootPath(task) {
   const path = `${task?.worktree?.rootPath ?? ""}`.trim();
   return path === "." ? path : cleanLogicalPath(path);
+}
+
+function withDetailFileLinks(events, fileLinks) {
+  const linksByEvent = new Map();
+  for (const link of Array.isArray(fileLinks) ? fileLinks : []) {
+    const eventId = `${link?.eventId ?? ""}`.trim();
+    if (!eventId) {
+      continue;
+    }
+    const links = linksByEvent.get(eventId) ?? [];
+    links.push(link);
+    linksByEvent.set(eventId, links);
+  }
+  return events.map((event) =>
+    withEventFileLinks(event, linksByEvent.get(`${event?.id ?? ""}`)),
+  );
+}
+
+function withEventFileLinks(event, fileLinks) {
+  if (!event) {
+    return null;
+  }
+  const links = (Array.isArray(fileLinks) ? fileLinks : []).filter(
+    (link) =>
+      `${link?.eventId ?? ""}` === `${event.id ?? ""}` &&
+      `${link?.target ?? ""}` &&
+      `${link?.taskRelativePath ?? ""}`,
+  );
+  return links.length ? { ...event, fileLinks: links } : event;
 }
 
 function sameStructuredValue(left, right) {

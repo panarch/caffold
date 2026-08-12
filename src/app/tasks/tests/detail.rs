@@ -1033,6 +1033,7 @@ fn task_stream_bootstrap_replays_the_canonical_detail_snapshot() {
                 unseen: false,
             }),
             events: vec![assistant],
+            file_links: Vec::new(),
             events_page: TaskEventsPage { next_cursor: None },
             pending_approvals: Vec::new(),
             history_loading: false,

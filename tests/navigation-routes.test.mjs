@@ -34,7 +34,7 @@ test("parses and serializes Task-scoped routes canonically", () => {
       "/tasks/thread%201",
     ],
     [
-      "/tasks/thread%201/review?scope=branch&nav=files&view=source&file=src%2Flib.rs&base=origin%2Fmain",
+      "/tasks/thread%201/review?scope=branch&nav=files&view=source&file=..%2Fshared%2Flib.rs&line=17&base=origin%2Fmain",
       {
         kind: "tasks",
         new: false,
@@ -44,10 +44,11 @@ test("parses and serializes Task-scoped routes canonically", () => {
         reviewScope: "branch",
         reviewNavigator: "files",
         reviewViewer: "source",
-        path: "src/lib.rs",
+        path: "../shared/lib.rs",
+        line: 17,
         baseRef: "origin/main",
       },
-      "/tasks/thread%201/review?scope=branch&nav=files&view=source&file=src%2Flib.rs&base=origin%2Fmain",
+      "/tasks/thread%201/review?scope=branch&nav=files&view=source&file=..%2Fshared%2Flib.rs&line=17&base=origin%2Fmain",
     ],
     [
       "/tasks/thread/git/compare?base=origin%2Fmain&head=feature%2Fx&file=src%2Flib.rs",
@@ -107,7 +108,7 @@ test("derives deterministic Task child parents", () => {
     ["/tasks/new?cwd=src", "/"],
     ["/tasks/thread", "/"],
     [
-      "/tasks/thread/review?scope=branch&nav=files&view=source&file=src%2Flib.rs&base=origin%2Fmain",
+      "/tasks/thread/review?scope=branch&nav=files&view=source&file=src%2Flib.rs&line=17&base=origin%2Fmain",
       "/tasks/thread/review?scope=branch&nav=files&view=source&base=origin%2Fmain",
     ],
     ["/tasks/thread/review", "/"],
@@ -185,6 +186,19 @@ test("rejects obsolete standalone and invalid routes", () => {
   ]) {
     assert.equal(parseRoute(url), null);
   }
+
+  const malformedLine = parseRoute(
+    "/tasks/thread/review?nav=files&view=source&file=src%2Flib.rs&line=17px",
+  );
+  assert.equal(malformedLine.line, null);
+  assert.equal(
+    routeUrl(malformedLine),
+    "/tasks/thread/review?nav=files&view=source&file=src%2Flib.rs",
+  );
+
+  const lineWithoutFile = parseRoute("/tasks/thread/review?line=17");
+  assert.equal(lineWithoutFile.line, null);
+  assert.equal(routeUrl(lineWithoutFile), "/tasks/thread/review");
 });
 
 test("compares Task-scoped routes by canonical URL", () => {

@@ -9,6 +9,7 @@ export async function installTaskLoopFixture(
   {
     completedAssistantResponse: completedAssistantResponseOverride,
     contextPath = "src",
+    fileLinks = [],
     threadId = "thread_12345678",
   } = {},
 ) {
@@ -116,15 +117,22 @@ export async function installTaskLoopFixture(
     payload,
     createdMs: now + offset,
   });
-  const detailResponse = (overrides = {}) => ({
-    threadId,
-    syncState: "ready",
-    revision: overrides.revision ?? 1,
-    task: overrides.task ?? task,
-    events: overrides.events ?? events,
-    eventsPage: { nextCursor: null, ...(overrides.eventsPage ?? {}) },
-    pendingApprovals: [],
-  });
+  const detailResponse = (overrides = {}) => {
+    const responseEvents = overrides.events ?? events;
+    const eventIds = new Set(responseEvents.map((event) => event.id));
+    return {
+      threadId,
+      syncState: "ready",
+      revision: overrides.revision ?? 1,
+      task: overrides.task ?? task,
+      events: responseEvents,
+      fileLinks: (overrides.fileLinks ?? fileLinks).filter((link) =>
+        eventIds.has(link.eventId),
+      ),
+      eventsPage: { nextCursor: null, ...(overrides.eventsPage ?? {}) },
+      pendingApprovals: [],
+    };
+  };
   const updateTask = (updates) => {
     task = {
       ...task,

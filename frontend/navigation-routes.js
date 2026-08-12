@@ -10,6 +10,7 @@ const TASK_REVIEW_QUERY = [
   { name: "nav", key: "reviewNavigator", defaultValue: "changes" },
   { name: "view", key: "reviewViewer", defaultValue: "diff" },
   { name: "file", key: "path", defaultValue: "" },
+  { name: "line", key: "line", type: "positiveLine", defaultValue: null },
   { name: "base", key: "baseRef", defaultValue: "" },
 ];
 const FILE_QUERY = [{ name: "file", key: "path", defaultValue: "" }];
@@ -464,6 +465,8 @@ function parseQuery(definition, url) {
     const rawValue = url.searchParams.get(query.name);
     if (query.type === "positiveInteger") {
       values[query.key] = positiveInteger(rawValue) ?? query.defaultValue;
+    } else if (query.type === "positiveLine") {
+      values[query.key] = positiveLine(rawValue) ?? query.defaultValue;
     } else {
       values[query.key] = rawValue ?? query.defaultValue;
     }
@@ -484,6 +487,7 @@ function writeQuery(definition, route, searchParams) {
 
 function tasksRoute(options = {}) {
   const review = Boolean(options.review && options.threadId);
+  const reviewPath = review ? reviewFilePath(options.path) : "";
   return {
     kind: "tasks",
     new: Boolean(options.new),
@@ -495,7 +499,8 @@ function tasksRoute(options = {}) {
           reviewScope: enumValue(options.reviewScope, ["working", "branch"], "working"),
           reviewNavigator: enumValue(options.reviewNavigator, ["changes", "files"], "changes"),
           reviewViewer: enumValue(options.reviewViewer, ["diff", "source"], "diff"),
-          path: safeRelativePath(options.path),
+          path: reviewPath,
+          line: reviewPath ? positiveLine(options.line) : null,
           baseRef: `${options.baseRef ?? ""}`,
         }
       : {}),
@@ -584,6 +589,25 @@ function safeRelativePath(path) {
   return cleanPath(path);
 }
 
+function reviewFilePath(path) {
+  const segments = [];
+  for (const segment of `${path ?? ""}`.replaceAll("\\", "/").split("/")) {
+    if (!segment || segment === ".") {
+      continue;
+    }
+    if (segment === "..") {
+      if (segments.length && segments.at(-1) !== "..") {
+        segments.pop();
+      } else {
+        segments.push(segment);
+      }
+      continue;
+    }
+    segments.push(segment);
+  }
+  return segments.join("/");
+}
+
 function enumValue(value, allowed, fallback) {
   return allowed.includes(value) ? value : fallback;
 }
@@ -591,6 +615,15 @@ function enumValue(value, allowed, fallback) {
 function positiveInteger(value) {
   const number = Number.parseInt(`${value ?? ""}`, 10);
   return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function positiveLine(value) {
+  const text = `${value ?? ""}`;
+  if (!/^[1-9][0-9]*$/.test(text)) {
+    return null;
+  }
+  const number = Number(text);
+  return Number.isSafeInteger(number) ? number : null;
 }
 
 function safeDecode(value) {

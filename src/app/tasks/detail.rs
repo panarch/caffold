@@ -4,6 +4,10 @@ use futures_util::{Stream, stream};
 use serde::Serialize;
 use tokio::sync::{Mutex as AsyncMutex, broadcast, mpsc};
 
+mod file_links;
+
+use file_links::{TaskFileLink, TaskFileLinkResolver};
+
 use super::{
     events::{
         TaskEventRecord, TaskEvents, merge_task_event_records, sort_task_events, thread_events,
@@ -36,6 +40,7 @@ pub(in crate::app) struct DetailContext {
     runtime_signals: Arc<AsyncMutex<Option<broadcast::Receiver<CodexRuntimeSignal>>>>,
     sessions: CodexThreadSessions,
     events: TaskEvents,
+    file_links: TaskFileLinkResolver,
     sync: TaskSync<TaskDetailSync>,
     shutdown: broadcast::Sender<()>,
     remove_managed_task: RemoveManagedTask,
@@ -49,6 +54,8 @@ pub(in crate::app) struct TaskDetailResponse {
     pub(in crate::app) revision: u64,
     pub(in crate::app) task: Option<TaskRecord>,
     pub(in crate::app) events: Vec<TaskEventRecord>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(in crate::app) file_links: Vec<TaskFileLink>,
     pub(in crate::app) events_page: TaskEventsPage,
     pub(in crate::app) pending_approvals: Vec<TaskEventRecord>,
     pub(in crate::app) history_loading: bool,
@@ -88,6 +95,8 @@ struct TaskEventEnvelope {
     thread_id: String,
     revision: u64,
     event: TaskEventRecord,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    file_links: Vec<TaskFileLink>,
 }
 
 pub(in crate::app) type DetailFrameStream =
@@ -115,6 +124,7 @@ impl DetailContext {
         remove_managed_task: impl Fn(&str, &'static str) + Send + Sync + 'static,
     ) -> Self {
         Self {
+            file_links: TaskFileLinkResolver::new(fs.clone()),
             fs,
             store,
             runtime,
@@ -178,6 +188,7 @@ impl DetailContext {
             .and_then(|snapshot| snapshot.thread.as_ref())
             .and_then(|thread| thread.path.clone());
         let (detail, baseline_revision) = self.cached(thread_id).await?;
+        let file_link_task_root = detail.task.as_ref().map(file_links::task_root);
         let initial_frames = task_stream_initial_frames(&TaskDetailSync {
             thread_id: thread_id.to_string(),
             revision: detail.revision,
@@ -215,6 +226,7 @@ impl DetailContext {
 
         let shutdown = self.shutdown.subscribe();
         let sessions = self.sessions.clone();
+        let file_link_resolver = self.file_links.clone();
         let thread_id = thread_id.to_string();
         let stream = stream::unfold(
             (
@@ -227,6 +239,8 @@ impl DetailContext {
                 rollout_subscription,
                 viewer,
                 sessions,
+                file_link_resolver,
+                file_link_task_root,
             ),
             |(
                 mut initial_frames,
@@ -238,6 +252,8 @@ impl DetailContext {
                 rollout_subscription,
                 viewer,
                 sessions,
+                file_link_resolver,
+                mut file_link_task_root,
             )| async move {
                 if let Some(frame) = initial_frames.pop_front() {
                     return Some((
@@ -252,6 +268,8 @@ impl DetailContext {
                             rollout_subscription,
                             viewer,
                             sessions,
+                            file_link_resolver,
+                            file_link_task_root,
                         ),
                     ));
                 }
@@ -261,6 +279,12 @@ impl DetailContext {
                         message = sync_receiver.recv() => {
                             match message {
                                 Ok(sync) if sync.thread_id == thread_id => {
+                                    file_link_task_root = sync
+                                        .detail
+                                        .task
+                                        .as_ref()
+                                        .map(file_links::task_root)
+                                        .or(file_link_task_root);
                                     let payload = serde_json::to_string(&sync)
                                         .unwrap_or_else(|_| "{}".to_string());
                                     let frame =
@@ -277,6 +301,8 @@ impl DetailContext {
                                             rollout_subscription,
                                             viewer,
                                             sessions,
+                                            file_link_resolver,
+                                            file_link_task_root,
                                         ),
                                     ));
                                 }
@@ -293,11 +319,18 @@ impl DetailContext {
                                         .await
                                         .map(|snapshot| snapshot.revision)
                                         .unwrap_or_default();
+                                    let resolved_file_links = match file_link_task_root.as_deref() {
+                                        Some(task_root) => file_link_resolver
+                                            .resolve_event(task_root, &event)
+                                            .await,
+                                        None => Vec::new(),
+                                    };
                                     let payload = serde_json::to_string(
                                         &TaskEventEnvelope {
                                             thread_id: thread_id.clone(),
                                             revision,
                                             event,
+                                            file_links: resolved_file_links,
                                         },
                                     )
                                     .unwrap_or_else(|_| "{}".to_string());
@@ -315,6 +348,8 @@ impl DetailContext {
                                             rollout_subscription,
                                             viewer,
                                             sessions,
+                                            file_link_resolver,
+                                            file_link_task_root,
                                         ),
                                     ));
                                 }
@@ -498,6 +533,7 @@ impl DetailContext {
             }
             task.last_completed_ms = current.last_completed_at_ms;
             task.unseen = current.unseen();
+            let file_links = self.file_links.resolve_task(&task, &events).await;
             let model = session_model.or(current.model);
             let reasoning_effort = session_reasoning_effort.or(current.reasoning_effort);
             return Ok(TaskDetailResponse {
@@ -506,6 +542,7 @@ impl DetailContext {
                 revision,
                 task: Some(task),
                 events,
+                file_links,
                 events_page: TaskEventsPage { next_cursor },
                 pending_approvals,
                 history_loading,
@@ -820,6 +857,7 @@ pub(in crate::app) fn loading_detail(
         revision,
         task: None,
         events: Vec::new(),
+        file_links: Vec::new(),
         events_page: TaskEventsPage { next_cursor: None },
         pending_approvals: Vec::new(),
         history_loading: true,

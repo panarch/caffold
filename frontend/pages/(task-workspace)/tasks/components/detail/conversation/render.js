@@ -508,7 +508,7 @@ function renderMessageEvent(event, role, text, options = {}) {
   }[submissionState] ?? "";
 
   return `
-    <li class="task-event task-message"${eventIdentityAttribute(event)} data-event-type="${escapeHtml(event.type)}" data-message-role="${escapeHtml(role)}"${phaseAttribute}${attachmentsAttribute}${deliveryAttribute}>
+    <li class="task-event task-message"${eventIdentityAttribute(event)}${conversationEntryAttributes(event, `${role}:${options.phase ?? ""}:${submissionState}`)} data-event-type="${escapeHtml(event.type)}" data-message-role="${escapeHtml(role)}"${phaseAttribute}${attachmentsAttribute}${deliveryAttribute}>
       <div class="task-message-header">
         ${deliveryLabel ? `<span class="task-message-delivery">${escapeHtml(deliveryLabel)}</span>` : ""}
         <time>${escapeHtml(formatDate(event.createdMs))}</time>
@@ -516,7 +516,7 @@ function renderMessageEvent(event, role, text, options = {}) {
       ${renderMessageAttachments(attachments)}
       ${value ? `
         <div class="task-message-content">
-          <caffold-task-markdown>${escapeHtml(value)}</caffold-task-markdown>
+          <caffold-task-markdown${markdownContextAttributes(event)}>${escapeHtml(value)}</caffold-task-markdown>
         </div>
       ` : ""}
     </li>
@@ -526,6 +526,43 @@ function renderMessageEvent(event, role, text, options = {}) {
 function eventIdentityAttribute(event) {
   const eventId = `${event?.id ?? ""}`.trim();
   return eventId ? ` data-event-id="${escapeHtml(eventId)}"` : "";
+}
+
+function markdownContextAttributes(event) {
+  const threadId = `${event?.threadId ?? event?.payload?.threadId ?? ""}`.trim();
+  const fileLinks = Array.isArray(event?.fileLinks) ? event.fileLinks : [];
+  return `${threadId ? ` thread-id="${escapeHtml(threadId)}"` : ""}${
+    fileLinks.length
+      ? ` file-links="${escapeHtml(JSON.stringify(fileLinks))}"`
+      : ""
+  }`;
+}
+
+function conversationEntryAttributes(event, presentation = "") {
+  const key = eventIdentityKey(event) || `${event?.id ?? ""}`;
+  if (!key) {
+    return "";
+  }
+  const version = contentVersion([
+    event?.type,
+    event?.summary,
+    event?.payload,
+    event?.createdMs,
+    event?.updatedMs,
+    event?.fileLinks,
+    presentation,
+  ]);
+  return ` data-conversation-entry-key="${escapeHtml(key)}" data-conversation-entry-version="${version}"`;
+}
+
+function contentVersion(value) {
+  const content = JSON.stringify(value);
+  let hash = 2166136261;
+  for (let index = 0; index < content.length; index += 1) {
+    hash ^= content.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${content.length.toString(36)}-${(hash >>> 0).toString(36)}`;
 }
 
 function disclosureIdentityAttribute(kind, identity) {
@@ -712,14 +749,14 @@ function renderThinkingEvent(event, text, task, eventState) {
   const state = isActive ? "active" : "complete";
 
   return `
-    <li class="task-event task-thinking" data-event-type="${escapeHtml(event.type)}" data-thinking-state="${escapeHtml(state)}">
+    <li class="task-event task-thinking"${conversationEntryAttributes(event, state)} data-event-type="${escapeHtml(event.type)}" data-thinking-state="${escapeHtml(state)}">
       <details${open}${disclosureIdentityAttribute("thinking", eventIdentityKey(event))}>
         <summary>
           <span>Thinking</span>
           <time>${escapeHtml(formatDate(event.createdMs))}</time>
         </summary>
         <div class="task-thinking-content">
-          <caffold-task-markdown>${escapeHtml(value)}</caffold-task-markdown>
+          <caffold-task-markdown${markdownContextAttributes(event)}>${escapeHtml(value)}</caffold-task-markdown>
         </div>
       </details>
     </li>
