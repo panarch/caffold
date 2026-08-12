@@ -17,6 +17,7 @@ pub(super) enum ApiError {
     CodexThread(String),
     Watch(String),
     Internal(String),
+    Unavailable { code: &'static str, message: String },
     Timeout { code: &'static str, message: String },
     NotFound { code: &'static str, message: String },
     BadRequest { code: &'static str, message: String },
@@ -30,6 +31,7 @@ impl std::fmt::Display for ApiError {
                 formatter.write_str(message)
             }
             Self::Timeout { message, .. }
+            | Self::Unavailable { message, .. }
             | Self::NotFound { message, .. }
             | Self::BadRequest { message, .. } => formatter.write_str(message),
         }
@@ -58,10 +60,16 @@ impl From<FsError> for ApiError {
 impl From<CodexThreadError> for ApiError {
     fn from(error: CodexThreadError) -> Self {
         match error {
-            CodexThreadError::RequestTimeout { .. } => Self::Timeout {
-                code: "codex_app_server_timeout",
-                message: error.to_string(),
+            CodexThreadError::Readiness(readiness) => Self::Unavailable {
+                code: "codex_readiness_blocked",
+                message: readiness.diagnostic_message,
             },
+            CodexThreadError::RequestTimeout { .. } | CodexThreadError::StartupTimeout { .. } => {
+                Self::Timeout {
+                    code: "codex_app_server_timeout",
+                    message: error.to_string(),
+                }
+            }
             error => Self::CodexThread(error.to_string()),
         }
     }
@@ -201,6 +209,9 @@ impl IntoResponse for ApiError {
             ApiError::Internal(message) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", message)
             }
+            ApiError::Unavailable { code, message } => {
+                (StatusCode::SERVICE_UNAVAILABLE, code, message)
+            }
             ApiError::Timeout { code, message } => (StatusCode::GATEWAY_TIMEOUT, code, message),
             ApiError::NotFound { code, message } => (StatusCode::NOT_FOUND, code, message),
             ApiError::BadRequest { code, message } => (StatusCode::BAD_REQUEST, code, message),
@@ -290,5 +301,25 @@ mod tests {
             "github_pull_repository_mismatch",
         )
         .await;
+    }
+
+    #[test]
+    fn blocking_readiness_has_a_stable_task_api_error() {
+        let error = ApiError::from(CodexThreadError::Readiness(Box::new(
+            crate::codex_app_server::CodexReadiness::blocking(
+                crate::codex_app_server::CodexReadinessState::UpdateRequired,
+                crate::codex_app_server::CodexReadinessReason::VersionBelowMinimum,
+                "Codex must be updated.",
+                None,
+            ),
+        )));
+
+        match error {
+            ApiError::Unavailable { code, message } => {
+                assert_eq!(code, "codex_readiness_blocked");
+                assert_eq!(message, "Codex must be updated.");
+            }
+            error => panic!("expected unavailable API error, got {error:?}"),
+        }
     }
 }

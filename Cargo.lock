@@ -323,6 +323,7 @@ dependencies = [
  "hound",
  "notify",
  "reqwest",
+ "semver",
  "serde",
  "serde_json",
  "sha2",

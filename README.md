@@ -81,11 +81,15 @@ latest GitHub Release only for version discovery; an approved update is installe
 the app restarts after verifying the replacement bundle.
 
 Caffold's restart-safe Codex transport requires the official standalone Codex
-installation, already authenticated:
+CLI `0.147.0` or newer:
 
 ```sh
 curl -fsSL https://chatgpt.com/codex/install.sh | sh
 ```
+
+Run `codex` once and complete sign-in. Until this installation is ready, the
+Tasks surface shows persistent setup guidance while Settings, Files, Git, and
+GitHub remain available.
 
 Caffold starts the user's persistent app-server daemon when needed and connects
 through a disposable proxy. Replacing or quitting Caffold closes only that proxy;

@@ -120,7 +120,7 @@ test("installs the complete shell without replacing the current worker", async (
   assert.ok(installedAssets.includes("/assets/pages/components/update-dialog.js"));
   assert.ok(
     installedAssets.includes(
-      "/assets/pages/(task-workspace)/settings/codex/components/runtime-restart-dialog.js",
+      "/assets/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js",
     ),
   );
 });

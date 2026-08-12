@@ -88,6 +88,21 @@ caffold-settings-codex-page {
     cursor: default;
   }
 
+  & .settings-runtime-control button:not(:disabled) {
+    color: var(--primary-action-fg);
+  }
+
+  & .settings-runtime-control button:not(:disabled)::before {
+    border-color: var(--primary-action-border);
+    background: var(--primary-action-bg);
+  }
+
+  & .settings-runtime-control button:hover:not(:disabled)::before,
+  & .settings-runtime-control button:focus-visible::before {
+    border-color: var(--border-strong);
+    background: var(--primary-action-bg);
+  }
+
   & .settings-details {
     display: grid;
     margin: 0;
@@ -127,8 +142,129 @@ caffold-settings-codex-page {
     color: var(--danger);
   }
 
-  & .settings-details dd[data-state="restart-required"] {
+  & .settings-details dd[data-state="attention"] {
     color: var(--warning);
+  }
+
+  & .settings-codex-repair,
+  & .settings-codex-diagnostic {
+    display: grid;
+    gap: var(--interface-space-5);
+    min-width: 0;
+    margin-top: var(--interface-space-10);
+    padding: var(--interface-space-8);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    background: var(--surface-subtle);
+  }
+
+  & .settings-codex-repair > div:first-child {
+    display: grid;
+    gap: var(--interface-space-2);
+  }
+
+  & .settings-codex-repair h3,
+  & .settings-codex-repair p,
+  & .settings-codex-diagnostic h3,
+  & .settings-codex-diagnostic dl {
+    margin: 0;
+  }
+
+  & .settings-codex-repair h3,
+  & .settings-codex-diagnostic h3 {
+    font-size: var(--settings-field-label-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .settings-codex-repair p {
+    color: var(--muted);
+    font-size: var(--settings-small-text-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .settings-codex-repair a {
+    width: fit-content;
+    color: var(--link-fg);
+    font-size: var(--settings-small-text-size);
+  }
+
+  & .settings-codex-command {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--interface-space-4);
+    min-width: 0;
+    padding: var(--interface-space-5);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    background: var(--surface);
+  }
+
+  & .settings-codex-command code {
+    min-width: 0;
+    font-size: var(--settings-small-text-size);
+    overflow-wrap: anywhere;
+  }
+
+  & .settings-codex-command strong {
+    grid-column: 1 / -1;
+    font-size: var(--settings-small-text-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .settings-codex-command button {
+    min-height: var(--settings-page-action-size);
+    padding: 0 var(--interface-control-padding-inline);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--control-fg);
+    font: inherit;
+    font-size: var(--settings-small-text-size);
+    cursor: pointer;
+  }
+
+  & .settings-codex-command button:hover,
+  & .settings-codex-command button:focus-visible {
+    border-color: var(--border-strong);
+    outline: none;
+    background: var(--control-hover-bg);
+  }
+
+  & .settings-codex-sign-in code {
+    padding: var(--interface-space-2) var(--interface-space-4);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--text);
+  }
+
+  & .settings-codex-diagnostic dl {
+    display: grid;
+  }
+
+  & .settings-codex-diagnostic dl > div {
+    display: grid;
+    grid-template-columns: minmax(8rem, 0.55fr) minmax(0, 1fr);
+    gap: var(--interface-space-7);
+    padding: var(--interface-space-4) 0;
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  & .settings-codex-diagnostic dt,
+  & .settings-codex-diagnostic dd {
+    font-size: var(--settings-small-text-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .settings-codex-diagnostic dt {
+    color: var(--muted);
+  }
+
+  & .settings-codex-diagnostic dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
   }
 
   & .settings-runtime-control {
@@ -245,6 +381,15 @@ caffold-settings-codex-page {
 
     & .settings-runtime-control button {
       align-self: start;
+    }
+
+    & .settings-codex-command,
+    & .settings-codex-diagnostic dl > div {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    & .settings-codex-command button {
+      justify-self: start;
     }
   }
 }

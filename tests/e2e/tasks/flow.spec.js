@@ -90,7 +90,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
       });
     }
 
-    return route.continue();
+    return route.fallback();
   });
   await page.route(/\/api\/list(?:\?|$)/, (route) => {
     const url = new URL(route.request().url());

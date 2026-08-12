@@ -58,7 +58,8 @@ documents backup, shutdown, health verification, and rollback behavior.
 ## Runtime dependencies
 
 - the [official standalone Codex install](https://chatgpt.com/codex/install.sh),
-  already authenticated (the daemon command requires this installation layout)
+  version `0.147.0` or newer and already authenticated (the daemon command
+  requires this installation layout)
 - Git
 - GitHub CLI for GitHub views
 - Tailscale for private remote access
@@ -92,7 +93,23 @@ Missing optional dependencies do not prevent the server from starting. The menu 
 
 `Server Settings...` controls the installed PWA name, bind mode, port, and automatic Tailscale Serve startup. Use a distinct name before installing the PWA to distinguish multiple Caffold servers; existing installations may need to be reinstalled after a name change. Local-only binding is the default. LAN binding is an explicit opt-in and is not required for Tailscale Serve.
 
-The menu reports stable status rows for Codex, Git, GitHub CLI, Whisper model readiness, Tailscale connectivity, and the Caffold Serve URL. Missing integrations disable only their related features; the file browser and server remain available.
+The menu reports stable status rows for Codex, Git, GitHub CLI, Whisper model
+readiness, Tailscale connectivity, and the Caffold Serve URL. Codex uses the
+backend's canonical compact summary, and its current recovery action opens the
+shared Codex Settings page. Here, avoiding duplication means that Swift does
+not own separate setup classification, version heuristics, storage, or a
+complete client-specific repair workflow. It does not forbid native menu
+controls: Swift and the PWA may both expose a useful setting or action when
+both call the same backend capability. Adding a complete browser setting does
+not by itself require removing its compact native entry point. Missing
+integrations disable only their related features; the file browser and server
+remain available.
+
+This same boundary applies as settings currently available only in the wrapper
+gain browser surfaces. Shared product settings and operations belong behind the
+Caffold server API so Swift and the PWA can consume one implementation.
+macOS-only launch, bundle, process-ownership, and pre-server failure handling
+remain native wrapper responsibilities.
 
 The app only restarts a server process that it started. When it connects to an existing Caffold process, choosing a different port starts a separate app-managed server and leaves the external process untouched. Changing only the bind mode on the occupied port remains blocked.
 

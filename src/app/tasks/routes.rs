@@ -46,7 +46,6 @@ const TASK_CANONICAL_READ_CONCURRENCY: usize = 8;
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CodexRuntimeDiagnostics {
-    codex_cli_version: Option<String>,
     process_generation: u64,
     process_connected: bool,
     thread_sessions: ThreadSessionsDiagnostics,
@@ -247,28 +246,8 @@ pub(super) fn router(state: TaskState) -> Router {
 
 async fn codex_status(State(state): State<TaskState>) -> Json<CodexStatusPayload> {
     let (status, process_generation, process_connected) =
-        match require_codex_thread_connection(&state).await {
-            Ok(connection) => (
-                connection.client.status().await,
-                connection.generation,
-                true,
-            ),
-            Err(error) => {
-                let (generation, connected) = state.codex_runtime.diagnostics().await;
-                (
-                    CodexThreadClient::unavailable_status(&error),
-                    generation,
-                    connected,
-                )
-            }
-        };
-    let codex_cli_version = status
-        .app_server
-        .as_ref()
-        .and_then(|info| info.user_agent.as_deref())
-        .and_then(codex_version_from_user_agent);
+        state.codex_runtime.status_with_diagnostics().await;
     let diagnostics = CodexRuntimeDiagnostics {
-        codex_cli_version,
         process_generation,
         process_connected,
         thread_sessions: state.codex_sessions.diagnostics().await,
@@ -286,11 +265,6 @@ async fn codex_restart(State(state): State<TaskState>) -> Result<Json<CodexDaemo
         .await
         .map(Json)
         .map_err(ApiError::from)
-}
-
-fn codex_version_from_user_agent(user_agent: &str) -> Option<String> {
-    let version = user_agent.rsplit_once('/')?.1.split_whitespace().next()?;
-    (!version.is_empty()).then(|| version.to_string())
 }
 
 async fn codex_models(State(state): State<TaskState>) -> Result<Json<JsonValue>, ApiError> {

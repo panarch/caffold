@@ -132,6 +132,28 @@ placement at the same boundary as the visual change.
 
 ### Component Ownership And Lifecycles
 
+`components/` contains browser-rendered component modules: custom elements or
+leaf UI that owns DOM, focus or interaction state, markup, and any scoped CSS.
+Do not use `components/` as a general bucket for models, request lifecycles, or
+other non-visual feature implementation.
+
+When one frontend module grows beyond a single file, use an adjacent same-stem
+directory to make the ownership visible: `name.js` is the public feature entry
+point and `name/` contains its private model, lifecycle, and other
+implementation modules. The implementation directory must not contain
+`page.js` or `layout.js`; those names remain page-ownership markers. Production
+consumers import non-visual behavior through explicit named exports from
+`name.js`, not through private implementation paths or `export *` barrels.
+
+A Web Component mounted by an outside owner remains an explicit public
+component entry point. The mounting module imports
+`name/components/component.js` directly so registration and DOM ownership stay
+visible; siblings that only consume feature state or emit intent use
+`name.js`. Global stylesheet and static-asset manifests may enumerate component
+paths directly because they are build inventories rather than runtime feature
+consumers. Focused tests may also import an internal lifecycle at its owning
+boundary.
+
 A component extraction is a state-ownership change, not only a markup move.
 Move the component's state, every writer, subscription/timer/watcher cleanup,
 DOM, scoped CSS, and regression tests together. The previous container must not

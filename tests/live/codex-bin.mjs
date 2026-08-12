@@ -39,18 +39,24 @@ export function resolveCodexBin({
     return resolved;
   }
 
-  const fromPath = findInPath("codex", searchPath);
-  if (fromPath) {
-    return fromPath;
+  const officialStandalone = join(home, ".local/bin/codex");
+  if (executable(officialStandalone)) {
+    return officialStandalone;
   }
 
-  for (const candidate of [join(home, ".local/bin/codex"), ...platformPaths]) {
+  const diagnosticCandidates = [
+    findInPath("codex", searchPath),
+    ...platformPaths,
+  ].filter(Boolean);
+  for (const candidate of diagnosticCandidates) {
     if (executable(candidate)) {
-      return candidate;
+      throw new Error(
+        `Unsupported Codex installation found at ${candidate}; install the official standalone CLI at ~/.local/bin/codex.`,
+      );
     }
   }
 
   throw new Error(
-    "Codex CLI was not found in PATH, ~/.local/bin, /opt/homebrew/bin, or /usr/local/bin.",
+    "The official standalone Codex CLI was not found at ~/.local/bin/codex.",
   );
 }

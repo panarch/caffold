@@ -30,6 +30,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
     }
     this.rendered = true;
     this.section = "";
+    this.codexStatusValue = null;
     this.masterDetailMedia = window.matchMedia(
       SETTINGS_MASTER_DETAIL_MEDIA_QUERY,
     );
@@ -88,6 +89,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
       this.boundSettingsNavigatorIntent,
     );
     this.connectedSettingsNavigator?.setSelectedSection(this.section);
+    this.connectedSettingsNavigator?.setCodexStatus(this.codexStatusValue);
   }
 
   attachResponsiveListener() {
@@ -170,6 +172,18 @@ class CaffoldSettingsWorkspace extends HTMLElement {
         detail: { route: { kind: "settings", section: section ?? "" } },
       }),
     );
+  }
+
+  setCodexStatus(status) {
+    this.ensureRendered();
+    this.codexStatusValue = status ?? null;
+    this.querySelector("caffold-settings-codex-page").status = this.codexStatusValue;
+    this.connectedSettingsNavigator?.setCodexStatus(this.codexStatusValue);
+  }
+
+  setCodexRestartState(state) {
+    this.ensureRendered();
+    this.querySelector("caffold-settings-codex-page").setRestartState(state);
   }
 
   setBuildStatus(health) {

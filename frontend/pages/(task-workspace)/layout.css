@@ -193,6 +193,16 @@ caffold-task-workspace {
       display: block;
     }
 
+    &[data-workspace-mode="tasks"][data-codex-readiness-blocked]
+      .task-workspace-master-pane {
+      display: none;
+    }
+
+    &[data-workspace-mode="tasks"][data-codex-readiness-blocked]
+      .task-workspace-detail-pane {
+      display: block;
+    }
+
     &[data-workspace-mode="settings"][data-settings-view="list"]
       .task-workspace-detail-pane,
     &[data-workspace-mode="settings"][data-settings-view="detail"]

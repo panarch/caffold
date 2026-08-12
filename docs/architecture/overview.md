@@ -10,6 +10,7 @@ That instance serves the UI, manages Codex app-server, talks to the local filesy
 ```mermaid
 flowchart TD
     PWA["Browser / PWA"]
+    MacWrapper["macOS menu bar wrapper"]
     Backend["Caffold Rust Backend"]
     Proxy["Codex proxy child"]
     AppServer["Persistent Codex app-server daemon"]
@@ -18,6 +19,7 @@ flowchart TD
 
     PWA -->|"HTTP / SSE"| Backend
     PWA -->|"16 kHz mono PCM WAV"| Backend
+    MacWrapper -->|"HTTP"| Backend
     Backend -->|"JSON-RPC / WebSocket"| Proxy
     Proxy --> AppServer
     Backend --> Git
@@ -29,7 +31,24 @@ flowchart TD
 
 ### PWA
 
-The PWA is the review and control surface. It should be usable from desktop and mobile browsers. It does not own the source of truth.
+The PWA is the primary and most complete review and control surface. It should
+be usable from desktop and mobile browsers. It does not own the source of
+truth.
+
+### macOS Wrapper
+
+The macOS menu bar wrapper is a native host launcher, status surface, and
+compact control surface. The PWA being primary does not make it the exclusive
+client of Caffold capabilities. A setting or action may remain available in
+Swift after it gains a browser surface, provided both clients consume the same
+backend-owned state and mutation contract.
+
+The non-duplication boundary applies to product logic, not to useful entry
+points or presentation. Swift and the PWA may both expose the same setting or
+action; they must not separately infer its state, persist competing values, or
+implement different operational semantics. Platform failures before the
+backend is available, macOS application lifecycle, and native launch behavior
+remain wrapper-owned.
 
 ### Rust Backend
 
@@ -41,6 +60,8 @@ The backend owns:
 - JSON-RPC adapter
 - git status, diff, log, and file APIs
 - host-local Whisper model installation, verification, and transcription
+- shared server-backed product settings and capability APIs consumed by
+  browser and platform clients
 - PWA asset serving
 
 The application layer is split by the state and transport boundary it owns:
@@ -53,7 +74,11 @@ src/app/workspace.rs           Files, images, watches, Git, and GitHub HTTP adap
 src/app/tasks.rs               private Tasks state assembly and runtime shutdown
 src/app/tasks/routes.rs        Tasks/Codex HTTP DTOs, validation, handlers, REST/SSE routes
 src/app/tasks/detail.rs        canonical task detail, session, history, and sync application
-src/app/tasks/runtime.rs       app-server process, notification, and approval lifecycle
+src/app/tasks/runtime.rs       Codex runtime composition and cross-role orchestration
+src/app/tasks/runtime/
+  process.rs                   readiness, connection, generation, restart, and shutdown
+  bridge.rs                    app-server event bridging and managed session recovery
+  server_requests.rs           approvals and Caffold-owned dynamic tool requests
 src/app/tasks/sync.rs          rollout invalidation scheduling and retry timing
 src/app/tasks/projection.rs    pure thread/turn to browser task projection
 src/app/tasks/events.rs        event normalization, merge, cache, and publication

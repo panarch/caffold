@@ -79,6 +79,44 @@ fn current_model_list_response() -> JsonValue {
     })
 }
 
+#[tokio::test]
+async fn canonical_readiness_blocks_task_creation_at_the_http_boundary() {
+    let root = tempfile::tempdir().unwrap();
+    let client = CodexThreadClient::mock(Vec::new());
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    let readiness = crate::codex_app_server::CodexReadiness::blocking(
+        crate::codex_app_server::CodexReadinessState::UpdateRequired,
+        crate::codex_app_server::CodexReadinessReason::VersionBelowMinimum,
+        "Codex CLI 0.146.0 is older than the minimum supported version 0.147.0.",
+        None,
+    );
+    state.codex_runtime.set_test_readiness(readiness).await;
+
+    let response = router(state)
+        .oneshot(
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/api/tasks")
+                .header(axum::http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"prompt":"must remain blocked"}"#))
+                .unwrap(),
+        )
+        .await
+        .expect("Task creation response");
+
+    assert_eq!(
+        response.status(),
+        axum::http::StatusCode::SERVICE_UNAVAILABLE
+    );
+    let body = axum::body::to_bytes(response.into_body(), 4096)
+        .await
+        .expect("Task creation error body");
+    let body: JsonValue = serde_json::from_slice(&body).expect("Task creation error JSON");
+    assert_eq!(body["error"]["code"], "codex_readiness_blocked");
+    assert!(client.mock_requests().await.is_empty());
+}
+
 fn initialize_git_repository(path: &std::path::Path) {
     std::fs::create_dir_all(path).unwrap();
     for args in [
@@ -115,15 +153,6 @@ fn git_branch_exists(path: &std::path::Path, branch_name: &str) -> bool {
         .unwrap()
         .status
         .success()
-}
-
-#[test]
-fn extracts_codex_version_from_app_server_user_agent() {
-    assert_eq!(
-        codex_version_from_user_agent("Codex Desktop/0.144.4"),
-        Some("0.144.4".to_string())
-    );
-    assert_eq!(codex_version_from_user_agent("Codex Desktop"), None);
 }
 
 #[test]

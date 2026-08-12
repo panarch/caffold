@@ -4,6 +4,11 @@ import {
   playwrightServerOrigin,
   selectPlaywrightServerPort,
 } from "./playwright-server-port.mjs";
+import { fileURLToPath } from "node:url";
+
+const fakeCodexBin = fileURLToPath(
+  new URL("./fixtures/fake-codex", import.meta.url),
+);
 
 async function selectInvocationPort({
   environment,
@@ -37,6 +42,10 @@ export async function createRegularPlaywrightServer(
     webServer: {
       command: `cargo run -- serve --host ${PLAYWRIGHT_SERVER_HOST} --port ${port} --root tests/fixtures/home --data-dir tests/fixtures/.caffold-data --worktree-root tests/fixtures/home/.caffold-worktrees`,
       url: `${baseURL}/api/health`,
+      env: {
+        ...environment,
+        CAFFOLD_CODEX_BIN: fakeCodexBin,
+      },
       reuseExistingServer: false,
       timeout: 120_000,
     },

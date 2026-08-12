@@ -56,6 +56,25 @@ caffold-settings-navigator {
     background: var(--selection-bg);
   }
 
+  & .settings-navigator-list button[data-settings-section="codex"][data-codex-state="attention"] {
+    color: var(--warning);
+
+    &:not([aria-current]) {
+      animation: codex-attention-pulse 2s ease-in-out infinite;
+    }
+
+    &:not([aria-current]):hover,
+    &:not([aria-current]):focus-visible {
+      animation-play-state: paused;
+      box-shadow: inset 0 0 1.25rem var(--warning-border);
+      color: var(--warning-strong);
+    }
+  }
+
+  & .settings-navigator-list button[data-settings-section="codex"][data-codex-state="unavailable"] {
+    color: var(--danger);
+  }
+
   & .settings-navigator-icon,
   & .settings-navigator-brand {
     display: block;
@@ -73,5 +92,16 @@ caffold-settings-navigator {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  caffold-settings-navigator {
+    & .settings-navigator-list button[data-settings-section="codex"][data-codex-state="attention"] {
+      &:not([aria-current]) {
+        animation: none;
+        box-shadow: inset 0 0 1.25rem var(--warning-border);
+      }
+    }
   }
 }

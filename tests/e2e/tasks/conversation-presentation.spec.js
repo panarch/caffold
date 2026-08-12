@@ -700,17 +700,27 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     const navigatorClearance = await page
       .locator("caffold-task-workspace")
       .evaluate((element) => {
+        const brand = element
+          .querySelector(".task-list-primary-header caffold-workspace-brand")
+          .getBoundingClientRect();
         const sectionHeader = element
           .querySelector(".task-list-primary-header")
+          .getBoundingClientRect();
+        const newTask = element
+          .querySelector(".task-list-primary-header .task-list-new-task")
           .getBoundingClientRect();
         const summary = element
           .querySelector(".task-detail-summary")
           .getBoundingClientRect();
         return {
           headerBottomDelta: Math.abs(sectionHeader.bottom - summary.bottom),
+          brandLeftInset: brand.left - sectionHeader.left,
+          brandActionGap: newTask.left - brand.right,
         };
       });
     expect(workspaceHeaderMetrics.closeVisible).toBe(false);
+    expect(navigatorClearance.brandLeftInset).toBeGreaterThanOrEqual(0);
+    expect(navigatorClearance.brandActionGap).toBeGreaterThanOrEqual(0);
     expect(
       navigatorClearance.headerBottomDelta,
       JSON.stringify({ navigatorClearance, workspaceHeaderMetrics }),

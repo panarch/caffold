@@ -18,19 +18,25 @@ use tokio::{
 use tokio_tungstenite::{WebSocketStream, client_async, tungstenite::Message};
 
 use super::{
-    CodexPermissionMode, CodexTurnOptions, NORMAL_SERVICE_TIER_ID,
+    CodexPermissionMode, CodexTurnOptions, NORMAL_SERVICE_TIER_ID, inspect_codex_installation,
     protocol::{
         INITIALIZE, INITIALIZED, RENAME_CURRENT_THREAD_TOOL_NAME, THREAD_ARCHIVE, THREAD_NAME_SET,
         THREAD_READ, THREAD_RESUME, THREAD_START, TURN_INTERRUPT, TURN_START,
         thread_archive_params, thread_read_params, thread_resume_params, thread_set_name_params,
         thread_start_params, turn_interrupt_params, turn_start_params,
     },
-    resolve_codex_executable,
 };
 
 const RPC_TIMEOUT: Duration = Duration::from_secs(30);
 const TURN_TIMEOUT: Duration = Duration::from_secs(90);
 const SPIKE_MODEL: &str = "gpt-5.3-codex-spark";
+
+async fn eligible_codex_executable() -> Result<PathBuf> {
+    inspect_codex_installation()
+        .await
+        .map(|installation| installation.path)
+        .map_err(|readiness| anyhow::anyhow!(readiness.diagnostic_message))
+}
 
 struct SocketAppServer {
     child: Child,
@@ -46,7 +52,7 @@ impl SocketAppServer {
             .context("create temporary app-server directory")?;
         let socket_path = temp.path().join("app-server.sock");
         let listen = format!("unix://{}", socket_path.display());
-        let mut child = Command::new(resolve_codex_executable()?)
+        let mut child = Command::new(eligible_codex_executable().await?)
             .arg("app-server")
             .arg("--listen")
             .arg(&listen)
@@ -129,7 +135,7 @@ impl AsyncWrite for ProxyStream {
 
 impl RpcClient {
     async fn connect(socket_path: &Path) -> Result<Self> {
-        let mut proxy_child = Command::new(resolve_codex_executable()?)
+        let mut proxy_child = Command::new(eligible_codex_executable().await?)
             .arg("app-server")
             .arg("proxy")
             .arg("--sock")

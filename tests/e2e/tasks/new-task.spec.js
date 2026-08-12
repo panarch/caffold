@@ -183,7 +183,7 @@ test("creates a task with responsive composer controls and canonical approval st
       ).toBeHidden();
       return;
     }
-    await expect(settingsNavigation).toHaveAccessibleName("Settings");
+    await expect(settingsNavigation).toHaveAccessibleName("Settings — Codex ready");
     await expect(settingsNavigation.locator("svg")).toBeVisible();
     expect(await taskPresentation(settingsNavigation)).toEqual(
       expect.objectContaining({

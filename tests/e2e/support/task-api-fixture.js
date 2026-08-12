@@ -1,3 +1,5 @@
+import { mockCodexStatus } from "./browser-defaults.js";
+
 export const TASK_PERMISSION_FIXTURE = {
   defaultMode: "approveForMe",
   options: [
@@ -26,6 +28,12 @@ export const TASK_PERMISSION_FIXTURE = {
 };
 
 export async function installTaskApiFixture(page) {
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(mockCodexStatus()),
+    }),
+  );
   await page.addInitScript(() => {
     window.__taskPermissionEventSources = [];
     window.EventSource = class MockEventSource {

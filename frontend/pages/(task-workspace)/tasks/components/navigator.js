@@ -2,6 +2,9 @@ import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import "../../components/workspace-brand.js";
 import {
+  codexBlocksTaskOperations,
+} from "../../codex-status.js";
+import {
   TASK_TRANSPORT_STATE,
   isTaskTransportStale,
 } from "../runtime-state.js";
@@ -97,6 +100,7 @@ class CaffoldTaskNavigator extends HTMLElement {
     }
     this.stateReady = true;
     this.active = false;
+    this.codexOperationsBlocked = true;
     this.lastPublishedListState = "";
     this.boundClick = (event) => this.handleClick(event);
     this.boundIconsReady = () => this.syncPrimaryHeader();
@@ -133,6 +137,9 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.ensureState();
     this.render();
     this.active = true;
+    if (this.codexOperationsBlocked) {
+      return { tasks: null, archived: null };
+    }
     const tasksRequest = this.activeTaskList.activate({ force });
     const archivedRequest = this.archivedTaskList.activate({ force });
     const [tasks, archived] = await Promise.all([
@@ -218,6 +225,18 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.activeTaskList?.closeStream();
   }
 
+  setCodexStatus(status) {
+    this.ensureChildren();
+    const blocked = codexBlocksTaskOperations(status);
+    if (this.codexOperationsBlocked === blocked) {
+      return;
+    }
+    this.codexOperationsBlocked = blocked;
+    this.activeTaskList.setCodexOperationsBlocked(blocked);
+    this.archivedTaskList.setCodexOperationsBlocked(blocked);
+    this.render();
+  }
+
   handleClick(event) {
     const action = event.target instanceof Element
       ? event.target.closest("[data-task-action]")
@@ -225,8 +244,11 @@ class CaffoldTaskNavigator extends HTMLElement {
     if (!action || !this.contains(action)) {
       return;
     }
+    event.stopPropagation();
+    if (this.codexOperationsBlocked) {
+      return;
+    }
     if (action.dataset.taskAction === "open-new") {
-      event.stopPropagation();
       this.dispatchIntent("new-task");
     }
   }
@@ -296,18 +318,8 @@ class CaffoldTaskNavigator extends HTMLElement {
 
   listState() {
     this.ensureChildren();
-    const active = this.activeTaskList?.listState?.() ?? {
-      count: 0,
-      loaded: false,
-      loading: true,
-      error: "",
-    };
-    const archived = this.archivedTaskList?.listState?.() ?? {
-      count: 0,
-      loaded: false,
-      loading: true,
-      error: "",
-    };
+    const active = taskListState(this.activeTaskList);
+    const archived = taskListState(this.archivedTaskList);
     return {
       count: active.count + archived.count,
       activeCount: active.count,
@@ -360,6 +372,12 @@ class CaffoldTaskNavigator extends HTMLElement {
         <caffold-archived-task-list hidden></caffold-archived-task-list>
       </div>
     `;
+    this.activeTaskList.setCodexOperationsBlocked(
+      this.codexOperationsBlocked,
+    );
+    this.archivedTaskList.setCodexOperationsBlocked(
+      this.codexOperationsBlocked,
+    );
   }
 
   syncPrimaryHeader() {
@@ -368,6 +386,10 @@ class CaffoldTaskNavigator extends HTMLElement {
     );
     if (button) {
       button.innerHTML = renderInlineIcon("Plus", "New task", "task-action-icon");
+      button.title = this.codexOperationsBlocked
+        ? "Codex setup required"
+        : "New Task";
+      button.disabled = this.codexOperationsBlocked;
     }
   }
 
@@ -380,7 +402,8 @@ class CaffoldTaskNavigator extends HTMLElement {
           class="task-list-new-task"
           data-task-action="open-new"
           aria-label="New Task"
-          title="New Task"
+          title="${this.codexOperationsBlocked ? "Codex setup required" : "New Task"}"
+          ${this.codexOperationsBlocked ? "disabled" : ""}
         >${renderInlineIcon("Plus", "New task", "task-action-icon")}</button>
       </header>
     `;
@@ -416,6 +439,18 @@ class CaffoldTaskNavigator extends HTMLElement {
       template.content.firstElementChild,
     );
   }
+}
+
+function taskListState(list) {
+  if (typeof list?.listState === "function") {
+    return list.listState();
+  }
+  return {
+    count: 0,
+    loaded: false,
+    loading: true,
+    error: "",
+  };
 }
 
 if (!customElements.get("caffold-task-navigator")) {

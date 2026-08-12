@@ -14,6 +14,7 @@ const renderCask = resolve(repoRoot, "desktop/macos/render-cask");
 const releaseWorkflow = resolve(repoRoot, ".github/workflows/release.yml");
 const rootReadme = resolve(repoRoot, "README.md");
 const macosReadme = resolve(repoRoot, "desktop/macos/README.md");
+const macosServerSource = resolve(repoRoot, "desktop/macos/CaffoldServer.swift");
 
 function run(command, args = []) {
   return execFileSync(command, args, {
@@ -81,6 +82,15 @@ test("macOS packaging locks dependencies and verifies the distributed archive", 
   assert.match(source, /CaffoldServer\/Updater\.swift/);
   run("bash", ["-n", systemStatusTest]);
   run("bash", ["-n", updaterTest]);
+});
+
+test("macOS Codex recovery delegates to the shared browser Settings surface", () => {
+  const source = readFileSync(macosServerSource, "utf8");
+
+  assert.match(source, /localURL\.appendingPathComponent\("settings\/codex"\)/);
+  assert.match(source, /Open Codex Settings\.\.\./);
+  assert.match(source, /#selector\(openCodexSettings\)/);
+  assert.match(source, /NSWorkspace\.shared\.open\(codexSettingsURL\)/);
 });
 
 test("Homebrew cask installs the app and bundled CLI without a user quarantine flag", () => {

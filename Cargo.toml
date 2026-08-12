@@ -16,6 +16,7 @@ gluesql = { git = "https://github.com/gluesql/gluesql.git", branch = "main", def
 hound = "3.5.1"
 notify = "8.2.0"
 reqwest = { version = "0.12.23", default-features = false, features = ["rustls-tls", "stream"] }
+semver = "1.0.28"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 sha2 = "0.10.9"
