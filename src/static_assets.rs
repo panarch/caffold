@@ -335,6 +335,20 @@ pub fn get(path: &str) -> Option<StaticAsset> {
                 "../frontend/pages/(task-workspace)/tasks/components/detail/review/changes-tree.js"
             )))
         }
+        "pages/(task-workspace)/tasks/components/active-task-list.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/active-task-list.css"
+        ))),
+        "pages/(task-workspace)/tasks/components/active-task-list.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/active-task-list.js"
+        ))),
+        "pages/(task-workspace)/tasks/components/archived-task-list.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/archived-task-list.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/archived-task-list.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/archived-task-list.js"
+        ))),
         "pages/(task-workspace)/tasks/components/navigator.css" => Some(css(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/navigator.css"
         ))),
@@ -1035,6 +1049,28 @@ mod tests {
                 .windows(b"caffold-task-navigator".len())
                 .any(|window| window == b"caffold-task-navigator")
         );
+        for (path, marker) in [
+            (
+                "pages/(task-workspace)/tasks/components/active-task-list.js",
+                b"caffold-active-task-list".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/components/archived-task-list.js",
+                b"caffold-archived-task-list".as_slice(),
+            ),
+        ] {
+            let task_list_asset = get(path).expect("task list component asset");
+            assert_eq!(
+                task_list_asset.content_type,
+                "text/javascript; charset=utf-8"
+            );
+            assert!(
+                task_list_asset
+                    .body
+                    .windows(marker.len())
+                    .any(|window| window == marker)
+            );
+        }
         let tasks_navigator_css = get("pages/(task-workspace)/tasks/components/navigator.css")
             .expect("tasks navigator component css");
         assert_eq!(tasks_navigator_css.content_type, "text/css; charset=utf-8");
@@ -1043,6 +1079,20 @@ mod tests {
                 .body
                 .starts_with(b"caffold-task-navigator")
         );
+        for (path, prefix) in [
+            (
+                "pages/(task-workspace)/tasks/components/active-task-list.css",
+                b"caffold-active-task-list".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/components/archived-task-list.css",
+                b"caffold-archived-task-list".as_slice(),
+            ),
+        ] {
+            let task_list_css = get(path).expect("task list component css");
+            assert_eq!(task_list_css.content_type, "text/css; charset=utf-8");
+            assert!(task_list_css.body.starts_with(prefix));
+        }
         let task_detail_stream = get("pages/(task-workspace)/tasks/components/detail/stream.js")
             .expect("task detail stream js");
         assert_eq!(
@@ -1151,6 +1201,10 @@ mod tests {
         }
         for path in [
             "/assets/pages/(task-workspace)/tasks/stream.js",
+            "/assets/pages/(task-workspace)/tasks/components/active-task-list.css",
+            "/assets/pages/(task-workspace)/tasks/components/active-task-list.js",
+            "/assets/pages/(task-workspace)/tasks/components/archived-task-list.css",
+            "/assets/pages/(task-workspace)/tasks/components/archived-task-list.js",
             "/assets/pages/(task-workspace)/tasks/components/voice-level-meter.css",
             "/assets/pages/(task-workspace)/tasks/components/voice-level-meter.js",
         ] {

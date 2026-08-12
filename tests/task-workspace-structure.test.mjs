@@ -192,31 +192,73 @@ test("Task transport overlay owns its shared UI and retry intent", () => {
   assert.match(tasksPage, /retryStaleTaskTransports/);
 });
 
-test("Task navigator keeps its primary header and transport overlay outside scrolling content", () => {
+test("Task navigator keeps primary chrome outside its role-specific scrolling lists", () => {
   const navigator = readFrontend(
     "pages/(task-workspace)/tasks/components/navigator.js",
   );
   const renderMarkup = navigator.match(
-    /this\.innerHTML = `([\s\S]*?)`;\n\s*initializeRunningSpinners/,
+    /this\.innerHTML = `([\s\S]*?)`;\n\s*}/,
   )?.[1];
 
   assert.ok(renderMarkup, "navigator render markup must remain inspectable");
   const header = renderMarkup.indexOf("${this.renderPrimaryHeader()}");
-  const overlay = renderMarkup.indexOf("${this.renderAvailability()}");
   const scroller = renderMarkup.indexOf('<div class="task-list-scroll">');
-  const managed = renderMarkup.indexOf(
-    '${this.renderSection("Caffold Tasks", this.tasks, "managed")}',
-  );
+  const active = renderMarkup.indexOf("<caffold-active-task-list>");
+  const archived = renderMarkup.indexOf("<caffold-archived-task-list hidden>");
 
   assert.ok(header >= 0 && header < scroller);
-  assert.ok(overlay > header && overlay < scroller);
-  assert.ok(managed > scroller);
+  assert.ok(active > scroller);
+  assert.ok(archived > active);
   assert.match(
     navigator,
     /class="task-list-section-header task-list-primary-header"/,
   );
-  assert.match(navigator, /aria-label="Caffold Tasks"/);
   assert.match(navigator, /<caffold-workspace-brand><\/caffold-workspace-brand>/);
+  assert.match(navigator, /\.task-list-scroll"\)\?\.before/);
+});
+
+test("active and archived Task lists own distinct state and lifecycle boundaries", () => {
+  const navigator = readFrontend(
+    "pages/(task-workspace)/tasks/components/navigator.js",
+  );
+  const active = readFrontend(
+    "pages/(task-workspace)/tasks/components/active-task-list.js",
+  );
+  const archived = readFrontend(
+    "pages/(task-workspace)/tasks/components/archived-task-list.js",
+  );
+  const activeStyles = readFrontend(
+    "pages/(task-workspace)/tasks/components/active-task-list.css",
+  );
+  const archivedStyles = readFrontend(
+    "pages/(task-workspace)/tasks/components/archived-task-list.css",
+  );
+
+  assert.match(active, /customElements\.define\("caffold-active-task-list"/);
+  assert.match(active, /getTasks/);
+  assert.match(active, /TaskStreamLifecycle/);
+  assert.match(active, /aria-label", "Caffold Tasks"/);
+  assert.doesNotMatch(active, /getArchivedTasks|restoreTask|deleteTask/);
+  assert.match(activeStyles, /\.task-unseen-complete/);
+  assert.doesNotMatch(activeStyles, /task-archived-|load-more-archived-tasks/);
+
+  assert.match(
+    archived,
+    /customElements\.define\("caffold-archived-task-list"/,
+  );
+  assert.match(archived, /getArchivedTasks/);
+  assert.match(archived, /restoreTask/);
+  assert.match(archived, /deleteTask/);
+  assert.doesNotMatch(archived, /TaskStreamLifecycle|taskListStreamUrl/);
+  assert.match(archivedStyles, /\.task-archived-action-button/);
+  assert.doesNotMatch(archivedStyles, /task-unseen-complete|load-more-tasks/);
+
+  assert.match(navigator, /<caffold-active-task-list>/);
+  assert.match(navigator, /<caffold-archived-task-list hidden>/);
+  assert.doesNotMatch(
+    navigator,
+    /\bgetTasks\b|\bgetArchivedTasks\b|\brestoreTask\b|\bdeleteTask\b|TaskStreamLifecycle/,
+  );
 });
 
 test("archived task deletion dialog owns its modal state and markup", () => {

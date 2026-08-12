@@ -18,6 +18,312 @@ function expectedTaskRowHeight(projectName, rootFontSize) {
   return projectName === "desktop" ? rootFontSize * 2 : 36;
 }
 
+function deferred() {
+  let resolve;
+  const promise = new Promise((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}
+
+function initialNavigatorTask(threadId, title, state = null) {
+  const now = Date.now();
+  return {
+    id: threadId,
+    threadId,
+    ...(state ?? canonicalTaskState("idle", { latestTurnStatus: "completed" })),
+    title,
+    preview: `${title} preview`,
+    cwd: "tests/fixtures/home",
+    cwdPath: "tests/fixtures/home",
+    relativeCwd: "",
+    worktree: null,
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: `${title} summary`,
+  };
+}
+
+async function installInitialTaskListGates(page) {
+  const activeStarted = deferred();
+  const archivedStarted = deferred();
+  const activeRelease = deferred();
+  const archivedRelease = deferred();
+
+  await page.route(/\/api\/tasks(?:\?|$)/, async (route) => {
+    activeStarted.resolve();
+    await route.fulfill(await activeRelease.promise);
+  });
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, async (route) => {
+    archivedStarted.resolve();
+    await route.fulfill(await archivedRelease.promise);
+  });
+
+  const response = (body, status = 200) => ({
+    status,
+    contentType: "application/json",
+    body: JSON.stringify(body),
+  });
+  return {
+    started: Promise.all([activeStarted.promise, archivedStarted.promise]),
+    settleActive: (body, status) => activeRelease.resolve(response(body, status)),
+    settleArchived: (body, status) =>
+      archivedRelease.resolve(response(body, status)),
+  };
+}
+
+test("retains an initial Archived result without revealing it before active Tasks settle", async ({
+  page,
+}) => {
+  await installEventSourceMock(page);
+  await mockCodexModels(page);
+  const activeTask = initialNavigatorTask("thread_initial_active", "Initial active Task");
+  const archivedTask = initialNavigatorTask(
+    "thread_initial_archived",
+    "Initial archived Task",
+  );
+  const gates = await installInitialTaskListGates(page);
+
+  await page.goto("/tasks");
+  await gates.started;
+  const navigator = page.locator("caffold-task-navigator");
+  const archivedList = navigator.locator("caffold-archived-task-list");
+  await expect(navigator.locator(".task-list-section")).toHaveCount(1);
+  await expect(navigator.getByText("Loading...", { exact: true })).toHaveCount(1);
+  await expect(navigator.getByRole("button", { name: "New Task" })).toBeVisible();
+
+  gates.settleArchived({ tasks: [archivedTask], nextCursor: null });
+  await expect.poll(() =>
+    archivedList.evaluate((element) => element.initialRequestSettled),
+  ).toBe(true);
+  await expect(
+    navigator.locator('.task-list-section[data-task-section="archived"]'),
+  ).toHaveCount(0);
+  await expect(navigator.getByText("Archived", { exact: true })).toHaveCount(0);
+  await expect(navigator.getByText("Loading...", { exact: true })).toHaveCount(1);
+
+  gates.settleActive({ tasks: [activeTask], nextCursor: null });
+  await expect(navigator).toContainText("Initial active Task");
+  await expect(navigator).toContainText("Initial archived Task");
+  await expect(navigator.locator(".task-list-section")).toHaveCount(2);
+  await expect(navigator.getByText("Loading...", { exact: true })).toHaveCount(0);
+});
+
+test("shows active Tasks first and appends a settled Archived section without replacing active DOM", async ({
+  page,
+}) => {
+  await installEventSourceMock(page);
+  await mockCodexModels(page);
+  const activeTask = initialNavigatorTask(
+    "thread_active_first",
+    "Active result first",
+    canonicalTaskState("active", {
+      turnId: "turn_active_first",
+      startedAtMs: Date.now(),
+      latestTurnStatus: "inProgress",
+    }),
+  );
+  const gates = await installInitialTaskListGates(page);
+
+  await page.goto("/tasks");
+  await gates.started;
+  const navigator = page.locator("caffold-task-navigator");
+  gates.settleActive({ tasks: [activeTask], nextCursor: null });
+  const activeRow = navigator.locator(
+    '.task-row[data-thread-id="thread_active_first"]',
+  );
+  await expect(activeRow).toBeVisible();
+  await expect(activeRow.locator(".task-status-spinner")).toBeVisible();
+  await expect(
+    navigator.locator('.task-list-section[data-task-section="archived"]'),
+  ).toHaveCount(0);
+  await activeRow.evaluate((row) => {
+    window.__initialActiveRow = row;
+    window.__initialActiveSpinner = row.querySelector(".task-status-spinner");
+  });
+
+  gates.settleArchived({ tasks: [], nextCursor: null });
+  const archivedSection = navigator.locator(
+    '.task-list-section[data-task-section="archived"]',
+  );
+  await expect(archivedSection).toBeVisible();
+  await expect(archivedSection.locator(".task-list-section-count")).toHaveText("0");
+  await expect(archivedSection).toContainText("No archived Caffold tasks.");
+  expect(await activeRow.evaluate((row) =>
+    row === window.__initialActiveRow &&
+    row.querySelector(".task-status-spinner") === window.__initialActiveSpinner,
+  )).toBe(true);
+});
+
+test("reveals confirmed empty active and Archived states only after both initial requests settle", async ({
+  page,
+}) => {
+  await installEventSourceMock(page);
+  await mockCodexModels(page);
+  const gates = await installInitialTaskListGates(page);
+
+  await page.goto("/tasks");
+  await gates.started;
+  const navigator = page.locator("caffold-task-navigator");
+  gates.settleArchived({ tasks: [], nextCursor: null });
+  await expect.poll(() =>
+    navigator.locator("caffold-archived-task-list").evaluate(
+      (element) => element.initialRequestSettled,
+    ),
+  ).toBe(true);
+  await expect(navigator.getByText("Archived", { exact: true })).toHaveCount(0);
+
+  gates.settleActive({ tasks: [], nextCursor: null });
+  await expect(navigator).toContainText("No Caffold tasks yet.");
+  const archivedSection = navigator.locator(
+    '.task-list-section[data-task-section="archived"]',
+  );
+  await expect(archivedSection).toContainText("No archived Caffold tasks.");
+  await expect(archivedSection.locator(".task-list-section-count")).toHaveText("0");
+});
+
+test("holds an initial Archived failure until active Tasks settle", async ({ page }) => {
+  await installEventSourceMock(page);
+  await mockCodexModels(page);
+  const activeTask = initialNavigatorTask(
+    "thread_active_after_archive_failure",
+    "Active after Archived failure",
+  );
+  const gates = await installInitialTaskListGates(page);
+
+  await page.goto("/tasks");
+  await gates.started;
+  const navigator = page.locator("caffold-task-navigator");
+  gates.settleArchived({ error: "Archived list unavailable" }, 503);
+  await expect.poll(() =>
+    navigator.locator("caffold-archived-task-list").evaluate(
+      (element) => element.initialRequestSettled,
+    ),
+  ).toBe(true);
+  await expect(navigator.getByRole("alert")).toHaveCount(0);
+  await expect(navigator.getByText("Archived", { exact: true })).toHaveCount(0);
+
+  gates.settleActive({ tasks: [activeTask], nextCursor: null });
+  await expect(navigator).toContainText("Active after Archived failure");
+  const archivedSection = navigator.locator(
+    '.task-list-section[data-task-section="archived"]',
+  );
+  await expect(archivedSection.getByRole("alert")).toContainText(
+    "Archived list unavailable",
+  );
+  await expect(
+    archivedSection.getByRole("button", { name: "Retry" }),
+  ).toBeVisible();
+});
+
+test("shows an initial active failure immediately and reveals Archived after it settles", async ({
+  page,
+}) => {
+  await installEventSourceMock(page);
+  await mockCodexModels(page);
+  const archivedTask = initialNavigatorTask(
+    "thread_archived_after_active_failure",
+    "Archived after active failure",
+  );
+  const gates = await installInitialTaskListGates(page);
+
+  await page.goto("/tasks");
+  await gates.started;
+  const navigator = page.locator("caffold-task-navigator");
+  gates.settleActive({ error: "Active list unavailable" }, 503);
+  const activeSection = navigator.locator(
+    '.task-list-section[data-task-section="managed"]',
+  );
+  await expect(activeSection.getByRole("alert")).toContainText(
+    "Active list unavailable",
+  );
+  await expect(
+    activeSection.getByRole("button", { name: "Retry" }),
+  ).toBeVisible();
+  await expect(navigator.getByText("Archived", { exact: true })).toHaveCount(0);
+
+  gates.settleArchived({ tasks: [archivedTask], nextCursor: null });
+  const archivedSection = navigator.locator(
+    '.task-list-section[data-task-section="archived"]',
+  );
+  await expect(archivedSection).toContainText("Archived after active failure");
+  await expect(activeSection.getByRole("alert")).toContainText(
+    "Active list unavailable",
+  );
+});
+
+test("keeps settled list sections visible during later parallel refreshes", async ({ page }) => {
+  await installEventSourceMock(page);
+  await mockCodexModels(page);
+  const activeTask = initialNavigatorTask(
+    "thread_refresh_active",
+    "Retained active refresh row",
+  );
+  const archivedTask = initialNavigatorTask(
+    "thread_refresh_archived",
+    "Retained Archived refresh row",
+  );
+  const activeRefreshStarted = deferred();
+  const archivedRefreshStarted = deferred();
+  const activeRefreshRelease = deferred();
+  const archivedRefreshRelease = deferred();
+  let activeReads = 0;
+  let archivedReads = 0;
+  await page.route(/\/api\/tasks(?:\?|$)/, async (route) => {
+    activeReads += 1;
+    if (activeReads === 1) {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ tasks: [activeTask], nextCursor: null }),
+      });
+    }
+    activeRefreshStarted.resolve();
+    await activeRefreshRelease.promise;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [activeTask], nextCursor: null }),
+    });
+  });
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, async (route) => {
+    archivedReads += 1;
+    if (archivedReads === 1) {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ tasks: [archivedTask], nextCursor: null }),
+      });
+    }
+    archivedRefreshStarted.resolve();
+    await archivedRefreshRelease.promise;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [archivedTask], nextCursor: null }),
+    });
+  });
+
+  await page.goto("/tasks");
+  const navigator = page.locator("caffold-task-navigator");
+  await expect(navigator).toContainText("Retained active refresh row");
+  await expect(navigator).toContainText("Retained Archived refresh row");
+  await navigator.evaluate((element) => {
+    void element.activate({ force: true });
+  });
+  await Promise.all([
+    activeRefreshStarted.promise,
+    archivedRefreshStarted.promise,
+  ]);
+
+  await expect(navigator.locator(".task-list-section")).toHaveCount(2);
+  await expect(navigator).toContainText("Retained active refresh row");
+  await expect(navigator).toContainText("Retained Archived refresh row");
+  await expect(navigator.getByText("Loading...", { exact: true })).toHaveCount(0);
+
+  activeRefreshRelease.resolve();
+  archivedRefreshRelease.resolve();
+  await expect.poll(() => activeReads).toBe(2);
+  await expect.poll(() => archivedReads).toBe(2);
+});
+
 test("loads additional task-list pages only after a cursor request", async ({ page }) => {
   await installEventSourceMock(page);
   await mockCodexModels(page);

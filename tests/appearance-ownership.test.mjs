@@ -184,7 +184,7 @@ test("color roles keep neutral chrome, interactions, and semantic feedback separ
 
   const selectedOwners = [
     "components/file-tree.css",
-    "pages/(task-workspace)/tasks/components/navigator.css",
+    "pages/(task-workspace)/tasks/components/active-task-list.css",
     "pages/(task-workspace)/settings/appearance/page.css",
   ];
   for (const path of selectedOwners) {
@@ -316,23 +316,27 @@ test("structural shadows separate fixed regions from floating elevation", () => 
 });
 
 test("unseen completion attention blinks the marker without hiding it", () => {
-  const navigator = readFrontend("pages/(task-workspace)/tasks/components/navigator.css");
-  const navigatorView = readFrontend("pages/(task-workspace)/tasks/components/navigator.js");
+  const activeList = readFrontend(
+    "pages/(task-workspace)/tasks/components/active-task-list.css",
+  );
+  const activeTaskListView = readFrontend(
+    "pages/(task-workspace)/tasks/components/active-task-list.js",
+  );
 
-  cssBlockMatching(navigator, ".task-unseen-complete::before", [
+  cssBlockMatching(activeList, ".task-unseen-complete::before", [
     /animation: task-unseen-complete-blink 2\.4s ease-in-out infinite/,
     /animation-delay: var\(--task-unseen-attention-delay, 0ms\)/,
   ]);
   assert.match(
-    navigator,
+    activeList,
     /@keyframes task-unseen-complete-blink[\s\S]*opacity: 1[\s\S]*opacity: 0\.35/,
   );
   assert.match(
-    navigator,
+    activeList,
     /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.task-unseen-complete::before[\s\S]*animation: none[\s\S]*opacity: 1/,
   );
   assert.match(
-    navigatorView,
+    activeTaskListView,
     /style="--task-unseen-attention-delay: \$\{attentionDelayMs\}ms"/,
   );
 });
@@ -639,9 +643,11 @@ test("visible inline icons have explicit block geometry from their UI owner", ()
     ["pages/(task-workspace)/components/navigation.css", ".task-workspace-navigation-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/tasks/controls.css", ".task-action-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-primary-action-icon", "--interface-icon-size"],
-    ["pages/(task-workspace)/tasks/components/navigator.css", ".task-repository-icon", "--task-list-icon-size"],
-    ["pages/(task-workspace)/tasks/components/navigator.css", ".task-row-worktree-icon", "--task-list-icon-size"],
-    ["pages/(task-workspace)/tasks/components/navigator.css", ".task-archived-action-icon", "--interface-icon-size"],
+    ["pages/(task-workspace)/tasks/components/active-task-list.css", ".task-repository-icon", "--task-list-icon-size"],
+    ["pages/(task-workspace)/tasks/components/active-task-list.css", ".task-row-worktree-icon", "--task-list-icon-size"],
+    ["pages/(task-workspace)/tasks/components/archived-task-list.css", ".task-repository-icon", "--task-list-icon-size"],
+    ["pages/(task-workspace)/tasks/components/archived-task-list.css", ".task-row-worktree-icon", "--task-list-icon-size"],
+    ["pages/(task-workspace)/tasks/components/archived-task-list.css", ".task-archived-action-icon", "--interface-icon-size"],
     ["components/file-navigator/list.css", ".file-refresh-icon", "--interface-icon-size"],
     ["components/file-tree.css", ".entry-icon-svg", "--file-tree-icon-size"],
     ["components/file-viewer.css", ".viewer-refresh-icon", "--interface-icon-size"],
@@ -770,7 +776,7 @@ test("icon-only controls use square slots from their semantic control tier", () 
       "--interface-compact-hit-size",
     ],
     [
-      "pages/(task-workspace)/tasks/components/navigator.css",
+      "pages/(task-workspace)/tasks/components/archived-task-list.css",
       ".task-archived-action-button",
       "--task-list-row-height",
     ],
@@ -821,31 +827,31 @@ test("icon-only controls use square slots from their semantic control tier", () 
 });
 
 test("archived actions use a visually secondary compact base", () => {
-  const navigator = readFrontend("pages/(task-workspace)/tasks/components/navigator.css");
+  const archivedList = readFrontend("pages/(task-workspace)/tasks/components/archived-task-list.css");
 
-  cssBlockMatching(navigator, ".task-archived-action-button", [
+  cssBlockMatching(archivedList, ".task-archived-action-button", [
     /width: var\(--task-list-row-height\)/,
     /height: var\(--task-list-row-height\)/,
     /color: var\(--border-strong\)/,
   ]);
-  cssBlockMatching(navigator, ".task-archived-action-button::before", [
+  cssBlockMatching(archivedList, ".task-archived-action-button::before", [
     /border: 1px solid transparent/,
     /background: transparent/,
   ]);
-  cssBlockMatching(navigator, ".task-archived-action-button:not\(:disabled\):hover::before", [
+  cssBlockMatching(archivedList, ".task-archived-action-button:not\(:disabled\):hover::before", [
     /border-color: var\(--border\)/,
     /background: var\(--control-subtle-hover-bg\)/,
   ]);
-  cssBlockMatching(navigator, ".task-delete-button", [
+  cssBlockMatching(archivedList, ".task-delete-button", [
     /color: var\(--danger\)/,
   ]);
-  cssBlockMatching(navigator, ".task-delete-button .task-archived-action-icon", [
+  cssBlockMatching(archivedList, ".task-delete-button .task-archived-action-icon", [
     /opacity: 0\.62/,
   ]);
-  cssBlockMatching(navigator, ".task-delete-button:not\(:disabled\):hover", [
+  cssBlockMatching(archivedList, ".task-delete-button:not\(:disabled\):hover", [
     /color: var\(--danger-strong\)/,
   ]);
-  cssBlockMatching(navigator, ".task-delete-button:not\(:disabled\):hover::before", [
+  cssBlockMatching(archivedList, ".task-delete-button:not\(:disabled\):hover::before", [
     /border-color: var\(--danger-border\)/,
     /background: var\(--danger-faint\)/,
   ]);
@@ -919,12 +925,12 @@ test("contextual and inline actions stay compact while page and primary actions 
       "--interface-compact-visual-size",
     ],
     [
-      "pages/(task-workspace)/tasks/components/navigator.css",
+      "pages/(task-workspace)/tasks/components/active-task-list.css",
       '[data-task-action="load-more-tasks"]',
       "--interface-compact-visual-size",
     ],
     [
-      "pages/(task-workspace)/tasks/components/navigator.css",
+      "pages/(task-workspace)/tasks/components/archived-task-list.css",
       '[data-task-action="load-more-archived-tasks"]',
       "--interface-compact-visual-size",
     ],
@@ -1042,25 +1048,19 @@ test("dense contextual toolbars separate visual size from coarse-pointer hit are
 });
 
 test("task rows use full-width selection and compact repository grouping", () => {
-  const navigator = readFrontend(
-    "pages/(task-workspace)/tasks/components/navigator.css",
+  const activeList = readFrontend(
+    "pages/(task-workspace)/tasks/components/active-task-list.css",
   );
-  const row = cssBlock(navigator, "& .task-row {");
-  const archivedRow = cssBlock(navigator, "& .task-archived-row {");
-  const repositoryGap = cssBlock(
-    navigator,
-    "& .task-repository-group + .task-repository-group {",
+  const archivedList = readFrontend(
+    "pages/(task-workspace)/tasks/components/archived-task-list.css",
   );
-  const repositoryHeader = cssBlock(
-    navigator,
-    "& .task-repository-header {",
-  );
-  const hover = cssBlock(navigator, "& .task-row:hover,");
+  const row = cssBlock(activeList, "& .task-row {");
+  const archivedRow = cssBlock(archivedList, "& .task-archived-row {");
+  const hover = cssBlock(activeList, "& .task-row:hover,");
   const selected = cssBlock(
-    navigator,
+    activeList,
     '& .task-row[aria-current="true"]',
   );
-  const title = cssBlock(navigator, "& .task-row-title");
 
   assert.doesNotMatch(row, /border-left/);
   assert.doesNotMatch(hover, /border-left/);
@@ -1086,17 +1086,25 @@ test("task rows use full-width selection and compact repository grouping", () =>
     archivedRow,
     /padding-inline-start: var\(--interface-space-8\)/,
   );
-  assert.match(repositoryGap, /margin-top: var\(--interface-space-6\)/);
-  assert.match(repositoryHeader, /min-height: var\(--interface-space-14\)/);
   assert.match(row, /grid-template-columns: minmax\(0, 1fr\) 3rem/);
   assert.match(row, /gap: 0\.25rem/);
   assert.match(selected, /background: var\(--selection-bg\)/);
   assert.doesNotMatch(selected, /color-mix/);
-  assert.match(title, /font-weight: 500/);
 
-  const indicators = cssBlock(navigator, "& .task-row-indicators");
-  assert.match(indicators, /width: 3rem/);
-  assert.match(indicators, /min-width: 0/);
+  for (const owner of [activeList, archivedList]) {
+    const repositoryGap = cssBlock(
+      owner,
+      "& .task-repository-group + .task-repository-group {",
+    );
+    const repositoryHeader = cssBlock(owner, "& .task-repository-header {");
+    const title = cssBlock(owner, "& .task-row-title");
+    const indicators = cssBlock(owner, "& .task-row-indicators");
+    assert.match(repositoryGap, /margin-top: var\(--interface-space-6\)/);
+    assert.match(repositoryHeader, /min-height: var\(--interface-space-14\)/);
+    assert.match(title, /font-weight: 500/);
+    assert.match(indicators, /width: 3rem/);
+    assert.match(indicators, /min-width: 0/);
+  }
 });
 
 test("text actions use the shared Interface metadata scale instead of root body text", () => {
