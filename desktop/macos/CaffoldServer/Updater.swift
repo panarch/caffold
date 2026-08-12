@@ -211,30 +211,9 @@ final class ApplicationUpdater {
     private func loadActiveTaskCount(
         completion: @escaping (Result<Int, Error>) -> Void
     ) {
-        loadActiveTaskPage(
-            cursor: nil,
-            activeCount: 0,
-            visitedCursors: [],
-            completion: completion
-        )
-    }
-
-    private func loadActiveTaskPage(
-        cursor: String?,
-        activeCount: Int,
-        visitedCursors: Set<String>,
-        completion: @escaping (Result<Int, Error>) -> Void
-    ) {
-        guard let request = caffoldTaskPageRequest(
-            baseURL: serverBaseURL(),
-            cursor: cursor
-        ) else {
-            completion(.failure(ApplicationUpdateError.invalidResponse))
-            return
-        }
-        session.dataTask(with: request) { [weak self] data, response, error in
+        let request = caffoldActiveTasksRequest(baseURL: serverBaseURL())
+        session.dataTask(with: request) { data, response, error in
             DispatchQueue.main.async {
-                guard let self else { return }
                 do {
                     if let error { throw error }
                     guard
@@ -244,23 +223,7 @@ final class ApplicationUpdater {
                     else {
                         throw ApplicationUpdateError.invalidResponse
                     }
-                    let page = try decodeUpdateTaskPage(data)
-                    let count = activeCount + page.activeCount
-                    guard let nextCursor = page.nextCursor, !nextCursor.isEmpty else {
-                        completion(.success(count))
-                        return
-                    }
-                    guard !visitedCursors.contains(nextCursor), visitedCursors.count < 100 else {
-                        throw ApplicationUpdateError.invalidResponse
-                    }
-                    var nextVisited = visitedCursors
-                    nextVisited.insert(nextCursor)
-                    self.loadActiveTaskPage(
-                        cursor: nextCursor,
-                        activeCount: count,
-                        visitedCursors: nextVisited,
-                        completion: completion
-                    )
+                    completion(.success(try decodeActiveTaskCount(data)))
                 } catch {
                     completion(.failure(error))
                 }

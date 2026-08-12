@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
+  activeTaskProjection,
   canonicalTaskState,
   installEventSourceMock,
   mockCodexModels,
@@ -394,7 +395,7 @@ function turnEvent({ id, threadId, turnId, type, createdMs, payload = {} }) {
 
 async function routeTaskList(page, tasks) {
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
-    route.fulfill({ json: { tasks, nextCursor: null } }),
+    route.fulfill({ json: activeTaskProjection(tasks) }),
   );
 }
 

@@ -88,6 +88,12 @@ impl CodexRuntime {
     pub(super) fn restore_connection_state(&self, connection: CodexConnection) {
         let runtime = self.clone();
         tokio::spawn(async move {
+            if let Some(lifecycle) = runtime.lifecycle.clone() {
+                let client = connection.client.clone();
+                tokio::spawn(async move {
+                    lifecycle.reconcile_active_sections(&client).await;
+                });
+            }
             for (thread_id, error) in runtime
                 .sessions
                 .resubscribe_leased(&connection.client, connection.generation)

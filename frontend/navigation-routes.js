@@ -238,6 +238,18 @@ const ROUTE_DEFINITIONS = [
           }),
   }),
   routeDefinition({
+    id: "global-tasks-recovery",
+    kind: "tasks",
+    pattern: "/tasks/[threadId]/recovery",
+    surface: "task-workspace",
+    target: "recovery",
+    params: { threadId: "string" },
+    toRoute: ({ threadId }) => tasksRoute({ threadId, recovery: true }),
+    matchesRoute: (route) =>
+      route?.kind === "tasks" && Boolean(route.threadId) && Boolean(route.recovery),
+    parent: () => tasksRoute(),
+  }),
+  routeDefinition({
     id: "global-tasks-detail",
     kind: "tasks",
     pattern: "/tasks/[threadId]",
@@ -245,7 +257,7 @@ const ROUTE_DEFINITIONS = [
     target: "detail",
     toRoute: ({ threadId }, query) => tasksRoute({ ...query, threadId }),
     matchesRoute: (route) =>
-      route?.kind === "tasks" && Boolean(route.threadId) && !route.review,
+      route?.kind === "tasks" && Boolean(route.threadId) && !route.review && !route.recovery,
     parent: () => tasksRoute(),
   }),
 ];
@@ -493,6 +505,7 @@ function tasksRoute(options = {}) {
     new: Boolean(options.new),
     threadId: options.threadId ?? "",
     cwd: options.new ? taskCwd(options.cwd) : "",
+    ...(options.recovery && options.threadId && !review ? { recovery: true } : {}),
     ...(review
       ? {
           review: true,

@@ -161,7 +161,11 @@ class CaffoldArchivedTaskList extends HTMLElement {
     this.archivedTaskError = null;
     this.render();
     try {
-      const task = await restoreTask(threadId);
+      const response = await restoreTask(threadId);
+      const task = response?.task;
+      if (!task) {
+        throw new Error("Restored Task response is missing its canonical Task.");
+      }
       this.archivedTasks = this.archivedTasks.filter(
         (candidate) => taskThreadId(candidate) !== threadId,
       );
@@ -169,7 +173,10 @@ class CaffoldArchivedTaskList extends HTMLElement {
       this.dispatchEvent(
         new CustomEvent(ARCHIVED_TASK_RESTORED_EVENT, {
           bubbles: true,
-          detail: { task },
+          detail: {
+            task,
+            activeTopPlacement: response.activeTopPlacement,
+          },
         }),
       );
       return task;

@@ -360,6 +360,11 @@ test("creates a task with responsive composer controls and canonical approval st
   await expect(tasksPage).toHaveAttribute("data-tasks-view", "detail");
   await expect(tasksPage).toContainText("Inspect the planner changes");
   await expect(
+    page.locator(
+      `caffold-task-navigator .task-row[data-thread-id="${threadId}"]`,
+    ),
+  ).toContainText("Inspect the planner changes");
+  await expect(
     tasksPage.locator('[data-task-info-field="thread"]'),
   ).toHaveText(threadId);
   await expect(

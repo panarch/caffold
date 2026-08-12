@@ -6,6 +6,141 @@ use crate::{fs::RootedFs, task_store::TaskStore};
 use std::{path::PathBuf, sync::Arc};
 use tower::ServiceExt;
 
+fn active_section_responses(
+    section_id: &'static str,
+    section_name: &str,
+    threads: Vec<JsonValue>,
+) -> Vec<crate::codex_app_server::MockCodexResponse> {
+    vec![
+        crate::codex_app_server::MockCodexResponse::ok_for(
+            "threadSection/list",
+            json!({ "limit": 100 }),
+            json!({
+                "data": [{ "id": section_id, "name": section_name }],
+                "nextCursor": null,
+            }),
+        ),
+        crate::codex_app_server::MockCodexResponse::ok_for(
+            "thread/list",
+            json!({
+                "limit": 100,
+                "sortKey": "section_position",
+                "sortDirection": "asc",
+                "archived": false,
+                "useStateDbOnly": true,
+                "sectionId": section_id,
+            }),
+            json!({
+                "data": threads,
+                "nextCursor": null,
+                "backwardsCursor": null,
+            }),
+        ),
+        crate::codex_app_server::MockCodexResponse::ok_for(
+            "thread/list",
+            json!({
+                "limit": 100,
+                "sortKey": "recency_at",
+                "sortDirection": "desc",
+                "archived": false,
+                "useStateDbOnly": true,
+                "sectionId": null,
+            }),
+            json!({
+                "data": [],
+                "nextCursor": null,
+                "backwardsCursor": null,
+            }),
+        ),
+    ]
+}
+
+fn top_placement_responses(
+    section_id: &'static str,
+    section_name: &str,
+    thread_id: &str,
+) -> Vec<crate::codex_app_server::MockCodexResponse> {
+    vec![
+        crate::codex_app_server::MockCodexResponse::ok_for(
+            "threadSection/list",
+            json!({ "limit": 100 }),
+            json!({
+                "data": [{ "id": section_id, "name": section_name }],
+                "nextCursor": null,
+            }),
+        ),
+        crate::codex_app_server::MockCodexResponse::ok_for(
+            "thread/list",
+            json!({
+                "limit": 1,
+                "sortKey": "section_position",
+                "sortDirection": "asc",
+                "archived": false,
+                "useStateDbOnly": true,
+                "sectionId": section_id,
+            }),
+            json!({
+                "data": [],
+                "nextCursor": null,
+                "backwardsCursor": null,
+            }),
+        ),
+        crate::codex_app_server::MockCodexResponse::ok_for(
+            "thread/section/move",
+            json!({ "threadId": thread_id, "sectionId": section_id }),
+            json!({}),
+        ),
+    ]
+}
+
+fn recovery_location_responses(
+    archived_threads: Vec<JsonValue>,
+) -> Vec<crate::codex_app_server::MockCodexResponse> {
+    vec![
+        crate::codex_app_server::MockCodexResponse::ok_for(
+            "thread/list",
+            json!({
+                "limit": 100,
+                "sortKey": "recency_at",
+                "sortDirection": "desc",
+                "archived": false,
+                "useStateDbOnly": true,
+            }),
+            json!({
+                "data": [],
+                "nextCursor": null,
+                "backwardsCursor": null,
+            }),
+        ),
+        crate::codex_app_server::MockCodexResponse::ok_for(
+            "thread/list",
+            json!({
+                "limit": 100,
+                "sortKey": "recency_at",
+                "sortDirection": "desc",
+                "archived": true,
+                "useStateDbOnly": true,
+            }),
+            json!({
+                "data": archived_threads,
+                "nextCursor": null,
+                "backwardsCursor": null,
+            }),
+        ),
+    ]
+}
+
+fn projected_active_tasks(
+    projection: &super::super::active_sections::ActiveTaskProjection,
+) -> Vec<&TaskRecord> {
+    projection
+        .sections
+        .iter()
+        .flat_map(|section| section.tasks.iter())
+        .chain(projection.unsectioned.iter().map(|recovery| &recovery.task))
+        .collect()
+}
+
 fn current_model_list_response() -> JsonValue {
     json!({
         "data": [
@@ -279,37 +414,45 @@ async fn codex_permissions_use_app_server_profiles_and_effective_defaults() {
 async fn create_task_keeps_explicit_permission_mode_for_the_first_turn() {
     let root = tempfile::tempdir().unwrap();
     let thread_id = "thread-explicit-permission";
-    let client = CodexThreadClient::mock(vec![
-        crate::codex_app_server::MockCodexResponse::ok(
-            "thread/start",
-            json!({
-                "thread": {
-                    "id": thread_id,
-                    "preview": "Explicit permission regression",
-                    "status": { "type": "idle" },
-                    "cwd": root.path().display().to_string(),
-                    "createdAt": 1.0,
-                    "updatedAt": 1.0,
-                    "turns": []
-                },
-                "approvalPolicy": "on-request",
-                "approvalsReviewer": "user",
-                "activePermissionProfile": {
-                    "id": ":workspace"
-                }
-            }),
-        ),
-        crate::codex_app_server::MockCodexResponse::ok(
-            "turn/start",
-            json!({
-                "turn": {
-                    "id": "turn-explicit-permission",
-                    "items": [],
-                    "status": "inProgress"
-                }
-            }),
-        ),
-    ]);
+    let mut responses = vec![crate::codex_app_server::MockCodexResponse::ok(
+        "thread/start",
+        json!({
+            "thread": {
+                "id": thread_id,
+                "preview": "Explicit permission regression",
+                "status": { "type": "idle" },
+                "cwd": root.path().display().to_string(),
+                "createdAt": 1.0,
+                "updatedAt": 1.0,
+                "turns": []
+            },
+            "approvalPolicy": "on-request",
+            "approvalsReviewer": "user",
+            "activePermissionProfile": {
+                "id": ":workspace"
+            }
+        }),
+    )];
+    responses.push(crate::codex_app_server::MockCodexResponse::ok_for(
+        "thread/name/set",
+        json!({
+            "threadId": thread_id,
+            "name": "Use the selected approval mode",
+        }),
+        json!({}),
+    ));
+    responses.extend(top_placement_responses("section-root", "", thread_id));
+    responses.push(crate::codex_app_server::MockCodexResponse::ok(
+        "turn/start",
+        json!({
+            "turn": {
+                "id": "turn-explicit-permission",
+                "items": [],
+                "status": "inProgress"
+            }
+        }),
+    ));
+    let client = CodexThreadClient::mock(responses);
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
 
@@ -356,15 +499,15 @@ async fn create_task_keeps_explicit_permission_mode_for_the_first_turn() {
             .collect::<Vec<_>>(),
         ["baseRef", "branchName", "includeChanges"]
     );
-    assert_eq!(requests[1].0, "turn/start");
-    assert_eq!(requests[1].1["approvalsReviewer"], "auto_review");
+    assert_eq!(requests[5].0, "turn/start");
+    assert_eq!(requests[5].1["approvalsReviewer"], "auto_review");
 }
 
 #[tokio::test]
 async fn create_task_persists_the_applied_model_and_reasoning_effort() {
     let root = tempfile::tempdir().unwrap();
     let thread_id = "thread-model-settings";
-    let client = CodexThreadClient::mock(vec![
+    let mut responses = vec![
         crate::codex_app_server::MockCodexResponse::ok("model/list", current_model_list_response()),
         crate::codex_app_server::MockCodexResponse::ok(
             "thread/start",
@@ -382,19 +525,27 @@ async fn create_task_persists_the_applied_model_and_reasoning_effort() {
                 "reasoningEffort": "medium"
             }),
         ),
-        crate::codex_app_server::MockCodexResponse::ok(
-            "turn/start",
-            json!({
-                "turn": {
-                    "id": "turn-model-settings",
-                    "items": [],
-                    "status": "inProgress"
-                }
-            }),
-        ),
-    ]);
+    ];
+    responses.push(crate::codex_app_server::MockCodexResponse::ok_for(
+        "thread/name/set",
+        json!({ "threadId": thread_id, "name": "Use xhigh" }),
+        json!({}),
+    ));
+    responses.extend(top_placement_responses("section-root", "", thread_id));
+    responses.push(crate::codex_app_server::MockCodexResponse::ok(
+        "turn/start",
+        json!({
+            "turn": {
+                "id": "turn-model-settings",
+                "items": [],
+                "status": "inProgress"
+            }
+        }),
+    ));
+    let client = CodexThreadClient::mock(responses);
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    let (_, mut list_updates) = state.task_list_events.subscribe();
 
     let response = create_task(
         State(state.clone()),
@@ -414,6 +565,20 @@ async fn create_task_persists_the_applied_model_and_reasoning_effort() {
     assert_eq!(response.0.model.as_deref(), Some("gpt-5.6-sol"));
     assert_eq!(response.0.reasoning_effort.as_deref(), Some("xhigh"));
     assert!(response.0.fast_mode);
+    let placement = response
+        .0
+        .active_top_placement
+        .as_ref()
+        .expect("create response carries canonical top placement");
+    assert_eq!(placement.section.id, "section-root");
+    assert!(placement.before_thread_id.is_none());
+    match list_updates.recv().await.expect("placement list update") {
+        TaskListUpdate::Placement(update) => {
+            assert_eq!(update.task.thread_id, thread_id);
+            assert_eq!(update.placement, *placement);
+        }
+        update => panic!("expected placement list update, got {update:?}"),
+    }
     let stored = task_store_get(&state, thread_id)
         .await
         .unwrap()
@@ -424,10 +589,123 @@ async fn create_task_persists_the_applied_model_and_reasoning_effort() {
     let requests = client.mock_requests().await;
     assert_eq!(requests[1].0, "thread/start");
     assert_eq!(requests[1].1["serviceTier"], "priority");
-    assert_eq!(requests[2].0, "turn/start");
-    assert_eq!(requests[2].1["model"], "gpt-5.6-sol");
-    assert_eq!(requests[2].1["serviceTier"], "priority");
-    assert_eq!(requests[2].1["effort"], "xhigh");
+    assert_eq!(requests[6].0, "turn/start");
+    assert_eq!(requests[6].1["model"], "gpt-5.6-sol");
+    assert_eq!(requests[6].1["serviceTier"], "priority");
+    assert_eq!(requests[6].1["effort"], "xhigh");
+}
+
+#[tokio::test]
+async fn section_failure_rolls_back_a_new_thread_before_caffold_claims_it() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-section-setup-failure";
+    let client = CodexThreadClient::mock(vec![
+        crate::codex_app_server::MockCodexResponse::ok(
+            "thread/start",
+            json!({
+                "thread": {
+                    "id": thread_id,
+                    "preview": "Section setup rollback",
+                    "status": { "type": "idle" },
+                    "cwd": root.path().display().to_string(),
+                    "createdAt": 1.0,
+                    "updatedAt": 1.0,
+                    "turns": []
+                }
+            }),
+        ),
+        crate::codex_app_server::MockCodexResponse::ok_for(
+            "thread/name/set",
+            json!({
+                "threadId": thread_id,
+                "name": "Must not become managed",
+            }),
+            json!({}),
+        ),
+        crate::codex_app_server::MockCodexResponse::error(
+            "threadSection/list",
+            CodexThreadError::ProcessUnavailable,
+        ),
+        crate::codex_app_server::MockCodexResponse::ok("thread/archive", json!({})),
+    ]);
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+
+    let result = create_task(
+        State(state.clone()),
+        Json(CreateTaskRequest {
+            prompt: "Must not become managed".to_string(),
+            images: Vec::new(),
+            cwd: None,
+            model: None,
+            effort: None,
+            fast_mode: false,
+            permission_mode: None,
+        }),
+    )
+    .await;
+
+    assert!(matches!(result, Err(ApiError::CodexThread(_))));
+    assert!(task_store_get(&state, thread_id).await.unwrap().is_none());
+    assert_eq!(
+        client
+            .mock_requests()
+            .await
+            .into_iter()
+            .map(|(method, _)| method)
+            .collect::<Vec<_>>(),
+        [
+            "thread/start",
+            "thread/name/set",
+            "threadSection/list",
+            "thread/archive"
+        ]
+    );
+}
+
+#[tokio::test]
+async fn section_failure_rolls_a_restore_back_to_archived_membership() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-section-restore-failure";
+    let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
+    let client = CodexThreadClient::mock(vec![
+        crate::codex_app_server::MockCodexResponse::ok(
+            "thread/unarchive",
+            json!({ "thread": thread }),
+        ),
+        crate::codex_app_server::MockCodexResponse::error(
+            "threadSection/list",
+            CodexThreadError::ProcessUnavailable,
+        ),
+        crate::codex_app_server::MockCodexResponse::ok("thread/archive", json!({})),
+    ]);
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+    task_store_archive(&state, thread_id)
+        .await
+        .unwrap()
+        .expect("archived managed Thread");
+
+    let result = task_restore(State(state.clone()), AxumPath(thread_id.to_string())).await;
+
+    assert!(matches!(result, Err(ApiError::CodexThread(_))));
+    assert!(task_store_get(&state, thread_id).await.unwrap().is_none());
+    assert!(
+        task_store_get_archived(&state, thread_id)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert_eq!(
+        client
+            .mock_requests()
+            .await
+            .into_iter()
+            .map(|(method, _)| method)
+            .collect::<Vec<_>>(),
+        ["thread/unarchive", "threadSection/list", "thread/archive"]
+    );
 }
 
 #[tokio::test]
@@ -447,7 +725,7 @@ async fn managed_worktree_archive_and_restore_follow_the_task_route_lifecycle() 
             "turns": []
         })
     };
-    let client = CodexThreadClient::mock(vec![
+    let mut responses = vec![
         crate::codex_app_server::MockCodexResponse::ok(
             "thread/read",
             json!({ "thread": thread() }),
@@ -457,7 +735,13 @@ async fn managed_worktree_archive_and_restore_follow_the_task_route_lifecycle() 
             "thread/unarchive",
             json!({ "thread": thread() }),
         ),
-    ]);
+    ];
+    responses.extend(top_placement_responses(
+        "section-source",
+        "source",
+        thread_id,
+    ));
+    let client = CodexThreadClient::mock(responses);
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, &source).await;
@@ -931,10 +1215,11 @@ async fn codex_turn_options_rejects_model_missing_from_server_list() {
 async fn managed_list_never_projects_pending_approval_onto_thread_status() {
     let root = tempfile::tempdir().unwrap();
     let thread = task_thread_list("thread-stale-approval", root.path())["data"][0].clone();
-    let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
-        "thread/read",
-        json!({ "thread": thread.clone() }),
-    )]);
+    let client = CodexThreadClient::mock(active_section_responses(
+        "section-root",
+        "",
+        vec![thread.clone()],
+    ));
     let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
     let resolved = resolve_thread_cwd(&state.fs, &thread);
     let task = task_record_from_thread(&thread, &[], resolved.as_ref()).unwrap();
@@ -950,8 +1235,9 @@ async fn managed_list_never_projects_pending_approval_onto_thread_status() {
         .await
         .unwrap();
 
-    assert_eq!(response.0.tasks.len(), 1);
-    assert_eq!(response.0.tasks[0].thread_status, ThreadStatus::Idle);
+    let tasks = projected_active_tasks(&response.0);
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].thread_status, ThreadStatus::Idle);
 }
 
 #[tokio::test]
@@ -959,10 +1245,11 @@ async fn managed_list_projects_persisted_completion_time_and_unseen_state() {
     let root = tempfile::tempdir().unwrap();
     let thread_id = "thread-completed-in-background";
     let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
-    let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
-        "thread/read",
-        json!({ "thread": thread.clone() }),
-    )]);
+    let client = CodexThreadClient::mock(active_section_responses(
+        "section-root",
+        "",
+        vec![thread.clone()],
+    ));
     let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
     let resolved = resolve_thread_cwd(&state.fs, &thread);
     let task = task_record_from_thread(&thread, &[], resolved.as_ref()).unwrap();
@@ -981,9 +1268,10 @@ async fn managed_list_projects_persisted_completion_time_and_unseen_state() {
         .await
         .unwrap();
 
-    assert_eq!(response.0.tasks.len(), 1);
-    assert_eq!(response.0.tasks[0].last_completed_ms, Some(5_000));
-    assert!(response.0.tasks[0].unseen);
+    let tasks = projected_active_tasks(&response.0);
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].last_completed_ms, Some(5_000));
+    assert!(tasks[0].unseen);
 }
 
 #[tokio::test]
@@ -991,7 +1279,7 @@ async fn archive_and_restore_keep_caffold_membership_in_separate_lists() {
     let root = tempfile::tempdir().unwrap();
     let thread_id = "thread-archive-round-trip";
     let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
-    let client = CodexThreadClient::mock(vec![
+    let mut responses = vec![
         crate::codex_app_server::MockCodexResponse::ok(
             "thread/read",
             json!({ "thread": thread.clone() }),
@@ -1005,11 +1293,45 @@ async fn archive_and_restore_keep_caffold_membership_in_separate_lists() {
             "thread/unarchive",
             json!({ "thread": thread.clone() }),
         ),
-        crate::codex_app_server::MockCodexResponse::ok(
-            "thread/read",
-            json!({ "thread": thread.clone() }),
+        crate::codex_app_server::MockCodexResponse::ok_for(
+            "threadSection/list",
+            json!({ "limit": 100 }),
+            json!({
+                "data": [{ "id": "section-root", "name": "" }],
+                "nextCursor": null,
+            }),
         ),
-    ]);
+        crate::codex_app_server::MockCodexResponse::ok_for(
+            "thread/list",
+            json!({
+                "limit": 1,
+                "sortKey": "section_position",
+                "sortDirection": "asc",
+                "archived": false,
+                "useStateDbOnly": true,
+                "sectionId": "section-root",
+            }),
+            task_thread_list("other-thread", root.path()),
+        ),
+        crate::codex_app_server::MockCodexResponse::ok_for(
+            "thread/section/move",
+            json!({
+                "threadId": thread_id,
+                "sectionId": "section-root",
+                "beforeThreadId": "other-thread",
+            }),
+            json!({}),
+        ),
+    ];
+    responses.extend(active_section_responses(
+        "section-root",
+        "",
+        vec![
+            thread.clone(),
+            task_thread_list("other-thread", root.path())["data"][0].clone(),
+        ],
+    ));
+    let client = CodexThreadClient::mock(responses);
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
@@ -1037,7 +1359,12 @@ async fn archive_and_restore_keep_caffold_membership_in_separate_lists() {
         .await
         .expect("restore succeeds")
         .0;
-    assert_eq!(restored.thread_id, thread_id);
+    assert_eq!(restored.task.thread_id, thread_id);
+    assert_eq!(restored.active_top_placement.section.id, "section-root");
+    assert_eq!(
+        restored.active_top_placement.before_thread_id.as_deref(),
+        Some("other-thread")
+    );
     assert!(task_store_get(&state, thread_id).await.unwrap().is_some());
     assert!(
         task_store_get_archived(&state, thread_id)
@@ -1049,7 +1376,10 @@ async fn archive_and_restore_keep_caffold_membership_in_separate_lists() {
     let active_page = list_managed_tasks(State(state), Query(TasksQuery { cursor: None }))
         .await
         .expect("active list succeeds");
-    assert_eq!(active_page.0.tasks[0].thread_id, thread_id);
+    assert_eq!(
+        projected_active_tasks(&active_page.0)[0].thread_id,
+        thread_id
+    );
     assert_eq!(
         client
             .mock_requests()
@@ -1062,9 +1392,204 @@ async fn archive_and_restore_keep_caffold_membership_in_separate_lists() {
             "thread/archive",
             "thread/read",
             "thread/unarchive",
-            "thread/read",
+            "threadSection/list",
+            "thread/list",
+            "thread/section/move",
+            "threadSection/list",
+            "thread/list",
+            "thread/list",
         ]
     );
+}
+
+#[tokio::test]
+async fn recovery_restore_unarchives_places_at_top_and_keeps_active_membership() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-recovery-restore";
+    let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
+    let mut responses = recovery_location_responses(vec![thread.clone()]);
+    responses.push(crate::codex_app_server::MockCodexResponse::ok(
+        "thread/unarchive",
+        json!({ "thread": thread }),
+    ));
+    responses.extend(top_placement_responses("section-root", "", thread_id));
+    let client = CodexThreadClient::mock(responses);
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+
+    let restored = task_recovery_restore(State(state.clone()), AxumPath(thread_id.to_string()))
+        .await
+        .expect("recovery restore succeeds")
+        .0;
+
+    assert_eq!(restored.task.thread_id, thread_id);
+    assert_eq!(restored.active_top_placement.section.id, "section-root");
+    assert!(task_store_get(&state, thread_id).await.unwrap().is_some());
+    assert!(
+        task_store_get_archived(&state, thread_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        client
+            .mock_requests()
+            .await
+            .into_iter()
+            .map(|(method, _)| method)
+            .collect::<Vec<_>>(),
+        [
+            "thread/list",
+            "thread/list",
+            "thread/unarchive",
+            "threadSection/list",
+            "thread/list",
+            "thread/section/move",
+        ]
+    );
+}
+
+#[tokio::test]
+async fn recovery_restore_rearchives_codex_when_section_placement_fails() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-recovery-restore-rollback";
+    let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
+    let mut responses = recovery_location_responses(vec![thread.clone()]);
+    responses.extend([
+        crate::codex_app_server::MockCodexResponse::ok(
+            "thread/unarchive",
+            json!({ "thread": thread }),
+        ),
+        crate::codex_app_server::MockCodexResponse::error(
+            "threadSection/list",
+            crate::codex_app_server::CodexThreadError::ProcessUnavailable,
+        ),
+        crate::codex_app_server::MockCodexResponse::ok("thread/archive", json!({})),
+    ]);
+    let client = CodexThreadClient::mock(responses);
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+
+    assert!(matches!(
+        task_recovery_restore(State(state.clone()), AxumPath(thread_id.to_string())).await,
+        Err(ApiError::CodexThread(_))
+    ));
+    assert!(task_store_get(&state, thread_id).await.unwrap().is_some());
+    assert!(
+        task_store_get_archived(&state, thread_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        client
+            .mock_requests()
+            .await
+            .into_iter()
+            .map(|(method, _)| method)
+            .collect::<Vec<_>>(),
+        [
+            "thread/list",
+            "thread/list",
+            "thread/unarchive",
+            "threadSection/list",
+            "thread/archive",
+        ]
+    );
+}
+
+#[tokio::test]
+async fn recovery_archive_reconciles_membership_without_archiving_codex_again() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-recovery-archive";
+    let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
+    let client = CodexThreadClient::mock(recovery_location_responses(vec![thread]));
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+
+    let archived = task_recovery_archive(State(state.clone()), AxumPath(thread_id.to_string()))
+        .await
+        .expect("recovery archive succeeds")
+        .0;
+
+    assert_eq!(archived.thread_id, thread_id);
+    assert!(!archived.conversation_available);
+    assert!(task_store_get(&state, thread_id).await.unwrap().is_none());
+    assert!(
+        task_store_get_archived(&state, thread_id)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        client
+            .mock_requests()
+            .await
+            .iter()
+            .all(|(method, _)| method != "thread/archive")
+    );
+}
+
+#[tokio::test]
+async fn recovery_remove_requires_codex_absence_and_deletes_active_membership() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-recovery-remove";
+    let client = CodexThreadClient::mock(recovery_location_responses(Vec::new()));
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+
+    let removed = task_recovery_remove(State(state.clone()), AxumPath(thread_id.to_string()))
+        .await
+        .expect("missing recovery removal succeeds")
+        .0;
+
+    assert_eq!(removed.thread_id, thread_id);
+    assert!(task_store_get(&state, thread_id).await.unwrap().is_none());
+    assert!(
+        task_store_get_archived(&state, thread_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        client
+            .mock_requests()
+            .await
+            .iter()
+            .all(|(method, _)| method != "thread/delete")
+    );
+}
+
+#[tokio::test]
+async fn recovery_remove_rejects_a_thread_that_reappeared_without_changing_membership() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-recovery-reappeared";
+    let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok_for(
+        "thread/list",
+        json!({
+            "limit": 100,
+            "sortKey": "recency_at",
+            "sortDirection": "desc",
+            "archived": false,
+            "useStateDbOnly": true,
+        }),
+        task_thread_list(thread_id, root.path()),
+    )]);
+    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+
+    assert!(matches!(
+        task_recovery_remove(State(state.clone()), AxumPath(thread_id.to_string())).await,
+        Err(ApiError::BadRequest {
+            code: "task_recovery_changed",
+            ..
+        })
+    ));
+    assert!(task_store_get(&state, thread_id).await.unwrap().is_some());
 }
 
 #[tokio::test]
@@ -1338,86 +1863,96 @@ async fn archived_list_fails_as_a_whole_without_updating_recency_on_read_error()
 }
 
 #[tokio::test]
-async fn managed_list_fails_as_a_whole_without_updating_recency_on_read_error() {
+async fn managed_list_keeps_missing_threads_recoverable_when_section_listing_fails() {
     let root = tempfile::tempdir().unwrap();
     let good_id = "thread-good";
     let failed_id = "thread-failed";
     let mut good_thread = task_thread_list(good_id, root.path())["data"][0].clone();
     good_thread["updatedAt"] = json!(99.0);
     let client = CodexThreadClient::mock(vec![
-        crate::codex_app_server::MockCodexResponse::ok(
-            "thread/read",
-            json!({ "thread": good_thread }),
-        ),
         crate::codex_app_server::MockCodexResponse::error(
-            "thread/read",
+            "threadSection/list",
             CodexThreadError::ProcessUnavailable,
+        ),
+        crate::codex_app_server::MockCodexResponse::ok_for(
+            "thread/list",
+            json!({
+                "limit": 100,
+                "sortKey": "recency_at",
+                "sortDirection": "desc",
+                "archived": false,
+                "useStateDbOnly": true,
+            }),
+            json!({
+                "data": [good_thread],
+                "nextCursor": null,
+                "backwardsCursor": null,
+            }),
         ),
     ]);
     let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
     manage_test_thread(&state, good_id, root.path()).await;
     manage_test_thread(&state, failed_id, root.path()).await;
-    let before = task_store_get(&state, good_id)
-        .await
-        .unwrap()
-        .unwrap()
-        .last_observed_recency_ms;
 
-    let result = list_managed_tasks(State(state.clone()), Query(TasksQuery { cursor: None })).await;
+    let projection = list_managed_tasks(
+        State(state.clone()),
+        Query(TasksQuery {
+            cursor: Some("ignored-active-cursor".to_string()),
+        }),
+    )
+    .await
+    .expect("recoverable Active projection")
+    .0;
 
-    assert!(matches!(result, Err(ApiError::CodexThread(_))));
+    assert!(projection.sections.is_empty());
+    assert_eq!(projection.unsectioned.len(), 2);
+    assert!(
+        projection
+            .unsectioned
+            .iter()
+            .any(|task| task.thread_id == good_id && task.conversation_available)
+    );
+    assert!(
+        projection
+            .unsectioned
+            .iter()
+            .any(|task| task.thread_id == failed_id && !task.conversation_available)
+    );
     assert_eq!(
         task_store_get(&state, good_id)
             .await
             .unwrap()
             .unwrap()
             .last_observed_recency_ms,
-        before,
-        "a failed page must not partially update its recency cache"
+        Some(99_000)
     );
+    assert!(task_store_get(&state, failed_id).await.unwrap().is_some());
 }
 
 #[tokio::test]
-async fn managed_list_limits_parallel_canonical_reads_to_eight() {
+async fn managed_list_returns_all_active_tasks_inside_section_boundaries() {
     let root = tempfile::tempdir().unwrap();
-    let mut responses = Vec::new();
+    let mut threads = Vec::new();
     let mut thread_ids = Vec::new();
     for index in 0..TASK_LIST_PAGE_SIZE {
         let thread_id = format!("thread-{index:02}");
         let thread = task_thread_list(&thread_id, root.path())["data"][0].clone();
-        responses.push(crate::codex_app_server::MockCodexResponse::delayed_ok(
-            "thread/read",
-            json!({ "thread": thread }),
-            Duration::from_millis(250),
-        ));
+        threads.push(thread);
         thread_ids.push(thread_id);
     }
-    let client = CodexThreadClient::mock(responses);
-    let state =
-        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    let client = CodexThreadClient::mock(active_section_responses("section-root", "", threads));
+    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
     for thread_id in &thread_ids {
         manage_test_thread(&state, thread_id, root.path()).await;
     }
 
-    let listing_state = state.clone();
-    let listing = tokio::spawn(async move {
-        list_managed_tasks(State(listing_state), Query(TasksQuery { cursor: None })).await
-    });
-    wait_for_mock_method_count(&client, "thread/read", 8).await;
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    assert_eq!(
-        client
-            .mock_requests()
-            .await
-            .iter()
-            .filter(|(method, _)| method == "thread/read")
-            .count(),
-        TASK_CANONICAL_READ_CONCURRENCY,
-        "no more than eight canonical reads may be in flight"
-    );
-
-    let response = listing.await.unwrap().unwrap();
-    assert_eq!(response.0.tasks.len(), TASK_LIST_PAGE_SIZE);
+    let projection = list_managed_tasks(State(state), Query(TasksQuery { cursor: None }))
+        .await
+        .unwrap()
+        .0;
+    assert_eq!(projection.sections.len(), 1);
+    assert_eq!(projection.sections[0].tasks.len(), TASK_LIST_PAGE_SIZE);
+    assert!(projection.unsectioned.is_empty());
 }
 
 #[tokio::test]

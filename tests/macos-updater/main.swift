@@ -82,18 +82,18 @@ private func runTests() throws {
     }
 
     let taskData = Data(
-        #"{"tasks":[{"threadStatus":{"type":"idle"}},{"threadStatus":{"type":"active","activeFlags":[]}},{"threadStatus":{"type":"notLoaded"}}],"nextCursor":"page-2"}"#.utf8
-    )
-    let taskPage = try decodeUpdateTaskPage(taskData)
-    try require(taskPage.activeCount == 1, "only canonical active thread status may block update")
-    try require(taskPage.nextCursor == "page-2", "task pagination cursor must be preserved")
-    let taskRequest = caffoldTaskPageRequest(
-        baseURL: URL(string: "http://127.0.0.1:5178/")!,
-        cursor: "page 2"
+        #"{"sections":[{"tasks":[{"threadStatus":{"type":"idle"}},{"threadStatus":{"type":"active","activeFlags":[]}}]},{"tasks":[{"threadStatus":{"type":"notLoaded"}}]}],"unsectioned":[{"threadStatus":{"type":"active","activeFlags":[]}}]}"#.utf8
     )
     try require(
-        taskRequest?.url?.absoluteString == "http://127.0.0.1:5178/api/tasks?cursor=page%202",
-        "task cursors must be encoded without changing the local endpoint"
+        try decodeActiveTaskCount(taskData) == 2,
+        "canonical active status must be counted across Sections and recovery Tasks"
+    )
+    let taskRequest = caffoldActiveTasksRequest(
+        baseURL: URL(string: "http://127.0.0.1:5178/")!
+    )
+    try require(
+        taskRequest.url?.absoluteString == "http://127.0.0.1:5178/api/tasks",
+        "active Task counts must use the complete Section projection endpoint"
     )
 
     try require(

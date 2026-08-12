@@ -4,6 +4,7 @@ import {
   installTaskApiFixture,
   taskDetailFixture,
 } from "../support/task-api-fixture.js";
+import { activeTaskProjection } from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
@@ -174,7 +175,7 @@ async function installScalingTask(page) {
   };
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
-    route.fulfill({ json: { tasks: [detail.task], nextCursor: null } }),
+    route.fulfill({ json: activeTaskProjection([detail.task]) }),
   );
   await page.route(/\/api\/tasks\/thread-1(?:\?|$)/, (route) =>
     route.fulfill({ json: detail }),

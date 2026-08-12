@@ -4,6 +4,7 @@ import {
   mockCodexStatus,
 } from "./support/browser-defaults.js";
 import {
+  activeTaskProjection,
   captureReviewScreenshot,
   installEventSourceMock,
   mockCodexModels,
@@ -210,7 +211,7 @@ test("returns from Settings to the canonical Tasks home", async ({
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [], nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection()),
     }),
   );
 

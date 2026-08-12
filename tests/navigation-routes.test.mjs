@@ -34,6 +34,11 @@ test("parses and serializes Task-scoped routes canonically", () => {
       "/tasks/thread%201",
     ],
     [
+      "/tasks/thread%201/recovery",
+      { kind: "tasks", new: false, threadId: "thread 1", cwd: "", recovery: true },
+      "/tasks/thread%201/recovery",
+    ],
+    [
       "/tasks/thread%201/review?scope=branch&nav=files&view=source&file=..%2Fshared%2Flib.rs&line=17&base=origin%2Fmain",
       {
         kind: "tasks",
@@ -107,6 +112,7 @@ test("derives deterministic Task child parents", () => {
     ["/", null],
     ["/tasks/new?cwd=src", "/"],
     ["/tasks/thread", "/"],
+    ["/tasks/thread/recovery", "/"],
     [
       "/tasks/thread/review?scope=branch&nav=files&view=source&file=src%2Flib.rs&line=17&base=origin%2Fmain",
       "/tasks/thread/review?scope=branch&nav=files&view=source&base=origin%2Fmain",
@@ -149,6 +155,7 @@ test("exposes Task workspace, domain, mode, and target metadata", () => {
     ["/settings", null, "settings", "list"],
     ["/tasks/new", null, "tasks", "new"],
     ["/tasks/thread", null, "tasks", "detail"],
+    ["/tasks/thread/recovery", null, "tasks", "recovery"],
     ["/tasks/thread/review", null, "tasks", "review"],
     ["/tasks/thread/review?file=src%2Flib.rs", null, "tasks", "review-file"],
     ["/tasks/thread/git/compare", "git", "compare", "list"],

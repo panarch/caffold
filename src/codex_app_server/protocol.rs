@@ -5,6 +5,22 @@ use serde_json::{Value, json};
 
 use super::CodexTurnOptions;
 
+mod thread_list;
+mod thread_section;
+
+pub use thread_list::{ThreadListResponse, ThreadSectionFilter};
+pub(crate) use thread_list::{
+    archived_thread_list_params, section_thread_list_params, thread_list_params,
+};
+pub(crate) use thread_section::{
+    THREAD_SECTION_CREATE, THREAD_SECTION_LIST, THREAD_SECTION_MOVE, thread_section_create_params,
+    thread_section_list_params, thread_section_move_params,
+};
+pub use thread_section::{
+    ThreadSection, ThreadSectionCreateResponse, ThreadSectionListResponse,
+    ThreadSectionMoveResponse,
+};
+
 pub const MINIMUM_SUPPORTED_CODEX_CLI_VERSION: &str = "0.147.0";
 
 pub(crate) const INITIALIZE: &str = "initialize";
@@ -63,16 +79,6 @@ pub struct AccountReadResponse {
 pub enum SortDirection {
     Asc,
     Desc,
-}
-
-#[cfg(test)]
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-#[allow(clippy::enum_variant_names)]
-pub enum ThreadSortKey {
-    CreatedAt,
-    UpdatedAt,
-    RecencyAt,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -164,18 +170,6 @@ impl CodexThread {
     pub fn into_value(self) -> Value {
         serde_json::to_value(self).expect("serializing a decoded Codex thread cannot fail")
     }
-}
-
-#[cfg(test)]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct ThreadListResponse {
-    #[serde(default)]
-    pub data: Vec<CodexThread>,
-    #[serde(default)]
-    pub next_cursor: Option<String>,
-    #[serde(default)]
-    pub backwards_cursor: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -334,19 +328,6 @@ pub struct EmptyResponse {}
 #[serde(rename_all = "camelCase")]
 pub struct AccountReadParams {
     pub refresh_token: bool,
-}
-
-#[cfg(test)]
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct ThreadListParams<'a> {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cursor: Option<&'a str>,
-    pub limit: usize,
-    pub sort_key: ThreadSortKey,
-    pub sort_direction: SortDirection,
-    pub archived: bool,
-    pub use_state_db_only: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -931,18 +912,6 @@ pub(crate) fn thread_resume_params<'a>(
             sort_direction: SortDirection::Desc,
             items_view: TurnItemsView::Full,
         }),
-    }
-}
-
-#[cfg(test)]
-pub(crate) fn thread_list_params(cursor: Option<&str>, limit: usize) -> ThreadListParams<'_> {
-    ThreadListParams {
-        cursor: cursor.filter(|cursor| !cursor.is_empty()),
-        limit,
-        sort_key: ThreadSortKey::RecencyAt,
-        sort_direction: SortDirection::Desc,
-        archived: false,
-        use_state_db_only: true,
     }
 }
 

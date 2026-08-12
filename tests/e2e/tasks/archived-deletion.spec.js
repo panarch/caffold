@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
+  activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
   installEventSourceMock,
@@ -39,7 +40,7 @@ async function mockArchivedList(page, tasks) {
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [], nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection()),
     }),
   );
   await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>

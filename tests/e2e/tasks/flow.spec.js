@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import {
+  activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
   installEventSourceMock,
@@ -37,6 +38,13 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   };
   const detail = {
     task,
+    activeTopPlacement: {
+      section: {
+        id: "section-src",
+        name: "src",
+        repository: false,
+      },
+    },
     events: [
       {
         id: "event_prompt",
@@ -70,7 +78,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
       taskListQueries.push({ cwd: url.searchParams.get("cwd") });
       return route.fulfill({
         contentType: "application/json",
-        body: JSON.stringify({ tasks: [] }),
+        body: JSON.stringify(activeTaskProjection()),
       });
     }
 
@@ -379,6 +387,11 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await expect.poll(() => createdTaskRequest?.prompt).toBe("Say hello globally");
   await expect(page).toHaveURL(`/tasks/${threadId}`);
   await expect(tasksPage).toContainText("Hello from a global Codex thread.");
+  await expect(
+    page.locator(
+      `caffold-task-navigator .task-row[data-thread-id="${threadId}"]`,
+    ),
+  ).toContainText("Global task");
   const openReview = tasksPage.getByRole("button", { name: "Review", exact: true });
   await expect(openReview).toBeEnabled();
   await expect(tasksPage.getByRole("button", { name: "Git unavailable" })).toBeDisabled();

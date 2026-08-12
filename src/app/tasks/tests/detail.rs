@@ -659,6 +659,43 @@ async fn resume_failure_makes_cached_task_detail_unavailable() {
 }
 
 #[tokio::test]
+async fn unavailable_thread_refreshes_recovery_projection_without_removing_membership() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-unavailable-recovery-refresh";
+    let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::error(
+        "thread/resume",
+        crate::codex_app_server::CodexThreadError::ThreadUnavailable(
+            "Thread is archived in Codex".to_string(),
+        ),
+    )]);
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+    let refresh = tokio::spawn(crate::app::tasks::routes::test_wait_for_task_list_refresh(
+        state.task_list_events.clone(),
+    ));
+    tokio::task::yield_now().await;
+
+    let detail = test_task_detail(state.clone(), thread_id.to_string(), None)
+        .await
+        .expect("loading detail remains available");
+    assert_eq!(detail.0.thread_id, thread_id);
+    wait_for_mock_method(&client, "thread/resume").await;
+
+    tokio::time::timeout(Duration::from_millis(100), refresh)
+        .await
+        .expect("Task list refresh event")
+        .expect("refresh listener completes");
+    assert!(
+        test_store_get(&state, thread_id)
+            .await
+            .expect("managed membership read")
+            .is_some(),
+        "detail unavailability must not delete Caffold ownership"
+    );
+}
+
+#[tokio::test]
 async fn resume_timeout_makes_task_detail_unavailable_but_keeps_the_connection() {
     let root = tempfile::tempdir().unwrap();
     let thread_id = "thread-timeout-detail-bootstrap";
@@ -1041,6 +1078,7 @@ fn task_stream_bootstrap_replays_the_canonical_detail_snapshot() {
             model: Some("gpt-test".to_string()),
             reasoning_effort: Some("xhigh".to_string()),
             fast_mode: true,
+            active_top_placement: None,
         },
         reason: "stream-bootstrap",
         error: None,

@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
+  activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
   installEventSourceMock,
@@ -52,7 +53,7 @@ async function installTransportOverlayFixture(page, threadId, registryKey) {
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks, nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection(tasks)),
     }),
   );
   await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
@@ -136,7 +137,7 @@ test("background Task tabs release list and detail streams", async ({
     listReads += 1;
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [task], nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection([task])),
     });
   });
   await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) => {
@@ -330,7 +331,7 @@ test("replaces terminal Task streams and reconciles list and detail", async ({
     listReads += 1;
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [canonicalTask], nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection([canonicalTask])),
     });
   });
   await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), async (route) => {
@@ -679,7 +680,7 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [], nextCursor: null }),
+      body: JSON.stringify(activeTaskProjection()),
     }),
   );
 
@@ -808,7 +809,7 @@ test("keeps task list and detail revisions independent", async ({ page }, testIn
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks: [task] }),
+      body: JSON.stringify(activeTaskProjection([task])),
     }),
   );
   await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
@@ -1022,7 +1023,7 @@ test("isolates task detail responses and conversation scroll by thread", async (
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ tasks }),
+      body: JSON.stringify(activeTaskProjection(tasks)),
     }),
   );
   await page.route(/\/api\/tasks\/thread_scroll_[ab](?:\?|$)/, async (route) => {

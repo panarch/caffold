@@ -1,4 +1,5 @@
 import { mockCodexStatus } from "./browser-defaults.js";
+import { activeTaskProjection } from "./task-fixtures.js";
 
 export const TASK_PERMISSION_FIXTURE = {
   defaultMode: "approveForMe",
@@ -103,7 +104,7 @@ export async function installTaskApiFixture(page) {
     }),
   );
   await page.route("**/api/tasks", (route) =>
-    route.fulfill({ json: { tasks: [], nextCursor: null } }),
+    route.fulfill({ json: activeTaskProjection() }),
   );
   await page.route("**/api/tasks/stream*", (route) =>
     route.fulfill({

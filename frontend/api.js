@@ -35,10 +35,8 @@ export async function transcribeVoice(recording, signal) {
   });
 }
 
-export async function getTasks(cursor = null) {
-  return requestJson("/api/tasks", {
-    ...(cursor ? { cursor } : {}),
-  });
+export async function getTasks() {
+  return requestJson("/api/tasks");
 }
 
 export async function getArchivedTasks(cursor = null) {
@@ -63,6 +61,30 @@ export async function restoreTask(threadId) {
   return requestJson(`/api/tasks/${encodeURIComponent(threadId)}/restore`, {}, {
     method: "POST",
   });
+}
+
+export async function restoreRecoveryTask(threadId) {
+  return requestJson(
+    `/api/tasks/${encodeURIComponent(threadId)}/recovery/restore`,
+    {},
+    { method: "POST" },
+  );
+}
+
+export async function archiveRecoveryTask(threadId) {
+  return requestJson(
+    `/api/tasks/${encodeURIComponent(threadId)}/recovery/archive`,
+    {},
+    { method: "POST" },
+  );
+}
+
+export async function removeRecoveryTask(threadId) {
+  return requestJson(
+    `/api/tasks/${encodeURIComponent(threadId)}/recovery/remove`,
+    {},
+    { method: "POST" },
+  );
 }
 
 export async function deleteTask(threadId) {
