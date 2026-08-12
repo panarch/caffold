@@ -1,6 +1,7 @@
 import { getTasks, taskListStreamUrl } from "../../../../api.js";
 import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
+import { PENDING_CODEX_TASK_OPERATIONS } from "../../codex-status.js";
 import {
   TASK_TRANSPORT_STATE,
   isTaskTransportStale,
@@ -71,7 +72,7 @@ class CaffoldActiveTaskList extends HTMLElement {
     this.selectedThreadId = "";
     this.revisionByThread = new Map();
     this.active = false;
-    this.codexOperationsBlocked = false;
+    this.codexTaskOperations = PENDING_CODEX_TASK_OPERATIONS;
     this.boundClick = (event) => this.handleClick(event);
     this.boundIconsReady = () => this.render();
     this.taskListStream = new TaskStreamLifecycle({
@@ -95,14 +96,19 @@ class CaffoldActiveTaskList extends HTMLElement {
     return await this.loadTasks({ force });
   }
 
-  setCodexOperationsBlocked(blocked) {
+  get codexOperationsBlocked() {
+    return this.codexTaskOperations?.blocked !== false;
+  }
+
+  setCodexTaskOperations(presentation) {
     this.ensureState();
-    const nextBlocked = Boolean(blocked);
-    if (this.codexOperationsBlocked === nextBlocked) {
+    if (this.codexTaskOperations?.key === presentation.key) {
       return;
     }
-    this.codexOperationsBlocked = nextBlocked;
-    if (nextBlocked) {
+    const becameBlocked =
+      this.codexTaskOperations?.blocked === false && presentation.blocked;
+    this.codexTaskOperations = presentation;
+    if (becameBlocked) {
       this.taskListRequestId += 1;
       this.taskListLoading = false;
       this.taskListLoadingMore = false;
@@ -484,7 +490,7 @@ class CaffoldActiveTaskList extends HTMLElement {
     const tasks = sortTasksByRecency(this.tasks);
     let content;
     if (this.codexOperationsBlocked && !tasks.length) {
-      content = `<p class="task-section-message">Codex setup required.</p>`;
+      content = `<p class="task-section-message">${escapeHtml(this.codexTaskOperations.message)}</p>`;
     } else if (loading && !tasks.length) {
       content = `<p class="task-section-message">Loading...</p>`;
     } else if (this.taskListError && !tasks.length) {
@@ -562,7 +568,7 @@ class CaffoldActiveTaskList extends HTMLElement {
       : "";
     return `
       <li data-thread-id="${escapeHtml(threadId)}" data-task-list-key="${escapeHtml(repositoryKey)}">
-        <button type="button" class="task-row" data-task-action="open-task" data-thread-id="${escapeHtml(threadId)}" data-task-status="${escapeHtml(status)}" title="${escapeHtml(this.codexOperationsBlocked ? "Codex setup required" : task.title)}"${selected}${busy}${this.codexOperationsBlocked ? " disabled" : ""}>
+        <button type="button" class="task-row" data-task-action="open-task" data-thread-id="${escapeHtml(threadId)}" data-task-status="${escapeHtml(status)}" title="${escapeHtml(this.codexOperationsBlocked ? this.codexTaskOperations.title : task.title)}"${selected}${busy}${this.codexOperationsBlocked ? " disabled" : ""}>
           <span class="task-row-title">${escapeHtml(task.title)}</span>
           <span class="task-row-indicators">${worktree}${meta}</span>
         </button>

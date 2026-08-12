@@ -5,6 +5,7 @@ import {
 } from "../../../../api.js";
 import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
+import { PENDING_CODEX_TASK_OPERATIONS } from "../../codex-status.js";
 import {
   TASK_TRANSPORT_STATE,
   isTaskTransportStale,
@@ -60,7 +61,7 @@ class CaffoldArchivedTaskList extends HTMLElement {
     this.initialRequestSettled = false;
     this.revealed = false;
     this.transportState = TASK_TRANSPORT_STATE.IDLE;
-    this.codexOperationsBlocked = false;
+    this.codexTaskOperations = PENDING_CODEX_TASK_OPERATIONS;
     this.restoringThreadIds = new Set();
     this.restoreErrors = new Map();
     this.deletingThreadIds = new Set();
@@ -78,14 +79,19 @@ class CaffoldArchivedTaskList extends HTMLElement {
     return await this.loadArchived({ force });
   }
 
-  setCodexOperationsBlocked(blocked) {
+  get codexOperationsBlocked() {
+    return this.codexTaskOperations?.blocked !== false;
+  }
+
+  setCodexTaskOperations(presentation) {
     this.ensureState();
-    const nextBlocked = Boolean(blocked);
-    if (this.codexOperationsBlocked === nextBlocked) {
+    if (this.codexTaskOperations?.key === presentation.key) {
       return;
     }
-    this.codexOperationsBlocked = nextBlocked;
-    if (nextBlocked) {
+    const becameBlocked =
+      this.codexTaskOperations?.blocked === false && presentation.blocked;
+    this.codexTaskOperations = presentation;
+    if (becameBlocked) {
       this.archivedTaskRequestId += 1;
       this.archivedTaskLoading = false;
       this.archivedTaskLoadingMore = false;
@@ -388,7 +394,7 @@ class CaffoldArchivedTaskList extends HTMLElement {
     const tasks = sortTasksByRecency(this.archivedTasks);
     let content;
     if (this.codexOperationsBlocked && !tasks.length) {
-      content = `<p class="task-section-message">Codex setup required.</p>`;
+      content = `<p class="task-section-message">${escapeHtml(this.codexTaskOperations.message)}</p>`;
     } else if (this.archivedTaskLoading && !tasks.length) {
       content = `<p class="task-section-message">Loading...</p>`;
     } else if (this.archivedTaskError && !tasks.length) {

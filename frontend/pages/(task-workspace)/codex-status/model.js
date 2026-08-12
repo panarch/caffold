@@ -66,8 +66,61 @@ export function codexBlocksTaskOperations(status) {
   return status?.readiness?.blocksTaskOperations !== false;
 }
 
+export const PENDING_CODEX_TASK_OPERATIONS = taskOperationsPresentation({
+  phase: "pending",
+  blocked: true,
+  title: "Checking Codex readiness…",
+  message: "Checking Codex readiness…",
+});
+
+export function codexTaskOperationsPresentation(status) {
+  if (!codexBlocksTaskOperations(status)) {
+    return taskOperationsPresentation({
+      phase: "ready",
+      blocked: false,
+      title: "New Task",
+      message: "",
+    });
+  }
+
+  if (!status?.readiness) {
+    return status?.readinessLoadError
+      ? taskOperationsPresentation({
+          phase: "checkFailed",
+          blocked: true,
+          title: "Codex readiness check failed",
+          message: "Codex readiness check failed.",
+        })
+      : PENDING_CODEX_TASK_OPERATIONS;
+  }
+
+  const title = `Codex ${formatCodexReadiness(status).toLowerCase()}`;
+  return taskOperationsPresentation({
+    phase: "blocking",
+    blocked: true,
+    title,
+    message: `${title}.`,
+  });
+}
+
+function taskOperationsPresentation({ phase, blocked, title, message }) {
+  return Object.freeze({
+    key: [phase, blocked, title, message].join("|"),
+    phase,
+    blocked,
+    title,
+    message,
+  });
+}
+
 export function formatCodexReadiness(status) {
   const state = status?.readiness?.state;
+  if (!state) {
+    return status?.readinessLoadError ? "Check failed" : "Checking";
+  }
+  if (state === "ready" && codexBlocksTaskOperations(status)) {
+    return "Unavailable";
+  }
   return {
     missing: "Setup required",
     unsupportedInstall: "Setup required",
@@ -77,7 +130,7 @@ export function formatCodexReadiness(status) {
     incompatible: "Unavailable",
     ready: "Ready",
     error: "Unavailable",
-  }[state] ?? (status?.readinessLoadError ? "Check failed" : "Checking");
+  }[state] ?? "Unavailable";
 }
 
 export function formatCodexAccount(status) {

@@ -3,8 +3,10 @@ import {
   restartCodexRuntime,
 } from "../../api.js";
 import {
+  PENDING_CODEX_TASK_OPERATIONS,
   codexBlocksTaskOperations,
   codexState,
+  codexTaskOperationsPresentation,
   findRateWindow,
   formatCodexAccount,
   formatCodexPlan,
@@ -25,8 +27,10 @@ export const CODEX_RUNTIME_RESTART_REQUEST_EVENT =
   "caffold:request-codex-runtime-restart";
 
 export {
+  PENDING_CODEX_TASK_OPERATIONS,
   codexBlocksTaskOperations,
   codexState,
+  codexTaskOperationsPresentation,
   findRateWindow,
   formatCodexAccount,
   formatCodexPlan,

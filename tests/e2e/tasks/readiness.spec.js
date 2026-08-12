@@ -9,13 +9,17 @@ import {
 } from "../support/task-fixtures.js";
 
 const BLOCKING_STATES = [
-  ["missing", "Install Codex to start Tasks"],
-  ["unsupportedInstall", "Use the official standalone Codex"],
-  ["updateRequired", "Update Codex to continue"],
-  ["signInRequired", "Sign in to Codex"],
-  ["restartRequired", "Restart the Codex runtime"],
-  ["incompatible", "Codex runtime is incompatible"],
-  ["error", "Codex runtime is unavailable"],
+  ["missing", "Install Codex to start Tasks", "Codex setup required."],
+  [
+    "unsupportedInstall",
+    "Use the official standalone Codex",
+    "Codex setup required.",
+  ],
+  ["updateRequired", "Update Codex to continue", "Codex update required."],
+  ["signInRequired", "Sign in to Codex", "Codex sign-in required."],
+  ["restartRequired", "Restart the Codex runtime", "Codex restart required."],
+  ["incompatible", "Codex runtime is incompatible", "Codex unavailable."],
+  ["error", "Codex runtime is unavailable", "Codex unavailable."],
 ];
 
 const REASON_CODES = {
@@ -65,7 +69,7 @@ test.beforeEach(async ({ context, page }) => {
   await installEventSourceMock(page);
 });
 
-for (const [state, heading] of BLOCKING_STATES) {
+for (const [state, heading, navigatorMessage] of BLOCKING_STATES) {
   test(`shows the canonical ${state} Task setup surface`, async ({ page }) => {
     await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
       route.fulfill({
@@ -82,10 +86,15 @@ for (const [state, heading] of BLOCKING_STATES) {
     await expect(setup.getByRole("button", { name: "Retry" })).toBeEnabled();
     await expect(setup.getByRole("button", { name: "Open Settings" })).toBeEnabled();
     await expect(page.locator("caffold-task-new")).toBeHidden();
-    await expect(page.locator("caffold-task-navigator .task-list-new-task")).toBeDisabled();
+    const newTask = page.locator("caffold-task-navigator .task-list-new-task");
+    await expect(newTask).toBeDisabled();
+    await expect(newTask).toHaveAttribute(
+      "title",
+      navigatorMessage.replace(/\.$/, ""),
+    );
     await expect(
       page.locator("caffold-active-task-list .task-section-message"),
-    ).toHaveText("Codex setup required.");
+    ).toHaveText(navigatorMessage);
     await expect
       .poll(() => page.locator("caffold-task-navigator").evaluate(
         (navigator) => navigator.listState().loading,
@@ -154,11 +163,24 @@ test("keeps the loading diagnosis visible without flashing the composer", async 
   const statusGate = new Promise((resolve) => {
     releaseStatus = resolve;
   });
+  let releaseTasks;
+  const tasksGate = new Promise((resolve) => {
+    releaseTasks = resolve;
+  });
+  let taskRequests = 0;
   await page.route(/\/api\/codex\/status(?:\?|$)/, async (route) => {
     await statusGate;
     await route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify(statusFor("missing")),
+      body: JSON.stringify(mockCodexStatus()),
+    });
+  });
+  await page.route(/\/api\/tasks(?:\/archived)?(?:\?|$)/, async (route) => {
+    taskRequests += 1;
+    await tasksGate;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [], nextCursor: null }),
     });
   });
 
@@ -168,9 +190,64 @@ test("keeps the loading diagnosis visible without flashing the composer", async 
   await expect(loading).toContainText("Checking Codex readiness");
   await expect(loading.getByRole("button", { name: "Open Settings" })).toBeEnabled();
   await expect(page.locator("caffold-task-new")).toBeHidden();
+  const navigatorMessage = page.locator(
+    "caffold-active-task-list .task-section-message",
+  );
+  await expect(navigatorMessage).toHaveText("Checking Codex readiness…");
+  const newTask = page.locator("caffold-task-navigator .task-list-new-task");
+  await expect(newTask).toBeDisabled();
+  await expect(newTask).toHaveAttribute("title", "Checking Codex readiness…");
+  await expect(
+    page.getByText("Codex setup required.", { exact: true }),
+  ).toHaveCount(0);
+  expect(taskRequests).toBe(0);
 
   releaseStatus();
-  await expect(page.locator('[data-readiness-state="missing"]')).toBeVisible();
+  await expect(page.locator(".codex-readiness-surface")).toBeHidden();
+  await expect.poll(() => taskRequests).toBeGreaterThan(0);
+  await expect(navigatorMessage).toHaveText("Loading...");
+
+  releaseTasks();
+  await expect(navigatorMessage).toHaveText("No Caffold tasks yet.");
+  await expect(newTask).toBeEnabled();
+  await expect(newTask).toHaveAttribute("title", "New Task");
+});
+
+test("a readiness load failure is not presented as a setup requirement", async ({ page }) => {
+  let taskRequests = 0;
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: "text/plain",
+      body: "readiness unavailable",
+    }),
+  );
+  await page.route(/\/api\/tasks(?:\/archived)?(?:\?|$)/, (route) => {
+    taskRequests += 1;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [], nextCursor: null }),
+    });
+  });
+
+  await page.goto("/");
+
+  await expect(
+    page.locator('[data-readiness-state="checkFailed"]'),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Codex readiness could not be checked" }),
+  ).toBeVisible();
+  await expect(
+    page.locator("caffold-active-task-list .task-section-message"),
+  ).toHaveText("Codex readiness check failed.");
+  const newTask = page.locator("caffold-task-navigator .task-list-new-task");
+  await expect(newTask).toBeDisabled();
+  await expect(newTask).toHaveAttribute("title", "Codex readiness check failed");
+  await expect(
+    page.getByText("Codex setup required.", { exact: true }),
+  ).toHaveCount(0);
+  expect(taskRequests).toBe(0);
 });
 
 test("Retry transitions from setup into the ready Task surface", async ({ page }) => {
@@ -345,6 +422,7 @@ test("a blocking transition releases the Task list and disables existing actions
 
   await expect(page.locator('[data-readiness-state="updateRequired"]')).toBeVisible();
   await expect(activeRow).toBeDisabled();
+  await expect(activeRow).toHaveAttribute("title", "Codex update required");
   await expect(
     archivedRow.locator('[data-task-action="restore-archived-task"]'),
   ).toBeDisabled();

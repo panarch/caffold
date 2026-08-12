@@ -2,7 +2,7 @@ import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import "../../components/workspace-brand.js";
 import {
-  codexBlocksTaskOperations,
+  codexTaskOperationsPresentation,
 } from "../../codex-status.js";
 import {
   TASK_TRANSPORT_STATE,
@@ -100,7 +100,7 @@ class CaffoldTaskNavigator extends HTMLElement {
     }
     this.stateReady = true;
     this.active = false;
-    this.codexOperationsBlocked = true;
+    this.codexTaskOperations = codexTaskOperationsPresentation(null);
     this.lastPublishedListState = "";
     this.boundClick = (event) => this.handleClick(event);
     this.boundIconsReady = () => this.syncPrimaryHeader();
@@ -137,7 +137,7 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.ensureState();
     this.render();
     this.active = true;
-    if (this.codexOperationsBlocked) {
+    if (this.codexTaskOperations.blocked) {
       return { tasks: null, archived: null };
     }
     const tasksRequest = this.activeTaskList.activate({ force });
@@ -227,13 +227,13 @@ class CaffoldTaskNavigator extends HTMLElement {
 
   setCodexStatus(status) {
     this.ensureChildren();
-    const blocked = codexBlocksTaskOperations(status);
-    if (this.codexOperationsBlocked === blocked) {
+    const presentation = codexTaskOperationsPresentation(status);
+    if (this.codexTaskOperations.key === presentation.key) {
       return;
     }
-    this.codexOperationsBlocked = blocked;
-    this.activeTaskList.setCodexOperationsBlocked(blocked);
-    this.archivedTaskList.setCodexOperationsBlocked(blocked);
+    this.codexTaskOperations = presentation;
+    this.activeTaskList.setCodexTaskOperations(presentation);
+    this.archivedTaskList.setCodexTaskOperations(presentation);
     this.render();
   }
 
@@ -245,7 +245,7 @@ class CaffoldTaskNavigator extends HTMLElement {
       return;
     }
     event.stopPropagation();
-    if (this.codexOperationsBlocked) {
+    if (this.codexTaskOperations.blocked) {
       return;
     }
     if (action.dataset.taskAction === "open-new") {
@@ -372,12 +372,8 @@ class CaffoldTaskNavigator extends HTMLElement {
         <caffold-archived-task-list hidden></caffold-archived-task-list>
       </div>
     `;
-    this.activeTaskList.setCodexOperationsBlocked(
-      this.codexOperationsBlocked,
-    );
-    this.archivedTaskList.setCodexOperationsBlocked(
-      this.codexOperationsBlocked,
-    );
+    this.activeTaskList.setCodexTaskOperations(this.codexTaskOperations);
+    this.archivedTaskList.setCodexTaskOperations(this.codexTaskOperations);
   }
 
   syncPrimaryHeader() {
@@ -386,14 +382,16 @@ class CaffoldTaskNavigator extends HTMLElement {
     );
     if (button) {
       button.innerHTML = renderInlineIcon("Plus", "New task", "task-action-icon");
-      button.title = this.codexOperationsBlocked
-        ? "Codex setup required"
+      button.title = this.codexTaskOperations.blocked
+        ? this.codexTaskOperations.title
         : "New Task";
-      button.disabled = this.codexOperationsBlocked;
+      button.disabled = this.codexTaskOperations.blocked;
     }
   }
 
   renderPrimaryHeader() {
+    const blocked = this.codexTaskOperations.blocked;
+    const title = blocked ? this.codexTaskOperations.title : "New Task";
     return `
       <header class="task-list-section-header task-list-primary-header">
         <caffold-workspace-brand></caffold-workspace-brand>
@@ -402,8 +400,8 @@ class CaffoldTaskNavigator extends HTMLElement {
           class="task-list-new-task"
           data-task-action="open-new"
           aria-label="New Task"
-          title="${this.codexOperationsBlocked ? "Codex setup required" : "New Task"}"
-          ${this.codexOperationsBlocked ? "disabled" : ""}
+          title="${title}"
+          ${blocked ? "disabled" : ""}
         >${renderInlineIcon("Plus", "New task", "task-action-icon")}</button>
       </header>
     `;
