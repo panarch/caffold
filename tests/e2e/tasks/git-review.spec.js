@@ -173,10 +173,17 @@ async function installTaskGitFixture(page, tasks = [taskRecord()]) {
 
 async function chooseGitTool(page, kind) {
   const summary = page.locator("caffold-task-detail-summary");
-  await summary.locator('summary[aria-label="Open Git workspace"]').click();
+  const popover = summary.locator(
+    "caffold-task-detail-git > .task-git-popover",
+  );
+  await summary.getByRole("button", { name: "Open Git workspace" }).click();
+  await expect(popover).toBeVisible();
   await summary
-    .locator(`button[data-summary-action="open-git-tool"][data-review-kind="${kind}"]`)
+    .locator(
+      `caffold-task-detail-git button[data-git-button-action][data-review-kind="${kind}"]`,
+    )
     .click();
+  await expect(popover).toBeHidden();
 }
 
 test("reloads Task-scoped Compare and releases its refs watch while inactive", async ({ page }) => {

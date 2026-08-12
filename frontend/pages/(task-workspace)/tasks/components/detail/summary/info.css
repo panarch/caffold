@@ -152,6 +152,7 @@ caffold-task-detail-info {
 @media (max-width: 520px) {
   caffold-task-detail-info {
     & .task-detail-popover {
+      position-anchor: --task-detail-summary;
       position-area: none;
       inset: auto var(--interface-space-4);
       top: calc(anchor(bottom) + var(--interface-space-3));

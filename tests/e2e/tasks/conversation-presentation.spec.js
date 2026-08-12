@@ -524,11 +524,13 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   );
   const detailActionGeometry = await tasksPage
     .locator(
-      ".task-detail-actions > button, .task-detail-actions > details > summary, .task-detail-info-button",
+      ".task-detail-actions > caffold-task-detail-git > .task-git-button, .task-detail-actions > caffold-task-detail-github > .task-github-button, .task-detail-info-button",
     )
     .evaluateAll((controls) =>
       controls.map((control) => {
-        const icon = control.querySelector("svg, img, .task-brand-icon");
+        const icon = control.querySelector(
+          "svg, img, .task-git-icon, .task-github-icon",
+        );
         const chip = control.querySelector(".task-status-chip");
         const controlBox = control.getBoundingClientRect();
         const iconBox = icon.getBoundingClientRect();
@@ -539,7 +541,9 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
             control.getAttribute("title") ||
             control.className,
           iconOnly:
-            control.matches(".task-brand-button, .task-detail-info-button") ||
+            control.matches(
+              ".task-git-button, .task-github-button, .task-detail-info-button",
+            ) ||
             control.classList.contains("task-icon-button"),
           iconWidth: iconBox.width,
           iconHeight: iconBox.height,

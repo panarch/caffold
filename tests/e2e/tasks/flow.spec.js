@@ -405,14 +405,16 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await expect(
     tasksPage.locator('[data-task-info-field="worktree-ref"]'),
   ).toHaveText("main");
-  await expect(tasksPage.locator(".task-review-menu")).toHaveCount(2);
+  await expect(
+    tasksPage.locator("caffold-task-detail-git, caffold-task-detail-github"),
+  ).toHaveCount(2);
 
-  const gitReviewMenu = tasksPage.locator(
-    '.task-review-menu:has(summary[aria-label="Open Git workspace"])',
-  );
-  const gitReviewMenuButton = gitReviewMenu.locator("summary");
+  const gitReviewMenu = tasksPage.locator("caffold-task-detail-git");
+  const gitReviewMenuButton = gitReviewMenu.getByRole("button", {
+    name: "Open Git workspace",
+  });
   await gitReviewMenuButton.click();
-  const gitReviewMenuPopover = gitReviewMenu.locator(".task-review-menu-popover");
+  const gitReviewMenuPopover = gitReviewMenu.locator(".task-git-popover");
   await expect(gitReviewMenuPopover).toBeVisible();
   const [gitReviewMenuButtonBox, gitReviewMenuPopoverBox] = await Promise.all([
     gitReviewMenuButton.boundingBox(),
@@ -446,10 +448,10 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await gitReviewMenuButton.click();
 
   await tasksPage
-    .locator('.task-review-menu summary[aria-label="Open GitHub workspace"]')
+    .getByRole("button", { name: "Open GitHub workspace" })
     .click();
   const githubMenuMetrics = await tasksPage
-    .locator('.task-review-menu[data-review-menu="github"]')
+    .locator("caffold-task-detail-github")
     .evaluate((menu) => {
       const probe = document.createElement("div");
       probe.style.cssText = [
@@ -465,7 +467,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
       probe.remove();
       return {
         expected,
-        items: [...menu.querySelectorAll(".task-review-menu-popover button")].map(
+        items: [...menu.querySelectorAll(".task-github-popover button")].map(
           (button) => ({
             fontSize: getComputedStyle(button).fontSize,
             height: button.getBoundingClientRect().height,
@@ -480,7 +482,9 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   }
   await captureReviewScreenshot(page, testInfo, "tasks-global-github-menu");
   await tasksPage
-    .locator('button[data-summary-action="open-github-tool"][data-review-kind="issues"]')
+    .locator(
+      'caffold-task-detail-github button[data-github-button-action][data-review-kind="issues"]',
+    )
     .click();
   await expect(page).toHaveURL(`/tasks/${threadId}/github/issues`);
   await expect(page.locator("caffold-task-github-layout")).toHaveAttribute(

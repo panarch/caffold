@@ -474,7 +474,14 @@ test("common chrome shares one icon slot and control geometry", () => {
 
   const owners = [
     ["pages/(task-workspace)/tasks/controls.css", ".task-action-icon"],
-    ["pages/(task-workspace)/tasks/components/detail/summary.css", ".task-brand-icon"],
+    [
+      "pages/(task-workspace)/tasks/components/detail/summary/git.css",
+      ".task-git-icon",
+    ],
+    [
+      "pages/(task-workspace)/tasks/components/detail/summary/github.css",
+      ".task-github-icon",
+    ],
     ["components/file-viewer.css", ".viewer-info-icon"],
     ["pages/(task-workspace)/tasks/components/detail/(git)/layout.css", ".task-domain-back-icon"],
     ["pages/(task-workspace)/tasks/components/detail/(github)/layout.css", ".task-domain-back-icon"],
@@ -617,8 +624,13 @@ test("icon-only controls use square slots from their semantic control tier", () 
       "--interface-compact-hit-size",
     ],
     [
-      "pages/(task-workspace)/tasks/components/detail/summary.css",
-      ".task-brand-button",
+      "pages/(task-workspace)/tasks/components/detail/summary/git.css",
+      ".task-git-button",
+      "--interface-compact-hit-size",
+    ],
+    [
+      "pages/(task-workspace)/tasks/components/detail/summary/github.css",
+      ".task-github-button",
       "--interface-compact-hit-size",
     ],
     [
@@ -863,6 +875,12 @@ test("contextual and inline actions stay compact while page and primary actions 
 test("dense contextual toolbars separate visual size from coarse-pointer hit area", () => {
   const tokens = readFrontend("styles.css");
   const summary = readFrontend("pages/(task-workspace)/tasks/components/detail/summary.css");
+  const gitButton = readFrontend(
+    "pages/(task-workspace)/tasks/components/detail/summary/git.css",
+  );
+  const githubButton = readFrontend(
+    "pages/(task-workspace)/tasks/components/detail/summary/github.css",
+  );
   const review = readFrontend("pages/(task-workspace)/tasks/components/detail/review.css");
 
   assert.match(tokens, /--interface-compact-visual-size: 1\.875rem;/);
@@ -879,8 +897,12 @@ test("dense contextual toolbars separate visual size from coarse-pointer hit are
     /\.task-mode-switch button \{[\s\S]*height: var\(--interface-compact-hit-size\)[\s\S]*margin-block: calc\(0rem - var\(--interface-compact-hit-outset\)\)/,
   );
   assert.match(
-    summary,
-    /\.task-brand-button::before \{[\s\S]*--interface-compact-hit-outset/,
+    gitButton,
+    /\.task-git-button::before \{[\s\S]*--interface-compact-hit-outset/,
+  );
+  assert.match(
+    githubButton,
+    /\.task-github-button::before \{[\s\S]*--interface-compact-hit-outset/,
   );
   assert.match(
     review,
@@ -949,7 +971,14 @@ test("task rows use full-width selection and compact repository grouping", () =>
 test("text actions use the shared Interface metadata scale instead of root body text", () => {
   const owners = [
     ["pages/(task-workspace)/tasks/controls.css", ".task-primary-button"],
-    ["pages/(task-workspace)/tasks/components/detail/summary.css", ".task-review-menu-popover button"],
+    [
+      "pages/(task-workspace)/tasks/components/detail/summary/git.css",
+      ".task-git-popover button",
+    ],
+    [
+      "pages/(task-workspace)/tasks/components/detail/summary/github.css",
+      ".task-github-popover button",
+    ],
     ["pages/(task-workspace)/tasks/components/detail/summary/info.css", ".task-detail-popover dd"],
     ["pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/detail/page.css", ".github-pull-commit a"],
   ];

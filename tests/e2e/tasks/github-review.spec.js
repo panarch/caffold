@@ -301,14 +301,17 @@ async function installLinkedWorktreeGithubFixture(page) {
 async function chooseLinkedWorktreeGithubList(page, kind) {
   const summary = page.locator("caffold-task-detail-summary");
   await expect(summary).toContainText("query-plan-limit-offset");
-  await summary
-    .locator('.task-review-menu summary[aria-label="Open GitHub workspace"]')
-    .click();
+  const popover = summary.locator(
+    "caffold-task-detail-github > .task-github-popover",
+  );
+  await summary.getByRole("button", { name: "Open GitHub workspace" }).click();
+  await expect(popover).toBeVisible();
   await summary
     .locator(
-      `button[data-summary-action="open-github-tool"][data-review-kind="${kind}"]`,
+      `caffold-task-detail-github button[data-github-button-action][data-review-kind="${kind}"]`,
     )
     .click();
+  await expect(popover).toBeHidden();
 }
 
 async function openLinkedWorktreePullRequests(page) {
