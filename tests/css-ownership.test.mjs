@@ -38,6 +38,10 @@ const ownership = new Map([
     ["caffold-task-workspace-navigation"],
   ],
   [
+    "pages/(task-workspace)/components/workspace-brand.css",
+    ["caffold-workspace-brand"],
+  ],
+  [
     "pages/(task-workspace)/tasks/components/composer.css",
     ["caffold-task-composer"],
   ],
@@ -102,6 +106,10 @@ const ownership = new Map([
   [
     "pages/(task-workspace)/tasks/components/task-status.css",
     ["caffold-tasks-page", "caffold-task-navigator"],
+  ],
+  [
+    "pages/(task-workspace)/tasks/components/task-transport-overlay.css",
+    ["caffold-task-transport-overlay"],
   ],
   ["pages/(task-workspace)/tasks/controls.css", ["caffold-tasks-page"]],
   ["pages/(task-workspace)/tasks/page.css", ["caffold-tasks-page"]],
@@ -233,6 +241,8 @@ const componentChildren = new Map([
       "caffold-settings-about-page",
     ],
   ],
+  ["caffold-settings-navigator", ["caffold-workspace-brand"]],
+  ["caffold-settings-appearance-page", ["caffold-workspace-brand"]],
   [
     "caffold-settings-codex-page",
     ["caffold-codex-runtime-restart-dialog"],
@@ -249,6 +259,10 @@ const componentChildren = new Map([
     "caffold-task-new",
     ["caffold-task-composer", "caffold-task-directory-picker"],
   ],
+  [
+    "caffold-task-navigator",
+    ["caffold-workspace-brand", "caffold-task-transport-overlay"],
+  ],
   ["caffold-task-directory-picker", ["caffold-file-tree"]],
   [
     "caffold-task-detail",
@@ -256,6 +270,7 @@ const componentChildren = new Map([
       "caffold-task-conversation",
       "caffold-task-command-dialog",
       "caffold-task-composer",
+      "caffold-task-transport-overlay",
       "caffold-task-review",
       "caffold-task-git-layout",
       "caffold-task-github-layout",

@@ -8,6 +8,7 @@
 @import "./components/review-panel-resizer.css";
 @import "./pages/(task-workspace)/layout.css";
 @import "./pages/(task-workspace)/components/navigation.css";
+@import "./pages/(task-workspace)/components/workspace-brand.css";
 @import "./pages/(task-workspace)/settings/layout.css";
 @import "./pages/(task-workspace)/settings/navigator.css";
 @import "./pages/(task-workspace)/settings/appearance/page.css";
@@ -16,6 +17,7 @@
 @import "./pages/(task-workspace)/settings/about/page.css";
 @import "./pages/(task-workspace)/tasks/controls.css";
 @import "./pages/(task-workspace)/tasks/components/task-status.css";
+@import "./pages/(task-workspace)/tasks/components/task-transport-overlay.css";
 @import "./pages/(task-workspace)/tasks/page.css";
 @import "./pages/(task-workspace)/tasks/components/composer.css";
 @import "./pages/(task-workspace)/tasks/components/task-turn-options.css";
@@ -80,6 +82,7 @@
   --interface-font-size: 1rem;
   --interface-meta-font-size: 0.75rem;
   --interface-heading-font-size: 1rem;
+  --workspace-header-title-size: 0.8125rem;
   --interface-line-height: 1.45;
   --interface-space-1: 0.125rem;
   --interface-space-2: 0.25rem;

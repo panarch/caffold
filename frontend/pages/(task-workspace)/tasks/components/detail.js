@@ -6,7 +6,6 @@ import {
   sendTaskPrompt,
 } from "../../../../api.js";
 import { escapeHtml } from "../../../../components/dom.js";
-import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import { routeDomain } from "../../../../navigation-routes.js";
 import "./composer.js";
 import "./detail/conversation.js";
@@ -15,6 +14,7 @@ import "./detail/(git)/layout.js";
 import "./detail/(github)/layout.js";
 import "./detail/review.js";
 import "./detail/summary.js";
+import "./task-transport-overlay.js";
 import { TaskDetailStream } from "./detail/stream.js";
 import {
   PROMPT_SUBMISSION_STATE,
@@ -48,7 +48,6 @@ class CaffoldTaskDetail extends HTMLElement {
   connectedCallback() {
     const reconnecting = Boolean(this.rendered);
     this.ensureRendered();
-    this.attachGlobalListeners();
     if (reconnecting) {
       this.render();
     }
@@ -106,12 +105,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.domainActivationFingerprint = "";
     this.taskRoute = null;
     this.reviewView = "conversation";
-    this.boundIconsReady = () => {
-      this.taskContentRenderKey = "";
-      this.render();
-    };
     this.taskContentRenderKey = "";
-    warmIcons();
 
     this.addEventListener(
       "click",
@@ -261,7 +255,6 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   disconnectedCallback() {
-    this.detachGlobalListeners();
     this.deactivate();
     this.disposeFollowUpComposers();
     this.disposeReviews();
@@ -414,22 +407,6 @@ class CaffoldTaskDetail extends HTMLElement {
         },
       }),
     );
-  }
-
-  attachGlobalListeners() {
-    if (this.globalListenersAttached) {
-      return;
-    }
-    this.globalListenersAttached = true;
-    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
-  }
-
-  detachGlobalListeners() {
-    if (!this.globalListenersAttached) {
-      return;
-    }
-    this.globalListenersAttached = false;
-    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
   async openTask(threadId) {
@@ -694,6 +671,18 @@ class CaffoldTaskDetail extends HTMLElement {
     }
   }
 
+  get streamState() {
+    return this.detailStream?.state ?? TASK_TRANSPORT_STATE.IDLE;
+  }
+
+  retryStream() {
+    if (!this.selectedThreadId) {
+      return;
+    }
+    this.detailStream.activate(this.selectedThreadId, { force: true });
+    this.render();
+  }
+
   async refreshSelectedTask(
     threadId,
     isCurrent = () => true,
@@ -734,13 +723,6 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   handleAction(action, element) {
-    if (action === "retry-stream") {
-      if (this.selectedThreadId) {
-        this.detailStream.activate(this.selectedThreadId, { force: true });
-        this.render();
-      }
-      return;
-    }
     if (action === "retry-task-detail") {
       if (this.selectedThreadId) {
         this.openTask(this.selectedThreadId);
@@ -1968,19 +1950,22 @@ class CaffoldTaskDetail extends HTMLElement {
   renderStreamState() {
     if (this.detailStream.state === TASK_TRANSPORT_STATE.RECONNECTING) {
       return `
-        <div class="task-stream-state" data-stream-state="reconnecting" role="status">
-          <span class="task-stream-spinner" aria-hidden="true"></span>
-          <span>Caffold server connection lost. Reconnecting...</span>
-        </div>
+        <caffold-task-transport-overlay
+          class="task-stream-state"
+          state="reconnecting"
+          message="Caffold server connection lost. Reconnecting..."
+          data-stream-state="reconnecting"
+        ></caffold-task-transport-overlay>
       `;
     }
     if (this.detailStream.state === TASK_TRANSPORT_STATE.UNAVAILABLE) {
       return `
-        <div class="task-stream-state" data-stream-state="unavailable" role="status">
-          ${renderInlineIcon("TriangleAlert", "Caffold server unavailable", "task-stream-icon")}
-          <span>Caffold server unavailable.</span>
-          <button type="button" data-task-action="retry-stream">Retry</button>
-        </div>
+        <caffold-task-transport-overlay
+          class="task-stream-state"
+          state="unavailable"
+          message="Caffold server unavailable."
+          data-stream-state="unavailable"
+        ></caffold-task-transport-overlay>
       `;
     }
     return "";

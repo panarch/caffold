@@ -1,5 +1,9 @@
 caffold-task-navigator {
-  display: block;
+  position: relative;
+  display: grid;
+  grid-template-rows:
+    var(--task-navigator-top-header-size, auto)
+    minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   height: 100%;
@@ -13,7 +17,7 @@ caffold-task-navigator {
   }
 
   & .task-list-scroll {
-    height: 100%;
+    min-height: 0;
     overflow: auto;
     overscroll-behavior: contain;
     scrollbar-width: none;
@@ -42,11 +46,13 @@ caffold-task-navigator {
     color: var(--muted);
   }
 
-  & .task-list-section:first-child .task-list-section-header {
+  & .task-list-primary-header {
     box-sizing: border-box;
     height: var(--task-navigator-top-header-size, auto);
     padding-block: 0;
-    padding-left: calc(0.75rem + var(--task-header-leading-space, 0rem));
+    padding-left: calc(
+      var(--interface-space-6) + var(--task-header-leading-space, 0rem)
+    );
     padding-inline-end: calc(
       (
           var(
@@ -55,9 +61,11 @@ caffold-task-navigator {
             ) - var(--interface-compact-visual-size)
         ) / 2
     );
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--structural-shadow-block-end);
   }
 
-  & .task-list-section-header h2 {
+  & .task-list-section-header > h2 {
     margin: 0;
     font-size: 0.75rem;
     font-weight: 700;
@@ -65,7 +73,7 @@ caffold-task-navigator {
     text-transform: uppercase;
   }
 
-  & .task-list-section-header span {
+  & .task-list-section-count {
     font-size: 0.75rem;
     font-variant-numeric: tabular-nums;
   }
@@ -443,22 +451,16 @@ caffold-task-navigator {
     background: var(--danger-chip-bg);
   }
 
-  & .task-list-availability {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    margin: 0;
-    padding: 0.375rem 0.625rem;
-    border-bottom: 1px solid var(--warning-border);
-    background: var(--warning-soft);
-    color: var(--warning-strong);
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-  }
-
-  & .task-list-availability > .task-secondary-button {
-    flex: 0 0 auto;
+  & > caffold-task-transport-overlay.task-list-availability {
+    top: calc(
+      var(
+          --task-navigator-top-header-size,
+          var(--task-workspace-header-size, var(--interface-compact-hit-size))
+        ) +
+        var(--interface-space-2)
+    );
+    left: 50%;
+    transform: translateX(-50%);
   }
 }
 

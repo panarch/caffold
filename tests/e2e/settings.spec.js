@@ -511,7 +511,7 @@ test("updates independent ranges live without replacing their DOM", async ({
   const interfacePreview = settingsPage.locator(".settings-interface-preview");
   await expect(
     interfacePreview.locator(".settings-interface-preview-section-header"),
-  ).toContainText("Caffold Tasks");
+  ).toContainText("Caffold");
   await expect(
     interfacePreview.locator(".settings-interface-preview-repository"),
   ).toContainText("caffold");

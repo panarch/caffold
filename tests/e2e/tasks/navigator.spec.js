@@ -367,9 +367,51 @@ test("archives and restores an idle Caffold task through the grouped Archived se
   const navigator = page.locator("caffold-task-navigator");
   await expect(navigator.locator(".task-list-section")).toHaveCount(2);
   await expect(navigator.locator(".task-list-section-header h2")).toHaveText([
-    "Caffold Tasks",
     "Archived",
   ]);
+  const workspaceBrand = navigator.locator("caffold-workspace-brand");
+  await expect(workspaceBrand.locator(".workspace-brand-title")).toHaveText(
+    "Caffold",
+  );
+  await expect(workspaceBrand.locator(".workspace-brand-icon")).toHaveAttribute(
+    "src",
+    "/assets/icons/favicon-32.png",
+  );
+  await expect(
+    navigator.locator('.task-list-section[data-task-section="managed"]'),
+  ).toHaveAttribute("aria-label", "Caffold Tasks");
+  const headerTypography = await page.evaluate(() => {
+    const rootFontSize = Number.parseFloat(
+      getComputedStyle(document.documentElement).fontSize,
+    );
+    const navigatorTitle = document.querySelector(
+      "caffold-task-navigator .workspace-brand-title",
+    );
+    const detailTitle = document.querySelector(".task-detail-heading > h2");
+    const brandIcon = document.querySelector(
+      "caffold-task-navigator .workspace-brand-icon",
+    );
+    return {
+      rootFontSize,
+      navigatorTitleSize: Number.parseFloat(
+        getComputedStyle(navigatorTitle).fontSize,
+      ),
+      detailTitleSize: Number.parseFloat(getComputedStyle(detailTitle).fontSize),
+      brandIconWidth: Number.parseFloat(getComputedStyle(brandIcon).width),
+    };
+  });
+  expect(headerTypography.navigatorTitleSize).toBeCloseTo(
+    headerTypography.rootFontSize * 0.8125,
+    2,
+  );
+  expect(headerTypography.detailTitleSize).toBeCloseTo(
+    headerTypography.navigatorTitleSize,
+    2,
+  );
+  expect(headerTypography.brandIconWidth).toBeCloseTo(
+    headerTypography.rootFontSize * 1.25,
+    2,
+  );
   expect(requestedPaths).not.toContain("/api/task-history");
   await expect(
     navigator.locator('.task-list-section[data-task-section="archived"]'),
@@ -864,9 +906,7 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     "caffold-task-workspace .task-workspace-navigation",
   );
   const rows = tasksPage.locator(".task-row");
-  const managedHeader = tasksPage.locator(
-    '.task-list-section[data-task-section="managed"] .task-list-section-header',
-  );
+  const managedHeader = tasksPage.locator(".task-list-primary-header");
   const archivedHeader = tasksPage.locator(
     '.task-list-section[data-task-section="archived"] .task-list-section-header',
   );
@@ -877,7 +917,30 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
   await expect(tasksPage.locator(".task-repository-group")).toHaveCount(2);
   await expect(rows).toHaveCount(4);
   await expect(newTaskButton).toBeVisible();
-  await expect(managedHeader.locator(":scope > span")).toHaveCount(0);
+  await expect(
+    managedHeader.locator(":scope > caffold-workspace-brand"),
+  ).toContainText("Caffold");
+  const brandIconMetrics = await managedHeader
+    .locator(".workspace-brand-icon")
+    .evaluate((icon) => {
+      const rootFontSize = Number.parseFloat(
+        getComputedStyle(document.documentElement).fontSize,
+      );
+      const style = getComputedStyle(icon);
+      return {
+        rootFontSize,
+        width: Number.parseFloat(style.width),
+        offsetY: new DOMMatrixReadOnly(style.transform).m42,
+      };
+    });
+  expect(brandIconMetrics.width).toBeCloseTo(
+    brandIconMetrics.rootFontSize * 1.25,
+    2,
+  );
+  expect(brandIconMetrics.offsetY).toBeCloseTo(
+    brandIconMetrics.rootFontSize * -0.0625,
+    2,
+  );
   await expect(archivedHeader.locator(":scope > span")).toHaveText("0");
   const headerActionAlignment = await tasksPage.evaluate(() => {
     const button = document.querySelector(".task-list-new-task");

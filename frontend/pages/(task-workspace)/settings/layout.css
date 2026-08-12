@@ -5,7 +5,7 @@ caffold-settings-workspace {
     calc(var(--interface-space-12) + var(--interface-space-12));
   --settings-content-padding-inline: var(--interface-space-12);
   --settings-small-text-size: max(14px, 0.8125rem);
-  --settings-page-title-size: var(--interface-heading-font-size);
+  --settings-page-title-size: var(--workspace-header-title-size);
   --settings-page-description-size: var(--settings-small-text-size);
   --settings-field-label-size: var(--interface-font-size);
   --settings-field-description-size: var(--settings-small-text-size);

@@ -131,6 +131,94 @@ test("Git and GitHub detail components independently own their native auto popov
   }
 });
 
+test("workspace brand owns the shared Tasks and Settings identity", () => {
+  const brand = readFrontend(
+    "pages/(task-workspace)/components/workspace-brand.js",
+  );
+  const taskNavigator = readFrontend(
+    "pages/(task-workspace)/tasks/components/navigator.js",
+  );
+  const settingsNavigator = readFrontend(
+    "pages/(task-workspace)/settings/navigator.js",
+  );
+  const appearance = readFrontend(
+    "pages/(task-workspace)/settings/appearance/page.js",
+  );
+
+  assert.match(
+    brand,
+    /customElements\.define\("caffold-workspace-brand"/,
+  );
+  assert.match(brand, /class="workspace-brand-icon"/);
+  assert.match(brand, /class="workspace-brand-title">Caffold/);
+  for (const owner of [taskNavigator, settingsNavigator, appearance]) {
+    assert.match(owner, /<caffold-workspace-brand><\/caffold-workspace-brand>/);
+  }
+  assert.doesNotMatch(taskNavigator, /task-list-primary-(?:brand|icon)/);
+  assert.doesNotMatch(settingsNavigator, /<strong>Settings<\/strong>/);
+});
+
+test("Task transport overlay owns its shared UI and retry intent", () => {
+  const overlay = readFrontend(
+    "pages/(task-workspace)/tasks/components/task-transport-overlay.js",
+  );
+  const navigator = readFrontend(
+    "pages/(task-workspace)/tasks/components/navigator.js",
+  );
+  const detail = readFrontend(
+    "pages/(task-workspace)/tasks/components/detail.js",
+  );
+  const taskStatus = readFrontend(
+    "pages/(task-workspace)/tasks/components/task-status.css",
+  );
+  const tasksPage = readFrontend("pages/(task-workspace)/tasks/page.js");
+
+  assert.match(
+    overlay,
+    /customElements\.define\([\s\S]*"caffold-task-transport-overlay"/,
+  );
+  assert.match(overlay, /TASK_TRANSPORT_RETRY_EVENT/);
+  assert.match(overlay, /data-task-transport-retry/);
+  assert.match(overlay, /task-transport-spinner/);
+  assert.match(overlay, /task-transport-icon/);
+  assert.match(navigator, /<caffold-task-transport-overlay/);
+  assert.match(detail, /<caffold-task-transport-overlay/);
+  assert.doesNotMatch(navigator, /task-transport-(?:spinner|icon|retry)/);
+  assert.doesNotMatch(detail, /task-transport-(?:spinner|icon|retry)/);
+  assert.doesNotMatch(navigator, /retry-task-transports|retry-task-stream/);
+  assert.doesNotMatch(detail, /retry-task-transports|data-task-action="retry-stream"/);
+  assert.doesNotMatch(taskStatus, /task-transport-/);
+  assert.match(tasksPage, /TASK_TRANSPORT_RETRY_EVENT/);
+  assert.match(tasksPage, /retryStaleTaskTransports/);
+});
+
+test("Task navigator keeps its primary header and transport overlay outside scrolling content", () => {
+  const navigator = readFrontend(
+    "pages/(task-workspace)/tasks/components/navigator.js",
+  );
+  const renderMarkup = navigator.match(
+    /this\.innerHTML = `([\s\S]*?)`;\n\s*initializeRunningSpinners/,
+  )?.[1];
+
+  assert.ok(renderMarkup, "navigator render markup must remain inspectable");
+  const header = renderMarkup.indexOf("${this.renderPrimaryHeader()}");
+  const overlay = renderMarkup.indexOf("${this.renderAvailability()}");
+  const scroller = renderMarkup.indexOf('<div class="task-list-scroll">');
+  const managed = renderMarkup.indexOf(
+    '${this.renderSection("Caffold Tasks", this.tasks, "managed")}',
+  );
+
+  assert.ok(header >= 0 && header < scroller);
+  assert.ok(overlay > header && overlay < scroller);
+  assert.ok(managed > scroller);
+  assert.match(
+    navigator,
+    /class="task-list-section-header task-list-primary-header"/,
+  );
+  assert.match(navigator, /aria-label="Caffold Tasks"/);
+  assert.match(navigator, /<caffold-workspace-brand><\/caffold-workspace-brand>/);
+});
+
 test("archived task deletion dialog owns its modal state and markup", () => {
   const workspace = readFrontend("pages/(task-workspace)/layout.js");
   const deleteDialog = readFrontend(

@@ -1,4 +1,5 @@
 import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
+import "../components/workspace-brand.js";
 
 const ITEMS = [
   { section: "appearance", label: "Appearance", icon: "Settings" },
@@ -43,8 +44,7 @@ class CaffoldSettingsNavigator extends HTMLElement {
   render() {
     this.innerHTML = `
       <header class="settings-navigator-header">
-        <img src="/assets/icons/favicon-32.png" alt="" />
-        <strong>Settings</strong>
+        <caffold-workspace-brand></caffold-workspace-brand>
       </header>
       <nav class="settings-navigator-list" aria-label="Settings sections">
         ${ITEMS.map((item) => `

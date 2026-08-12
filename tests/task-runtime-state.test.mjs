@@ -7,6 +7,7 @@ import {
   classifyPromptFailure,
   formatTaskStatus,
   isTaskActivelyWorking,
+  retryStaleTaskTransports,
   taskActiveFlagLabel,
   taskActiveFlags,
   taskStatusView,
@@ -68,6 +69,25 @@ test("transport unavailability masks canonical status without rewriting it", () 
     },
   );
   assert.equal(taskThreadStatusType(active), "active");
+});
+
+test("retries all and only stale Task transports", () => {
+  const retried = [];
+  const transports = [
+    TASK_TRANSPORT_STATE.READY,
+    TASK_TRANSPORT_STATE.RECONNECTING,
+    TASK_TRANSPORT_STATE.CONNECTING,
+    TASK_TRANSPORT_STATE.UNAVAILABLE,
+  ].map((state) => ({
+    state,
+    retry: () => retried.push(state),
+  }));
+
+  assert.equal(retryStaleTaskTransports(transports), 2);
+  assert.deepEqual(retried, [
+    TASK_TRANSPORT_STATE.RECONNECTING,
+    TASK_TRANSPORT_STATE.UNAVAILABLE,
+  ]);
 });
 
 test("classifies only explicit client rejection as safe to roll back", () => {

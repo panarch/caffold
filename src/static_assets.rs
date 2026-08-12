@@ -160,6 +160,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/components/navigation.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/components/navigation.js"
         ))),
+        "pages/(task-workspace)/components/workspace-brand.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/components/workspace-brand.css"
+        ))),
+        "pages/(task-workspace)/components/workspace-brand.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/components/workspace-brand.js"
+        ))),
         "pages/(task-workspace)/tasks/page.css" => Some(css(include_str!(
             "../frontend/pages/(task-workspace)/tasks/page.css"
         ))),
@@ -347,6 +353,16 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/task-status.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/task-status.js"
         ))),
+        "pages/(task-workspace)/tasks/components/task-transport-overlay.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/task-transport-overlay.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/task-transport-overlay.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/task-transport-overlay.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/components/detail/(git)/layout.css" => {
             Some(css(include_str!(
                 "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/layout.css"
@@ -939,6 +955,26 @@ mod tests {
                 .body
                 .starts_with(b"caffold-task-workspace-navigation")
         );
+        let workspace_brand = get("pages/(task-workspace)/components/workspace-brand.js")
+            .expect("workspace brand js");
+        assert_eq!(
+            workspace_brand.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(
+            workspace_brand
+                .body
+                .windows(b"caffold-workspace-brand".len())
+                .any(|window| window == b"caffold-workspace-brand")
+        );
+        let workspace_brand_css = get("pages/(task-workspace)/components/workspace-brand.css")
+            .expect("workspace brand css");
+        assert_eq!(workspace_brand_css.content_type, "text/css; charset=utf-8");
+        assert!(
+            workspace_brand_css
+                .body
+                .starts_with(b"caffold-workspace-brand")
+        );
 
         let tasks_page = get("pages/(task-workspace)/tasks/page.js").expect("tasks page js");
         assert_eq!(tasks_page.content_type, "text/javascript; charset=utf-8");
@@ -1066,6 +1102,10 @@ mod tests {
                 b"caffold-task-new".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/components/task-transport-overlay.js",
+                b"caffold-task-transport-overlay".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/components/detail.js",
                 b"caffold-task-detail".as_slice(),
             ),
@@ -1158,6 +1198,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/components/task-new.css",
                 b"caffold-task-new".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/components/task-transport-overlay.css",
+                b"caffold-task-transport-overlay".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/components/detail.css",

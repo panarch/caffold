@@ -344,15 +344,10 @@ caffold-settings-appearance-page {
 
   & .settings-interface-preview-section-header {
     grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--interface-space-3);
     min-height: var(--interface-compact-visual-size);
     padding: 0 var(--interface-space-5) 0 var(--interface-space-6);
     color: var(--muted);
-  }
-
-  & .settings-interface-preview-section-header strong {
-    font-size: var(--interface-meta-font-size);
-    letter-spacing: 0.045em;
-    text-transform: uppercase;
   }
 
   & .settings-interface-preview-new-task {

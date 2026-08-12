@@ -4,6 +4,10 @@ import {
   TASK_IMAGE_PREVIEW_EVENT,
 } from "./components/image-preview-dialog.js";
 import "./components/task-new.js";
+import {
+  TASK_TRANSPORT_RETRY_EVENT,
+} from "./components/task-transport-overlay.js";
+import { retryStaleTaskTransports } from "./runtime-state.js";
 import { taskDetailThreadId } from "./task-list-model.js";
 
 class CaffoldTasksPage extends HTMLElement {
@@ -40,6 +44,10 @@ class CaffoldTasksPage extends HTMLElement {
     this.boundTaskNavigatorTransportChange = (event) => {
       event.stopPropagation();
       this.taskNew()?.setTransportAvailable(event.detail?.available);
+    };
+    this.boundTaskTransportRetry = (event) => {
+      event.stopPropagation();
+      this.retryTaskTransports();
     };
 
     this.innerHTML = `
@@ -81,6 +89,10 @@ class CaffoldTasksPage extends HTMLElement {
         });
       }
     });
+    this.addEventListener(
+      TASK_TRANSPORT_RETRY_EVENT,
+      this.boundTaskTransportRetry,
+    );
     this.addEventListener(TASK_IMAGE_PREVIEW_EVENT, (event) => {
       event.stopPropagation();
       this.imagePreviewDialog()?.openImage(event.detail);
@@ -105,6 +117,10 @@ class CaffoldTasksPage extends HTMLElement {
       "caffold:task-navigator-transport-change",
       this.boundTaskNavigatorTransportChange,
     );
+    this.connectedTaskNavigator?.removeEventListener(
+      TASK_TRANSPORT_RETRY_EVENT,
+      this.boundTaskTransportRetry,
+    );
     this.connectedTaskNavigator = navigator ?? null;
     this.connectedTaskNavigator?.addEventListener(
       "caffold:task-navigator-intent",
@@ -117,6 +133,10 @@ class CaffoldTasksPage extends HTMLElement {
     this.connectedTaskNavigator?.addEventListener(
       "caffold:task-navigator-transport-change",
       this.boundTaskNavigatorTransportChange,
+    );
+    this.connectedTaskNavigator?.addEventListener(
+      TASK_TRANSPORT_RETRY_EVENT,
+      this.boundTaskTransportRetry,
     );
     this.syncTaskListState(this.connectedTaskNavigator?.listState());
     this.taskNew()?.setTransportAvailable(
@@ -254,6 +274,25 @@ class CaffoldTasksPage extends HTMLElement {
     return this.querySelector(
       ":scope > caffold-task-image-preview-dialog",
     );
+  }
+
+  retryTaskTransports() {
+    const navigator = this.taskNavigator();
+    const detail = this.taskDetail();
+    return retryStaleTaskTransports([
+      navigator
+        ? {
+            state: navigator.streamState,
+            retry: () => navigator.retryStream(),
+          }
+        : null,
+      detail
+        ? {
+            state: detail.streamState,
+            retry: () => detail.retryStream(),
+          }
+        : null,
+    ]);
   }
 
   syncTaskListState(state = {}) {

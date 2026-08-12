@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   canonicalTaskState,
+  captureReviewScreenshot,
   installEventSourceMock,
   mockCodexModels,
   pasteImage,
@@ -12,6 +13,88 @@ import {
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
+
+function transportOverlayTask(threadId) {
+  const now = 1_767_190_475_000;
+  return {
+    id: threadId,
+    threadId,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Transport overlay stability",
+    preview: "Stable conversation geometry",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    worktree: null,
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: "Stable conversation geometry",
+    unseen: false,
+  };
+}
+
+async function installTransportOverlayFixture(page, threadId, registryKey) {
+  const task = transportOverlayTask(threadId);
+  const tasks = [
+    task,
+    ...Array.from({ length: 24 }, (_, index) => ({
+      ...task,
+      id: `${threadId}_${index + 1}`,
+      threadId: `${threadId}_${index + 1}`,
+      title: `Scrollable transport task ${index + 1}`,
+      updatedMs: task.updatedMs - index - 1,
+      recencyMs: task.recencyMs - index - 1,
+    })),
+  ];
+  await installEventSourceMock(page, { registryKey, autoOpen: true });
+  await mockCodexModels(page);
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks, nextCursor: null }),
+    }),
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        threadId,
+        syncState: "ready",
+        revision: 1,
+        task,
+        events: [
+          {
+            id: "event_transport_overlay",
+            threadId,
+            type: "assistant_message",
+            summary: "Assistant response",
+            payload: {
+              turnId: "turn_transport_overlay",
+              text: "Conversation stays fixed while transport notices change.",
+            },
+            createdMs: task.updatedMs,
+          },
+        ],
+        eventsPage: { nextCursor: null },
+        pendingApprovals: [],
+      }),
+    }),
+  );
+}
+
+async function elementGeometry(locator) {
+  await expect(locator).toBeVisible();
+  return locator.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+    };
+  });
+}
 
 test("background Task tabs release list and detail streams", async ({
   page,
@@ -386,6 +469,205 @@ test("replaces terminal Task streams and reconciles list and detail", async ({
   await expect(prompt).toBeEnabled();
   await prompt.fill("Verify recovered task creation controls");
   await expect(newTaskForm.getByRole("button", { name: "Start task" })).toBeEnabled();
+});
+
+test("overlays Task transport notices without moving Task surfaces", async ({
+  page,
+}, testInfo) => {
+  const threadId = "thread_transport_overlay_geometry";
+  await installTransportOverlayFixture(
+    page,
+    threadId,
+    "__taskOverlayEventSources",
+  );
+
+  await page.goto("/tasks");
+  const navigator = page.locator("caffold-task-navigator");
+  const primaryHeader = navigator.locator(":scope > .task-list-primary-header");
+  const scroller = navigator.locator(":scope > .task-list-scroll");
+  const taskRow = navigator.locator(`.task-row[data-thread-id="${threadId}"]`);
+  const initialHeader = await elementGeometry(primaryHeader);
+  const initialTaskRow = await elementGeometry(taskRow);
+
+  for (const state of ["reconnecting", "unavailable"]) {
+    await navigator.evaluate((element, nextState) => {
+      element.setStreamState(nextState);
+    }, state);
+    const notice = navigator.locator(
+      `.task-list-availability[data-task-list-availability="${state}"]`,
+    );
+    await expect(notice).toBeVisible();
+    await expect(notice).toHaveCSS("position", "absolute");
+    if (state === "unavailable") {
+      const retry = notice.getByRole("button", { name: "Retry" });
+      await expect(retry).toBeVisible();
+      await retry.focus();
+      await expect(retry).toBeFocused();
+      const initialNotice = await elementGeometry(notice);
+      await scroller.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+      });
+      await expect
+        .poll(() => scroller.evaluate((element) => element.scrollTop))
+        .toBeGreaterThan(0);
+      expect(await elementGeometry(primaryHeader)).toEqual(initialHeader);
+      expect(await elementGeometry(notice)).toEqual(initialNotice);
+      await captureReviewScreenshot(
+        page,
+        testInfo,
+        "tasks-navigator-transport-unavailable",
+      );
+      await scroller.evaluate((element) => {
+        element.scrollTop = 0;
+      });
+    }
+    expect(await elementGeometry(taskRow)).toEqual(initialTaskRow);
+  }
+  await navigator.evaluate((element) => element.setStreamState("ready"));
+  await expect(navigator.locator(".task-list-availability")).toHaveCount(0);
+  expect(await elementGeometry(taskRow)).toEqual(initialTaskRow);
+
+  await page.goto(`/tasks/${threadId}`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const conversation = tasksPage.locator("caffold-task-conversation");
+  const composer = tasksPage.locator(
+    'caffold-task-composer[data-composer-mode="follow-up"]',
+  );
+  const initialConversation = await elementGeometry(conversation);
+  const initialComposer = await elementGeometry(composer);
+
+  for (const state of ["reconnecting", "unavailable"]) {
+    await tasksPage.evaluate((element, nextState) => {
+      element.taskDetail().detailStream.transport.setState(nextState);
+    }, state);
+    const notice = tasksPage.locator(
+      `.task-stream-state[data-stream-state="${state}"]`,
+    );
+    await expect(notice).toBeVisible();
+    await expect(notice).toHaveCSS("position", "absolute");
+    if (state === "unavailable") {
+      const retry = notice.getByRole("button", { name: "Retry" });
+      await expect(retry).toBeVisible();
+      await retry.focus();
+      await expect(retry).toBeFocused();
+      await captureReviewScreenshot(
+        page,
+        testInfo,
+        "tasks-detail-transport-unavailable",
+      );
+    }
+    expect(await elementGeometry(conversation)).toEqual(initialConversation);
+    expect(await elementGeometry(composer)).toEqual(initialComposer);
+  }
+  await tasksPage.evaluate((element) => {
+    element.taskDetail().detailStream.transport.setState("ready");
+  });
+  await expect(tasksPage.locator(".task-stream-state")).toHaveCount(0);
+  expect(await elementGeometry(conversation)).toEqual(initialConversation);
+  expect(await elementGeometry(composer)).toEqual(initialComposer);
+});
+
+test("routes either Task Retry through page-owned stale transport selection", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Concurrent Task transport ownership");
+  const threadId = "thread_parent_owned_transport_retry";
+  const registryKey = "__taskRetryEventSources";
+  await installTransportOverlayFixture(page, threadId, registryKey);
+  await page.goto(`/tasks/${threadId}`);
+
+  const navigator = page.locator("caffold-task-navigator");
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        ({ key }) =>
+          window[key].filter((source) => source.readyState !== 2).length,
+        { key: registryKey },
+      ),
+    )
+    .toBe(2);
+
+  const sourceCounts = () =>
+    page.evaluate(
+      ({ key, threadId: selectedThreadId }) => ({
+        list: window[key].filter((source) =>
+          source.url.startsWith("/api/tasks/stream"),
+        ).length,
+        detail: window[key].filter((source) =>
+          source.url.includes(`/api/tasks/${selectedThreadId}/stream`),
+        ).length,
+      }),
+      { key: registryKey, threadId },
+    );
+  const setStates = (list, detail) =>
+    page.evaluate(
+      ({ listState, detailState }) => {
+        const workspace = document.querySelector("caffold-task-workspace");
+        workspace.taskNavigator.taskListStream.setState(listState);
+        workspace.tasksPage.taskDetail().detailStream.transport.setState(detailState);
+      },
+      { listState: list, detailState: detail },
+    );
+  const waitForReady = () =>
+    expect
+      .poll(() =>
+        page.evaluate(() => {
+          const workspace = document.querySelector("caffold-task-workspace");
+          return {
+            list: workspace.taskNavigator.streamState,
+            detail: workspace.tasksPage.taskDetail().streamState,
+          };
+        }),
+      )
+      .toEqual({ list: "ready", detail: "ready" });
+
+  let before = await sourceCounts();
+  await setStates("ready", "unavailable");
+  await tasksPage
+    .locator('.task-stream-state[data-stream-state="unavailable"]')
+    .getByRole("button", { name: "Retry" })
+    .click();
+  await expect.poll(sourceCounts).toEqual({
+    list: before.list,
+    detail: before.detail + 1,
+  });
+  await waitForReady();
+
+  before = await sourceCounts();
+  await setStates("unavailable", "ready");
+  await navigator
+    .locator('.task-list-availability[data-task-list-availability="unavailable"]')
+    .getByRole("button", { name: "Retry" })
+    .click();
+  await expect.poll(sourceCounts).toEqual({
+    list: before.list + 1,
+    detail: before.detail,
+  });
+  await waitForReady();
+
+  before = await sourceCounts();
+  await setStates("unavailable", "reconnecting");
+  await navigator
+    .locator('.task-list-availability[data-task-list-availability="unavailable"]')
+    .getByRole("button", { name: "Retry" })
+    .click();
+  await expect.poll(sourceCounts).toEqual({
+    list: before.list + 1,
+    detail: before.detail + 1,
+  });
+  await waitForReady();
+
+  before = await sourceCounts();
+  await setStates("reconnecting", "unavailable");
+  await tasksPage
+    .locator('.task-stream-state[data-stream-state="unavailable"]')
+    .getByRole("button", { name: "Retry" })
+    .click();
+  await expect.poll(sourceCounts).toEqual({
+    list: before.list + 1,
+    detail: before.detail + 1,
+  });
 });
 
 test("reattaches Tasks component lifecycles without rebuilding stable children", async ({

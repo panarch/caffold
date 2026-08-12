@@ -41,7 +41,7 @@ caffold-task-workspace {
 
   & .task-workspace-master-pane {
     --task-navigator-top-header-size: var(--task-workspace-header-size);
-    --task-navigator-scroll-padding-top: 0rem;
+    --task-navigator-scroll-padding-top: var(--interface-space-3);
 
     position: relative;
     z-index: 2;

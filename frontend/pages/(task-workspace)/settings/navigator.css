@@ -9,28 +9,13 @@ caffold-settings-navigator {
   background: var(--surface);
 
   & .settings-navigator-header {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
+    box-sizing: border-box;
+    display: flex;
     align-items: center;
-    gap: var(--interface-space-5);
-    min-height: var(--task-workspace-header-size);
+    height: var(--task-workspace-header-size);
     border-bottom: 1px solid var(--border);
-    padding: var(--interface-space-5) var(--interface-space-7);
-  }
-
-  & .settings-navigator-header img {
-    display: block;
-    width: 1.625rem;
-    height: 1.625rem;
-  }
-
-  & .settings-navigator-header strong {
-    min-width: 0;
-    overflow: hidden;
-    font-size: var(--interface-heading-font-size);
-    line-height: 1.2;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    padding: 0 var(--interface-space-6);
+    box-shadow: var(--structural-shadow-block-end);
   }
 
   & .settings-navigator-list {
@@ -88,13 +73,5 @@ caffold-settings-navigator {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-}
-
-@media (max-width: 520px) {
-  caffold-settings-navigator {
-    & .settings-navigator-header {
-      padding-inline: var(--interface-space-5);
-    }
   }
 }
