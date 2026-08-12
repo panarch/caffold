@@ -372,11 +372,6 @@ class CaffoldFileTree extends HTMLElement {
     } else {
       delete button.dataset.fileTreeRelativePath;
     }
-    if (node.marker) {
-      button.dataset.marker = node.marker;
-    } else {
-      delete button.dataset.marker;
-    }
     if (node.variant) {
       button.dataset.variant = node.variant;
     } else {

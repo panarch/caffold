@@ -63,17 +63,6 @@ class CaffoldGitDiffChangesTree extends HTMLElement {
     this.fileTree()?.setSelectedKey(this.selectedKey());
   }
 
-  setTaskRelatedPaths(paths) {
-    const nextPaths = new Set((paths ?? []).map(normalizeRepoPath).filter(Boolean));
-    if (setsEqual(this.taskRelatedPaths, nextPaths)) {
-      return;
-    }
-    this.taskRelatedPaths = nextPaths;
-    if (this.state?.status === "ready" && this.state.gitStatus.files.length > 0) {
-      this.updateTreeModel();
-    }
-  }
-
   captureListScroll() {
     return this.fileTree()?.captureScroll() ?? null;
   }
@@ -84,7 +73,6 @@ class CaffoldGitDiffChangesTree extends HTMLElement {
 
   reset() {
     this.selectedPath = "";
-    this.taskRelatedPaths = new Set();
     this.state = { status: "idle" };
     this.renderState();
   }
@@ -144,10 +132,7 @@ class CaffoldGitDiffChangesTree extends HTMLElement {
   }
 
   updateTreeModel() {
-    const { nodes, fileKeyByPath } = changeNodes(
-      this.state.gitStatus.files,
-      this.taskRelatedPaths,
-    );
+    const { nodes, fileKeyByPath } = changeNodes(this.state.gitStatus.files);
     this.fileKeyByPath = fileKeyByPath;
     this.fileTree().setModel({
       entityKey:
@@ -184,7 +169,7 @@ class CaffoldGitDiffChangesTree extends HTMLElement {
 
 customElements.define("caffold-git-diff-changes-tree", CaffoldGitDiffChangesTree);
 
-function changeNodes(files, taskRelatedPaths) {
+function changeNodes(files) {
   const fileKeyByPath = new Map();
   const nodes = SECTIONS.flatMap(([category, label], order) => {
     const categoryFiles = files.filter((file) => displayCategory(file) === category);
@@ -194,7 +179,6 @@ function changeNodes(files, taskRelatedPaths) {
     const leaves = categoryFiles.map((file) => {
       const repoRelativePath = normalizeRepoPath(file.repoRelativePath);
       const key = `${category}:file:${repoRelativePath}`;
-      const related = taskRelatedPaths.has(repoRelativePath);
       if (!fileKeyByPath.has(file.path)) {
         fileKeyByPath.set(file.path, key);
       }
@@ -204,9 +188,8 @@ function changeNodes(files, taskRelatedPaths) {
         path: file.path,
         treePath: repoRelativePath,
         status: displayStatus(file),
-        marker: related ? "task-related" : "",
-        title: related ? `Task-related change · ${repoRelativePath}` : repoRelativePath,
-        ariaLabel: `${related ? "Task-related change. " : ""}Show diff for ${repoRelativePath}`,
+        title: repoRelativePath,
+        ariaLabel: `Show diff for ${repoRelativePath}`,
         source: file,
       };
     });
@@ -229,13 +212,6 @@ function normalizeRepoPath(path) {
     .split("/")
     .filter((segment) => segment && segment !== "." && segment !== "..")
     .join("/");
-}
-
-function setsEqual(left, right) {
-  if ((left?.size ?? 0) !== right.size) {
-    return false;
-  }
-  return [...right].every((value) => left?.has(value));
 }
 
 function renderDiffStats(payload) {

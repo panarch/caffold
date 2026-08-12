@@ -1651,7 +1651,6 @@ class CaffoldTaskDetail extends HTMLElement {
     const review = this.activateReview(this.selectedThreadId);
     review?.setTaskContext({
       task,
-      events: this.events,
       route: this.taskRoute,
     });
   }

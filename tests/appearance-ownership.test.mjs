@@ -123,8 +123,6 @@ test("color roles keep neutral chrome, interactions, and semantic feedback separ
     "--primary-action-bg",
     "--primary-action-border",
     "--success",
-    "--related-file-fg",
-    "--related-file-marker-bg",
     "--warning",
     "--danger",
     "--diff-added-bg",
