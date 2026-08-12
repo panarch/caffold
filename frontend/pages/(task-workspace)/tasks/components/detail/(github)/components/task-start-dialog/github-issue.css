@@ -1,0 +1,71 @@
+caffold-github-issue-task-source {
+  display: grid;
+  gap: var(--interface-space-3);
+  min-width: 0;
+  font-size: var(--interface-meta-font-size);
+
+  &[hidden] {
+    display: none;
+  }
+
+  & p {
+    margin: 0;
+  }
+
+  & .github-issue-task-source-base {
+    display: grid;
+    gap: var(--interface-space-3);
+  }
+
+  & .github-issue-task-source-base > span {
+    font-weight: 600;
+  }
+
+  & .github-issue-task-source-base select {
+    width: 100%;
+    min-width: 0;
+    min-height: var(--interface-control-size);
+    padding: 0 var(--interface-space-5);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  & .github-issue-task-source-base select:focus-visible {
+    border-color: var(--control-emphasis-border);
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+  }
+
+  & .github-issue-task-source-help,
+  & .github-issue-task-source-status {
+    color: var(--muted);
+    line-height: var(--interface-line-height);
+  }
+
+  & .github-issue-task-source-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 0;
+    color: var(--danger);
+  }
+
+  & .github-issue-task-source-status:empty {
+    display: none;
+  }
+
+  & .github-issue-task-source-status button {
+    min-height: var(--interface-compact-hit-size);
+    padding: var(--interface-space-2) var(--interface-space-4);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--control-fg);
+    font: inherit;
+    cursor: pointer;
+  }
+}

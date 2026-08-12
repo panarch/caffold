@@ -1,6 +1,7 @@
 import { getGitHubStatus } from "../../../../../../api.js";
 import { renderInlineIcon, warmIcons } from "../../../../../../components/icons.js";
 import { routeMode } from "../../../../../../navigation-routes.js";
+import "./components/task-start-dialog.js";
 import "./(issues)/layout.js";
 import "./(pulls)/layout.js";
 
@@ -38,6 +39,7 @@ class CaffoldTaskGithubLayout extends HTMLElement {
           </div>
         </div>
       </section>
+      <caffold-github-task-start-dialog></caffold-github-task-start-dialog>
     `;
     this.backButton = this.querySelector(".task-domain-back");
     this.titleEl = this.querySelector(".task-domain-title h2");
@@ -46,6 +48,7 @@ class CaffoldTaskGithubLayout extends HTMLElement {
     this.pullsView = this.querySelector(".github-mode-pulls");
     this.issuesLayout = this.querySelector("caffold-github-issues-layout");
     this.pullsLayout = this.querySelector("caffold-github-pulls-layout");
+    this.taskStartDialog = this.querySelector("caffold-github-task-start-dialog");
     this.issuesLayout.ensureRendered();
     this.pullsLayout.ensureRendered();
     this.backButton.addEventListener("click", () => {
@@ -81,6 +84,21 @@ class CaffoldTaskGithubLayout extends HTMLElement {
     });
     this.pullsLayout.addEventListener("caffold:github-pulls-state-change", () => {
       this.emitStateChange();
+    });
+    this.addEventListener("caffold:start-github-task", (event) => {
+      if (
+        event.target !== this.issuesLayout.detailPage &&
+        event.target !== this.pullsLayout.detailPage
+      ) {
+        return;
+      }
+      event.stopPropagation();
+      this.taskStartDialog.open({
+        kind: event.detail?.kind,
+        payload: event.detail?.payload,
+        repository: this.repository,
+        opener: event.detail?.opener,
+      });
     });
     this.addEventListener("caffold:open-github-pull", (event) => {
       event.stopPropagation();
@@ -159,6 +177,7 @@ class CaffoldTaskGithubLayout extends HTMLElement {
     this.repository = null;
     this.githubStatus = null;
     this.githubStatusRequestId += 1;
+    this.taskStartDialog.deactivate();
     this.issuesLayout.reset();
     this.pullsLayout.reset();
     this.updateVisibleMode();
@@ -170,6 +189,7 @@ class CaffoldTaskGithubLayout extends HTMLElement {
     this.active = true;
     const generation = ++this.activationGeneration;
     this.githubStatusRequestId += 1;
+    this.taskStartDialog.deactivate();
     this.issuesLayout.invalidateRequests();
     this.pullsLayout.invalidateRequests();
     this.setContext({ ...options.context, githubStatus: null });
@@ -190,6 +210,7 @@ class CaffoldTaskGithubLayout extends HTMLElement {
     this.active = false;
     this.activationGeneration += 1;
     this.githubStatusRequestId += 1;
+    this.taskStartDialog.deactivate();
     this.issuesLayout.invalidateRequests();
     this.pullsLayout.invalidateRequests();
   }

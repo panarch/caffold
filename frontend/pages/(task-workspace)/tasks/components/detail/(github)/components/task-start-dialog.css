@@ -1,4 +1,4 @@
-caffold-github-issue-task-start-dialog {
+caffold-github-task-start-dialog {
   display: contents;
 
   & dialog {
@@ -19,7 +19,7 @@ caffold-github-issue-task-start-dialog {
     background: rgb(var(--scrim-rgb) / 32%);
   }
 
-  & .github-issue-task-start-card {
+  & .github-task-start-card {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto;
     max-height: inherit;
@@ -35,64 +35,34 @@ caffold-github-issue-task-start-dialog {
     border-bottom: 1px solid var(--border);
   }
 
-  & h2,
-  & p {
+  & header > h2,
+  & header > p,
+  & .github-task-start-error > p {
     margin: 0;
   }
 
-  & h2 {
+  & header > h2 {
     color: var(--muted);
     font-size: var(--interface-meta-font-size);
     font-weight: 600;
     line-height: 1.2;
   }
 
-  & .github-issue-task-start-issue {
+  & .github-task-start-source-title {
     font-size: 0.8125rem;
     font-weight: 600;
     line-height: 1.3;
     overflow-wrap: anywhere;
   }
 
-  & #github-issue-task-start-description,
-  & .github-issue-task-start-help,
-  & .github-issue-task-start-ref-status,
-  & .github-issue-task-start-error {
+  & #github-task-start-description,
+  & .github-task-start-error {
     color: var(--muted);
     font-size: var(--interface-meta-font-size);
     line-height: var(--interface-line-height);
   }
 
-  & .github-issue-task-start-base {
-    display: grid;
-    gap: var(--interface-space-3);
-    font-size: var(--interface-meta-font-size);
-  }
-
-  & .github-issue-task-start-base > span {
-    font-weight: 600;
-  }
-
-  & .github-issue-task-start-base select {
-    width: 100%;
-    min-width: 0;
-    min-height: var(--interface-control-size);
-    padding: 0 var(--interface-space-5);
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    background: var(--surface);
-    color: var(--text);
-    font: inherit;
-    cursor: pointer;
-  }
-
-  & .github-issue-task-start-base select:focus-visible {
-    border-color: var(--control-emphasis-border);
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 1px;
-  }
-
-  & .github-issue-task-start-body {
+  & .github-task-start-body {
     display: grid;
     align-content: start;
     gap: var(--interface-space-8);
@@ -102,35 +72,20 @@ caffold-github-issue-task-start-dialog {
     overflow: auto;
   }
 
-  & .github-issue-task-start-base-field {
-    display: grid;
-    gap: var(--interface-space-3);
+  & .github-task-start-body > caffold-github-issue-task-source,
+  & .github-task-start-body > caffold-github-pull-task-source {
     min-width: 0;
   }
 
-  & .github-issue-task-start-ref-status,
-  & .github-issue-task-start-error {
+  & .github-task-start-error {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
     min-height: 0;
     color: var(--danger);
   }
 
-  & .github-issue-task-start-ref-status:empty,
-  & .github-issue-task-start-error:empty {
+  & .github-task-start-error:empty {
     display: none;
-  }
-
-  & .github-issue-task-start-ref-status button {
-    min-height: var(--interface-compact-hit-size);
-    padding: var(--interface-space-2) var(--interface-space-4);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
-    color: var(--control-fg);
-    font: inherit;
-    cursor: pointer;
   }
 
   & caffold-task-turn-options {
@@ -146,7 +101,7 @@ caffold-github-issue-task-start-dialog {
     border-top: 1px solid var(--border);
   }
 
-  & .github-issue-task-start-button {
+  & .github-task-start-button {
     min-height: var(--interface-control-hit-size);
     padding: var(--interface-space-2) var(--interface-control-padding-inline);
     border: 1px solid var(--border);
@@ -159,38 +114,38 @@ caffold-github-issue-task-start-dialog {
     cursor: pointer;
   }
 
-  & .github-issue-task-start-button:hover,
-  & .github-issue-task-start-button:focus-visible {
+  & .github-task-start-button:hover,
+  & .github-task-start-button:focus-visible {
     border-color: var(--border-strong);
     outline: none;
   }
 
-  & .github-issue-task-start-button.is-primary {
+  & .github-task-start-button.is-primary {
     border-color: var(--primary-action-border);
     background: var(--primary-action-bg);
     color: var(--primary-action-fg);
   }
 
-  & .github-issue-task-start-button.is-primary:hover,
-  & .github-issue-task-start-button.is-primary:focus-visible {
+  & .github-task-start-button.is-primary:hover,
+  & .github-task-start-button.is-primary:focus-visible {
     border-color: var(--border-strong);
   }
 
-  & .github-issue-task-start-button:disabled {
+  & .github-task-start-button:disabled {
     cursor: wait;
     opacity: 0.55;
   }
 }
 
 @media (max-width: 520px) {
-  caffold-github-issue-task-start-dialog {
+  caffold-github-task-start-dialog {
     & dialog {
       width: calc(100vw - 1rem);
       max-height: calc(100dvh - 1rem);
     }
 
     & header,
-    & .github-issue-task-start-body,
+    & .github-task-start-body,
     & footer {
       padding-inline: var(--interface-space-8);
     }

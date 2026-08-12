@@ -374,7 +374,7 @@ test("creates a task with responsive composer controls and canonical approval st
   await expect(tasksPage.locator(".task-conversation")).toBeVisible();
   await expect(tasksPage.locator(".task-detail-summary h2")).toHaveCSS(
     "font-size",
-    touchInterface ? "14.875px" : "14px",
+    touchInterface ? "13.8125px" : "13px",
   );
   await expect(tasksPage.locator('.task-message[data-message-role="user"]')).toContainText(
     "Inspect the planner changes",

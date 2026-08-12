@@ -19,6 +19,21 @@ class CaffoldGithubPullDetailPage extends HTMLElement {
               detail: { number: Number.parseInt(button.dataset.pullNumber ?? "", 10) },
             }),
           );
+        } else if (
+          button.dataset.action === "start-github-task" &&
+          this.state?.status === "ready"
+        ) {
+          this.dispatchEvent(
+            new CustomEvent("caffold:start-github-task", {
+              bubbles: true,
+              composed: true,
+              detail: {
+                kind: "pull",
+                payload: this.state.payload,
+                opener: button,
+              },
+            }),
+          );
         }
       });
       this.boundIconsReady = () => this.render();
@@ -92,22 +107,34 @@ class CaffoldGithubPullDetailPage extends HTMLElement {
         <header>
           <div class="github-pull-viewer-title-row">
             <h2>${escapeHtml(pull.title)}</h2>
-            <button
-              type="button"
-              class="github-pull-files-button"
-              data-action="open-github-pull-files"
-              data-pull-number="${escapeHtml(`${pull.number}`)}"
-              aria-label="${escapeHtml(`Open files for PR #${pull.number}`)}"
-            >
-              ${renderInlineIcon("FileDiff", "Files", "github-pull-files-icon")}
-              <span>${escapeHtml(`${pull.changedFiles} files`)}</span>
-            </button>
-            <a
-              class="github-pull-link"
-              href="${escapeHtml(pull.url)}"
-              target="_blank"
-              rel="noreferrer"
-            >GitHub</a>
+            <div class="github-pull-actions">
+              <button
+                type="button"
+                class="github-pull-start-button"
+                data-action="start-github-task"
+                aria-label="Start Task for pull request #${escapeHtml(`${pull.number}`)}"
+                title="Start Task"
+              >
+                ${renderInlineIcon("Plus", "Start Task", "github-pull-start-icon")}
+                <span>Start Task</span>
+              </button>
+              <button
+                type="button"
+                class="github-pull-files-button"
+                data-action="open-github-pull-files"
+                data-pull-number="${escapeHtml(`${pull.number}`)}"
+                aria-label="${escapeHtml(`Open files for PR #${pull.number}`)}"
+              >
+                ${renderInlineIcon("FileDiff", "Files", "github-pull-files-icon")}
+                <span>${escapeHtml(`${pull.changedFiles} files`)}</span>
+              </button>
+              <a
+                class="github-pull-link"
+                href="${escapeHtml(pull.url)}"
+                target="_blank"
+                rel="noreferrer"
+              >GitHub</a>
+            </div>
           </div>
           <div class="github-pull-viewer-meta">
             <span>#${escapeHtml(`${pull.number}`)}</span>

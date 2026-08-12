@@ -7,6 +7,10 @@ caffold-task-github-layout {
   min-height: 0;
   overflow: hidden;
 
+  & > caffold-github-task-start-dialog {
+    display: contents;
+  }
+
   & .task-github-surface {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);

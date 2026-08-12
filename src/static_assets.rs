@@ -472,6 +472,36 @@ pub fn get(path: &str) -> Option<StaticAsset> {
                 "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/components/markdown.js"
             )))
         }
+        "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-issue.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-issue.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-issue.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-issue.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-pull.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-pull.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-pull.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-pull.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/layout.css" => {
             Some(css(include_str!(
                 "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(issues)/layout.css"
@@ -500,16 +530,6 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/detail/page.js" => {
             Some(js(include_str!(
                 "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(issues)/detail/page.js"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/components/task-start-dialog.css" => {
-            Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(issues)/components/task-start-dialog.css"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/components/task-start-dialog.js" => {
-            Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(issues)/components/task-start-dialog.js"
             )))
         }
         "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/layout.css" => {
@@ -1375,18 +1395,38 @@ mod tests {
                 .windows(b"caffold-github-issue-detail-page".len())
                 .any(|window| window == b"caffold-github-issue-detail-page")
         );
-        let issue_task_start_dialog =
-            get("pages/(task-workspace)/tasks/components/detail/(github)/(issues)/components/task-start-dialog.js")
-                .expect("issue task start dialog js");
+        let github_task_start_dialog =
+            get("pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog.js")
+                .expect("github task start dialog js");
         assert_eq!(
-            issue_task_start_dialog.content_type,
+            github_task_start_dialog.content_type,
             "text/javascript; charset=utf-8"
         );
         assert!(
-            issue_task_start_dialog
+            github_task_start_dialog
                 .body
-                .windows(b"caffold-github-issue-task-start-dialog".len())
-                .any(|window| window == b"caffold-github-issue-task-start-dialog")
+                .windows(b"caffold-github-task-start-dialog".len())
+                .any(|window| window == b"caffold-github-task-start-dialog")
+        );
+        let github_issue_task_source = get(
+            "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-issue.js",
+        )
+        .expect("github issue task source js");
+        assert!(
+            github_issue_task_source
+                .body
+                .windows(b"caffold-github-issue-task-source".len())
+                .any(|window| window == b"caffold-github-issue-task-source")
+        );
+        let github_pull_task_source = get(
+            "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-pull.js",
+        )
+        .expect("github pull task source js");
+        assert!(
+            github_pull_task_source
+                .body
+                .windows(b"caffold-github-pull-task-source".len())
+                .any(|window| window == b"caffold-github-pull-task-source")
         );
         assert!(get("components/github-issues-list.js").is_none());
         assert!(get("components/github-issue-viewer.js").is_none());

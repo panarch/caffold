@@ -1,5 +1,4 @@
 import { getGitHubIssue, getGitHubIssues } from "../../../../../../../api.js";
-import "./components/task-start-dialog.js";
 import "./list/page.js";
 import "./detail/page.js";
 
@@ -23,28 +22,13 @@ class CaffoldGithubIssuesLayout extends HTMLElement {
     this.innerHTML = `
       <caffold-github-issues-list-page></caffold-github-issues-list-page>
       <caffold-github-issue-detail-page></caffold-github-issue-detail-page>
-      <caffold-github-issue-task-start-dialog></caffold-github-issue-task-start-dialog>
     `;
     this.listPage = this.querySelector("caffold-github-issues-list-page");
     this.detailPage = this.querySelector("caffold-github-issue-detail-page");
-    this.taskStartDialog = this.querySelector(
-      "caffold-github-issue-task-start-dialog",
-    );
     this.issueListRequestId ??= 0;
     this.issueDetailRequestId ??= 0;
     this.page ??= 1;
     this.view ??= "list";
-    this.addEventListener("caffold:start-github-issue-task", (event) => {
-      if (event.target !== this.detailPage) {
-        return;
-      }
-      event.stopPropagation();
-      this.taskStartDialog.open({
-        payload: event.detail?.payload,
-        repository: this.repository,
-        opener: event.detail?.opener,
-      });
-    });
   }
 
   setView(view) {
@@ -63,7 +47,6 @@ class CaffoldGithubIssuesLayout extends HTMLElement {
     this.issues = null;
     this.page = 1;
     this.selectedIssueSummary = null;
-    this.taskStartDialog.dismiss();
     this.setView("list");
     this.listPage.reset();
     this.detailPage.setEmpty();
@@ -74,7 +57,6 @@ class CaffoldGithubIssuesLayout extends HTMLElement {
     this.ensureRendered();
     this.issueListRequestId += 1;
     this.issueDetailRequestId += 1;
-    this.taskStartDialog.deactivate();
   }
 
   async openList(options = {}) {

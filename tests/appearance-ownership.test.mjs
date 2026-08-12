@@ -28,6 +28,7 @@ const codeOwners = new Set([
   "pages/(task-workspace)/tasks/components/detail/conversation/markdown.js",
   "pages/(task-workspace)/tasks/components/detail/conversation/work-details.css",
   "pages/(task-workspace)/tasks/components/detail/(github)/components/markdown.js",
+  "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-pull.css",
   "pages/(task-workspace)/settings/appearance/page.css",
   "settings.js",
   "styles.css",

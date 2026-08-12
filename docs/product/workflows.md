@@ -4,8 +4,8 @@ This document describes Caffold's implemented product workflow and the object
 boundaries that keep it consistent. Planned orchestration belongs in the
 [Roadmap](roadmap.md).
 
-Caffold currently supports two entries into the same repeated development
-loop:
+Caffold currently supports three entry paths into the same repeated
+development loop:
 
 ```text
 Ad-hoc request
@@ -14,10 +14,15 @@ Ad-hoc request
 
 GitHub Issue detail
         -> explicitly start a setup-only Task
-        -> prepare its selected-base isolated worktree
+        -> prepare an isolated worktree from its selected base ref
         -> wait for the user's next request
 
-Either entry
+GitHub Pull Request detail
+        -> explicitly start a setup-only Task
+        -> prepare an isolated worktree from the exact PR head
+        -> wait for the user's next request
+
+Any entry
         -> work <-> review <-> test
         -> archive or restore the Task and its owned resources
 ```
@@ -38,7 +43,14 @@ lifecycle.
 6. Approvals, completion, interruption, and failures remain visible in the
    thread-backed conversation.
 
-### Start from a GitHub Issue
+### Start from a GitHub Issue or Pull Request
+
+The Task's GitHub root owns one shared Task Start dialog rather than separate
+Issue and Pull Request workflows. Both detail pages provide only the visible
+action and canonical source payload; the dialog keeps one Task-creation and
+modal lifecycle while applying the appropriate source-specific setup.
+
+For an Issue:
 
 1. Open Issue detail in a Task's GitHub child and choose `Start Task`.
 2. Select a base ref and the new Task's model, reasoning, speed, and approval
@@ -51,8 +63,23 @@ lifecycle.
    prepared Task and sends a new request before analysis or implementation
    begins.
 
-Pull Request detail does not provide the same Start Task action. Neither Issue
-nor Pull Request context automatically continues work after preparation.
+For a Pull Request:
+
+1. Open Pull Request detail and choose the same `Start Task` action; there is no
+   separate review-versus-implementation choice or arbitrary base selector.
+2. Confirm the read-only base/head repository, ref, and commit relationship and
+   choose the new Task's turn options.
+3. Caffold resolves and verifies the exact canonical PR head commit.
+   Same-repository and fork PRs are supported; a moved or unavailable head
+   stops with a recoverable error instead of selecting another ref.
+4. Caffold creates a separate Task whose setup-only prompt carries the PR body,
+   URL, base/head identity, conversation, and review context as untrusted data.
+5. That turn renames the Task, creates a concise local branch from the verified
+   head with `includeChanges: false`, and stops as soon as the managed worktree
+   is ready.
+
+Neither source automatically continues review or implementation after
+preparation. The user decides the prepared Task's next bounded action.
 
 ### Review loop
 
@@ -99,7 +126,7 @@ independent objects:
 
 | Object | Role and owner |
 | --- | --- |
-| Origin | Ad-hoc request or explicit GitHub Issue Start Task. A GitHub PR may be review context but has no Start Task action. |
+| Origin | Ad-hoc request or explicit GitHub Issue/PR Start Task. |
 | Repository | Git repository in which the job is evaluated. |
 | Worktree | Git-owned execution and inspection environment. |
 | Codex thread | App-server-owned conversation and execution history. |
