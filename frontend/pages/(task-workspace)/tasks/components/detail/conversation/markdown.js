@@ -1,3 +1,5 @@
+import { routeUrl } from "../../../../../../navigation-routes.js";
+
 const MARKED_IMPORT = "https://esm.sh/marked@15.0.12";
 
 const ALLOWED_ELEMENTS = new Set([
@@ -209,6 +211,11 @@ class CaffoldTaskMarkdown extends HTMLElement {
           line-height: inherit;
           white-space: pre-wrap;
         }
+
+        .markdown-loading {
+          min-height: var(--conversation-line-height);
+          color: var(--muted);
+        }
       </style>
       <article class="markdown-body"></article>
     `;
@@ -229,16 +236,27 @@ class CaffoldTaskMarkdown extends HTMLElement {
     this.markdown = `${markdown ?? ""}`;
     const renderToken = Symbol("task-markdown");
     this.renderToken = renderToken;
-    this.renderPlainText();
-    this.renderMarkdown(renderToken);
+    this.renderPending();
+    void this.renderMarkdown(renderToken);
+  }
+
+  renderPending() {
+    const pending = document.createElement("span");
+    pending.className = "markdown-loading";
+    pending.setAttribute("role", "status");
+    pending.textContent = "Rendering Markdown...";
+    this.body().replaceChildren(pending);
+    this.dataset.renderState = "loading";
   }
 
   renderPlainText() {
+    const scrollContext = captureScrollContext(this);
     const fallback = document.createElement("pre");
     fallback.className = "markdown-fallback";
     fallback.textContent = this.markdown;
     this.body().replaceChildren(fallback);
     this.dataset.renderState = "plain";
+    dispatchRendered(this, scrollContext);
   }
 
   async renderMarkdown(renderToken) {
@@ -257,7 +275,12 @@ class CaffoldTaskMarkdown extends HTMLElement {
 
       const template = document.createElement("template");
       template.innerHTML = `${html ?? ""}`;
-      sanitizeChildren(template.content);
+      const internalLinks = applyLocalFileLinks(
+        template.content,
+        this.getAttribute("thread-id") ?? "",
+        parsedFileLinks(this.getAttribute("file-links")),
+      );
+      sanitizeChildren(template.content, internalLinks);
       wrapTables(template.content);
       const scrollContext = captureScrollContext(this);
       this.body().replaceChildren(template.content.cloneNode(true));
@@ -266,7 +289,7 @@ class CaffoldTaskMarkdown extends HTMLElement {
     } catch {
       parserPromise = null;
       if (this.renderToken === renderToken) {
-        this.dataset.renderState = "plain";
+        this.renderPlainText();
       }
     }
   }
@@ -285,7 +308,7 @@ function loadParser() {
   return parserPromise;
 }
 
-function sanitizeChildren(parent) {
+function sanitizeChildren(parent, internalLinks = new Set()) {
   for (const element of [...parent.children]) {
     const tagName = element.localName;
     if (FORBIDDEN_ELEMENTS.has(tagName)) {
@@ -293,7 +316,7 @@ function sanitizeChildren(parent) {
       continue;
     }
 
-    sanitizeChildren(element);
+    sanitizeChildren(element, internalLinks);
     if (!ALLOWED_ELEMENTS.has(tagName)) {
       element.replaceWith(...element.childNodes);
       continue;
@@ -306,7 +329,7 @@ function sanitizeChildren(parent) {
 
     sanitizeAttributes(element);
     if (tagName === "a") {
-      sanitizeLink(element);
+      sanitizeLink(element, internalLinks.has(element));
     }
   }
 }
@@ -336,7 +359,7 @@ function sanitizeAttributes(element) {
   }
 }
 
-function sanitizeLink(element) {
+function sanitizeLink(element, internal = false) {
   const href = element.getAttribute("href") ?? "";
   if (!isSafeUrl(href)) {
     element.removeAttribute("href");
@@ -344,8 +367,102 @@ function sanitizeLink(element) {
     return;
   }
 
+  if (internal) {
+    element.removeAttribute("target");
+    element.removeAttribute("rel");
+    return;
+  }
+
   element.target = "_blank";
   element.rel = "noreferrer";
+}
+
+function applyLocalFileLinks(parent, threadId, resolvedLinks) {
+  const normalizedThreadId = `${threadId ?? ""}`.trim();
+  if (!normalizedThreadId) {
+    return new Set();
+  }
+  const candidates = [...parent.querySelectorAll("a[href]")]
+    .map((element) => ({ element, target: element.getAttribute("href") ?? "" }))
+    .filter(({ target }) => isLocalFileCandidate(target));
+  if (!candidates.length) {
+    return new Set();
+  }
+
+  const resultByTarget = new Map(
+    resolvedLinks.map((result) => [result.target, result]),
+  );
+  const internalLinks = new Set();
+  for (const { element, target } of candidates) {
+    const result = resultByTarget.get(target);
+    if (!result?.taskRelativePath) {
+      element.removeAttribute("href");
+      continue;
+    }
+    element.setAttribute(
+      "href",
+      routeUrl({
+        kind: "tasks",
+        threadId: normalizedThreadId,
+        review: true,
+        reviewScope: "working",
+        reviewNavigator: "files",
+        reviewViewer: "source",
+        path: result.taskRelativePath,
+        line: result.line ?? null,
+        baseRef: "",
+      }),
+    );
+    internalLinks.add(element);
+  }
+  return internalLinks;
+}
+
+function parsedFileLinks(value) {
+  if (!value) {
+    return [];
+  }
+  try {
+    const links = JSON.parse(value);
+    return Array.isArray(links) ? links : [];
+  } catch {
+    return [];
+  }
+}
+
+function isLocalFileCandidate(value) {
+  const target = `${value ?? ""}`.trim();
+  if (!target || target.startsWith("#") || isCaffoldApplicationPath(target)) {
+    return false;
+  }
+  try {
+    const url = new URL(target);
+    if (["http:", "https:", "mailto:"].includes(url.protocol)) {
+      return false;
+    }
+  } catch {
+    // Relative filesystem paths are not standalone URLs.
+  }
+  return true;
+}
+
+function isCaffoldApplicationPath(value) {
+  if (!value.startsWith("/")) {
+    return false;
+  }
+  const path = value.split(/[?#]/, 1)[0];
+  return (
+    path === "/" ||
+    path === "/tasks" ||
+    path.startsWith("/tasks/") ||
+    path === "/settings" ||
+    path.startsWith("/settings/") ||
+    path === "/api" ||
+    path.startsWith("/api/") ||
+    path === "/assets" ||
+    path.startsWith("/assets/") ||
+    path === "/service-worker.js"
+  );
 }
 
 function isSafeUrl(value) {

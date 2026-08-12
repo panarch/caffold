@@ -36,6 +36,7 @@ class CaffoldTaskConversation extends HTMLElement {
     this.rememberScroll();
     this.active = false;
     this.pendingDisclosureAnchorByThread.delete(this.snapshot.threadId);
+    this.pendingMarkdownScrollByThread.delete(this.snapshot.threadId);
     this.removeEventListener("click", this.boundClick);
     this.removeEventListener("scroll", this.boundScroll, true);
     this.removeEventListener(
@@ -75,6 +76,7 @@ class CaffoldTaskConversation extends HTMLElement {
     this.scrollByThread = new Map();
     this.disclosureByThread = new Map();
     this.pendingDisclosureAnchorByThread = new Map();
+    this.pendingMarkdownScrollByThread = new Map();
     this.resizeObserver = null;
     this.activeTurnClockTimer = null;
     this.boundClick = (event) => this.handleClick(event);
@@ -123,11 +125,14 @@ class CaffoldTaskConversation extends HTMLElement {
       }
       return false;
     }
-    const previousScroll = this.rememberScroll(previousThreadId);
+    const previousScroll =
+      this.pendingMarkdownScrollByThread.get(previousThreadId) ??
+      this.rememberScroll(previousThreadId);
     const nextThreadId = nextSnapshot.threadId;
     if (previousThreadId !== nextThreadId) {
       this.approvalErrors.clear();
       this.pendingDisclosureAnchorByThread.delete(previousThreadId);
+      this.pendingMarkdownScrollByThread.delete(previousThreadId);
     }
     this.snapshot = nextSnapshot;
     this.pruneApprovalErrors();
@@ -194,6 +199,7 @@ class CaffoldTaskConversation extends HTMLElement {
       this.rememberScroll();
       this.active = false;
       this.pendingDisclosureAnchorByThread.delete(this.snapshot.threadId);
+      this.pendingMarkdownScrollByThread.delete(this.snapshot.threadId);
       this.disconnectResizeObserver();
       this.stopActiveTurnClock();
       return;
@@ -224,6 +230,7 @@ class CaffoldTaskConversation extends HTMLElement {
     const { task } = this.snapshot;
     if (!task) {
       this.pendingDisclosureAnchorByThread.delete(this.snapshot.threadId);
+      this.pendingMarkdownScrollByThread.delete(this.snapshot.threadId);
       this.innerHTML = "";
       this.disconnectResizeObserver();
       this.stopActiveTurnClock();
@@ -244,15 +251,26 @@ class CaffoldTaskConversation extends HTMLElement {
       view.html,
       view.workDetails,
     );
+    const threadId = this.snapshot.threadId;
+    const hasPendingMarkdown = this.hasPendingMarkdownRender();
+    if (hasPendingMarkdown && previousScroll && !previousScroll.atBottom) {
+      this.pendingMarkdownScrollByThread.set(threadId, previousScroll);
+    } else if (!hasPendingMarkdown) {
+      this.pendingMarkdownScrollByThread.delete(threadId);
+    }
+    const scrollToRestore =
+      this.pendingMarkdownScrollByThread.get(threadId) ?? previousScroll;
     this.restoreDisclosureState();
-    this.restoreScroll(previousScroll);
+    this.restoreScroll(scrollToRestore);
     this.restorePendingDisclosureAnchor(
       this.scroller(),
       this.snapshot.threadId,
     );
     this.bindResizeObserver();
     this.syncActiveTurnClock();
-    this.rememberScroll();
+    if (!this.pendingMarkdownScrollByThread.has(threadId)) {
+      this.rememberScroll();
+    }
   }
 
   ensureShell() {
@@ -675,6 +693,14 @@ class CaffoldTaskConversation extends HTMLElement {
     });
   }
 
+  hasPendingMarkdownRender() {
+    return Boolean(
+      this.conversationList()?.querySelector(
+        'caffold-task-markdown[data-render-state="loading"]',
+      ),
+    );
+  }
+
   bindResizeObserver() {
     this.disconnectResizeObserver();
     const scroller = this.scroller();
@@ -693,7 +719,10 @@ class CaffoldTaskConversation extends HTMLElement {
       if (this.scroller() !== scroller) {
         return;
       }
-      const previousScroll = this.scrollByThread.get(threadId);
+      const pendingMarkdownScroll =
+        this.pendingMarkdownScrollByThread.get(threadId);
+      const previousScroll =
+        pendingMarkdownScroll ?? this.scrollByThread.get(threadId);
       if (!previousScroll) {
         return;
       }
@@ -704,7 +733,9 @@ class CaffoldTaskConversation extends HTMLElement {
       } else {
         this.restoreAnchor(scroller, previousScroll);
       }
-      this.rememberScroll(threadId);
+      if (!pendingMarkdownScroll) {
+        this.rememberScroll(threadId);
+      }
     });
     this.resizeObserver.observe(column);
   }
@@ -720,7 +751,19 @@ class CaffoldTaskConversation extends HTMLElement {
       return;
     }
     event.stopPropagation();
-    const previousScroll = this.scrollByThread.get(this.snapshot.threadId);
+    const threadId = this.snapshot.threadId;
+    const pendingMarkdownScroll =
+      this.pendingMarkdownScrollByThread.get(threadId);
+    const previousScroll =
+      pendingMarkdownScroll ?? this.scrollByThread.get(threadId);
+    if (pendingMarkdownScroll) {
+      this.restoreScroll(pendingMarkdownScroll);
+      if (!this.hasPendingMarkdownRender()) {
+        this.pendingMarkdownScrollByThread.delete(threadId);
+        this.rememberScroll(threadId);
+      }
+      return;
+    }
     if (event.detail.atBottom) {
       scroller.scrollTop = maxScrollTop(scroller);
     } else if (this.restoreAnchor(scroller, previousScroll)) {
@@ -787,6 +830,16 @@ function reconcileConversationList(list, html, workDetails) {
       )
       .map((entry) => [entry.dataset.conversationEntryKey, entry]),
   );
+  const existingStableEntries = new Map(
+    [...list.children]
+      .filter(
+        (entry) =>
+          entry.matches(
+            ".task-message[data-conversation-entry-key][data-conversation-entry-version], .task-thinking[data-conversation-entry-key][data-conversation-entry-version]",
+          ),
+      )
+      .map((entry) => [entry.dataset.conversationEntryKey, entry]),
+  );
   const existingActiveTurn = list.querySelector(
     ":scope > .task-turn-active[data-conversation-entry-key]",
   );
@@ -794,6 +847,14 @@ function reconcileConversationList(list, html, workDetails) {
     const key = `${entry.dataset.conversationEntryKey ?? ""}`;
     if (!key) {
       return entry;
+    }
+    const stable = existingStableEntries.get(key);
+    if (
+      stable &&
+      stable.dataset.conversationEntryVersion ===
+        entry.dataset.conversationEntryVersion
+    ) {
+      return stable;
     }
     if (
       entry.matches(".task-turn-active") &&

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
+import { installTaskReviewFixture } from "../support/task-review-fixture.js";
 import {
   captureReviewScreenshot,
   stabilizeDynamicText,
@@ -9,6 +10,231 @@ import {
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
+
+test("opens resolved Markdown file links through Task Review with native link semantics", async ({
+  context,
+  page,
+}, testInfo) => {
+  const absoluteTarget = "/Users/taehoon/Workspace/rust/codger/src/planner.rs:60";
+  const completedAssistantResponse = [
+    `[Planner line](${absoluteTarget})`,
+    "[Outside Task](../README.md)",
+    "[Deleted after render](delta.rs)",
+    "[Missing file](missing.rs)",
+    "[External](https://example.com/docs)",
+    "[Mail](mailto:reviewer@example.com)",
+    "[Section](#review-ready)",
+    "[Settings](/settings)",
+  ].join("\n\n");
+  await installTaskReviewFixture(page);
+  const resolverRequests = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/file-links/resolve")) {
+      resolverRequests.push(request.url());
+    }
+  });
+  const resolvedFileLinks = ["item-10", "event_11_duplicate"].flatMap(
+    (eventId) => [
+      {
+        eventId,
+        target: absoluteTarget,
+        path: "src/planner.rs",
+        taskRelativePath: "planner.rs",
+        line: 60,
+      },
+      {
+        eventId,
+        target: "../README.md",
+        path: "README.md",
+        taskRelativePath: "../README.md",
+      },
+      {
+        eventId,
+        target: "delta.rs",
+        path: "src/delta.rs",
+        taskRelativePath: "delta.rs",
+      },
+    ],
+  );
+  const scenario = await installTaskLoopFixture(page, {
+    completedAssistantResponse,
+    fileLinks: resolvedFileLinks,
+    threadId: "thread_local_file_links",
+  });
+  let deleteResolvedFile = false;
+  await page.route(/\/api\/file(?:\?|$)/, (route) => {
+    const url = new URL(route.request().url());
+    if (!deleteResolvedFile || url.searchParams.get("path") !== "src/delta.rs") {
+      return route.fallback();
+    }
+    return route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: {
+          code: "path_not_found",
+          message: "The selected file is no longer available.",
+        },
+      }),
+    });
+  });
+  await scenario.seedCompletedTask();
+  await page.goto(`/tasks/${scenario.threadId}`);
+
+  const markdown = page.locator(
+    '.task-message[data-message-role="assistant"] caffold-task-markdown',
+  ).filter({ hasText: "Planner line" });
+  await expect(markdown).toHaveAttribute("data-render-state", "markdown");
+  const planner = markdown.getByRole("link", { name: "Planner line" });
+  const outside = markdown.getByRole("link", { name: "Outside Task" });
+  const deleted = markdown.getByRole("link", { name: "Deleted after render" });
+  await expect(planner).toHaveAttribute(
+    "href",
+    `/tasks/${scenario.threadId}/review?nav=files&view=source&file=planner.rs&line=60`,
+  );
+  await expect(planner).not.toHaveAttribute("target", /.+/);
+  await expect(outside).toHaveAttribute(
+    "href",
+    `/tasks/${scenario.threadId}/review?nav=files&view=source&file=..%2FREADME.md`,
+  );
+  await expect(markdown.getByRole("link", { name: "Missing file" })).toHaveCount(0);
+  await expect(markdown.getByRole("link", { name: "External" })).toHaveAttribute(
+    "target",
+    "_blank",
+  );
+  await expect(markdown.getByRole("link", { name: "Mail" })).toHaveAttribute(
+    "href",
+    "mailto:reviewer@example.com",
+  );
+  await expect(markdown.getByRole("link", { name: "Section" })).toHaveAttribute(
+    "href",
+    "#review-ready",
+  );
+  await expect(markdown.getByRole("link", { name: "Settings" })).toHaveAttribute(
+    "target",
+    "_blank",
+  );
+  expect(resolverRequests).toEqual([]);
+
+  await markdown.evaluate((element) => {
+    element.dataset.reconnectProbe = "preserved";
+  });
+  await page.locator("caffold-task-conversation").evaluate((conversation) => {
+    conversation.setSnapshot({
+      ...conversation.snapshot,
+      transportState: "reconnecting",
+    });
+  });
+  await expect(markdown).toHaveAttribute("data-reconnect-probe", "preserved");
+  await expect(markdown).toHaveAttribute("data-render-state", "markdown");
+  await expect(markdown.locator(".markdown-fallback")).toHaveCount(0);
+
+  await page.evaluate((threadId) => {
+    const source = window.__caffoldMockEventSources.find((candidate) =>
+      candidate.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    source.emit("task-event", {
+      threadId,
+      revision: 2,
+      event: {
+        id: "event_live_file_link",
+        threadId,
+        type: "assistant_message",
+        summary: "Live assistant response",
+        payload: {
+          phase: "final",
+          text: "[Live file](live.rs:9)",
+        },
+        createdMs: Date.now(),
+      },
+      fileLinks: [
+        {
+          eventId: "event_live_file_link",
+          target: "live.rs:9",
+          path: "src/live.rs",
+          taskRelativePath: "live.rs",
+          line: 9,
+        },
+      ],
+    });
+  }, scenario.threadId);
+  await expect(markdown).toHaveAttribute("data-reconnect-probe", "preserved");
+  const liveMarkdown = page.locator(
+    '.task-message[data-message-role="assistant"] caffold-task-markdown',
+  ).filter({ hasText: "Live file" });
+  await expect(liveMarkdown.getByRole("link", { name: "Live file" })).toHaveAttribute(
+    "href",
+    `/tasks/${scenario.threadId}/review?nav=files&view=source&file=live.rs&line=9`,
+  );
+  expect(resolverRequests).toEqual([]);
+
+  if (testInfo.project.name === "desktop") {
+    const popupPromise = context.waitForEvent("page");
+    await planner.click({ modifiers: ["ControlOrMeta"] });
+    const popup = await popupPromise;
+    await expect(popup).toHaveURL(
+      `/tasks/${scenario.threadId}/review?nav=files&view=source&file=planner.rs&line=60`,
+    );
+    await popup.close();
+  }
+
+  await planner.focus();
+  await planner.press("Enter");
+  await expect(page).toHaveURL(
+    `/tasks/${scenario.threadId}/review?nav=files&view=source&file=planner.rs&line=60`,
+  );
+  const review = page.locator("caffold-task-review");
+  const viewer = review.locator("caffold-review-file-viewer");
+  await expect(viewer).toContainText("pub fn plan");
+  await expect
+    .poll(() => viewer.evaluate(sourceLineIsVisible, 60))
+    .toBe(true);
+  await expect(
+    review.locator('button[data-file-tree-path="src/planner.rs"]'),
+  ).toHaveAttribute("aria-current", "true");
+
+  await page.reload();
+  await expect(page).toHaveURL(
+    `/tasks/${scenario.threadId}/review?nav=files&view=source&file=planner.rs&line=60`,
+  );
+  await expect
+    .poll(() => viewer.evaluate(sourceLineIsVisible, 60))
+    .toBe(true);
+  await page.goBack();
+  await expect(page).toHaveURL(`/tasks/${scenario.threadId}`);
+
+  await outside.click();
+  await expect(page).toHaveURL(
+    `/tasks/${scenario.threadId}/review?nav=files&view=source&file=..%2FREADME.md`,
+  );
+  await expect(review.locator('button[data-file-tree-path="README.md"]')).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  await expect(viewer).toContainText("Fixture Home");
+
+  await page.goBack();
+  await expect(page).toHaveURL(`/tasks/${scenario.threadId}`);
+  deleteResolvedFile = true;
+  await deleted.click();
+  await expect(page).toHaveURL(
+    `/tasks/${scenario.threadId}/review?nav=files&view=source&file=delta.rs`,
+  );
+  await expect(viewer.locator(".error-panel")).toContainText(
+    "The selected file is no longer available.",
+  );
+});
+
+function sourceLineIsVisible(viewer, line) {
+  const scroller = viewer.querySelector(".code-lines");
+  const row = viewer.querySelector(`.code-row[data-line-number="${line}"]`);
+  if (!scroller || !row) {
+    return false;
+  }
+  const scrollerRect = scroller.getBoundingClientRect();
+  const rowRect = row.getBoundingClientRect();
+  return rowRect.top >= scrollerRect.top && rowRect.bottom <= scrollerRect.bottom;
+}
 
 test("preserves ordered-list starts through Task Markdown sanitization", async ({ page }) => {
   const completedAssistantResponse = [
@@ -185,8 +411,8 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
         const probe = document.createElement("caffold-task-markdown");
         probe.textContent = "Fallback content";
         document.body.append(probe);
-        const fallback = probe.shadowRoot.querySelector(".markdown-fallback");
-        const style = getComputedStyle(fallback);
+        const loading = probe.shadowRoot.querySelector(".markdown-loading");
+        const style = getComputedStyle(loading);
         const result = {
           backgroundColor: style.backgroundColor,
           borderWidth: style.borderWidth,

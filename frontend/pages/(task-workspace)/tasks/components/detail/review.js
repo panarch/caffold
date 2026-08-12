@@ -265,7 +265,7 @@ class CaffoldTaskReview extends HTMLElement {
     this.syncSelection();
     this.ensureFileNavigator({
       refresh: options.reactivated,
-      revealSelection: options.revealFileSelection,
+      revealSelection: options.revealFileSelection || options.reactivated,
     });
     this.subscribeWatch(taskRootPath(this.task));
     if (this.task.worktree) {
@@ -309,26 +309,35 @@ class CaffoldTaskReview extends HTMLElement {
       return;
     }
     navigator.setWatchActive(false);
+    const selectedPath =
+      this.route.navigator === "files" && this.route.path
+        ? this.logicalSelectedPath()
+        : "";
+    if (selectedPath) {
+      if (revealSelection) {
+        void navigator
+          .resolvePath(selectedPath, { fallbackPath: rootPath })
+          .then(() => {
+            if (selectedPath === this.logicalSelectedPath()) {
+              return navigator.revealPath(selectedPath);
+            }
+            return false;
+          })
+          .then(() => {
+            if (refresh && selectedPath === this.logicalSelectedPath()) {
+              void navigator.requestRefresh({ allDirectories: true });
+            }
+          });
+      } else if (refresh) {
+        void navigator.requestRefresh({ allDirectories: true });
+      }
+      return;
+    }
     if (!navigator.hasLoadedDirectory(rootPath)) {
-      void navigator.loadDirectory(rootPath, { allowFailure: true }).then(() => {
-        if (
-          revealSelection &&
-          this.route.navigator === "files" &&
-          this.route.path
-        ) {
-          void navigator.revealPath(this.logicalSelectedPath());
-        }
-      });
+      void navigator.loadDirectory(rootPath, { allowFailure: true });
     } else {
       if (refresh) {
         void navigator.requestRefresh({ allDirectories: true });
-      }
-      if (
-        revealSelection &&
-        this.route.navigator === "files" &&
-        this.route.path
-      ) {
-        void navigator.revealPath(this.logicalSelectedPath());
       }
     }
   }
@@ -517,7 +526,9 @@ class CaffoldTaskReview extends HTMLElement {
     }
     const viewerOptions = background
       ? { preserveScroll: true }
-      : { scroll: saved?.scroll ?? null };
+      : sourceMode && this.route.line
+        ? { line: this.route.line }
+        : { scroll: saved?.scroll ?? null };
     try {
       if (sourceMode) {
         const file = await readFile(selectedPath);
@@ -547,7 +558,7 @@ class CaffoldTaskReview extends HTMLElement {
           presentation: loadedPresentation,
         });
       }
-      if (!background) {
+      if (!background && !(sourceMode && this.route.line)) {
         this.restoreViewerPosition(saved);
       }
     } catch (error) {
@@ -741,7 +752,7 @@ class CaffoldTaskReview extends HTMLElement {
       return;
     }
     const replace = Boolean(this.route.path);
-    this.requestRoute({ ...this.route, path: relative }, { replace });
+    this.requestRoute({ ...this.route, path: relative, line: null }, { replace });
   }
 
   selectCompareBase(baseRef) {
@@ -762,7 +773,7 @@ class CaffoldTaskReview extends HTMLElement {
       return;
     }
     this.captureLocalState();
-    this.requestRoute({ ...this.route, path: "" }, { replace: true });
+    this.requestRoute({ ...this.route, path: "", line: null }, { replace: true });
   }
 
   requestRoute(state, options = {}) {
@@ -900,11 +911,13 @@ if (!customElements.get("caffold-task-review")) {
 }
 
 function normalizeReviewRoute(route = {}, task = null) {
+  const path = reviewFilePath(route?.path);
   return {
     scope: route?.reviewScope === "branch" ? "branch" : "working",
     navigator: route?.reviewNavigator === "files" ? "files" : "changes",
     viewer: route?.reviewViewer === "source" ? "source" : "diff",
-    path: safeRelativePath(route?.path),
+    path,
+    line: path ? positiveLine(route?.line) : null,
     baseRef: `${route?.baseRef ?? ""}`,
     ...(task ? { threadId: taskThreadId(task) } : {}),
   };
@@ -919,6 +932,7 @@ function taskRouteForReview(threadId, state) {
     reviewNavigator: state.navigator,
     reviewViewer: state.viewer,
     path: state.path,
+    line: state.line,
     baseRef: state.baseRef,
   };
 }
@@ -931,7 +945,7 @@ function normalizeForTask(route, task) {
 }
 
 function reviewRouteKey(route) {
-  return [route.scope, route.navigator, route.viewer, route.path, route.baseRef].join("\u0000");
+  return [route.scope, route.navigator, route.viewer, route.path, route.line, route.baseRef].join("\u0000");
 }
 
 function viewerStateKey(route) {
@@ -978,28 +992,62 @@ function relativeTaskPath(path, rootPath) {
   if (normalizedPath === normalizedRoot) {
     return "";
   }
-  const prefix = normalizedRoot === "." ? "" : `${normalizedRoot}/`;
-  return prefix && normalizedPath.startsWith(prefix)
-    ? safeRelativePath(normalizedPath.slice(prefix.length))
-    : normalizedRoot === "."
-      ? safeRelativePath(normalizedPath)
-      : "";
+  const rootSegments = logicalSegments(normalizedRoot);
+  const pathSegments = logicalSegments(normalizedPath);
+  const common = rootSegments.findIndex((segment, index) => pathSegments[index] !== segment);
+  const commonLength = common < 0
+    ? Math.min(rootSegments.length, pathSegments.length)
+    : common;
+  return [
+    ...Array(rootSegments.length - commonLength).fill(".."),
+    ...pathSegments.slice(commonLength),
+  ].join("/");
 }
 
 function joinLogicalPath(root, relative) {
-  const normalizedRoot = cleanLogicalPath(root) || ".";
-  const normalizedRelative = safeRelativePath(relative);
-  return normalizedRoot === "."
-    ? normalizedRelative
-    : cleanLogicalPath(`${normalizedRoot}/${normalizedRelative}`);
+  const segments = logicalSegments(cleanLogicalPath(root) || ".");
+  for (const segment of reviewFilePath(relative).split("/")) {
+    if (!segment) {
+      continue;
+    }
+    if (segment === "..") {
+      if (!segments.length) {
+        return "";
+      }
+      segments.pop();
+    } else {
+      segments.push(segment);
+    }
+  }
+  return segments.join("/");
 }
 
-function safeRelativePath(path) {
-  const segments = `${path ?? ""}`.replaceAll("\\", "/").split("/");
-  if (segments.some((segment) => segment === "..")) {
-    return "";
+function reviewFilePath(path) {
+  const segments = [];
+  for (const segment of `${path ?? ""}`.replaceAll("\\", "/").split("/")) {
+    if (!segment || segment === ".") {
+      continue;
+    }
+    if (segment === "..") {
+      if (segments.length && segments.at(-1) !== "..") {
+        segments.pop();
+      } else {
+        segments.push(segment);
+      }
+    } else {
+      segments.push(segment);
+    }
   }
-  return segments.filter((segment) => segment && segment !== ".").join("/");
+  return segments.join("/");
+}
+
+function logicalSegments(path) {
+  return `${path ?? ""}`.split("/").filter((segment) => segment && segment !== ".");
+}
+
+function positiveLine(line) {
+  const value = Number(line);
+  return Number.isInteger(value) && value > 0 ? value : null;
 }
 
 function navigatorScroll(navigator) {
