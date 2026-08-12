@@ -1,5 +1,13 @@
 import { renderInlineIcon, warmIcons } from "../../components/icons.js";
 import { routeDomain, routeTarget } from "../../navigation-routes.js";
+import {
+  CODEX_RUNTIME_RESTART_REQUEST_EVENT,
+  CODEX_STATUS_REFRESH_REQUEST_EVENT,
+  CodexStatusLifecycle,
+} from "./codex-status.js";
+import {
+  CODEX_RUNTIME_RESTART_CONFIRMED_EVENT,
+} from "./codex-status/components/runtime-restart-dialog.js";
 import "./components/navigation.js";
 import {
   TASK_ARCHIVED_DELETE_CONFIRMED_EVENT,
@@ -21,11 +29,13 @@ class CaffoldTaskWorkspace extends HTMLElement {
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     this.ensureRendered();
     this.attachGlobalListeners();
+    this.codexStatusLifecycle.connect();
     void warmIcons();
   }
 
   disconnectedCallback() {
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
+    this.codexStatusLifecycle.disconnect();
     this.stopNavigationPaneResize();
     this.detachGlobalListeners();
   }
@@ -41,6 +51,14 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.lastTaskRoute = { kind: "tasks" };
     this.navigationPaneWidth = NAVIGATION_PANE_DEFAULT_WIDTH;
     this.globalListenersAttached = false;
+    this.currentOpenOptions = {};
+    this.pendingCodexTaskRoute = null;
+    this.codexStatusValue = null;
+    this.codexRestartStateValue = { state: "idle", message: "" };
+    this.codexStatusLifecycle = new CodexStatusLifecycle({
+      onStatusChange: (status) => this.setCodexStatus(status),
+      onRestartStateChange: (state) => this.setCodexRestartState(state),
+    });
     this.boundResize = () => this.syncNavigationPaneWidth();
     this.boundPointerMove = (event) => this.resizeNavigationPane(event);
     this.boundPointerUp = () => this.stopNavigationPaneResize();
@@ -87,6 +105,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
         </div>
       </section>
       <caffold-task-archived-delete-dialog></caffold-task-archived-delete-dialog>
+      <caffold-codex-runtime-restart-dialog></caffold-codex-runtime-restart-dialog>
     `;
     this.backButton = this.querySelector(".task-workspace-back");
     this.closeButton = this.querySelector(".task-workspace-close");
@@ -101,10 +120,19 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.archivedDeleteDialog = this.querySelector(
       ":scope > caffold-task-archived-delete-dialog",
     );
+    this.codexRuntimeRestartDialog = this.querySelector(
+      ":scope > caffold-codex-runtime-restart-dialog",
+    );
     this.tasksPage.ensureRendered();
     this.settingsWorkspace.ensureRendered();
     this.tasksPage.connectTaskNavigator(this.taskNavigator);
     this.settingsWorkspace.connectSettingsNavigator(this.settingsNavigator);
+    this.tasksPage.setCodexRestartState(this.codexRestartStateValue);
+    this.settingsWorkspace.setCodexRestartState(this.codexRestartStateValue);
+    this.toggleAttribute(
+      "data-codex-readiness-blocked",
+      this.tasksPage.codexOperationsBlocked(),
+    );
     this.renderIcons();
 
     this.backButton.addEventListener("click", () => {
@@ -145,13 +173,33 @@ class CaffoldTaskWorkspace extends HTMLElement {
         event.stopPropagation();
         const route = event.detail?.mode === "tasks"
           ? this.lastTaskRoute
-          : { kind: "settings", section: "" };
+          : {
+              kind: "settings",
+              section: this.tasksPage.codexOperationsBlocked() ? "codex" : "",
+            };
         this.dispatchEvent(
           new CustomEvent("caffold:request-workspace-route", {
             bubbles: true,
             detail: { route: { ...route } },
           }),
         );
+      },
+    );
+    this.addEventListener(CODEX_STATUS_REFRESH_REQUEST_EVENT, (event) => {
+      event.stopPropagation();
+      void this.codexStatusLifecycle.refresh().catch(() => {});
+    });
+    this.addEventListener(CODEX_RUNTIME_RESTART_REQUEST_EVENT, (event) => {
+      event.stopPropagation();
+      if (this.codexStatusLifecycle.canRestartRuntime()) {
+        this.codexRuntimeRestartDialog.open();
+      }
+    });
+    this.codexRuntimeRestartDialog.addEventListener(
+      CODEX_RUNTIME_RESTART_CONFIRMED_EVENT,
+      (event) => {
+        event.stopPropagation();
+        void this.codexStatusLifecycle.requestRuntimeRestart();
       },
     );
     this.masterResizer.addEventListener("pointerdown", (event) => {
@@ -235,10 +283,20 @@ class CaffoldTaskWorkspace extends HTMLElement {
   }
 
   async openRoute(route, options = {}) {
+    this.currentOpenOptions = { ...options };
     this.prepareRoute(route, options);
     if (this.mode === "settings") {
+      this.pendingCodexTaskRoute = null;
       return null;
     }
+    if (this.tasksPage.codexOperationsBlocked()) {
+      this.pendingCodexTaskRoute = {
+        route: { ...route },
+        options: { ...options },
+      };
+      return null;
+    }
+    this.pendingCodexTaskRoute = null;
     const result = await this.tasksPage.openRoute(route, options);
     this.updateChrome();
     return result;
@@ -252,6 +310,44 @@ class CaffoldTaskWorkspace extends HTMLElement {
   adoptCreatedDetail(detail) {
     this.ensureRendered();
     this.tasksPage.adoptCreatedDetail(detail);
+  }
+
+  setCodexStatus(status) {
+    this.ensureRendered();
+    const nextStatus = status ?? null;
+    this.codexStatusValue = nextStatus;
+    const becameAvailable = this.tasksPage.setCodexStatus(nextStatus);
+    this.settingsWorkspace.setCodexStatus(nextStatus);
+    this.navigation.setCodexStatus(nextStatus);
+    if (
+      nextStatus?.readiness &&
+      nextStatus.readiness.state !== "restartRequired"
+    ) {
+      this.codexRuntimeRestartDialog.close();
+    }
+    this.toggleAttribute(
+      "data-codex-readiness-blocked",
+      this.tasksPage.codexOperationsBlocked(),
+    );
+    if (this.tasksPage.codexOperationsBlocked() && this.mode === "tasks") {
+      this.pendingCodexTaskRoute = {
+        route: { ...this.route },
+        options: { ...this.currentOpenOptions },
+      };
+    }
+    if (becameAvailable && this.pendingCodexTaskRoute) {
+      const pending = this.pendingCodexTaskRoute;
+      this.pendingCodexTaskRoute = null;
+      void this.tasksPage.openRoute(pending.route, pending.options);
+    }
+    return becameAvailable;
+  }
+
+  setCodexRestartState(state) {
+    this.ensureRendered();
+    this.codexRestartStateValue = state ?? { state: "idle", message: "" };
+    this.tasksPage.setCodexRestartState(this.codexRestartStateValue);
+    this.settingsWorkspace.setCodexRestartState(this.codexRestartStateValue);
   }
 
   setBuildStatus(health) {

@@ -46,8 +46,10 @@ test("serves one Task workspace shell and only active static assets", async ({
     "/assets/pages/(task-workspace)/tasks/components/detail/review/changes-tree.js",
     "/assets/pages/(task-workspace)/tasks/components/detail/(git)/layout.js",
     "/assets/pages/(task-workspace)/tasks/components/detail/(github)/layout.js",
-    "/assets/pages/(task-workspace)/settings/codex/status-model.js",
-    "/assets/pages/(task-workspace)/settings/codex/components/runtime-restart-dialog.js",
+    "/assets/pages/(task-workspace)/codex-status.js",
+    "/assets/pages/(task-workspace)/codex-status/model.js",
+    "/assets/pages/(task-workspace)/codex-status/runtime-restart-lifecycle.js",
+    "/assets/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js",
     "/assets/components/file-navigator/list.js",
   ]) {
     expect(serviceWorker).toContain(asset);

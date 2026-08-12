@@ -90,20 +90,60 @@ private func probeCodexFixture(
     }
 }
 
+private func codexFixture(
+    state: String,
+    blocksTaskOperations: Bool = true,
+    detectedVersion: String? = "0.147.0",
+    runningVersion: String? = nil,
+    account: Bool = false
+) -> String {
+    let version = detectedVersion.map { "\"\($0)\"" } ?? "null"
+    let running = runningVersion.map { "\"\($0)\"" } ?? "null"
+    let detectedExecutable = state == "missing"
+        ? "null"
+        : "{\"path\":\"/Users/example/.local/bin/codex\",\"version\":\(version)}"
+    let managedExecutable = ["missing", "unsupportedInstall", "updateRequired"].contains(state)
+        ? "null"
+        : "{\"path\":\"/Users/example/.local/bin/codex\",\"version\":\(version)}"
+    let accountJson = account
+        ? #", "account":{"email":"user@example.com","planType":"pro"}"#
+        : ""
+    return """
+    {
+      "readiness": {
+        "state": "\(state)",
+        "blocksTaskOperations": \(blocksTaskOperations),
+        "reasonCode": "fixtureReason",
+        "diagnosticMessage": "fixture diagnostic",
+        "minimumSupportedVersion": "0.147.0",
+        "detectedExecutable": \(detectedExecutable),
+        "managedExecutable": \(managedExecutable),
+        "runningAppServerVersion": \(running)
+      }
+      \(accountJson)
+    }
+    """
+}
+
 private func runTests() throws {
     let codexStatusURL = URL(string: "http://127.0.0.1:5178/api/codex/status")!
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [MockURLProtocol.self]
     let session = URLSession(configuration: configuration)
     let initialCodex = try probeCodexFixture(
-        #"{"available":true,"codexCliAvailable":true,"appServerAvailable":true,"account":{"email":"user@example.com","planType":"pro"},"diagnostics":{"codexCliVersion":"0.146.1"}}"#,
+        codexFixture(
+            state: "ready",
+            blocksTaskOperations: false,
+            runningVersion: "0.147.0",
+            account: true
+        ),
         url: codexStatusURL,
         session: session
     )
-    try require(initialCodex.state == .ready, "a reported version must not change Ready state")
+    try require(initialCodex.state == .ready, "canonical ready must map to Ready")
     try require(
-        detail("Version", in: initialCodex) == "0.146.1",
-        "the connected app-server version must be visible"
+        detail("Version", in: initialCodex) == "0.147.0",
+        "the detected standalone version must be visible"
     )
     try require(
         detail("Account", in: initialCodex) == "user@example.com",
@@ -115,95 +155,67 @@ private func runTests() throws {
         "Codex integration details must keep their menu order"
     )
 
-    let refreshedCodex = try probeCodexFixture(
-        #"{"available":true,"codexCliAvailable":true,"appServerAvailable":true,"diagnostics":{"codexCliVersion":"0.147.0"}}"#,
-        url: codexStatusURL,
-        session: session
-    )
-    try require(
-        detail("Version", in: refreshedCodex) == "0.147.0",
-        "a repeated menu probe must show the reconnected app-server version"
-    )
-
-    let codexWithoutVersion = try probeCodexFixture(
-        #"{"available":true,"codexCliAvailable":true,"appServerAvailable":true,"account":{"email":"user@example.com","planType":"pro"}}"#,
-        url: codexStatusURL,
-        session: session
-    )
-    try require(
-        codexWithoutVersion.state == .ready,
-        "missing version diagnostics must not change Ready state"
-    )
-    try require(
-        detail("Version", in: codexWithoutVersion) == nil,
-        "missing version diagnostics must not add an empty detail"
-    )
-    try require(
-        detail("Account", in: codexWithoutVersion) == "user@example.com",
-        "missing version diagnostics must preserve account details"
-    )
-    try require(
-        detail("Plan", in: codexWithoutVersion) == "pro",
-        "missing version diagnostics must preserve plan details"
-    )
-
-    let codexWithMalformedVersion = try probeCodexFixture(
-        #"{"available":true,"codexCliAvailable":true,"appServerAvailable":true,"diagnostics":{"codexCliVersion":147}}"#,
-        url: codexStatusURL,
-        session: session
-    )
-    try require(
-        codexWithMalformedVersion.state == .ready,
-        "malformed version diagnostics must not change Ready state"
-    )
-    try require(
-        detail("Version", in: codexWithMalformedVersion) == nil,
-        "malformed version diagnostics must not add an empty detail"
-    )
-
     let codexNeedsSignIn = try probeCodexFixture(
-        #"{"available":false,"codexCliAvailable":true,"appServerAvailable":true,"message":"authentication required","diagnostics":{"codexCliVersion":"0.147.0"}}"#,
+        codexFixture(state: "signInRequired", runningVersion: "0.147.0"),
         url: codexStatusURL,
         session: session
     )
-    try require(codexNeedsSignIn.state == .attention, "version details must not change auth state")
+    try require(codexNeedsSignIn.state == .attention, "sign-in must need attention")
     try require(
         codexNeedsSignIn.status == "Sign-in required",
-        "version details must not change the sign-in status"
+        "canonical sign-in must keep its compact status"
     )
     try require(
         detail("Version", in: codexNeedsSignIn) == "0.147.0",
-        "a connected app-server version must remain visible while sign-in is required"
+        "the standalone version must remain visible while sign-in is required"
     )
 
-    let unavailableCodex = try probeCodexFixture(
-        #"{"available":false,"codexCliAvailable":true,"appServerAvailable":false,"diagnostics":{"codexCliVersion":"0.147.0"}}"#,
+    let canonicalMappings: [(String, IntegrationState, String)] = [
+        ("missing", .attention, "Setup required"),
+        ("unsupportedInstall", .attention, "Setup required"),
+        ("updateRequired", .attention, "Update required"),
+        ("restartRequired", .attention, "Restart required"),
+        ("incompatible", .unavailable, "Unavailable"),
+        ("error", .unavailable, "Unavailable"),
+    ]
+    for (readinessState, expectedState, expectedStatus) in canonicalMappings {
+        let status = try probeCodexFixture(
+            codexFixture(
+                state: readinessState,
+                detectedVersion: readinessState == "missing" ? nil : "0.147.0",
+                runningVersion: readinessState == "restartRequired" ? "0.146.0" : nil
+            ),
+            url: codexStatusURL,
+            session: session
+        )
+        try require(
+            status.state == expectedState,
+            "\(readinessState) must use the canonical menu state"
+        )
+        try require(
+            status.status == expectedStatus,
+            "\(readinessState) must use the canonical compact summary"
+        )
+    }
+
+    let updateRequired = try probeCodexFixture(
+        codexFixture(state: "updateRequired", detectedVersion: "0.146.0"),
         url: codexStatusURL,
         session: session
     )
-    try require(unavailableCodex.state == .unavailable, "version details must not change failures")
     try require(
-        unavailableCodex.status == "Unavailable",
-        "version details must not change unavailable status"
-    )
-    try require(
-        detail("Version", in: unavailableCodex) == "0.147.0",
-        "a reported version must remain informational while unavailable"
+        detail("Minimum", in: updateRequired) == "0.147.0",
+        "update guidance must expose the backend-owned minimum"
     )
 
-    let codexNotInstalled = try probeCodexFixture(
-        #"{"available":false,"codexCliAvailable":false,"appServerAvailable":false,"diagnostics":{"codexCliVersion":147}}"#,
+    let restartRequired = try probeCodexFixture(
+        codexFixture(state: "restartRequired", runningVersion: "0.146.0"),
         url: codexStatusURL,
         session: session
     )
-    try require(codexNotInstalled.state == .unavailable, "invalid versions must not change state")
     try require(
-        codexNotInstalled.status == "Not installed",
-        "invalid versions must not change the not-installed status"
-    )
-    try require(
-        detail("Version", in: codexNotInstalled) == nil,
-        "invalid versions must not add a not-installed detail"
+        detail("Runtime", in: restartRequired) == "0.146.0",
+        "restart guidance must expose the running runtime"
     )
 
     let setup = whisperIntegrationStatus(voiceResponse())

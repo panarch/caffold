@@ -45,6 +45,25 @@ caffold-task-workspace-navigation {
     color: var(--text);
   }
 
+  & button[data-workspace-mode="settings"][data-codex-state="attention"] {
+    color: var(--warning);
+
+    &:not([aria-current]) {
+      animation: codex-attention-pulse 2s ease-in-out infinite;
+    }
+
+    &:not([aria-current]):hover,
+    &:not([aria-current]):focus-visible {
+      animation-play-state: paused;
+      box-shadow: inset 0 0 1.25rem var(--warning-border);
+      color: var(--warning-strong);
+    }
+  }
+
+  & button[data-workspace-mode="settings"][data-codex-state="unavailable"] {
+    color: var(--danger);
+  }
+
   & [data-workspace-navigation-icon] {
     display: grid;
     place-items: center;
@@ -54,5 +73,16 @@ caffold-task-workspace-navigation {
     display: block;
     width: var(--interface-icon-size);
     height: var(--interface-icon-size);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  caffold-task-workspace-navigation {
+    & button[data-workspace-mode="settings"][data-codex-state="attention"] {
+      &:not([aria-current]) {
+        animation: none;
+        box-shadow: inset 0 0 1.25rem var(--warning-border);
+      }
+    }
   }
 }

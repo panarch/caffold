@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -7,6 +7,19 @@ const frontendRoot = fileURLToPath(new URL("../frontend/", import.meta.url));
 
 function readFrontend(path) {
   return readFileSync(new URL(path, `file://${frontendRoot}/`), "utf8");
+}
+
+function frontendJavascriptFiles(directory = frontendRoot, prefix = "") {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const absolutePath = `${directory}/${entry.name}`;
+    if (entry.isDirectory()) {
+      return frontendJavascriptFiles(absolutePath, relativePath);
+    }
+    return entry.isFile() && entry.name.endsWith(".js")
+      ? [[relativePath, readFileSync(absolutePath, "utf8")]]
+      : [];
+  });
 }
 
 test("task workspace declares one shared master pane and one detail pane", () => {
@@ -276,4 +289,72 @@ test("archived task deletion dialog owns its modal state and markup", () => {
   assert.match(deleteDialog, /pendingThreadId/);
   assert.match(deleteDialog, /dialog\.showModal\(\)/);
   assert.match(deleteDialog, /TASK_ARCHIVED_DELETE_CONFIRMED_EVENT/);
+});
+
+test("Codex status exposes feature behavior while its mounted dialog stays explicit", () => {
+  const workspace = readFrontend("pages/(task-workspace)/layout.js");
+  const owner = readFrontend("pages/(task-workspace)/codex-status.js");
+  const model = readFrontend("pages/(task-workspace)/codex-status/model.js");
+  const restartLifecycle = readFrontend(
+    "pages/(task-workspace)/codex-status/runtime-restart-lifecycle.js",
+  );
+  const restartDialog = readFrontend(
+    "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js",
+  );
+  const tasks = readFrontend("pages/(task-workspace)/tasks/page.js");
+  const settings = readFrontend(
+    "pages/(task-workspace)/settings/codex/page.js",
+  );
+
+  assert.match(workspace, /from "\.\/codex-status\.js"/);
+  assert.match(
+    workspace,
+    /from "\.\/codex-status\/components\/runtime-restart-dialog\.js"/,
+  );
+  assert.match(
+    workspace,
+    /<caffold-codex-runtime-restart-dialog><\/caffold-codex-runtime-restart-dialog>/,
+  );
+  assert.match(owner, /from "\.\/codex-status\/model\.js"/);
+  assert.match(
+    owner,
+    /from "\.\/codex-status\/runtime-restart-lifecycle\.js"/,
+  );
+  assert.match(owner, /class CodexStatusLifecycle/);
+  assert.doesNotMatch(owner, /export \*/);
+  assert.match(model, /function codexBlocksTaskOperations/);
+  assert.match(restartLifecycle, /class CodexRuntimeRestartLifecycle/);
+  assert.match(restartDialog, /<dialog/);
+  assert.match(restartDialog, /customElements\.define\(/);
+
+  for (const consumer of [tasks, settings]) {
+    assert.match(consumer, /codex-status\.js"/);
+    assert.doesNotMatch(consumer, /codex-status\//);
+  }
+  assert.doesNotMatch(settings, /restartCodexRuntime|<dialog|runtime-restart-dialog/);
+
+  for (const [path, source] of frontendJavascriptFiles()) {
+    const insideOwner =
+      path === "pages/(task-workspace)/codex-status.js" ||
+      path.startsWith("pages/(task-workspace)/codex-status/");
+    const assetInventory = path === "service-worker.js";
+    if (!insideOwner && !assetInventory) {
+      assert.doesNotMatch(
+        source,
+        /codex-status\/(?!components\/)/,
+        `${path} must consume non-visual Codex status behavior through codex-status.js`,
+      );
+    }
+    if (
+      path !== "pages/(task-workspace)/layout.js" &&
+      !assetInventory &&
+      !path.startsWith("pages/(task-workspace)/codex-status/")
+    ) {
+      assert.doesNotMatch(
+        source,
+        /codex-status\/components\//,
+        `${path} does not mount a Codex status component`,
+      );
+    }
+  }
 });

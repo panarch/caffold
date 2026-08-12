@@ -23,6 +23,13 @@ class CaffoldCodexRuntimeRestartDialog extends HTMLElement {
     }
   }
 
+  close() {
+    const dialog = this.dialog();
+    if (dialog.open) {
+      dialog.close();
+    }
+  }
+
   handleClose() {
     if (this.dialog().returnValue !== "restart") {
       return;
@@ -37,10 +44,10 @@ class CaffoldCodexRuntimeRestartDialog extends HTMLElement {
 
   render() {
     this.innerHTML = `
-      <dialog closedby="any" aria-labelledby="settings-runtime-dialog-title" aria-describedby="settings-runtime-dialog-description">
-        <form method="dialog" class="settings-runtime-dialog-card">
-          <h2 id="settings-runtime-dialog-title">Restart Codex runtime?</h2>
-          <p id="settings-runtime-dialog-description">
+      <dialog closedby="any" aria-labelledby="codex-runtime-dialog-title" aria-describedby="codex-runtime-dialog-description">
+        <form method="dialog" class="codex-runtime-dialog-card">
+          <h2 id="codex-runtime-dialog-title">Restart Codex runtime?</h2>
+          <p id="codex-runtime-dialog-description">
             This restarts the shared Codex app-server and interrupts active work in Caffold and other Codex clients.
           </p>
           <footer>

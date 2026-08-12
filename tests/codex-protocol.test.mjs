@@ -14,7 +14,7 @@ import test from "node:test";
 
 import { resolveCodexBin } from "./live/codex-bin.mjs";
 
-const MINIMUM_SUPPORTED_VERSION = "0.146.0";
+const MINIMUM_SUPPORTED_VERSION = "0.147.0";
 
 function parseCodexVersion(versionOutput) {
   const match =
@@ -101,7 +101,7 @@ test("live Codex binary resolution matches the backend install priorities", () =
         home: homeDirectory,
         platformPaths: [],
       }),
-      pathCodex,
+      homeCodex,
     );
     assert.equal(
       resolveCodexBin({
@@ -111,6 +111,17 @@ test("live Codex binary resolution matches the backend install priorities", () =
         platformPaths: [],
       }),
       homeCodex,
+    );
+    rmSync(homeCodex);
+    assert.throws(
+      () =>
+        resolveCodexBin({
+          explicit: "",
+          searchPath: pathDirectory,
+          home: homeDirectory,
+          platformPaths: [],
+        }),
+      /Unsupported Codex installation/,
     );
     assert.throws(
       () =>
@@ -128,10 +139,10 @@ test("live Codex binary resolution matches the backend install priorities", () =
 });
 
 test("Codex version gate accepts compatible upgrades and rejects older baselines", () => {
-  assert.equal(supportsCodexVersion("codex-cli 0.146.0"), true);
+  assert.equal(supportsCodexVersion("codex-cli 0.146.0"), false);
   assert.equal(supportsCodexVersion("codex-cli 0.147.0"), true);
   assert.equal(supportsCodexVersion("codex-cli 1.0.0"), true);
-  assert.equal(supportsCodexVersion("codex-cli 0.146.0-alpha.1"), false);
+  assert.equal(supportsCodexVersion("codex-cli 0.147.0-alpha.1"), false);
   assert.equal(supportsCodexVersion("codex-cli 0.145.9"), false);
   assert.throws(() => supportsCodexVersion("codex-cli unknown"), /could not parse/);
 });

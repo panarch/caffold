@@ -5,8 +5,7 @@ use serde_json::{Value, json};
 
 use super::CodexTurnOptions;
 
-#[allow(dead_code)]
-pub const MINIMUM_SUPPORTED_CODEX_CLI_VERSION: &str = "0.146.0";
+pub const MINIMUM_SUPPORTED_CODEX_CLI_VERSION: &str = "0.147.0";
 
 pub(crate) const INITIALIZE: &str = "initialize";
 pub(crate) const INITIALIZED: &str = "initialized";

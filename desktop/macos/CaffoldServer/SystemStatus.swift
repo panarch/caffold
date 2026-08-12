@@ -36,28 +36,23 @@ private struct CodexStatusResponse: Decodable {
         let planType: String?
     }
 
-    struct Diagnostics: Decodable {
-        let codexCliVersion: String?
-
-        private enum CodingKeys: String, CodingKey {
-            case codexCliVersion
+    struct Readiness: Decodable {
+        struct Executable: Decodable {
+            let path: String?
+            let version: String?
         }
 
-        init(from decoder: Decoder) throws {
-            guard let container = try? decoder.container(keyedBy: CodingKeys.self) else {
-                codexCliVersion = nil
-                return
-            }
-            codexCliVersion = try? container.decode(String.self, forKey: .codexCliVersion)
-        }
+        let state: String
+        let blocksTaskOperations: Bool
+        let reasonCode: String
+        let minimumSupportedVersion: String
+        let detectedExecutable: Executable?
+        let managedExecutable: Executable?
+        let runningAppServerVersion: String?
     }
 
-    let available: Bool
-    let codexCliAvailable: Bool
-    let appServerAvailable: Bool
-    let message: String?
+    let readiness: Readiness
     let account: Account?
-    let diagnostics: Diagnostics?
 }
 
 struct WhisperStatusResponse: Decodable {
@@ -197,7 +192,8 @@ func probeCodexStatus(
             let data,
             let status = try? JSONDecoder().decode(CodexStatusResponse.self, from: data)
         {
-            let version = status.diagnostics?.codexCliVersion?
+            let readiness = status.readiness
+            let version = readiness.detectedExecutable?.version?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let versionDetail = version.flatMap { value in
                 value.isEmpty
@@ -205,14 +201,8 @@ func probeCodexStatus(
                     : IntegrationDetail(label: "Version", value: value)
             }
             let versionDetails = [versionDetail].compactMap { $0 }
-            if !status.codexCliAvailable {
-                statusResult = IntegrationStatus(
-                    name: "Codex",
-                    state: .unavailable,
-                    status: "Not installed",
-                    details: versionDetails
-                )
-            } else if status.available, status.appServerAvailable {
+            switch readiness.state {
+            case "ready":
                 let details = [
                     versionDetail,
                     status.account?.email.map { IntegrationDetail(label: "Account", value: $0) },
@@ -224,14 +214,52 @@ func probeCodexStatus(
                     status: "Ready",
                     details: details
                 )
-            } else if status.message?.lowercased().contains("auth") == true {
+            case "missing", "unsupportedInstall":
+                statusResult = IntegrationStatus(
+                    name: "Codex",
+                    state: .attention,
+                    status: "Setup required",
+                    details: versionDetails
+                )
+            case "updateRequired":
+                let details = [
+                    versionDetail,
+                    IntegrationDetail(
+                        label: "Minimum",
+                        value: readiness.minimumSupportedVersion
+                    ),
+                ].compactMap { $0 }
+                statusResult = IntegrationStatus(
+                    name: "Codex",
+                    state: .attention,
+                    status: "Update required",
+                    details: details
+                )
+            case "signInRequired":
                 statusResult = IntegrationStatus(
                     name: "Codex",
                     state: .attention,
                     status: "Sign-in required",
                     details: versionDetails
                 )
-            } else {
+            case "restartRequired":
+                let runtimeDetail = readiness.runningAppServerVersion.map {
+                    IntegrationDetail(label: "Runtime", value: $0)
+                }
+                statusResult = IntegrationStatus(
+                    name: "Codex",
+                    state: .attention,
+                    status: "Restart required",
+                    details: [versionDetail, runtimeDetail].compactMap { $0 }
+                )
+            case "incompatible", "error":
+                statusResult = IntegrationStatus(
+                    name: "Codex",
+                    state: .unavailable,
+                    status: "Unavailable",
+                    details: versionDetails
+                )
+            default:
                 statusResult = IntegrationStatus(
                     name: "Codex",
                     state: .unavailable,

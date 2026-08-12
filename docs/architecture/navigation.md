@@ -12,6 +12,11 @@ application bootstrap data, and presents build updates. It does not select a
 Task child, derive repository context for Git or GitHub, or implement
 domain-local Back behavior.
 
+Codex readiness does not change the top-level route. A backend-owned blocking
+readiness state replaces the ordinary Tasks content with persistent setup and
+retry guidance; it does not cause a transient or automatic route switch.
+Settings remains reachable.
+
 `/` is the canonical Tasks home. `/tasks` canonicalizes to `/` with history
 replacement. All other active application routes are either Settings or
 Task-scoped routes:

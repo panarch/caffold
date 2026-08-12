@@ -605,7 +605,7 @@ export async function installTaskLoopFixture(
       });
     }
 
-    return route.continue();
+    return route.fallback();
   });
 
   const seedCompletedTask = async () => {

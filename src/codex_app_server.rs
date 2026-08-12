@@ -2,9 +2,6 @@
 use std::collections::VecDeque;
 use std::{
     collections::{HashMap, HashSet},
-    env,
-    ffi::OsStr,
-    path::{Path, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -14,8 +11,10 @@ use std::{
 
 use futures_util::{SinkExt, StreamExt, stream::SplitSink, stream::SplitStream};
 mod protocol;
+mod readiness;
 #[cfg(test)]
 mod reconnect_spike;
+mod status;
 mod transport;
 
 use protocol::{
@@ -32,9 +31,9 @@ use protocol::{
     turn_interrupt_params, turn_start_params, turn_steer_params,
 };
 pub use protocol::{
-    CodexAccount, CodexAppServerInfo, CodexNotification, CodexPermissionMode, CodexServerRequest,
-    CodexThread, CodexTurn, ModelListResponse, PermissionProfileSummary, SortDirection,
-    ThreadResumeResponse, ThreadStatus, ThreadUnsubscribeResponse, TurnStatus, TurnsPage,
+    CodexAppServerInfo, CodexNotification, CodexPermissionMode, CodexServerRequest, CodexThread,
+    CodexTurn, ModelListResponse, PermissionProfileSummary, SortDirection, ThreadResumeResponse,
+    ThreadStatus, ThreadUnsubscribeResponse, TurnStatus, TurnsPage,
 };
 pub(crate) use protocol::{ISOLATE_CURRENT_TASK_TOOL_NAME, RENAME_CURRENT_THREAD_TOOL_NAME};
 use protocol::{THREAD_LOADED_LIST, ThreadLoadedListResponse, thread_loaded_list_params};
@@ -42,8 +41,14 @@ use protocol::{THREAD_LOADED_LIST, ThreadLoadedListResponse, thread_loaded_list_
 use protocol::{ThreadListResponse, thread_list_params};
 #[cfg(test)]
 pub(crate) use protocol::{TurnItemsView, decode_notification, decode_server_request};
+#[cfg(test)]
+pub(crate) use readiness::MINIMUM_SUPPORTED_CODEX_CLI_VERSION;
+pub(crate) use readiness::{CodexInstallation, inspect_codex_installation};
+pub use readiness::{CodexReadiness, CodexReadinessReason, CodexReadinessState};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
+pub use status::{CodexDaemonInfo, CodexStatusResponse};
+use status::{status_from_results, unavailable_status};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     io::{AsyncRead, Lines},
@@ -52,89 +57,11 @@ use tokio::{
     time::timeout,
 };
 use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
-use transport::{ProxyStream, connect_managed_proxy};
+use transport::ProxyStream;
 
 const INTERACTIVE_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const HISTORY_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(500);
-
-fn is_executable_file(path: &Path) -> bool {
-    let Ok(metadata) = path.metadata() else {
-        return false;
-    };
-    if !metadata.is_file() {
-        return false;
-    }
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-
-        metadata.permissions().mode() & 0o111 != 0
-    }
-
-    #[cfg(not(unix))]
-    {
-        true
-    }
-}
-
-fn find_executable_in_path(command: &OsStr, search_path: Option<&OsStr>) -> Option<PathBuf> {
-    let command_path = Path::new(command);
-    if command_path.components().count() > 1 {
-        return is_executable_file(command_path).then(|| command_path.to_path_buf());
-    }
-
-    search_path.and_then(|search_path| {
-        env::split_paths(search_path)
-            .map(|directory| directory.join(command_path))
-            .find(|candidate| is_executable_file(candidate))
-    })
-}
-
-fn resolve_codex_executable_from(
-    explicit: Option<&OsStr>,
-    search_path: Option<&OsStr>,
-    home: Option<&Path>,
-    platform_paths: &[PathBuf],
-) -> Result<PathBuf, CodexThreadError> {
-    if let Some(explicit) = explicit.filter(|value| !value.is_empty()) {
-        return find_executable_in_path(explicit, search_path).ok_or_else(|| {
-            CodexThreadError::StartFailed(format!(
-                "CAFFOLD_CODEX_BIN does not point to an executable: {}",
-                Path::new(explicit).display()
-            ))
-        });
-    }
-
-    if let Some(path) = find_executable_in_path(OsStr::new("codex"), search_path) {
-        return Ok(path);
-    }
-
-    let fallback_paths = home
-        .into_iter()
-        .map(|home| home.join(".local/bin/codex"))
-        .chain(platform_paths.iter().cloned());
-    fallback_paths
-        .into_iter()
-        .find(|candidate| is_executable_file(candidate))
-        .ok_or(CodexThreadError::MissingCli)
-}
-
-fn resolve_codex_executable() -> Result<PathBuf, CodexThreadError> {
-    let explicit = env::var_os("CAFFOLD_CODEX_BIN");
-    let search_path = env::var_os("PATH");
-    let home = env::var_os("HOME").map(PathBuf::from);
-    resolve_codex_executable_from(
-        explicit.as_deref(),
-        search_path.as_deref(),
-        home.as_deref(),
-        &[
-            PathBuf::from("/opt/homebrew/bin/codex"),
-            PathBuf::from("/usr/local/bin/codex"),
-        ],
-    )
-}
 
 fn request_timeout(method: &str) -> Duration {
     match method {
@@ -143,34 +70,6 @@ fn request_timeout(method: &str) -> Duration {
         }
         _ => INTERACTIVE_REQUEST_TIMEOUT,
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct CodexStatusResponse {
-    pub available: bool,
-    pub codex_cli_available: bool,
-    pub app_server_available: bool,
-    pub message: Option<String>,
-    pub account: Option<CodexAccount>,
-    pub requires_openai_auth: Option<bool>,
-    pub rate_limits: Option<Value>,
-    pub usage: Option<Value>,
-    pub app_server: Option<CodexAppServerInfo>,
-    pub daemon: Option<CodexDaemonInfo>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct CodexDaemonInfo {
-    pub status: String,
-    pub backend: Option<String>,
-    pub pid: Option<u32>,
-    pub managed_codex_path: Option<String>,
-    pub managed_codex_version: Option<String>,
-    pub socket_path: Option<String>,
-    pub cli_version: Option<String>,
-    pub app_server_version: Option<String>,
 }
 
 #[derive(Clone)]
@@ -294,10 +193,20 @@ pub struct CodexTurnStart {
 
 #[derive(Debug, thiserror::Error, Clone)]
 pub enum CodexThreadError {
-    #[error("Codex CLI is not available on this machine.")]
-    MissingCli,
+    #[error("{}", .0.diagnostic_message)]
+    Readiness(Box<CodexReadiness>),
     #[error("Failed to start Codex app-server: {0}")]
     StartFailed(String),
+    #[error("Codex app-server {phase} timed out after {timeout_ms}ms.")]
+    StartupTimeout {
+        phase: &'static str,
+        timeout_ms: u64,
+    },
+    #[error("Codex app-server protocol initialization failed: {message}")]
+    InitializationFailed {
+        message: String,
+        daemon: Box<CodexDaemonInfo>,
+    },
     #[error("Codex app-server thread is unavailable: {0}")]
     ThreadUnavailable(String),
     #[error("Codex app-server active turn is unavailable: {0}")]
@@ -335,10 +244,16 @@ impl CodexThreadError {
 }
 
 impl CodexThreadClient {
-    pub async fn start() -> Result<Self, CodexThreadError> {
-        let codex_executable = resolve_codex_executable()?;
-        let managed = connect_managed_proxy(&codex_executable).await?;
-        let transport::ManagedProxyConnection { proxy, daemon } = managed;
+    pub(crate) async fn start_with_installation(
+        installation: &CodexInstallation,
+    ) -> Result<Self, CodexThreadError> {
+        let daemon = transport::ensure_daemon(&installation.path).await?;
+        let proxy = transport::connect_proxy(&installation.path, None)
+            .await
+            .map_err(|error| CodexThreadError::InitializationFailed {
+                message: error.to_string(),
+                daemon: Box::new(daemon.clone()),
+            })?;
         let transport::ProxyConnection {
             socket,
             child,
@@ -389,20 +304,28 @@ impl CodexThreadClient {
             Ok(app_server) => app_server,
             Err(error) => {
                 client.shutdown().await;
-                return Err(error);
+                return Err(CodexThreadError::InitializationFailed {
+                    message: error.to_string(),
+                    daemon: Box::new(inner.daemon.clone()),
+                });
             }
         };
         *inner.app_server.lock().await = Some(app_server);
         if let Err(error) = client.notify(INITIALIZED, json!({})).await {
             client.shutdown().await;
-            return Err(error);
+            return Err(CodexThreadError::InitializationFailed {
+                message: error.to_string(),
+                daemon: Box::new(inner.daemon.clone()),
+            });
         }
         Ok(client)
     }
 
     pub(crate) async fn restart_daemon() -> Result<CodexDaemonInfo, CodexThreadError> {
-        let codex_executable = resolve_codex_executable()?;
-        transport::restart_daemon(&codex_executable).await
+        let installation = inspect_codex_installation()
+            .await
+            .map_err(|readiness| CodexThreadError::Readiness(Box::new(readiness)))?;
+        transport::restart_daemon(&installation.path).await
     }
 
     fn inner(&self) -> &Arc<CodexThreadClientInner> {
@@ -732,7 +655,7 @@ impl CodexThreadClient {
         Ok(CodexPermissionMode::from_config(&response.config))
     }
 
-    pub async fn status(&self) -> CodexStatusResponse {
+    pub(crate) async fn status(&self, installation: &CodexInstallation) -> CodexStatusResponse {
         let app_server = self.inner().app_server.lock().await.clone();
         let daemon = Some(self.inner().daemon.clone());
         let (account, rate_limits, usage) = tokio::join!(
@@ -740,15 +663,25 @@ impl CodexThreadClient {
             self.request_typed::<Value, _>(ACCOUNT_RATE_LIMITS_READ, EmptyResponse::default()),
             self.request_typed::<Value, _>(ACCOUNT_USAGE_READ, EmptyResponse::default()),
         );
-        status_from_results(app_server, daemon, account, rate_limits.ok(), usage.ok())
+        status_from_results(
+            installation,
+            app_server,
+            daemon,
+            account,
+            rate_limits.ok(),
+            usage.ok(),
+        )
     }
 
     pub fn unavailable_status(error: &CodexThreadError) -> CodexStatusResponse {
-        unavailable(
-            !matches!(error, CodexThreadError::MissingCli),
-            false,
-            error.to_string(),
-        )
+        unavailable_status(None, error)
+    }
+
+    pub(crate) fn unavailable_status_for_installation(
+        installation: &CodexInstallation,
+        error: &CodexThreadError,
+    ) -> CodexStatusResponse {
+        unavailable_status(Some(installation), error)
     }
 
     async fn request_typed<T: DeserializeOwned, P: Serialize>(
@@ -1019,121 +952,12 @@ async fn fail_pending(inner: &CodexThreadClientInner, error: CodexThreadError) {
     }
 }
 
-fn status_from_results(
-    app_server: Option<CodexAppServerInfo>,
-    daemon: Option<CodexDaemonInfo>,
-    account_result: Result<AccountReadResponse, CodexThreadError>,
-    rate_limits: Option<Value>,
-    usage: Option<Value>,
-) -> CodexStatusResponse {
-    let account_result = match account_result {
-        Ok(account_result) => account_result,
-        Err(error) => {
-            return CodexStatusResponse {
-                available: false,
-                codex_cli_available: true,
-                app_server_available: true,
-                message: Some(error.to_string()),
-                account: None,
-                requires_openai_auth: None,
-                rate_limits: rate_limits.as_ref().map(compact_rate_limits),
-                usage: usage.as_ref().map(compact_usage),
-                app_server,
-                daemon,
-            };
-        }
-    };
-    let AccountReadResponse {
-        account,
-        requires_openai_auth,
-    } = account_result;
-
-    let Some(account) = account else {
-        let message = if requires_openai_auth {
-            "Codex authentication is required.".to_string()
-        } else {
-            "Codex app-server account response was incomplete.".to_string()
-        };
-
-        return CodexStatusResponse {
-            available: false,
-            codex_cli_available: true,
-            app_server_available: true,
-            message: Some(message),
-            account: None,
-            requires_openai_auth: Some(requires_openai_auth),
-            rate_limits: rate_limits.as_ref().map(compact_rate_limits),
-            usage: usage.as_ref().map(compact_usage),
-            app_server,
-            daemon,
-        };
-    };
-
-    CodexStatusResponse {
-        available: true,
-        codex_cli_available: true,
-        app_server_available: true,
-        message: None,
-        account: Some(account),
-        requires_openai_auth: Some(requires_openai_auth),
-        rate_limits: rate_limits.as_ref().map(compact_rate_limits),
-        usage: usage.as_ref().map(compact_usage),
-        app_server,
-        daemon,
-    }
-}
-
-fn compact_rate_limits(value: &Value) -> Value {
-    let mut object = serde_json::Map::new();
-    if let Some(rate_limit_reset_credits) = value.get("rateLimitResetCredits") {
-        object.insert(
-            "rateLimitResetCredits".to_string(),
-            rate_limit_reset_credits.clone(),
-        );
-    }
-    if let Some(rate_limits) = value.get("rateLimits") {
-        object.insert("rateLimits".to_string(), rate_limits.clone());
-    }
-
-    if object.is_empty() {
-        value.clone()
-    } else {
-        Value::Object(object)
-    }
-}
-
-fn compact_usage(value: &Value) -> Value {
-    match value.get("summary") {
-        Some(summary) => json!({ "summary": summary }),
-        None => value.clone(),
-    }
-}
-
 fn server_response_message(request_id: Value, result: Value) -> Value {
     json!({
         "jsonrpc": "2.0",
         "id": request_id,
         "result": result
     })
-}
-
-fn unavailable(
-    codex_cli_available: bool,
-    app_server_available: bool,
-    message: String,
-) -> CodexStatusResponse {
-    CodexStatusResponse {
-        available: false,
-        codex_cli_available,
-        app_server_available,
-        message: Some(message),
-        account: None,
-        requires_openai_auth: None,
-        rate_limits: None,
-        usage: None,
-        app_server: None,
-        daemon: None,
-    }
 }
 
 #[cfg(test)]
@@ -1153,110 +977,6 @@ mod tests {
         assert!(is_fast_service_tier(Some(" PRIORITY ")));
     }
 
-    fn write_executable(path: &Path) {
-        std::fs::write(path, "#!/bin/sh\n").expect("write executable fixture");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-
-            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
-                .expect("mark fixture executable");
-        }
-    }
-
-    #[test]
-    fn resolves_explicit_codex_binary_before_all_fallbacks() {
-        let temp = tempfile::tempdir().expect("create temp directory");
-        let explicit = temp.path().join("explicit-codex");
-        let path_directory = temp.path().join("path");
-        std::fs::create_dir(&path_directory).expect("create PATH directory");
-        let path_codex = path_directory.join("codex");
-        write_executable(&explicit);
-        write_executable(&path_codex);
-        let search_path = env::join_paths([&path_directory]).expect("join PATH");
-
-        assert_eq!(
-            resolve_codex_executable_from(
-                Some(explicit.as_os_str()),
-                Some(search_path.as_os_str()),
-                Some(temp.path()),
-                &[],
-            )
-            .expect("resolve explicit executable"),
-            explicit
-        );
-    }
-
-    #[test]
-    fn resolves_codex_from_path_before_standard_install_locations() {
-        let temp = tempfile::tempdir().expect("create temp directory");
-        let path_directory = temp.path().join("path");
-        let home_bin = temp.path().join(".local/bin");
-        std::fs::create_dir(&path_directory).expect("create PATH directory");
-        std::fs::create_dir_all(&home_bin).expect("create home bin directory");
-        let path_codex = path_directory.join("codex");
-        let home_codex = home_bin.join("codex");
-        write_executable(&path_codex);
-        write_executable(&home_codex);
-        let search_path = env::join_paths([&path_directory]).expect("join PATH");
-
-        assert_eq!(
-            resolve_codex_executable_from(
-                None,
-                Some(search_path.as_os_str()),
-                Some(temp.path()),
-                &[],
-            )
-            .expect("resolve PATH executable"),
-            path_codex
-        );
-    }
-
-    #[test]
-    fn resolves_install_script_codex_from_the_user_home() {
-        let temp = tempfile::tempdir().expect("create temp directory");
-        let home_bin = temp.path().join(".local/bin");
-        std::fs::create_dir_all(&home_bin).expect("create home bin directory");
-        let home_codex = home_bin.join("codex");
-        write_executable(&home_codex);
-
-        assert_eq!(
-            resolve_codex_executable_from(None, None, Some(temp.path()), &[])
-                .expect("resolve home executable"),
-            home_codex
-        );
-    }
-
-    #[test]
-    fn rejects_an_invalid_explicit_codex_binary_without_silent_fallback() {
-        let temp = tempfile::tempdir().expect("create temp directory");
-        let fallback = temp.path().join("fallback-codex");
-        write_executable(&fallback);
-        let missing = temp.path().join("missing-codex");
-
-        assert!(matches!(
-            resolve_codex_executable_from(
-                Some(missing.as_os_str()),
-                None,
-                Some(temp.path()),
-                &[fallback],
-            ),
-            Err(CodexThreadError::StartFailed(message))
-                if message.contains("CAFFOLD_CODEX_BIN")
-                    && message.contains("missing-codex")
-        ));
-    }
-
-    #[test]
-    fn reports_missing_cli_after_all_locations_are_exhausted() {
-        let temp = tempfile::tempdir().expect("create temp directory");
-
-        assert!(matches!(
-            resolve_codex_executable_from(None, None, Some(temp.path()), &[]),
-            Err(CodexThreadError::MissingCli)
-        ));
-    }
-
     #[tokio::test]
     #[ignore = "requires a real Codex task ID and authenticated Codex CLI"]
     async fn probes_live_thread_state_through_the_official_protocol() {
@@ -1264,7 +984,10 @@ mod tests {
 
         let thread_id = std::env::var("CAFFOLD_CODEX_PROBE_THREAD_ID")
             .expect("set CAFFOLD_CODEX_PROBE_THREAD_ID to a real Codex task ID");
-        let client = CodexThreadClient::start()
+        let installation = inspect_codex_installation()
+            .await
+            .expect("inspect Codex installation");
+        let client = CodexThreadClient::start_with_installation(&installation)
             .await
             .expect("start Codex app-server");
 
@@ -1404,6 +1127,21 @@ mod tests {
             "Codex app-server thread/resume request 42 timed out after 120000ms."
         );
         assert!(!error.is_connection_failure());
+    }
+
+    #[test]
+    fn structured_thread_unavailable_errors_identify_the_thread_state() {
+        assert!(
+            CodexThreadError::ThreadUnavailable("019f-test".to_string()).is_thread_unavailable()
+        );
+        assert!(
+            !CodexThreadError::RequestTimeout {
+                method: THREAD_RESUME,
+                request_id: 1,
+                timeout_ms: HISTORY_REQUEST_TIMEOUT.as_millis() as u64,
+            }
+            .is_thread_unavailable()
+        );
     }
 
     #[tokio::test]
@@ -1616,155 +1354,5 @@ mod tests {
                 }
             })
         );
-    }
-
-    #[test]
-    fn builds_available_status_from_account_response() {
-        let status = status_from_results(
-            Some(CodexAppServerInfo {
-                user_agent: Some("Codex Desktop/0.142.3".to_string()),
-                codex_home: Some("/Users/example/.codex".to_string()),
-                platform_family: Some("unix".to_string()),
-                platform_os: Some("macos".to_string()),
-            }),
-            None,
-            Ok(AccountReadResponse {
-                account: Some(CodexAccount {
-                    account_type: "chatgpt".to_string(),
-                    email: Some("user@example.com".to_string()),
-                    plan_type: Some("pro".to_string()),
-                }),
-                requires_openai_auth: true,
-            }),
-            Some(json!({
-                "rateLimits": {
-                    "primary": {
-                        "usedPercent": 42
-                    }
-                }
-            })),
-            Some(json!({
-                "dailyUsageBuckets": [
-                    {
-                        "startDate": "2026-07-02",
-                        "tokens": 777
-                    }
-                ],
-                "summary": {
-                    "lifetimeTokens": 123456
-                }
-            })),
-        );
-
-        assert!(status.available);
-        assert!(status.codex_cli_available);
-        assert!(status.app_server_available);
-        assert_eq!(status.message, None);
-        assert_eq!(
-            status.account,
-            Some(CodexAccount {
-                account_type: "chatgpt".to_string(),
-                email: Some("user@example.com".to_string()),
-                plan_type: Some("pro".to_string()),
-            })
-        );
-        assert_eq!(status.requires_openai_auth, Some(true));
-        assert_eq!(
-            status
-                .rate_limits
-                .as_ref()
-                .and_then(|value| value.pointer("/rateLimits/primary/usedPercent"))
-                .and_then(Value::as_u64),
-            Some(42)
-        );
-        assert_eq!(
-            status
-                .usage
-                .as_ref()
-                .and_then(|value| value.pointer("/summary/lifetimeTokens"))
-                .and_then(Value::as_u64),
-            Some(123456)
-        );
-        assert!(
-            status
-                .usage
-                .as_ref()
-                .and_then(|value| value.get("dailyUsageBuckets"))
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn keeps_account_available_when_usage_details_are_missing() {
-        let status = status_from_results(
-            None,
-            None,
-            Ok(AccountReadResponse {
-                account: Some(CodexAccount {
-                    account_type: "apiKey".to_string(),
-                    email: None,
-                    plan_type: None,
-                }),
-                requires_openai_auth: false,
-            }),
-            None,
-            None,
-        );
-
-        assert!(status.available);
-        assert!(status.app_server_available);
-        assert_eq!(
-            status.account,
-            Some(CodexAccount {
-                account_type: "apiKey".to_string(),
-                email: None,
-                plan_type: None,
-            })
-        );
-        assert_eq!(status.rate_limits, None);
-        assert_eq!(status.usage, None);
-    }
-
-    #[test]
-    fn maps_account_error_to_unavailable_status() {
-        let status = status_from_results(
-            None,
-            None,
-            Err(CodexThreadError::Protocol(
-                "not authenticated (code -32000)".to_string(),
-            )),
-            None,
-            None,
-        );
-
-        assert!(!status.available);
-        assert!(status.codex_cli_available);
-        assert!(status.app_server_available);
-        assert_eq!(
-            status.message,
-            Some("Codex app-server protocol error: not authenticated (code -32000)".to_string())
-        );
-        assert_eq!(status.account, None);
-    }
-
-    #[test]
-    fn maps_missing_account_to_authentication_required() {
-        let status = status_from_results(
-            None,
-            None,
-            Ok(AccountReadResponse {
-                account: None,
-                requires_openai_auth: true,
-            }),
-            None,
-            None,
-        );
-
-        assert!(!status.available);
-        assert_eq!(
-            status.message,
-            Some("Codex authentication is required.".to_string())
-        );
-        assert_eq!(status.requires_openai_auth, Some(true));
     }
 }

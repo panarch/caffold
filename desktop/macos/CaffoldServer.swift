@@ -48,6 +48,10 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         localURL.appendingPathComponent("api/codex/status")
     }
 
+    private var codexSettingsURL: URL {
+        localURL.appendingPathComponent("settings/codex")
+    }
+
     private var whisperStatusURL: URL {
         localURL.appendingPathComponent("api/voice/status")
     }
@@ -380,6 +384,16 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
             )
             detail.isEnabled = false
             submenu.addItem(detail)
+        }
+        if item === codexStatusMenuItem {
+            submenu.addItem(.separator())
+            let repair = NSMenuItem(
+                title: "Open Codex Settings...",
+                action: #selector(openCodexSettings),
+                keyEquivalent: ""
+            )
+            repair.target = self
+            submenu.addItem(repair)
         }
         item.submenu = submenu
     }
@@ -849,6 +863,10 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openCaffold() {
         NSWorkspace.shared.open(localURL)
+    }
+
+    @objc private func openCodexSettings() {
+        NSWorkspace.shared.open(codexSettingsURL)
     }
 
     @objc private func showLogs() {

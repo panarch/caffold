@@ -4,20 +4,32 @@ export function sameCodexStatus(left, right) {
   }
 
   return (
-    left.available === right.available &&
-    left.codexCliAvailable === right.codexCliAvailable &&
-    left.appServerAvailable === right.appServerAvailable &&
-    left.message === right.message &&
-    left.requiresOpenaiAuth === right.requiresOpenaiAuth &&
+    readinessSignature(left) === readinessSignature(right) &&
+    left.readinessLoadError === right.readinessLoadError &&
     left.account?.accountType === right.account?.accountType &&
     left.account?.email === right.account?.email &&
     left.account?.planType === right.account?.planType &&
     daemonSignature(left) === daemonSignature(right) &&
-    left.diagnostics?.codexCliVersion === right.diagnostics?.codexCliVersion &&
     usageSignature(left, "primary") === usageSignature(right, "primary") &&
     usageSignature(left, "secondary") === usageSignature(right, "secondary") &&
     formatResetCredits(left) === formatResetCredits(right)
   );
+}
+
+function readinessSignature(status) {
+  const readiness = status?.readiness;
+  return [
+    readiness?.state,
+    readiness?.blocksTaskOperations,
+    readiness?.reasonCode,
+    readiness?.diagnosticMessage,
+    readiness?.minimumSupportedVersion,
+    readiness?.detectedExecutable?.path,
+    readiness?.detectedExecutable?.version,
+    readiness?.managedExecutable?.path,
+    readiness?.managedExecutable?.version,
+    readiness?.runningAppServerVersion,
+  ].join("|");
 }
 
 function daemonSignature(status) {
@@ -31,16 +43,47 @@ function daemonSignature(status) {
 }
 
 export function codexState(status) {
-  if (!status) {
+  const state = status?.readiness?.state;
+  if (!state) {
     return "pending";
   }
-  return status.available ? "available" : "unavailable";
+  if (state === "ready") {
+    return "available";
+  }
+  if ([
+    "missing",
+    "unsupportedInstall",
+    "updateRequired",
+    "signInRequired",
+    "restartRequired",
+  ].includes(state)) {
+    return "attention";
+  }
+  return "unavailable";
+}
+
+export function codexBlocksTaskOperations(status) {
+  return status?.readiness?.blocksTaskOperations !== false;
+}
+
+export function formatCodexReadiness(status) {
+  const state = status?.readiness?.state;
+  return {
+    missing: "Setup required",
+    unsupportedInstall: "Setup required",
+    updateRequired: "Update required",
+    signInRequired: "Sign-in required",
+    restartRequired: "Restart required",
+    incompatible: "Unavailable",
+    ready: "Ready",
+    error: "Unavailable",
+  }[state] ?? (status?.readinessLoadError ? "Check failed" : "Checking");
 }
 
 export function formatCodexAccount(status) {
   const account = status?.account;
   if (!account) {
-    return status?.available ? "Unknown" : "Not connected";
+    return status?.readiness?.state === "ready" ? "Unknown" : "Not connected";
   }
   if (account.email) {
     return account.email;

@@ -26,6 +26,14 @@ rendered by one current screen. Page-specific helpers may live in that page's
 their owner. A reusable component does not become a page merely because it
 occupies most of a surface.
 
+An expanded non-page module uses a same-stem file and directory pair. The root
+`name.js` is its public feature entry point; `name/` owns private model and
+lifecycle implementation, plus a `components/` directory for Web Components
+mounted by the feature's outside owner. Non-visual consumers import only the
+explicit public API from `name.js`. A mounting owner imports the component path
+directly so custom-element registration remains visible. Unlike page ownership
+directories, an expanded module directory contains no `page.js` or `layout.js`.
+
 ## Routed hierarchy
 
 ```text
@@ -101,6 +109,26 @@ Reading surfaces keep the Task navigator on desktop. Code surfaces use the full
 workspace width. Foldable and phone presentation is owned by the same
 master/detail layout system.
 
+The workspace also owns the one browser lifecycle for backend-owned Codex
+readiness requests and forwards its snapshot to Tasks, Settings, and the
+workspace navigation. While `blocksTaskOperations` is true,
+`caffold-tasks-page` replaces ordinary Task content with persistent setup
+guidance and leaves Settings routable. Retry refreshes the canonical diagnosis;
+frontend code does not compare versions or classify stderr.
+
+One workspace-scoped Codex status lifecycle owns that request, the confirmed
+runtime-restart mutation, its request generations, and the post-restart status
+refresh. Tasks and Settings emit the same restart intent and render its shared
+request snapshot. The workspace mounts one long-lived native confirmation
+dialog. A successful restart response does not unblock Tasks; only the refreshed
+backend readiness snapshot can do that.
+
+This request ownership is scoped to the mounted browser component tree. It is
+not exclusive ownership of Codex settings or actions across Caffold clients.
+The macOS wrapper may consume the same backend status and capability APIs for a
+native compact surface. The backend remains the shared owner of meaning and
+mutation semantics; neither client recreates those rules locally.
+
 ## Tasks Page and Task Detail
 
 `caffold-tasks-page` owns the home/new/detail choice and connects the Task
@@ -120,6 +148,10 @@ A deep route is prepared synchronously before canonical Task loading. Task
 Detail loads the Task independently of navigator pagination, derives the
 worktree/repository snapshot, and activates the requested domain only after
 that snapshot is available. Errors remain in the requested shell.
+
+The browser reads only `readiness.state`, `blocksTaskOperations`, and diagnostic
+facts supplied by the backend. The compact workspace Settings action reflects
+that state and enters Codex Settings directly while setup is required.
 
 Same-Task switches do not interrupt or recreate the Task stream. A Task switch
 invalidates Task and child generations before the new Task can render. Task
@@ -250,10 +282,10 @@ lifetime.
 ## Settings
 
 Settings lives inside Task Workspace. Appearance owns theme and Interface,
-Conversation, and Code scales. Settings Codex owns `getCodexStatus`, loading,
-error, Refresh, runtime restart, post-restart refresh, and its request
-generations. It refreshes on activation, invalidates pending work when hidden,
-and requests its runtime status directly.
+Conversation, and Code scales. Settings Codex renders the shared status and
+runtime-restart request snapshots, repair guidance, diagnostics, and intents
+for Refresh or restart. The workspace Codex status lifecycle remains active
+across Tasks and Settings route changes and owns the HTTP request generations.
 
 ## Physical hierarchy
 
@@ -266,10 +298,15 @@ frontend/
 |   |-- layout.js
 |   `-- (task-workspace)/
 |       |-- layout.js
+|       |-- codex-status.js
+|       |-- codex-status/
+|       |   |-- model.js
+|       |   |-- runtime-restart-lifecycle.js
+|       |   `-- components/
+|       |       `-- runtime-restart-dialog.js
 |       |-- settings/
 |       |   `-- codex/
-|       |       |-- page.js
-|       |       `-- status-model.js
+|       |       `-- page.js
 |       `-- tasks/
 |           |-- page.js
 |           `-- components/
@@ -298,9 +335,10 @@ frontend/
 ```
 
 A directory with its own `page.js`, such as `compare`, remains a leaf surface.
-Names describe the current owner and role: nested Git Log and GitHub
-Issues/Pulls layouts own domain state, while reusable components stay outside
-`pages`.
+The adjacent `codex-status.js` and `codex-status/` pair instead declares one
+expanded non-page module. Names describe the current owner and role: nested Git
+Log and GitHub Issues/Pulls layouts own domain state, while reusable components
+stay outside `pages`.
 
 ## Styling and assets
 

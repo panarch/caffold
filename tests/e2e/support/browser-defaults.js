@@ -1,15 +1,26 @@
-function mockCodexStatus(overrides = {}) {
+export function mockCodexStatus(overrides = {}) {
   return {
-    available: true,
-    codexCliAvailable: true,
-    appServerAvailable: true,
-    message: null,
+    readiness: {
+      state: "ready",
+      blocksTaskOperations: false,
+      reasonCode: "ready",
+      diagnosticMessage: "Codex is ready for Task operations.",
+      minimumSupportedVersion: "0.147.0",
+      detectedExecutable: {
+        path: "/Users/example/.local/bin/codex",
+        version: "0.147.0",
+      },
+      managedExecutable: {
+        path: "/Users/example/.codex/packages/standalone/current/codex",
+        version: "0.147.0",
+      },
+      runningAppServerVersion: "0.147.0",
+    },
     account: {
       accountType: "chatgpt",
       email: "user@example.com",
       planType: "pro",
     },
-    requiresOpenaiAuth: true,
     rateLimits: {
       rateLimitResetCredits: {
         availableCount: 3,
@@ -49,7 +60,6 @@ function mockCodexStatus(overrides = {}) {
       appServerVersion: "0.147.0",
     },
     diagnostics: {
-      codexCliVersion: "0.147.0",
       processGeneration: 1,
       processConnected: true,
       threadSessions: {

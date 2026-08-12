@@ -71,6 +71,7 @@ class CaffoldActiveTaskList extends HTMLElement {
     this.selectedThreadId = "";
     this.revisionByThread = new Map();
     this.active = false;
+    this.codexOperationsBlocked = false;
     this.boundClick = (event) => this.handleClick(event);
     this.boundIconsReady = () => this.render();
     this.taskListStream = new TaskStreamLifecycle({
@@ -88,7 +89,26 @@ class CaffoldActiveTaskList extends HTMLElement {
   async activate({ force = false } = {}) {
     this.ensureState();
     this.active = true;
+    if (this.codexOperationsBlocked) {
+      return null;
+    }
     return await this.loadTasks({ force });
+  }
+
+  setCodexOperationsBlocked(blocked) {
+    this.ensureState();
+    const nextBlocked = Boolean(blocked);
+    if (this.codexOperationsBlocked === nextBlocked) {
+      return;
+    }
+    this.codexOperationsBlocked = nextBlocked;
+    if (nextBlocked) {
+      this.taskListRequestId += 1;
+      this.taskListLoading = false;
+      this.taskListLoadingMore = false;
+      this.closeStream();
+    }
+    this.render();
   }
 
   setSelectedThreadId(threadId) {
@@ -189,6 +209,9 @@ class CaffoldActiveTaskList extends HTMLElement {
       return;
     }
     event.stopPropagation();
+    if (this.codexOperationsBlocked) {
+      return;
+    }
     const threadId = `${action.dataset.threadId ?? ""}`;
     if (action.dataset.taskAction === "open-task") {
       this.dispatchIntent("select-task", { threadId });
@@ -210,6 +233,9 @@ class CaffoldActiveTaskList extends HTMLElement {
   }
 
   async loadTasks({ force = false, isCurrent = () => true } = {}) {
+    if (this.codexOperationsBlocked) {
+      return null;
+    }
     if (this.taskListLoaded && !force) {
       return { tasks: this.tasks, nextCursor: this.taskListNextCursor };
     }
@@ -259,7 +285,12 @@ class CaffoldActiveTaskList extends HTMLElement {
 
   async loadMoreTasks() {
     const cursor = this.taskListNextCursor;
-    if (!cursor || this.taskListLoading || this.taskListLoadingMore) {
+    if (
+      this.codexOperationsBlocked ||
+      !cursor ||
+      this.taskListLoading ||
+      this.taskListLoadingMore
+    ) {
       return null;
     }
 
@@ -308,7 +339,7 @@ class CaffoldActiveTaskList extends HTMLElement {
   }
 
   connectStream() {
-    if (!this.active || !this.isConnected) {
+    if (this.codexOperationsBlocked || !this.active || !this.isConnected) {
       return;
     }
     this.taskListStream.activate("task-list");
@@ -431,7 +462,8 @@ class CaffoldActiveTaskList extends HTMLElement {
     return {
       count: this.tasks.length,
       loaded: this.taskListLoaded,
-      loading: this.taskListLoading || !this.initialRequestSettled,
+      loading: !this.codexOperationsBlocked &&
+        (this.taskListLoading || !this.initialRequestSettled),
       error: this.taskListError?.message ?? "",
     };
   }
@@ -447,16 +479,19 @@ class CaffoldActiveTaskList extends HTMLElement {
 
   render() {
     this.ensureState();
-    const loading = this.taskListLoading || !this.initialRequestSettled;
+    const loading = !this.codexOperationsBlocked &&
+      (this.taskListLoading || !this.initialRequestSettled);
     const tasks = sortTasksByRecency(this.tasks);
     let content;
-    if (loading && !tasks.length) {
+    if (this.codexOperationsBlocked && !tasks.length) {
+      content = `<p class="task-section-message">Codex setup required.</p>`;
+    } else if (loading && !tasks.length) {
       content = `<p class="task-section-message">Loading...</p>`;
     } else if (this.taskListError && !tasks.length) {
       content = `
         <div class="task-section-message" role="alert">
           <p>${escapeHtml(this.taskListError.message)}</p>
-          <button type="button" class="task-secondary-button" data-task-action="retry-task-list">Retry</button>
+          <button type="button" class="task-secondary-button" data-task-action="retry-task-list" ${this.codexOperationsBlocked ? "disabled" : ""}>Retry</button>
         </div>
       `;
     } else if (!tasks.length) {
@@ -485,7 +520,7 @@ class CaffoldActiveTaskList extends HTMLElement {
     return `
       <div class="task-list-pagination">
         ${this.taskListLoadMoreError ? `<p class="task-list-pagination-error">${escapeHtml(this.taskListLoadMoreError.message)}</p>` : ""}
-        <button type="button" class="task-secondary-button" data-task-action="load-more-tasks" ${this.taskListLoadingMore ? "disabled" : ""}>${label}</button>
+        <button type="button" class="task-secondary-button" data-task-action="load-more-tasks" ${this.taskListLoadingMore || this.codexOperationsBlocked ? "disabled" : ""}>${label}</button>
       </div>
     `;
   }
@@ -527,7 +562,7 @@ class CaffoldActiveTaskList extends HTMLElement {
       : "";
     return `
       <li data-thread-id="${escapeHtml(threadId)}" data-task-list-key="${escapeHtml(repositoryKey)}">
-        <button type="button" class="task-row" data-task-action="open-task" data-thread-id="${escapeHtml(threadId)}" data-task-status="${escapeHtml(status)}" title="${escapeHtml(task.title)}"${selected}${busy}>
+        <button type="button" class="task-row" data-task-action="open-task" data-thread-id="${escapeHtml(threadId)}" data-task-status="${escapeHtml(status)}" title="${escapeHtml(this.codexOperationsBlocked ? "Codex setup required" : task.title)}"${selected}${busy}${this.codexOperationsBlocked ? " disabled" : ""}>
           <span class="task-row-title">${escapeHtml(task.title)}</span>
           <span class="task-row-indicators">${worktree}${meta}</span>
         </button>

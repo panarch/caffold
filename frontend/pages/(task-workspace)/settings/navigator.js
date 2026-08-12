@@ -1,4 +1,8 @@
 import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
+import {
+  codexState,
+  formatCodexReadiness,
+} from "../codex-status.js";
 import "../components/workspace-brand.js";
 
 const ITEMS = [
@@ -14,6 +18,7 @@ class CaffoldSettingsNavigator extends HTMLElement {
     }
     this.initialized = true;
     this.selectedSection = "";
+    this.codexStatusValue = null;
     this.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-settings-section]");
       if (!button) {
@@ -41,6 +46,11 @@ class CaffoldSettingsNavigator extends HTMLElement {
     this.syncSelection();
   }
 
+  setCodexStatus(status) {
+    this.codexStatusValue = status ?? null;
+    this.syncCodexStatus();
+  }
+
   render() {
     this.innerHTML = `
       <header class="settings-navigator-header">
@@ -61,6 +71,7 @@ class CaffoldSettingsNavigator extends HTMLElement {
       </nav>
     `;
     this.syncSelection();
+    this.syncCodexStatus();
   }
 
   syncSelection() {
@@ -68,6 +79,23 @@ class CaffoldSettingsNavigator extends HTMLElement {
       const selected = button.dataset.settingsSection === this.selectedSection;
       button.toggleAttribute("aria-current", selected);
     });
+  }
+
+  syncCodexStatus() {
+    const button = this.querySelector('button[data-settings-section="codex"]');
+    if (!button) {
+      return;
+    }
+    const state = codexState(this.codexStatusValue);
+    const readiness = formatCodexReadiness(this.codexStatusValue);
+    const label = state === "available"
+      ? "Codex — ready"
+      : state === "pending"
+        ? "Codex — checking readiness"
+        : `Codex — ${readiness.toLowerCase()}`;
+    button.dataset.codexState = state;
+    button.title = label;
+    button.setAttribute("aria-label", label);
   }
 }
 

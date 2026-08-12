@@ -9,11 +9,11 @@
 @import "./pages/(task-workspace)/layout.css";
 @import "./pages/(task-workspace)/components/navigation.css";
 @import "./pages/(task-workspace)/components/workspace-brand.css";
+@import "./pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css";
 @import "./pages/(task-workspace)/settings/layout.css";
 @import "./pages/(task-workspace)/settings/navigator.css";
 @import "./pages/(task-workspace)/settings/appearance/page.css";
 @import "./pages/(task-workspace)/settings/codex/page.css";
-@import "./pages/(task-workspace)/settings/codex/components/runtime-restart-dialog.css";
 @import "./pages/(task-workspace)/settings/about/page.css";
 @import "./pages/(task-workspace)/tasks/controls.css";
 @import "./pages/(task-workspace)/tasks/components/task-status.css";
@@ -62,6 +62,19 @@
 @import "./pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/components/tree.css";
 @import "./components/code-viewer.css";
 @import "./components/diff-viewer.css";
+
+@keyframes codex-attention-pulse {
+  0%,
+  100% {
+    background-color: transparent;
+    box-shadow: inset 0 0 0 0 transparent;
+  }
+
+  50% {
+    background-color: transparent;
+    box-shadow: inset 0 0 1.25rem var(--warning-border);
+  }
+}
 
 @font-face {
   font-family: "Caffold D2 Coding";

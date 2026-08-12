@@ -129,19 +129,6 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/settings/codex/page.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/settings/codex/page.js"
         ))),
-        "pages/(task-workspace)/settings/codex/status-model.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/settings/codex/status-model.js"
-        ))),
-        "pages/(task-workspace)/settings/codex/components/runtime-restart-dialog.css" => {
-            Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/settings/codex/components/runtime-restart-dialog.css"
-            )))
-        }
-        "pages/(task-workspace)/settings/codex/components/runtime-restart-dialog.js" => {
-            Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/settings/codex/components/runtime-restart-dialog.js"
-            )))
-        }
         "pages/(task-workspace)/settings/about/page.css" => Some(css(include_str!(
             "../frontend/pages/(task-workspace)/settings/about/page.css"
         ))),
@@ -166,6 +153,27 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/components/workspace-brand.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/components/workspace-brand.js"
         ))),
+        "pages/(task-workspace)/codex-status.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/codex-status.js"
+        ))),
+        "pages/(task-workspace)/codex-status/model.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/codex-status/model.js"
+        ))),
+        "pages/(task-workspace)/codex-status/runtime-restart-lifecycle.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/codex-status/runtime-restart-lifecycle.js"
+            )))
+        }
+        "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css"
+            )))
+        }
+        "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/page.css" => Some(css(include_str!(
             "../frontend/pages/(task-workspace)/tasks/page.css"
         ))),
@@ -709,8 +717,8 @@ mod tests {
         assert_eq!(codex_brand.content_type, "image/png");
         assert!(codex_brand.body.starts_with(b"\x89PNG\r\n\x1a\n"));
 
-        let codex_status_model = get("pages/(task-workspace)/settings/codex/status-model.js")
-            .expect("Codex settings status model asset");
+        let codex_status_model =
+            get("pages/(task-workspace)/codex-status/model.js").expect("Codex status model asset");
         assert_eq!(
             codex_status_model.content_type,
             "text/javascript; charset=utf-8"
@@ -829,7 +837,7 @@ mod tests {
         }
 
         let runtime_restart_dialog =
-            get("pages/(task-workspace)/settings/codex/components/runtime-restart-dialog.js")
+            get("pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js")
                 .expect("Codex runtime restart dialog asset");
         assert_eq!(
             runtime_restart_dialog.content_type,

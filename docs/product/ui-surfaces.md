@@ -42,6 +42,16 @@ A New Task intent from an existing Task starts at that Task's repository root,
 not its managed worktree root. The bootstrap initial path and `.` are later
 fallbacks. The current New Task owns directory selection and its route value.
 
+Before New Task is available, a blocking canonical Codex readiness state
+replaces the Tasks content with persistent install, update, sign-in, restart,
+or recovery guidance. A stale runtime exposes the same explicit restart
+confirmation available from Codex Settings. Retry rechecks the backend
+diagnosis and Settings stays available throughout setup.
+
+Task creation starts a Codex thread in the selected cwd. Managed-worktree
+preparation happens explicitly from the resulting Task; it is not an implicit
+side effect of task creation.
+
 ## Task Detail
 
 Task Detail owns the selected thread, canonical Task snapshot, Codex event
@@ -140,7 +150,8 @@ Settings includes:
 
 - Appearance controls for System/Light/Dark theme, typeface, Interface scale,
   Conversation text, and Code text;
-- Codex runtime status, Refresh, restart, and diagnostics;
+- Codex installation readiness, repair guidance, runtime status, Refresh,
+  restart, and diagnostics;
 - About Caffold application and build information, including shared
   checking/ready/settled update status and a **Reload to update** action while
   a prepared PWA generation remains ready.
@@ -152,8 +163,18 @@ has settled without a prepared replacement for a differing server build.
 Appearance choices are persisted in browser-local settings rather than Task or
 server state.
 
-Settings Codex owns its status requests and request generations. It refreshes
-on activation and invalidates pending work when hidden.
+Task Workspace owns the shared Codex readiness request and forwards the same
+backend snapshot to Tasks, workspace navigation, and Codex Settings. Codex
+Settings owns only repair presentation and explicit restart intent. Task setup
+and Settings use one workspace-owned restart request lifecycle and confirmation
+dialog; only the refreshed backend readiness state can restore Task actions.
+
+The browser is the primary complete settings surface, but it is not the only
+permitted client of server-backed settings. Moving a host or runtime capability
+into browser Settings means giving it a shared backend contract and a browser
+presentation; it does not by itself require removing a useful compact control
+from the macOS menu. When both surfaces expose a capability, they consume the
+same server state and actions instead of maintaining parallel implementations.
 
 ## Product boundaries
 

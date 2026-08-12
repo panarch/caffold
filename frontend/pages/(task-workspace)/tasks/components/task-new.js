@@ -2,6 +2,9 @@ import { createTask } from "../../../../api.js";
 import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import { cleanLogicalPath } from "../task-format.js";
+import {
+  codexBlocksTaskOperations,
+} from "../../codex-status.js";
 import "./composer.js";
 import "./directory-picker.js";
 
@@ -61,6 +64,7 @@ class CaffoldTaskNew extends HTMLElement {
     this.stateReady = true;
     this.cwd = ".";
     this.transportAvailable = true;
+    this.codexOperationsBlocked = true;
     this.error = null;
     this.requestGeneration = 0;
     this.activeSubmissionId = "";
@@ -137,6 +141,16 @@ class CaffoldTaskNew extends HTMLElement {
       return;
     }
     this.transportAvailable = next;
+    this.syncComposer();
+  }
+
+  setCodexStatus(status) {
+    this.ensureState();
+    const blocked = codexBlocksTaskOperations(status);
+    if (this.codexOperationsBlocked === blocked) {
+      return;
+    }
+    this.codexOperationsBlocked = blocked;
     this.syncComposer();
   }
 
@@ -246,7 +260,10 @@ class CaffoldTaskNew extends HTMLElement {
       ariaLabel: "New task prompt",
       submitLabel: "Start task",
       cancel: false,
-      disabled: !this.transportAvailable || Boolean(this.activeSubmissionId),
+      disabled:
+        !this.transportAvailable ||
+        this.codexOperationsBlocked ||
+        Boolean(this.activeSubmissionId),
       requestError: this.error?.message ?? "",
     });
   }

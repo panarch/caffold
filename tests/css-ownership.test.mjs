@@ -218,7 +218,7 @@ const ownership = new Map([
     ["caffold-settings-codex-page"],
   ],
   [
-    "pages/(task-workspace)/settings/codex/components/runtime-restart-dialog.css",
+    "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css",
     ["caffold-codex-runtime-restart-dialog"],
   ],
   [
@@ -251,6 +251,7 @@ const componentChildren = new Map([
       "caffold-tasks-page",
       "caffold-settings-workspace",
       "caffold-task-archived-delete-dialog",
+      "caffold-codex-runtime-restart-dialog",
     ],
   ],
   [
@@ -263,10 +264,6 @@ const componentChildren = new Map([
   ],
   ["caffold-settings-navigator", ["caffold-workspace-brand"]],
   ["caffold-settings-appearance-page", ["caffold-workspace-brand"]],
-  [
-    "caffold-settings-codex-page",
-    ["caffold-codex-runtime-restart-dialog"],
-  ],
   [
     "caffold-tasks-page",
     [

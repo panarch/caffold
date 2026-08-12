@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { installBrowserDefaults } from "./support/browser-defaults.js";
+import {
+  installBrowserDefaults,
+  mockCodexStatus,
+} from "./support/browser-defaults.js";
 import {
   captureReviewScreenshot,
   installEventSourceMock,
@@ -18,42 +21,38 @@ test("shows Codex versions and explicitly restarts an outdated runtime", async (
 }) => {
   let restarted = false;
   let restartRequests = 0;
+  let statusRequests = 0;
   let releaseRestart;
   const restartGate = new Promise((resolve) => {
     releaseRestart = resolve;
   });
-  const status = () => ({
-    available: true,
-    codexCliAvailable: true,
-    appServerAvailable: true,
-    message: null,
-    account: null,
-    rateLimits: null,
-    usage: null,
-    appServer: {
-      userAgent: `Codex Desktop/${restarted ? "0.147.0" : "0.146.1"}`,
-    },
-    daemon: {
-      status: "alreadyRunning",
-      backend: "pid",
-      pid: 4271,
-      managedCodexVersion: "0.147.0",
-      cliVersion: "0.147.0",
-      appServerVersion: restarted ? "0.147.0" : "0.146.1",
-    },
-    diagnostics: {
-      codexCliVersion: restarted ? "0.147.0" : "0.146.1",
-      processGeneration: restarted ? 2 : 1,
-      processConnected: true,
-      threadSessions: { trackedSessions: 0, subscribedSessions: 0 },
+  const status = () => mockCodexStatus({
+    readiness: {
+      state: restarted ? "ready" : "restartRequired",
+      blocksTaskOperations: !restarted,
+      reasonCode: restarted ? "ready" : "runtimeVersionMismatch",
+      diagnosticMessage: restarted
+        ? "Codex is ready for Task operations."
+        : "The installed Codex version differs from the running runtime.",
+      minimumSupportedVersion: "0.147.0",
+      detectedExecutable: {
+        path: "/Users/example/.local/bin/codex",
+        version: "0.147.0",
+      },
+      managedExecutable: {
+        path: "/Users/example/.codex/packages/standalone/current/codex",
+        version: "0.147.0",
+      },
+      runningAppServerVersion: restarted ? "0.147.0" : "0.146.1",
     },
   });
-  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
-    route.fulfill({
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
+    statusRequests += 1;
+    return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify(status()),
-    }),
-  );
+    });
+  });
   await page.route(/\/api\/codex\/restart(?:\?|$)/, async (route) => {
     restartRequests += 1;
     expect(route.request().method()).toBe("POST");
@@ -71,17 +70,55 @@ test("shows Codex versions and explicitly restarts an outdated runtime", async (
 
   await page.goto("/settings/codex");
   const settings = page.locator("caffold-settings-codex-page");
-  await expect(settings).toContainText("Codex CLI");
+  await expect(settings).toContainText("Detected version");
   await expect(settings).toContainText("0.146.1");
   await expect(settings).toContainText("Restart required");
+  expect(statusRequests).toBe(1);
 
   await settings.getByRole("button", { name: "Restart runtime" }).click();
-  const dialog = settings.getByRole("dialog", { name: "Restart Codex runtime?" });
+  const dialog = page.getByRole("dialog", { name: "Restart Codex runtime?" });
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText("other Codex clients");
+  const dialogHost = page.locator(
+    "caffold-task-workspace > caffold-codex-runtime-restart-dialog",
+  );
+  const dialogHostNode = await dialogHost.elementHandle();
+  const scroller = settings.locator(".settings-content-scroll");
+  const scrollerNode = await scroller.elementHandle();
+  const scrollBefore = await scroller.evaluate((element) => {
+    element.scrollTop = Math.min(40, element.scrollHeight - element.clientHeight);
+    return element.scrollTop;
+  });
+  await settings.evaluate((element) => {
+    element.status = {
+      ...element.status,
+      readiness: {
+        ...element.status.readiness,
+        diagnosticMessage: "The canonical status was refreshed while confirmation stayed open.",
+      },
+    };
+  });
+  await expect(dialog).toBeVisible();
+  expect(await dialogHostNode.evaluate((element) => (
+    element.isConnected &&
+    element === document.querySelector("caffold-task-workspace > caffold-codex-runtime-restart-dialog")
+  ))).toBe(true);
+  expect(await scrollerNode.evaluate((element) => (
+    element.isConnected && element.scrollTop
+  ))).toBe(scrollBefore);
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toBeHidden();
   expect(restartRequests).toBe(0);
+
+  const refresh = settings.getByRole("button", { name: "Refresh" });
+  await refresh.focus();
+  const refreshNode = await refresh.elementHandle();
+  await settings.evaluate((element) => {
+    element.status = { ...element.status };
+  });
+  expect(await refreshNode.evaluate((element) => (
+    element.isConnected && document.activeElement === element
+  ))).toBe(true);
 
   await settings.getByRole("button", { name: "Restart runtime" }).click();
   await dialog.getByRole("button", { name: "Restart Codex" }).click();
@@ -89,15 +126,31 @@ test("shows Codex versions and explicitly restarts an outdated runtime", async (
 
   releaseRestart();
   await expect(settings).toContainText("Codex runtime restarted.");
-  await expect(settings).not.toContainText("Restart required");
+  await expect(settings.locator(".settings-codex-repair")).toBeHidden();
   await expect(settings).toContainText("App-server runtime");
   await expect(settings.locator(".settings-details")).toContainText("0.147.0");
   expect(restartRequests).toBe(1);
+  expect(statusRequests).toBe(2);
 });
 
 test("keeps Codex Settings actionable when runtime restart fails", async ({
   page,
 }) => {
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(mockCodexStatus({
+        readiness: {
+          ...mockCodexStatus().readiness,
+          state: "restartRequired",
+          blocksTaskOperations: true,
+          reasonCode: "runtimeVersionMismatch",
+          diagnosticMessage: "The installed Codex version differs from the running runtime.",
+          runningAppServerVersion: "0.146.1",
+        },
+      })),
+    }),
+  );
   await page.route(/\/api\/codex\/restart(?:\?|$)/, (route) =>
     route.fulfill({
       status: 502,
@@ -114,10 +167,40 @@ test("keeps Codex Settings actionable when runtime restart fails", async ({
   await page.goto("/settings/codex");
   const settings = page.locator("caffold-settings-codex-page");
   await settings.getByRole("button", { name: "Restart runtime" }).click();
-  await settings.getByRole("button", { name: "Restart Codex" }).click();
+  await page.getByRole("dialog", { name: "Restart Codex runtime?" })
+    .getByRole("button", { name: "Restart Codex" })
+    .click();
 
   await expect(settings).toContainText("Codex runtime could not be restarted.");
   await expect(settings.getByRole("button", { name: "Restart runtime" })).toBeEnabled();
+});
+
+test("explains missing app-server capabilities in Codex Settings", async ({ page }) => {
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(mockCodexStatus({
+        readiness: {
+          ...mockCodexStatus().readiness,
+          state: "unsupportedInstall",
+          blocksTaskOperations: true,
+          reasonCode: "appServerCommandsUnavailable",
+          diagnosticMessage: "The required app-server daemon command is unavailable.",
+          managedExecutable: null,
+          runningAppServerVersion: null,
+        },
+      })),
+    }),
+  );
+
+  await page.goto("/settings/codex");
+
+  const settings = page.locator("caffold-settings-codex-page");
+  await expect(settings.locator(".settings-codex-repair")).toContainText(
+    "lacks the app-server daemon commands Caffold uses",
+  );
+  await expect(settings).toContainText("appServerCommandsUnavailable");
+  await expect(settings.getByRole("button", { name: "Refresh" })).toBeEnabled();
 });
 
 test("returns from Settings to the canonical Tasks home", async ({
