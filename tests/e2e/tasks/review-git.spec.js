@@ -68,9 +68,16 @@ test("reviews working tree changes through the canonical Review route", async ({
   const viewer = taskReview.locator("caffold-review-file-viewer");
   await expect(taskReview).toBeVisible();
   await expect(changes.locator('button[data-file-tree-kind="file"]')).toHaveCount(4);
-  await expect(changes.locator('button[data-marker="task-related"]')).toHaveCount(3);
+  const plannerChange = changes.locator(
+    'button[data-file-tree-relative-path="planner.rs"]',
+  );
+  await expect(plannerChange).toHaveAttribute("title", "planner.rs");
+  await expect(plannerChange).toHaveAttribute(
+    "aria-label",
+    "Show diff for planner.rs",
+  );
 
-  await changes.locator('button[data-file-tree-relative-path="planner.rs"]').click();
+  await plannerChange.click();
   await expect(page).toHaveURL(
     `/tasks/${taskScenario.threadId}/review?file=planner.rs`,
   );
@@ -131,7 +138,7 @@ test("reviews working tree changes through the canonical Review route", async ({
   await expect(viewer).toContainText("refreshed planner behavior");
 
   await stabilizeDynamicText(page);
-  await captureReviewScreenshot(page, testInfo, "tasks-related-diff");
+  await captureReviewScreenshot(page, testInfo, "tasks-working-tree-diff");
 });
 
 test("keeps selectedPath while scope, navigator, and viewer switch independently", async ({

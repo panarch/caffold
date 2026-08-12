@@ -120,23 +120,6 @@ caffold-file-tree {
     white-space: nowrap;
   }
 
-  & .file-tree-entry[data-marker="task-related"] .file-tree-icon {
-    color: var(--related-file-fg);
-  }
-
-  & .file-tree-entry[data-marker="task-related"] .file-tree-icon::after {
-    position: absolute;
-    top: 0;
-    right: 0;
-    box-sizing: border-box;
-    width: var(--interface-space-3);
-    height: var(--interface-space-3);
-    border: 1px solid var(--surface);
-    border-radius: 50%;
-    background: var(--related-file-marker-bg);
-    content: "";
-  }
-
   & .file-tree-entry[data-variant="parent"],
   & .file-tree-entry[data-ignored-entry] {
     color: var(--muted-subtle);

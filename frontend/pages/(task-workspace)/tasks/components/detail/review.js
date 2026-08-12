@@ -24,7 +24,6 @@ import {
   subscribeToWatch,
   watchChangeAffectsPath,
 } from "../../../../../watch.js";
-import { latestTaskRelatedWorktreePaths } from "../../task-events.js";
 import { cleanLogicalPath } from "../../task-format.js";
 import { taskThreadId } from "../../task-list-model.js";
 
@@ -51,7 +50,6 @@ class CaffoldTaskReview extends HTMLElement {
     this.rendered = true;
     this.active = false;
     this.task = null;
-    this.events = [];
     this.contextKey = "";
     this.route = normalizeReviewRoute();
     this.previousRouteKey = "";
@@ -172,13 +170,11 @@ class CaffoldTaskReview extends HTMLElement {
     });
   }
 
-  setTaskContext({ task = null, events = [], route = null } = {}) {
+  setTaskContext({ task = null, route = null } = {}) {
     this.ensureRendered();
     const contextKey = reviewContextKey(task);
     const contextChanged = contextKey !== this.contextKey;
-    const nextEvents = Array.isArray(events) ? events : [];
     const taskChanged = this.task !== task;
-    const eventsChanged = !sameEventList(this.events, nextEvents);
     const previousRoute = this.route;
     const nextRoute = normalizeReviewRoute(route, task);
     const nextRouteKey = reviewRouteKey(nextRoute);
@@ -196,8 +192,7 @@ class CaffoldTaskReview extends HTMLElement {
       this.active &&
       !contextChanged &&
       !routeChanged &&
-      !taskChanged &&
-      !eventsChanged
+      !taskChanged
     ) {
       return false;
     }
@@ -213,7 +208,6 @@ class CaffoldTaskReview extends HTMLElement {
     }
     this.active = true;
     this.task = task;
-    this.events = nextEvents;
     this.route = nextRoute;
     this.previousRouteKey = nextRouteKey;
 
@@ -269,11 +263,6 @@ class CaffoldTaskReview extends HTMLElement {
     });
     this.subscribeWatch(taskRootPath(this.task));
     if (this.task.worktree) {
-      if (this.status) {
-        this.workingTree()?.setTaskRelatedPaths(
-          latestTaskRelatedWorktreePaths(this.events, this.task),
-        );
-      }
       if (options.contextChanged || options.reactivated || !this.status) {
         void this.refreshWorking();
       }
@@ -368,9 +357,6 @@ class CaffoldTaskReview extends HTMLElement {
       } else {
         this.workingTree()?.setStatus(status);
       }
-      this.workingTree()?.setTaskRelatedPaths(
-        latestTaskRelatedWorktreePaths(this.events, this.task),
-      );
       this.syncSelection();
       this.patchEmptyStates();
       const canRefreshViewer = this.route.path && this.route.scope === "working";
@@ -1066,13 +1052,6 @@ function restoreNavigatorScroll(navigator, scroll) {
   } else {
     navigator?.restoreListScroll?.(scroll);
   }
-}
-
-function sameEventList(left = [], right = []) {
-  return (
-    left.length === right.length &&
-    left.every((event, index) => event === right[index])
-  );
 }
 
 function closestElement(target, selector) {

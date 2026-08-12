@@ -189,9 +189,9 @@ instance.
 repository ref status, canonical reconciliation, domain-local routes, request
 generations, and a refs-only watch while active.
 
-It does not own Working Tree status, Task-related paths, current Task Branch
-comparison, or a Diff mode. Compare and Log leaves retain their own list,
-commit, file, diff, and source state.
+It does not own Working Tree status, current Task Branch comparison, or a Diff
+mode. Compare and Log leaves retain their own list, commit, file, diff, and
+source state.
 
 ### GitHub
 
