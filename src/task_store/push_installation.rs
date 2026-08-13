@@ -2,7 +2,7 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use gluesql::{
     FromGlueRow, ToGlueRow,
     core::{
-        data::{Schema, Value},
+        data::Value,
         executor::Payload,
         query_builder::{
             Execute, ExprNode, begin, col, commit, null, rollback, table, text, value as glue_value,
@@ -124,24 +124,6 @@ where
         query = query.add_column(*definition);
     }
     query.execute(glue)?;
-    Ok(())
-}
-
-pub(super) fn validate_table<S>(glue: &Glue<S>) -> Result<()>
-where
-    S: GStore + GStoreMut + Planner,
-{
-    let actual = glue
-        .storage
-        .fetch_schema(TABLE_NAME)?
-        .ok_or(TaskStoreError::IncompleteSchema)?;
-    let expected = Schema::from_ddl(&format!(
-        "CREATE TABLE {TABLE_NAME} ({});",
-        COLUMN_DEFINITIONS.join(", ")
-    ))?;
-    if actual.column_defs != expected.column_defs {
-        return Err(TaskStoreError::InvalidSchemaTable(TABLE_NAME.to_string()));
-    }
     Ok(())
 }
 

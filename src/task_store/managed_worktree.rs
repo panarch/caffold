@@ -1,8 +1,10 @@
 use chrono::{NaiveDateTime, Utc};
+#[cfg(test)]
+use gluesql::core::data::Schema;
 use gluesql::{
     FromGlueRow, ToGlueRow,
     core::{
-        data::{Schema, Value},
+        data::Value,
         executor::Payload,
         query_builder::{Execute, ExprNode, col, null, table, text, value as glue_value},
         row_conversion::ToGlueRow as _,
@@ -176,6 +178,7 @@ where
     Ok(())
 }
 
+#[cfg(test)]
 pub(super) fn validate_table<S>(glue: &Glue<S>) -> Result<()>
 where
     S: GStore + GStoreMut + Planner,
@@ -411,6 +414,7 @@ where
     }
 }
 
+#[cfg(test)]
 fn expected_ddl() -> String {
     format!(
         "CREATE TABLE {TABLE_NAME} ({});",
