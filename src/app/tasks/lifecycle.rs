@@ -7,12 +7,12 @@ use crate::{
     },
     codex_thread_sessions::{CodexThreadSessions, StartedThreadSettings},
     fs::RootedFs,
-    task_store::{ManagedThread, TaskStore},
+    task_store::{ManagedSection, ManagedThread, TaskStore},
 };
 
 use super::{
     CodexConnection, TaskRecord,
-    active_sections::{ActiveTaskSections, ActiveTaskTopPlacement},
+    codex_sections::{ActiveTaskTopPlacement, CodexSections},
     events::{TaskEvents, accepted_user_message_event, now_ms},
     projection::{resolve_thread_cwd, task_activity_ms, task_record_from_thread},
     routes::TaskListEvents,
@@ -42,7 +42,7 @@ pub(in crate::app) struct TaskLifecycle {
     list_events: TaskListEvents,
     store: TaskStore,
     worktrees: ManagedWorktrees,
-    active_sections: ActiveTaskSections,
+    codex_sections: CodexSections,
 }
 
 impl TaskLifecycle {
@@ -53,7 +53,7 @@ impl TaskLifecycle {
         list_events: TaskListEvents,
         store: TaskStore,
         worktrees: ManagedWorktrees,
-        active_sections: ActiveTaskSections,
+        codex_sections: CodexSections,
     ) -> Self {
         Self {
             fs,
@@ -62,7 +62,7 @@ impl TaskLifecycle {
             list_events,
             store,
             worktrees,
-            active_sections,
+            codex_sections,
         }
     }
 
@@ -121,7 +121,7 @@ impl TaskLifecycle {
                 return Err(error);
             }
         };
-        let placement = match self.active_sections.place_at_top(client, &task).await {
+        let placement = match self.codex_sections.place_at_top(client, &task).await {
             Ok(placement) => placement,
             Err(error) => {
                 self.rollback_unclaimed_thread(client, &thread.thread_id)
@@ -130,12 +130,16 @@ impl TaskLifecycle {
             }
         };
         if let Err(error) = self
-            .claim(managed_thread_from_task_record(
-                &task,
-                effective_model.clone(),
-                effective_reasoning_effort.clone(),
-                requested_fast_mode,
-            ))
+            .claim_at_top(
+                managed_thread_from_task_record(
+                    &task,
+                    effective_model.clone(),
+                    effective_reasoning_effort.clone(),
+                    requested_fast_mode,
+                ),
+                &task.title,
+                &placement,
+            )
             .await
         {
             self.rollback_unclaimed_thread(client, &thread.thread_id)
@@ -209,11 +213,7 @@ impl TaskLifecycle {
         client: &CodexThreadClient,
         task: &TaskRecord,
     ) -> Result<ActiveTaskTopPlacement, ApiError> {
-        self.active_sections.place_at_top(client, task).await
-    }
-
-    pub(in crate::app) async fn reconcile_active_sections(&self, client: &CodexThreadClient) {
-        self.active_sections.reconcile(client).await;
+        self.codex_sections.place_at_top(client, task).await
     }
 
     pub(in crate::app) async fn isolate_current_task(
@@ -251,6 +251,16 @@ impl TaskLifecycle {
     ) -> Result<ArchiveOutcome, ApiError> {
         self.worktrees
             .archive_for_thread(thread_id)
+            .await
+            .map_err(worktree_api_error)
+    }
+
+    pub(in crate::app) async fn preflight_archive_worktree(
+        &self,
+        thread_id: String,
+    ) -> Result<(), ApiError> {
+        self.worktrees
+            .preflight_archive_for_thread(thread_id)
             .await
             .map_err(worktree_api_error)
     }
@@ -303,13 +313,37 @@ impl TaskLifecycle {
         task_record_from_thread(&thread, &[], resolved.as_ref())
     }
 
-    async fn claim(&self, thread: ManagedThread) -> Result<(), ApiError> {
+    async fn claim_at_top(
+        &self,
+        thread: ManagedThread,
+        display_name: &str,
+        placement: &ActiveTaskTopPlacement,
+    ) -> Result<(), ApiError> {
         let store = self.store.clone();
-        tokio::task::spawn_blocking(move || store.claim(thread, now_ms()))
-            .await
-            .map_err(task_store_worker_error)?
-            .map(|_| ())
-            .map_err(|error| ApiError::Internal(error.to_string()))
+        let display_name = display_name.to_string();
+        let section = ManagedSection {
+            section_id: placement.section.id.clone(),
+            logical_path: placement.section.name.clone(),
+        };
+        tokio::task::spawn_blocking(move || {
+            store.transaction(|tables| {
+                tables.upsert_managed_section(&section)?;
+                tables.claim_managed_thread_at_top(
+                    thread,
+                    &display_name,
+                    &section.section_id,
+                    now_ms(),
+                )
+            })
+        })
+        .await
+        .map_err(task_store_worker_error)?
+        .map(|_| ())
+        .map_err(|error| ApiError::Internal(error.to_string()))
+    }
+
+    pub(in crate::app) fn refresh_task_list(&self) {
+        self.list_events.refresh();
     }
 
     async fn update_composer_settings(

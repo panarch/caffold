@@ -229,7 +229,9 @@ test("confirms before removing a missing Codex Thread from Caffold", async ({
   ).toHaveCount(0);
 });
 
-test("recheck follows the refreshed Section projection", async ({ page }) => {
+test("recheck uses the explicit recovery endpoint without rewriting the cached list", async ({
+  page,
+}) => {
   const threadId = "thread_recovery_recheck";
   const recovery = recoveryTask(
     threadId,
@@ -237,20 +239,34 @@ test("recheck follows the refreshed Section projection", async ({ page }) => {
     "temporarilyUnavailable",
     ["recheck"],
   );
-  const restored = task(threadId, "Rechecked active Task");
-  const state = await installRecoveryList(page, recovery);
-  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
-    route.fulfill({ json: taskDetail(restored) }),
+  const rechecked = recoveryTask(
+    threadId,
+    "Placement recovery",
+    "codexArchived",
+    ["restoreToActive", "moveToArchived", "recheck"],
   );
+  await installRecoveryList(page, recovery);
+  let recheckCalls = 0;
+  await page.route(`/api/tasks/${threadId}/recovery/recheck`, (route) => {
+    recheckCalls += 1;
+    expect(route.request().method()).toBe("POST");
+    return route.fulfill({ json: rechecked });
+  });
 
   await openRecovery(page, recovery);
-  state.projection = activeTaskProjection([restored]);
   await page.getByRole("button", { name: /Recheck/ }).click();
 
-  await expect(page).toHaveURL(new RegExp(`/tasks/${threadId}$`));
+  await expect.poll(() => recheckCalls).toBe(1);
+  await expect(page).toHaveURL(new RegExp(`/tasks/${threadId}/recovery$`));
+  await expect(
+    page.getByRole("heading", { name: "Archived in Codex" }),
+  ).toBeVisible();
   await expect(
     page.locator(`.task-row[data-thread-id="${threadId}"]`),
-  ).toContainText("Rechecked active Task");
+  ).toContainText("Placement recovery");
+  await expect(
+    page.locator(`.task-row[data-thread-id="${threadId}"]`),
+  ).toHaveAttribute("data-task-recovery-reason", "codexArchived");
 });
 
 test("keeps a readable Section-placement recovery on ordinary Task detail", async ({

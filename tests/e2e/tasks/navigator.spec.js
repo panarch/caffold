@@ -404,6 +404,65 @@ test("refreshes server-owned ordering only for an explicit list refresh event", 
   await expect(rows.nth(0)).toHaveAttribute("data-thread-id", second.threadId);
 });
 
+test("hydrates a cached Task with the task-list stream bootstrap snapshot", async ({
+  page,
+}) => {
+  await installEventSourceMock(page, {
+    sourceKey: "__taskListBootstrapSource",
+    autoOpen: true,
+  });
+  await mockCodexModels(page);
+  const cached = initialNavigatorTask(
+    "thread_list_bootstrap",
+    "Persisted navigator name",
+    canonicalTaskState("notLoaded"),
+  );
+  cached.conversationAvailable = false;
+  let reads = 0;
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    reads += 1;
+    return route.fulfill({ json: activeTaskProjection([cached]) });
+  });
+
+  await page.goto("/tasks");
+  const row = page.locator(
+    'caffold-task-navigator .task-row[data-thread-id="thread_list_bootstrap"]',
+  );
+  await expect(row).toBeVisible();
+  await expect(row).not.toHaveAttribute("data-task-status", "running");
+  await expect(row.locator(".task-status-spinner")).toHaveCount(0);
+
+  const running = {
+    ...cached,
+    ...canonicalTaskState("active", {
+      turnId: "turn_list_bootstrap",
+      startedAtMs: Date.now(),
+      latestTurnStatus: "inProgress",
+    }),
+    conversationAvailable: true,
+  };
+  await page.evaluate((task) => {
+    window.__taskListBootstrapSource.emit("task-sync", {
+      threadId: task.threadId,
+      revision: 7,
+      detail: {
+        threadId: task.threadId,
+        revision: 7,
+        syncState: "ready",
+        task,
+      },
+      reason: "task-list-stream-bootstrap",
+    });
+  }, running);
+
+  await expect(row).toHaveAttribute("data-task-status", "running");
+  await expect(row.locator(".task-status-spinner")).toBeVisible();
+  await expect(row.locator(".task-row-title")).toHaveText(
+    "Persisted navigator name",
+  );
+  expect(reads).toBe(1);
+});
+
 test("applies canonical top placements without list refetches or duplicate reordering", async ({
   page,
 }) => {
@@ -1495,7 +1554,7 @@ test("does not offer archive while the canonical task is active", async ({ page 
   await expect(page.getByRole("button", { name: "Archive task" })).toBeDisabled();
 });
 
-test("clears stale task rows when canonical list reload fails", async ({ page }) => {
+test("keeps cached task rows visible when a list refresh fails", async ({ page }) => {
   await page.addInitScript(() => {
     window.EventSource = class MockEventSource {
       constructor(url) {
@@ -1532,7 +1591,7 @@ test("clears stale task rows when canonical list reload fails", async ({ page })
     id: "thread_stale_list",
     threadId: "thread_stale_list",
     ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
-    title: "Must not survive failed reload",
+    title: "Must survive failed reload",
     preview: "Stale projection",
     cwd: "src",
     cwdPath: "src",
@@ -1544,9 +1603,10 @@ test("clears stale task rows when canonical list reload fails", async ({ page })
     lastEventSummary: "Stale projection",
   };
   let taskReads = 0;
+  let failTaskReads = false;
   await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
     taskReads += 1;
-    if (taskReads === 1) {
+    if (!failTaskReads) {
       return route.fulfill({
         contentType: "application/json",
         body: JSON.stringify(activeTaskProjection([task])),
@@ -1561,18 +1621,20 @@ test("clears stale task rows when canonical list reload fails", async ({ page })
 
   await page.goto("/tasks");
   const navigator = page.locator("caffold-task-navigator");
-  await expect(navigator).toContainText("Must not survive failed reload");
+  await expect(navigator).toContainText("Must survive failed reload");
+  const readsBeforeFailure = taskReads;
+  failTaskReads = true;
   await page.evaluate(() => {
     window.__taskListEventSource.emitOpen();
     window.__taskListEventSource.emitError();
     window.__taskListEventSource.emitOpen();
   });
 
-  await expect(navigator).not.toContainText("Must not survive failed reload");
+  await expect(navigator).toContainText("Must survive failed reload");
   await expect(navigator.getByRole("alert")).toContainText(
     "Canonical task list unavailable",
   );
-  expect(taskReads).toBe(2);
+  expect(taskReads).toBe(readsBeforeFailure + 1);
 });
 test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo) => {
   await page.addInitScript(() => {
@@ -2288,7 +2350,7 @@ test("keeps the Tasks list DOM stable while opening a managed task", async ({ pa
     });
   });
   await page.route(/\/api\/tasks\/thread_dom_stability(?:\?|$)/, async (route) => {
-    const task = { ...tasks[0], unseen: false };
+    const task = { ...tasks[0] };
     await page.evaluate((updatedTask) => {
       window.__taskListEventSource.emit("task-updated", updatedTask);
     }, task);
@@ -2364,7 +2426,7 @@ test("keeps the Tasks list DOM stable while opening a managed task", async ({ pa
     rowStatePreserved: "preserved",
     selected: "true",
     unseenIndicatorCount: 0,
-    seenRequests: 0,
+    seenRequests: 1,
   });
 });
 test("patches Task rows in place without reordering and preserves a running spinner", async ({

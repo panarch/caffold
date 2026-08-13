@@ -137,11 +137,10 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.ensureState();
     this.render();
     this.active = true;
-    if (this.codexTaskOperations.blocked) {
-      return { tasks: null, archived: null };
-    }
     const tasksRequest = this.activeTaskList.activate({ force });
-    const archivedRequest = this.archivedTaskList.activate({ force });
+    const archivedRequest = this.codexTaskOperations.blocked
+      ? Promise.resolve(null)
+      : this.archivedTaskList.activate({ force });
     const [tasks, archived] = await Promise.all([
       tasksRequest,
       archivedRequest,

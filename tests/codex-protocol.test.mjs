@@ -204,6 +204,7 @@ test(
       assert.match(listParams, /cursor/);
       assert.match(listParams, /sortKey/);
       assert.match(listParams, /sortDirection/);
+      assert.match(listParams, /archived/);
       assert.match(listParams, /sectionId\?: string \| null/);
       assert.match(listParams, /useStateDbOnly/);
 
@@ -227,6 +228,13 @@ test(
       assert.match(sectionList, /data: Array<ThreadSection>/);
       assert.match(sectionList, /nextCursor: string \| null/);
 
+      const sectionListParams = readFileSync(
+        join(outputDirectory, "v2", "ThreadSectionListParams.ts"),
+        "utf8",
+      );
+      assert.match(sectionListParams, /cursor/);
+      assert.match(sectionListParams, /limit/);
+
       const sectionCreate = readFileSync(
         join(outputDirectory, "v2", "ThreadSectionCreateParams.ts"),
         "utf8",
@@ -242,7 +250,19 @@ test(
       assert.match(sectionMove, /beforeThreadId\?: string \| null/);
 
       const readParams = readFileSync(join(outputDirectory, "v2", "ThreadReadParams.ts"), "utf8");
-      assert.match(readParams, /includeTurns/);
+      assert.match(readParams, /includeTurns\?: boolean/);
+
+      const thread = readFileSync(join(outputDirectory, "v2", "Thread.ts"), "utf8");
+      assert.match(thread, /id: string/);
+      assert.match(thread, /name: string \| null/);
+      assert.match(thread, /preview: string/);
+
+      const threadList = readFileSync(
+        join(outputDirectory, "v2", "ThreadListResponse.ts"),
+        "utf8",
+      );
+      assert.match(threadList, /data: Array<Thread>/);
+      assert.match(threadList, /nextCursor: string \| null/);
 
       const model = readFileSync(join(outputDirectory, "v2", "Model.ts"), "utf8");
       assert.match(model, /serviceTiers: Array<ModelServiceTier>/);

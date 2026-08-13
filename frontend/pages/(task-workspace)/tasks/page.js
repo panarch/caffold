@@ -110,8 +110,8 @@ class CaffoldTasksPage extends HTMLElement {
     });
     this.addEventListener("caffold:task-recovery-intent", (event) => {
       event.stopPropagation();
-      if (event.detail?.type === "recheck") {
-        void this.recheckRecovery();
+      if (event.detail?.type === "rechecked") {
+        this.applyRecheckedRecovery(event.detail.recovery);
       } else if (event.detail?.type === "resolved") {
         this.resolveRecovery(event.detail);
       }
@@ -237,6 +237,7 @@ class CaffoldTasksPage extends HTMLElement {
 
   async openRoute(route, options = {}) {
     const prepared = this.prepareRoute(route, options);
+    void this.taskNavigator()?.activate();
     if (this.codexOperationsBlocked()) {
       this.render();
       return null;
@@ -248,7 +249,6 @@ class CaffoldTasksPage extends HTMLElement {
         defaultCwdPath: options.defaultCwdPath ?? "",
       });
       this.taskNew()?.open();
-      void this.taskNavigator()?.activate();
       this.render();
       return null;
     }
@@ -273,7 +273,6 @@ class CaffoldTasksPage extends HTMLElement {
     }
     if (route?.threadId) {
       this.taskNew()?.deactivate();
-      void this.taskNavigator()?.activate();
       const result = await this.taskDetail()?.open(route.threadId, {
         preserveLoadedTask: prepared.preserveLoadedTask,
         route,
@@ -306,23 +305,13 @@ class CaffoldTasksPage extends HTMLElement {
     this.requestRoute({ kind: "tasks", threadId });
   }
 
-  async recheckRecovery() {
-    const threadId = this.selectedThreadId;
-    if (!threadId || this.view !== "recovery") {
-      return null;
+  applyRecheckedRecovery(recovery) {
+    const threadId = taskDetailThreadId({ task: recovery });
+    if (!threadId || threadId !== this.selectedThreadId || this.view !== "recovery") {
+      return;
     }
-    await this.taskNavigator()?.activate({ force: true });
-    const recovery = this.taskNavigator()?.recoveryFor(threadId);
-    if (recovery) {
-      this.taskRecovery()?.updateRecovery(recovery);
-      return recovery;
-    }
-    const task = this.taskNavigator()?.taskFor(threadId);
-    this.requestRoute(
-      task ? { kind: "tasks", threadId } : { kind: "tasks" },
-      { replace: true },
-    );
-    return null;
+    this.taskNavigator()?.upsertCanonicalTask(recovery);
+    this.taskRecovery()?.updateRecovery(recovery);
   }
 
   resolveRecovery(detail) {

@@ -25,6 +25,7 @@ sha2 = "0.10.9"
 thiserror = "2.0.12"
 tokio = { version = "1.45.1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-tungstenite = "0.30.0"
+tower = "0.5.3"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 uuid = { version = "1.23.4", features = ["v4"] }
@@ -33,4 +34,3 @@ whisper-rs = { version = "0.16.0", features = ["metal", "tracing_backend"] }
 
 [dev-dependencies]
 tempfile = "3.20.0"
-tower = "0.5.3"

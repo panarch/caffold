@@ -1,8 +1,12 @@
 use super::super::{projection::*, tests::support::*};
 use super::*;
 use crate::app::tasks::events::task_event_from_thread_item;
+use crate::app::tasks::recovery::ActiveTaskRecoveryAction;
 use crate::codex_app_server::ThreadStatus;
-use crate::{fs::RootedFs, task_store::TaskStore};
+use crate::{
+    fs::RootedFs,
+    task_store::{ManagedSection, ManagedThread, TaskStore},
+};
 use std::{path::PathBuf, sync::Arc};
 use tower::ServiceExt;
 
@@ -131,7 +135,7 @@ fn recovery_location_responses(
 }
 
 fn projected_active_tasks(
-    projection: &super::super::active_sections::ActiveTaskProjection,
+    projection: &super::super::active_list::ActiveTaskProjection,
 ) -> Vec<&TaskRecord> {
     projection
         .sections
@@ -139,6 +143,39 @@ fn projected_active_tasks(
         .flat_map(|section| section.tasks.iter())
         .chain(projection.unsectioned.iter().map(|recovery| &recovery.task))
         .collect()
+}
+
+fn claim_cached_active(
+    state: &TaskState,
+    thread_id: &str,
+    display_name: &str,
+    recency_ms: u64,
+    section_id: &str,
+    logical_path: &str,
+) {
+    state
+        .task_store
+        .transaction(|tables| {
+            let section = ManagedSection {
+                section_id: section_id.to_string(),
+                logical_path: logical_path.to_string(),
+            };
+            tables.upsert_managed_section(&section)?;
+            tables.claim_managed_thread_at_top(
+                ManagedThread::new(thread_id, Some(recency_ms), None, None),
+                display_name,
+                &section.section_id,
+                recency_ms,
+            )
+        })
+        .unwrap();
+}
+
+fn cached_projection_rows(state: &TaskState) -> (Vec<ManagedSection>, Vec<ManagedThread>) {
+    state
+        .task_store
+        .read(|tables| Ok((tables.managed_sections()?, tables.active_managed_threads()?)))
+        .unwrap()
 }
 
 fn current_model_list_response() -> JsonValue {
@@ -1214,30 +1251,30 @@ async fn codex_turn_options_rejects_model_missing_from_server_list() {
 #[tokio::test]
 async fn managed_list_never_projects_pending_approval_onto_thread_status() {
     let root = tempfile::tempdir().unwrap();
-    let thread = task_thread_list("thread-stale-approval", root.path())["data"][0].clone();
-    let client = CodexThreadClient::mock(active_section_responses(
+    let thread_id = "thread-stale-approval";
+    let client = CodexThreadClient::mock(Vec::new());
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    claim_cached_active(
+        &state,
+        thread_id,
+        "Stable cached name",
+        2_000,
         "section-root",
         "",
-        vec![thread.clone()],
-    ));
-    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
-    let resolved = resolve_thread_cwd(&state.fs, &thread);
-    let task = task_record_from_thread(&thread, &[], resolved.as_ref()).unwrap();
-    assert_eq!(task.thread_status, ThreadStatus::Idle);
-    task_store_claim(
-        &state,
-        managed_thread_from_task_record(&task, None, None, false),
-    )
-    .await
-    .unwrap();
+    );
+    let before = cached_projection_rows(&state);
 
-    let response = list_managed_tasks(State(state), Query(TasksQuery { cursor: None }))
+    let response = list_managed_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
         .await
         .unwrap();
 
     let tasks = projected_active_tasks(&response.0);
     assert_eq!(tasks.len(), 1);
-    assert_eq!(tasks[0].thread_status, ThreadStatus::Idle);
+    assert_eq!(tasks[0].title, "Stable cached name");
+    assert_eq!(tasks[0].thread_status, ThreadStatus::NotLoaded);
+    assert!(client.mock_requests().await.is_empty());
+    assert_eq!(cached_projection_rows(&state), before);
 }
 
 #[tokio::test]
@@ -1395,9 +1432,6 @@ async fn archive_and_restore_keep_caffold_membership_in_separate_lists() {
             "threadSection/list",
             "thread/list",
             "thread/section/move",
-            "threadSection/list",
-            "thread/list",
-            "thread/list",
         ]
     );
 }
@@ -1448,6 +1482,71 @@ async fn recovery_restore_unarchives_places_at_top_and_keeps_active_membership()
             "thread/section/move",
         ]
     );
+}
+
+#[tokio::test]
+async fn explicit_recovery_recheck_classifies_codex_archived_without_mutating_the_projection() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-recheck-archived";
+    let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
+    let client = CodexThreadClient::mock(recovery_location_responses(vec![thread]));
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+    state
+        .task_store
+        .update_display_name(thread_id, "Stable archived name")
+        .unwrap();
+    let before = cached_projection_rows(&state);
+
+    let recovery = task_recovery_recheck(State(state.clone()), AxumPath(thread_id.to_string()))
+        .await
+        .unwrap()
+        .0;
+
+    assert_eq!(recovery.title, "Stable archived name");
+    assert_eq!(
+        recovery.recovery.reason,
+        ActiveTaskRecoveryReason::CodexArchived
+    );
+    assert_eq!(
+        recovery.recovery.actions,
+        [
+            ActiveTaskRecoveryAction::RestoreToActive,
+            ActiveTaskRecoveryAction::MoveToArchived,
+            ActiveTaskRecoveryAction::Recheck,
+        ]
+    );
+    assert_eq!(cached_projection_rows(&state), before);
+    assert_eq!(client.mock_requests().await.len(), 2);
+}
+
+#[tokio::test]
+async fn explicit_recovery_recheck_classifies_missing_without_mutating_the_projection() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-recheck-missing";
+    let client = CodexThreadClient::mock(recovery_location_responses(Vec::new()));
+    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+    let before = cached_projection_rows(&state);
+
+    let recovery = task_recovery_recheck(State(state.clone()), AxumPath(thread_id.to_string()))
+        .await
+        .unwrap()
+        .0;
+
+    assert_eq!(
+        recovery.recovery.reason,
+        ActiveTaskRecoveryReason::ThreadMissing
+    );
+    assert_eq!(
+        recovery.recovery.actions,
+        [
+            ActiveTaskRecoveryAction::Recheck,
+            ActiveTaskRecoveryAction::RemoveFromCaffold,
+        ]
+    );
+    assert_eq!(cached_projection_rows(&state), before);
 }
 
 #[tokio::test]
@@ -1817,6 +1916,47 @@ async fn failed_codex_delete_keeps_the_archived_membership_for_retry() {
 }
 
 #[tokio::test]
+async fn archived_list_uses_the_cached_name_without_persisting_read_observations() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-archived-stale-read";
+    let mut thread = task_thread_list(thread_id, root.path())["data"][0].clone();
+    thread["name"] = json!("Stale Codex name");
+    thread["updatedAt"] = json!(99.0);
+    let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+        "thread/read",
+        json!({ "thread": thread }),
+    )]);
+    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+    manage_test_thread(&state, thread_id, root.path()).await;
+    state
+        .task_store
+        .update_display_name(thread_id, "Stable cached name")
+        .unwrap();
+    task_store_archive(&state, thread_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let before = task_store_get_archived(&state, thread_id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let response = list_archived_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
+        .await
+        .expect("archived list succeeds");
+
+    assert_eq!(response.0.tasks[0].title, "Stable cached name");
+    assert_eq!(
+        task_store_get_archived(&state, thread_id)
+            .await
+            .unwrap()
+            .unwrap(),
+        before,
+        "archived GET must not persist canonical observations"
+    );
+}
+
+#[tokio::test]
 async fn archived_list_fails_as_a_whole_without_updating_recency_on_read_error() {
     let root = tempfile::tempdir().unwrap();
     let good_id = "thread-archived-good";
@@ -1863,36 +2003,16 @@ async fn archived_list_fails_as_a_whole_without_updating_recency_on_read_error()
 }
 
 #[tokio::test]
-async fn managed_list_keeps_missing_threads_recoverable_when_section_listing_fails() {
+async fn managed_list_keeps_cached_unplaced_threads_when_codex_is_unavailable() {
     let root = tempfile::tempdir().unwrap();
     let good_id = "thread-good";
     let failed_id = "thread-failed";
-    let mut good_thread = task_thread_list(good_id, root.path())["data"][0].clone();
-    good_thread["updatedAt"] = json!(99.0);
-    let client = CodexThreadClient::mock(vec![
-        crate::codex_app_server::MockCodexResponse::error(
-            "threadSection/list",
-            CodexThreadError::ProcessUnavailable,
-        ),
-        crate::codex_app_server::MockCodexResponse::ok_for(
-            "thread/list",
-            json!({
-                "limit": 100,
-                "sortKey": "recency_at",
-                "sortDirection": "desc",
-                "archived": false,
-                "useStateDbOnly": true,
-            }),
-            json!({
-                "data": [good_thread],
-                "nextCursor": null,
-                "backwardsCursor": null,
-            }),
-        ),
-    ]);
-    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+    let client = CodexThreadClient::mock(Vec::new());
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, good_id, root.path()).await;
     manage_test_thread(&state, failed_id, root.path()).await;
+    let before = cached_projection_rows(&state);
 
     let projection = list_managed_tasks(
         State(state.clone()),
@@ -1910,40 +2030,44 @@ async fn managed_list_keeps_missing_threads_recoverable_when_section_listing_fai
         projection
             .unsectioned
             .iter()
-            .any(|task| task.thread_id == good_id && task.conversation_available)
+            .all(|task| !task.conversation_available)
     );
     assert!(
         projection
             .unsectioned
             .iter()
-            .any(|task| task.thread_id == failed_id && !task.conversation_available)
+            .any(|task| task.thread_id == good_id)
     );
-    assert_eq!(
-        task_store_get(&state, good_id)
-            .await
-            .unwrap()
-            .unwrap()
-            .last_observed_recency_ms,
-        Some(99_000)
+    assert!(
+        projection
+            .unsectioned
+            .iter()
+            .any(|task| task.thread_id == failed_id)
     );
-    assert!(task_store_get(&state, failed_id).await.unwrap().is_some());
+    assert!(client.mock_requests().await.is_empty());
+    assert_eq!(cached_projection_rows(&state), before);
 }
 
 #[tokio::test]
 async fn managed_list_returns_all_active_tasks_inside_section_boundaries() {
     let root = tempfile::tempdir().unwrap();
-    let mut threads = Vec::new();
     let mut thread_ids = Vec::new();
     for index in 0..TASK_LIST_PAGE_SIZE {
         let thread_id = format!("thread-{index:02}");
-        let thread = task_thread_list(&thread_id, root.path())["data"][0].clone();
-        threads.push(thread);
         thread_ids.push(thread_id);
     }
-    let client = CodexThreadClient::mock(active_section_responses("section-root", "", threads));
-    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
-    for thread_id in &thread_ids {
-        manage_test_thread(&state, thread_id, root.path()).await;
+    let client = CodexThreadClient::mock(Vec::new());
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    for (index, thread_id) in thread_ids.iter().enumerate() {
+        claim_cached_active(
+            &state,
+            thread_id,
+            &format!("Task {index:02}"),
+            index as u64,
+            "section-root",
+            "",
+        );
     }
 
     let projection = list_managed_tasks(State(state), Query(TasksQuery { cursor: None }))
@@ -1953,6 +2077,7 @@ async fn managed_list_returns_all_active_tasks_inside_section_boundaries() {
     assert_eq!(projection.sections.len(), 1);
     assert_eq!(projection.sections[0].tasks.len(), TASK_LIST_PAGE_SIZE);
     assert!(projection.unsectioned.is_empty());
+    assert!(client.mock_requests().await.is_empty());
 }
 
 #[tokio::test]
@@ -2022,6 +2147,65 @@ async fn task_prompt_persists_the_applied_model_and_reasoning_effort() {
     assert_eq!(requests[2].1["model"], "gpt-5.6-sol");
     assert_eq!(requests[2].1["effort"], "xhigh");
     assert_eq!(requests[2].1["serviceTier"], "priority");
+}
+
+#[tokio::test]
+async fn task_list_stream_bootstraps_the_current_runtime_state_without_codex_rpc() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-list-stream-bootstrap";
+    let client = CodexThreadClient::mock(Vec::new());
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    claim_cached_active(
+        &state,
+        thread_id,
+        "Persisted navigator name",
+        7,
+        "section-list-stream-bootstrap",
+        root.path().to_str().unwrap(),
+    );
+    let mut thread = task_thread_list(thread_id, root.path())["data"][0].clone();
+    thread["status"] = json!({ "type": "active", "activeFlags": [] });
+    state
+        .codex_sessions
+        .observe_thread_metadata(serde_json::from_value(thread).unwrap())
+        .await;
+    state
+        .codex_sessions
+        .observe_thread_metadata(
+            serde_json::from_value(
+                task_thread_list("unmanaged-thread", root.path())["data"][0].clone(),
+            )
+            .unwrap(),
+        )
+        .await;
+
+    let response = task_list_stream(State(state.clone())).await.unwrap();
+    let mut body = response.into_body().into_data_stream();
+    let first = tokio::time::timeout(std::time::Duration::from_millis(50), body.next())
+        .await
+        .expect("task list stream sends its ready frame")
+        .expect("task list stream remains open")
+        .unwrap();
+    let second = tokio::time::timeout(std::time::Duration::from_millis(50), body.next())
+        .await
+        .expect("task list stream replays the current runtime snapshot")
+        .expect("task list stream remains open")
+        .unwrap();
+
+    assert_eq!(first.as_ref(), b": ready\n\n");
+    let second = std::str::from_utf8(&second).unwrap();
+    assert!(second.starts_with("event: task-sync\ndata: "));
+    assert!(second.contains("\"threadId\":\"thread-list-stream-bootstrap\""));
+    assert!(second.contains("\"title\":\"Persisted navigator name\""));
+    assert!(second.contains("\"type\":\"active\""));
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(20), body.next())
+            .await
+            .is_err(),
+        "unmanaged runtime sessions must not be projected into the Task list"
+    );
+    assert!(client.mock_requests().await.is_empty());
 }
 
 #[tokio::test]

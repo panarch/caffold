@@ -168,10 +168,6 @@ impl TaskEvents {
         self.cache.for_thread(thread_id)
     }
 
-    pub(in crate::app) fn cache(&self) -> &LiveTaskEventCache {
-        &self.cache
-    }
-
     pub(in crate::app) fn generated_images(&self) -> &GeneratedImageStore {
         &self.generated_images
     }

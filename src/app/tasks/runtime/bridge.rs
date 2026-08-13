@@ -111,12 +111,6 @@ impl CodexRuntime {
     pub(super) fn restore_connection_state(&self, connection: CodexConnection) {
         let runtime = self.clone();
         tokio::spawn(async move {
-            if let Some(lifecycle) = runtime.lifecycle.clone() {
-                let client = connection.client.clone();
-                tokio::spawn(async move {
-                    lifecycle.reconcile_active_sections(&client).await;
-                });
-            }
             for (thread_id, error) in runtime
                 .sessions
                 .resubscribe_leased(&connection.client, connection.generation)
@@ -203,6 +197,18 @@ impl CodexRuntime {
                     .map(seconds_to_ms_value)
                     .filter(|value| *value > 0)
                     .unwrap_or_else(now_ms);
+                match self
+                    .task_store
+                    .update_observed_recency(&thread_id, started_ms)
+                {
+                    Ok(Some(_)) => self.refresh_persisted_task_list(),
+                    Ok(None) => {}
+                    Err(error) => {
+                        eprintln!(
+                            "failed to persist started turn recency for {thread_id}: {error}"
+                        );
+                    }
+                }
                 let params = json!({ "threadId": thread_id, "turn": turn });
                 self.events.publish(task_event_record(
                     &thread_id,
@@ -309,11 +315,15 @@ impl CodexRuntime {
                     .map(seconds_to_ms_value)
                     .filter(|value| *value > 0)
                     .unwrap_or_else(now_ms);
-                if let Err(error) = self
+                match self
                     .task_store
-                    .update_completed_at(&thread_id, completed_ms)
+                    .record_completed_turn(&thread_id, completed_ms)
                 {
-                    eprintln!("failed to persist completed turn for {thread_id}: {error}");
+                    Ok(Some(_)) => self.refresh_persisted_task_list(),
+                    Ok(None) => {}
+                    Err(error) => {
+                        eprintln!("failed to persist completed turn for {thread_id}: {error}");
+                    }
                 }
                 let params = json!({ "threadId": thread_id, "turn": turn });
                 self.events.publish(task_event_record(
@@ -379,6 +389,12 @@ impl CodexRuntime {
         }
     }
 
+    fn refresh_persisted_task_list(&self) {
+        if let Some(lifecycle) = &self.lifecycle {
+            lifecycle.refresh_task_list();
+        }
+    }
+
     #[cfg(test)]
     pub(in crate::app) fn restore_test_sessions(&self, connection: CodexConnection) {
         self.restore_connection_state(connection);
@@ -408,15 +424,46 @@ mod tests {
 
     use super::*;
     use crate::{
-        app::tasks::events::TaskEvents,
+        app::tasks::{
+            codex_sections::CodexSections, events::TaskEvents, lifecycle::TaskLifecycle,
+            routes::TaskListEvents, worktrees::ManagedWorktrees,
+        },
         codex_app_server::{self, CodexThreadClient, MockCodexResponse},
         codex_thread_sessions::CodexThreadSessions,
+        fs::RootedFs,
         task_store::{ManagedThread, PushSubscriptionInput, TaskStore},
     };
 
     fn runtime_with_events_and_store(events: TaskEvents, store: TaskStore) -> CodexRuntime {
         let (shutdown, _) = broadcast::channel(1);
         CodexRuntime::new(CodexThreadSessions::default(), events, store, shutdown)
+    }
+
+    fn runtime_with_list_events(
+        events: TaskEvents,
+        store: TaskStore,
+    ) -> (CodexRuntime, TaskListEvents) {
+        let root = tempfile::tempdir().unwrap();
+        let fs = std::sync::Arc::new(RootedFs::new(root.path()).unwrap());
+        let sessions = CodexThreadSessions::default();
+        let list_events = TaskListEvents::new();
+        let worktrees =
+            ManagedWorktrees::new(fs.clone(), store.clone(), root.path().join("worktrees"))
+                .unwrap();
+        let lifecycle = TaskLifecycle::new(
+            fs,
+            sessions.clone(),
+            events.clone(),
+            list_events.clone(),
+            store.clone(),
+            worktrees,
+            CodexSections::default(),
+        );
+        let (shutdown, _) = broadcast::channel(1);
+        (
+            CodexRuntime::new(sessions, events, store, shutdown).with_lifecycle(lifecycle),
+            list_events,
+        )
     }
 
     fn active_resume(thread_id: &str) -> JsonValue {
@@ -444,9 +491,9 @@ mod tests {
     }
 
     #[test]
-    fn completed_turn_notification_persists_the_latest_completion_time() {
+    fn completed_turn_notification_persists_projection_and_refreshes_the_list() {
         let store = TaskStore::memory().unwrap();
-        let runtime = runtime_with_events_and_store(TaskEvents::default(), store.clone());
+        let (runtime, list_events) = runtime_with_list_events(TaskEvents::default(), store.clone());
         store
             .claim(
                 ManagedThread::new("thread_1", Some(1_000), None, None),
@@ -471,7 +518,40 @@ mod tests {
 
         let stored = store.get("thread_1").unwrap().unwrap();
         assert_eq!(stored.last_completed_at_ms, Some(1_750_000_004_500));
+        assert_eq!(stored.last_observed_recency_ms, Some(1_750_000_004_500));
         assert!(stored.unseen());
+        assert_eq!(list_events.refresh_count(), 1);
+    }
+
+    #[test]
+    fn started_turn_notification_persists_recency_and_refreshes_the_list() {
+        let store = TaskStore::memory().unwrap();
+        let (runtime, list_events) = runtime_with_list_events(TaskEvents::default(), store.clone());
+        store
+            .claim(
+                ManagedThread::new("thread_1", Some(1_000), None, None),
+                1_000,
+            )
+            .unwrap();
+
+        runtime.handle_notification(
+            codex_app_server::decode_notification(
+                "turn/started",
+                json!({
+                    "threadId": "thread_1",
+                    "turn": {
+                        "id": "turn_1",
+                        "status": "inProgress",
+                        "startedAt": 1_750_000_000.25
+                    }
+                }),
+            )
+            .unwrap(),
+        );
+
+        let stored = store.get("thread_1").unwrap().unwrap();
+        assert_eq!(stored.last_observed_recency_ms, Some(1_750_000_000_250));
+        assert_eq!(list_events.refresh_count(), 1);
     }
 
     #[test]

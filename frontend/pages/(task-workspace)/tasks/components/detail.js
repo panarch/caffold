@@ -2,6 +2,7 @@ import {
   archiveTask,
   getTask,
   interruptTask,
+  markTaskSeen,
   resolveTaskApproval,
   sendTaskPrompt,
 } from "../../../../api.js";
@@ -82,6 +83,7 @@ class CaffoldTaskDetail extends HTMLElement {
         this.handleStreamStateChange(state, previousState),
     });
     this.detailLoadGeneration = 0;
+    this.seenRequestKeys = new Set();
     this.historyRequestToken = 0;
     this.interruptActionToken = 0;
     this.interruptStateValue = { loading: false, error: null };
@@ -602,7 +604,40 @@ class CaffoldTaskDetail extends HTMLElement {
     }
     this.conversationUpdateKind = updateKind;
     this.render();
+    this.markDisplayedTaskSeen(threadId, this.taskDetail?.task);
     return true;
+  }
+
+  markDisplayedTaskSeen(threadId, task) {
+    if (!task?.unseen || taskThreadId(task) !== threadId) {
+      return;
+    }
+    const completionKey =
+      task.lastCompletedMs ?? task.recencyMs ?? task.updatedMs ?? "unknown";
+    const requestKey = `${threadId}:${completionKey}`;
+    if (this.seenRequestKeys.has(requestKey)) {
+      return;
+    }
+    this.seenRequestKeys.add(requestKey);
+    void markTaskSeen(threadId)
+      .then((canonicalTask) => {
+        if (
+          threadId !== this.selectedThreadId ||
+          taskDetailThreadId(this.taskDetail) !== threadId ||
+          !canonicalTask
+        ) {
+          return;
+        }
+        this.taskDetail = {
+          ...this.taskDetail,
+          task: canonicalTask,
+        };
+        this.emitTaskSnapshot();
+        this.render();
+      })
+      .catch(() => {
+        this.seenRequestKeys.delete(requestKey);
+      });
   }
 
   acknowledgeFollowUpFromCanonicalDetail(threadId, detail) {

@@ -99,6 +99,115 @@ test("Codex Task operations and recovery use distinct projections", () => {
   );
 });
 
+test("Task-store readiness owns migration blocking and preserves the Codex cause", () => {
+  const migrating = codexStatus("ready", false);
+  migrating.taskStoreReadiness = {
+    state: "migrating",
+    blocksTaskOperations: true,
+    diagnosticMessage: "Applying the staged v5 database.",
+  };
+  const waiting = codexStatus("updateRequired", true);
+  waiting.taskStoreReadiness = {
+    state: "waitingForCodex",
+    blocksTaskOperations: true,
+    diagnosticMessage: "Task-store migration is waiting for Codex.",
+  };
+  const failed = codexStatus("ready", false);
+  failed.taskStoreReadiness = {
+    state: "failed",
+    blocksTaskOperations: true,
+    diagnosticMessage: "The staged database could not be published.",
+  };
+
+  assert.deepEqual(
+    [migrating, waiting, failed].map((status) => {
+      const view = codexTaskOperationsPresentation(loadedSnapshot(status));
+      return {
+        phase: view.phase,
+        title: view.title,
+        message: view.message,
+      };
+    }),
+    [
+      {
+        phase: "taskStore:migrating",
+        title: "Preparing Tasks…",
+        message: "Applying the staged v5 database.",
+      },
+      {
+        phase: "taskStore:waitingForCodex",
+        title: "Codex update required",
+        message: "The runtime version differs.",
+      },
+      {
+        phase: "taskStore:failed",
+        title: "Task data upgrade failed",
+        message: "The staged database could not be published.",
+      },
+    ],
+  );
+});
+
+test("Task-store migration retry is an explicit mutation followed by status refresh", async () => {
+  let status = codexStatus("ready", false);
+  status.taskStoreReadiness = {
+    state: "failed",
+    blocksTaskOperations: true,
+    diagnosticMessage: "Migration failed.",
+  };
+  let retries = 0;
+  const lifecycle = new CodexStatusLifecycle({
+    loadStatus: async () => status,
+    retryTaskStore: async () => {
+      retries += 1;
+      status = codexStatus("ready", false);
+      status.taskStoreReadiness = {
+        state: "migrating",
+        blocksTaskOperations: true,
+        diagnosticMessage: "Retrying migration.",
+      };
+    },
+    restartRuntime: async () => {},
+  });
+
+  lifecycle.connect();
+  await settle();
+  await lifecycle.retryTaskStoreMigration();
+
+  assert.equal(retries, 1);
+  assert.equal(
+    lifecycle.snapshot().status?.taskStoreReadiness?.state,
+    "migrating",
+  );
+  lifecycle.disconnect();
+});
+
+test("Task-store migration status polls until startup leaves migrating", async () => {
+  let loads = 0;
+  const lifecycle = new CodexStatusLifecycle({
+    loadStatus: async () => {
+      loads += 1;
+      const status = codexStatus("ready", false);
+      if (loads === 1) {
+        status.taskStoreReadiness = {
+          state: "migrating",
+          blocksTaskOperations: true,
+          diagnosticMessage: "Migration is running.",
+        };
+      }
+      return status;
+    },
+    restartRuntime: async () => {},
+  });
+
+  lifecycle.connect();
+  await new Promise((resolve) => setTimeout(resolve, 550));
+
+  assert.equal(loads, 2);
+  assert.equal(lifecycle.snapshot().status?.taskStoreReadiness, undefined);
+  lifecycle.disconnect();
+});
+
 test("Codex status owns one restart request and refreshes canonical readiness", async () => {
   let status = codexStatus("restartRequired");
   let restartRequests = 0;

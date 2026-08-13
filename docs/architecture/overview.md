@@ -122,9 +122,10 @@ lifetime; Tailscale is transport for remote browsers, not part of inference.
 ## Source of Truth
 
 - Codex thread/session: conversation, turns, agent activity
-- Caffold Redb: managed-thread membership, recency-only ordering cache,
-  persistent Web Push subscriptions and the stable server VAPID keypair,
-  composer/seen state, and Caffold-managed worktree ownership and recovery
+- Caffold Redb: managed-thread membership, stable Active navigator names and
+  Section placement, observed recency, persistent Web Push subscriptions and
+  the stable server VAPID keypair, composer/seen state, and Caffold-managed
+  worktree ownership and recovery
 - git worktree: actual file and code changes
 - browser/PWA: presentation and controller state, plus the browser-owned Web
   Push subscription and local installation identity
@@ -136,17 +137,18 @@ backend ensures that daemon is running and connects through a proxy child that
 may be replaced independently. Caffold owns and stops the proxy, not the daemon.
 
 Codex remains the source of truth for thread content and runtime state. Caffold
-keeps local Caffold-owned tables for managed-thread membership and managed
-worktree ownership/recovery. Managed-thread metadata contains only the thread
-ID, last observed canonical recency, Caffold timestamps, and optional
-model/reasoning settings. It never stores title, preview, cwd, Codex timestamps,
-status, active turn, or event summary. The recency value is only an ordering
-cache; list rows are rebuilt from successful canonical `thread/read` responses
-before being returned. Caffold derives
-repository and worktree context live from each thread cwd and does not keep a
-project registry. Tasks globally groups the main checkout and linked worktrees by
-their shared Git repository while each Task keeps its actual worktree root for
-Integrated Review, Git, and GitHub context.
+keeps local Caffold-owned tables for managed membership, the stable Active
+navigator projection, and managed worktree ownership/recovery. Managed-thread
+metadata includes the display name, nullable Section placement, observed
+recency, Caffold timestamps, and optional model/reasoning settings. It does not
+store preview, cwd, Codex timestamps, status, active turn, transcript, or event
+summary. Active list identity and placement come directly from this local
+projection; runtime state arrives independently after Codex connects. Caffold
+derives repository and worktree presentation live from each thread cwd or
+persisted logical Section path and does not keep a project registry. Tasks
+globally groups the main checkout and linked worktrees by their shared Git
+repository while each Task keeps its actual worktree root for Integrated
+Review, Git, and GitHub context.
 
 An eligible managed Task can explicitly move the same Codex thread into a new
 Caffold-managed worktree. The ownership record permits bounded recovery,

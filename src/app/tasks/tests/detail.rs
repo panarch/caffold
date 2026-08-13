@@ -84,9 +84,9 @@ async fn canonical_resume_refreshes_cached_model_settings() {
     assert_eq!(detail.reasoning_effort.as_deref(), Some("medium"));
     assert!(!detail.fast_mode);
     let stored = test_store_get(&state, thread_id).await.unwrap().unwrap();
-    assert_eq!(stored.model.as_deref(), Some("gpt-5.6-luna"));
-    assert_eq!(stored.reasoning_effort.as_deref(), Some("medium"));
-    assert!(!stored.fast_mode);
+    assert_eq!(stored.model.as_deref(), Some("gpt-5.6-sol"));
+    assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
+    assert!(stored.fast_mode);
 }
 
 #[tokio::test]
@@ -147,11 +147,11 @@ async fn canonical_resume_without_model_settings_preserves_the_cached_selection(
     let stored = test_store_get(&state, thread_id).await.unwrap().unwrap();
     assert_eq!(stored.model.as_deref(), Some("gpt-5.6-sol"));
     assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
-    assert!(!stored.fast_mode);
+    assert!(stored.fast_mode);
 }
 
 #[tokio::test]
-async fn canonical_turn_history_recovers_missed_completion_and_marks_it_seen_when_viewed() {
+async fn canonical_turn_history_projects_missed_completion_without_persisting_get_observations() {
     let root = tempfile::tempdir().unwrap();
     let thread_id = "thread-missed-completion";
     let state = task_state_with_codex_client(
@@ -219,7 +219,7 @@ async fn canonical_turn_history_recovers_missed_completion_and_marks_it_seen_whe
     assert_eq!(task.last_completed_ms, Some(5_000));
     assert!(task.unseen);
     let stored = test_store_get(&state, thread_id).await.unwrap().unwrap();
-    assert_eq!(stored.last_completed_at_ms, Some(5_000));
+    assert_eq!(stored.last_completed_at_ms, None);
     assert_eq!(stored.last_seen_activity_ms, None);
 
     snapshot.viewer_leases = 1;
@@ -228,9 +228,10 @@ async fn canonical_turn_history_recovers_missed_completion_and_marks_it_seen_whe
         .assemble_snapshot(snapshot, None)
         .await
         .unwrap();
-    assert!(!viewed.task.unwrap().unseen);
+    assert!(viewed.task.unwrap().unseen);
     let stored = test_store_get(&state, thread_id).await.unwrap().unwrap();
-    assert_eq!(stored.last_seen_activity_ms, Some(5_000));
+    assert_eq!(stored.last_completed_at_ms, None);
+    assert_eq!(stored.last_seen_activity_ms, None);
 }
 
 #[tokio::test]
@@ -377,6 +378,10 @@ async fn history_timeout_does_not_replace_cached_task_detail() {
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
+    state
+        .task_store
+        .update_display_name(thread_id, "Cached task detail regression")
+        .unwrap();
     let _viewer = state
         .codex_sessions
         .acquire_viewer(&client, 1, thread_id)
@@ -853,8 +858,9 @@ async fn task_detail_handler_releases_its_subscription_after_the_response() {
     let state =
         task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
     manage_test_thread(&state, thread_id, root.path()).await;
+    let before = test_store_get(&state, thread_id).await.unwrap().unwrap();
 
-    let response = test_task_detail(state, thread_id.to_string(), None)
+    let response = test_task_detail(state.clone(), thread_id.to_string(), None)
         .await
         .expect("task detail succeeds");
 
@@ -865,6 +871,11 @@ async fn task_detail_handler_releases_its_subscription_after_the_response() {
         "detail must stay empty until the canonical resume snapshot arrives"
     );
     wait_for_mock_method(&client, "thread/unsubscribe").await;
+    assert_eq!(
+        test_store_get(&state, thread_id).await.unwrap().unwrap(),
+        before,
+        "detail GET bootstrap must not persist canonical observations"
+    );
     assert_eq!(
         client
             .mock_requests()

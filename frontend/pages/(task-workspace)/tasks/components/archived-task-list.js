@@ -41,6 +41,7 @@ class CaffoldArchivedTaskList extends HTMLElement {
     this.removeEventListener("click", this.boundClick);
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
     this.archivedTaskRequestId += 1;
+    this.archivedTaskLoadPromise = null;
     this.archivedTaskLoading = false;
     this.archivedTaskLoadingMore = false;
   }
@@ -58,6 +59,7 @@ class CaffoldArchivedTaskList extends HTMLElement {
     this.archivedTaskLoadMoreError = null;
     this.archivedTaskNextCursor = null;
     this.archivedTaskRequestId = 0;
+    this.archivedTaskLoadPromise = null;
     this.initialRequestSettled = false;
     this.revealed = false;
     this.transportState = TASK_TRANSPORT_STATE.IDLE;
@@ -93,6 +95,7 @@ class CaffoldArchivedTaskList extends HTMLElement {
     this.codexTaskOperations = presentation;
     if (becameBlocked) {
       this.archivedTaskRequestId += 1;
+      this.archivedTaskLoadPromise = null;
       this.archivedTaskLoading = false;
       this.archivedTaskLoadingMore = false;
     }
@@ -269,6 +272,21 @@ class CaffoldArchivedTaskList extends HTMLElement {
         nextCursor: this.archivedTaskNextCursor,
       };
     }
+    if (this.archivedTaskLoadPromise) {
+      return await this.archivedTaskLoadPromise;
+    }
+    const request = this.performLoadArchived();
+    this.archivedTaskLoadPromise = request;
+    try {
+      return await request;
+    } finally {
+      if (this.archivedTaskLoadPromise === request) {
+        this.archivedTaskLoadPromise = null;
+      }
+    }
+  }
+
+  async performLoadArchived() {
     const requestId = ++this.archivedTaskRequestId;
     this.archivedTaskLoading = true;
     this.archivedTaskLoadingMore = false;

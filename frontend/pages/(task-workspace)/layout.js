@@ -185,7 +185,11 @@ class CaffoldTaskWorkspace extends HTMLElement {
     );
     this.addEventListener(CODEX_STATUS_REFRESH_REQUEST_EVENT, (event) => {
       event.stopPropagation();
-      void this.codexStatusLifecycle.refresh().catch(() => {});
+      const retry = this.codexStatusLifecycle.statusSnapshot()
+        ?.taskStoreReadiness?.blocksTaskOperations
+        ? this.codexStatusLifecycle.retryTaskStoreMigration()
+        : this.codexStatusLifecycle.refresh();
+      void retry.catch(() => {});
     });
     this.addEventListener(CODEX_RUNTIME_RESTART_REQUEST_EVENT, (event) => {
       event.stopPropagation();
@@ -288,6 +292,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
       this.pendingCodexTaskRoute = null;
       return null;
     }
+    void this.taskNavigator.activate();
     if (this.tasksPage.codexOperationsBlocked()) {
       this.pendingCodexTaskRoute = {
         route: { ...route },

@@ -1,5 +1,6 @@
 import {
   archiveRecoveryTask,
+  recheckRecoveryTask,
   removeRecoveryTask,
   restoreRecoveryTask,
 } from "../../../../api.js";
@@ -67,10 +68,7 @@ class CaffoldTaskRecovery extends HTMLElement {
     }
     const type = action.dataset.taskRecoveryAction;
     if (type === "recheck") {
-      this.pendingAction = "recheck";
-      this.actionError = null;
-      this.render();
-      this.dispatchIntent("recheck");
+      void this.recheck();
     } else if (type === "restore") {
       void this.restore();
     } else if (type === "archive") {
@@ -112,6 +110,20 @@ class CaffoldTaskRecovery extends HTMLElement {
         task: response.task,
         activeTopPlacement: response.activeTopPlacement,
       });
+    });
+  }
+
+  async recheck() {
+    const threadId = taskThreadId(this.recovery);
+    if (!threadId) {
+      return;
+    }
+    await this.runAction("recheck", async () => {
+      const recovery = await recheckRecoveryTask(threadId);
+      if (!recovery?.recovery) {
+        throw new Error("Rechecked Task response is missing recovery state.");
+      }
+      this.dispatchIntent("rechecked", { recovery });
     });
   }
 

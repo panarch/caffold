@@ -273,7 +273,8 @@ impl CodexRuntime {
                 "Caffold does not support the dynamic tool `{qualified_tool}`."
             ));
         }
-        if self.managed_thread(thread_id).await?.is_none() {
+        let managed = self.managed_thread(thread_id).await?;
+        if managed.is_none() {
             return Err(if tool == RENAME_CURRENT_THREAD_TOOL_NAME {
                 "Caffold can only rename tasks that it manages.".to_string()
             } else {
@@ -291,6 +292,34 @@ impl CodexRuntime {
                 .set_thread_name(thread_id, name)
                 .await
                 .map_err(|error| format!("Caffold could not rename the current task: {error}"))?;
+            let store = self.task_store.clone();
+            let persisted_thread_id = thread_id.to_string();
+            let persisted_name = name.to_string();
+            let local_result = tokio::task::spawn_blocking(move || {
+                store.update_display_name(&persisted_thread_id, &persisted_name)
+            })
+            .await
+            .map_err(|error| format!("Task-store worker failed: {error}"))
+            .and_then(|result| result.map_err(|error| error.to_string()))
+            .and_then(|thread| {
+                thread.ok_or_else(|| "renamed Task is no longer managed".to_string())
+            });
+            if let Err(error) = local_result {
+                if let Some(previous_name) = managed.as_ref().map(|thread| &thread.display_name)
+                    && let Err(rollback_error) =
+                        client.set_thread_name(thread_id, previous_name).await
+                {
+                    eprintln!(
+                        "failed to roll back Codex Task rename after local projection failure: {rollback_error}"
+                    );
+                }
+                return Err(format!(
+                    "Caffold renamed Codex but could not persist the Task name: {error}"
+                ));
+            }
+            if let Some(lifecycle) = &self.lifecycle {
+                lifecycle.refresh_task_list();
+            }
             return Ok(format!("Renamed the current Caffold task to `{name}`."));
         }
 
@@ -497,7 +526,7 @@ mod tests {
     use super::*;
     use crate::{
         app::tasks::{
-            active_sections::ActiveTaskSections, events::TaskEvents, lifecycle::TaskLifecycle,
+            codex_sections::CodexSections, events::TaskEvents, lifecycle::TaskLifecycle,
             routes::TaskListEvents, worktrees::ManagedWorktrees,
         },
         codex_app_server::{self, CodexThreadError, MockCodexResponse},
@@ -666,6 +695,15 @@ mod tests {
                 })
             )]
         );
+        assert_eq!(
+            runtime
+                .task_store
+                .get("thread_1")
+                .unwrap()
+                .unwrap()
+                .display_name,
+            "Whisper voice input"
+        );
     }
 
     #[tokio::test]
@@ -696,6 +734,73 @@ mod tests {
                 "success": false
             })
         );
+    }
+
+    #[tokio::test]
+    async fn rename_dynamic_tool_rolls_codex_back_when_the_local_row_disappears() {
+        let store = TaskStore::memory().unwrap();
+        store
+            .claim(ManagedThread::new("thread_1", None, None, None), 1)
+            .unwrap();
+        store
+            .update_display_name("thread_1", "Previous stable name")
+            .unwrap();
+        let runtime = test_runtime(store.clone());
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::delayed_ok(
+                "thread/name/set",
+                json!({}),
+                std::time::Duration::from_millis(100),
+            ),
+            MockCodexResponse::ok_for(
+                "thread/name/set",
+                json!({
+                    "threadId": "thread_1",
+                    "name": "Previous stable name",
+                }),
+                json!({}),
+            ),
+        ]);
+        let task_runtime = runtime.clone();
+        let task_client = client.clone();
+        let request = tokio::spawn(async move {
+            task_runtime
+                .handle_server_request(
+                    &task_client,
+                    1,
+                    dynamic_tool_request(
+                        "thread_1",
+                        RENAME_CURRENT_THREAD_TOOL_NAME,
+                        json!({ "name": "New name" }),
+                    ),
+                )
+                .await;
+        });
+        for _ in 0..100 {
+            if !client.mock_requests().await.is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        }
+        assert_eq!(client.mock_requests().await.len(), 1);
+        assert!(store.delete("thread_1").unwrap());
+
+        request.await.unwrap();
+
+        assert_eq!(
+            client.mock_requests().await,
+            [
+                (
+                    "thread/name/set".to_string(),
+                    json!({"threadId": "thread_1", "name": "New name"}),
+                ),
+                (
+                    "thread/name/set".to_string(),
+                    json!({"threadId": "thread_1", "name": "Previous stable name"}),
+                ),
+            ]
+        );
+        assert_eq!(client.mock_server_responses().await[0].1["success"], false);
     }
 
     #[tokio::test]
@@ -865,7 +970,7 @@ mod tests {
             TaskListEvents::new(),
             store.clone(),
             worktrees,
-            ActiveTaskSections::new(fs, store.clone()),
+            CodexSections::default(),
         );
         let (shutdown, _) = broadcast::channel(1);
         let runtime =

@@ -45,6 +45,7 @@ class CaffoldActiveTaskList extends HTMLElement {
     this.removeEventListener("click", this.boundClick);
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
     this.taskListRequestId += 1;
+    this.taskListLoadPromise = null;
     this.taskListLoading = false;
     this.closeStream();
   }
@@ -60,6 +61,7 @@ class CaffoldActiveTaskList extends HTMLElement {
     this.taskListLoaded = false;
     this.taskListError = null;
     this.taskListRequestId = 0;
+    this.taskListLoadPromise = null;
     this.pendingTopPlacements = new Map();
     this.initialRequestSettled = false;
     this.selectedThreadId = "";
@@ -89,9 +91,6 @@ class CaffoldActiveTaskList extends HTMLElement {
   async activate({ force = false } = {}) {
     this.ensureState();
     this.active = true;
-    if (this.codexOperationsBlocked) {
-      return null;
-    }
     return await this.loadTasks({ force });
   }
 
@@ -108,8 +107,6 @@ class CaffoldActiveTaskList extends HTMLElement {
       this.codexTaskOperations?.blocked === false && presentation.blocked;
     this.codexTaskOperations = presentation;
     if (becameBlocked) {
-      this.taskListRequestId += 1;
-      this.taskListLoading = false;
       this.closeStream();
     }
     this.render();
@@ -277,6 +274,10 @@ class CaffoldActiveTaskList extends HTMLElement {
       return;
     }
     event.stopPropagation();
+    if (action.dataset.taskAction === "retry-task-list") {
+      void this.loadTasks({ force: true });
+      return;
+    }
     if (this.codexOperationsBlocked) {
       return;
     }
@@ -288,8 +289,6 @@ class CaffoldActiveTaskList extends HTMLElement {
       if (recovery) {
         this.dispatchIntent("select-task-recovery", { threadId, recovery });
       }
-    } else if (action.dataset.taskAction === "retry-task-list") {
-      void this.loadTasks({ force: true });
     }
   }
 
@@ -304,16 +303,28 @@ class CaffoldActiveTaskList extends HTMLElement {
   }
 
   async loadTasks({ force = false, isCurrent = () => true } = {}) {
-    if (this.codexOperationsBlocked) {
-      return null;
-    }
     if (this.taskListLoaded && !force) {
       return {
         sections: this.sections,
         unsectioned: this.unsectioned,
       };
     }
+    if (this.taskListLoadPromise) {
+      return await this.taskListLoadPromise;
+    }
 
+    const request = this.performLoadTasks({ isCurrent });
+    this.taskListLoadPromise = request;
+    try {
+      return await request;
+    } finally {
+      if (this.taskListLoadPromise === request) {
+        this.taskListLoadPromise = null;
+      }
+    }
+  }
+
+  async performLoadTasks({ isCurrent }) {
     const requestId = ++this.taskListRequestId;
     this.taskListLoading = true;
     this.taskListError = null;
@@ -350,9 +361,6 @@ class CaffoldActiveTaskList extends HTMLElement {
       }
       this.taskListLoading = false;
       this.taskListError = error;
-      this.sections = [];
-      this.unsectioned = [];
-      this.taskListLoaded = false;
       const initialSettled = this.markInitialRequestSettled();
       this.render();
       this.dispatchInitialSettled(initialSettled);
@@ -557,8 +565,7 @@ class CaffoldActiveTaskList extends HTMLElement {
     return {
       count: this.allTasks().length,
       loaded: this.taskListLoaded,
-      loading: !this.codexOperationsBlocked &&
-        (this.taskListLoading || !this.initialRequestSettled),
+      loading: this.taskListLoading || !this.initialRequestSettled,
       error: this.taskListError?.message ?? "",
     };
   }
@@ -574,19 +581,16 @@ class CaffoldActiveTaskList extends HTMLElement {
 
   render() {
     this.ensureState();
-    const loading = !this.codexOperationsBlocked &&
-      (this.taskListLoading || !this.initialRequestSettled);
+    const loading = this.taskListLoading || !this.initialRequestSettled;
     const taskCount = this.allTasks().length;
     let content;
-    if (this.codexOperationsBlocked && !taskCount) {
-      content = `<p class="task-section-message">${escapeHtml(this.codexTaskOperations.message)}</p>`;
-    } else if (loading && !taskCount) {
+    if (loading && !taskCount) {
       content = `<p class="task-section-message">Loading...</p>`;
     } else if (this.taskListError && !taskCount) {
       content = `
         <div class="task-section-message" role="alert">
           <p>${escapeHtml(this.taskListError.message)}</p>
-          <button type="button" class="task-secondary-button" data-task-action="retry-task-list" ${this.codexOperationsBlocked ? "disabled" : ""}>Retry</button>
+          <button type="button" class="task-secondary-button" data-task-action="retry-task-list">Retry</button>
         </div>
       `;
     } else if (!taskCount) {
@@ -605,9 +609,17 @@ class CaffoldActiveTaskList extends HTMLElement {
             }]
           : []),
       ];
-      content = `<ol class="task-repository-groups" data-task-section="managed">
-        ${sections.map((section) => this.renderSection(section)).join("")}
-      </ol>`;
+      content = `
+        ${this.taskListError ? `
+          <div class="task-list-stale-warning" role="alert">
+            <span>${escapeHtml(this.taskListError.message)}</span>
+            <button type="button" class="task-secondary-button" data-task-action="retry-task-list">Retry</button>
+          </div>
+        ` : ""}
+        <ol class="task-repository-groups" data-task-section="managed">
+          ${sections.map((section) => this.renderSection(section)).join("")}
+        </ol>
+      `;
     }
     this.innerHTML = content;
     initializeRunningSpinners(this);
@@ -824,6 +836,7 @@ function patchTaskListRow(row, nextRow) {
     "data-task-action",
     "data-thread-id",
     "data-task-status",
+    "data-task-recovery-reason",
     "title",
     "aria-current",
     "aria-busy",

@@ -46,7 +46,7 @@ class CaffoldCodexReadinessRecovery extends HTMLElement {
     this.innerHTML = `
       <section class="codex-readiness-surface" aria-labelledby="codex-readiness-title">
         <div class="codex-readiness-card">
-          <p class="codex-readiness-eyebrow">Codex setup</p>
+          <p class="codex-readiness-eyebrow" data-readiness-eyebrow>Codex setup</p>
           <h2 id="codex-readiness-title" data-readiness-title></h2>
           <p data-readiness-message role="status"></p>
           <p class="codex-readiness-runtime-requirement" hidden>
@@ -135,11 +135,42 @@ class CaffoldCodexReadinessRecovery extends HTMLElement {
     if (!this.rendered) {
       return;
     }
+    const taskStore = this.snapshotValue.status?.taskStoreReadiness;
+    if (
+      taskStore?.blocksTaskOperations &&
+      taskStore.state !== "waitingForCodex"
+    ) {
+      const failed = taskStore.state === "failed";
+      patchReadinessCard(this, {
+        state: `taskStore-${taskStore.state ?? "blocked"}`,
+        eyebrow: "Task setup",
+        title: failed ? "Task data upgrade failed" : "Preparing Tasks…",
+        message: failed
+          ? "Caffold could not finish preparing the local Task navigator."
+          : "Caffold is preparing the local Task navigator before Tasks start.",
+        instruction: failed
+          ? "Retry the upgrade. The existing Task database remains unchanged until it succeeds."
+          : "This finishes automatically when the local upgrade succeeds.",
+        diagnostic: taskStore.diagnosticMessage,
+        showInstall: false,
+        showGuide: false,
+        showRestart: false,
+        retryLabel: failed ? "Retry Task setup" : "Preparing…",
+        retryDisabled: !failed,
+        showSettings: false,
+        restartState: this.restartStateValue.state,
+        restartMessage: this.restartStateValue.message,
+        copyLabel: "Copy command",
+        versions: {},
+      });
+      return;
+    }
     const readiness = this.snapshotValue.status?.readiness;
     if (!readiness) {
       if (this.snapshotValue.phase === "failed") {
         patchReadinessCard(this, {
           state: "checkFailed",
+          eyebrow: "Codex setup",
           title: "Codex readiness could not be checked",
           message: "Caffold could not load the backend-owned Codex readiness state.",
           instruction: "",
@@ -171,6 +202,7 @@ class CaffoldCodexReadinessRecovery extends HTMLElement {
         : "Required official install or update command";
     patchReadinessCard(this, {
       state: readiness.state,
+      eyebrow: "Codex setup",
       title: content.title,
       message: content.message,
       instruction: content.instruction,
@@ -180,6 +212,11 @@ class CaffoldCodexReadinessRecovery extends HTMLElement {
       showInstall,
       showGuide,
       showRestart: readiness.state === "restartRequired",
+      retryLabel: taskStore?.blocksTaskOperations
+        ? "Retry Task setup"
+        : "Retry",
+      retryDisabled: false,
+      showSettings: true,
       restartState: this.restartStateValue.state,
       restartMessage: this.restartStateValue.message,
       copyLabel,
@@ -196,6 +233,8 @@ class CaffoldCodexReadinessRecovery extends HTMLElement {
 function patchReadinessCard(root, view) {
   const card = root.querySelector(".codex-readiness-card");
   card.dataset.readinessState = view.state;
+  card.querySelector("[data-readiness-eyebrow]").textContent =
+    view.eyebrow ?? "Codex setup";
   card.querySelector("[data-readiness-title]").textContent = view.title;
   card.querySelector("[data-readiness-message]").textContent = view.message;
 
@@ -229,8 +268,14 @@ function patchReadinessCard(root, view) {
   restart.textContent = view.restartState === "refreshing"
     ? "Checking…"
     : restarting ? "Restarting…" : "Restart Codex";
-  actions.querySelector('[data-codex-readiness-action="settings"]').textContent =
-    "Open Settings";
+  const retry = actions.querySelector('[data-codex-readiness-action="retry"]');
+  retry.textContent = view.retryLabel ?? "Retry";
+  retry.disabled = Boolean(view.retryDisabled);
+  const settings = actions.querySelector(
+    '[data-codex-readiness-action="settings"]',
+  );
+  settings.textContent = "Open Settings";
+  settings.toggleAttribute("hidden", view.showSettings === false);
   actions.querySelector("a").toggleAttribute("hidden", !view.showGuide);
   const restartMessage = card.querySelector(".codex-readiness-restart-message");
   restartMessage.toggleAttribute("hidden", !view.restartMessage);

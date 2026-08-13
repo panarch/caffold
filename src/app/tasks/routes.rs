@@ -1,4 +1,4 @@
-use std::{convert::Infallible, path::Path};
+use std::{collections::VecDeque, convert::Infallible, path::Path};
 
 use axum::{
     Json, Router,
@@ -14,16 +14,18 @@ use serde_json::Value as JsonValue;
 use tokio::sync::broadcast;
 
 #[cfg(test)]
+use super::TaskEventRecord;
+#[cfg(test)]
 use serde_json::json;
 
-use super::projection::short_thread_id;
 use super::{
-    ApprovalResolveError, CodexConnection, DetailFrameStream, TaskDetailResponse, TaskEventRecord,
+    ApprovalResolveError, CodexConnection, DetailFrameStream, TaskDetailResponse, TaskDetailSync,
     TaskRecord, TaskState, accepted_user_message_event, now_ms, task_activity_ms,
 };
 use super::{
-    active_sections::{ActiveTaskTopPlacement, ManagedCodexThreadLocation},
+    codex_sections::ActiveTaskTopPlacement,
     lifecycle::StartTask,
+    recovery::{ActiveTaskRecovery, ActiveTaskRecoveryReason, ManagedCodexThreadLocation},
     worktrees::inspect_ready_worktree,
 };
 
@@ -37,7 +39,9 @@ use crate::{
     },
     codex_thread_sessions::{PromptTarget, ThreadSessionSnapshot, ThreadSessionsDiagnostics},
     fs::MAX_IMAGE_BYTES,
-    task_store::{ManagedThread, ManagedWorktree, ManagedWorktreeState, TaskStoreError},
+    task_store::{
+        ManagedSection, ManagedThread, ManagedWorktree, ManagedWorktreeState, TaskStoreError,
+    },
 };
 
 const MAX_TASK_IMAGES: usize = 4;
@@ -173,14 +177,6 @@ struct TaskRestoreResponse {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct TaskEventEnvelope {
-    thread_id: String,
-    revision: u64,
-    event: TaskEventRecord,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 struct TaskListRemoval {
     thread_id: String,
     reason: &'static str,
@@ -197,13 +193,20 @@ enum TaskListUpdate {
 pub(super) struct TaskListEvents {
     removals: broadcast::Sender<TaskListRemoval>,
     updates: broadcast::Sender<TaskListUpdate>,
+    #[cfg(test)]
+    refresh_count: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl TaskListEvents {
     pub(super) fn new() -> Self {
         let (removals, _) = broadcast::channel(64);
         let (updates, _) = broadcast::channel(64);
-        Self { removals, updates }
+        Self {
+            removals,
+            updates,
+            #[cfg(test)]
+            refresh_count: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        }
     }
 
     pub(super) fn remove(&self, thread_id: &str, reason: &'static str) {
@@ -224,7 +227,16 @@ impl TaskListEvents {
     }
 
     pub(super) fn refresh(&self) {
+        #[cfg(test)]
+        self.refresh_count
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let _ = self.updates.send(TaskListUpdate::Refresh);
+    }
+
+    #[cfg(test)]
+    pub(super) fn refresh_count(&self) -> usize {
+        self.refresh_count
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     fn subscribe(
@@ -281,6 +293,10 @@ pub(super) fn router(state: TaskState) -> Router {
         )
         .route("/api/tasks/{thread_id}/archive", post(task_archive))
         .route("/api/tasks/{thread_id}/restore", post(task_restore))
+        .route(
+            "/api/tasks/{thread_id}/recovery/recheck",
+            post(task_recovery_recheck),
+        )
         .route(
             "/api/tasks/{thread_id}/recovery/restore",
             post(task_recovery_restore),
@@ -395,11 +411,8 @@ fn codex_reasoning_effort_value(effort: &JsonValue) -> Option<&str> {
 async fn list_managed_tasks(
     State(state): State<TaskState>,
     Query(_query): Query<TasksQuery>,
-) -> Result<Json<super::active_sections::ActiveTaskProjection>, ApiError> {
-    let connection = require_codex_thread_connection(&state).await?;
-    state
-        .active_sections
-        .load(&connection.client)
+) -> Result<Json<super::active_list::ActiveTaskProjection>, ApiError> {
+    super::active_list::load_cached(state.fs, state.task_store)
         .await
         .map(Json)
 }
@@ -440,9 +453,6 @@ async fn list_archived_tasks(
         .collect::<Vec<_>>()
         .await;
     let mut tasks = reads.into_iter().collect::<Result<Vec<_>, ApiError>>()?;
-    for (task, activity_ms) in &tasks {
-        task_store_update_archived_observed_recency(&state, &task.thread_id, *activity_ms).await?;
-    }
     tasks.sort_by(|(left, _), (right, _)| {
         task_activity_ms(right)
             .cmp(&task_activity_ms(left))
@@ -528,21 +538,6 @@ async fn task_store_mark_seen(
     .map_err(task_store_api_error)
 }
 
-async fn task_store_update_archived_observed_recency(
-    state: &TaskState,
-    thread_id: &str,
-    canonical_activity_ms: u64,
-) -> Result<Option<ManagedThread>, ApiError> {
-    let store = state.task_store.clone();
-    let thread_id = thread_id.to_string();
-    tokio::task::spawn_blocking(move || {
-        store.update_archived_observed_recency(&thread_id, canonical_activity_ms)
-    })
-    .await
-    .map_err(task_store_join_error)?
-    .map_err(task_store_api_error)
-}
-
 async fn task_store_update_composer_settings(
     state: &TaskState,
     thread_id: &str,
@@ -579,46 +574,88 @@ async fn task_store_archive(
         .map_err(task_store_api_error)
 }
 
-async fn task_store_restore(
+async fn task_store_restore_at_top(
     state: &TaskState,
     thread_id: &str,
+    placement: &ActiveTaskTopPlacement,
 ) -> Result<Option<ManagedThread>, ApiError> {
     let store = state.task_store.clone();
     let thread_id = thread_id.to_string();
-    tokio::task::spawn_blocking(move || store.restore(&thread_id))
-        .await
-        .map_err(task_store_join_error)?
-        .map_err(task_store_api_error)
+    let section = managed_section_from_placement(placement);
+    tokio::task::spawn_blocking(move || {
+        store.transaction(|tables| {
+            tables.upsert_managed_section(&section)?;
+            tables.restore_managed_thread_at_top(&thread_id, &section.section_id)
+        })
+    })
+    .await
+    .map_err(task_store_join_error)?
+    .map_err(task_store_api_error)
 }
 
-async fn task_store_delete_archived(state: &TaskState, thread_id: &str) -> Result<bool, ApiError> {
-    let store = state.task_store.clone();
-    let thread_id = thread_id.to_string();
-    tokio::task::spawn_blocking(move || store.delete_archived(&thread_id))
-        .await
-        .map_err(task_store_join_error)?
-        .map_err(task_store_api_error)
-}
-
-async fn task_store_delete(state: &TaskState, thread_id: &str) -> Result<bool, ApiError> {
-    let store = state.task_store.clone();
-    let thread_id = thread_id.to_string();
-    tokio::task::spawn_blocking(move || store.delete(&thread_id))
-        .await
-        .map_err(task_store_join_error)?
-        .map_err(task_store_api_error)
-}
-
-async fn task_store_delete_worktree(
+async fn task_store_place_at_top(
     state: &TaskState,
-    worktree_id: &str,
+    thread_id: &str,
+    placement: &ActiveTaskTopPlacement,
+) -> Result<Option<ManagedThread>, ApiError> {
+    let store = state.task_store.clone();
+    let thread_id = thread_id.to_string();
+    let section = managed_section_from_placement(placement);
+    tokio::task::spawn_blocking(move || {
+        store.transaction(|tables| {
+            tables.upsert_managed_section(&section)?;
+            tables.place_managed_thread_at_top(&thread_id, &section.section_id)
+        })
+    })
+    .await
+    .map_err(task_store_join_error)?
+    .map_err(task_store_api_error)
+}
+
+fn managed_section_from_placement(placement: &ActiveTaskTopPlacement) -> ManagedSection {
+    ManagedSection {
+        section_id: placement.section.id.clone(),
+        logical_path: placement.section.name.clone(),
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ManagedTaskMembership {
+    Active,
+    Archived,
+}
+
+async fn task_store_delete_task_rows(
+    state: &TaskState,
+    thread_id: &str,
+    membership: ManagedTaskMembership,
+    worktree_id: Option<&str>,
 ) -> Result<bool, ApiError> {
     let store = state.task_store.clone();
-    let worktree_id = worktree_id.to_string();
-    tokio::task::spawn_blocking(move || store.delete_worktree(&worktree_id))
-        .await
-        .map_err(task_store_join_error)?
-        .map_err(task_store_api_error)
+    let thread_id = thread_id.to_string();
+    let worktree_id = worktree_id.map(str::to_string);
+    tokio::task::spawn_blocking(move || {
+        store.transaction(|tables| {
+            let deleted = match membership {
+                ManagedTaskMembership::Active => tables.delete_active_managed_thread(&thread_id)?,
+                ManagedTaskMembership::Archived => {
+                    tables.delete_archived_managed_thread(&thread_id)?
+                }
+            };
+            if !deleted {
+                return Ok(false);
+            }
+            if let Some(worktree_id) = worktree_id.as_deref()
+                && !tables.delete_managed_worktree(worktree_id)?
+            {
+                return Err(TaskStoreError::UnexpectedPayload);
+            }
+            Ok(true)
+        })
+    })
+    .await
+    .map_err(task_store_join_error)?
+    .map_err(task_store_api_error)
 }
 
 fn task_store_api_error(error: TaskStoreError) -> ApiError {
@@ -780,180 +817,124 @@ async fn task_stream(
 }
 
 async fn task_list_stream(State(state): State<TaskState>) -> Result<Response, ApiError> {
-    Ok(task_event_stream(state, None))
+    let receivers = TaskEventReceivers::subscribe(&state);
+    let initial_frames = task_list_stream_initial_frames(&state).await;
+    Ok(task_list_event_stream(receivers, initial_frames))
 }
 
-fn task_event_stream(state: TaskState, thread_id: Option<String>) -> Response {
-    let receiver = state.task_events.subscribe();
-    let sync_receiver = state.task_sync.subscribe_updates();
-    let (removal_receiver, update_receiver) = state.task_list_events.subscribe();
-    let shutdown = state.shutdown.subscribe();
-    let live_task_events = state.task_events.cache().clone();
-    let sessions = state.codex_sessions.clone();
+struct TaskEventReceivers {
+    sync: broadcast::Receiver<TaskDetailSync>,
+    removals: broadcast::Receiver<TaskListRemoval>,
+    updates: broadcast::Receiver<TaskListUpdate>,
+    shutdown: broadcast::Receiver<()>,
+}
+
+impl TaskEventReceivers {
+    fn subscribe(state: &TaskState) -> Self {
+        let (removals, updates) = state.task_list_events.subscribe();
+        Self {
+            sync: state.task_sync.subscribe_updates(),
+            removals,
+            updates,
+            shutdown: state.shutdown.subscribe(),
+        }
+    }
+}
+
+struct TaskEventStreamState {
+    receivers: TaskEventReceivers,
+    initial_frames: VecDeque<Bytes>,
+}
+
+async fn task_list_stream_initial_frames(state: &TaskState) -> VecDeque<Bytes> {
+    let detail = state.detail.clone();
+    let mut snapshots = stream::iter(state.codex_sessions.snapshots().await)
+        .map(move |(thread_id, snapshot)| {
+            let detail = detail.clone();
+            async move {
+                let detail = detail.assemble_snapshot(snapshot, None).await.ok()?;
+                Some(TaskDetailSync {
+                    revision: detail.revision,
+                    thread_id,
+                    detail,
+                    reason: "task-list-stream-bootstrap",
+                    error: None,
+                })
+            }
+        })
+        .buffer_unordered(TASK_CANONICAL_READ_CONCURRENCY)
+        .filter_map(|sync| async move { sync })
+        .collect::<Vec<_>>()
+        .await;
+    snapshots.sort_by(|left, right| left.thread_id.cmp(&right.thread_id));
+
+    let mut frames = VecDeque::with_capacity(snapshots.len() + 1);
+    frames.push_back(Bytes::from_static(b": ready\n\n"));
+    frames.extend(snapshots.into_iter().map(|sync| {
+        let payload = serde_json::to_string(&sync).unwrap_or_else(|_| "{}".to_string());
+        Bytes::from(format!("event: task-sync\ndata: {payload}\n\n"))
+    }));
+    frames
+}
+
+fn task_list_event_stream(
+    receivers: TaskEventReceivers,
+    initial_frames: VecDeque<Bytes>,
+) -> Response {
     let stream = stream::unfold(
-        (
-            receiver,
-            sync_receiver,
-            removal_receiver,
-            update_receiver,
-            shutdown,
-            thread_id,
-            live_task_events,
-            sessions,
-        ),
-        |(
-            mut receiver,
-            mut sync_receiver,
-            mut removal_receiver,
-            mut update_receiver,
-            mut shutdown,
-            thread_id,
-            live_task_events,
-            sessions,
-        )| async move {
+        TaskEventStreamState {
+            receivers,
+            initial_frames,
+        },
+        |mut state| async move {
+            if let Some(frame) = state.initial_frames.pop_front() {
+                return Some((Ok::<_, Infallible>(frame), state));
+            }
             loop {
                 tokio::select! {
-                    _ = shutdown.recv() => return None,
-                    message = removal_receiver.recv() => {
+                    _ = state.receivers.shutdown.recv() => return None,
+                    message = state.receivers.removals.recv() => {
                         match message {
-                            Ok(removal) if thread_id.as_ref().is_none_or(|id| id == &removal.thread_id) => {
+                            Ok(removal) => {
                                 let payload = serde_json::to_string(&removal)
                                     .unwrap_or_else(|_| "{}".to_string());
                                 let frame = format!("event: task-removed\ndata: {payload}\n\n");
-                                return Some((
-                                    Ok::<_, Infallible>(Bytes::from(frame)),
-                                    (
-                                        receiver,
-                                        sync_receiver,
-                                        removal_receiver,
-                                        update_receiver,
-                                        shutdown,
-                                        thread_id,
-                                        live_task_events,
-                                        sessions,
-                                    ),
-                                ));
+                                return Some((Ok::<_, Infallible>(Bytes::from(frame)), state));
                             }
-                            Ok(_) => continue,
                             Err(broadcast::error::RecvError::Lagged(_)) => continue,
                             Err(broadcast::error::RecvError::Closed) => return None,
                         }
                     }
-                    message = update_receiver.recv() => {
+                    message = state.receivers.updates.recv() => {
                         match message {
-                            Ok(TaskListUpdate::Task(task)) if thread_id.as_ref().is_none_or(|id| id == &task.thread_id) => {
+                            Ok(TaskListUpdate::Task(task)) => {
                                 let payload = serde_json::to_string(&task)
                                     .unwrap_or_else(|_| "{}".to_string());
                                 let frame = format!("event: task-updated\ndata: {payload}\n\n");
-                                return Some((
-                                    Ok::<_, Infallible>(Bytes::from(frame)),
-                                    (
-                                        receiver,
-                                        sync_receiver,
-                                        removal_receiver,
-                                        update_receiver,
-                                        shutdown,
-                                        thread_id,
-                                        live_task_events,
-                                        sessions,
-                                    ),
-                                ));
+                                return Some((Ok::<_, Infallible>(Bytes::from(frame)), state));
                             }
-                            Ok(TaskListUpdate::Placement(update)) if thread_id.is_none() => {
+                            Ok(TaskListUpdate::Placement(update)) => {
                                 let payload = serde_json::to_string(&update)
                                     .unwrap_or_else(|_| "{}".to_string());
                                 let frame = format!("event: task-placed-at-top\ndata: {payload}\n\n");
-                                return Some((
-                                    Ok::<_, Infallible>(Bytes::from(frame)),
-                                    (
-                                        receiver,
-                                        sync_receiver,
-                                        removal_receiver,
-                                        update_receiver,
-                                        shutdown,
-                                        thread_id,
-                                        live_task_events,
-                                        sessions,
-                                    ),
-                                ));
+                                return Some((Ok::<_, Infallible>(Bytes::from(frame)), state));
                             }
-                            Ok(TaskListUpdate::Refresh) if thread_id.is_none() => {
+                            Ok(TaskListUpdate::Refresh) => {
                                 let frame = "event: task-list-refresh\ndata: {}\n\n";
-                                return Some((
-                                    Ok::<_, Infallible>(Bytes::from_static(frame.as_bytes())),
-                                    (
-                                        receiver,
-                                        sync_receiver,
-                                        removal_receiver,
-                                        update_receiver,
-                                        shutdown,
-                                        thread_id,
-                                        live_task_events,
-                                        sessions,
-                                    ),
-                                ));
+                                return Some((Ok::<_, Infallible>(Bytes::from_static(frame.as_bytes())), state));
                             }
-                            Ok(_) => continue,
                             Err(broadcast::error::RecvError::Lagged(_)) => continue,
                             Err(broadcast::error::RecvError::Closed) => return None,
                         }
                     }
-                    message = sync_receiver.recv() => {
+                    message = state.receivers.sync.recv() => {
                         match message {
-                            Ok(sync) if thread_id.as_ref().is_none_or(|id| id == &sync.thread_id) => {
+                            Ok(sync) => {
                                 let payload = serde_json::to_string(&sync)
                                     .unwrap_or_else(|_| "{}".to_string());
                                 let frame = format!("event: task-sync\ndata: {payload}\n\n");
-                                return Some((
-                                    Ok::<_, Infallible>(Bytes::from(frame)),
-                                    (
-                                        receiver,
-                                        sync_receiver,
-                                        removal_receiver,
-                                        update_receiver,
-                                        shutdown,
-                                        thread_id,
-                                        live_task_events,
-                                        sessions,
-                                    ),
-                                ));
+                                return Some((Ok::<_, Infallible>(Bytes::from(frame)), state));
                             }
-                            Ok(_) => continue,
-                            Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                            Err(broadcast::error::RecvError::Closed) => return None,
-                        }
-                    }
-                    message = receiver.recv() => {
-                        match message {
-                            Ok(event) if thread_id.as_ref().is_none_or(|id| id == &event.thread_id) => {
-                                let event = live_task_events.record(event);
-                                let revision = sessions
-                                    .snapshot(&event.thread_id)
-                                    .await
-                                    .map(|snapshot| snapshot.revision)
-                                    .unwrap_or_default();
-                                let payload = serde_json::to_string(&TaskEventEnvelope {
-                                    thread_id: event.thread_id.clone(),
-                                    revision,
-                                    event,
-                                })
-                                    .unwrap_or_else(|_| "{}".to_string());
-                                let frame = format!("event: task-event\ndata: {payload}\n\n");
-                                return Some((
-                                    Ok::<_, Infallible>(Bytes::from(frame)),
-                                    (
-                                        receiver,
-                                        sync_receiver,
-                                        removal_receiver,
-                                        update_receiver,
-                                        shutdown,
-                                        thread_id,
-                                        live_task_events,
-                                        sessions,
-                                    ),
-                                ));
-                            }
-                            Ok(_) => continue,
                             Err(broadcast::error::RecvError::Lagged(_)) => continue,
                             Err(broadcast::error::RecvError::Closed) => return None,
                         }
@@ -1269,14 +1250,22 @@ async fn task_archive(
         });
     }
     let task = state.detail.record_from_codex_thread(&thread)?;
-    let worktree = state.lifecycle.archive_worktree(thread_id.clone()).await?;
-    if let Err(error) = connection.client.archive_thread(&thread_id).await {
-        state
-            .lifecycle
-            .rollback_archived_worktree(&thread_id, &worktree)
-            .await;
-        return Err(error.into());
-    }
+    state
+        .lifecycle
+        .preflight_archive_worktree(thread_id.clone())
+        .await?;
+    connection.client.archive_thread(&thread_id).await?;
+    let worktree = match state.lifecycle.archive_worktree(thread_id.clone()).await {
+        Ok(worktree) => worktree,
+        Err(error) => {
+            if let Err(rollback_error) = connection.client.unarchive_thread(&thread_id).await {
+                eprintln!(
+                    "failed to unarchive Codex thread after worktree archive failure: {rollback_error}"
+                );
+            }
+            return Err(error);
+        }
+    };
     match task_store_archive(&state, &thread_id).await {
         Ok(Some(_)) => {}
         Ok(None) => {
@@ -1300,17 +1289,14 @@ async fn task_recovery_restore(
         return Err(task_not_managed_error());
     };
     let connection = require_codex_thread_connection(&state).await?;
-    let (thread, unarchived) = match state
-        .active_sections
-        .locate_thread(&connection.client, &thread_id)
-        .await?
-    {
-        ManagedCodexThreadLocation::Active(thread) => (thread, false),
-        ManagedCodexThreadLocation::Archived(_) => {
-            (connection.client.unarchive_thread(&thread_id).await?, true)
-        }
-        ManagedCodexThreadLocation::Missing => return Err(task_recovery_changed_error()),
-    };
+    let (thread, unarchived) =
+        match super::recovery::locate_thread(&connection.client, &thread_id).await? {
+            ManagedCodexThreadLocation::Active(thread) => (thread, false),
+            ManagedCodexThreadLocation::Archived(_) => {
+                (connection.client.unarchive_thread(&thread_id).await?, true)
+            }
+            ManagedCodexThreadLocation::Missing => return Err(task_recovery_changed_error()),
+        };
     state.codex_sessions.forget_thread(&thread_id).await;
     state
         .codex_sessions
@@ -1319,7 +1305,7 @@ async fn task_recovery_restore(
     let mut task = state.detail.record_from_codex_thread(&thread)?;
     apply_managed_thread_metadata(&mut task, &managed);
     let placement = match state
-        .active_sections
+        .codex_sections
         .place_at_top(&connection.client, &task)
         .await
     {
@@ -1338,6 +1324,21 @@ async fn task_recovery_restore(
             return Err(error);
         }
     };
+    match task_store_place_at_top(&state, &thread_id, &placement).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            if unarchived {
+                let _ = connection.client.archive_thread(&thread_id).await;
+            }
+            return Err(task_not_managed_error());
+        }
+        Err(error) => {
+            if unarchived {
+                let _ = connection.client.archive_thread(&thread_id).await;
+            }
+            return Err(error);
+        }
+    }
     state
         .task_list_events
         .place(task.clone(), placement.clone());
@@ -1345,6 +1346,48 @@ async fn task_recovery_restore(
         task,
         active_top_placement: placement,
     }))
+}
+
+async fn task_recovery_recheck(
+    State(state): State<TaskState>,
+    AxumPath(thread_id): AxumPath<String>,
+) -> Result<Json<ActiveTaskRecovery>, ApiError> {
+    let Some(managed) = task_store_get(&state, &thread_id).await? else {
+        return Err(task_not_managed_error());
+    };
+    let connection = require_codex_thread_connection(&state).await?;
+    let recovery = match super::recovery::locate_thread(&connection.client, &thread_id).await? {
+        ManagedCodexThreadLocation::Active(thread) => {
+            match state.detail.record_from_codex_thread(&thread) {
+                Ok(mut task) => {
+                    apply_managed_thread_metadata(&mut task, &managed);
+                    task.conversation_available = false;
+                    ActiveTaskRecovery::new(task, ActiveTaskRecoveryReason::SectionPlacementPending)
+                }
+                Err(_) => super::recovery::cached_recovery(
+                    &managed,
+                    ActiveTaskRecoveryReason::TemporarilyUnavailable,
+                ),
+            }
+        }
+        ManagedCodexThreadLocation::Archived(thread) => {
+            match state.detail.record_from_codex_thread(&thread) {
+                Ok(mut task) => {
+                    apply_managed_thread_metadata(&mut task, &managed);
+                    task.conversation_available = false;
+                    ActiveTaskRecovery::new(task, ActiveTaskRecoveryReason::CodexArchived)
+                }
+                Err(_) => super::recovery::cached_recovery(
+                    &managed,
+                    ActiveTaskRecoveryReason::TemporarilyUnavailable,
+                ),
+            }
+        }
+        ManagedCodexThreadLocation::Missing => {
+            super::recovery::cached_recovery(&managed, ActiveTaskRecoveryReason::ThreadMissing)
+        }
+    };
+    Ok(Json(recovery))
 }
 
 async fn task_recovery_archive(
@@ -1355,11 +1398,7 @@ async fn task_recovery_archive(
         return Err(task_not_managed_error());
     };
     let connection = require_codex_thread_connection(&state).await?;
-    let thread = match state
-        .active_sections
-        .locate_thread(&connection.client, &thread_id)
-        .await?
-    {
+    let thread = match super::recovery::locate_thread(&connection.client, &thread_id).await? {
         ManagedCodexThreadLocation::Archived(thread) => thread,
         ManagedCodexThreadLocation::Active(_) | ManagedCodexThreadLocation::Missing => {
             return Err(task_recovery_changed_error());
@@ -1400,10 +1439,7 @@ async fn task_recovery_remove(
     }
     let connection = require_codex_thread_connection(&state).await?;
     if !matches!(
-        state
-            .active_sections
-            .locate_thread(&connection.client, &thread_id)
-            .await?,
+        super::recovery::locate_thread(&connection.client, &thread_id).await?,
         ManagedCodexThreadLocation::Missing
     ) {
         return Err(task_recovery_changed_error());
@@ -1411,7 +1447,16 @@ async fn task_recovery_remove(
 
     let worktree = task_store_worktree_for_thread(&state, &thread_id).await?;
     let archived_worktree = state.lifecycle.archive_worktree(thread_id.clone()).await?;
-    match task_store_delete(&state, &thread_id).await {
+    match task_store_delete_task_rows(
+        &state,
+        &thread_id,
+        ManagedTaskMembership::Active,
+        worktree
+            .as_ref()
+            .map(|worktree| worktree.worktree_id.as_str()),
+    )
+    .await
+    {
         Ok(true) => {}
         Ok(false) => {
             state
@@ -1429,9 +1474,6 @@ async fn task_recovery_remove(
         }
     }
     state.lifecycle.delete_task_resources(&thread_id).await;
-    if let Some(worktree) = worktree {
-        task_store_delete_worktree(&state, &worktree.worktree_id).await?;
-    }
     notify_task_removed(&state, &thread_id, "deleted");
     Ok(Json(TaskDeleteResponse { thread_id }))
 }
@@ -1444,15 +1486,19 @@ async fn task_restore(
         return Err(task_not_archived_error());
     };
     let connection = require_codex_thread_connection(&state).await?;
-    let worktree = state.lifecycle.restore_worktree(thread_id.clone()).await?;
     let thread = match connection.client.unarchive_thread(&thread_id).await {
         Ok(thread) => thread,
+        Err(error) => return Err(error.into()),
+    };
+    let worktree = match state.lifecycle.restore_worktree(thread_id.clone()).await {
+        Ok(worktree) => worktree,
         Err(error) => {
-            state
-                .lifecycle
-                .rollback_restored_worktree(&thread_id, &worktree)
-                .await;
-            return Err(error.into());
+            if let Err(rollback_error) = connection.client.archive_thread(&thread_id).await {
+                eprintln!(
+                    "failed to re-archive Codex thread after worktree restore failure: {rollback_error}"
+                );
+            }
+            return Err(error);
         }
     };
     state
@@ -1472,7 +1518,7 @@ async fn task_restore(
             return Err(error);
         }
     };
-    match task_store_restore(&state, &thread_id).await {
+    match task_store_restore_at_top(&state, &thread_id, &placement).await {
         Ok(Some(_)) => {}
         Ok(None) => {
             rollback_task_restore(&state, &connection.client, &thread_id, &worktree).await;
@@ -1511,11 +1557,19 @@ async fn task_delete(
 
     let connection = require_codex_thread_connection(&state).await?;
     connection.client.delete_thread(&thread_id).await?;
-    state.lifecycle.delete_task_resources(&thread_id).await;
-    if let Some(worktree) = worktree {
-        task_store_delete_worktree(&state, &worktree.worktree_id).await?;
+    let deleted = task_store_delete_task_rows(
+        &state,
+        &thread_id,
+        ManagedTaskMembership::Archived,
+        worktree
+            .as_ref()
+            .map(|worktree| worktree.worktree_id.as_str()),
+    )
+    .await?;
+    if !deleted {
+        return Err(task_not_archived_error());
     }
-    task_store_delete_archived(&state, &thread_id).await?;
+    state.lifecycle.delete_task_resources(&thread_id).await;
     notify_task_removed(&state, &thread_id, "deleted");
 
     Ok(Json(TaskDeleteResponse { thread_id }))
@@ -1564,7 +1618,7 @@ fn unavailable_archived_task(managed: &ManagedThread) -> TaskRecord {
         id: managed.thread_id.clone(),
         thread_id: managed.thread_id.clone(),
         conversation_available: false,
-        title: format!("Thread {}", short_thread_id(&managed.thread_id)),
+        title: managed.display_name.clone(),
         preview: "Conversation unavailable".to_string(),
         thread_status: ThreadStatus::NotLoaded,
         latest_turn_status: None,
@@ -1662,6 +1716,7 @@ fn managed_thread_from_task_record(
 }
 
 fn apply_managed_thread_metadata(task: &mut TaskRecord, managed: &ManagedThread) {
+    task.title = managed.display_name.clone();
     task.last_completed_ms = managed.last_completed_at_ms;
     task.unseen = managed.unseen();
 }

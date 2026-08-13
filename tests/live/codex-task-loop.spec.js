@@ -404,7 +404,7 @@ test("creates, orders, and restores Tasks through real Codex Thread Sections", a
   ]);
 });
 
-test("reconciles externally archived and deleted Codex Threads through Recovery", async ({
+test("rechecks externally archived and deleted Codex Threads through explicit Recovery commands", async ({
   request,
 }) => {
   const fixture = initializePersistentLiveRepository("thread-recovery");
@@ -426,13 +426,13 @@ test("reconciles externally archived and deleted Codex Threads through Recovery"
   await expectLiveThreadIdle(request, threadId);
 
   const recoveryReason = async () => {
-    const response = await request.get("/api/tasks");
+    const response = await request.post(
+      `/api/tasks/${threadId}/recovery/recheck`,
+    );
     if (!response.ok()) {
       return null;
     }
-    const projection = await response.json();
-    return projection.unsectioned.find((task) => task.threadId === threadId)
-      ?.recovery?.reason ?? null;
+    return (await response.json()).recovery?.reason ?? null;
   };
 
   const daemonClient = await CodexDaemonClient.connect();
@@ -440,6 +440,14 @@ test("reconciles externally archived and deleted Codex Threads through Recovery"
   try {
     await daemonClient.request("thread/archive", { threadId });
     liveThreadIds.delete(threadId);
+
+    const cachedActiveResponse = await request.get("/api/tasks");
+    const cachedActiveProjection = await cachedActiveResponse.json();
+    expect(
+      cachedActiveProjection.sections
+        .flatMap((section) => section.tasks)
+        .some((task) => task.threadId === threadId),
+    ).toBe(true);
     await expect.poll(recoveryReason).toBe("codexArchived");
 
     const moveArchivedResponse = await request.post(

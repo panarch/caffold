@@ -926,6 +926,24 @@ impl CodexThreadSessions {
         Some(snapshot(&state))
     }
 
+    pub async fn snapshots(&self) -> Vec<(String, ThreadSessionSnapshot)> {
+        let mut entries = self
+            .entries
+            .lock()
+            .await
+            .iter()
+            .map(|(thread_id, entry)| (thread_id.clone(), entry.clone()))
+            .collect::<Vec<_>>();
+        entries.sort_by(|left, right| left.0.cmp(&right.0));
+
+        let mut snapshots = Vec::with_capacity(entries.len());
+        for (thread_id, entry) in entries {
+            let state = entry.state.lock().await;
+            snapshots.push((thread_id, snapshot(&state)));
+        }
+        snapshots
+    }
+
     pub async fn forget_thread(&self, thread_id: &str) {
         self.entries.lock().await.remove(thread_id);
     }

@@ -75,6 +75,23 @@ test.
   threshold must follow stable measurement and owner-aligned tests, not define
   them retroactively.
 
+## Storage Ownership
+
+Keep storage modules aligned with physical persistence ownership.
+
+- Outside immutable schema/migration code and shared store infrastructure, a
+  `task_store` implementation module must correspond one-to-one with a physical
+  application table. Do not add feature-named store modules for projections or
+  workflows that combine tables.
+- A table owner may enforce invariants across multiple rows of its own table,
+  including dense ordering and lifecycle compaction.
+- The application owner must compose cross-table reads and writes through the
+  store's scoped read or transaction boundary. Keep response projection and
+  external-service orchestration in that application owner, not in the store.
+- A route handler may own a one-off composition. Repeated application behavior
+  may move to a narrowly named application module, but not to a storage facade
+  merely because it needs the same lock or transaction.
+
 ## Storage Migration Review
 
 Treat every released storage schema and version transition as an immutable
@@ -113,13 +130,14 @@ all other backend areas remain partially aligned or unclassified.
 Completed reference area:
 
 - `task_store` follows the owner-aligned structure described by this policy.
-- Physical table behavior lives in `managed_thread.rs`,
-  `managed_worktree.rs`, and
+- Physical table behavior lives in `managed_section.rs`, `managed_thread.rs`,
+  `managed_worktree.rs`, `push_installation.rs`, `push_vapid_key.rs`, and
   `schema_migration.rs`; immutable version snapshots live under
   `task_store/migration/schema`, while migration orchestration and each version
   transition live with their inline unit tests in their respective files.
-- `task_store.rs` retains facade and open/reopen behavior instead of owning
-  the table and migration test suites centrally.
+- `task_store.rs` owns backend opening, locking, scoped access, transaction
+  boundaries, and thin table facades instead of owning feature projections,
+  cross-table workflows, or the table and migration test suites centrally.
 
 Known incomplete areas:
 

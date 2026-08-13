@@ -164,6 +164,16 @@ impl ManagedWorktrees {
             .map_err(|error| ManagedWorktreeError::Worker(error.to_string()))?
     }
 
+    pub(in crate::app) async fn preflight_archive_for_thread(
+        &self,
+        thread_id: String,
+    ) -> Result<(), ManagedWorktreeError> {
+        let worktrees = self.clone();
+        tokio::task::spawn_blocking(move || worktrees.preflight_archive_blocking(&thread_id))
+            .await
+            .map_err(|error| ManagedWorktreeError::Worker(error.to_string()))?
+    }
+
     pub(in crate::app) async fn restore_for_thread(
         &self,
         thread_id: String,
@@ -417,6 +427,23 @@ impl ManagedWorktrees {
             now_ms()?,
         )?;
         Ok(ArchiveOutcome::Archived(archived))
+    }
+
+    fn preflight_archive_blocking(&self, thread_id: &str) -> Result<(), ManagedWorktreeError> {
+        let Some(record) = self.store.worktree_for_thread(thread_id)? else {
+            return Ok(());
+        };
+        require_state(&record, ManagedWorktreeState::Ready)?;
+        let path = self.owned_path(&record)?;
+        let checkout = inspect_attached_worktree(
+            &path,
+            Path::new(&record.repository_git_dir),
+            Some(record.branch_name.as_str()),
+        )?;
+        if checkout.dirty {
+            return Err(WorktreeError::Dirty(path.display().to_string()).into());
+        }
+        Ok(())
     }
 
     fn restore_blocking(&self, thread_id: &str) -> Result<RestoreOutcome, ManagedWorktreeError> {
