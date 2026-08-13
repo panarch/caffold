@@ -107,7 +107,10 @@ caffold-active-task-list {
   }
 
   & .task-row-indicators {
-    display: inline-flex;
+    display: inline-grid;
+    grid-template-columns:
+      var(--task-list-icon-size)
+      max(var(--interface-icon-slot-size), 3ch);
     align-items: center;
     justify-content: flex-end;
     gap: 0.375rem;
@@ -117,7 +120,8 @@ caffold-active-task-list {
 
   & .task-row-recovery-status {
     display: inline-grid;
-    flex: 0 0 var(--interface-icon-slot-size);
+    grid-column: 2;
+    justify-self: end;
     width: var(--interface-icon-slot-size);
     height: var(--interface-icon-slot-size);
     place-items: center;
@@ -132,7 +136,8 @@ caffold-active-task-list {
   }
 
   & .task-row-meta {
-    flex: 0 0 auto;
+    grid-column: 2;
+    justify-self: end;
   }
 
   & .task-row-meta.task-status-chip {
@@ -168,7 +173,7 @@ caffold-active-task-list {
 
   & .task-row-worktree {
     display: inline-grid;
-    flex: 0 0 var(--task-list-icon-size);
+    grid-column: 1;
     width: var(--task-list-icon-size);
     height: var(--task-list-icon-size);
     place-items: center;

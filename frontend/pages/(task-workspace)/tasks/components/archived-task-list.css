@@ -125,16 +125,6 @@ caffold-archived-task-list {
     min-width: 0;
   }
 
-  & .task-archived-row.is-conversation-unavailable .task-archived-copy {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
-  }
-
-  & .task-archived-row.is-conversation-unavailable .task-row-indicators {
-    justify-content: flex-start;
-    width: auto;
-  }
-
   & .task-row-title {
     overflow: hidden;
     font-weight: 500;
@@ -143,7 +133,10 @@ caffold-archived-task-list {
   }
 
   & .task-row-indicators {
-    display: inline-flex;
+    display: inline-grid;
+    grid-template-columns:
+      var(--task-list-icon-size)
+      max(var(--interface-icon-slot-size), 3ch);
     align-items: center;
     justify-content: flex-end;
     gap: 0.375rem;
@@ -152,7 +145,8 @@ caffold-archived-task-list {
   }
 
   & .task-row-meta {
-    flex: 0 0 auto;
+    grid-column: 2;
+    justify-self: end;
   }
 
   & .task-row-meta.task-status-chip {
@@ -171,7 +165,7 @@ caffold-archived-task-list {
 
   & .task-row-worktree {
     display: inline-grid;
-    flex: 0 0 var(--task-list-icon-size);
+    grid-column: 1;
     width: var(--task-list-icon-size);
     height: var(--task-list-icon-size);
     place-items: center;
@@ -195,6 +189,22 @@ caffold-archived-task-list {
   & .task-archived-actions {
     display: flex;
     align-items: center;
+  }
+
+  & .task-archived-unavailable-status {
+    display: grid;
+    flex: 0 0 var(--task-list-row-height);
+    width: var(--task-list-row-height);
+    height: var(--task-list-row-height);
+    place-items: center;
+    color: var(--warning);
+  }
+
+  & .task-archived-unavailable-icon {
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+    stroke-width: 1.9;
   }
 
   & .task-archived-action-button {
@@ -241,12 +251,6 @@ caffold-archived-task-list {
 
   & .task-delete-button .task-archived-action-icon {
     opacity: 0.62;
-  }
-
-  & .task-conversation-unavailable {
-    color: var(--muted);
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
   }
 
   & [data-task-action="load-more-archived-tasks"] {

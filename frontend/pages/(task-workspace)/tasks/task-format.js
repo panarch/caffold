@@ -28,37 +28,51 @@ export function formatStatus(status) {
 }
 
 export function formatRelativeAge(ms, now = Date.now()) {
+  return formatRelativeAgePresentation(ms, now).text;
+}
+
+export function formatRelativeAgePresentation(ms, now = Date.now()) {
   const value = Number(ms);
   if (!Number.isFinite(value)) {
-    return "";
+    return { text: "", label: "" };
   }
 
   const seconds = Math.max(0, Math.floor((now - value) / 1000));
   if (seconds < 60) {
-    return "now";
+    return { text: "now", label: "just now" };
   }
 
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) {
-    return `${minutes}m`;
+    return relativeAgePresentation(minutes, "m", "minute");
   }
 
   const hours = Math.floor(minutes / 60);
   if (hours < 24) {
-    return `${hours}h`;
+    return relativeAgePresentation(hours, "h", "hour");
   }
 
   const days = Math.floor(hours / 24);
   if (days < 30) {
-    return `${days}d`;
+    return relativeAgePresentation(days, "d", "day");
   }
 
   const months = Math.floor(days / 30);
   if (months < 12) {
-    return `${months}mo`;
+    return relativeAgePresentation(months, "M", "month");
   }
 
-  return `${Math.floor(months / 12)}y`;
+  const years = Math.floor(months / 12);
+  return years > 9
+    ? { text: "9y+", label: "more than 9 years ago" }
+    : relativeAgePresentation(years, "y", "year");
+}
+
+function relativeAgePresentation(value, suffix, unit) {
+  return {
+    text: `${value}${suffix}`,
+    label: `${value} ${unit}${value === 1 ? "" : "s"} ago`,
+  };
 }
 
 export function formatDecision(decision) {

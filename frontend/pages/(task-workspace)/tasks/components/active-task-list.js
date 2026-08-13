@@ -12,7 +12,7 @@ import {
   taskThreadId,
   taskWorktreeLabel,
 } from "../task-list-model.js";
-import { formatRelativeAge } from "../task-format.js";
+import { formatRelativeAgePresentation } from "../task-format.js";
 import { TaskStreamLifecycle } from "../stream.js";
 import {
   patchTaskStatusChip,
@@ -775,9 +775,10 @@ function renderTaskRowMeta(task, transportState) {
   const ms = task.lastCompletedMs ?? task.recencyMs ?? task.updatedMs;
   const date = new Date(Number(ms));
   const dateTime = Number.isNaN(date.getTime()) ? "" : date.toISOString();
+  const age = formatRelativeAgePresentation(ms);
   return `
-    <time class="task-row-meta task-row-time" datetime="${escapeHtml(dateTime)}">
-      ${escapeHtml(formatRelativeAge(ms))}
+    <time class="task-row-meta task-row-time" datetime="${escapeHtml(dateTime)}" aria-label="${escapeHtml(age.label)}">
+      ${escapeHtml(age.text)}
     </time>
   `;
 }
@@ -888,7 +889,7 @@ function patchMatchingTaskRowIndicator(current, next) {
     return true;
   }
   if (current.matches(".task-row-time") && next.matches(".task-row-time")) {
-    syncElementAttributes(current, next, ["class", "datetime"]);
+    syncElementAttributes(current, next, ["class", "datetime", "aria-label"]);
     if (current.textContent !== next.textContent) {
       current.textContent = next.textContent;
     }

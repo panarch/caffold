@@ -237,9 +237,9 @@ managed loaded thread so app-server can re-emit a pending approval request.
 
 Archived Tasks resolve their canonical display data with `thread/read`. A
 missing Codex rollout is the one exception to whole-page failure: the archived
-row remains visible as `Conversation unavailable`, exposes permanent deletion,
-and does not expose Restore. Other read and transport failures remain explicit
-list errors.
+row remains visible with a `Conversation unavailable` warning indicator,
+exposes permanent deletion, and does not expose Restore. Other read and
+transport failures remain explicit list errors.
 
 Permanent deletion is an explicit `DELETE /api/tasks/{thread_id}` mutation for
 locally archived Tasks only. It calls app-server `thread/delete`, clears
