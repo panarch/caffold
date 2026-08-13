@@ -75,6 +75,35 @@ test.
   threshold must follow stable measurement and owner-aligned tests, not define
   them retroactively.
 
+## Storage Migration Review
+
+Treat every released storage schema and version transition as an immutable
+historical contract.
+
+- Migration orchestration owns version detection, ordered execution, staged
+  replacement, final validation, and publication. A version transition owns
+  only its fixed input and output versions.
+- Keep each historical schema snapshot and transition independent from mutable
+  application table definitions, row types, creation functions, and validators.
+  Small duplicated definitions are intentional when they preserve that
+  boundary.
+- Adding schema version `N + 1` should add a new version snapshot and an
+  `N`-to-`N + 1` transition. Update latest-version orchestration, fresh schema
+  initialization, and end-to-end coverage without modifying older snapshots or
+  transitions.
+- Treat an older migration file changed by a new schema version as a review
+  warning. Require a specific compatibility reason and regression coverage for
+  any exception, such as correcting an actual historical migration defect or
+  adapting mechanically to a compiler or dependency API change.
+- Shared transaction, reporting, and temporary-file lifecycle helpers may be
+  reused because they do not define a schema or data-conversion contract.
+
+Review every migration with exact input-version, output-version, data
+preservation, wrong-version rollback, migration-history, and supported
+start-version coverage. Replacement migrations must also prove that
+intermediate and final-validation failures preserve the original database and
+remove staged state.
+
 ### Current Adoption
 
 Backend test ownership is only partially aligned with this policy. Only the
@@ -86,8 +115,9 @@ Completed reference area:
 - `task_store` follows the owner-aligned structure described by this policy.
 - Physical table behavior lives in `managed_thread.rs`,
   `managed_worktree.rs`, and
-  `schema_migration.rs`; migration orchestration and each version transition
-  live with their inline unit tests in their respective files.
+  `schema_migration.rs`; immutable version snapshots live under
+  `task_store/migration/schema`, while migration orchestration and each version
+  transition live with their inline unit tests in their respective files.
 - `task_store.rs` retains facade and open/reopen behavior instead of owning
   the table and migration test suites centrally.
 

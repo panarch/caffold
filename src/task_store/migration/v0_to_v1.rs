@@ -1,25 +1,18 @@
-use chrono::{NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use gluesql::{
     FromGlueRow, ToGlueRow,
     core::{
         data::Schema,
-        query_builder::{Execute, col, table},
+        query_builder::{Execute, begin, col, rollback, table},
         row_conversion::ToGlueRow as _,
         store::{GStore, GStoreMut, Planner, Store},
     },
     prelude::{Glue, RedbStorage, SelectResultExt},
 };
-use std::{
-    collections::BTreeSet,
-    path::{Path, PathBuf},
-};
-use uuid::Uuid;
+use std::{collections::BTreeSet, path::Path};
 
-use super::{DetectedSchemaVersion, MigrationReport, create_latest_schema, detect_redb_schema};
-use crate::task_store::{
-    Result, TaskStoreError,
-    managed_thread::{self, ManagedThreadRow},
-};
+use super::{DetectedSchemaVersion, MigrationReport, detect_redb_schema, schema};
+use crate::task_store::{Result, TaskStoreError};
 
 pub(super) const LEGACY_ARCHIVED_THREADS_TABLE: &str = "archived_threads";
 
@@ -51,51 +44,14 @@ struct LegacySnapshot {
     source_table_count: usize,
 }
 
-struct ReplacementDatabase {
-    path: PathBuf,
-    published: bool,
-}
-
-impl ReplacementDatabase {
-    fn new(target: &Path) -> Self {
-        let filename = target
-            .file_name()
-            .and_then(|filename| filename.to_str())
-            .unwrap_or("caffold.redb");
-        let path = target.with_file_name(format!(".{filename}.migration-v4-{}", Uuid::new_v4()));
-        Self {
-            path,
-            published: false,
-        }
-    }
-
-    fn publish(mut self, target: &Path) -> Result<()> {
-        let permissions = std::fs::metadata(target)?.permissions();
-        std::fs::set_permissions(&self.path, permissions)?;
-        std::fs::rename(&self.path, target)?;
-        self.published = true;
-        Ok(())
-    }
-}
-
-impl Drop for ReplacementDatabase {
-    fn drop(&mut self) {
-        if !self.published {
-            let _ = std::fs::remove_file(&self.path);
-        }
-    }
-}
-
-pub(super) fn migrate(path: &Path) -> Result<MigrationReport> {
-    let snapshot = read_legacy_snapshot(path)?;
+pub(super) fn migrate(source: &Path, destination: &Path) -> Result<MigrationReport> {
+    let snapshot = read_legacy_snapshot(source)?;
     ensure_disjoint_membership(&snapshot)?;
     let rewritten_rows = snapshot.managed.len() + snapshot.archived.len();
     let migrated_tables = snapshot.source_table_count;
     let applied_at = Utc::now().naive_utc();
-    let replacement = ReplacementDatabase::new(path);
 
-    write_replacement(&replacement.path, snapshot, applied_at)?;
-    replacement.publish(path)?;
+    write_v1(destination, snapshot, applied_at)?;
 
     Ok(MigrationReport {
         migrated_tables,
@@ -107,24 +63,47 @@ pub(super) fn migrate(path: &Path) -> Result<MigrationReport> {
 fn read_legacy_snapshot(path: &Path) -> Result<LegacySnapshot> {
     let storage = RedbStorage::new(path)?;
     let mut glue = Glue::new(storage);
-    validate_legacy_table(&glue, managed_thread::TABLE_NAME)?;
-    let managed = read_legacy_rows(&mut glue, managed_thread::TABLE_NAME)?;
-    let has_archived = glue
-        .storage
-        .fetch_schema(LEGACY_ARCHIVED_THREADS_TABLE)?
-        .is_some();
-    let archived = if has_archived {
-        validate_legacy_table(&glue, LEGACY_ARCHIVED_THREADS_TABLE)?;
-        read_legacy_rows(&mut glue, LEGACY_ARCHIVED_THREADS_TABLE)?
-    } else {
-        Vec::new()
-    };
+    begin().execute(&mut glue)?;
+    let snapshot = (|| {
+        validate_legacy_table(&glue, schema::v1::MANAGED_THREADS_TABLE)?;
+        let managed = read_legacy_rows(&mut glue, schema::v1::MANAGED_THREADS_TABLE)?;
+        let has_archived = glue
+            .storage
+            .fetch_schema(LEGACY_ARCHIVED_THREADS_TABLE)?
+            .is_some();
+        let actual_table_names = glue
+            .storage
+            .fetch_all_schemas()?
+            .into_iter()
+            .map(|schema| schema.table_name)
+            .collect::<BTreeSet<_>>();
+        let mut expected_table_names =
+            BTreeSet::from([schema::v1::MANAGED_THREADS_TABLE.to_string()]);
+        if has_archived {
+            expected_table_names.insert(LEGACY_ARCHIVED_THREADS_TABLE.to_string());
+        }
+        if actual_table_names != expected_table_names {
+            return Err(TaskStoreError::IncompleteSchema);
+        }
+        let archived = if has_archived {
+            validate_legacy_table(&glue, LEGACY_ARCHIVED_THREADS_TABLE)?;
+            read_legacy_rows(&mut glue, LEGACY_ARCHIVED_THREADS_TABLE)?
+        } else {
+            Vec::new()
+        };
 
-    Ok(LegacySnapshot {
-        managed,
-        archived,
-        source_table_count: 1 + usize::from(has_archived),
-    })
+        Ok(LegacySnapshot {
+            managed,
+            archived,
+            source_table_count: 1 + usize::from(has_archived),
+        })
+    })();
+    let rollback_result = rollback().execute(&mut glue);
+    match (snapshot, rollback_result) {
+        (Ok(snapshot), Ok(_)) => Ok(snapshot),
+        (Err(error), _) => Err(error),
+        (Ok(_), Err(error)) => Err(error.into()),
+    }
 }
 
 fn ensure_disjoint_membership(snapshot: &LegacySnapshot) -> Result<()> {
@@ -145,17 +124,13 @@ fn ensure_disjoint_membership(snapshot: &LegacySnapshot) -> Result<()> {
     Ok(())
 }
 
-fn write_replacement(
-    path: &Path,
-    snapshot: LegacySnapshot,
-    applied_at: NaiveDateTime,
-) -> Result<()> {
+fn write_v1(path: &Path, snapshot: LegacySnapshot, applied_at: NaiveDateTime) -> Result<()> {
     let storage = RedbStorage::new(path)?;
     let mut glue = Glue::new(storage);
-    create_latest_schema(&mut glue, applied_at)?;
+    schema::v1::create(&mut glue, applied_at)?;
     rewrite_rows(&mut glue, snapshot, applied_at)?;
     drop(glue);
-    if detect_redb_schema(path)? != DetectedSchemaVersion::V4 {
+    if detect_redb_schema(path)? != DetectedSchemaVersion::V1 {
         return Err(TaskStoreError::IncompleteSchema);
     }
     Ok(())
@@ -184,17 +159,17 @@ where
         .collect::<Result<Vec<_>>>()?;
     expected.sort_by(|left, right| left.thread_id.cmp(&right.thread_id));
     if !expected.is_empty() {
-        table(managed_thread::TABLE_NAME)
+        table(schema::v1::MANAGED_THREADS_TABLE)
             .insert()
             .values_from(&expected)?
             .execute(glue)?;
     }
 
-    let mut actual = table(managed_thread::TABLE_NAME)
+    let mut actual = table(schema::v1::MANAGED_THREADS_TABLE)
         .select()
-        .project(managed_thread::columns())
+        .project(schema::v1::columns())
         .execute(glue)
-        .rows_as::<ManagedThreadRow>()?;
+        .rows_as::<schema::v1::ManagedThreadRow>()?;
     actual.sort_by(|left, right| left.thread_id.cmp(&right.thread_id));
     if actual != expected {
         return Err(TaskStoreError::UnexpectedPayload);
@@ -247,8 +222,8 @@ fn legacy_table_ddl(table_name: &str) -> String {
 fn convert_legacy_row(
     row: LegacyManagedThreadRow,
     archived_at: Option<NaiveDateTime>,
-) -> Result<ManagedThreadRow> {
-    Ok(ManagedThreadRow {
+) -> Result<schema::v1::ManagedThreadRow> {
+    Ok(schema::v1::ManagedThreadRow {
         thread_id: row.thread_id,
         archived_at,
         last_observed_recency_at: legacy_optional_timestamp(
@@ -264,13 +239,15 @@ fn convert_legacy_row(
         last_completed_at: None,
         model: row.model,
         reasoning_effort: row.reasoning_effort,
-        fast_mode: false,
     })
 }
 
 fn legacy_timestamp(value: i64, field: &'static str) -> Result<NaiveDateTime> {
     let value = u64::try_from(value).map_err(|_| TaskStoreError::InvalidRow(field))?;
-    managed_thread::to_db_timestamp(value, field)
+    let value = i64::try_from(value).map_err(|_| TaskStoreError::InvalidRow(field))?;
+    DateTime::<Utc>::from_timestamp_millis(value)
+        .map(|timestamp| timestamp.naive_utc())
+        .ok_or(TaskStoreError::InvalidRow(field))
 }
 
 fn legacy_optional_timestamp(
@@ -284,10 +261,10 @@ fn legacy_optional_timestamp(
 
 #[cfg(test)]
 mod tests {
-    use gluesql::core::{query_builder::begin, query_builder::rollback};
+    use gluesql::prelude::SelectResultExt;
 
     use super::*;
-    use crate::task_store::{ManagedThread, schema_migration};
+    use crate::task_store::schema_migration;
 
     fn managed_legacy_row() -> LegacyManagedThreadRow {
         LegacyManagedThreadRow {
@@ -319,7 +296,7 @@ mod tests {
         archived_rows: Option<&[LegacyManagedThreadRow]>,
     ) {
         let mut glue = Glue::new(RedbStorage::new(path).expect("create v0 Redb fixture"));
-        write_v0_table(&mut glue, managed_thread::TABLE_NAME, managed_rows);
+        write_v0_table(&mut glue, schema::v1::MANAGED_THREADS_TABLE, managed_rows);
         if let Some(rows) = archived_rows {
             write_v0_table(&mut glue, LEGACY_ARCHIVED_THREADS_TABLE, rows);
         }
@@ -352,140 +329,121 @@ mod tests {
     }
 
     #[test]
-    fn merges_active_and_archived_rows_into_the_owned_table() {
+    fn produces_exact_v1_with_active_and_archived_rows() {
         let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("legacy-caffold.redb");
+        let source = temp.path().join("legacy-caffold.redb");
+        let destination = temp.path().join("v1.redb");
         write_v0_database(
-            &path,
+            &source,
             std::slice::from_ref(&managed_legacy_row()),
             Some(std::slice::from_ref(&archived_legacy_row())),
         );
 
         assert_eq!(
-            migrate(&path).unwrap(),
+            migrate(&source, &destination).unwrap(),
             MigrationReport {
                 migrated_tables: 2,
                 unchanged_tables: 0,
                 rewritten_rows: 2,
             }
         );
-
-        let mut glue = Glue::new(RedbStorage::new(&path).unwrap());
         assert_eq!(
-            managed_thread::get(&mut glue, "managed-legacy").unwrap(),
-            Some(ManagedThread {
-                thread_id: "managed-legacy".to_string(),
-                archived_at_ms: None,
-                last_observed_recency_ms: Some(1_750_000_001_234),
-                claimed_at_ms: 1_750_000_000_111,
-                last_opened_at_ms: Some(1_750_000_002_345),
-                last_seen_activity_ms: Some(1_750_000_003_456),
-                last_completed_at_ms: None,
-                model: Some("gpt-legacy".to_string()),
-                reasoning_effort: Some("xhigh".to_string()),
-                fast_mode: false,
-            })
+            detect_redb_schema(&source).unwrap(),
+            DetectedSchemaVersion::V0
         );
-        let archived = managed_thread::get_archived(&mut glue, "archived-legacy")
-            .unwrap()
+        assert_eq!(
+            detect_redb_schema(&destination).unwrap(),
+            DetectedSchemaVersion::V1
+        );
+
+        let mut glue = Glue::new(RedbStorage::new(&destination).unwrap());
+        assert_eq!(schema_migration::current_version(&mut glue).unwrap(), 1);
+        let mut rows = table(schema::v1::MANAGED_THREADS_TABLE)
+            .select()
+            .project(schema::v1::columns())
+            .execute(&mut glue)
+            .rows_as::<schema::v1::ManagedThreadRow>()
             .unwrap();
-        assert!(archived.archived_at_ms.is_some());
-        assert_eq!(archived.claimed_at_ms, 1_749_000_000_000);
-        assert_eq!(archived.last_completed_at_ms, None);
-
-        begin().execute(&mut glue).unwrap();
-        let table_names = glue
-            .storage
-            .fetch_all_schemas()
-            .unwrap()
-            .into_iter()
-            .map(|schema| schema.table_name)
-            .collect::<BTreeSet<_>>();
+        rows.sort_by(|left, right| left.thread_id.cmp(&right.thread_id));
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].thread_id, "archived-legacy");
+        assert!(rows[0].archived_at.is_some());
         assert_eq!(
-            table_names,
-            BTreeSet::from([
-                managed_thread::TABLE_NAME.to_string(),
-                crate::task_store::managed_worktree::TABLE_NAME.to_string(),
-                crate::task_store::push_installation::TABLE_NAME.to_string(),
-                crate::task_store::push_vapid_key::TABLE_NAME.to_string(),
-                schema_migration::TABLE_NAME.to_string(),
-            ])
+            rows[0].claimed_at,
+            legacy_timestamp(1_749_000_000_000, "claimed_at_ms").unwrap()
         );
-        rollback().execute(&mut glue).unwrap();
+        assert_eq!(
+            rows[1],
+            convert_legacy_row(managed_legacy_row(), None).unwrap()
+        );
     }
 
     #[test]
     fn migrates_a_v0_database_without_an_archived_table() {
         let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("managed-only.redb");
-        write_v0_database(&path, std::slice::from_ref(&managed_legacy_row()), None);
+        let source = temp.path().join("managed-only.redb");
+        let destination = temp.path().join("v1.redb");
+        write_v0_database(&source, std::slice::from_ref(&managed_legacy_row()), None);
 
         assert_eq!(
-            migrate(&path).unwrap(),
+            migrate(&source, &destination).unwrap(),
             MigrationReport {
                 migrated_tables: 1,
                 unchanged_tables: 0,
                 rewritten_rows: 1,
             }
         );
-        let mut glue = Glue::new(RedbStorage::new(&path).unwrap());
-        assert!(
-            managed_thread::get(&mut glue, "managed-legacy")
-                .unwrap()
-                .is_some()
+        assert_eq!(
+            detect_redb_schema(&destination).unwrap(),
+            DetectedSchemaVersion::V1
         );
     }
 
     #[test]
     fn invalid_v0_row_leaves_the_original_database_unchanged() {
         let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("invalid-legacy.redb");
+        let source = temp.path().join("invalid-legacy.redb");
+        let destination = temp.path().join("v1.redb");
         let invalid = LegacyManagedThreadRow {
             claimed_at_ms: -1,
             ..managed_legacy_row()
         };
-        write_v0_database(&path, std::slice::from_ref(&invalid), Some(&[]));
+        write_v0_database(&source, std::slice::from_ref(&invalid), Some(&[]));
 
         assert!(matches!(
-            migrate(&path),
+            migrate(&source, &destination),
             Err(TaskStoreError::InvalidRow("claimed_at_ms"))
         ));
 
-        let mut glue = Glue::new(RedbStorage::new(&path).unwrap());
+        let mut glue = Glue::new(RedbStorage::new(&source).unwrap());
         assert_eq!(
-            read_legacy_rows(&mut glue, managed_thread::TABLE_NAME).unwrap(),
+            read_legacy_rows(&mut glue, schema::v1::MANAGED_THREADS_TABLE).unwrap(),
             vec![invalid]
-        );
-        drop(glue);
-        assert_eq!(
-            std::fs::read_dir(temp.path())
-                .unwrap()
-                .map(|entry| entry.unwrap().file_name())
-                .collect::<Vec<_>>(),
-            vec![std::ffi::OsString::from("invalid-legacy.redb")]
         );
     }
 
     #[test]
     fn duplicate_legacy_membership_is_rejected_without_modifying_the_database() {
         let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("duplicate-membership.redb");
+        let source = temp.path().join("duplicate-membership.redb");
+        let destination = temp.path().join("v1.redb");
         let duplicate = managed_legacy_row();
         write_v0_database(
-            &path,
+            &source,
             std::slice::from_ref(&duplicate),
             Some(std::slice::from_ref(&duplicate)),
         );
 
         assert!(matches!(
-            migrate(&path),
+            migrate(&source, &destination),
             Err(TaskStoreError::DuplicateLegacyThread(thread_id))
                 if thread_id == "managed-legacy"
         ));
+        assert!(!destination.exists());
 
-        let mut glue = Glue::new(RedbStorage::new(&path).unwrap());
+        let mut glue = Glue::new(RedbStorage::new(&source).unwrap());
         assert_eq!(
-            read_legacy_rows(&mut glue, managed_thread::TABLE_NAME).unwrap(),
+            read_legacy_rows(&mut glue, schema::v1::MANAGED_THREADS_TABLE).unwrap(),
             vec![duplicate.clone()]
         );
         assert_eq!(
@@ -497,9 +455,10 @@ mod tests {
     #[test]
     fn rejects_a_legacy_table_with_an_unknown_definition() {
         let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("invalid-schema.redb");
-        let mut glue = Glue::new(RedbStorage::new(&path).unwrap());
-        table(managed_thread::TABLE_NAME)
+        let source = temp.path().join("invalid-schema.redb");
+        let destination = temp.path().join("v1.redb");
+        let mut glue = Glue::new(RedbStorage::new(&source).unwrap());
+        table(schema::v1::MANAGED_THREADS_TABLE)
             .create_table()
             .add_column("thread_id TEXT PRIMARY KEY")
             .execute(&mut glue)
@@ -507,10 +466,31 @@ mod tests {
         drop(glue);
 
         assert!(matches!(
-            migrate(&path),
+            migrate(&source, &destination),
             Err(TaskStoreError::InvalidSchemaTable(table))
-                if table == managed_thread::TABLE_NAME
+                if table == schema::v1::MANAGED_THREADS_TABLE
         ));
+    }
+
+    #[test]
+    fn rejects_non_v0_input_without_writing_a_destination() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("v1-source.redb");
+        let destination = temp.path().join("v1-destination.redb");
+        let mut glue = Glue::new(RedbStorage::new(&source).unwrap());
+        schema::v1::create(&mut glue, Utc::now().naive_utc()).unwrap();
+        drop(glue);
+
+        assert!(matches!(
+            migrate(&source, &destination),
+            Err(TaskStoreError::InvalidSchemaTable(table))
+                if table == schema::v1::MANAGED_THREADS_TABLE
+        ));
+        assert!(!destination.exists());
+        assert_eq!(
+            detect_redb_schema(&source).unwrap(),
+            DetectedSchemaVersion::V1
+        );
     }
 
     #[test]
