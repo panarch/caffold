@@ -24,6 +24,7 @@ contracts.
 - [Codex App Server](architecture/codex-app-server.md)
 - [Managed Worktree Lifecycle](architecture/worktree-lifecycle.md)
 - [Live Updates](architecture/live-updates.md)
+- [Web Push Notifications](architecture/web-push-notifications.md)
 - [Frontend Structure](architecture/frontend.md)
 - [Navigation Routing](architecture/navigation.md)
 - [Security and Approvals](architecture/security-and-approvals.md)

@@ -155,6 +155,7 @@ Product:
 Architecture and engineering policy:
 
 - [Architecture Overview](docs/architecture/overview.md)
+- [Web Push Notifications](docs/architecture/web-push-notifications.md)
 - [Review Policy](docs/review/policy.md)
 
 Development:

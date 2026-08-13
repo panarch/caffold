@@ -82,6 +82,12 @@ Reload explicitly transitions to that prepared generation. The viewport-fixed
 `caffold-build-mismatch-alert` remains a separate exceptional diagnostic and
 appears only when UI and server builds differ after the lifecycle is `settled`.
 
+The service worker also validates terminal Web Push payloads, presents system
+notifications in foreground and background states, and limits notification
+click navigation to canonical same-origin Task routes. It does not infer Task
+completion or subscription state; those remain backend and Settings lifecycle
+responsibilities.
+
 All known routes are forwarded to `caffold-task-workspace`. Task Detail owns
 the selected child and Task context; Git and GitHub own their layout instances,
 repository reconciliation, and domain-specific Back and Refresh behavior.
@@ -374,7 +380,10 @@ Regression tests move with the active owner:
 - application shell boundaries in `tests/e2e/app-shell.spec.js`;
 - PWA update lifecycle and build-handoff boundaries in
   `tests/e2e/app-shell-update.spec.js`;
-- Settings Codex behavior in `tests/e2e/settings.spec.js`;
+- Settings Codex and Notifications behavior in `tests/e2e/settings.spec.js`;
+- browser notification lifecycle primitives in
+  `tests/notification-lifecycle.test.mjs` and service-worker Push/click behavior
+  in `tests/service-worker.test.mjs`;
 - assets, CSS, appearance, and watch primitives in their focused Node/Rust
   suites.
 

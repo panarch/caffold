@@ -179,6 +179,155 @@ test("keeps Codex Settings actionable when runtime restart fails", async ({
   await expect(settings.getByRole("button", { name: "Restart runtime" })).toBeEnabled();
 });
 
+test("enables, lists, removes, and explicitly revokes notification installations", async ({
+  page,
+}, testInfo) => {
+  await installPushBrowserMock(page);
+  let currentClientId = "";
+  let currentState = "unknown";
+  let installations = [
+    {
+      clientId: "00000000-0000-4000-8000-000000000099",
+      installationLabel: "Firefox 141 on Linux · workstation",
+      createdAtMs: 1_750_000_000_000,
+      updatedAtMs: 1_750_000_100_000,
+    },
+    {
+      clientId: "00000000-0000-4000-8000-000000000098",
+      installationLabel: "Safari 18 on iOS · phone",
+      createdAtMs: 1_750_000_000_000,
+      updatedAtMs: 1_750_000_100_000,
+    },
+  ];
+  let upserts = 0;
+  const removals = [];
+  await page.route(/\/api\/push\/(?:config|installations)/, async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === "/api/push/config") {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ publicKey: "BEl6Q2FmZm9sZC10ZXN0LWtleQ" }),
+      });
+    }
+    if (request.method() === "GET") {
+      currentClientId = url.searchParams.get("clientId");
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ currentState, installations }),
+      });
+    }
+    const clientId = decodeURIComponent(url.pathname.split("/").at(-1));
+    if (request.method() === "PUT") {
+      upserts += 1;
+      const body = request.postDataJSON();
+      expect(body.endpoint).toBe("https://push.example.test/current");
+      expect(body.keys).toEqual({ p256dh: "browser-public", auth: "browser-auth" });
+      const summary = {
+        clientId,
+        installationLabel: body.installationLabel,
+        createdAtMs: 1_750_000_200_000,
+        updatedAtMs: 1_750_000_200_000,
+      };
+      currentState = "subscribed";
+      installations = [
+        summary,
+        ...installations.filter((item) => item.clientId !== clientId),
+      ];
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(summary),
+      });
+    }
+    expect(request.method()).toBe("DELETE");
+    removals.push(clientId);
+    installations = installations.filter((item) => item.clientId !== clientId);
+    if (clientId === currentClientId) {
+      currentState = "revoked";
+    }
+    return route.fulfill({ status: 204 });
+  });
+
+  await page.goto("/settings/notifications");
+  const settings = page.locator("caffold-settings-notifications-page");
+  await expect(settings).toContainText("Disabled");
+  await expect(settings).toContainText("Firefox 141 on Linux");
+  await expect(settings.getByText("2 browsers", { exact: true })).toBeVisible();
+  await expect(settings).not.toContainText("Best-effort delivery");
+  expect(await settings.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await captureReviewScreenshot(page, testInfo, "settings-notifications-disabled");
+
+  const firefox = settings.locator(".settings-installation-list article", {
+    hasText: "Firefox 141 on Linux",
+  });
+  await firefox.getByRole("button", { name: "Remove" }).click();
+  await expect(firefox).toHaveCount(0);
+  await expect(settings.getByText("1 browser", { exact: true })).toBeVisible();
+
+  const safari = settings.locator(".settings-installation-list article", {
+    hasText: "Safari 18 on iOS",
+  });
+  await safari.getByRole("button", { name: "Remove" }).click();
+  await expect(safari).toHaveCount(0);
+  await expect(settings.getByText("0 browsers", { exact: true })).toBeVisible();
+
+  await settings.getByRole("button", { name: "Enable" }).click();
+  await expect(settings).toContainText("Subscribed");
+  await expect(settings).toContainText(
+    "This browser will receive notifications for terminal task turns.",
+  );
+  await expect(settings).not.toContainText("best-effort notifications");
+  await expect(settings).toContainText("This browser");
+  await expect(settings.getByText("1 browser", { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__pushMock.permissionCalls)).toBe(1);
+  expect(upserts).toBe(1);
+  await captureReviewScreenshot(page, testInfo, "settings-notifications-subscribed");
+
+  await settings.getByRole("button", { name: "Disable" }).click();
+  await expect(settings).toContainText("Disabled");
+  await expect(settings).toContainText("No browsers are currently subscribed.");
+  await expect.poll(() => page.evaluate(() => window.__pushMock.unsubscribeCalls)).toBe(1);
+  expect(removals).toEqual([
+    "00000000-0000-4000-8000-000000000099",
+    "00000000-0000-4000-8000-000000000098",
+    currentClientId,
+  ]);
+
+  await page.goto("/settings/appearance");
+  await page.goto("/settings/notifications");
+  await expect(settings).toContainText("Disabled");
+  expect(upserts).toBe(1);
+});
+
+test("honors a remote revocation tombstone without silently re-registering", async ({
+  page,
+}) => {
+  await installPushBrowserMock(page, {
+    permission: "granted",
+    initialSubscription: true,
+  });
+  let upserts = 0;
+  await page.route(/\/api\/push\/installations/, async (route) => {
+    if (route.request().method() === "GET") {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ currentState: "revoked", installations: [] }),
+      });
+    }
+    if (route.request().method() === "PUT") {
+      upserts += 1;
+    }
+    return route.fulfill({ status: 204 });
+  });
+
+  await page.goto("/settings/notifications");
+  const settings = page.locator("caffold-settings-notifications-page");
+  await expect(settings).toContainText("Disabled");
+  await expect.poll(() => page.evaluate(() => window.__pushMock.unsubscribeCalls)).toBe(1);
+  expect(upserts).toBe(0);
+  expect(await page.evaluate(() => window.__pushMock.subscribeCalls)).toBe(0);
+});
+
 test("explains missing app-server capabilities in Codex Settings", async ({ page }) => {
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({
@@ -242,6 +391,7 @@ test("gives every Settings route one page title and landmark hierarchy", async (
 }) => {
   const routes = [
     ["/settings/appearance", "Appearance", "caffold-settings-appearance-page"],
+    ["/settings/notifications", "Notifications", "caffold-settings-notifications-page"],
     ["/settings/codex", "Codex", "caffold-settings-codex-page"],
     ["/settings/about", "About Caffold", "caffold-settings-about-page"],
   ];
@@ -997,6 +1147,66 @@ async function setRange(locator, value) {
     element.value = `${nextValue}`;
     element.dispatchEvent(new Event("input", { bubbles: true }));
   }, value);
+}
+
+async function installPushBrowserMock(
+  page,
+  { permission = "default", initialSubscription = false } = {},
+) {
+  await page.addInitScript(({ permission, initialSubscription }) => {
+    const state = {
+      permission,
+      permissionCalls: 0,
+      subscription: null,
+      subscribeCalls: 0,
+      unsubscribeCalls: 0,
+    };
+    const createSubscription = () => ({
+      endpoint: "https://push.example.test/current",
+      expirationTime: null,
+      toJSON() {
+        return { keys: { p256dh: "browser-public", auth: "browser-auth" } };
+      },
+      async unsubscribe() {
+        state.unsubscribeCalls += 1;
+        state.subscription = null;
+        return true;
+      },
+    });
+    if (initialSubscription) {
+      state.subscription = createSubscription();
+    }
+    window.__pushMock = state;
+    class MockNotification {
+      static get permission() {
+        return state.permission;
+      }
+
+      static async requestPermission() {
+        state.permissionCalls += 1;
+        state.permission = "granted";
+        return state.permission;
+      }
+    }
+    Object.defineProperty(window, "Notification", {
+      configurable: true,
+      value: MockNotification,
+    });
+    const pushManager = {
+      async getSubscription() {
+        return state.subscription;
+      },
+      async subscribe() {
+        state.subscribeCalls += 1;
+        state.subscription = createSubscription();
+        return state.subscription;
+      },
+    };
+    Object.defineProperty(ServiceWorkerRegistration.prototype, "pushManager", {
+      configurable: true,
+      get: () => pushManager,
+    });
+  }, { permission, initialSubscription });
 }
 
 async function settingsSurfaceMetrics(surface, selectors) {

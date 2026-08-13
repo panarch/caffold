@@ -82,3 +82,20 @@ and audit controls and remains [planned product work](../product/roadmap.md).
   persists raw recordings.
 - Transcription is host-local. Tailscale protects remote transport but is not a
   speech service or inference dependency.
+
+## Web Push
+
+- Subscription mutations require a same-origin request inside the existing
+  trusted-host boundary. This check is not a user authentication system.
+- The existing Caffold database persists browser Push endpoints, subscription
+  keys, revocations, and the server's VAPID private key. API responses and
+  frontend assets never expose the private key or active subscription secrets.
+- Endpoints, subscription keys, and the VAPID private key are not written to
+  application logs. Delivery diagnostics identify only a short installation ID
+  and sanitized outcome.
+- Delivery makes an outbound HTTPS request to the browser vendor's Push Service.
+  The provider receives the endpoint and Web Push headers, while the payload is
+  encrypted and contains only Task/turn identifiers, terminal status, a bounded
+  Task name when available, and the deterministic notification tag.
+- Push delivery failure never changes canonical Task state or foreground SSE
+  behavior.

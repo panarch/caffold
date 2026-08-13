@@ -48,6 +48,17 @@ const ROUTE_DEFINITIONS = [
     parent: () => settingsRoute(),
   }),
   routeDefinition({
+    id: "settings-notifications",
+    kind: "settings",
+    pattern: "/settings/notifications",
+    surface: "task-workspace",
+    target: "notifications",
+    toRoute: () => settingsRoute("notifications"),
+    matchesRoute: (route) =>
+      route?.kind === "settings" && route.section === "notifications",
+    parent: () => settingsRoute(),
+  }),
+  routeDefinition({
     id: "settings-codex",
     kind: "settings",
     pattern: "/settings/codex",
@@ -523,7 +534,7 @@ function tasksRoute(options = {}) {
 function settingsRoute(section = "") {
   return {
     kind: "settings",
-    section: ["appearance", "codex", "about"].includes(section)
+    section: ["appearance", "notifications", "codex", "about"].includes(section)
       ? section
       : "",
   };

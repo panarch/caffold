@@ -9,9 +9,10 @@ That instance serves the UI, manages Codex app-server, talks to the local filesy
 
 ```mermaid
 flowchart TD
-    PWA["Browser / PWA"]
+    PWA["Browser / PWA / Service Worker"]
     MacWrapper["macOS menu bar wrapper"]
     Backend["Caffold Rust Backend"]
+    PushService["Browser vendor Push Service"]
     Proxy["Codex proxy child"]
     AppServer["Persistent Codex app-server daemon"]
     Git["git worktree"]
@@ -24,6 +25,8 @@ flowchart TD
     Proxy --> AppServer
     Backend --> Git
     Backend --> Whisper
+    Backend -->|"encrypted Web Push"| PushService
+    PushService -->|"Push API delivery"| PWA
     AppServer -->|"agent events / approvals / thread data"| Proxy
 ```
 
@@ -60,6 +63,7 @@ The backend owns:
 - JSON-RPC adapter
 - git status, diff, log, and file APIs
 - host-local Whisper model installation, verification, and transcription
+- browser Push subscription persistence and isolated outbound delivery
 - shared server-backed product settings and capability APIs consumed by
   browser and platform clients
 - PWA asset serving
@@ -73,6 +77,7 @@ src/app/shell.rs               shell, health, settings, manifest, static assets
 src/app/workspace.rs           Files, images, watches, Git, and GitHub HTTP adapters
 src/app/tasks.rs               private Tasks state assembly and runtime shutdown
 src/app/tasks/routes.rs        Tasks/Codex HTTP DTOs, validation, handlers, REST/SSE routes
+src/app/tasks/push.rs          Push subscription HTTP API, persistence adapter, and delivery runtime
 src/app/tasks/detail.rs        canonical task detail, session, history, and sync application
 src/app/tasks/runtime.rs       Codex runtime composition and cross-role orchestration
 src/app/tasks/runtime/
@@ -118,9 +123,11 @@ lifetime; Tailscale is transport for remote browsers, not part of inference.
 
 - Codex thread/session: conversation, turns, agent activity
 - Caffold Redb: managed-thread membership, recency-only ordering cache,
+  persistent Web Push subscriptions and the stable server VAPID keypair,
   composer/seen state, and Caffold-managed worktree ownership and recovery
 - git worktree: actual file and code changes
-- PWA: view and controller only
+- browser/PWA: presentation and controller state, plus the browser-owned Web
+  Push subscription and local installation identity
 
 ## Process Model
 

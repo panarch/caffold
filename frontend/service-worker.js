@@ -55,6 +55,9 @@ const APP_SHELL_ASSETS = [
   "/assets/watch.js",
   "/assets/pages/(task-workspace)/settings/appearance/page.css",
   "/assets/pages/(task-workspace)/settings/appearance/page.js",
+  "/assets/pages/(task-workspace)/settings/notifications/page.css",
+  "/assets/pages/(task-workspace)/settings/notifications/page.js",
+  "/assets/pages/(task-workspace)/settings/notifications/lifecycle.js",
   "/assets/pages/(task-workspace)/layout.css",
   "/assets/pages/(task-workspace)/layout.js",
   "/assets/pages/(task-workspace)/components/navigation.css",
@@ -224,6 +227,15 @@ self.addEventListener("message", (event) => {
   }
 });
 
+self.addEventListener("push", (event) => {
+  event.waitUntil(showTerminalNotification(event.data));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification?.close();
+  event.waitUntil(openNotificationRoute(event.notification?.data?.route));
+});
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") {
@@ -317,4 +329,160 @@ function updateReadyMessage() {
 async function claimPreparedBuild(client) {
   await self.clients.claim();
   client?.postMessage({ type: UPDATE_CONTROLLED_MESSAGE, buildId: BUILD_ID });
+}
+
+async function showTerminalNotification(data) {
+  const payload = parseTerminalPushPayload(data);
+  if (!payload) {
+    return;
+  }
+  const route = taskRoute(payload.threadId);
+  if (!route) {
+    return;
+  }
+  const status = terminalStatusCopy(payload.status);
+  const title = payload.taskName || "Caffold";
+  const body = payload.taskName ? status : `Task ${status.toLowerCase()}`;
+  await self.registration.showNotification(title, {
+    body,
+    tag: payload.tag,
+    icon: "/assets/icons/icon-192.png",
+    badge: "/assets/icons/favicon-32.png",
+    data: { route, threadId: payload.threadId },
+  });
+}
+
+function parseTerminalPushPayload(data) {
+  let payload;
+  try {
+    payload = data?.json();
+  } catch {
+    return null;
+  }
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const threadId = typeof payload.threadId === "string" ? payload.threadId : "";
+  const turnId = typeof payload.turnId === "string" ? payload.turnId : "";
+  const taskName = typeof payload.taskName === "string" && payload.taskName.trim()
+    ? [...payload.taskName.trim()].slice(0, 120).join("")
+    : "";
+  const tag = typeof payload.tag === "string" ? payload.tag : "";
+  if (
+    !safeTaskId(threadId) ||
+    !safeTaskId(turnId) ||
+    !["completed", "failed", "interrupted"].includes(payload.status) ||
+    !/^[A-Za-z0-9_-]{1,64}$/.test(tag) ||
+    [...taskName].some((character) => isControlCharacter(character))
+  ) {
+    return null;
+  }
+  return { threadId, turnId, status: payload.status, taskName, tag };
+}
+
+async function openNotificationRoute(route) {
+  const safeRoute = safeNotificationRoute(route);
+  if (!safeRoute) {
+    return;
+  }
+  const windows = await self.clients.matchAll({
+    type: "window",
+    includeUncontrolled: true,
+  });
+  const matching = windows.find((client) => clientShowsTask(client.url, safeRoute));
+  if (matching) {
+    try {
+      await matching.focus();
+      return;
+    } catch {
+      // The client may have closed between enumeration and focus.
+    }
+  }
+  for (const caffoldClient of windows.filter((client) => sameOriginClient(client.url))) {
+    try {
+      const navigated = await caffoldClient.navigate(safeRoute);
+      await (navigated ?? caffoldClient).focus();
+      return;
+    } catch {
+      // Try another Caffold client, then fall back to a new window.
+    }
+  }
+  try {
+    await self.clients.openWindow(safeRoute);
+  } catch {
+    // Notification navigation is best-effort.
+  }
+}
+
+function safeNotificationRoute(route) {
+  if (typeof route !== "string") {
+    return "";
+  }
+  let url;
+  try {
+    url = new URL(route, self.location.origin);
+  } catch {
+    return "";
+  }
+  if (url.origin !== self.location.origin || url.search || url.hash) {
+    return "";
+  }
+  const match = url.pathname.match(/^\/tasks\/([^/]+)$/);
+  if (!match) {
+    return "";
+  }
+  let threadId;
+  try {
+    threadId = decodeURIComponent(match[1]);
+  } catch {
+    return "";
+  }
+  return taskRoute(threadId);
+}
+
+function taskRoute(threadId) {
+  return safeTaskId(threadId) ? `/tasks/${encodeURIComponent(threadId)}` : "";
+}
+
+function safeTaskId(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+  const characters = [...value];
+  return characters.length > 0 &&
+    characters.length <= 256 &&
+    value !== "." &&
+    value !== ".." &&
+    !value.includes("/") &&
+    !value.includes("\\") &&
+    !characters.some((character) => isControlCharacter(character));
+}
+
+function isControlCharacter(character) {
+  const code = character.codePointAt(0);
+  return code <= 0x1f || (code >= 0x7f && code <= 0x9f);
+}
+
+function terminalStatusCopy(status) {
+  if (status === "failed") return "Failed";
+  if (status === "interrupted") return "Interrupted";
+  return "Completed";
+}
+
+function clientShowsTask(clientUrl, route) {
+  try {
+    const url = new URL(clientUrl);
+    return url.origin === self.location.origin &&
+      (url.pathname === route || url.pathname.startsWith(`${route}/`));
+  } catch {
+    return false;
+  }
+}
+
+function sameOriginClient(clientUrl) {
+  try {
+    return new URL(clientUrl).origin === self.location.origin;
+  } catch {
+    return false;
+  }
 }

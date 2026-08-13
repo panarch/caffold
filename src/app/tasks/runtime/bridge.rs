@@ -35,18 +35,41 @@ impl CodexRuntime {
                             CodexRuntimeEvent::Notification(notification) => {
                                 let thread_id =
                                     notification_thread_id(&notification).map(str::to_string);
-                                let revision = runtime
+                                let apply_outcome = runtime
                                     .sessions
-                                    .apply_notification(generation, &notification)
+                                    .apply_notification_with_outcome(generation, &notification)
                                     .await;
+                                let revision = apply_outcome.revision;
+                                let terminal_turn_is_first_current = apply_outcome
+                                    .terminal
+                                    .is_some_and(|terminal| terminal.first_current_transition);
+                                let terminal_notification = matches!(
+                                    &notification,
+                                    CodexNotification::TurnCompleted { .. }
+                                );
+                                let snapshot = if (revision.is_some() || terminal_notification)
+                                    && let Some(thread_id) = thread_id.as_deref()
+                                {
+                                    runtime.sessions.snapshot(thread_id).await
+                                } else {
+                                    None
+                                };
+                                let task_name = snapshot
+                                    .as_ref()
+                                    .and_then(|snapshot| snapshot.thread.as_ref())
+                                    .and_then(|thread| thread.name.as_deref());
+                                runtime.handle_terminal_push(
+                                    &notification,
+                                    task_name,
+                                    terminal_turn_is_first_current,
+                                );
                                 runtime
                                     .expire_stale_approvals_for_notification(&notification)
                                     .await;
                                 runtime.handle_notification(notification);
                                 if revision.is_some()
                                     && let Some(thread_id) = thread_id
-                                    && let Some(snapshot) =
-                                        runtime.sessions.snapshot(&thread_id).await
+                                    && let Some(snapshot) = snapshot
                                 {
                                     let _ = runtime.signals.send(
                                         CodexRuntimeSignal::SessionChanged {
@@ -311,6 +334,46 @@ impl CodexRuntime {
         }
     }
 
+    fn handle_terminal_push(
+        &self,
+        notification: &CodexNotification,
+        task_name: Option<&str>,
+        terminal_turn_is_first_current: bool,
+    ) {
+        if !terminal_turn_is_first_current {
+            if matches!(notification, CodexNotification::TurnCompleted { .. }) {
+                eprintln!(
+                    "Web Push terminal delivery skipped because the turn was not current or was already terminal"
+                );
+            }
+            return;
+        }
+        let Some(push) = self.push.as_ref() else {
+            return;
+        };
+        let CodexNotification::TurnCompleted { thread_id, turn } = notification else {
+            return;
+        };
+        let status = match turn.status {
+            TurnStatus::Completed => super::super::push::TerminalPushStatus::Completed,
+            TurnStatus::Failed => super::super::push::TerminalPushStatus::Failed,
+            TurnStatus::Interrupted => super::super::push::TerminalPushStatus::Interrupted,
+            TurnStatus::InProgress => return,
+        };
+        match self.task_store.get(thread_id) {
+            Ok(Some(_)) => {
+                let queued = push.notify_terminal(thread_id, &turn.id, status, task_name);
+                eprintln!("Web Push terminal delivery queued for {queued} active installation(s)");
+            }
+            Ok(None) => eprintln!(
+                "Web Push terminal delivery skipped because the turn is not managed by Caffold"
+            ),
+            Err(_) => eprintln!(
+                "managed task state could not be checked; terminal Web Push delivery skipped"
+            ),
+        }
+    }
+
     #[cfg(test)]
     pub(in crate::app) fn restore_test_sessions(&self, connection: CodexConnection) {
         self.restore_connection_state(connection);
@@ -342,7 +405,7 @@ mod tests {
         app::tasks::events::TaskEvents,
         codex_app_server::{self, CodexThreadClient, MockCodexResponse},
         codex_thread_sessions::CodexThreadSessions,
-        task_store::{ManagedThread, TaskStore},
+        task_store::{ManagedThread, PushSubscriptionInput, TaskStore},
     };
 
     fn runtime_with_events_and_store(events: TaskEvents, store: TaskStore) -> CodexRuntime {
@@ -403,6 +466,94 @@ mod tests {
         let stored = store.get("thread_1").unwrap().unwrap();
         assert_eq!(stored.last_completed_at_ms, Some(1_750_000_004_500));
         assert!(stored.unseen());
+    }
+
+    #[test]
+    fn terminal_push_selects_only_managed_canonical_terminal_turns() {
+        let store = TaskStore::memory().unwrap();
+        store
+            .claim(ManagedThread::new("managed", None, None, None), 1_000)
+            .unwrap();
+        store
+            .upsert_push_installation(
+                PushSubscriptionInput {
+                    client_id: "00000000-0000-4000-8000-000000000001".to_owned(),
+                    installation_label: "Chrome on macOS · 00000000".to_owned(),
+                    endpoint: "https://push.example.test/subscription".to_owned(),
+                    p256dh: "test-public-key".to_owned(),
+                    auth: "test-auth".to_owned(),
+                    expiration_time_ms: None,
+                },
+                1_000,
+            )
+            .unwrap();
+        let (push, mut deliveries) =
+            crate::app::tasks::push::PushService::test_channel(store.clone());
+        let runtime =
+            runtime_with_events_and_store(TaskEvents::default(), store).with_push_service(push);
+
+        for (status, expected) in [
+            ("completed", "completed"),
+            ("failed", "failed"),
+            ("interrupted", "interrupted"),
+        ] {
+            let notification = codex_app_server::decode_notification(
+                "turn/completed",
+                json!({
+                    "threadId": "managed",
+                    "turn": { "id": format!("turn-{status}"), "status": status }
+                }),
+            )
+            .unwrap();
+            runtime.handle_terminal_push(&notification, Some("Current task name"), true);
+            let delivery = deliveries.try_recv().unwrap();
+            let payload: JsonValue = serde_json::from_slice(&delivery.payload).unwrap();
+            assert_eq!(payload["threadId"], "managed");
+            assert_eq!(payload["status"], expected);
+            assert_eq!(payload["taskName"], "Current task name");
+            assert_eq!(payload["tag"], delivery.topic);
+        }
+
+        let outside = codex_app_server::decode_notification(
+            "turn/completed",
+            json!({
+                "threadId": "outside-caffold",
+                "turn": { "id": "turn-outside", "status": "completed" }
+            }),
+        )
+        .unwrap();
+        runtime.handle_terminal_push(&outside, Some("Outside task"), true);
+
+        let nonterminal = codex_app_server::decode_notification(
+            "turn/completed",
+            json!({
+                "threadId": "managed",
+                "turn": { "id": "turn-running", "status": "inProgress" }
+            }),
+        )
+        .unwrap();
+        runtime.handle_terminal_push(&nonterminal, Some("Current task name"), true);
+
+        let unsafe_turn = codex_app_server::decode_notification(
+            "turn/completed",
+            json!({
+                "threadId": "managed",
+                "turn": { "id": "../unsafe", "status": "completed" }
+            }),
+        )
+        .unwrap();
+        runtime.handle_terminal_push(&unsafe_turn, Some("Current task name"), true);
+
+        let stale_completion = codex_app_server::decode_notification(
+            "turn/completed",
+            json!({
+                "threadId": "managed",
+                "turn": { "id": "turn-stale", "status": "completed" }
+            }),
+        )
+        .unwrap();
+        runtime.handle_terminal_push(&stale_completion, Some("Current task name"), false);
+        assert!(deliveries.try_recv().is_err());
     }
 
     #[tokio::test]

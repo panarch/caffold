@@ -1,10 +1,12 @@
 import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
 import "./appearance/page.js";
+import "./notifications/page.js";
 import "./codex/page.js";
 import "./about/page.js";
 
 const TITLES = {
   appearance: "Appearance",
+  notifications: "Notifications",
   codex: "Codex",
   about: "About Caffold",
 };
@@ -22,6 +24,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
     this.detachResponsiveListener();
     this.querySelector("caffold-settings-codex-page")?.deactivate();
+    this.querySelector("caffold-settings-notifications-page")?.deactivate();
   }
 
   ensureRendered() {
@@ -61,6 +64,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
             <h1 id="settings-workspace-title"></h1>
           </header>
           <caffold-settings-appearance-page hidden></caffold-settings-appearance-page>
+          <caffold-settings-notifications-page hidden></caffold-settings-notifications-page>
           <caffold-settings-codex-page hidden></caffold-settings-codex-page>
           <caffold-settings-about-page hidden></caffold-settings-about-page>
         </div>
@@ -148,6 +152,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
 
     const pages = {
       appearance: this.querySelector("caffold-settings-appearance-page"),
+      notifications: this.querySelector("caffold-settings-notifications-page"),
       codex: this.querySelector("caffold-settings-codex-page"),
       about: this.querySelector("caffold-settings-about-page"),
     };
@@ -158,6 +163,11 @@ class CaffoldSettingsWorkspace extends HTMLElement {
       pages.codex?.activate();
     } else {
       pages.codex?.deactivate();
+    }
+    if (presentedSection === "notifications") {
+      pages.notifications?.activate();
+    } else {
+      pages.notifications?.deactivate();
     }
     pages.appearance?.prepareRoute?.();
     this.dispatchEvent(

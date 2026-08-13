@@ -205,6 +205,7 @@ export async function installBrowserDefaults(page) {
           ["path", { d: "M12 12v9" }],
         ];
         export const Archive = [["rect", { width: "20", height: "5", x: "2", y: "3", rx: "1" }], ["path", { d: "M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" }], ["path", { d: "M10 12h4" }]];
+        export const Bell = [["path", { d: "M10.3 21a1.9 1.9 0 0 0 3.4 0" }], ["path", { d: "M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" }]];
         export const FileArchive = File;
         export const FileCode = [["path", { d: "M4 4h16v16H4z" }], ["path", { d: "m10 9-3 3 3 3" }], ["path", { d: "m14 9 3 3-3 3" }]];
         export const FileCog = File;

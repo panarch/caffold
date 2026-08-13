@@ -26,6 +26,8 @@ function createHarness(options = {}) {
   const openedCaches = [];
   const skipWaitingCalls = [];
   const claimCalls = [];
+  const notifications = [];
+  const openedWindows = [];
   const cache = {
     addAll: options.addAll ?? (async () => {}),
     match: options.match ?? (async () => undefined),
@@ -62,8 +64,17 @@ function createHarness(options = {}) {
         async matchAll(matchOptions = {}) {
           return matchOptions.includeUncontrolled ? allClients : controlledClients;
         },
+        async openWindow(route) {
+          openedWindows.push(route);
+          return options.openWindowResult;
+        },
       },
       location: { origin: "https://caffold.test" },
+      registration: {
+        async showNotification(title, notificationOptions) {
+          notifications.push([title, notificationOptions]);
+        },
+      },
       async skipWaiting() {
         skipWaitingCalls.push(true);
       },
@@ -76,6 +87,8 @@ function createHarness(options = {}) {
     claimCalls,
     deletedCaches,
     openedCaches,
+    openedWindows,
+    notifications,
     skipWaitingCalls,
     async dispatchExtendable(type, properties = {}) {
       let completion = Promise.resolve();
@@ -272,6 +285,153 @@ test("removes only stale shell caches after all clients transition", async () =>
   });
   assert.deepEqual(harness.deletedCaches, ["caffold-shell-old-build"]);
   assert.deepEqual(harness.claimCalls, []);
+});
+
+test("shows status-only terminal notifications even while clients are open", async () => {
+  const harness = createHarness({
+    controlledClients: [{ url: "https://caffold.test/tasks/thread-1" }],
+  });
+  await harness.dispatchExtendable("push", {
+    data: {
+      json: () => ({
+        threadId: "thread-1",
+        turnId: "turn-1",
+        status: "completed",
+        taskName: "Review Web Push",
+        tag: "topic_123",
+      }),
+    },
+  });
+
+  assert.equal(harness.notifications.length, 1);
+  const [title, options] = harness.notifications[0];
+  assert.equal(title, "Review Web Push");
+  assert.equal(options.body, "Completed");
+  assert.equal(options.tag, "topic_123");
+  assert.deepEqual({ ...options.data }, {
+    route: "/tasks/thread-1",
+    threadId: "thread-1",
+  });
+});
+
+test("falls back to Caffold and status-only copy when the task name is unavailable", async () => {
+  const harness = createHarness();
+  await harness.dispatchExtendable("push", {
+    data: {
+      json: () => ({
+        threadId: "thread-1",
+        turnId: "turn-1",
+        status: "failed",
+        taskName: null,
+        tag: "topic_123",
+      }),
+    },
+  });
+
+  assert.equal(harness.notifications.length, 1);
+  const [title, options] = harness.notifications[0];
+  assert.equal(title, "Caffold");
+  assert.equal(options.body, "Task failed");
+});
+
+test("drops malformed, content-bearing, and unsafe-route Push payloads", async () => {
+  const harness = createHarness();
+  for (const payload of [
+    null,
+    { threadId: "../settings", turnId: "turn", status: "completed", tag: "tag" },
+    { threadId: "thread", turnId: "turn", status: "running", tag: "tag" },
+    { threadId: "thread", turnId: "turn", status: "failed", tag: "not a topic" },
+    {
+      threadId: "thread",
+      turnId: "turn",
+      status: "failed",
+      taskName: "unsafe\nname",
+      tag: "tag",
+    },
+  ]) {
+    await harness.dispatchExtendable("push", {
+      data: { json: () => payload },
+    });
+  }
+  await harness.dispatchExtendable("push", {
+    data: { json: () => { throw new Error("bad data"); } },
+  });
+  assert.deepEqual(harness.notifications, []);
+});
+
+test("notification click focuses a client already showing the matching task", async () => {
+  const focused = [];
+  const navigated = [];
+  const matching = {
+    url: "https://caffold.test/tasks/thread%201/review",
+    async focus() { focused.push("matching"); },
+    async navigate(route) { navigated.push(route); return this; },
+  };
+  const harness = createHarness({ allClients: [matching] });
+  let closed = false;
+  await harness.dispatchExtendable("notificationclick", {
+    notification: {
+      data: { route: "/tasks/thread%201" },
+      close() { closed = true; },
+    },
+  });
+  assert.equal(closed, true);
+  assert.deepEqual(focused, ["matching"]);
+  assert.deepEqual(navigated, []);
+  assert.deepEqual(harness.openedWindows, []);
+});
+
+test("notification click navigates a same-origin client or opens a safe task route", async () => {
+  const navigated = [];
+  const focused = [];
+  const existing = {
+    url: "https://caffold.test/settings",
+    async navigate(route) {
+      navigated.push(route);
+      return { async focus() { focused.push("navigated"); } };
+    },
+    async focus() { focused.push("existing"); },
+  };
+  const harness = createHarness({ allClients: [existing] });
+  await harness.dispatchExtendable("notificationclick", {
+    notification: { data: { route: "/tasks/thread-2" }, close() {} },
+  });
+  assert.deepEqual(navigated, ["/tasks/thread-2"]);
+  assert.deepEqual(focused, ["navigated"]);
+
+  const empty = createHarness();
+  await empty.dispatchExtendable("notificationclick", {
+    notification: { data: { route: "/tasks/thread-3" }, close() {} },
+  });
+  assert.deepEqual(empty.openedWindows, ["/tasks/thread-3"]);
+});
+
+test("notification click opens a new window if stale clients cannot be focused or navigated", async () => {
+  const stale = {
+    url: "https://caffold.test/tasks/thread-4",
+    async focus() { throw new Error("closed"); },
+    async navigate() { throw new Error("closed"); },
+  };
+  const harness = createHarness({ allClients: [stale] });
+  await harness.dispatchExtendable("notificationclick", {
+    notification: { data: { route: "/tasks/thread-4" }, close() {} },
+  });
+  assert.deepEqual(harness.openedWindows, ["/tasks/thread-4"]);
+});
+
+test("notification click ignores cross-origin and non-task routes", async () => {
+  const harness = createHarness();
+  for (const route of [
+    "https://evil.test/tasks/thread",
+    "/settings",
+    "/tasks/thread/../../settings",
+    "/tasks/thread?prompt=secret",
+  ]) {
+    await harness.dispatchExtendable("notificationclick", {
+      notification: { data: { route }, close() {} },
+    });
+  }
+  assert.deepEqual(harness.openedWindows, []);
 });
 
 test("precaches every bundled runtime asset", async () => {

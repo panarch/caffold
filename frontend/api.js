@@ -22,6 +22,30 @@ export async function getVoiceStatus() {
   return requestJson("/api/voice/status");
 }
 
+export async function getPushConfig() {
+  return requestJson("/api/push/config");
+}
+
+export async function getPushInstallations(clientId) {
+  return requestJson("/api/push/installations", { clientId });
+}
+
+export async function upsertPushInstallation(clientId, subscription) {
+  return requestJson(
+    `/api/push/installations/${encodeURIComponent(clientId)}`,
+    {},
+    { method: "PUT", body: subscription },
+  );
+}
+
+export async function removePushInstallation(clientId) {
+  return requestJson(
+    `/api/push/installations/${encodeURIComponent(clientId)}`,
+    {},
+    { method: "DELETE", expectJson: false },
+  );
+}
+
 export async function installVoiceModel() {
   return requestJson("/api/voice/model/install", {}, { method: "POST" });
 }

@@ -21,6 +21,8 @@ boundaries.
 - opt-in transfer of staged, unstaged, and untracked changes with bounded
   recovery;
 - archive/restore of Tasks and verified clean managed worktrees;
+- explicit per-browser Web Push subscription and system notifications when a
+  managed Task turn completes, fails, or is interrupted;
 - responsive desktop, foldable, and phone layouts.
 
 ## Current boundaries
@@ -41,6 +43,8 @@ boundaries.
 - Review uses unified diffs without durable hunk comments or annotations.
 - Caffold does not duplicate Codex transcript or lifecycle state as a local
   source of truth.
+- Web Push is best-effort while the backend is running. It has no durable
+  delivery queue, provider retry, or startup catch-up.
 
 ## Supported scenarios
 

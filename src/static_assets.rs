@@ -112,6 +112,15 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/settings/appearance/page.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/settings/appearance/page.js"
         ))),
+        "pages/(task-workspace)/settings/notifications/page.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/settings/notifications/page.css"
+        ))),
+        "pages/(task-workspace)/settings/notifications/page.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/settings/notifications/page.js"
+        ))),
+        "pages/(task-workspace)/settings/notifications/lifecycle.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/settings/notifications/lifecycle.js"
+        ))),
         "pages/(task-workspace)/settings/layout.css" => Some(css(include_str!(
             "../frontend/pages/(task-workspace)/settings/layout.css"
         ))),
@@ -855,6 +864,7 @@ mod tests {
         for path in [
             "pages/(task-workspace)/settings/layout.js",
             "pages/(task-workspace)/settings/navigator.js",
+            "pages/(task-workspace)/settings/notifications/page.js",
             "pages/(task-workspace)/settings/codex/page.js",
             "pages/(task-workspace)/settings/about/page.js",
         ] {
@@ -862,6 +872,15 @@ mod tests {
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
             assert!(asset.body.starts_with(b"import "));
         }
+
+        let notification_lifecycle =
+            get("pages/(task-workspace)/settings/notifications/lifecycle.js")
+                .expect("settings notification lifecycle asset");
+        assert_eq!(
+            notification_lifecycle.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(notification_lifecycle.body.starts_with(b"export const"));
 
         let runtime_restart_dialog =
             get("pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js")

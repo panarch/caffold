@@ -150,6 +150,8 @@ Settings includes:
 
 - Appearance controls for System/Light/Dark theme, typeface, Interface scale,
   Conversation text, and Code text;
+- Notifications controls for the current browser's permission and subscription,
+  plus the active browser-installation count, labels, short IDs, and removal;
 - Codex installation readiness, repair guidance, runtime status, Refresh,
   restart, and diagnostics;
 - About Caffold application and build information, including shared
@@ -162,6 +164,12 @@ has settled without a prepared replacement for a differing server build.
 
 Appearance choices are persisted in browser-local settings rather than Task or
 server state.
+
+Notifications reconcile a browser-owned `PushSubscription` and local
+installation ID with server-owned registration or revocation state. Permission
+is requested only by the explicit **Enable** action. Removing another browser
+revokes that installation; opening Notifications there applies the revocation
+locally instead of silently subscribing again.
 
 Task Workspace owns the shared Codex readiness request and forwards the same
 backend snapshot to Tasks, workspace navigation, and Codex Settings. Codex
