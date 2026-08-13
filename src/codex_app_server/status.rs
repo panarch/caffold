@@ -178,6 +178,12 @@ fn compact_rate_limits(value: &Value) -> Value {
     if let Some(rate_limits) = value.get("rateLimits") {
         object.insert("rateLimits".to_string(), rate_limits.clone());
     }
+    if let Some(rate_limits_by_limit_id) = value.get("rateLimitsByLimitId") {
+        object.insert(
+            "rateLimitsByLimitId".to_string(),
+            rate_limits_by_limit_id.clone(),
+        );
+    }
 
     if object.is_empty() {
         value.clone()
@@ -383,7 +389,16 @@ mod tests {
             }),
             Some(daemon_versions("0.147.0", "0.147.0")),
             Ok(account()),
-            Some(json!({ "rateLimits": { "primary": { "usedPercent": 42 } } })),
+            Some(json!({
+                "rateLimits": { "primary": { "usedPercent": 42 } },
+                "rateLimitsByLimitId": {
+                    "codex_bengalfox": {
+                        "limitId": "codex_bengalfox",
+                        "limitName": "GPT-5.3-Codex-Spark",
+                        "primary": { "usedPercent": 17 }
+                    }
+                }
+            })),
             Some(json!({
                 "dailyUsageBuckets": [{ "startDate": "2026-07-02", "tokens": 777 }],
                 "summary": { "lifetimeTokens": 123456 }
@@ -421,6 +436,16 @@ mod tests {
                 .and_then(|value| value.pointer("/rateLimits/primary/usedPercent"))
                 .and_then(Value::as_u64),
             Some(42)
+        );
+        assert_eq!(
+            status
+                .rate_limits
+                .as_ref()
+                .and_then(|value| {
+                    value.pointer("/rateLimitsByLimitId/codex_bengalfox/primary/usedPercent")
+                })
+                .and_then(Value::as_u64),
+            Some(17)
         );
         assert_eq!(
             status
