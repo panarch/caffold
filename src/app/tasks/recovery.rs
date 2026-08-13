@@ -119,7 +119,7 @@ pub(in crate::app) async fn locate_thread(
         .unwrap_or(ManagedCodexThreadLocation::Missing))
 }
 
-async fn list_all_global_threads(
+pub(in crate::app) async fn list_all_global_threads(
     client: &CodexThreadClient,
 ) -> Result<Vec<CodexThread>, CodexThreadError> {
     let mut cursor = None;

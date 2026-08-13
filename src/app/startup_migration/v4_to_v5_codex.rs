@@ -28,7 +28,7 @@ pub(super) enum SnapshotError {
     Codex(CodexThreadError),
 }
 
-pub(super) async fn collect_snapshot(
+pub(super) async fn collect_v4_to_v5_snapshot(
     inventory: &[ManagedThreadMigrationInventory],
 ) -> Result<NavigatorMigrationSnapshot, SnapshotError> {
     let installation = inspect_codex_installation().await.map_err(|readiness| {

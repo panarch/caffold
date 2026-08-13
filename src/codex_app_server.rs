@@ -403,6 +403,16 @@ impl CodexThreadClient {
             .clone()
     }
 
+    #[cfg(test)]
+    pub(crate) fn mock_publish_event(&self, event: CodexRuntimeEvent) {
+        let _ = self
+            .mock
+            .as_ref()
+            .expect("mock Codex client is required")
+            .events
+            .send(event);
+    }
+
     pub fn subscribe(&self) -> broadcast::Receiver<CodexRuntimeEvent> {
         #[cfg(test)]
         if let Some(mock) = &self.mock {
@@ -470,6 +480,7 @@ impl CodexThreadClient {
         .await
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub async fn create_thread_section(
         &self,
         name: &str,
@@ -480,6 +491,7 @@ impl CodexThreadClient {
         Ok(response.section)
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub async fn move_thread_to_section(
         &self,
         thread_id: &str,

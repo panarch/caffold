@@ -182,6 +182,33 @@ impl Drop for ThreadViewerLease {
 }
 
 impl CodexThreadSessions {
+    pub async fn track_listed_thread(&self, generation: u64, thread_id: &str) {
+        let entry = self.entry(thread_id).await;
+        let _operation = entry.operation.lock().await;
+        let mut state = entry.state.lock().await;
+        if state.generation != generation {
+            if state.viewer_leases > 0 || state.runtime_lease {
+                return;
+            }
+            state.lifecycle = ThreadSessionLifecycle::Unloaded;
+            state.thread = None;
+            state.turns_page = None;
+            state.active_turn_id = None;
+            state.active_turn_cwd = None;
+            state.terminal_candidate_turn_id = None;
+            state.client = None;
+            state.pending_thread_status = None;
+            state.last_sync_ms = None;
+            state.external_syncing = false;
+            state.external_sync_started_ms = None;
+            state.revision = state.revision.saturating_add(1);
+            state.status_revision = state.revision;
+            state.name_revision = state.revision;
+        }
+        state.generation = generation;
+        state.last_error = None;
+    }
+
     pub async fn restore_managed_fast_mode(&self, thread_id: &str, fast_mode: bool) {
         let entry = self.entry(thread_id).await;
         let mut state = entry.state.lock().await;
@@ -191,24 +218,46 @@ impl CodexThreadSessions {
     }
 
     pub async fn observe_thread_metadata(&self, mut thread: CodexThread) {
+        self.observe_thread_metadata_inner(&mut thread, None).await;
+    }
+
+    pub async fn observe_listed_thread_metadata(&self, generation: u64, mut thread: CodexThread) {
+        self.observe_thread_metadata_inner(&mut thread, Some(generation))
+            .await;
+    }
+
+    async fn observe_thread_metadata_inner(
+        &self,
+        thread: &mut CodexThread,
+        generation: Option<u64>,
+    ) {
         let entry = self.entry(&thread.id).await;
         let mut state = entry.state.lock().await;
+        if let Some(generation) = generation {
+            if state.generation != generation {
+                return;
+            }
+            state.last_error = None;
+        }
         let status_changed = state.thread.is_none() && state.pending_thread_status.is_none();
         if let Some(current) = state.thread.as_ref() {
-            thread = CodexThread {
+            *thread = CodexThread {
                 status: current.status.clone(),
                 turns: current.turns.clone(),
-                ..thread
+                ..thread.clone()
             };
         } else if let Some(status) = state.pending_thread_status.clone() {
-            thread = CodexThread { status, ..thread };
+            *thread = CodexThread {
+                status,
+                ..thread.clone()
+            };
         }
-        if state.thread.as_ref() == Some(&thread) {
+        if state.thread.as_ref() == Some(thread) {
             return;
         }
-        let next_active_turn_id = active_turn_id(&thread, state.turns_page.as_ref());
+        let next_active_turn_id = active_turn_id(thread, state.turns_page.as_ref());
         update_active_turn(&mut state, next_active_turn_id, Some(thread.cwd.clone()));
-        state.thread = Some(thread);
+        state.thread = Some(thread.clone());
         state.pending_thread_status = None;
         state.revision = state.revision.saturating_add(1);
         state.name_revision = state.revision;
@@ -926,24 +975,6 @@ impl CodexThreadSessions {
         Some(snapshot(&state))
     }
 
-    pub async fn snapshots(&self) -> Vec<(String, ThreadSessionSnapshot)> {
-        let mut entries = self
-            .entries
-            .lock()
-            .await
-            .iter()
-            .map(|(thread_id, entry)| (thread_id.clone(), entry.clone()))
-            .collect::<Vec<_>>();
-        entries.sort_by(|left, right| left.0.cmp(&right.0));
-
-        let mut snapshots = Vec::with_capacity(entries.len());
-        for (thread_id, entry) in entries {
-            let state = entry.state.lock().await;
-            snapshots.push((thread_id, snapshot(&state)));
-        }
-        snapshots
-    }
-
     pub async fn forget_thread(&self, thread_id: &str) {
         self.entries.lock().await.remove(thread_id);
     }
@@ -1604,3 +1635,79 @@ fn apply_notification_state(
 #[cfg(test)]
 #[path = "codex_thread_sessions/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod listed_thread_tests {
+    use super::*;
+
+    fn thread(id: &str, status: ThreadStatus) -> CodexThread {
+        CodexThread {
+            id: id.to_string(),
+            preview: id.to_string(),
+            status,
+            cwd: "/tmp".to_string(),
+            path: None,
+            name: None,
+            created_at: 1.0,
+            updated_at: 2.0,
+            recency_at: None,
+            turns: Vec::new(),
+            extra: Default::default(),
+        }
+    }
+
+    fn active_status() -> ThreadStatus {
+        serde_json::from_value(serde_json::json!({
+            "type": "active",
+            "activeFlags": [],
+        }))
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn new_generation_listing_drops_unleased_status_from_the_old_connection() {
+        let sessions = CodexThreadSessions::default();
+        sessions.track_listed_thread(1, "thread-1").await;
+        sessions
+            .observe_listed_thread_metadata(1, thread("thread-1", active_status()))
+            .await;
+
+        sessions.track_listed_thread(2, "thread-1").await;
+        sessions
+            .observe_listed_thread_metadata(2, thread("thread-1", ThreadStatus::Idle))
+            .await;
+
+        let snapshot = sessions.snapshot("thread-1").await.unwrap();
+        assert_eq!(snapshot.generation, 2);
+        assert_eq!(snapshot.thread.unwrap().status, ThreadStatus::Idle);
+    }
+
+    #[tokio::test]
+    async fn current_generation_notification_wins_over_an_older_list_page() {
+        let sessions = CodexThreadSessions::default();
+        sessions.track_listed_thread(3, "thread-1").await;
+        sessions
+            .apply_notification(
+                3,
+                &CodexNotification::ThreadStatusChanged {
+                    thread_id: "thread-1".to_string(),
+                    status: active_status(),
+                },
+            )
+            .await;
+        sessions
+            .observe_listed_thread_metadata(3, thread("thread-1", ThreadStatus::Idle))
+            .await;
+
+        assert!(matches!(
+            sessions
+                .snapshot("thread-1")
+                .await
+                .unwrap()
+                .thread
+                .unwrap()
+                .status,
+            ThreadStatus::Active { .. }
+        ));
+    }
+}

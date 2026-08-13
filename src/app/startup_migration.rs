@@ -1,4 +1,4 @@
-mod codex;
+mod v4_to_v5_codex;
 
 use std::path::PathBuf;
 
@@ -49,12 +49,15 @@ pub(super) async fn migrate_task_store(path: PathBuf) -> Result<(), StartupMigra
         return Ok(());
     }
 
-    let snapshot = match codex::collect_snapshot(pending.inventory()).await {
+    // Only non-empty v4 stores reach this path. v4 does not contain the
+    // display names or Section placement required by v5, so startup collects
+    // that projection from Codex before applying the v4-to-v5 migration.
+    let snapshot = match v4_to_v5_codex::collect_v4_to_v5_snapshot(pending.inventory()).await {
         Ok(snapshot) => snapshot,
-        Err(codex::SnapshotError::Readiness(status)) => {
+        Err(v4_to_v5_codex::SnapshotError::Readiness(status)) => {
             return Err(StartupMigrationError::CodexReadiness(status));
         }
-        Err(codex::SnapshotError::Codex(error)) => {
+        Err(v4_to_v5_codex::SnapshotError::Codex(error)) => {
             return Err(StartupMigrationError::Codex(error));
         }
     };

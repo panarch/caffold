@@ -399,6 +399,11 @@ impl CodexRuntime {
     pub(in crate::app) fn restore_test_sessions(&self, connection: CodexConnection) {
         self.restore_connection_state(connection);
     }
+
+    #[cfg(test)]
+    pub(in crate::app) fn spawn_test_bridge(&self, client: CodexThreadClient, generation: u64) {
+        self.spawn_bridge(client, generation, self.shutdown.subscribe());
+    }
 }
 
 fn notification_thread_id(notification: &CodexNotification) -> Option<&str> {
@@ -425,8 +430,8 @@ mod tests {
     use super::*;
     use crate::{
         app::tasks::{
-            codex_sections::CodexSections, events::TaskEvents, lifecycle::TaskLifecycle,
-            routes::TaskListEvents, worktrees::ManagedWorktrees,
+            events::TaskEvents, lifecycle::TaskLifecycle, routes::TaskListEvents,
+            worktrees::ManagedWorktrees,
         },
         codex_app_server::{self, CodexThreadClient, MockCodexResponse},
         codex_thread_sessions::CodexThreadSessions,
@@ -457,7 +462,6 @@ mod tests {
             list_events.clone(),
             store.clone(),
             worktrees,
-            CodexSections::default(),
         );
         let (shutdown, _) = broadcast::channel(1);
         (

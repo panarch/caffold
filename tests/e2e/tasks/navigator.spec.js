@@ -372,7 +372,7 @@ test("renders the backend-exhausted Active projection without cursor paging", as
   expect(cursors).toEqual([null]);
 });
 
-test("refreshes server-owned ordering only for an explicit list refresh event", async ({
+test("refreshes persisted identity and order without replacing runtime status", async ({
   page,
 }) => {
   await installEventSourceMock(page, {
@@ -380,13 +380,38 @@ test("refreshes server-owned ordering only for an explicit list refresh event", 
     autoOpen: true,
   });
   await mockCodexModels(page);
-  const first = initialNavigatorTask("thread_order_first", "First ordered Task");
-  const second = initialNavigatorTask("thread_order_second", "Second ordered Task");
+  const first = initialNavigatorTask(
+    "thread_order_first",
+    "First ordered Task",
+    canonicalTaskState("active", {
+      turnId: "turn_order_first",
+      latestTurnStatus: "inProgress",
+    }),
+  );
+  const second = initialNavigatorTask(
+    "thread_order_second",
+    "Second ordered Task",
+  );
+  const refreshedFirst = {
+    ...first,
+    ...canonicalTaskState("notLoaded"),
+    title: "Renamed first Task",
+    conversationAvailable: false,
+  };
+  const refreshedSecond = {
+    ...second,
+    ...canonicalTaskState("notLoaded"),
+    conversationAvailable: false,
+  };
   let reads = 0;
   await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
     reads += 1;
     return route.fulfill({
-      json: activeTaskProjection(reads === 1 ? [first, second] : [second, first]),
+      json: activeTaskProjection(
+        reads === 1
+          ? [first, second]
+          : [refreshedSecond, refreshedFirst],
+      ),
     });
   });
 
@@ -402,6 +427,19 @@ test("refreshes server-owned ordering only for an explicit list refresh event", 
 
   await expect.poll(() => reads).toBe(2);
   await expect(rows.nth(0)).toHaveAttribute("data-thread-id", second.threadId);
+  const firstRow = page.locator(
+    `caffold-task-navigator .task-row[data-thread-id="${first.threadId}"]`,
+  );
+  await expect(firstRow.locator(".task-row-title")).toHaveText(
+    "Renamed first Task",
+  );
+  await expect(firstRow).toHaveAttribute("data-task-status", "running");
+  await expect(firstRow.locator(".task-status-spinner")).toBeVisible();
+  await expect(
+    page.locator(
+      `caffold-task-navigator .task-row[data-thread-id="${second.threadId}"]`,
+    ),
+  ).toHaveAttribute("data-task-status", "idle");
 });
 
 test("hydrates a cached Task with the task-list stream bootstrap snapshot", async ({
@@ -417,11 +455,19 @@ test("hydrates a cached Task with the task-list stream bootstrap snapshot", asyn
     "Persisted navigator name",
     canonicalTaskState("notLoaded"),
   );
+  const cachedSecond = initialNavigatorTask(
+    "thread_list_bootstrap_second",
+    "Second persisted name",
+    canonicalTaskState("notLoaded"),
+  );
   cached.conversationAvailable = false;
+  cachedSecond.conversationAvailable = false;
   let reads = 0;
   await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
     reads += 1;
-    return route.fulfill({ json: activeTaskProjection([cached]) });
+    return route.fulfill({
+      json: activeTaskProjection([cached, cachedSecond]),
+    });
   });
 
   await page.goto("/tasks");
@@ -441,25 +487,57 @@ test("hydrates a cached Task with the task-list stream bootstrap snapshot", asyn
     }),
     conversationAvailable: true,
   };
-  await page.evaluate((task) => {
-    window.__taskListBootstrapSource.emit("task-sync", {
-      threadId: task.threadId,
-      revision: 7,
-      detail: {
-        threadId: task.threadId,
-        revision: 7,
-        syncState: "ready",
+  const idleSecond = {
+    ...cachedSecond,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    conversationAvailable: true,
+  };
+  await page.evaluate(({ task, idleSecond }) => {
+    window.__taskListBootstrapSource.emit("task-list-snapshot", {
+      tasks: [
         task,
-      },
-      reason: "task-list-stream-bootstrap",
+        idleSecond,
+        { ...task, threadId: "unmanaged-thread", id: "unmanaged-thread" },
+      ],
     });
-  }, running);
+  }, { task: running, idleSecond });
 
   await expect(row).toHaveAttribute("data-task-status", "running");
   await expect(row.locator(".task-status-spinner")).toBeVisible();
   await expect(row.locator(".task-row-title")).toHaveText(
     "Persisted navigator name",
   );
+  const secondRow = page.locator(
+    'caffold-task-navigator .task-row[data-thread-id="thread_list_bootstrap_second"]',
+  );
+  await expect(secondRow).toHaveAttribute("data-task-status", "idle");
+  await expect(secondRow.locator(".task-row-title")).toHaveText(
+    "Second persisted name",
+  );
+  await expect(
+    page.locator(
+      'caffold-task-navigator .task-row[data-thread-id="unmanaged-thread"]',
+    ),
+  ).toHaveCount(0);
+
+  await page.evaluate(() => {
+    const previous = window.__taskListBootstrapSource;
+    document.querySelector("caffold-active-task-list").retryStream();
+    window.__previousTaskListBootstrapSource = previous;
+  });
+  await expect.poll(() =>
+    page.evaluate(() =>
+      window.__taskListBootstrapSource !==
+      window.__previousTaskListBootstrapSource
+    ),
+  ).toBe(true);
+  await page.evaluate((task) => {
+    window.__taskListBootstrapSource.emit("task-list-snapshot", {
+      tasks: [task],
+    });
+  }, idleSecond);
+
+  await expect(secondRow).toHaveAttribute("data-task-status", "idle");
   expect(reads).toBe(1);
 });
 
@@ -1555,35 +1633,9 @@ test("does not offer archive while the canonical task is active", async ({ page 
 });
 
 test("keeps cached task rows visible when a list refresh fails", async ({ page }) => {
-  await page.addInitScript(() => {
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        this.readyState = 0;
-        if (url.includes("/api/tasks/stream")) {
-          window.__taskListEventSource = this;
-        }
-      }
-
-      addEventListener(type, listener) {
-        this.listeners.set(type, listener);
-      }
-
-      emitOpen() {
-        this.readyState = 1;
-        this.listeners.get("open")?.({});
-      }
-
-      emitError() {
-        this.readyState = 0;
-        this.listeners.get("error")?.({});
-      }
-
-      close() {
-        this.readyState = 2;
-      }
-    };
+  await installEventSourceMock(page, {
+    sourceKey: "__taskListEventSource",
+    autoOpen: true,
   });
   await mockCodexModels(page);
 
@@ -1625,9 +1677,7 @@ test("keeps cached task rows visible when a list refresh fails", async ({ page }
   const readsBeforeFailure = taskReads;
   failTaskReads = true;
   await page.evaluate(() => {
-    window.__taskListEventSource.emitOpen();
-    window.__taskListEventSource.emitError();
-    window.__taskListEventSource.emitOpen();
+    window.__taskListEventSource.emit("task-list-refresh", {});
   });
 
   await expect(navigator).toContainText("Must survive failed reload");

@@ -1,5 +1,4 @@
 mod active_list;
-mod codex_sections;
 mod detail;
 mod events;
 mod generated_images;
@@ -58,7 +57,6 @@ struct TaskState {
     task_sync: TaskSync<TaskDetailSync>,
     task_list_events: TaskListEvents,
     task_store: TaskStore,
-    codex_sections: codex_sections::CodexSections,
     lifecycle: TaskLifecycle,
     push: PushService,
     shutdown: broadcast::Sender<()>,
@@ -95,7 +93,6 @@ impl TaskState {
         let task_events = TaskEvents::default();
         let codex_sessions = crate::codex_thread_sessions::CodexThreadSessions::default();
         let task_list_events = TaskListEvents::new();
-        let codex_sections = codex_sections::CodexSections::default();
         let managed_worktrees =
             ManagedWorktrees::new(fs.clone(), task_store.clone(), worktree_root)?;
         let lifecycle = TaskLifecycle::new(
@@ -105,7 +102,6 @@ impl TaskState {
             task_list_events.clone(),
             task_store.clone(),
             managed_worktrees,
-            codex_sections.clone(),
         );
         let codex_runtime = CodexRuntime::new(
             codex_sessions.clone(),
@@ -139,7 +135,6 @@ impl TaskState {
             task_sync,
             task_list_events,
             task_store,
-            codex_sections,
             lifecycle,
             push,
             shutdown,

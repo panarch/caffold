@@ -7,14 +7,19 @@ use serde::Serialize;
 
 use crate::{
     app::error::ApiError,
-    codex_app_server::ThreadStatus,
+    codex_app_server::{CodexThread, CodexThreadClient, ThreadStatus},
+    codex_thread_sessions::CodexThreadSessions,
     fs::RootedFs,
     task_store::{ManagedSection, ManagedThread, TaskStore},
 };
 
 use super::{
     TaskRecord,
-    projection::task_activity_ms,
+    detail::project_managed_worktree_cwd,
+    projection::{
+        apply_canonical_turn_projection, resolve_thread_cwd, task_activity_ms,
+        task_record_from_thread,
+    },
     recovery::{ActiveTaskRecovery, ActiveTaskRecoveryReason},
 };
 
@@ -32,6 +37,17 @@ pub(in crate::app) struct ActiveTaskSection {
 pub(in crate::app) struct ActiveTaskProjection {
     pub(in crate::app) sections: Vec<ActiveTaskSection>,
     pub(in crate::app) unsectioned: Vec<ActiveTaskRecovery>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(in crate::app) struct ActiveTaskRuntimeSnapshot {
+    pub(in crate::app) tasks: Vec<TaskRecord>,
+}
+
+pub(in crate::app) struct ActiveTaskRuntimeProjection {
+    pub(in crate::app) snapshot: ActiveTaskRuntimeSnapshot,
+    pub(in crate::app) observed_threads: Vec<CodexThread>,
 }
 
 impl ActiveTaskProjection {
@@ -126,6 +142,61 @@ pub(in crate::app) async fn load_cached(
             .collect(),
         unsectioned: recovery,
     })
+}
+
+pub(in crate::app) async fn load_runtime_snapshot(
+    fs: Arc<RootedFs>,
+    store: TaskStore,
+    sessions: &CodexThreadSessions,
+    generation: u64,
+    client: &CodexThreadClient,
+) -> Result<ActiveTaskRuntimeProjection, ApiError> {
+    let managed = {
+        let store = store.clone();
+        tokio::task::spawn_blocking(move || store.read(|tables| tables.active_managed_threads()))
+            .await
+            .map_err(|error| ApiError::Internal(format!("task store worker failed: {error}")))?
+            .map_err(|error| ApiError::Internal(error.to_string()))?
+            .into_iter()
+            .map(|thread| (thread.thread_id.clone(), thread))
+            .collect::<BTreeMap<_, _>>()
+    };
+    if managed.is_empty() {
+        return Ok(ActiveTaskRuntimeProjection {
+            snapshot: ActiveTaskRuntimeSnapshot { tasks: Vec::new() },
+            observed_threads: Vec::new(),
+        });
+    }
+    for thread_id in managed.keys() {
+        sessions.track_listed_thread(generation, thread_id).await;
+    }
+
+    let mut tasks = Vec::new();
+    let mut observed_threads = Vec::new();
+    for thread in super::recovery::list_all_global_threads(client).await? {
+        let Some(managed) = managed.get(&thread.id) else {
+            continue;
+        };
+        let projected = project_managed_worktree_cwd(&store, thread.clone().into_value())?;
+        let resolved = resolve_thread_cwd(&fs, &projected);
+        let mut task = task_record_from_thread(&projected, &[], resolved.as_ref())?;
+        apply_canonical_turn_projection(&mut task, &projected)?;
+        apply_managed_runtime_metadata(&mut task, managed);
+        observed_threads.push(thread);
+        tasks.push(task);
+    }
+    tasks.sort_by(|left, right| left.thread_id.cmp(&right.thread_id));
+    observed_threads.sort_by(|left, right| left.id.cmp(&right.id));
+    Ok(ActiveTaskRuntimeProjection {
+        snapshot: ActiveTaskRuntimeSnapshot { tasks },
+        observed_threads,
+    })
+}
+
+fn apply_managed_runtime_metadata(task: &mut TaskRecord, managed: &ManagedThread) {
+    task.title = managed.display_name.clone();
+    task.last_completed_ms = managed.last_completed_at_ms;
+    task.unseen = managed.unseen();
 }
 
 async fn repository_sections(

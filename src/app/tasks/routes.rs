@@ -23,8 +23,7 @@ use super::{
     TaskRecord, TaskState, accepted_user_message_event, now_ms, task_activity_ms,
 };
 use super::{
-    codex_sections::ActiveTaskTopPlacement,
-    lifecycle::StartTask,
+    lifecycle::{ActiveTaskTopPlacement, StartTask},
     recovery::{ActiveTaskRecovery, ActiveTaskRecoveryReason, ManagedCodexThreadLocation},
     worktrees::inspect_ready_worktree,
 };
@@ -39,9 +38,7 @@ use crate::{
     },
     codex_thread_sessions::{PromptTarget, ThreadSessionSnapshot, ThreadSessionsDiagnostics},
     fs::MAX_IMAGE_BYTES,
-    task_store::{
-        ManagedSection, ManagedThread, ManagedWorktree, ManagedWorktreeState, TaskStoreError,
-    },
+    task_store::{ManagedThread, ManagedWorktree, ManagedWorktreeState, TaskStoreError},
 };
 
 const MAX_TASK_IMAGES: usize = 4;
@@ -574,51 +571,6 @@ async fn task_store_archive(
         .map_err(task_store_api_error)
 }
 
-async fn task_store_restore_at_top(
-    state: &TaskState,
-    thread_id: &str,
-    placement: &ActiveTaskTopPlacement,
-) -> Result<Option<ManagedThread>, ApiError> {
-    let store = state.task_store.clone();
-    let thread_id = thread_id.to_string();
-    let section = managed_section_from_placement(placement);
-    tokio::task::spawn_blocking(move || {
-        store.transaction(|tables| {
-            tables.upsert_managed_section(&section)?;
-            tables.restore_managed_thread_at_top(&thread_id, &section.section_id)
-        })
-    })
-    .await
-    .map_err(task_store_join_error)?
-    .map_err(task_store_api_error)
-}
-
-async fn task_store_place_at_top(
-    state: &TaskState,
-    thread_id: &str,
-    placement: &ActiveTaskTopPlacement,
-) -> Result<Option<ManagedThread>, ApiError> {
-    let store = state.task_store.clone();
-    let thread_id = thread_id.to_string();
-    let section = managed_section_from_placement(placement);
-    tokio::task::spawn_blocking(move || {
-        store.transaction(|tables| {
-            tables.upsert_managed_section(&section)?;
-            tables.place_managed_thread_at_top(&thread_id, &section.section_id)
-        })
-    })
-    .await
-    .map_err(task_store_join_error)?
-    .map_err(task_store_api_error)
-}
-
-fn managed_section_from_placement(placement: &ActiveTaskTopPlacement) -> ManagedSection {
-    ManagedSection {
-        section_id: placement.section.id.clone(),
-        logical_path: placement.section.name.clone(),
-    }
-}
-
 #[derive(Clone, Copy)]
 enum ManagedTaskMembership {
     Active,
@@ -818,7 +770,7 @@ async fn task_stream(
 
 async fn task_list_stream(State(state): State<TaskState>) -> Result<Response, ApiError> {
     let receivers = TaskEventReceivers::subscribe(&state);
-    let initial_frames = task_list_stream_initial_frames(&state).await;
+    let initial_frames = task_list_stream_initial_frames(&state).await?;
     Ok(task_list_event_stream(receivers, initial_frames))
 }
 
@@ -846,35 +798,31 @@ struct TaskEventStreamState {
     initial_frames: VecDeque<Bytes>,
 }
 
-async fn task_list_stream_initial_frames(state: &TaskState) -> VecDeque<Bytes> {
-    let detail = state.detail.clone();
-    let mut snapshots = stream::iter(state.codex_sessions.snapshots().await)
-        .map(move |(thread_id, snapshot)| {
-            let detail = detail.clone();
-            async move {
-                let detail = detail.assemble_snapshot(snapshot, None).await.ok()?;
-                Some(TaskDetailSync {
-                    revision: detail.revision,
-                    thread_id,
-                    detail,
-                    reason: "task-list-stream-bootstrap",
-                    error: None,
-                })
-            }
-        })
-        .buffer_unordered(TASK_CANONICAL_READ_CONCURRENCY)
-        .filter_map(|sync| async move { sync })
-        .collect::<Vec<_>>()
-        .await;
-    snapshots.sort_by(|left, right| left.thread_id.cmp(&right.thread_id));
-
-    let mut frames = VecDeque::with_capacity(snapshots.len() + 1);
+async fn task_list_stream_initial_frames(state: &TaskState) -> Result<VecDeque<Bytes>, ApiError> {
+    let connection = require_codex_thread_connection(state).await?;
+    let projection = super::active_list::load_runtime_snapshot(
+        state.fs.clone(),
+        state.task_store.clone(),
+        &state.codex_sessions,
+        connection.generation,
+        &connection.client,
+    )
+    .await?;
+    for thread in projection.observed_threads {
+        state
+            .codex_sessions
+            .observe_listed_thread_metadata(connection.generation, thread)
+            .await;
+    }
+    let payload = serde_json::to_string(&projection.snapshot).map_err(|error| {
+        ApiError::Internal(format!("failed to serialize Task snapshot: {error}"))
+    })?;
+    let mut frames = VecDeque::with_capacity(2);
     frames.push_back(Bytes::from_static(b": ready\n\n"));
-    frames.extend(snapshots.into_iter().map(|sync| {
-        let payload = serde_json::to_string(&sync).unwrap_or_else(|_| "{}".to_string());
-        Bytes::from(format!("event: task-sync\ndata: {payload}\n\n"))
-    }));
-    frames
+    frames.push_back(Bytes::from(format!(
+        "event: task-list-snapshot\ndata: {payload}\n\n"
+    )));
+    Ok(frames)
 }
 
 fn task_list_event_stream(
@@ -1304,12 +1252,15 @@ async fn task_recovery_restore(
         .await;
     let mut task = state.detail.record_from_codex_thread(&thread)?;
     apply_managed_thread_metadata(&mut task, &managed);
-    let placement = match state
-        .codex_sections
-        .place_at_top(&connection.client, &task)
-        .await
-    {
-        Ok(placement) => placement,
+    let placement = match state.lifecycle.place_active_task(&task).await {
+        Ok(Some(placement)) => placement,
+        Ok(None) => {
+            if unarchived {
+                let _ = connection.client.archive_thread(&thread_id).await;
+                state.codex_sessions.forget_thread(&thread_id).await;
+            }
+            return Err(task_not_managed_error());
+        }
         Err(error) => {
             if unarchived
                 && let Err(rollback_error) = connection.client.archive_thread(&thread_id).await
@@ -1324,21 +1275,6 @@ async fn task_recovery_restore(
             return Err(error);
         }
     };
-    match task_store_place_at_top(&state, &thread_id, &placement).await {
-        Ok(Some(_)) => {}
-        Ok(None) => {
-            if unarchived {
-                let _ = connection.client.archive_thread(&thread_id).await;
-            }
-            return Err(task_not_managed_error());
-        }
-        Err(error) => {
-            if unarchived {
-                let _ = connection.client.archive_thread(&thread_id).await;
-            }
-            return Err(error);
-        }
-    }
     state
         .task_list_events
         .place(task.clone(), placement.clone());
@@ -1507,19 +1443,8 @@ async fn task_restore(
         .await;
     let mut task = state.detail.record_from_codex_thread(&thread)?;
     apply_managed_thread_metadata(&mut task, &archived);
-    let placement = match state
-        .lifecycle
-        .place_active_task(&connection.client, &task)
-        .await
-    {
-        Ok(placement) => placement,
-        Err(error) => {
-            rollback_task_restore(&state, &connection.client, &thread_id, &worktree).await;
-            return Err(error);
-        }
-    };
-    match task_store_restore_at_top(&state, &thread_id, &placement).await {
-        Ok(Some(_)) => {}
+    let placement = match state.lifecycle.restore_active_task(&task).await {
+        Ok(Some(placement)) => placement,
         Ok(None) => {
             rollback_task_restore(&state, &connection.client, &thread_id, &worktree).await;
             return Err(task_not_archived_error());
@@ -1528,7 +1453,7 @@ async fn task_restore(
             rollback_task_restore(&state, &connection.client, &thread_id, &worktree).await;
             return Err(error);
         }
-    }
+    };
     state
         .task_list_events
         .place(task.clone(), placement.clone());

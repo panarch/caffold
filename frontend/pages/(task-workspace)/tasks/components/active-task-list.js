@@ -63,6 +63,7 @@ class CaffoldActiveTaskList extends HTMLElement {
     this.taskListRequestId = 0;
     this.taskListLoadPromise = null;
     this.pendingTopPlacements = new Map();
+    this.pendingRuntimeSnapshot = null;
     this.initialRequestSettled = false;
     this.selectedThreadId = "";
     this.revisionByThread = new Map();
@@ -77,11 +78,14 @@ class CaffoldActiveTaskList extends HTMLElement {
         "task-updated",
         "task-placed-at-top",
         "task-list-refresh",
+        "task-list-snapshot",
         "task-sync",
       ],
       onEvent: (type, event) => this.handleStreamEvent(type, event),
-      onReconcile: (_contextKey, isCurrent) =>
-        this.reconcileTaskList(isCurrent),
+      // Every Task-list connection starts with one complete runtime snapshot.
+      // Re-fetching the local list here could race that snapshot and replace
+      // freshly hydrated status with the cached not-loaded presentation.
+      onReconcile: () => Promise.resolve(),
       onStateChange: (state, previousState) =>
         this.handleStreamStateChange(state, previousState),
     });
@@ -339,7 +343,13 @@ class CaffoldActiveTaskList extends HTMLElement {
         this.taskListLoading = false;
         return null;
       }
-      this.sections = normalizeActiveSections(response.sections);
+      const runtimeByThread = new Map(
+        this.allTasks().map((task) => [taskThreadId(task), task]),
+      );
+      this.sections = normalizeActiveSections(
+        response.sections,
+        runtimeByThread,
+      );
       this.unsectioned = normalizeTaskList(response.unsectioned);
       this.taskListLoading = false;
       this.taskListLoaded = true;
@@ -347,6 +357,10 @@ class CaffoldActiveTaskList extends HTMLElement {
         this.applyCanonicalTopPlacement(task, placement);
       }
       this.pendingTopPlacements.clear();
+      if (this.pendingRuntimeSnapshot) {
+        this.applyRuntimeSnapshot(this.pendingRuntimeSnapshot);
+        this.pendingRuntimeSnapshot = null;
+      }
       const initialSettled = this.markInitialRequestSettled();
       this.render();
       this.dispatchInitialSettled(initialSettled);
@@ -411,6 +425,13 @@ class CaffoldActiveTaskList extends HTMLElement {
       void this.loadTasks({ force: true });
       return;
     }
+    if (type === "task-list-snapshot") {
+      const snapshot = parseJson(event.data);
+      if (Array.isArray(snapshot?.tasks)) {
+        this.applyRuntimeSnapshot(snapshot.tasks);
+      }
+      return;
+    }
     if (type === "task-placed-at-top") {
       const update = parseJson(event.data);
       if (update?.task && update?.placement) {
@@ -445,6 +466,16 @@ class CaffoldActiveTaskList extends HTMLElement {
     }
   }
 
+  applyRuntimeSnapshot(tasks) {
+    if (!this.taskListLoaded) {
+      this.pendingRuntimeSnapshot = tasks;
+      return;
+    }
+    for (const task of normalizeTaskList(tasks)) {
+      this.upsertCanonicalTask(task);
+    }
+  }
+
   dispatchArchiveSync(action, threadId) {
     this.dispatchEvent(
       new CustomEvent(ACTIVE_TASK_LIST_ARCHIVE_SYNC_EVENT, {
@@ -452,18 +483,6 @@ class CaffoldActiveTaskList extends HTMLElement {
         detail: { action, threadId },
       }),
     );
-  }
-
-  async reconcileTaskList(isCurrent) {
-    this.revisionByThread.clear();
-    const response = await this.loadTasks({ force: true, isCurrent });
-    if (!isCurrent()) {
-      return null;
-    }
-    if (!response) {
-      throw this.taskListError ?? new Error("Canonical task list unavailable.");
-    }
-    return response;
   }
 
   acceptRevision(threadId, revision) {
@@ -714,7 +733,22 @@ function parseJson(value) {
   }
 }
 
-function normalizeActiveSections(sections) {
+const TASK_RUNTIME_FIELDS = Object.freeze([
+  "conversationAvailable",
+  "preview",
+  "threadStatus",
+  "latestTurnStatus",
+  "activeTurn",
+  "cwd",
+  "cwdPath",
+  "relativeCwd",
+  "worktree",
+  "createdMs",
+  "updatedMs",
+  "lastEventSummary",
+]);
+
+function normalizeActiveSections(sections, runtimeByThread = new Map()) {
   if (!Array.isArray(sections)) {
     return [];
   }
@@ -724,9 +758,24 @@ function normalizeActiveSections(sections) {
       id: `${section.id ?? ""}`,
       name: `${section.name ?? ""}`,
       repository: Boolean(section.repository),
-      tasks: normalizeTaskList(section.tasks),
+      tasks: normalizeTaskList(section.tasks).map((task) =>
+        mergeTaskRuntime(task, runtimeByThread.get(taskThreadId(task))),
+      ),
     }))
     .filter((section) => section.id && section.tasks.length);
+}
+
+function mergeTaskRuntime(cached, runtime) {
+  if (!runtime) {
+    return cached;
+  }
+  const merged = { ...cached };
+  for (const field of TASK_RUNTIME_FIELDS) {
+    if (Object.hasOwn(runtime, field)) {
+      merged[field] = runtime[field];
+    }
+  }
+  return merged;
 }
 
 function normalizeTaskList(tasks) {

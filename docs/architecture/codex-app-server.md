@@ -127,9 +127,8 @@ it does not persist a second task ledger.
   repeat the resume bootstrap.
 - A new thread returned by `thread/start` is registered as already subscribed.
 - Before claiming a new thread or starting its first turn, Caffold persists its
-  initial display name, ensures the matching Thread Section, and moves the
-  thread before the Section's current first thread. The name write also makes
-  an otherwise empty Codex 0.147 thread available to Section storage.
+  initial app-server name, resolves or creates the matching Caffold-owned local
+  Section by logical path, and inserts the managed row at local position zero.
 - After the managed claim succeeds, the create response and Active-list SSE
   carry the same backend-authored Section placement. The navigator can insert
   the row immediately without reconstructing grouping or reloading every
@@ -140,8 +139,8 @@ it does not persist a second task ledger.
   app-server sends the corresponding `item/tool/call`, Caffold verifies the
   current thread against managed membership, calls `thread/name/set`, and
   returns the tool result. The resulting `thread/name/updated` notification
-  updates the canonical session and browser title; Redb does not store the
-  title.
+  updates the canonical session and browser title; the successful command also
+  updates the stable Redb display name.
 - A completed thread starts a follow-up with `turn/start`. An active thread is
   steered only when canonical thread status and an active turn ID agree.
 - If app-server rejects that pointer because the turn ended before
@@ -200,11 +199,9 @@ truth for:
 - turn status and history
 
 Caffold derives repository and Git worktree context from `thread.cwd` on every
-live response. For Active Tasks, Codex Thread Sections remain canonical for
-actual group identity, Thread-to-Section membership, and within-Section order.
-Caffold persists the last successfully committed managed navigator projection
-using those Section IDs, the RootedFs-logical repository/cwd path, and a dense
-local enumeration of the managed Threads in Codex order. Each Task still
+live response. For Active Tasks, Caffold owns local group identity,
+Thread-to-Section membership, and dense within-Section order. A Section stores
+only its local ID and RootedFs-logical repository/cwd path. Each Task still
 retains its own canonical worktree root for Integrated Review and its Task-owned
 Git/GitHub children. Outside Git, cwd remains useful as the thread's creation
 and file-review context, but it does not filter Tasks.
@@ -369,7 +366,7 @@ coalesce into one active sync plus at most one trailing sync. The resulting
 revisioned snapshot is broadcast to every Caffold SSE client viewing that task.
 Tasks without an active detail subscriber do not trigger rollout-driven reads.
 
-## Active Thread Sections and Archived Pagination
+## Active Navigator Projection and Archived Pagination
 
 The Active Tasks API is local-first. `GET /api/tasks` joins Caffold's
 `managed_threads` and `managed_sections` tables and returns the last committed
@@ -380,18 +377,21 @@ Rows without a complete placement are returned in an explicit recovery group
 instead of being silently dropped.
 
 The existing Task-list SSE stream complements that persisted identity with
-process-local runtime state. A new connection first receives snapshots for the
-currently tracked managed Threads, then receives the same revisioned status,
-content, lifecycle, and placement deltas used during steady state. The browser
-therefore renders the cached list immediately and upgrades its status chips as
-runtime state becomes available without refetching the list from Codex.
+process-local runtime state. A new connection registers every cached managed
+Thread for notification tracking before it pages the global state-DB-backed
+`thread/list`. Only managed IDs are projected, and the browser receives one
+complete `task-list-snapshot` before queued steady-state events. Codex list
+names never replace Redb display names, and managed IDs missing from the live
+snapshot keep their cached not-loaded rows. The browser therefore renders the
+cached list immediately and upgrades all available status chips without
+opening Tasks one at a time.
 
 Create, rename, archive, restore, and permanent-delete commands update Codex
 first, then commit their corresponding local projection change, and only then
-publish the browser event. Section creation and Thread moves remain explicit
-Codex command behavior; GET projection and serialization never perform them.
-New and restored Tasks are placed at position zero, while archive clears their
-placement and compacts the remaining positions.
+publish the browser event. Normal runtime lifecycle commands do not create
+Codex Sections or move Codex Threads. New and restored Tasks are placed at
+local position zero, while archive clears their placement and compacts the
+remaining positions.
 
 Upgrading a legacy Task store is a startup-owned exception. The coordinator
 first stages the local schema through v4, collects a read-only Codex snapshot
@@ -417,7 +417,7 @@ watcher is unavailable, app-server notifications and explicit synchronization
 continue to work; Caffold does not add a polling fallback.
 
 The local tables own managed membership and the stable navigator projection,
-not canonical Codex Thread or Section existence. Runtime events and explicit
+not canonical Codex Thread existence. Runtime events and explicit
 commands own persistence updates; GET handlers may read Codex where live detail
 is still required, but do not mutate Redb or schedule delayed persistence.
 Archived canonical-read failures retain their existing explicit error behavior.
@@ -525,10 +525,9 @@ the server or logical path with `CAFFOLD_LIVE_URL` and `CAFFOLD_LIVE_CWD` when
 the server uses another root.
 It creates a real Codex thread with an available low-cost model, reopens that
 thread from Tasks, and verifies a follow-up turn through the browser UI. The
-suite also uses one stable Git fixture path to verify real Section creation,
-new-Task placement responses and order, `section_position` listing, and
-restore-to-top placement responses without creating a new persistent Section
-on every run. The tests
+suite also uses one stable Git fixture path to verify local Section reuse,
+new-Task and restore-to-top ordering, global `thread/list` runtime hydration,
+and the absence of normal-runtime Codex Section placement. The tests
 record each created thread immediately and archive it during teardown,
 including after a failed assertion. This suite is intentionally separate from
 `npm run test:e2e` because it requires local Codex authentication and consumes

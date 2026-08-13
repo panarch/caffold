@@ -9,10 +9,10 @@ mod file_links;
 use file_links::{TaskFileLink, TaskFileLinkResolver};
 
 use super::{
-    codex_sections::ActiveTaskTopPlacement,
     events::{
         TaskEventRecord, TaskEvents, merge_task_event_records, sort_task_events, thread_events,
     },
+    lifecycle::ActiveTaskTopPlacement,
     projection::{
         TaskRecord, apply_canonical_turn_projection, resolve_thread_cwd, task_record_from_thread,
         thread_with_turns,
