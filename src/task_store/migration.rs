@@ -1,6 +1,7 @@
 mod v0_to_v1;
 mod v1_to_v2;
 mod v2_to_v3;
+mod v3_to_v4;
 
 use chrono::{NaiveDateTime, Utc};
 use gluesql::{
@@ -12,10 +13,13 @@ use gluesql::{
 };
 use std::{collections::BTreeSet, path::Path};
 
-use super::{Result, TaskStoreError, managed_thread, managed_worktree, schema_migration};
+use super::{
+    Result, TaskStoreError, managed_thread, managed_worktree, push_installation, push_vapid_key,
+    schema_migration,
+};
 
-const LATEST_SCHEMA_VERSION: i64 = 3;
-const APPLICATION_TABLE_COUNT: usize = 2;
+const LATEST_SCHEMA_VERSION: i64 = 4;
+const APPLICATION_TABLE_COUNT: usize = 4;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(super) struct MigrationReport {
@@ -31,6 +35,7 @@ enum DetectedSchemaVersion {
     V1,
     V2,
     V3,
+    V4,
     UnsupportedNewer(i64),
 }
 
@@ -54,16 +59,18 @@ pub(super) fn migrate_to_latest(path: &Path) -> Result<MigrationReport> {
         DetectedSchemaVersion::Fresh => Ok(MigrationReport::default()),
         DetectedSchemaVersion::V0 => v0_to_v1::migrate(path),
         DetectedSchemaVersion::V1 => {
-            v1_to_v2::migrate(path)?;
-            v2_to_v3::migrate(path)?;
-            Ok(MigrationReport {
-                migrated_tables: 2,
-                unchanged_tables: 0,
-                rewritten_rows: 0,
-            })
+            let first = v1_to_v2::migrate(path)?;
+            let second = v2_to_v3::migrate(path)?;
+            let third = v3_to_v4::migrate(path)?;
+            Ok(combine_reports([first, second, third]))
         }
-        DetectedSchemaVersion::V2 => v2_to_v3::migrate(path),
-        DetectedSchemaVersion::V3 => Ok(MigrationReport {
+        DetectedSchemaVersion::V2 => {
+            let first = v2_to_v3::migrate(path)?;
+            let second = v3_to_v4::migrate(path)?;
+            Ok(combine_reports([first, second]))
+        }
+        DetectedSchemaVersion::V3 => v3_to_v4::migrate(path),
+        DetectedSchemaVersion::V4 => Ok(MigrationReport {
             migrated_tables: 0,
             unchanged_tables: APPLICATION_TABLE_COUNT,
             rewritten_rows: 0,
@@ -88,7 +95,8 @@ pub(super) fn initialize_redb(glue: &mut Glue<RedbStorage>) -> Result<()> {
     begin().execute(glue)?;
     let result = match detect_schema(glue) {
         Ok(DetectedSchemaVersion::Fresh) => create_latest_schema(glue, Utc::now().naive_utc()),
-        Ok(DetectedSchemaVersion::V3) => Ok(()),
+        Ok(DetectedSchemaVersion::V4) => Ok(()),
+        Ok(DetectedSchemaVersion::V3) => Err(TaskStoreError::MigrationRequired(3)),
         Ok(DetectedSchemaVersion::V2) => Err(TaskStoreError::MigrationRequired(2)),
         Ok(DetectedSchemaVersion::V1) => Err(TaskStoreError::MigrationRequired(1)),
         Ok(DetectedSchemaVersion::V0) => Err(TaskStoreError::MigrationRequired(0)),
@@ -119,6 +127,8 @@ where
 {
     managed_thread::create_table(glue)?;
     managed_worktree::create_table(glue)?;
+    push_installation::create_table(glue)?;
+    push_vapid_key::create_table(glue)?;
     schema_migration::create_table(glue)?;
     for version in 1..=LATEST_SCHEMA_VERSION {
         schema_migration::record(glue, version, applied_at)?;
@@ -152,6 +162,8 @@ where
     let known_names = BTreeSet::from([
         managed_thread::TABLE_NAME.to_string(),
         managed_worktree::TABLE_NAME.to_string(),
+        push_installation::TABLE_NAME.to_string(),
+        push_vapid_key::TABLE_NAME.to_string(),
         v0_to_v1::LEGACY_ARCHIVED_THREADS_TABLE.to_string(),
         schema_migration::TABLE_NAME.to_string(),
     ]);
@@ -161,13 +173,21 @@ where
 
     let has_managed = table_names.contains(managed_thread::TABLE_NAME);
     let has_worktrees = table_names.contains(managed_worktree::TABLE_NAME);
+    let has_push_installations = table_names.contains(push_installation::TABLE_NAME);
+    let has_push_vapid_keys = table_names.contains(push_vapid_key::TABLE_NAME);
     let has_legacy_archived = table_names.contains(v0_to_v1::LEGACY_ARCHIVED_THREADS_TABLE);
     let has_migrations = table_names.contains(schema_migration::TABLE_NAME);
 
     if !has_migrations {
-        return match (has_managed, has_worktrees, has_legacy_archived) {
-            (false, false, false) => Ok(DetectedSchemaVersion::Fresh),
-            (true, false, _) => Ok(DetectedSchemaVersion::V0),
+        return match (
+            has_managed,
+            has_worktrees,
+            has_push_installations,
+            has_push_vapid_keys,
+            has_legacy_archived,
+        ) {
+            (false, false, false, false, false) => Ok(DetectedSchemaVersion::Fresh),
+            (true, false, false, false, _) => Ok(DetectedSchemaVersion::V0),
             _ => Err(TaskStoreError::IncompleteSchema),
         };
     }
@@ -178,23 +198,62 @@ where
     schema_migration::validate_table(glue)?;
     let version = schema_migration::current_version(glue)?;
     match version {
-        1 if !has_worktrees && table_names.len() == 2 => {
+        1 if !has_worktrees
+            && !has_push_installations
+            && !has_push_vapid_keys
+            && table_names.len() == 2 =>
+        {
             v2_to_v3::validate_managed_thread_v2_table(glue)?;
             Ok(DetectedSchemaVersion::V1)
         }
-        2 if has_worktrees && table_names.len() == 3 => {
+        2 if has_worktrees
+            && !has_push_installations
+            && !has_push_vapid_keys
+            && table_names.len() == 3 =>
+        {
             v2_to_v3::validate_managed_thread_v2_table(glue)?;
             managed_worktree::validate_table(glue)?;
             Ok(DetectedSchemaVersion::V2)
         }
-        LATEST_SCHEMA_VERSION if has_worktrees && table_names.len() == 3 => {
+        3 if has_worktrees
+            && !has_push_installations
+            && !has_push_vapid_keys
+            && table_names.len() == 3 =>
+        {
             managed_thread::validate_table(glue)?;
             managed_worktree::validate_table(glue)?;
             Ok(DetectedSchemaVersion::V3)
         }
-        1 | 2 | LATEST_SCHEMA_VERSION => Err(TaskStoreError::IncompleteSchema),
+        LATEST_SCHEMA_VERSION
+            if has_worktrees
+                && has_push_installations
+                && has_push_vapid_keys
+                && table_names.len() == 5 =>
+        {
+            managed_thread::validate_table(glue)?;
+            managed_worktree::validate_table(glue)?;
+            push_installation::validate_table(glue)?;
+            push_vapid_key::validate_table(glue)?;
+            Ok(DetectedSchemaVersion::V4)
+        }
+        1 | 2 | 3 | LATEST_SCHEMA_VERSION => Err(TaskStoreError::IncompleteSchema),
         version => Ok(DetectedSchemaVersion::UnsupportedNewer(version)),
     }
+}
+
+fn combine_reports<const N: usize>(reports: [MigrationReport; N]) -> MigrationReport {
+    let mut combined = reports
+        .into_iter()
+        .fold(MigrationReport::default(), |combined, report| {
+            MigrationReport {
+                migrated_tables: combined.migrated_tables + report.migrated_tables,
+                unchanged_tables: 0,
+                rewritten_rows: combined.rewritten_rows + report.rewritten_rows,
+            }
+        });
+    // A table unchanged in an intermediate step can still be migrated later.
+    combined.unchanged_tables = APPLICATION_TABLE_COUNT.saturating_sub(combined.migrated_tables);
+    combined
 }
 
 #[cfg(test)]
@@ -235,7 +294,7 @@ mod tests {
         );
 
         initialize_memory(&mut glue).unwrap();
-        assert_eq!(detect_schema(&mut glue).unwrap(), DetectedSchemaVersion::V3);
+        assert_eq!(detect_schema(&mut glue).unwrap(), DetectedSchemaVersion::V4);
     }
 
     #[test]
@@ -263,7 +322,7 @@ mod tests {
             migrate_to_latest(&legacy).unwrap(),
             MigrationReport {
                 migrated_tables: 0,
-                unchanged_tables: 2,
+                unchanged_tables: 4,
                 rewritten_rows: 0,
             }
         );
@@ -278,7 +337,7 @@ mod tests {
         assert_eq!(
             migrate_to_latest(&v1).unwrap(),
             MigrationReport {
-                migrated_tables: 2,
+                migrated_tables: 4,
                 unchanged_tables: 0,
                 rewritten_rows: 0,
             }
@@ -296,8 +355,27 @@ mod tests {
         assert_eq!(
             migrate_to_latest(&v2).unwrap(),
             MigrationReport {
-                migrated_tables: 1,
+                migrated_tables: 3,
                 unchanged_tables: 1,
+                rewritten_rows: 0,
+            }
+        );
+
+        let v3 = temp.path().join("v3.redb");
+        {
+            let mut glue = Glue::new(RedbStorage::new(&v3).unwrap());
+            managed_thread::create_table(&mut glue).unwrap();
+            managed_worktree::create_table(&mut glue).unwrap();
+            schema_migration::create_table(&mut glue).unwrap();
+            for version in 1..=3 {
+                schema_migration::record(&mut glue, version, Utc::now().naive_utc()).unwrap();
+            }
+        }
+        assert_eq!(
+            migrate_to_latest(&v3).unwrap(),
+            MigrationReport {
+                migrated_tables: 2,
+                unchanged_tables: 2,
                 rewritten_rows: 0,
             }
         );
@@ -324,21 +402,21 @@ mod tests {
         write_current_schema(&newer);
         {
             let mut glue = Glue::new(RedbStorage::new(&newer).unwrap());
-            schema_migration::record(&mut glue, 4, Utc::now().naive_utc()).unwrap();
+            schema_migration::record(&mut glue, 5, Utc::now().naive_utc()).unwrap();
         }
         assert!(matches!(
             migrate_to_latest(&newer),
             Err(TaskStoreError::UnsupportedNewerSchemaVersion {
-                found: 4,
-                supported: 3
+                found: 5,
+                supported: 4
             })
         ));
         let mut glue = Glue::new(RedbStorage::new(&newer).unwrap());
         assert!(matches!(
             initialize_redb(&mut glue),
             Err(TaskStoreError::UnsupportedNewerSchemaVersion {
-                found: 4,
-                supported: 3
+                found: 5,
+                supported: 4
             })
         ));
         drop(glue);
@@ -347,7 +425,7 @@ mod tests {
         write_current_schema(&gap);
         {
             let mut glue = Glue::new(RedbStorage::new(&gap).unwrap());
-            schema_migration::record(&mut glue, 5, Utc::now().naive_utc()).unwrap();
+            schema_migration::record(&mut glue, 6, Utc::now().naive_utc()).unwrap();
         }
         assert!(matches!(
             migrate_to_latest(&gap),

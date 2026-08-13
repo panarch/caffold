@@ -62,7 +62,7 @@ impl ReplacementDatabase {
             .file_name()
             .and_then(|filename| filename.to_str())
             .unwrap_or("caffold.redb");
-        let path = target.with_file_name(format!(".{filename}.migration-v3-{}", Uuid::new_v4()));
+        let path = target.with_file_name(format!(".{filename}.migration-v4-{}", Uuid::new_v4()));
         Self {
             path,
             published: false,
@@ -155,7 +155,7 @@ fn write_replacement(
     create_latest_schema(&mut glue, applied_at)?;
     rewrite_rows(&mut glue, snapshot, applied_at)?;
     drop(glue);
-    if detect_redb_schema(path)? != DetectedSchemaVersion::V3 {
+    if detect_redb_schema(path)? != DetectedSchemaVersion::V4 {
         return Err(TaskStoreError::IncompleteSchema);
     }
     Ok(())
@@ -406,6 +406,8 @@ mod tests {
             BTreeSet::from([
                 managed_thread::TABLE_NAME.to_string(),
                 crate::task_store::managed_worktree::TABLE_NAME.to_string(),
+                crate::task_store::push_installation::TABLE_NAME.to_string(),
+                crate::task_store::push_vapid_key::TABLE_NAME.to_string(),
                 schema_migration::TABLE_NAME.to_string(),
             ])
         );

@@ -28,6 +28,7 @@ tokio-tungstenite = "0.30.0"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 uuid = { version = "1.23.4", features = ["v4"] }
+web-push-native = { version = "0.5.0", default-features = false, features = ["vapid"] }
 whisper-rs = { version = "0.16.0", features = ["metal", "tracing_backend"] }
 
 [dev-dependencies]

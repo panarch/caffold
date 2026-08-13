@@ -9,10 +9,15 @@ use thiserror::Error;
 mod managed_thread;
 mod managed_worktree;
 mod migration;
+mod push_installation;
+mod push_vapid_key;
 mod schema_migration;
 
 pub(crate) use managed_thread::ManagedThread;
 pub(crate) use managed_worktree::{ManagedWorktree, ManagedWorktreeState};
+pub(crate) use push_installation::{
+    PushInstallation, PushInstallationSummary, PushSubscriptionInput,
+};
 
 #[derive(Debug, Error)]
 pub(crate) enum TaskStoreError {
@@ -397,6 +402,89 @@ impl TaskStore {
             Self::Redb(glue) => managed_worktree::delete(&mut *lock_glue(glue)?, worktree_id),
         }
     }
+
+    pub(crate) fn push_installation(&self, client_id: &str) -> Result<Option<PushInstallation>> {
+        match self {
+            Self::Memory(glue) => push_installation::get(&mut *lock_glue(glue)?, client_id),
+            Self::Redb(glue) => push_installation::get(&mut *lock_glue(glue)?, client_id),
+        }
+    }
+
+    pub(crate) fn active_push_installations(&self) -> Result<Vec<PushInstallation>> {
+        match self {
+            Self::Memory(glue) => push_installation::list_active(&mut *lock_glue(glue)?),
+            Self::Redb(glue) => push_installation::list_active(&mut *lock_glue(glue)?),
+        }
+    }
+
+    pub(crate) fn push_installation_summaries(&self) -> Result<Vec<PushInstallationSummary>> {
+        match self {
+            Self::Memory(glue) => push_installation::list_summaries(&mut *lock_glue(glue)?),
+            Self::Redb(glue) => push_installation::list_summaries(&mut *lock_glue(glue)?),
+        }
+    }
+
+    pub(crate) fn upsert_push_installation(
+        &self,
+        input: PushSubscriptionInput,
+        now_ms: u64,
+    ) -> Result<PushInstallation> {
+        match self {
+            Self::Memory(glue) => push_installation::upsert(&mut *lock_glue(glue)?, input, now_ms),
+            Self::Redb(glue) => {
+                push_installation::upsert_transactional(&mut *lock_glue(glue)?, input, now_ms)
+            }
+        }
+    }
+
+    pub(crate) fn revoke_push_installation(&self, client_id: &str, now_ms: u64) -> Result<()> {
+        match self {
+            Self::Memory(glue) => {
+                push_installation::revoke(&mut *lock_glue(glue)?, client_id, now_ms)
+            }
+            Self::Redb(glue) => {
+                push_installation::revoke_transactional(&mut *lock_glue(glue)?, client_id, now_ms)
+            }
+        }
+    }
+
+    pub(crate) fn delete_invalid_push_installation(
+        &self,
+        client_id: &str,
+        endpoint: &str,
+    ) -> Result<bool> {
+        match self {
+            Self::Memory(glue) => push_installation::delete_if_endpoint_matches(
+                &mut *lock_glue(glue)?,
+                client_id,
+                endpoint,
+            ),
+            Self::Redb(glue) => push_installation::delete_if_endpoint_matches(
+                &mut *lock_glue(glue)?,
+                client_id,
+                endpoint,
+            ),
+        }
+    }
+
+    pub(crate) fn load_or_create_vapid_private_key(
+        &self,
+        generated_private_key: &str,
+        now_ms: u64,
+    ) -> Result<String> {
+        match self {
+            Self::Memory(glue) => push_vapid_key::load_or_create(
+                &mut *lock_glue(glue)?,
+                generated_private_key,
+                now_ms,
+            ),
+            Self::Redb(glue) => push_vapid_key::load_or_create(
+                &mut *lock_glue(glue)?,
+                generated_private_key,
+                now_ms,
+            ),
+        }
+    }
 }
 
 fn lock_glue<T>(glue: &Arc<Mutex<T>>) -> Result<MutexGuard<'_, T>> {
@@ -487,6 +575,40 @@ mod tests {
 
             assert!(store.restore(&thread_id).unwrap().is_some());
             assert!(store.delete(&thread_id).unwrap());
+
+            let client_id = format!("00000000-0000-4000-8000-00000000000{index}");
+            let subscription = PushSubscriptionInput {
+                client_id: client_id.clone(),
+                installation_label: format!("Chrome on macOS · 000{index}"),
+                endpoint: format!("https://push.example/{index}"),
+                p256dh: format!("public-key-{index}"),
+                auth: format!("auth-{index}"),
+                expiration_time_ms: None,
+            };
+            assert!(
+                store
+                    .upsert_push_installation(subscription.clone(), 1_000)
+                    .unwrap()
+                    .is_active()
+            );
+            assert_eq!(store.active_push_installations().unwrap().len(), 1);
+            assert_eq!(store.push_installation_summaries().unwrap().len(), 1);
+            store.revoke_push_installation(&client_id, 2_000).unwrap();
+            assert_eq!(
+                store
+                    .push_installation(&client_id)
+                    .unwrap()
+                    .unwrap()
+                    .revoked_at_ms,
+                Some(2_000)
+            );
+            store.upsert_push_installation(subscription, 3_000).unwrap();
+            assert_eq!(
+                store
+                    .load_or_create_vapid_private_key(&format!("private-key-{index}"), 1_000)
+                    .unwrap(),
+                format!("private-key-{index}")
+            );
         }
 
         redb.claim(thread("persisted"), 200).unwrap();
@@ -494,6 +616,13 @@ mod tests {
         let reopened = TaskStore::redb(&path).unwrap();
         assert!(reopened.get("persisted").unwrap().is_some());
         assert!(reopened.worktree("worktree-1").unwrap().is_some());
+        assert_eq!(reopened.active_push_installations().unwrap().len(), 1);
+        assert_eq!(
+            reopened
+                .load_or_create_vapid_private_key("replacement", 5_000)
+                .unwrap(),
+            "private-key-1"
+        );
     }
 
     #[test]

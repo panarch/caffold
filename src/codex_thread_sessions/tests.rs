@@ -157,8 +157,8 @@ async fn turn_completed_notification_does_not_change_canonical_thread_status() {
         .await
         .expect("subscribe");
 
-    sessions
-        .apply_notification(
+    let outcome = sessions
+        .apply_notification_with_outcome(
             1,
             &CodexNotification::TurnCompleted {
                 thread_id: "thread-1".to_string(),
@@ -166,6 +166,12 @@ async fn turn_completed_notification_does_not_change_canonical_thread_status() {
             },
         )
         .await;
+    assert_eq!(
+        outcome.terminal,
+        Some(TerminalTurnApplyOutcome {
+            first_current_transition: true,
+        })
+    );
 
     let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
     assert_eq!(
@@ -174,6 +180,285 @@ async fn turn_completed_notification_does_not_change_canonical_thread_status() {
         "turn notifications must not synthesize thread status"
     );
     assert_eq!(snapshot.active_turn_id, None);
+}
+
+#[tokio::test]
+async fn terminal_apply_outcome_is_atomic_across_idle_replay_and_newer_turns() {
+    let active = ThreadStatus::Active {
+        active_flags: Vec::new(),
+    };
+    let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+        "thread/resume",
+        resume_response(
+            active,
+            Vec::new(),
+            vec![turn("turn-1", TurnStatus::InProgress)],
+        ),
+    )]);
+    let sessions = CodexThreadSessions::default();
+    sessions
+        .ensure_subscribed(&client, 1, "thread-1")
+        .await
+        .expect("subscribe");
+    sessions
+        .apply_notification(
+            1,
+            &CodexNotification::ThreadStatusChanged {
+                thread_id: "thread-1".to_string(),
+                status: ThreadStatus::Idle,
+            },
+        )
+        .await;
+    let completion = CodexNotification::TurnCompleted {
+        thread_id: "thread-1".to_string(),
+        turn: turn("turn-1", TurnStatus::Completed),
+    };
+
+    let first = sessions
+        .apply_notification_with_outcome(1, &completion)
+        .await;
+    assert!(first.revision.is_some());
+    assert_eq!(
+        first.terminal,
+        Some(TerminalTurnApplyOutcome {
+            first_current_transition: true,
+        })
+    );
+
+    let replay = sessions
+        .apply_notification_with_outcome(1, &completion)
+        .await;
+    assert_eq!(
+        replay.terminal,
+        Some(TerminalTurnApplyOutcome {
+            first_current_transition: false,
+        })
+    );
+
+    sessions
+        .apply_notification(
+            1,
+            &CodexNotification::TurnStarted {
+                thread_id: "thread-1".to_string(),
+                turn: turn("turn-newer", TurnStatus::InProgress),
+            },
+        )
+        .await;
+    let stale = sessions
+        .apply_notification_with_outcome(1, &completion)
+        .await;
+    assert_eq!(
+        stale.terminal,
+        Some(TerminalTurnApplyOutcome {
+            first_current_transition: false,
+        })
+    );
+}
+
+#[tokio::test]
+async fn subscription_baseline_filters_terminal_replays_without_losing_current_turn() {
+    let active = ThreadStatus::Active {
+        active_flags: Vec::new(),
+    };
+    let old_completed = turn("turn-old", TurnStatus::Completed);
+    let current_in_progress = turn_at("turn-current", TurnStatus::InProgress, 2.0);
+    let mut response = resume_response(
+        active.clone(),
+        Vec::new(),
+        vec![current_in_progress.clone(), old_completed.clone()],
+    );
+    response.thread.name = Some("Current task name".to_string());
+    let client = CodexThreadClient::mock(vec![MockCodexResponse::delayed_ok(
+        "thread/resume",
+        response,
+        Duration::from_millis(100),
+    )]);
+    let sessions = CodexThreadSessions::default();
+    let _viewer = sessions.reserve_viewer("thread-1").await;
+    let subscribing_sessions = sessions.clone();
+    let subscribing_client = client.clone();
+    let subscription = tokio::spawn(async move {
+        subscribing_sessions
+            .ensure_subscribed(&subscribing_client, 1, "thread-1")
+            .await
+    });
+    wait_for_method_count(&client, "thread/resume", 1).await;
+
+    let mut replayed_thread = thread(active, vec![turn("turn-old", TurnStatus::InProgress)]);
+    replayed_thread.name = Some("Old task name".to_string());
+    assert_eq!(
+        sessions
+            .apply_notification_with_outcome(
+                1,
+                &CodexNotification::ThreadStarted {
+                    thread: replayed_thread,
+                },
+            )
+            .await,
+        NotificationApplyOutcome::default(),
+        "a bootstrap thread snapshot must not compete with the resume baseline"
+    );
+    sessions
+        .apply_notification(
+            1,
+            &CodexNotification::TurnStarted {
+                thread_id: "thread-1".to_string(),
+                turn: turn("turn-old", TurnStatus::InProgress),
+            },
+        )
+        .await;
+    sessions
+        .apply_notification(
+            1,
+            &CodexNotification::ThreadStatusChanged {
+                thread_id: "thread-1".to_string(),
+                status: ThreadStatus::Idle,
+            },
+        )
+        .await;
+    let bootstrap_completion = CodexNotification::TurnCompleted {
+        thread_id: "thread-1".to_string(),
+        turn: old_completed,
+    };
+    assert_eq!(
+        sessions
+            .apply_notification_with_outcome(1, &bootstrap_completion)
+            .await
+            .terminal,
+        Some(TerminalTurnApplyOutcome {
+            first_current_transition: false,
+        })
+    );
+
+    let snapshot = subscription
+        .await
+        .expect("subscription task joins")
+        .expect("subscription baseline succeeds");
+    assert_eq!(
+        snapshot
+            .thread
+            .as_ref()
+            .and_then(|thread| thread.name.as_deref()),
+        Some("Current task name")
+    );
+    let entry = sessions
+        .existing_entry("thread-1")
+        .await
+        .expect("session entry");
+    assert_eq!(
+        entry
+            .state
+            .lock()
+            .await
+            .terminal_candidate_turn_id
+            .as_deref(),
+        Some("turn-current"),
+        "the canonical active turn becomes eligible only after the baseline is established"
+    );
+
+    assert_eq!(
+        sessions
+            .apply_notification_with_outcome(
+                1,
+                &CodexNotification::TurnStarted {
+                    thread_id: "thread-1".to_string(),
+                    turn: turn("turn-old", TurnStatus::InProgress),
+                },
+            )
+            .await
+            .revision,
+        None,
+        "a terminal turn in the baseline cannot regress to in-progress"
+    );
+    assert_eq!(
+        sessions
+            .apply_notification_with_outcome(1, &bootstrap_completion)
+            .await
+            .terminal,
+        Some(TerminalTurnApplyOutcome {
+            first_current_transition: false,
+        }),
+        "a terminal turn in the baseline remains a replay"
+    );
+    let current_completion = CodexNotification::TurnCompleted {
+        thread_id: "thread-1".to_string(),
+        turn: turn_at("turn-current", TurnStatus::Completed, 2.0),
+    };
+    assert_eq!(
+        sessions
+            .apply_notification_with_outcome(1, &current_completion)
+            .await
+            .terminal,
+        Some(TerminalTurnApplyOutcome {
+            first_current_transition: true,
+        })
+    );
+    assert_eq!(
+        sessions
+            .apply_notification_with_outcome(1, &current_completion)
+            .await
+            .terminal,
+        Some(TerminalTurnApplyOutcome {
+            first_current_transition: false,
+        })
+    );
+}
+
+#[tokio::test]
+async fn terminal_apply_outcome_rejects_wrong_generation_and_nonterminal_status() {
+    let active = ThreadStatus::Active {
+        active_flags: Vec::new(),
+    };
+    let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+        "thread/resume",
+        resume_response(
+            active,
+            Vec::new(),
+            vec![turn("turn-1", TurnStatus::InProgress)],
+        ),
+    )]);
+    let sessions = CodexThreadSessions::default();
+    sessions
+        .ensure_subscribed(&client, 1, "thread-1")
+        .await
+        .expect("subscribe");
+    let in_progress_completion = CodexNotification::TurnCompleted {
+        thread_id: "thread-1".to_string(),
+        turn: turn("turn-1", TurnStatus::InProgress),
+    };
+
+    assert_eq!(
+        sessions
+            .apply_notification_with_outcome(2, &in_progress_completion)
+            .await,
+        NotificationApplyOutcome::default()
+    );
+    let nonterminal = sessions
+        .apply_notification_with_outcome(1, &in_progress_completion)
+        .await;
+    assert_eq!(nonterminal.revision, None);
+    assert_eq!(
+        nonterminal.terminal,
+        Some(TerminalTurnApplyOutcome {
+            first_current_transition: false,
+        })
+    );
+    assert_eq!(
+        sessions
+            .apply_notification_with_outcome(
+                1,
+                &CodexNotification::TurnCompleted {
+                    thread_id: "thread-1".to_string(),
+                    turn: turn("turn-1", TurnStatus::Completed),
+                },
+            )
+            .await
+            .terminal,
+        Some(TerminalTurnApplyOutcome {
+            first_current_transition: true,
+        }),
+        "a malformed non-terminal completion must not consume the live candidate"
+    );
 }
 
 #[tokio::test]
@@ -1711,6 +1996,41 @@ async fn active_status_without_turn_falls_back_to_latest_turn_page() {
 }
 
 #[tokio::test]
+async fn unsubscribed_active_prompt_establishes_the_terminal_candidate() {
+    let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+        "thread/resume",
+        resume_response(
+            ThreadStatus::Active {
+                active_flags: Vec::new(),
+            },
+            Vec::new(),
+            vec![turn("turn-live", TurnStatus::InProgress)],
+        ),
+    )]);
+    let sessions = CodexThreadSessions::default();
+
+    assert!(matches!(
+        sessions.prepare_prompt(&client, 1, "thread-1").await,
+        Ok(PromptTarget::Steer { turn_id }) if turn_id == "turn-live"
+    ));
+    assert_eq!(
+        sessions
+            .apply_notification_with_outcome(
+                1,
+                &CodexNotification::TurnCompleted {
+                    thread_id: "thread-1".to_string(),
+                    turn: turn("turn-live", TurnStatus::Completed),
+                },
+            )
+            .await
+            .terminal,
+        Some(TerminalTurnApplyOutcome {
+            first_current_transition: true,
+        })
+    );
+}
+
+#[tokio::test]
 async fn unsubscribed_prompt_failure_releases_runtime() {
     let client = CodexThreadClient::mock(vec![MockCodexResponse::error(
         "thread/resume",
@@ -1865,6 +2185,82 @@ async fn terminal_notifications_clear_running_state_and_keep_viewer_subscription
             .thread
             .is_some_and(|thread| thread.status == ThreadStatus::Idle)
     );
+}
+
+#[tokio::test]
+async fn idle_before_completion_keeps_runtime_until_the_terminal_transition_arrives() {
+    let client = CodexThreadClient::mock(vec![
+        MockCodexResponse::ok(
+            "thread/resume",
+            resume_response(
+                ThreadStatus::Active {
+                    active_flags: Vec::new(),
+                },
+                Vec::new(),
+                vec![turn("turn-live", TurnStatus::InProgress)],
+            ),
+        ),
+        MockCodexResponse::ok(
+            "thread/resume",
+            resume_response(
+                ThreadStatus::Idle,
+                Vec::new(),
+                vec![turn("turn-live", TurnStatus::InProgress)],
+            ),
+        ),
+        MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
+    ]);
+    let sessions = CodexThreadSessions::default();
+    sessions
+        .recover_loaded_thread(&client, 1, "thread-1")
+        .await
+        .expect("recover active thread")
+        .expect("active thread remains subscribed");
+
+    sessions
+        .apply_notification(
+            1,
+            &CodexNotification::ThreadStatusChanged {
+                thread_id: "thread-1".to_string(),
+                status: ThreadStatus::Idle,
+            },
+        )
+        .await;
+    let idle = sessions.snapshot("thread-1").await.expect("idle snapshot");
+    assert!(idle.runtime_lease);
+    assert_eq!(idle.active_turn_id, None);
+
+    let refreshed = sessions
+        .refresh_subscription(&client, 1, "thread-1")
+        .await
+        .expect("refresh after early idle");
+    assert!(
+        refreshed.runtime_lease,
+        "a refresh must not release the runtime while the current turn still awaits completion"
+    );
+    assert_eq!(refreshed.active_turn_id, None);
+
+    let completion = sessions
+        .apply_notification_with_outcome(
+            1,
+            &CodexNotification::TurnCompleted {
+                thread_id: "thread-1".to_string(),
+                turn: turn("turn-live", TurnStatus::Completed),
+            },
+        )
+        .await;
+    assert_eq!(
+        completion.terminal,
+        Some(TerminalTurnApplyOutcome {
+            first_current_transition: true,
+        })
+    );
+    wait_for_unsubscribe(&client).await;
+    let completed = sessions
+        .snapshot("thread-1")
+        .await
+        .expect("completed snapshot");
+    assert!(!completed.runtime_lease);
 }
 
 #[tokio::test]

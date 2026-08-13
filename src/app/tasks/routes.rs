@@ -252,6 +252,7 @@ pub(super) async fn test_wait_for_task_list_refresh(events: TaskListEvents) {
 
 pub(super) fn router(state: TaskState) -> Router {
     Router::new()
+        .merge(super::push::router())
         .route("/api/codex/status", get(codex_status))
         .route("/api/codex/restart", post(codex_restart))
         .route("/api/codex/models", get(codex_models))

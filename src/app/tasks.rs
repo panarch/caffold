@@ -4,6 +4,7 @@ mod events;
 mod generated_images;
 mod lifecycle;
 mod projection;
+mod push;
 mod routes;
 mod runtime;
 mod sync;
@@ -20,6 +21,7 @@ use detail::{DetailContext, TaskDetailSync};
 use events::TaskEvents;
 use lifecycle::TaskLifecycle;
 pub(super) use projection::TaskRecord;
+use push::{PushRuntime, PushService};
 use routes::TaskListEvents;
 use runtime::CodexRuntime;
 use sync::TaskSync;
@@ -38,16 +40,37 @@ struct TaskState {
     task_store: TaskStore,
     active_sections: active_sections::ActiveTaskSections,
     lifecycle: TaskLifecycle,
+    push: PushService,
     shutdown: broadcast::Sender<()>,
 }
 
 impl TaskState {
+    #[cfg(test)]
     fn new(
         fs: Arc<RootedFs>,
         default_cwd_path: String,
         shutdown: broadcast::Sender<()>,
         task_store: TaskStore,
         worktree_root: PathBuf,
+    ) -> anyhow::Result<Self> {
+        let (push, _receiver) = PushService::test_channel(task_store.clone());
+        Self::new_with_push(
+            fs,
+            default_cwd_path,
+            shutdown,
+            task_store,
+            worktree_root,
+            push,
+        )
+    }
+
+    fn new_with_push(
+        fs: Arc<RootedFs>,
+        default_cwd_path: String,
+        shutdown: broadcast::Sender<()>,
+        task_store: TaskStore,
+        worktree_root: PathBuf,
+        push: PushService,
     ) -> anyhow::Result<Self> {
         let task_events = TaskEvents::default();
         let codex_sessions = crate::codex_thread_sessions::CodexThreadSessions::default();
@@ -71,6 +94,7 @@ impl TaskState {
             task_store.clone(),
             shutdown.clone(),
         )
+        .with_push_service(push.clone())
         .with_lifecycle(lifecycle.clone());
         let codex_runtime_signals = codex_runtime.subscribe();
         let task_sync = TaskSync::new(shutdown.clone());
@@ -98,6 +122,7 @@ impl TaskState {
             task_store,
             active_sections,
             lifecycle,
+            push,
             shutdown,
         })
     }
@@ -106,6 +131,7 @@ impl TaskState {
 pub(super) struct TasksApp {
     router: Router,
     runtime: CodexRuntime,
+    push: PushRuntime,
 }
 
 impl TasksApp {
@@ -116,11 +142,20 @@ impl TasksApp {
         task_store: TaskStore,
         worktree_root: PathBuf,
     ) -> anyhow::Result<Self> {
-        let state = TaskState::new(fs, default_cwd_path, shutdown, task_store, worktree_root)?;
+        let push = PushRuntime::new(task_store.clone())?;
+        let state = TaskState::new_with_push(
+            fs,
+            default_cwd_path,
+            shutdown,
+            task_store,
+            worktree_root,
+            push.service(),
+        )?;
         let runtime = state.codex_runtime.clone();
         Ok(Self {
             router: routes::router(state),
             runtime,
+            push,
         })
     }
 
@@ -162,7 +197,7 @@ impl TasksApp {
     }
 
     pub(super) async fn shutdown(self) {
-        self.runtime.shutdown().await;
+        tokio::join!(self.runtime.shutdown(), self.push.shutdown());
     }
 }
 

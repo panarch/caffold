@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use tokio::sync::{Mutex, broadcast};
 
-use super::{events::TaskEvents, lifecycle::TaskLifecycle};
+use super::{events::TaskEvents, lifecycle::TaskLifecycle, push::PushService};
 use crate::{
     codex_app_server::{CodexThreadClient, CodexThreadError},
     codex_thread_sessions::{CodexThreadSessions, ThreadSessionSnapshot},
@@ -23,6 +23,7 @@ pub(in crate::app) struct CodexRuntime {
     events: TaskEvents,
     task_store: TaskStore,
     lifecycle: Option<TaskLifecycle>,
+    push: Option<PushService>,
     approvals: Arc<Mutex<HashMap<String, PendingApproval>>>,
     signals: broadcast::Sender<CodexRuntimeSignal>,
     shutdown: broadcast::Sender<()>,
@@ -73,6 +74,7 @@ impl CodexRuntime {
             events,
             task_store,
             lifecycle: None,
+            push: None,
             approvals: Arc::new(Mutex::new(HashMap::new())),
             signals,
             shutdown,
@@ -81,6 +83,11 @@ impl CodexRuntime {
 
     pub(in crate::app) fn with_lifecycle(mut self, lifecycle: TaskLifecycle) -> Self {
         self.lifecycle = Some(lifecycle);
+        self
+    }
+
+    pub(in crate::app) fn with_push_service(mut self, push: PushService) -> Self {
+        self.push = Some(push);
         self
     }
 
