@@ -16,6 +16,7 @@ test.beforeEach(async ({ page }) => {
 const THREAD_ID = "thread_linked_worktree_github";
 const WORKTREE_ROOT = "Users/taehoon/.codex/worktrees/4ce7/gluesql";
 const PULL_FILE_PATH = `${WORKTREE_ROOT}/src/review.rs`;
+const PULL_ROOT_FILE_PATH = `${WORKTREE_ROOT}/README.md`;
 const PULL_BASE_OID = "1111111111111111111111111111111111111111";
 const PULL_HEAD_OID = "2222222222222222222222222222222222222222";
 const CREATED_THREAD_ID = "thread_github_task_created";
@@ -126,7 +127,7 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
     commits: 1,
     additions: 2,
     deletions: 1,
-    changedFiles: 1,
+    changedFiles: 2,
     baseRefName: "main",
     baseRefOid: PULL_BASE_OID,
     baseRepository: {
@@ -389,20 +390,35 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
         repository,
         github,
         number: 1983,
-        files: [{
-          path: PULL_FILE_PATH,
-          repoRelativePath: "src/review.rs",
-          previousPath: null,
-          previousRepoRelativePath: null,
-          status: "M",
-          additions: 2,
-          deletions: 1,
-          changes: 3,
-          patchAvailable: true,
-          blobUrl: null,
-          rawUrl: null,
-        }],
-        totalFiles: 1,
+        files: [
+          {
+            path: PULL_FILE_PATH,
+            repoRelativePath: "src/review.rs",
+            previousPath: null,
+            previousRepoRelativePath: null,
+            status: "M",
+            additions: 2,
+            deletions: 1,
+            changes: 3,
+            patchAvailable: true,
+            blobUrl: null,
+            rawUrl: null,
+          },
+          {
+            path: PULL_ROOT_FILE_PATH,
+            repoRelativePath: "README.md",
+            previousPath: null,
+            previousRepoRelativePath: null,
+            status: "M",
+            additions: 0,
+            deletions: 0,
+            changes: 0,
+            patchAvailable: false,
+            blobUrl: null,
+            rawUrl: null,
+          },
+        ],
+        totalFiles: 2,
       },
     });
   });
@@ -460,6 +476,14 @@ async function openLinkedWorktreePull(page) {
   await page.locator('button[data-pull-number="1983"]').click();
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls/1983`);
   return page.locator("caffold-github-pull-detail-page");
+}
+
+async function rootPullTreeNames(tree) {
+  return tree
+    .locator(
+      ":scope .file-tree-rows > li:not([data-file-tree-parent-key]) .file-tree-name",
+    )
+    .allTextContents();
 }
 
 async function openLinkedWorktreeIssue(page) {
@@ -838,6 +862,31 @@ test("keeps loaded GitHub routes stable across unrelated Task stream updates", a
   await emitGithubTaskEvent(page, 7);
   await expect(pullDiff).toContainText("new Task-owned review");
   expect(fixture.counts.pullFile).toBe(1);
+});
+
+test("applies the global ordering to GitHub PR Files without refetching", async ({
+  page,
+}) => {
+  const fixture = await installLinkedWorktreeGithubFixture(page);
+  const pullDetail = await openLinkedWorktreePull(page);
+  await pullDetail.getByRole("button", { name: "Open files for PR #1983" }).click();
+
+  const tree = page.locator(
+    "caffold-github-pull-files-tree caffold-file-tree",
+  );
+  await expect(tree).toBeVisible();
+  await expect(
+    tree.locator(`button[data-file-tree-path="${PULL_ROOT_FILE_PATH}"]`),
+  ).toBeVisible();
+  expect(await rootPullTreeNames(tree)).toEqual(["src", "README.md"]);
+  expect(fixture.counts.pullFiles).toBe(1);
+
+  await page.evaluate(async () => {
+    const { setFileSortMode } = await import("/assets/settings.js");
+    setFileSortMode("name");
+  });
+  expect(await rootPullTreeNames(tree)).toEqual(["README.md", "src"]);
+  expect(fixture.counts.pullFiles).toBe(1);
 });
 
 test("preserves Issue Start Task setup, focus return, and created Task selection", async ({ page }) => {

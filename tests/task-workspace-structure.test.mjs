@@ -157,6 +157,9 @@ test("workspace brand owns the shared Tasks and Settings navigator identity", ()
   const appearance = readFrontend(
     "pages/(task-workspace)/settings/appearance/page.js",
   );
+  const files = readFrontend(
+    "pages/(task-workspace)/settings/files/page.js",
+  );
 
   assert.match(
     brand,
@@ -169,6 +172,10 @@ test("workspace brand owns the shared Tasks and Settings navigator identity", ()
   }
   assert.doesNotMatch(
     appearance,
+    /<caffold-workspace-brand><\/caffold-workspace-brand>/,
+  );
+  assert.doesNotMatch(
+    files,
     /<caffold-workspace-brand><\/caffold-workspace-brand>/,
   );
   assert.doesNotMatch(taskNavigator, /task-list-primary-(?:brand|icon)/);

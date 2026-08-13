@@ -1,11 +1,13 @@
 import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
 import "./appearance/page.js";
+import "./files/page.js";
 import "./notifications/page.js";
 import "./codex/page.js";
 import "./about/page.js";
 
 const TITLES = {
   appearance: "Appearance",
+  files: "Files",
   notifications: "Notifications",
   codex: "Codex",
   about: "About Caffold",
@@ -64,6 +66,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
             <h1 id="settings-workspace-title"></h1>
           </header>
           <caffold-settings-appearance-page hidden></caffold-settings-appearance-page>
+          <caffold-settings-files-page hidden></caffold-settings-files-page>
           <caffold-settings-notifications-page hidden></caffold-settings-notifications-page>
           <caffold-settings-codex-page hidden></caffold-settings-codex-page>
           <caffold-settings-about-page hidden></caffold-settings-about-page>
@@ -152,6 +155,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
 
     const pages = {
       appearance: this.querySelector("caffold-settings-appearance-page"),
+      files: this.querySelector("caffold-settings-files-page"),
       notifications: this.querySelector("caffold-settings-notifications-page"),
       codex: this.querySelector("caffold-settings-codex-page"),
       about: this.querySelector("caffold-settings-about-page"),
@@ -170,6 +174,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
       pages.notifications?.deactivate();
     }
     pages.appearance?.prepareRoute?.();
+    pages.files?.prepareRoute?.();
     this.dispatchEvent(
       new CustomEvent("caffold:settings-presentation-change", {
         bubbles: true,

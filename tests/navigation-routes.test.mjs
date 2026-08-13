@@ -20,6 +20,7 @@ test("parses and serializes Task-scoped routes canonically", () => {
     ["/", { kind: "tasks", new: false, threadId: "", cwd: "" }, "/"],
     ["/settings", { kind: "settings", section: "" }, "/settings"],
     ["/settings/appearance", { kind: "settings", section: "appearance" }, "/settings/appearance"],
+    ["/settings/files", { kind: "settings", section: "files" }, "/settings/files"],
     ["/settings/notifications", { kind: "settings", section: "notifications" }, "/settings/notifications"],
     ["/settings/codex", { kind: "settings", section: "codex" }, "/settings/codex"],
     ["/settings/about", { kind: "settings", section: "about" }, "/settings/about"],
@@ -110,6 +111,7 @@ test("derives deterministic Task child parents", () => {
   const cases = [
     ["/settings", null],
     ["/settings/appearance", "/settings"],
+    ["/settings/files", "/settings"],
     ["/settings/notifications", "/settings"],
     ["/", null],
     ["/tasks/new?cwd=src", "/"],

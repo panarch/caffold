@@ -48,7 +48,7 @@ The package scripts are grouped by their production owner:
 
 | Command | Boundary |
 | --- | --- |
-| `npm run test:appearance` | appearance settings and ownership |
+| `npm run test:appearance` | settings behavior and appearance ownership |
 | `npm run test:css-ownership` | stylesheet/component ownership |
 | `npm run test:routes` | browser route contracts |
 | `npm run test:service-worker` | PWA shell cache, fallback, and cache-generation lifecycle |

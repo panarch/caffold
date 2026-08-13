@@ -58,7 +58,7 @@ test("keeps the selected Review file identity stable while content loads", async
 test("normalizes and compacts shared file-tree statuses", async ({
   page,
 }, testInfo) => {
-  const { tasksPage, taskReview } = await openCompletedTaskForReview(page, {
+  const { reviewScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page, {
     configureReview(review) {
       review.edgeCaseFiles = true;
     },
@@ -171,6 +171,25 @@ test("normalizes and compacts shared file-tree statuses", async ({
   for (const colors of Object.values(geometry.statusColors)) {
     expect(colors.actual).toBe(colors.expected);
   }
+
+  const directory = changes.locator('button[data-file-tree-path="tests"]');
+  const file = changes.locator(
+    'button[data-file-tree-relative-path="planner.rs"]',
+  );
+  expect((await directory.boundingBox()).y).toBeLessThan(
+    (await file.boundingBox()).y,
+  );
+  const statusRequestsBeforeOrderChange = reviewScenario.gitStatusRequests;
+  await page.evaluate(async () => {
+    const { setFileSortMode } = await import("/assets/settings.js");
+    setFileSortMode("name");
+  });
+  expect((await file.boundingBox()).y).toBeLessThan(
+    (await directory.boundingBox()).y,
+  );
+  expect(reviewScenario.gitStatusRequests).toBe(
+    statusRequestsBeforeOrderChange,
+  );
 
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-file-status-column");

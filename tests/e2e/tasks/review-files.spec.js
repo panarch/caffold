@@ -15,6 +15,12 @@ test.beforeEach(async ({ page }) => {
 test("browses source through the shared Files navigator and one root watch", async ({
   page,
 }, testInfo) => {
+  let listRequests = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/list") {
+      listRequests += 1;
+    }
+  });
   const { taskScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
@@ -32,6 +38,25 @@ test("browses source through the shared Files navigator and one root watch", asy
 
   const navigator = taskReview.locator("caffold-file-navigator");
   await expect(navigator.locator('button[data-file-tree-path="src/alpha.rs"]')).toBeVisible();
+  const rootFolder = navigator.locator(
+    'button[data-file-tree-path="src/planner"]',
+  );
+  const rootFile = navigator.locator(
+    'button[data-file-tree-path="src/alpha.rs"]',
+  );
+  await expect(rootFolder).toBeVisible();
+  expect((await rootFolder.boundingBox()).y).toBeLessThan(
+    (await rootFile.boundingBox()).y,
+  );
+  const listRequestsBeforeOrderChange = listRequests;
+  await page.evaluate(async () => {
+    const { setFileSortMode } = await import("/assets/settings.js");
+    setFileSortMode("name");
+  });
+  expect((await rootFile.boundingBox()).y).toBeLessThan(
+    (await rootFolder.boundingBox()).y,
+  );
+  expect(listRequests).toBe(listRequestsBeforeOrderChange);
   await expect
     .poll(() =>
       page.evaluate(

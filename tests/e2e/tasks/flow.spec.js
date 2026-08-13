@@ -283,6 +283,10 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await expect(page).toHaveURL("/");
   await page.goto("/tasks/new");
   await expect(page).toHaveURL("/tasks/new");
+  await page.evaluate(async () => {
+    const { setFileSortMode } = await import("/assets/settings.js");
+    setFileSortMode("name");
+  });
   const prompt = tasksPage.locator('textarea[name="prompt"]');
   const browseCwd = tasksPage.getByRole("button", { name: "Browse Files" });
   const directoryPicker = tasksPage.locator("caffold-task-directory-picker");
@@ -295,6 +299,18 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
   await expect(
     directoryPicker.locator('button[data-file-tree-path="README.md"]'),
   ).toBeDisabled();
+  const pickerTree = directoryPicker.locator("caffold-file-tree");
+  await expect(pickerTree).toHaveAttribute("file-sort-mode", "folders-first");
+  const pickerEntries = await pickerTree
+    .locator(":scope .file-tree-rows > li:not([data-file-tree-parent-key]) button")
+    .evaluateAll((buttons) => buttons.map((button) => ({
+      kind: button.dataset.fileTreeKind,
+      path: button.dataset.fileTreePath,
+    })));
+  expect(pickerEntries[0]).toEqual({ kind: "directory", path: "src" });
+  expect(
+    pickerEntries.slice(1).every((entry) => entry.kind !== "directory"),
+  ).toBe(true);
   await captureReviewScreenshot(
     page,
     testInfo,

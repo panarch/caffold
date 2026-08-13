@@ -13,6 +13,7 @@
 @import "./pages/(task-workspace)/settings/layout.css";
 @import "./pages/(task-workspace)/settings/navigator.css";
 @import "./pages/(task-workspace)/settings/appearance/page.css";
+@import "./pages/(task-workspace)/settings/files/page.css";
 @import "./pages/(task-workspace)/settings/notifications/page.css";
 @import "./pages/(task-workspace)/settings/codex/page.css";
 @import "./pages/(task-workspace)/settings/about/page.css";

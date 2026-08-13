@@ -18,7 +18,6 @@ test("scales visible Task controls without shrinking their touch targets", async
     localStorage.setItem(
       "caffold:settings",
       JSON.stringify({
-        appearanceVersion: 3,
         typefacePreset: "d2-coding",
         interfaceScalePercent: 90,
         conversationTextPx: 15,
@@ -57,8 +56,8 @@ test("scales visible Task controls without shrinking their touch targets", async
   const compact = await taskInterfaceMetrics(page);
 
   await page.evaluate(async () => {
-    const { setAppearanceSetting } = await import("/assets/settings.js");
-    setAppearanceSetting("interfaceScalePercent", 120);
+    const { setAppearanceRangeSetting } = await import("/assets/settings.js");
+    setAppearanceRangeSetting("interfaceScalePercent", 120);
   });
   const detailsPopover = page.locator(".task-detail-popover");
   if (await detailsPopover.evaluate((element) => element.matches(":popover-open"))) {

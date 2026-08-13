@@ -7,6 +7,7 @@ import "../components/workspace-brand.js";
 
 const ITEMS = [
   { section: "appearance", label: "Appearance", icon: "Settings" },
+  { section: "files", label: "Files", icon: "File" },
   { section: "notifications", label: "Notifications", icon: "Bell" },
   { section: "codex", label: "Codex", brand: true },
   { section: "about", label: "About Caffold", icon: "Info" },
