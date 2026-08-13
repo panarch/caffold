@@ -51,6 +51,7 @@ struct CodexRuntimeDiagnostics {
     process_generation: u64,
     process_connected: bool,
     thread_sessions: ThreadSessionsDiagnostics,
+    usage: super::runtime::CodexUsageDiagnostics,
 }
 
 #[derive(Serialize)]
@@ -311,6 +312,7 @@ async fn codex_status(State(state): State<TaskState>) -> Json<CodexStatusPayload
         process_generation,
         process_connected,
         thread_sessions: state.codex_sessions.diagnostics().await,
+        usage: state.codex_runtime.usage_diagnostics(),
     };
     Json(CodexStatusPayload {
         status,

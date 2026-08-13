@@ -1,17 +1,63 @@
 import { expect, test } from "@playwright/test";
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, sep } from "node:path";
 
 import { CodexDaemonClient } from "./codex-daemon-client.mjs";
+import {
+  assertLiveModelPolicy,
+  buildLiveUsageReport,
+  collectTestUsage,
+  formatLiveUsageReport,
+  LIVE_MODEL_POLICY,
+  mergeLiveUsageReports,
+} from "./codex-live-usage.mjs";
 
-const SPARK_MODEL = "gpt-5.3-codex-spark";
-const FAST_MODEL = "gpt-5.6-sol";
-const MULTIMODAL_MODEL = "gpt-5.6-luna";
-const LIVE_REASONING_EFFORT = "low";
+const SPARK_MODEL = LIVE_MODEL_POLICY.models.spark;
+const FAST_MODEL = LIVE_MODEL_POLICY.models.fast;
+const MULTIMODAL_MODEL = LIVE_MODEL_POLICY.models.multimodal;
+const LIVE_REASONING_EFFORT = LIVE_MODEL_POLICY.reasoningEffort;
 const PASTED_IMAGE_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 const liveThreadIds = new Set();
+const measuredThreadModels = new Map();
+const liveUsageTests = [];
+let liveUsageBefore;
+let liveUsageRunId;
+let liveUsageStartedAt;
+
+function trackLiveThread(threadId, scenario, model) {
+  assertLiveModelPolicy({
+    scenario,
+    model,
+    effort: LIVE_REASONING_EFFORT,
+  });
+  liveThreadIds.add(threadId);
+  measuredThreadModels.set(threadId, model);
+}
+
+async function readCodexStatus(request) {
+  const response = await request.get("/api/codex/status");
+  const body = await response.text();
+  expect(response.status(), `Codex status response: ${body}`).toBe(200);
+  return JSON.parse(body);
+}
+
+async function readSettledCodexStatus(request) {
+  let status = await readCodexStatus(request);
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    status = await readCodexStatus(request);
+  }
+  return status;
+}
 
 function taskNavigator(page) {
   return page.locator("caffold-task-navigator");
@@ -25,7 +71,10 @@ function liveCwd() {
   return process.cwd().split(sep).filter(Boolean).join("/");
 }
 
-async function chooseModel(taskForm, model, effort = LIVE_REASONING_EFFORT) {
+async function chooseModel(taskForm, scenario) {
+  const model = LIVE_MODEL_POLICY.models[scenario];
+  const effort = LIVE_REASONING_EFFORT;
+  assertLiveModelPolicy({ scenario, model, effort });
   await taskForm.getByRole("button", { name: /Choose model/ }).click();
   const modelOption = taskForm.locator(`[data-model="${model}"]`);
   await expect(modelOption, `Codex model ${model} should be available`).toBeVisible();
@@ -179,10 +228,77 @@ async function runGitWithIndexRetry(repository, args) {
   }
 }
 
-test.afterEach(async ({ request }) => {
-  for (const threadId of [...liveThreadIds]) {
-    await archiveLiveThread(request, threadId);
+test.beforeAll(async ({ request }, testInfo) => {
+  liveUsageRunId = String(testInfo.project.use.baseURL);
+  liveUsageStartedAt = new Date().toISOString();
+  liveUsageBefore = await readCodexStatus(request);
+});
+
+test.afterEach(async ({ request }, testInfo) => {
+  const errors = [];
+  try {
+    const status = await readCodexStatus(request);
+    liveUsageTests.push({
+      ...collectTestUsage({
+        title: testInfo.title,
+        status,
+        threadModels: new Map(measuredThreadModels),
+      }),
+      outcome: testInfo.status,
+      durationMs: testInfo.duration,
+    });
+  } catch (error) {
+    errors.push(error);
   }
+  for (const threadId of [...liveThreadIds]) {
+    try {
+      await archiveLiveThread(request, threadId);
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  measuredThreadModels.clear();
+  if (errors.length > 0) {
+    throw new AggregateError(errors, "live usage measurement or teardown failed");
+  }
+});
+
+test.afterAll(async ({ request }) => {
+  const afterStatus = await readSettledCodexStatus(request);
+  const currentReport = buildLiveUsageReport({
+    runId: liveUsageRunId,
+    startedAt: liveUsageStartedAt,
+    finishedAt: new Date().toISOString(),
+    beforeStatus: liveUsageBefore,
+    afterStatus,
+    tests: liveUsageTests,
+  });
+  const artifactPath = join(process.cwd(), "test-results", "codex-live-usage.json");
+  let report = currentReport;
+  if (existsSync(artifactPath)) {
+    try {
+      report = mergeLiveUsageReports(
+        JSON.parse(readFileSync(artifactPath, "utf8")),
+        currentReport,
+      );
+    } catch {
+      // Replace an unreadable artifact with the current run's valid report.
+    }
+  }
+  mkdirSync(dirname(artifactPath), { recursive: true });
+  writeFileSync(
+    artifactPath,
+    `${JSON.stringify(report, null, 2)}\n`,
+  );
+  console.log(formatLiveUsageReport(report));
+
+  const missingPassedThreads = report.tests
+    .filter((measured) => measured.outcome === "passed")
+    .flatMap((measured) => measured.missingThreadIds);
+  expect(
+    missingPassedThreads,
+    "passed live tests should expose final token usage for every tracked thread",
+  ).toEqual([]);
 });
 
 async function submitPromptAndExpectAccepted(page, threadId, submit) {
@@ -244,7 +360,7 @@ test("creates, orders, and restores Tasks through real Codex Thread Sections", a
     expect(detail.activeTopPlacement?.section?.id).toBeTruthy();
     expect(detail.activeTopPlacement?.section?.name).toBe(fixture.cwd);
     expect(detail.activeTopPlacement?.section?.repository).toBe(true);
-    liveThreadIds.add(detail.threadId);
+    trackLiveThread(detail.threadId, "spark", SPARK_MODEL);
     return detail.threadId;
   };
 
@@ -306,7 +422,7 @@ test("reconciles externally archived and deleted Codex Threads through Recovery"
   const created = JSON.parse(createdBody);
   const threadId = created.threadId;
   expect(threadId).toBeTruthy();
-  liveThreadIds.add(threadId);
+  trackLiveThread(threadId, "spark", SPARK_MODEL);
   await expectLiveThreadIdle(request, threadId);
 
   const recoveryReason = async () => {
@@ -411,7 +527,7 @@ test("creates a real Codex task in Fast mode and restores the task setting", asy
   await page.goto(`/tasks/new?cwd=${encodeURIComponent(liveCwd())}`);
   const tasksPage = page.locator("caffold-tasks-page");
   const form = tasksPage.locator('.task-new-form[data-task-form="create"]');
-  await chooseModel(form, FAST_MODEL);
+  await chooseModel(form, "fast");
   await expect(form.locator('input[name="fastMode"]')).toHaveValue("false");
 
   await form.getByRole("button", { name: /Choose model/ }).click();
@@ -427,7 +543,7 @@ test("creates a real Codex task in Fast mode and restores the task setting", asy
   await expect(page).toHaveURL(/\/tasks\/[^?]+$/);
   const threadId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
   expect(threadId).toBeTruthy();
-  liveThreadIds.add(threadId);
+  trackLiveThread(threadId, "fast", FAST_MODEL);
 
   await expect(
     tasksPage
@@ -467,7 +583,7 @@ test("creates and resumes a real Codex task through Caffold with Spark", async (
   const navigator = taskNavigator(page);
   const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
   await expect(newTaskForm).toBeVisible();
-  await chooseModel(newTaskForm, SPARK_MODEL);
+  await chooseModel(newTaskForm, "spark");
 
   const newTaskPrompt = newTaskForm.getByRole("textbox", { name: "New task prompt" });
   await newTaskPrompt.fill(
@@ -477,7 +593,7 @@ test("creates and resumes a real Codex task through Caffold with Spark", async (
   await expect(page).toHaveURL(/\/tasks\/[^?]+$/);
   const threadId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
   expect(threadId).toBeTruthy();
-  liveThreadIds.add(threadId);
+  trackLiveThread(threadId, "spark", SPARK_MODEL);
 
   const assistantMessages = tasksPage.locator(
     '.task-message[data-message-role="assistant"]',
@@ -512,7 +628,7 @@ test("creates and resumes a real Codex task through Caffold with Spark", async (
   const followUpForm = tasksPage.locator(
     '.task-follow-up-form[data-task-form="follow-up"]',
   );
-  await chooseModel(followUpForm, SPARK_MODEL);
+  await chooseModel(followUpForm, "spark");
   const followUpPrompt = followUpForm.getByRole("textbox", { name: "Follow-up prompt" });
   await followUpPrompt.fill(
     [
@@ -601,9 +717,13 @@ test("creates and resumes a real Codex task through Caffold with Spark", async (
   await expect(finalResponse).toHaveCount(1);
   await expect
     .poll(() =>
-      finalResponse.evaluate((response) =>
-        response.previousElementSibling?.classList.contains("task-turn-work"),
-      ),
+      finalResponse.evaluate((response) => {
+        const timeline = response.parentElement;
+        const works = timeline?.querySelectorAll(".task-turn-work") ?? [];
+        const work = works[works.length - 1];
+        const position = work ? work.compareDocumentPosition(response) : 0;
+        return Boolean(position & Node.DOCUMENT_POSITION_FOLLOWING);
+      }),
     )
     .toBe(true);
   await completedWorkDetails.locator(":scope > summary").click();
@@ -654,7 +774,7 @@ test("renames a newly created Caffold task through the dynamic tool", async ({
   const navigator = taskNavigator(page);
   const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
   await expect(newTaskForm).toBeVisible();
-  await chooseModel(newTaskForm, SPARK_MODEL);
+  await chooseModel(newTaskForm, "spark");
 
   const newTaskPrompt = newTaskForm.getByRole("textbox", { name: "New task prompt" });
   await newTaskPrompt.fill(
@@ -664,7 +784,7 @@ test("renames a newly created Caffold task through the dynamic tool", async ({
   await expect(page).toHaveURL(/\/tasks\/[^?]+$/);
   const threadId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
   expect(threadId).toBeTruthy();
-  liveThreadIds.add(threadId);
+  trackLiveThread(threadId, "spark", SPARK_MODEL);
 
   await expect(
     tasksPage
@@ -729,7 +849,7 @@ test("moves one dirty Spark task into a worktree and resumes the same thread", a
     const tasksPage = page.locator("caffold-tasks-page");
     const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
     await expect(newTaskForm).toBeVisible();
-    await chooseModel(newTaskForm, SPARK_MODEL);
+    await chooseModel(newTaskForm, "spark");
 
     const newTaskPrompt = newTaskForm.getByRole("textbox", {
       name: "New task prompt",
@@ -748,7 +868,7 @@ test("moves one dirty Spark task into a worktree and resumes the same thread", a
     await expect(page).toHaveURL(/\/tasks\/[^?]+$/);
     threadId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
     expect(threadId).toBeTruthy();
-    liveThreadIds.add(threadId);
+    trackLiveThread(threadId, "spark", SPARK_MODEL);
 
     await expect(
       tasksPage
@@ -827,10 +947,10 @@ test("moves one dirty Spark task into a worktree and resumes the same thread", a
     expect(branchExists(fixture.repository, branchName)).toBe(true);
 
     const restored = await restoreLiveThread(page.request, threadId);
-    expect(restored.threadId).toBe(threadId);
-    expect(restored.worktree?.linked).toBe(true);
-    expect(restored.worktree?.branch).toBe(branchName);
-    expect(restored.cwd).toBe(worktreePath);
+    expect(restored.task?.threadId).toBe(threadId);
+    expect(restored.task?.worktree?.linked).toBe(true);
+    expect(restored.task?.worktree?.branch).toBe(branchName);
+    expect(restored.task?.cwd).toBe(worktreePath);
     expect(existsSync(worktreePath)).toBe(true);
 
     await page.goto(`/tasks/${threadId}`);
@@ -888,7 +1008,7 @@ test("sends image attachments through Caffold with a multimodal model", async ({
   const tasksPage = page.locator("caffold-tasks-page");
   const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
   await expect(newTaskForm).toBeVisible();
-  await chooseModel(newTaskForm, MULTIMODAL_MODEL);
+  await chooseModel(newTaskForm, "multimodal");
 
   const newTaskPrompt = newTaskForm.getByRole("textbox", { name: "New task prompt" });
   await newTaskPrompt.fill(
@@ -903,7 +1023,7 @@ test("sends image attachments through Caffold with a multimodal model", async ({
   await expect(page).toHaveURL(/\/tasks\/[^?]+$/);
   const threadId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
   expect(threadId).toBeTruthy();
-  liveThreadIds.add(threadId);
+  trackLiveThread(threadId, "multimodal", MULTIMODAL_MODEL);
 
   const userMessages = tasksPage.locator('.task-message[data-message-role="user"]');
   const initialMessage = userMessages.filter({ hasText: initialReply });
@@ -959,7 +1079,7 @@ test("reconciles a managed Spark task through a second daemon client", async ({
   const tasksPage = page.locator("caffold-tasks-page");
   const navigator = taskNavigator(page);
   const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
-  await chooseModel(newTaskForm, SPARK_MODEL);
+  await chooseModel(newTaskForm, "spark");
   const newTaskPrompt = newTaskForm.getByRole("textbox", { name: "New task prompt" });
   await newTaskPrompt.fill(
     `Reply with exactly ${initialReply}. Do not modify files or run commands.`,
@@ -968,7 +1088,7 @@ test("reconciles a managed Spark task through a second daemon client", async ({
   await expect(page).toHaveURL(/\/tasks\/[^?]+$/);
   const threadId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
   expect(threadId).toBeTruthy();
-  liveThreadIds.add(threadId);
+  trackLiveThread(threadId, "spark", SPARK_MODEL);
 
   const assistantMessages = tasksPage.locator(
     '.task-message[data-message-role="assistant"][data-message-phase="final"]',
@@ -981,7 +1101,7 @@ test("reconciles a managed Spark task through a second daemon client", async ({
     '.task-follow-up-form[data-task-form="follow-up"]',
   );
   await expect(followUpForm).toHaveAttribute("data-thread-id", threadId);
-  await chooseModel(followUpForm, SPARK_MODEL);
+  await chooseModel(followUpForm, "spark");
   const followUpPrompt = followUpForm.getByRole("textbox", { name: "Follow-up prompt" });
 
   await followUpPrompt.fill(

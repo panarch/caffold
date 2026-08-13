@@ -238,6 +238,11 @@ impl CodexRuntime {
             }
             CodexNotification::ThreadNameUpdated { .. }
             | CodexNotification::ThreadSettingsUpdated { .. } => {}
+            CodexNotification::ThreadTokenUsageUpdated {
+                thread_id,
+                turn_id,
+                token_usage,
+            } => self.record_token_usage(thread_id, turn_id, token_usage),
             CodexNotification::ItemStarted {
                 thread_id,
                 turn_id,
@@ -391,7 +396,8 @@ fn notification_thread_id(notification: &CodexNotification) -> Option<&str> {
         | CodexNotification::ItemStarted { thread_id, .. }
         | CodexNotification::ItemCompleted { thread_id, .. }
         | CodexNotification::RawResponseItemCompleted { thread_id, .. }
-        | CodexNotification::TurnDiffUpdated { thread_id, .. } => Some(thread_id),
+        | CodexNotification::TurnDiffUpdated { thread_id, .. }
+        | CodexNotification::ThreadTokenUsageUpdated { thread_id, .. } => Some(thread_id),
         CodexNotification::Unknown { .. } => None,
     }
 }
@@ -554,6 +560,54 @@ mod tests {
         .unwrap();
         runtime.handle_terminal_push(&stale_completion, Some("Current task name"), false);
         assert!(deliveries.try_recv().is_err());
+    }
+
+    #[test]
+    fn token_usage_notifications_are_retained_for_live_diagnostics() {
+        let runtime = runtime_with_events_and_store(
+            TaskEvents::default(),
+            TaskStore::memory().expect("in-memory task store"),
+        );
+
+        runtime.handle_notification(
+            codex_app_server::decode_notification(
+                "thread/tokenUsage/updated",
+                json!({
+                    "threadId": "thread_usage",
+                    "turnId": "turn_2",
+                    "tokenUsage": {
+                        "total": {
+                            "totalTokens": 1234,
+                            "inputTokens": 1000,
+                            "cachedInputTokens": 800,
+                            "cacheWriteInputTokens": 0,
+                            "outputTokens": 234,
+                            "reasoningOutputTokens": 34
+                        },
+                        "last": {
+                            "totalTokens": 345,
+                            "inputTokens": 300,
+                            "cachedInputTokens": 250,
+                            "cacheWriteInputTokens": 0,
+                            "outputTokens": 45,
+                            "reasoningOutputTokens": 5
+                        },
+                        "modelContextWindow": 128000
+                    }
+                }),
+            )
+            .unwrap(),
+        );
+
+        let diagnostics = runtime.usage_diagnostics();
+        let usage = diagnostics
+            .threads
+            .get("thread_usage")
+            .expect("thread usage diagnostics");
+        assert_eq!(usage.turn_id, "turn_2");
+        assert_eq!(usage.token_usage.total.total_tokens, 1234);
+        assert_eq!(usage.token_usage.last.cached_input_tokens, 250);
+        assert_eq!(usage.token_usage.model_context_window, Some(128000));
     }
 
     #[tokio::test]

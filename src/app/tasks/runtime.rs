@@ -1,10 +1,14 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::{Arc, Mutex as StdMutex},
+};
 
+use serde::Serialize;
 use tokio::sync::{Mutex, broadcast};
 
 use super::{events::TaskEvents, lifecycle::TaskLifecycle, push::PushService};
 use crate::{
-    codex_app_server::{CodexThreadClient, CodexThreadError},
+    codex_app_server::{CodexThreadClient, CodexThreadError, ThreadTokenUsage},
     codex_thread_sessions::{CodexThreadSessions, ThreadSessionSnapshot},
     task_store::TaskStore,
 };
@@ -25,8 +29,22 @@ pub(in crate::app) struct CodexRuntime {
     lifecycle: Option<TaskLifecycle>,
     push: Option<PushService>,
     approvals: Arc<Mutex<HashMap<String, PendingApproval>>>,
+    usage: Arc<StdMutex<BTreeMap<String, ThreadUsageDiagnostics>>>,
     signals: broadcast::Sender<CodexRuntimeSignal>,
     shutdown: broadcast::Sender<()>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(in crate::app) struct CodexUsageDiagnostics {
+    pub(in crate::app) threads: BTreeMap<String, ThreadUsageDiagnostics>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(in crate::app) struct ThreadUsageDiagnostics {
+    pub(in crate::app) turn_id: String,
+    pub(in crate::app) token_usage: ThreadTokenUsage,
 }
 
 #[derive(Clone)]
@@ -76,6 +94,7 @@ impl CodexRuntime {
             lifecycle: None,
             push: None,
             approvals: Arc::new(Mutex::new(HashMap::new())),
+            usage: Arc::new(StdMutex::new(BTreeMap::new())),
             signals,
             shutdown,
         }
@@ -93,6 +112,33 @@ impl CodexRuntime {
 
     pub(in crate::app) fn subscribe(&self) -> broadcast::Receiver<CodexRuntimeSignal> {
         self.signals.subscribe()
+    }
+
+    pub(in crate::app) fn usage_diagnostics(&self) -> CodexUsageDiagnostics {
+        let threads = self
+            .usage
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        CodexUsageDiagnostics { threads }
+    }
+
+    fn record_token_usage(
+        &self,
+        thread_id: String,
+        turn_id: String,
+        token_usage: ThreadTokenUsage,
+    ) {
+        self.usage
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(
+                thread_id,
+                ThreadUsageDiagnostics {
+                    turn_id,
+                    token_usage,
+                },
+            );
     }
 }
 

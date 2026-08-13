@@ -107,6 +107,20 @@ model usage:
 npm run test:codex-live
 ```
 
+The run prints a usage summary and writes
+`test-results/codex-live-usage.json`. Per-test and per-model token breakdowns
+come from the final cumulative `thread/tokenUsage/updated` notification for
+each thread. The report also snapshots account lifetime tokens and both the
+overall and named model rate-limit windows before and after the suite.
+
+Live scenarios use `low` reasoning effort. Spark-specific coverage uses
+`gpt-5.3-codex-spark`; Fast-mode and multimodal coverage use `gpt-5.6-luna`.
+
+Rate-limit `usedPercent` values have integer resolution, so a non-zero live run
+can legitimately report a `0pp` change. Account snapshots can also include
+other Codex activity on the same subscription during the run; use the thread
+token totals when the live suite itself must be isolated precisely.
+
 By default each invocation selects an available loopback port and starts an
 isolated server with runtime files below `target/`. It creates real Codex
 threads and archives the threads it records during teardown. It is serialized

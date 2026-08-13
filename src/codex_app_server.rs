@@ -35,7 +35,7 @@ use protocol::{
 pub use protocol::{
     CodexAppServerInfo, CodexNotification, CodexPermissionMode, CodexServerRequest, CodexThread,
     CodexTurn, ModelListResponse, PermissionProfileSummary, SortDirection, ThreadResumeResponse,
-    ThreadSection, ThreadSectionFilter, ThreadSectionListResponse, ThreadStatus,
+    ThreadSection, ThreadSectionFilter, ThreadSectionListResponse, ThreadStatus, ThreadTokenUsage,
     ThreadUnsubscribeResponse, TurnStatus, TurnsPage,
 };
 pub(crate) use protocol::{ISOLATE_CURRENT_TASK_TOOL_NAME, RENAME_CURRENT_THREAD_TOOL_NAME};

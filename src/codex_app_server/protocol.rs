@@ -609,6 +609,11 @@ pub enum CodexNotification {
         thread_id: String,
         thread_settings: BTreeMap<String, Value>,
     },
+    ThreadTokenUsageUpdated {
+        thread_id: String,
+        turn_id: String,
+        token_usage: ThreadTokenUsage,
+    },
     TurnStarted {
         thread_id: String,
         turn: CodexTurn,
@@ -642,6 +647,25 @@ pub enum CodexNotification {
         method: String,
         params: Value,
     },
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenUsageBreakdown {
+    pub total_tokens: u64,
+    pub input_tokens: u64,
+    pub cached_input_tokens: u64,
+    pub cache_write_input_tokens: u64,
+    pub output_tokens: u64,
+    pub reasoning_output_tokens: u64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadTokenUsage {
+    pub total: TokenUsageBreakdown,
+    pub last: TokenUsageBreakdown,
+    pub model_context_window: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -741,6 +765,25 @@ pub(crate) fn decode_notification(
             Ok(CodexNotification::ThreadSettingsUpdated {
                 thread_id,
                 thread_settings,
+            })
+        }
+        "thread/tokenUsage/updated" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Params {
+                thread_id: String,
+                turn_id: String,
+                token_usage: ThreadTokenUsage,
+            }
+            let Params {
+                thread_id,
+                turn_id,
+                token_usage,
+            } = decode_params(method, params)?;
+            Ok(CodexNotification::ThreadTokenUsageUpdated {
+                thread_id,
+                turn_id,
+                token_usage,
             })
         }
         "turn/started" | "turn/completed" => {
@@ -1200,6 +1243,46 @@ mod tests {
                 thread_settings,
             } if thread_id == "thread_1"
                 && thread_settings.get("serviceTier") == Some(&json!("priority"))
+        ));
+
+        let usage = decode_notification(
+            "thread/tokenUsage/updated",
+            json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "tokenUsage": {
+                    "total": {
+                        "totalTokens": 120,
+                        "inputTokens": 100,
+                        "cachedInputTokens": 60,
+                        "cacheWriteInputTokens": 0,
+                        "outputTokens": 20,
+                        "reasoningOutputTokens": 5
+                    },
+                    "last": {
+                        "totalTokens": 30,
+                        "inputTokens": 25,
+                        "cachedInputTokens": 20,
+                        "cacheWriteInputTokens": 0,
+                        "outputTokens": 5,
+                        "reasoningOutputTokens": 2
+                    },
+                    "modelContextWindow": 121600
+                }
+            }),
+        )
+        .expect("token usage notification");
+        assert!(matches!(
+            usage,
+            CodexNotification::ThreadTokenUsageUpdated {
+                thread_id,
+                turn_id,
+                token_usage,
+            } if thread_id == "thread_1"
+                && turn_id == "turn_1"
+                && token_usage.total.total_tokens == 120
+                && token_usage.total.cached_input_tokens == 60
+                && token_usage.model_context_window == Some(121600)
         ));
 
         let unknown = decode_notification("future/event", json!({ "value": 1 }))
