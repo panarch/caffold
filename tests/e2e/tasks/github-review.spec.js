@@ -19,6 +19,25 @@ const PULL_FILE_PATH = `${WORKTREE_ROOT}/src/review.rs`;
 const PULL_BASE_OID = "1111111111111111111111111111111111111111";
 const PULL_HEAD_OID = "2222222222222222222222222222222222222222";
 const CREATED_THREAD_ID = "thread_github_task_created";
+const LONG_GITHUB_NAME_WITH_OWNER =
+  "owner-with-a-long-name/repository-with-a-long-name-that-must-stay-inside-the-task-detail-pane";
+const CONSTRAINED_MARKDOWN_HTML = `
+  <h1>Pane-owned GitHub Markdown</h1>
+  <p>Ordinary paragraphs, headings, lists, and inline <code>contentOwnedByTheGitHubMarkdownParagraphEvenWhenTheInlineIdentifierIsLong</code> must reflow inside the Task Detail pane without making the page wider.</p>
+  <ul>
+    <li>Keep the complete GitHub detail readable in constrained master-detail layouts.</li>
+    <li>Leave intrinsically wide content with its own bounded horizontal scrolling.</li>
+  </ul>
+  <pre><code>const intrinsicallyWideCodeLine = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";</code></pre>
+  <table>
+    <thead><tr><th>Owner</th><th>Intrinsically wide value</th></tr></thead>
+    <tbody><tr><td>GitHub Markdown table</td><td>abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789</td></tr></tbody>
+  </table>
+`;
+const LONG_ISSUE_TITLE =
+  "Keep every Task-scoped GitHub Issue title, action, and ordinary Markdown descendant within the actual resizable detail pane";
+const LONG_PULL_TITLE =
+  "Keep every Task-scoped pull request title and all of its review actions reachable inside the actual resizable detail pane";
 
 function linkedWorktreeTask() {
   const recencyMs = 1_785_700_000_000;
@@ -60,7 +79,7 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
   const github = {
     owner: "gluesql",
     name: "gluesql",
-    nameWithOwner: "gluesql/gluesql",
+    nameWithOwner: options.githubNameWithOwner ?? "gluesql/gluesql",
     url: "https://github.com/gluesql/gluesql",
   };
   const counts = {
@@ -82,9 +101,22 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
     pullHeadFailure: null,
     pullHeadGate: null,
   };
+  const issue = {
+    number: 1984,
+    title: options.issueTitle ?? "Keep task GitHub lists fresh",
+    state: "OPEN",
+    author: "panarch",
+    labels: [],
+    comments: 0,
+    body: "Fresh Task-owned Issue detail",
+    bodyHtml: options.issueBodyHtml ?? "<p>Fresh Task-owned Issue detail</p>",
+    createdAt: "2026-08-07T02:00:00Z",
+    updatedAt: "2026-08-07T03:00:00Z",
+    url: "https://github.com/gluesql/gluesql/issues/1984",
+  };
   const pull = {
     number: 1983,
-    title: "Reject unsupported table function arguments",
+    title: options.pullTitle ?? "Reject unsupported table function arguments",
     state: "OPEN",
     draft: false,
     author: "kwondo1017",
@@ -108,7 +140,7 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
       url: "https://github.com/gluesql/gluesql",
     },
     body: "Task-owned Pull Request detail",
-    bodyHtml: "<p>Task-owned Pull Request detail</p>",
+    bodyHtml: options.pullBodyHtml ?? "<p>Task-owned Pull Request detail</p>",
     createdAt: "2026-08-03T02:00:00Z",
     updatedAt: "2026-08-03T03:00:00Z",
     url: "https://github.com/gluesql/gluesql/pull/1983",
@@ -241,7 +273,7 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
         pulls: [
           {
             number: 1983,
-            title: "Reject unsupported table function arguments",
+            title: pull.title,
             state: "open",
             draft: false,
             author: "kwondo1017",
@@ -275,7 +307,7 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
         issues: [
           {
             number: 1984,
-            title: "Keep task GitHub lists fresh",
+            title: issue.title,
             state: "open",
             author: "panarch",
             labels: [],
@@ -302,19 +334,7 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
       json: {
         repository,
         github,
-        issue: {
-          number: 1984,
-          title: "Keep task GitHub lists fresh",
-          state: "OPEN",
-          author: "panarch",
-          labels: [],
-          comments: 0,
-          body: "Fresh Task-owned Issue detail",
-          bodyHtml: "<p>Fresh Task-owned Issue detail</p>",
-          createdAt: "2026-08-07T02:00:00Z",
-          updatedAt: "2026-08-07T03:00:00Z",
-          url: "https://github.com/gluesql/gluesql/issues/1984",
-        },
+        issue,
       },
     });
   });
@@ -449,6 +469,267 @@ async function openLinkedWorktreeIssue(page) {
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/issues/1984`);
   return page.locator("caffold-github-issue-detail-page");
 }
+
+async function taskGithubPaneGeometry(page, options = {}) {
+  return page.locator("caffold-task-github-layout").evaluate((layout, geometryOptions) => {
+    const detailPane = document.querySelector(".task-workspace-detail-pane");
+    const navigationPane = document.querySelector(".task-workspace-master-pane");
+    const detailBounds = detailPane.getBoundingClientRect();
+    const elements = [
+      ["layout", layout],
+      ["surface", layout.querySelector(":scope > .task-github-surface")],
+      ["domain header", layout.querySelector(".task-domain-header")],
+      ["domain title", layout.querySelector(".task-domain-title")],
+      ["domain subtitle", layout.querySelector(".task-domain-subtitle")],
+      ["domain body", layout.querySelector(".task-domain-body")],
+      ["mode", layout.querySelector(".github-review-view:not([hidden])")],
+      ["page", layout.querySelector(geometryOptions.pageSelector)],
+      ...geometryOptions.descendantSelectors.flatMap((selector) => {
+        const matches = [...layout.querySelectorAll(selector)];
+        return matches.length
+          ? matches.map((element, index) => [`${selector} ${index}`, element])
+          : [[`${selector} missing`, null]];
+      }),
+    ];
+    const markdown = layout.querySelector(
+      `${geometryOptions.pageSelector} caffold-github-markdown`,
+    );
+    const markdownRoot = markdown?.shadowRoot;
+    const ordinaryMarkdownElements = [
+      ...(markdownRoot?.querySelectorAll(".markdown-body, h1, p, ul") ?? []),
+    ];
+    for (const [index, element] of ordinaryMarkdownElements.entries()) {
+      elements.push([`markdown ordinary ${index}`, element]);
+    }
+    const pre = markdownRoot?.querySelector("pre");
+    const tableScroll = markdownRoot?.querySelector(".markdown-table-scroll");
+    if (pre) {
+      elements.push(["fenced code scroller", pre]);
+    }
+    if (tableScroll) {
+      elements.push(["table scroller", tableScroll]);
+    }
+
+    const outsideDetail = elements
+      .filter(([, element]) => {
+        if (!element) {
+          return true;
+        }
+        const bounds = element.getBoundingClientRect();
+        return (
+          bounds.width <= 0 ||
+          bounds.left < detailBounds.left - 1 ||
+          bounds.right > detailBounds.right + 1
+        );
+      })
+      .map(([name]) => name);
+    const title = layout.querySelector(geometryOptions.titleSelector);
+    const domainSubtitle = layout.querySelector(".task-domain-subtitle");
+
+    return {
+      detailWidth: detailBounds.width,
+      navigationWidth: navigationPane.getBoundingClientRect().width,
+      outsideDetail,
+      layoutHorizontalOverflow: layout.scrollWidth > layout.clientWidth + 1,
+      pageHorizontalOverflow:
+        document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+      ordinaryMarkdownHorizontalOverflow: ordinaryMarkdownElements.some(
+        (element) => element.scrollWidth > element.clientWidth + 1,
+      ),
+      domainSubtitleClipped:
+        domainSubtitle.scrollWidth > domainSubtitle.clientWidth + 1,
+      titleClipped: title.scrollWidth > title.clientWidth + 1,
+      preOwnsOverflow: Boolean(pre && pre.scrollWidth > pre.clientWidth + 1),
+      tableOwnsOverflow: Boolean(
+        tableScroll && tableScroll.scrollWidth > tableScroll.clientWidth + 1,
+      ),
+    };
+  }, options);
+}
+
+test("contains Issue list and detail content within the foldable Task pane", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "foldable",
+    "The foldable project owns the constrained master-detail regression.",
+  );
+  await page.setViewportSize({ width: 933, height: 704 });
+  await installLinkedWorktreeGithubFixture(page, {
+    githubNameWithOwner: LONG_GITHUB_NAME_WITH_OWNER,
+    issueTitle: LONG_ISSUE_TITLE,
+    issueBodyHtml: CONSTRAINED_MARKDOWN_HTML,
+  });
+  await page.goto(`/tasks/${THREAD_ID}/github/issues`);
+
+  const workspace = page.locator("caffold-task-workspace");
+  const resizer = workspace.getByRole("separator", { name: "Resize navigation pane" });
+  const issueButton = page.locator('button[data-issue-number="1984"]');
+  await expect(resizer).toHaveAttribute("aria-valuenow", "380");
+  await expect(issueButton).toContainText(LONG_ISSUE_TITLE);
+  const listGeometry = await taskGithubPaneGeometry(page, {
+    pageSelector: "caffold-github-issues-list-page",
+    descendantSelectors: [
+      "caffold-github-issues-layout",
+      ".github-issues-panel",
+      ".github-issues-list",
+      ".github-issue-button",
+    ],
+    titleSelector: ".github-issue-title",
+  });
+  expect(listGeometry).toMatchObject({
+    navigationWidth: 380,
+    detailWidth: 553,
+    outsideDetail: [],
+    layoutHorizontalOverflow: false,
+    pageHorizontalOverflow: false,
+    ordinaryMarkdownHorizontalOverflow: false,
+    domainSubtitleClipped: true,
+    titleClipped: true,
+  });
+
+  await issueButton.click();
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/issues/1984`);
+  const issueDetail = page.locator("caffold-github-issue-detail-page");
+  await expect(issueDetail.getByRole("button", { name: "Start Task for issue #1984" })).toBeVisible();
+  const detailGeometryOptions = {
+    pageSelector: "caffold-github-issue-detail-page",
+    descendantSelectors: [
+      "caffold-github-issues-layout",
+      ".github-issue-viewer-panel",
+      ".github-issue-viewer-panel > header",
+      ".github-issue-viewer-title-row",
+      ".github-issue-actions",
+      ".github-issue-actions > *",
+      ".github-issue-body",
+    ],
+    titleSelector: ".github-issue-viewer-title-row h2",
+  };
+  const defaultGeometry = await taskGithubPaneGeometry(page, detailGeometryOptions);
+  expect(defaultGeometry).toMatchObject({
+    navigationWidth: 380,
+    detailWidth: 553,
+    outsideDetail: [],
+    layoutHorizontalOverflow: false,
+    pageHorizontalOverflow: false,
+    ordinaryMarkdownHorizontalOverflow: false,
+    domainSubtitleClipped: true,
+    titleClipped: true,
+    preOwnsOverflow: true,
+    tableOwnsOverflow: true,
+  });
+
+  await resizer.focus();
+  await resizer.press("End");
+  await expect(resizer).toHaveAttribute("aria-valuenow", "413");
+  const maximizedGeometry = await taskGithubPaneGeometry(page, detailGeometryOptions);
+  expect(maximizedGeometry).toMatchObject({
+    navigationWidth: 413,
+    detailWidth: 520,
+    outsideDetail: [],
+    layoutHorizontalOverflow: false,
+    pageHorizontalOverflow: false,
+    ordinaryMarkdownHorizontalOverflow: false,
+    domainSubtitleClipped: true,
+    titleClipped: true,
+    preOwnsOverflow: true,
+    tableOwnsOverflow: true,
+  });
+  await captureReviewScreenshot(page, testInfo, "github-issue-detail-foldable-contained");
+
+  await page.setViewportSize({ width: 900, height: 704 });
+  await expect(resizer).toHaveAttribute("aria-valuenow", "380");
+  const boundaryGeometry = await taskGithubPaneGeometry(page, detailGeometryOptions);
+  expect(boundaryGeometry).toMatchObject({
+    navigationWidth: 380,
+    detailWidth: 520,
+    outsideDetail: [],
+    layoutHorizontalOverflow: false,
+    pageHorizontalOverflow: false,
+    ordinaryMarkdownHorizontalOverflow: false,
+    domainSubtitleClipped: true,
+    titleClipped: true,
+    preOwnsOverflow: true,
+    tableOwnsOverflow: true,
+  });
+});
+
+test("keeps Pull Request headers, actions, and Markdown inside the foldable Task pane", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "foldable",
+    "The foldable project owns the constrained master-detail regression.",
+  );
+  await page.setViewportSize({ width: 933, height: 704 });
+  await installLinkedWorktreeGithubFixture(page, {
+    githubNameWithOwner: LONG_GITHUB_NAME_WITH_OWNER,
+    pullTitle: LONG_PULL_TITLE,
+    pullBodyHtml: CONSTRAINED_MARKDOWN_HTML,
+  });
+  await page.goto(`/tasks/${THREAD_ID}/github/pulls`);
+
+  const workspace = page.locator("caffold-task-workspace");
+  const resizer = workspace.getByRole("separator", { name: "Resize navigation pane" });
+  await resizer.focus();
+  await resizer.press("End");
+  await expect(resizer).toHaveAttribute("aria-valuenow", "413");
+  const pullButton = page.locator('button[data-pull-number="1983"]');
+  await expect(pullButton).toContainText(LONG_PULL_TITLE);
+  const listGeometry = await taskGithubPaneGeometry(page, {
+    pageSelector: "caffold-github-pulls-list-page",
+    descendantSelectors: [
+      "caffold-github-pulls-layout",
+      ".github-pulls-panel",
+      ".github-pulls-list",
+      ".github-pull-button",
+    ],
+    titleSelector: ".github-pull-title > span",
+  });
+  expect(listGeometry).toMatchObject({
+    navigationWidth: 413,
+    detailWidth: 520,
+    outsideDetail: [],
+    layoutHorizontalOverflow: false,
+    pageHorizontalOverflow: false,
+    domainSubtitleClipped: true,
+    titleClipped: true,
+  });
+
+  await pullButton.click();
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls/1983`);
+  const pullDetail = page.locator("caffold-github-pull-detail-page");
+  await expect(pullDetail.getByRole("button", { name: "Start Task for pull request #1983" })).toBeVisible();
+  await expect(pullDetail.getByRole("button", { name: "Open files for PR #1983" })).toBeVisible();
+  await expect(pullDetail.getByRole("link", { name: "GitHub", exact: true }).first()).toBeVisible();
+  const detailGeometry = await taskGithubPaneGeometry(page, {
+    pageSelector: "caffold-github-pull-detail-page",
+    descendantSelectors: [
+      "caffold-github-pulls-layout",
+      ".github-pull-viewer-panel",
+      ".github-pull-viewer-panel > header",
+      ".github-pull-viewer-title-row",
+      ".github-pull-actions",
+      ".github-pull-actions > *",
+      ".github-pull-viewer-scroll",
+      ".github-pull-body-section",
+    ],
+    titleSelector: ".github-pull-viewer-title-row h2",
+  });
+  expect(detailGeometry).toMatchObject({
+    navigationWidth: 413,
+    detailWidth: 520,
+    outsideDetail: [],
+    layoutHorizontalOverflow: false,
+    pageHorizontalOverflow: false,
+    ordinaryMarkdownHorizontalOverflow: false,
+    domainSubtitleClipped: true,
+    titleClipped: true,
+    preOwnsOverflow: true,
+    tableOwnsOverflow: true,
+  });
+  await captureReviewScreenshot(page, testInfo, "github-pull-detail-foldable-contained");
+});
 
 test("retains the same Task GitHub DOM and refreshes lists when reactivated", async ({ page }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
