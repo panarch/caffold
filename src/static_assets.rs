@@ -160,6 +160,9 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/codex-status/model.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/codex-status/model.js"
         ))),
+        "pages/(task-workspace)/codex-status/lifecycle.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/codex-status/lifecycle.js"
+        ))),
         "pages/(task-workspace)/codex-status/runtime-restart-lifecycle.js" => {
             Some(js(include_str!(
                 "../frontend/pages/(task-workspace)/codex-status/runtime-restart-lifecycle.js"
@@ -364,6 +367,16 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/recovery.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/recovery.js"
         ))),
+        "pages/(task-workspace)/tasks/components/codex-readiness-recovery.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/codex-readiness-recovery.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/codex-readiness-recovery.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/codex-readiness-recovery.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/components/navigator.css" => Some(css(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/navigator.css"
         ))),
@@ -731,6 +744,13 @@ mod tests {
             "text/javascript; charset=utf-8"
         );
         assert!(codex_status_model.body.starts_with(b"export "));
+        let codex_status_lifecycle = get("pages/(task-workspace)/codex-status/lifecycle.js")
+            .expect("Codex status lifecycle asset");
+        assert_eq!(
+            codex_status_lifecycle.content_type,
+            "text/javascript; charset=utf-8"
+        );
+        assert!(codex_status_lifecycle.body.starts_with(b"import "));
 
         let review_responsive_js =
             get("components/review-responsive.js").expect("review responsive js asset");
@@ -1171,6 +1191,10 @@ mod tests {
                 b"caffold-task-image-preview-dialog".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/components/codex-readiness-recovery.js",
+                b"caffold-codex-readiness-recovery".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/components/detail/conversation.js",
                 b"caffold-task-conversation".as_slice(),
             ),
@@ -1240,8 +1264,11 @@ mod tests {
             "/assets/pages/(task-workspace)/tasks/components/active-task-list.js",
             "/assets/pages/(task-workspace)/tasks/components/archived-task-list.css",
             "/assets/pages/(task-workspace)/tasks/components/archived-task-list.js",
+            "/assets/pages/(task-workspace)/tasks/components/codex-readiness-recovery.css",
+            "/assets/pages/(task-workspace)/tasks/components/codex-readiness-recovery.js",
             "/assets/pages/(task-workspace)/tasks/components/voice-level-meter.css",
             "/assets/pages/(task-workspace)/tasks/components/voice-level-meter.js",
+            "/assets/pages/(task-workspace)/codex-status/lifecycle.js",
         ] {
             assert!(
                 service_worker
@@ -1267,6 +1294,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/components/image-preview-dialog.css",
                 b"caffold-task-image-preview-dialog".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/components/codex-readiness-recovery.css",
+                b"caffold-codex-readiness-recovery".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/components/voice-level-meter.css",

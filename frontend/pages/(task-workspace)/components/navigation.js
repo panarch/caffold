@@ -28,7 +28,7 @@ class CaffoldTaskWorkspaceNavigation extends HTMLElement {
 
     this.rendered = true;
     this.mode = "tasks";
-    this.codexStatusValue = null;
+    this.codexStatusSnapshotValue = null;
     this.innerHTML = `
       <nav class="task-workspace-navigation" aria-label="Workspace">
         <button type="button" data-workspace-mode="tasks">
@@ -73,9 +73,9 @@ class CaffoldTaskWorkspaceNavigation extends HTMLElement {
     });
   }
 
-  setCodexStatus(status) {
+  setCodexStatusSnapshot(snapshot) {
     this.ensureRendered();
-    this.codexStatusValue = status ?? null;
+    this.codexStatusSnapshotValue = snapshot ?? null;
     this.syncCodexStatus();
   }
 
@@ -84,8 +84,8 @@ class CaffoldTaskWorkspaceNavigation extends HTMLElement {
     if (!button) {
       return;
     }
-    const state = codexState(this.codexStatusValue);
-    const readiness = formatCodexReadiness(this.codexStatusValue);
+    const state = codexState(this.codexStatusSnapshotValue);
+    const readiness = formatCodexReadiness(this.codexStatusSnapshotValue);
     const label = state === "available"
       ? "Settings — Codex ready"
       : state === "pending"

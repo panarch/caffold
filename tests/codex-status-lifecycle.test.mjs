@@ -3,7 +3,9 @@ import test from "node:test";
 import {
   CodexStatusLifecycle,
   PENDING_CODEX_TASK_OPERATIONS,
+  codexTaskRecoveryVisible,
   codexTaskOperationsPresentation,
+  createCodexStatusSnapshot,
 } from "../frontend/pages/(task-workspace)/codex-status.js";
 
 function deferred() {
@@ -36,20 +38,29 @@ function codexStatus(state, blocksTaskOperations = state !== "ready") {
   };
 }
 
-test("Codex Task operations use one fail-closed presentation snapshot", () => {
-  const pending = codexTaskOperationsPresentation(null);
-  const checkFailed = codexTaskOperationsPresentation({
-    readiness: null,
-    readinessLoadError: "status unavailable",
+function loadedSnapshot(status) {
+  return createCodexStatusSnapshot({ phase: "loaded", status });
+}
+
+test("Codex Task operations and recovery use distinct projections", () => {
+  const initial = createCodexStatusSnapshot();
+  const failed = createCodexStatusSnapshot({
+    phase: "failed",
+    error: "status unavailable",
   });
+  const blockingSnapshot = loadedSnapshot(codexStatus("updateRequired"));
+  const readySnapshot = loadedSnapshot(codexStatus("restartRequired", false));
+  const inconsistentSnapshot = loadedSnapshot(codexStatus("ready", true));
+  const pending = codexTaskOperationsPresentation(initial);
+  const checkFailed = codexTaskOperationsPresentation(failed);
   const blocking = codexTaskOperationsPresentation(
-    codexStatus("updateRequired"),
+    blockingSnapshot,
   );
   const ready = codexTaskOperationsPresentation(
-    codexStatus("restartRequired", false),
+    readySnapshot,
   );
   const inconsistentReady = codexTaskOperationsPresentation(
-    codexStatus("ready", true),
+    inconsistentSnapshot,
   );
 
   assert.deepEqual(
@@ -81,13 +92,18 @@ test("Codex Task operations use one fail-closed presentation snapshot", () => {
   assert.strictEqual(pending, PENDING_CODEX_TASK_OPERATIONS);
   assert.equal(Object.isFrozen(pending), true);
   assert.equal(Object.isFrozen(blocking), true);
+  assert.deepEqual(
+    [initial, failed, blockingSnapshot, readySnapshot, inconsistentSnapshot]
+      .map(codexTaskRecoveryVisible),
+    [false, true, true, false, true],
+  );
 });
 
 test("Codex status owns one restart request and refreshes canonical readiness", async () => {
   let status = codexStatus("restartRequired");
   let restartRequests = 0;
   const restartGate = deferred();
-  const statuses = [];
+  const snapshots = [];
   const restartStates = [];
   const lifecycle = new CodexStatusLifecycle({
     loadStatus: async () => status,
@@ -96,13 +112,13 @@ test("Codex status owns one restart request and refreshes canonical readiness", 
       await restartGate.promise;
       status = codexStatus("ready", false);
     },
-    onStatusChange: (value) => statuses.push(value),
+    onSnapshotChange: (value) => snapshots.push(value),
     onRestartStateChange: (value) => restartStates.push(value),
   });
 
   lifecycle.connect();
   await settle();
-  assert.equal(statuses.at(-1)?.readiness?.state, "restartRequired");
+  assert.equal(snapshots.at(-1)?.status?.readiness?.state, "restartRequired");
   assert.equal(lifecycle.canRestartRuntime(), true);
 
   const first = lifecycle.requestRuntimeRestart();
@@ -117,8 +133,35 @@ test("Codex status owns one restart request and refreshes canonical readiness", 
     restartStates.map((value) => value.state),
     ["restarting", "refreshing", "succeeded"],
   );
-  assert.equal(statuses.at(-1)?.readiness?.state, "ready");
+  assert.equal(snapshots.at(-1)?.status?.readiness?.state, "ready");
   assert.equal(lifecycle.canRestartRuntime(), false);
+});
+
+test("a status refresh keeps the last canonical status while checking", async () => {
+  const refreshGate = deferred();
+  let loadRequests = 0;
+  const lifecycle = new CodexStatusLifecycle({
+    loadStatus: async () => {
+      loadRequests += 1;
+      if (loadRequests === 1) {
+        return codexStatus("ready", false);
+      }
+      await refreshGate.promise;
+      return codexStatus("ready", false);
+    },
+    restartRuntime: async () => {},
+  });
+
+  lifecycle.connect();
+  await settle();
+  const refresh = lifecycle.refresh();
+
+  assert.equal(lifecycle.snapshot().phase, "checking");
+  assert.equal(lifecycle.snapshot().status?.readiness?.state, "ready");
+
+  refreshGate.resolve();
+  await refresh;
+  assert.equal(lifecycle.snapshot().phase, "loaded");
 });
 
 test("Codex restart reports a post-restart readiness refresh failure", async () => {

@@ -5,7 +5,6 @@ export function sameCodexStatus(left, right) {
 
   return (
     readinessSignature(left) === readinessSignature(right) &&
-    left.readinessLoadError === right.readinessLoadError &&
     left.account?.accountType === right.account?.accountType &&
     left.account?.email === right.account?.email &&
     left.account?.planType === right.account?.planType &&
@@ -13,6 +12,33 @@ export function sameCodexStatus(left, right) {
     usageSignature(left, "primary") === usageSignature(right, "primary") &&
     usageSignature(left, "secondary") === usageSignature(right, "secondary") &&
     formatResetCredits(left) === formatResetCredits(right)
+  );
+}
+
+export function createCodexStatusSnapshot({
+  phase = "checking",
+  status = null,
+  error = "",
+} = {}) {
+  return Object.freeze({
+    phase,
+    status: status ?? null,
+    error: `${error ?? ""}`,
+  });
+}
+
+export const INITIAL_CODEX_STATUS_SNAPSHOT = createCodexStatusSnapshot();
+
+export function sameCodexStatusSnapshot(left, right) {
+  return (
+    left === right ||
+    Boolean(
+      left &&
+      right &&
+      left.phase === right.phase &&
+      left.error === right.error &&
+      sameCodexStatus(left.status, right.status),
+    )
   );
 }
 
@@ -42,10 +68,11 @@ function daemonSignature(status) {
   ].join("|");
 }
 
-export function codexState(status) {
+export function codexState(snapshot) {
+  const status = snapshot?.status;
   const state = status?.readiness?.state;
   if (!state) {
-    return "pending";
+    return snapshot?.phase === "failed" ? "unavailable" : "pending";
   }
   if (state === "ready") {
     return "available";
@@ -73,7 +100,17 @@ export const PENDING_CODEX_TASK_OPERATIONS = taskOperationsPresentation({
   message: "Checking Codex readiness…",
 });
 
-export function codexTaskOperationsPresentation(status) {
+export function codexTaskOperationsPresentation(snapshot) {
+  const status = snapshot?.status;
+  if (snapshot?.phase === "failed") {
+    return taskOperationsPresentation({
+      phase: "checkFailed",
+      blocked: true,
+      title: "Codex readiness check failed",
+      message: "Codex readiness check failed.",
+    });
+  }
+
   if (!codexBlocksTaskOperations(status)) {
     return taskOperationsPresentation({
       phase: "ready",
@@ -84,23 +121,26 @@ export function codexTaskOperationsPresentation(status) {
   }
 
   if (!status?.readiness) {
-    return status?.readinessLoadError
-      ? taskOperationsPresentation({
-          phase: "checkFailed",
-          blocked: true,
-          title: "Codex readiness check failed",
-          message: "Codex readiness check failed.",
-        })
-      : PENDING_CODEX_TASK_OPERATIONS;
+    return PENDING_CODEX_TASK_OPERATIONS;
   }
 
-  const title = `Codex ${formatCodexReadiness(status).toLowerCase()}`;
+  const title = `Codex ${formatCodexReadiness(snapshot).toLowerCase()}`;
   return taskOperationsPresentation({
     phase: "blocking",
     blocked: true,
     title,
     message: `${title}.`,
   });
+}
+
+export function codexTaskRecoveryVisible(snapshot) {
+  if (snapshot?.phase === "failed") {
+    return true;
+  }
+  const status = snapshot?.status;
+  return Boolean(
+    status?.readiness && codexBlocksTaskOperations(status),
+  );
 }
 
 function taskOperationsPresentation({ phase, blocked, title, message }) {
@@ -113,10 +153,11 @@ function taskOperationsPresentation({ phase, blocked, title, message }) {
   });
 }
 
-export function formatCodexReadiness(status) {
+export function formatCodexReadiness(snapshot) {
+  const status = snapshot?.status;
   const state = status?.readiness?.state;
   if (!state) {
-    return status?.readinessLoadError ? "Check failed" : "Checking";
+    return snapshot?.phase === "failed" ? "Check failed" : "Checking";
   }
   if (state === "ready" && codexBlocksTaskOperations(status)) {
     return "Unavailable";

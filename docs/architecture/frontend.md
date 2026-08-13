@@ -110,11 +110,15 @@ workspace width. Foldable and phone presentation is owned by the same
 master/detail layout system.
 
 The workspace also owns the one browser lifecycle for backend-owned Codex
-readiness requests and forwards its snapshot to Tasks, Settings, and the
-workspace navigation. While `blocksTaskOperations` is true,
-`caffold-tasks-page` replaces ordinary Task content with persistent setup
-guidance and leaves Settings routable. Retry refreshes the canonical diagnosis;
-frontend code does not compare versions or classify stderr.
+readiness requests and forwards a request snapshot to Tasks, Settings, and the
+workspace navigation. That snapshot keeps frontend request phase (`checking`,
+`loaded`, or `failed`) separate from the canonical backend status payload. A
+refresh may retain the previous status while the request is checking. The
+initial check remains fail-closed for Task operations but preserves the stable
+Task shell; only a failed check or a loaded status with
+`blocksTaskOperations: true` presents the Task-owned recovery surface. Settings
+remains routable. Retry refreshes the canonical diagnosis; frontend code does
+not compare versions or classify stderr.
 
 One workspace-scoped Codex status lifecycle owns that request, the confirmed
 runtime-restart mutation, its request generations, and the post-restart status
@@ -300,6 +304,7 @@ frontend/
 |       |-- layout.js
 |       |-- codex-status.js
 |       |-- codex-status/
+|       |   |-- lifecycle.js
 |       |   |-- model.js
 |       |   |-- runtime-restart-lifecycle.js
 |       |   `-- components/
@@ -310,6 +315,7 @@ frontend/
 |       `-- tasks/
 |           |-- page.js
 |           `-- components/
+|               |-- codex-readiness-recovery.js
 |               |-- detail.js
 |               `-- detail/
 |                   |-- review.js
