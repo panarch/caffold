@@ -62,6 +62,10 @@ const ownership = new Map([
     ["caffold-task-command-dialog"],
   ],
   [
+    "pages/(task-workspace)/tasks/components/detail/conversation/command-summary.css",
+    ["caffold-task-command-summary"],
+  ],
+  [
     "pages/(task-workspace)/tasks/components/detail/conversation/work-details.css",
     ["caffold-task-work-details"],
   ],
@@ -312,7 +316,11 @@ const componentChildren = new Map([
       "caffold-task-github-layout",
     ],
   ],
-  ["caffold-task-conversation", ["caffold-task-work-details"]],
+  [
+    "caffold-task-conversation",
+    ["caffold-task-command-summary", "caffold-task-work-details"],
+  ],
+  ["caffold-task-work-details", ["caffold-task-command-summary"]],
   [
     "caffold-task-review",
     [

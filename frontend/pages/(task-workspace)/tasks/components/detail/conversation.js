@@ -7,6 +7,7 @@ import {
 } from "../../task-events.js";
 import { isTaskTransportStale } from "../../runtime-state.js";
 import { requestTaskImagePreview } from "../image-preview-dialog.js";
+import "./conversation/command-summary.js";
 import "./conversation/markdown.js";
 import "./conversation/work-details.js";
 import { renderConversation } from "./conversation/render.js";
@@ -26,8 +27,8 @@ class CaffoldTaskConversation extends HTMLElement {
       this.boundWorkDetailsDisclosureIntent,
     );
     this.addEventListener(
-      "caffold:task-work-details-intent",
-      this.boundWorkDetailsIntent,
+      "caffold:task-command-summary-intent",
+      this.boundCommandSummaryIntent,
     );
     this.render();
   }
@@ -48,8 +49,8 @@ class CaffoldTaskConversation extends HTMLElement {
       this.boundWorkDetailsDisclosureIntent,
     );
     this.removeEventListener(
-      "caffold:task-work-details-intent",
-      this.boundWorkDetailsIntent,
+      "caffold:task-command-summary-intent",
+      this.boundCommandSummaryIntent,
     );
     this.disconnectResizeObserver();
     this.stopActiveTurnClock();
@@ -89,8 +90,8 @@ class CaffoldTaskConversation extends HTMLElement {
       this.handleMarkdownRendered(event);
     this.boundWorkDetailsDisclosureIntent = (event) =>
       this.handleWorkDetailsDisclosureIntent(event);
-    this.boundWorkDetailsIntent = (event) =>
-      this.handleWorkDetailsIntent(event);
+    this.boundCommandSummaryIntent = (event) =>
+      this.handleCommandSummaryIntent(event);
   }
 
   setSnapshot(snapshot = {}) {
@@ -370,24 +371,14 @@ class CaffoldTaskConversation extends HTMLElement {
         src: image?.getAttribute("src"),
         name: action.dataset.imageName,
       });
-    } else if (action.dataset.conversationAction === "view-command-output") {
-      const commandKey = `${action.dataset.commandKey ?? ""}`;
-      const command = dedupeCanonicalEvents(this.snapshot.events).find(
-        (entry) =>
-          entry.type === "command_execution" &&
-          eventIdentityKey(entry) === commandKey,
-      );
-      if (command) {
-        this.dispatchIntent("command-output", { command, commandKey });
-      }
     }
   }
 
-  handleWorkDetailsIntent(event) {
+  handleCommandSummaryIntent(event) {
     const owner = event.target;
     if (
       !(owner instanceof HTMLElement) ||
-      owner.localName !== "caffold-task-work-details" ||
+      owner.localName !== "caffold-task-command-summary" ||
       !this.contains(owner)
     ) {
       return;
@@ -430,17 +421,11 @@ class CaffoldTaskConversation extends HTMLElement {
     );
   }
 
-  focusCommandSummary(commandKey) {
-    const button = [...this.querySelectorAll(".task-command > .task-command-summary")].find(
-      (entry) => entry.dataset.commandKey === commandKey,
+  focusCommandOutputAction(commandKey) {
+    const owner = [...this.querySelectorAll("caffold-task-command-summary")].find(
+      (entry) => entry.commandKey === commandKey,
     );
-    if (button) {
-      button.focus();
-      return true;
-    }
-    return [...this.querySelectorAll("caffold-task-work-details")].some(
-      (owner) => owner.focusCommandSummary(commandKey),
-    );
+    return owner?.focusAction() ?? false;
   }
 
   handleScroll() {

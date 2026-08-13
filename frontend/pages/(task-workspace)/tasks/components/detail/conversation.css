@@ -241,61 +241,6 @@ caffold-task-conversation {
     background: var(--surface-subtle);
   }
 
-  & .task-command-summary {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
-    align-items: center;
-    gap: var(--interface-space-4);
-    width: 100%;
-    min-width: 0;
-    min-height: var(--interface-control-size);
-    padding: 0.4375rem 0.6875rem;
-    border: 0;
-    border-radius: inherit;
-    background: transparent;
-    color: var(--text);
-    text-align: left;
-    cursor: pointer;
-  }
-
-  & .task-command-summary:hover,
-  & .task-command-summary:focus-visible {
-    background: var(--control-hover-bg);
-  }
-
-  & .task-command-summary-status,
-  & .task-command-summary-meta,
-  & .task-command-summary-action {
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-    white-space: nowrap;
-  }
-
-  & .task-command-summary-status[data-command-result="completed"] {
-    color: var(--success-strong);
-  }
-
-  & .task-command-summary-status[data-command-result="failed"] {
-    color: var(--danger);
-  }
-
-  & .task-command-summary-label {
-    min-width: 0;
-    overflow: hidden;
-    font-size: var(--code-font-size);
-    line-height: var(--code-line-height);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  & .task-command-summary-meta {
-    color: var(--muted);
-  }
-
-  & .task-command-summary-action {
-    color: var(--link-fg);
-  }
-
   & .task-message[data-message-role="user"] .task-message-header {
     justify-content: flex-end;
     padding-right: 0.625rem;
@@ -600,18 +545,6 @@ caffold-task-conversation {
   & .task-file-change p {
     margin: 0;
     padding: 0.625rem 0.6875rem;
-  }
-}
-
-@media (max-width: 620px) {
-  caffold-task-conversation {
-    & .task-command-summary {
-      grid-template-columns: auto minmax(0, 1fr) auto;
-    }
-
-    & .task-command-summary-meta {
-      display: none;
-    }
   }
 }
 
