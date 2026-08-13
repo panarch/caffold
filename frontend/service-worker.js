@@ -55,6 +55,8 @@ const APP_SHELL_ASSETS = [
   "/assets/watch.js",
   "/assets/pages/(task-workspace)/settings/appearance/page.css",
   "/assets/pages/(task-workspace)/settings/appearance/page.js",
+  "/assets/pages/(task-workspace)/settings/files/page.css",
+  "/assets/pages/(task-workspace)/settings/files/page.js",
   "/assets/pages/(task-workspace)/settings/notifications/page.css",
   "/assets/pages/(task-workspace)/settings/notifications/page.js",
   "/assets/pages/(task-workspace)/settings/notifications/lifecycle.js",

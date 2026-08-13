@@ -102,7 +102,15 @@ async function installTaskGitFixture(page, tasks = [taskRecord()]) {
         headRef: url.searchParams.get("head") || "feature/review",
         additions: 2,
         deletions: 1,
-        files: [{ path: "src/example.rs", repoRelativePath: "example.rs", status: "M" }],
+        files: [
+          { path: "src/alpha.rs", repoRelativePath: "alpha.rs", status: "A" },
+          { path: "src/example.rs", repoRelativePath: "example.rs", status: "M" },
+          {
+            path: "src/nested/module.rs",
+            repoRelativePath: "nested/module.rs",
+            status: "M",
+          },
+        ],
       },
     });
   });
@@ -146,7 +154,15 @@ async function installTaskGitFixture(page, tasks = [taskRecord()]) {
         commit: COMMIT,
         additions: 2,
         deletions: 1,
-        files: [{ path: "src/example.rs", repoRelativePath: "example.rs", status: "M" }],
+        files: [
+          { path: "src/alpha.rs", repoRelativePath: "alpha.rs", status: "A" },
+          { path: "src/example.rs", repoRelativePath: "example.rs", status: "M" },
+          {
+            path: "src/nested/module.rs",
+            repoRelativePath: "nested/module.rs",
+            status: "M",
+          },
+        ],
       },
     });
   });
@@ -186,6 +202,65 @@ async function chooseGitTool(page, kind) {
     .click();
   await expect(popover).toBeHidden();
 }
+
+async function rootTreeNames(tree) {
+  return tree
+    .locator(
+      ":scope .file-tree-rows > li:not([data-file-tree-parent-key]) .file-tree-name",
+    )
+    .allTextContents();
+}
+
+test("applies the global ordering to Compare and Commit without refetching", async ({
+  page,
+}) => {
+  const counts = await installTaskGitFixture(page);
+  await page.goto(
+    `/tasks/${THREAD_ID}/git/compare?base=origin%2Fmain&head=feature%2Freview`,
+  );
+  const compareTree = page.locator(
+    "caffold-git-compare-page caffold-file-tree",
+  );
+  await expect(compareTree).toBeVisible();
+  expect(await rootTreeNames(compareTree)).toEqual([
+    "nested",
+    "alpha.rs",
+    "example.rs",
+  ]);
+  expect(counts.compare).toBe(1);
+
+  await page.evaluate(async () => {
+    const { setFileSortMode } = await import("/assets/settings.js");
+    setFileSortMode("name");
+  });
+  expect(await rootTreeNames(compareTree)).toEqual([
+    "alpha.rs",
+    "example.rs",
+    "nested",
+  ]);
+  expect(counts.compare).toBe(1);
+
+  await page.goto(`/tasks/${THREAD_ID}/git/log?sha=${COMMIT.sha}`);
+  const commitTree = page.locator("caffold-commit-changes-tree caffold-file-tree");
+  await expect(commitTree).toBeVisible();
+  expect(await rootTreeNames(commitTree)).toEqual([
+    "alpha.rs",
+    "example.rs",
+    "nested",
+  ]);
+  expect(counts.commit).toBe(1);
+
+  await page.evaluate(async () => {
+    const { setFileSortMode } = await import("/assets/settings.js");
+    setFileSortMode("folders-first");
+  });
+  expect(await rootTreeNames(commitTree)).toEqual([
+    "nested",
+    "alpha.rs",
+    "example.rs",
+  ]);
+  expect(counts.commit).toBe(1);
+});
 
 test("reloads Task-scoped Compare and releases its refs watch while inactive", async ({ page }) => {
   const counts = await installTaskGitFixture(page);

@@ -13,10 +13,14 @@ import {
 
 const STORAGE_KEY = "caffold:settings";
 
-export const APPEARANCE_VERSION = 4;
+export const FILE_SORT_MODES = Object.freeze({
+  FOLDERS_FIRST: "folders-first",
+  NAME: "name",
+});
+export const DEFAULT_FILE_SORT_MODE = FILE_SORT_MODES.FOLDERS_FIRST;
 export { THEME_MODES, TYPEFACE_PRESETS };
 
-export const APPEARANCE_SETTINGS = Object.freeze({
+export const APPEARANCE_RANGE_SETTINGS = Object.freeze({
   interfaceScalePercent: Object.freeze({
     label: "Interface size",
     min: 90,
@@ -43,19 +47,19 @@ export const APPEARANCE_SETTINGS = Object.freeze({
   }),
 });
 
-export const DEFAULT_SETTINGS = Object.freeze({
-  appearanceVersion: APPEARANCE_VERSION,
+export const DEFAULT_APPEARANCE_SETTINGS = Object.freeze({
   themeMode: DEFAULT_THEME_MODE,
   typefacePreset: DEFAULT_TYPEFACE_PRESET,
-  interfaceScalePercent: APPEARANCE_SETTINGS.interfaceScalePercent.defaultValue,
-  conversationTextPx: APPEARANCE_SETTINGS.conversationTextPx.defaultValue,
-  codeTextPx: APPEARANCE_SETTINGS.codeTextPx.defaultValue,
+  interfaceScalePercent:
+    APPEARANCE_RANGE_SETTINGS.interfaceScalePercent.defaultValue,
+  conversationTextPx:
+    APPEARANCE_RANGE_SETTINGS.conversationTextPx.defaultValue,
+  codeTextPx: APPEARANCE_RANGE_SETTINGS.codeTextPx.defaultValue,
 });
 
-const LEGACY_TEXT_SIZES = Object.freeze({
-  compact: 13,
-  default: 15,
-  large: 17,
+export const DEFAULT_SETTINGS = Object.freeze({
+  ...DEFAULT_APPEARANCE_SETTINGS,
+  fileSortMode: DEFAULT_FILE_SORT_MODE,
 });
 
 let currentSettings = readStoredSettings();
@@ -67,8 +71,8 @@ export function getSettings() {
   return { ...currentSettings };
 }
 
-export function setAppearanceSetting(name, value) {
-  if (!Object.hasOwn(APPEARANCE_SETTINGS, name)) {
+export function setAppearanceRangeSetting(name, value) {
+  if (!Object.hasOwn(APPEARANCE_RANGE_SETTINGS, name)) {
     return getSettings();
   }
 
@@ -100,16 +104,31 @@ export function setThemeMode(value) {
   return getSettings();
 }
 
-export function resetAppearanceSetting(name) {
-  if (!Object.hasOwn(APPEARANCE_SETTINGS, name)) {
+export function setFileSortMode(value) {
+  const settings = normalizeSettings({
+    ...currentSettings,
+    fileSortMode: normalizeFileSortMode(value),
+  });
+  persistApplyAndPublish(settings);
+  return getSettings();
+}
+
+export function resetAppearanceRangeSetting(name) {
+  if (!Object.hasOwn(APPEARANCE_RANGE_SETTINGS, name)) {
     return getSettings();
   }
 
-  return setAppearanceSetting(name, APPEARANCE_SETTINGS[name].defaultValue);
+  return setAppearanceRangeSetting(
+    name,
+    APPEARANCE_RANGE_SETTINGS[name].defaultValue,
+  );
 }
 
 export function resetAppearanceSettings() {
-  const settings = { ...DEFAULT_SETTINGS };
+  const settings = normalizeSettings({
+    ...currentSettings,
+    ...DEFAULT_APPEARANCE_SETTINGS,
+  });
   persistApplyAndPublish(settings);
   return getSettings();
 }
@@ -135,36 +154,29 @@ export function applySettings(settings = currentSettings) {
 }
 
 export function normalizeSettings(value) {
-  const legacyConversationTextPx = legacyTextSize(value?.taskDetailSize);
-  const legacyCodeTextPx = legacyTextSize(value?.codeSize);
-  const conversationTextPx = hasSetting(value, "conversationTextPx")
-    ? value.conversationTextPx
-    : legacyConversationTextPx;
-  const codeTextPx = hasSetting(value, "codeTextPx")
-    ? value.codeTextPx
-    : legacyCodeTextPx;
-
   return {
-    appearanceVersion: APPEARANCE_VERSION,
     themeMode: normalizeThemeMode(value?.themeMode),
     typefacePreset: normalizeTypefacePreset(value?.typefacePreset),
     interfaceScalePercent: normalizeSettingValue(
       value?.interfaceScalePercent,
-      APPEARANCE_SETTINGS.interfaceScalePercent,
+      APPEARANCE_RANGE_SETTINGS.interfaceScalePercent,
     ),
     conversationTextPx: normalizeSettingValue(
-      conversationTextPx,
-      APPEARANCE_SETTINGS.conversationTextPx,
+      value?.conversationTextPx,
+      APPEARANCE_RANGE_SETTINGS.conversationTextPx,
     ),
     codeTextPx: normalizeSettingValue(
-      codeTextPx,
-      APPEARANCE_SETTINGS.codeTextPx,
+      value?.codeTextPx,
+      APPEARANCE_RANGE_SETTINGS.codeTextPx,
     ),
+    fileSortMode: normalizeFileSortMode(value?.fileSortMode),
   };
 }
 
-function hasSetting(value, name) {
-  return value !== null && typeof value === "object" && Object.hasOwn(value, name);
+export function normalizeFileSortMode(value) {
+  return Object.values(FILE_SORT_MODES).includes(value)
+    ? value
+    : DEFAULT_FILE_SORT_MODE;
 }
 
 function normalizeSettingValue(value, definition) {
@@ -176,10 +188,6 @@ function normalizeSettingValue(value, definition) {
     definition.min +
     Math.round((value - definition.min) / definition.step) * definition.step;
   return Math.min(definition.max, Math.max(definition.min, stepped));
-}
-
-function legacyTextSize(value) {
-  return typeof value === "string" ? LEGACY_TEXT_SIZES[value] : undefined;
 }
 
 function readStoredSettings() {

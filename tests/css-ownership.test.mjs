@@ -226,6 +226,10 @@ const ownership = new Map([
     ["caffold-settings-appearance-page"],
   ],
   [
+    "pages/(task-workspace)/settings/files/page.css",
+    ["caffold-settings-files-page"],
+  ],
+  [
     "pages/(task-workspace)/settings/notifications/page.css",
     ["caffold-settings-notifications-page"],
   ],
@@ -274,6 +278,7 @@ const componentChildren = new Map([
     "caffold-settings-workspace",
     [
       "caffold-settings-appearance-page",
+      "caffold-settings-files-page",
       "caffold-settings-codex-page",
       "caffold-settings-about-page",
     ],
@@ -599,6 +604,7 @@ test("workspace navigation uses in-flow pane ownership without padding compensat
     "pages/(task-workspace)/tasks/components/navigator.css",
     "pages/(task-workspace)/settings/navigator.css",
     "pages/(task-workspace)/settings/appearance/page.css",
+    "pages/(task-workspace)/settings/files/page.css",
     "pages/(task-workspace)/settings/notifications/page.css",
     "pages/(task-workspace)/settings/codex/page.css",
     "pages/(task-workspace)/settings/about/page.css",

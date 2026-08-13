@@ -35,6 +35,7 @@ Task-scoped routes:
 /tasks/:threadId/github/pulls/:number/files?page=...&file=...
 /settings
 /settings/appearance
+/settings/files
 /settings/notifications
 /settings/codex
 /settings/about

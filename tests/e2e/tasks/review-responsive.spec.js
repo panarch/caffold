@@ -335,9 +335,9 @@ test("keeps Review reflowed at the appearance extremes", async ({ page }, testIn
     { interfaceScalePercent: 120, conversationTextPx: 20, codeTextPx: 20 },
   ]) {
     await page.evaluate(async (appearance) => {
-      const { setAppearanceSetting } = await import("/assets/settings.js");
+      const { setAppearanceRangeSetting } = await import("/assets/settings.js");
       for (const [name, value] of Object.entries(appearance)) {
-        setAppearanceSetting(name, value);
+        setAppearanceRangeSetting(name, value);
       }
     }, settings);
     const layout = await taskReview.evaluate((review) => {
@@ -412,8 +412,8 @@ test("keeps compact Task segments pixel-aligned on Retina displays", async ({
 
     for (const interfaceScalePercent of [90, 100, 105, 120]) {
       await page.evaluate(async (value) => {
-        const { setAppearanceSetting } = await import("/assets/settings.js");
-        setAppearanceSetting("interfaceScalePercent", value);
+        const { setAppearanceRangeSetting } = await import("/assets/settings.js");
+        setAppearanceRangeSetting("interfaceScalePercent", value);
       }, interfaceScalePercent);
       const { devicePixelRatio, segments } = await page.evaluate(() => ({
         devicePixelRatio: window.devicePixelRatio,

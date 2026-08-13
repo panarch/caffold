@@ -16,11 +16,15 @@ async function importFreshSettings(label) {
   return import(url.href);
 }
 
-test("appearance settings assets stay in the application shell", () => {
+test("settings assets stay in the application shell", () => {
   assert.match(readFrontend("app.js"), /import "\.\/settings\.js";/);
   assert.match(
     readFrontend("styles.css"),
     /@import "\.\/pages\/\(task-workspace\)\/settings\/appearance\/page\.css";/,
+  );
+  assert.match(
+    readFrontend("styles.css"),
+    /@import "\.\/pages\/\(task-workspace\)\/settings\/files\/page\.css";/,
   );
 
   const serviceWorker = readFrontend("service-worker.js");
@@ -37,9 +41,17 @@ test("appearance settings assets stay in the application shell", () => {
     serviceWorker,
     /"\/assets\/pages\/\(task-workspace\)\/settings\/appearance\/page\.css"/,
   );
+  assert.match(
+    serviceWorker,
+    /"\/assets\/pages\/\(task-workspace\)\/settings\/files\/page\.js"/,
+  );
+  assert.match(
+    serviceWorker,
+    /"\/assets\/pages\/\(task-workspace\)\/settings\/files\/page\.css"/,
+  );
 });
 
-test("normalizes v4 values, malformed input, ranges, and steps", async () => {
+test("normalizes settings, malformed input, ranges, steps, and file order", async () => {
   const { DEFAULT_SETTINGS, normalizeSettings } =
     await importFreshSettings("normalization");
 
@@ -59,14 +71,15 @@ test("normalizes v4 values, malformed input, ranges, and steps", async () => {
       interfaceScalePercent: 117,
       conversationTextPx: 12.5,
       codeTextPx: 24.4,
+      fileSortMode: "name",
     }),
     {
-      appearanceVersion: 4,
       themeMode: "dark",
       typefacePreset: "d2-coding",
       interfaceScalePercent: 115,
       conversationTextPx: 13,
       codeTextPx: 20,
+      fileSortMode: "name",
     },
   );
   assert.deepEqual(
@@ -78,18 +91,19 @@ test("normalizes v4 values, malformed input, ranges, and steps", async () => {
       codeTextPx: 11.2,
     }),
     {
-      appearanceVersion: 4,
       themeMode: "system",
       typefacePreset: "d2-coding",
       interfaceScalePercent: 120,
       conversationTextPx: 20,
       codeTextPx: 12,
+      fileSortMode: "folders-first",
     },
   );
 });
 
-test("preserves legacy text choices but resets conflicting density choices", async () => {
-  const { normalizeSettings } = await importFreshSettings("legacy");
+test("drops obsolete fields instead of maintaining a migration layer", async () => {
+  const { DEFAULT_SETTINGS, normalizeSettings } =
+    await importFreshSettings("obsolete-fields");
 
   assert.deepEqual(
     normalizeSettings({
@@ -98,35 +112,11 @@ test("preserves legacy text choices but resets conflicting density choices", asy
       taskDetailSize: "large",
       codeSize: "default",
     }),
-    {
-      appearanceVersion: 4,
-      themeMode: "system",
-      typefacePreset: "d2-coding",
-      interfaceScalePercent: 100,
-      conversationTextPx: 17,
-      codeTextPx: 15,
-    },
-  );
-  assert.deepEqual(
-    normalizeSettings({
-      taskDetailSize: "large",
-      codeSize: "large",
-      conversationTextPx: null,
-      codeTextPx: "17",
-    }),
-    {
-      appearanceVersion: 4,
-      themeMode: "system",
-      typefacePreset: "d2-coding",
-      interfaceScalePercent: 100,
-      conversationTextPx: 14,
-      codeTextPx: 13,
-    },
-    "present fields take precedence over legacy values even when malformed",
+    DEFAULT_SETTINGS,
   );
 });
 
-test("initial load writes normalized v4 state without publishing a change", async () => {
+test("initial load rewrites obsolete state without publishing a change", async () => {
   const stored = JSON.stringify({
     fileTreeSize: "compact",
     taskListSize: "large",
@@ -146,14 +136,7 @@ test("initial load writes normalized v4 state without publishing a change", asyn
     properties,
     async () => {
       const settings = await importFreshSettings("initial-load");
-      assert.deepEqual(settings.getSettings(), {
-        appearanceVersion: 4,
-        themeMode: "system",
-        typefacePreset: "d2-coding",
-        interfaceScalePercent: 100,
-        conversationTextPx: 17,
-        codeTextPx: 13,
-      });
+      assert.deepEqual(settings.getSettings(), settings.DEFAULT_SETTINGS);
     },
   );
 
@@ -162,23 +145,23 @@ test("initial load writes normalized v4 state without publishing a change", asyn
     [
       "caffold:settings",
       {
-        appearanceVersion: 4,
         themeMode: "system",
         typefacePreset: "d2-coding",
         interfaceScalePercent: 100,
-        conversationTextPx: 17,
+        conversationTextPx: 14,
         codeTextPx: 13,
+        fileSortMode: "folders-first",
       },
     ],
   ]);
   assert.equal(properties.get("--interface-scale"), "1");
-  assert.equal(properties.get("--conversation-font-size"), "17px");
+  assert.equal(properties.get("--conversation-font-size"), "14px");
   assert.equal(properties.get("--code-font-size"), "13px");
   assert.match(properties.get("--font-ui"), /Caffold D2 Coding/);
   assert.match(properties.get("--font-code"), /Caffold D2 Coding/);
 });
 
-test("malformed storage resets and persists the v4 defaults silently", async () => {
+test("malformed storage resets and persists the defaults silently", async () => {
   const writes = [];
   const events = [];
   const properties = new Map();
@@ -201,18 +184,18 @@ test("malformed storage resets and persists the v4 defaults silently", async () 
     [
       "caffold:settings",
       {
-        appearanceVersion: 4,
         themeMode: "system",
         typefacePreset: "d2-coding",
         interfaceScalePercent: 100,
         conversationTextPx: 14,
         codeTextPx: 13,
+        fileSortMode: "folders-first",
       },
     ],
   ]);
 });
 
-test("user updates and resets publish one normalized snapshot each", async () => {
+test("appearance reset preserves the global file ordering preference", async () => {
   const events = [];
   const properties = new Map();
 
@@ -225,27 +208,58 @@ test("user updates and resets publish one normalized snapshot each", async () =>
     properties,
     async () => {
       const settings = await importFreshSettings("updates");
-      settings.setAppearanceSetting("interfaceScalePercent", 113);
-      settings.setAppearanceSetting("conversationTextPx", 19.6);
-      settings.resetAppearanceSetting("conversationTextPx");
+      settings.setFileSortMode("name");
+      settings.setAppearanceRangeSetting("interfaceScalePercent", 113);
+      settings.setAppearanceRangeSetting("conversationTextPx", 19.6);
+      settings.resetAppearanceRangeSetting("conversationTextPx");
       settings.resetAppearanceSettings();
 
-      assert.deepEqual(settings.getSettings(), settings.DEFAULT_SETTINGS);
+      assert.deepEqual(settings.getSettings(), {
+        ...settings.DEFAULT_SETTINGS,
+        fileSortMode: "name",
+      });
     },
   );
 
-  assert.equal(events.length, 4);
+  assert.equal(events.length, 5);
   assert.deepEqual(events[0].detail.settings, {
-    appearanceVersion: 4,
     themeMode: "system",
     typefacePreset: "d2-coding",
-    interfaceScalePercent: 115,
+    interfaceScalePercent: 100,
     conversationTextPx: 14,
     codeTextPx: 13,
+    fileSortMode: "name",
   });
   assert.equal(properties.get("--interface-scale"), "1");
   assert.equal(properties.get("--conversation-font-size"), "14px");
   assert.equal(properties.get("--code-font-size"), "13px");
+});
+
+test("invalid file ordering values normalize to folders first", async () => {
+  const events = [];
+  const properties = new Map();
+
+  await withBrowserGlobals(
+    {
+      getItem: () => JSON.stringify({ fileSortMode: "unknown" }),
+      setItem: () => {},
+    },
+    events,
+    properties,
+    async () => {
+      const settings = await importFreshSettings("invalid-file-order");
+      assert.equal(settings.getSettings().fileSortMode, "folders-first");
+      settings.setFileSortMode("name");
+      assert.equal(settings.getSettings().fileSortMode, "name");
+      settings.setFileSortMode(false);
+      assert.equal(settings.getSettings().fileSortMode, "folders-first");
+    },
+  );
+
+  assert.deepEqual(
+    events.map((event) => event.detail.settings.fileSortMode),
+    ["name", "folders-first"],
+  );
 });
 
 test("storage failure does not roll back the live session value", async () => {
@@ -263,7 +277,7 @@ test("storage failure does not roll back the live session value", async () => {
     properties,
     async () => {
       const settings = await importFreshSettings("storage-failure");
-      settings.setAppearanceSetting("codeTextPx", 18);
+      settings.setAppearanceRangeSetting("codeTextPx", 18);
       assert.equal(settings.getSettings().codeTextPx, 18);
     },
   );
