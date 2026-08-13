@@ -3,7 +3,7 @@ import { routeDomain, routeTarget } from "../../navigation-routes.js";
 import {
   CODEX_RUNTIME_RESTART_REQUEST_EVENT,
   CODEX_STATUS_REFRESH_REQUEST_EVENT,
-  CodexStatusLifecycle,
+  createCodexStatusLifecycle,
 } from "./codex-status.js";
 import {
   CODEX_RUNTIME_RESTART_CONFIRMED_EVENT,
@@ -52,13 +52,14 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.navigationPaneWidth = NAVIGATION_PANE_DEFAULT_WIDTH;
     this.globalListenersAttached = false;
     this.currentOpenOptions = {};
+    this.routeActivationRequested = false;
     this.pendingCodexTaskRoute = null;
-    this.codexStatusValue = null;
     this.codexRestartStateValue = { state: "idle", message: "" };
-    this.codexStatusLifecycle = new CodexStatusLifecycle({
-      onStatusChange: (status) => this.setCodexStatus(status),
+    this.codexStatusLifecycle = createCodexStatusLifecycle({
+      onSnapshotChange: (snapshot) => this.setCodexStatusSnapshot(snapshot),
       onRestartStateChange: (state) => this.setCodexRestartState(state),
     });
+    this.codexStatusSnapshotValue = this.codexStatusLifecycle.snapshot();
     this.boundResize = () => this.syncNavigationPaneWidth();
     this.boundPointerMove = (event) => this.resizeNavigationPane(event);
     this.boundPointerUp = () => this.stopNavigationPaneResize();
@@ -127,12 +128,9 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.settingsWorkspace.ensureRendered();
     this.tasksPage.connectTaskNavigator(this.taskNavigator);
     this.settingsWorkspace.connectSettingsNavigator(this.settingsNavigator);
+    this.setCodexStatusSnapshot(this.codexStatusSnapshotValue);
     this.tasksPage.setCodexRestartState(this.codexRestartStateValue);
     this.settingsWorkspace.setCodexRestartState(this.codexRestartStateValue);
-    this.toggleAttribute(
-      "data-codex-readiness-blocked",
-      this.tasksPage.codexOperationsBlocked(),
-    );
     this.renderIcons();
 
     this.backButton.addEventListener("click", () => {
@@ -283,6 +281,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
   }
 
   async openRoute(route, options = {}) {
+    this.routeActivationRequested = true;
     this.currentOpenOptions = { ...options };
     this.prepareRoute(route, options);
     if (this.mode === "settings") {
@@ -312,13 +311,14 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.tasksPage.adoptCreatedDetail(detail);
   }
 
-  setCodexStatus(status) {
+  setCodexStatusSnapshot(snapshot) {
     this.ensureRendered();
-    const nextStatus = status ?? null;
-    this.codexStatusValue = nextStatus;
-    const becameAvailable = this.tasksPage.setCodexStatus(nextStatus);
-    this.settingsWorkspace.setCodexStatus(nextStatus);
-    this.navigation.setCodexStatus(nextStatus);
+    const nextSnapshot = snapshot ?? this.codexStatusLifecycle.snapshot();
+    const nextStatus = nextSnapshot.status;
+    this.codexStatusSnapshotValue = nextSnapshot;
+    const becameAvailable = this.tasksPage.setCodexStatusSnapshot(nextSnapshot);
+    this.settingsWorkspace.setCodexStatusSnapshot(nextSnapshot);
+    this.navigation.setCodexStatusSnapshot(nextSnapshot);
     if (
       nextStatus?.readiness &&
       nextStatus.readiness.state !== "restartRequired"
@@ -326,10 +326,14 @@ class CaffoldTaskWorkspace extends HTMLElement {
       this.codexRuntimeRestartDialog.close();
     }
     this.toggleAttribute(
-      "data-codex-readiness-blocked",
-      this.tasksPage.codexOperationsBlocked(),
+      "data-codex-recovery-visible",
+      this.tasksPage.codexRecoveryVisible(),
     );
-    if (this.tasksPage.codexOperationsBlocked() && this.mode === "tasks") {
+    if (
+      this.routeActivationRequested &&
+      this.tasksPage.codexOperationsBlocked() &&
+      this.mode === "tasks"
+    ) {
       this.pendingCodexTaskRoute = {
         route: { ...this.route },
         options: { ...this.currentOpenOptions },

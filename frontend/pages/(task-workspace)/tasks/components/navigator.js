@@ -240,9 +240,9 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.activeTaskList?.closeStream();
   }
 
-  setCodexStatus(status) {
+  setCodexStatusSnapshot(snapshot) {
     this.ensureChildren();
-    const presentation = codexTaskOperationsPresentation(status);
+    const presentation = codexTaskOperationsPresentation(snapshot);
     if (this.codexTaskOperations.key === presentation.key) {
       return;
     }

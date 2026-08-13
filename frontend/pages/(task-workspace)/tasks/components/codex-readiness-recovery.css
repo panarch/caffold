@@ -1,0 +1,192 @@
+caffold-codex-readiness-recovery {
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+
+  &[hidden] {
+    display: none;
+  }
+
+  & > .codex-readiness-surface {
+    height: 100%;
+    min-height: 0;
+    overflow: auto;
+    padding: var(--interface-space-10);
+    font-size: var(--interface-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .codex-readiness-card {
+    display: grid;
+    gap: var(--interface-space-6);
+    width: min(100%, 42rem);
+    min-width: 0;
+    margin: clamp(var(--interface-space-8), 8vh, 5rem) auto 0;
+    padding: var(--interface-space-10);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-subtle);
+  }
+
+  & .codex-readiness-eyebrow,
+  & .codex-readiness-card h2,
+  & .codex-readiness-card p,
+  & .codex-readiness-versions {
+    margin: 0;
+  }
+
+  & .codex-readiness-eyebrow {
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  & .codex-readiness-card h2 {
+    font-size: var(--interface-heading-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .codex-readiness-card > p:not(.codex-readiness-eyebrow) {
+    color: var(--muted);
+  }
+
+  & .codex-readiness-versions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--interface-space-4) var(--interface-space-10);
+  }
+
+  & .codex-readiness-versions > div {
+    display: grid;
+    gap: var(--interface-space-1);
+    min-width: 6rem;
+  }
+
+  & .codex-readiness-versions dt {
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+  }
+
+  & .codex-readiness-versions dd {
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  & .codex-readiness-command {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--interface-space-4);
+    min-width: 0;
+    padding: var(--interface-space-5);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    background: var(--surface);
+  }
+
+  & .codex-readiness-command code {
+    min-width: 0;
+    font-size: var(--interface-meta-font-size);
+    overflow-wrap: anywhere;
+  }
+
+  & .codex-readiness-command [data-readiness-command-label] {
+    grid-column: 1 / -1;
+    color: var(--text);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .codex-readiness-runtime-requirement code {
+    color: inherit;
+    font-size: inherit;
+  }
+
+  & .codex-readiness-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--interface-space-4);
+  }
+
+  & .codex-readiness-actions button,
+  & .codex-readiness-command button,
+  & .codex-readiness-actions a {
+    min-height: var(--interface-control-size);
+    padding: 0 var(--interface-control-padding-inline);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--control-fg);
+    font: inherit;
+    font-size: var(--interface-font-size);
+    line-height: var(--interface-control-size);
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  & .codex-readiness-actions button:hover,
+  & .codex-readiness-actions button:focus-visible,
+  & .codex-readiness-command button:hover,
+  & .codex-readiness-command button:focus-visible,
+  & .codex-readiness-actions a:hover,
+  & .codex-readiness-actions a:focus-visible {
+    border-color: var(--border-strong);
+    outline: none;
+    background: var(--control-hover-bg);
+  }
+
+  & .codex-readiness-actions .codex-readiness-primary-action {
+    border-color: var(--primary-action-border);
+    background: var(--primary-action-bg);
+    color: var(--primary-action-fg);
+  }
+
+  & .codex-readiness-actions .codex-readiness-primary-action:hover,
+  & .codex-readiness-actions .codex-readiness-primary-action:focus-visible {
+    border-color: var(--border-strong);
+    background: var(--primary-action-bg);
+  }
+
+  & .codex-readiness-restart-message {
+    color: var(--success);
+    font-size: var(--interface-meta-font-size);
+  }
+
+  & .codex-readiness-restart-message[data-state="failed"] {
+    color: var(--danger);
+  }
+
+  & .codex-readiness-diagnostic {
+    padding-top: var(--interface-space-5);
+    border-top: 1px solid var(--border-subtle);
+    font-size: var(--interface-meta-font-size);
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 520px) {
+  caffold-codex-readiness-recovery {
+    & > .codex-readiness-surface {
+      padding: var(--interface-space-6);
+    }
+
+    & .codex-readiness-card {
+      margin-top: var(--interface-space-6);
+      padding: var(--interface-space-7);
+    }
+
+    & .codex-readiness-command {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    & .codex-readiness-command button {
+      justify-self: start;
+    }
+  }
+}

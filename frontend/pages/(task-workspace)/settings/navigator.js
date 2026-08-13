@@ -18,7 +18,7 @@ class CaffoldSettingsNavigator extends HTMLElement {
     }
     this.initialized = true;
     this.selectedSection = "";
-    this.codexStatusValue = null;
+    this.codexStatusSnapshotValue = null;
     this.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-settings-section]");
       if (!button) {
@@ -46,8 +46,8 @@ class CaffoldSettingsNavigator extends HTMLElement {
     this.syncSelection();
   }
 
-  setCodexStatus(status) {
-    this.codexStatusValue = status ?? null;
+  setCodexStatusSnapshot(snapshot) {
+    this.codexStatusSnapshotValue = snapshot ?? null;
     this.syncCodexStatus();
   }
 
@@ -86,8 +86,8 @@ class CaffoldSettingsNavigator extends HTMLElement {
     if (!button) {
       return;
     }
-    const state = codexState(this.codexStatusValue);
-    const readiness = formatCodexReadiness(this.codexStatusValue);
+    const state = codexState(this.codexStatusSnapshotValue);
+    const readiness = formatCodexReadiness(this.codexStatusSnapshotValue);
     const label = state === "available"
       ? "Codex — ready"
       : state === "pending"

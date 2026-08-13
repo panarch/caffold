@@ -159,7 +159,7 @@ test("identifies a standalone install without required daemon commands", async (
   await expect(setup).toContainText("official standalone Codex CLI");
 });
 
-test("keeps the loading diagnosis visible without flashing the composer", async ({ page }) => {
+test("keeps the stable Task shell while readiness is checking", async ({ page }, testInfo) => {
   let releaseStatus;
   const statusGate = new Promise((resolve) => {
     releaseStatus = resolve;
@@ -186,11 +186,13 @@ test("keeps the loading diagnosis visible without flashing the composer", async 
   });
 
   await page.goto("/");
-  const loading = page.locator(".codex-readiness-check");
-  await expect(loading).toBeVisible();
-  await expect(loading).toContainText("Checking Codex readiness");
-  await expect(loading.getByRole("button", { name: "Open Settings" })).toBeEnabled();
-  await expect(page.locator("caffold-task-new")).toBeHidden();
+  const recovery = page.locator("caffold-codex-readiness-recovery");
+  await expect(recovery).toBeHidden();
+  await expect(page.locator(".task-workspace-master-pane")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Settings" })).toHaveCount(0);
+  expect(await page.locator("caffold-task-new").evaluate(
+    (element) => element.hidden,
+  )).toBe(false);
   const navigatorMessage = page.locator(
     "caffold-active-task-list .task-section-message",
   );
@@ -202,9 +204,14 @@ test("keeps the loading diagnosis visible without flashing the composer", async 
     page.getByText("Codex setup required.", { exact: true }),
   ).toHaveCount(0);
   expect(taskRequests).toBe(0);
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "codex-readiness-checking-task-shell",
+  );
 
   releaseStatus();
-  await expect(page.locator(".codex-readiness-surface")).toBeHidden();
+  await expect(recovery).toBeHidden();
   await expect.poll(() => taskRequests).toBeGreaterThan(0);
   await expect(navigatorMessage).toHaveText("Loading...");
 
@@ -212,6 +219,37 @@ test("keeps the loading diagnosis visible without flashing the composer", async 
   await expect(navigatorMessage).toHaveText("No Caffold tasks yet.");
   await expect(newTask).toBeEnabled();
   await expect(newTask).toHaveAttribute("title", "New Task");
+});
+
+test("waits for explicit route activation when readiness settles first", async ({ page }) => {
+  await page.goto("/");
+
+  const routeOpens = await page.evaluate(async (status) => {
+    const Workspace = customElements.get("caffold-task-workspace");
+    const workspace = new Workspace();
+    workspace.ensureRendered();
+    workspace.codexRuntimeRestartDialog.close = () => {};
+    workspace.prepareRoute = () => {};
+    let opens = 0;
+    workspace.tasksPage.openRoute = async () => {
+      opens += 1;
+      return null;
+    };
+
+    workspace.setCodexStatusSnapshot({
+      phase: "loaded",
+      status,
+      error: "",
+    });
+    const beforeActivation = opens;
+    await workspace.openRoute({ kind: "tasks" });
+    return { beforeActivation, afterActivation: opens };
+  }, mockCodexStatus());
+
+  expect(routeOpens).toEqual({
+    beforeActivation: 0,
+    afterActivation: 1,
+  });
 });
 
 test("a readiness load failure is not presented as a setup requirement", async ({ page }) => {
@@ -418,7 +456,11 @@ test("a blocking transition releases the Task list and disables existing actions
     .toBe(true);
 
   await page.evaluate((status) => {
-    document.querySelector("caffold-task-workspace").setCodexStatus(status);
+    document.querySelector("caffold-task-workspace").setCodexStatusSnapshot({
+      phase: "loaded",
+      status,
+      error: "",
+    });
   }, statusFor("updateRequired"));
 
   await expect(page.locator('[data-readiness-state="updateRequired"]')).toBeVisible();

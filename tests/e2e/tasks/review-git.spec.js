@@ -221,7 +221,7 @@ test("reviews working tree changes through the canonical Review route", async ({
   await expect(plannerChange).toHaveAttribute("title", "planner.rs");
   await expect(plannerChange).toHaveAttribute(
     "aria-label",
-    "Show diff for planner.rs",
+    "Modified. Show diff for planner.rs",
   );
 
   await plannerChange.click();

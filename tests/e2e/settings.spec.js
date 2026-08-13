@@ -91,11 +91,14 @@ test("shows Codex versions and explicitly restarts an outdated runtime", async (
     return element.scrollTop;
   });
   await settings.evaluate((element) => {
-    element.status = {
-      ...element.status,
-      readiness: {
-        ...element.status.readiness,
-        diagnosticMessage: "The canonical status was refreshed while confirmation stayed open.",
+    element.snapshot = {
+      ...element.snapshot,
+      status: {
+        ...element.snapshot.status,
+        readiness: {
+          ...element.snapshot.status.readiness,
+          diagnosticMessage: "The canonical status was refreshed while confirmation stayed open.",
+        },
       },
     };
   });
@@ -115,7 +118,7 @@ test("shows Codex versions and explicitly restarts an outdated runtime", async (
   await refresh.focus();
   const refreshNode = await refresh.elementHandle();
   await settings.evaluate((element) => {
-    element.status = { ...element.status };
+    element.snapshot = { ...element.snapshot };
   });
   expect(await refreshNode.evaluate((element) => (
     element.isConnected && document.activeElement === element

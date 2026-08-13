@@ -144,9 +144,9 @@ class CaffoldTaskNew extends HTMLElement {
     this.syncComposer();
   }
 
-  setCodexStatus(status) {
+  setCodexStatusSnapshot(snapshot) {
     this.ensureState();
-    const blocked = codexBlocksTaskOperations(status);
+    const blocked = codexBlocksTaskOperations(snapshot?.status);
     if (this.codexOperationsBlocked === blocked) {
       return;
     }

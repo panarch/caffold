@@ -295,10 +295,13 @@ test("archived task deletion dialog owns its modal state and markup", () => {
   assert.match(deleteDialog, /TASK_ARCHIVED_DELETE_CONFIRMED_EVENT/);
 });
 
-test("Codex status exposes feature behavior while its mounted dialog stays explicit", () => {
+test("Codex status and Task recovery keep explicit lifecycle and UI owners", () => {
   const workspace = readFrontend("pages/(task-workspace)/layout.js");
   const owner = readFrontend("pages/(task-workspace)/codex-status.js");
   const model = readFrontend("pages/(task-workspace)/codex-status/model.js");
+  const lifecycle = readFrontend(
+    "pages/(task-workspace)/codex-status/lifecycle.js",
+  );
   const restartLifecycle = readFrontend(
     "pages/(task-workspace)/codex-status/runtime-restart-lifecycle.js",
   );
@@ -306,6 +309,9 @@ test("Codex status exposes feature behavior while its mounted dialog stays expli
     "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js",
   );
   const tasks = readFrontend("pages/(task-workspace)/tasks/page.js");
+  const taskRecovery = readFrontend(
+    "pages/(task-workspace)/tasks/components/codex-readiness-recovery.js",
+  );
   const settings = readFrontend(
     "pages/(task-workspace)/settings/codex/page.js",
   );
@@ -322,14 +328,25 @@ test("Codex status exposes feature behavior while its mounted dialog stays expli
   assert.match(owner, /from "\.\/codex-status\/model\.js"/);
   assert.match(
     owner,
-    /from "\.\/codex-status\/runtime-restart-lifecycle\.js"/,
+    /from "\.\/codex-status\/lifecycle\.js"/,
   );
-  assert.match(owner, /class CodexStatusLifecycle/);
+  assert.match(owner, /function createCodexStatusLifecycle/);
+  assert.doesNotMatch(owner, /class CodexStatusLifecycle/);
   assert.doesNotMatch(owner, /export \*/);
   assert.match(model, /function codexBlocksTaskOperations/);
+  assert.match(model, /function codexTaskRecoveryVisible/);
+  assert.match(lifecycle, /class CodexStatusLifecycle/);
+  assert.match(lifecycle, /new CodexRuntimeRestartLifecycle/);
   assert.match(restartLifecycle, /class CodexRuntimeRestartLifecycle/);
   assert.match(restartDialog, /<dialog/);
   assert.match(restartDialog, /customElements\.define\(/);
+  assert.match(tasks, /import "\.\/components\/codex-readiness-recovery\.js"/);
+  assert.match(tasks, /<caffold-codex-readiness-recovery hidden>/);
+  assert.doesNotMatch(tasks, /codex-readiness-card|CODEX_INSTALL_COMMAND/);
+  assert.match(taskRecovery, /class CaffoldCodexReadinessRecovery/);
+  assert.match(taskRecovery, /codex-readiness-card/);
+  assert.match(taskRecovery, /CODEX_STATUS_REFRESH_REQUEST_EVENT/);
+  assert.match(taskRecovery, /CODEX_RUNTIME_RESTART_REQUEST_EVENT/);
 
   for (const consumer of [tasks, settings]) {
     assert.match(consumer, /codex-status\.js"/);

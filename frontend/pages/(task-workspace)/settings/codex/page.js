@@ -20,7 +20,7 @@ class CaffoldSettingsCodexPage extends HTMLElement {
       return;
     }
     this.initialized = true;
-    this.statusValue = null;
+    this.snapshotValue = null;
     this.active = false;
     this.restartState = "idle";
     this.restartMessage = "";
@@ -61,16 +61,16 @@ class CaffoldSettingsCodexPage extends HTMLElement {
     this.active = false;
   }
 
-  set status(value) {
-    this.statusValue = value ?? null;
+  set snapshot(value) {
+    this.snapshotValue = value ?? null;
     this.copyState = "idle";
     if (this.initialized) {
       this.render();
     }
   }
 
-  get status() {
-    return this.statusValue ?? null;
+  get snapshot() {
+    return this.snapshotValue ?? null;
   }
 
   setRestartState(value) {
@@ -157,7 +157,8 @@ class CaffoldSettingsCodexPage extends HTMLElement {
       `;
     }
 
-    const status = this.status;
+    const snapshot = this.snapshot;
+    const status = snapshot?.status;
     const readiness = status?.readiness;
     const connection = codexConnection(status);
     const connectionLabel = connection === "pending"
@@ -172,7 +173,8 @@ class CaffoldSettingsCodexPage extends HTMLElement {
       ? `Codex ${readiness.managedExecutable?.version ?? "target"} is installed while runtime ${readiness.runningAppServerVersion ?? "another version"} is still running.`
       : "Caffold only restarts the shared runtime after an explicit confirmation when the backend reports a stale runtime.";
 
-    patchDetail(this, "readiness", formatCodexReadiness(status), readinessState(readiness));
+    const readinessLabel = formatCodexReadiness(snapshot);
+    patchDetail(this, "readiness", readinessLabel, readinessState(readiness));
     patchDetail(this, "connection", connectionLabel, connection);
     patchDetail(this, "account", formatCodexAccount(status));
     patchDetail(this, "plan", formatCodexPlan(status));
@@ -182,7 +184,7 @@ class CaffoldSettingsCodexPage extends HTMLElement {
     patchDetail(this, "managed-version", readiness?.managedExecutable?.version ?? "Not available");
     patchDetail(this, "managed-path", readiness?.managedExecutable?.path ?? "Not available");
     patchDetail(this, "runtime-version", readiness?.runningAppServerVersion ?? "Not running");
-    patchRepairSurface(this, readiness, this.copyState);
+    patchRepairSurface(this, readiness, readinessLabel, this.copyState);
 
     const refresh = this.querySelector('[data-action="refresh-codex-status"]');
     refresh.disabled = restarting;
@@ -207,8 +209,11 @@ class CaffoldSettingsCodexPage extends HTMLElement {
     patchDetail(this, "reason-code", readiness?.reasonCode ?? "unknown");
     patchDetail(this, "diagnostic-detail", readiness?.diagnosticMessage ?? "");
     const loadError = this.querySelector(".settings-status-message");
-    loadError.hidden = !status?.readinessLoadError;
-    loadError.textContent = status?.readinessLoadError ?? "";
+    const loadErrorMessage = snapshot?.phase === "failed"
+      ? snapshot.error
+      : "";
+    loadError.hidden = !loadErrorMessage;
+    loadError.textContent = loadErrorMessage;
   }
 }
 
@@ -262,7 +267,7 @@ function patchUsage(root, status, name) {
   row.querySelector("time").textContent = formatRateReset(window);
 }
 
-function patchRepairSurface(root, readiness, copyState) {
+function patchRepairSurface(root, readiness, readinessLabel, copyState) {
   const repair = root.querySelector(".settings-codex-repair");
   const visible = Boolean(readiness && readiness.state !== "ready");
   repair.hidden = !visible;
@@ -285,7 +290,7 @@ function patchRepairSurface(root, readiness, copyState) {
       incompatible: "The installed version passed the minimum check, but the required app-server protocol did not initialize.",
       error: "Retry the readiness check. The diagnostic below can help identify an unclassified runtime failure.",
     }[readiness.state] ?? "Refresh the canonical Codex readiness diagnosis.";
-  repair.querySelector("h3").textContent = formatCodexReadiness({ readiness });
+  repair.querySelector("h3").textContent = readinessLabel;
   repair.querySelector("[data-repair-description]").textContent = description;
   const command = repair.querySelector(".settings-codex-command");
   command.hidden = !install;
