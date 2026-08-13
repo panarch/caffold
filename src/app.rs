@@ -6,6 +6,7 @@ use tracing::info;
 
 mod error;
 mod shell;
+mod startup_migration;
 mod tasks;
 mod voice;
 mod workspace;
@@ -44,16 +45,16 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let shell_router = shell::router(fs.clone(), server_settings, initial_path.clone(), home_path);
     let workspace_router = workspace::router(fs.clone(), shutdown.clone());
     let voice_router = voice::router(data_dir.join("models/whisper"));
-    let tasks = tasks::TasksApp::persistent(
+    let listener = TcpListener::bind((config.host, config.port)).await?;
+    let addr = listener.local_addr()?;
+    let tasks = tasks::PersistentTasksGateway::new(
         fs,
         initial_path.clone(),
         shutdown.clone(),
         data_dir.join("caffold.redb"),
         worktree_root.clone(),
-    )?;
+    );
     let app = router_with_states(shell_router, workspace_router, tasks.router(), voice_router);
-    let listener = TcpListener::bind((config.host, config.port)).await?;
-    let addr = listener.local_addr()?;
 
     info!("serving Caffold at http://{addr}");
     info!("browsing root {}", root.display());
@@ -71,9 +72,20 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         }
     );
 
-    let result = axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal(shutdown))
-        .await;
+    let result = {
+        let server = async {
+            axum::serve(listener, app)
+                .with_graceful_shutdown(shutdown_signal(shutdown))
+                .await
+        };
+        tokio::pin!(server);
+        let startup = tasks.run_startup();
+        tokio::pin!(startup);
+        tokio::select! {
+            result = &mut server => result,
+            () = &mut startup => server.await,
+        }
+    };
     tasks.shutdown().await;
     result?;
 

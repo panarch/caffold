@@ -337,10 +337,44 @@ async function expectLiveThreadIdle(request, threadId) {
     .toBe(true);
 }
 
-test("creates, orders, and restores Tasks through real Codex Thread Sections", async ({
+async function listAllCodexThreads(client, sectionId) {
+  const threads = [];
+  let cursor = null;
+  do {
+    const response = await client.request("thread/list", {
+      ...(cursor ? { cursor } : {}),
+      limit: 100,
+      sortKey: sectionId ? "section_position" : "recency_at",
+      sortDirection: sectionId ? "asc" : "desc",
+      archived: false,
+      useStateDbOnly: true,
+      ...(sectionId ? { sectionId } : {}),
+    });
+    threads.push(...(response.data ?? []));
+    cursor = response.nextCursor || null;
+  } while (cursor);
+  return threads;
+}
+
+async function listAllCodexSections(client) {
+  const sections = [];
+  let cursor = null;
+  do {
+    const response = await client.request("threadSection/list", {
+      ...(cursor ? { cursor } : {}),
+      limit: 100,
+    });
+    sections.push(...(response.data ?? []));
+    cursor = response.nextCursor || null;
+  } while (cursor);
+  return sections;
+}
+
+test("hydrates, orders, and restores Tasks through the local navigator ledger", async ({
+  page,
   request,
 }) => {
-  const fixture = initializePersistentLiveRepository("thread-sections");
+  const fixture = initializePersistentLiveRepository("navigator-ledger");
   const marker = `${Date.now()}`;
 
   const createTask = async (label) => {
@@ -384,6 +418,52 @@ test("creates, orders, and restores Tasks through real Codex Thread Sections", a
   await expectLiveThreadIdle(request, firstThreadId);
   await expectLiveThreadIdle(request, secondThreadId);
 
+  const daemonClient = await CodexDaemonClient.connect();
+  try {
+    const globalIds = (await listAllCodexThreads(daemonClient, null)).map(
+      ({ id }) => id,
+    );
+    expect(globalIds).toEqual(
+      expect.arrayContaining([firstThreadId, secondThreadId]),
+    );
+    const sectionThreadIds = [];
+    for (const section of await listAllCodexSections(daemonClient)) {
+      sectionThreadIds.push(
+        ...(await listAllCodexThreads(daemonClient, section.id)).map(({ id }) => id),
+      );
+    }
+    expect(sectionThreadIds).not.toContain(firstThreadId);
+    expect(sectionThreadIds).not.toContain(secondThreadId);
+    await daemonClient.request("thread/name/set", {
+      threadId: secondThreadId,
+      name: `External stale navigator name ${marker}`,
+    });
+  } finally {
+    await daemonClient.close();
+  }
+
+  await page.goto("/tasks");
+  const firstRow = taskNavigator(page).locator(
+    `.task-row[data-thread-id="${firstThreadId}"]`,
+  );
+  const secondRow = taskNavigator(page).locator(
+    `.task-row[data-thread-id="${secondThreadId}"]`,
+  );
+  await expect(firstRow).toHaveAttribute("data-task-status", "idle");
+  await expect(secondRow).toHaveAttribute("data-task-status", "idle");
+  await expect(secondRow.locator(".task-row-title")).toContainText(
+    `caffold-section-second-${marker}`,
+  );
+  await expect(secondRow.locator(".task-row-title")).not.toContainText(
+    "External stale navigator name",
+  );
+  await page.reload();
+  await expect(firstRow).toHaveAttribute("data-task-status", "idle");
+  await expect(secondRow).toHaveAttribute("data-task-status", "idle");
+  await expect(secondRow.locator(".task-row-title")).toContainText(
+    `caffold-section-second-${marker}`,
+  );
+
   expect(await sectionTaskIds([firstThreadId, secondThreadId])).toEqual([
     secondThreadId,
     firstThreadId,
@@ -404,7 +484,7 @@ test("creates, orders, and restores Tasks through real Codex Thread Sections", a
   ]);
 });
 
-test("reconciles externally archived and deleted Codex Threads through Recovery", async ({
+test("rechecks externally archived and deleted Codex Threads through explicit Recovery commands", async ({
   request,
 }) => {
   const fixture = initializePersistentLiveRepository("thread-recovery");
@@ -426,13 +506,13 @@ test("reconciles externally archived and deleted Codex Threads through Recovery"
   await expectLiveThreadIdle(request, threadId);
 
   const recoveryReason = async () => {
-    const response = await request.get("/api/tasks");
+    const response = await request.post(
+      `/api/tasks/${threadId}/recovery/recheck`,
+    );
     if (!response.ok()) {
       return null;
     }
-    const projection = await response.json();
-    return projection.unsectioned.find((task) => task.threadId === threadId)
-      ?.recovery?.reason ?? null;
+    return (await response.json()).recovery?.reason ?? null;
   };
 
   const daemonClient = await CodexDaemonClient.connect();
@@ -440,6 +520,14 @@ test("reconciles externally archived and deleted Codex Threads through Recovery"
   try {
     await daemonClient.request("thread/archive", { threadId });
     liveThreadIds.delete(threadId);
+
+    const cachedActiveResponse = await request.get("/api/tasks");
+    const cachedActiveProjection = await cachedActiveResponse.json();
+    expect(
+      cachedActiveProjection.sections
+        .flatMap((section) => section.tasks)
+        .some((task) => task.threadId === threadId),
+    ).toBe(true);
     await expect.poll(recoveryReason).toBe("codexArchived");
 
     const moveArchivedResponse = await request.post(
@@ -768,10 +856,35 @@ test("renames a newly created Caffold task through the dynamic tool", async ({
   const marker = `${Date.now()}`;
   const requestedName = `Caffold dynamic rename ${marker}`;
   const reply = `caffold-live-renamed-${marker}`;
+  const siblingReply = `caffold-live-rename-sibling-${marker}`;
+
+  const siblingResponse = await page.request.post("/api/tasks", {
+    data: {
+      cwd,
+      prompt: `Reply with exactly ${siblingReply}. Do not modify files or run commands.`,
+      model: SPARK_MODEL,
+      effort: LIVE_REASONING_EFFORT,
+    },
+  });
+  const siblingBody = await siblingResponse.text();
+  expect(
+    siblingResponse.status(),
+    `create rename sibling response: ${siblingBody}`,
+  ).toBe(200);
+  const siblingThreadId = JSON.parse(siblingBody).threadId;
+  expect(siblingThreadId).toBeTruthy();
+  trackLiveThread(siblingThreadId, "spark", SPARK_MODEL);
+  await expectLiveThreadIdle(page.request, siblingThreadId);
+
+  await page.goto("/tasks");
+  const navigator = taskNavigator(page);
+  const siblingTask = navigator.locator(
+    `.task-row[data-thread-id="${siblingThreadId}"]`,
+  );
+  await expect(siblingTask).toHaveAttribute("data-task-status", "idle");
 
   await page.goto(`/tasks/new?cwd=${encodeURIComponent(cwd)}`);
   const tasksPage = page.locator("caffold-tasks-page");
-  const navigator = taskNavigator(page);
   const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
   await expect(newTaskForm).toBeVisible();
   await chooseModel(newTaskForm, "spark");
@@ -807,12 +920,14 @@ test("renames a newly created Caffold task through the dynamic tool", async ({
     })
     .toBe(true);
   await expect(tasksPage.locator(".task-detail-heading h2")).toHaveText(requestedName);
+  await expect(siblingTask).toHaveAttribute("data-task-status", "idle");
 
   await page.goto("/tasks");
   const renamedTask = navigator.locator(`.task-row[data-thread-id="${threadId}"]`);
   await expect(renamedTask.locator(".task-row-title")).toHaveText(requestedName);
 
   await archiveLiveThread(page.request, threadId);
+  await archiveLiveThread(page.request, siblingThreadId);
   await page.goto("/tasks");
   await expect(
     navigator

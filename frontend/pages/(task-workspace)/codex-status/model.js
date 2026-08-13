@@ -4,6 +4,7 @@ export function sameCodexStatus(left, right) {
   }
 
   return (
+    taskStoreReadinessSignature(left) === taskStoreReadinessSignature(right) &&
     readinessSignature(left) === readinessSignature(right) &&
     left.account?.accountType === right.account?.accountType &&
     left.account?.email === right.account?.email &&
@@ -13,6 +14,15 @@ export function sameCodexStatus(left, right) {
     usageSignature(left, "secondary") === usageSignature(right, "secondary") &&
     formatResetCredits(left) === formatResetCredits(right)
   );
+}
+
+function taskStoreReadinessSignature(status) {
+  const readiness = status?.taskStoreReadiness;
+  return [
+    readiness?.state,
+    readiness?.blocksTaskOperations,
+    readiness?.diagnosticMessage,
+  ].join("|");
 }
 
 export function createCodexStatusSnapshot({
@@ -90,7 +100,10 @@ export function codexState(snapshot) {
 }
 
 export function codexBlocksTaskOperations(status) {
-  return status?.readiness?.blocksTaskOperations !== false;
+  return (
+    status?.taskStoreReadiness?.blocksTaskOperations === true ||
+    status?.readiness?.blocksTaskOperations !== false
+  );
 }
 
 export const PENDING_CODEX_TASK_OPERATIONS = taskOperationsPresentation({
@@ -120,6 +133,17 @@ export function codexTaskOperationsPresentation(snapshot) {
     });
   }
 
+  const taskStore = status?.taskStoreReadiness;
+  if (taskStore?.blocksTaskOperations) {
+    const content = taskStoreReadinessContent(taskStore, snapshot);
+    return taskOperationsPresentation({
+      phase: `taskStore:${taskStore.state ?? "blocked"}`,
+      blocked: true,
+      title: content.title,
+      message: content.message,
+    });
+  }
+
   if (!status?.readiness) {
     return PENDING_CODEX_TASK_OPERATIONS;
   }
@@ -139,7 +163,8 @@ export function codexTaskRecoveryVisible(snapshot) {
   }
   const status = snapshot?.status;
   return Boolean(
-    status?.readiness && codexBlocksTaskOperations(status),
+    status?.taskStoreReadiness?.blocksTaskOperations ||
+      (status?.readiness && codexBlocksTaskOperations(status)),
   );
 }
 
@@ -159,7 +184,7 @@ export function formatCodexReadiness(snapshot) {
   if (!state) {
     return snapshot?.phase === "failed" ? "Check failed" : "Checking";
   }
-  if (state === "ready" && codexBlocksTaskOperations(status)) {
+  if (state === "ready" && status?.readiness?.blocksTaskOperations !== false) {
     return "Unavailable";
   }
   return {
@@ -172,6 +197,32 @@ export function formatCodexReadiness(snapshot) {
     ready: "Ready",
     error: "Unavailable",
   }[state] ?? "Unavailable";
+}
+
+function taskStoreReadinessContent(taskStore, snapshot) {
+  if (taskStore.state === "waitingForCodex") {
+    const title = `Codex ${formatCodexReadiness(snapshot).toLowerCase()}`;
+    return {
+      title,
+      message:
+        snapshot?.status?.readiness?.diagnosticMessage ||
+        `${title}.`,
+    };
+  }
+  if (taskStore.state === "failed") {
+    return {
+      title: "Task data upgrade failed",
+      message:
+        taskStore.diagnosticMessage ||
+        "Caffold could not finish preparing the Task store.",
+    };
+  }
+  return {
+    title: "Preparing Tasks…",
+    message:
+      taskStore.diagnosticMessage ||
+      "Caffold is preparing the local Task navigator.",
+  };
 }
 
 export function formatCodexAccount(status) {

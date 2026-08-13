@@ -5,6 +5,7 @@ import {
 } from "../support/browser-defaults.js";
 import {
   activeTaskProjection,
+  canonicalTaskState,
   captureReviewScreenshot,
   installEventSourceMock,
 } from "../support/task-fixtures.js";
@@ -64,20 +65,47 @@ function statusFor(state, overrides = {}) {
   });
 }
 
+function cachedTask(threadId = "thread_cached_while_blocked") {
+  return {
+    id: threadId,
+    threadId,
+    ...canonicalTaskState("notLoaded"),
+    title: "Cached Task identity",
+    preview: "",
+    cwd: "Workspace/caffold",
+    cwdPath: "Workspace/caffold",
+    relativeCwd: "",
+    worktree: null,
+    createdMs: 1,
+    updatedMs: 2,
+    recencyMs: 2,
+    conversationAvailable: false,
+  };
+}
+
 test.beforeEach(async ({ context, page }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await installBrowserDefaults(page);
   await installEventSourceMock(page);
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection() })
+  );
 });
 
 for (const [state, heading, navigatorMessage] of BLOCKING_STATES) {
   test(`shows the canonical ${state} Task setup surface`, async ({ page }) => {
+    let taskRequests = 0;
+    const cached = cachedTask();
     await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
       route.fulfill({
         contentType: "application/json",
         body: JSON.stringify(statusFor(state)),
       }),
     );
+    await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+      taskRequests += 1;
+      return route.fulfill({ json: activeTaskProjection([cached]) });
+    });
 
     await page.goto("/");
 
@@ -93,9 +121,16 @@ for (const [state, heading, navigatorMessage] of BLOCKING_STATES) {
       "title",
       navigatorMessage.replace(/\.$/, ""),
     );
-    await expect(
-      page.locator("caffold-active-task-list .task-section-message"),
-    ).toHaveText(navigatorMessage);
+    const cachedRow = page.locator(
+      `caffold-active-task-list .task-row[data-thread-id="${cached.threadId}"]`,
+    );
+    await expect(cachedRow).toContainText("Cached Task identity");
+    await expect(cachedRow).toBeDisabled();
+    await expect(cachedRow).toHaveAttribute(
+      "title",
+      navigatorMessage.replace(/\.$/, ""),
+    );
+    await expect.poll(() => taskRequests).toBe(1);
     await expect
       .poll(() => page.locator("caffold-task-navigator").evaluate(
         (navigator) => navigator.listState().loading,
@@ -176,7 +211,7 @@ test("keeps the stable Task shell while readiness is checking", async ({ page },
       body: JSON.stringify(mockCodexStatus()),
     });
   });
-  await page.route(/\/api\/tasks(?:\/archived)?(?:\?|$)/, async (route) => {
+  await page.route(/\/api\/tasks(?:\?|$)/, async (route) => {
     taskRequests += 1;
     await tasksGate;
     await route.fulfill({
@@ -196,14 +231,14 @@ test("keeps the stable Task shell while readiness is checking", async ({ page },
   const navigatorMessage = page.locator(
     "caffold-active-task-list .task-section-message",
   );
-  await expect(navigatorMessage).toHaveText("Checking Codex readiness…");
+  await expect(navigatorMessage).toHaveText("Loading...");
   const newTask = page.locator("caffold-task-navigator .task-list-new-task");
   await expect(newTask).toBeDisabled();
   await expect(newTask).toHaveAttribute("title", "Checking Codex readiness…");
   await expect(
     page.getByText("Codex setup required.", { exact: true }),
   ).toHaveCount(0);
-  expect(taskRequests).toBe(0);
+  await expect.poll(() => taskRequests).toBe(1);
   await captureReviewScreenshot(
     page,
     testInfo,
@@ -212,7 +247,6 @@ test("keeps the stable Task shell while readiness is checking", async ({ page },
 
   releaseStatus();
   await expect(recovery).toBeHidden();
-  await expect.poll(() => taskRequests).toBeGreaterThan(0);
   await expect(navigatorMessage).toHaveText("Loading...");
 
   releaseTasks();
@@ -279,14 +313,86 @@ test("a readiness load failure is not presented as a setup requirement", async (
   ).toBeVisible();
   await expect(
     page.locator("caffold-active-task-list .task-section-message"),
-  ).toHaveText("Codex readiness check failed.");
+  ).toHaveText("No Caffold tasks yet.");
   const newTask = page.locator("caffold-task-navigator .task-list-new-task");
   await expect(newTask).toBeDisabled();
   await expect(newTask).toHaveAttribute("title", "Codex readiness check failed");
   await expect(
     page.getByText("Codex setup required.", { exact: true }),
   ).toHaveCount(0);
-  expect(taskRequests).toBe(0);
+  await expect.poll(() => taskRequests).toBe(1);
+});
+
+test("a failed Task-store migration has its own explicit retry lifecycle", async ({
+  page,
+}) => {
+  let retryRequests = 0;
+  let retried = false;
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
+    const status = mockCodexStatus();
+    if (!retried) {
+      status.taskStoreReadiness = {
+        state: "failed",
+        blocksTaskOperations: true,
+        diagnosticMessage: "Staged v5 validation failed.",
+      };
+    }
+    return route.fulfill({ json: status });
+  });
+  await page.route(/\/api\/task-store\/migration\/retry$/, (route) => {
+    retryRequests += 1;
+    retried = true;
+    return route.fulfill({ status: 202, json: { accepted: true } });
+  });
+
+  await page.goto("/");
+
+  const setup = page.locator(
+    '[data-readiness-state="taskStore-failed"]',
+  );
+  await expect(setup).toBeVisible();
+  await expect(
+    setup.getByRole("heading", { name: "Task data upgrade failed" }),
+  ).toBeVisible();
+  await expect(setup).toContainText("Staged v5 validation failed.");
+  await setup.getByRole("button", { name: "Retry Task setup" }).click();
+
+  await expect.poll(() => retryRequests).toBe(1);
+  await expect(page.locator(".codex-readiness-surface")).toBeHidden();
+  await expect(page.locator("caffold-task-new textarea")).toBeEnabled();
+});
+
+test("Codex remains the visible cause while migration waits for it", async ({
+  page,
+}) => {
+  const cached = cachedTask("thread_cached_waiting_migration");
+  const status = statusFor("updateRequired");
+  status.taskStoreReadiness = {
+    state: "waitingForCodex",
+    blocksTaskOperations: true,
+    diagnosticMessage: "Task-store migration is waiting for Codex.",
+  };
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
+    route.fulfill({ json: status })
+  );
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([cached]) })
+  );
+
+  await page.goto("/");
+
+  const setup = page.locator('[data-readiness-state="updateRequired"]');
+  await expect(setup).toBeVisible();
+  await expect(
+    setup.getByRole("heading", { name: "Update Codex to continue" }),
+  ).toBeVisible();
+  await expect(setup.getByRole("button", { name: "Retry Task setup" }))
+    .toBeEnabled();
+  await expect(
+    page.locator(
+      `.task-row[data-thread-id="${cached.threadId}"]`,
+    ),
+  ).toContainText("Cached Task identity");
 });
 
 test("Retry transitions from setup into the ready Task surface", async ({ page }) => {
@@ -308,7 +414,7 @@ test("Retry transitions from setup into the ready Task surface", async ({ page }
 
   await page.goto("/");
   await expect(page.locator('[data-readiness-state="updateRequired"]')).toBeVisible();
-  expect(taskRequests).toBe(0);
+  await expect.poll(() => taskRequests).toBeGreaterThan(0);
 
   ready = true;
   await page.getByRole("button", { name: "Retry" }).click();

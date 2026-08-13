@@ -2,6 +2,7 @@ pub(super) mod v1;
 pub(super) mod v2;
 pub(super) mod v3;
 pub(super) mod v4;
+pub(super) mod v5;
 
 use gluesql::{
     core::{
@@ -15,7 +16,7 @@ use std::collections::BTreeSet;
 
 use crate::task_store::{Result, TaskStoreError};
 
-fn create_table<S>(
+pub(super) fn create_table<S>(
     glue: &mut Glue<S>,
     table_name: &'static str,
     column_definitions: &[&str],

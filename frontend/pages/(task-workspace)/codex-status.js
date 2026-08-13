@@ -1,6 +1,7 @@
 import {
   getCodexStatus,
   restartCodexRuntime,
+  retryTaskStoreMigration,
 } from "../../api.js";
 import {
   INITIAL_CODEX_STATUS_SNAPSHOT,
@@ -52,11 +53,13 @@ export function createCodexStatusLifecycle({
   onRestartStateChange,
   onSnapshotChange,
   restartRuntime = restartCodexRuntime,
+  retryTaskStore = retryTaskStoreMigration,
 } = {}) {
   return new CodexStatusLifecycle({
     loadStatus,
     onRestartStateChange,
     onSnapshotChange,
     restartRuntime,
+    retryTaskStore,
   });
 }

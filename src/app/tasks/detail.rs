@@ -9,13 +9,13 @@ mod file_links;
 use file_links::{TaskFileLink, TaskFileLinkResolver};
 
 use super::{
-    active_sections::ActiveTaskTopPlacement,
     events::{
         TaskEventRecord, TaskEvents, merge_task_event_records, sort_task_events, thread_events,
     },
+    lifecycle::ActiveTaskTopPlacement,
     projection::{
-        TaskRecord, apply_canonical_turn_projection, resolve_thread_cwd, task_activity_ms,
-        task_record_from_thread, thread_with_turns,
+        TaskRecord, apply_canonical_turn_projection, resolve_thread_cwd, task_record_from_thread,
+        thread_with_turns,
     },
     runtime::{CodexConnection, CodexRuntime, CodexRuntimeSignal},
     sync::{DeferredTaskRolloutSubscription, TaskSync, TaskSyncJob, TaskSyncOutcome},
@@ -465,7 +465,6 @@ impl DetailContext {
         snapshot: ThreadSessionSnapshot,
         response_page: Option<TurnsPage>,
     ) -> Result<TaskDetailResponse, ApiError> {
-        let actively_viewed = snapshot.viewer_leases > 0;
         let revision = snapshot.revision;
         let permission_mode = snapshot.permission_mode;
         let session_model = snapshot.model.clone();
@@ -504,44 +503,15 @@ impl DetailContext {
         let resolved_cwd = resolve_thread_cwd(&self.fs, &thread);
         let mut task = task_record_from_thread(&thread, &events, resolved_cwd.as_ref())?;
         apply_canonical_turn_projection(&mut task, &thread)?;
-        let activity_ms = task_activity_ms(&task);
-        let mut managed = if let Some(last_completed_ms) = task.last_completed_ms {
-            self.store_update_completed_at(&thread_id, last_completed_ms)
-                .await?
-        } else {
-            None
-        };
-        managed = self
-            .store_update_observed_recency(&thread_id, activity_ms)
-            .await?
-            .or(managed);
-        let persisted_model = session_model
-            .as_deref()
-            .or_else(|| managed.as_ref().and_then(|thread| thread.model.as_deref()));
-        let persisted_reasoning_effort = session_reasoning_effort.as_deref().or_else(|| {
-            managed
-                .as_ref()
-                .and_then(|thread| thread.reasoning_effort.as_deref())
-        });
-        managed = self
-            .store_update_composer_settings(
-                &thread_id,
-                persisted_model,
-                persisted_reasoning_effort,
-                session_fast_mode,
-            )
-            .await?
-            .or(managed);
-        if let Some(mut current) = managed {
-            if actively_viewed
-                && let Some(seen) = self
-                    .store_mark_seen(&current.thread_id, activity_ms)
-                    .await?
-            {
-                current = seen;
-            }
-            task.last_completed_ms = current.last_completed_at_ms;
-            task.unseen = current.unseen();
+        let managed = self.store_get(&thread_id).await?;
+        if let Some(current) = managed {
+            task.title = current.display_name.clone();
+            task.last_completed_ms = task.last_completed_ms.max(current.last_completed_at_ms);
+            task.unseen = task.last_completed_ms.is_some_and(|completed_ms| {
+                current
+                    .last_seen_activity_ms
+                    .is_none_or(|seen_ms| seen_ms < completed_ms)
+            });
             let file_links = self.file_links.resolve_task(&task, &events).await;
             let model = session_model.or(current.model);
             let reasoning_effort = session_reasoning_effort.or(current.reasoning_effort);
@@ -742,73 +712,6 @@ impl DetailContext {
             .restore_managed_fast_mode(thread_id, managed.fast_mode)
             .await;
         Ok(())
-    }
-
-    async fn store_mark_seen(
-        &self,
-        thread_id: &str,
-        canonical_activity_ms: u64,
-    ) -> Result<Option<ManagedThread>, ApiError> {
-        let store = self.store.clone();
-        let thread_id = thread_id.to_string();
-        tokio::task::spawn_blocking(move || {
-            store.mark_seen(&thread_id, canonical_activity_ms, super::events::now_ms())
-        })
-        .await
-        .map_err(store_join_error)?
-        .map_err(store_error)
-    }
-
-    async fn store_update_observed_recency(
-        &self,
-        thread_id: &str,
-        canonical_activity_ms: u64,
-    ) -> Result<Option<ManagedThread>, ApiError> {
-        let store = self.store.clone();
-        let thread_id = thread_id.to_string();
-        tokio::task::spawn_blocking(move || {
-            store.update_observed_recency(&thread_id, canonical_activity_ms)
-        })
-        .await
-        .map_err(store_join_error)?
-        .map_err(store_error)
-    }
-
-    async fn store_update_completed_at(
-        &self,
-        thread_id: &str,
-        completed_at_ms: u64,
-    ) -> Result<Option<ManagedThread>, ApiError> {
-        let store = self.store.clone();
-        let thread_id = thread_id.to_string();
-        tokio::task::spawn_blocking(move || store.update_completed_at(&thread_id, completed_at_ms))
-            .await
-            .map_err(store_join_error)?
-            .map_err(store_error)
-    }
-
-    async fn store_update_composer_settings(
-        &self,
-        thread_id: &str,
-        model: Option<&str>,
-        reasoning_effort: Option<&str>,
-        fast_mode: bool,
-    ) -> Result<Option<ManagedThread>, ApiError> {
-        let store = self.store.clone();
-        let thread_id = thread_id.to_string();
-        let model = model.map(str::to_string);
-        let reasoning_effort = reasoning_effort.map(str::to_string);
-        tokio::task::spawn_blocking(move || {
-            store.update_composer_settings(
-                &thread_id,
-                model.as_deref(),
-                reasoning_effort.as_deref(),
-                fast_mode,
-            )
-        })
-        .await
-        .map_err(store_join_error)?
-        .map_err(store_error)
     }
 }
 

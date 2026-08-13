@@ -13,11 +13,14 @@ export class CodexStatusLifecycle {
     onRestartStateChange,
     onSnapshotChange,
     restartRuntime,
+    retryTaskStore,
   }) {
     this.loadStatus = loadStatus;
     this.onSnapshotChange = onSnapshotChange;
     this.active = false;
     this.statusRequestId = 0;
+    this.taskStorePollTimer = null;
+    this.retryTaskStore = retryTaskStore;
     this.snapshotValue = INITIAL_CODEX_STATUS_SNAPSHOT;
     this.runtimeRestart = new CodexRuntimeRestartLifecycle({
       restartRuntime,
@@ -41,6 +44,7 @@ export class CodexStatusLifecycle {
     }
     this.active = false;
     this.statusRequestId += 1;
+    this.clearTaskStorePoll();
     this.runtimeRestart.disconnect();
   }
 
@@ -70,6 +74,18 @@ export class CodexStatusLifecycle {
       return Promise.resolve(null);
     }
     return this.runtimeRestart.restart();
+  }
+
+  async retryTaskStoreMigration() {
+    if (
+      !this.active ||
+      !this.retryTaskStore ||
+      this.statusSnapshot()?.taskStoreReadiness?.blocksTaskOperations !== true
+    ) {
+      return null;
+    }
+    await this.retryTaskStore();
+    return await this.refresh();
   }
 
   async refresh() {
@@ -109,6 +125,7 @@ export class CodexStatusLifecycle {
 
   setSnapshot(snapshot) {
     if (sameCodexStatusSnapshot(this.snapshotValue, snapshot)) {
+      this.scheduleTaskStorePoll(snapshot);
       return false;
     }
     const previousReadinessState =
@@ -119,6 +136,29 @@ export class CodexStatusLifecycle {
       this.runtimeRestart.reset();
     }
     this.onSnapshotChange?.(snapshot);
+    this.scheduleTaskStorePoll(snapshot);
     return true;
+  }
+
+  scheduleTaskStorePoll(snapshot) {
+    this.clearTaskStorePoll();
+    if (
+      !this.active ||
+      snapshot.phase !== "loaded" ||
+      snapshot.status?.taskStoreReadiness?.state !== "migrating"
+    ) {
+      return;
+    }
+    this.taskStorePollTimer = setTimeout(() => {
+      this.taskStorePollTimer = null;
+      void this.refresh().catch(() => {});
+    }, 500);
+  }
+
+  clearTaskStorePoll() {
+    if (this.taskStorePollTimer !== null) {
+      clearTimeout(this.taskStorePollTimer);
+      this.taskStorePollTimer = null;
+    }
   }
 }

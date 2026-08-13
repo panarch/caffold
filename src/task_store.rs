@@ -3,9 +3,13 @@ use std::{
     sync::{Arc, Mutex, MutexGuard},
 };
 
-use gluesql::prelude::{Error as GlueError, Glue, MemoryStorage, RedbStorage};
+use gluesql::{
+    core::query_builder::{Execute, begin, commit, rollback},
+    prelude::{Error as GlueError, Glue, MemoryStorage, RedbStorage},
+};
 use thiserror::Error;
 
+mod managed_section;
 mod managed_thread;
 mod managed_worktree;
 mod migration;
@@ -13,8 +17,16 @@ mod push_installation;
 mod push_vapid_key;
 mod schema_migration;
 
+pub(crate) use managed_section::ManagedSection;
 pub(crate) use managed_thread::ManagedThread;
 pub(crate) use managed_worktree::{ManagedWorktree, ManagedWorktreeState};
+pub(crate) use migration::{
+    ManagedThreadMigrationInventory, NavigatorMigrationSection, NavigatorMigrationSnapshot,
+    NavigatorMigrationThread, NavigatorMigrationThreadClassification, PendingTaskStoreMigration,
+    PreparedTaskStoreMigration, prepare_to_latest as prepare_task_store_migration,
+};
+#[cfg(test)]
+pub(crate) use migration::{write_empty_v4_test_store, write_v4_test_store};
 pub(crate) use push_installation::{
     PushInstallation, PushInstallationSummary, PushSubscriptionInput,
 };
@@ -67,6 +79,8 @@ pub(crate) enum TaskStoreError {
     InvalidSchemaMigrationHistory,
     #[error("incomplete Caffold thread schema")]
     IncompleteSchema,
+    #[error("invalid Caffold navigator migration snapshot: {0}")]
+    InvalidMigrationSnapshot(&'static str),
     #[error("task store mutex was poisoned")]
     Poisoned,
     #[error("task store error: {0}")]
@@ -83,6 +97,109 @@ pub(crate) enum TaskStore {
     Redb(Arc<Mutex<Glue<RedbStorage>>>),
 }
 
+pub(crate) enum TaskStoreTables<'a> {
+    Memory(&'a mut Glue<MemoryStorage>),
+    Redb(&'a mut Glue<RedbStorage>),
+}
+
+impl TaskStoreTables<'_> {
+    pub(crate) fn managed_sections(&mut self) -> Result<Vec<ManagedSection>> {
+        match self {
+            Self::Memory(glue) => managed_section::list(glue),
+            Self::Redb(glue) => managed_section::list(glue),
+        }
+    }
+
+    pub(crate) fn active_managed_threads(&mut self) -> Result<Vec<ManagedThread>> {
+        match self {
+            Self::Memory(glue) => managed_thread::list_all_active(glue),
+            Self::Redb(glue) => managed_thread::list_all_active(glue),
+        }
+    }
+
+    pub(crate) fn upsert_managed_section(&mut self, section: &ManagedSection) -> Result<()> {
+        match self {
+            Self::Memory(glue) => managed_section::upsert(glue, section),
+            Self::Redb(glue) => managed_section::upsert(glue, section),
+        }
+    }
+
+    pub(crate) fn claim_managed_thread_at_top(
+        &mut self,
+        thread: ManagedThread,
+        display_name: &str,
+        section_id: &str,
+        now_ms: u64,
+    ) -> Result<ManagedThread> {
+        match self {
+            Self::Memory(glue) => {
+                managed_thread::claim_at_top(glue, thread, display_name, section_id, now_ms)
+            }
+            Self::Redb(glue) => {
+                managed_thread::claim_at_top(glue, thread, display_name, section_id, now_ms)
+            }
+        }
+    }
+
+    pub(crate) fn place_managed_thread_at_top(
+        &mut self,
+        thread_id: &str,
+        section_id: &str,
+    ) -> Result<Option<ManagedThread>> {
+        match self {
+            Self::Memory(glue) => managed_thread::place_at_top(glue, thread_id, section_id),
+            Self::Redb(glue) => managed_thread::place_at_top(glue, thread_id, section_id),
+        }
+    }
+
+    pub(crate) fn restore_managed_thread_at_top(
+        &mut self,
+        thread_id: &str,
+        section_id: &str,
+    ) -> Result<Option<ManagedThread>> {
+        match self {
+            Self::Memory(glue) => managed_thread::restore_at_top(glue, thread_id, section_id),
+            Self::Redb(glue) => managed_thread::restore_at_top(glue, thread_id, section_id),
+        }
+    }
+
+    pub(crate) fn archive_managed_thread(
+        &mut self,
+        thread_id: &str,
+        archived_at_ms: u64,
+    ) -> Result<Option<ManagedThread>> {
+        match self {
+            Self::Memory(glue) => {
+                managed_thread::archive_and_compact(glue, thread_id, archived_at_ms)
+            }
+            Self::Redb(glue) => {
+                managed_thread::archive_and_compact(glue, thread_id, archived_at_ms)
+            }
+        }
+    }
+
+    pub(crate) fn delete_active_managed_thread(&mut self, thread_id: &str) -> Result<bool> {
+        match self {
+            Self::Memory(glue) => managed_thread::delete_active_and_compact(glue, thread_id),
+            Self::Redb(glue) => managed_thread::delete_active_and_compact(glue, thread_id),
+        }
+    }
+
+    pub(crate) fn delete_archived_managed_thread(&mut self, thread_id: &str) -> Result<bool> {
+        match self {
+            Self::Memory(glue) => managed_thread::delete_archived(glue, thread_id),
+            Self::Redb(glue) => managed_thread::delete_archived(glue, thread_id),
+        }
+    }
+
+    pub(crate) fn delete_managed_worktree(&mut self, worktree_id: &str) -> Result<bool> {
+        match self {
+            Self::Memory(glue) => managed_worktree::delete(glue, worktree_id),
+            Self::Redb(glue) => managed_worktree::delete(glue, worktree_id),
+        }
+    }
+}
+
 impl TaskStore {
     pub(crate) fn memory() -> Result<Self> {
         let mut glue = Glue::new(MemoryStorage::default());
@@ -95,19 +212,85 @@ impl TaskStore {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        if path.exists() {
-            let _report = migration::migrate_to_latest(path)?;
-        }
         let storage = RedbStorage::new(path)?;
         let mut glue = Glue::new(storage);
         migration::initialize_redb(&mut glue)?;
         Ok(Self::Redb(Arc::new(Mutex::new(glue))))
     }
 
+    #[cfg(test)]
     pub(crate) fn claim(&self, thread: ManagedThread, now_ms: u64) -> Result<ManagedThread> {
         match self {
             Self::Memory(glue) => managed_thread::claim(&mut *lock_glue(glue)?, thread, now_ms),
             Self::Redb(glue) => managed_thread::claim(&mut *lock_glue(glue)?, thread, now_ms),
+        }
+    }
+
+    pub(crate) fn update_display_name(
+        &self,
+        thread_id: &str,
+        display_name: &str,
+    ) -> Result<Option<ManagedThread>> {
+        match self {
+            Self::Memory(glue) => {
+                managed_thread::update_display_name(&mut *lock_glue(glue)?, thread_id, display_name)
+            }
+            Self::Redb(glue) => {
+                managed_thread::update_display_name(&mut *lock_glue(glue)?, thread_id, display_name)
+            }
+        }
+    }
+
+    pub(crate) fn read<T>(
+        &self,
+        operation: impl FnOnce(&mut TaskStoreTables<'_>) -> Result<T>,
+    ) -> Result<T> {
+        match self {
+            Self::Memory(glue) => {
+                let mut glue = lock_glue(glue)?;
+                operation(&mut TaskStoreTables::Memory(&mut glue))
+            }
+            Self::Redb(glue) => {
+                let mut glue = lock_glue(glue)?;
+                operation(&mut TaskStoreTables::Redb(&mut glue))
+            }
+        }
+    }
+
+    pub(crate) fn transaction<T>(
+        &self,
+        operation: impl FnOnce(&mut TaskStoreTables<'_>) -> Result<T>,
+    ) -> Result<T> {
+        match self {
+            Self::Memory(glue) => {
+                let mut glue = lock_glue(glue)?;
+                let previous = glue.storage.clone();
+                match operation(&mut TaskStoreTables::Memory(&mut glue)) {
+                    Ok(value) => Ok(value),
+                    Err(error) => {
+                        glue.storage = previous;
+                        Err(error)
+                    }
+                }
+            }
+            Self::Redb(glue) => {
+                let mut glue = lock_glue(glue)?;
+                begin().execute(&mut *glue)?;
+                let result = operation(&mut TaskStoreTables::Redb(&mut glue));
+                match result {
+                    Ok(value) => match commit().execute(&mut *glue) {
+                        Ok(_) => Ok(value),
+                        Err(error) => {
+                            let _ = rollback().execute(&mut *glue);
+                            Err(error.into())
+                        }
+                    },
+                    Err(error) => {
+                        let _ = rollback().execute(&mut *glue);
+                        Err(error)
+                    }
+                }
+            }
         }
     }
 
@@ -125,6 +308,7 @@ impl TaskStore {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn list(
         &self,
         cursor: Option<&str>,
@@ -156,16 +340,10 @@ impl TaskStore {
         thread_id: &str,
         archived_at_ms: u64,
     ) -> Result<Option<ManagedThread>> {
-        match self {
-            Self::Memory(glue) => {
-                managed_thread::archive(&mut *lock_glue(glue)?, thread_id, archived_at_ms)
-            }
-            Self::Redb(glue) => {
-                managed_thread::archive(&mut *lock_glue(glue)?, thread_id, archived_at_ms)
-            }
-        }
+        self.transaction(|tables| tables.archive_managed_thread(thread_id, archived_at_ms))
     }
 
+    #[cfg(test)]
     pub(crate) fn restore(&self, thread_id: &str) -> Result<Option<ManagedThread>> {
         match self {
             Self::Memory(glue) => managed_thread::restore(&mut *lock_glue(glue)?, thread_id),
@@ -192,6 +370,7 @@ impl TaskStore {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn update_archived_observed_recency(
         &self,
         thread_id: &str,
@@ -211,6 +390,7 @@ impl TaskStore {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn update_completed_at(
         &self,
         thread_id: &str,
@@ -223,6 +403,25 @@ impl TaskStore {
                 completed_at_ms,
             ),
             Self::Redb(glue) => managed_thread::update_completed_at(
+                &mut *lock_glue(glue)?,
+                thread_id,
+                completed_at_ms,
+            ),
+        }
+    }
+
+    pub(crate) fn record_completed_turn(
+        &self,
+        thread_id: &str,
+        completed_at_ms: u64,
+    ) -> Result<Option<ManagedThread>> {
+        match self {
+            Self::Memory(glue) => managed_thread::record_completed_turn(
+                &mut *lock_glue(glue)?,
+                thread_id,
+                completed_at_ms,
+            ),
+            Self::Redb(glue) => managed_thread::record_completed_turn(
                 &mut *lock_glue(glue)?,
                 thread_id,
                 completed_at_ms,
@@ -277,6 +476,7 @@ impl TaskStore {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn delete(&self, thread_id: &str) -> Result<bool> {
         match self {
             Self::Memory(glue) => managed_thread::delete(&mut *lock_glue(glue)?, thread_id),
@@ -284,6 +484,7 @@ impl TaskStore {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn delete_archived(&self, thread_id: &str) -> Result<bool> {
         match self {
             Self::Memory(glue) => {
@@ -493,6 +694,8 @@ fn lock_glue<T>(glue: &Arc<Mutex<T>>) -> Result<MutexGuard<'_, T>> {
 
 #[cfg(test)]
 mod tests {
+    use gluesql::core::query_builder::table;
+
     use super::*;
 
     fn thread(id: &str) -> ManagedThread {
@@ -626,6 +829,38 @@ mod tests {
     }
 
     #[test]
+    fn redb_open_rejects_legacy_schema_without_running_migration_or_losing_its_version() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("legacy-v0.redb");
+        {
+            let mut glue = Glue::new(RedbStorage::new(&path).unwrap());
+            table("managed_threads")
+                .create_table()
+                .add_column("thread_id TEXT PRIMARY KEY")
+                .add_column("last_observed_recency_ms INTEGER NULL")
+                .add_column("claimed_at_ms INTEGER")
+                .add_column("last_opened_at_ms INTEGER NULL")
+                .add_column("last_seen_activity_ms INTEGER NULL")
+                .add_column("model TEXT NULL")
+                .add_column("reasoning_effort TEXT NULL")
+                .execute(&mut glue)
+                .unwrap();
+        }
+
+        assert!(matches!(
+            TaskStore::redb(&path),
+            Err(TaskStoreError::MigrationRequired(0))
+        ));
+        assert_eq!(
+            std::fs::read_dir(temp.path())
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect::<Vec<_>>(),
+            [path.file_name().unwrap().to_os_string()]
+        );
+    }
+
+    #[test]
     fn poisoned_backend_lock_is_reported_as_a_store_error() {
         let glue = Arc::new(Mutex::new(Glue::new(MemoryStorage::default())));
         let poison = Arc::clone(&glue);
@@ -637,5 +872,37 @@ mod tests {
         let store = TaskStore::Memory(glue);
 
         assert!(matches!(store.get("task"), Err(TaskStoreError::Poisoned)));
+    }
+
+    #[test]
+    fn scoped_redb_transaction_rolls_back_all_touched_tables() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = TaskStore::redb(temp.path().join("caffold.redb")).unwrap();
+        let section = ManagedSection {
+            section_id: "section-rollback".to_string(),
+            logical_path: "Workspace/rollback".to_string(),
+        };
+
+        let result = store.transaction(|tables| {
+            tables.upsert_managed_section(&section)?;
+            tables.claim_managed_thread_at_top(
+                thread("thread-rollback"),
+                "Rollback task",
+                &section.section_id,
+                100,
+            )?;
+            Err::<(), _>(TaskStoreError::InvalidRow("injected_transaction_failure"))
+        });
+
+        assert!(matches!(
+            result,
+            Err(TaskStoreError::InvalidRow("injected_transaction_failure"))
+        ));
+        assert_eq!(
+            store
+                .read(|tables| Ok((tables.managed_sections()?, tables.active_managed_threads()?)))
+                .unwrap(),
+            (Vec::new(), Vec::new())
+        );
     }
 }

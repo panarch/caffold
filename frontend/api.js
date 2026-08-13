@@ -10,6 +10,12 @@ export async function restartCodexRuntime() {
   return requestJson("/api/codex/restart", {}, { method: "POST" });
 }
 
+export async function retryTaskStoreMigration() {
+  return requestJson("/api/task-store/migration/retry", {}, {
+    method: "POST",
+  });
+}
+
 export async function getCodexModels() {
   return requestJson("/api/codex/models");
 }
@@ -90,6 +96,14 @@ export async function restoreTask(threadId) {
 export async function restoreRecoveryTask(threadId) {
   return requestJson(
     `/api/tasks/${encodeURIComponent(threadId)}/recovery/restore`,
+    {},
+    { method: "POST" },
+  );
+}
+
+export async function recheckRecoveryTask(threadId) {
+  return requestJson(
+    `/api/tasks/${encodeURIComponent(threadId)}/recovery/recheck`,
     {},
     { method: "POST" },
   );

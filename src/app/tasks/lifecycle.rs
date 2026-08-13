@@ -1,5 +1,8 @@
 use std::{path::PathBuf, sync::Arc};
 
+use serde::Serialize;
+use uuid::Uuid;
+
 use crate::{
     app::error::ApiError,
     codex_app_server::{
@@ -7,12 +10,11 @@ use crate::{
     },
     codex_thread_sessions::{CodexThreadSessions, StartedThreadSettings},
     fs::RootedFs,
-    task_store::{ManagedThread, TaskStore},
+    task_store::{ManagedSection, ManagedThread, TaskStore},
 };
 
 use super::{
     CodexConnection, TaskRecord,
-    active_sections::{ActiveTaskSections, ActiveTaskTopPlacement},
     events::{TaskEvents, accepted_user_message_event, now_ms},
     projection::{resolve_thread_cwd, task_activity_ms, task_record_from_thread},
     routes::TaskListEvents,
@@ -34,6 +36,37 @@ pub(in crate::app) struct StartedTask {
     pub(in crate::app) placement: ActiveTaskTopPlacement,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(in crate::app) struct ActiveTaskSectionIdentity {
+    pub(in crate::app) id: String,
+    pub(in crate::app) name: String,
+    pub(in crate::app) repository: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(in crate::app) struct ActiveTaskTopPlacement {
+    pub(in crate::app) section: ActiveTaskSectionIdentity,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(in crate::app) before_thread_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TaskSectionIdentity {
+    logical_path: String,
+    repository: bool,
+}
+
+enum LocalPlacementMutation {
+    Claim {
+        thread: Box<ManagedThread>,
+        display_name: String,
+    },
+    Place,
+    Restore,
+}
+
 #[derive(Clone)]
 pub(in crate::app) struct TaskLifecycle {
     fs: Arc<RootedFs>,
@@ -42,7 +75,6 @@ pub(in crate::app) struct TaskLifecycle {
     list_events: TaskListEvents,
     store: TaskStore,
     worktrees: ManagedWorktrees,
-    active_sections: ActiveTaskSections,
 }
 
 impl TaskLifecycle {
@@ -53,7 +85,6 @@ impl TaskLifecycle {
         list_events: TaskListEvents,
         store: TaskStore,
         worktrees: ManagedWorktrees,
-        active_sections: ActiveTaskSections,
     ) -> Self {
         Self {
             fs,
@@ -62,7 +93,6 @@ impl TaskLifecycle {
             list_events,
             store,
             worktrees,
-            active_sections,
         }
     }
 
@@ -96,10 +126,8 @@ impl TaskLifecycle {
         let initial_name = initial_name
             .or_else(|| non_empty_thread_name(&prompt))
             .unwrap_or_else(|| format!("Thread {}", short_thread_id(&thread.thread_id)));
-        // Codex 0.147 materializes a new empty Thread in its persisted listing
-        // state on the first metadata write. Sections operate on that state, so
-        // persist the same first-prompt title Caffold already presents before
-        // attempting the required pre-turn Section move.
+        // Keep the app-server's canonical Thread name aligned with the name
+        // Caffold persists in its navigator ledger.
         if let Err(error) = client
             .set_thread_name(&thread.thread_id, &initial_name)
             .await
@@ -121,7 +149,19 @@ impl TaskLifecycle {
                 return Err(error);
             }
         };
-        let placement = match self.active_sections.place_at_top(client, &task).await {
+        let placement = match self
+            .claim_at_top(
+                managed_thread_from_task_record(
+                    &task,
+                    effective_model.clone(),
+                    effective_reasoning_effort.clone(),
+                    requested_fast_mode,
+                ),
+                &task.title,
+                &task,
+            )
+            .await
+        {
             Ok(placement) => placement,
             Err(error) => {
                 self.rollback_unclaimed_thread(client, &thread.thread_id)
@@ -129,19 +169,6 @@ impl TaskLifecycle {
                 return Err(error);
             }
         };
-        if let Err(error) = self
-            .claim(managed_thread_from_task_record(
-                &task,
-                effective_model.clone(),
-                effective_reasoning_effort.clone(),
-                requested_fast_mode,
-            ))
-            .await
-        {
-            self.rollback_unclaimed_thread(client, &thread.thread_id)
-                .await;
-            return Err(error);
-        }
 
         self.list_events.place(task.clone(), placement.clone());
         self.sessions
@@ -206,14 +233,18 @@ impl TaskLifecycle {
 
     pub(in crate::app) async fn place_active_task(
         &self,
-        client: &CodexThreadClient,
         task: &TaskRecord,
-    ) -> Result<ActiveTaskTopPlacement, ApiError> {
-        self.active_sections.place_at_top(client, task).await
+    ) -> Result<Option<ActiveTaskTopPlacement>, ApiError> {
+        self.mutate_local_placement(task, LocalPlacementMutation::Place)
+            .await
     }
 
-    pub(in crate::app) async fn reconcile_active_sections(&self, client: &CodexThreadClient) {
-        self.active_sections.reconcile(client).await;
+    pub(in crate::app) async fn restore_active_task(
+        &self,
+        task: &TaskRecord,
+    ) -> Result<Option<ActiveTaskTopPlacement>, ApiError> {
+        self.mutate_local_placement(task, LocalPlacementMutation::Restore)
+            .await
     }
 
     pub(in crate::app) async fn isolate_current_task(
@@ -251,6 +282,16 @@ impl TaskLifecycle {
     ) -> Result<ArchiveOutcome, ApiError> {
         self.worktrees
             .archive_for_thread(thread_id)
+            .await
+            .map_err(worktree_api_error)
+    }
+
+    pub(in crate::app) async fn preflight_archive_worktree(
+        &self,
+        thread_id: String,
+    ) -> Result<(), ApiError> {
+        self.worktrees
+            .preflight_archive_for_thread(thread_id)
             .await
             .map_err(worktree_api_error)
     }
@@ -303,13 +344,94 @@ impl TaskLifecycle {
         task_record_from_thread(&thread, &[], resolved.as_ref())
     }
 
-    async fn claim(&self, thread: ManagedThread) -> Result<(), ApiError> {
+    async fn claim_at_top(
+        &self,
+        thread: ManagedThread,
+        display_name: &str,
+        task: &TaskRecord,
+    ) -> Result<ActiveTaskTopPlacement, ApiError> {
+        self.mutate_local_placement(
+            task,
+            LocalPlacementMutation::Claim {
+                thread: Box::new(thread),
+                display_name: display_name.to_string(),
+            },
+        )
+        .await?
+        .ok_or_else(|| ApiError::Internal("claimed Task was not persisted".to_string()))
+    }
+
+    async fn mutate_local_placement(
+        &self,
+        task: &TaskRecord,
+        mutation: LocalPlacementMutation,
+    ) -> Result<Option<ActiveTaskTopPlacement>, ApiError> {
+        let identity = task_section_identity(task).ok_or_else(|| {
+            ApiError::Internal(format!(
+                "failed to resolve the active Section path for Task {}",
+                task.thread_id
+            ))
+        })?;
         let store = self.store.clone();
-        tokio::task::spawn_blocking(move || store.claim(thread, now_ms()))
-            .await
-            .map_err(task_store_worker_error)?
-            .map(|_| ())
-            .map_err(|error| ApiError::Internal(error.to_string()))
+        let thread_id = task.thread_id.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            store.transaction(|tables| {
+                let section = tables
+                    .managed_sections()?
+                    .into_iter()
+                    .find(|section| section.logical_path == identity.logical_path)
+                    .unwrap_or_else(|| ManagedSection {
+                        section_id: Uuid::new_v4().to_string(),
+                        logical_path: identity.logical_path.clone(),
+                    });
+                let before_thread_id = tables
+                    .active_managed_threads()?
+                    .into_iter()
+                    .filter(|thread| {
+                        thread.thread_id != thread_id
+                            && thread.section_id.as_deref() == Some(&section.section_id)
+                    })
+                    .min_by(|left, right| {
+                        left.position_in_section
+                            .cmp(&right.position_in_section)
+                            .then_with(|| left.thread_id.cmp(&right.thread_id))
+                    })
+                    .map(|thread| thread.thread_id);
+                tables.upsert_managed_section(&section)?;
+                let managed = match mutation {
+                    LocalPlacementMutation::Claim {
+                        thread,
+                        display_name,
+                    } => Some(tables.claim_managed_thread_at_top(
+                        *thread,
+                        &display_name,
+                        &section.section_id,
+                        now_ms(),
+                    )?),
+                    LocalPlacementMutation::Place => {
+                        tables.place_managed_thread_at_top(&thread_id, &section.section_id)?
+                    }
+                    LocalPlacementMutation::Restore => {
+                        tables.restore_managed_thread_at_top(&thread_id, &section.section_id)?
+                    }
+                };
+                Ok(managed.map(|_| ActiveTaskTopPlacement {
+                    section: ActiveTaskSectionIdentity {
+                        id: section.section_id,
+                        name: section.logical_path,
+                        repository: identity.repository,
+                    },
+                    before_thread_id,
+                }))
+            })
+        })
+        .await
+        .map_err(task_store_worker_error)?;
+        result.map_err(|error| ApiError::Internal(error.to_string()))
+    }
+
+    pub(in crate::app) fn refresh_task_list(&self) {
+        self.list_events.refresh();
     }
 
     async fn update_composer_settings(
@@ -345,6 +467,19 @@ impl TaskLifecycle {
             }
         }
     }
+}
+
+fn task_section_identity(task: &TaskRecord) -> Option<TaskSectionIdentity> {
+    if let Some(worktree) = &task.worktree {
+        return Some(TaskSectionIdentity {
+            logical_path: worktree.repository_root_path.clone(),
+            repository: true,
+        });
+    }
+    task.cwd_path.as_ref().map(|cwd_path| TaskSectionIdentity {
+        logical_path: cwd_path.clone(),
+        repository: false,
+    })
 }
 
 fn non_empty_thread_name(prompt: &str) -> Option<String> {
@@ -406,7 +541,91 @@ fn task_store_worker_error(error: tokio::task::JoinError) -> ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::task_store::ManagedWorktreeState;
+    use crate::{
+        codex_thread_sessions::CodexThreadSessions,
+        task_store::{ManagedWorktreeState, TaskStore},
+    };
+
+    fn fixture() -> (tempfile::TempDir, TaskLifecycle) {
+        let root = tempfile::tempdir().unwrap();
+        let fs = Arc::new(RootedFs::new(root.path()).unwrap());
+        let store = TaskStore::memory().unwrap();
+        let worktrees = ManagedWorktrees::new(
+            fs.clone(),
+            store.clone(),
+            root.path().join("managed-worktrees"),
+        )
+        .unwrap();
+        (
+            root,
+            TaskLifecycle::new(
+                fs,
+                CodexThreadSessions::default(),
+                TaskEvents::default(),
+                TaskListEvents::new(),
+                store,
+                worktrees,
+            ),
+        )
+    }
+
+    fn task(lifecycle: &TaskLifecycle, thread_id: &str, cwd: &std::path::Path) -> TaskRecord {
+        let thread = serde_json::json!({
+            "id": thread_id,
+            "name": thread_id,
+            "preview": thread_id,
+            "status": { "type": "idle" },
+            "cwd": cwd.display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": 2.0,
+            "turns": [],
+        });
+        let resolved = resolve_thread_cwd(&lifecycle.fs, &thread);
+        task_record_from_thread(&thread, &[], resolved.as_ref()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn local_placement_reuses_logical_paths_and_keeps_dense_top_order() {
+        let (root, lifecycle) = fixture();
+        let first = task(&lifecycle, "thread-first", root.path());
+        let second = task(&lifecycle, "thread-second", root.path());
+
+        let first_placement = lifecycle
+            .claim_at_top(
+                managed_thread_from_task_record(&first, None, None, false),
+                &first.title,
+                &first,
+            )
+            .await
+            .unwrap();
+        let second_placement = lifecycle
+            .claim_at_top(
+                managed_thread_from_task_record(&second, None, None, false),
+                &second.title,
+                &second,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(first_placement.section.id, second_placement.section.id);
+        assert_eq!(
+            second_placement.before_thread_id.as_deref(),
+            Some("thread-first")
+        );
+        let (sections, mut threads) = lifecycle
+            .store
+            .read(|tables| Ok((tables.managed_sections()?, tables.active_managed_threads()?)))
+            .unwrap();
+        assert_eq!(sections.len(), 1);
+        threads.sort_by_key(|thread| thread.position_in_section);
+        assert_eq!(
+            threads
+                .iter()
+                .map(|thread| (thread.thread_id.as_str(), thread.position_in_section))
+                .collect::<Vec<_>>(),
+            [("thread-second", Some(0)), ("thread-first", Some(1))]
+        );
+    }
 
     #[test]
     fn worktree_errors_keep_their_public_archive_contract() {

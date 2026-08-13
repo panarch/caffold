@@ -12,6 +12,7 @@ use gluesql::{
     },
     prelude::{Glue, SelectResultExt},
 };
+use std::collections::BTreeMap;
 
 use super::{Result, TaskStoreError};
 
@@ -28,11 +29,17 @@ const COLUMN_DEFINITIONS: &[&str] = &[
     "model TEXT NULL",
     "reasoning_effort TEXT NULL",
     "fast_mode BOOLEAN NOT NULL DEFAULT FALSE",
+    "display_name TEXT",
+    "section_id TEXT NULL",
+    "position_in_section INTEGER NULL",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManagedThread {
     pub thread_id: String,
+    pub display_name: String,
+    pub section_id: Option<String>,
+    pub position_in_section: Option<u64>,
     pub archived_at_ms: Option<u64>,
     pub last_observed_recency_ms: Option<u64>,
     pub claimed_at_ms: u64,
@@ -51,8 +58,12 @@ impl ManagedThread {
         model: Option<String>,
         reasoning_effort: Option<String>,
     ) -> Self {
+        let thread_id = thread_id.into();
         Self {
-            thread_id: thread_id.into(),
+            display_name: fallback_display_name(&thread_id),
+            thread_id,
+            section_id: None,
+            position_in_section: None,
             archived_at_ms: None,
             last_observed_recency_ms,
             claimed_at_ms: 0,
@@ -85,6 +96,9 @@ pub(super) struct ManagedThreadRow {
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
     pub fast_mode: bool,
+    pub display_name: String,
+    pub section_id: Option<String>,
+    pub position_in_section: Option<i64>,
 }
 
 impl TryFrom<&ManagedThread> for ManagedThreadRow {
@@ -93,6 +107,13 @@ impl TryFrom<&ManagedThread> for ManagedThreadRow {
     fn try_from(thread: &ManagedThread) -> Result<Self> {
         Ok(Self {
             thread_id: thread.thread_id.clone(),
+            display_name: validate_display_name(&thread.display_name)?.to_string(),
+            section_id: thread.section_id.clone(),
+            position_in_section: to_db_position(
+                thread.section_id.as_deref(),
+                thread.position_in_section,
+                thread.archived_at_ms.is_some(),
+            )?,
             archived_at: to_optional_db_timestamp(thread.archived_at_ms, "archived_at_ms")?,
             last_observed_recency_at: to_optional_db_timestamp(
                 thread.last_observed_recency_ms,
@@ -124,6 +145,13 @@ impl TryFrom<ManagedThreadRow> for ManagedThread {
     fn try_from(row: ManagedThreadRow) -> Result<Self> {
         Ok(Self {
             thread_id: row.thread_id,
+            display_name: validate_display_name(&row.display_name)?.to_string(),
+            position_in_section: from_db_position(
+                row.section_id.as_deref(),
+                row.position_in_section,
+                row.archived_at.is_some(),
+            )?,
+            section_id: row.section_id,
             archived_at_ms: from_optional_db_timestamp(row.archived_at, "archived_at_ms")?,
             last_observed_recency_ms: from_optional_db_timestamp(
                 row.last_observed_recency_at,
@@ -199,6 +227,9 @@ where
 {
     if let Some(existing) = get(glue, &thread.thread_id)? {
         thread.archived_at_ms = None;
+        thread.display_name = existing.display_name;
+        thread.section_id = existing.section_id;
+        thread.position_in_section = existing.position_in_section;
         thread.claimed_at_ms = existing.claimed_at_ms;
         thread.last_opened_at_ms = max_optional(existing.last_opened_at_ms, Some(now_ms));
         thread.last_completed_at_ms =
@@ -274,6 +305,93 @@ where
     )
 }
 
+pub(super) fn list_all_active<S>(glue: &mut Glue<S>) -> Result<Vec<ManagedThread>>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    let threads = list(glue, None, usize::MAX)?.0;
+    validate_dense_positions(&threads)?;
+    Ok(threads)
+}
+
+pub(super) fn claim_at_top<S>(
+    glue: &mut Glue<S>,
+    mut thread: ManagedThread,
+    display_name: &str,
+    section_id: &str,
+    now_ms: u64,
+) -> Result<ManagedThread>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    thread.display_name = validate_display_name(display_name)?.to_string();
+    let mut claimed = claim(glue, thread, now_ms)?;
+    claimed.display_name = display_name.to_string();
+    place_at_top_inner(glue, claimed, section_id)
+}
+
+pub(super) fn place_at_top<S>(
+    glue: &mut Glue<S>,
+    thread_id: &str,
+    section_id: &str,
+) -> Result<Option<ManagedThread>>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    let Some(thread) = get(glue, thread_id)? else {
+        return Ok(None);
+    };
+    place_at_top_inner(glue, thread, section_id).map(Some)
+}
+
+pub(super) fn restore_at_top<S>(
+    glue: &mut Glue<S>,
+    thread_id: &str,
+    section_id: &str,
+) -> Result<Option<ManagedThread>>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    let Some(thread) = restore(glue, thread_id)? else {
+        return Ok(None);
+    };
+    place_at_top_inner(glue, thread, section_id).map(Some)
+}
+
+pub(super) fn archive_and_compact<S>(
+    glue: &mut Glue<S>,
+    thread_id: &str,
+    archived_at_ms: u64,
+) -> Result<Option<ManagedThread>>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    let Some(existing) = get(glue, thread_id)? else {
+        return Ok(None);
+    };
+    if let Some(section_id) = existing.section_id.as_deref() {
+        compact_without(glue, section_id, thread_id)?;
+    }
+    archive(glue, thread_id, archived_at_ms)
+}
+
+pub(super) fn update_display_name<S>(
+    glue: &mut Glue<S>,
+    thread_id: &str,
+    display_name: &str,
+) -> Result<Option<ManagedThread>>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    let display_name = validate_display_name(display_name)?;
+    let Some(mut thread) = get(glue, thread_id)? else {
+        return Ok(None);
+    };
+    thread.display_name = display_name.to_string();
+    update_all(glue, &thread)?;
+    Ok(Some(thread))
+}
+
 pub(super) fn archive<S>(
     glue: &mut Glue<S>,
     thread_id: &str,
@@ -293,6 +411,8 @@ where
             "archived_at",
             timestamp_expr(archived_at_ms, "archived_at_ms")?,
         )
+        .set("section_id", null())
+        .set("position_in_section", null())
         .execute(glue)?;
     expect_single_update(payload)?;
     get_archived(glue, thread_id)
@@ -326,6 +446,7 @@ where
     update_observed_recency_by_membership(glue, thread_id, activity_ms, Membership::Active)
 }
 
+#[cfg(test)]
 pub(super) fn update_archived_observed_recency<S>(
     glue: &mut Glue<S>,
     thread_id: &str,
@@ -337,6 +458,7 @@ where
     update_observed_recency_by_membership(glue, thread_id, activity_ms, Membership::Archived)
 }
 
+#[cfg(test)]
 pub(super) fn update_completed_at<S>(
     glue: &mut Glue<S>,
     thread_id: &str,
@@ -362,6 +484,33 @@ where
         )
         .execute(glue)?;
     get(glue, thread_id)
+}
+
+pub(super) fn record_completed_turn<S>(
+    glue: &mut Glue<S>,
+    thread_id: &str,
+    completed_at_ms: u64,
+) -> Result<Option<ManagedThread>>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    let Some(mut thread) = get(glue, thread_id)? else {
+        return Ok(None);
+    };
+    thread.last_completed_at_ms = Some(
+        thread
+            .last_completed_at_ms
+            .unwrap_or_default()
+            .max(completed_at_ms),
+    );
+    thread.last_observed_recency_ms = Some(
+        thread
+            .last_observed_recency_ms
+            .unwrap_or_default()
+            .max(completed_at_ms),
+    );
+    update_all(glue, &thread)?;
+    Ok(Some(thread))
 }
 
 pub(super) fn mark_seen<S>(
@@ -422,6 +571,19 @@ where
         )
         .execute(glue)?;
     deleted(payload)
+}
+
+pub(super) fn delete_active_and_compact<S>(glue: &mut Glue<S>, thread_id: &str) -> Result<bool>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    let Some(existing) = get(glue, thread_id)? else {
+        return Ok(false);
+    };
+    if let Some(section_id) = existing.section_id.as_deref() {
+        compact_without(glue, section_id, thread_id)?;
+    }
+    delete(glue, thread_id)
 }
 
 pub(super) fn delete_archived<S>(glue: &mut Glue<S>, thread_id: &str) -> Result<bool>
@@ -553,7 +715,7 @@ where
     Ok(())
 }
 
-fn update_all<S>(glue: &mut Glue<S>, thread: &ManagedThread) -> Result<()>
+pub(super) fn update_all<S>(glue: &mut Glue<S>, thread: &ManagedThread) -> Result<()>
 where
     S: GStore + GStoreMut + Planner,
 {
@@ -563,6 +725,12 @@ where
         .filter(col("thread_id").eq(text(row.thread_id)))
         .filter(Membership::Active.filter())
         .set("archived_at", optional_timestamp(row.archived_at))
+        .set("display_name", text(row.display_name))
+        .set("section_id", optional_text(row.section_id.as_deref()))
+        .set(
+            "position_in_section",
+            optional_integer(row.position_in_section),
+        )
         .set(
             "last_observed_recency_at",
             optional_timestamp(row.last_observed_recency_at),
@@ -613,6 +781,10 @@ fn optional_text(value: Option<&str>) -> ExprNode<'static> {
     value.map_or_else(null, |value| text(value.to_owned()))
 }
 
+fn optional_integer(value: Option<i64>) -> ExprNode<'static> {
+    value.map_or_else(null, |value| glue_value(Value::I64(value)))
+}
+
 fn timestamp_value(timestamp: NaiveDateTime) -> ExprNode<'static> {
     glue_value(Value::Timestamp(timestamp))
 }
@@ -627,6 +799,97 @@ fn timestamp_expr(value: u64, field: &'static str) -> Result<ExprNode<'static>> 
 
 fn max_optional(left: Option<u64>, right: Option<u64>) -> Option<u64> {
     left.into_iter().chain(right).max()
+}
+
+fn place_at_top_inner<S>(
+    glue: &mut Glue<S>,
+    mut target: ManagedThread,
+    section_id: &str,
+) -> Result<ManagedThread>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    if section_id.trim().is_empty() {
+        return Err(TaskStoreError::InvalidRow("section_id"));
+    }
+    if let Some(previous_section_id) = target.section_id.as_deref() {
+        compact_without(glue, previous_section_id, &target.thread_id)?;
+    }
+
+    let mut target_section = list(glue, None, usize::MAX)?
+        .0
+        .into_iter()
+        .filter(|thread| {
+            thread.thread_id != target.thread_id && thread.section_id.as_deref() == Some(section_id)
+        })
+        .collect::<Vec<_>>();
+    sort_placed_threads(&mut target_section)?;
+    target.section_id = Some(section_id.to_string());
+    target.position_in_section = Some(0);
+    update_all(glue, &target)?;
+    for (index, mut thread) in target_section.into_iter().enumerate() {
+        thread.position_in_section = Some(index as u64 + 1);
+        update_all(glue, &thread)?;
+    }
+    Ok(target)
+}
+
+fn compact_without<S>(glue: &mut Glue<S>, section_id: &str, removed_id: &str) -> Result<()>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    let mut remaining = list(glue, None, usize::MAX)?
+        .0
+        .into_iter()
+        .filter(|thread| {
+            thread.thread_id != removed_id && thread.section_id.as_deref() == Some(section_id)
+        })
+        .collect::<Vec<_>>();
+    sort_placed_threads(&mut remaining)?;
+    for (position, mut thread) in remaining.into_iter().enumerate() {
+        thread.position_in_section = Some(position as u64);
+        update_all(glue, &thread)?;
+    }
+    Ok(())
+}
+
+fn sort_placed_threads(threads: &mut [ManagedThread]) -> Result<()> {
+    if threads
+        .iter()
+        .any(|thread| thread.position_in_section.is_none())
+    {
+        return Err(TaskStoreError::InvalidRow("section_placement"));
+    }
+    threads.sort_by(|left, right| {
+        left.position_in_section
+            .cmp(&right.position_in_section)
+            .then_with(|| left.thread_id.cmp(&right.thread_id))
+    });
+    Ok(())
+}
+
+fn validate_dense_positions(threads: &[ManagedThread]) -> Result<()> {
+    let mut positions = BTreeMap::<&str, Vec<u64>>::new();
+    for thread in threads {
+        match (thread.section_id.as_deref(), thread.position_in_section) {
+            (Some(section_id), Some(position)) => {
+                positions.entry(section_id).or_default().push(position)
+            }
+            (None, None) => {}
+            _ => return Err(TaskStoreError::InvalidRow("section_placement")),
+        }
+    }
+    for values in positions.values_mut() {
+        values.sort_unstable();
+        if !values
+            .iter()
+            .enumerate()
+            .all(|(expected, actual)| *actual == expected as u64)
+        {
+            return Err(TaskStoreError::InvalidRow("position_in_section"));
+        }
+    }
+    Ok(())
 }
 
 fn to_optional_db_timestamp(
@@ -651,6 +914,51 @@ fn from_optional_db_timestamp(
     value
         .map(|value| from_db_timestamp(value, field))
         .transpose()
+}
+
+pub(crate) fn fallback_display_name(thread_id: &str) -> String {
+    format!("Thread {}", thread_id.chars().take(8).collect::<String>())
+}
+
+fn validate_display_name(display_name: &str) -> Result<&str> {
+    if display_name.trim().is_empty() {
+        return Err(TaskStoreError::InvalidRow("display_name"));
+    }
+    Ok(display_name)
+}
+
+fn to_db_position(
+    section_id: Option<&str>,
+    position: Option<u64>,
+    archived: bool,
+) -> Result<Option<i64>> {
+    validate_placement(section_id, position.is_some(), archived)?;
+    position
+        .map(|position| {
+            i64::try_from(position).map_err(|_| TaskStoreError::InvalidRow("position_in_section"))
+        })
+        .transpose()
+}
+
+fn from_db_position(
+    section_id: Option<&str>,
+    position: Option<i64>,
+    archived: bool,
+) -> Result<Option<u64>> {
+    validate_placement(section_id, position.is_some(), archived)?;
+    position
+        .map(|position| {
+            u64::try_from(position).map_err(|_| TaskStoreError::InvalidRow("position_in_section"))
+        })
+        .transpose()
+}
+
+fn validate_placement(section_id: Option<&str>, has_position: bool, archived: bool) -> Result<()> {
+    let has_section = section_id.is_some_and(|section_id| !section_id.trim().is_empty());
+    if has_section != has_position || (archived && has_section) {
+        return Err(TaskStoreError::InvalidRow("section_placement"));
+    }
+    Ok(())
 }
 
 fn managed_thread_order(left: &ManagedThread, right: &ManagedThread) -> std::cmp::Ordering {
@@ -751,6 +1059,9 @@ mod tests {
     fn row_conversion_round_trips_all_persisted_fields() {
         let thread = ManagedThread {
             thread_id: "fully-populated".to_string(),
+            display_name: "Fully populated".to_string(),
+            section_id: None,
+            position_in_section: None,
             archived_at_ms: Some(110),
             last_observed_recency_ms: Some(120),
             claimed_at_ms: 100,
@@ -1090,5 +1401,70 @@ mod tests {
             deleted(Payload::Update(0)),
             Err(TaskStoreError::UnexpectedPayload)
         ));
+    }
+
+    #[test]
+    fn section_lifecycle_keeps_dense_positions_and_preserves_names() {
+        let mut glue = memory();
+        for (id, name) in [("a", "Task A"), ("b", "Task B"), ("c", "Task C")] {
+            claim_at_top(&mut glue, thread(id, Some(1)), name, "one", 1).unwrap();
+        }
+        assert_eq!(
+            get(&mut glue, "c").unwrap().unwrap().position_in_section,
+            Some(0)
+        );
+
+        let archived = archive_and_compact(&mut glue, "b", 2).unwrap().unwrap();
+        assert_eq!(archived.display_name, "Task B");
+        assert_eq!(
+            (archived.section_id, archived.position_in_section),
+            (None, None)
+        );
+        validate_dense_positions(&list(&mut glue, None, usize::MAX).unwrap().0).unwrap();
+
+        let restored = restore_at_top(&mut glue, "b", "one").unwrap().unwrap();
+        assert_eq!(restored.display_name, "Task B");
+        assert_eq!(restored.position_in_section, Some(0));
+        validate_dense_positions(&list(&mut glue, None, usize::MAX).unwrap().0).unwrap();
+    }
+
+    #[test]
+    fn deleting_an_active_thread_compacts_its_section() {
+        let mut glue = memory();
+        for id in ["a", "b", "c"] {
+            claim_at_top(&mut glue, thread(id, Some(1)), id, "one", 1).unwrap();
+        }
+
+        assert!(delete_active_and_compact(&mut glue, "b").unwrap());
+        assert!(get(&mut glue, "b").unwrap().is_none());
+        let threads = list(&mut glue, None, usize::MAX).unwrap().0;
+        validate_dense_positions(&threads).unwrap();
+        assert_eq!(
+            get(&mut glue, "c").unwrap().unwrap().position_in_section,
+            Some(0)
+        );
+        assert_eq!(
+            get(&mut glue, "a").unwrap().unwrap().position_in_section,
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn moving_between_sections_compacts_both_sides() {
+        let mut glue = memory();
+        for id in ["a", "b"] {
+            claim_at_top(&mut glue, thread(id, Some(1)), id, "one", 1).unwrap();
+        }
+        place_at_top(&mut glue, "a", "two").unwrap();
+        let threads = list(&mut glue, None, usize::MAX).unwrap().0;
+        validate_dense_positions(&threads).unwrap();
+        assert_eq!(
+            get(&mut glue, "b").unwrap().unwrap().position_in_section,
+            Some(0)
+        );
+        assert_eq!(
+            get(&mut glue, "a").unwrap().unwrap().position_in_section,
+            Some(0)
+        );
     }
 }
