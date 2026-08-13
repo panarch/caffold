@@ -1321,11 +1321,14 @@ test("keeps task event chronology stable through approval, completion, and reloa
     )
     .toBeCloseTo(disclosureOffsetBeforeLive, 1);
   await expect.poll(() => isScrolledToBottom(conversationScroller)).toBe(false);
-  const completedCommandButton = tasksPage.locator(
-    '.task-work-details-item[data-event-type="command_execution"] > .task-work-details-command-summary',
+  const completedCommandRow = tasksPage.locator(
+    '.task-work-details-item[data-event-type="command_execution"] > caffold-task-command-summary',
   );
-  await expect(completedCommandButton).toContainText("Completed");
-  await completedCommandButton.click();
+  const completedCommandAction = completedCommandRow.getByRole("button", {
+    name: "View output",
+  });
+  await expect(completedCommandRow).toContainText("Completed");
+  await completedCommandAction.click();
   const commandDialog = tasksPage.locator("caffold-task-command-dialog dialog");
   await expect(completedWorkDetails).toHaveAttribute("open", "");
   await expect(commandDialog).toHaveAttribute("open", "");
@@ -1339,7 +1342,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
     await expect(commandDialog).toContainText("test result: ok");
   });
   await commandDialog.getByRole("button", { name: "Close command output" }).click();
-  await expect(completedCommandButton).toBeFocused();
+  await expect(completedCommandAction).toBeFocused();
   await expect
     .poll(() =>
       tasksPage.evaluate((element) => {

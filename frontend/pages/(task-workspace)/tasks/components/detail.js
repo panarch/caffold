@@ -149,7 +149,7 @@ class CaffoldTaskDetail extends HTMLElement {
       event.stopPropagation();
       const returnFocusKey = `${event.detail?.returnFocusKey ?? ""}`;
       if (returnFocusKey) {
-        this.conversationComponent()?.focusCommandSummary(returnFocusKey);
+        this.conversationComponent()?.focusCommandOutputAction(returnFocusKey);
       }
     });
     this.addEventListener("caffold:task-composer-submit", (event) => {

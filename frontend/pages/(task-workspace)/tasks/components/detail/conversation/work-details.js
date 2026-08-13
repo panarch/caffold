@@ -6,9 +6,12 @@ import {
 import { eventIdentityKey, fileChangePaths } from "../../../task-events.js";
 import {
   formatDate,
-  formatDuration,
   formatStatus,
 } from "../../../task-format.js";
+import {
+  commandSummaryStatus,
+  renderCommandSummary,
+} from "./command-summary.js";
 
 const disclosureStateByIdentity = new Map();
 
@@ -100,14 +103,6 @@ class CaffoldTaskWorkDetails extends HTMLElement {
     return summary?.getBoundingClientRect().top ?? null;
   }
 
-  focusCommandSummary(commandKey) {
-    const button = [...this.querySelectorAll(".task-work-details-command-summary")].find(
-      (entry) => entry.dataset.commandKey === commandKey,
-    );
-    button?.focus();
-    return Boolean(button);
-  }
-
   render() {
     this.innerHTML = `
       <details data-work-details-disclosure-key="root">
@@ -159,25 +154,6 @@ class CaffoldTaskWorkDetails extends HTMLElement {
   }
 
   handleClick(event) {
-    const action =
-      event.target instanceof Element
-        ? event.target.closest("[data-work-details-action]")
-        : null;
-    if (action && this.contains(action)) {
-      event.stopPropagation();
-      this.dispatchEvent(
-        new CustomEvent("caffold:task-work-details-intent", {
-          bubbles: true,
-          composed: true,
-          detail: {
-            type: action.dataset.workDetailsAction,
-            commandKey: action.dataset.commandKey,
-          },
-        }),
-      );
-      return;
-    }
-
     const summary =
       event.target instanceof Element ? event.target.closest("summary") : null;
     const disclosure = summary?.parentElement;
@@ -412,7 +388,7 @@ function renderCommandWorkItem(event) {
   const output = `${payload.aggregatedOutput ?? ""}`.trim();
   if (isTerminalCommandStatus(status)) {
     return `
-      <article class="task-work-details-item task-work-details-command" data-event-type="command_execution" data-command-status="${escapeHtml(commandResultStatus(payload))}" data-command-terminal="true">
+      <article class="task-work-details-item task-work-details-command" data-event-type="command_execution" data-command-status="${escapeHtml(commandSummaryStatus(event))}" data-command-terminal="true">
         ${renderCommandSummary(event)}
       </article>
     `;
@@ -463,32 +439,6 @@ function renderFileChangeWorkItemShell(event, text, paths) {
   `;
 }
 
-function renderCommandSummary(event) {
-  const payload = event.payload ?? {};
-  const command = `${payload.command ?? ""}`.trim() || "(command unavailable)";
-  const status = commandResultStatus(payload);
-  const duration = finiteNumber(payload.durationMs);
-  const exitCode = finiteNumber(payload.exitCode);
-  const metadata = [
-    duration !== null ? formatDuration(duration) : "",
-    status === "failed" && exitCode !== null ? `Exit ${exitCode}` : "",
-  ].filter(Boolean);
-  return `
-    <button
-      type="button"
-      class="task-work-details-command-summary"
-      data-work-details-action="command-output"
-      data-command-key="${escapeHtml(eventIdentityKey(event))}"
-      aria-haspopup="dialog"
-    >
-      <span class="task-work-details-command-status" data-command-result="${escapeHtml(status)}">${status === "failed" ? "Failed" : "Completed"}</span>
-      <code class="task-work-details-command-label">${escapeHtml(command)}</code>
-      ${metadata.length ? `<span class="task-work-details-command-meta">${escapeHtml(metadata.join(" · "))}</span>` : ""}
-      <span class="task-work-details-command-action">View output</span>
-    </button>
-  `;
-}
-
 function renderChangedFilePaths(paths) {
   if (!paths.length) {
     return "";
@@ -509,17 +459,6 @@ function disclosureIdentityAttribute(kind, identity) {
 
 function isTerminalCommandStatus(status) {
   return ["completed", "failed"].includes(`${status ?? ""}`);
-}
-
-function commandResultStatus(payload) {
-  const exitCode = finiteNumber(payload.exitCode);
-  return payload.status === "failed" || (exitCode !== null && exitCode !== 0)
-    ? "failed"
-    : "completed";
-}
-
-function finiteNumber(value) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 if (!customElements.get("caffold-task-work-details")) {

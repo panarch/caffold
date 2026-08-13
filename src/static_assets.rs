@@ -320,6 +320,16 @@ pub fn get(path: &str) -> Option<StaticAsset> {
                 "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.js"
             )))
         }
+        "pages/(task-workspace)/tasks/components/detail/conversation/command-summary.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/command-summary.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/conversation/command-summary.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/command-summary.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/components/detail/conversation/markdown.js" => {
             Some(js(include_str!(
                 "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/markdown.js"
@@ -1222,6 +1232,10 @@ mod tests {
                 b"caffold-task-command-dialog".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/components/detail/conversation/command-summary.js",
+                b"caffold-task-command-summary".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/components/detail/conversation/work-details.js",
                 b"caffold-task-work-details".as_slice(),
             ),
@@ -1329,6 +1343,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css",
                 b"caffold-task-command-dialog".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/components/detail/conversation/command-summary.css",
+                b"caffold-task-command-summary".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/components/detail/conversation/work-details.css",
