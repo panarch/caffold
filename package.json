@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:appearance": "node --test tests/appearance-*.test.mjs",
+    "test:appearance": "node --test tests/appearance-ownership.test.mjs tests/settings.test.mjs",
     "test:css-ownership": "node --test tests/css-ownership.test.mjs",
     "test:codex-protocol": "node --test tests/codex-protocol.test.mjs",
     "test:docs": "node --test tests/development-documentation.test.mjs",

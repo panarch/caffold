@@ -391,6 +391,7 @@ test("gives every Settings route one page title and landmark hierarchy", async (
 }) => {
   const routes = [
     ["/settings/appearance", "Appearance", "caffold-settings-appearance-page"],
+    ["/settings/files", "Files", "caffold-settings-files-page"],
     ["/settings/notifications", "Notifications", "caffold-settings-notifications-page"],
     ["/settings/codex", "Codex", "caffold-settings-codex-page"],
     ["/settings/about", "About Caffold", "caffold-settings-about-page"],
@@ -483,6 +484,28 @@ test("reflows Settings from the detail pane width at maximum Interface scale", a
     "settings-appearance-roles-interface-120",
   );
 
+  await page.goto("/settings/files");
+  const files = page.locator("caffold-settings-files-page");
+  const filesMetrics = await files.evaluate((element) => {
+    const option = element.querySelector(".settings-files-options label");
+    const copy = element.querySelector(".settings-files-option-copy");
+    return {
+      overflowX: element.scrollWidth > element.clientWidth,
+      optionOverflowX: option.scrollWidth > option.clientWidth,
+      copyOverflowX: copy.scrollWidth > copy.clientWidth,
+    };
+  });
+  expect(filesMetrics).toEqual({
+    overflowX: false,
+    optionOverflowX: false,
+    copyOverflowX: false,
+  });
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "settings-files-roles-interface-120",
+  );
+
   await page.goto("/settings/codex");
   const codex = page.locator("caffold-settings-codex-page");
   const codexMetrics = await settingsSurfaceMetrics(codex, {
@@ -530,11 +553,15 @@ test("reflows Settings from the detail pane width at maximum Interface scale", a
   );
 });
 
-test("normalizes legacy settings into the current appearance contract", async ({
+test("persists file ordering and keeps it across appearance reset", async ({
   page,
-}) => {
+}, testInfo) => {
   await page.addInitScript(
     ({ key }) => {
+      if (sessionStorage.getItem("settings-seeded")) {
+        return;
+      }
+      sessionStorage.setItem("settings-seeded", "true");
       localStorage.setItem(
         key,
         JSON.stringify({
@@ -542,49 +569,57 @@ test("normalizes legacy settings into the current appearance contract", async ({
           taskListSize: "compact",
           taskDetailSize: "large",
           codeSize: "default",
+          fileSortMode: "invalid",
         }),
       );
     },
     { key: SETTINGS_KEY },
   );
 
-  await page.goto("/settings/appearance");
-  const settingsPage = page.locator("caffold-settings-appearance-page");
-  await expect(settingsPage).toBeVisible();
+  await page.goto("/settings/files");
+  const filesPage = page.locator("caffold-settings-files-page");
+  const foldersFirst = filesPage.locator('input[value="folders-first"]');
+  const byName = filesPage.locator('input[value="name"]');
+  await expect(filesPage).toBeVisible();
   await expect(
     page.locator("caffold-settings-workspace .settings-workspace-detail-header"),
   ).toBeVisible();
-  await expect(range(settingsPage, "interfaceScalePercent")).toHaveValue("100");
-  await expect(range(settingsPage, "conversationTextPx")).toHaveValue("17");
-  await expect(range(settingsPage, "codeTextPx")).toHaveValue("15");
-  await expect(settingsPage.locator("select[data-typeface-setting]")).toHaveValue(
-    "d2-coding",
-  );
+  await expect(foldersFirst).toBeChecked();
+  await expect(byName).not.toBeChecked();
 
   await expect
     .poll(() =>
       page.evaluate((key) => JSON.parse(localStorage.getItem(key)), SETTINGS_KEY),
     )
     .toEqual({
-      appearanceVersion: 4,
       themeMode: "system",
       typefacePreset: "d2-coding",
       interfaceScalePercent: 100,
-      conversationTextPx: 17,
-      codeTextPx: 15,
+      conversationTextPx: 14,
+      codeTextPx: 13,
+      fileSortMode: "folders-first",
     });
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        [
-          "fileTreeSize",
-          "codeSize",
-          "taskListSize",
-          "taskDetailSize",
-        ].some((name) => Object.hasOwn(document.documentElement.dataset, name)),
-      ),
-    )
-    .toBe(false);
+
+  await byName.check();
+  await expect(byName).toBeChecked();
+  await expect.poll(() => page.evaluate(
+    (key) => JSON.parse(localStorage.getItem(key)).fileSortMode,
+    SETTINGS_KEY,
+  )).toBe("name");
+  await page.reload();
+  await expect(filesPage.locator('input[value="name"]')).toBeChecked();
+
+  await page.goto("/settings/appearance");
+  const appearance = page.locator("caffold-settings-appearance-page");
+  await setRange(range(appearance, "interfaceScalePercent"), 120);
+  await appearance.getByRole("button", { name: "Reset all" }).click();
+  await expect.poll(() => page.evaluate(
+    (key) => JSON.parse(localStorage.getItem(key)).fileSortMode,
+    SETTINGS_KEY,
+  )).toBe("name");
+  await page.goto("/settings/files");
+  await expect(filesPage.locator('input[value="name"]')).toBeChecked();
+  await captureReviewScreenshot(page, testInfo, "settings-files-name");
 });
 
 test("selects, persists, and resolves System, Light, and Dark themes", async ({

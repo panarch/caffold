@@ -1,5 +1,10 @@
 import { renderEntryIcon, warmIcons } from "./icons.js";
 import { fileStatusPresentation } from "../file-status.js";
+import {
+  FILE_SORT_MODES,
+  getSettings,
+  normalizeFileSortMode,
+} from "../settings.js";
 
 export const FILE_TREE_SELECT_EVENT = "caffold:file-tree-select";
 export const FILE_TREE_LOAD_EVENT = "caffold:file-tree-load-children";
@@ -8,15 +13,22 @@ class CaffoldFileTree extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
     this.attachIconListener();
+    this.attachSettingsListener();
     warmIcons();
   }
 
   disconnectedCallback() {
-    if (!this.iconsReadyListening) {
-      return;
+    if (this.iconsReadyListening) {
+      window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
+      this.iconsReadyListening = false;
     }
-    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
-    this.iconsReadyListening = false;
+    if (this.settingsListening) {
+      window.removeEventListener(
+        "caffold:settings-change",
+        this.boundSettingsChange,
+      );
+      this.settingsListening = false;
+    }
   }
 
   ensureRendered() {
@@ -31,6 +43,7 @@ class CaffoldFileTree extends HTMLElement {
     this.expandedKeys = new Set();
     this.knownDirectoryKeys = new Set();
     this.selectedKey = "";
+    this.globalFileSortMode = getSettings().fileSortMode;
     this.innerHTML = `
       <div class="file-tree-scroll">
         <ol class="file-tree-rows"></ol>
@@ -46,6 +59,35 @@ class CaffoldFileTree extends HTMLElement {
     }
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     this.iconsReadyListening = true;
+  }
+
+  attachSettingsListener() {
+    const previousMode = this.fileSortMode();
+    this.globalFileSortMode = normalizeFileSortMode(getSettings().fileSortMode);
+    this.boundSettingsChange ??= (event) => {
+      const previous = this.fileSortMode();
+      this.globalFileSortMode = normalizeFileSortMode(
+        event.detail?.settings?.fileSortMode,
+      );
+      if (previous !== this.fileSortMode()) {
+        this.reconcileRows();
+      }
+    };
+    if (!this.settingsListening) {
+      window.addEventListener(
+        "caffold:settings-change",
+        this.boundSettingsChange,
+      );
+      this.settingsListening = true;
+    }
+    if (previousMode !== this.fileSortMode()) {
+      this.reconcileRows();
+    }
+  }
+
+  fileSortMode() {
+    const override = this.getAttribute("file-sort-mode");
+    return normalizeFileSortMode(override ?? this.globalFileSortMode);
   }
 
   setModel(model = {}) {
@@ -295,7 +337,11 @@ class CaffoldFileTree extends HTMLElement {
     if (!list) {
       return;
     }
-    const rows = visibleRows(this.nodes, this.expandedKeys);
+    const rows = visibleRows(
+      this.nodes,
+      this.expandedKeys,
+      this.fileSortMode(),
+    );
     const currentRows = new Map(
       Array.from(list.children).map((row) => [row.dataset.fileTreeRowKey, row]),
     );
@@ -570,10 +616,10 @@ function defaultExpandedKeys(nodeByKey) {
     .map((node) => node.key);
 }
 
-function visibleRows(nodes, expandedKeys) {
+function visibleRows(nodes, expandedKeys, fileSortMode) {
   const rows = [];
   const visit = (items, depth = 0, parentKey = "") => {
-    for (const node of sortedNodes(items)) {
+    for (const node of sortedNodes(items, fileSortMode)) {
       if (node.kind === "group") {
         rows.push({ key: node.key, node, depth: 0, parentKey: "" });
         const children = childState(node);
@@ -608,21 +654,46 @@ function visibleRows(nodes, expandedKeys) {
   return rows;
 }
 
-function sortedNodes(nodes) {
+function sortedNodes(nodes, fileSortMode) {
   return [...(nodes ?? [])].sort((left, right) => {
+    if (left.variant === "parent" || right.variant === "parent") {
+      return left.variant === right.variant
+        ? 0
+        : left.variant === "parent"
+          ? -1
+          : 1;
+    }
     if (left.kind === "group" || right.kind === "group") {
       return (left.order ?? 0) - (right.order ?? 0);
     }
-    if (left.variant === "parent" || right.variant === "parent") {
-      return left.variant === "parent" ? -1 : 1;
-    }
-    if (left.kind !== right.kind) {
+    if (
+      fileSortMode !== FILE_SORT_MODES.NAME &&
+      left.kind !== right.kind
+    ) {
       return left.kind === "directory" ? -1 : right.kind === "directory" ? 1 : 0;
     }
-    return `${left.name ?? ""}`
-      .toLocaleLowerCase()
-      .localeCompare(`${right.name ?? ""}`.toLocaleLowerCase());
+    const nameOrder = compareNamesIgnoringCase(left.name, right.name);
+    if (nameOrder !== 0 || fileSortMode !== FILE_SORT_MODES.NAME) {
+      return nameOrder;
+    }
+    return (
+      compareCodePoints(left.name, right.name) ||
+      compareCodePoints(left.path, right.path) ||
+      compareCodePoints(left.key, right.key)
+    );
   });
+}
+
+function compareNamesIgnoringCase(left, right) {
+  return `${left ?? ""}`
+    .toLocaleLowerCase()
+    .localeCompare(`${right ?? ""}`.toLocaleLowerCase());
+}
+
+function compareCodePoints(left, right) {
+  const leftText = `${left ?? ""}`;
+  const rightText = `${right ?? ""}`;
+  return leftText < rightText ? -1 : leftText > rightText ? 1 : 0;
 }
 
 function finalizeBuiltNodes(children) {

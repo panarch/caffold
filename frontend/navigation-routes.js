@@ -48,6 +48,17 @@ const ROUTE_DEFINITIONS = [
     parent: () => settingsRoute(),
   }),
   routeDefinition({
+    id: "settings-files",
+    kind: "settings",
+    pattern: "/settings/files",
+    surface: "task-workspace",
+    target: "files",
+    toRoute: () => settingsRoute("files"),
+    matchesRoute: (route) =>
+      route?.kind === "settings" && route.section === "files",
+    parent: () => settingsRoute(),
+  }),
+  routeDefinition({
     id: "settings-notifications",
     kind: "settings",
     pattern: "/settings/notifications",
@@ -534,7 +545,9 @@ function tasksRoute(options = {}) {
 function settingsRoute(section = "") {
   return {
     kind: "settings",
-    section: ["appearance", "notifications", "codex", "about"].includes(section)
+    section: ["appearance", "files", "notifications", "codex", "about"].includes(
+      section,
+    )
       ? section
       : "",
   };

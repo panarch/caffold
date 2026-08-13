@@ -517,6 +517,7 @@ test("Settings roles share inherited constraints without sharing leaf selectors"
       "pages/(task-workspace)/settings/appearance/page.css",
       "settings-appearance",
     ],
+    ["pages/(task-workspace)/settings/files/page.css", "settings-files"],
     ["pages/(task-workspace)/settings/codex/page.css", "settings-codex"],
     ["pages/(task-workspace)/settings/about/page.css", "settings-about"],
   ];
@@ -547,10 +548,14 @@ test("Settings roles share inherited constraints without sharing leaf selectors"
 
   for (const path of [
     "pages/(task-workspace)/settings/appearance/page.js",
+    "pages/(task-workspace)/settings/files/page.js",
     "pages/(task-workspace)/settings/codex/page.js",
     "pages/(task-workspace)/settings/about/page.js",
   ]) {
-    assert.doesNotMatch(readFrontend(path), /<h2 id="settings-(?:appearance|codex|about)-title"/);
+    assert.doesNotMatch(
+      readFrontend(path),
+      /<h2 id="settings-(?:appearance|files|codex|about)-title"/,
+    );
   }
   assert.match(
     readFrontend("pages/(task-workspace)/settings/navigator.js"),

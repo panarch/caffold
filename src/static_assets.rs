@@ -112,6 +112,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/settings/appearance/page.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/settings/appearance/page.js"
         ))),
+        "pages/(task-workspace)/settings/files/page.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/settings/files/page.css"
+        ))),
+        "pages/(task-workspace)/settings/files/page.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/settings/files/page.js"
+        ))),
         "pages/(task-workspace)/settings/notifications/page.css" => Some(css(include_str!(
             "../frontend/pages/(task-workspace)/settings/notifications/page.css"
         ))),
@@ -874,6 +880,7 @@ mod tests {
         for path in [
             "pages/(task-workspace)/settings/layout.js",
             "pages/(task-workspace)/settings/navigator.js",
+            "pages/(task-workspace)/settings/files/page.js",
             "pages/(task-workspace)/settings/notifications/page.js",
             "pages/(task-workspace)/settings/codex/page.js",
             "pages/(task-workspace)/settings/about/page.js",

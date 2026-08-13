@@ -1,13 +1,13 @@
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import {
-  APPEARANCE_SETTINGS,
-  DEFAULT_SETTINGS,
+  APPEARANCE_RANGE_SETTINGS,
+  DEFAULT_APPEARANCE_SETTINGS,
   THEME_MODES,
   TYPEFACE_PRESETS,
   getSettings,
-  resetAppearanceSetting,
+  resetAppearanceRangeSetting,
   resetAppearanceSettings,
-  setAppearanceSetting,
+  setAppearanceRangeSetting,
   setThemeMode,
   setTypefacePreset,
 } from "../../../../settings.js";
@@ -55,7 +55,7 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
       return;
     }
 
-    setAppearanceSetting(range.dataset.setting, range.valueAsNumber);
+    setAppearanceRangeSetting(range.dataset.setting, range.valueAsNumber);
   }
 
   handleChange(event) {
@@ -80,17 +80,17 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
     }
 
     if (button.dataset.action === "reset-setting") {
-      resetAppearanceSetting(button.dataset.setting);
+      resetAppearanceRangeSetting(button.dataset.setting);
       return;
     }
 
     if (button.dataset.action === "reset-typeface") {
-      setTypefacePreset(DEFAULT_SETTINGS.typefacePreset);
+      setTypefacePreset(DEFAULT_APPEARANCE_SETTINGS.typefacePreset);
       return;
     }
 
     if (button.dataset.action === "reset-theme") {
-      setThemeMode(DEFAULT_SETTINGS.themeMode);
+      setThemeMode(DEFAULT_APPEARANCE_SETTINGS.themeMode);
       return;
     }
 
@@ -129,7 +129,7 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
     if (themeReset) {
       syncResetAction(
         themeReset,
-        settings.themeMode === DEFAULT_SETTINGS.themeMode,
+        settings.themeMode === DEFAULT_APPEARANCE_SETTINGS.themeMode,
       );
     }
 
@@ -143,11 +143,13 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
     if (typefaceReset) {
       syncResetAction(
         typefaceReset,
-        settings.typefacePreset === DEFAULT_SETTINGS.typefacePreset,
+        settings.typefacePreset === DEFAULT_APPEARANCE_SETTINGS.typefacePreset,
       );
     }
 
-    for (const [name, definition] of Object.entries(APPEARANCE_SETTINGS)) {
+    for (const [name, definition] of Object.entries(
+      APPEARANCE_RANGE_SETTINGS,
+    )) {
       const value = settings[name];
       const range = this.querySelector(`input[data-setting="${name}"]`);
       const output = this.querySelector(`output[data-setting-value="${name}"]`);
@@ -168,10 +170,10 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
     const resetAll = this.querySelector('button[data-action="reset-appearance"]');
     if (resetAll) {
       resetAll.disabled =
-        settings.themeMode === DEFAULT_SETTINGS.themeMode &&
-        settings.typefacePreset === DEFAULT_SETTINGS.typefacePreset &&
-        Object.keys(APPEARANCE_SETTINGS).every(
-          (name) => settings[name] === DEFAULT_SETTINGS[name],
+        settings.themeMode === DEFAULT_APPEARANCE_SETTINGS.themeMode &&
+        settings.typefacePreset === DEFAULT_APPEARANCE_SETTINGS.typefacePreset &&
+        Object.keys(APPEARANCE_RANGE_SETTINGS).every(
+          (name) => settings[name] === DEFAULT_APPEARANCE_SETTINGS[name],
         );
     }
   }
@@ -312,7 +314,7 @@ function renderTextSettings() {
 }
 
 function renderRangeField(name) {
-  const definition = APPEARANCE_SETTINGS[name];
+  const definition = APPEARANCE_RANGE_SETTINGS[name];
   const id = `settings-${toKebabCase(name)}`;
   const descriptionId = `${id}-description`;
   const defaultLabel = `${definition.defaultValue}${definition.suffix}`;

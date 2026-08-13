@@ -382,8 +382,8 @@ test("shares navigation pane resizing across Tasks and Settings", async ({
 
   for (const interfaceScalePercent of [90, 120]) {
     await page.evaluate(async (value) => {
-      const { setAppearanceSetting } = await import("/assets/settings.js");
-      setAppearanceSetting("interfaceScalePercent", value);
+      const { setAppearanceRangeSetting } = await import("/assets/settings.js");
+      setAppearanceRangeSetting("interfaceScalePercent", value);
     }, interfaceScalePercent);
     const geometry = await taskWorkspace.evaluate((element) => {
       const navigationPane = element.querySelector(

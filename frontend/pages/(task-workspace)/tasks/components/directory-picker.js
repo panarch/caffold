@@ -55,7 +55,10 @@ class CaffoldTaskDirectoryPicker extends HTMLElement {
           </header>
           <div class="task-directory-picker-body">
             <p class="task-directory-picker-error" role="alert" hidden></p>
-            <caffold-file-tree aria-label="Folders and files"></caffold-file-tree>
+            <caffold-file-tree
+              aria-label="Folders and files"
+              file-sort-mode="folders-first"
+            ></caffold-file-tree>
           </div>
           <footer class="task-directory-picker-footer">
             <button
