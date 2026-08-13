@@ -534,6 +534,361 @@ test("shows relative age from the latest completion instead of thread recency", 
   await expect(time).toHaveAttribute("datetime", new Date(lastCompletedMs).toISOString());
 });
 
+test("keeps Task row indicator columns aligned across worktree and meta states", async ({
+  page,
+}, testInfo) => {
+  await installEventSourceMock(page, {
+    registryKey: "__indicatorEventSources",
+    autoOpen: true,
+  });
+  await mockCodexModels(page);
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const month = 30 * 24 * hour;
+  const now = Date.now();
+  const worktree = {
+    rootPath: "tests/fixtures/home/.caffold-worktrees/indicator-columns",
+    repositoryRootPath: "tests/fixtures/home",
+    branch: "fix/task-navigator-indicator-columns",
+    headSha: "1111111111111111111111111111111111111111",
+    relativeCwd: "",
+    linked: true,
+  };
+  const task = ({
+    threadId,
+    title,
+    elapsed,
+    state = canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    linked = true,
+    unseen = false,
+  }) => ({
+    id: threadId,
+    threadId,
+    ...state,
+    title,
+    preview: `${title} preview`,
+    cwd: worktree.rootPath,
+    cwdPath: worktree.rootPath,
+    relativeCwd: "",
+    worktree: { ...worktree, linked },
+    createdMs: now - elapsed,
+    updatedMs: now - elapsed,
+    recencyMs: now - elapsed,
+    lastCompletedMs: now - elapsed,
+    lastEventSummary: `${title} summary`,
+    unseen,
+  });
+  const tasks = [
+    task({
+      threadId: "thread_indicator_11_months",
+      title: "Three-character month age",
+      elapsed: 11 * month,
+    }),
+    task({
+      threadId: "thread_indicator_1_hour",
+      title: "Short hour age",
+      elapsed: hour,
+    }),
+    task({
+      threadId: "thread_indicator_running",
+      title: "Running status",
+      elapsed: minute,
+      state: canonicalTaskState("active", {
+        turnId: "turn_indicator_running",
+        startedAtMs: now - minute,
+        latestTurnStatus: "inProgress",
+      }),
+    }),
+    task({
+      threadId: "thread_indicator_unseen",
+      title: "Unseen completion",
+      elapsed: 2 * hour,
+      unseen: true,
+    }),
+    task({
+      threadId: "thread_indicator_approval",
+      title: "Approval status",
+      elapsed: 3 * hour,
+      state: canonicalTaskState("active", {
+        activeFlags: ["waitingOnApproval"],
+        latestTurnStatus: "inProgress",
+      }),
+    }),
+    task({
+      threadId: "thread_indicator_failed",
+      title: "Failed status",
+      elapsed: 4 * hour,
+      state: canonicalTaskState("systemError", { latestTurnStatus: "failed" }),
+    }),
+    task({
+      threadId: "thread_indicator_unlinked",
+      title: "Unlinked worktree",
+      elapsed: 23 * hour,
+      linked: false,
+    }),
+  ];
+  const recoveryTask = {
+    ...task({
+      threadId: "thread_indicator_recovery",
+      title: "Recovery status",
+      elapsed: 5 * hour,
+    }),
+    conversationAvailable: false,
+    recovery: { reason: "threadMissing" },
+  };
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(activeTaskProjection(tasks, [recoveryTask])),
+    }),
+  );
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: [], nextCursor: null }),
+    }),
+  );
+
+  await page.goto("/tasks");
+  const rows = page.locator("caffold-active-task-list .task-row");
+  await expect(rows).toHaveCount(8);
+  await expect(
+    page.locator(
+      '[data-thread-id="thread_indicator_11_months"] .task-row-time',
+    ),
+  ).toHaveText("11M");
+  await expect(
+    page.locator(
+      '[data-thread-id="thread_indicator_11_months"] .task-row-time',
+    ),
+  ).toHaveAttribute("aria-label", "11 months ago");
+  await expect(
+    page.locator(
+      '[data-thread-id="thread_indicator_unlinked"] .task-row-worktree',
+    ),
+  ).toHaveCount(0);
+
+  const layout = await rows.evaluateAll((elements) =>
+    elements.map((row) => {
+      const indicators = row.querySelector(":scope > .task-row-indicators");
+      const worktreeIndicator = indicators.querySelector(
+        ":scope > .task-row-worktree",
+      );
+      const meta = indicators.querySelector(
+        ":scope > .task-row-meta, :scope > .task-row-recovery-status",
+      );
+      const rowBounds = row.getBoundingClientRect();
+      const indicatorBounds = indicators.getBoundingClientRect();
+      const worktreeBounds = worktreeIndicator?.getBoundingClientRect();
+      const metaBounds = meta.getBoundingClientRect();
+      return {
+        display: getComputedStyle(indicators).display,
+        hasHorizontalOverflow: row.scrollWidth > row.clientWidth,
+        indicatorWidth: indicatorBounds.width,
+        metaRight: metaBounds.right,
+        threadId: row.dataset.threadId,
+        titleWidth: row.querySelector(".task-row-title").getBoundingClientRect().width,
+        worktreeLeft: worktreeBounds?.left ?? null,
+        worktreeOutsideRow:
+          worktreeBounds != null &&
+          (worktreeBounds.left < rowBounds.left || worktreeBounds.right > rowBounds.right),
+      };
+    }),
+  );
+  const rootFontSize = await page.evaluate(() =>
+    Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+  );
+  const baseline = layout.find(
+    ({ threadId }) => threadId === "thread_indicator_11_months",
+  );
+  expect(baseline.worktreeLeft).not.toBeNull();
+  for (const metrics of layout) {
+    expect(metrics.display).toBe("grid");
+    expect(metrics.indicatorWidth).toBeCloseTo(rootFontSize * 3, 1);
+    expect(metrics.metaRight).toBeCloseTo(baseline.metaRight, 1);
+    expect(metrics.hasHorizontalOverflow).toBe(false);
+    expect(metrics.worktreeOutsideRow).toBe(false);
+    if (metrics.worktreeLeft != null) {
+      expect(metrics.worktreeLeft).toBeCloseTo(baseline.worktreeLeft, 1);
+    }
+  }
+  expect(new Set(layout.map(({ titleWidth }) => Math.round(titleWidth))).size).toBe(1);
+  await captureReviewScreenshot(page, testInfo, "tasks-indicator-columns");
+
+  const updatedAgeTask = {
+    ...tasks[0],
+    updatedMs: now - month,
+    recencyMs: now - month,
+    lastCompletedMs: now - month,
+  };
+  await page.evaluate(() => {
+    window.__indicatorAgeNode = document.querySelector(
+      '[data-thread-id="thread_indicator_11_months"] .task-row-time',
+    );
+  });
+  await page.evaluate((updatedTask) => {
+    const source = window.__indicatorEventSources.find(({ url }) =>
+      url.includes("/api/tasks/stream"),
+    );
+    source.emit("task-updated", updatedTask);
+  }, updatedAgeTask);
+  const updatedTime = page.locator(
+    '[data-thread-id="thread_indicator_11_months"] .task-row-time',
+  );
+  await expect(updatedTime).toHaveText("1M");
+  await expect(updatedTime).toHaveAttribute("aria-label", "1 month ago");
+  expect(
+    await updatedTime.evaluate((element) => window.__indicatorAgeNode === element),
+  ).toBe(true);
+});
+
+test("keeps Archived Task indicator columns aligned with unavailable warning actions", async ({
+  page,
+}, testInfo) => {
+  await installEventSourceMock(page);
+  await mockCodexModels(page);
+  const hour = 60 * 60_000;
+  const month = 30 * 24 * hour;
+  const now = Date.now();
+  const worktree = {
+    rootPath: "tests/fixtures/home/.caffold-worktrees/archived-indicator-columns",
+    repositoryRootPath: "tests/fixtures/home",
+    branch: "archive/task-navigator-indicator-columns",
+    headSha: "2222222222222222222222222222222222222222",
+    relativeCwd: "",
+    linked: true,
+  };
+  const archivedTask = (threadId, title, elapsed, overrides = {}) => ({
+    id: threadId,
+    threadId,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title,
+    preview: `${title} preview`,
+    cwd: worktree.rootPath,
+    cwdPath: worktree.rootPath,
+    relativeCwd: "",
+    worktree: { ...worktree, linked: overrides.linked ?? true },
+    createdMs: now - elapsed,
+    updatedMs: now - elapsed,
+    recencyMs: now - elapsed,
+    lastCompletedMs: now - elapsed,
+    lastEventSummary: `${title} summary`,
+    unseen: false,
+    ...overrides,
+  });
+  const archivedTasks = [
+    archivedTask(
+      "thread_archived_indicator_11_months",
+      "Archived three-character month age",
+      11 * month,
+    ),
+    archivedTask(
+      "thread_archived_indicator_1_hour",
+      "Archived short hour age",
+      hour,
+    ),
+    archivedTask(
+      "thread_archived_indicator_unlinked",
+      "Archived unlinked worktree",
+      23 * hour,
+      { linked: false },
+    ),
+    archivedTask(
+      "thread_archived_indicator_unavailable",
+      "Archived unavailable conversation",
+      2 * hour,
+      { conversationAvailable: false, linked: false },
+    ),
+  ];
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(activeTaskProjection([])),
+    }),
+  );
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tasks: archivedTasks, nextCursor: null }),
+    }),
+  );
+
+  await page.goto("/tasks");
+  const archivedRows = page.locator(
+    "caffold-archived-task-list .task-archived-row",
+  );
+  await expect(archivedRows).toHaveCount(4);
+  await expect(
+    page.locator(
+      '[data-thread-id="thread_archived_indicator_11_months"] .task-row-time',
+    ),
+  ).toHaveText("11M");
+
+  await expect(
+    page.locator(
+      '[data-thread-id="thread_archived_indicator_unavailable"] .task-row-time',
+    ),
+  ).toHaveText("2h");
+
+  const layout = await archivedRows.evaluateAll((elements) =>
+    elements.map((row) => {
+      const indicators = row.querySelector(".task-row-indicators");
+      const worktreeBounds = indicators
+        .querySelector(":scope > .task-row-worktree")
+        ?.getBoundingClientRect();
+      const metaBounds = indicators
+        .querySelector(":scope > .task-row-meta")
+        .getBoundingClientRect();
+      return {
+        actionWidth: row
+          .querySelector(".task-archived-actions")
+          .getBoundingClientRect().width,
+        display: getComputedStyle(indicators).display,
+        hasHorizontalOverflow: row.scrollWidth > row.clientWidth,
+        indicatorWidth: indicators.getBoundingClientRect().width,
+        metaRight: metaBounds.right,
+        threadId: row.dataset.threadId,
+        titleWidth: row
+          .querySelector(".task-row-title")
+          .getBoundingClientRect().width,
+        worktreeLeft: worktreeBounds?.left ?? null,
+      };
+    }),
+  );
+  const rootFontSize = await page.evaluate(() =>
+    Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+  );
+  const baseline = layout.find(
+    ({ threadId }) => threadId === "thread_archived_indicator_11_months",
+  );
+  expect(baseline.worktreeLeft).not.toBeNull();
+  for (const metrics of layout) {
+    expect(metrics.display).toBe("grid");
+    expect(metrics.indicatorWidth).toBeCloseTo(rootFontSize * 3, 1);
+    expect(metrics.metaRight).toBeCloseTo(baseline.metaRight, 1);
+    expect(metrics.hasHorizontalOverflow).toBe(false);
+    if (metrics.worktreeLeft != null) {
+      expect(metrics.worktreeLeft).toBeCloseTo(baseline.worktreeLeft, 1);
+    }
+  }
+  expect(new Set(layout.map(({ actionWidth }) => actionWidth)).size).toBe(1);
+  expect(new Set(layout.map(({ titleWidth }) => Math.round(titleWidth))).size).toBe(1);
+  const unavailableRow = page.locator(
+    '[data-thread-id="thread_archived_indicator_unavailable"]',
+  );
+  await expect(
+    unavailableRow.getByRole("img", {
+      name: "Conversation unavailable; restore is not available",
+    }),
+  ).toBeVisible();
+  await expect(
+    unavailableRow.getByRole("button", { name: /Restore/ }),
+  ).toHaveCount(0);
+  await captureReviewScreenshot(page, testInfo, "tasks-archived-indicator-columns");
+});
+
 test("starts active Task navigator spinners at independent phases", async ({
   page,
 }) => {

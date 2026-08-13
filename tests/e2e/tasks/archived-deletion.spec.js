@@ -146,21 +146,18 @@ test("offers delete without restore when the archived conversation is unavailabl
   const row = page.locator(
     'caffold-task-navigator .task-archived-row[data-thread-id="thread_unavailable_delete"]',
   );
-  const unavailable = row.locator(".task-conversation-unavailable");
-  await expect(unavailable).toHaveText("Conversation unavailable");
-  expect(
-    await unavailable.evaluate(
-      (element) =>
-        element.scrollWidth <= element.clientWidth &&
-        element.scrollHeight <= element.clientHeight,
-    ),
-  ).toBe(true);
+  const unavailableLabel =
+    "Conversation unavailable; restore is not available";
+  const unavailable = row.getByRole("img", { name: unavailableLabel });
+  await expect(unavailable).toBeVisible();
+  await expect(unavailable).toHaveAttribute("title", unavailableLabel);
+  await expect(row.locator(".task-row-time")).toBeVisible();
   await expect(row.getByRole("button", { name: /Restore/ })).toHaveCount(0);
   const deleteButton = row.getByRole("button", {
     name: "Delete Thread unavailable",
   });
   await expect(deleteButton).toBeVisible();
-  await captureReviewScreenshot(page, testInfo, "tasks-unavailable-delete-only");
+  await captureReviewScreenshot(page, testInfo, "tasks-unavailable-warning-delete");
   await deleteButton.hover();
   await captureReviewScreenshot(page, testInfo, "tasks-unavailable-delete-hover");
 

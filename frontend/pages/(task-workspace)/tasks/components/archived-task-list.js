@@ -19,7 +19,7 @@ import {
   taskWorktreeLabel,
   upsertTask,
 } from "../task-list-model.js";
-import { formatRelativeAge } from "../task-format.js";
+import { formatRelativeAgePresentation } from "../task-format.js";
 import { renderTaskStatusChip } from "./task-status.js";
 
 export const ARCHIVED_TASK_LIST_INITIAL_SETTLED_EVENT =
@@ -479,9 +479,8 @@ class CaffoldArchivedTaskList extends HTMLElement {
     const restoreError = this.restoreErrors.get(threadId);
     const deleteError = this.deleteErrors.get(threadId);
     const conversationAvailable = task?.conversationAvailable !== false;
-    const availabilityClass = conversationAvailable
-      ? ""
-      : " is-conversation-unavailable";
+    const unavailableLabel =
+      "Conversation unavailable; restore is not available";
     const restoreLabel = restoring
       ? `Restoring ${task.title}`
       : restoreError
@@ -505,20 +504,20 @@ class CaffoldArchivedTaskList extends HTMLElement {
           ${renderInlineIcon("GitBranch", "Linked worktree retained", "task-row-worktree-icon")}
         </span>`
       : "";
-    const meta = conversationAvailable
-      ? renderTaskRowMeta(task)
-      : `<span class="task-conversation-unavailable">Conversation unavailable</span>`;
-    const restoreButton = conversationAvailable
+    const meta = renderTaskRowMeta(task);
+    const restoreAction = conversationAvailable
       ? `<button type="button" class="task-archived-action-button${restoring ? " is-loading" : ""}" data-task-action="restore-archived-task" data-thread-id="${escapeHtml(threadId)}" aria-label="${escapeHtml(restoreLabel)}" title="${escapeHtml(restoreTitle)}" ${mutating || transportBlocked ? "disabled" : ""}>${renderInlineIcon(restoreIcon, restoreLabel, "task-archived-action-icon")}</button>`
-      : "";
+      : `<span class="task-archived-unavailable-status" role="img" aria-label="${escapeHtml(unavailableLabel)}" title="${escapeHtml(unavailableLabel)}">
+          ${renderInlineIcon("TriangleAlert", unavailableLabel, "task-archived-unavailable-icon")}
+        </span>`;
     return `
-      <li class="task-archived-row${availabilityClass}" data-thread-id="${escapeHtml(threadId)}" data-task-list-key="${escapeHtml(repositoryKey)}">
+      <li class="task-archived-row" data-thread-id="${escapeHtml(threadId)}" data-task-list-key="${escapeHtml(repositoryKey)}">
         <div class="task-archived-copy" title="${escapeHtml(task.title)}">
           <span class="task-row-title">${escapeHtml(task.title)}</span>
           <span class="task-row-indicators">${worktree}${meta}</span>
         </div>
         <div class="task-archived-actions">
-          ${restoreButton}
+          ${restoreAction}
           <button type="button" class="task-archived-action-button task-delete-button${deleting ? " is-loading" : ""}" data-task-action="delete-archived-task" data-thread-id="${escapeHtml(threadId)}" aria-label="${escapeHtml(deleteLabel)}" title="${escapeHtml(deleteTitle)}" ${mutating || transportBlocked ? "disabled" : ""}>${renderInlineIcon(deleteIcon, deleteLabel, "task-archived-action-icon")}</button>
         </div>
         ${restoreError || deleteError ? `<p class="task-archived-action-error" role="alert">${escapeHtml((deleteError ?? restoreError).message)}</p>` : ""}
@@ -540,9 +539,10 @@ function renderTaskRowMeta(task) {
   const ms = task.lastCompletedMs ?? task.recencyMs ?? task.updatedMs;
   const date = new Date(Number(ms));
   const dateTime = Number.isNaN(date.getTime()) ? "" : date.toISOString();
+  const age = formatRelativeAgePresentation(ms);
   return `
-    <time class="task-row-meta task-row-time" datetime="${escapeHtml(dateTime)}">
-      ${escapeHtml(formatRelativeAge(ms))}
+    <time class="task-row-meta task-row-time" datetime="${escapeHtml(dateTime)}" aria-label="${escapeHtml(age.label)}">
+      ${escapeHtml(age.text)}
     </time>
   `;
 }
