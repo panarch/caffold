@@ -1,5 +1,4 @@
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
-import "../../components/workspace-brand.js";
 import {
   APPEARANCE_SETTINGS,
   DEFAULT_SETTINGS,
@@ -15,10 +14,10 @@ import {
 
 const SETTING_DESCRIPTIONS = Object.freeze({
   interfaceScalePercent:
-    "Adjusts app controls, rows, icons, spacing, and interface text.",
+    "Makes controls, icons, spacing, and interface text larger or smaller.",
   conversationTextPx:
-    "Adjusts task conversation and long-form GitHub review text.",
-  codeTextPx: "Adjusts source, diff, command output, and embedded code text.",
+    "Changes the size of task conversations and long-form reviews.",
+  codeTextPx: "Changes the size of code, diffs, and command output.",
 });
 
 class CaffoldSettingsAppearancePage extends HTMLElement {
@@ -105,64 +104,18 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
       <div class="settings-scroll">
         <div class="settings-section">
           <header>
-            <p>Theme, typeface, and sizing controls apply consistently across Caffold.</p>
+            <p>Choose Caffold's theme and font, then adjust interface and text size.</p>
             <button type="button" class="settings-reset-all" data-action="reset-appearance">
-              Reset appearance
+              <span data-settings-icon="reset-all">
+                ${renderInlineIcon("RotateCcw", "", "settings-reset-all-icon")}
+              </span>
+              <span>Reset all</span>
             </button>
           </header>
           ${renderThemeSetting()}
           ${renderTypefaceSetting()}
-          ${renderSetting(
-            "interfaceScalePercent",
-            `
-              <div class="settings-interface-preview" aria-label="Interface preview">
-                <div class="settings-interface-preview-section-header">
-                  <caffold-workspace-brand></caffold-workspace-brand>
-                  <span class="settings-interface-preview-new-task" aria-hidden="true">
-                    ${renderInlineIcon("Plus", "", "settings-preview-action-icon")}
-                  </span>
-                </div>
-                <div class="settings-interface-preview-repository">
-                  <span data-settings-icon="preview">
-                    ${renderInlineIcon("FolderGit2", "Git repository", "settings-preview-icon")}
-                  </span>
-                  <strong>caffold</strong>
-                  <span>1</span>
-                </div>
-                <div class="settings-interface-preview-row" aria-current="true">
-                  <span>Review appearance settings</span>
-                  <time>now</time>
-                </div>
-              </div>
-            `,
-          )}
-          ${renderSetting(
-            "conversationTextPx",
-            `
-              <div class="settings-conversation-preview" aria-label="Conversation preview">
-                <div class="settings-conversation-message" data-message-role="user">
-                  <time>10:42</time>
-                  <p>Keep the review focused.</p>
-                </div>
-                <div class="settings-conversation-message" data-message-role="assistant">
-                  <time>10:43</time>
-                  <h3>Review complete</h3>
-                  <p>The changed behavior is covered by a focused test.</p>
-                </div>
-              </div>
-            `,
-          )}
-          ${renderSetting(
-            "codeTextPx",
-            `
-              <div class="settings-code-preview" aria-label="Code preview">
-                <span class="settings-code-preview-line-number">12</span>
-                <code><span>const</span> size = "readable";</code>
-                <span class="settings-code-preview-line-number">13</span>
-                <code>render(size);</code>
-              </div>
-            `,
-          )}
+          ${renderRangeSetting("interfaceScalePercent", "settings-interface-group")}
+          ${renderTextSettings()}
         </div>
       </div>
     `;
@@ -174,7 +127,10 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
     });
     const themeReset = this.querySelector('button[data-action="reset-theme"]');
     if (themeReset) {
-      themeReset.disabled = settings.themeMode === DEFAULT_SETTINGS.themeMode;
+      syncResetAction(
+        themeReset,
+        settings.themeMode === DEFAULT_SETTINGS.themeMode,
+      );
     }
 
     const typefaceSelect = this.querySelector("select[data-typeface-setting]");
@@ -183,11 +139,12 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
     );
     if (typefaceSelect) {
       typefaceSelect.value = settings.typefacePreset;
-      this.syncTypefaceSummary(settings.typefacePreset);
     }
     if (typefaceReset) {
-      typefaceReset.disabled =
-        settings.typefacePreset === DEFAULT_SETTINGS.typefacePreset;
+      syncResetAction(
+        typefaceReset,
+        settings.typefacePreset === DEFAULT_SETTINGS.typefacePreset,
+      );
     }
 
     for (const [name, definition] of Object.entries(APPEARANCE_SETTINGS)) {
@@ -205,7 +162,7 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
       range.setAttribute("aria-valuetext", `${value}${definition.suffix}`);
       output.value = `${value}${definition.suffix}`;
       output.textContent = `${value}${definition.suffix}`;
-      reset.disabled = value === definition.defaultValue;
+      syncResetAction(reset, value === definition.defaultValue);
     }
 
     const resetAll = this.querySelector('button[data-action="reset-appearance"]');
@@ -219,37 +176,24 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
     }
   }
 
-  syncTypefaceSummary(typefacePreset) {
-    const preset = TYPEFACE_PRESETS[typefacePreset];
-    const description = this.querySelector("[data-typeface-description]");
-    const availability = this.querySelector("[data-typeface-availability]");
-    if (description) {
-      description.textContent = preset?.description ?? "";
-    }
-    if (availability) {
-      availability.textContent = preset?.availability ?? "";
-    }
-  }
-
   refreshIcons() {
-    const previewIcon = this.querySelector('[data-settings-icon="preview"]');
-    if (previewIcon) {
-      previewIcon.innerHTML = renderInlineIcon(
-        "FolderGit2",
-        "Git repository",
-        "settings-preview-icon",
-      );
-    }
-    const previewActionIcon = this.querySelector(
-      ".settings-interface-preview-new-task",
+    const resetAllIcon = this.querySelector(
+      '[data-settings-icon="reset-all"]',
     );
-    if (previewActionIcon) {
-      previewActionIcon.innerHTML = renderInlineIcon(
-        "Plus",
+    if (resetAllIcon) {
+      resetAllIcon.innerHTML = renderInlineIcon(
+        "RotateCcw",
         "",
-        "settings-preview-action-icon",
+        "settings-reset-all-icon",
       );
     }
+    this.querySelectorAll("button[data-reset-label]").forEach((button) => {
+      button.innerHTML = renderInlineIcon(
+        "RotateCcw",
+        button.dataset.resetLabel,
+        "settings-reset-icon",
+      );
+    });
   }
 }
 
@@ -275,7 +219,7 @@ function renderThemeSetting() {
       <div class="settings-field">
         <div class="settings-field-copy">
           <span class="settings-field-label" id="settings-theme-label">Theme</span>
-          <span id="settings-theme-description">Follow your system or choose a fixed Light or Dark theme.</span>
+          <span id="settings-theme-description">Use your system setting, or always use Light or Dark.</span>
         </div>
         <div class="settings-theme-control">
           <fieldset
@@ -285,7 +229,7 @@ function renderThemeSetting() {
             <legend class="sr-only">Theme</legend>
             ${options}
           </fieldset>
-          <button type="button" data-action="reset-theme">Reset</button>
+          ${renderResetAction("reset-theme", "Reset theme")}
         </div>
       </div>
     </div>
@@ -297,7 +241,7 @@ function renderTypefaceSetting() {
     .map(
       (preset) => `
         <option value="${preset.id}">
-          ${preset.label} · ${preset.availability}
+          ${preset.label}
         </option>
       `,
     )
@@ -307,63 +251,122 @@ function renderTypefaceSetting() {
     <div class="settings-appearance-group settings-typeface-group">
       <div class="settings-field settings-typeface-field">
         <div class="settings-field-copy">
-          <label for="settings-typeface-preset">Typeface</label>
-          <span data-typeface-description></span>
+          <label for="settings-typeface-preset">Font</label>
         </div>
-        <div class="settings-typeface-control">
-          <select
-            id="settings-typeface-preset"
-            data-typeface-setting
-          >
-            ${options}
-          </select>
-          <button type="button" data-action="reset-typeface">Reset</button>
+        <div class="settings-typeface-detail">
+          <div class="settings-typeface-control">
+            <select
+              id="settings-typeface-preset"
+              data-typeface-setting
+            >
+              ${options}
+            </select>
+            ${renderResetAction("reset-typeface", "Reset font")}
+          </div>
+          <div class="settings-typeface-preview" aria-label="Font preview">
+            <span>Latin · 한글 · 漢字 · ひらがな · カタカナ · 123</span>
+            <code>const tree = "├─ src/main.rs";</code>
+          </div>
         </div>
-      </div>
-      <span class="settings-typeface-meta" data-typeface-availability></span>
-      <div class="settings-typeface-preview" aria-label="Typeface preview">
-        <span>Caffold 한글 ABC</span>
-        <code>const tree = "├─ 漢字";</code>
       </div>
     </div>
   `;
 }
 
-function renderSetting(name, preview) {
+function renderRangeSetting(name, className = "") {
+  return `
+    <div class="settings-appearance-group settings-range-group ${className}">
+      ${renderRangeField(name)}
+    </div>
+  `;
+}
+
+function renderTextSettings() {
+  return `
+    <div class="settings-appearance-group settings-text-group">
+      ${renderRangeField("conversationTextPx")}
+      ${renderRangeField("codeTextPx")}
+      <div class="settings-preview-field">
+        <div class="settings-text-preview" aria-label="Conversation and code preview">
+          <div class="settings-conversation-preview">
+            <div class="settings-conversation-message" data-message-role="user">
+              <time>10:42</time>
+              <p>Keep the review focused.</p>
+            </div>
+            <div class="settings-conversation-message" data-message-role="assistant">
+              <time>10:43</time>
+              <h3>Review complete</h3>
+              <p>The changed behavior is covered by a focused test.</p>
+            </div>
+          </div>
+          <div class="settings-code-preview">
+            <span class="settings-code-preview-line-number">12</span>
+            <code><span>const</span> size = "readable";</code>
+            <span class="settings-code-preview-line-number">13</span>
+            <code>render(size);</code>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderRangeField(name) {
   const definition = APPEARANCE_SETTINGS[name];
   const id = `settings-${toKebabCase(name)}`;
+  const descriptionId = `${id}-description`;
   const defaultLabel = `${definition.defaultValue}${definition.suffix}`;
 
   return `
-    <div class="settings-appearance-group">
-      <div class="settings-field">
-        <div class="settings-field-copy">
-          <label for="${id}">${definition.label}</label>
-          <span>${SETTING_DESCRIPTIONS[name]}</span>
-        </div>
-        <div class="settings-range-control">
-          <input
-            id="${id}"
-            type="range"
-            min="${definition.min}"
-            max="${definition.max}"
-            step="${definition.step}"
-            value="${definition.defaultValue}"
-            data-setting="${name}"
-          >
-          <output for="${id}" data-setting-value="${name}">${defaultLabel}</output>
-          <button
-            type="button"
-            data-action="reset-setting"
-            data-setting="${name}"
-          >
-            Reset
-          </button>
-        </div>
+    <div class="settings-field">
+      <div class="settings-field-copy">
+        <label for="${id}">${definition.label}</label>
+        <span id="${descriptionId}">${SETTING_DESCRIPTIONS[name]}</span>
       </div>
-      ${preview}
+      <div class="settings-range-control">
+        <input
+          id="${id}"
+          type="range"
+          min="${definition.min}"
+          max="${definition.max}"
+          step="${definition.step}"
+          value="${definition.defaultValue}"
+          data-setting="${name}"
+          aria-describedby="${descriptionId}"
+        >
+        <output for="${id}" data-setting-value="${name}">${defaultLabel}</output>
+        ${renderResetAction(
+          "reset-setting",
+          `Reset ${definition.label.toLowerCase()}`,
+          `data-setting="${name}"`,
+        )}
+      </div>
     </div>
   `;
+}
+
+function renderResetAction(action, label, attributes = "") {
+  return `
+    <span class="settings-reset-slot">
+      <button
+        type="button"
+        class="settings-inline-reset"
+        data-action="${action}"
+        data-reset-label="${label}"
+        title="${label}"
+        ${attributes}
+        disabled
+        hidden
+      >
+        ${renderInlineIcon("RotateCcw", label, "settings-reset-icon")}
+      </button>
+    </span>
+  `;
+}
+
+function syncResetAction(button, isDefault) {
+  button.disabled = isDefault;
+  button.hidden = isDefault;
 }
 
 function toKebabCase(value) {

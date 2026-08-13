@@ -11,14 +11,16 @@ async function importFreshFonts(label) {
   return import(url.href);
 }
 
-test("defines the bundled default and zero-download system fallback", async () => {
+test("defines the bundled default and system fallback presets", async () => {
   const { DEFAULT_TYPEFACE_PRESET, TYPEFACE_PRESETS, normalizeTypefacePreset } =
     await importFreshFonts("registry");
 
   assert.equal(DEFAULT_TYPEFACE_PRESET, "d2-coding");
   assert.deepEqual(Object.keys(TYPEFACE_PRESETS), ["d2-coding", "system-mono"]);
-  assert.equal(TYPEFACE_PRESETS["d2-coding"].availability, "Included");
-  assert.equal(TYPEFACE_PRESETS["system-mono"].availability, "No download");
+  assert.equal(TYPEFACE_PRESETS["d2-coding"].label, "D2 Coding");
+  assert.equal(TYPEFACE_PRESETS["system-mono"].label, "System Mono");
+  assert.equal("description" in TYPEFACE_PRESETS["d2-coding"], false);
+  assert.equal("description" in TYPEFACE_PRESETS["system-mono"], false);
   assert.equal(
     normalizeTypefacePreset("noto-sans-mono-cjk-kr"),
     "d2-coding",

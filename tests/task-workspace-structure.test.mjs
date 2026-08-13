@@ -144,7 +144,7 @@ test("Git and GitHub detail components independently own their native auto popov
   }
 });
 
-test("workspace brand owns the shared Tasks and Settings identity", () => {
+test("workspace brand owns the shared Tasks and Settings navigator identity", () => {
   const brand = readFrontend(
     "pages/(task-workspace)/components/workspace-brand.js",
   );
@@ -164,9 +164,13 @@ test("workspace brand owns the shared Tasks and Settings identity", () => {
   );
   assert.match(brand, /class="workspace-brand-icon"/);
   assert.match(brand, /class="workspace-brand-title">Caffold/);
-  for (const owner of [taskNavigator, settingsNavigator, appearance]) {
+  for (const owner of [taskNavigator, settingsNavigator]) {
     assert.match(owner, /<caffold-workspace-brand><\/caffold-workspace-brand>/);
   }
+  assert.doesNotMatch(
+    appearance,
+    /<caffold-workspace-brand><\/caffold-workspace-brand>/,
+  );
   assert.doesNotMatch(taskNavigator, /task-list-primary-(?:brand|icon)/);
   assert.doesNotMatch(settingsNavigator, /<strong>Settings<\/strong>/);
 });

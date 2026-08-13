@@ -7,15 +7,11 @@ export const TYPEFACE_PRESETS = Object.freeze({
   "d2-coding": Object.freeze({
     id: "d2-coding",
     label: "D2 Coding",
-    description: "Korean and Latin coding font with aligned full-width Hangul.",
-    availability: "Included",
     stack: D2_CODING_STACK,
   }),
   "system-mono": Object.freeze({
     id: "system-mono",
     label: "System Mono",
-    description: "Uses this device's default monospace font without a download.",
-    availability: "No download",
     stack: SYSTEM_MONO_STACK,
   }),
 });

@@ -11,26 +11,26 @@ caffold-settings-appearance-page {
   line-height: var(--interface-line-height);
 
   & .settings-reset-all:hover:not(:disabled),
-  & .settings-reset-all:focus-visible,
-  & .settings-typeface-control button:hover:not(:disabled),
-  & .settings-typeface-control button:focus-visible,
-  & .settings-theme-control button:hover:not(:disabled),
-  & .settings-theme-control button:focus-visible,
-  & .settings-range-control button:hover:not(:disabled),
-  & .settings-range-control button:focus-visible {
+  & .settings-inline-reset:hover:not(:disabled) {
     outline: none;
   }
 
   & .settings-reset-all:hover:not(:disabled)::before,
-  & .settings-reset-all:focus-visible::before,
-  & .settings-typeface-control button:hover:not(:disabled)::before,
-  & .settings-typeface-control button:focus-visible::before,
-  & .settings-theme-control button:hover:not(:disabled)::before,
-  & .settings-theme-control button:focus-visible::before,
-  & .settings-range-control button:hover:not(:disabled)::before,
-  & .settings-range-control button:focus-visible::before {
+  & .settings-inline-reset:hover:not(:disabled)::before {
     border-color: var(--border-strong);
     background: var(--control-hover-bg);
+  }
+
+  & .settings-reset-all:focus-visible,
+  & .settings-inline-reset:focus-visible {
+    outline: none;
+  }
+
+  & .settings-reset-all:focus-visible::before,
+  & .settings-inline-reset:focus-visible::before {
+    border-color: var(--focus-ring);
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
   }
 
   & .settings-scroll {
@@ -42,7 +42,7 @@ caffold-settings-appearance-page {
 
   & .settings-section {
     display: grid;
-    gap: 1.75rem;
+    gap: var(--interface-space-12);
     width: min(100%, var(--settings-content-max-width));
     min-width: 0;
     margin: 0 auto;
@@ -65,9 +65,7 @@ caffold-settings-appearance-page {
   }
 
   & .settings-reset-all,
-  & .settings-typeface-control button,
-  & .settings-theme-control button,
-  & .settings-range-control button {
+  & .settings-inline-reset {
     position: relative;
     isolation: isolate;
     box-sizing: border-box;
@@ -75,28 +73,39 @@ caffold-settings-appearance-page {
     background: transparent;
     color: var(--control-fg);
     cursor: pointer;
-    padding: 0 var(--interface-space-5);
     font-size: var(--settings-small-text-size);
     line-height: 1;
     white-space: nowrap;
   }
 
   & .settings-reset-all {
+    display: inline-grid;
+    grid-template-columns: var(--interface-icon-size) auto;
+    align-items: center;
+    gap: var(--interface-space-3);
     height: var(--settings-page-action-size);
     min-height: var(--settings-page-action-size);
+    padding: 0 var(--interface-space-5);
   }
 
-  & .settings-typeface-control button,
-  & .settings-theme-control button,
-  & .settings-range-control button {
+  & .settings-reset-slot {
+    display: grid;
+    width: var(--settings-context-action-size);
+    height: var(--settings-context-action-size);
+    place-items: center;
+  }
+
+  & .settings-inline-reset {
+    display: grid;
+    width: var(--settings-context-action-size);
     height: var(--settings-context-action-size);
     min-height: var(--settings-context-action-size);
+    place-items: center;
+    padding: 0;
   }
 
   & .settings-reset-all::before,
-  & .settings-typeface-control button::before,
-  & .settings-theme-control button::before,
-  & .settings-range-control button::before {
+  & .settings-inline-reset::before {
     position: absolute;
     z-index: -1;
     border: 1px solid var(--border);
@@ -109,40 +118,43 @@ caffold-settings-appearance-page {
     inset: var(--interface-control-hit-outset) 0;
   }
 
-  & .settings-typeface-control button::before,
-  & .settings-theme-control button::before,
-  & .settings-range-control button::before {
+  & .settings-inline-reset::before {
     inset: var(--interface-compact-hit-outset) 0;
   }
 
-  & .settings-reset-all:disabled,
-  & .settings-typeface-control button:disabled,
-  & .settings-theme-control button:disabled,
-  & .settings-range-control button:disabled {
+  & .settings-reset-all:disabled {
     cursor: default;
     opacity: 0.45;
   }
 
+  & .settings-reset-all-icon,
+  & .settings-reset-icon {
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+  }
+
   & .settings-appearance-group {
     display: grid;
-    gap: 0.875rem;
+    gap: var(--interface-space-7);
   }
 
   & .settings-appearance-group + .settings-appearance-group {
     border-top: 1px solid var(--border-subtle);
-    padding-top: 1.75rem;
+    padding-top: var(--interface-space-12);
   }
 
-  & .settings-field {
+  & .settings-field,
+  & .settings-preview-field {
     display: grid;
     grid-template-columns: minmax(13rem, 0.8fr) minmax(24rem, 1.2fr);
-    align-items: center;
-    gap: 1.5rem;
+    align-items: start;
+    gap: var(--interface-space-12);
   }
 
   & .settings-field-copy {
     display: grid;
-    gap: 0.3125rem;
+    gap: var(--interface-space-3);
   }
 
   & .settings-field-copy label,
@@ -160,36 +172,43 @@ caffold-settings-appearance-page {
 
   & .settings-range-control {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 4.5rem auto;
+    grid-template-columns:
+      minmax(0, 1fr)
+      4.5rem
+      var(--settings-context-action-size);
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--interface-space-6);
     min-width: 0;
   }
 
-  & .settings-typeface-control {
+  & .settings-typeface-detail {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 0.75rem;
+    gap: var(--interface-space-7);
     min-width: 0;
   }
 
+  & .settings-typeface-control,
   & .settings-theme-control {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns:
+      minmax(0, 1fr)
+      var(--settings-context-action-size);
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--interface-space-6);
     min-width: 0;
   }
 
   & .settings-theme-control fieldset {
+    box-sizing: border-box;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    height: var(--interface-control-size);
     min-width: 0;
     margin: 0;
     border: 1px solid var(--border);
     border-radius: 0.3125rem;
-    padding: 0.1875rem;
+    padding: var(--interface-space-1);
     background: var(--surface-muted);
   }
 
@@ -197,7 +216,7 @@ caffold-settings-appearance-page {
     position: relative;
     display: grid;
     min-width: 0;
-    min-height: var(--interface-control-size);
+    min-height: 0;
     place-items: center;
     cursor: pointer;
   }
@@ -213,6 +232,7 @@ caffold-settings-appearance-page {
   }
 
   & .settings-theme-control label > span {
+    box-sizing: border-box;
     display: grid;
     width: 100%;
     height: 100%;
@@ -228,7 +248,7 @@ caffold-settings-appearance-page {
 
   & .settings-theme-control label:has(input:checked) > span {
     border-color: var(--border);
-    background: var(--surface);
+    background: var(--selection-bg);
     color: var(--text);
     box-shadow: 0 1px 2px rgb(var(--shadow-rgb) / 10%);
   }
@@ -244,7 +264,9 @@ caffold-settings-appearance-page {
   }
 
   & .settings-typeface-control select {
+    box-sizing: border-box;
     width: 100%;
+    height: var(--interface-control-size);
     min-width: 0;
     min-height: var(--interface-control-size);
     border: 1px solid var(--border);
@@ -260,14 +282,6 @@ caffold-settings-appearance-page {
     border-color: var(--focus-ring);
     outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
-  }
-
-  & .settings-typeface-meta {
-    display: block;
-    width: min(100%, 35rem);
-    color: var(--muted);
-    font-size: var(--settings-small-text-size);
-    line-height: var(--interface-line-height);
   }
 
   & .settings-range-control input {
@@ -292,11 +306,10 @@ caffold-settings-appearance-page {
     text-align: right;
   }
 
-  & .settings-interface-preview,
-  & .settings-conversation-preview,
-  & .settings-code-preview,
-  & .settings-typeface-preview {
-    width: min(100%, 35rem);
+  & .settings-typeface-preview,
+  & .settings-text-preview {
+    width: 100%;
+    min-width: 0;
     overflow: hidden;
     border: 1px solid var(--border);
     border-radius: 0.3125rem;
@@ -304,19 +317,18 @@ caffold-settings-appearance-page {
   }
 
   & .settings-typeface-preview {
+    box-sizing: border-box;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
-    gap: var(--interface-space-6);
-    padding: 0.6875rem 0.75rem;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--interface-space-4);
+    padding: var(--interface-space-5) var(--interface-space-6);
     font-size: var(--task-list-font-size);
   }
 
   & .settings-typeface-preview span,
   & .settings-typeface-preview code {
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
   }
 
   & .settings-typeface-preview span {
@@ -326,105 +338,23 @@ caffold-settings-appearance-page {
   & .settings-typeface-preview code {
     color: var(--code-text);
     font-family: var(--font-code);
+    white-space: pre-wrap;
   }
 
-  & .settings-interface-preview {
+  & .settings-text-preview {
     display: grid;
-    padding: var(--interface-space-2) 0 var(--interface-space-4);
-    font-size: var(--task-list-font-size);
-  }
-
-  & .settings-interface-preview-section-header,
-  & .settings-interface-preview-repository,
-  & .settings-interface-preview-row {
-    display: grid;
-    align-items: center;
-    min-width: 0;
-  }
-
-  & .settings-interface-preview-section-header {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: var(--interface-space-3);
-    min-height: var(--interface-compact-visual-size);
-    padding: 0 var(--interface-space-5) 0 var(--interface-space-6);
-    color: var(--muted);
-  }
-
-  & .settings-interface-preview-new-task {
-    display: grid;
-    width: var(--interface-compact-visual-size);
-    height: var(--interface-compact-visual-size);
-    place-items: center;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--surface);
-    color: var(--control-fg);
-  }
-
-  & .settings-preview-action-icon {
-    display: block;
-    width: var(--interface-icon-size);
-    height: var(--interface-icon-size);
-  }
-
-  & .settings-interface-preview-repository {
-    grid-template-columns: var(--task-list-icon-size) minmax(0, 1fr) auto;
-    gap: 0.4375rem;
-    min-height: var(--interface-space-14);
-    padding: 0.1875rem 0.5625rem;
-    color: var(--muted);
-    font-size: var(--task-group-font-size);
-  }
-
-  & .settings-interface-preview-repository strong {
-    overflow: hidden;
-    font-weight: 600;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  & .settings-interface-preview-repository > span:last-child {
-    min-width: 2ch;
-    font-variant-numeric: tabular-nums;
-    text-align: right;
-  }
-
-  & .settings-preview-icon {
-    display: block;
-    width: var(--task-list-icon-size);
-    height: var(--task-list-icon-size);
-  }
-
-  & .settings-interface-preview-row {
-    grid-template-columns: minmax(0, 1fr) 3rem;
-    min-height: var(--task-list-row-height);
-    background: var(--selection-bg);
-    padding: 0.1875rem 0.5625rem;
-    padding-inline-start: var(--interface-space-8);
-  }
-
-  & .settings-interface-preview-row span {
-    overflow: hidden;
-    font-weight: 500;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  & .settings-interface-preview-row time {
-    color: var(--muted);
-    font-size: 0.85em;
-    text-align: right;
+    grid-column: 2;
   }
 
   & .settings-conversation-preview {
     display: grid;
-    gap: 0.875rem;
-    padding: 1rem;
+    gap: var(--interface-space-7);
+    padding: var(--interface-space-8);
   }
 
   & .settings-conversation-message {
     display: grid;
-    gap: 0.3125rem;
+    gap: var(--interface-space-3);
     max-width: 88%;
   }
 
@@ -454,14 +384,15 @@ caffold-settings-appearance-page {
   }
 
   & .settings-conversation-message[data-message-role="user"] p {
-    padding: 0.5rem 0.6875rem;
-    border-radius: 0.875rem;
+    padding: var(--interface-space-4) var(--interface-space-5);
+    border-radius: var(--interface-space-7);
     background: var(--surface-muted);
   }
 
   & .settings-code-preview {
     display: grid;
     grid-template-columns: var(--line-gutter-width) minmax(0, 1fr);
+    border-top: 1px solid var(--border);
     background: var(--code-bg);
     color: var(--code-text);
     font-family: var(--font-code);
@@ -473,7 +404,7 @@ caffold-settings-appearance-page {
     border-right: 1px solid var(--border);
     background: var(--code-gutter);
     color: var(--code-gutter-text);
-    padding: 0 0.5rem;
+    padding: 0 var(--interface-space-4);
     text-align: right;
     user-select: none;
   }
@@ -481,7 +412,7 @@ caffold-settings-appearance-page {
   & .settings-code-preview code {
     min-width: 0;
     overflow: hidden;
-    padding: 0 0.75rem;
+    padding: 0 var(--interface-space-6);
     font: inherit;
     text-overflow: ellipsis;
     white-space: pre;
@@ -499,9 +430,14 @@ caffold-settings-appearance-page {
       flex-direction: column;
     }
 
-    & .settings-field {
+    & .settings-field,
+    & .settings-preview-field {
       grid-template-columns: minmax(0, 1fr);
-      gap: 0.75rem;
+      gap: var(--interface-space-6);
+    }
+
+    & .settings-text-preview {
+      grid-column: 1;
     }
   }
 }
@@ -509,24 +445,14 @@ caffold-settings-appearance-page {
 @container settings-appearance (max-width: 28rem) {
   caffold-settings-appearance-page {
     & .settings-range-control {
-      grid-template-columns: minmax(0, 1fr) 4rem;
-    }
-
-    & .settings-range-control button {
-      grid-column: 1 / -1;
-      justify-self: start;
+      grid-template-columns:
+        minmax(0, 1fr)
+        4rem
+        var(--settings-context-action-size);
     }
 
     & .settings-typeface-preview {
       grid-template-columns: minmax(0, 1fr);
-    }
-
-    & .settings-theme-control {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    & .settings-theme-control button {
-      justify-self: start;
     }
   }
 }
