@@ -392,7 +392,11 @@ test("workspace header identity and titles share semantic ownership", () => {
   );
   assert.match(taskNavigatorView, /<caffold-workspace-brand>/);
   assert.match(settingsNavigatorView, /<caffold-workspace-brand>/);
-  assert.match(appearanceView, /<caffold-workspace-brand>/);
+  assert.doesNotMatch(
+    appearanceView,
+    /<caffold-workspace-brand>/,
+    "Appearance content must not repeat the Settings navigator identity",
+  );
   assert.doesNotMatch(taskNavigator, /task-list-primary-(?:brand|icon)/);
   assert.doesNotMatch(settingsNavigator, /settings-navigator-header (?:img|strong)/);
   cssBlockMatching(settingsNavigator, ".settings-navigator-header", [
@@ -559,12 +563,14 @@ test("Settings roles share inherited constraints without sharing leaf selectors"
   const appearancePage = readFrontend(
     "pages/(task-workspace)/settings/appearance/page.js",
   );
-  assert.match(appearancePage, /settings-interface-preview-section-header/);
-  assert.match(appearancePage, /settings-interface-preview-repository/);
-  assert.match(
-    appearancePage,
-    /<caffold-workspace-brand><\/caffold-workspace-brand>/,
-  );
+  assert.match(appearancePage, /settings-typeface-detail/);
+  assert.match(appearancePage, /settings-text-preview/);
+  assert.match(appearancePage, /renderInlineIcon\("RotateCcw"/);
+  assert.match(appearancePage, /data-reset-label=/);
+  assert.doesNotMatch(appearancePage, /data-typeface-description/);
+  assert.doesNotMatch(appearancePage, /settings-interface-preview/);
+  assert.doesNotMatch(appearancePage, /data-typeface-availability/);
+  assert.doesNotMatch(appearancePage, /\.availability/);
   assert.doesNotMatch(appearancePage, /icons\/favicon-32\.png/);
   assert.doesNotMatch(appearancePage, />Open</);
 
@@ -638,7 +644,8 @@ test("visible inline icons have explicit block geometry from their UI owner", ()
     ["pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/detail/page.css", ".github-pull-files-icon", "--interface-icon-small-size"],
     ["pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/list/page.css", ".github-pull-icon", "--interface-icon-small-size"],
     ["pages/(task-workspace)/settings/layout.css", ".settings-workspace-back-icon", "--interface-icon-size"],
-    ["pages/(task-workspace)/settings/appearance/page.css", ".settings-preview-icon", "--task-list-icon-size"],
+    ["pages/(task-workspace)/settings/appearance/page.css", ".settings-reset-all-icon", "--interface-icon-size"],
+    ["pages/(task-workspace)/settings/appearance/page.css", ".settings-reset-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/layout.css", ".task-workspace-route-control-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/components/navigation.css", ".task-workspace-navigation-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/tasks/controls.css", ".task-action-icon", "--interface-icon-size"],
@@ -889,8 +896,7 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
     ["pages/(task-workspace)/tasks/components/task-turn-options.css", ".task-model-button::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/tasks/components/task-turn-options.css", ".task-permission-button::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/settings/appearance/page.css", ".settings-reset-all::before", "--interface-control-hit-outset"],
-    ["pages/(task-workspace)/settings/appearance/page.css", ".settings-typeface-control button::before", "--interface-compact-hit-outset"],
-    ["pages/(task-workspace)/settings/appearance/page.css", ".settings-range-control button::before", "--interface-compact-hit-outset"],
+    ["pages/(task-workspace)/settings/appearance/page.css", ".settings-inline-reset::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/settings/codex/page.css", ".settings-content-section > header button::before", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/settings/codex/page.css", ".settings-runtime-control button::before", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/settings/about/page.css", ".settings-about-actions button::before", "--interface-control-hit-outset"],
@@ -931,12 +937,7 @@ test("contextual and inline actions stay compact while page and primary actions 
     ],
     [
       "pages/(task-workspace)/settings/appearance/page.css",
-      ".settings-range-control button",
-      "--settings-context-action-size",
-    ],
-    [
-      "pages/(task-workspace)/settings/appearance/page.css",
-      ".settings-typeface-control button",
+      ".settings-inline-reset",
       "--settings-context-action-size",
     ],
     [

@@ -429,15 +429,54 @@ test("reflows Settings from the detail pane width at maximum Interface scale", a
     appearance.locator(".settings-range-control output").first(),
   ).toHaveCSS("font-size", settingsDetailFontSize);
   const appearanceMetrics = await settingsSurfaceMetrics(appearance, {
-    row: ".settings-appearance-group:not(.settings-typeface-group):not(.settings-theme-group) .settings-field",
+    row: ".settings-interface-group .settings-field",
     leading: ".settings-field-copy",
     trailing: ".settings-range-control",
     pageAction: ".settings-reset-all",
-    contextAction: ".settings-range-control button",
+    contextAction:
+      'button[data-action="reset-setting"][data-setting="interfaceScalePercent"]',
   });
   expect(appearanceMetrics.overflowX).toBe(false);
   expect(appearanceMetrics.stacked).toBe(shouldStack);
   expectSettingsActionTiers(appearanceMetrics, true);
+  const appearanceLayout = await appearance.evaluate((element) => {
+    const rect = (selector) =>
+      element.querySelector(selector).getBoundingClientRect();
+    const interfaceCopy = rect(
+      ".settings-interface-group .settings-field-copy",
+    );
+    const interfaceControl = rect(
+      ".settings-interface-group .settings-range-control",
+    );
+    const typefaceSelect = rect(".settings-typeface-control select");
+    const typefacePreview = rect(".settings-typeface-preview");
+    const conversationControl = rect(
+      '[data-setting="conversationTextPx"]',
+    );
+    const textPreview = rect(".settings-text-preview");
+    return {
+      interfaceTopDifference: Math.abs(
+        interfaceCopy.top - interfaceControl.top,
+      ),
+      interfaceLeftDifference: Math.abs(
+        interfaceCopy.left - interfaceControl.left,
+      ),
+      typefacePreviewLeftDifference: Math.abs(
+        typefaceSelect.left - typefacePreview.left,
+      ),
+      textPreviewLeftDifference: Math.abs(
+        conversationControl.left - textPreview.left,
+      ),
+    };
+  });
+  if (shouldStack) {
+    expect(appearanceLayout.interfaceTopDifference).toBeGreaterThan(1);
+    expect(appearanceLayout.interfaceLeftDifference).toBeLessThanOrEqual(1);
+  } else {
+    expect(appearanceLayout.interfaceTopDifference).toBeLessThanOrEqual(1);
+  }
+  expect(appearanceLayout.typefacePreviewLeftDifference).toBeLessThanOrEqual(1);
+  expect(appearanceLayout.textPreviewLeftDifference).toBeLessThanOrEqual(1);
   await captureReviewScreenshot(
     page,
     testInfo,
@@ -563,6 +602,7 @@ test("selects, persists, and resolves System, Light, and Dark themes", async ({
   await expect(system).toBeChecked();
   await expectThemeState(page, { mode: "system", resolvedTheme: "dark" });
   await expect(resetTheme).toBeDisabled();
+  await expect(resetTheme).toBeHidden();
   const systemDarkStyles = await representativeThemeStyles(page);
   await captureReviewScreenshot(page, testInfo, "settings-theme-system-dark");
 
@@ -570,6 +610,7 @@ test("selects, persists, and resolves System, Light, and Dark themes", async ({
   await expect(light).toBeChecked();
   await expectThemeState(page, { mode: "light", resolvedTheme: "light" });
   await expect(resetTheme).toBeEnabled();
+  await expect(resetTheme).toBeVisible();
   const lightStyles = await representativeThemeStyles(page);
   await captureReviewScreenshot(page, testInfo, "settings-theme-light");
 
@@ -591,6 +632,7 @@ test("selects, persists, and resolves System, Light, and Dark themes", async ({
   await system.check();
   await expectThemeState(page, { mode: "system", resolvedTheme: "light" });
   await expect(resetTheme).toBeDisabled();
+  await expect(resetTheme).toBeHidden();
   await page.emulateMedia({ colorScheme: "dark" });
   await expectThemeState(page, { mode: "system", resolvedTheme: "dark" });
 });
@@ -605,6 +647,10 @@ test("updates independent ranges live without replacing their DOM", async ({
   const interfaceRange = range(settingsPage, "interfaceScalePercent");
   const conversationRange = range(settingsPage, "conversationTextPx");
   const codeRange = range(settingsPage, "codeTextPx");
+  const resetAll = settingsPage.getByRole("button", { name: "Reset all" });
+  await expect(resetAll).toBeVisible();
+  await expect(resetAll).toBeDisabled();
+  await expect(resetAll.locator(".settings-reset-all-icon")).toHaveCount(1);
   await expect(interfaceRange).toHaveAttribute("min", "90");
   await expect(interfaceRange).toHaveAttribute("max", "120");
   await expect(interfaceRange).toHaveAttribute("step", "5");
@@ -619,6 +665,11 @@ test("updates independent ranges live without replacing their DOM", async ({
   await setRange(interfaceRange, 90);
   await expect(settingsSmallText).toHaveCSS("font-size", "14px");
   await setRange(interfaceRange, 100);
+  const inlineResets = settingsPage.locator(".settings-inline-reset");
+  await expect(inlineResets).toHaveCount(5);
+  for (const reset of await inlineResets.all()) {
+    await expect(reset).toBeHidden();
+  }
 
   const responsiveDefaults = await page.evaluate(() => ({
     coarse: matchMedia("(pointer: coarse)").matches,
@@ -631,6 +682,7 @@ test("updates independent ranges live without replacing their DOM", async ({
   const touchInterface = responsiveDefaults.coarse || responsiveDefaults.narrow;
   expect(responsiveDefaults.rootFontSize).toBe(touchInterface ? "17px" : "16px");
   expect(responsiveDefaults.targetFloor).toBe(touchInterface ? "40px" : "0px");
+  await setRange(interfaceRange, 105);
   const settingsControlTiers = await settingsPage.evaluate((element) => {
     const tokenHeight = (token) => {
       const probe = document.createElement("div");
@@ -655,7 +707,9 @@ test("updates independent ranges live without replacing their DOM", async ({
       regularVisual: tokenHeight("--interface-control-visual-size"),
       compactVisual: tokenHeight("--interface-compact-visual-size"),
       resetAllVisual: visualHeight(".settings-reset-all"),
-      resetOneVisual: visualHeight(".settings-range-control button"),
+      resetOneVisual: visualHeight(
+        'button[data-setting="interfaceScalePercent"]',
+      ),
     };
   });
   expect(settingsControlTiers.resetAllVisual).toBeCloseTo(
@@ -666,6 +720,7 @@ test("updates independent ranges live without replacing their DOM", async ({
     settingsControlTiers.compactVisual,
     1,
   );
+  await setRange(interfaceRange, 100);
   await expect(
     settingsPage.locator(".settings-conversation-message p").first(),
   ).toHaveCSS("font-size", "14px");
@@ -689,6 +744,12 @@ test("updates independent ranges live without replacing their DOM", async ({
     "font-size",
     "13px",
   );
+  const interfaceReset = settingsPage.getByRole("button", {
+    name: "Reset interface size",
+  });
+  await expect(interfaceReset).toBeVisible();
+  await expect(interfaceReset).toHaveAttribute("title", "Reset interface size");
+  await expect(interfaceReset.locator(".settings-reset-icon")).toHaveCount(1);
 
   await setRange(conversationRange, 20);
   await setRange(codeRange, 18);
@@ -699,6 +760,12 @@ test("updates independent ranges live without replacing their DOM", async ({
     "font-size",
     "18px",
   );
+  await expect(
+    settingsPage.getByRole("button", { name: "Reset conversation text" }),
+  ).toBeVisible();
+  await expect(
+    settingsPage.getByRole("button", { name: "Reset code text" }),
+  ).toBeVisible();
 
   const semanticProbe = await page.evaluate(() => {
     const github = document.createElement("caffold-github-markdown");
@@ -728,44 +795,22 @@ test("updates independent ranges live without replacing their DOM", async ({
   expect(semanticProbe.textarea).toBe("20px");
   expect(semanticProbe.modelButton).not.toBe("20px");
 
-  const interfacePreviewDensity = await settingsPage
-    .locator(".settings-interface-preview-row")
-    .evaluate((element) => ({
-      fontSize: Number.parseFloat(getComputedStyle(element).fontSize),
-      height: element.getBoundingClientRect().height,
-      rootFontSize: Number.parseFloat(
-        getComputedStyle(document.documentElement).fontSize,
-      ),
-    }));
-  expect(interfacePreviewDensity.height).toBeCloseTo(
-    touchInterface ? 36 : interfacePreviewDensity.rootFontSize * 2,
-    1,
-  );
-  expect(interfacePreviewDensity.fontSize).toBeCloseTo(
-    interfacePreviewDensity.rootFontSize * 0.8125,
-    2,
-  );
-  const interfacePreview = settingsPage.locator(".settings-interface-preview");
-  await expect(
-    interfacePreview.locator(".settings-interface-preview-section-header"),
-  ).toContainText("Caffold");
-  await expect(
-    interfacePreview.locator(".settings-interface-preview-repository"),
-  ).toContainText("caffold");
-  await expect(
-    interfacePreview.locator(".settings-preview-icon"),
-  ).toHaveCount(1);
-  await expect(
-    interfacePreview.locator(".settings-preview-action-icon"),
-  ).toHaveCount(1);
-  await expect(interfacePreview.getByText("Open", { exact: true })).toHaveCount(
+  await expect(settingsPage.locator(".settings-interface-preview")).toHaveCount(
     0,
   );
+  await expect(settingsPage.locator(".settings-typeface-preview")).toHaveCount(
+    1,
+  );
+  await expect(settingsPage.locator(".settings-text-preview")).toHaveCount(1);
+  await expect(settingsPage.locator(".settings-conversation-preview")).toHaveCount(
+    1,
+  );
+  await expect(settingsPage.locator(".settings-code-preview")).toHaveCount(1);
 
   if (touchInterface) {
     for (const control of [
       settingsPage.locator(".settings-reset-all"),
-      settingsPage.locator(".settings-range-control button").first(),
+      interfaceReset,
     ]) {
       const box = await control.boundingBox();
       expect(box.height).toBeGreaterThanOrEqual(40);
@@ -784,6 +829,11 @@ test("updates independent ranges live without replacing their DOM", async ({
     )
     .click();
   await expect(conversationRange).toHaveValue("14");
+  await expect(
+    settingsPage.locator(
+      'button[data-action="reset-setting"][data-setting="conversationTextPx"]',
+    ),
+  ).toBeHidden();
   await expect(interfaceRange).toHaveValue("105");
   await expect(codeRange).toHaveValue("18");
 
@@ -791,6 +841,9 @@ test("updates independent ranges live without replacing their DOM", async ({
   await expect(interfaceRange).toHaveValue("100");
   await expect(conversationRange).toHaveValue("14");
   await expect(codeRange).toHaveValue("13");
+  for (const reset of await inlineResets.all()) {
+    await expect(reset).toBeHidden();
+  }
 });
 
 test("switches and persists the local typeface presets", async ({ page }) => {
@@ -799,14 +852,48 @@ test("switches and persists the local typeface presets", async ({ page }) => {
   const settingsPage = page.locator("caffold-settings-appearance-page");
   const select = settingsPage.locator("select[data-typeface-setting]");
   await expect(select.locator("option")).toHaveCount(2);
+  await expect(select.locator("option")).toHaveText([
+    "D2 Coding",
+    "System Mono",
+  ]);
   await expect(select).not.toContainText("Noto Sans Mono CJK KR");
+  await expect(select).not.toContainText("Included");
+  await expect(select).not.toContainText("No download");
   await expect(select).toHaveValue("d2-coding");
+  await expect(select).not.toHaveAttribute("aria-describedby", /.+/);
+  await expect(settingsPage.locator("[data-typeface-description]")).toHaveCount(
+    0,
+  );
+  const typefacePreview = settingsPage.locator(".settings-typeface-preview");
+  await expect(typefacePreview.locator("span")).toHaveText(
+    "Latin · 한글 · 漢字 · ひらがな · カタカナ · 123",
+  );
+  await expect(typefacePreview.locator("code")).toHaveText(
+    'const tree = "├─ src/main.rs";',
+  );
+  expect(
+    await typefacePreview.evaluate((preview) => {
+      const [specimen, code] = preview.children;
+      const specimenBounds = specimen.getBoundingClientRect();
+      const codeBounds = code.getBoundingClientRect();
+      return codeBounds.top > specimenBounds.top;
+    }),
+  ).toBe(true);
+  const resetFont = settingsPage.locator('button[data-action="reset-typeface"]');
+  await expect(resetFont).toBeHidden();
   await expect(page.locator("html")).toHaveAttribute(
     "data-typeface-preset",
     "d2-coding",
   );
 
   await select.selectOption("system-mono");
+  await expect(typefacePreview.locator("span")).toHaveText(
+    "Latin · 한글 · 漢字 · ひらがな · カタカナ · 123",
+  );
+  await expect(resetFont).toBeVisible();
+  await expect(
+    settingsPage.getByRole("button", { name: "Reset font" }),
+  ).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute(
     "data-typeface-preset",
     "system-mono",
@@ -817,8 +904,9 @@ test("switches and persists the local typeface presets", async ({ page }) => {
     )
     .toMatchObject({ typefacePreset: "system-mono" });
 
-  await settingsPage.locator('button[data-action="reset-typeface"]').click();
+  await settingsPage.getByRole("button", { name: "Reset font" }).click();
   await expect(select).toHaveValue("d2-coding");
+  await expect(resetFont).toBeHidden();
   await expect(page.locator("html")).toHaveAttribute(
     "data-typeface-preset",
     "d2-coding",
@@ -1428,8 +1516,10 @@ async function representativeThemeStyles(page) {
       settings: colorPair(
         document.querySelector("caffold-settings-appearance-page"),
       ),
-      taskSelection: colorPair(
-        document.querySelector(".settings-interface-preview-row"),
+      themeSelection: colorPair(
+        document.querySelector(
+          ".settings-theme-control label:has(input:checked) > span",
+        ),
       ),
       reviewWarning: colorPair(review.querySelector(".task-review-git-notice")),
       reviewDanger: colorPair(review.querySelector(".task-review-error")),
