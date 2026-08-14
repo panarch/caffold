@@ -154,4 +154,13 @@ async fn shutdown_signal(shutdown: broadcast::Sender<()>) {
 }
 
 #[cfg(test)]
-mod tests;
+mod tests {
+    use super::*;
+
+    #[test]
+    fn application_router_merges_the_owned_state_routers() {
+        let root = tempfile::tempdir().unwrap();
+        let _router =
+            router(RootedFs::new(root.path()).unwrap()).expect("owned state routers merge");
+    }
+}
