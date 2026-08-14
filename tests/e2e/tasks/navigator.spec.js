@@ -77,6 +77,124 @@ async function installInitialTaskListGates(page) {
   };
 }
 
+test("mounts initial loading once and preserves settled Task DOM across refresh", async ({
+  page,
+}) => {
+  await installEventSourceMock(page);
+  await mockCodexModels(page);
+  const initialTasks = deferred();
+  const tasks = [
+    initialNavigatorTask("thread_initial_dom_a", "Initial DOM Alpha"),
+    initialNavigatorTask("thread_initial_dom_b", "Initial DOM Bravo"),
+  ];
+  let requestCount = 0;
+  await page.addInitScript(() => {
+    window.__taskLoadingMounts = 0;
+    const countedLoadingMessages = new WeakSet();
+    const countLoadingMessage = (message) => {
+      if (countedLoadingMessages.has(message)) {
+        return;
+      }
+      countedLoadingMessages.add(message);
+      window.__taskLoadingMounts += 1;
+    };
+    const countLoadingMessages = (node) => {
+      if (!(node instanceof Element)) {
+        return;
+      }
+      if (node.matches(".task-section-message.task-section-loading")) {
+        countLoadingMessage(node);
+      }
+      for (const message of node.querySelectorAll(
+        ".task-section-message.task-section-loading",
+      )) {
+        countLoadingMessage(message);
+      }
+    };
+    new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          countLoadingMessages(node);
+        }
+      }
+    }).observe(document, { childList: true, subtree: true });
+  });
+  await page.route(/\/api\/tasks(?:\?|$)/, async (route) => {
+    requestCount += 1;
+    if (requestCount === 1) {
+      await initialTasks.promise;
+    }
+    await route.fulfill({ json: activeTaskProjection(tasks) });
+  });
+
+  await page.goto("/tasks");
+  await expect(page.locator(".task-section-loading")).toHaveText("Loading...");
+  await expect.poll(() => page.evaluate(() => window.__taskLoadingMounts)).toBe(1);
+  initialTasks.resolve();
+
+  const list = page.locator("caffold-active-task-list");
+  await expect(
+    list.locator('.task-row[data-thread-id="thread_initial_dom_a"]'),
+  ).toBeVisible();
+  await list.evaluate((element) => {
+    const group = element.querySelector(
+      '.task-repository-group[data-task-repository-key="fixture-section-1"]',
+    );
+    element.__settledDom = {
+      group,
+      header: group.querySelector(":scope > .task-repository-header"),
+      label: group.querySelector(
+        ":scope > .task-repository-header > .task-repository-label",
+      ),
+      count: group.querySelector(
+        ":scope > .task-repository-header > .task-repository-count",
+      ),
+      rows: [...group.querySelectorAll(":scope > .task-list > li")],
+      components: [
+        ...group.querySelectorAll(
+          ":scope > .task-list > li > caffold-active-task-row",
+        ),
+      ],
+    };
+  });
+  await list.evaluate((element) => element.loadTasks({ force: true }));
+  await expect.poll(() => requestCount).toBe(2);
+  await expect(list.evaluate((element) => {
+    const group = element.querySelector(
+      '.task-repository-group[data-task-repository-key="fixture-section-1"]',
+    );
+    const settled = element.__settledDom;
+    const rows = [...group.querySelectorAll(":scope > .task-list > li")];
+    const components = [
+      ...group.querySelectorAll(
+        ":scope > .task-list > li > caffold-active-task-row",
+      ),
+    ];
+    return {
+      group: group === settled.group,
+      header: group.querySelector(":scope > .task-repository-header") ===
+        settled.header,
+      label: group.querySelector(
+        ":scope > .task-repository-header > .task-repository-label",
+      ) === settled.label,
+      count: group.querySelector(
+        ":scope > .task-repository-header > .task-repository-count",
+      ) === settled.count,
+      rows: rows.every((row, index) => row === settled.rows[index]),
+      components: components.every(
+        (component, index) => component === settled.components[index],
+      ),
+    };
+  })).resolves.toEqual({
+    group: true,
+    header: true,
+    label: true,
+    count: true,
+    rows: true,
+    components: true,
+  });
+});
+
 test("retains an initial Archived result without revealing it before active Tasks settle", async ({
   page,
 }) => {

@@ -41,6 +41,10 @@ pub(crate) enum TaskStoreError {
     InvalidRow(&'static str),
     #[error("archived thread cannot be claimed as active: {0}")]
     ArchivedThreadCannotBeClaimed(String),
+    #[error("task cannot be reordered: {0}")]
+    TaskReorderUnavailable(&'static str),
+    #[error("task reorder conflicts with the current Section order: {0}")]
+    TaskReorderConflict(&'static str),
     #[error("managed worktree already exists for thread: {0}")]
     DuplicateManagedWorktreeThread(String),
     #[cfg(test)]
@@ -169,19 +173,26 @@ impl TaskStoreTables<'_> {
         archived_at_ms: u64,
     ) -> Result<Option<ManagedThread>> {
         match self {
-            Self::Memory(glue) => {
-                managed_thread::archive_and_compact(glue, thread_id, archived_at_ms)
-            }
-            Self::Redb(glue) => {
-                managed_thread::archive_and_compact(glue, thread_id, archived_at_ms)
-            }
+            Self::Memory(glue) => managed_thread::archive(glue, thread_id, archived_at_ms),
+            Self::Redb(glue) => managed_thread::archive(glue, thread_id, archived_at_ms),
         }
     }
 
     pub(crate) fn delete_active_managed_thread(&mut self, thread_id: &str) -> Result<bool> {
         match self {
-            Self::Memory(glue) => managed_thread::delete_active_and_compact(glue, thread_id),
-            Self::Redb(glue) => managed_thread::delete_active_and_compact(glue, thread_id),
+            Self::Memory(glue) => managed_thread::delete(glue, thread_id),
+            Self::Redb(glue) => managed_thread::delete(glue, thread_id),
+        }
+    }
+
+    pub(crate) fn move_managed_thread_before(
+        &mut self,
+        thread_id: &str,
+        before_thread_id: Option<&str>,
+    ) -> Result<bool> {
+        match self {
+            Self::Memory(glue) => managed_thread::move_before(glue, thread_id, before_thread_id),
+            Self::Redb(glue) => managed_thread::move_before(glue, thread_id, before_thread_id),
         }
     }
 
@@ -744,6 +755,44 @@ mod tests {
                 .unwrap();
             assert_eq!(configured.model.as_deref(), Some("gpt-test"));
             assert!(configured.fast_mode);
+
+            let section_id = format!("section-{index}");
+            let peer_id = format!("task-peer-{index}");
+            store
+                .transaction(|tables| {
+                    tables.upsert_managed_section(&ManagedSection {
+                        section_id: section_id.clone(),
+                        logical_path: format!("Workspace/{index}"),
+                    })?;
+                    tables.place_managed_thread_at_top(&thread_id, &section_id)?;
+                    tables.claim_managed_thread_at_top(
+                        thread(&peer_id),
+                        "Peer task",
+                        &section_id,
+                        100,
+                    )?;
+                    assert!(tables.move_managed_thread_before(&thread_id, Some(&peer_id),)?);
+                    Ok(())
+                })
+                .unwrap();
+            let ordered = store
+                .read(|tables| {
+                    let mut threads = tables
+                        .active_managed_threads()?
+                        .into_iter()
+                        .filter(|thread| thread.section_id.as_deref() == Some(&section_id))
+                        .collect::<Vec<_>>();
+                    threads.sort_by_key(|thread| thread.position_in_section);
+                    Ok(threads)
+                })
+                .unwrap();
+            assert_eq!(
+                ordered
+                    .iter()
+                    .map(|thread| thread.thread_id.as_str())
+                    .collect::<Vec<_>>(),
+                [thread_id.as_str(), peer_id.as_str()]
+            );
 
             let worktree_id = format!("worktree-{index}");
             store.create_worktree(worktree(&worktree_id)).unwrap();

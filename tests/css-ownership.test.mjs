@@ -107,6 +107,10 @@ const ownership = new Map([
     ["caffold-active-task-list"],
   ],
   [
+    "pages/(task-workspace)/tasks/components/active-task-list/components/row.css",
+    ["caffold-active-task-row"],
+  ],
+  [
     "pages/(task-workspace)/tasks/components/archived-task-list.css",
     ["caffold-archived-task-list"],
   ],
@@ -127,7 +131,7 @@ const ownership = new Map([
     "pages/(task-workspace)/tasks/components/task-status.css",
     [
       "caffold-tasks-page",
-      "caffold-active-task-list",
+      "caffold-active-task-row",
       "caffold-archived-task-list",
     ],
   ],
@@ -303,6 +307,7 @@ const componentChildren = new Map([
       "caffold-archived-task-list",
     ],
   ],
+  ["caffold-active-task-list", ["caffold-active-task-row"]],
   ["caffold-task-directory-picker", ["caffold-file-tree"]],
   [
     "caffold-task-detail",

@@ -81,6 +81,17 @@ export async function markTaskSeen(threadId) {
   });
 }
 
+export async function reorderTask(threadId, beforeThreadId) {
+  return requestJson(
+    `/api/tasks/${encodeURIComponent(threadId)}/reorder`,
+    {},
+    {
+      method: "POST",
+      body: { beforeThreadId: beforeThreadId ?? null },
+    },
+  );
+}
+
 export async function archiveTask(threadId) {
   return requestJson(`/api/tasks/${encodeURIComponent(threadId)}/archive`, {}, {
     method: "POST",

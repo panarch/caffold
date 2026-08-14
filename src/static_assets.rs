@@ -390,6 +390,16 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/active-task-list.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/active-task-list.js"
         ))),
+        "pages/(task-workspace)/tasks/components/active-task-list/components/row.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/active-task-list/components/row.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/active-task-list/components/row.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/active-task-list/components/row.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/components/archived-task-list.css" => {
             Some(css(include_str!(
                 "../frontend/pages/(task-workspace)/tasks/components/archived-task-list.css"
@@ -1148,6 +1158,10 @@ mod tests {
                 b"caffold-active-task-list".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/components/active-task-list/components/row.js",
+                b"caffold-active-task-row".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/components/archived-task-list.js",
                 b"caffold-archived-task-list".as_slice(),
             ),
@@ -1176,6 +1190,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/components/active-task-list.css",
                 b"caffold-active-task-list".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/components/active-task-list/components/row.css",
+                b"caffold-active-task-row".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/components/archived-task-list.css",
@@ -1300,6 +1318,8 @@ mod tests {
             "/assets/pages/(task-workspace)/tasks/stream.js",
             "/assets/pages/(task-workspace)/tasks/components/active-task-list.css",
             "/assets/pages/(task-workspace)/tasks/components/active-task-list.js",
+            "/assets/pages/(task-workspace)/tasks/components/active-task-list/components/row.css",
+            "/assets/pages/(task-workspace)/tasks/components/active-task-list/components/row.js",
             "/assets/pages/(task-workspace)/tasks/components/archived-task-list.css",
             "/assets/pages/(task-workspace)/tasks/components/archived-task-list.js",
             "/assets/pages/(task-workspace)/tasks/components/codex-readiness-recovery.css",

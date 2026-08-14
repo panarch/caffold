@@ -214,6 +214,144 @@ async fn canonical_readiness_blocks_task_creation_at_the_http_boundary() {
     assert!(client.mock_requests().await.is_empty());
 }
 
+#[tokio::test]
+async fn reorder_mutates_only_the_local_section_order_and_notifies_after_commit() {
+    let root = tempfile::tempdir().unwrap();
+    let client = CodexThreadClient::mock(Vec::new());
+    let state =
+        task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+    state
+        .codex_runtime
+        .set_test_readiness(crate::codex_app_server::CodexReadiness::blocking(
+            crate::codex_app_server::CodexReadinessState::Error,
+            crate::codex_app_server::CodexReadinessReason::AppServerUnavailable,
+            "Codex is unavailable for this test.",
+            None,
+        ))
+        .await;
+    for id in ["thread-c", "thread-b", "thread-a"] {
+        claim_cached_active(&state, id, id, 1, "section-one", "/workspace/one");
+    }
+
+    let response = router(state.clone())
+        .oneshot(
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/api/tasks/thread-c/reorder")
+                .header(axum::http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"beforeThreadId":"thread-a"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), 4096)
+        .await
+        .unwrap();
+    let body: JsonValue = serde_json::from_slice(&body).unwrap();
+    assert_eq!(body["threadId"], "thread-c");
+    assert_eq!(body["beforeThreadId"], "thread-a");
+    assert_eq!(body["changed"], true);
+    assert_eq!(state.task_list_events.refresh_count(), 1);
+    let (_, mut threads) = cached_projection_rows(&state);
+    threads.sort_by_key(|thread| thread.position_in_section);
+    assert_eq!(
+        threads
+            .iter()
+            .map(|thread| thread.thread_id.as_str())
+            .collect::<Vec<_>>(),
+        ["thread-c", "thread-a", "thread-b"]
+    );
+    assert!(client.mock_requests().await.is_empty());
+
+    let response = router(state.clone())
+        .oneshot(
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/api/tasks/thread-c/reorder")
+                .header(axum::http::header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"beforeThreadId":"thread-a"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    assert_eq!(state.task_list_events.refresh_count(), 1);
+}
+
+#[tokio::test]
+async fn reorder_rejects_stale_cross_section_and_empty_anchors_without_writes() {
+    let root = tempfile::tempdir().unwrap();
+    let state = task_state_with_codex_client(
+        RootedFs::new(root.path()).unwrap(),
+        CodexThreadClient::mock(Vec::new()),
+    )
+    .await;
+    claim_cached_active(
+        &state,
+        "thread-one",
+        "Thread one",
+        1,
+        "section-one",
+        "/workspace/one",
+    );
+    claim_cached_active(
+        &state,
+        "thread-two",
+        "Thread two",
+        1,
+        "section-two",
+        "/workspace/two",
+    );
+
+    for (body, expected_status, expected_code) in [
+        (
+            r#"{"beforeThreadId":"missing"}"#,
+            axum::http::StatusCode::CONFLICT,
+            "task_reorder_conflict",
+        ),
+        (
+            r#"{"beforeThreadId":"thread-two"}"#,
+            axum::http::StatusCode::CONFLICT,
+            "task_reorder_conflict",
+        ),
+        (
+            r#"{"beforeThreadId":""}"#,
+            axum::http::StatusCode::BAD_REQUEST,
+            "task_reorder_anchor_invalid",
+        ),
+    ] {
+        let response = router(state.clone())
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/tasks/thread-one/reorder")
+                    .header(axum::http::header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), expected_status);
+        let body = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        let body: JsonValue = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["error"]["code"], expected_code);
+    }
+    assert_eq!(state.task_list_events.refresh_count(), 0);
+    let (_, threads) = cached_projection_rows(&state);
+    assert_eq!(
+        threads
+            .iter()
+            .find(|thread| thread.thread_id == "thread-one")
+            .unwrap()
+            .position_in_section,
+        Some(0)
+    );
+}
+
 fn initialize_git_repository(path: &std::path::Path) {
     std::fs::create_dir_all(path).unwrap();
     for args in [

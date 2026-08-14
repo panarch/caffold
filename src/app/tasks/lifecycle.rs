@@ -585,7 +585,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn local_placement_reuses_logical_paths_and_keeps_dense_top_order() {
+    async fn local_placement_reuses_logical_paths_and_keeps_sparse_top_order() {
         let (root, lifecycle) = fixture();
         let first = task(&lifecycle, "thread-first", root.path());
         let second = task(&lifecycle, "thread-second", root.path());
@@ -623,7 +623,7 @@ mod tests {
                 .iter()
                 .map(|thread| (thread.thread_id.as_str(), thread.position_in_section))
                 .collect::<Vec<_>>(),
-            [("thread-second", Some(0)), ("thread-first", Some(1))]
+            [("thread-second", Some(-1024)), ("thread-first", Some(0))]
         );
     }
 

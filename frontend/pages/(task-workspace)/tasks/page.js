@@ -169,6 +169,7 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   deactivate() {
+    this.taskNavigator()?.exitReorderMode({ restoreFocus: false });
     this.imagePreviewDialog()?.dismiss();
     if (this.view === "detail") {
       this.taskDetail()?.deactivate({ retainComposerDom: true });
@@ -227,6 +228,7 @@ class CaffoldTasksPage extends HTMLElement {
 
   prepareRoute(route, options = {}) {
     this.ensureRendered();
+    this.taskNavigator()?.exitReorderMode({ restoreFocus: false });
     this.currentRoute = { ...route };
     this.currentOpenOptions = { ...options };
     const target = routeTarget(route);

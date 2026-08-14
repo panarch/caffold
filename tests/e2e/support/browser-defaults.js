@@ -233,6 +233,8 @@ export async function installBrowserDefaults(page) {
         export const GitCompare = [["circle", { cx: "18", cy: "18", r: "3" }], ["circle", { cx: "6", cy: "6", r: "3" }], ["path", { d: "M13 6h3a2 2 0 0 1 2 2v7" }], ["path", { d: "M6 9v7a2 2 0 0 0 2 2h3" }]];
         export const GitBranch = [["line", { x1: "6", x2: "6", y1: "3", y2: "15" }], ["circle", { cx: "18", cy: "6", r: "3" }], ["circle", { cx: "6", cy: "18", r: "3" }], ["path", { d: "M18 9a9 9 0 0 1-9 9" }]];
         export const GitPullRequest = [["circle", { cx: "18", cy: "18", r: "3" }], ["circle", { cx: "6", cy: "6", r: "3" }], ["path", { d: "M6 9v12" }], ["path", { d: "M18 15V5" }], ["path", { d: "M18 5h-5" }]];
+        export const ArrowDownUp = [["path", { d: "m3 16 4 4 4-4" }], ["path", { d: "M7 20V4" }], ["path", { d: "m21 8-4-4-4 4" }], ["path", { d: "M17 4v16" }]];
+        export const Grip = [["circle", { cx: "5", cy: "5", r: "1" }], ["circle", { cx: "12", cy: "5", r: "1" }], ["circle", { cx: "19", cy: "5", r: "1" }], ["circle", { cx: "5", cy: "12", r: "1" }], ["circle", { cx: "12", cy: "12", r: "1" }], ["circle", { cx: "19", cy: "12", r: "1" }], ["circle", { cx: "5", cy: "19", r: "1" }], ["circle", { cx: "12", cy: "19", r: "1" }], ["circle", { cx: "19", cy: "19", r: "1" }]];
         export const ArrowLeft = [
           ["path", { d: "m12 19-7-7 7-7" }],
           ["path", { d: "M19 12H5" }],
