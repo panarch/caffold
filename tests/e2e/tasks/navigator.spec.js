@@ -1492,9 +1492,9 @@ test("archives and restores an idle Caffold task through the grouped Archived se
       () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
     ),
   ).toBe(true);
-  const archivedTreeLayout = await archivedSection
-    .locator(".task-repository-group")
-    .first()
+  const archivedGroup = archivedSection.locator(".task-repository-group").first();
+  await expect(archivedGroup.locator(".task-archived-row").first()).toBeVisible();
+  const archivedTreeLayout = await archivedGroup
     .evaluate((group) => {
       const icon = group.querySelector(".task-repository-icon");
       const row = group.querySelector(".task-archived-row");

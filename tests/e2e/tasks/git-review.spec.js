@@ -222,43 +222,35 @@ test("applies the global ordering to Compare and Commit without refetching", asy
     "caffold-git-compare-page caffold-file-tree",
   );
   await expect(compareTree).toBeVisible();
-  expect(await rootTreeNames(compareTree)).toEqual([
-    "nested",
-    "alpha.rs",
-    "example.rs",
-  ]);
+  await expect
+    .poll(() => rootTreeNames(compareTree))
+    .toEqual(["nested", "alpha.rs", "example.rs"]);
   expect(counts.compare).toBe(1);
 
   await page.evaluate(async () => {
     const { setFileSortMode } = await import("/assets/settings.js");
     setFileSortMode("name");
   });
-  expect(await rootTreeNames(compareTree)).toEqual([
-    "alpha.rs",
-    "example.rs",
-    "nested",
-  ]);
+  await expect
+    .poll(() => rootTreeNames(compareTree))
+    .toEqual(["alpha.rs", "example.rs", "nested"]);
   expect(counts.compare).toBe(1);
 
   await page.goto(`/tasks/${THREAD_ID}/git/log?sha=${COMMIT.sha}`);
   const commitTree = page.locator("caffold-commit-changes-tree caffold-file-tree");
   await expect(commitTree).toBeVisible();
-  expect(await rootTreeNames(commitTree)).toEqual([
-    "alpha.rs",
-    "example.rs",
-    "nested",
-  ]);
+  await expect
+    .poll(() => rootTreeNames(commitTree))
+    .toEqual(["alpha.rs", "example.rs", "nested"]);
   expect(counts.commit).toBe(1);
 
   await page.evaluate(async () => {
     const { setFileSortMode } = await import("/assets/settings.js");
     setFileSortMode("folders-first");
   });
-  expect(await rootTreeNames(commitTree)).toEqual([
-    "nested",
-    "alpha.rs",
-    "example.rs",
-  ]);
+  await expect
+    .poll(() => rootTreeNames(commitTree))
+    .toEqual(["nested", "alpha.rs", "example.rs"]);
   expect(counts.commit).toBe(1);
 });
 
