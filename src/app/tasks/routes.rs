@@ -1,3 +1,17 @@
+mod codex;
+mod commands;
+mod conversation;
+mod list;
+mod membership;
+mod store;
+
+use codex::*;
+use commands::*;
+use conversation::*;
+use list::*;
+use membership::*;
+use store::*;
+
 use std::{collections::VecDeque, convert::Infallible, path::Path};
 
 use axum::{
@@ -12,11 +26,6 @@ use futures_util::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use tokio::sync::broadcast;
-
-#[cfg(test)]
-use super::TaskEventRecord;
-#[cfg(test)]
-use serde_json::json;
 
 use super::{
     ApprovalResolveError, CodexConnection, DetailFrameStream, TaskDetailResponse, TaskDetailSync,
@@ -333,1594 +342,6 @@ pub(super) fn router(state: TaskState) -> Router {
         .with_state(state)
 }
 
-async fn codex_status(State(state): State<TaskState>) -> Json<CodexStatusPayload> {
-    let (status, process_generation, process_connected) =
-        state.codex_runtime.status_with_diagnostics().await;
-    let diagnostics = CodexRuntimeDiagnostics {
-        process_generation,
-        process_connected,
-        thread_sessions: state.codex_sessions.diagnostics().await,
-        usage: state.codex_runtime.usage_diagnostics(),
-    };
-    Json(CodexStatusPayload {
-        status,
-        diagnostics,
-    })
-}
-
-async fn codex_restart(State(state): State<TaskState>) -> Result<Json<CodexDaemonInfo>, ApiError> {
-    state
-        .codex_runtime
-        .restart_daemon()
-        .await
-        .map(Json)
-        .map_err(ApiError::from)
-}
-
-async fn codex_models(State(state): State<TaskState>) -> Result<Json<JsonValue>, ApiError> {
-    let client = require_codex_thread_client(&state).await?;
-    let response = client.list_models(100).await.map_err(ApiError::from)?;
-    serde_json::to_value(response)
-        .map(Json)
-        .map_err(|error| ApiError::CodexThread(error.to_string()))
-}
-
-async fn codex_permissions(
-    State(state): State<TaskState>,
-    Query(query): Query<CodexPermissionsQuery>,
-) -> Result<Json<CodexPermissionsResponse>, ApiError> {
-    let cwd = task_cwd(&state, query.cwd.as_deref())?;
-    let client = require_codex_thread_client(&state).await?;
-    let (profiles, default_mode) = tokio::try_join!(
-        client.list_permission_profiles(&cwd, 100),
-        client.default_permission_mode(&cwd),
-    )?;
-    let profile_allowed = |profile_id: &str| {
-        profiles
-            .iter()
-            .find(|profile| profile.id == profile_id)
-            .is_some_and(|profile| profile.allowed)
-    };
-    let workspace_allowed = profile_allowed(":workspace");
-    let full_access_allowed = profile_allowed(":danger-full-access");
-
-    Ok(Json(CodexPermissionsResponse {
-        default_mode,
-        options: vec![
-            CodexPermissionOption {
-                mode: CodexPermissionMode::AskForApproval,
-                label: "Ask for approval",
-                description: "Work in the workspace and ask before crossing its boundary.",
-                allowed: workspace_allowed,
-                dangerous: false,
-            },
-            CodexPermissionOption {
-                mode: CodexPermissionMode::ApproveForMe,
-                label: "Approve for me",
-                description: "Keep the workspace boundary and review eligible requests automatically.",
-                allowed: workspace_allowed,
-                dangerous: false,
-            },
-            CodexPermissionOption {
-                mode: CodexPermissionMode::FullAccess,
-                label: "Full access",
-                description: "Run without sandbox restrictions or approval prompts.",
-                allowed: full_access_allowed,
-                dangerous: true,
-            },
-        ],
-    }))
-}
-
-fn codex_reasoning_effort_value(effort: &JsonValue) -> Option<&str> {
-    effort
-        .get("value")
-        .and_then(JsonValue::as_str)
-        .or_else(|| effort.get("reasoningEffort").and_then(JsonValue::as_str))
-        .or_else(|| effort.as_str())
-}
-
-async fn list_managed_tasks(
-    State(state): State<TaskState>,
-    Query(_query): Query<TasksQuery>,
-) -> Result<Json<super::active_list::ActiveTaskProjection>, ApiError> {
-    super::active_list::load_cached(state.fs, state.task_store)
-        .await
-        .map(Json)
-}
-
-async fn list_archived_tasks(
-    State(state): State<TaskState>,
-    Query(query): Query<TasksQuery>,
-) -> Result<Json<TaskListResponse>, ApiError> {
-    let (archived, next_cursor) =
-        task_store_list_archived(&state, query.cursor.as_deref(), TASK_LIST_PAGE_SIZE).await?;
-    let connection = require_codex_thread_connection(&state).await?;
-    let reads = stream::iter(archived)
-        .map(|managed| {
-            let state = state.clone();
-            let client = connection.client.clone();
-            async move {
-                match client.read_thread(&managed.thread_id).await {
-                    Ok(thread) => {
-                        state
-                            .codex_sessions
-                            .observe_thread_metadata(thread.clone())
-                            .await;
-                        let mut task = state.detail.record_from_codex_thread(&thread)?;
-                        let activity_ms = task_activity_ms(&task);
-                        apply_managed_thread_metadata(&mut task, &managed);
-                        Ok::<_, ApiError>((task, activity_ms))
-                    }
-                    Err(error) if error.is_thread_unavailable() => {
-                        let task = unavailable_archived_task(&managed);
-                        let activity_ms = task_activity_ms(&task);
-                        Ok((task, activity_ms))
-                    }
-                    Err(error) => Err(error.into()),
-                }
-            }
-        })
-        .buffer_unordered(TASK_CANONICAL_READ_CONCURRENCY)
-        .collect::<Vec<_>>()
-        .await;
-    let mut tasks = reads.into_iter().collect::<Result<Vec<_>, ApiError>>()?;
-    tasks.sort_by(|(left, _), (right, _)| {
-        task_activity_ms(right)
-            .cmp(&task_activity_ms(left))
-            .then_with(|| left.thread_id.cmp(&right.thread_id))
-    });
-    let tasks = tasks.into_iter().map(|(task, _)| task).collect();
-    Ok(Json(TaskListResponse { tasks, next_cursor }))
-}
-
-async fn task_store_list_archived(
-    state: &TaskState,
-    cursor: Option<&str>,
-    limit: usize,
-) -> Result<(Vec<ManagedThread>, Option<String>), ApiError> {
-    let store = state.task_store.clone();
-    let cursor = cursor.map(ToOwned::to_owned);
-    tokio::task::spawn_blocking(move || store.list_archived(cursor.as_deref(), limit))
-        .await
-        .map_err(task_store_join_error)?
-        .map_err(task_store_api_error)
-}
-
-async fn task_store_get(
-    state: &TaskState,
-    thread_id: &str,
-) -> Result<Option<ManagedThread>, ApiError> {
-    let store = state.task_store.clone();
-    let thread_id = thread_id.to_string();
-    tokio::task::spawn_blocking(move || store.get(&thread_id))
-        .await
-        .map_err(task_store_join_error)?
-        .map_err(task_store_api_error)
-}
-
-async fn task_store_get_archived(
-    state: &TaskState,
-    thread_id: &str,
-) -> Result<Option<ManagedThread>, ApiError> {
-    let store = state.task_store.clone();
-    let thread_id = thread_id.to_string();
-    tokio::task::spawn_blocking(move || store.get_archived(&thread_id))
-        .await
-        .map_err(task_store_join_error)?
-        .map_err(task_store_api_error)
-}
-
-async fn task_store_worktree_for_thread(
-    state: &TaskState,
-    thread_id: &str,
-) -> Result<Option<ManagedWorktree>, ApiError> {
-    let store = state.task_store.clone();
-    let thread_id = thread_id.to_string();
-    tokio::task::spawn_blocking(move || store.worktree_for_thread(&thread_id))
-        .await
-        .map_err(task_store_join_error)?
-        .map_err(task_store_api_error)
-}
-
-#[cfg(test)]
-async fn task_store_claim(
-    state: &TaskState,
-    thread: ManagedThread,
-) -> Result<ManagedThread, ApiError> {
-    let store = state.task_store.clone();
-    tokio::task::spawn_blocking(move || store.claim(thread, now_ms()))
-        .await
-        .map_err(task_store_join_error)?
-        .map_err(task_store_api_error)
-}
-
-async fn task_store_mark_seen(
-    state: &TaskState,
-    thread_id: &str,
-    canonical_activity_ms: u64,
-) -> Result<Option<ManagedThread>, ApiError> {
-    let store = state.task_store.clone();
-    let thread_id = thread_id.to_string();
-    tokio::task::spawn_blocking(move || {
-        store.mark_seen(&thread_id, canonical_activity_ms, now_ms())
-    })
-    .await
-    .map_err(task_store_join_error)?
-    .map_err(task_store_api_error)
-}
-
-async fn task_store_update_composer_settings(
-    state: &TaskState,
-    thread_id: &str,
-    model: Option<&str>,
-    reasoning_effort: Option<&str>,
-    fast_mode: bool,
-) -> Result<Option<ManagedThread>, ApiError> {
-    let store = state.task_store.clone();
-    let thread_id = thread_id.to_string();
-    let model = model.map(str::to_string);
-    let reasoning_effort = reasoning_effort.map(str::to_string);
-    tokio::task::spawn_blocking(move || {
-        store.update_composer_settings(
-            &thread_id,
-            model.as_deref(),
-            reasoning_effort.as_deref(),
-            fast_mode,
-        )
-    })
-    .await
-    .map_err(task_store_join_error)?
-    .map_err(task_store_api_error)
-}
-
-async fn task_store_archive(
-    state: &TaskState,
-    thread_id: &str,
-) -> Result<Option<ManagedThread>, ApiError> {
-    let store = state.task_store.clone();
-    let thread_id = thread_id.to_string();
-    tokio::task::spawn_blocking(move || store.archive(&thread_id, now_ms()))
-        .await
-        .map_err(task_store_join_error)?
-        .map_err(task_store_api_error)
-}
-
-#[derive(Clone, Copy)]
-enum ManagedTaskMembership {
-    Active,
-    Archived,
-}
-
-async fn task_store_delete_task_rows(
-    state: &TaskState,
-    thread_id: &str,
-    membership: ManagedTaskMembership,
-    worktree_id: Option<&str>,
-) -> Result<bool, ApiError> {
-    let store = state.task_store.clone();
-    let thread_id = thread_id.to_string();
-    let worktree_id = worktree_id.map(str::to_string);
-    tokio::task::spawn_blocking(move || {
-        store.transaction(|tables| {
-            let deleted = match membership {
-                ManagedTaskMembership::Active => tables.delete_active_managed_thread(&thread_id)?,
-                ManagedTaskMembership::Archived => {
-                    tables.delete_archived_managed_thread(&thread_id)?
-                }
-            };
-            if !deleted {
-                return Ok(false);
-            }
-            if let Some(worktree_id) = worktree_id.as_deref()
-                && !tables.delete_managed_worktree(worktree_id)?
-            {
-                return Err(TaskStoreError::UnexpectedPayload);
-            }
-            Ok(true)
-        })
-    })
-    .await
-    .map_err(task_store_join_error)?
-    .map_err(task_store_api_error)
-}
-
-fn task_store_api_error(error: TaskStoreError) -> ApiError {
-    match error {
-        TaskStoreError::InvalidCursor => ApiError::BadRequest {
-            code: "task_cursor_invalid",
-            message: error.to_string(),
-        },
-        error @ TaskStoreError::TaskReorderUnavailable(_) => ApiError::Conflict {
-            code: "task_reorder_unavailable",
-            message: error.to_string(),
-        },
-        error @ TaskStoreError::TaskReorderConflict(_) => ApiError::Conflict {
-            code: "task_reorder_conflict",
-            message: error.to_string(),
-        },
-        error => ApiError::Internal(error.to_string()),
-    }
-}
-
-async fn task_reorder(
-    State(state): State<TaskState>,
-    AxumPath(thread_id): AxumPath<String>,
-    Json(request): Json<TaskReorderRequest>,
-) -> Result<Json<TaskReorderResponse>, ApiError> {
-    let before_thread_id = request
-        .before_thread_id
-        .map(|thread_id| thread_id.trim().to_string());
-    if before_thread_id.as_deref() == Some("") {
-        return Err(ApiError::BadRequest {
-            code: "task_reorder_anchor_invalid",
-            message: "beforeThreadId must be a non-empty Thread ID or null".to_string(),
-        });
-    }
-
-    let store = state.task_store.clone();
-    let moved_thread_id = thread_id.clone();
-    let requested_anchor = before_thread_id.clone();
-    let changed = tokio::task::spawn_blocking(move || {
-        store.transaction(|tables| {
-            tables.move_managed_thread_before(&moved_thread_id, requested_anchor.as_deref())
-        })
-    })
-    .await
-    .map_err(task_store_join_error)?
-    .map_err(task_store_api_error)?;
-    if changed {
-        state.task_list_events.refresh();
-    }
-    Ok(Json(TaskReorderResponse {
-        thread_id,
-        before_thread_id,
-        changed,
-    }))
-}
-
-fn task_store_join_error(error: tokio::task::JoinError) -> ApiError {
-    ApiError::Internal(format!("task store worker failed: {error}"))
-}
-
-async fn create_task(
-    State(state): State<TaskState>,
-    Json(request): Json<CreateTaskRequest>,
-) -> Result<Json<TaskDetailResponse>, ApiError> {
-    let (prompt, images) = normalize_task_input(&request.prompt, request.images)?;
-    let cwd = task_cwd(&state, request.cwd.as_deref())?;
-    let connection = require_codex_thread_connection(&state).await?;
-    let client = &connection.client;
-    let turn_options = codex_turn_options(
-        client,
-        request.model,
-        request.effort,
-        request.fast_mode,
-        request.permission_mode,
-    )
-    .await?;
-
-    let started = state
-        .lifecycle
-        .start_task(
-            &connection,
-            StartTask {
-                cwd,
-                prompt,
-                images,
-                turn_options,
-                initial_name: None,
-            },
-        )
-        .await?;
-    let mut detail = state
-        .detail
-        .read(&connection, &started.task.thread_id, None)
-        .await?;
-    detail.active_top_placement = Some(started.placement);
-    Ok(Json(detail))
-}
-
-async fn task_detail(
-    State(state): State<TaskState>,
-    AxumPath(thread_id): AxumPath<String>,
-    Query(query): Query<TaskDetailQuery>,
-) -> Result<Json<TaskDetailResponse>, ApiError> {
-    state
-        .detail
-        .get(&thread_id, query.cursor.as_deref())
-        .await
-        .map(Json)
-}
-
-async fn task_generated_image(
-    State(state): State<TaskState>,
-    AxumPath((thread_id, item_id)): AxumPath<(String, String)>,
-) -> Result<Response, ApiError> {
-    let bytes = state
-        .task_events
-        .generated_images()
-        .load(&thread_id, &item_id)
-        .await
-        .map_err(|error| generated_image_api_error(error, &thread_id, &item_id))?;
-    let mut response = Response::new(Body::from(bytes));
-    response
-        .headers_mut()
-        .insert(header::CONTENT_TYPE, HeaderValue::from_static("image/png"));
-    response
-        .headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    response.headers_mut().insert(
-        header::X_CONTENT_TYPE_OPTIONS,
-        HeaderValue::from_static("nosniff"),
-    );
-    Ok(response)
-}
-
-fn generated_image_api_error(
-    error: GeneratedImageError,
-    thread_id: &str,
-    item_id: &str,
-) -> ApiError {
-    let message = match error {
-        GeneratedImageError::NotFound => {
-            format!("generated image was not found for task {thread_id}: {item_id}")
-        }
-        GeneratedImageError::Unavailable => {
-            format!("generated image is no longer available for task {thread_id}: {item_id}")
-        }
-    };
-    ApiError::NotFound {
-        code: "generated_image_unavailable",
-        message,
-    }
-}
-
-async fn mark_task_seen(
-    State(state): State<TaskState>,
-    AxumPath(thread_id): AxumPath<String>,
-) -> Result<Json<TaskRecord>, ApiError> {
-    if task_store_get(&state, &thread_id).await?.is_none() {
-        return Err(task_not_managed_error());
-    }
-    let client = require_codex_thread_client(&state).await?;
-    let thread = client.read_thread(&thread_id).await?;
-    state
-        .codex_sessions
-        .observe_thread_metadata(thread.clone())
-        .await;
-    let mut task = state.detail.record_from_codex_thread(&thread)?;
-    let activity_ms = task_activity_ms(&task);
-    let Some(managed) = task_store_mark_seen(&state, &thread_id, activity_ms).await? else {
-        return Err(task_not_managed_error());
-    };
-    apply_managed_thread_metadata(&mut task, &managed);
-    notify_task_updated(&state, task.clone());
-    Ok(Json(task))
-}
-
-fn task_not_managed_error() -> ApiError {
-    ApiError::BadRequest {
-        code: "task_not_managed",
-        message: "task is not managed by Caffold".to_string(),
-    }
-}
-
-fn notify_task_updated(state: &TaskState, task: TaskRecord) {
-    state.task_list_events.update(task);
-}
-
-async fn task_stream(
-    State(state): State<TaskState>,
-    AxumPath(thread_id): AxumPath<String>,
-    Query(_query): Query<TasksQuery>,
-) -> Result<Response, ApiError> {
-    let stream: DetailFrameStream = state.detail.stream(&thread_id).await?;
-    let mut response = Response::new(Body::from_stream(stream));
-    response.headers_mut().insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("text/event-stream; charset=utf-8"),
-    );
-    response
-        .headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
-    Ok(response)
-}
-
-async fn task_list_stream(State(state): State<TaskState>) -> Result<Response, ApiError> {
-    let receivers = TaskEventReceivers::subscribe(&state);
-    let initial_frames = task_list_stream_initial_frames(&state).await?;
-    Ok(task_list_event_stream(receivers, initial_frames))
-}
-
-struct TaskEventReceivers {
-    sync: broadcast::Receiver<TaskDetailSync>,
-    removals: broadcast::Receiver<TaskListRemoval>,
-    updates: broadcast::Receiver<TaskListUpdate>,
-    shutdown: broadcast::Receiver<()>,
-}
-
-impl TaskEventReceivers {
-    fn subscribe(state: &TaskState) -> Self {
-        let (removals, updates) = state.task_list_events.subscribe();
-        Self {
-            sync: state.task_sync.subscribe_updates(),
-            removals,
-            updates,
-            shutdown: state.shutdown.subscribe(),
-        }
-    }
-}
-
-struct TaskEventStreamState {
-    receivers: TaskEventReceivers,
-    initial_frames: VecDeque<Bytes>,
-}
-
-async fn task_list_stream_initial_frames(state: &TaskState) -> Result<VecDeque<Bytes>, ApiError> {
-    let connection = require_codex_thread_connection(state).await?;
-    let projection = super::active_list::load_runtime_snapshot(
-        state.fs.clone(),
-        state.task_store.clone(),
-        &state.codex_sessions,
-        connection.generation,
-        &connection.client,
-    )
-    .await?;
-    for thread in projection.observed_threads {
-        state
-            .codex_sessions
-            .observe_listed_thread_metadata(connection.generation, thread)
-            .await;
-    }
-    let payload = serde_json::to_string(&projection.snapshot).map_err(|error| {
-        ApiError::Internal(format!("failed to serialize Task snapshot: {error}"))
-    })?;
-    let mut frames = VecDeque::with_capacity(2);
-    frames.push_back(Bytes::from_static(b": ready\n\n"));
-    frames.push_back(Bytes::from(format!(
-        "event: task-list-snapshot\ndata: {payload}\n\n"
-    )));
-    Ok(frames)
-}
-
-fn task_list_event_stream(
-    receivers: TaskEventReceivers,
-    initial_frames: VecDeque<Bytes>,
-) -> Response {
-    let stream = stream::unfold(
-        TaskEventStreamState {
-            receivers,
-            initial_frames,
-        },
-        |mut state| async move {
-            if let Some(frame) = state.initial_frames.pop_front() {
-                return Some((Ok::<_, Infallible>(frame), state));
-            }
-            loop {
-                tokio::select! {
-                    _ = state.receivers.shutdown.recv() => return None,
-                    message = state.receivers.removals.recv() => {
-                        match message {
-                            Ok(removal) => {
-                                let payload = serde_json::to_string(&removal)
-                                    .unwrap_or_else(|_| "{}".to_string());
-                                let frame = format!("event: task-removed\ndata: {payload}\n\n");
-                                return Some((Ok::<_, Infallible>(Bytes::from(frame)), state));
-                            }
-                            Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                            Err(broadcast::error::RecvError::Closed) => return None,
-                        }
-                    }
-                    message = state.receivers.updates.recv() => {
-                        match message {
-                            Ok(TaskListUpdate::Task(task)) => {
-                                let payload = serde_json::to_string(&task)
-                                    .unwrap_or_else(|_| "{}".to_string());
-                                let frame = format!("event: task-updated\ndata: {payload}\n\n");
-                                return Some((Ok::<_, Infallible>(Bytes::from(frame)), state));
-                            }
-                            Ok(TaskListUpdate::Placement(update)) => {
-                                let payload = serde_json::to_string(&update)
-                                    .unwrap_or_else(|_| "{}".to_string());
-                                let frame = format!("event: task-placed-at-top\ndata: {payload}\n\n");
-                                return Some((Ok::<_, Infallible>(Bytes::from(frame)), state));
-                            }
-                            Ok(TaskListUpdate::Refresh) => {
-                                let frame = "event: task-list-refresh\ndata: {}\n\n";
-                                return Some((Ok::<_, Infallible>(Bytes::from_static(frame.as_bytes())), state));
-                            }
-                            Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                            Err(broadcast::error::RecvError::Closed) => return None,
-                        }
-                    }
-                    message = state.receivers.sync.recv() => {
-                        match message {
-                            Ok(sync) => {
-                                let payload = serde_json::to_string(&sync)
-                                    .unwrap_or_else(|_| "{}".to_string());
-                                let frame = format!("event: task-sync\ndata: {payload}\n\n");
-                                return Some((Ok::<_, Infallible>(Bytes::from(frame)), state));
-                            }
-                            Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                            Err(broadcast::error::RecvError::Closed) => return None,
-                        }
-                    }
-                }
-            }
-        },
-    );
-
-    let mut response = Response::new(Body::from_stream(stream));
-    response.headers_mut().insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("text/event-stream; charset=utf-8"),
-    );
-    response
-        .headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
-    response
-}
-
-async fn task_prompt(
-    State(state): State<TaskState>,
-    AxumPath(thread_id): AxumPath<String>,
-    Query(_query): Query<TasksQuery>,
-    Json(request): Json<TaskPromptRequest>,
-) -> Result<Json<TaskPromptResponse>, ApiError> {
-    let managed = task_store_get(&state, &thread_id)
-        .await?
-        .ok_or_else(task_not_managed_error)?;
-    let managed_worktree = task_store_worktree_for_thread(&state, &thread_id).await?;
-    let managed_cwd = managed_prompt_cwd(managed_worktree.as_ref())?;
-    let (prompt, images) = normalize_task_input(&request.prompt, request.images)?;
-    let _requested_active_turn_id = request.active_turn_id;
-    let connection = require_codex_thread_connection(&state).await?;
-    let requested_model = request.model;
-    let requested_effort = request.effort;
-    let requested_fast_mode = request.fast_mode;
-    let requested_permission_mode = request.permission_mode;
-    state
-        .codex_sessions
-        .restore_managed_fast_mode(&thread_id, managed.fast_mode)
-        .await;
-    let mut target = match state
-        .codex_sessions
-        .prepare_prompt(&connection.client, connection.generation, &thread_id)
-        .await
-    {
-        Ok(target) => target,
-        Err(error) => {
-            state
-                .codex_runtime
-                .recover_connection_error(&connection, &error)
-                .await;
-            return Err(error.into());
-        }
-    };
-    if let Some(managed_cwd) = managed_cwd.as_deref() {
-        target = managed_prompt_target(
-            target,
-            managed_cwd,
-            state.codex_sessions.snapshot(&thread_id).await.as_ref(),
-        )?;
-    }
-    let mut refreshed_stale_turn = false;
-    let outcome = loop {
-        let attempted_steer = matches!(&target, PromptTarget::Steer { .. });
-        let result: Result<TaskPromptOutcome, _> = match target {
-            PromptTarget::Steer { turn_id } => connection
-                .client
-                .steer_turn(&thread_id, &turn_id, &prompt, &images)
-                .await
-                .map(|_| TaskPromptOutcome {
-                    turn_id,
-                    steered: true,
-                    started_turn: None,
-                }),
-            PromptTarget::Start { cwd } => {
-                let turn_options = codex_turn_options(
-                    &connection.client,
-                    requested_model.clone(),
-                    requested_effort.clone(),
-                    requested_fast_mode,
-                    requested_permission_mode,
-                )
-                .await?;
-                let applied_options = turn_options.clone();
-                connection
-                    .client
-                    .start_turn(&thread_id, &cwd, &prompt, &images, turn_options)
-                    .await
-                    .map(|started| TaskPromptOutcome {
-                        turn_id: started.turn_id.clone(),
-                        steered: false,
-                        started_turn: Some((started.turn, applied_options)),
-                    })
-            }
-        };
-        match result {
-            Ok(result) => break result,
-            Err(error)
-                if attempted_steer && !refreshed_stale_turn && error.is_turn_unavailable() =>
-            {
-                refreshed_stale_turn = true;
-                if let Err(refresh_error) = state
-                    .codex_sessions
-                    .refresh_subscription(&connection.client, connection.generation, &thread_id)
-                    .await
-                {
-                    state.codex_sessions.cancel_runtime(&thread_id).await;
-                    state
-                        .codex_runtime
-                        .recover_connection_error(&connection, &refresh_error)
-                        .await;
-                    return Err(refresh_error.into());
-                }
-                target = match state
-                    .codex_sessions
-                    .prepare_prompt(&connection.client, connection.generation, &thread_id)
-                    .await
-                {
-                    Ok(target) => target,
-                    Err(refresh_error) => {
-                        state.codex_sessions.cancel_runtime(&thread_id).await;
-                        state
-                            .codex_runtime
-                            .recover_connection_error(&connection, &refresh_error)
-                            .await;
-                        return Err(refresh_error.into());
-                    }
-                };
-                if let Some(managed_cwd) = managed_cwd.as_deref() {
-                    target = managed_prompt_target(
-                        target,
-                        managed_cwd,
-                        state.codex_sessions.snapshot(&thread_id).await.as_ref(),
-                    )?;
-                }
-            }
-            Err(error) => {
-                state.codex_sessions.cancel_runtime(&thread_id).await;
-                state
-                    .codex_runtime
-                    .recover_connection_error(&connection, &error)
-                    .await;
-                return Err(error.into());
-            }
-        }
-    };
-    if let Some((turn, applied_options)) = outcome.started_turn {
-        state
-            .codex_sessions
-            .record_turn_started(
-                connection.generation,
-                &thread_id,
-                managed_cwd.as_deref(),
-                turn,
-                applied_options.clone(),
-            )
-            .await;
-        if let Some(snapshot) = state.codex_sessions.snapshot(&thread_id).await {
-            let persistence_result = task_store_update_composer_settings(
-                &state,
-                &thread_id,
-                snapshot.model.as_deref(),
-                snapshot.reasoning_effort.as_deref(),
-                snapshot.fast_mode,
-            )
-            .await;
-            if let Err(error) = persistence_result {
-                eprintln!(
-                    "failed to persist composer settings for started turn on thread {thread_id}: {error:?}"
-                );
-            }
-        }
-    }
-    state.task_events.publish(accepted_user_message_event(
-        &thread_id,
-        &outcome.turn_id,
-        &prompt,
-        &images,
-    ));
-    Ok(Json(TaskPromptResponse {
-        thread_id,
-        turn_id: outcome.turn_id,
-        steered: outcome.steered,
-    }))
-}
-
-fn managed_prompt_cwd(worktree: Option<&ManagedWorktree>) -> Result<Option<String>, ApiError> {
-    let Some(worktree) = worktree else {
-        return Ok(None);
-    };
-    match worktree.state {
-        ManagedWorktreeState::Ready => {
-            inspect_ready_worktree(worktree).map_err(|error| ApiError::BadRequest {
-                code: "managed_worktree_unavailable",
-                message: format!(
-                    "the managed worktree is unavailable at {}: {error}",
-                    worktree.worktree_path
-                ),
-            })?;
-            Ok(Some(worktree.worktree_path.clone()))
-        }
-        ManagedWorktreeState::Creating
-        | ManagedWorktreeState::IsolatingClean
-        | ManagedWorktreeState::HandingOff
-        | ManagedWorktreeState::Transferring => Err(ApiError::BadRequest {
-            code: "worktree_transfer_in_progress",
-            message: "the task worktree transfer is still in progress; retry after it finishes"
-                .to_string(),
-        }),
-        ManagedWorktreeState::CleanRecoveryRequired
-        | ManagedWorktreeState::HandoffRecoveryRequired
-        | ManagedWorktreeState::RecoveryRequired => Err(ApiError::BadRequest {
-            code: "worktree_transfer_recovery_required",
-            message: format!(
-                "the task worktree transfer requires recovery; keep the source and target checkouts intact and preserve refs/caffold/transfers/{} if it exists",
-                worktree.worktree_id
-            ),
-        }),
-        state => Err(ApiError::BadRequest {
-            code: "managed_worktree_unavailable",
-            message: format!(
-                "the managed worktree is unavailable while it is {}",
-                state.as_str()
-            ),
-        }),
-    }
-}
-
-fn managed_prompt_target(
-    target: PromptTarget,
-    managed_cwd: &str,
-    snapshot: Option<&ThreadSessionSnapshot>,
-) -> Result<PromptTarget, ApiError> {
-    match target {
-        PromptTarget::Start { .. } => Ok(PromptTarget::Start {
-            cwd: managed_cwd.to_string(),
-        }),
-        PromptTarget::Steer { turn_id }
-            if snapshot
-                .and_then(|snapshot| snapshot.active_turn_cwd.as_deref())
-                .is_some_and(|cwd| same_directory(cwd, managed_cwd)) =>
-        {
-            Ok(PromptTarget::Steer { turn_id })
-        }
-        PromptTarget::Steer { .. } => Err(ApiError::BadRequest {
-            code: "worktree_transfer_finishing",
-            message: "the isolation turn is still finishing in the original checkout; retry after it completes"
-                .to_string(),
-        }),
-    }
-}
-
-fn same_directory(left: &str, right: &str) -> bool {
-    match (
-        Path::new(left).canonicalize().ok(),
-        Path::new(right).canonicalize().ok(),
-    ) {
-        (Some(left), Some(right)) => left == right,
-        _ => false,
-    }
-}
-
-async fn task_interrupt(
-    State(state): State<TaskState>,
-    AxumPath(thread_id): AxumPath<String>,
-    Query(_query): Query<TasksQuery>,
-) -> Result<Json<TaskDetailResponse>, ApiError> {
-    let managed = task_store_get(&state, &thread_id)
-        .await?
-        .ok_or_else(task_not_managed_error)?;
-    state
-        .codex_sessions
-        .restore_managed_fast_mode(&thread_id, managed.fast_mode)
-        .await;
-    let connection = require_codex_thread_connection(&state).await?;
-    let Some(turn_id) = state
-        .codex_sessions
-        .active_turn_id(&connection.client, connection.generation, &thread_id)
-        .await?
-    else {
-        return Err(ApiError::BadRequest {
-            code: "task_turn_missing",
-            message: "thread does not have an active turn to interrupt".to_string(),
-        });
-    };
-    if let Err(error) = connection.client.interrupt_turn(&thread_id, &turn_id).await {
-        state
-            .codex_runtime
-            .recover_connection_error(&connection, &error)
-            .await;
-        return Err(error.into());
-    }
-    Ok(Json(
-        state.detail.read(&connection, &thread_id, None).await?,
-    ))
-}
-
-async fn task_archive(
-    State(state): State<TaskState>,
-    AxumPath(thread_id): AxumPath<String>,
-) -> Result<Json<TaskRecord>, ApiError> {
-    if task_store_get(&state, &thread_id).await?.is_none() {
-        return Err(task_not_managed_error());
-    }
-    let connection = require_codex_thread_connection(&state).await?;
-    let thread = connection.client.read_thread(&thread_id).await?;
-    if matches!(thread.status, ThreadStatus::Active { .. }) {
-        return Err(ApiError::BadRequest {
-            code: "task_active",
-            message: "active tasks cannot be archived".to_string(),
-        });
-    }
-    let task = state.detail.record_from_codex_thread(&thread)?;
-    state
-        .lifecycle
-        .preflight_archive_worktree(thread_id.clone())
-        .await?;
-    connection.client.archive_thread(&thread_id).await?;
-    let worktree = match state.lifecycle.archive_worktree(thread_id.clone()).await {
-        Ok(worktree) => worktree,
-        Err(error) => {
-            if let Err(rollback_error) = connection.client.unarchive_thread(&thread_id).await {
-                eprintln!(
-                    "failed to unarchive Codex thread after worktree archive failure: {rollback_error}"
-                );
-            }
-            return Err(error);
-        }
-    };
-    match task_store_archive(&state, &thread_id).await {
-        Ok(Some(_)) => {}
-        Ok(None) => {
-            rollback_task_archive(&state, &connection.client, &thread_id, &worktree).await;
-            return Err(task_not_managed_error());
-        }
-        Err(error) => {
-            rollback_task_archive(&state, &connection.client, &thread_id, &worktree).await;
-            return Err(error);
-        }
-    }
-    notify_task_removed(&state, &thread_id, "archived");
-    Ok(Json(task))
-}
-
-async fn task_recovery_restore(
-    State(state): State<TaskState>,
-    AxumPath(thread_id): AxumPath<String>,
-) -> Result<Json<TaskRestoreResponse>, ApiError> {
-    let Some(managed) = task_store_get(&state, &thread_id).await? else {
-        return Err(task_not_managed_error());
-    };
-    let connection = require_codex_thread_connection(&state).await?;
-    let (thread, unarchived) =
-        match super::recovery::locate_thread(&connection.client, &thread_id).await? {
-            ManagedCodexThreadLocation::Active(thread) => (thread, false),
-            ManagedCodexThreadLocation::Archived(_) => {
-                (connection.client.unarchive_thread(&thread_id).await?, true)
-            }
-            ManagedCodexThreadLocation::Missing => return Err(task_recovery_changed_error()),
-        };
-    state.codex_sessions.forget_thread(&thread_id).await;
-    state
-        .codex_sessions
-        .observe_thread_metadata(thread.clone())
-        .await;
-    let mut task = state.detail.record_from_codex_thread(&thread)?;
-    apply_managed_thread_metadata(&mut task, &managed);
-    let placement = match state.lifecycle.place_active_task(&task).await {
-        Ok(Some(placement)) => placement,
-        Ok(None) => {
-            if unarchived {
-                let _ = connection.client.archive_thread(&thread_id).await;
-                state.codex_sessions.forget_thread(&thread_id).await;
-            }
-            return Err(task_not_managed_error());
-        }
-        Err(error) => {
-            if unarchived
-                && let Err(rollback_error) = connection.client.archive_thread(&thread_id).await
-            {
-                eprintln!(
-                    "failed to re-archive Codex thread while rolling back recovery restore: {rollback_error}"
-                );
-            }
-            if unarchived {
-                state.codex_sessions.forget_thread(&thread_id).await;
-            }
-            return Err(error);
-        }
-    };
-    state
-        .task_list_events
-        .place(task.clone(), placement.clone());
-    Ok(Json(TaskRestoreResponse {
-        task,
-        active_top_placement: placement,
-    }))
-}
-
-async fn task_recovery_recheck(
-    State(state): State<TaskState>,
-    AxumPath(thread_id): AxumPath<String>,
-) -> Result<Json<ActiveTaskRecovery>, ApiError> {
-    let Some(managed) = task_store_get(&state, &thread_id).await? else {
-        return Err(task_not_managed_error());
-    };
-    let connection = require_codex_thread_connection(&state).await?;
-    let recovery = match super::recovery::locate_thread(&connection.client, &thread_id).await? {
-        ManagedCodexThreadLocation::Active(thread) => {
-            match state.detail.record_from_codex_thread(&thread) {
-                Ok(mut task) => {
-                    apply_managed_thread_metadata(&mut task, &managed);
-                    task.conversation_available = false;
-                    ActiveTaskRecovery::new(task, ActiveTaskRecoveryReason::SectionPlacementPending)
-                }
-                Err(_) => super::recovery::cached_recovery(
-                    &managed,
-                    ActiveTaskRecoveryReason::TemporarilyUnavailable,
-                ),
-            }
-        }
-        ManagedCodexThreadLocation::Archived(thread) => {
-            match state.detail.record_from_codex_thread(&thread) {
-                Ok(mut task) => {
-                    apply_managed_thread_metadata(&mut task, &managed);
-                    task.conversation_available = false;
-                    ActiveTaskRecovery::new(task, ActiveTaskRecoveryReason::CodexArchived)
-                }
-                Err(_) => super::recovery::cached_recovery(
-                    &managed,
-                    ActiveTaskRecoveryReason::TemporarilyUnavailable,
-                ),
-            }
-        }
-        ManagedCodexThreadLocation::Missing => {
-            super::recovery::cached_recovery(&managed, ActiveTaskRecoveryReason::ThreadMissing)
-        }
-    };
-    Ok(Json(recovery))
-}
-
-async fn task_recovery_archive(
-    State(state): State<TaskState>,
-    AxumPath(thread_id): AxumPath<String>,
-) -> Result<Json<TaskRecord>, ApiError> {
-    let Some(managed) = task_store_get(&state, &thread_id).await? else {
-        return Err(task_not_managed_error());
-    };
-    let connection = require_codex_thread_connection(&state).await?;
-    let thread = match super::recovery::locate_thread(&connection.client, &thread_id).await? {
-        ManagedCodexThreadLocation::Archived(thread) => thread,
-        ManagedCodexThreadLocation::Active(_) | ManagedCodexThreadLocation::Missing => {
-            return Err(task_recovery_changed_error());
-        }
-    };
-    let mut task = state.detail.record_from_codex_thread(&thread)?;
-    apply_managed_thread_metadata(&mut task, &managed);
-    task.conversation_available = false;
-    let worktree = state.lifecycle.archive_worktree(thread_id.clone()).await?;
-    match task_store_archive(&state, &thread_id).await {
-        Ok(Some(_)) => {}
-        Ok(None) => {
-            state
-                .lifecycle
-                .rollback_archived_worktree(&thread_id, &worktree)
-                .await;
-            return Err(task_not_managed_error());
-        }
-        Err(error) => {
-            state
-                .lifecycle
-                .rollback_archived_worktree(&thread_id, &worktree)
-                .await;
-            return Err(error);
-        }
-    }
-    state.codex_sessions.forget_thread(&thread_id).await;
-    notify_task_removed(&state, &thread_id, "archived");
-    Ok(Json(task))
-}
-
-async fn task_recovery_remove(
-    State(state): State<TaskState>,
-    AxumPath(thread_id): AxumPath<String>,
-) -> Result<Json<TaskDeleteResponse>, ApiError> {
-    if task_store_get(&state, &thread_id).await?.is_none() {
-        return Err(task_not_managed_error());
-    }
-    let connection = require_codex_thread_connection(&state).await?;
-    if !matches!(
-        super::recovery::locate_thread(&connection.client, &thread_id).await?,
-        ManagedCodexThreadLocation::Missing
-    ) {
-        return Err(task_recovery_changed_error());
-    }
-
-    let worktree = task_store_worktree_for_thread(&state, &thread_id).await?;
-    let archived_worktree = state.lifecycle.archive_worktree(thread_id.clone()).await?;
-    match task_store_delete_task_rows(
-        &state,
-        &thread_id,
-        ManagedTaskMembership::Active,
-        worktree
-            .as_ref()
-            .map(|worktree| worktree.worktree_id.as_str()),
-    )
-    .await
-    {
-        Ok(true) => {}
-        Ok(false) => {
-            state
-                .lifecycle
-                .rollback_archived_worktree(&thread_id, &archived_worktree)
-                .await;
-            return Err(task_not_managed_error());
-        }
-        Err(error) => {
-            state
-                .lifecycle
-                .rollback_archived_worktree(&thread_id, &archived_worktree)
-                .await;
-            return Err(error);
-        }
-    }
-    state.lifecycle.delete_task_resources(&thread_id).await;
-    notify_task_removed(&state, &thread_id, "deleted");
-    Ok(Json(TaskDeleteResponse { thread_id }))
-}
-
-async fn task_restore(
-    State(state): State<TaskState>,
-    AxumPath(thread_id): AxumPath<String>,
-) -> Result<Json<TaskRestoreResponse>, ApiError> {
-    let Some(archived) = task_store_get_archived(&state, &thread_id).await? else {
-        return Err(task_not_archived_error());
-    };
-    let connection = require_codex_thread_connection(&state).await?;
-    let thread = match connection.client.unarchive_thread(&thread_id).await {
-        Ok(thread) => thread,
-        Err(error) => return Err(error.into()),
-    };
-    let worktree = match state.lifecycle.restore_worktree(thread_id.clone()).await {
-        Ok(worktree) => worktree,
-        Err(error) => {
-            if let Err(rollback_error) = connection.client.archive_thread(&thread_id).await {
-                eprintln!(
-                    "failed to re-archive Codex thread after worktree restore failure: {rollback_error}"
-                );
-            }
-            return Err(error);
-        }
-    };
-    state
-        .codex_sessions
-        .observe_thread_metadata(thread.clone())
-        .await;
-    let mut task = state.detail.record_from_codex_thread(&thread)?;
-    apply_managed_thread_metadata(&mut task, &archived);
-    let placement = match state.lifecycle.restore_active_task(&task).await {
-        Ok(Some(placement)) => placement,
-        Ok(None) => {
-            rollback_task_restore(&state, &connection.client, &thread_id, &worktree).await;
-            return Err(task_not_archived_error());
-        }
-        Err(error) => {
-            rollback_task_restore(&state, &connection.client, &thread_id, &worktree).await;
-            return Err(error);
-        }
-    };
-    state
-        .task_list_events
-        .place(task.clone(), placement.clone());
-    Ok(Json(TaskRestoreResponse {
-        task,
-        active_top_placement: placement,
-    }))
-}
-
-async fn task_delete(
-    State(state): State<TaskState>,
-    AxumPath(thread_id): AxumPath<String>,
-) -> Result<Json<TaskDeleteResponse>, ApiError> {
-    if task_store_get_archived(&state, &thread_id).await?.is_none() {
-        return Err(task_not_archived_error());
-    }
-    let worktree = task_store_worktree_for_thread(&state, &thread_id).await?;
-    if let Some(worktree) = &worktree
-        && worktree.state != ManagedWorktreeState::Archived
-    {
-        return Err(ApiError::BadRequest {
-            code: "task_not_archived",
-            message: "managed worktree is not archived".to_string(),
-        });
-    }
-
-    let connection = require_codex_thread_connection(&state).await?;
-    connection.client.delete_thread(&thread_id).await?;
-    let deleted = task_store_delete_task_rows(
-        &state,
-        &thread_id,
-        ManagedTaskMembership::Archived,
-        worktree
-            .as_ref()
-            .map(|worktree| worktree.worktree_id.as_str()),
-    )
-    .await?;
-    if !deleted {
-        return Err(task_not_archived_error());
-    }
-    state.lifecycle.delete_task_resources(&thread_id).await;
-    notify_task_removed(&state, &thread_id, "deleted");
-
-    Ok(Json(TaskDeleteResponse { thread_id }))
-}
-
-async fn rollback_task_archive(
-    state: &TaskState,
-    client: &CodexThreadClient,
-    thread_id: &str,
-    worktree: &super::worktrees::ArchiveOutcome,
-) {
-    if let Err(error) = client.unarchive_thread(thread_id).await {
-        eprintln!("failed to unarchive Codex thread while rolling back archive: {error}");
-    }
-    state
-        .lifecycle
-        .rollback_archived_worktree(thread_id, worktree)
-        .await;
-}
-
-async fn rollback_task_restore(
-    state: &TaskState,
-    client: &CodexThreadClient,
-    thread_id: &str,
-    worktree: &super::worktrees::RestoreOutcome,
-) {
-    if let Err(error) = client.archive_thread(thread_id).await {
-        eprintln!("failed to archive Codex thread while rolling back restore: {error}");
-    }
-    state
-        .lifecycle
-        .rollback_restored_worktree(thread_id, worktree)
-        .await;
-}
-
-fn notify_task_removed(state: &TaskState, thread_id: &str, reason: &'static str) {
-    state.task_list_events.remove(thread_id, reason);
-}
-
-fn unavailable_archived_task(managed: &ManagedThread) -> TaskRecord {
-    let activity_ms = managed
-        .last_observed_recency_ms
-        .or(managed.archived_at_ms)
-        .unwrap_or(managed.claimed_at_ms);
-    TaskRecord {
-        id: managed.thread_id.clone(),
-        thread_id: managed.thread_id.clone(),
-        conversation_available: false,
-        title: managed.display_name.clone(),
-        preview: "Conversation unavailable".to_string(),
-        thread_status: ThreadStatus::NotLoaded,
-        latest_turn_status: None,
-        active_turn: None,
-        cwd: String::new(),
-        cwd_path: None,
-        relative_cwd: String::new(),
-        worktree: None,
-        created_ms: managed.claimed_at_ms,
-        updated_ms: activity_ms,
-        recency_ms: Some(activity_ms),
-        last_completed_ms: managed.last_completed_at_ms,
-        last_event_summary: Some("Conversation unavailable".to_string()),
-        unseen: false,
-    }
-}
-
-fn task_not_archived_error() -> ApiError {
-    ApiError::BadRequest {
-        code: "task_not_archived",
-        message: "thread is not archived in Caffold".to_string(),
-    }
-}
-
-fn task_recovery_changed_error() -> ApiError {
-    ApiError::BadRequest {
-        code: "task_recovery_changed",
-        message: "Task recovery state changed; recheck the Task before trying again".to_string(),
-    }
-}
-
-async fn task_approval(
-    State(state): State<TaskState>,
-    AxumPath((thread_id, approval_id)): AxumPath<(String, String)>,
-    Query(_query): Query<TasksQuery>,
-    Json(request): Json<TaskApprovalRequest>,
-) -> Result<Json<TaskDetailResponse>, ApiError> {
-    if task_store_get(&state, &thread_id).await?.is_none() {
-        return Err(task_not_managed_error());
-    }
-    let connection = require_codex_thread_connection(&state).await?;
-    let decision = normalize_approval_decision(&request.decision)?;
-    match state
-        .codex_runtime
-        .resolve_approval(&connection, &thread_id, &approval_id, decision)
-        .await
-    {
-        Ok(()) => {}
-        Err(ApprovalResolveError::NotFound) => {
-            return Err(ApiError::BadRequest {
-                code: "approval_not_found",
-                message: "approval request is no longer pending".to_string(),
-            });
-        }
-        Err(ApprovalResolveError::ThreadMismatch) => {
-            return Err(ApiError::BadRequest {
-                code: "approval_task_mismatch",
-                message: "approval request belongs to another thread".to_string(),
-            });
-        }
-        Err(ApprovalResolveError::Codex(error)) => return Err(error.into()),
-    }
-
-    Ok(Json(
-        state.detail.read(&connection, &thread_id, None).await?,
-    ))
-}
-
-async fn require_codex_thread_client(state: &TaskState) -> Result<CodexThreadClient, ApiError> {
-    state.detail.client().await
-}
-
-async fn require_codex_thread_connection(
-    state: &TaskState,
-) -> Result<CodexConnection, CodexThreadError> {
-    state.detail.connection().await
-}
-
-#[cfg(test)]
-fn managed_thread_from_task_record(
-    task: &TaskRecord,
-    model: Option<String>,
-    reasoning_effort: Option<String>,
-    fast_mode: bool,
-) -> ManagedThread {
-    let mut managed = ManagedThread::new(
-        task.thread_id.clone(),
-        Some(task_activity_ms(task)),
-        model,
-        reasoning_effort,
-    );
-    managed.fast_mode = fast_mode;
-    managed.last_completed_at_ms = task.last_completed_ms;
-    managed
-}
-
-fn apply_managed_thread_metadata(task: &mut TaskRecord, managed: &ManagedThread) {
-    task.title = managed.display_name.clone();
-    task.last_completed_ms = managed.last_completed_at_ms;
-    task.unseen = managed.unseen();
-}
-
-fn task_cwd(state: &TaskState, relative: Option<&str>) -> Result<String, ApiError> {
-    let logical_path = normalize_logical_path(relative.unwrap_or(&state.default_cwd_path))?;
-    let cwd = state.fs.absolute_directory_path(&logical_path)?;
-    Ok(cwd.display().to_string())
-}
-
-fn normalize_logical_path(path: &str) -> Result<String, ApiError> {
-    let mut parts = Vec::new();
-    for segment in path.split('/') {
-        if segment.is_empty() || segment == "." {
-            continue;
-        }
-        if segment == ".." {
-            return Err(ApiError::BadRequest {
-                code: "invalid_task_cwd",
-                message: "task cwd must stay inside the server root".to_string(),
-            });
-        }
-        parts.push(segment);
-    }
-    Ok(parts.join("/"))
-}
-
-fn normalize_task_input(
-    prompt: &str,
-    images: Vec<String>,
-) -> Result<(String, Vec<String>), ApiError> {
-    let prompt = prompt.trim().to_string();
-    if prompt.is_empty() && images.is_empty() {
-        return Err(ApiError::BadRequest {
-            code: "empty_task_prompt",
-            message: "task prompt or image cannot be empty".to_string(),
-        });
-    }
-    if images.len() > MAX_TASK_IMAGES {
-        return Err(ApiError::BadRequest {
-            code: "too_many_task_images",
-            message: format!("a task turn can include at most {MAX_TASK_IMAGES} images"),
-        });
-    }
-    for image in &images {
-        validate_task_image_data_url(image)?;
-    }
-    Ok((prompt, images))
-}
-
-fn validate_task_image_data_url(image: &str) -> Result<(), ApiError> {
-    const PREFIXES: [&str; 6] = [
-        "data:image/avif;base64,",
-        "data:image/gif;base64,",
-        "data:image/jpeg;base64,",
-        "data:image/jpg;base64,",
-        "data:image/png;base64,",
-        "data:image/webp;base64,",
-    ];
-    let Some(encoded) = PREFIXES
-        .iter()
-        .find_map(|prefix| image.strip_prefix(prefix))
-    else {
-        return Err(ApiError::BadRequest {
-            code: "invalid_task_image",
-            message: "task images must be base64-encoded raster image data URLs".to_string(),
-        });
-    };
-    if encoded.is_empty()
-        || encoded.len() % 4 != 0
-        || encoded
-            .bytes()
-            .any(|byte| !byte.is_ascii_alphanumeric() && !matches!(byte, b'+' | b'/' | b'='))
-    {
-        return Err(ApiError::BadRequest {
-            code: "invalid_task_image",
-            message: "task image data is not valid base64".to_string(),
-        });
-    }
-    let padding = encoded
-        .bytes()
-        .rev()
-        .take_while(|byte| *byte == b'=')
-        .count();
-    if padding > 2 || encoded[..encoded.len().saturating_sub(padding)].contains('=') {
-        return Err(ApiError::BadRequest {
-            code: "invalid_task_image",
-            message: "task image data is not valid base64".to_string(),
-        });
-    }
-    let decoded_bytes = encoded.len() / 4 * 3 - padding;
-    if decoded_bytes as u64 > MAX_IMAGE_BYTES {
-        return Err(ApiError::BadRequest {
-            code: "task_image_too_large",
-            message: format!("task images must be at most {MAX_IMAGE_BYTES} bytes each"),
-        });
-    }
-    Ok(())
-}
-
-async fn codex_turn_options(
-    client: &CodexThreadClient,
-    model: Option<String>,
-    effort: Option<String>,
-    fast_mode: bool,
-    permission_mode: Option<CodexPermissionMode>,
-) -> Result<CodexTurnOptions, ApiError> {
-    let model = normalize_codex_model(model)?;
-    let effort = normalize_codex_effort(effort)?;
-    if model.is_none() && effort.is_none() && !fast_mode {
-        return Ok(CodexTurnOptions {
-            model,
-            effort,
-            service_tier: Some(NORMAL_SERVICE_TIER_ID.to_string()),
-            permission_mode,
-        });
-    }
-
-    let models = client.list_models(100).await.map_err(ApiError::from)?.data;
-    let selected_model = match model.as_deref() {
-        Some(requested) => models
-            .iter()
-            .find(|candidate| candidate.model == requested || candidate.id == requested),
-        None => models
-            .iter()
-            .find(|candidate| candidate.is_default)
-            .or_else(|| models.first()),
-    };
-
-    let Some(selected_model) = selected_model else {
-        let (code, message) = if model.is_some() {
-            ("invalid_codex_model", "Codex model value is not supported")
-        } else {
-            (
-                "invalid_codex_effort",
-                "Codex reasoning effort is not supported",
-            )
-        };
-        return Err(ApiError::BadRequest {
-            code,
-            message: message.to_string(),
-        });
-    };
-
-    if effort.as_deref().is_some_and(|requested| {
-        !selected_model
-            .supported_reasoning_efforts
-            .iter()
-            .filter_map(codex_reasoning_effort_value)
-            .any(|supported| supported == requested)
-    }) {
-        return Err(ApiError::BadRequest {
-            code: "invalid_codex_effort",
-            message: "Codex reasoning effort is not supported".to_string(),
-        });
-    }
-
-    let normal_service_tier = selected_model
-        .default_service_tier
-        .clone()
-        .unwrap_or_else(|| NORMAL_SERVICE_TIER_ID.to_string());
-    let service_tier = Some(
-        fast_mode
-            .then(|| selected_model.fast_service_tier_id().map(str::to_string))
-            .flatten()
-            .unwrap_or(normal_service_tier),
-    );
-
-    Ok(CodexTurnOptions {
-        model,
-        effort,
-        service_tier,
-        permission_mode,
-    })
-}
-
-fn normalize_codex_model(model: Option<String>) -> Result<Option<String>, ApiError> {
-    let Some(model) = model else {
-        return Ok(None);
-    };
-    let model = model.trim();
-    if model.is_empty() {
-        return Ok(None);
-    }
-    if model.len() > 128 || model.chars().any(char::is_control) {
-        return Err(ApiError::BadRequest {
-            code: "invalid_codex_model",
-            message: "Codex model value is not supported".to_string(),
-        });
-    }
-    Ok(Some(model.to_string()))
-}
-
-fn normalize_codex_effort(effort: Option<String>) -> Result<Option<String>, ApiError> {
-    let Some(effort) = effort else {
-        return Ok(None);
-    };
-    let effort = effort.trim();
-    if effort.is_empty() {
-        return Ok(None);
-    }
-    if effort.len() > 32 || effort.chars().any(char::is_control) {
-        return Err(ApiError::BadRequest {
-            code: "invalid_codex_effort",
-            message: "Codex reasoning effort is not supported".to_string(),
-        });
-    }
-    Ok(Some(effort.to_string()))
-}
-
-fn normalize_approval_decision(decision: &str) -> Result<&str, ApiError> {
-    match decision {
-        "accept" | "acceptForSession" | "decline" | "cancel" => Ok(decision),
-        _ => Err(ApiError::BadRequest {
-            code: "invalid_approval_decision",
-            message: "approval decision is not supported".to_string(),
-        }),
-    }
-}
-
 #[cfg(test)]
 pub(super) async fn test_task_detail(
     state: TaskState,
@@ -1978,4 +399,215 @@ pub(super) async fn test_store_update_composer_settings(
 }
 
 #[cfg(test)]
-mod tests;
+pub(super) mod test_support {
+    use serde_json::json;
+
+    use super::*;
+    use crate::task_store::ManagedSection;
+
+    pub(super) fn recovery_location_responses(
+        archived_threads: Vec<JsonValue>,
+    ) -> Vec<crate::codex_app_server::MockCodexResponse> {
+        vec![
+            crate::codex_app_server::MockCodexResponse::ok_for(
+                "thread/list",
+                json!({
+                    "limit": 100,
+                    "sortKey": "recency_at",
+                    "sortDirection": "desc",
+                    "archived": false,
+                    "useStateDbOnly": true,
+                }),
+                json!({
+                    "data": [],
+                    "nextCursor": null,
+                    "backwardsCursor": null,
+                }),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok_for(
+                "thread/list",
+                json!({
+                    "limit": 100,
+                    "sortKey": "recency_at",
+                    "sortDirection": "desc",
+                    "archived": true,
+                    "useStateDbOnly": true,
+                }),
+                json!({
+                    "data": archived_threads,
+                    "nextCursor": null,
+                    "backwardsCursor": null,
+                }),
+            ),
+        ]
+    }
+
+    pub(super) fn projected_active_tasks(
+        projection: &super::super::active_list::ActiveTaskProjection,
+    ) -> Vec<&TaskRecord> {
+        projection
+            .sections
+            .iter()
+            .flat_map(|section| section.tasks.iter())
+            .chain(projection.unsectioned.iter().map(|recovery| &recovery.task))
+            .collect()
+    }
+
+    pub(super) fn claim_cached_active(
+        state: &TaskState,
+        thread_id: &str,
+        display_name: &str,
+        recency_ms: u64,
+        section_id: &str,
+        logical_path: &str,
+    ) {
+        state
+            .task_store
+            .transaction(|tables| {
+                let section = ManagedSection {
+                    section_id: section_id.to_string(),
+                    logical_path: logical_path.to_string(),
+                };
+                tables.upsert_managed_section(&section)?;
+                tables.claim_managed_thread_at_top(
+                    ManagedThread::new(thread_id, Some(recency_ms), None, None),
+                    display_name,
+                    &section.section_id,
+                    recency_ms,
+                )
+            })
+            .unwrap();
+    }
+
+    pub(super) fn seed_section(state: &TaskState, section_id: &str, logical_path: &str) {
+        state
+            .task_store
+            .transaction(|tables| {
+                tables.upsert_managed_section(&ManagedSection {
+                    section_id: section_id.to_string(),
+                    logical_path: logical_path.to_string(),
+                })
+            })
+            .unwrap();
+    }
+
+    pub(super) fn cached_projection_rows(
+        state: &TaskState,
+    ) -> (Vec<ManagedSection>, Vec<ManagedThread>) {
+        state
+            .task_store
+            .read(|tables| Ok((tables.managed_sections()?, tables.active_managed_threads()?)))
+            .unwrap()
+    }
+
+    pub(super) fn current_model_list_response() -> JsonValue {
+        json!({
+            "data": [
+                {
+                    "id": "gpt-5.6-sol",
+                    "model": "gpt-5.6-sol",
+                    "displayName": "GPT-5.6-Sol",
+                    "description": "Latest frontier agentic coding model.",
+                    "hidden": false,
+                    "supportedReasoningEfforts": [
+                        { "reasoningEffort": "low", "description": "Fast responses" },
+                        { "reasoningEffort": "medium", "description": "Balanced depth" },
+                        { "reasoningEffort": "high", "description": "More depth" },
+                        { "reasoningEffort": "xhigh", "description": "Extra depth" },
+                        { "reasoningEffort": "max", "description": "Maximum depth" },
+                        { "reasoningEffort": "ultra", "description": "Automatic delegation" }
+                    ],
+                    "defaultReasoningEffort": "low",
+                    "serviceTiers": [{
+                        "id": "priority",
+                        "name": "Fast",
+                        "description": "1.5x speed, increased usage"
+                    }],
+                    "defaultServiceTier": null,
+                    "inputModalities": ["text", "image"],
+                    "supportsPersonality": false,
+                    "isDefault": true
+                },
+                {
+                    "id": "gpt-5.6-luna",
+                    "model": "gpt-5.6-luna",
+                    "displayName": "GPT-5.6-Luna",
+                    "description": "General purpose model.",
+                    "hidden": false,
+                    "supportedReasoningEfforts": [
+                        { "reasoningEffort": "low", "description": "Fast responses" },
+                        { "reasoningEffort": "medium", "description": "Balanced depth" },
+                        { "reasoningEffort": "high", "description": "More depth" },
+                        { "reasoningEffort": "xhigh", "description": "Extra depth" },
+                        { "reasoningEffort": "max", "description": "Maximum depth" }
+                    ],
+                    "defaultReasoningEffort": "medium",
+                    "serviceTiers": [{
+                        "id": "priority",
+                        "name": "Fast",
+                        "description": "1.5x speed, increased usage"
+                    }],
+                    "defaultServiceTier": null,
+                    "inputModalities": ["text", "image"],
+                    "supportsPersonality": true,
+                    "isDefault": false
+                },
+                {
+                    "id": "gpt-5.4-mini",
+                    "model": "gpt-5.4-mini",
+                    "displayName": "GPT-5.4 Mini",
+                    "description": "Fast model without a service tier override.",
+                    "hidden": false,
+                    "supportedReasoningEfforts": [
+                        { "reasoningEffort": "low", "description": "Fast responses" }
+                    ],
+                    "defaultReasoningEffort": "low",
+                    "serviceTiers": [],
+                    "defaultServiceTier": null,
+                    "inputModalities": ["text"],
+                    "supportsPersonality": false,
+                    "isDefault": false
+                }
+            ],
+            "nextCursor": null
+        })
+    }
+
+    pub(super) fn initialize_git_repository(path: &std::path::Path) {
+        std::fs::create_dir_all(path).unwrap();
+        for args in [
+            vec!["init"],
+            vec!["config", "user.email", "test@example.com"],
+            vec!["config", "user.name", "Caffold Test"],
+        ] {
+            let output = std::process::Command::new("git")
+                .arg("-C")
+                .arg(path)
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+        }
+        std::fs::write(path.join("README.md"), "initial\n").unwrap();
+        for args in [vec!["add", "README.md"], vec!["commit", "-m", "Initial"]] {
+            let output = std::process::Command::new("git")
+                .arg("-C")
+                .arg(path)
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+        }
+    }
+
+    pub(super) fn git_branch_exists(path: &std::path::Path, branch_name: &str) -> bool {
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(["show-ref", "--verify", &format!("refs/heads/{branch_name}")])
+            .output()
+            .unwrap()
+            .status
+            .success()
+    }
+}
