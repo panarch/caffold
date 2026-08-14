@@ -1,0 +1,24 @@
+caffold-task-changed-files {
+  display: block;
+
+  &[hidden] {
+    display: none;
+  }
+
+  & > ul {
+    display: grid;
+    gap: 0.25rem;
+    margin: 0;
+    padding: 0.5rem 0.6875rem 0.625rem;
+    border-top: 1px solid var(--border-subtle);
+    list-style: none;
+  }
+
+  & > ul > li > code {
+    display: block;
+    overflow-wrap: anywhere;
+    color: var(--text);
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
+  }
+}

@@ -7,6 +7,147 @@ export function normalizeTaskPath(path) {
     .replace(/\/$/, "");
 }
 
+export function effectiveTaskFileRoot(task) {
+  const worktreeRoot = normalizeFilePresentationPath(task?.worktree?.rootPath);
+  const cwd = preferredTaskFileCwd(task);
+  if (!worktreeRoot) {
+    return cwd;
+  }
+  if (filePresentationPathParts(worktreeRoot).absolute) {
+    return worktreeRoot;
+  }
+  return absoluteWorktreeRootFromCwd(
+    cwd,
+    task?.worktree?.relativeCwd,
+  ) || worktreeRoot;
+}
+
+export function presentTaskFilePath(path, rootPath = "") {
+  const originalPath = `${path ?? ""}`;
+  const pathParts = filePresentationPathParts(originalPath);
+  const rootParts = filePresentationPathParts(rootPath);
+  const normalizedPath = formatFilePresentationPath(pathParts);
+  const normalizedRoot = formatFilePresentationPath(rootParts);
+  if (!normalizedPath) {
+    return { fileIdentity: "", originalPath, displayPath: "" };
+  }
+
+  const resolvedPath =
+    pathParts.absolute || !normalizedRoot
+      ? pathParts
+      : filePresentationPathParts(`${normalizedRoot}/${normalizedPath}`);
+  let displayPath = normalizedPath;
+  if (normalizedRoot && containsFilePresentationPath(rootParts, resolvedPath)) {
+    displayPath =
+      resolvedPath.segments.slice(rootParts.segments.length).join("/") || ".";
+  } else if (!pathParts.absolute && resolvedPath.absolute) {
+    displayPath = formatFilePresentationPath(resolvedPath);
+  }
+
+  return {
+    fileIdentity: formatFilePresentationPath(resolvedPath),
+    originalPath,
+    displayPath,
+  };
+}
+
+function normalizeFilePresentationPath(path) {
+  return formatFilePresentationPath(filePresentationPathParts(path));
+}
+
+function preferredTaskFileCwd(task) {
+  const candidates = [task?.cwd, task?.cwdPath]
+    .map(normalizeFilePresentationPath)
+    .filter(Boolean);
+  return (
+    candidates.find((path) => filePresentationPathParts(path).absolute) ??
+    candidates[0] ??
+    ""
+  );
+}
+
+function absoluteWorktreeRootFromCwd(cwd, relativeCwd) {
+  const cwdParts = filePresentationPathParts(cwd);
+  if (!cwdParts.absolute) {
+    return "";
+  }
+  const relativeParts = filePresentationPathParts(relativeCwd);
+  if (relativeParts.absolute) {
+    return "";
+  }
+  if (!relativeParts.segments.length) {
+    return formatFilePresentationPath(cwdParts);
+  }
+  const rootLength = cwdParts.segments.length - relativeParts.segments.length;
+  if (
+    rootLength < 0 ||
+    !relativeParts.segments.every(
+      (segment, index) => cwdParts.segments[rootLength + index] === segment,
+    )
+  ) {
+    return "";
+  }
+  return formatFilePresentationPath({
+    ...cwdParts,
+    segments: cwdParts.segments.slice(0, rootLength),
+  });
+}
+
+function filePresentationPathParts(path) {
+  const source = `${path ?? ""}`.trim();
+  const unc = source.startsWith("\\\\");
+  const normalized = source.replaceAll("\\", "/");
+  const drive = normalized.match(/^([A-Za-z]):\//);
+  let root = "";
+  let remainder = normalized;
+  if (unc) {
+    root = "//";
+    remainder = normalized.replace(/^\/+/, "");
+  } else if (drive) {
+    root = `${drive[1].toUpperCase()}:`;
+    remainder = normalized.slice(drive[0].length);
+  } else if (normalized.startsWith("/")) {
+    root = "/";
+    remainder = normalized.replace(/^\/+/, "");
+  }
+
+  const segments = [];
+  for (const segment of remainder.split("/")) {
+    if (!segment || segment === ".") {
+      continue;
+    }
+    if (segment === "..") {
+      if (segments.length && segments.at(-1) !== "..") {
+        segments.pop();
+      } else if (!root) {
+        segments.push(segment);
+      }
+      continue;
+    }
+    segments.push(segment);
+  }
+  return { root, absolute: Boolean(root), segments };
+}
+
+function formatFilePresentationPath({ root, segments }) {
+  const suffix = segments.join("/");
+  if (root === "/" || root === "//") {
+    return `${root}${suffix}`;
+  }
+  if (root) {
+    return `${root}/${suffix}`;
+  }
+  return suffix;
+}
+
+function containsFilePresentationPath(root, path) {
+  return Boolean(
+    root.root === path.root &&
+      root.segments.length <= path.segments.length &&
+      root.segments.every((segment, index) => path.segments[index] === segment),
+  );
+}
+
 export function cleanRelativeTaskPath(path) {
   return normalizeTaskPath(path)
     .split("/")
@@ -16,10 +157,6 @@ export function cleanRelativeTaskPath(path) {
 
 export function cleanLogicalPath(path) {
   return cleanRelativeTaskPath(path);
-}
-
-export function uniquePaths(paths) {
-  return [...new Set(paths)];
 }
 
 export function formatStatus(status) {

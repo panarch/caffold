@@ -24,6 +24,7 @@ const codeOwners = new Set([
   "components/code-viewer.css",
   "components/diff-viewer.css",
   "pages/(task-workspace)/tasks/components/detail/conversation.css",
+  "pages/(task-workspace)/tasks/components/detail/conversation/components/changed-files.css",
   "pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css",
   "pages/(task-workspace)/tasks/components/detail/conversation/command-summary.css",
   "pages/(task-workspace)/tasks/components/detail/conversation/markdown.js",

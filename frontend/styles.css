@@ -34,6 +34,7 @@
 @import "./pages/(task-workspace)/tasks/components/detail/summary/github.css";
 @import "./pages/(task-workspace)/tasks/components/detail/summary/info.css";
 @import "./pages/(task-workspace)/tasks/components/detail/conversation.css";
+@import "./pages/(task-workspace)/tasks/components/detail/conversation/components/changed-files.css";
 @import "./pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css";
 @import "./pages/(task-workspace)/tasks/components/detail/conversation/command-summary.css";
 @import "./pages/(task-workspace)/tasks/components/detail/conversation/work-details.css";

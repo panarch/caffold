@@ -122,6 +122,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/tasks/components/detail/summary/info.js",
   "/assets/pages/(task-workspace)/tasks/components/detail/conversation.css",
   "/assets/pages/(task-workspace)/tasks/components/detail/conversation.js",
+  "/assets/pages/(task-workspace)/tasks/components/detail/conversation/components/changed-files.css",
+  "/assets/pages/(task-workspace)/tasks/components/detail/conversation/components/changed-files.js",
   "/assets/pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css",
   "/assets/pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.js",
   "/assets/pages/(task-workspace)/tasks/components/detail/conversation/command-summary.css",

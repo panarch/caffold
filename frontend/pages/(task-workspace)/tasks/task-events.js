@@ -1,8 +1,5 @@
 import { PROMPT_SUBMISSION_STATE } from "./runtime-state.js";
-import {
-  normalizeTaskPath,
-  uniquePaths,
-} from "./task-format.js";
+import { presentTaskFilePath } from "./task-format.js";
 
 export function conversationGroups(events) {
   const groups = [];
@@ -164,21 +161,29 @@ export function pendingApprovals(events) {
   return [...pending.values()];
 }
 
-export function fileChangePaths(events) {
-  return uniquePaths(
-    events.flatMap((event) => {
-      if (event?.type !== "file_change" || !Array.isArray(event.payload?.changes)) {
-        return [];
+export function fileChangePathPresentations(events, rootPath = "") {
+  const presentationsByFileIdentity = new Map();
+  for (const event of events) {
+    if (
+      event?.type !== "file_change" ||
+      !Array.isArray(event.payload?.changes)
+    ) {
+      continue;
+    }
+    for (const change of event.payload.changes) {
+      const presentation = presentTaskFilePath(
+        typeof change === "string" ? change : change?.path,
+        rootPath,
+      );
+      if (
+        presentation.displayPath &&
+        !presentationsByFileIdentity.has(presentation.fileIdentity)
+      ) {
+        presentationsByFileIdentity.set(presentation.fileIdentity, presentation);
       }
-      return event.payload.changes
-        .map((change) =>
-          normalizeTaskPath(
-            typeof change === "string" ? change : change?.path,
-          ),
-        )
-        .filter(Boolean);
-    }),
-  );
+    }
+  }
+  return [...presentationsByFileIdentity.values()];
 }
 
 export function upsertEvent(events, event) {

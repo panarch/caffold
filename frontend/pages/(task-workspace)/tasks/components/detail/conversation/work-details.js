@@ -3,7 +3,10 @@ import {
   renderInlineIcon,
   warmIcons,
 } from "../../../../../../components/icons.js";
-import { eventIdentityKey, fileChangePaths } from "../../../task-events.js";
+import {
+  eventIdentityKey,
+  fileChangePathPresentations,
+} from "../../../task-events.js";
 import {
   formatDate,
   formatStatus,
@@ -12,6 +15,7 @@ import {
   commandSummaryStatus,
   renderCommandSummary,
 } from "./command-summary.js";
+import "./components/changed-files.js";
 
 const disclosureStateByIdentity = new Map();
 
@@ -44,6 +48,7 @@ class CaffoldTaskWorkDetails extends HTMLElement {
       label: "Work details",
       updateText: "",
       events: [],
+      filePathPresentationBase: "",
     };
     this.boundClick = (event) => this.handleClick(event);
     this.boundIconsReady = () => this.refreshChevronIcons();
@@ -74,6 +79,7 @@ class CaffoldTaskWorkDetails extends HTMLElement {
       label: `${snapshot.label ?? "Work details"}`,
       updateText: `${snapshot.updateText ?? ""}`,
       events: [...(snapshot.events ?? [])],
+      filePathPresentationBase: `${snapshot.filePathPresentationBase ?? ""}`,
     };
     if (sameSnapshot(this.snapshot, nextSnapshot)) {
       return false;
@@ -128,7 +134,11 @@ class CaffoldTaskWorkDetails extends HTMLElement {
     if (this.renderedIdentity === this.snapshot.identity) {
       this.rememberDisclosureState();
     }
-    body.innerHTML = renderWorkItems(this.snapshot.events);
+    const view = renderWorkItems(
+      this.snapshot.events,
+      this.snapshot.filePathPresentationBase,
+    );
+    reconcileWorkItems(body, view.html, view.changedFiles);
     this.restoreDisclosureState();
     this.renderedIdentity = this.snapshot.identity;
     this.refreshChevronIcons();
@@ -227,6 +237,7 @@ function sameSnapshot(left, right) {
     left.identity === right.identity &&
       left.label === right.label &&
       left.updateText === right.updateText &&
+      left.filePathPresentationBase === right.filePathPresentationBase &&
       sameEventList(left.events, right.events),
   );
 }
@@ -238,15 +249,22 @@ function sameEventList(left, right) {
   );
 }
 
-function renderWorkItems(events) {
+function renderWorkItems(events, filePathPresentationBase) {
   const output = [];
+  const changedFiles = new Map();
   let combinedEvents = [];
   let combinedType = "";
   const flushCombinedEvents = () => {
     if (combinedType === "reasoning") {
       output.push(renderCombinedReasoningWorkItem(combinedEvents));
     } else if (combinedType === "file_change") {
-      output.push(renderCombinedFileChangeWorkItem(combinedEvents));
+      output.push(
+        renderCombinedFileChangeWorkItem(
+          combinedEvents,
+          filePathPresentationBase,
+          changedFiles,
+        ),
+      );
     }
     combinedEvents = [];
     combinedType = "";
@@ -262,10 +280,12 @@ function renderWorkItems(events) {
       continue;
     }
     flushCombinedEvents();
-    output.push(renderWorkItem(event));
+    output.push(
+      renderWorkItem(event, filePathPresentationBase, changedFiles),
+    );
   }
   flushCombinedEvents();
-  return output.filter(Boolean).join("");
+  return { html: output.filter(Boolean).join(""), changedFiles };
 }
 
 function renderCombinedReasoningWorkItem(events) {
@@ -288,7 +308,11 @@ function renderCombinedReasoningWorkItem(events) {
   return renderWorkItemShell(latestEvent(events), "Thinking", text);
 }
 
-function renderCombinedFileChangeWorkItem(events) {
+function renderCombinedFileChangeWorkItem(
+  events,
+  filePathPresentationBase,
+  changedFiles,
+) {
   if (!events.length) {
     return "";
   }
@@ -313,10 +337,14 @@ function renderCombinedFileChangeWorkItem(events) {
     events.length === 1
       ? "1 file change update"
       : `${events.length} file change updates`;
+  const identity = fileChangeWorkIdentity(events);
+  changedFiles.set(identity, {
+    files: fileChangePathPresentations(events, filePathPresentationBase),
+  });
   return renderFileChangeWorkItemShell(
     latest,
     [updateText, latestSummary, status].filter(Boolean).join("\n"),
-    fileChangePaths(events),
+    identity,
   );
 }
 
@@ -326,7 +354,7 @@ function latestEvent(events) {
   );
 }
 
-function renderWorkItem(event) {
+function renderWorkItem(event, filePathPresentationBase, changedFiles) {
   const payload = event.payload ?? {};
   if (event.type === "assistant_message") {
     return renderWorkItemShell(event, "Update", payload.text);
@@ -361,10 +389,14 @@ function renderWorkItem(event) {
       ? `Status: ${formatStatus(payload.status)}`
       : "";
     const summary = count === 1 ? "1 changed file" : `${count} changed files`;
+    const identity = fileChangeWorkIdentity([event]);
+    changedFiles.set(identity, {
+      files: fileChangePathPresentations([event], filePathPresentationBase),
+    });
     return renderFileChangeWorkItemShell(
       event,
       [summary, status].filter(Boolean).join("\n"),
-      fileChangePaths([event]),
+      identity,
     );
   }
   if (event.type === "task_failed") {
@@ -425,29 +457,116 @@ function renderWorkItemShell(event, label, text, tone = "neutral") {
   `;
 }
 
-function renderFileChangeWorkItemShell(event, text, paths) {
+function renderFileChangeWorkItemShell(event, text, identity) {
   const value = `${text ?? ""}`.trim();
   return `
-    <article class="task-work-details-item" data-event-type="file_change" data-tool-tone="neutral">
+    <article class="task-work-details-item" data-event-type="file_change" data-tool-tone="neutral" data-file-change-work-identity="${escapeHtml(identity)}">
       <header>
         <strong>Files changed</strong>
         <time>${escapeHtml(formatDate(event.createdMs))}</time>
       </header>
       ${value ? `<pre>${escapeHtml(value)}</pre>` : ""}
-      ${renderChangedFilePaths(paths)}
+      <caffold-task-changed-files></caffold-task-changed-files>
     </article>
   `;
 }
 
-function renderChangedFilePaths(paths) {
-  if (!paths.length) {
-    return "";
+function fileChangeWorkIdentity(events) {
+  const first = events[0];
+  return `file-change:${
+    eventIdentityKey(first) ||
+    [first?.threadId ?? "", first?.createdMs ?? ""].join(":")
+  }`;
+}
+
+function reconcileWorkItems(body, html, changedFiles) {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  const existingFileChangeItems = new Map(
+    [...body.children]
+      .filter((item) => item.hasAttribute("data-file-change-work-identity"))
+      .map((item) => [item.dataset.fileChangeWorkIdentity, item]),
+  );
+  const desiredItems = [...template.content.children].map((item) => {
+    const identity = `${item.dataset.fileChangeWorkIdentity ?? ""}`;
+    const existing = existingFileChangeItems.get(identity);
+    if (identity && existing && patchFileChangeWorkItem(existing, item)) {
+      return existing;
+    }
+    return item;
+  });
+  reconcileWorkItemChildren(body, desiredItems);
+  for (const item of desiredItems) {
+    const identity = `${item.dataset.fileChangeWorkIdentity ?? ""}`;
+    const owner = item.querySelector(":scope > caffold-task-changed-files");
+    const snapshot = changedFiles.get(identity);
+    if (owner && snapshot) {
+      owner.setSnapshot(snapshot);
+    }
   }
-  return `
-    <ul class="task-work-details-changed-files" aria-label="Changed files">
-      ${paths.map((path) => `<li><code>${escapeHtml(path)}</code></li>`).join("")}
-    </ul>
-  `;
+}
+
+function patchFileChangeWorkItem(current, desired) {
+  const currentTime = current.querySelector(":scope > header > time");
+  const desiredTime = desired.querySelector(":scope > header > time");
+  const currentSummary = current.querySelector(":scope > pre");
+  const desiredSummary = desired.querySelector(":scope > pre");
+  const owner = current.querySelector(":scope > caffold-task-changed-files");
+  if (
+    !currentTime ||
+    !desiredTime ||
+    !owner ||
+    Boolean(currentSummary) !== Boolean(desiredSummary)
+  ) {
+    return false;
+  }
+  syncElementAttributes(current, desired, [
+    "class",
+    "data-event-type",
+    "data-tool-tone",
+    "data-file-change-work-identity",
+  ]);
+  patchText(currentTime, desiredTime.textContent);
+  if (currentSummary && desiredSummary) {
+    patchText(currentSummary, desiredSummary.textContent);
+  }
+  return true;
+}
+
+function syncElementAttributes(current, desired, names) {
+  for (const name of names) {
+    if (desired.hasAttribute(name)) {
+      const value = desired.getAttribute(name);
+      if (current.getAttribute(name) !== value) {
+        current.setAttribute(name, value);
+      }
+    } else {
+      current.removeAttribute(name);
+    }
+  }
+}
+
+function patchText(element, value) {
+  if (element.textContent !== value) {
+    element.textContent = value;
+  }
+}
+
+function reconcileWorkItemChildren(body, desiredItems) {
+  const desired = new Set(desiredItems);
+  for (const item of [...body.children]) {
+    if (!desired.has(item)) {
+      item.remove();
+    }
+  }
+  let anchor = null;
+  for (let index = desiredItems.length - 1; index >= 0; index -= 1) {
+    const item = desiredItems[index];
+    if (item.parentElement !== body || item.nextElementSibling !== anchor) {
+      body.insertBefore(item, anchor);
+    }
+    anchor = item;
+  }
 }
 
 function disclosureIdentityAttribute(kind, identity) {
