@@ -11,10 +11,7 @@ import {
   TASK_IMAGE_PREVIEW_EVENT,
 } from "./components/image-preview-dialog.js";
 import "./components/task-new.js";
-import {
-  TASK_TRANSPORT_RETRY_EVENT,
-} from "./components/task-transport-overlay.js";
-import { retryStaleTaskTransports } from "./runtime-state.js";
+import { TASK_TRANSPORT_STATE } from "./runtime-state.js";
 import { taskDetailThreadId } from "./task-list-model.js";
 
 class CaffoldTasksPage extends HTMLElement {
@@ -37,6 +34,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.currentOpenOptions = {};
     this.codexStatusSnapshotValue = INITIAL_CODEX_STATUS_SNAPSHOT;
     this.codexRestartStateValue = { state: "idle", message: "" };
+    this.lastPublishedTransportTargets = "";
     this.boundTaskNavigatorIntent = (event) => {
       event.stopPropagation();
       if (event.detail?.type === "select-task") {
@@ -57,14 +55,19 @@ class CaffoldTasksPage extends HTMLElement {
     this.boundTaskNavigatorListState = (event) => {
       event.stopPropagation();
       this.syncTaskListState(event.detail);
+      this.publishTransportState();
     };
     this.boundTaskNavigatorTransportChange = (event) => {
       event.stopPropagation();
       this.taskNew()?.setTransportAvailable(event.detail?.available);
+      this.publishTransportState();
     };
-    this.boundTaskTransportRetry = (event) => {
+    this.boundTaskDetailTransportChange = (event) => {
+      if (event.target !== this.taskDetail()) {
+        return;
+      }
       event.stopPropagation();
-      this.retryTaskTransports();
+      this.publishTransportState();
     };
 
     this.innerHTML = `
@@ -117,8 +120,8 @@ class CaffoldTasksPage extends HTMLElement {
       }
     });
     this.addEventListener(
-      TASK_TRANSPORT_RETRY_EVENT,
-      this.boundTaskTransportRetry,
+      "caffold:task-detail-transport-change",
+      this.boundTaskDetailTransportChange,
     );
     this.addEventListener(TASK_IMAGE_PREVIEW_EVENT, (event) => {
       event.stopPropagation();
@@ -144,10 +147,6 @@ class CaffoldTasksPage extends HTMLElement {
       "caffold:task-navigator-transport-change",
       this.boundTaskNavigatorTransportChange,
     );
-    this.connectedTaskNavigator?.removeEventListener(
-      TASK_TRANSPORT_RETRY_EVENT,
-      this.boundTaskTransportRetry,
-    );
     this.connectedTaskNavigator = navigator ?? null;
     this.connectedTaskNavigator?.addEventListener(
       "caffold:task-navigator-intent",
@@ -161,15 +160,12 @@ class CaffoldTasksPage extends HTMLElement {
       "caffold:task-navigator-transport-change",
       this.boundTaskNavigatorTransportChange,
     );
-    this.connectedTaskNavigator?.addEventListener(
-      TASK_TRANSPORT_RETRY_EVENT,
-      this.boundTaskTransportRetry,
-    );
     this.syncTaskListState(this.connectedTaskNavigator?.listState());
     this.taskNew()?.setTransportAvailable(
       this.connectedTaskNavigator?.isTransportAvailable?.(),
     );
     this.connectedTaskNavigator?.setSelectedThreadId(this.selectedThreadId);
+    this.publishTransportState();
   }
 
   deactivate() {
@@ -181,6 +177,52 @@ class CaffoldTasksPage extends HTMLElement {
     } else {
       this.taskNew()?.deactivate();
     }
+  }
+
+  suspendForeground() {
+    this.taskNavigator()?.suspendForeground();
+    this.taskDetail()?.suspendForeground();
+  }
+
+  async recoverForeground({
+    initialActivation = false,
+    isCurrent = () => true,
+    progress,
+  } = {}) {
+    if (initialActivation || !isCurrent()) {
+      return { retry: false };
+    }
+    const recoveries = new Map();
+    const listRecovery = this.taskNavigator()?.recoverForeground();
+    if (listRecovery) {
+      recoveries.set("list", listRecovery);
+    }
+    if (!this.codexOperationsBlocked() && this.view === "detail") {
+      const detailRecovery = this.taskDetail()?.recoverForeground();
+      if (detailRecovery) {
+        recoveries.set("detail", detailRecovery);
+      }
+    }
+    reportForegroundValidationStage(progress, recoveries.keys());
+    const results = await Promise.allSettled(
+      [...recoveries].map(([target, recovery]) =>
+        Promise.resolve(recovery).then((result) => {
+          recoveries.delete(target);
+          if (isCurrent()) {
+            reportForegroundValidationStage(progress, recoveries.keys());
+          }
+          return result;
+        })
+      ),
+    );
+    if (!isCurrent()) {
+      return { stale: true, retry: false };
+    }
+    const failure = results.find((result) => result.status === "rejected");
+    return {
+      retry: Boolean(failure),
+      error: failure?.reason ?? null,
+    };
   }
 
   prepareRoute(route, options = {}) {
@@ -409,25 +451,6 @@ class CaffoldTasksPage extends HTMLElement {
     );
   }
 
-  retryTaskTransports() {
-    const navigator = this.taskNavigator();
-    const detail = this.taskDetail();
-    return retryStaleTaskTransports([
-      navigator
-        ? {
-            state: navigator.streamState,
-            retry: () => navigator.retryStream(),
-          }
-        : null,
-      detail
-        ? {
-            state: detail.streamState,
-            retry: () => detail.retryStream(),
-          }
-        : null,
-    ]);
-  }
-
   syncTaskListState(state = {}) {
     const count = Number(state.count ?? 0);
     const nextState = state.loaded
@@ -467,6 +490,47 @@ class CaffoldTasksPage extends HTMLElement {
     });
   }
 
+  publishTransportState() {
+    const navigator = this.taskNavigator();
+    const listState = navigator?.listState?.();
+    const detailActive = this.view === "detail";
+    const listTransport = listState?.activeCount > 0 && listState.activeError
+      ? TASK_TRANSPORT_STATE.UNAVAILABLE
+      : navigator?.streamState ?? TASK_TRANSPORT_STATE.IDLE;
+    const targets = {
+      list: {
+        active: Boolean(navigator),
+        content: listState?.loaded || listState?.count > 0
+          ? "present"
+          : "absent",
+        transport: listTransport,
+      },
+      detail: {
+        active: detailActive,
+        content: detailActive && this.taskDetail()?.hasSelectedTaskDetail()
+          ? "present"
+          : "absent",
+        transport: detailActive
+          ? this.taskDetail()?.streamState ?? TASK_TRANSPORT_STATE.IDLE
+          : "inactive",
+      },
+    };
+    const publicationKey = JSON.stringify(targets);
+    if (publicationKey === this.lastPublishedTransportTargets) {
+      return;
+    }
+    this.lastPublishedTransportTargets = publicationKey;
+    this.dispatchEvent(
+      new CustomEvent("caffold:task-transport-status", {
+        bubbles: true,
+        composed: true,
+        detail: {
+          targets,
+        },
+      }),
+    );
+  }
+
   render() {
     this.ensureRendered();
     this.setAttribute("data-tasks-view", this.view);
@@ -492,8 +556,17 @@ class CaffoldTasksPage extends HTMLElement {
     this.dispatchEvent(
       new CustomEvent("caffold:tasks-presentation-change", { bubbles: true }),
     );
+    this.publishTransportState();
   }
 
+}
+
+function reportForegroundValidationStage(progress, targets) {
+  const pending = new Set(targets);
+  progress?.validatingTransports({
+    detail: pending.has("detail"),
+    list: pending.has("list"),
+  });
 }
 
 function taskRoutePresentation(route) {

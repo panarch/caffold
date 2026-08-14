@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { renderTaskStatusChip } from "../frontend/pages/(task-workspace)/tasks/components/task-status.js";
-import { TASK_TRANSPORT_STATE } from "../frontend/pages/(task-workspace)/tasks/runtime-state.js";
 
 function activeTask(activeFlags = []) {
   return {
@@ -31,14 +30,15 @@ test("renders one canonical task status presentation for detail and list variant
   assert.doesNotMatch(list, /class="task-status-label"/);
 });
 
-test("transport state changes presentation without rewriting canonical task state", () => {
+test("transport options cannot replace canonical task presentation", () => {
   const task = activeTask();
   const html = renderTaskStatusChip(task, "", {
-    transportState: TASK_TRANSPORT_STATE.UNAVAILABLE,
+    transportState: "unavailable",
   });
 
-  assert.match(html, /data-status="unavailable"/);
-  assert.match(html, /aria-label="unavailable"/);
+  assert.match(html, /data-status="running"/);
+  assert.match(html, /aria-label="running"/);
+  assert.doesNotMatch(html, /unavailable/);
   assert.deepEqual(task.threadStatus, {
     type: "active",
     activeFlags: [],

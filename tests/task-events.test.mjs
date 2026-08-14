@@ -6,6 +6,7 @@ import {
   dedupeCanonicalEvents,
   mergeEvents,
   optimisticUserMessageEvent,
+  reconcileCanonicalEvents,
 } from "../frontend/pages/(task-workspace)/tasks/task-events.js";
 
 function event(id, type, createdMs, payload = {}, overrides = {}) {
@@ -114,6 +115,117 @@ test("structured canonical duplicates beat sparse notifications", () => {
   );
 
   assert.deepEqual(dedupeCanonicalEvents([sparse, canonical]), [canonical]);
+});
+
+test("canonical item projection replaces a newer transient lifecycle placeholder", () => {
+  const transient = event(
+    "thread-1:turn-1:item-1",
+    "work_status",
+    200,
+    {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "item-1",
+      itemType: "agentMessage",
+      lifecycle: "started",
+    },
+  );
+  const canonical = event(
+    "thread-1:turn-1:item-1",
+    "assistant_message",
+    100,
+    {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "item-1",
+      phase: "final",
+      text: "Canonical response after reconnect.",
+    },
+    { sortIndex: 2 },
+  );
+
+  const reconciled = reconcileCanonicalEvents([transient], [canonical]);
+
+  assert.deepEqual(reconciled, [canonical]);
+});
+
+test("canonical reconciliation does not regress a useful item to a transient placeholder", () => {
+  const current = event(
+    "thread-1:turn-1:item-1",
+    "assistant_message",
+    100,
+    {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "item-1",
+      phase: "final",
+      text: "Keep the last useful response.",
+    },
+    { sortIndex: 2 },
+  );
+  const transient = event(
+    "thread-1:turn-1:item-1",
+    "work_status",
+    200,
+    {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "item-1",
+      itemType: "agentMessage",
+      lifecycle: "started",
+    },
+  );
+
+  const reconciled = reconcileCanonicalEvents([current], [transient]);
+
+  assert.deepEqual(reconciled, [current]);
+});
+
+test("canonical reconciliation retains unrelated current and canonical events", () => {
+  const current = event("current-message", "assistant_message", 100, {
+    turnId: "turn-1",
+    text: "Already loaded.",
+  });
+  const canonical = event("canonical-message", "assistant_message", 200, {
+    turnId: "turn-2",
+    text: "New canonical event.",
+  });
+
+  const reconciled = reconcileCanonicalEvents([current], [canonical]);
+
+  assert.deepEqual(reconciled, [current, canonical]);
+});
+
+test("canonical reconciliation preserves ordinary merge semantics for matching projections", () => {
+  const current = event(
+    "thread-1:turn-1:command-1",
+    "command_execution",
+    200,
+    {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "command-1",
+      status: "inProgress",
+      aggregatedOutput: "Preserve this output.",
+    },
+  );
+  const canonical = event(
+    "thread-1:turn-1:command-1",
+    "command_execution",
+    100,
+    {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "command-1",
+      status: "completed",
+      exitCode: 0,
+    },
+    { sortIndex: 3 },
+  );
+
+  const reconciled = reconcileCanonicalEvents([current], [canonical]);
+
+  assert.deepEqual(reconciled, mergeEvents([current], [canonical]));
 });
 
 test("turn grouping keeps implicit continuation causal and closes terminal turns", () => {

@@ -19,7 +19,6 @@
 @import "./pages/(task-workspace)/settings/about/page.css";
 @import "./pages/(task-workspace)/tasks/controls.css";
 @import "./pages/(task-workspace)/tasks/components/task-status.css";
-@import "./pages/(task-workspace)/tasks/components/task-transport-overlay.css";
 @import "./pages/(task-workspace)/tasks/page.css";
 @import "./pages/(task-workspace)/tasks/components/composer.css";
 @import "./pages/(task-workspace)/tasks/components/task-turn-options.css";

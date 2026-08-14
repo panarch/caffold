@@ -1,15 +1,9 @@
 import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon } from "../../../../components/icons.js";
-import {
-  TASK_TRANSPORT_STATE,
-  taskStatusView,
-} from "../runtime-state.js";
+import { taskStatusView } from "../runtime-state.js";
 
 export function renderTaskStatusChip(task, className = "", options = {}) {
-  const view = taskStatusView(
-    task,
-    options.transportState ?? TASK_TRANSPORT_STATE.READY,
-  );
+  const view = taskStatusView(task);
   if (!view) {
     return "";
   }

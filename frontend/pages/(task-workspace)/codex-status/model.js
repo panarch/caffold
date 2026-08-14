@@ -115,7 +115,7 @@ export const PENDING_CODEX_TASK_OPERATIONS = taskOperationsPresentation({
 
 export function codexTaskOperationsPresentation(snapshot) {
   const status = snapshot?.status;
-  if (snapshot?.phase === "failed") {
+  if (snapshot?.phase === "failed" && !status) {
     return taskOperationsPresentation({
       phase: "checkFailed",
       blocked: true,
@@ -158,7 +158,7 @@ export function codexTaskOperationsPresentation(snapshot) {
 }
 
 export function codexTaskRecoveryVisible(snapshot) {
-  if (snapshot?.phase === "failed") {
+  if (snapshot?.phase === "failed" && !snapshot?.status) {
     return true;
   }
   const status = snapshot?.status;

@@ -131,10 +131,6 @@ const ownership = new Map([
       "caffold-archived-task-list",
     ],
   ],
-  [
-    "pages/(task-workspace)/tasks/components/task-transport-overlay.css",
-    ["caffold-task-transport-overlay"],
-  ],
   ["pages/(task-workspace)/tasks/controls.css", ["caffold-tasks-page"]],
   ["pages/(task-workspace)/tasks/page.css", ["caffold-tasks-page"]],
   [
@@ -303,7 +299,6 @@ const componentChildren = new Map([
     "caffold-task-navigator",
     [
       "caffold-workspace-brand",
-      "caffold-task-transport-overlay",
       "caffold-active-task-list",
       "caffold-archived-task-list",
     ],
@@ -315,7 +310,6 @@ const componentChildren = new Map([
       "caffold-task-conversation",
       "caffold-task-command-dialog",
       "caffold-task-composer",
-      "caffold-task-transport-overlay",
       "caffold-task-review",
       "caffold-task-git-layout",
       "caffold-task-github-layout",

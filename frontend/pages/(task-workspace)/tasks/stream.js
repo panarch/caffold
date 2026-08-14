@@ -26,11 +26,11 @@ export class TaskStreamLifecycle {
     this.retryAttempt = 0;
     this.hasConnected = false;
     this.needsReconcile = false;
-    this.visibilityListenerAttached = false;
-    this.boundVisibilityChange = () => this.visibilityChanged();
+    this.skipNextReconciliation = false;
+    this.validating = false;
   }
 
-  activate(contextKey, { force = false } = {}) {
+  activate(contextKey, { force = false, validating = false } = {}) {
     const nextContextKey = `${contextKey ?? ""}`.trim();
     const sameContext = this.contextKey === nextContextKey;
     if (
@@ -48,6 +48,7 @@ export class TaskStreamLifecycle {
       Boolean(nextContextKey) &&
       (force || this.hasConnected || this.needsReconcile);
     this.resetConnection();
+    this.validating = Boolean(validating && sameContext && nextContextKey);
     this.contextKey = nextContextKey;
     this.retryAttempt = 0;
     if (!sameContext) {
@@ -58,19 +59,65 @@ export class TaskStreamLifecycle {
     }
 
     if (!nextContextKey) {
-      this.detachVisibilityListener();
       return;
     }
-    this.attachVisibilityListener();
     if (document.visibilityState === "visible") {
       this.openConnection(nextContextKey, this.generation);
     }
   }
 
-  retry() {
+  retry({ reconcile = true } = {}) {
     if (this.contextKey) {
+      this.skipNextReconciliation = !reconcile;
       this.activate(this.contextKey, { force: true });
     }
+  }
+
+  suspend() {
+    if (!this.contextKey) {
+      return;
+    }
+    this.skipNextReconciliation = false;
+    this.needsReconcile = true;
+    this.resetConnection();
+  }
+
+  async recover(contextKey = this.contextKey) {
+    const nextContextKey = `${contextKey ?? ""}`.trim();
+    if (!nextContextKey || document.visibilityState !== "visible") {
+      return { ok: false, stale: true };
+    }
+    this.skipNextReconciliation = false;
+    this.activate(nextContextKey, { force: true, validating: true });
+    const generation = this.generation;
+    const reconcileGeneration = this.reconcileGeneration;
+    const outcome = await this.requestReconciliation(
+      nextContextKey,
+      generation,
+      reconcileGeneration,
+      { recovery: true },
+    );
+    if (
+      outcome.ok &&
+      this.isCurrentReconciliation(
+        nextContextKey,
+        generation,
+        reconcileGeneration,
+      )
+    ) {
+      this.needsReconcile = false;
+    } else if (
+      !outcome.ok &&
+      this.isCurrentReconciliation(
+        nextContextKey,
+        generation,
+        reconcileGeneration,
+      )
+    ) {
+      this.validating = false;
+      this.setState(TASK_TRANSPORT_STATE.RECONNECTING);
+    }
+    return outcome;
   }
 
   deactivate() {
@@ -79,7 +126,8 @@ export class TaskStreamLifecycle {
     this.hasConnected = false;
     this.needsReconcile = false;
     this.retryAttempt = 0;
-    this.detachVisibilityListener();
+    this.skipNextReconciliation = false;
+    this.validating = false;
   }
 
   openConnection(contextKey, generation) {
@@ -107,9 +155,11 @@ export class TaskStreamLifecycle {
 
     this.source = source;
     this.setState(
-      this.needsReconcile
-        ? TASK_TRANSPORT_STATE.RECONNECTING
-        : TASK_TRANSPORT_STATE.CONNECTING,
+      this.validating
+        ? TASK_TRANSPORT_STATE.VALIDATING
+        : this.needsReconcile
+          ? TASK_TRANSPORT_STATE.RECONNECTING
+          : TASK_TRANSPORT_STATE.CONNECTING,
     );
     source.addEventListener("open", () => {
       void this.opened(source, contextKey, generation);
@@ -137,8 +187,19 @@ export class TaskStreamLifecycle {
       this.setState(TASK_TRANSPORT_STATE.READY);
       return;
     }
+    if (this.skipNextReconciliation) {
+      this.skipNextReconciliation = false;
+      this.needsReconcile = false;
+      this.retryAttempt = 0;
+      this.setState(TASK_TRANSPORT_STATE.READY);
+      return;
+    }
 
-    this.setState(TASK_TRANSPORT_STATE.RECONNECTING);
+    this.setState(
+      this.validating
+        ? TASK_TRANSPORT_STATE.VALIDATING
+        : TASK_TRANSPORT_STATE.RECONNECTING,
+    );
     const reconcileGeneration = this.reconcileGeneration;
     const outcome = await this.requestReconciliation(
       contextKey,
@@ -153,11 +214,13 @@ export class TaskStreamLifecycle {
       return;
     }
     if (!outcome.ok) {
+      this.validating = false;
       this.replaceAfterFailure(source, contextKey, generation);
       return;
     }
 
     this.needsReconcile = false;
+    this.validating = false;
     this.retryAttempt = 0;
     this.setState(TASK_TRANSPORT_STATE.READY);
   }
@@ -167,6 +230,7 @@ export class TaskStreamLifecycle {
       return;
     }
     this.needsReconcile = true;
+    this.validating = false;
     this.invalidateReconciliation();
     if (source.readyState === 2) {
       this.replaceAfterFailure(source, contextKey, generation);
@@ -195,6 +259,7 @@ export class TaskStreamLifecycle {
       return;
     }
     this.needsReconcile = true;
+    this.validating = false;
     this.invalidateSource();
     this.scheduleRetry(contextKey, this.generation);
   }
@@ -237,8 +302,11 @@ export class TaskStreamLifecycle {
       this.reconciliation?.generation === generation &&
       this.reconciliation?.reconcileGeneration === reconcileGeneration
     ) {
+      const alreadyRecovering = this.reconciliation.recovery;
       this.reconciliation.recovery ||= recovery;
-      this.reconciliation.dirty = true;
+      if (!alreadyRecovering || !recovery) {
+        this.reconciliation.dirty = true;
+      }
       return this.reconciliation.promise;
     }
 
@@ -289,29 +357,11 @@ export class TaskStreamLifecycle {
     return reconciliation.promise;
   }
 
-  visibilityChanged() {
-    if (!this.contextKey) {
-      return;
-    }
-    if (document.visibilityState !== "visible") {
-      this.needsReconcile = true;
-      this.resetConnection();
-      return;
-    }
-
-    this.needsReconcile = true;
-    this.retryAttempt = 0;
-    if (this.source?.readyState === 1) {
-      void this.opened(this.source, this.contextKey, this.generation);
-      return;
-    }
-    this.openConnection(this.contextKey, this.generation);
-  }
-
   resetConnection() {
     this.clearReconnectTimer();
     this.clearRetryTimer();
     this.invalidateSource();
+    this.validating = false;
     this.state = TASK_TRANSPORT_STATE.IDLE;
   }
 
@@ -367,19 +417,4 @@ export class TaskStreamLifecycle {
     }
   }
 
-  attachVisibilityListener() {
-    if (this.visibilityListenerAttached) {
-      return;
-    }
-    this.visibilityListenerAttached = true;
-    document.addEventListener("visibilitychange", this.boundVisibilityChange);
-  }
-
-  detachVisibilityListener() {
-    if (!this.visibilityListenerAttached) {
-      return;
-    }
-    this.visibilityListenerAttached = false;
-    document.removeEventListener("visibilitychange", this.boundVisibilityChange);
-  }
 }

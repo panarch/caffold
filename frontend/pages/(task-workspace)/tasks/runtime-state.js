@@ -2,6 +2,7 @@ export const TASK_TRANSPORT_STATE = Object.freeze({
   IDLE: "idle",
   CONNECTING: "connecting",
   READY: "ready",
+  VALIDATING: "validating",
   RECONNECTING: "reconnecting",
   UNAVAILABLE: "unavailable",
 });
@@ -18,36 +19,6 @@ export function isTaskTransportStale(state) {
     TASK_TRANSPORT_STATE.RECONNECTING,
     TASK_TRANSPORT_STATE.UNAVAILABLE,
   ].includes(state);
-}
-
-export function retryStaleTaskTransports(transports = []) {
-  let retried = 0;
-  for (const transport of transports) {
-    if (
-      !isTaskTransportStale(transport?.state) ||
-      typeof transport?.retry !== "function"
-    ) {
-      continue;
-    }
-    transport.retry();
-    retried += 1;
-  }
-  return retried;
-}
-
-export function taskTransportStatusView(state) {
-  return {
-    [TASK_TRANSPORT_STATE.RECONNECTING]: {
-      status: "reconnecting",
-      label: "reconnecting",
-      icon: "",
-    },
-    [TASK_TRANSPORT_STATE.UNAVAILABLE]: {
-      status: "unavailable",
-      label: "unavailable",
-      icon: "TriangleAlert",
-    },
-  }[state] ?? null;
 }
 
 export function taskThreadStatusType(task) {
@@ -86,14 +57,7 @@ export function taskActiveFlagLabel(task) {
   }[taskStatusKey(task)] ?? null;
 }
 
-export function taskStatusView(
-  task,
-  transportState = TASK_TRANSPORT_STATE.READY,
-) {
-  const transportView = taskTransportStatusView(transportState);
-  if (transportView) {
-    return transportView;
-  }
+export function taskStatusView(task) {
   return {
     running: { status: "running", label: "running", icon: "" },
     waiting_for_approval: {
@@ -110,14 +74,7 @@ export function taskStatusView(
   }[taskStatusKey(task)] ?? null;
 }
 
-export function formatTaskStatus(
-  task,
-  transportState = TASK_TRANSPORT_STATE.READY,
-) {
-  const transportView = taskTransportStatusView(transportState);
-  if (transportView) {
-    return transportView.label;
-  }
+export function formatTaskStatus(task) {
   const key = taskStatusKey(task);
   return {
     waiting_for_approval: "waiting for approval",

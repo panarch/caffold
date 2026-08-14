@@ -91,6 +91,14 @@ function nextTask() {
   return new Promise((resolve) => setTimeout(resolve, 5));
 }
 
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 test("replaces a terminal source and ignores its stale generation", async () => {
   const browser = installBrowserHarness();
   const events = [];
@@ -156,6 +164,76 @@ test("bounds replacement attempts and lets an explicit retry start a new cycle",
   lifecycle.deactivate();
 });
 
+test("lets a stream-bootstrap owner retry without a duplicate reconciliation", async () => {
+  const browser = installBrowserHarness();
+  let reconciliations = 0;
+  const lifecycle = new TaskStreamLifecycle({
+    createUrl: () => "/api/tasks/stream",
+    onReconcile: () => {
+      reconciliations += 1;
+    },
+  });
+
+  lifecycle.activate("task-list");
+  browser.sources[0].emitOpen();
+  lifecycle.retry({ reconcile: false });
+  browser.sources[1].emitOpen();
+  await nextTask();
+
+  assert.equal(reconciliations, 0);
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
+  lifecycle.deactivate();
+});
+
+test("foreground recovery clears an interrupted stream-bootstrap retry", async () => {
+  const browser = installBrowserHarness();
+  let reconciliations = 0;
+  const lifecycle = new TaskStreamLifecycle({
+    createUrl: () => "/api/tasks/stream",
+    onReconcile: () => {
+      reconciliations += 1;
+    },
+  });
+
+  lifecycle.activate("task-list");
+  browser.sources[0].emitOpen();
+  lifecycle.retry({ reconcile: false });
+  lifecycle.suspend();
+  const recovery = lifecycle.recover();
+  browser.sources[2].emitOpen();
+  await recovery;
+  await nextTask();
+
+  assert.equal(reconciliations, 1);
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
+  lifecycle.deactivate();
+});
+
+test("foreground validation is silent until a real transport failure", async () => {
+  const browser = installBrowserHarness();
+  const reconcileGate = deferred();
+  const states = [];
+  const lifecycle = new TaskStreamLifecycle({
+    createUrl: () => "/api/tasks/stream",
+    onReconcile: () => reconcileGate.promise,
+    onStateChange: (state) => states.push(state),
+  });
+
+  lifecycle.activate("task-list");
+  browser.sources[0].emitOpen();
+  const recovery = lifecycle.recover();
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.VALIDATING);
+  assert.equal(states.at(-1), TASK_TRANSPORT_STATE.VALIDATING);
+
+  reconcileGate.resolve();
+  await recovery;
+  browser.sources[1].emitOpen();
+  await nextTask();
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
+  assert.equal(states.includes(TASK_TRANSPORT_STATE.RECONNECTING), false);
+  lifecycle.deactivate();
+});
+
 test("lets a reconnecting source recover without creating a duplicate", async () => {
   const browser = installBrowserHarness();
   let reconciliations = 0;
@@ -210,29 +288,37 @@ test("distinguishes requested reconciliation from transport recovery", async () 
   lifecycle.deactivate();
 });
 
-test("reconciles an already-open stream when the page becomes visible", async () => {
+test("explicit recovery replaces and reconciles an already-open stream", async () => {
   const browser = installBrowserHarness();
+  const reconciliation = new Promise((resolve) => {
+    browser.releaseRecoveryReconciliation = resolve;
+  });
   let reconciliations = 0;
   const lifecycle = new TaskStreamLifecycle({
     createUrl: () => "/api/tasks/thread-a/stream",
     onReconcile: () => {
       reconciliations += 1;
+      return reconciliation;
     },
   });
 
   lifecycle.activate("thread-a");
   browser.sources[0].emitOpen();
-  document.visibilityState = "visible";
-  lifecycle.visibilityChanged();
+  const recovery = lifecycle.recover();
+  assert.equal(browser.sources.length, 2);
+  assert.equal(reconciliations, 1);
+  browser.sources[1].emitOpen();
+  await Promise.resolve();
+  assert.equal(reconciliations, 1);
+  browser.releaseRecoveryReconciliation();
+  await recovery;
   await nextTask();
-
-  assert.equal(browser.sources.length, 1);
   assert.equal(reconciliations, 1);
   assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
   lifecycle.deactivate();
 });
 
-test("upgrades a coalesced request to recovery reconciliation", async () => {
+test("explicit recovery invalidates an older requested reconciliation", async () => {
   const browser = installBrowserHarness();
   let releaseFirstReconciliation;
   const firstReconciliation = new Promise((resolve) => {
@@ -252,14 +338,17 @@ test("upgrades a coalesced request to recovery reconciliation", async () => {
   lifecycle.activate("thread-a");
   browser.sources[0].emitOpen();
   const requested = lifecycle.requestReconciliation();
-  lifecycle.visibilityChanged();
+  const recovery = lifecycle.recover();
   releaseFirstReconciliation();
   await requested;
+  await recovery;
 
   assert.deepEqual(reconciliations, [
     { recovery: false },
     { recovery: true },
   ]);
+  browser.sources[1].emitOpen();
+  await nextTask();
   assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
   lifecycle.deactivate();
 });

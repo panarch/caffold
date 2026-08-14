@@ -131,6 +131,22 @@ test("installs the complete shell without replacing the current worker", async (
 
   assert.equal(harness.skipWaitingCalls.length, 0);
   assert.ok(installedAssets.includes("/assets/file-status.js"));
+  assert.ok(installedAssets.includes("/assets/pages/foreground-recovery.js"));
+  assert.ok(
+    installedAssets.includes(
+      "/assets/pages/foreground-recovery/browser-signals.js",
+    ),
+  );
+  assert.ok(
+    installedAssets.includes(
+      "/assets/pages/foreground-recovery/lifecycle.js",
+    ),
+  );
+  assert.ok(
+    installedAssets.includes(
+      "/assets/pages/foreground-recovery/machine.js",
+    ),
+  );
   assert.ok(installedAssets.includes("/assets/pages/components/update-dialog.js"));
   assert.ok(
     installedAssets.includes(
@@ -362,10 +378,12 @@ test("drops malformed, content-bearing, and unsafe-route Push payloads", async (
 test("notification click focuses a client already showing the matching task", async () => {
   const focused = [];
   const navigated = [];
+  const messages = [];
   const matching = {
     url: "https://caffold.test/tasks/thread%201/review",
     async focus() { focused.push("matching"); },
     async navigate(route) { navigated.push(route); return this; },
+    postMessage(message) { messages.push(message); },
   };
   const harness = createHarness({ allClients: [matching] });
   let closed = false;
@@ -378,6 +396,9 @@ test("notification click focuses a client already showing the matching task", as
   assert.equal(closed, true);
   assert.deepEqual(focused, ["matching"]);
   assert.deepEqual(navigated, []);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].type, "caffold:notification-activation");
+  assert.equal(messages[0].route, "/tasks/thread%201");
   assert.deepEqual(harness.openedWindows, []);
 });
 

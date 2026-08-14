@@ -248,7 +248,7 @@ test("structural shadows separate fixed regions from floating elevation", () => 
     tokenConsumers(sources, /var\(--structural-shadow-panel\)/),
     [
       "pages/(task-workspace)/tasks/components/composer.css",
-      "pages/(task-workspace)/tasks/components/task-transport-overlay.css",
+      "pages/layout.css",
     ],
   );
   assert.deepEqual(
@@ -415,11 +415,8 @@ test("workspace header identity and titles share semantic ownership", () => {
   );
 });
 
-test("Task transport overlay owns shared chrome without owning parent placement", () => {
-  const overlay = readFrontend(
-    "pages/(task-workspace)/tasks/components/task-transport-overlay.css",
-  );
-  const workspace = readFrontend("pages/(task-workspace)/layout.css");
+test("App Shell foreground recovery notice owns viewport-wide connection chrome", () => {
+  const appShell = readFrontend("pages/layout.css");
   const navigator = readFrontend(
     "pages/(task-workspace)/tasks/components/navigator.css",
   );
@@ -427,12 +424,14 @@ test("Task transport overlay owns shared chrome without owning parent placement"
     "pages/(task-workspace)/tasks/components/detail.css",
   );
 
-  cssBlockMatching(overlay, "caffold-task-transport-overlay", [
-    /position: absolute/,
+  cssBlockMatching(appShell, ".app-foreground-recovery", [
+    /position: fixed/,
+    /left: 50%/,
     /width: max-content/,
-    /max-width: calc\(100% - var\(--interface-space-12\)\)/,
+    /max-width: calc\(100vw - var\(--interface-space-12\)\)/,
     /background: var\(--warning-soft\)/,
     /box-shadow: var\(--structural-shadow-panel\)/,
+    /transform: translateX\(-50%\)/,
   ]);
   cssBlockMatching(navigator, "caffold-task-navigator", [
     /position: relative/,
@@ -448,24 +447,12 @@ test("Task transport overlay owns shared chrome without owning parent placement"
     /border-bottom: 1px solid var\(--border\)/,
     /box-shadow: var\(--structural-shadow-block-end\)/,
   ]);
-  assert.match(
-    workspace,
-    /--task-navigator-scroll-padding-top: var\(--interface-space-3\)/,
-  );
-  cssBlockMatching(navigator, ".task-list-availability", [
-    /top: calc\(/,
-    /left: 50%/,
-    /transform: translateX\(-50%\)/,
-  ]);
   cssBlockMatching(detail, ".task-conversation-pane", [
     /position: relative/,
     /grid-template-rows: minmax\(0, 1fr\) auto/,
   ]);
-  cssBlockMatching(detail, ".task-stream-state", [
-    /top: var\(--interface-space-4\)/,
-    /left: 50%/,
-    /transform: translateX\(-50%\)/,
-  ]);
+  assert.doesNotMatch(navigator, /task-list-availability/);
+  assert.doesNotMatch(detail, /task-stream-state/);
 });
 
 test("component styles do not own literal colors", () => {

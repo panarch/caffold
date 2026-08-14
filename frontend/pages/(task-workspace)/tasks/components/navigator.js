@@ -6,7 +6,6 @@ import {
 } from "../../codex-status.js";
 import {
   TASK_TRANSPORT_STATE,
-  isTaskTransportStale,
 } from "../runtime-state.js";
 import { taskThreadId } from "../task-list-model.js";
 import {
@@ -19,7 +18,6 @@ import {
   ARCHIVED_TASK_RESTORED_EVENT,
   ARCHIVED_TASK_LIST_STATE_EVENT,
 } from "./archived-task-list.js";
-import "./task-transport-overlay.js";
 
 class CaffoldTaskNavigator extends HTMLElement {
   connectedCallback() {
@@ -239,6 +237,15 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.activeTaskList?.closeStream();
   }
 
+  suspendForeground() {
+    this.activeTaskList?.suspendStream();
+  }
+
+  recoverForeground() {
+    this.ensureChildren();
+    return this.activeTaskList.recoverForeground();
+  }
+
   setCodexStatusSnapshot(snapshot) {
     this.ensureChildren();
     const presentation = codexTaskOperationsPresentation(snapshot);
@@ -319,7 +326,6 @@ class CaffoldTaskNavigator extends HTMLElement {
       return;
     }
     this.archivedTaskList.setTransportState(event.detail?.state);
-    this.syncAvailability();
   }
 
   syncInitialPresentation() {
@@ -340,6 +346,7 @@ class CaffoldTaskNavigator extends HTMLElement {
     return {
       count: active.count + archived.count,
       activeCount: active.count,
+      activeError: active.error,
       archivedCount: archived.count,
       loaded: active.loaded && archived.loaded,
       loading: active.loading || archived.loading,
@@ -366,7 +373,6 @@ class CaffoldTaskNavigator extends HTMLElement {
   render() {
     this.ensureChildren();
     this.syncPrimaryHeader();
-    this.syncAvailability();
     this.syncInitialPresentation();
   }
 
@@ -424,36 +430,6 @@ class CaffoldTaskNavigator extends HTMLElement {
     `;
   }
 
-  syncAvailability() {
-    const current = this.querySelector(
-      ":scope > caffold-task-transport-overlay.task-list-availability",
-    );
-    if (!isTaskTransportStale(this.streamState)) {
-      current?.remove();
-      return;
-    }
-    const message = this.streamState === TASK_TRANSPORT_STATE.RECONNECTING
-      ? "Reconnecting to Caffold server..."
-      : "Caffold server unavailable.";
-    if (current) {
-      current.setAttribute("state", this.streamState);
-      current.setAttribute("message", message);
-      current.dataset.taskListAvailability = this.streamState;
-      return;
-    }
-    const template = document.createElement("template");
-    template.innerHTML = `
-      <caffold-task-transport-overlay
-        class="task-list-availability"
-        state="${escapeHtml(this.streamState)}"
-        message="${escapeHtml(message)}"
-        data-task-list-availability="${escapeHtml(this.streamState)}"
-      ></caffold-task-transport-overlay>
-    `;
-    this.querySelector(":scope > .task-list-scroll")?.before(
-      template.content.firstElementChild,
-    );
-  }
 }
 
 function taskListState(list) {

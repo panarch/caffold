@@ -238,6 +238,45 @@ code for drafts, focus, scroll, selection, subscriptions, timers, or watchers.
 If a container patches its own Light DOM, preserve stateful child elements by
 identity and interact with them only through their public component boundary.
 
+### Coordinated Lifecycle Control
+
+For every lifecycle-owning frontend owner, review initial connection,
+activation or context changes, deactivation, owned identity changes, and
+disconnection. Every asynchronous response needs a generation, token, or
+identity check appropriate to its own request lifetime. Canceling one request
+must not accidentally invalidate an unrelated request.
+
+When the common policy requires an explicit control model, normalize raw
+external observations into events with meaning inside the owning boundary
+before they enter that model. One transition authority owns the control node;
+adapters, effects, and presentation code must not assign it directly. Keep
+request identities, counters, deadlines, and diagnostic context as control data
+unless they independently change which transitions are allowed.
+
+The coordinator's graph contains only the mutually exclusive control phases it
+owns. Domain state and state owned by requests, transports, or child owners
+remain orthogonal and are consumed through their public contracts. A
+coordinator may sequence effects across those owners, but it must not absorb
+their state machines or multiply independent state axes into a Cartesian
+product.
+
+Presentation is derived unless it independently changes allowed transitions or
+effects. Presentation owners render a published snapshot and emit intent; they
+do not add display-only nodes or mutate the control graph.
+
+Apply the existing same-stem module boundary when the control model needs
+private implementation files; do not split a small model merely to satisfy a
+file-name pattern. Present nodes and invariants before the complete transition
+table, then the event reduction and supporting details. The public entry point
+exports consumer contracts, not private nodes, internal events, edges, or
+presentation selectors.
+
+Focused tests must reach every control node and allowed edge. They must also
+cover critical rejected transitions, stale completions, and every interruption
+or terminal path declared by the graph. Boundary tests remain responsible for
+the real adapters and effects; unit coverage of a transition function does not
+prove that its external observations or side effects are wired correctly.
+
 ### Incremental DOM updates
 
 Caffold's frontend direction favors browser-owned, long-lived DOM over adding
@@ -265,12 +304,6 @@ or revision projections must remain independent unless the external source
 provides one shared ordering contract. For example, a task-list revision must
 not reject a task-detail snapshot, and a detail revision must not advance the
 list baseline.
-
-For every lifecycle-owning component, review initial connection,
-activation/context changes, deactivation, thread or route switches, and
-disconnection. Every asynchronous response needs a generation, token, or
-identity check appropriate to its own request lifetime. Canceling one request
-must not accidentally invalidate an unrelated request.
 
 Because nested custom elements are still normal descendants in Light DOM,
 container selectors must be narrow.

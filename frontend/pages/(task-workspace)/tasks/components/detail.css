@@ -57,11 +57,6 @@ caffold-task-detail {
     line-height: var(--interface-line-height);
   }
 
-  & .task-conversation-pane > caffold-task-transport-overlay.task-stream-state {
-    top: var(--interface-space-4);
-    left: 50%;
-    transform: translateX(-50%);
-  }
 }
 
 caffold-task-detail {

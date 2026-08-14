@@ -125,7 +125,7 @@ test("closes the previous thread stream and rejects its late inputs", () => {
   const sourceB = browser.sources[1];
 
   assert.equal(sourceA.closed, true);
-  assert.equal(browser.listenerCount("visibilitychange"), 1);
+  assert.equal(browser.listenerCount("visibilitychange"), 0);
   sourceA.emit("task-sync", {
     threadId: "thread-a",
     detail: { threadId: "thread-a" },
@@ -224,11 +224,13 @@ test("releases the stream while hidden and refreshes the replacement", async () 
   initialSource.emitOpen();
 
   browser.setVisibility("hidden");
+  stream.suspend();
   assert.equal(initialSource.closed, true);
   assert.equal(stream.stream, null);
   assert.equal(stream.state, TASK_TRANSPORT_STATE.IDLE);
 
   browser.setVisibility("visible");
+  const recovery = stream.recover();
   assert.equal(browser.sources.length, 2);
   const replacement = browser.sources[1];
   assert.equal(replacement.url, "/api/tasks/thread-a/stream");
@@ -238,6 +240,7 @@ test("releases the stream while hidden and refreshes the replacement", async () 
 
   refresh.resolve();
   await refresh.promise;
+  await recovery;
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(browser.sources.length, 2);
   assert.equal(stream.state, TASK_TRANSPORT_STATE.READY);
