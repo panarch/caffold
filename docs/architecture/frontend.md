@@ -447,27 +447,18 @@ assets imported by the active application hierarchy.
 
 ## Test ownership
 
-Regression tests move with the active owner:
+Focused Node unit tests live beside the production module that owns their
+behavior, using the same stem and a `.test.js` suffix. Internal tests import
+their owning module directly; public feature entry points do not expose private
+APIs for tests.
 
-- pure route schema in `tests/navigation-routes.test.mjs`;
-- Task Detail and Integrated Review in `tests/e2e/tasks/`;
-- Task-owned Git in `tests/e2e/tasks/git-review.spec.js`;
-- Task-owned GitHub in `tests/e2e/tasks/github-review.spec.js`;
-- application shell boundaries in `tests/e2e/app-shell.spec.js`;
-- foreground control-model and raw-signal contracts in
-  `tests/foreground-recovery.test.mjs` and
-  `tests/foreground-recovery-browser-signals.test.mjs`, with App Shell,
-  status, list, detail, and transport integration in
-  `tests/e2e/tasks/lifecycle.spec.js`;
-- PWA update lifecycle and build-handoff boundaries in
-  `tests/pwa-update-lifecycle.test.mjs` and
-  `tests/e2e/app-shell-update.spec.js`;
-- Settings Codex and Notifications behavior in `tests/e2e/settings.spec.js`;
-- browser notification lifecycle primitives in
-  `tests/notification-lifecycle.test.mjs` and service-worker Push/click behavior
-  in `tests/service-worker.test.mjs`;
-- assets, CSS, appearance, and watch primitives in their focused Node/Rust
-  suites.
+Top-level `tests/` contains cross-owner contracts, repository policy and
+complete inventories, build/release and protocol boundaries, and browser-test
+infrastructure. Playwright regression tests live under `tests/e2e/`.
+
+Colocated tests are source files for Node only. Production JavaScript scans,
+the production static import graph, the service-worker asset inventory, and the
+Rust static-asset table exclude every `*.test.js` file.
 
 Reusable file/source/diff/image behavior is covered through its active Task
 owners. Browser coverage must exercise direct entry/reload, Back and browser

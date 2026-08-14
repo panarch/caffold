@@ -189,8 +189,13 @@ test("manual release workflow isolates versioning, verification, and publication
     /ref: \$\{\{ steps\.release_source\.outputs\.release_sha \}\}/,
   );
   assert.match(macosJob, new RegExp(`rustup toolchain install ${rustVersion}(?:\\.0)?`));
+  assert.match(macosJob, /npm ci/);
+  assert.match(macosJob, /playwright install chromium/);
   assert.match(macosJob, /release --dry-run/);
-  assert.match(macosJob, /npm run test:updater/);
+  for (const command of ["test:unit", "test:contract", "test:e2e", "test:macos"]) {
+    assert.match(macosJob, new RegExp(`npm run ${command}`));
+  }
+  assert.doesNotMatch(macosJob, /npm run test:codex-(?:compat|live)/);
   assert.match(macosJob, /actions\/upload-artifact@v\d+\.\d+\.\d+/);
   assert.doesNotMatch(macosJob, /contents: write/);
   assert.doesNotMatch(macosJob, /HOMEBREW_TAP_TOKEN/);

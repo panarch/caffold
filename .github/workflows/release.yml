@@ -177,6 +177,12 @@ jobs:
           node-version: 22
           package-manager-cache: false
 
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install chromium
+
       - name: Verify native build tools
         run: |
           cmake --version
@@ -186,23 +192,17 @@ jobs:
         id: release_metadata
         run: desktop/macos/package-app metadata >>"${GITHUB_OUTPUT}"
 
-      - name: Verify release contracts
-        run: npm run test:release
+      - name: Test frontend units
+        run: npm run test:unit
 
-      - name: Verify contributor documentation
-        run: npm run test:docs
+      - name: Test repository contracts
+        run: npm run test:contract
 
-      - name: Verify application updater
-        run: npm run test:updater
+      - name: Test browser behavior
+        run: npm run test:e2e
 
-      - name: Verify menu bar integration status
-        run: npm run test:system-status
-
-      - name: Verify macOS process lifecycle
-        run: npm run test:macos-runtime
-
-      - name: Verify local application replacement contract
-        run: npm run test:local-install
+      - name: Test macOS application behavior
+        run: npm run test:macos
 
       - name: Check Rust formatting
         run: cargo fmt --check

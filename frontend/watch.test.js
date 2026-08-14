@@ -43,7 +43,7 @@ const {
   subscribeToWatch,
   watchChangeAffectsPath,
 } = await import(
-  "../frontend/watch.js"
+  "./watch.js"
 );
 
 test("shares one EventSource until the final scope subscriber leaves", async () => {

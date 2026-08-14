@@ -167,10 +167,14 @@ Alternatively, pass parent-owned runtime state through a constructor, snapshot,
 or method. Do not retain a parent-child import cycle or create a generically
 named shared module without a concrete ownership role.
 
-Focused tests may import an internal module at its owning boundary, but a test
-does not justify re-exporting that internal API from `name.js`. Global
-stylesheet and static-asset manifests may enumerate internal paths because they
-are build inventories rather than runtime feature consumers.
+Focused Node unit tests live beside their owning frontend module with the same
+stem: `name.js` is tested by `name.test.js`. A test for an internal module
+may import that module directly at its owning boundary, but it does not justify
+re-exporting the internal API from `name.js`. Colocated `*.test.js` files
+must remain outside the production static import graph, JavaScript ownership
+scans, Rust static assets, and the service-worker cache. Global stylesheet and
+static-asset manifests may enumerate production internal paths because they are
+build inventories rather than runtime feature consumers.
 
 ### Component Ownership And Lifecycles
 

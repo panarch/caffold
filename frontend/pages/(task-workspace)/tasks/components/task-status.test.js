@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { renderTaskStatusChip } from "../frontend/pages/(task-workspace)/tasks/components/task-status.js";
+import { renderTaskStatusChip } from "./task-status.js";
 
 function activeTask(activeFlags = []) {
   return {

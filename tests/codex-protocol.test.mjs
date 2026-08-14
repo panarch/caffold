@@ -70,7 +70,7 @@ function writeExecutable(path) {
   chmodSync(path, 0o755);
 }
 
-test("live Codex binary resolution matches the backend install priorities", () => {
+test("Codex binary resolution matches the backend install priorities", () => {
   const root = mkdtempSync(join(tmpdir(), "caffold-codex-bin-"));
   try {
     const pathDirectory = join(root, "path");
@@ -149,7 +149,7 @@ test("Codex version gate accepts compatible upgrades and rejects older baselines
 
 test(
   "installed Codex app-server protocol keeps the required Caffold contract",
-  { skip: process.env.CAFFOLD_CODEX_PROTOCOL_LIVE !== "1" },
+  { skip: process.env.CAFFOLD_CODEX_COMPAT !== "1" },
   () => {
     const version = runCodex(["--version"]);
     assert.ok(

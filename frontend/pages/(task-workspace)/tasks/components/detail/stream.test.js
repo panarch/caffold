@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
-import { TaskDetailStream } from "../frontend/pages/(task-workspace)/tasks/components/detail/stream.js";
-import { TASK_TRANSPORT_STATE } from "../frontend/pages/(task-workspace)/tasks/runtime-state.js";
+import { TaskDetailStream } from "./stream.js";
+import { TASK_TRANSPORT_STATE } from "../../runtime-state.js";
 
 const originalBrowserGlobals = {
   document: globalThis.document,

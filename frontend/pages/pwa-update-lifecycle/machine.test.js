@@ -9,7 +9,7 @@ import {
   PWA_UPDATE_TARGET_PHASE,
   createPwaUpdateHandoffState,
   transitionPwaUpdateHandoff,
-} from "../frontend/pages/pwa-update-lifecycle/machine.js";
+} from "./machine.js";
 
 function transition(state, type, values = {}) {
   return transitionPwaUpdateHandoff(state, { type, ...values });
