@@ -77,14 +77,20 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/foreground-recovery/machine.js" => Some(js(include_str!(
             "../frontend/pages/foreground-recovery/machine.js"
         ))),
+        "pages/pwa-update-lifecycle.js" => Some(js(include_str!(
+            "../frontend/pages/pwa-update-lifecycle.js"
+        ))),
+        "pages/pwa-update-lifecycle/machine.js" => Some(js(include_str!(
+            "../frontend/pages/pwa-update-lifecycle/machine.js"
+        ))),
+        "pages/pwa-update-lifecycle/runtime.js" => Some(js(include_str!(
+            "../frontend/pages/pwa-update-lifecycle/runtime.js"
+        ))),
         "pages/components/build-mismatch-alert.css" => Some(css(include_str!(
             "../frontend/pages/components/build-mismatch-alert.css"
         ))),
         "pages/components/build-mismatch-alert.js" => Some(js(include_str!(
             "../frontend/pages/components/build-mismatch-alert.js"
-        ))),
-        "pages/components/pwa-update-lifecycle.js" => Some(js(include_str!(
-            "../frontend/pages/components/pwa-update-lifecycle.js"
         ))),
         "pages/components/update-dialog.css" => Some(css(include_str!(
             "../frontend/pages/components/update-dialog.css"
@@ -841,12 +847,20 @@ mod tests {
         assert!(build_mismatch_alert.body.starts_with(b"export "));
 
         let pwa_update_lifecycle =
-            get("pages/components/pwa-update-lifecycle.js").expect("PWA update lifecycle js asset");
+            get("pages/pwa-update-lifecycle.js").expect("PWA update lifecycle js asset");
         assert_eq!(
             pwa_update_lifecycle.content_type,
             "text/javascript; charset=utf-8"
         );
-        assert!(pwa_update_lifecycle.body.starts_with(b"const "));
+        assert!(pwa_update_lifecycle.body.starts_with(b"import "));
+
+        for path in [
+            "pages/pwa-update-lifecycle/machine.js",
+            "pages/pwa-update-lifecycle/runtime.js",
+        ] {
+            let asset = get(path).expect("PWA update private module asset");
+            assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
+        }
 
         let update_dialog =
             get("pages/components/update-dialog.js").expect("update dialog js asset");

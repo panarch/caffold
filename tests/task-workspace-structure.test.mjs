@@ -249,6 +249,45 @@ test("foreground recovery public exports contain only consumer contracts", () =>
   );
 });
 
+test("PWA update lifecycle keeps one public non-visual owner and private graph", () => {
+  const appShell = readFrontend("pages/layout.js");
+  const lifecycle = readFrontend("pages/pwa-update-lifecycle.js");
+  const machine = readFrontend("pages/pwa-update-lifecycle/machine.js");
+  const runtime = readFrontend("pages/pwa-update-lifecycle/runtime.js");
+  const serviceWorker = readFrontend("service-worker.js");
+  const exportedNames = [...lifecycle.matchAll(
+    /^export (?:class|const|function)\s+([A-Za-z0-9_]+)/gm,
+  )].map((match) => match[1]);
+  const declarations = [
+    "export const PWA_UPDATE_HANDOFF_NODE",
+    "export const PWA_UPDATE_HANDOFF_TRANSITIONS",
+    "export const PWA_UPDATE_TARGET_PHASE",
+    "export const PWA_UPDATE_HANDOFF_EVENT",
+    "export const PWA_UPDATE_HANDOFF_EFFECT",
+    "export function createPwaUpdateHandoffState",
+    "export function transitionPwaUpdateHandoff",
+  ];
+  const positions = declarations.map((declaration) => machine.indexOf(declaration));
+
+  assert.deepEqual(exportedNames, ["PwaUpdateLifecycle"]);
+  assert.match(appShell, /from "\.\/pwa-update-lifecycle\.js"/);
+  assert.doesNotMatch(appShell, /pwa-update-lifecycle\/(?:machine|runtime)\.js/);
+  assert.doesNotMatch(appShell, /components\/pwa-update-lifecycle\.js/);
+  assert.ok(positions.every((position) => position >= 0));
+  assert.deepEqual(positions, [...positions].sort((left, right) => left - right));
+  assert.match(runtime, /from "\.\/machine\.js"/);
+  assert.match(runtime, /"controllerchange"/);
+  assert.match(runtime, /transitionPwaUpdateHandoff\(this\.handoffState, event\)/);
+  assert.doesNotMatch(lifecycle, /addEventListener|postMessage|controllerchange/);
+  for (const path of [
+    "/assets/pages/pwa-update-lifecycle.js",
+    "/assets/pages/pwa-update-lifecycle/machine.js",
+    "/assets/pages/pwa-update-lifecycle/runtime.js",
+  ]) {
+    assert.match(serviceWorker, new RegExp(path.replaceAll("/", "\\/")));
+  }
+});
+
 test("App Shell solely coordinates foreground recovery through public owners", () => {
   const appShell = readFrontend("pages/layout.js");
   const foreground = readFrontend("pages/foreground-recovery.js");

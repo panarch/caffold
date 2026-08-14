@@ -12,7 +12,7 @@ import {
   FOREGROUND_RECOVERY_PRESENTATION,
 } from "./foreground-recovery.js";
 import { CAFFOLD_BUILD_MISMATCH_RELOAD_EVENT } from "./components/build-mismatch-alert.js";
-import { PwaUpdateLifecycle } from "./components/pwa-update-lifecycle.js";
+import { PwaUpdateLifecycle } from "./pwa-update-lifecycle.js";
 import {
   CAFFOLD_UPDATE_LATER_EVENT,
   CAFFOLD_UPDATE_RELOAD_EVENT,
