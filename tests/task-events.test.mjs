@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   conversationGroups,
   dedupeCanonicalEvents,
+  fileChangePathPresentations,
   mergeEvents,
   optimisticUserMessageEvent,
   reconcileCanonicalEvents,
@@ -20,6 +21,37 @@ function event(id, type, createdMs, payload = {}, overrides = {}) {
     ...overrides,
   };
 }
+
+test("file change presentation deduplicates equivalent Task-local references", () => {
+  const rootPath = "/managed/worktrees/task-1";
+  const absolutePath = `${rootPath}/src/./lib.rs`;
+  const fileChanges = [
+    event("file-1", "file_change", 1, {
+      changes: [{ path: absolutePath }, { path: "src/lib.rs" }],
+    }),
+    event("file-2", "file_change", 2, {
+      changes: [
+        "src\\lib.rs",
+        { path: "/managed/worktrees/task-1-copy/src/lib.rs" },
+      ],
+    }),
+  ];
+  const canonicalEvents = structuredClone(fileChanges);
+
+  assert.deepEqual(fileChangePathPresentations(fileChanges, rootPath), [
+    {
+      fileIdentity: "/managed/worktrees/task-1/src/lib.rs",
+      originalPath: absolutePath,
+      displayPath: "src/lib.rs",
+    },
+    {
+      fileIdentity: "/managed/worktrees/task-1-copy/src/lib.rs",
+      originalPath: "/managed/worktrees/task-1-copy/src/lib.rs",
+      displayPath: "/managed/worktrees/task-1-copy/src/lib.rs",
+    },
+  ]);
+  assert.deepEqual(fileChanges, canonicalEvents);
+});
 
 test("event merge keeps causal order while a newer canonical record wins", () => {
   const started = event(

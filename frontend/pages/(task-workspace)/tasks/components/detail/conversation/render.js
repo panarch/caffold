@@ -13,7 +13,7 @@ import {
   dedupeCanonicalEvents,
   eventIdentityKey,
   eventTurnId,
-  fileChangePaths,
+  fileChangePathPresentations,
   isFinalAssistantEvent,
   isImplicitTurnEvent,
   isTerminalTurnEvent,
@@ -23,6 +23,7 @@ import {
   sortEventsChronologically,
 } from "../../../task-events.js";
 import {
+  effectiveTaskFileRoot,
   formatCommand,
   formatDate,
   formatDecision,
@@ -36,6 +37,8 @@ import {
 
 export function renderConversation(events, task, approvals = [], options = {}) {
   const workDetails = new Map();
+  const changedFiles = new Map();
+  const filePathPresentationBase = effectiveTaskFileRoot(task);
   const conversationEvents = sortEventsChronologically(
     dedupeCanonicalEvents(events),
   );
@@ -67,6 +70,8 @@ export function renderConversation(events, task, approvals = [], options = {}) {
           liveStatusAvailable,
           eventOrder,
           workDetails,
+          changedFiles,
+          filePathPresentationBase,
         });
       }
       if (
@@ -90,7 +95,11 @@ export function renderConversation(events, task, approvals = [], options = {}) {
       return [
         renderedTimelineEntry(
           [group.event],
-          renderConversationEvent(group.event, task, { active: false }),
+          renderConversationEvent(group.event, task, {
+            active: false,
+            changedFiles,
+            filePathPresentationBase,
+          }),
           eventOrder,
         ),
       ];
@@ -109,7 +118,7 @@ export function renderConversation(events, task, approvals = [], options = {}) {
       task,
     );
   }
-  return { html, workDetails };
+  return { html, workDetails, changedFiles };
 }
 
 function renderedTimelineEntry(events, html, eventOrder) {
@@ -180,6 +189,7 @@ function renderTurnGroupEntries(group, task, options = {}) {
       options.approvalErrors,
       options.eventOrder,
       options.workDetails,
+      options.filePathPresentationBase,
     );
   }
 
@@ -193,6 +203,8 @@ function renderTurnGroupEntries(group, task, options = {}) {
           options.pendingApprovalIds,
           options.controlsDisabled,
           options.approvalErrors,
+          options.filePathPresentationBase,
+          options.changedFiles,
         ),
         options.eventOrder,
       ),
@@ -210,6 +222,7 @@ function renderCompletedTurnGroupEntries(
   approvalErrors = new Map(),
   eventOrder = new Map(),
   workDetails = new Map(),
+  filePathPresentationBase = "",
 ) {
   const output = [];
   const userEvents = group.events.filter((event) => event.type === "user_message");
@@ -231,7 +244,10 @@ function renderCompletedTurnGroupEntries(
     output.push(
       renderedTimelineEntry(
         [event],
-        renderConversationEvent(event, task, { active: false }),
+        renderConversationEvent(event, task, {
+          active: false,
+          filePathPresentationBase,
+        }),
         eventOrder,
       ),
     );
@@ -241,7 +257,14 @@ function renderCompletedTurnGroupEntries(
     output.push(
       renderedTimelineEntry(
         [workSummaryAnchor],
-        renderTurnWorkSummary(group, workEvents, terminalEvent, task, workDetails),
+        renderTurnWorkSummary(
+          group,
+          workEvents,
+          terminalEvent,
+          task,
+          workDetails,
+          filePathPresentationBase,
+        ),
         eventOrder,
       ),
     );
@@ -250,7 +273,10 @@ function renderCompletedTurnGroupEntries(
     output.push(
       renderedTimelineEntry(
         [event],
-        renderConversationEvent(event, task, { active: false }),
+        renderConversationEvent(event, task, {
+          active: false,
+          filePathPresentationBase,
+        }),
         eventOrder,
       ),
     );
@@ -274,6 +300,7 @@ function renderCompletedTurnGroupEntries(
         renderConversationEvent(finalAssistantEvent, task, {
           active: false,
           messagePhase: "final",
+          filePathPresentationBase,
         }),
         eventOrder,
       ),
@@ -288,6 +315,8 @@ function renderActiveTurnTimelineEvent(
   pendingApprovalIds = new Set(),
   controlsDisabled = false,
   approvalErrors = new Map(),
+  filePathPresentationBase = "",
+  changedFiles = new Map(),
 ) {
   if (
     event.type === "approval_requested" &&
@@ -306,6 +335,8 @@ function renderActiveTurnTimelineEvent(
   ) {
     return renderConversationEvent(event, task, {
       active: isWorkEvent(event),
+      changedFiles,
+      filePathPresentationBase,
     });
   }
   return "";
@@ -473,7 +504,11 @@ export function renderConversationEvent(event, task, eventState) {
     return renderCommandEvent(event);
   }
   if (event.type === "file_change") {
-    return renderFileChangeEvent(event);
+    return renderFileChangeEvent(
+      event,
+      eventState?.filePathPresentationBase,
+      eventState?.changedFiles,
+    );
   }
   if (event.type === "task_failed") {
     return renderToolEvent(event, "Error", event.summary, "danger");
@@ -773,6 +808,7 @@ function renderTurnWorkSummary(
   terminalEvent,
   task,
   workDetails,
+  filePathPresentationBase,
 ) {
   const duration = turnDurationLabel(group.events, terminalEvent);
   const count = turnWorkItemCount(workEvents);
@@ -786,6 +822,7 @@ function renderTurnWorkSummary(
     label,
     updateText,
     events: [...workEvents],
+    filePathPresentationBase,
   });
   return `
     <li class="task-event task-turn-work" data-turn-id="${escapeHtml(group.turnId)}" data-conversation-entry-key="${escapeHtml(identity)}">
@@ -878,7 +915,11 @@ function isTerminalCommandStatus(status) {
   return ["completed", "failed"].includes(`${status ?? ""}`);
 }
 
-function renderFileChangeEvent(event) {
+function renderFileChangeEvent(
+  event,
+  filePathPresentationBase = "",
+  changedFiles = new Map(),
+) {
   const payload = event.payload ?? {};
   const count =
     typeof payload.changeCount === "number"
@@ -888,30 +929,33 @@ function renderFileChangeEvent(event) {
         : 0;
   const status = payload.status ? `Status: ${formatStatus(payload.status)}` : "";
   const summary = count === 1 ? "1 changed file" : `${count} changed files`;
+  const identity = fileChangeEventIdentity(event);
+  changedFiles.set(identity, {
+    files: fileChangePathPresentations([event], filePathPresentationBase),
+  });
   return `
-    <li class="task-event task-file-change" data-event-type="${escapeHtml(event.type)}">
+    <li class="task-event task-file-change"${eventIdentityAttribute(event)} data-conversation-entry-key="${escapeHtml(identity)}" data-event-type="${escapeHtml(event.type)}">
       <article>
         <header>
           <strong>Files changed</strong>
           <time>${escapeHtml(formatDate(event.createdMs))}</time>
         </header>
         <p>${escapeHtml(summary)}${status ? ` · ${status}` : ""}</p>
-        ${renderChangedFilePaths(fileChangePaths([event]))}
+        <caffold-task-changed-files></caffold-task-changed-files>
       </article>
     </li>
   `;
 }
 
-function renderChangedFilePaths(paths) {
-  if (!paths.length) {
-    return "";
-  }
-
-  return `
-    <ul class="task-changed-files" aria-label="Changed files">
-      ${paths.map((path) => `<li><code>${escapeHtml(path)}</code></li>`).join("")}
-    </ul>
-  `;
+function fileChangeEventIdentity(event) {
+  return (
+    eventIdentityKey(event) ||
+    [
+      "file-change",
+      event?.threadId ?? event?.payload?.threadId ?? "",
+      event?.createdMs ?? "",
+    ].join(":")
+  );
 }
 
 function renderApprovalCard(event, options = {}) {

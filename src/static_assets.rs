@@ -334,6 +334,16 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/detail/conversation.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/detail/conversation.js"
         ))),
+        "pages/(task-workspace)/tasks/components/detail/conversation/components/changed-files.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/components/changed-files.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/conversation/components/changed-files.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/components/changed-files.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css" => {
             Some(css(include_str!(
                 "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css"
@@ -1269,6 +1279,10 @@ mod tests {
                 b"caffold-task-conversation".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/components/detail/conversation/components/changed-files.js",
+                b"caffold-task-changed-files".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.js",
                 b"caffold-task-command-dialog".as_slice(),
             ),
@@ -1378,6 +1392,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/components/detail/conversation.css",
                 b"caffold-task-conversation".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/components/detail/conversation/components/changed-files.css",
+                b"caffold-task-changed-files".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css",

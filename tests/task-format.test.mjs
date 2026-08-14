@@ -3,11 +3,13 @@ import test from "node:test";
 
 import {
   cleanRelativeTaskPath,
+  effectiveTaskFileRoot,
   formatCommand,
   formatDuration,
   formatRelativeAge,
   formatRelativeAgePresentation,
   normalizeTaskPath,
+  presentTaskFilePath,
   shortId,
 } from "../frontend/pages/(task-workspace)/tasks/task-format.js";
 
@@ -16,6 +18,104 @@ test("task paths normalize separators without allowing parent traversal", () => 
   assert.equal(
     cleanRelativeTaskPath("../workspace/./project/../../src"),
     "workspace/project/src",
+  );
+});
+
+test("Task file presentation prefers the managed worktree root and falls back to cwd", () => {
+  assert.equal(
+    effectiveTaskFileRoot({
+      cwdPath: "/repo/project",
+      worktree: { rootPath: "/managed/task/./" },
+    }),
+    "/managed/task",
+  );
+  assert.equal(
+    effectiveTaskFileRoot({ cwdPath: "/repo/project/" }),
+    "/repo/project",
+  );
+  assert.equal(
+    effectiveTaskFileRoot({
+      cwdPath: "/repo/project/",
+      worktree: { rootPath: " " },
+    }),
+    "/repo/project",
+  );
+  assert.equal(
+    effectiveTaskFileRoot({ cwd: "C:\\repo\\project\\" }),
+    "C:/repo/project",
+  );
+  assert.equal(
+    effectiveTaskFileRoot({
+      cwd: "/managed/task",
+      cwdPath: "managed/task",
+      worktree: { rootPath: "managed/task", relativeCwd: "" },
+    }),
+    "/managed/task",
+  );
+  assert.equal(
+    effectiveTaskFileRoot({
+      cwd: "/managed/task/packages/app",
+      cwdPath: "managed/task/packages/app",
+      worktree: {
+        rootPath: "managed/task",
+        relativeCwd: "packages/app",
+      },
+    }),
+    "/managed/task",
+  );
+  assert.equal(
+    effectiveTaskFileRoot({
+      cwd: "/ordinary/task",
+      cwdPath: "ordinary/task",
+    }),
+    "/ordinary/task",
+  );
+  const ordinaryRoot = effectiveTaskFileRoot({ cwdPath: "/repo/project/" });
+  assert.equal(
+    presentTaskFilePath("/repo/project/src/main.rs", ordinaryRoot).displayPath,
+    "src/main.rs",
+  );
+});
+
+test("Task-local file paths are normalized and displayed relative to the Task root", () => {
+  const absolute = "/repo/task/src/./planner/../lib.rs";
+  assert.deepEqual(presentTaskFilePath(absolute, "/repo/task/"), {
+    fileIdentity: "/repo/task/src/lib.rs",
+    originalPath: absolute,
+    displayPath: "src/lib.rs",
+  });
+  assert.deepEqual(
+    presentTaskFilePath("./tests\\unit\\..\\path.test.mjs", "/repo/task"),
+    {
+      fileIdentity: "/repo/task/tests/path.test.mjs",
+      originalPath: "./tests\\unit\\..\\path.test.mjs",
+      displayPath: "tests/path.test.mjs",
+    },
+  );
+  assert.equal(
+    presentTaskFilePath("C:\\repo\\task\\src\\lib.rs", "c:\\repo\\task\\")
+      .displayPath,
+    "src/lib.rs",
+  );
+  assert.equal(
+    presentTaskFilePath("/repo/task/src/lib.rs///", "/repo/task///")
+      .displayPath,
+    "src/lib.rs",
+  );
+});
+
+test("file path presentation preserves outside-root paths by segment boundary", () => {
+  assert.equal(
+    presentTaskFilePath("/repo/task-copy/file.rs", "/repo/task").displayPath,
+    "/repo/task-copy/file.rs",
+  );
+  assert.equal(
+    presentTaskFilePath("../shared/file.rs", "/repo/task").displayPath,
+    "/repo/shared/file.rs",
+  );
+  assert.equal(
+    presentTaskFilePath("/repo/task", "/repo/task/").displayPath,
+    ".",
   );
 });
 

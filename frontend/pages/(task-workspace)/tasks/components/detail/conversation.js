@@ -7,6 +7,7 @@ import {
 } from "../../task-events.js";
 import { isTaskTransportStale } from "../../runtime-state.js";
 import { requestTaskImagePreview } from "../image-preview-dialog.js";
+import "./conversation/components/changed-files.js";
 import "./conversation/command-summary.js";
 import "./conversation/markdown.js";
 import "./conversation/work-details.js";
@@ -251,6 +252,7 @@ class CaffoldTaskConversation extends HTMLElement {
       this.conversationList(),
       view.html,
       view.workDetails,
+      view.changedFiles,
     );
     const threadId = this.snapshot.threadId;
     const hasPendingMarkdown = this.hasPendingMarkdownRender();
@@ -802,7 +804,12 @@ class CaffoldTaskConversation extends HTMLElement {
   }
 }
 
-function reconcileConversationList(list, html, workDetails) {
+function reconcileConversationList(
+  list,
+  html,
+  workDetails,
+  changedFiles = new Map(),
+) {
   if (!list) {
     return;
   }
@@ -822,6 +829,13 @@ function reconcileConversationList(list, html, workDetails) {
           entry.matches(
             ".task-message[data-conversation-entry-key][data-conversation-entry-version], .task-thinking[data-conversation-entry-key][data-conversation-entry-version]",
           ),
+      )
+      .map((entry) => [entry.dataset.conversationEntryKey, entry]),
+  );
+  const existingFileChangeEntries = new Map(
+    [...list.children]
+      .filter((entry) =>
+        entry.matches(".task-file-change[data-conversation-entry-key]"),
       )
       .map((entry) => [entry.dataset.conversationEntryKey, entry]),
   );
@@ -848,6 +862,15 @@ function reconcileConversationList(list, html, workDetails) {
     ) {
       return existingActiveTurn;
     }
+    const changedFileSnapshot = changedFiles.get(key);
+    const existingFileChange = existingFileChangeEntries.get(key);
+    if (
+      changedFileSnapshot &&
+      existingFileChange &&
+      patchFileChangeEntry(existingFileChange, entry)
+    ) {
+      return existingFileChange;
+    }
     const snapshot = workDetails.get(key);
     const existing = existingWorkEntries.get(key);
     const owner = existing?.querySelector(
@@ -869,7 +892,42 @@ function reconcileConversationList(list, html, workDetails) {
     if (owner && snapshot) {
       owner.setSnapshot(snapshot);
     }
+    const changedFileSnapshot = changedFiles.get(key);
+    const changedFileOwner = entry.querySelector(
+      ":scope > article > caffold-task-changed-files",
+    );
+    if (changedFileOwner && changedFileSnapshot) {
+      changedFileOwner.setSnapshot(changedFileSnapshot);
+    }
   }
+}
+
+function patchFileChangeEntry(current, desired) {
+  const currentTime = current.querySelector(":scope > article > header > time");
+  const desiredTime = desired.querySelector(":scope > article > header > time");
+  const currentSummary = current.querySelector(":scope > article > p");
+  const desiredSummary = desired.querySelector(":scope > article > p");
+  const owner = current.querySelector(
+    ":scope > article > caffold-task-changed-files",
+  );
+  if (
+    !currentTime ||
+    !desiredTime ||
+    !currentSummary ||
+    !desiredSummary ||
+    !owner
+  ) {
+    return false;
+  }
+  syncElementAttributes(current, desired, [
+    "class",
+    "data-event-id",
+    "data-conversation-entry-key",
+    "data-event-type",
+  ]);
+  patchText(currentTime, desiredTime.textContent);
+  patchText(currentSummary, desiredSummary.textContent);
+  return true;
 }
 
 function patchActiveTurnEntry(current, desired) {
