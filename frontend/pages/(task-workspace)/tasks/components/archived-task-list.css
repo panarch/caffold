@@ -67,7 +67,10 @@ caffold-archived-task-list {
 
   & .task-repository-header {
     display: grid;
-    grid-template-columns: var(--task-list-icon-size) minmax(0, 1fr) auto;
+    grid-template-columns:
+      var(--task-list-icon-size)
+      minmax(0, 1fr)
+      max(var(--interface-icon-slot-size), 3ch);
     align-items: center;
     gap: 0.4375rem;
     min-height: var(--interface-space-14);
@@ -98,7 +101,7 @@ caffold-archived-task-list {
     color: var(--muted);
     font-size: inherit;
     font-variant-numeric: tabular-nums;
-    text-align: right;
+    text-align: center;
   }
 
   & .task-repository-group > .task-list {
@@ -146,7 +149,7 @@ caffold-archived-task-list {
 
   & .task-row-meta {
     grid-column: 2;
-    justify-self: end;
+    justify-self: center;
   }
 
   & .task-row-meta.task-status-chip {
