@@ -1,6 +1,6 @@
 use super::super::{projection::*, tests::support::*};
 use super::*;
-use crate::app::tasks::events::task_event_from_thread_item;
+use crate::app::tasks::events::{task_event_from_thread_item, task_event_record};
 use crate::app::tasks::recovery::ActiveTaskRecoveryAction;
 use crate::codex_app_server::ThreadStatus;
 use crate::{
@@ -350,6 +350,183 @@ async fn reorder_rejects_stale_cross_section_and_empty_anchors_without_writes() 
             .position_in_section,
         Some(0)
     );
+}
+
+#[tokio::test]
+async fn task_detail_http_projects_the_canonical_file_link_contract() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-file-link-detail-http";
+    let task = root
+        .path()
+        .join("Library/Application Support/Caffold/data/worktrees/example");
+    let policy = task.join("docs/review/policy.md");
+    std::fs::create_dir_all(policy.parent().unwrap()).unwrap();
+    std::fs::write(&policy, "# Review Policy\n").unwrap();
+    let client = CodexThreadClient::mock(vec![
+        crate::codex_app_server::MockCodexResponse::delayed_ok(
+            "thread/resume",
+            resumed_task(thread_id, &task),
+            std::time::Duration::from_secs(1),
+        ),
+    ]);
+    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+    cache_and_manage_test_thread(&state, thread_id, &task).await;
+    state.task_events.publish(task_event_record(
+        thread_id,
+        "assistant",
+        "assistant_message",
+        "File-link HTTP projection",
+        Some(json!({
+            "text": format!(
+                "[Policy]({}:22) [Missing](missing.rs) [External](https://example.com)",
+                policy.display()
+            )
+        })),
+        1,
+    ));
+
+    let response = router(state)
+        .oneshot(
+            axum::http::Request::builder()
+                .method("GET")
+                .uri(format!("/api/tasks/{thread_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("Task detail response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    assert_eq!(
+        response.headers()[axum::http::header::CONTENT_TYPE],
+        "application/json"
+    );
+    let body = axum::body::to_bytes(response.into_body(), 64 * 1024)
+        .await
+        .expect("Task detail body");
+    let body: JsonValue = serde_json::from_slice(&body).expect("Task detail JSON");
+
+    assert_eq!(
+        body["events"][0]["payload"]["text"],
+        "[Policy](docs/review/policy.md#L22) Missing [External](https://example.com)"
+    );
+    assert_eq!(body["fileLinks"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        body["fileLinks"][0]["eventId"],
+        format!("{thread_id}:assistant")
+    );
+    assert_eq!(body["fileLinks"][0]["linkId"], 0);
+    assert_eq!(body["fileLinks"][0]["target"], "docs/review/policy.md#L22");
+    assert_eq!(body["fileLinks"][0]["status"], "resolved");
+    assert_eq!(
+        body["fileLinks"][0]["path"],
+        "Library/Application Support/Caffold/data/worktrees/example/docs/review/policy.md"
+    );
+    assert_eq!(
+        body["fileLinks"][0]["taskRelativePath"],
+        "docs/review/policy.md"
+    );
+    assert_eq!(body["fileLinks"][0]["line"], 22);
+    assert_eq!(body["fileLinks"][1]["linkId"], 1);
+    assert_eq!(body["fileLinks"][1]["target"], "missing.rs");
+    assert_eq!(body["fileLinks"][1]["status"], "rejected");
+    assert_eq!(body["fileLinks"][1]["reason"], "not_found");
+}
+
+#[tokio::test]
+async fn task_stream_http_projects_live_file_links_in_the_sse_envelope() {
+    let root = tempfile::tempdir().unwrap();
+    let thread_id = "thread-file-link-stream-http";
+    let task = root.path().join("task");
+    std::fs::create_dir(&task).unwrap();
+    std::fs::write(task.join("live.rs"), "pub fn live() {}\n").unwrap();
+    let client = CodexThreadClient::mock(vec![
+        crate::codex_app_server::MockCodexResponse::delayed_ok(
+            "thread/resume",
+            resumed_task(thread_id, &task),
+            std::time::Duration::from_secs(1),
+        ),
+    ]);
+    let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+    cache_and_manage_test_thread(&state, thread_id, &task).await;
+
+    let response = router(state.clone())
+        .oneshot(
+            axum::http::Request::builder()
+                .method("GET")
+                .uri(format!("/api/tasks/{thread_id}/stream"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("Task stream response");
+
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    assert_eq!(
+        response.headers()[axum::http::header::CONTENT_TYPE],
+        "text/event-stream; charset=utf-8"
+    );
+    let mut body = response.into_body().into_data_stream();
+    let ready = tokio::time::timeout(std::time::Duration::from_millis(100), body.next())
+        .await
+        .expect("Task stream ready frame")
+        .expect("Task stream remains open")
+        .unwrap();
+    let bootstrap = tokio::time::timeout(std::time::Duration::from_millis(100), body.next())
+        .await
+        .expect("Task stream bootstrap frame")
+        .expect("Task stream remains open")
+        .unwrap();
+    assert_eq!(ready.as_ref(), b": ready\n\n");
+    assert!(
+        std::str::from_utf8(&bootstrap)
+            .unwrap()
+            .starts_with("event: task-sync\ndata: ")
+    );
+
+    state.task_events.publish(task_event_record(
+        thread_id,
+        "live-assistant",
+        "assistant_message",
+        "Live file-link projection",
+        Some(json!({ "text": "[Live](live.rs:9:3)" })),
+        2,
+    ));
+
+    let live_frame = tokio::time::timeout(std::time::Duration::from_millis(500), async {
+        loop {
+            let bytes = body
+                .next()
+                .await
+                .expect("Task stream remains open")
+                .expect("Task stream frame");
+            let frame = std::str::from_utf8(&bytes).expect("UTF-8 Task stream frame");
+            if frame.starts_with("event: task-event\ndata: ") {
+                break frame.to_string();
+            }
+        }
+    })
+    .await
+    .expect("Live Task event frame");
+    let payload = live_frame
+        .strip_prefix("event: task-event\ndata: ")
+        .and_then(|frame| frame.strip_suffix("\n\n"))
+        .expect("Task event SSE payload");
+    let payload: JsonValue = serde_json::from_str(payload).expect("Task event SSE JSON");
+
+    assert_eq!(payload["threadId"], thread_id);
+    assert_eq!(payload["event"]["payload"]["text"], "[Live](live.rs#L9)");
+    assert_eq!(payload["fileLinks"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        payload["fileLinks"][0]["eventId"],
+        format!("{thread_id}:live-assistant")
+    );
+    assert_eq!(payload["fileLinks"][0]["linkId"], 0);
+    assert_eq!(payload["fileLinks"][0]["target"], "live.rs#L9");
+    assert_eq!(payload["fileLinks"][0]["status"], "resolved");
+    assert_eq!(payload["fileLinks"][0]["path"], "task/live.rs");
+    assert_eq!(payload["fileLinks"][0]["taskRelativePath"], "live.rs");
+    assert_eq!(payload["fileLinks"][0]["line"], 9);
 }
 
 fn initialize_git_repository(path: &std::path::Path) {
