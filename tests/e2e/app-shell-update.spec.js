@@ -296,16 +296,19 @@ test("releases update observers while disconnected and restores them once", asyn
       page.evaluate(
         () =>
           Boolean(
-            window.__caffoldDetachedAppShell.pwaUpdateLifecycle.updateRequest,
+            window.__caffoldDetachedAppShell.pwaUpdateLifecycle.runtime
+              .updateRequest,
           ),
       ),
     )
     .toBe(false);
   const disconnected = await page.evaluate(() => ({
     observedWorkers:
-      window.__caffoldDetachedAppShell.pwaUpdateLifecycle.observedServiceWorkers.size,
+      window.__caffoldDetachedAppShell.pwaUpdateLifecycle.runtime
+        .observedServiceWorkers.size,
     updateIntervalActive:
-      window.__caffoldDetachedAppShell.pwaUpdateLifecycle.updateIntervalId !== null,
+      window.__caffoldDetachedAppShell.pwaUpdateLifecycle.runtime
+        .updateIntervalId !== null,
   }));
   expect(disconnected).toEqual({
     observedWorkers: 0,
@@ -323,7 +326,7 @@ test("releases update observers while disconnected and restores them once", asyn
   await expect
     .poll(() =>
       page.locator("caffold-app-shell").evaluate(
-        (shell) => shell.pwaUpdateLifecycle.updateIntervalId !== null,
+        (shell) => shell.pwaUpdateLifecycle.runtime.updateIntervalId !== null,
       ),
     )
     .toBe(true);
@@ -373,6 +376,181 @@ test("removes a prepared update when its worker becomes unavailable", async ({
   await expect(page.locator("caffold-settings-about-page")).not.toContainText(
     "Prepared update",
   );
+});
+
+test("retains activation through an unowned transition and reloads on controllerchange", async ({
+  page,
+}) => {
+  await installServiceWorkerFixture(page, { controlled: true });
+  await page.goto("/");
+  await waitForServiceWorkerRegistration(page);
+  await prepareWaitingServiceWorker(page, "replacement-build");
+  await expect(page.getByRole("dialog", { name: "Caffold update ready" })).toBeVisible();
+  await interceptPreparedReloads(page);
+
+  await page.getByRole("dialog", { name: "Caffold update ready" })
+    .getByRole("button", { name: "Reload" })
+    .click();
+  await expect.poll(() => serviceWorkerMessageCount(
+    page,
+    "caffold:activate-prepared-build",
+    "replacement-build",
+  )).toBe(1);
+
+  await startPreparedServiceWorkerActivation(page, {
+    temporarilyUnowned: true,
+  });
+  const transition = await page.locator("caffold-app-shell").evaluate((shell) => {
+    const runtime = shell.pwaUpdateLifecycle.runtime;
+    return {
+      active: runtime.registration.active,
+      handoffNode: runtime.handoffState.node,
+      preparedBuildId: runtime.snapshot().preparedUpdate.buildId,
+      targetBuildId: runtime.handoffState.targetBuildId,
+      waiting: runtime.registration.waiting,
+    };
+  });
+  expect(transition).toEqual({
+    active: null,
+    handoffNode: "activating",
+    preparedBuildId: "replacement-build",
+    targetBuildId: "replacement-build",
+    waiting: null,
+  });
+
+  const pruneRequests = await serviceWorkerMessageCount(
+    page,
+    "caffold:prune-shell-caches",
+  );
+  await page.locator("caffold-app-shell").evaluate(async (shell) => {
+    await caches.open("caffold-shell-transition-probe");
+    await shell.pwaUpdateLifecycle.runtime.pruneShellCachesIfSafe();
+  });
+  expect(await serviceWorkerMessageCount(
+    page,
+    "caffold:prune-shell-caches",
+  )).toBe(pruneRequests);
+
+  await completePreparedServiceWorkerActivation(page);
+  await expect.poll(() => serviceWorkerMessageCount(
+    page,
+    "caffold:claim-prepared-build",
+    "replacement-build",
+  )).toBe(1);
+  await controlLatestServiceWorker(page);
+  await expect.poll(() => preparedReloadCount(page)).toBe(1);
+
+  await controlLatestServiceWorker(page);
+  await announceLatestControlled(page);
+  expect(await preparedReloadCount(page)).toBe(1);
+});
+
+test("uses a differing controlled-message wrapper as a safe fallback hint", async ({
+  page,
+}) => {
+  await installServiceWorkerFixture(page, { controlled: true });
+  await page.goto("/");
+  await waitForServiceWorkerRegistration(page);
+  await triggerServiceWorkerActivation(page, "replacement-build");
+  await interceptPreparedReloads(page);
+
+  await page.locator("caffold-app-shell").evaluate((shell) => {
+    shell.pwaUpdateLifecycle.activatePreparedUpdate();
+  });
+  await expect.poll(() => serviceWorkerMessageCount(
+    page,
+    "caffold:claim-prepared-build",
+    "replacement-build",
+  )).toBe(1);
+
+  await controlLatestServiceWorker(page, { dispatch: false });
+  await announceLatestControlled(page, { differentSource: true });
+  await expect.poll(() => preparedReloadCount(page)).toBe(1);
+});
+
+test("reconnect and repeated activation intent safely resume one handoff", async ({
+  page,
+}) => {
+  await installServiceWorkerFixture(page, { controlled: true });
+  await page.goto("/");
+  await waitForServiceWorkerRegistration(page);
+  await triggerServiceWorkerActivation(page, "replacement-build");
+  await interceptPreparedReloads(page);
+
+  await page.locator("caffold-app-shell").evaluate((shell) => {
+    shell.pwaUpdateLifecycle.activatePreparedUpdate();
+    shell.pwaUpdateLifecycle.activatePreparedUpdate();
+  });
+  await expect.poll(() => serviceWorkerMessageCount(
+    page,
+    "caffold:claim-prepared-build",
+    "replacement-build",
+  )).toBe(2);
+
+  await page.locator("caffold-app-shell").evaluate((shell) => {
+    window.__caffoldDetachedAppShell = shell;
+    shell.remove();
+    document.body.append(shell);
+  });
+  await expect.poll(() => serviceWorkerMessageCount(
+    page,
+    "caffold:claim-prepared-build",
+    "replacement-build",
+  )).toBeGreaterThan(2);
+
+  await controlLatestServiceWorker(page);
+  await announceLatestControlled(page, { differentSource: true });
+  await expect.poll(() => preparedReloadCount(page)).toBe(1);
+});
+
+test("retargets an in-flight handoff to the latest prepared build", async ({
+  page,
+}) => {
+  await installServiceWorkerFixture(page, { controlled: true });
+  await page.goto("/");
+  await waitForServiceWorkerRegistration(page);
+  await prepareWaitingServiceWorker(page, "replacement-build-b");
+  await interceptPreparedReloads(page);
+
+  await page.locator("caffold-app-shell").evaluate((shell) => {
+    shell.pwaUpdateLifecycle.activatePreparedUpdate();
+  });
+  await startPreparedServiceWorkerActivation(page);
+  await completePreparedServiceWorkerActivation(page);
+  await expect.poll(() => serviceWorkerMessageCount(
+    page,
+    "caffold:claim-prepared-build",
+    "replacement-build-b",
+  )).toBe(1);
+
+  await prepareWaitingServiceWorker(page, "replacement-build-c");
+  await expect.poll(() => serviceWorkerMessageCount(
+    page,
+    "caffold:activate-prepared-build",
+    "replacement-build-c",
+  )).toBe(1);
+  await expect.poll(() => page.locator("caffold-app-shell").evaluate(
+    (shell) => shell.pwaUpdateLifecycle.runtime.handoffState.targetBuildId,
+  )).toBe("replacement-build-c");
+
+  await startPreparedServiceWorkerActivation(page, {
+    preservePreviousActive: true,
+  });
+  await expect.poll(() => page.locator("caffold-app-shell").evaluate(
+    (shell) => shell.pwaUpdateLifecycle.runtime.handoffState.targetBuildId,
+  )).toBe("replacement-build-c");
+
+  await controlServiceWorker(page, "replacement-build-b");
+  expect(await preparedReloadCount(page)).toBe(0);
+
+  await completePreparedServiceWorkerActivation(page);
+  await expect.poll(() => serviceWorkerMessageCount(
+    page,
+    "caffold:claim-prepared-build",
+    "replacement-build-c",
+  )).toBe(1);
+  await controlServiceWorker(page, "replacement-build-c");
+  await expect.poll(() => preparedReloadCount(page)).toBe(1);
 });
 
 test("routes dialog and About reload intents through the app shell", async ({ page }) => {
@@ -535,7 +713,7 @@ test("prepares and reloads the latest consecutive replacement through the real b
   }
 });
 
-test("reloads the prepared build directly from the dialog without a loop", async ({
+test("reloads through controllerchange without a custom acknowledgement or loop", async ({
   page,
 }, testInfo) => {
   test.setTimeout(60_000);
@@ -549,8 +727,22 @@ test("reloads the prepared build directly from the dialog without a loop", async
       "content",
       "browser-build-a",
     );
+    await page.evaluate(() => {
+      sessionStorage.setItem("caffold-controlled-message-count", "0");
+      navigator.serviceWorker.addEventListener("message", (event) => {
+        if (event.data?.type === "caffold:update-controlled") {
+          const count = Number(
+            sessionStorage.getItem("caffold-controlled-message-count") ?? "0",
+          );
+          sessionStorage.setItem(
+            "caffold-controlled-message-count",
+            String(count + 1),
+          );
+        }
+      });
+    });
 
-    fixture.setBuild("browser-build-b", 2);
+    fixture.setBuild("browser-build-b", 2, { omitControlledAck: true });
     await page.locator("caffold-app-shell").evaluate(async (shell) => {
       await shell.pwaUpdateLifecycle.checkForUpdate();
     });
@@ -570,6 +762,9 @@ test("reloads the prepared build directly from the dialog without a loop", async
       "content",
       "browser-build-b",
     );
+    expect(await page.evaluate(() =>
+      sessionStorage.getItem("caffold-controlled-message-count")
+    )).toBe("0");
     await expect(page.locator("caffold-build-mismatch-alert")).toBeHidden();
     await expect(updateDialog).toBeHidden();
 
@@ -665,6 +860,31 @@ async function installServiceWorkerFixture(
         });
         this.dispatchEvent(event);
       }
+
+      announceControlled(worker, { differentSource = false } = {}) {
+        const event = new Event("message");
+        Object.defineProperties(event, {
+          data: {
+            value: {
+              type: "caffold:update-controlled",
+              buildId: worker.name,
+            },
+          },
+          source: {
+            value: differentSource
+              ? new MockServiceWorker(`${worker.name}-message-wrapper`, worker.state)
+              : worker,
+          },
+        });
+        this.dispatchEvent(event);
+      }
+
+      setController(worker, { dispatch = true } = {}) {
+        this.controller = worker;
+        if (dispatch) {
+          this.dispatchEvent(new Event("controllerchange"));
+        }
+      }
     }
     const serviceWorker = new MockServiceWorkerContainer(controller);
     window.__caffoldServiceWorkerMessages = [];
@@ -672,8 +892,10 @@ async function installServiceWorkerFixture(
       heldUpdateResolvers: [],
       pendingWorkerName: null,
       updatesHeld: false,
+      workersByName: new Map(controller ? [[controller.name, controller]] : []),
       activate(name) {
         const worker = new MockServiceWorker(name, "installing");
+        this.workersByName.set(name, worker);
         registration.installing = worker;
         registration.dispatchEvent(new Event("updatefound"));
         registration.active = worker;
@@ -682,6 +904,49 @@ async function installServiceWorkerFixture(
         worker.setState("activated");
         registration.installing = null;
         this.latestWorker = worker;
+      },
+      prepare(name) {
+        const worker = new MockServiceWorker(name, "installing");
+        this.workersByName.set(name, worker);
+        registration.installing = worker;
+        this.latestWorker = worker;
+        registration.dispatchEvent(new Event("updatefound"));
+        worker.setState("installed");
+        registration.installing = null;
+        registration.waiting = worker;
+        serviceWorker.announceReady(worker);
+      },
+      startPreparedActivation({
+        preservePreviousActive = false,
+        temporarilyUnowned = true,
+      } = {}) {
+        const worker = this.latestWorker;
+        if (!worker) {
+          return;
+        }
+        const previousActive = registration.active;
+        registration.waiting = null;
+        registration.active = temporarilyUnowned
+          ? (preservePreviousActive ? previousActive : null)
+          : worker;
+        worker.setState("activating");
+      },
+      completePreparedActivation() {
+        const worker = this.latestWorker;
+        if (!worker) {
+          return;
+        }
+        registration.active = worker;
+        worker.setState("activated");
+      },
+      controlLatest({ dispatch = true } = {}) {
+        serviceWorker.setController(this.latestWorker, { dispatch });
+      },
+      control(name, { dispatch = true } = {}) {
+        serviceWorker.setController(this.workersByName.get(name), { dispatch });
+      },
+      announceLatestControlled({ differentSource = false } = {}) {
+        serviceWorker.announceControlled(this.latestWorker, { differentSource });
       },
       beginInstall(name) {
         const worker = new MockServiceWorker(name, "installing");
@@ -736,7 +1001,7 @@ async function waitForServiceWorkerRegistration(page) {
       page.evaluate(() => {
         const fixture = window.__caffoldServiceWorkerFixture;
         const shell = document.querySelector("caffold-app-shell");
-        const lifecycle = shell.pwaUpdateLifecycle;
+        const lifecycle = shell.pwaUpdateLifecycle.runtime;
         return (
           fixture.serviceWorker.registerCalls === 1 &&
           lifecycle.registration === fixture.registration &&
@@ -753,6 +1018,56 @@ async function triggerServiceWorkerActivation(page, name) {
   await page.evaluate((workerName) => {
     window.__caffoldServiceWorkerFixture.activate(workerName);
   }, name);
+}
+
+async function prepareWaitingServiceWorker(page, name) {
+  await page.evaluate((workerName) => {
+    window.__caffoldServiceWorkerFixture.prepare(workerName);
+  }, name);
+}
+
+async function startPreparedServiceWorkerActivation(
+  page,
+  {
+    preservePreviousActive = false,
+    temporarilyUnowned = true,
+  } = {},
+) {
+  await page.evaluate(({ preservePreviousActive, temporarilyUnowned }) => {
+    window.__caffoldServiceWorkerFixture.startPreparedActivation({
+      preservePreviousActive,
+      temporarilyUnowned,
+    });
+  }, { preservePreviousActive, temporarilyUnowned });
+}
+
+async function completePreparedServiceWorkerActivation(page) {
+  await page.evaluate(() => {
+    window.__caffoldServiceWorkerFixture.completePreparedActivation();
+  });
+}
+
+async function controlLatestServiceWorker(page, { dispatch = true } = {}) {
+  await page.evaluate(({ dispatch }) => {
+    window.__caffoldServiceWorkerFixture.controlLatest({ dispatch });
+  }, { dispatch });
+}
+
+async function controlServiceWorker(page, name, { dispatch = true } = {}) {
+  await page.evaluate(({ dispatch, workerName }) => {
+    window.__caffoldServiceWorkerFixture.control(workerName, { dispatch });
+  }, { dispatch, workerName: name });
+}
+
+async function announceLatestControlled(
+  page,
+  { differentSource = false } = {},
+) {
+  await page.evaluate(({ differentSource }) => {
+    window.__caffoldServiceWorkerFixture.announceLatestControlled({
+      differentSource,
+    });
+  }, { differentSource });
 }
 
 async function repeatServiceWorkerStateChange(page) {
@@ -823,6 +1138,29 @@ async function reloadRequests(page) {
   return await page.evaluate(() => window.__caffoldReloadRequests);
 }
 
+async function interceptPreparedReloads(page) {
+  await page.locator("caffold-app-shell").evaluate((shell) => {
+    window.__caffoldPreparedReloads = 0;
+    shell.pwaUpdateLifecycle.runtime.onReloadReady = () => {
+      window.__caffoldPreparedReloads += 1;
+    };
+  });
+}
+
+async function preparedReloadCount(page) {
+  return await page.evaluate(() => window.__caffoldPreparedReloads ?? 0);
+}
+
+async function serviceWorkerMessageCount(page, type, name = null) {
+  return await page.evaluate(({ messageType, workerName }) =>
+    window.__caffoldServiceWorkerMessages.filter(
+      ({ message, name: sourceName }) =>
+        message.type === messageType &&
+        (workerName === null || sourceName === workerName),
+    ).length,
+  { messageType: type, workerName: name });
+}
+
 async function openAboutWithoutReload(page) {
   await page.locator("caffold-app-shell").evaluate((shell) => {
     shell.navigateToRoute({ kind: "settings", section: "about" });
@@ -857,7 +1195,7 @@ async function fetchedShellBuild(page) {
 async function serviceWorkerDiagnostics(page) {
   return await page.evaluate(() => {
     const shell = document.querySelector("caffold-app-shell");
-    const lifecycle = shell.pwaUpdateLifecycle;
+    const lifecycle = shell.pwaUpdateLifecycle.runtime;
     return {
       lifecycleState: lifecycle.snapshot().state,
       activeState: lifecycle.registration?.active?.state ?? null,
@@ -913,15 +1251,25 @@ async function primaryActionColors(page) {
 }
 
 async function startBuildLifecycleServer(upstreamOrigin) {
-  let currentBuild = { id: "browser-build-a", number: 1 };
+  let currentBuild = {
+    id: "browser-build-a",
+    number: 1,
+    omitControlledAck: false,
+  };
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url, "http://caffold.test");
       if (url.pathname === "/service-worker.js") {
-        const body = serviceWorkerSource.replace(
+        let body = serviceWorkerSource.replace(
           '"caffold-shell-__CAFFOLD_BUILD_ID__"',
           JSON.stringify(`caffold-shell-${currentBuild.id}`),
         );
+        if (currentBuild.omitControlledAck) {
+          body = body.replace(
+            "  client?.postMessage({ type: UPDATE_CONTROLLED_MESSAGE, buildId: BUILD_ID });",
+            "  // Lifecycle fixture intentionally omits the custom acknowledgement.",
+          );
+        }
         response.writeHead(200, {
           "Cache-Control": "no-cache",
           "Content-Type": "text/javascript; charset=utf-8",
@@ -983,8 +1331,8 @@ async function startBuildLifecycleServer(upstreamOrigin) {
   const address = server.address();
   return {
     origin: `http://127.0.0.1:${address.port}`,
-    setBuild(id, number) {
-      currentBuild = { id, number };
+    setBuild(id, number, { omitControlledAck = false } = {}) {
+      currentBuild = { id, number, omitControlledAck };
     },
     close() {
       return new Promise((resolve, reject) => {

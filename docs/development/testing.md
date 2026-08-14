@@ -51,7 +51,7 @@ The package scripts are grouped by their production owner:
 | `npm run test:appearance` | settings behavior and appearance ownership |
 | `npm run test:css-ownership` | stylesheet/component ownership |
 | `npm run test:routes` | browser route contracts |
-| `npm run test:service-worker` | PWA shell cache, fallback, and cache-generation lifecycle |
+| `npm run test:service-worker` | PWA shell cache, fallback, cache generations, and prepared-build activation control graph |
 | `npm run test:task-state` | task list/detail/state projection |
 | `npm run test:watch` | filesystem watch behavior |
 | `npm run test:voice` | browser voice recorder contract |
@@ -98,9 +98,15 @@ notification, and connectivity signals. Report these layers separately.
 
 PWA build-handoff changes must run `tests/e2e/app-shell-update.spec.js`. Its
 deterministic service-worker fixture checks first install, checking, ready, and
-settled presentation, while its loopback lifecycle server exercises real
-Chromium worker installation, consecutive replacement builds, explicit reload,
-cache cleanup, and separation from the exceptional build-mismatch alert.
+settled presentation plus waiting, activation, temporary slot loss, claim,
+controller change, repeated intent, reconnect, and latest-generation selection.
+`npm run test:service-worker` also covers the complete pure handoff graph,
+rejected transitions, stale generations, and reload-once effect. The loopback
+lifecycle server exercises real Chromium worker installation, consecutive
+replacement builds, explicit reload with and without the custom controlled
+acknowledgement, cache cleanup, and separation from the exceptional
+build-mismatch alert. Report the pure graph, deterministic fixture, and real
+Chromium evidence layers separately.
 
 ## Codex live tests
 

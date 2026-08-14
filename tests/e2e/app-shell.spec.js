@@ -37,9 +37,11 @@ test("serves one Task workspace shell and only active static assets", async ({
   );
   for (const asset of [
     "/assets/pages/layout.js",
+    "/assets/pages/pwa-update-lifecycle.js",
+    "/assets/pages/pwa-update-lifecycle/machine.js",
+    "/assets/pages/pwa-update-lifecycle/runtime.js",
     "/assets/pages/components/build-mismatch-alert.css",
     "/assets/pages/components/build-mismatch-alert.js",
-    "/assets/pages/components/pwa-update-lifecycle.js",
     "/assets/pages/components/update-dialog.css",
     "/assets/pages/components/update-dialog.js",
     "/assets/pages/(task-workspace)/layout.js",

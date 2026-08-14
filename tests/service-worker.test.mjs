@@ -147,6 +147,13 @@ test("installs the complete shell without replacing the current worker", async (
       "/assets/pages/foreground-recovery/machine.js",
     ),
   );
+  assert.ok(installedAssets.includes("/assets/pages/pwa-update-lifecycle.js"));
+  assert.ok(
+    installedAssets.includes("/assets/pages/pwa-update-lifecycle/machine.js"),
+  );
+  assert.ok(
+    installedAssets.includes("/assets/pages/pwa-update-lifecycle/runtime.js"),
+  );
   assert.ok(installedAssets.includes("/assets/pages/components/update-dialog.js"));
   assert.ok(
     installedAssets.includes(
